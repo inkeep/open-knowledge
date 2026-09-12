@@ -137,7 +137,7 @@ describe('resolve_conflict MCP tool', () => {
     expect(result.isError).toBeUndefined();
   });
 
-  test('strategy=content forwards the content arg verbatim', async () => {
+  test.each(['merged-by-hand', ''])('strategy=content forwards exact bytes %j', async (content) => {
     const { server, registrations } = createCapturingServer();
     const fetchCalls: Array<{ init?: RequestInit }> = [];
     globalThis.fetch = (async (_input, init) => {
@@ -153,13 +153,13 @@ describe('resolve_conflict MCP tool', () => {
     const result = await tool.handler({
       file: 'a.md',
       strategy: 'content',
-      content: 'merged-by-hand',
+      content,
     });
 
     expect(JSON.parse(String(fetchCalls[0]?.init?.body))).toEqual({
       file: 'a.md',
       strategy: 'content',
-      content: 'merged-by-hand',
+      content,
     });
     expect(result.isError).toBeUndefined();
   });

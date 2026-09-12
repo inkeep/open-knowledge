@@ -52,14 +52,12 @@ describe('detectLoneTrustedUrl — over-selection policy (trust the gesture)', (
     expect(detectLoneTrustedUrl(raw)).toBe(expected);
   });
 
-  test.each([
-    ['javascript:alert(1)'],
-    ['data:text/html,x'],
-    ['vbscript:x'],
-    ['foo:bar'],
-  ])('non-allowlisted scheme is refused: %s', (raw) => {
-    expect(detectLoneTrustedUrl(raw)).toBeNull();
-  });
+  test.each([['javascript:alert(1)'], ['data:text/html,x'], ['vbscript:x'], ['foo:bar']])(
+    'non-allowlisted scheme is refused: %s',
+    (raw) => {
+      expect(detectLoneTrustedUrl(raw)).toBeNull();
+    },
+  );
 
   test.each([
     ['example.com', 'https://example.com'],
@@ -107,22 +105,19 @@ describe('detectClipboardPrefillUrl — link-popover pre-fill policy (explicit s
     expect(detectClipboardPrefillUrl(raw)).toBe(expected);
   });
 
-  test.each([
-    ['javascript:alert(1)'],
-    ['data:text/html,x'],
-    ['vbscript:x'],
-  ])('non-allowlisted scheme never pre-fills: %s', (raw) => {
-    expect(detectClipboardPrefillUrl(raw)).toBeNull();
-  });
+  test.each([['javascript:alert(1)'], ['data:text/html,x'], ['vbscript:x']])(
+    'non-allowlisted scheme never pre-fills: %s',
+    (raw) => {
+      expect(detectClipboardPrefillUrl(raw)).toBeNull();
+    },
+  );
 
-  test.each([
-    ['example.com'],
-    ['www.example.com'],
-    ['nick@inkeep.com'],
-    ['AGENTS.md'],
-  ])('schemeless token the trust-intent policy would convert stays out: %s', (raw) => {
-    expect(detectClipboardPrefillUrl(raw)).toBeNull();
-  });
+  test.each([['example.com'], ['www.example.com'], ['nick@inkeep.com'], ['AGENTS.md']])(
+    'schemeless token the trust-intent policy would convert stays out: %s',
+    (raw) => {
+      expect(detectClipboardPrefillUrl(raw)).toBeNull();
+    },
+  );
 
   test.each([
     ['localhost:5173'],

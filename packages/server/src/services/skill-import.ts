@@ -79,7 +79,7 @@ export interface SkillImportDeps {
   resolveSkillDirForRead: (scope: 'project' | 'global', name: string) => string | null;
   parseFrontmatterDoc: (raw: string) => { frontmatter: Record<string, unknown>; body: string };
   attributeOkArtifactWrite: (actor: ActorIdentity, keyPath: string, summary: string) => void;
-  commitOkArtifactWrite: (context: string) => Promise<void>;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   shadowHeadSha: (writerId?: string, verifyPathRel?: string) => Promise<string | undefined>;
   artifactWriterId: (actor: ActorIdentity) => string | undefined;
   effectiveInstallMode: (
@@ -178,6 +178,7 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
             alreadyImported: true,
             provenance: { source: sourceLabel, ref, contentHash: acquired.contentHash, publisher },
             warnings: [],
+            warningCodes: [],
           },
         };
       }
@@ -327,6 +328,7 @@ export function createSkillImportService(deps: SkillImportDeps): SkillImportServ
           ...(collided ? { collisionRenamedFrom: acquired.name } : {}),
           provenance: { source: sourceLabel, ref, contentHash: acquired.contentHash, publisher },
           warnings,
+          warningCodes: wr.warningCodes,
         },
       };
     },

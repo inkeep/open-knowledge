@@ -1,6 +1,8 @@
 import {
   createWorkspaceSearchCorpus,
   createWorkspaceSearchDocument,
+  type SearchSemanticStatus,
+  SearchSemanticStatusSchema,
   searchWorkspaceCorpus,
   type WorkspaceSearchCorpus,
   type WorkspaceSearchDocument,
@@ -213,12 +215,14 @@ interface WorkspaceSearchApiResponse {
   }>;
   truncated?: boolean;
   ready?: boolean;
+  semantic?: SearchSemanticStatus;
 }
 
 export interface WorkspaceSearchFetchResult {
   entries: WorkspaceSearchEntry[];
   truncated: boolean;
   ready: boolean;
+  semantic: SearchSemanticStatus | null;
 }
 
 function toWorkspaceSearchEntry(
@@ -248,7 +252,7 @@ export async function fetchWorkspaceSearchEntries(
   options: { signal?: AbortSignal; limit?: number; semantic?: boolean } = {},
 ): Promise<WorkspaceSearchFetchResult> {
   const normalizedQuery = query.trim();
-  if (!normalizedQuery) return { entries: [], truncated: false, ready: true };
+  if (!normalizedQuery) return { entries: [], truncated: false, ready: true, semantic: null };
 
   const response = await fetch('/api/search', {
     method: 'POST',
@@ -271,8 +275,17 @@ export async function fetchWorkspaceSearchEntries(
 
   const payload = (await response.json()) as WorkspaceSearchApiResponse;
   const entries = (payload.results ?? []).map(toWorkspaceSearchEntry).filter((entry) => !!entry);
+  const semantic = SearchSemanticStatusSchema.safeParse(payload.semantic);
+  if (payload.semantic !== undefined && !semantic.success) {
+    console.warn('[semantic-search] response returned an invalid semantic status');
+  }
 
-  return { entries, truncated: payload.truncated === true, ready: payload.ready !== false };
+  return {
+    entries,
+    truncated: payload.truncated === true,
+    ready: payload.ready !== false,
+    semantic: semantic.success ? semantic.data : null,
+  };
 }
 
 export function matchesCommandQuery(

@@ -357,10 +357,7 @@ describe('runCreateNew — git-root promotion', () => {
     expect(cfg).not.toMatch(/^\s*dir:\s*notes\/MyProj/m);
 
     const gi = resolve(repo, '.gitignore');
-    expect(existsSync(gi)).toBe(true);
-    const giBody = readFileSync(gi, 'utf8');
-    expect(giBody).toContain('.claude/skills/open-knowledge/');
-    expect(giBody).not.toContain('.DS_Store');
+    expect(existsSync(gi)).toBe(false);
   });
 
   test('no promotion when parent has no enclosing git repo — projectDir === target, content.dir === "."', async () => {
@@ -611,6 +608,7 @@ describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
       (o) => o.integration === 'project-skill' && o.action === 'written',
     );
     expect(skillWrites.map((o) => o.editorId).sort()).toEqual([
+      'agents',
       'claude',
       'codex',
       'copilot',
@@ -618,6 +616,9 @@ describe('runCreateNew — installs the project-local skill (PRD-6733)', () => {
       'opencode',
       'pi',
     ]);
+    expect(
+      existsSync(join(result.projectDir, '.agents', 'skills', 'open-knowledge', 'SKILL.md')),
+    ).toBe(true);
   });
 
   test('skips the Copilot project skill when Copilot is selected without MCP wiring', async () => {

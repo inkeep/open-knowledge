@@ -350,52 +350,55 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
 });
 
 describe('GET /api/sync/conflict-content?source=ytext', () => {
-  test('returns Y.Text snapshot when source=ytext and snapshot is marker-free', async () => {
-    const docName = `fr3-source-ytext-${crypto.randomUUID()}`;
-    const server = await setupServerWithDoc(docName, BASE_CONTENT);
-    const client = await createTestClient(server.port, docName);
-    cleanups.push(() => client.cleanup());
+  test.each(['## Mid-conflict authored content\n', 'Mid-conflict authored content\n=======\n'])(
+    'returns Y.Text snapshot when source=ytext and snapshot has no unresolved block: %j',
+    async (midConflictMarker) => {
+      const docName = `fr3-source-ytext-${crypto.randomUUID()}`;
+      const server = await setupServerWithDoc(docName, BASE_CONTENT);
+      const client = await createTestClient(server.port, docName);
+      cleanups.push(() => client.cleanup());
 
-    await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
+      await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
 
-    const lifecycle = client.doc.getMap('lifecycle');
-    const filePath = join(server.contentDir, `${docName}.md`);
+      const lifecycle = client.doc.getMap('lifecycle');
+      const filePath = join(server.contentDir, `${docName}.md`);
 
-    writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+      writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
+      await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
 
-    const midConflictMarker = '## Mid-conflict authored content\n';
-    client.doc.transact(() => {
-      client.ytext.insert(client.ytext.toString().length, midConflictMarker);
-    });
+      client.doc.transact(() => {
+        client.ytext.insert(client.ytext.toString().length, midConflictMarker);
+      });
 
-    await pollUntil(() => {
-      const serverDoc = server.instance.hocuspocus.documents.get(docName);
-      return serverDoc?.getText('source').toString().includes(midConflictMarker) ?? false;
-    }, 5000);
+      await pollUntil(() => {
+        const serverDoc = server.instance.hocuspocus.documents.get(docName);
+        return serverDoc?.getText('source').toString().includes(midConflictMarker) ?? false;
+      }, 5000);
 
-    const ytextRes = await fetch(
-      `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md&source=ytext`,
-    );
-    expect(ytextRes.ok).toBe(true);
-    const ytextBody = (await ytextRes.json()) as {
-      file: string;
-      base: string;
-      ours: string;
-      theirs: string;
-      lifecycleStatus: string | null;
-    };
-    expect(ytextBody.file).toBe(`${docName}.md`);
-    expect(ytextBody.ours).toContain(midConflictMarker);
-    expect(ytextBody.lifecycleStatus).toBe('conflict');
+      const ytextRes = await fetch(
+        `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md&source=ytext`,
+      );
+      expect(ytextRes.ok).toBe(true);
+      const ytextBody = (await ytextRes.json()) as {
+        file: string;
+        base: string;
+        ours: string;
+        theirs: string;
+        lifecycleStatus: string | null;
+      };
+      expect(ytextBody.file).toBe(`${docName}.md`);
+      expect(ytextBody.ours).toContain(midConflictMarker);
+      expect(ytextBody.lifecycleStatus).toBe('conflict');
 
-    const defaultRes = await fetch(
-      `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md`,
-    );
-    expect(defaultRes.ok).toBe(true);
-    const defaultBody = (await defaultRes.json()) as { ours: string };
-    expect(defaultBody.ours).not.toContain(midConflictMarker);
-  }, 30_000);
+      const defaultRes = await fetch(
+        `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md`,
+      );
+      expect(defaultRes.ok).toBe(true);
+      const defaultBody = (await defaultRes.json()) as { ours: string };
+      expect(defaultBody.ours).not.toContain(midConflictMarker);
+    },
+    30_000,
+  );
 
   test('falls back to git-index ours when Y.Text snapshot contains conflict markers', async () => {
     const docName = `fr3-marker-fallback-${crypto.randomUUID()}`;

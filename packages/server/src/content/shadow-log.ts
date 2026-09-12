@@ -1,5 +1,5 @@
 import { resolve } from 'node:path';
-import type { ShadowContributor } from '@inkeep/open-knowledge-core';
+import { pathspecArgs, type ShadowContributor } from '@inkeep/open-knowledge-core';
 import {
   getShadowRepoPath,
   getWipRefPattern,
@@ -70,8 +70,7 @@ async function logOnRef(
       ref,
       `-${Math.max(1, limit * 2)}`,
       '--format=%H%x00%aI%x00%an%x00%s%x00%B%x1e',
-      '--',
-      relPath,
+      ...pathspecArgs([relPath]),
     );
   } catch {
     return [];
@@ -128,8 +127,7 @@ async function checkpointAncestryFallback(
       ...anchors,
       `-${Math.max(need * 3, 20)}`,
       '--format=%H%x00%aI%x00%an%x00%s%x00%B%x1e',
-      '--',
-      relPath,
+      ...pathspecArgs([relPath]),
     );
   } catch (err) {
     getLogger('shadow-log').warn(

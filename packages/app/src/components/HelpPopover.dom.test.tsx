@@ -14,6 +14,11 @@ vi.doMock('@lingui/react/macro', () => ({
   useLingui: () => ({ t: renderLinguiTemplate }),
 }));
 
+vi.doMock('@inkeep/open-knowledge-core', async (importActual) => ({
+  ...(await importActual<typeof import('@inkeep/open-knowledge-core')>()),
+  getGitHubStars: async () => 1234,
+}));
+
 vi.doMock('@/lib/external-link', () => ({
   dispatchExternalLinkClick: () => {},
 }));
@@ -50,24 +55,9 @@ function linkShape(link: HTMLElement) {
   };
 }
 
-const originalFetch = globalThis.fetch;
+afterEach(cleanup);
 
 describe('HelpPopover runtime behavior', () => {
-  beforeEach(() => {
-    globalThis.fetch = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ stargazers_count: 1234 }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
-    ) as typeof globalThis.fetch;
-  });
-
-  afterEach(() => {
-    cleanup();
-    globalThis.fetch = originalFetch;
-  });
-
   test('exports the component', async () => {
     const mod = await import('./HelpPopover');
     expect(typeof mod.HelpPopover).toBe('function');
@@ -179,7 +169,6 @@ describe('HelpPopover with the desktop bridge present', () => {
   });
 
   afterEach(() => {
-    cleanup();
     (window as unknown as { okDesktop?: unknown }).okDesktop = undefined;
   });
 

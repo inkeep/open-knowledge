@@ -3,6 +3,8 @@ import { loadLargeRealistic } from '../../../core/src/markdown/fixtures/index.ts
 import { expect, filterCriticalErrors, test } from './_helpers';
 
 const FIXTURE = loadLargeRealistic();
+const AGENT_WRITE_PROPAGATION_BUDGET_MS = 30_000;
+const KEYSTROKE_TO_YTEXT_DRAIN_BUDGET_MS = 30_000;
 
 test('S6: multi-turn stress — large content + user edits', async ({ page, api, baseURL }) => {
   const logs: Array<{ type: string; text: string; url?: string; line?: number }> = [];
@@ -44,7 +46,7 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
       (expected: number) =>
         (window.__activeProvider?.document?.getText('source')?.toString()?.length ?? 0) >= expected,
       lengthBeforeWrite + FIXTURE.length - 200,
-      { timeout: 30_000 },
+      { timeout: AGENT_WRITE_PROPAGATION_BUDGET_MS },
     );
 
     await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
@@ -53,7 +55,7 @@ test('S6: multi-turn stress — large content + user edits', async ({ page, api,
     await page.waitForFunction(
       (m: string) => window.__activeProvider?.document?.getText('source')?.toString()?.includes(m),
       marker,
-      { timeout: 30_000 },
+      { timeout: KEYSTROKE_TO_YTEXT_DRAIN_BUDGET_MS },
     );
 
     const turnState = await page.evaluate(() => {

@@ -40,7 +40,7 @@ function buildCli(
       classification?: McpEntryClassification;
       readThrows?: Error;
       writeOutcome?: {
-        action: 'overwritten' | 'declined' | 'failed';
+        action: 'overwritten' | 'unchanged' | 'declined' | 'failed';
         reason?: McpDeclineReason;
         error?: string;
       };
@@ -65,8 +65,8 @@ function buildCli(
         if (entry?.readThrows) throw entry.readThrows;
         return entry?.classification ?? { kind: 'absent' };
       },
-      writeProjectMcpConfig: ({ editorId }) => {
-        writes.push(editorId);
+      writeProjectMcpConfig: ({ editorId, pruneOnly }) => {
+        writes.push(pruneOnly ? `${editorId}:prune` : editorId);
         return perEditor[editorId]?.writeOutcome ?? { action: 'overwritten' };
       },
     },
@@ -200,6 +200,132 @@ describe('checkAndRepairProjectMcpOnProjectOpen', () => {
     expect(r.status).toBe('done');
     if (r.status === 'done') expect(r.perEditor[0]?.status).toBe('healthy-current');
     expect(writes).toEqual([]);
+  });
+
+  test('current entry with an env map added after we wrote it → reclaimed, rewritten', async () => {
+    const { cli, writes } = buildCli({
+      claude: {
+        target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+        classification: {
+          kind: 'present',
+          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+        },
+      },
+    });
+    const r = await checkAndRepairProjectMcpOnProjectOpen({
+      projectDir: '/p',
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      cli,
+    });
+    expect(r.status).toBe('done');
+    if (r.status === 'done') expect(r.perEditor[0]?.status).toBe('reclaimed');
+    expect(writes).toEqual(['claude:prune']);
+  });
+
+  test('future entry with an env map added after we wrote it → pruned, never downgraded', async () => {
+    const { cli, writes } = buildCli({
+      claude: {
+        target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+        classification: {
+          kind: 'present',
+          entry: {
+            command: '/bin/sh',
+            args: ['-l', '-c', '# ok-mcp-v99\nfuture launcher body'],
+            env: { NODE_OPTIONS: '--require ./payload.cjs' },
+          },
+        },
+      },
+    });
+    const r = await checkAndRepairProjectMcpOnProjectOpen({
+      projectDir: '/p',
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      cli,
+    });
+    expect(r.status).toBe('done');
+    if (r.status === 'done') expect(r.perEditor[0]?.status).toBe('reclaimed');
+    expect(writes).toEqual(['claude:prune']);
+  });
+
+  test('a prune the writer declines → declined, never healthy-current', async () => {
+    const { cli, writes } = buildCli({
+      claude: {
+        target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+        classification: {
+          kind: 'present',
+          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+        },
+        writeOutcome: { action: 'declined', reason: 'no-native-writer' },
+      },
+    });
+    const r = await checkAndRepairProjectMcpOnProjectOpen({
+      projectDir: '/p',
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      cli,
+    });
+    expect(r.status).toBe('done');
+    if (r.status === 'done') {
+      expect(r.perEditor[0]).toMatchObject({ status: 'declined', reason: 'no-native-writer' });
+    }
+    expect(writes).toEqual(['claude:prune']);
+  });
+
+  test('a prune that fails → failed with the writer error', async () => {
+    const { cli } = buildCli({
+      claude: {
+        target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+        classification: {
+          kind: 'present',
+          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+        },
+        writeOutcome: { action: 'failed', error: 'EACCES' },
+      },
+    });
+    const r = await checkAndRepairProjectMcpOnProjectOpen({
+      projectDir: '/p',
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      cli,
+    });
+    expect(r.status).toBe('done');
+    if (r.status === 'done')
+      expect(r.perEditor[0]).toMatchObject({ status: 'failed', error: 'EACCES' });
+  });
+
+  test('a prune that finds nothing to remove → prune-unchanged, never healthy-current', async () => {
+    const events: Array<Record<string, unknown>> = [];
+    const { cli } = buildCli({
+      claude: {
+        target: fakeTarget('claude' as McpWiringEditorId, '/p/.mcp.json'),
+        classification: {
+          kind: 'present',
+          entry: { ...CHAIN_ENTRY, env: { NODE_OPTIONS: '--require ./payload.cjs' } },
+        },
+        writeOutcome: { action: 'unchanged' },
+      },
+    });
+    const r = await checkAndRepairProjectMcpOnProjectOpen({
+      projectDir: '/p',
+      executablePath: EXE,
+      isPackaged: true,
+      platform: 'darwin',
+      cli,
+      logger: { event: (e) => events.push(e) },
+    });
+    expect(r.status).toBe('done');
+    if (r.status === 'done') {
+      expect(r.perEditor[0]).toMatchObject({ status: 'prune-unchanged', keys: ['env'] });
+    }
+    expect(events).toContainEqual(
+      expect.objectContaining({ event: 'project-mcp-reclaim-prune-unchanged', keys: ['env'] }),
+    );
+    expect(events.some((e) => e.event === 'project-mcp-reclaim-healthy-current')).toBe(false);
   });
 
   test('recognized future entry → healthy-current, no downgrade write', async () => {

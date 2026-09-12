@@ -54,24 +54,6 @@ name: Linear Release
 #   resolved keeps whatever it had. Ships in dry-run until the STAMP_MODE repo
 #   variable is set to `live`.
 #
-#   Running this workflow by hand against any stable tag re-runs that pass over
-#   the whole pipeline, which is also how a backfill of historical stamps is
-#   performed — the pass is not scoped to the dispatching tag.
-#
-# COMMIT SCAN RANGE
-#   The lower bound depends on the channel, because the two releases answer
-#   different questions:
-#     beta   -> previous tag of any kind, so the beta holds what is NEW in it
-#               and a ticket lands on the beta it FIRST shipped in.
-#     stable -> previous STABLE tag, skipping betas. A promotion batches every
-#               changeset since the last stable, so stopping at the most recent
-#               beta would miss every ticket from earlier betas in the cycle.
-#   sync is idempotent, so a re-run simply re-affirms an already-attached set.
-#
-#   Both derivations live in .github/scripts/derive-release-stamp.mjs with a
-#   colocated test suite. They are NOT inline shell: this workflow shipped a
-#   wrong-version defect that untested `${VAR%%...}` expansion made invisible.
-#
 # ONE-TIME SETUP
 #   1. A Linear SCHEDULED pipeline "OpenKnowledge" (team Product) with exactly
 #      one custom started stage named `Beta`. Shipped-to-production maps to the
@@ -90,24 +72,6 @@ name: Linear Release
 #   After adding the secret, dry-run against a recent tag before trusting it:
 #   run this workflow via workflow_dispatch with a real release_tag and read
 #   the CLI output. (linear-release-action also supports dry_run for the CLI.)
-#
-# SAFETY
-#   Fully decoupled from the release/publish path — a failure here can never
-#   break a release. The job no-ops cleanly when LINEAR_ACCESS_KEY is absent.
-#   That decoupling cuts both ways, so the final step pages the releases channel
-#   on failure: nothing downstream notices when stamping stops, and without the
-#   page a broken run looks exactly like a healthy one from outside.
-#
-#   What that page does NOT cover, so it is not mistaken for full coverage:
-#   a dispatch that never fires produces no run to attach a guard to, and any
-#   check for that would have to live with the producers (release.yml for beta,
-#   promote-stable.yml for stable). Nor does it cover the containment pass
-#   exiting 0 having reconciled nothing: with LINEAR_API_KEY unset it logs a
-#   notice and returns, and a ticket whose PR attachments all point outside the
-#   private monorepo is filtered out before any API call is made. Credential
-#   faults that DO reach the API throw rather than reading as an answer, so
-#   those go red and this page fires. stamp-by-containment.mjs is the authority
-#   on which paths exit 0; do not restate its branches here.
 
 on:
   repository_dispatch:
@@ -156,6 +120,12 @@ jobs:
           # Full history + tags so the commit scan and previous-tag lookup work.
           fetch-depth: 0
           fetch-tags: true
+
+      - name: Restore stamping scripts from workflow revision
+        if: env.HAS_KEY == 'true'
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: git restore --source "$WORKFLOW_SHA" --worktree .github/scripts/
 
       - name: Set up Node
         if: env.HAS_KEY == 'true'
@@ -291,7 +261,7 @@ jobs:
           else
             OUTCOME="failed"
           fi
-          TEXT="Linear release stamping ${OUTCOME} for ${TAG}${CHANNEL:+ (${CHANNEL})}. The release itself is unaffected; Linear is now out of sync with what shipped. Re-running is safe, though on a stable tag it re-verifies every stable release's stamps rather than just this one. ${RUN_URL}"
+          TEXT="Linear release stamping ${OUTCOME} for ${TAG}${CHANNEL:+ (${CHANNEL})}. The release itself is unaffected; Linear is now out of sync with what shipped. Re-running is safe for transient failures. After a stamping-code fix reaches main, dispatch linear-release.yml fresh on main with release_tag=${TAG}; re-running the old run keeps its old code. Stable dispatches re-verify every stable release's stamps, not just this one. ${RUN_URL}"
           {
             echo "## Linear stamping ${OUTCOME}"
             echo "Tag: \`${TAG}\`"

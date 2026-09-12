@@ -58,7 +58,7 @@ async function bootEditorWindow(
       },
     }),
   );
-  captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+  captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
   let editorPage: Page | undefined;
   await expect(async () => {

@@ -130,6 +130,7 @@ describe('desktop backend (bridge)', () => {
 
     await expect(readDockRestoreState(bridge, 'terminal')).resolves.toEqual({
       sessionOrder: { order: ['pty-1'], activeKey: 'pty-1' },
+      failed: false,
       terminalSnapshot: {
         tabs: [{ ordinal: 1, customLabel: 'deploy' }],
         activeOrdinal: 1,
@@ -212,6 +213,22 @@ describe('desktop backend (bridge)', () => {
     await expect(readDockRestoreState(bridge, 'terminal')).resolves.toEqual({
       sessionOrder: null,
       terminalSnapshot: undefined,
+      failed: true,
+    });
+  });
+
+  test('an absent sub-record is a successful read, not a failed one', async () => {
+    const bridge = {
+      terminal: {
+        list: async () => [],
+        getDockState: async () => ({ terminalSnapshot: { tabs: [], activeOrdinal: null } }),
+      },
+    } as unknown as OkDesktopBridge;
+
+    await expect(readDockRestoreState(bridge, 'terminal')).resolves.toEqual({
+      sessionOrder: null,
+      terminalSnapshot: { tabs: [], activeOrdinal: null },
+      failed: false,
     });
   });
 
@@ -222,6 +239,7 @@ describe('desktop backend (bridge)', () => {
     await expect(readDockRestoreState(bridge, 'terminal')).resolves.toEqual({
       sessionOrder: null,
       terminalSnapshot: undefined,
+      failed: false,
     });
 
     writeDockSessionOrder(bridge, 'terminal', { order: ['desktop-pty'], activeKey: null });

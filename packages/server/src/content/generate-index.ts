@@ -91,14 +91,8 @@ function relativeTo(directory: string, path: string): string {
 }
 
 /**
- * Link form: relative, `./`-prefixed, extension retained. Precedent #56 names
- * relative the recommended default, and the extension keeps the link working in
+ * Precedent #56 names relative the recommended default, and the extension keeps the link working in
  * GitHub, Obsidian, and an editor that never loaded OK.
- *
- * Deliberately never a bare folder (`./concepts/`): `ClassifiedLinkTarget` has
- * no folder variant, so a trailing slash resolves to a *document* of that name
- * and a folder link reads as broken to our own link validator. A subdirectory
- * link therefore targets the child index document, not the folder.
  */
 function toHref(relativePath: string): string {
   const normalized = relativePath.replaceAll('\\', '/');

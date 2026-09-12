@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { Hocuspocus } from '@hocuspocus/server';
 import { describe, expect, test } from 'vitest';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
+import type { ConflictEntry } from '../conflict-storage.ts';
+import { DocumentDurabilityState } from '../document-durability-state.ts';
 import { loggerFactory } from '../logger.ts';
 import type { SyncEngine } from '../sync-engine.ts';
 import { createSyncRoutes } from './sync-routes.ts';
@@ -14,6 +16,7 @@ function buildGroup() {
     contentDir: '/tmp/ok-sync-routes-test',
     getPrincipal: undefined,
     hocuspocus: new Hocuspocus({ quiet: true }),
+    durabilityState: new DocumentDurabilityState(),
     log: loggerFactory.getLogger('test'),
     checkLocalOpSecurity: () => true,
     getSyncEngine: undefined,
@@ -50,6 +53,93 @@ describe('createSyncRoutes table', () => {
   });
 });
 
+describe('conflict list origins', () => {
+  test('labels Git and stale external-write conflicts distinctly', async () => {
+    const durabilityState = new DocumentDurabilityState();
+    durabilityState.recordStaleExternalWrite('stale', 'old bytes');
+    const gitConflicts: ConflictEntry[] = [
+      { file: 'git.md', detectedAt: '2026-09-08T10:00:00.000Z' },
+    ];
+    const engine = { getConflicts: () => gitConflicts } as unknown as SyncEngine;
+    const group = createSyncRoutes({
+      projectDir: '/tmp/ok-sync-routes-test',
+      contentDir: '/tmp/ok-sync-routes-test',
+      getPrincipal: undefined,
+      hocuspocus: new Hocuspocus({ quiet: true }),
+      durabilityState,
+      log: loggerFactory.getLogger('test'),
+      checkLocalOpSecurity: () => true,
+      getSyncEngine: () => engine,
+      serializeDoc: undefined,
+    });
+    const resolved = group.table.resolve('/api/sync/conflicts');
+    if (!resolved?.dispatch) throw new Error('no dispatch for /api/sync/conflicts');
+    const req = makeSyntheticReq({ url: '/api/sync/conflicts' });
+    const { res, captured } = makeCaptureRes();
+
+    await resolved.dispatch(req, res);
+
+    expect(captured.status).toBe(200);
+    expect(JSON.parse(captured.body)).toEqual({
+      conflicts: [
+        { file: 'git.md', detectedAt: '2026-09-08T10:00:00.000Z', conflictKind: 'git' },
+        {
+          file: 'stale.md',
+          detectedAt: expect.any(String),
+          conflictKind: 'stale-external-write',
+        },
+      ],
+    });
+  });
+
+  test('an unrecognized variant degrades that field instead of failing the whole list', async () => {
+    const degradedConflicts: ConflictEntry[] = [
+      {
+        file: 'weird.md',
+        detectedAt: '2026-09-08T10:00:00.000Z',
+        variant: 'index' as unknown as ConflictEntry['variant'],
+      },
+      {
+        file: 'ok.md',
+        detectedAt: '2026-09-08T10:01:00.000Z',
+        variant: 'working-tree',
+        theirsSha: 'a'.repeat(40),
+      },
+    ];
+    const engine = { getConflicts: () => degradedConflicts } as unknown as SyncEngine;
+    const group = createSyncRoutes({
+      projectDir: '/tmp/ok-sync-routes-test',
+      contentDir: '/tmp/ok-sync-routes-test',
+      getPrincipal: undefined,
+      hocuspocus: new Hocuspocus({ quiet: true }),
+      durabilityState: new DocumentDurabilityState(),
+      log: loggerFactory.getLogger('test'),
+      checkLocalOpSecurity: () => true,
+      getSyncEngine: () => engine,
+      serializeDoc: undefined,
+    });
+    const resolved = group.table.resolve('/api/sync/conflicts');
+    if (!resolved?.dispatch) throw new Error('no dispatch for /api/sync/conflicts');
+    const { res, captured } = makeCaptureRes();
+
+    await resolved.dispatch(makeSyntheticReq({ url: '/api/sync/conflicts' }), res);
+
+    expect(captured.status).toBe(200);
+    expect(JSON.parse(captured.body)).toEqual({
+      conflicts: [
+        { file: 'weird.md', detectedAt: '2026-09-08T10:00:00.000Z', conflictKind: 'git' },
+        {
+          file: 'ok.md',
+          detectedAt: '2026-09-08T10:01:00.000Z',
+          variant: 'working-tree',
+          theirsSha: 'a'.repeat(40),
+          conflictKind: 'git',
+        },
+      ],
+    });
+  });
+});
+
 describe('conflict-content working-tree ours-read errno discrimination', () => {
   function buildConflictGroup(projectDir: string) {
     const engine = {
@@ -62,6 +152,7 @@ describe('conflict-content working-tree ours-read errno discrimination', () => {
       contentDir: '/tmp/ok-sync-routes-test',
       getPrincipal: undefined,
       hocuspocus: new Hocuspocus({ quiet: true }),
+      durabilityState: new DocumentDurabilityState(),
       log: loggerFactory.getLogger('test'),
       checkLocalOpSecurity: () => true,
       getSyncEngine: () => engine,

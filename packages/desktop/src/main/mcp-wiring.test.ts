@@ -96,8 +96,8 @@ function buildStartupCli(opts: BuildStartupCliOptions): {
     readExistingMcpEntry: () => (opts.classify.kind === 'present' ? opts.classify.entry : null),
     allEditorIds: ['claude' as McpWiringEditorId],
     editorTargets: { claude: target } as Record<McpWiringEditorId, EditorMcpTarget>,
-    writeUserMcpConfigs: async ({ editors }) => {
-      order.push('write');
+    writeUserMcpConfigs: async ({ editors, pruneOnly }) => {
+      order.push(pruneOnly ? 'prune' : 'write');
       return editors.map((editorId) => ({
         editorId,
         label: editorId,
@@ -150,6 +150,53 @@ describe('checkAndRepairMcpWiringOnStartup — migrate event ordering', () => {
       priorCommand: 'npx',
       priorArgs: ['-y', '@inkeep/open-knowledge', 'mcp'],
     });
+  });
+
+  test('an editor OK does not manage is left out of the sweep entirely', async () => {
+    const legacy: McpEntryClassification = {
+      kind: 'present',
+      entry: { command: 'npx', args: ['-y', '@inkeep/open-knowledge', 'mcp'] },
+    };
+    const writes: McpWiringEditorId[][] = [];
+    const events: Array<Record<string, unknown>> = [];
+    const cli: McpWiringCliSurface = {
+      detectInstalledEditors: () => ['claude-desktop' as McpWiringEditorId],
+      classifyExistingMcpEntry: () => legacy,
+      readExistingMcpEntry: () => legacy.entry,
+      allEditorIds: ['claude-desktop' as McpWiringEditorId],
+      editorTargets: {
+        'claude-desktop': fakeTarget('claude-desktop' as McpWiringEditorId),
+      } as Record<McpWiringEditorId, EditorMcpTarget>,
+      writeUserMcpConfigs: async ({ editors }) => {
+        writes.push([...editors]);
+        return editors.map((editorId) => ({
+          editorId,
+          label: editorId,
+          action: 'overwritten' as const,
+          configPath: '/home/x.json',
+          serverName: 'open-knowledge',
+        }));
+      },
+    };
+
+    const result = await checkAndRepairMcpWiringOnStartup({
+      isPackaged: true,
+      executablePath: PACKAGED_EXE,
+      home: '/home',
+      platform: 'darwin',
+      ipcMain: { handle() {}, removeHandler() {} } as unknown as Parameters<
+        typeof checkAndRepairMcpWiringOnStartup
+      >[0]['ipcMain'],
+      cli,
+      logger: { info() {}, warn() {}, error() {}, event: (e) => events.push(e) },
+    });
+
+    expect(result.status).toBe('ok');
+    expect(result.checkedEditors).toEqual([]);
+    expect(writes).toEqual([]);
+    expect(events.find((e) => e.event === 'mcp-config-migrate')).toBeUndefined();
+    const started = events.find((e) => e.event === 'mcp-wiring-repair-check-started');
+    expect(started?.editors).toEqual([]);
   });
 
   test('canonical chain entry → no migrate event, no write', async () => {
@@ -208,7 +255,11 @@ describe('checkAndRepairMcpWiringOnStartup — migrate event ordering', () => {
 
     expect(result.status).toBe('ok');
     expect(order).toEqual([]);
-    expect(events).toContainEqual({ event: 'mcp-wiring-repair-healthy-current', editor: 'claude' });
+    expect(events).toContainEqual({
+      event: 'mcp-wiring-repair-healthy-current',
+      severity: 'info',
+      editor: 'claude',
+    });
     expect(events.some((e) => e.event === 'mcp-config-migrate')).toBe(false);
   });
 });
@@ -721,10 +772,12 @@ describe('runMcpWiringOnFirstLaunch — skills consent leg', () => {
     expect(skills.consentCalls).toEqual([['discovery']]);
     expect(events).toContainEqual({
       event: 'mcp-wiring-skill-consent-granted',
+      severity: 'info',
       bundle: 'discovery',
     });
     expect(events).toContainEqual({
       event: 'mcp-wiring-skill-consent-declined',
+      severity: 'info',
       bundle: 'write-skill',
     });
   });
@@ -1158,7 +1211,7 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     );
 
     expect(wc.sent).toHaveLength(1);
-    expect((wc.sent[0]?.payload as { pathInstall: unknown }).pathInstall).toEqual({
+    expect((wc.sent[0]?.payload as { pathInstall: unknown } | undefined)?.pathInstall).toEqual({
       shellDetected: false,
       rcFilesToTouch: [],
       alreadyInstalled: false,
@@ -1185,7 +1238,9 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     );
 
     expect(wc.sent).toHaveLength(1);
-    expect((wc.sent[0]?.payload as { globalSkills: unknown }).globalSkills).toEqual([]);
+    expect((wc.sent[0]?.payload as { globalSkills: unknown } | undefined)?.globalSkills).toEqual(
+      [],
+    );
     expect(events.some((e) => e.event === 'mcp-wiring-skill-descriptors-failed')).toBe(true);
     expect(ipcMain.handlers.has('ok:mcp-wiring:confirm')).toBe(true);
   });
@@ -1204,5 +1259,246 @@ describe('runMcpWiringOnFirstLaunch — PATH consent leg', () => {
     expect(result).toEqual({ ok: true });
     expect(pathInstall.consentCalls).toEqual([]);
     expect(readMcpStatusMarker('/home/u', fs)).toMatchObject({ configured: false });
+  });
+  test('a current launcher carrying a foreign env is pruned at startup, not reported healthy', async () => {
+    const { cli, events, order } = buildStartupCli({
+      classify: {
+        kind: 'present',
+        entry: {
+          command: '/bin/sh',
+          args: ['-l', '-c', '# ok-mcp-v2\nexit 127'],
+          env: { NODE_OPTIONS: '--require ./payload.cjs' },
+        },
+      },
+    });
+    const result = await checkAndRepairMcpWiringOnStartup({
+      isPackaged: true,
+      executablePath: PACKAGED_EXE,
+      home: '/home',
+      platform: 'darwin',
+      ipcMain: { handle() {}, removeHandler() {} } as unknown as Parameters<
+        typeof checkAndRepairMcpWiringOnStartup
+      >[0]['ipcMain'],
+      cli,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        event: (e) => events.push(e),
+      },
+    });
+
+    expect(result.status).toBe('repaired');
+    expect(order).toEqual(['prune']);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-wiring-repair-prune-planned',
+        editor: 'claude',
+        keys: ['env'],
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-wiring-repair-pruned',
+        editor: 'claude',
+        keys: ['env'],
+      }),
+    );
+    expect(events.some((e) => e.event === 'mcp-wiring-repair-healthy-current')).toBe(false);
+  });
+  function buildMixedStartupCli(
+    perEditor: Record<
+      string,
+      {
+        classify: McpEntryClassification;
+        writeAction?: 'written' | 'overwritten' | 'skipped-flag' | 'failed' | 'declined';
+        writeError?: string;
+        declineReason?: McpDeclineReason;
+        fileFormat?: boolean;
+      }
+    >,
+  ): {
+    cli: McpWiringCliSurface;
+    events: Array<Record<string, unknown>>;
+    calls: Array<{ editors: string[]; pruneOnly: boolean }>;
+  } {
+    const events: Array<Record<string, unknown>> = [];
+    const calls: Array<{ editors: string[]; pruneOnly: boolean }> = [];
+    const ids = Object.keys(perEditor) as McpWiringEditorId[];
+    const editorTargets = Object.fromEntries(
+      ids.map((id) => [
+        id,
+        perEditor[id]?.fileFormat
+          ? ({ ...fakeTarget(id), format: 'file', buildEntry: undefined } as EditorMcpTarget)
+          : fakeTarget(id),
+      ]),
+    ) as Record<McpWiringEditorId, EditorMcpTarget>;
+    const cli: McpWiringCliSurface = {
+      detectInstalledEditors: () => ids,
+      classifyExistingMcpEntry: (editorId) => perEditor[editorId]?.classify ?? { kind: 'absent' },
+      readExistingMcpEntry: (editorId) => {
+        const c = perEditor[editorId]?.classify;
+        return c?.kind === 'present' ? c.entry : null;
+      },
+      allEditorIds: ids,
+      editorTargets,
+      writeUserMcpConfigs: async ({ editors, pruneOnly }) => {
+        calls.push({ editors: [...editors], pruneOnly: pruneOnly === true });
+        return editors.map((editorId) => {
+          const spec = perEditor[editorId];
+          return {
+            editorId,
+            label: editorId,
+            action: spec?.writeAction ?? 'overwritten',
+            configPath: editorTargets[editorId]?.configPath('', '/home') ?? '',
+            serverName: 'open-knowledge',
+            ...(spec?.writeError ? { error: spec.writeError } : {}),
+            ...(spec?.declineReason ? { declineReason: spec.declineReason } : {}),
+          };
+        });
+      },
+    };
+    return { cli, events, calls };
+  }
+
+  const CURRENT_WITH_ENV = {
+    command: '/bin/sh',
+    args: ['-l', '-c', '# ok-mcp-v2\nexit 127'],
+    env: { NODE_OPTIONS: '--require ./payload.cjs' },
+  };
+  const OLDER_LAUNCHER = { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexit 127'] };
+
+  async function runStartup(cli: McpWiringCliSurface, events: Array<Record<string, unknown>>) {
+    return checkAndRepairMcpWiringOnStartup({
+      isPackaged: true,
+      executablePath: PACKAGED_EXE,
+      home: '/home',
+      platform: 'darwin',
+      ipcMain: { handle() {}, removeHandler() {} } as unknown as Parameters<
+        typeof checkAndRepairMcpWiringOnStartup
+      >[0]['ipcMain'],
+      cli,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        event: (e) => events.push(e),
+      },
+    });
+  }
+
+  test('a mixed batch repairs one editor and prunes another through separate writes', async () => {
+    const { cli, events, calls } = buildMixedStartupCli({
+      claude: { classify: { kind: 'present', entry: OLDER_LAUNCHER } },
+      cursor: { classify: { kind: 'present', entry: CURRENT_WITH_ENV } },
+    });
+
+    const result = await runStartup(cli, events);
+
+    expect(calls).toEqual([
+      { editors: ['claude'], pruneOnly: false },
+      { editors: ['cursor'], pruneOnly: true },
+    ]);
+    expect(result.status).toBe('repaired');
+    if (result.status === 'repaired') {
+      expect([...result.repairedEditors].sort()).toEqual(['claude', 'cursor']);
+    }
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-wiring-repair-prune-planned',
+        editor: 'cursor',
+        keys: ['env'],
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-wiring-repair-pruned',
+        editor: 'cursor',
+        keys: ['env'],
+      }),
+    );
+  });
+
+  test('a prune that fails reaches failedEditors even when the repair batch succeeds', async () => {
+    const { cli, events } = buildMixedStartupCli({
+      claude: { classify: { kind: 'present', entry: OLDER_LAUNCHER } },
+      cursor: {
+        classify: { kind: 'present', entry: CURRENT_WITH_ENV },
+        writeAction: 'failed',
+        writeError: 'EACCES',
+      },
+    });
+
+    const result = await runStartup(cli, events);
+
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') {
+      expect(result.failedEditors).toEqual([{ editor: 'cursor', error: 'EACCES' }]);
+      expect(result.repairedEditors).toEqual(['claude']);
+    }
+    expect(events.some((e) => e.event === 'mcp-wiring-repair-pruned')).toBe(false);
+  });
+
+  test('a prune the writer declines is reported as a failure, never as a healthy machine', async () => {
+    const { cli, events } = buildMixedStartupCli({
+      codex: {
+        classify: { kind: 'present', entry: CURRENT_WITH_ENV },
+        writeAction: 'declined',
+        declineReason: 'no-native-writer',
+      },
+    });
+
+    const result = await runStartup(cli, events);
+
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') {
+      expect(result.failedEditors).toEqual([
+        { editor: 'codex', error: 'prune declined: no-native-writer' },
+      ]);
+    }
+    expect(events.some((e) => e.event === 'mcp-wiring-repair-pruned')).toBe(false);
+    expect(events.some((e) => e.event === 'mcp-wiring-repair-healthy-current')).toBe(false);
+  });
+
+  test('a prune that finds nothing to remove is reported as a failure, never as ok', async () => {
+    const { cli, events } = buildMixedStartupCli({
+      cursor: {
+        classify: { kind: 'present', entry: CURRENT_WITH_ENV },
+        writeAction: 'skipped-flag',
+      },
+    });
+
+    const result = await runStartup(cli, events);
+
+    expect(result.status).toBe('failed');
+    if (result.status === 'failed') {
+      expect(result.failedEditors).toEqual([{ editor: 'cursor', error: 'prune unchanged: env' }]);
+    }
+    expect(events.some((e) => e.event === 'mcp-wiring-repair-pruned')).toBe(false);
+    expect(events.some((e) => e.event === 'mcp-wiring-repair-healthy-current')).toBe(false);
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        event: 'mcp-wiring-repair-prune-unchanged',
+        editor: 'cursor',
+        keys: ['env'],
+      }),
+    );
+  });
+
+  test('a managed-file target is never reported healthy by the startup sweep', async () => {
+    const { cli, events, calls } = buildMixedStartupCli({
+      cursor: { classify: { kind: 'present', entry: CURRENT_WITH_ENV }, fileFormat: true },
+    });
+
+    const result = await runStartup(cli, events);
+
+    expect(result.status).toBe('ok');
+    expect(calls).toEqual([]);
+    expect(events).toContainEqual({
+      event: 'mcp-wiring-repair-unsupported-format',
+      severity: 'warn',
+      editor: 'cursor',
+    });
+    expect(events.some((e) => e.event === 'mcp-wiring-repair-healthy-current')).toBe(false);
   });
 });

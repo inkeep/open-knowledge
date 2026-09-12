@@ -1,7 +1,7 @@
 {
   "name": "@inkeep/open-knowledge-desktop",
   "productName": "OpenKnowledge",
-  "version": "0.68.12",
+  "version": "0.71.10",
   "license": "GPL-3.0-or-later",
   "homepage": "https://openknowledge.ai",
   "author": {
@@ -61,10 +61,10 @@
     "babel-plugin-react-compiler": "0.0.0-experimental-a8e64ef-20260402",
     "culori": "^4.0.2",
     "electron": "43.4.0",
-    "electron-builder": "^26.9.0",
+    "electron-builder": "^26.16.1",
     "electron-vite": "^6.0.0-beta.1",
     "ts-morph": "^28.0.0",
-    "typescript": "^5.7.2",
+    "typescript": "~7.0.2",
     "vite": "^8.0.0"
   }
 }

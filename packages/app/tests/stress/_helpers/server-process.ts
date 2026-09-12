@@ -9,15 +9,14 @@ import {
   readFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { fileURLToPath } from 'node:url';
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import { SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
 import * as Y from 'yjs';
+import { APP_PACKAGE_ROOT } from './seed-key.ts';
 
-const HELPERS_DIR = dirname(fileURLToPath(import.meta.url));
-export const APP_PACKAGE_ROOT = resolve(HELPERS_DIR, '..', '..', '..');
+export { APP_PACKAGE_ROOT };
 
 export const VITE_E2E_SEED_DIR = join(APP_PACKAGE_ROOT, 'node_modules', '.vite-e2e-seed');
 

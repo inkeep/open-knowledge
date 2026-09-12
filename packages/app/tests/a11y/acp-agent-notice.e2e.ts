@@ -44,6 +44,16 @@ const ORDINARY_ANSWER = FIXTURE.ordinaryAnswer.update;
 const NOTICE = '[data-testid="agent-thread-agent-notice"]';
 const ANNOUNCER = '[data-testid="agent-thread-warning-announcer"]';
 const THREAD_ROOT = '[data-agent-thread-root]';
+const COMPOSER = '[data-testid="agent-thread-composer"]';
+const AGENTS_PANEL = '[data-agents-panel-mount]';
+const AGENTS_PANEL_REVEAL = '[data-terminal-reveal="right"]';
+const DOCK_EMPTY = '[data-testid="sessions-dock-empty"]';
+const TRANSCRIPT = '[data-testid="agent-thread-transcript"]';
+const EMPTY_AGENT_CATALOG = { agents: [], stale: false, maxThreads: 8 };
+const PANEL_OPEN_TIMEOUT_MS = 5_000;
+const SESSION_TAB_TIMEOUT_MS = 5_000;
+const THREAD_ROOT_TIMEOUT_MS = 12_000;
+const ANNOUNCER_ATTACHED_TIMEOUT_MS = 15_000;
 
 async function recordAnnouncements(page: Page): Promise<void> {
   await page.evaluate((announcerSelector) => {
@@ -87,17 +97,36 @@ function threadRosterDelivered(page: Page): Promise<void> {
   });
 }
 
+async function openAgentsPanel(page: Page): Promise<void> {
+  await page.locator(AGENTS_PANEL_REVEAL).click({ timeout: PANEL_OPEN_TIMEOUT_MS });
+  await expect(
+    page.locator(AGENTS_PANEL).locator(DOCK_EMPTY),
+    'the agents panel did not open onto an empty session dock: it is either collapsed to zero width or a session was seeded into it',
+  ).toBeVisible({ timeout: PANEL_OPEN_TIMEOUT_MS });
+}
+
 async function openApp(page: Page): Promise<void> {
+  let catalogServed = false;
+  await page.route('**/api/acp/catalog', (route) => {
+    catalogServed = true;
+    return route.fulfill({ json: EMPTY_AGENT_CATALOG });
+  });
   const roster = threadRosterDelivered(page);
   await page.goto('/');
   await page.waitForFunction(() => Boolean(window.__acpThreadHarness), null, { timeout: 30_000 });
   await roster;
+  expect(
+    catalogServed,
+    'the empty agent catalog stub never served a request, so a host with an agent CLI on PATH would seed a thread on reveal',
+  ).toBe(true);
+  await openAgentsPanel(page);
 }
 
 type Delivery = 'live' | 'replay';
 
 interface MountedThread {
   threadId: string;
+  panel: Locator;
   card: Locator;
 }
 
@@ -121,11 +150,18 @@ async function mountThread(
     { agent: CODEX, payload: updates, mode: delivery },
   );
 
-  await expect(page.locator(THREAD_ROOT).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator(ANNOUNCER).first()).toBeAttached({ timeout: 15_000 });
+  const panel = page.locator(`[data-session-id="${threadId}"]`);
+  await expect(
+    panel,
+    'the injected thread never became the active session tab, so its panel stayed display:none',
+  ).toBeVisible({ timeout: SESSION_TAB_TIMEOUT_MS });
+  await expect(panel.locator(THREAD_ROOT)).toBeVisible({ timeout: THREAD_ROOT_TIMEOUT_MS });
+  await expect(panel.locator(ANNOUNCER)).toBeAttached({
+    timeout: ANNOUNCER_ATTACHED_TIMEOUT_MS,
+  });
   if (delivery === 'live') await pushUpdates(page, threadId, updates);
 
-  return { threadId, card: page.locator(NOTICE).first() };
+  return { threadId, panel, card: panel.locator(NOTICE).first() };
 }
 
 async function pushUpdates(
@@ -217,7 +253,7 @@ test.describe('narrow window', () => {
     page,
   }) => {
     await openApp(page);
-    const { card } = await mountThread(page, [DETAILED_WARNING]);
+    const { threadId, card } = await mountThread(page, [DETAILED_WARNING]);
     await expect(card).toBeVisible({ timeout: 15_000 });
 
     await page.setViewportSize({ width: 320, height: 640 });
@@ -232,17 +268,23 @@ test.describe('narrow window', () => {
     expect(metrics.scrollHeight).toBeLessThanOrEqual(metrics.clientHeight + 1);
     expect(metrics.right).toBeLessThanOrEqual(320);
 
-    const overflow = await page.evaluate(() => {
-      const transcript = document.querySelector(
-        '[data-testid="agent-thread-transcript"]',
-      ) as HTMLElement;
-      return {
-        transcriptScrollWidth: transcript.scrollWidth,
-        transcriptClientWidth: transcript.clientWidth,
-        documentScrollWidth: document.documentElement.scrollWidth,
-        documentClientWidth: document.documentElement.clientWidth,
-      };
-    });
+    const overflow = await page.evaluate(
+      ({ id, transcriptSelector }) => {
+        const transcript = document.querySelector<HTMLElement>(
+          `[data-session-id="${id}"] ${transcriptSelector}`,
+        );
+        if (transcript === null) {
+          throw new Error(`thread ${id} has no transcript under its session panel`);
+        }
+        return {
+          transcriptScrollWidth: transcript.scrollWidth,
+          transcriptClientWidth: transcript.clientWidth,
+          documentScrollWidth: document.documentElement.scrollWidth,
+          documentClientWidth: document.documentElement.clientWidth,
+        };
+      },
+      { id: threadId, transcriptSelector: TRANSCRIPT },
+    );
     expect(overflow.transcriptScrollWidth).toBeLessThanOrEqual(overflow.transcriptClientWidth + 1);
     expect(overflow.documentScrollWidth).toBeLessThanOrEqual(overflow.documentClientWidth + 1);
 
@@ -288,8 +330,8 @@ test('a transcript carrying a warning card has no serious or critical violations
   page,
 }) => {
   await openApp(page);
-  await mountThread(page, [LONG_WARNING, ORDINARY_ANSWER, DETAILED_WARNING]);
-  await expect(page.locator(NOTICE)).toHaveCount(2, { timeout: 15_000 });
+  const { panel } = await mountThread(page, [LONG_WARNING, ORDINARY_ANSWER, DETAILED_WARNING]);
+  await expect(panel.locator(NOTICE)).toHaveCount(2, { timeout: 15_000 });
 
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
@@ -303,20 +345,20 @@ test('a transcript carrying a warning card has no serious or critical violations
 
 test('an arriving warning moves no focus and adds no tab stop', async ({ page }) => {
   await openApp(page);
-  const { threadId } = await mountThread(page, [ORDINARY_ANSWER]);
+  const { threadId, panel } = await mountThread(page, [ORDINARY_ANSWER]);
 
-  const composer = page.locator('[data-testid="agent-thread-composer"]').first();
+  const composer = panel.locator(COMPOSER);
   await composer.focus();
   await expect(composer).toBeFocused();
   const focusBefore = await activeElementDescriptor(page);
 
   await pushUpdates(page, threadId, [LONG_WARNING]);
-  await expect(page.locator(NOTICE)).toHaveCount(1, { timeout: 15_000 });
+  await expect(panel.locator(NOTICE)).toHaveCount(1, { timeout: 15_000 });
 
   await expect(composer).toBeFocused();
   expect(await activeElementDescriptor(page)).toBe(focusBefore);
 
-  const stops = await page
+  const stops = await panel
     .locator(NOTICE)
     .first()
     .evaluate(
@@ -331,8 +373,8 @@ test('an arriving warning moves no focus and adds no tab stop', async ({ page })
 test('two live warnings announce in source order', async ({ page }) => {
   await openApp(page);
   await recordAnnouncements(page);
-  await mountThread(page, [LONG_WARNING, ORDINARY_ANSWER, DETAILED_WARNING]);
-  await expect(page.locator(NOTICE)).toHaveCount(2, { timeout: 15_000 });
+  const { panel } = await mountThread(page, [LONG_WARNING, ORDINARY_ANSWER, DETAILED_WARNING]);
+  await expect(panel.locator(NOTICE)).toHaveCount(2, { timeout: 15_000 });
 
   await expect.poll(() => readAnnouncements(page), { timeout: 15_000 }).toHaveLength(2);
   const announcements = await readAnnouncements(page);
@@ -344,19 +386,19 @@ test('two live warnings announce in source order', async ({ page }) => {
 test('a replayed transcript renders its warnings without announcing them', async ({ page }) => {
   await openApp(page);
   await recordAnnouncements(page);
-  const { threadId } = await mountThread(
+  const { threadId, panel } = await mountThread(
     page,
     [LONG_WARNING, ORDINARY_ANSWER, DETAILED_WARNING],
     'replay',
   );
-  await expect(page.locator(NOTICE)).toHaveCount(2, { timeout: 15_000 });
+  await expect(panel.locator(NOTICE)).toHaveCount(2, { timeout: 15_000 });
 
-  const region = page.locator(ANNOUNCER).first();
+  const region = panel.locator(ANNOUNCER);
   await expect(region).toHaveAttribute('aria-live', 'polite');
   await expect(region).toBeEmpty();
 
   await pushUpdates(page, threadId, [LONG_WARNING]);
-  await expect(page.locator(NOTICE)).toHaveCount(3, { timeout: 15_000 });
+  await expect(panel.locator(NOTICE)).toHaveCount(3, { timeout: 15_000 });
   await expect.poll(() => readAnnouncements(page), { timeout: 15_000 }).toHaveLength(1);
   expect((await readAnnouncements(page))[0]).toContain(
     'Warning: Skill descriptions were shortened',

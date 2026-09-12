@@ -1,3 +1,5 @@
+import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
+import { getSchema } from '@tiptap/core';
 import { Schema } from '@tiptap/pm/model';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { describe, expect, test } from 'vitest';
@@ -119,5 +121,110 @@ describe('moveBlockDown', () => {
     const sel = next.selection as TextSelection;
     expect(sel.$cursor).not.toBeNull();
     expect((sel.$cursor as NonNullable<typeof sel.$cursor>).before(1)).toBe(7);
+  });
+});
+
+const listSchema = getSchema(sharedExtensions);
+const markdown = new MarkdownManager({ extensions: sharedExtensions });
+
+function listState(input: string, first: string, last = first) {
+  const doc = listSchema.nodeFromJSON(markdown.parse(input));
+  let from = -1;
+  let to = -1;
+  doc.descendants((node, pos) => {
+    if (node.type.name !== 'paragraph') return;
+    if (node.textContent === first) from = pos + 1;
+    if (node.textContent === last) to = pos + 1 + (first === last ? 0 : node.content.size);
+  });
+  return EditorState.create({ doc, selection: TextSelection.create(doc, from, to) });
+}
+
+function movedMarkdown(state: EditorState) {
+  state.doc.check();
+  return markdown.serialize(state.doc.toJSON());
+}
+
+describe('keyboard list item movement', () => {
+  test.each([
+    ['bullet', '- A\n- B\n- C\n', '- A\n- C\n- B\n'],
+    ['ordered', '1. A\n2. B\n3. C\n', '1. A\n2. C\n3. B\n'],
+    ['task', '- [ ] A\n- [ ] B\n- [x] C\n', '- [ ] A\n- [x] C\n- [ ] B\n'],
+  ])('moves a %s item up and back down without losing its selection', (_kind, input, expected) => {
+    const state = listState(input, 'C');
+    const next = run(state, moveBlockUp);
+    expect(movedMarkdown(next)).toBe(expected);
+    expect(next.selection.$from.parent.textContent).toBe('C');
+    expect(movedMarkdown(run(next, moveBlockDown))).toBe(input);
+  });
+
+  test('moves a selected group together and keeps that group selected', () => {
+    const state = listState('- A\n- B\n- C\n- D\n', 'B', 'C');
+    const next = run(state, moveBlockDown);
+    expect(movedMarkdown(next)).toBe('- A\n- D\n- B\n- C\n');
+    expect(next.selection.$from.parent.textContent).toBe('B');
+    expect(next.selection.$to.parent.textContent).toBe('C');
+    expect(movedMarkdown(run(next, moveBlockUp))).toBe('- A\n- B\n- C\n- D\n');
+  });
+
+  test('keeps nested descendants with a moved parent', () => {
+    const next = run(listState('- A\n  - Child\n- B\n', 'A'), moveBlockDown);
+    expect(movedMarkdown(next)).toBe('- B\n- A\n  - Child\n');
+  });
+
+  test('moves a first nested item before its parent', () => {
+    const next = run(listState('- Parent\n  - Child\n  - Sibling\n- End\n', 'Child'), moveBlockUp);
+    expect(movedMarkdown(next)).toBe('- Child\n- Parent\n  - Sibling\n- End\n');
+    expect(next.selection.$from.parent.textContent).toBe('Child');
+  });
+
+  test('moves a last nested item after its parent', () => {
+    const next = run(
+      listState('- Parent\n  - Child\n  - Sibling\n- End\n', 'Sibling'),
+      moveBlockDown,
+    );
+    expect(movedMarkdown(next)).toBe('- Parent\n  - Child\n- Sibling\n- End\n');
+  });
+
+  test('moves an entire selected nested group without leaving an empty list', () => {
+    const next = run(
+      listState('- Parent\n  - Child\n  - Sibling\n- End\n', 'Child', 'Sibling'),
+      moveBlockDown,
+    );
+    expect(movedMarkdown(next)).toBe('- Parent\n- Child\n- Sibling\n- End\n');
+    expect(next.selection.$from.parent.textContent).toBe('Child');
+    expect(next.selection.$to.parent.textContent).toBe('Sibling');
+  });
+
+  test.each([
+    [moveBlockUp, 'Before\n\n1. A\n2. B\n', 'A', '1. A\n\nBefore\n\n1. B\n'],
+    [moveBlockDown, '1. A\n2. B\n\nAfter\n', 'B', '1. A\n\nAfter\n\n1. B\n'],
+  ])('moves an edge item across a neighboring document block', (command, input, item, expected) => {
+    const next = run(listState(input, item), command);
+    expect(movedMarkdown(next)).toBe(expected);
+    expect(next.selection.$from.parent.textContent).toBe(item);
+  });
+
+  test.each([
+    [moveBlockUp, 'Before\n\n> - A\n> - B\n', 'A', '> - A\n> - B\n\nBefore\n'],
+    [moveBlockDown, '> - A\n> - B\n\nAfter\n', 'B', 'After\n\n> - A\n> - B\n'],
+  ])('moves the enclosing blockquote at a list boundary', (command, input, item, expected) => {
+    expect(movedMarkdown(run(listState(input, item), command))).toBe(expected);
+  });
+
+  test.each([
+    ['1. A\n1. B\n', '1. A\n1. B\n'],
+    ['7. A\n9. B\n', '7. A\n9. B\n'],
+  ])('preserves whole-list ordinals when relocating the selected list', (input, expected) => {
+    expect(movedMarkdown(run(listState(`${input}\nAfter\n`, 'A', 'B'), moveBlockDown))).toBe(
+      `After\n\n${expected}`,
+    );
+    expect(movedMarkdown(run(listState(`Before\n\n${input}`, 'A', 'B'), moveBlockUp))).toBe(
+      `${expected}\nBefore\n`,
+    );
+  });
+
+  test('does not move the whole list when an item reaches a document boundary', () => {
+    expect(moveBlockUp(listState('- A\n- B\n', 'A'), undefined)).toBe(false);
+    expect(moveBlockDown(listState('- A\n- B\n', 'B'), undefined)).toBe(false);
   });
 });

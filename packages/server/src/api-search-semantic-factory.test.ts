@@ -4,8 +4,20 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import type { Extension } from '@hocuspocus/server';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { createConceptEmbedder } from './embeddings/index.ts';
+import {
+  CONFIG_DOC_NAME_PROJECT_LOCAL,
+  type SemanticProviderErrorReason,
+  type SemanticQueryOutcome,
+} from '@inkeep/open-knowledge-core';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { EmbeddingDimsMismatchError } from './embeddings/embedder.ts';
+import {
+  createConceptEmbedder,
+  type Embedder,
+  type LoadOpenAiEmbedderInput,
+} from './embeddings/index.ts';
+import { MAX_DIMS_DRIFT_RESETS } from './embeddings/semantic-search-service.ts';
+import { getLogger } from './logger.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { initShadowRepo } from './shadow-repo.ts';
 
@@ -38,7 +50,13 @@ interface SearchRow {
 }
 interface SearchBody {
   results?: SearchRow[];
-  semantic?: { capable: boolean; applied: boolean; coverage: { embedded: number; total: number } };
+  semantic?: {
+    capable: boolean;
+    applied: boolean;
+    outcome: SemanticQueryOutcome;
+    providerErrorReason?: SemanticProviderErrorReason | null;
+    coverage: { embedded: number; total: number };
+  };
 }
 
 function makeReq(method: string, url: string, body = ''): IncomingMessage {
@@ -64,6 +82,7 @@ function makeRes(): { res: ServerResponse; captured: { status: number; body: str
 
 let tmpDir: string;
 let server: ServerInstance;
+let observedLoaderInput: LoadOpenAiEmbedderInput | undefined;
 
 async function callViaServer(
   srv: ServerInstance,
@@ -121,7 +140,7 @@ beforeAll(async () => {
   mkdirSync(join(tmpDir, '.ok', 'local'), { recursive: true });
   writeFileSync(
     join(tmpDir, '.ok', 'local', 'config.yml'),
-    'search:\n  semantic:\n    enabled: true\n',
+    'search:\n  semantic:\n    enabled: true\n    maxBatchSize: 2\n    maxBatchChars: 16000\n    docTimeoutMs: 120000\n',
     'utf-8',
   );
   writeFileSync(
@@ -142,7 +161,10 @@ beforeAll(async () => {
     skipStateManifestCheck: true,
     destroyTimeoutMs: 500,
     configHomedirOverride: tmpDir,
-    embedderLoader: () => Promise.resolve(embedder),
+    embedderLoader: (input) => {
+      observedLoaderInput = input;
+      return Promise.resolve(embedder);
+    },
   });
   await server.ready;
 });
@@ -173,6 +195,7 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
     expect(result?.semantic?.coverage.total).toBe(SERVED_PAGE_COUNT);
     expect(result?.semantic?.coverage.embedded).toBe(SERVED_PAGE_COUNT);
     expect(result?.semantic?.applied).toBe(true);
+    expect(result?.semantic?.outcome).toBe('applied');
 
     const rotation = result?.results?.find((r) => r.path === 'guides/credential-rotation');
     expect(rotation, 'zero-overlap doc must surface via the vector candidate source').toBeDefined();
@@ -185,6 +208,11 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
     expect(hiddenHit?.signals.vector, 'but a hidden dot-path is never embedded').toBeUndefined();
 
     expect(existsSync(join(tmpDir, '.ok', 'local', 'embeddings'))).toBe(true);
+    expect(observedLoaderInput?.options).toMatchObject({
+      maxBatchSize: 2,
+      maxBatchChars: 16_000,
+      docTimeoutMs: 120_000,
+    });
   }, 30_000);
 
   test('GET /api/semantic-status reports enabled + ready + capable + coverage', async () => {
@@ -195,6 +223,8 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
       keyHint: string | null;
       ready: boolean;
       capable: boolean;
+      providerError: boolean;
+      providerErrorReason: SemanticProviderErrorReason | null;
       embedded: number;
       total: number;
     };
@@ -204,6 +234,8 @@ describe('createServer boot — flag-ON semantic search (factory glue)', () => {
     expect(status.keyHint).toBe('-key');
     expect(status.ready).toBe(true);
     expect(status.capable).toBe(true);
+    expect(status.providerError).toBe(false);
+    expect(status.providerErrorReason).toBeNull();
     expect(status.total).toBe(SERVED_PAGE_COUNT);
     expect(status.embedded).toBe(SERVED_PAGE_COUNT);
   });
@@ -288,6 +320,401 @@ describe('createServer boot — project-local scope enforcement (egress safety)'
   });
 });
 
+test('GET /api/semantic-status exports a warm provider failure reason', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-sem-provider-error-'));
+  try {
+    writeFileSync(join(dir, 'note.md'), '# Note\n\nAuthentication retries.\n', 'utf-8');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      join(dir, '.ok', 'local', 'config.yml'),
+      'search:\n  semantic:\n    enabled: true\n    baseUrl: http://localhost:11434/v1\n',
+      'utf-8',
+    );
+    const shadowRepo = await initShadowRepo(dir);
+    const srv = createServer({
+      contentDir: dir,
+      projectDir: dir,
+      quiet: true,
+      debounce: 60_000,
+      gitEnabled: false,
+      shadowRepo,
+      skipStateManifestCheck: true,
+      destroyTimeoutMs: 500,
+      configHomedirOverride: dir,
+      embedderLoader: () => Promise.reject(new Error('provider down')),
+    });
+    await srv.ready;
+    try {
+      await searchViaServer(srv, {
+        query: 'auth retries',
+        intent: 'full_text',
+        semantic: true,
+      });
+      await vi.waitFor(async () => {
+        const status = (await callViaServer(srv, 'GET', '/api/semantic-status')) as {
+          providerError: boolean;
+          providerErrorReason: string | null;
+        };
+        expect(status).toMatchObject({
+          providerError: true,
+          providerErrorReason: 'warm',
+        });
+      });
+    } finally {
+      await srv.destroy();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the real search route maps terminal vector-size drift to restart_required', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-sem-dims-drift-'));
+  try {
+    writeFileSync(join(dir, 'note.md'), '# Note\n\nAuthentication retries.\n', 'utf-8');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      join(dir, '.ok', 'local', 'config.yml'),
+      'search:\n  semantic:\n    enabled: true\n    baseUrl: http://localhost:11434/v1\n',
+      'utf-8',
+    );
+    const shadowRepo = await initShadowRepo(dir);
+    let servedDims = 8;
+    const createDriftingEmbedder = (): Embedder => {
+      let pinnedDims: number | null = null;
+      return {
+        providerId: 'drifting-provider',
+        modelId: 'drifting-model',
+        get dims() {
+          return pinnedDims;
+        },
+        pinDims: (dimensions) => {
+          pinnedDims ??= dimensions;
+        },
+        embed: (texts) => {
+          if (pinnedDims !== null && pinnedDims !== servedDims) {
+            return Promise.reject(new EmbeddingDimsMismatchError(pinnedDims, servedDims));
+          }
+          pinnedDims = servedDims;
+          return Promise.resolve(
+            texts.map((text, textIndex) =>
+              Float32Array.from(
+                { length: servedDims },
+                (_value, dimensionIndex) => text.length + textIndex + dimensionIndex + 1,
+              ),
+            ),
+          );
+        },
+      };
+    };
+    const srv = createServer({
+      contentDir: dir,
+      projectDir: dir,
+      quiet: true,
+      debounce: 60_000,
+      gitEnabled: false,
+      shadowRepo,
+      skipStateManifestCheck: true,
+      destroyTimeoutMs: 500,
+      configHomedirOverride: dir,
+      embedderLoader: () => Promise.resolve(createDriftingEmbedder()),
+    });
+    await srv.ready;
+    const search = () =>
+      searchViaServer(srv, {
+        query: 'auth retries',
+        intent: 'full_text',
+        semantic: true,
+      });
+    const waitForCoverage = async () => {
+      await vi.waitFor(async () => {
+        const result = await search();
+        expect(result.semantic?.coverage.embedded).toBe(1);
+      });
+    };
+
+    try {
+      await waitForCoverage();
+      let terminal: SearchBody | undefined;
+      for (let change = 0; change < MAX_DIMS_DRIFT_RESETS + 2; change += 1) {
+        servedDims += 1;
+        const result = await search();
+        if (result.semantic?.outcome === 'restart_required') {
+          terminal = result;
+          break;
+        }
+        await waitForCoverage();
+      }
+
+      expect(terminal?.semantic).toMatchObject({
+        capable: false,
+        outcome: 'restart_required',
+        providerErrorReason: 'dimensions',
+      });
+    } finally {
+      await srv.destroy();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test.each([120_000, 900_000])(
+  'transport fallback warnings occur only on load and reload (initial timeout %i)',
+  async (initialTimeout) => {
+    const dir = mkdtempSync(join(tmpdir(), 'ok-sem-fallback-reload-'));
+    const warn = vi.spyOn(getLogger('server'), 'warn');
+    let srv: ServerInstance | undefined;
+    let loaderInput: LoadOpenAiEmbedderInput | undefined;
+    try {
+      writeFileSync(join(dir, 'note.md'), '# Note\n\nAuthentication retries.\n', 'utf-8');
+      mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+      const localPath = join(dir, '.ok', 'local', 'config.yml');
+      const source = `search:\n  semantic:\n    enabled: true\n    baseUrl: http://localhost:11434/v1\n    model: local-embedding\n    maxBatchSize: 2\n    maxBatchChars: 16000\n    docTimeoutMs: ${initialTimeout}\n`;
+      writeFileSync(localPath, source, 'utf-8');
+      srv = createServer({
+        contentDir: dir,
+        projectDir: dir,
+        quiet: true,
+        debounce: 60_000,
+        gitEnabled: false,
+        shadowRepo: await initShadowRepo(dir),
+        skipStateManifestCheck: true,
+        destroyTimeoutMs: 500,
+        configHomedirOverride: dir,
+        embedderLoader: (input) => {
+          loaderInput = input;
+          return Promise.resolve(createConceptEmbedder({ concepts: CONCEPTS }));
+        },
+      });
+      const activeServer = srv;
+      await activeServer.ready;
+      const fallbackWarnings = () =>
+        warn.mock.calls.filter(
+          ([details]) =>
+            typeof details === 'object' &&
+            details !== null &&
+            'code' in details &&
+            details.code === 'VALUE_FALLBACK',
+        );
+      const initialWarningCount = initialTimeout === 900_000 ? 1 : 0;
+      expect(fallbackWarnings()).toHaveLength(initialWarningCount);
+      await vi.waitFor(async () => {
+        await searchViaServer(activeServer, { query: 'authentication', semantic: true });
+        expect(loaderInput?.options?.docTimeoutMs).toBe(
+          initialTimeout === 900_000 ? 30_000 : initialTimeout,
+        );
+      });
+      expect(fallbackWarnings()).toHaveLength(initialWarningCount);
+      warn.mockClear();
+      const edited = source.replace(`docTimeoutMs: ${initialTimeout}`, 'docTimeoutMs: 900001');
+      writeFileSync(localPath, edited, 'utf-8');
+
+      await vi.waitFor(
+        () => {
+          expect(fallbackWarnings()).toEqual([
+            [
+              {
+                code: 'VALUE_FALLBACK',
+                scope: 'project-local',
+                file: localPath,
+                path: 'search.semantic.docTimeoutMs',
+                line: 8,
+                column: expect.any(Number),
+              },
+              '[config] search.semantic.docTimeoutMs: Expected an integer between 1 and 600000; using default 30000.',
+            ],
+          ]);
+        },
+        { timeout: 10_000 },
+      );
+      await vi.waitFor(async () => {
+        await searchViaServer(activeServer, { query: 'authentication', semantic: true });
+        expect(loaderInput?.options).toMatchObject({
+          maxBatchSize: 2,
+          maxBatchChars: 16_000,
+          docTimeoutMs: 30_000,
+        });
+      });
+      expect(loaderInput?.config).toMatchObject({
+        baseUrl: 'http://localhost:11434/v1',
+        model: 'local-embedding',
+      });
+      expect(readFileSync(localPath, 'utf-8')).toBe(edited);
+      expect(await callViaServer(activeServer, 'GET', '/api/config/diagnostics')).toMatchObject({
+        diagnostics: [{ code: 'VALUE_FALLBACK', scope: 'project-local', file: localPath }],
+      });
+      for (let request = 0; request < 3; request += 1) {
+        await searchViaServer(activeServer, { query: 'authentication', semantic: true });
+        await callViaServer(activeServer, 'GET', '/api/config/diagnostics');
+      }
+      expect(fallbackWarnings()).toHaveLength(1);
+      expect(
+        warn.mock.calls.some(
+          ([, message]) => message === '[config] could not read project-local config',
+        ),
+      ).toBe(false);
+    } finally {
+      await srv?.destroy();
+      warn.mockRestore();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);
+
+test('persisted Y.Text transport fallback warns once after the file watcher echo', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-sem-fallback-persist-'));
+  const warn = vi.spyOn(getLogger('server'), 'warn');
+  const info = vi.spyOn(getLogger('server'), 'info');
+  let srv: ServerInstance | undefined;
+  let loaderInput: LoadOpenAiEmbedderInput | undefined;
+  try {
+    writeFileSync(join(dir, 'note.md'), '# Note\n\nAuthentication retries.\n', 'utf-8');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    const localPath = join(dir, '.ok', 'local', 'config.yml');
+    const source =
+      'search:\n  semantic:\n    enabled: true\n    baseUrl: http://localhost:11434/v1\n    model: local-embedding\n    maxBatchSize: 2\n    maxBatchChars: 16000\n    docTimeoutMs: 120000\n';
+    writeFileSync(localPath, source, 'utf-8');
+    srv = createServer({
+      contentDir: dir,
+      projectDir: dir,
+      quiet: true,
+      debounce: 60_000,
+      gitEnabled: false,
+      shadowRepo: await initShadowRepo(dir),
+      skipStateManifestCheck: true,
+      destroyTimeoutMs: 500,
+      configHomedirOverride: dir,
+      embedderLoader: (input) => {
+        loaderInput = input;
+        return Promise.resolve(createConceptEmbedder({ concepts: CONCEPTS }));
+      },
+    });
+    const activeServer = srv;
+    await activeServer.ready;
+    await vi.waitFor(async () => {
+      await searchViaServer(activeServer, { query: 'authentication', semantic: true });
+      expect(loaderInput?.options?.docTimeoutMs).toBe(120_000);
+    });
+    warn.mockClear();
+    info.mockClear();
+    const edited = source.replace('docTimeoutMs: 120000', 'docTimeoutMs: 900000');
+    const connection = await activeServer.hocuspocus.openDirectConnection(
+      CONFIG_DOC_NAME_PROJECT_LOCAL,
+    );
+    const document = connection.document;
+    if (!document) throw new Error('expected an open config document');
+    const origin = Object.freeze({ source: 'local', context: {} });
+    document.transact(() => {
+      const ytext = document.getText('source');
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, edited);
+    }, origin);
+    await connection.disconnect();
+
+    await vi.waitFor(
+      () => {
+        expect(info).toHaveBeenCalledWith(
+          { docName: CONFIG_DOC_NAME_PROJECT_LOCAL, outcome: 'no-op', isEcho: true },
+          '[config-file-watcher] applyExternalConfigChange outcome',
+        );
+      },
+      { timeout: 10_000 },
+    );
+    await vi.waitFor(async () => {
+      await searchViaServer(activeServer, { query: 'authentication', semantic: true });
+      expect(loaderInput?.options).toMatchObject({
+        maxBatchSize: 2,
+        maxBatchChars: 16_000,
+        docTimeoutMs: 30_000,
+      });
+    });
+    expect(loaderInput?.config).toMatchObject({
+      baseUrl: 'http://localhost:11434/v1',
+      model: 'local-embedding',
+    });
+    expect(readFileSync(localPath, 'utf-8')).toBe(edited);
+    expect(
+      warn.mock.calls.filter(
+        ([details]) =>
+          typeof details === 'object' &&
+          details !== null &&
+          'code' in details &&
+          details.code === 'VALUE_FALLBACK',
+      ),
+    ).toEqual([
+      [
+        {
+          code: 'VALUE_FALLBACK',
+          scope: 'project-local',
+          file: localPath,
+          path: 'search.semantic.docTimeoutMs',
+          line: 8,
+          column: expect.any(Number),
+        },
+        '[config] search.semantic.docTimeoutMs: Expected an integer between 1 and 600000; using default 30000.',
+      ],
+    ]);
+  } finally {
+    await srv?.destroy();
+    warn.mockRestore();
+    info.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 30_000);
+
+test('generated-index settings do not repeat an unrelated project-local fallback warning', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-sem-fallback-generated-index-'));
+  const warn = vi.spyOn(getLogger('server'), 'warn');
+  let srv: ServerInstance | undefined;
+  try {
+    writeFileSync(join(dir, 'note.md'), '# Note\n', 'utf-8');
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    const localPath = join(dir, '.ok', 'local', 'config.yml');
+    writeFileSync(localPath, 'search:\n  semantic:\n    docTimeoutMs: 900000\n', 'utf-8');
+    writeFileSync(
+      join(dir, '.ok', 'config.yml'),
+      'contentRules:\n  okf:\n    generate:\n      index: false\n',
+      'utf-8',
+    );
+    srv = createServer({
+      contentDir: dir,
+      projectDir: dir,
+      quiet: true,
+      debounce: 60_000,
+      gitEnabled: false,
+      shadowRepo: await initShadowRepo(dir),
+      skipStateManifestCheck: true,
+      destroyTimeoutMs: 500,
+      configHomedirOverride: dir,
+    });
+    const activeServer = srv;
+    await activeServer.ready;
+    const fallbackWarnings = () =>
+      warn.mock.calls.filter(
+        ([details]) =>
+          typeof details === 'object' &&
+          details !== null &&
+          'code' in details &&
+          details.code === 'VALUE_FALLBACK',
+      );
+    expect(fallbackWarnings()).toHaveLength(1);
+    warn.mockClear();
+    expect(
+      await callViaServer(activeServer, 'POST', '/api/generated-index/settings', { enabled: true }),
+    ).toMatchObject({ enabled: true, applied: true });
+    expect(await callViaServer(activeServer, 'GET', '/api/config/diagnostics')).toMatchObject({
+      diagnostics: [{ code: 'VALUE_FALLBACK', scope: 'project-local', file: localPath }],
+    });
+    expect(fallbackWarnings()).toHaveLength(0);
+  } finally {
+    await srv?.destroy();
+    warn.mockRestore();
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 30_000);
+
 describe('createServer boot — similarityFloor config reaches core ranking', () => {
   test('a high project-local similarityFloor gates out a vector-only match the default would surface', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'ok-sem-floor-'));
@@ -336,6 +763,7 @@ describe('createServer boot — similarityFloor config reaches core ranking', ()
         expect(result?.results?.find((r) => r.path === 'rotation')).toBeUndefined();
         for (const r of result?.results ?? []) expect('vector' in r.signals).toBe(false);
         expect(result?.semantic?.applied).toBe(false);
+        expect(result?.semantic?.outcome).toBe('no_match');
       } finally {
         await srv.destroy();
       }

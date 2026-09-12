@@ -1,9 +1,20 @@
-import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { ValidationAuditResponseSchema } from '@inkeep/open-knowledge-core';
+import { HocuspocusProvider } from '@hocuspocus/provider';
+import {
+  bindConfigDoc,
+  CONFIG_DOC_NAME_PROJECT,
+  ValidationAuditResponseSchema,
+} from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
-import { createTestServer, type TestServer } from './test-harness.ts';
+import {
+  awaitBacklinkIndexed,
+  createTestServer,
+  pollUntil,
+  type TestServer,
+} from './test-harness.ts';
 
 let server: TestServer;
 
@@ -84,6 +95,93 @@ describe('GET /api/audit across a lint-config change', () => {
       } finally {
         rmSync(folder, { recursive: true, force: true });
         rmSync(nativeFile, { force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'an in-flight audit is superseded when the committed project config changes',
+    async () => {
+      const folder = join(server.contentDir, SCOPE);
+      const configPath = join(server.contentDir, '.ok', 'config.yml');
+      seedTabbedCorpus(folder);
+      writeFileSync(join(folder, 'log.md'), '# Log\n\n[[missing-history-target]]\n', 'utf-8');
+
+      const ydoc = new Y.Doc();
+      const provider = new HocuspocusProvider({
+        url: `ws://127.0.0.1:${server.port}/collab`,
+        name: CONFIG_DOC_NAME_PROJECT,
+        document: ydoc,
+        connect: true,
+      });
+      const binding = bindConfigDoc(provider, 'project');
+
+      try {
+        await pollUntil(
+          () => binding.hasSynced(),
+          10_000,
+          100,
+          'the project config provider to sync',
+        );
+        await awaitBacklinkIndexed(server, 'missing-history-target', `${SCOPE}/log`);
+
+        const before = await fetch(api(`/api/audit?path=${SCOPE}%2Flog.md`));
+        expect(before.status).toBe(200);
+        const beforeBody = ValidationAuditResponseSchema.parse(await before.json());
+        expect(beforeBody.brokenLinkSuppression).toEqual({
+          reason: 'reserved-log-policy',
+          count: 1,
+        });
+        expect(
+          beforeBody.files.flatMap((file) => file.diagnostics).some((d) => d.code === 'dead-link'),
+        ).toBe(false);
+
+        const first = auditScope();
+
+        const patch = binding.patch({ validation: { suppressLogLinkAdvisories: false } });
+        expect(patch.ok).toBe(true);
+        await pollUntil(
+          () => /suppressLogLinkAdvisories:\s*false/.test(readFileSync(configPath, 'utf-8')),
+          15_000,
+          25,
+          'the project config change to reach disk',
+        );
+
+        const firstRes = await first;
+        expect(firstRes.status).toBe(409);
+        const problem = (await firstRes.json()) as { type?: string };
+        expect(problem.type).toBe('urn:ok:error:audit-superseded');
+
+        let after: Response | undefined;
+        await pollUntil(
+          async () => {
+            const candidate = await auditScope();
+            if (candidate.status === 200) {
+              after = candidate;
+              return true;
+            }
+            expect(candidate.status).toBe(409);
+            return false;
+          },
+          15_000,
+          100,
+          'the post-config audit generation to stabilize',
+        );
+        expect(after).toBeDefined();
+        const afterBody = ValidationAuditResponseSchema.parse(await after?.json());
+        expect(md010Count(afterBody)).toBeGreaterThan(0);
+        expect(afterBody.brokenLinkSuppression).toBeUndefined();
+        expect(
+          afterBody.files
+            .find((file) => file.file === `${SCOPE}/log.md`)
+            ?.diagnostics.some((diagnostic) => diagnostic.code === 'dead-link'),
+        ).toBe(true);
+      } finally {
+        binding.dispose();
+        provider.destroy();
+        ydoc.destroy();
+        rmSync(folder, { recursive: true, force: true });
       }
     },
     TEST_TIMEOUT_MS,

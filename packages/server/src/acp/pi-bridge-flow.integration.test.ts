@@ -134,7 +134,11 @@ function findStatus(
 const BRIDGE_PATH = '/tmp/pi-project/.pi/extensions/open-knowledge.ts';
 
 const unprovisioned: PiAcpBridgeProbe = {
+  project: 'ready',
+  cwd: '/tmp/pi-project',
+  canonicalCwd: '/tmp/canonical-pi-project',
   bridgePath: BRIDGE_PATH,
+  trustPath: '/tmp/pi-home/.pi/agent/trust.json',
   bridge: 'absent',
   trust: 'untrusted',
   bridgeLoadable: false,
@@ -142,7 +146,7 @@ const unprovisioned: PiAcpBridgeProbe = {
 };
 
 const provisioned: PiAcpBridgeProbe = {
-  bridgePath: BRIDGE_PATH,
+  ...unprovisioned,
   bridge: 'own-current',
   trust: 'trusted',
   bridgeLoadable: true,
@@ -186,14 +190,18 @@ describe('pi bridge consent flow', () => {
     expect(ensureCalls).toBe(0);
   }, 30_000);
 
-  test('approve → the bridge is provisioned before the session opens', async () => {
+  test('consent names the canonical trust key while provisioning keeps the opened path', async () => {
     const seen: string[] = [];
+    const ensuredPaths: { cwd: string; approvedCanonicalCwd: string }[] = [];
     const manager = makeManager({
       probePiAcpBridge: (cwd) => {
         seen.push(cwd);
         return unprovisioned;
       },
-      ensurePiAcpBridge: () => ensured,
+      ensurePiAcpBridge: (cwd, approvedCanonicalCwd) => {
+        ensuredPaths.push({ cwd, approvedCanonicalCwd });
+        return ensured;
+      },
     });
     const events: ThreadEvent[] = [];
     const { threadId } = await startThread(manager, events);
@@ -203,7 +211,8 @@ describe('pi bridge consent flow', () => {
     if (req === undefined) throw new Error('unreachable');
     expect(req.bridgePath).toBe(BRIDGE_PATH);
     expect(req.agentName).toBe(manager.getInfo(threadId)?.agent.name);
-    expect(req.cwd).toBe(seen[0]);
+    expect(req.cwd).toBe(unprovisioned.canonicalCwd);
+    expect(req.cwd).not.toBe(seen[0]);
     expect(manager.getInfo(threadId)?.status).not.toBe('ready');
 
     manager.respondPiBridgeConsent(threadId, req.requestId, { kind: 'granted' });
@@ -217,6 +226,7 @@ describe('pi bridge consent flow', () => {
       trust: 'added',
     });
     expect(events.some((e) => e.kind === 'pi_bridge_consent_resolved')).toBe(true);
+    expect(ensuredPaths).toEqual([{ cwd: seen[0], approvedCanonicalCwd: req.cwd }]);
   }, 30_000);
 
   test('refuse → the thread runs anyway, and the next thread asks again', async () => {
@@ -328,6 +338,73 @@ describe('pi bridge consent flow', () => {
     });
     expect(findStatus(events)?.requestId).toBeUndefined();
   }, 30_000);
+
+  test('an unavailable project is reported with its remedy before consent or provisioning', async () => {
+    let ensureCalls = 0;
+    const detail = 'Project link could not be resolved; restore its target, then retry';
+    const manager = makeManager({
+      probePiAcpBridge: (cwd) => ({
+        project: 'unavailable',
+        cwd,
+        bridgePath: BRIDGE_PATH,
+        trustPath: unprovisioned.trustPath,
+        error: detail,
+      }),
+      ensurePiAcpBridge: () => {
+        ensureCalls += 1;
+        return ensured;
+      },
+    });
+    const events: ThreadEvent[] = [];
+    const { threadId } = await startThread(manager, events);
+    await waitReady(manager, threadId);
+    await waitFor(() => findStatus(events) !== undefined, 5_000, 'the project limitation event');
+    expect(findRequest(events)).toBeUndefined();
+    expect(ensureCalls).toBe(0);
+    expect(findStatus(events)).toMatchObject({
+      state: 'project-path-unavailable',
+      bridgePath: BRIDGE_PATH,
+      detail,
+    });
+    expect(findStatus(events)?.requestId).toBeUndefined();
+  }, 30_000);
+
+  test.each([
+    ['refused-project-path', 'project-path-unavailable'],
+    ['refused-unreadable', 'unreadable-file'],
+  ] as const)(
+    'provisioning refusal %s retains its resource classification after consent',
+    async (bridge, state) => {
+      const detail = 'The resource became unavailable while awaiting approval';
+      const manager = makeManager({
+        probePiAcpBridge: () => unprovisioned,
+        ensurePiAcpBridge: () => ({
+          ok: false,
+          bridgePath: BRIDGE_PATH,
+          bridge,
+          trust: 'skipped',
+          error: detail,
+        }),
+      });
+      const events: ThreadEvent[] = [];
+      const { threadId } = await startThread(manager, events);
+      await waitFor(() => findRequest(events) !== undefined, 15_000, 'the consent request');
+      const req = findRequest(events);
+      if (req === undefined) throw new Error('unreachable');
+      manager.respondPiBridgeConsent(threadId, req.requestId, { kind: 'granted' });
+
+      await waitReady(manager, threadId);
+      await waitFor(() => findStatus(events) !== undefined, 5_000, 'the refusal outcome event');
+      expect(findStatus(events)).toMatchObject({
+        state,
+        requestId: req.requestId,
+        bridge,
+        trust: 'skipped',
+        detail,
+      });
+    },
+    30_000,
+  );
 
   test('a half-landed provisioning reports which half failed and proceeds toolless', async () => {
     const manager = makeManager({

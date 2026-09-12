@@ -1,16 +1,12 @@
 import type { SessionModeState } from '@agentclientprotocol/sdk';
+import { ACP_VERIFIED_POSTURE_MAP } from '../agent-registry/derived-tables.ts';
 import { isPermissiveMode } from './permissive-mode.ts';
 
 export type AgentPermissionPosture = 'asks' | 'self-managed' | 'autonomous' | 'unknown';
 
 export const VERIFIED_AGENT_POSTURES: {
   readonly [agentId: string]: AgentPermissionPosture | undefined;
-} = {
-  'claude-acp': 'asks',
-  'codex-acp': 'self-managed',
-  cursor: 'self-managed',
-  'pi-acp': 'autonomous',
-};
+} = ACP_VERIFIED_POSTURE_MAP;
 
 export function deriveAgentPosture(
   agentId: string,

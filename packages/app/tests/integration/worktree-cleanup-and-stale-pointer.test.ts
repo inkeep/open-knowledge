@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { bootServer, ConfigSchema } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
+import { removeAllDuringTeardown } from '../stress/_helpers/teardown-fs.ts';
 import { createLinkedWorktree, type LinkedWorktreeHandle } from './worktree-test-harness.ts';
 
 const TEST_CONFIG = ConfigSchema.parse({});
@@ -14,9 +15,7 @@ const adhocDirs: string[] = [];
 afterEach(() => {
   handle?.cleanup();
   handle = null;
-  for (const d of adhocDirs.splice(0)) {
-    rmSync(d, { recursive: true, force: true });
-  }
+  removeAllDuringTeardown(...adhocDirs.splice(0));
 });
 
 describe('git worktree remove cleans up the per-worktree shadow (FR6)', () => {

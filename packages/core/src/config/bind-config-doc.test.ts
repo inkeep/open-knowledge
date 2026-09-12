@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { parseDocument } from 'yaml';
 import * as Y from 'yjs';
 import { bindConfigDoc, type ConfigDocProvider } from './bind-config-doc.ts';
 import { isKnownConfigError } from './errors.ts';
@@ -27,6 +28,36 @@ function createMockProvider(doc: Y.Doc): ConfigDocProvider & {
 
 let doc: Y.Doc;
 let provider: ReturnType<typeof createMockProvider>;
+
+function bindSyncedConfigDoc(scope: Parameters<typeof bindConfigDoc>[1]) {
+  const binding = bindConfigDoc(provider, scope);
+  provider.emitSynced();
+  return binding;
+}
+
+const configScopeReadinessCases = [
+  {
+    scope: 'user',
+    seed: 'appearance:\n  theme: light\n',
+    patch: { appearance: { theme: 'dark' } },
+    initial: { appearance: { theme: 'light' } },
+    patched: { appearance: { theme: 'dark' } },
+  },
+  {
+    scope: 'project',
+    seed: 'content:\n  dir: .\n',
+    patch: { content: { dir: 'docs' } },
+    initial: { content: { dir: '.' } },
+    patched: { content: { dir: 'docs' } },
+  },
+  {
+    scope: 'project-local',
+    seed: 'terminal:\n  enabled: false\n',
+    patch: { terminal: { enabled: true } },
+    initial: { terminal: { enabled: false } },
+    patched: { terminal: { enabled: true } },
+  },
+] as const;
 
 beforeEach(() => {
   doc = new Y.Doc();
@@ -86,8 +117,8 @@ describe('bindConfigDoc — current()', () => {
 });
 
 describe('bindConfigDoc — patch()', () => {
-  test('writes scalar to empty Y.Text + returns effective config', () => {
-    const binding = bindConfigDoc(provider, 'user');
+  test('writes scalar to synced empty Y.Text + returns effective config', () => {
+    const binding = bindSyncedConfigDoc('user');
     const result = binding.patch({ appearance: { theme: 'dark' } });
 
     expect(result.ok).toBe(true);
@@ -101,8 +132,8 @@ describe('bindConfigDoc — patch()', () => {
     binding.dispose();
   });
 
-  test('writes editor.wordWrap to empty Y.Text + returns effective config', () => {
-    const binding = bindConfigDoc(provider, 'user');
+  test('writes editor.wordWrap to synced empty Y.Text + returns effective config', () => {
+    const binding = bindSyncedConfigDoc('user');
     const result = binding.patch({ editor: { wordWrap: false } });
 
     expect(result.ok).toBe(true);
@@ -116,8 +147,8 @@ describe('bindConfigDoc — patch()', () => {
     binding.dispose();
   });
 
-  test('writes editor.previewTabs to empty Y.Text + returns effective config', () => {
-    const binding = bindConfigDoc(provider, 'user');
+  test('writes editor.previewTabs to synced empty Y.Text + returns effective config', () => {
+    const binding = bindSyncedConfigDoc('user');
     const result = binding.patch({ editor: { previewTabs: false } });
 
     expect(result.ok).toBe(true);
@@ -132,7 +163,7 @@ describe('bindConfigDoc — patch()', () => {
   });
 
   test('writes the sidebar view toggles via a project-local binding + returns effective config', () => {
-    const binding = bindConfigDoc(provider, 'project-local');
+    const binding = bindSyncedConfigDoc('project-local');
     const result = binding.patch({
       appearance: {
         sidebar: {
@@ -159,7 +190,7 @@ describe('bindConfigDoc — patch()', () => {
   test('updates existing field + preserves comments via yaml@2 Document', () => {
     const initial = '# Project config\ncontent:\n  dir: old # original\n';
     doc.getText('source').insert(0, initial);
-    const binding = bindConfigDoc(provider, 'project');
+    const binding = bindSyncedConfigDoc('project');
 
     const result = binding.patch({ content: { dir: 'new' } });
     expect(result.ok).toBe(true);
@@ -174,7 +205,7 @@ describe('bindConfigDoc — patch()', () => {
   test('rejects schema-invalid scalar; Y.Text untouched', () => {
     doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
     const before = doc.getText('source').toString();
-    const binding = bindConfigDoc(provider, 'user');
+    const binding = bindSyncedConfigDoc('user');
 
     const result = binding.patch({ appearance: { theme: 'midnight' as 'dark' } });
     expect(result.ok).toBe(false);
@@ -192,7 +223,7 @@ describe('bindConfigDoc — patch()', () => {
 
   test('null-as-clear semantic via deleteIn', () => {
     doc.getText('source').insert(0, 'appearance:\n  theme: dark\n');
-    const binding = bindConfigDoc(provider, 'user');
+    const binding = bindSyncedConfigDoc('user');
 
     const result = binding.patch({ appearance: { theme: null } });
     expect(result.ok).toBe(true);
@@ -205,7 +236,7 @@ describe('bindConfigDoc — patch()', () => {
 
   test('self-heals from corrupt Y.Text — patch lands on a fresh doc, dropping the bad bytes', () => {
     doc.getText('source').insert(0, 'theme: light\nappearance:\ntheme: light\n');
-    const binding = bindConfigDoc(provider, 'project');
+    const binding = bindSyncedConfigDoc('project');
 
     const result = binding.patch({ content: { dir: 'docs' } });
     expect(result.ok).toBe(true);
@@ -219,7 +250,7 @@ describe('bindConfigDoc — patch()', () => {
 
   test('self-heals from non-mapping top-level (e.g., scalar or array)', () => {
     doc.getText('source').insert(0, '- not a mapping\n- also not\n');
-    const binding = bindConfigDoc(provider, 'project');
+    const binding = bindSyncedConfigDoc('project');
 
     const result = binding.patch({ content: { dir: 'docs' } });
     expect(result.ok).toBe(true);
@@ -230,8 +261,8 @@ describe('bindConfigDoc — patch()', () => {
     binding.dispose();
   });
 
-  test('after dispose, patch returns WRITE_ERROR', () => {
-    const binding = bindConfigDoc(provider, 'project');
+  test('after dispose, patch returns the disposed WRITE_ERROR without mutating Y.Text', () => {
+    const binding = bindSyncedConfigDoc('project');
     binding.dispose();
 
     const result = binding.patch({ content: { dir: 'docs' } });
@@ -239,12 +270,111 @@ describe('bindConfigDoc — patch()', () => {
     if (result.ok) throw new Error('expected err');
     if (!isKnownConfigError(result.error)) throw new Error('not known error');
     expect(result.error.code).toBe('WRITE_ERROR');
+    if (result.error.code !== 'WRITE_ERROR') throw new Error('expected WRITE_ERROR');
+    expect(result.error.detail).toContain('disposed');
+    expect(doc.getText('source').toString()).toBe('');
   });
+});
+
+describe('bindConfigDoc — initial sync write barrier', () => {
+  test.each(configScopeReadinessCases)(
+    '$scope binding rejects a patch before initial sync without corrupting the authoritative mapping',
+    ({ scope, seed, patch, initial }) => {
+      const serverDoc = new Y.Doc();
+      const clientDoc = new Y.Doc();
+      serverDoc.clientID = 1;
+      clientDoc.clientID = 2;
+      serverDoc.getText('source').insert(0, seed);
+      const clientProvider = createMockProvider(clientDoc);
+      const binding = bindConfigDoc(clientProvider, scope);
+
+      const result = binding.patch(patch);
+      const clientTextBeforeSync = clientDoc.getText('source').toString();
+      Y.applyUpdate(clientDoc, Y.encodeStateAsUpdate(serverDoc));
+      Y.applyUpdate(serverDoc, Y.encodeStateAsUpdate(clientDoc));
+      const merged = parseDocument(clientDoc.getText('source').toString());
+
+      expect.soft(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected NOT_SYNCED');
+      expect.soft(isKnownConfigError(result.error)).toBe(true);
+      if (!isKnownConfigError(result.error)) throw new Error('expected known error');
+      expect.soft(result.error.code).toBe('NOT_SYNCED');
+      expect.soft(clientTextBeforeSync).toBe('');
+      expect.soft(merged.errors.map((error) => error.message)).toEqual([]);
+      expect.soft(merged.toJSON()).toEqual(initial);
+
+      binding.dispose();
+      serverDoc.destroy();
+      clientDoc.destroy();
+    },
+  );
+
+  test.each(configScopeReadinessCases)(
+    '$scope binding rejects a patch when authoritative bytes arrive before the first sync event',
+    ({ scope, seed, patch, initial }) => {
+      const serverDoc = new Y.Doc();
+      const clientDoc = new Y.Doc();
+      serverDoc.clientID = 1;
+      clientDoc.clientID = 2;
+      serverDoc.getText('source').insert(0, seed);
+      const clientProvider = createMockProvider(clientDoc);
+      const binding = bindConfigDoc(clientProvider, scope);
+
+      Y.applyUpdate(clientDoc, Y.encodeStateAsUpdate(serverDoc));
+      const beforePatch = clientDoc.getText('source').toString();
+      const result = binding.patch(patch);
+      const afterPatch = clientDoc.getText('source').toString();
+      const parsed = parseDocument(afterPatch);
+
+      expect.soft(binding.hasSynced()).toBe(false);
+      expect.soft(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected NOT_SYNCED');
+      expect.soft(isKnownConfigError(result.error)).toBe(true);
+      if (!isKnownConfigError(result.error)) throw new Error('expected known error');
+      expect.soft(result.error.code).toBe('NOT_SYNCED');
+      expect.soft(afterPatch).toBe(beforePatch);
+      expect.soft(parsed.errors.map((error) => error.message)).toEqual([]);
+      expect.soft(parsed.toJSON()).toEqual(initial);
+
+      binding.dispose();
+      serverDoc.destroy();
+      clientDoc.destroy();
+    },
+  );
+
+  test.each(configScopeReadinessCases)(
+    '$scope binding accepts a patch after initial sync and converges to one valid mapping',
+    ({ scope, seed, patch, patched }) => {
+      const serverDoc = new Y.Doc();
+      const clientDoc = new Y.Doc();
+      serverDoc.clientID = 1;
+      clientDoc.clientID = 2;
+      serverDoc.getText('source').insert(0, seed);
+      const clientProvider = createMockProvider(clientDoc);
+      const binding = bindConfigDoc(clientProvider, scope);
+
+      Y.applyUpdate(clientDoc, Y.encodeStateAsUpdate(serverDoc));
+      clientProvider.emitSynced();
+      const result = binding.patch(patch);
+      Y.applyUpdate(serverDoc, Y.encodeStateAsUpdate(clientDoc));
+      Y.applyUpdate(clientDoc, Y.encodeStateAsUpdate(serverDoc));
+      const merged = parseDocument(clientDoc.getText('source').toString());
+
+      expect(binding.hasSynced()).toBe(true);
+      expect(result.ok).toBe(true);
+      expect(merged.errors.map((error) => error.message)).toEqual([]);
+      expect(merged.toJSON()).toEqual(patched);
+
+      binding.dispose();
+      serverDoc.destroy();
+      clientDoc.destroy();
+    },
+  );
 });
 
 describe('bindConfigDoc — subscribe()', () => {
   test('listener fires on Y.Text change after subscribe', () => {
-    const binding = bindConfigDoc(provider, 'user');
+    const binding = bindSyncedConfigDoc('user');
     const received: Array<unknown> = [];
 
     const unsub = binding.subscribe((c) => {
@@ -291,7 +421,7 @@ describe('bindConfigDoc — subscribe()', () => {
   });
 
   test('listener exception is caught — does not break other listeners', () => {
-    const binding = bindConfigDoc(provider, 'user');
+    const binding = bindSyncedConfigDoc('user');
     const ok: Array<unknown> = [];
 
     binding.subscribe(() => {
@@ -307,7 +437,7 @@ describe('bindConfigDoc — subscribe()', () => {
   });
 
   test('multiple subscribers fire in registration order', () => {
-    const binding = bindConfigDoc(provider, 'user');
+    const binding = bindSyncedConfigDoc('user');
     const order: number[] = [];
 
     binding.subscribe(() => order.push(1));
@@ -466,7 +596,7 @@ describe('bindConfigDoc — dispose()', () => {
 
 describe('bindConfigDoc — project-local scope', () => {
   test('patch + current round-trip: writes and reads back through Y.Text', () => {
-    const binding = bindConfigDoc(provider, 'project-local');
+    const binding = bindSyncedConfigDoc('project-local');
     const result = binding.patch({ autoSync: { enabled: true } });
 
     expect(result.ok).toBe(true);
@@ -483,7 +613,7 @@ describe('bindConfigDoc — project-local scope', () => {
   });
 
   test('subscribe fires on patch under project-local scope', () => {
-    const binding = bindConfigDoc(provider, 'project-local');
+    const binding = bindSyncedConfigDoc('project-local');
     const received: Array<unknown> = [];
     binding.subscribe((c) => {
       received.push(c.autoSync?.enabled);
@@ -501,7 +631,7 @@ describe('bindConfigDoc — project-local scope', () => {
 describe('bindConfigDoc — scope-violation gate', () => {
   test('user binding rejects a project-local field with SCOPE_VIOLATION; Y.Text untouched', () => {
     const before = doc.getText('source').toString();
-    const binding = bindConfigDoc(provider, 'user');
+    const binding = bindSyncedConfigDoc('user');
 
     const result = binding.patch({ autoSync: { enabled: true } });
     expect(result.ok).toBe(false);
@@ -519,7 +649,7 @@ describe('bindConfigDoc — scope-violation gate', () => {
   });
 
   test('project binding rejects a project-local field with SCOPE_VIOLATION', () => {
-    const binding = bindConfigDoc(provider, 'project');
+    const binding = bindSyncedConfigDoc('project');
     const result = binding.patch({ autoSync: { enabled: false } });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected SCOPE_VIOLATION');
@@ -532,7 +662,7 @@ describe('bindConfigDoc — scope-violation gate', () => {
   });
 
   test('project-local binding rejects a user field (appearance.theme) with SCOPE_VIOLATION', () => {
-    const binding = bindConfigDoc(provider, 'project-local');
+    const binding = bindSyncedConfigDoc('project-local');
     const result = binding.patch({ appearance: { theme: 'dark' } });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected SCOPE_VIOLATION');
@@ -544,7 +674,7 @@ describe('bindConfigDoc — scope-violation gate', () => {
   });
 
   test('project-local binding rejects a project field (content.dir) with SCOPE_VIOLATION', () => {
-    const binding = bindConfigDoc(provider, 'project-local');
+    const binding = bindSyncedConfigDoc('project-local');
     const result = binding.patch({ content: { dir: 'docs' } });
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected SCOPE_VIOLATION');
@@ -556,8 +686,8 @@ describe('bindConfigDoc — scope-violation gate', () => {
   });
 });
 
-describe('bindConfigDoc — multi-client / cross-process simulation (NR9 LWW)', () => {
-  test('two simultaneous Y.Text replacements via Yjs delta sync — final state is one of the two', () => {
+describe('bindConfigDoc — multi-client / cross-process byte convergence', () => {
+  test('two simultaneous Y.Text replacements converge to identical bytes', () => {
     const docA = new Y.Doc();
     const docB = new Y.Doc();
     const provA = createMockProvider(docA);
@@ -569,6 +699,8 @@ describe('bindConfigDoc — multi-client / cross-process simulation (NR9 LWW)', 
 
     const bindingA = bindConfigDoc(provA, 'user');
     const bindingB = bindConfigDoc(provB, 'user');
+    provA.emitSynced();
+    provB.emitSynced();
 
     const resA = bindingA.patch({ appearance: { theme: 'dark' } });
     const resB = bindingB.patch({ appearance: { theme: 'light' } });

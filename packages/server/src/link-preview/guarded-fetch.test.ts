@@ -105,15 +105,16 @@ describe('createHeadEndScanner (chunk-boundary-safe head-end detection)', () => 
     expect(scan(bytes(html))).toBe(html.indexOf('</head>') + '</head>'.length);
   });
 
-  test.each([
-    1, 2, 3, 4, 5, 6,
-  ])('finds </head> split across a chunk boundary after %i marker byte(s)', (splitAt) => {
-    const scan = createHeadEndScanner();
-    const marker = '</head>';
-    expect(scan(bytes(`<html><head><title>t</title>${marker.slice(0, splitAt)}`))).toBe(-1);
-    const rest = `${marker.slice(splitAt)}<body>tail`;
-    expect(scan(bytes(rest))).toBe(marker.length - splitAt);
-  });
+  test.each([1, 2, 3, 4, 5, 6])(
+    'finds </head> split across a chunk boundary after %i marker byte(s)',
+    (splitAt) => {
+      const scan = createHeadEndScanner();
+      const marker = '</head>';
+      expect(scan(bytes(`<html><head><title>t</title>${marker.slice(0, splitAt)}`))).toBe(-1);
+      const rest = `${marker.slice(splitAt)}<body>tail`;
+      expect(scan(bytes(rest))).toBe(marker.length - splitAt);
+    },
+  );
 
   test('finds an opening <body> when no </head> precedes it', () => {
     const scan = createHeadEndScanner();

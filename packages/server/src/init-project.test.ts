@@ -2,6 +2,8 @@ import {
   existsSync,
   lstatSync,
   mkdirSync,
+  mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -9,19 +11,15 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import {
-  OK_DIR,
-  PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
-  RESERVED_PROJECT_SKILL_NAME,
-} from '@inkeep/open-knowledge-core';
+import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildConfigYmlContent,
-  ensureProjectSkillGitignore,
   initContent,
   OK_OKIGNORE_TEMPLATE,
   packageVersionMajorMinor,
   ROOT_GITIGNORE_TEMPLATE,
+  removeProjectSkillGitignoreBlock,
   writeRootGitignoreForNewRepo,
 } from './init-project.ts';
 
@@ -397,60 +395,128 @@ describe('buildConfigYmlContent', () => {
   });
 });
 
-describe('ensureProjectSkillGitignore', () => {
+describe('removeProjectSkillGitignoreBlock', () => {
   let testDir: string;
-
   beforeEach(() => {
-    testDir = resolve(
-      tmpdir(),
-      `skill-gitignore-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    );
-    mkdirSync(testDir, { recursive: true });
+    testDir = mkdtempSync(join(tmpdir(), 'ok-gitignore-drain-'));
   });
-
   afterEach(() => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  it('creates a `.gitignore` with every editor-host projection path when absent', () => {
-    expect(ensureProjectSkillGitignore(testDir)).toBe('created');
-    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-    for (const p of PROJECT_SKILL_PROJECTION_IGNORE_PATHS) {
-      expect(body).toContain(p);
-    }
-    expect(body).toContain('.claude/skills/open-knowledge/');
-    expect(body).toContain('.cursor/skills/open-knowledge/');
-    expect(body).toContain('.codex/skills/open-knowledge/');
-    expect(body).toContain('.github/skills/open-knowledge/');
-    expect(body).toContain('.opencode/skills/open-knowledge/');
-    expect(body).toContain('.pi/skills/open-knowledge/');
+  const PATHS = [
+    '.claude/skills/open-knowledge/',
+    '.cursor/skills/open-knowledge/',
+    '.codex/skills/open-knowledge/',
+    '.github/skills/open-knowledge/',
+    '.opencode/skills/open-knowledge/',
+    '.pi/skills/open-knowledge/',
+  ];
+
+  it('drains the bare-paths shape an existing .gitignore received', () => {
+    const path = join(testDir, '.gitignore');
+    writeFileSync(path, `# user-authored\nnode_modules/\n${PATHS.join('\n')}\n`, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('removed');
+    expect(readFileSync(path, 'utf-8')).toBe('# user-authored\nnode_modules/\n');
   });
 
-  it('appends only the missing projection lines to an existing `.gitignore`, preserving user lines', () => {
-    writeFileSync(join(testDir, '.gitignore'), '# user rules\nnode_modules/\n.DS_Store\n', 'utf-8');
-    expect(ensureProjectSkillGitignore(testDir)).toBe('updated');
-    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-    expect(body).toContain('# user rules');
-    expect(body).toContain('node_modules/');
-    expect(body).toContain('.DS_Store');
-    expect(body).toContain('.claude/skills/open-knowledge/');
+  it('drains the header+paths shape OK wrote when it created the file', () => {
+    const path = join(testDir, '.gitignore');
+    writeFileSync(
+      path,
+      `${[
+        '# OpenKnowledge regenerates its built-in project skill on every open, and',
+        '# different app builds version-stamp it differently. It is a per-machine',
+        "# artifact — keep it out of git so teammates don't collide under auto-sync.",
+        ...PATHS,
+      ].join('\n')}\n`,
+      'utf-8',
+    );
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('removed');
+    expect(readFileSync(path, 'utf-8')).toBe('');
   });
 
-  it('is idempotent — a second call reports `unchanged` and does not duplicate lines', () => {
-    ensureProjectSkillGitignore(testDir);
-    expect(ensureProjectSkillGitignore(testDir)).toBe('unchanged');
-    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-    const occurrences = body.split('.claude/skills/open-knowledge/').length - 1;
-    expect(occurrences).toBe(1);
+  it('preserves every user line and collapses the blank the block left behind', () => {
+    const path = join(testDir, '.gitignore');
+    writeFileSync(path, `secrets.env\n\n${PATHS.join('\n')}\n\ndist/\n`, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('removed');
+    expect(readFileSync(path, 'utf-8')).toBe('secrets.env\n\ndist/\n');
   });
 
-  it('is skill-name-scoped — it never blanket-excludes `.{host}/skills/`', () => {
-    ensureProjectSkillGitignore(testDir);
-    const body = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-    for (const line of body.split('\n').filter((l) => l.trim() && !l.startsWith('#'))) {
-      expect(line).toContain(`/${RESERVED_PROJECT_SKILL_NAME}/`);
-    }
-    expect(body).not.toContain('.claude/skills/\n');
-    expect(body).not.toContain('.cursor/skills/\n');
+  it('idempotent, and inert for a project that never had the block', () => {
+    const path = join(testDir, '.gitignore');
+    const original = 'node_modules/\ndist/\n';
+    writeFileSync(path, original, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('unchanged');
+    expect(readFileSync(path, 'utf-8')).toBe(original);
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('unchanged');
+  });
+
+  it('no .gitignore at all is not an error', () => {
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('unchanged');
+  });
+
+  it('a user line that merely mentions the path survives', () => {
+    const path = join(testDir, '.gitignore');
+    const original = '# keep .claude/skills/open-knowledge/ around\n.claude/skills/*.bak\n';
+    writeFileSync(path, original, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('unchanged');
+    expect(readFileSync(path, 'utf-8')).toBe(original);
+  });
+});
+
+describe('removeProjectSkillGitignoreBlock touches only the seam it opened', () => {
+  let testDir: string;
+  beforeEach(() => {
+    testDir = mkdtempSync(join(tmpdir(), 'ok-gitignore-seam-'));
+  });
+  afterEach(() => {
+    rmSync(testDir, { recursive: true, force: true });
+  });
+  const PATHS = [
+    '.claude/skills/open-knowledge/',
+    '.cursor/skills/open-knowledge/',
+    '.codex/skills/open-knowledge/',
+    '.github/skills/open-knowledge/',
+    '.opencode/skills/open-knowledge/',
+    '.pi/skills/open-knowledge/',
+  ];
+
+  it('leaves blank runs elsewhere in the file alone', () => {
+    const path = join(testDir, '.gitignore');
+    writeFileSync(path, `a/\n\n\nb/\n\n${PATHS.join('\n')}\n`, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('removed');
+    expect(readFileSync(path, 'utf-8')).toBe('a/\n\n\nb/\n');
+  });
+
+  it('keeps CRLF endings and whitespace-only lines as they were', () => {
+    const path = join(testDir, '.gitignore');
+    writeFileSync(path, `a/\r\n  \r\nb/\r\n${PATHS.join('\r\n')}\r\n`, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('removed');
+    expect(readFileSync(path, 'utf-8')).toBe('a/\r\n  \r\nb/\r\n');
+  });
+
+  it('leaves at most one blank where the block sat in the middle', () => {
+    const path = join(testDir, '.gitignore');
+    writeFileSync(path, `a/\n\n${PATHS.join('\n')}\n\nb/\n`, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('removed');
+    expect(readFileSync(path, 'utf-8')).toBe('a/\n\nb/\n');
+  });
+
+  it('writes the file through a rename, never leaving a truncated .gitignore', () => {
+    const path = join(testDir, '.gitignore');
+    writeFileSync(path, `a/\n${PATHS.join('\n')}\n`, 'utf-8');
+
+    expect(removeProjectSkillGitignoreBlock(testDir)).toBe('removed');
+    expect(readdirSync(testDir).filter((f) => f.startsWith('.gitignore.tmp'))).toEqual([]);
+    expect(readFileSync(path, 'utf-8')).toBe('a/\n');
   });
 });

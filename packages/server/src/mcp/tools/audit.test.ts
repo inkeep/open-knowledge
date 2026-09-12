@@ -24,6 +24,8 @@ import {
 
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
 
+const describeEvenOnCI = _bunDescribe;
+
 const BASE_CONFIG: Config = ConfigSchema.parse({});
 
 interface ToolResult {
@@ -152,6 +154,28 @@ beforeAll(async () => {
             errorCount: 0,
             warningCount: 0,
             warnings: [],
+          });
+        }
+        if (path === 'suppressed') {
+          return Response.json({
+            ok: true,
+            files: [],
+            fileCount: 4,
+            errorCount: 0,
+            warningCount: 0,
+            warnings: [],
+            brokenLinkSuppression: { reason: 'reserved-log-policy', count: 3 },
+          });
+        }
+        if (path === 'suppressed-malformed') {
+          return Response.json({
+            ok: true,
+            files: [],
+            fileCount: 4,
+            errorCount: 0,
+            warningCount: 0,
+            warnings: [],
+            brokenLinkSuppression: { reason: 'reserved-log-policy' },
           });
         }
         if (path === 'over-cap') {
@@ -342,6 +366,51 @@ describe('audit — unified project audit', () => {
     expect(s.errorCount).toBe(0);
     expect(s.warningCount).toBe(0);
     expect(result.content[0]?.text).toContain('No problems across 4 documents');
+  });
+});
+
+describeEvenOnCI('audit — broken-link suppression', () => {
+  test('a filtered clean audit exposes a content-free suppression marker', async () => {
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl, tmpDir));
+    const result = await getTool().handler({ path: 'suppressed' });
+    const s = result.structuredContent as {
+      brokenLinkSuppression?: { reason: string; count: number };
+    };
+    expect(s.brokenLinkSuppression).toEqual({ reason: 'reserved-log-policy', count: 3 });
+    const text = result.content[0]?.text ?? '';
+    expect(text).toContain('3 broken-link findings withheld by project policy');
+    expect(text).toContain('audit result is filtered');
+    expect(text).toContain('does NOT prove every link resolves');
+    expect(text).toContain('links({ kind: "dead" })');
+    expect(text).toContain('not as a repair queue');
+  });
+
+  test('a suppression this build cannot read reaches structuredContent, not only the text block', async () => {
+    const { server, getTool } = createFakeServer();
+    register(server, makeDeps(baseUrl, tmpDir));
+
+    const clean = await getTool().handler({ path: 'clean' });
+    expect((clean.structuredContent as { warnings?: string[] }).warnings).toBeUndefined();
+
+    const result = await getTool().handler({ path: 'suppressed-malformed' });
+    const s = result.structuredContent as {
+      brokenLinkSuppression?: unknown;
+      warnings?: string[];
+    };
+    expect(s.brokenLinkSuppression).toBeUndefined();
+    expect(s.warnings ?? []).toEqual([expect.stringContaining('in a form this build cannot read')]);
+    expect(s.warnings?.[0]).toContain('does NOT prove every link resolves');
+
+    const text = result.content[0]?.text ?? '';
+    expect(text).not.toContain('undefined');
+    expect(text).toContain('could not fully complete');
+    expect(text).toContain('Audit incomplete');
+    expect(text).toContain('withheld by project policy in a form this build cannot read');
+    expect(text).toContain('does NOT prove every link resolves');
+    expect((text.match(/does NOT prove every link resolves/g) ?? []).length).toBe(1);
+    expect(text).toContain('links({ kind: "dead" })');
+    expect(text).toContain('not as a repair queue');
   });
 });
 

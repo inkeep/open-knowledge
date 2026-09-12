@@ -1,41 +1,22 @@
-/**
- * no-physical-direction-utility — Biome GritQL plugin fixture test.
- *
- * Plugin:  `biome-plugins/no-physical-direction-utility.grit`
- * Fixture: `biome-plugins/__fixtures__/no-physical-direction-utility.fixture.tsx`
- *
- * Per precedent #42 (custom Biome enforcement is GritQL plugins). The rule keeps
- * left-to-right assumptions from hardening into the chrome while right-to-left
- * layout is deferred — the plumbing is inert without an RTL locale, but the rule
- * works every day.
- *
- * The fixture pairs 7 positive cases (plain string, multi-line `cn()`, inset,
- * arbitrary value, `auto`, a `*ClassName` prop, a prefixed negative margin) with
- * 6 negative groups (the logical forms, `inset-x-*`, the `left-1/2` centering
- * anchor, side-free spacing, a side named outside a utility, and well-formed
- * utilities sitting in attributes that are not class props). Exact equality
- * catches a weakened pattern (count drops) and a widened one (a negative starts
- * firing). The rule has a single branch, so a total alone would still pass if one
- * positive went silent while one negative began firing — the flagged-line
- * assertions below close that by naming what must and must not be reported.
- *
- * Negative group 6 exists because every other case clears the rule on its VALUE:
- * remove the name predicate that scopes the rule to class props and the fixture
- * count does not move, so nothing would hold that predicate in place. Those three
- * attributes match the value pattern and are excluded by the name alone.
- */
+/** The `no-physical-direction-utility` oxlint rule fixture test, per precedent #42. */
 
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
+import {
+  oxlintFixtureArgs,
+  parseOxlintDiagnostics,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+  readRuleScope,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/no-physical-direction-utility.fixture.tsx';
-const PLUGIN_REL = './biome-plugins/no-physical-direction-utility.grit';
+const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/no-physical-direction-utility.fixture.tsx';
 
 function checkFixture(): string {
-  const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+  const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
     cwd: REPO_ROOT,
     encoding: 'utf-8',
   });
@@ -49,12 +30,16 @@ function countMatches(output: string, pattern: RegExp): number {
 }
 
 function flaggedSource(output: string): string {
-  return (output.match(/^\s*>\s*\d+ │ .*$/gm) ?? [])
-    .map((line) => line.replace(/^[^│]*│ /, ''))
-    .join('\n');
+  const fixture = readFileSync(join(REPO_ROOT, FIXTURE_REL), 'utf-8').split('\n');
+  const lines = parseOxlintDiagnostics(output)
+    .filter((d) => d.code === 'ok(no-physical-direction-utility)')
+    .map((d) => d.labels?.[0]?.span?.line)
+    .filter((n): n is number => typeof n === 'number');
+  expect(lines.length).toBeGreaterThan(0);
+  return lines.map((n) => fixture.slice(n - 1, n + 2).join('\n')).join('\n');
 }
 
-describe('no-physical-direction-utility GritQL plugin', () => {
+describe('no-physical-direction-utility oxlint rule', () => {
   test('fires on exactly 7 physical direction utilities (and on no negative case)', () => {
     expect(countMatches(checkFixture(), /Physical direction utility/g)).toBe(7);
   });
@@ -96,33 +81,27 @@ describe('no-physical-direction-utility GritQL plugin', () => {
     const output = checkFixture();
     expect(output).toContain('Use the logical equivalent');
     expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('biome-plugins/README.md#no-physical-direction-utilitygrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#no-physical-direction-utility');
   });
 
-  test('plugin is registered as an override scoped to the chrome (not workspace-wide)', () => {
-    const config = readBiomeConfig(REPO_ROOT);
-    const rootPlugins: string[] = config.plugins ?? [];
-    expect(rootPlugins).not.toContain(PLUGIN_REL);
+  test('rule is registered, enabled, and scoped to the chrome', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('no-physical-direction-utility');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/no-physical-direction-utility');
+  });
 
-    const overrides: Array<{ includes?: string[]; plugins?: string[] }> = config.overrides ?? [];
-    const entry = overrides.find((o) => (o.plugins ?? []).includes(PLUGIN_REL));
-    expect(entry).toBeDefined();
-    const includes = entry?.includes ?? [];
-    expect(includes).toContain(FIXTURE_REL);
-    for (const included of [
-      'packages/app/src/**/*.tsx',
-      'packages/desktop/src/**/*.tsx',
-      'packages/plugin/src/**/*.tsx',
-    ]) {
-      expect(includes).toContain(included);
-    }
-    for (const excluded of [
-      '!packages/app/src/editor/**',
-      '!packages/app/src/components/ui/**',
-      '!**/*.test.tsx',
-      '!**/*.dom.test.tsx',
-    ]) {
-      expect(includes).toContain(excluded);
-    }
+  test('its scope table still carries every include and exclude the rule depends on', () => {
+    const scope = readRuleScope(REPO_ROOT, 'no-physical-direction-utility');
+    expect(scope.sort()).toEqual(
+      [
+        'packages/app/src/**/*.tsx',
+        'packages/desktop/src/**/*.tsx',
+        'packages/plugin/src/**/*.tsx',
+        '!packages/app/src/editor/**',
+        '!packages/app/src/components/ui/**',
+        '!**/*.test.tsx',
+        '!**/*.dom.test.tsx',
+        'lint-plugins/ok-rules/__fixtures__/no-physical-direction-utility.fixture.tsx',
+      ].sort(),
+    );
   });
 });

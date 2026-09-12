@@ -792,6 +792,400 @@ test.describe('non-embedded UA', () => {
   });
 });
 
+const PHONE_STANDARD = { width: 393, height: 852 } as const;
+const ROOMY_BELOW_THRESHOLD = { width: 900, height: 900 } as const;
+const LAYOUT_SETTLE_FRAME_BUDGET = 240;
+const RESIDUAL_WORKSPACE_SLACK_PX = 16;
+const HEADER_CONTROL_SELECTOR = 'button,[role="button"],a';
+const REVEALED_CONTROL_SELECTOR =
+  'button,[role="button"],a,[role="menuitem"],[role="menuitemcheckbox"],[role="menuitemradio"],[role="option"]';
+const NAME_CONTAINMENT_MIN_LENGTH = 3;
+
+type HeaderControlProbe = {
+  index: number;
+  key: string;
+  name: string;
+  directlyReachable: boolean;
+  occludedBy: string | null;
+  occluderInTrailingRail: boolean;
+  inTrailingRail: boolean;
+};
+
+type HeaderProbe = {
+  viewportWidth: number;
+  headerWidth: number;
+  navigatorExpanded: boolean;
+  toggle: HeaderControlProbe | null;
+  controls: HeaderControlProbe[];
+};
+
+type ShellGeometry = {
+  viewportWidth: number;
+  workspaceWidth: number;
+  workspaceLeft: number;
+  navigatorWidth: number;
+};
+
+async function waitForShellLayoutSettled(page: Page) {
+  await page.evaluate(
+    (frameBudget) =>
+      new Promise<void>((resolve) => {
+        const sample = () => {
+          const widthOf = (selector: string) =>
+            Math.round(document.querySelector(selector)?.getBoundingClientRect().width ?? 0);
+          return [
+            widthOf('[data-slot="sidebar-inset"]'),
+            widthOf('[data-slot="sidebar-container"]'),
+            widthOf('[data-slot="sidebar-gap"]'),
+            widthOf('header'),
+          ].join(':');
+        };
+        let previous = '';
+        let stableFrames = 0;
+        let frames = 0;
+        const tick = () => {
+          const current = sample();
+          if (current === previous) {
+            stableFrames += 1;
+          } else {
+            stableFrames = 0;
+            previous = current;
+          }
+          frames += 1;
+          if (stableFrames >= 5 || frames >= frameBudget) resolve();
+          else requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+      }),
+    LAYOUT_SETTLE_FRAME_BUDGET,
+  );
+}
+
+async function openFileNavigator(page: Page) {
+  const toggle = page.locator('[data-sidebar="trigger"]');
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await waitForShellLayoutSettled(page);
+}
+
+async function probeHeader(page: Page, controlSelector: string): Promise<HeaderProbe> {
+  return await page.evaluate((selector) => {
+    const nameOf = (el: Element | null) => {
+      if (el == null) return null;
+      const raw = el.getAttribute('aria-label') ?? el.textContent ?? '';
+      const normalized = raw.replace(/\s+/g, ' ').trim();
+      return normalized.length > 0 ? normalized : null;
+    };
+    const keyOf = (el: Element) => {
+      const testId = el.getAttribute('data-testid');
+      if (testId != null && testId.length > 0) return `testid:${testId}`;
+      const label = el.getAttribute('aria-label');
+      if (label != null && label.replace(/\s+/g, ' ').trim().length > 0) {
+        return `aria:${label.replace(/\s+/g, ' ').trim()}`;
+      }
+      const text = nameOf(el);
+      return text == null ? '' : `text:${text}`;
+    };
+    const header = document.querySelector('header');
+    if (header == null) {
+      throw new Error('probeHeader: no <header> in the document, so every probe below is vacuous');
+    }
+    const trailingRail = document.querySelector('[data-editor-header-actions]');
+    if (trailingRail == null) {
+      throw new Error(
+        'probeHeader: [data-editor-header-actions] is missing, so inTrailingRail would be ' +
+          'false for every control and the overflow guards would pass without probing anything',
+      );
+    }
+    const toggleElement = header.querySelector('[data-sidebar="trigger"]');
+    const all = Array.from(header.querySelectorAll(selector));
+    const probeOf = (el: Element, index: number) => {
+      const box = el.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+      const owner = hit?.closest(selector) ?? null;
+      const reachable = owner != null && (owner === el || el.contains(owner) || owner.contains(el));
+      return {
+        index,
+        key: keyOf(el),
+        name: nameOf(el) ?? '',
+        directlyReachable: reachable,
+        occludedBy: reachable ? null : (nameOf(owner) ?? hit?.tagName.toLowerCase() ?? null),
+        occluderInTrailingRail: !reachable && owner != null && trailingRail.contains(owner),
+        inTrailingRail: trailingRail.contains(el),
+      };
+    };
+    const rendered = all
+      .map((el, index) => ({ el, index }))
+      .filter(({ el }) => {
+        const box = el.getBoundingClientRect();
+        return box.width > 0 && box.height > 0;
+      });
+    const toggleEntry = rendered.find(({ el }) => el === toggleElement) ?? null;
+    return {
+      viewportWidth: window.innerWidth,
+      headerWidth: Math.round(header.getBoundingClientRect().width),
+      navigatorExpanded: toggleElement?.getAttribute('aria-expanded') === 'true',
+      toggle: toggleEntry == null ? null : probeOf(toggleEntry.el, toggleEntry.index),
+      controls: rendered.map(({ el, index }) => probeOf(el, index)),
+    };
+  }, controlSelector);
+}
+
+async function measureShellGeometry(page: Page): Promise<ShellGeometry> {
+  return await page.evaluate(() => {
+    const rectOf = (selector: string) =>
+      document.querySelector(selector)?.getBoundingClientRect() ?? null;
+    const workspace = rectOf('[data-slot="sidebar-inset"]');
+    if (workspace == null) {
+      throw new Error(
+        'measureShellGeometry: [data-slot="sidebar-inset"] is missing, so a zero substituted ' +
+          'here would read as overlay geometry rather than as a stale selector',
+      );
+    }
+    const container = rectOf('[data-slot="sidebar-container"]');
+    const gap = rectOf('[data-slot="sidebar-gap"]');
+    if (container == null && gap == null) {
+      throw new Error(
+        'measureShellGeometry: neither [data-slot="sidebar-container"] nor ' +
+          '[data-slot="sidebar-gap"] is present, so navigatorWidth would be a fabricated zero',
+      );
+    }
+    return {
+      viewportWidth: window.innerWidth,
+      workspaceWidth: Math.round(workspace.width),
+      workspaceLeft: Math.round(workspace.x),
+      navigatorWidth: Math.round(Math.max(container?.width ?? 0, gap?.width ?? 0)),
+    };
+  });
+}
+
+async function visibleControlKeys(page: Page, selector: string): Promise<string[]> {
+  return await page.evaluate(
+    (sel) =>
+      Array.from(document.querySelectorAll(sel))
+        .filter((el) => {
+          const box = el.getBoundingClientRect();
+          return box.width > 0 && box.height > 0;
+        })
+        .map((el) => {
+          const testId = el.getAttribute('data-testid');
+          if (testId != null && testId.length > 0) return `testid:${testId}`;
+          const label = (el.getAttribute('aria-label') ?? '').replace(/\s+/g, ' ').trim();
+          if (label.length > 0) return `aria:${label}`;
+          const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+          return text.length > 0 ? `text:${text}` : '';
+        })
+        .filter((key) => key.length > 0),
+    selector,
+  );
+}
+
+function keysReferToSameAction(a: string, b: string) {
+  if (a === b) return true;
+  if (!a.startsWith('text:') || !b.startsWith('text:')) return false;
+  const left = a.slice('text:'.length).toLowerCase();
+  const right = b.slice('text:'.length).toLowerCase();
+  if (left.length < NAME_CONTAINMENT_MIN_LENGTH || right.length < NAME_CONTAINMENT_MIN_LENGTH) {
+    return false;
+  }
+  return left.includes(right) || right.includes(left);
+}
+
+function actionsMissingFrom(available: string[], required: string[]) {
+  return required.filter(
+    (key) => !available.some((candidate) => keysReferToSameAction(candidate, key)),
+  );
+}
+
+test.describe('phone-width header layout — controls must not occlude one another', () => {
+  test.use({ userAgent: CHROME_VANILLA, viewport: PHONE_STANDARD });
+
+  test('MOBILE-HEADER-1: 393x852 — the file-navigator toggle stays hit-testable with the navigator open', async ({
+    page,
+    api,
+  }) => {
+    await seedDoc(api, 'mobile-header-toggle');
+    await page.setViewportSize(PHONE_STANDARD);
+    await page.goto('/#/mobile-header-toggle');
+    await waitForActiveProviderSynced(page);
+    await openFileNavigator(page);
+
+    const probe = await probeHeader(page, HEADER_CONTROL_SELECTOR);
+    expect(probe.toggle, 'the file-navigator toggle must be rendered in the header').not.toBeNull();
+    expect(
+      probe.toggle?.occluderInTrailingRail ?? false,
+      `393x852 (header ${probe.headerWidth}px): the file-navigator toggle's own centre is owned ` +
+        `by trailing header action "${probe.toggle?.occludedBy ?? ''}"`,
+    ).toBe(false);
+    expect(
+      probe.toggle?.directlyReachable ?? false,
+      `393x852 (header ${probe.headerWidth}px): the file-navigator toggle's own centre resolves ` +
+        `to "${probe.toggle?.occludedBy ?? ''}" instead of the toggle`,
+    ).toBe(true);
+
+    const toggle = page.locator('[data-sidebar="trigger"]');
+    await toggle.click({ timeout: 5_000 });
+    await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  test('MOBILE-HEADER-2: 393x852 — no header action is lost when the header cannot fit both rails', async ({
+    page,
+    api,
+  }) => {
+    await seedDoc(api, 'mobile-header-overflow');
+    await page.setViewportSize(ROOMY_BELOW_THRESHOLD);
+    await page.goto('/#/mobile-header-overflow');
+    await waitForActiveProviderSynced(page);
+    await openFileNavigator(page);
+
+    const roomy = await probeHeader(page, HEADER_CONTROL_SELECTOR);
+    const roomyTrailing = roomy.controls.filter((control) => control.inTrailingRail);
+    expect(
+      roomyTrailing.filter((control) => control.key.length === 0).map((control) => control.index),
+      'baseline: an unnamed trailing control can never be matched back, so it would sit in ' +
+        '`missing` forever and read as a flake rather than as the a11y defect it is',
+    ).toEqual([]);
+    const roomyActions = roomyTrailing.map((control) => control.key);
+    expect(
+      roomyActions.length,
+      'baseline: the roomy header must expose trailing actions',
+    ).toBeGreaterThan(0);
+
+    await page.setViewportSize(PHONE_STANDARD);
+    await waitForShellLayoutSettled(page);
+    const cramped = await probeHeader(page, HEADER_CONTROL_SELECTOR);
+    expect(cramped.navigatorExpanded, 'the navigator must still be open after the resize').toBe(
+      true,
+    );
+    await expect(
+      page.getByTestId('header-overflow-actions-trigger'),
+      `393x852 (header ${cramped.headerWidth}px): the trailing rail did not collapse, so this ` +
+        `test never exercised the overflow recovery path it exists to guard`,
+    ).toBeVisible();
+
+    const directlyReachable = cramped.controls
+      .filter((control) => control.directlyReachable)
+      .map((control) => control.key);
+    let missing = actionsMissingFrom(directlyReachable, roomyActions);
+
+    const before = await visibleControlKeys(page, REVEALED_CONTROL_SELECTOR);
+    await page.getByTestId('header-overflow-actions-trigger').click({ timeout: 5_000 });
+    const after = await visibleControlKeys(page, REVEALED_CONTROL_SELECTOR);
+    const revealed = after.filter(
+      (key) => !before.some((existing) => keysReferToSameAction(existing, key)),
+    );
+    expect(
+      revealed.length,
+      `393x852 (header ${cramped.headerWidth}px): opening the overflow trigger revealed nothing, ` +
+        `so the recovery affordance is empty`,
+    ).toBeGreaterThan(0);
+    missing = actionsMissingFrom(revealed, missing);
+    await page.keyboard.press('Escape');
+    await waitForShellLayoutSettled(page);
+
+    expect(
+      missing,
+      `393x852 (header ${cramped.headerWidth}px): header actions available at 900px are neither ` +
+        `directly hit-testable nor reachable through an overflow affordance. ` +
+        `Directly reachable now: [${directlyReachable.join(', ')}]`,
+    ).toEqual([]);
+  });
+
+  test('MOBILE-HEADER-3 (control): 900x900 — a header with room for both rails collapses nothing', async ({
+    page,
+    api,
+  }) => {
+    await seedDoc(api, 'mobile-header-roomy');
+    await page.setViewportSize(ROOMY_BELOW_THRESHOLD);
+    await page.goto('/#/mobile-header-roomy');
+    await waitForActiveProviderSynced(page);
+    await waitForShellLayoutSettled(page);
+
+    const collapsed = await probeHeader(page, HEADER_CONTROL_SELECTOR);
+    const collapsedActions = collapsed.controls
+      .filter((control) => control.inTrailingRail)
+      .map((control) => control.key)
+      .sort();
+    expect(
+      collapsedActions.length,
+      'baseline: the roomy header must expose trailing actions',
+    ).toBeGreaterThan(0);
+    await expect(
+      page.getByTestId('header-overflow-actions-trigger'),
+      `900x900 (header ${collapsed.headerWidth}px, navigator closed): there is room for both ` +
+        `rails, so nothing may collapse behind an overflow affordance`,
+    ).toHaveCount(0);
+
+    await openFileNavigator(page);
+    const expanded = await probeHeader(page, HEADER_CONTROL_SELECTOR);
+    const expandedActions = expanded.controls
+      .filter((control) => control.inTrailingRail)
+      .map((control) => control.key)
+      .sort();
+
+    expect(
+      expandedActions,
+      `900x900 (header ${expanded.headerWidth}px): opening the navigator must not move trailing ` +
+        `header actions behind an overflow affordance while there is room for both rails`,
+    ).toEqual(collapsedActions);
+    expect(
+      expanded.controls
+        .filter((control) => !control.directlyReachable)
+        .map((control) => control.name),
+      `900x900 (header ${expanded.headerWidth}px): every header control must be hit-testable`,
+    ).toEqual([]);
+    await expect(
+      page.getByTestId('header-overflow-actions-trigger'),
+      `900x900 (header ${expanded.headerWidth}px, navigator open): there is room for both rails, ` +
+        `so nothing may collapse behind an overflow affordance`,
+    ).toHaveCount(0);
+    expect(
+      await page.evaluate(() => {
+        const host = document.querySelector('[data-editor-header-tabs]');
+        if (host == null) throw new Error('[data-editor-header-tabs] is missing from the header');
+        return getComputedStyle(host).visibility;
+      }),
+      `900x900 (header ${expanded.headerWidth}px): the tab strip has room for both header ` +
+        `reservations here, so it must still be painted`,
+    ).not.toBe('hidden');
+  });
+});
+
+test.describe('phone-width shell geometry — characterization of the shipped responsive model', () => {
+  test.use({ userAgent: CHROME_VANILLA, viewport: PHONE_STANDARD });
+
+  test('MOBILE-PUSH-1: 393x852 — the open navigator displaces the workspace in flow (spec JR2)', async ({
+    page,
+    api,
+  }) => {
+    await seedDoc(api, 'mobile-push-393');
+    await page.setViewportSize(PHONE_STANDARD);
+    await page.goto('/#/mobile-push-393');
+    await waitForActiveProviderSynced(page);
+    await openFileNavigator(page);
+
+    const geometry = await measureShellGeometry(page);
+    expect(geometry.navigatorWidth, 'the open navigator occupies width').toBeGreaterThan(0);
+    expect(
+      geometry.workspaceLeft,
+      `393x852: the workspace starts at x=${geometry.workspaceLeft}, so the navigator ` +
+        `(${geometry.navigatorWidth}px) no longer displaces it. Overlay geometry is deferred ` +
+        `scope, not this fix — update this characterization deliberately, with a spec.`,
+    ).toBeGreaterThanOrEqual(geometry.navigatorWidth - 1);
+    expect(
+      geometry.workspaceWidth,
+      `393x852: the workspace must keep the residual width beside the navigator`,
+    ).toBeGreaterThanOrEqual(
+      geometry.viewportWidth - geometry.navigatorWidth - RESIDUAL_WORKSPACE_SLACK_PX,
+    );
+    expect(
+      geometry.workspaceLeft + geometry.workspaceWidth,
+      `393x852: the workspace must not extend past the viewport`,
+    ).toBeLessThanOrEqual(geometry.viewportWidth + 1);
+  });
+});
+
 test.describe('Cursor UA (embedded)', () => {
   test.use({ userAgent: CURSOR_UA, viewport: WIDE });
 

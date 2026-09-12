@@ -89,7 +89,11 @@ export class MaintenanceCoordinator {
   private lastConsolidationAt = 0;
   private lastGcLatch = false;
 
-  constructor(private readonly deps: MaintenanceCoordinatorDeps) {}
+  private readonly deps: MaintenanceCoordinatorDeps;
+
+  constructor(deps: MaintenanceCoordinatorDeps) {
+    this.deps = deps;
+  }
 
   get isRunning(): boolean {
     return this.running;

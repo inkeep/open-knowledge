@@ -93,9 +93,14 @@ export function assertSingleRouterOwnership(
   }
 }
 
+function isApiPath(url: string | undefined): boolean {
+  return (url?.split('?')[0] ?? '').startsWith('/api/');
+}
+
 export interface CreateHttpAppOptions {
   health?: HealthProvider;
   legacyDispatch: (req: IncomingMessage, res: ServerResponse) => void;
+  contentDispatch: (req: IncomingMessage, res: ServerResponse) => void;
   nativeApi?: NativeApiHandle;
   mcpDispatch?: McpDispatch;
   ingressPolicy?: IngressPolicy;
@@ -166,6 +171,14 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
 
   const ingressPolicy = opts.ingressPolicy ?? buildIngressPolicy({});
 
+  const dispatchFallback = (req: IncomingMessage, res: ServerResponse): void => {
+    if (!isApiPath(req.url)) {
+      opts.contentDispatch(req, res);
+      return;
+    }
+    opts.legacyDispatch(req, res);
+  };
+
   const mcpDispatch = opts.mcpDispatch;
   if (mcpDispatch !== undefined) {
     app.all('/mcp', (c) => {
@@ -173,7 +186,7 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
       const res = c.env.outgoing;
       const url = req.url?.split('?')[0];
       if (url !== '/mcp') {
-        opts.legacyDispatch(req, res);
+        dispatchFallback(req, res);
         return RESPONSE_ALREADY_SENT;
       }
       if (!admitRequestSurface(req, res, ingressPolicy, 'native-mcp-surface', opts.log)) {
@@ -195,7 +208,7 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
         }
         try {
           const handled = await nativeApi.dispatch(req, res);
-          if (!handled) opts.legacyDispatch(req, res);
+          if (!handled) dispatchFallback(req, res);
         } catch (err) {
           opts.log.error({ err }, 'Unhandled onRequest error');
           if (!res.writableEnded && !res.headersSent) {
@@ -219,7 +232,7 @@ export function createHttpApp(opts: CreateHttpAppOptions): HttpAppHandle {
   }
 
   app.all('*', (c) => {
-    opts.legacyDispatch(c.env.incoming, c.env.outgoing);
+    dispatchFallback(c.env.incoming, c.env.outgoing);
     return RESPONSE_ALREADY_SENT;
   });
 

@@ -119,7 +119,9 @@ describe('parsePackagePatterns / expandPackagePattern', () => {
   const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
   it('reads the block the real workspace uses', () => {
-    expect(parsePackagePatterns("packages:\n  - 'packages/*'\n  - 'docs'\n\noverrides:\n  a: 1.0.0\n")).toEqual({
+    expect(
+      parsePackagePatterns("packages:\n  - 'packages/*'\n  - 'docs'\n\noverrides:\n  a: 1.0.0\n"),
+    ).toEqual({
       patterns: ['packages/*', 'docs'],
       unparsed: [],
     });
@@ -128,15 +130,24 @@ describe('parsePackagePatterns / expandPackagePattern', () => {
   it('reads the REAL block, not just a synthetic one', () => {
     const yamlText = fs.readFileSync(path.join(root, 'pnpm-workspace.yaml'), 'utf8');
     const { patterns, unparsed } = parsePackagePatterns(yamlText);
+    const afterHeader = yamlText.split('\n').slice(yamlText.split('\n').indexOf('packages:') + 1);
+    const blockEnd = afterHeader.findIndex((line) => line.trim() !== '' && !/^\s/.test(line));
+    const listedEntries = afterHeader
+      .slice(0, blockEnd === -1 ? afterHeader.length : blockEnd)
+      .filter((line) => line.trim().startsWith('-'));
+
     expect(unparsed).toEqual([]);
-    expect(patterns).toEqual(['packages/*', 'docs']);
+    expect(patterns).toEqual(['packages/*', 'docs', 'packages/md-conformance/md-audit']);
+    expect(patterns).toHaveLength(listedEntries.length);
     expect(expandPackagePattern(root, 'packages/*')?.length).toBe(
       fs.readdirSync(path.join(root, 'packages')).length,
     );
   });
 
   it('keeps a pattern that grew a trailing comment', () => {
-    expect(parsePackagePatterns("packages:\n  - 'packages/*' # both roots\n").patterns).toEqual(['packages/*']);
+    expect(parsePackagePatterns("packages:\n  - 'packages/*' # both roots\n").patterns).toEqual([
+      'packages/*',
+    ]);
   });
 
   it('reports a list entry it cannot read instead of dropping it', () => {
@@ -171,7 +182,16 @@ describe('rangeFloor', () => {
   });
 
   it('declines rather than guesses on anything else', () => {
-    for (const range of ['*', 'latest', '>1.0.0 <2.0.0', '1.x', '^1.2', 'workspace:*', '', '^18 || ^19']) {
+    for (const range of [
+      '*',
+      'latest',
+      '>1.0.0 <2.0.0',
+      '1.x',
+      '^1.2',
+      'workspace:*',
+      '',
+      '^18 || ^19',
+    ]) {
       expect(rangeFloor(range)).toBeNull();
     }
   });
@@ -225,7 +245,11 @@ describe('findFloorViolations', () => {
   });
 
   it('reads peerDependencies, the only place React libraries declare a floor', () => {
-    const lib = { name: 'some-react-lib', version: '1.0.0', peerDependencies: { react: '^19.3.0' } };
+    const lib = {
+      name: 'some-react-lib',
+      version: '1.0.0',
+      peerDependencies: { react: '^19.3.0' },
+    };
     const found = findFloorViolations(new Map([['react', '19.2.5']]), [lib]);
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ field: 'peerDependencies', dep: 'react', floor: '19.3.0' });
@@ -283,7 +307,9 @@ describe('findFloorViolations', () => {
   });
 
   it('reports each dependant once even when the manifest is seen repeatedly', () => {
-    expect(findFloorViolations(new Map([['@codemirror/state', '6.6.0']]), [view, view, view])).toHaveLength(1);
+    expect(
+      findFloorViolations(new Map([['@codemirror/state', '6.6.0']]), [view, view, view]),
+    ).toHaveLength(1);
   });
 
   it('names a versionless manifest without an undefined in it', () => {
@@ -296,14 +322,20 @@ describe('findFloorViolations', () => {
   });
 
   it('tolerates manifests with no dependency fields', () => {
-    expect(findFloorViolations(new Map([['a', '1.0.0']]), [{ name: 'x', version: '1' }, null])).toEqual([]);
+    expect(
+      findFloorViolations(new Map([['a', '1.0.0']]), [{ name: 'x', version: '1' }, null]),
+    ).toEqual([]);
   });
 });
 
 describe('collectViolations', () => {
   it('gives the workspace bucket the wider field list and the installed bucket the narrower one', () => {
     const third = { name: 'third-party', version: '1.0.0', devDependencies: { pinned: '^2.0.0' } };
-    const member = { name: '@inkeep/member', version: '0.1.0', devDependencies: { pinned: '^2.0.0' } };
+    const member = {
+      name: '@inkeep/member',
+      version: '0.1.0',
+      devDependencies: { pinned: '^2.0.0' },
+    };
     const found = collectViolations(new Map([['pinned', '1.0.0']]), {
       installed: [third],
       workspace: [member],
@@ -330,7 +362,9 @@ describe('workspaceManifests', () => {
   it('reports an empty corpus even though the root always parses', () => {
     const empty = [];
     const yielded = [
-      ...workspaceManifests(root, 'packages: # roots\n  - undetected\n', refuse, (p) => empty.push(p)),
+      ...workspaceManifests(root, 'packages: # roots\n  - undetected\n', refuse, (p) =>
+        empty.push(p),
+      ),
     ];
     expect(yielded.map((m) => m.name)).toEqual(['open-knowledge']);
     expect(empty).toEqual(['the packages: block itself']);
@@ -341,7 +375,9 @@ describe('workspaceManifests', () => {
     try {
       fs.mkdirSync(path.join(tmp, 'pkgs', 'half-deleted'), { recursive: true });
       const empty = [];
-      const yielded = [...workspaceManifests(tmp, "packages:\n  - 'pkgs/*'\n", refuse, (p) => empty.push(p))];
+      const yielded = [
+        ...workspaceManifests(tmp, "packages:\n  - 'pkgs/*'\n", refuse, (p) => empty.push(p)),
+      ];
       expect(empty).toEqual(['pkgs/*']);
       expect(yielded).toEqual([]);
     } finally {
@@ -352,7 +388,9 @@ describe('workspaceManifests', () => {
   it('names the pattern that went empty, not just the total', () => {
     const empty = [];
     const yaml = "packages:\n  - 'workspaces/*'\n  - 'docs'\n";
-    const names = [...workspaceManifests(root, yaml, refuse, (p) => empty.push(p))].map((m) => m.name);
+    const names = [...workspaceManifests(root, yaml, refuse, (p) => empty.push(p))].map(
+      (m) => m.name,
+    );
     expect(empty).toEqual(['workspaces/*']);
     expect(names).toContain('@inkeep/open-knowledge-docs');
   });
@@ -365,5 +403,4 @@ describe('wiring', () => {
     const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
     expect(pkg.scripts['check:drift:guards']).toContain('node scripts/check-override-floors.mjs');
   });
-
 });

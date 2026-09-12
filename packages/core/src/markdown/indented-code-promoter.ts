@@ -74,7 +74,7 @@ export const indentedCodePromoterPlugin: Plugin<[], Root> = function indentedCod
     if (!source) return;
 
     visit(tree, 'paragraph', (node, index, parent) => {
-      if (!parent || parent.type !== 'root' || index == null) return;
+      if (parent?.type !== 'root' || index == null) return;
       const prev = parent.children[index - 1];
       if (prev && prev.type === 'list') return;
       const promoted = promoteParagraphToCode(node, source);

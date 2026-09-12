@@ -1,6 +1,10 @@
 import { existsSync } from 'node:fs';
 import { relative, resolve, sep } from 'node:path';
-import { RENAMED_PACK_SKILLS, type SkillReimportSuccessSchema } from '@inkeep/open-knowledge-core';
+import {
+  pathspecArgs,
+  RENAMED_PACK_SKILLS,
+  type SkillReimportSuccessSchema,
+} from '@inkeep/open-knowledge-core';
 import {
   acquiredBundleTooLarge,
   packMarkerOf,
@@ -47,7 +51,7 @@ export interface SkillReimportDeps {
   ) => { root: string; dirRel: string; realDir: string | null };
   parseFrontmatterDoc: (raw: string) => { frontmatter: Record<string, unknown>; body: string };
   attributeOkArtifactWrite: (actor: ActorIdentity, keyPath: string, summary: string) => void;
-  commitOkArtifactWrite: (context: string) => Promise<void>;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   shadowHeadSha: (writerId?: string, verifyPathRel?: string) => Promise<string | undefined>;
   artifactWriterId: (actor: ActorIdentity) => string | undefined;
   skillArtifactKey: (name: string) => string;
@@ -198,7 +202,10 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
           : null,
       });
       if (upToDate) {
-        return { ok: true, body: { name, updated: false, source: entry.source, warnings: [] } };
+        return {
+          ok: true,
+          body: { name, updated: false, source: entry.source, warnings: [], warningCodes: [] },
+        };
       }
 
       const acquiredDoc = deps.parseFrontmatterDoc(acquired.skillMd);
@@ -211,7 +218,7 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
           try {
             const pg = simpleGit({ baseDir: deps.projectDir, timeout: { block: 15_000 } });
             const rel = relative(deps.projectDir, resolve(skillsRoot, name)).split(sep).join('/');
-            gitTracked = (await pg.raw('ls-files', '--', rel)).trim().length > 0;
+            gitTracked = (await pg.raw('ls-files', ...pathspecArgs([rel]))).trim().length > 0;
           } catch {
             gitTracked = undefined;
           }
@@ -226,6 +233,7 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
             upstreamBody: skillBody,
             ...(gitTracked !== undefined ? { gitTracked } : {}),
             warnings: [],
+            warningCodes: [],
           },
         };
       }
@@ -330,7 +338,16 @@ export function createSkillReimportService(deps: SkillReimportDeps): SkillReimpo
       }
 
       deps.signalFiles();
-      return { ok: true, body: { name, updated: true, source: entry.source, warnings } };
+      return {
+        ok: true,
+        body: {
+          name,
+          updated: true,
+          source: entry.source,
+          warnings,
+          warningCodes: wr.warningCodes,
+        },
+      };
     },
   };
 }

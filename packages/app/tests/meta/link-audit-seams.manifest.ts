@@ -120,6 +120,7 @@ export const LINK_AUDIT_SEAMS: readonly LinkAuditSeam[] = [
       'packages/app/src/editor/source-lint/local-target-diagnostics.ts',
       'packages/app/src/editor/extensions/link-resolution.ts',
       'packages/app/src/editor/validation-audit-client.ts',
+      'packages/app/src/components/settings/ContentRulesSection.tsx',
     ],
     tests: [
       {
@@ -136,6 +137,45 @@ export const LINK_AUDIT_SEAMS: readonly LinkAuditSeam[] = [
       },
     ],
     requiredTiers: ['dom', 'integration', 'browser-e2e'],
+  },
+  {
+    id: 'reserved-log-advisory-policy',
+    priority: 'P0',
+    owner: 'core reserved identity + server link-advisory policy',
+    failureClass:
+      'the reserved change-history log is suppressed inconsistently, case-folded onto ordinary documents, or left stale after a policy change',
+    modules: [
+      'packages/core/src/constants/reserved-docs.ts',
+      'packages/server/src/link-advisory-policy.ts',
+      'packages/server/src/lint/validation-audit.ts',
+      'packages/server/src/lint/audit-generation.ts',
+      'packages/server/src/api-extension.ts',
+      'packages/server/src/mcp/tools/advisory-warnings.ts',
+      'packages/app/src/editor/validation-audit-client.ts',
+      'packages/app/src/components/settings/ContentRulesSection.tsx',
+    ],
+    tests: [
+      { path: 'packages/core/src/constants/reserved-docs.test.ts', tier: 'unit' },
+      { path: 'packages/server/src/lint/validation-audit.test.ts', tier: 'unit' },
+      { path: 'packages/server/src/lint/audit-generation.test.ts', tier: 'unit' },
+      { path: 'packages/server/src/mcp/tools/advisory-warnings.test.ts', tier: 'unit' },
+      { path: 'packages/app/tests/integration/audit-link-policy.test.ts', tier: 'integration' },
+      { path: 'packages/server/src/api-write-link-policy.test.ts', tier: 'integration' },
+      {
+        path: 'packages/server/src/mcp/tools/write-link-suppression.test.ts',
+        tier: 'integration',
+      },
+      { path: 'packages/app/src/editor/validation-audit-client.dom.test.tsx', tier: 'dom' },
+      {
+        path: 'packages/app/src/components/settings/ContentRulesSection.dom.test.tsx',
+        tier: 'dom',
+      },
+      {
+        path: 'packages/app/tests/stress/unified-problems.e2e.ts',
+        tier: 'browser-e2e',
+      },
+    ],
+    requiredTiers: ['unit', 'dom', 'integration', 'browser-e2e'],
   },
   {
     id: 'image-error-state-rendering',
@@ -182,6 +222,23 @@ export const LINK_AUDIT_COMPOSITION_ROOTS: readonly LinkAuditCompositionRoot[] =
   {
     path: 'packages/app/src/editor/SourceEditor.tsx',
     requiredText: 'createLocalTargetDiagnosticsExtension(docName)',
+  },
+  {
+    path: 'packages/server/src/lint/validation-audit.ts',
+    requiredText: 'shouldSuppressLogLinkAdvisories(source, suppressLogAdvisories)',
+  },
+  {
+    path: 'packages/server/src/http/lint-routes.ts',
+    requiredText: 'const linkPolicy = getLinkAdvisoryPolicy()',
+    maskingText: 'suppressLogLinkAdvisories: true',
+  },
+  {
+    path: 'packages/server/src/api-extension.ts',
+    requiredText: 'const linkPolicy = getLinkAdvisoryPolicy()',
+  },
+  {
+    path: 'packages/server/src/api-extension.ts',
+    requiredText: 'linkPolicy.suppressLogLinkAdvisories,',
   },
   {
     path: 'packages/app/src/editor/TiptapEditor.tsx',

@@ -95,22 +95,22 @@ describe('ContextMenu runtime class contracts', () => {
     }
   });
 
-  test.each([
-    'context-menu-content',
-    'context-menu-sub-content',
-  ] as const)('%s carries keyframe motion and reduced-motion opt-in at runtime', async (slot) => {
-    await renderContextMenu();
+  test.each(['context-menu-content', 'context-menu-sub-content'] as const)(
+    '%s carries keyframe motion and reduced-motion opt-in at runtime',
+    async (slot) => {
+      await renderContextMenu();
 
-    const surface = document.querySelector(`[data-slot="${slot}"]`);
-    expect(surface).toBeTruthy();
-    const className = surface?.getAttribute('class') ?? '';
+      const surface = document.querySelector(`[data-slot="${slot}"]`);
+      expect(surface).toBeTruthy();
+      const className = surface?.getAttribute('class') ?? '';
 
-    expectVisualClassTokens(className, [
-      ...UPSTREAM_MOTION_TOKENS,
-      'origin-(--radix-context-menu-content-transform-origin)',
-      ...A11Y_OPT_IN,
-    ]);
-  });
+      expectVisualClassTokens(className, [
+        ...UPSTREAM_MOTION_TOKENS,
+        'origin-(--radix-context-menu-content-transform-origin)',
+        ...A11Y_OPT_IN,
+      ]);
+    },
+  );
 
   test('subtrigger keeps its open-state highlight classes at runtime', async () => {
     await renderContextMenu();

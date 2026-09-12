@@ -50,11 +50,12 @@ describe('shipped skills — cross-skill reference graph', () => {
     expect(edges.length).toBeGreaterThan(0);
   });
 
-  test.each(
-    packSkills.map((f) => [f.slice(SKILLS_ROOT.length + 1), f] as const),
-  )('pack skill %s routes to the platform skill with /open-knowledge', (_label, file) => {
-    expect(extractSkillRefs(body(file))).toContain(PLATFORM_SKILL);
-  });
+  test.each(packSkills.map((f) => [f.slice(SKILLS_ROOT.length + 1), f] as const))(
+    'pack skill %s routes to the platform skill with /open-knowledge',
+    (_label, file) => {
+      expect(extractSkillRefs(body(file))).toContain(PLATFORM_SKILL);
+    },
+  );
 
   test('a pack orientation skill routes to each of its member skills', () => {
     const missing: string[] = [];

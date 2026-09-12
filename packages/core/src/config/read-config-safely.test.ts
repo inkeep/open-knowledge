@@ -1,11 +1,11 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from 'vitest';
 import { stringify } from 'yaml';
 import { resolveThemePlugin } from '../theme/theme-plugins.ts';
 import { isKnownConfigError } from './errors.ts';
-import { readConfigSafely } from './read-config-safely.ts';
+import { type ReadConfigSafelyResult, readConfigSafely } from './read-config-safely.ts';
 import { REMOVED_KEYS } from './removed-keys.ts';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -46,6 +46,12 @@ afterEach(() => {
 });
 
 describe('readConfigSafely', () => {
+  test('successful reads expose only recovered diagnostic codes', () => {
+    expectTypeOf<
+      Extract<ReadConfigSafelyResult, { valid: true }>['diagnostics'][number]['code']
+    >().toEqualTypeOf<'REMOVED_KEY' | 'VALUE_FALLBACK'>();
+  });
+
   test('missing file → valid=true, value is schema defaults', () => {
     const result = readConfigSafely({ absPath: resolve(testDir, 'absent.yml') });
     expect(result.valid).toBe(true);
@@ -66,6 +72,128 @@ describe('readConfigSafely', () => {
       expect(result.value.content.dir).toBe('docs');
       expect(result.source).toBe(path);
     }
+  });
+
+  test.each([
+    ['maxBatchSize', 2_049, 96, 2_048],
+    ['maxBatchChars', 16_384_001, 96_000, 16_384_000],
+    ['docTimeoutMs', 2_147_483_648, 30_000, 600_000],
+  ] as const)(
+    'invalid %s uses its default without discarding other settings',
+    (field, invalid, fallback, maximum) => {
+      const path = resolve(testDir, 'transport.yml');
+      const configured = {
+        autoSync: { mode: 'follow', pullIntervalSeconds: 45, pushIntervalSeconds: 90 },
+        linkPreviews: { enabled: false },
+        search: {
+          semantic: {
+            enabled: true,
+            baseUrl: 'http://localhost:11434/v1',
+            model: 'nomic-embed-text',
+            maxBatchSize: 2,
+            maxBatchChars: 16_000,
+            docTimeoutMs: 120_000,
+            [field]: invalid,
+          },
+        },
+      };
+      const source = stringify(configured);
+      writeFileSync(path, source, 'utf-8');
+
+      const warnings: string[] = [];
+      const result = readConfigSafely({ absPath: path, warn: (message) => warnings.push(message) });
+
+      expect(result.valid).toBe(true);
+      expect(result.value.autoSync).toMatchObject(configured.autoSync);
+      expect(result.value.linkPreviews).toEqual(configured.linkPreviews);
+      expect(result.value.search.semantic).toMatchObject({
+        ...configured.search.semantic,
+        [field]: fallback,
+      });
+      expect(readFileSync(path, 'utf-8')).toBe(source);
+      const message = `Expected an integer between 1 and ${maximum}; using default ${fallback}.`;
+      expect(result.diagnostics).toMatchObject([
+        {
+          code: 'VALUE_FALLBACK',
+          issues: [
+            {
+              path: ['search', 'semantic', field],
+              message,
+              source: { file: path, line: expect.any(Number), column: expect.any(Number) },
+            },
+          ],
+        },
+      ]);
+      expect(warnings).toEqual([]);
+    },
+  );
+
+  test('repeated reads report recovered leaves without warnings or raw values', () => {
+    const path = resolve(testDir, 'fallbacks.yml');
+    const source =
+      'search:\n  semantic:\n    maxBatchSize: PRIVATE_INVALID_VALUE\n    docTimeoutMs: null\n';
+    writeFileSync(path, source, 'utf-8');
+    const warnings: string[] = [];
+
+    const result = readConfigSafely({ absPath: path, warn: (message) => warnings.push(message) });
+
+    expect(result.valid).toBe(true);
+    expect(result.diagnostics).toMatchObject([
+      {
+        code: 'VALUE_FALLBACK',
+        issues: [
+          {
+            path: ['search', 'semantic', 'maxBatchSize'],
+            source: { file: path, line: 3, column: 19 },
+          },
+          {
+            path: ['search', 'semantic', 'docTimeoutMs'],
+            source: { file: path, line: 4, column: 19 },
+          },
+        ],
+      },
+    ]);
+    expect(readConfigSafely({ absPath: path, warn: (message) => warnings.push(message) })).toEqual(
+      result,
+    );
+    expect(warnings).toEqual([]);
+    expect(JSON.stringify(result.diagnostics)).not.toContain('PRIVATE_INVALID_VALUE');
+    expect(result.diagnostics).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ code: 'SCHEMA_INVALID' })]),
+    );
+    expect(readFileSync(path, 'utf-8')).toBe(source);
+  });
+
+  test.each([
+    ['absent', 'search:\n  semantic:\n    enabled: true\n'],
+    [
+      'defaults',
+      'search:\n  semantic:\n    maxBatchSize: 96\n    maxBatchChars: 96000\n    docTimeoutMs: 30000\n',
+    ],
+    [
+      'minimums',
+      'search:\n  semantic:\n    maxBatchSize: 1\n    maxBatchChars: 1\n    docTimeoutMs: 1\n',
+    ],
+    [
+      'maximums',
+      'search:\n  semantic:\n    maxBatchSize: 2048\n    maxBatchChars: 16384000\n    docTimeoutMs: 600000\n',
+    ],
+    ['scalar alias', 'batch: &batch 2\nsearch:\n  semantic:\n    maxBatchSize: *batch\n'],
+    [
+      'mapping alias',
+      'tuning: &tuning\n  maxBatchSize: 2\n  docTimeoutMs: 120000\nsearch:\n  semantic: *tuning\n',
+    ],
+  ])('valid transport values (%s) produce no fallback diagnostics', (_name, source) => {
+    const path = resolve(testDir, 'valid-transport.yml');
+    writeFileSync(path, source, 'utf-8');
+    const warnings: string[] = [];
+
+    const result = readConfigSafely({ absPath: path, warn: (message) => warnings.push(message) });
+
+    expect(result.valid).toBe(true);
+    expect(result.diagnostics).toEqual([]);
+    expect(warnings).toEqual([]);
+    expect(readFileSync(path, 'utf-8')).toBe(source);
   });
 
   test('malformed YAML → valid=false, error.code=YAML_PARSE, file sidelined, value is defaults', () => {

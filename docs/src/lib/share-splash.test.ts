@@ -1,4 +1,8 @@
-import { encodeShareUrl, KNOWN_NON_GITHUB_GIT_HOSTS } from '@inkeep/open-knowledge-core';
+import {
+  encodeShareUrl,
+  isValidBranchName,
+  KNOWN_NON_GITHUB_GIT_HOSTS,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import fixture from '../../../test-support/fixtures/share-url-v1-v2.json';
 import { STABLE_DMG_URL } from './download-links.ts';
@@ -31,19 +35,20 @@ function expectedContentFilename(entry: (typeof fixture.validShares)[number]): s
 }
 
 describe('buildSplashViewModel', () => {
-  test.each(
-    fixture.validShares.filter((entry) => entry.version === 2),
-  )('decodes canonical $id and hands the unchanged token to the desktop', (entry) => {
-    const view = buildSplashViewModel(entry.token);
-    expect(view).toMatchObject({
-      kind: 'ok',
-      sharedUrl: entry.sharedUrl,
-      githubUrl: entry.sharedUrl,
-      customSchemeUrl: `openknowledge://share?token=${entry.token}`,
-      target: entry.target.kind,
-      filename: expectedContentFilename(entry),
-    });
-  });
+  test.each(fixture.validShares.filter((entry) => entry.version === 2))(
+    'decodes canonical $id and hands the unchanged token to the desktop',
+    (entry) => {
+      const view = buildSplashViewModel(entry.token);
+      expect(view).toMatchObject({
+        kind: 'ok',
+        sharedUrl: entry.sharedUrl,
+        githubUrl: entry.sharedUrl,
+        customSchemeUrl: `openknowledge://share?token=${entry.token}`,
+        target: entry.target.kind,
+        filename: expectedContentFilename(entry),
+      });
+    },
+  );
 
   test.each(fixture.invalidTokens)('rejects canonical fixture case $id', (entry) => {
     expect(buildSplashViewModel(entry.token)).toEqual({ kind: 'invalid' });
@@ -326,6 +331,26 @@ describe('buildSplashViewModel', () => {
     if (view.kind === 'ok') {
       expect(view.sharedUrl).toBe(blobUrl);
     }
+  });
+});
+
+describe('buildSplashViewModel — branch admission agrees with the declared contract', () => {
+  test.each([
+    'main',
+    'release+candidate',
+    'feat;x',
+    'a(b)c',
+    '_leading',
+    'x.lock',
+    '-rf',
+    'has space',
+    'has:colon',
+    'a..b',
+    'feat\u0001x',
+    'feat/../x',
+  ])('admits %j exactly when isValidBranchName does', (branch) => {
+    const url = `https://github.com/inkeep/playbooks/blob/${encodeURIComponent(branch)}/readme.md`;
+    expect(buildSplashViewModel(encodeV1(url)).kind === 'ok').toBe(isValidBranchName(branch));
   });
 });
 

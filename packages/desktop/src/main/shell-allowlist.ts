@@ -5,30 +5,23 @@ export const ALLOWED_SCHEMES: ReadonlySet<string> = new Set([
   'openknowledge:',
 
   /**
-   * Claude Desktop unified app (Chat + Cowork + Code).
-   * OK emits two shapes (single-encoded per `packages/core/src/handoff/claude-url.ts`):
-   *   claude://<mode>/new?folder=<enc>                  (doc-scoped: cwd-only, agent grounds via OK MCP per precedent #25)
-   *   claude://<mode>/new?q=<enc>&folder=<enc>          (project-scoped: empty-state cards)
-   * `<mode>` is `cowork` or `code`. No other paths.
+   * Claude Desktop unified app. OK emits `claude://<mode>/new?folder=<enc>` (doc-scoped) and
+   * `claude://<mode>/new?q=<enc>&folder=<enc>` (project-scoped), `<mode>` being `cowork` or `code`;
+   * the doc-scoped shape is cwd-only and the agent grounds via OK MCP (precedent #60).
    */
   'claude:',
 
   /**
-   * OpenAI Codex Desktop.
    * OK emits two shapes (single-encoded per `packages/core/src/handoff/codex-url.ts`):
-   *   codex://new?path=<enc>                            (doc-scoped: cwd-only, agent grounds via OK MCP per precedent #25)
-   *   codex://new?prompt=<enc>&path=<enc>               (project-scoped: empty-state cards)
-   * No other paths.
+   * codex://new?path=<enc> (doc-scoped: cwd-only, agent grounds via OK MCP per precedent #60)
+   * codex://new?prompt=<enc>&path=<enc> (project-scoped: empty-state cards) No other paths.
    */
   'codex:',
 
   /**
-   * Cursor IDE.
-   * OK emits two shapes (per `packages/core/src/handoff/cursor-url.ts`):
-   *   cursor://anysphere.cursor-deeplink/prompt?workspace=<enc>&mode=agent                    (doc-scoped: cwd-only, agent grounds via OK MCP per precedent #25)
-   *   cursor://anysphere.cursor-deeplink/prompt?text=<double-enc>&workspace=<enc>&mode=agent  (project-scoped: empty-state cards)
-   * `text=` is double-encoded per the two-pass-decode behavior.
-   * No other paths.
+   * Cursor IDE. OK emits `cursor://anysphere.cursor-deeplink/prompt?workspace=<enc>&mode=agent`
+   * (doc-scoped, cwd-only, the agent grounds via OK MCP per precedent #60) and the same URL with a
+   * double-encoded `text=` for project-scoped cards. No other paths.
    */
   'cursor:',
 ]);

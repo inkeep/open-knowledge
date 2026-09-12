@@ -1,5 +1,5 @@
 import { COMMAND_IDENTITIES, MENU_LABELS } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   buildWorkspaceEntries,
   classifyOmnibarSearchHint,
@@ -16,6 +16,7 @@ const originalFetch = globalThis.fetch;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  vi.restoreAllMocks();
 });
 
 describe('buildWorkspaceEntries', () => {
@@ -333,7 +334,7 @@ describe('fetchWorkspaceSearchEntries', () => {
       );
     }) as typeof fetch;
 
-    const { entries, truncated } = await fetchWorkspaceSearchEntries('homepage');
+    const { entries, truncated, semantic } = await fetchWorkspaceSearchEntries('homepage');
 
     expect(requestBody).toEqual({
       query: 'homepage',
@@ -355,16 +356,28 @@ describe('fetchWorkspaceSearchEntries', () => {
       { kind: 'folder', path: 'docs', name: 'docs', title: 'docs', score: 12 },
     ]);
     expect(truncated).toBe(false);
+    expect(semantic).toBeNull();
   });
 
   test('semantic submit adds semantic:true (keeps full_text + scopes + source:omnibar)', async () => {
     let requestBody: unknown = null;
     globalThis.fetch = (async (_input, init) => {
       requestBody = JSON.parse(String(init?.body));
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      return new Response(
+        JSON.stringify({
+          results: [],
+          semantic: {
+            capable: true,
+            applied: true,
+            outcome: 'applied',
+            coverage: { embedded: 3, total: 3 },
+          },
+        }),
+        { status: 200 },
+      );
     }) as typeof fetch;
 
-    await fetchWorkspaceSearchEntries('auth retries', { semantic: true });
+    const result = await fetchWorkspaceSearchEntries('auth retries', { semantic: true });
 
     expect(requestBody).toEqual({
       query: 'auth retries',
@@ -375,6 +388,31 @@ describe('fetchWorkspaceSearchEntries', () => {
       source: 'omnibar',
       semantic: true,
     });
+    expect(result.semantic).toEqual({
+      capable: true,
+      applied: true,
+      outcome: 'applied',
+      coverage: { embedded: 3, total: 3 },
+    });
+  });
+
+  test('rejects an invalid semantic status at the response boundary', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    globalThis.fetch = (async () =>
+      new Response(
+        JSON.stringify({
+          results: [],
+          semantic: { capable: true, applied: false },
+        }),
+        { status: 200 },
+      )) as typeof fetch;
+
+    const result = await fetchWorkspaceSearchEntries('auth retries', { semantic: true });
+
+    expect(result.semantic).toBeNull();
+    expect(warn).toHaveBeenCalledWith(
+      '[semantic-search] response returned an invalid semantic status',
+    );
   });
 
   test('maps a kind:file server row to a client kind:file name-only entry', async () => {

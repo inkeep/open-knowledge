@@ -81,6 +81,12 @@ and document bodies keep their own direction. What remains, measured against a r
 - **Physical margins and padding landing on the far side.** Small individually, systematic in
   aggregate.
 - **The Electron menu bar**, built in the main process, with no direction handling at all.
+- **Code tokens inside troubleshooting notes displace under the bidi algorithm.** A note that
+  names `~/.codex/config.toml` or `trust_level = "trusted"` mid-sentence reorders its punctuation
+  and path separators in `ar` and `ur`. `troubleshootingText` resolves every note to a plain
+  `string | null` before the connection dialog renders it, so there is no seam at which a token
+  could be isolated. The fix is for the resolver itself to return a node, letting each token
+  render as `<code dir="ltr">`; deferred with the rest of the layout work (PRD-8630).
 
 A green `pnpm check` is not evidence against any of this. The logical-property lint rule carries
 a documented pre-rule backlog — a file-level `biome-ignore-all` on the 81 chrome files that

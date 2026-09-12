@@ -491,12 +491,12 @@ describe('classifyMinidumpCrashKind', () => {
     );
   });
 
-  test.each<NodeJS.Platform>([
-    'linux',
-    'win32',
-  ])('stays inert on %s even when the dump carries the macOS sentinel', (platform) => {
-    expect(kindOf({ exceptionCode: SIMULATED }, platform)).toBe('indeterminate');
-  });
+  test.each<NodeJS.Platform>(['linux', 'win32'])(
+    'stays inert on %s even when the dump carries the macOS sentinel',
+    (platform) => {
+      expect(kindOf({ exceptionCode: SIMULATED }, platform)).toBe('indeterminate');
+    },
+  );
 
   test('reading the crash kind leaves the ownership verdict untouched', () => {
     const dir = makeDir();

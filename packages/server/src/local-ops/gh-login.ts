@@ -142,17 +142,17 @@ export function runGhDeviceLoginSubprocess(
   const done = proc.done.then(async (result) => {
     clearTimeout(verificationDeadline);
     if (deadlineExpired) return;
+    if (result.timedOut) {
+      opts.onEvent({ type: 'error', message: 'gh sign-in timed out — please try again' });
+      return;
+    }
+    if (result.cancelled) return;
     if (result.code === 0) {
       const login = await resolveGhLogin(opts.ghPath, opts.host);
       opts.onEvent({ type: 'complete', host: opts.host, login });
-    } else {
-      opts.onEvent({
-        type: 'error',
-        message: result.timedOut
-          ? 'gh sign-in timed out — please try again'
-          : 'gh sign-in failed — please try again',
-      });
+      return;
     }
+    opts.onEvent({ type: 'error', message: 'gh sign-in failed — please try again' });
   });
 
   return { done, cancel: proc.cancel };

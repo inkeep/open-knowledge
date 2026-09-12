@@ -1,5 +1,5 @@
 import { useLingui } from '@lingui/react/macro';
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useId, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -95,7 +95,7 @@ export function TerminalGate({
   }
 
   return optedOut ? (
-    <TerminalNotEnabledNotice onEnable={handleEnable} />
+    <TerminalNotEnabledNotice enableDisabled={writer === null} onEnable={handleEnable} />
   ) : (
     <TerminalStartingNotice />
   );
@@ -120,11 +120,13 @@ function TerminalErrorFallback({ error }: FallbackProps) {
 }
 
 interface TerminalNotEnabledNoticeProps {
+  readonly enableDisabled: boolean;
   readonly onEnable: () => void;
 }
 
-function TerminalNotEnabledNotice({ onEnable }: TerminalNotEnabledNoticeProps) {
+function TerminalNotEnabledNotice({ enableDisabled, onEnable }: TerminalNotEnabledNoticeProps) {
   const { t } = useLingui();
+  const pendingReasonId = useId();
   return (
     <section
       aria-label={t`Terminal disabled`}
@@ -133,7 +135,18 @@ function TerminalNotEnabledNotice({ onEnable }: TerminalNotEnabledNoticeProps) {
       <p className="max-w-sm text-sm text-foreground">
         {t`The terminal is turned off for this project. Turn it back on to run commands here.`}
       </p>
-      <Button onClick={onEnable}>{t`Enable terminal`}</Button>
+      <Button
+        disabled={enableDisabled}
+        aria-describedby={enableDisabled ? pendingReasonId : undefined}
+        onClick={onEnable}
+      >
+        {t`Enable terminal`}
+      </Button>
+      {enableDisabled ? (
+        <p id={pendingReasonId} className="text-xs text-muted-foreground">
+          {t`Terminal settings not loaded yet — try again in a moment.`}
+        </p>
+      ) : null}
       <p className="text-xs text-muted-foreground">{t`You can also manage this in Settings.`}</p>
     </section>
   );

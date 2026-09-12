@@ -227,6 +227,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
 const { BottomComposer } = await import('./BottomComposer');
 const { CreatePromptComposer } = await import('./empty-state/CreatePromptComposer');
 const { registerAgent } = await import('@/lib/acp/registered-agents');
+const { TooltipProvider } = await import('@/components/ui/tooltip');
 
 beforeEach(() => {
   try {
@@ -253,33 +254,43 @@ function heroInput() {
 
 describe('shared draft across composer placements', () => {
   test('a draft typed in the bottom (docked) composer appears in the create (hero) composer', async () => {
-    const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />);
+    const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />, {
+      wrapper: TooltipProvider,
+    });
     fireEvent.change(bottomInput(), { target: { value: 'condense my AGENTS.md' } });
 
     docked.unmount();
 
-    render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
+    render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />, {
+      wrapper: TooltipProvider,
+    });
     await waitFor(() => expect(heroInput().value).toBe('condense my AGENTS.md'));
   });
 
   test('a draft typed in the create (hero) composer appears in the bottom (docked) composer', async () => {
-    const hero = render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
+    const hero = render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />, {
+      wrapper: TooltipProvider,
+    });
     fireEvent.change(heroInput(), { target: { value: 'research flightless birds' } });
 
     hero.unmount();
 
-    render(<BottomComposer docName="notes" surface="wysiwyg" />);
+    render(<BottomComposer docName="notes" surface="wysiwyg" />, { wrapper: TooltipProvider });
     await waitFor(() => expect(bottomInput().value).toBe('research flightless birds'));
   });
 
   test('an @-mention chip inserted in the bottom composer survives as a chip node in the create composer', async () => {
-    const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />);
+    const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />, {
+      wrapper: TooltipProvider,
+    });
     fireEvent.change(bottomInput(), { target: { value: 'see ' } });
     fireEvent.click(screen.getByTestId('insert-mention-Ask AI'));
 
     docked.unmount();
 
-    render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
+    render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />, {
+      wrapper: TooltipProvider,
+    });
 
     await waitFor(() => {
       const chip = document.querySelector(
@@ -290,13 +301,15 @@ describe('shared draft across composer placements', () => {
   });
 
   test('the chip also survives the reverse direction (hero → bottom)', async () => {
-    const hero = render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
+    const hero = render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />, {
+      wrapper: TooltipProvider,
+    });
     fireEvent.change(heroInput(), { target: { value: 'reference ' } });
     fireEvent.click(screen.getByTestId('insert-mention-Describe the project you want to create'));
 
     hero.unmount();
 
-    render(<BottomComposer docName="notes" surface="wysiwyg" />);
+    render(<BottomComposer docName="notes" surface="wysiwyg" />, { wrapper: TooltipProvider });
     await waitFor(() => {
       const chip = document.querySelector(
         '.composer-mention[data-composer-mention="ideas/foo.md"]',
@@ -306,26 +319,32 @@ describe('shared draft across composer placements', () => {
   });
 
   test('the draft survives a doc → empty → doc round trip (remount restores it)', async () => {
-    const first = render(<BottomComposer docName="notes" surface="wysiwyg" />);
+    const first = render(<BottomComposer docName="notes" surface="wysiwyg" />, {
+      wrapper: TooltipProvider,
+    });
     fireEvent.change(bottomInput(), { target: { value: 'summarize my week' } });
     first.unmount();
 
-    const empty = render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />);
+    const empty = render(<CreatePromptComposer scenario={'new-project' as CreateScenario} />, {
+      wrapper: TooltipProvider,
+    });
     await waitFor(() => expect(heroInput().value).toBe('summarize my week'));
     empty.unmount();
 
-    render(<BottomComposer docName="other" surface="wysiwyg" />);
+    render(<BottomComposer docName="other" surface="wysiwyg" />, { wrapper: TooltipProvider });
     await waitFor(() => expect(bottomInput().value).toBe('summarize my week'));
   });
 
   test('the draft persists across a reload (store re-hydrates the doc from storage)', async () => {
-    const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />);
+    const docked = render(<BottomComposer docName="notes" surface="wysiwyg" />, {
+      wrapper: TooltipProvider,
+    });
     fireEvent.change(bottomInput(), { target: { value: 'draft a spec' } });
     docked.unmount();
 
     __resetComposerDraftForTests();
 
-    render(<BottomComposer docName="notes" surface="wysiwyg" />);
+    render(<BottomComposer docName="notes" surface="wysiwyg" />, { wrapper: TooltipProvider });
     await waitFor(() => expect(bottomInput().value).toBe('draft a spec'));
   });
 });

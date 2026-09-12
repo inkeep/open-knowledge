@@ -1,10 +1,10 @@
-import { TERMINAL_CLI_IDS, type TerminalCli } from '@inkeep/open-knowledge-core';
+import { assessReadiness, TERMINAL_CLI_IDS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   CLAUDE_PROBE_ARGS,
   cliProbeArgs,
   interpretClaudeProbe,
-  mcpStatusFromClassification,
+  type McpEntryKind,
   type ProbeChild,
   type ProbeTimers,
   probePlatformCliOnPath,
@@ -87,17 +87,6 @@ describe('interpretClaudeProbe', () => {
   });
   test('null (probe could not run) → unknown, NOT not-found', () => {
     expect(interpretClaudeProbe(null)).toBe('unknown');
-  });
-});
-
-describe('mcpStatusFromClassification', () => {
-  test('present → wired', () => {
-    expect(mcpStatusFromClassification('present')).toBe('wired');
-  });
-  test('absent / no-entry / decline → needs-rewire', () => {
-    expect(mcpStatusFromClassification('absent')).toBe('needs-rewire');
-    expect(mcpStatusFromClassification('no-entry')).toBe('needs-rewire');
-    expect(mcpStatusFromClassification('decline')).toBe('needs-rewire');
   });
 });
 
@@ -312,8 +301,11 @@ describe('windows probe verdict observability (an UNKNOWN must leave a trace)', 
     const p = runWindowsPathProbe(() => child, 'where.exe', 'claude', timers, 5000);
     fireTimeout();
     expect(await p).toBe(null);
-    const messages = operatorVisibleRecords().map((call) => call.map(String).join(' '));
-    expect(messages.some((m) => /timed?\s*out/i.test(m))).toBe(true);
+    expect(
+      operatorVisibleRecords().some((call) =>
+        call.some((arg) => (arg as { timedOut?: unknown })?.timedOut === true),
+      ),
+    ).toBe(true);
   });
 
   test("an async where.exe 'error' emits an operator-visible record carrying the cause", async () => {
@@ -360,7 +352,15 @@ describe('windows probe verdict observability (an UNKNOWN must leave a trace)', 
       .find((arg): arg is Record<string, unknown> => typeof arg === 'object' && arg !== null);
     expect(attrs).toBeDefined();
     expect(attrs?.bin).toBe('claude');
-    expect(Object.keys(attrs ?? {}).sort()).toEqual(['args', 'bin', 'timeoutMs', 'whereExe']);
+    expect(Object.keys(attrs ?? {}).sort()).toEqual([
+      'args',
+      'bin',
+      'exitCode',
+      'label',
+      'outcome',
+      'timedOut',
+      'timeoutMs',
+    ]);
   });
 });
 
@@ -377,8 +377,11 @@ describe('probe verdict observability (an UNKNOWN must leave a trace)', () => {
     expect(await p).toBe(null);
     const records = operatorVisibleRecords();
     expect(records.length).toBeGreaterThan(0);
-    const messages = records.map((call) => call.map(String).join(' '));
-    expect(messages.some((m) => /timed?\s*out/i.test(m))).toBe(true);
+    expect(
+      records.some((call) =>
+        call.some((arg) => (arg as { timedOut?: unknown })?.timedOut === true),
+      ),
+    ).toBe(true);
   });
 
   test("an async spawn 'error' emits an operator-visible log record carrying the cause", async () => {
@@ -421,16 +424,24 @@ describe('resolveClaudeReadiness', () => {
       classifyMcpEntry: () => 'present',
       isProjectMcpPreApprovable: () => true,
     });
-    expect(r).toEqual({ claude: 'present', mcp: 'wired', mcpPreApprovable: true });
+    expect(r).toEqual({
+      claude: 'present',
+      mcpPreApprovable: true,
+      okToolsAutoApprovable: true,
+    });
   });
 
-  test('claude not-found + mcp missing → needs-rewire, not pre-approvable', async () => {
+  test('claude not-found + mcp missing → not pre-approvable', async () => {
     const r = await resolveClaudeReadiness({
       probeClaude: () => Promise.resolve(1),
       classifyMcpEntry: () => 'no-entry',
       isProjectMcpPreApprovable: () => false,
     });
-    expect(r).toEqual({ claude: 'not-found', mcp: 'needs-rewire', mcpPreApprovable: false });
+    expect(r).toEqual({
+      claude: 'not-found',
+      mcpPreApprovable: false,
+      okToolsAutoApprovable: false,
+    });
   });
 
   test('project pre-approval is independent of global wiring (foreign project entry → false)', async () => {
@@ -439,7 +450,11 @@ describe('resolveClaudeReadiness', () => {
       classifyMcpEntry: () => 'present',
       isProjectMcpPreApprovable: () => false,
     });
-    expect(r).toEqual({ claude: 'present', mcp: 'wired', mcpPreApprovable: false });
+    expect(r).toEqual({
+      claude: 'present',
+      mcpPreApprovable: false,
+      okToolsAutoApprovable: false,
+    });
   });
 
   test('probe-null surfaces as claude unknown (mcp still resolves)', async () => {
@@ -448,7 +463,11 @@ describe('resolveClaudeReadiness', () => {
       classifyMcpEntry: () => 'present',
       isProjectMcpPreApprovable: () => true,
     });
-    expect(r).toEqual({ claude: 'unknown', mcp: 'wired', mcpPreApprovable: true });
+    expect(r).toEqual({
+      claude: 'unknown',
+      mcpPreApprovable: true,
+      okToolsAutoApprovable: true,
+    });
   });
 
   test('a rejected probe degrades to claude unknown, never crashes', async () => {
@@ -460,7 +479,7 @@ describe('resolveClaudeReadiness', () => {
     expect(r.claude).toBe('unknown');
   });
 
-  test('a throwing classify degrades to needs-rewire, never crashes', async () => {
+  test('a throwing classification does not grant tool auto-approval', async () => {
     const r = await resolveClaudeReadiness({
       probeClaude: () => Promise.resolve(0),
       classifyMcpEntry: () => {
@@ -468,7 +487,11 @@ describe('resolveClaudeReadiness', () => {
       },
       isProjectMcpPreApprovable: () => false,
     });
-    expect(r).toEqual({ claude: 'present', mcp: 'needs-rewire', mcpPreApprovable: false });
+    expect(r).toEqual({
+      claude: 'present',
+      mcpPreApprovable: false,
+      okToolsAutoApprovable: false,
+    });
   });
 
   test('a throwing isProjectMcpPreApprovable degrades to not pre-approvable, never crashes', async () => {
@@ -479,7 +502,138 @@ describe('resolveClaudeReadiness', () => {
         throw new Error('project .mcp.json read blew up');
       },
     });
-    expect(r).toEqual({ claude: 'present', mcp: 'wired', mcpPreApprovable: false });
+    expect(r).toEqual({
+      claude: 'present',
+      mcpPreApprovable: false,
+      okToolsAutoApprovable: false,
+    });
+  });
+});
+
+describe('OK-tool auto-approve is gated separately from project server trust', () => {
+  function readiness(scopes: {
+    projectEntryPresent: boolean;
+    projectEntryIsOwn: boolean;
+    globalEntryIsOwn: boolean;
+  }) {
+    return resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => (scopes.globalEntryIsOwn ? 'present' : 'no-entry'),
+      isProjectMcpPreApprovable: () => scopes.projectEntryIsOwn,
+      hasProjectMcpEntry: () => scopes.projectEntryPresent,
+      isGlobalMcpOwnManaged: () => scopes.globalEntryIsOwn,
+    });
+  }
+
+  test('a global-only OK entry earns auto-approve, and earns no project server trust', async () => {
+    const r = await readiness({
+      projectEntryPresent: false,
+      projectEntryIsOwn: false,
+      globalEntryIsOwn: true,
+    });
+    expect(r.okToolsAutoApprovable).toBe(true);
+  });
+
+  test('a project-only OK entry earns both, exactly as before', async () => {
+    const r = await readiness({
+      projectEntryPresent: true,
+      projectEntryIsOwn: true,
+      globalEntryIsOwn: false,
+    });
+    expect(r.okToolsAutoApprovable).toBe(true);
+  });
+
+  test('both scopes OK-owned earns both', async () => {
+    const r = await readiness({
+      projectEntryPresent: true,
+      projectEntryIsOwn: true,
+      globalEntryIsOwn: true,
+    });
+    expect(r.okToolsAutoApprovable).toBe(true);
+  });
+
+  test('neither scope earns auto-approve', async () => {
+    const r = await readiness({
+      projectEntryPresent: false,
+      projectEntryIsOwn: false,
+      globalEntryIsOwn: false,
+    });
+    expect(r.okToolsAutoApprovable).toBe(false);
+  });
+
+  test('a FOREIGN project entry named open-knowledge disables auto-approve even with a legit global entry', async () => {
+    const r = await readiness({
+      projectEntryPresent: true,
+      projectEntryIsOwn: false,
+      globalEntryIsOwn: true,
+    });
+    expect(r.okToolsAutoApprovable).toBe(false);
+  });
+
+  test('a global entry that is present but NOT OK-owned earns no auto-approve', async () => {
+    const r = await resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => 'present',
+      isProjectMcpPreApprovable: () => false,
+      hasProjectMcpEntry: () => false,
+      isGlobalMcpOwnManaged: () => false,
+    });
+    expect(r.okToolsAutoApprovable).toBe(false);
+  });
+
+  test('a throwing project-presence read fails CLOSED, routing the decision through project ownership', async () => {
+    const r = await resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => 'present',
+      isProjectMcpPreApprovable: () => false,
+      hasProjectMcpEntry: () => {
+        throw new Error('project .mcp.json read blew up');
+      },
+      isGlobalMcpOwnManaged: () => true,
+    });
+    expect(r.okToolsAutoApprovable).toBe(false);
+  });
+
+  test('a throwing global-ownership read degrades to not-own, never crashes', async () => {
+    const r = await resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => 'present',
+      isProjectMcpPreApprovable: () => false,
+      hasProjectMcpEntry: () => false,
+      isGlobalMcpOwnManaged: () => {
+        throw new Error('claude.json read blew up');
+      },
+    });
+    expect(r.okToolsAutoApprovable).toBe(false);
+  });
+
+  test('a throwing global classification fails CLOSED on the grant, not open', async () => {
+    const r = await resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => {
+        throw new Error('claude.json read blew up');
+      },
+      isProjectMcpPreApprovable: () => true,
+      hasProjectMcpEntry: () => true,
+      isGlobalMcpOwnManaged: () => false,
+    });
+    expect(r.okToolsAutoApprovable).toBe(false);
+  });
+
+  test('omitting both scope reads falls back to the stricter project-only gate', async () => {
+    const own = await resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => 'present',
+      isProjectMcpPreApprovable: () => true,
+    });
+    expect(own.okToolsAutoApprovable).toBe(true);
+
+    const notOwn = await resolveClaudeReadiness({
+      probeClaude: () => Promise.resolve(0),
+      classifyMcpEntry: () => 'present',
+      isProjectMcpPreApprovable: () => false,
+    });
+    expect(notOwn.okToolsAutoApprovable).toBe(false);
   });
 });
 
@@ -707,4 +861,103 @@ describe('resolvePlatformCliInstalledMap', () => {
     expect(probed).toContainEqual(['-i', '-c', 'command -v claude']);
     expect(probed).toContainEqual(['-i', '-c', 'command -v cursor-agent']);
   });
+});
+
+describe('tool-autoapprove: the registry grant and the launcher rule agree', () => {
+  const PROJECT = 'claude/mcp/project/config-entry';
+  const GLOBAL = 'claude/mcp/user/config-entry';
+
+  const ENTRIES = ['absent', 'own-exact', 'present-not-exact', 'foreign', 'unreadable'] as const;
+  type Entry = (typeof ENTRIES)[number];
+
+  function probeFor(entry: Entry) {
+    switch (entry) {
+      case 'absent':
+        return { state: 'absent' as const, strictness: [] };
+      case 'own-exact':
+        return {
+          state: 'satisfied' as const,
+          strictness: ['reclaim-permissive', 'pre-approval-exact', 'injection-functional'],
+        };
+      case 'present-not-exact':
+        return {
+          state: 'satisfied' as const,
+          strictness: ['reclaim-permissive', 'injection-functional'],
+        };
+      case 'foreign':
+        return { state: 'foreign' as const, strictness: [] };
+      case 'unreadable':
+        return { state: 'unprobed' as const, strictness: [] };
+    }
+  }
+
+  function globalKind(entry: Entry): McpEntryKind {
+    if (entry === 'absent') return 'absent';
+    if (entry === 'unreadable') return 'decline';
+    return 'present';
+  }
+
+  const GRANTED: Readonly<Record<Entry, Readonly<Record<Entry, boolean>>>> = {
+    absent: {
+      absent: false,
+      'own-exact': true,
+      'present-not-exact': false,
+      foreign: false,
+      unreadable: false,
+    },
+    'own-exact': {
+      absent: true,
+      'own-exact': true,
+      'present-not-exact': false,
+      foreign: false,
+      unreadable: false,
+    },
+    'present-not-exact': {
+      absent: false,
+      'own-exact': false,
+      'present-not-exact': false,
+      foreign: false,
+      unreadable: false,
+    },
+    foreign: {
+      absent: false,
+      'own-exact': false,
+      'present-not-exact': false,
+      foreign: false,
+      unreadable: false,
+    },
+    unreadable: {
+      absent: false,
+      'own-exact': false,
+      'present-not-exact': false,
+      foreign: false,
+      unreadable: false,
+    },
+  };
+
+  for (const project of ENTRIES) {
+    for (const global of ENTRIES) {
+      const granted = GRANTED[project][global];
+      test(`project=${project} global=${global} → ${granted ? 'granted' : 'withheld'}`, async () => {
+        const probes = {
+          env: 'desktop' as const,
+          satisfiers: { [PROJECT]: probeFor(project), [GLOBAL]: probeFor(global) },
+        };
+
+        const assessment = assessReadiness({ agentId: 'claude', mode: 'terminal', probes });
+        const registryGrants = assessment.grantedCapabilities.includes('tool-autoapprove');
+
+        const readiness = await resolveClaudeReadiness({
+          probeClaude: async () => 0,
+          classifyMcpEntry: () => globalKind(global),
+          isProjectMcpPreApprovable: () => project === 'own-exact',
+          hasProjectMcpEntry: () => project !== 'absent',
+          isGlobalMcpOwnManaged: () => global === 'own-exact',
+        });
+
+        expect(readiness.okToolsAutoApprovable).toBe(granted);
+        expect(registryGrants).toBe(granted);
+      });
+    }
+  }
 });

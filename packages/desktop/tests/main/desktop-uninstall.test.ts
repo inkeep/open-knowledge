@@ -1,18 +1,15 @@
 import { join } from 'node:path';
-import { describe, expect, test, vi } from 'vitest';
+import { describe, expect, test } from 'vitest';
 import {
   buildDesktopUninstallCleanupScript,
   collectDesktopUninstallProjectCandidates,
   defaultDesktopUninstallLogPath,
-  desktopUninstallCompletionNotice,
   desktopUninstallConfirmNotice,
   desktopUninstallFailureNotice,
-  desktopUninstallFinalStepNotice,
   isSupportedApplicationsBundle,
   readDesktopUninstallLogForDisplay,
   resolveAppBundleFromExecPath,
   resolveDesktopUninstallUiPreviewMode,
-  runDesktopUninstallCleanup,
   selectDesktopUninstallProjectsByIndex,
 } from '../../src/main/desktop-uninstall.ts';
 
@@ -177,92 +174,6 @@ describe('desktop self-uninstall helpers', () => {
     expect(confirm.cancelLabel).toBe('Cancel');
     expect(confirm.danger).toBe(true);
     expect(confirm.paragraphs.join(' ')).not.toContain('Trash');
-
-    const done = desktopUninstallCompletionNotice({ projectCount: 0 });
-    expect((done.checklist ?? []).map((item) => item.label)).toEqual([
-      'Kept your content',
-      'Removed OpenKnowledge files',
-      'Move OpenKnowledge.app to the Trash',
-    ]);
-    expect(done.checklist?.[0]?.done).toBe(true);
-    expect(done.checklist?.[1]?.done).toBe(true);
-    expect(done.checklist?.[2]?.done).toBe(false);
-    expect(done.confirmLabel).toBe('Reveal in Finder');
-    expect(done.logRevealLabel).toBe('Cleanup log');
-    expect(done.footnote).toBeUndefined();
-    expect(done.paragraphs).toEqual([]);
-    expect(done.checklist?.[1]?.detail).not.toContain('project');
-    expect(desktopUninstallCompletionNotice({ projectCount: 2 }).checklist?.[1]?.detail).toContain(
-      '2 projects',
-    );
-
-    expect(desktopUninstallFinalStepNotice().paragraphs.join(' ')).toContain('Trash');
-  });
-
-  test('runDesktopUninstallCleanup spawns an attached shell and resolves on close', async () => {
-    const listeners = new Map<string, (...args: unknown[]) => void>();
-    const child = {
-      once: vi.fn((event: string, listener: (...args: unknown[]) => void) => {
-        listeners.set(event, listener);
-      }),
-    };
-    const spawn = vi.fn(() => child);
-    const resultPromise = runDesktopUninstallCleanup(
-      {
-        cliPath: '/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh',
-        projectPaths: [],
-        logPath: '/tmp/ok-uninstall.log',
-      },
-      { spawn },
-    );
-
-    expect(spawn).toHaveBeenCalledTimes(1);
-    expect(spawn.mock.calls[0]?.[0]).toBe('/bin/sh');
-    expect(spawn.mock.calls[0]?.[1]).toEqual(['-c', expect.any(String)]);
-    expect(spawn.mock.calls[0]?.[2]).toMatchObject({ cwd: '/', detached: false, stdio: 'ignore' });
-    listeners.get('close')?.(0, null);
-    await expect(resultPromise).resolves.toEqual({ ok: true });
-  });
-
-  test('runDesktopUninstallCleanup surfaces spawn errors, exit codes, and signals', async () => {
-    const input = {
-      cliPath: '/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh',
-      projectPaths: [],
-      logPath: '/tmp/ok-uninstall.log',
-    };
-    const run = (fire: (listeners: Map<string, (...args: unknown[]) => void>) => void) => {
-      const listeners = new Map<string, (...args: unknown[]) => void>();
-      const child = {
-        once: (event: string, listener: (...args: unknown[]) => void) => {
-          listeners.set(event, listener);
-        },
-      };
-      const result = runDesktopUninstallCleanup(input, { spawn: () => child });
-      fire(listeners);
-      return result;
-    };
-
-    await expect(run((l) => l.get('error')?.(new Error('spawn EACCES')))).resolves.toEqual({
-      ok: false,
-      error: 'spawn EACCES',
-    });
-    await expect(run((l) => l.get('close')?.(1, null))).resolves.toEqual({
-      ok: false,
-      error: 'cleanup process exited with code 1',
-      exitCode: 1,
-    });
-    await expect(run((l) => l.get('close')?.(null, 'SIGKILL'))).resolves.toEqual({
-      ok: false,
-      error: 'cleanup process exited after signal SIGKILL',
-      exitCode: null,
-    });
-    await expect(
-      runDesktopUninstallCleanup(input, {
-        spawn: () => {
-          throw new Error('shell missing');
-        },
-      }),
-    ).resolves.toEqual({ ok: false, error: 'shell missing' });
   });
 });
 

@@ -3,10 +3,10 @@ import type { EditorView } from '@codemirror/view';
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
-  getSourceViewForDoc,
-  registerSourceView,
-  unregisterSourceView,
-} from '../editor/active-source-view';
+  getMarkdownSourceViewForDoc,
+  registerFullPageCmView,
+  unregisterFullPageCmView,
+} from '../editor/full-page-cm-views';
 import { useActiveHeading } from './useActiveHeading';
 
 const DOC_NAME = 'source-mode-guard-doc';
@@ -56,8 +56,8 @@ function mountHeading(slug: string, top: number): void {
 
 afterEach(() => {
   cleanup();
-  const registered = getSourceViewForDoc(DOC_NAME);
-  if (registered) unregisterSourceView(DOC_NAME, registered);
+  const registered = getMarkdownSourceViewForDoc(DOC_NAME);
+  if (registered) unregisterFullPageCmView(DOC_NAME, registered);
   document.body.replaceChildren();
 });
 
@@ -77,7 +77,7 @@ describe('useActiveHeading (source mode)', () => {
   });
 
   test('reports no active heading for a document with no headings', () => {
-    registerSourceView(DOC_NAME, stubView());
+    registerFullPageCmView(DOC_NAME, stubView(), 'sourceEditor');
 
     const { result } = renderHook(() =>
       useActiveHeading([], { isSourceMode: true, docName: DOC_NAME }),
@@ -93,7 +93,7 @@ describe('useActiveHeading (source mode)', () => {
     expect(result.current).toBeUndefined();
 
     act(() => {
-      registerSourceView(DOC_NAME, stubView());
+      registerFullPageCmView(DOC_NAME, stubView(), 'sourceEditor');
     });
 
     await waitFor(() => {
@@ -102,7 +102,7 @@ describe('useActiveHeading (source mode)', () => {
   });
 
   test('measures a view that was already registered at render time', () => {
-    registerSourceView(DOC_NAME, stubView());
+    registerFullPageCmView(DOC_NAME, stubView(), 'sourceEditor');
 
     const { result } = renderHook(() =>
       useActiveHeading(SLUGS, { isSourceMode: true, docName: DOC_NAME }),
@@ -113,14 +113,14 @@ describe('useActiveHeading (source mode)', () => {
 
   test('returns to no answer when the view unregisters', async () => {
     const view = stubView();
-    registerSourceView(DOC_NAME, view);
+    registerFullPageCmView(DOC_NAME, view, 'sourceEditor');
     const { result } = renderHook(() =>
       useActiveHeading(SLUGS, { isSourceMode: true, docName: DOC_NAME }),
     );
     expect(result.current).toBe('alpha');
 
     act(() => {
-      unregisterSourceView(DOC_NAME, view);
+      unregisterFullPageCmView(DOC_NAME, view);
     });
 
     await waitFor(() => {
@@ -129,7 +129,11 @@ describe('useActiveHeading (source mode)', () => {
   });
 
   test('selects the last heading scrolled above the viewport when none is in the top half', () => {
-    registerSourceView(DOC_NAME, geometryStub(-2 * MID_Y, [-2 * MID_Y, -0.1 * MID_Y, 1.5 * MID_Y]));
+    registerFullPageCmView(
+      DOC_NAME,
+      geometryStub(-2 * MID_Y, [-2 * MID_Y, -0.1 * MID_Y, 1.5 * MID_Y]),
+      'sourceEditor',
+    );
 
     const { result } = renderHook(() =>
       useActiveHeading(SLUGS, { isSourceMode: true, docName: DOC_NAME }),
@@ -139,7 +143,11 @@ describe('useActiveHeading (source mode)', () => {
   });
 
   test('prefers a heading in the viewport top half over one already scrolled past', () => {
-    registerSourceView(DOC_NAME, geometryStub(-2 * MID_Y, [-2 * MID_Y, -0.1 * MID_Y, 0.5 * MID_Y]));
+    registerFullPageCmView(
+      DOC_NAME,
+      geometryStub(-2 * MID_Y, [-2 * MID_Y, -0.1 * MID_Y, 0.5 * MID_Y]),
+      'sourceEditor',
+    );
 
     const { result } = renderHook(() =>
       useActiveHeading(SLUGS, { isSourceMode: true, docName: DOC_NAME }),
@@ -149,7 +157,11 @@ describe('useActiveHeading (source mode)', () => {
   });
 
   test('resolves heading elements in WYSIWYG mode even while a source view is registered', () => {
-    registerSourceView(DOC_NAME, geometryStub(-2 * MID_Y, [-2 * MID_Y, -0.1 * MID_Y, 0.5 * MID_Y]));
+    registerFullPageCmView(
+      DOC_NAME,
+      geometryStub(-2 * MID_Y, [-2 * MID_Y, -0.1 * MID_Y, 0.5 * MID_Y]),
+      'sourceEditor',
+    );
     mountHeading('alpha', MID_Y - 10);
     mountHeading('beta', MID_Y + 600);
     mountHeading('gamma', MID_Y + 900);

@@ -1216,6 +1216,11 @@ Homepage: https://babel.dev/docs/en/next/babel-preset-typescript
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
 
+### `@babel/runtime@7.29.7`
+Homepage: https://babel.dev/docs/en/next/babel-runtime
+
+Copyright (c) 2014-present Sebastian McKenzie and other contributors
+
 ### `@babel/template@7.29.7`
 Homepage: https://babel.dev/docs/en/next/babel-template
 
@@ -1230,6 +1235,16 @@ Copyright (c) 2014-present Sebastian McKenzie and other contributors
 Homepage: https://babel.dev/docs/en/next/babel-types
 
 Copyright (c) 2014-present Sebastian McKenzie and other contributors
+
+### `@base-ui/react@1.8.0`
+Homepage: https://base-ui.com
+
+Copyright (c) 2019 Material-UI SAS
+
+### `@base-ui/utils@0.4.0`
+Homepage: https://github.com/mui/base-ui
+
+Copyright (c) 2019 Material-UI SAS
 
 ### `@borewit/text-codec@0.2.2`
 Homepage: https://github.com/Borewit/text-codec
@@ -1389,22 +1404,22 @@ Homepage: https://github.com/excalidraw/random-username
 
 Copyright (c) 2021 dwelle
 
-### `@floating-ui/core@1.7.5`
+### `@floating-ui/core@1.8.0`
 Homepage: https://floating-ui.com
 
 Copyright (c) 2021-present Floating UI contributors
 
-### `@floating-ui/dom@1.7.6`
+### `@floating-ui/dom@1.8.0`
 Homepage: https://floating-ui.com
 
 Copyright (c) 2021-present Floating UI contributors
 
-### `@floating-ui/react-dom@2.1.8`
+### `@floating-ui/react-dom@2.1.9`
 Homepage: https://floating-ui.com/docs/react-dom
 
 Copyright (c) 2021-present Floating UI contributors
 
-### `@floating-ui/utils@0.2.11`
+### `@floating-ui/utils@0.2.12`
 Homepage: https://floating-ui.com
 
 Copyright (c) 2021-present Floating UI contributors
@@ -2983,11 +2998,6 @@ Homepage: https://github.com/nodejs/cjs-module-lexer#readme
 
 Copyright (C) 2018-2020 Guy Bedford
 
-### `classnames@2.5.1`
-Homepage: https://github.com/JedWatson/classnames
-
-Copyright (c) 2018 Jed Watson
-
 ### `cli-boxes@4.0.1`
 Homepage: https://github.com/sindresorhus/cli-boxes
 
@@ -3630,11 +3640,6 @@ Homepage: https://github.com/sindresorhus/get-stream
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
 
-### `gitdiff-parser@0.3.1`
-Homepage: https://github.com/ecomfe/gitdiff-parser
-
-Copyright (c) 2020 Baidu EFE
-
 ### `github-from-package@0.0.0`
 Homepage: https://github.com/substack/github-from-package
 
@@ -4156,11 +4161,6 @@ Copyright (c) 2024 Nick Frasser
 Homepage: https://github.com/sindresorhus/locate-path
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
-
-### `lodash@4.18.1`
-Homepage: https://lodash.com/
-
-Copyright OpenJS Foundation and other contributors <https://openjsf.org/>
 
 ### `lodash-es@4.18.1`
 Homepage: https://lodash.com/custom-builds
@@ -5004,6 +5004,11 @@ Homepage: https://facebook.github.io/react/
 
 Copyright (c) 2013-present, Facebook, Inc.
 
+### `proper-lockfile@4.1.2`
+Homepage: https://github.com/moxystudio/node-proper-lockfile
+
+Copyright (c) 2018 Made With MOXY Lda <hello@moxy.studio>
+
 ### `property-information@7.2.0`
 Homepage: https://github.com/wooorm/property-information
 
@@ -5128,11 +5133,6 @@ Copyright (c) Meta Platforms, Inc. and affiliates.
 Homepage: https://daypicker.dev
 
 Copyright (c) 2014-2025 Giampaolo Bellavite <io@gpbl.dev> and contributors
-
-### `react-diff-view@3.3.3`
-Homepage: https://github.com/otakustay/react-diff-view#readme
-
-Copyright (c) 2017 Gray Zhang
 
 ### `react-dom@19.2.5`
 Homepage: https://react.dev/
@@ -5320,6 +5320,11 @@ Homepage: https://github.com/nodejs/require-in-the-middle#readme
 
 Copyright (c) 2016-2019, Thomas Watson Steen Copyright (c) 2019-2025, Elasticsearch B.V. Copyright (c) 2025+, require-in-the-middle contributors
 
+### `reselect@5.3.0`
+Homepage: https://github.com/reduxjs/reselect
+
+Copyright (c) 2015-2018 Reselect Contributors
+
 ### `resolve@1.22.12`
 Homepage: ssh://github.com/browserify/resolve
 
@@ -5334,6 +5339,11 @@ Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (sindresorhus.com)
 Homepage: https://github.com/sindresorhus/restore-cursor
 
 Copyright (c) Sindre Sorhus <sindresorhus@gmail.com> (https://sindresorhus.com)
+
+### `retry@0.12.0`
+Homepage: https://github.com/tim-kos/node-retry
+
+Copyright (c) 2011: Tim Koschützki (tim@debuggable.com) Felix Geisendörfer (felix@debuggable.com)
 
 ### `reusify@1.1.0`
 Homepage: https://github.com/mcollina/reusify#readme
@@ -5422,11 +5432,6 @@ Copyright (c) 2010 Sencha Inc. Copyright (c) 2011 LearnBoost Copyright (c) 2011 
 Homepage: https://github.com/shadcn-ui/ui
 
 Copyright (c) 2023 shadcn
-
-### `shallow-equal@3.1.0`
-Homepage: https://github.com/moroshko/shallow-equal
-
-_(LICENSE file present but no auto-extractable copyright line; refer to the package source for canonical attribution.)_
 
 ### `shebang-command@2.0.0`
 Homepage: https://github.com/kevva/shebang-command
@@ -5915,11 +5920,6 @@ Homepage: https://github.com/marijnh/w3c-keyname#readme
 
 Copyright (C) 2016 by Marijn Haverbeke <marijn@haverbeke.berlin> and others
 
-### `warning@4.0.3`
-Homepage: https://github.com/BerkeleyTrue/warning
-
-Copyright (c) 2013-present, Facebook, Inc.
-
 ### `weakmap-polyfill@2.0.4`
 Homepage: https://github.com/polygonplanet/weakmap-polyfill
 
@@ -6310,15 +6310,15 @@ Homepage: https://github.com/wesleytodd/setprototypeof
 
 Copyright (c) 2015, Wes Todd
 
-### `signal-exit@4.1.0`
-Homepage: https://github.com/tapjs/signal-exit
-
-Copyright (c) 2015-2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors
-
 ### `signal-exit@3.0.7`
 Homepage: https://github.com/tapjs/signal-exit
 
 Copyright (c) 2015, Contributors
+
+### `signal-exit@4.1.0`
+Homepage: https://github.com/tapjs/signal-exit
+
+Copyright (c) 2015-2023 Benjamin Coe, Isaac Z. Schlueter, and Contributors
 
 ### `split2@4.2.0`
 Homepage: https://github.com/mcollina/split2

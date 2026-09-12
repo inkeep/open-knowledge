@@ -130,14 +130,17 @@ vi.doMock('@/editor/DocumentContext', () => ({
 vi.doMock('@/components/EmptyEditorState', () => ({
   EmptyEditorState: ({
     terminalOpen,
+    bottomDockOpen,
     agentsOpen,
   }: {
     terminalOpen?: boolean;
+    bottomDockOpen?: boolean;
     agentsOpen?: boolean;
   }) => (
     <div
       data-testid="empty-editor-state"
       data-terminal-open={String(terminalOpen === true)}
+      data-bottom-dock-open={String(bottomDockOpen === true)}
       data-agents-open={String(agentsOpen === true)}
     />
   ),
@@ -213,6 +216,7 @@ vi.doMock('react-resizable-panels', () => ({
     current: {
       getLayout: () => groupLayout,
       setLayout: (layout: Record<string, number>) => {
+        groupLayout = layout;
         groupSetLayoutCalls.push(layout);
       },
     },
@@ -407,6 +411,62 @@ describe('EditorArea empty-state terminal host', () => {
     const emptyState = screen.getByTestId('empty-editor-state');
     expect(emptyState.getAttribute('data-terminal-open')).toBe('false');
     expect(emptyState.getAttribute('data-agents-open')).toBe('false');
+  });
+
+  test('reports the bottom dock as open when a visible terminal is docked at the bottom', () => {
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{} as never}
+        terminalVisible
+        terminalPlacement="bottom"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('true');
+    expect(emptyState.getAttribute('data-bottom-dock-open')).toBe('true');
+  });
+
+  test('reports the bottom dock as closed when the visible terminal is docked to the right', () => {
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{} as never}
+        terminalVisible
+        terminalPlacement="right"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('true');
+    expect(emptyState.getAttribute('data-bottom-dock-open')).toBe('false');
+  });
+
+  test('reports the bottom dock as closed when a bottom-placed terminal is not visible', () => {
+    render(
+      <EditorArea
+        editorMode="wysiwyg"
+        onModeChange={() => {}}
+        activeTab="timeline"
+        onActiveTabChange={() => {}}
+        terminalBridge={{} as never}
+        terminalPlacement="bottom"
+        onTerminalVisibleChange={() => {}}
+      />,
+    );
+
+    const emptyState = screen.getByTestId('empty-editor-state');
+    expect(emptyState.getAttribute('data-terminal-open')).toBe('false');
+    expect(emptyState.getAttribute('data-bottom-dock-open')).toBe('false');
   });
 });
 
@@ -867,6 +927,12 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
   test('a view with no document pane pins the slot shut and ignores the toggle', async () => {
     setViewportWidth(1400);
     docCtx = ASSET_DOC_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'doc-panel': 0,
+      'terminal-column': 0,
+      'agents-column': pctOf(480),
+    };
     render(<EditorArea {...baseProps} agentsVisible />);
     groupSetLayoutCalls = [];
     groupLayout = {

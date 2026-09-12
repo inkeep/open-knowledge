@@ -1,4 +1,4 @@
-import { COMMENT_ACTIVE_FILL, COMMENT_HUE } from './anchor-layers';
+import { COMMENT_ACTIVE_FILL, commentColor } from './anchor-layers';
 
 const REVEAL_ATTR = 'data-comment-reveal';
 
@@ -67,7 +67,7 @@ export function locateInValue(
 }
 
 function paintRevealSelection(control: HTMLTextAreaElement | HTMLInputElement): void {
-  control.style.setProperty('--comment-reveal-fill', `rgba(${COMMENT_HUE},${COMMENT_ACTIVE_FILL})`);
+  control.style.setProperty('--comment-reveal-fill', commentColor(COMMENT_ACTIVE_FILL));
   control.setAttribute(REVEAL_ATTR, 'true');
   const clear = () => {
     control.removeAttribute(REVEAL_ATTR);

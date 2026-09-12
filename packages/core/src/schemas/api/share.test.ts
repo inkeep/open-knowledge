@@ -244,6 +244,10 @@ describe('isValidBranchName', () => {
     expect(isValidBranchName('feat/foo')).toBe(true));
   test('accepts dots within a segment (not a `..` segment)', () =>
     expect(isValidBranchName('feat..ure')).toBe(true));
+  test('accepts non-ASCII: the contract constrains bytes, not scripts', () => {
+    expect(isValidBranchName('feature-café')).toBe(true);
+    expect(isValidBranchName('функция-тест')).toBe(true);
+  });
 
   test('rejects a non-string', () => {
     expect(isValidBranchName(null)).toBe(false);

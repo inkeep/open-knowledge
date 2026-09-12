@@ -28,6 +28,7 @@ import {
 import { ConfigContext, type ConfigContextValue } from './config-context';
 import { SavedThemesProvider, useSavedThemes } from './saved-themes-client';
 import { useServerInstanceId } from './server-instance-store';
+import { useThemeColorTransitions } from './theme-color-transitions';
 import { useApplyConfigColorTheme } from './use-apply-config-color-theme';
 import { useApplyConfigLanguage } from './use-apply-config-language';
 import { useApplyConfigTheme } from './use-apply-config-theme';
@@ -111,9 +112,11 @@ function makeOkignoreBinding(collabUrl: string, serverInstanceId: string | null)
 
 function ConfigProviderBody({
   collabUrl,
+  collabTerminal = false,
   children,
 }: {
   collabUrl: string | null;
+  collabTerminal?: boolean;
   children: ReactNode;
 }) {
   const { themes, loaded: savedThemesLoaded, loadError: savedThemesLoadError } = useSavedThemes();
@@ -281,6 +284,7 @@ function ConfigProviderBody({
     enabled: colorThemeEnabled,
     ready: colorThemeReady,
   });
+  useThemeColorTransitions((collabUrl !== null || collabTerminal) && colorThemeReady);
   useApplyConfigLanguage({
     preference: merged?.appearance?.language,
     userConfigSynced: userState?.synced ?? false,
@@ -331,7 +335,11 @@ function ConfigProviderBody({
   return <ConfigContext value={value}>{children}</ConfigContext>;
 }
 
-export function ConfigProvider(props: { collabUrl: string | null; children: ReactNode }) {
+export function ConfigProvider(props: {
+  collabUrl: string | null;
+  collabTerminal?: boolean;
+  children: ReactNode;
+}) {
   return (
     <SavedThemesProvider>
       <ConfigProviderBody {...props} />

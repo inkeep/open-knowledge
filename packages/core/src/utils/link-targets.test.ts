@@ -339,20 +339,16 @@ describe('buildRelativeMarkdownHref', () => {
     );
   });
 
-  test.each([
-    'Agent Memory',
-    'team plan (draft) #1',
-    'Q&A',
-    'café',
-    "it's here",
-    '100% done',
-  ])('round-trips %j back through the resolver', (name) => {
-    const href = buildRelativeMarkdownHref('blogs/drafts/index', `blogs/drafts/${name}`);
-    expect(resolveInternalHref(href, 'blogs/drafts/index')).toEqual({
-      docName: `blogs/drafts/${name}`,
-      anchor: null,
-    });
-  });
+  test.each(['Agent Memory', 'team plan (draft) #1', 'Q&A', 'café', "it's here", '100% done'])(
+    'round-trips %j back through the resolver',
+    (name) => {
+      const href = buildRelativeMarkdownHref('blogs/drafts/index', `blogs/drafts/${name}`);
+      expect(resolveInternalHref(href, 'blogs/drafts/index')).toEqual({
+        docName: `blogs/drafts/${name}`,
+        anchor: null,
+      });
+    },
+  );
 });
 
 describe('buildAbsoluteMarkdownHref', () => {

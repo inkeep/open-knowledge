@@ -8,11 +8,20 @@ import {
   sliceLastSpawnAttempt,
 } from '@inkeep/open-knowledge-core';
 import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
-import { getLocalDir } from '@inkeep/open-knowledge-server';
+import { getLocalDir, type LocalOpCliInvocation } from '@inkeep/open-knowledge-server';
+import {
+  BOOT_HEARTBEAT_EVENTS,
+  SPAWN_STARTUP_DEADLINE_MS,
+  SPAWN_WAIT_EXTENSION_FACTOR,
+  SPAWN_WAIT_HEARTBEAT_MS,
+  UTILITY_INIT_TIMEOUT_MS,
+} from '../shared/boot-narration.ts';
 import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
 import type { AssetOpenResult } from './asset-allowlist.ts';
 import { attachAssetSafetyNet } from './asset-safety-net.ts';
+import { startBootHeartbeat } from './boot-heartbeat.ts';
+import { resolveLocalOpCliArgsForUtilityFork } from './local-op-cli-invocation.ts';
 import type { ServerExitInfo } from './server-exit-record.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { RestoredWindow } from './state-store.ts';
@@ -21,9 +30,7 @@ import { classifyServerVersion } from './version-drift.ts';
 
 const RESTART_SIGTERM_GRACE_MS = 3_000;
 
-const DEFAULT_SPAWN_STARTUP_DEADLINE_MS = 15_000;
-
-const SPAWN_WAIT_EXTENSION_FACTOR = 8;
+export { SPAWN_WAIT_HEARTBEAT_MS };
 
 const FOREIGN_LOCK_PROBE_ATTEMPTS = 3;
 const FOREIGN_LOCK_PROBE_RETRY_MS = 500;
@@ -207,7 +214,7 @@ interface CreateProjectWindowOpts {
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload;
   didEnsureGit?: boolean;
   consentVersion?: number;
-  localOpCliArgs?: string[];
+  localOpCliInvocation?: LocalOpCliInvocation;
   pendingServerRestartedToast?: boolean;
   freshlyCreated?: boolean;
 }
@@ -238,6 +245,7 @@ export interface WindowManagerDeps {
   removeDir?(dir: string): Promise<void>;
   spawnLockPollDeadlineMs?: number;
   spawnLockProgressDeadlineMs?: number;
+  flushLog?: () => void;
   sigtermGraceMs?: number;
   createKeepalive?(opts: { lockDir: string }): KeepaliveHandle;
   rendererEntryPath: string;
@@ -345,7 +353,11 @@ export class WindowManager {
 
   private readonly keepalives = new Map<string, KeepaliveHandle>();
 
-  constructor(private readonly deps: WindowManagerDeps) {}
+  private readonly deps: WindowManagerDeps;
+
+  constructor(deps: WindowManagerDeps) {
+    this.deps = deps;
+  }
 
   private canonicalizeKey(projectPath: string): string {
     const absolute = resolve(projectPath);
@@ -685,7 +697,7 @@ export class WindowManager {
 
   async restartAttachedServer(
     projectPath: string,
-    opts?: { localOpCliArgs?: string[] },
+    opts?: { localOpCliInvocation?: LocalOpCliInvocation },
   ): Promise<OkServerRestartOutcome> {
     const resolved = resolve(projectPath);
     const canonicalKey = this.canonicalizeKey(resolved);
@@ -740,7 +752,7 @@ export class WindowManager {
         recreated = await this.createProjectWindow({
           projectPath: resolved,
           pendingServerRestartedToast: true,
-          localOpCliArgs: opts?.localOpCliArgs,
+          localOpCliInvocation: opts?.localOpCliInvocation,
         });
       } catch (err) {
         this.deps.log?.warn(
@@ -850,7 +862,7 @@ export class WindowManager {
   async restartServerForWindow(
     sender: BrowserWindowLike | null,
     projectPath: string,
-    opts: { localOpCliArgs?: string[] },
+    opts: { localOpCliInvocation?: LocalOpCliInvocation },
   ): Promise<OkServerRestartOutcome> {
     if (sender !== null) {
       const ephemeralIdentity = this.getEphemeralIdentityForWindow(sender);
@@ -1058,8 +1070,7 @@ export class WindowManager {
         reactShellDistDir,
       });
       this.spawnedDetachedPids.set(canonicalKey, handle.pid);
-      const POLL_DEADLINE_MS =
-        this.deps.spawnLockPollDeadlineMs ?? DEFAULT_SPAWN_STARTUP_DEADLINE_MS;
+      const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? SPAWN_STARTUP_DEADLINE_MS;
       const { lock, waitedDeadlineMs } = await this.pollServerLock(
         lockDir,
         POLL_DEADLINE_MS,
@@ -1193,7 +1204,10 @@ export class WindowManager {
       });
     }
 
-    const INIT_TIMEOUT_MS = this.deps.utilityInitTimeoutMs ?? 15_000;
+    const INIT_TIMEOUT_MS = this.deps.utilityInitTimeoutMs ?? UTILITY_INIT_TIMEOUT_MS;
+    const localOpCliArgs = opts.localOpCliInvocation
+      ? resolveLocalOpCliArgsForUtilityFork(opts.localOpCliInvocation)
+      : null;
 
     const utility = this.deps.forkUtility(
       this.deps.utilityEntryPath,
@@ -1203,11 +1217,18 @@ export class WindowManager {
       },
     );
     const utilityRef = utility;
+    const stopUtilityWaitHeartbeat = startBootHeartbeat(
+      this.deps,
+      BOOT_HEARTBEAT_EVENTS.utilityWait,
+      '[window-manager] still waiting for the utility process to report ready',
+      () => ({ pid: utilityRef.pid, lockDir, initTimeoutMs: INIT_TIMEOUT_MS }),
+    );
     const ready = new Promise<{ port: number; apiOrigin: string }>((resolveReady, reject) => {
       let settled = false;
       const settle = (fn: () => void) => {
         if (settled) return;
         settled = true;
+        stopUtilityWaitHeartbeat();
         utilityRef.removeListener?.('message', onMessage);
         utilityRef.removeListener?.('exit', onExit);
         fn();
@@ -1259,7 +1280,7 @@ export class WindowManager {
         didEnsureGit: opts.didEnsureGit === true,
         consentVersion: opts.consentVersion ?? 1,
         ...(reactShellDistDir !== null ? { reactShellDistDir } : {}),
-        ...(opts.localOpCliArgs ? { localOpCliArgs: opts.localOpCliArgs } : {}),
+        ...(localOpCliArgs ? { localOpCliArgs } : {}),
       },
     });
 
@@ -1355,6 +1376,12 @@ export class WindowManager {
       ownsServer: true,
     };
     const releaseLoadingContext = this.publishLoadingContext(context);
+    const stopRendererLoadHeartbeat = startBootHeartbeat(
+      this.deps,
+      BOOT_HEARTBEAT_EVENTS.rendererLoad,
+      '[window-manager] still waiting for the renderer to finish loading',
+      () => ({ projectPath }),
+    );
     try {
       if (this.deps.rendererDevUrl) {
         await window.loadURL(this.deps.rendererDevUrl);
@@ -1377,6 +1404,7 @@ export class WindowManager {
 
       this.windowsByPath.set(canonicalKey, context);
     } finally {
+      stopRendererLoadHeartbeat();
       releaseLoadingContext();
     }
     return context;
@@ -1467,7 +1495,7 @@ export class WindowManager {
       throw err;
     }
 
-    const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? DEFAULT_SPAWN_STARTUP_DEADLINE_MS;
+    const POLL_DEADLINE_MS = this.deps.spawnLockPollDeadlineMs ?? SPAWN_STARTUP_DEADLINE_MS;
     const { lock, waitedDeadlineMs } = await this.pollServerLock(
       lockDir,
       POLL_DEADLINE_MS,
@@ -1782,6 +1810,7 @@ export class WindowManager {
     let effectiveDeadlineMs = deadlineMs;
     let deadline = started + deadlineMs;
     let extended = false;
+    let lastHeartbeatAt = started;
     for (;;) {
       const lock = reader(lockDir);
       if (lock !== null && lock.draining !== true && lock.port > 0 && lock.kind !== undefined) {
@@ -1814,6 +1843,23 @@ export class WindowManager {
           },
           '[window-manager] server still starting at the spawn deadline — extending the wait',
         );
+      }
+      const nowMs = Date.now();
+      if (nowMs - lastHeartbeatAt >= SPAWN_WAIT_HEARTBEAT_MS) {
+        lastHeartbeatAt = nowMs;
+        this.deps.log?.info(
+          {
+            event: BOOT_HEARTBEAT_EVENTS.spawnWait,
+            pid: child?.pid,
+            lockDir,
+            elapsedMs: nowMs - started,
+            childAlive: child !== undefined ? isAlive?.(child.pid) === true : undefined,
+            lockPublished: lock !== null,
+            extended,
+          },
+          '[window-manager] still waiting for the server lock',
+        );
+        this.deps.flushLog?.();
       }
       await new Promise<void>((resolveSleep) => {
         this.deps.setTimeout(() => {
@@ -2035,6 +2081,12 @@ export class WindowManager {
       ownsServer: false,
     };
     const releaseLoadingContext = this.publishLoadingContext(context);
+    const stopRendererLoadHeartbeat = startBootHeartbeat(
+      this.deps,
+      BOOT_HEARTBEAT_EVENTS.rendererLoad,
+      '[window-manager] still waiting for the renderer to finish loading',
+      () => ({ projectPath }),
+    );
     try {
       if (this.deps.rendererDevUrl) {
         await window.loadURL(this.deps.rendererDevUrl);
@@ -2064,6 +2116,7 @@ export class WindowManager {
 
       this.windowsByPath.set(canonicalKey, context);
     } finally {
+      stopRendererLoadHeartbeat();
       releaseLoadingContext();
     }
     return context;

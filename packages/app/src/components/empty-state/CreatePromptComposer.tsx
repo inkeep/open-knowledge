@@ -1,8 +1,15 @@
-import { type HandoffTarget, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
+import {
+  type HandoffTarget,
+  type TargetData,
+  TERMINAL_CLIS,
+  type TerminalCli,
+} from '@inkeep/open-knowledge-core';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, Check, ChevronDown, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { toast } from 'sonner';
+import { AttachFilesButton } from '@/components/acp/AttachFilesButton';
+import { PendingImageStrip } from '@/components/acp/PendingImageStrip';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import {
   clearComposerDraft,
@@ -13,6 +20,7 @@ import {
   type CreateScenario,
   useCreateSuggestions,
 } from '@/components/empty-state/use-create-suggestions';
+import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import {
   AskAgentNameLabel,
@@ -42,11 +50,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
+  type ComposerAttachmentDropPolicy,
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import { useComposerAttachments } from '@/editor/use-composer-attachments';
 import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import { collectAllFiles, collectImageFiles } from '@/lib/acp/image-attachment';
 import {
   enabledDesktopTargets,
   enabledTerminalClis,
@@ -117,7 +128,60 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
 
   const [initialDraftDoc] = useState(() => getComposerDraft().doc ?? undefined);
 
+  const {
+    pendingAttachments,
+    pendingUploads,
+    ingestFiles,
+    removeAt: removePendingAttachment,
+    clear: clearPendingAttachments,
+  } = useComposerAttachments({
+    absPathOf:
+      typeof window !== 'undefined' && window.okDesktop
+        ? window.okDesktop.getPathForFile
+        : undefined,
+    workspaceContentDir: workspace?.contentDir,
+    pathSeparator: workspace?.pathSeparator,
+    onError: (message) => toast.error(message),
+  });
+
+  const resolvedTarget: TargetData | null =
+    selection.kind === 'desktop'
+      ? (VISIBLE_TARGETS.find((target) => target.id === selection.target) ?? null)
+      : null;
+  const dropRefusalReason = ((): string | null => {
+    switch (selection.kind) {
+      case 'thread':
+        return null;
+      case 'cli':
+        return t`${TERMINAL_CLIS[selection.cli].displayName} runs in a terminal and doesn't accept attachments — choose an in-app agent instead.`;
+      case 'desktop':
+        return resolvedTarget !== null
+          ? t`${resolvedTarget.displayName} opens via a link and doesn't accept attachments — choose an in-app agent instead.`
+          : t`This composer doesn't accept attachments.`;
+      case 'terminal':
+        return t`This composer doesn't accept attachments.`;
+      case 'none':
+        return t`No agents are set up yet — add an in-app agent in Agent connections to attach files.`;
+      default: {
+        const _exhaustive: never = selection;
+        throw new Error(`Unhandled launcher selection: ${String(_exhaustive)}`);
+      }
+    }
+  })();
+  const attachmentDrop: ComposerAttachmentDropPolicy = threadSelected
+    ? {
+        kind: 'accept',
+        onFiles: (files) => {
+          void ingestFiles(files);
+        },
+      }
+    : {
+        kind: 'refuse',
+        ...(dropRefusalReason !== null ? { reason: dropRefusalReason } : {}),
+      };
+
   const [isEmpty, setIsEmpty] = useState(true);
+  const [dragActive, setDragActive] = useState(false);
 
   const [showRequiredError, setShowRequiredError] = useState(false);
 
@@ -159,6 +223,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
   }
 
   function launchThread() {
+    if (pendingUploads.length > 0) return;
     const { instruction, mentions } = inputRef.current?.getContent() ?? {
       instruction: '',
       mentions: [],
@@ -172,6 +237,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
       description: instruction,
       scenario,
       mentions,
+      attachments: pendingAttachments,
     });
     if (input === null) return;
     startAgentThreadForInput(
@@ -181,6 +247,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
         : undefined,
     );
     inputRef.current?.clear();
+    clearPendingAttachments();
     clearComposerDraft();
   }
 
@@ -192,6 +259,12 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
     };
     if (!hasValidPromptInput(instruction, mentions, false)) {
       setShowRequiredError(true);
+      return;
+    }
+    if (pendingAttachments.length > 0 || pendingUploads.length > 0) {
+      toast.error(
+        t`This agent doesn't accept attachments — remove them or choose an in-app agent.`,
+      );
       return;
     }
     const input = buildCreateHandoffInput({
@@ -213,6 +286,12 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
     };
     if (!hasValidPromptInput(instruction, mentions, false)) {
       setShowRequiredError(true);
+      return;
+    }
+    if (pendingAttachments.length > 0 || pendingUploads.length > 0) {
+      toast.error(
+        t`This agent doesn't accept attachments — remove them or choose an in-app agent.`,
+      );
       return;
     }
     writePreferredAgent(targetId);
@@ -294,7 +373,66 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer clicks only delegate focus to the composer's editable; keyboard users focus it directly (Tab / ⌥⌘L). */}
       <div
         onMouseDown={(event) => focusComposerInputOnCardPointer(event, inputRef)}
-        className="flex w-full cursor-text flex-col rounded-2xl border border-border/60 bg-card shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
+        onPaste={(event) => {
+          const files = collectImageFiles(event.clipboardData);
+          if (files.length === 0) return;
+          event.preventDefault();
+          if (!threadSelected) {
+            inputRef.current?.refuseDrop(
+              dropRefusalReason ?? t`This composer doesn't accept attachments.`,
+            );
+            return;
+          }
+          void ingestFiles(files);
+        }}
+        onDragEnter={(event) => {
+          if (isExternalFileDrag(event)) {
+            event.preventDefault();
+            setDragActive(true);
+          }
+        }}
+        onDragOver={(event) => {
+          if (isExternalFileDrag(event)) {
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+            setDragActive(true);
+          }
+        }}
+        onDragLeave={(event) => {
+          const next = event.relatedTarget;
+          if (next instanceof Node && event.currentTarget.contains(next)) return;
+          setDragActive(false);
+        }}
+        onDropCapture={() => setDragActive(false)}
+        onDrop={(event) => {
+          if (!isExternalFileDrag(event)) return;
+          event.preventDefault();
+          const files = collectAllFiles(event.dataTransfer);
+          if (files.length === 0) {
+            inputRef.current?.refuseDrop(
+              t`Folders and empty files can't be attached — drop the files themselves.`,
+            );
+            return;
+          }
+          if (!threadSelected) {
+            inputRef.current?.refuseDrop(
+              dropRefusalReason ?? t`This composer doesn't accept attachments.`,
+            );
+            return;
+          }
+          void ingestFiles(files);
+        }}
+        data-testid="create-prompt-card"
+        data-drag-active={dragActive ? (threadSelected ? 'accept' : 'refuse') : undefined}
+        className={cn(
+          'flex w-full cursor-text flex-col rounded-2xl border border-border/60 bg-card shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
+          dragActive &&
+            threadSelected &&
+            'bg-primary/5 outline-2 outline-dashed outline-offset-2 outline-primary',
+          dragActive &&
+            !threadSelected &&
+            'bg-destructive/5 outline-2 outline-dashed outline-offset-2 outline-destructive/60',
+        )}
       >
         {}
         <ComposerMentionInput
@@ -309,25 +447,64 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
               ? t`A PR reviewer, a release-notes writer, a deploy checklist...`
               : t`A team knowledge base, a personal wiki, project docs...`
           }
+          attachmentDrop={attachmentDrop}
           onEmptyChange={handleEmptyChange}
           onContentChange={setComposerDraftDoc}
           onSubmit={handleSubmit}
           initialDoc={initialDraftDoc}
           className="max-h-96 overflow-y-auto px-4 py-3 text-sm leading-relaxed subtle-scrollbar [&_.ProseMirror]:min-h-16"
         />
+        {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
+          <PendingImageStrip
+            testIdPrefix="create-prompt"
+            images={pendingAttachments}
+            uploads={pendingUploads}
+            onRemove={removePendingAttachment}
+          />
+        ) : null}
+        {pendingAttachments.length > 0 && dropRefusalReason !== null ? (
+          <p aria-hidden="true" className="px-4 pb-1 text-muted-foreground text-xs">
+            {dropRefusalReason}
+          </p>
+        ) : null}
+        <div
+          role="status"
+          aria-live="polite"
+          className="sr-only"
+          data-testid="composer-attachment-status"
+        >
+          {pendingAttachments.length > 0 && dropRefusalReason !== null ? (
+            dropRefusalReason
+          ) : pendingUploads.length > 0 ? (
+            <Plural
+              value={pendingUploads.length}
+              one="Uploading # attachment"
+              other="Uploading # attachments"
+            />
+          ) : pendingAttachments.length > 0 ? (
+            <Plural
+              value={pendingAttachments.length}
+              one="# attachment is ready to send"
+              other="# attachments are ready to send"
+            />
+          ) : null}
+        </div>
         {}
         <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3">
-          {showRequiredError && isEmpty ? (
-            <p
-              role="alert"
-              className="text-1sm text-destructive"
-              data-testid="create-input-required"
-            >
-              <Trans>Describe what you want to create to continue</Trans>
-            </p>
-          ) : (
-            <span />
-          )}
+          <div className="flex min-w-0 items-center gap-2">
+            {threadSelected ? (
+              <AttachFilesButton testId="create-attach-files" onFiles={ingestFiles} />
+            ) : null}
+            {showRequiredError && isEmpty ? (
+              <p
+                role="alert"
+                className="text-1sm text-destructive"
+                data-testid="create-input-required"
+              >
+                <Trans>Describe what you want to create to continue</Trans>
+              </p>
+            ) : null}
+          </div>
           {!canCreate ? (
             <Button
               type="button"
@@ -352,6 +529,7 @@ export function CreatePromptComposer({ scenario, className }: CreatePromptCompos
                         : undefined
                 }
                 variant="outline"
+                disabled={pendingUploads.length > 0}
                 className="gap-1.5"
                 data-testid="create-with-agent"
               >

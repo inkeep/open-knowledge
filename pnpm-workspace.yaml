@@ -11,11 +11,20 @@ ignorePatchFailures: false
 # (4320 = 3 days). Own-org packages (@inkeep/*) are exempt. This replaces the
 # retired bunfig.toml posture (which expressed the same window in seconds:
 # minimumReleaseAge = 259200). Emergency reproduction escape hatch (bypass the
-# cooldown for a single install): `pnpm install --config.minimum-release-age=0`.
+# cooldown for a single install): `pnpm install --config.minimumReleaseAge=0`.
 minimumReleaseAge: 4320
 minimumReleaseAgeExclude:
   - '@inkeep/*'
   - '@visimer/*'
+  # The four packages the electron-builder 26.16.1 train bumped; the keychain
+  # fix itself is in app-builder-lib and the others pin it exactly. Published
+  # 2026-09-07T18:24Z, so these stop having any effect at 2026-09-10T18:24Z
+  # (publish + minimumReleaseAge) — delete all four then. Version-qualified,
+  # so every later release stays gated.
+  - 'electron-builder@26.16.1'
+  - 'electron-builder-squirrel-windows@26.16.1'
+  - 'app-builder-lib@26.16.1'
+  - 'dmg-builder@26.16.1'
 
 # Dependency build scripts are blocked by default under pnpm; only these run.
 # electron ships no install script of its own as of 43 — it fetches its platform
@@ -59,8 +68,14 @@ overrides:
   # effect. pnpm applies an out-of-range override silently; these are the ones
   # that would not surface on their own.
   #
-  # `next` is floored at the advisory patch line rather than its declared `^16`
-  # caret, to keep this a security-only change (a bare caret takes it to 16.3.x).
+  # `next` is floored at ~16.3.x, the first line on which Next type-checks
+  # through the project-local `tsc` CLI instead of the JavaScript compiler API
+  # that TypeScript 7 no longer ships. A 16.2.x build under TypeScript 7 does not
+  # merely fail: it shells out an unsolicited `pnpm add -D typescript` inside the
+  # repo (firing the husky prepare + postinstall hooks) before dying with an
+  # opaque worker error, and `ignoreBuildErrors` does not suppress it. So this
+  # floor moves in lockstep with the compiler, never after it. From here the line
+  # is security-only again -- a bare `^16` caret would float to the next minor.
   #
   # `vite` is deliberately absent. 8.0.16 pulls rolldown 1.0.0-rc.15 -> 1.0.3,
   # which re-partitions chunks and moves ~253 kB gzipped into the app's main
@@ -86,7 +101,7 @@ overrides:
   'nanoid@3': ~3.3.18
   'nanoid@4': ~5.1.16
   'nanoid@5': ~5.1.16
-  'next@16': ~16.2.11
+  'next@16': ~16.3.3
   'postcss@8': ~8.5.23
   'sharp@0.34': ~0.35.0
   'tar@7': ~7.5.21
@@ -110,8 +125,13 @@ overrides:
   # `@codemirror/state` range and raise this to match.
   '@codemirror/state': 6.7.1
   '@codemirror/view': 6.43.3
+  # UPSTREAM(@base-ui/react@1.8.0): Direct/transitive Floating UI floors supersede the historical freeze; changes need regression coverage of Settings, ShareBranchSwitchDialog and CreateProjectDialog, not just the spelling-language picker.
+  '@floating-ui/core': 1.8.0
+  '@floating-ui/dom': 1.8.0
+  '@floating-ui/react-dom': 2.1.9
+  '@floating-ui/utils': 0.2.12
   # Radix UI graph pinned to the versions the bun lockfile resolved. A fresh
-  # pnpm resolution floats the whole @radix-ui/* + floating-ui graph past the
+  # pnpm resolution floats the whole @radix-ui/* graph past the
   # bun baseline (e.g. react-dialog 1.1.15 -> 1.1.19, react-presence 1.1.6 ->
   # 1.1.7, react-primitive 2.1.6 -> 2.1.7); the newer dialog/presence/
   # dismissable-layer stack shifts effect + timer flush ordering enough to break
@@ -119,10 +139,6 @@ overrides:
   # polling). This toolchain cutover must be behavior-preserving, so the runtime
   # Radix graph is held at the bun baseline. Revisit as a deliberate, separately
   # tested upgrade -- not as a side effect of the package-manager swap.
-  '@floating-ui/core': 1.7.5
-  '@floating-ui/dom': 1.7.6
-  '@floating-ui/react-dom': 2.1.8
-  '@floating-ui/utils': 0.2.11
   '@radix-ui/number': 1.1.1
   '@radix-ui/primitive': 1.1.4
   '@radix-ui/react-accessible-icon': 1.1.7

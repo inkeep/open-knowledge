@@ -148,6 +148,7 @@ const launchCalls: HandoffDispatchInput[] = [];
 
 const { CreatePromptComposer } = await import('./CreatePromptComposer');
 const { TerminalLaunchProvider } = await import('@/components/handoff/TerminalLaunchContext');
+const { TooltipProvider } = await import('@/components/ui/tooltip');
 
 async function renderComposer(
   opts: { withTerminal: boolean; scenario?: CreateScenario } = { withTerminal: true },
@@ -156,9 +157,11 @@ async function renderComposer(
     ? { launchInTerminal: (i: HandoffDispatchInput) => launchCalls.push(i), installedClis: {} }
     : null;
   render(
-    <TerminalLaunchProvider value={value}>
-      <CreatePromptComposer scenario={opts.scenario ?? 'new-project'} />
-    </TerminalLaunchProvider>,
+    <TooltipProvider>
+      <TerminalLaunchProvider value={value}>
+        <CreatePromptComposer scenario={opts.scenario ?? 'new-project'} />
+      </TerminalLaunchProvider>
+    </TooltipProvider>,
   );
   await waitFor(() => {
     expect(screen.getByTestId('create-with-agent-menu')).toBeTruthy();

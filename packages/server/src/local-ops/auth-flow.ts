@@ -1,8 +1,8 @@
-import { runSubprocess } from './subprocess.ts';
+import { redactedStderrDetail, stderrDetailSuffix } from './clone-error-classify.ts';
+import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
 import type { AuthEvent } from './types.ts';
 
-export interface RunDeviceFlowOptions {
-  cliArgs: readonly string[];
+export interface RunDeviceFlowOptions extends LocalOpCliInvocation {
   host?: string;
   timeoutMs?: number;
   onEvent: (event: AuthEvent) => void;
@@ -43,10 +43,8 @@ function asAuthEvent(parsed: Record<string, unknown>): AuthEvent | null {
     };
   }
   if (type === 'error') {
-    return {
-      type: 'error',
-      message: typeof parsed.message === 'string' ? parsed.message : 'Unknown error',
-    };
+    const message = typeof parsed.message === 'string' ? redactedStderrDetail(parsed.message) : '';
+    return { type: 'error', message: message || 'Unknown error' };
   }
   return null;
 }
@@ -59,6 +57,7 @@ export function runDeviceFlowSubprocess(opts: RunDeviceFlowOptions): RunDeviceFl
 
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
+    cliEnv: opts.cliEnv,
     trailingArgs: ['auth', 'login', '--json', '--host', host],
     timeoutMs,
     onLine: ({ parsed }) => {
@@ -74,16 +73,19 @@ export function runDeviceFlowSubprocess(opts: RunDeviceFlowOptions): RunDeviceFl
 
   const done = proc.done.then((result) => {
     if (sawTerminal) return;
+    if (result.timedOut) {
+      opts.onEvent({ type: 'error', message: 'Sign-in timed out' });
+      return;
+    }
+    if (result.cancelled) return;
     if (result.code === 0) {
       opts.onEvent({ type: 'complete', host, login: '' });
-    } else {
-      opts.onEvent({
-        type: 'error',
-        message: result.timedOut
-          ? 'Sign-in timed out'
-          : `auth login exited with code ${result.code ?? -1}`,
-      });
+      return;
     }
+    opts.onEvent({
+      type: 'error',
+      message: `auth login exited with code ${result.code ?? -1}${stderrDetailSuffix(result.stderr)}`,
+    });
   });
 
   return { done, cancel: proc.cancel };

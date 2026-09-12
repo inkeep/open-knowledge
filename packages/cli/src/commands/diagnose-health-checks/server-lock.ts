@@ -1,7 +1,6 @@
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { resolveLockDir } from '@inkeep/open-knowledge-server';
-import { inspectLock, type LockState } from '../lock-state.ts';
+import { describeLockOwnershipRefusal, inspectLock, type LockState } from '../lock-state.ts';
 import type { CheckContext, CheckDefinition, CheckResult } from './types.ts';
 
 interface ServerLockCheckDeps {
@@ -37,12 +36,21 @@ export function makeServerLockCheck(deps: ServerLockCheckDeps = {}): CheckDefini
             remediation: 'Stop the other OpenKnowledge process or run `ok stop`.',
             detail: `lockPath: ${state.lockPath}; port: ${state.lock.port}; started: ${state.lock.startedAt}`,
           };
+        case 'unverified-owner':
+          return {
+            name: 'server-lock',
+            status: 'warn',
+            summary: `unverified owner; recorded pid ${state.pid} is alive locally`,
+            remediation: describeLockOwnershipRefusal(state),
+            detail: `lockPath: ${state.lockPath}; pid: ${state.pid}`,
+          };
         case 'foreign-host':
           return {
             name: 'server-lock',
             status: 'warn',
             summary: `lock claimed by ${state.lock.hostname} (foreign host)`,
-            remediation: `Run \`ok clean\` to prune the stale lock at ${resolve(lockDir, 'server.lock')}.`,
+            remediation:
+              'Stop the server on its owning machine and confirm the directory is no longer in use before removing the lock.',
             detail: `lockPath: ${state.lockPath}; pid: ${state.lock.pid}`,
           };
         case 'dead-pid':
@@ -52,6 +60,14 @@ export function makeServerLockCheck(deps: ServerLockCheckDeps = {}): CheckDefini
             summary: `stale lock for non-existent pid ${state.lock.pid}`,
             remediation: 'Run `ok clean` to prune.',
             detail: `lockPath: ${state.lockPath}`,
+          };
+        case 'read-error':
+          return {
+            name: 'server-lock',
+            status: 'fail',
+            summary: 'server.lock could not be read',
+            remediation: 'Restore file and parent-directory access, then retry.',
+            detail: `${state.lockPath}: ${state.error}`,
           };
         case 'corrupt':
           return {

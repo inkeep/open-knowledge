@@ -1,61 +1,6 @@
 /**
- * mark-interaction-bridge — wires markIdentityPlugin's register/deregister
- * lifecycle to an InteractionLayerHandle so mark chip extensions
- * (InternalLink) can route per-mark interactions through the shared editor-root
- * React plane.
- *
- * Sits between two already-shipped primitives:
- *   - `markIdentityPlugin` assigns stable IDs to PM marks and fires
- *     register/deregister callbacks on mark lifecycle via its view update.
- *   - `InteractionLayer` hosts the singleton PropPanel/Toolbar/
- *     Breadcrumb subtree at editor root, routed by active nodeId.
- *
- * Concentrates three subtle correctness points that every mark chip extension
- * would otherwise re-solve:
- *
- *   1. **Live position lookup** — a mark's `from`/`to` captured at register
- *      time goes stale as the user edits. `getCurrentMarkInfo(state, id)`
- *      resolves the latest MarkInfo from the identity plugin's state on
- *      demand, so PropPanel renderers never operate on stale positions.
- *
- *   2. **Context bridging** — the layer's `InteractionContext` exposes only
- *      `{ nodeId, type, deactivate }`. Mark chip renderers typically want
- *      `{ editor, nodeId, deactivate }` so they can reach back into the
- *      editor for commands / state. The bridge augments the context for
- *      `renderPropPanel` without forcing the layer to know about editors.
- *
- *   3. **Deregister ordering** — onDeregister fires synchronously from the
- *      plugin's view update after a transaction. The bridge calls
- *      `layer.deregister(id)` inline so the singleton PropPanel (if active)
- *      unmounts before the next render.
- *
- * Consumer pattern (targeted by `internal-link.ts` port):
- *
- *     addProseMirrorPlugins() {
- *       return [
- *         createMarkInteractionBridgePlugin({
- *           editor: this.editor,
- *           markTypes: ['link'],
- *           renderPropPanel: ({ editor, nodeId, deactivate }) => (
- *             <InternalLinkPropPanel
- *               editor={editor}
- *               nodeId={nodeId}
- *               onClose={deactivate}
- *             />
- *           ),
- *         }),
- *         markIdentityDecorationPlugin(),
- *       ];
- *     }
- *
- * The PropPanel component reads live MarkInfo via `getCurrentMarkInfo(editor.state, nodeId)`.
- *
- * No consumers wired in this module today — ships as scope-reduction:
- * concentrates the wiring pattern + correctness handling
- * in one tested place so the eventual atomic refactor is smaller.
- *
- * Precedent #9 (add-only schema) is preserved — all identity lives in
- * PluginState, never in mark attrs.
+ * Precedent #9 (add-only schema) is preserved — all identity lives in PluginState, never in mark
+ * attrs.
  */
 
 import type { Editor } from '@tiptap/core';

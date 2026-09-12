@@ -28,6 +28,7 @@ import {
   applyExternalConfigChange,
   type ConfigPersistenceCtx,
   configDocAbsPath,
+  isConfigEcho,
   loadConfigDoc,
   storeConfigDoc,
 } from './config-persistence.ts';
@@ -778,6 +779,7 @@ describe('applyExternalConfigChange', () => {
     const outcome = applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, yaml, fx.ctx);
 
     expect(outcome).toBe('no-op');
+    expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, yaml, fx.ctx)).toBe(true);
     expect(mutationCount).toBe(0);
     expect(fx.rejections).toHaveLength(0);
   });
@@ -790,8 +792,32 @@ describe('applyExternalConfigChange', () => {
       fx.ctx,
     );
     expect(outcome).toBe('no-op');
+    expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, 'theme: dark\n', fx.ctx)).toBe(false);
+    expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, '', fx.ctx)).toBe(false);
     expect(fx.rejections).toHaveLength(0);
   });
+
+  test.each(['mcp:\n  autoStart: false\n', ''])(
+    'distinguishes cached echoes from new content after unloading (%j)',
+    (content) => {
+      const doc = new Y.Doc();
+      expect(applyExternalConfigChange(doc, CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(
+        'applied',
+      );
+      doc.destroy();
+
+      expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(true);
+      expect(applyExternalConfigChange(null, CONFIG_DOC_NAME_PROJECT, content, fx.ctx)).toBe(
+        'no-op',
+      );
+      const changed = 'mcp:\n  autoStart: true\n';
+      expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, changed, fx.ctx)).toBe(false);
+      expect(applyExternalConfigChange(null, CONFIG_DOC_NAME_PROJECT, changed, fx.ctx)).toBe(
+        'no-op',
+      );
+      expect(isConfigEcho(CONFIG_DOC_NAME_PROJECT, changed, fx.ctx)).toBe(false);
+    },
+  );
 
   test('YAML parse error → rejected; Y.Text NOT mutated; onConfigRejected fired', () => {
     const doc = new Y.Doc();

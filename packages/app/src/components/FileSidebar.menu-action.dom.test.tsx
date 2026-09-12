@@ -1,4 +1,5 @@
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { type ReactNode, useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetSkillsSectionVisibleCacheForTests } from '@/components/skills-section-visible-cache';
@@ -73,6 +74,7 @@ const projectLocalPatch = vi.fn((_patch: unknown) => ({ ok: true as const }));
 const projectLocalBindingStub = { patch: projectLocalPatch };
 const DEFAULT_MERGED_CONFIG = { appearance: { sidebar: { showHiddenFiles: false } } };
 let mergedConfig: { appearance?: { sidebar?: Record<string, boolean> } } = DEFAULT_MERGED_CONFIG;
+let projectLocalSynced = true;
 let menuActionCallback: ((action: MenuAction) => void) | null = null;
 
 vi.doMock('@/lib/perf', () => ({
@@ -122,48 +124,6 @@ vi.doMock('@/components/ui/sidebar', () => ({
 
 vi.doMock('@/components/SkillsSidebarSection', () => ({
   SkillsSidebarSection: () => null,
-}));
-
-vi.doMock('@/components/ui/context-menu', () => ({
-  ContextMenu: PassThrough,
-  ContextMenuCheckboxItem: Button,
-  ContextMenuContent: ElementPassThrough,
-  ContextMenuItem: Button,
-  ContextMenuSeparator: () => <hr />,
-  ContextMenuSub: PassThrough,
-  ContextMenuSubContent: ElementPassThrough,
-  ContextMenuSubTrigger: Button,
-  ContextMenuTrigger: PassThrough,
-}));
-
-vi.doMock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: PassThrough,
-  DropdownMenuCheckboxItem: ({
-    checked,
-    children,
-    onCheckedChange: _onCheckedChange,
-    ...props
-  }: {
-    checked?: boolean;
-    children?: ReactNode;
-    onCheckedChange?: (checked: boolean) => void;
-    [key: string]: unknown;
-  }) => (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked ? 'true' : 'false'}
-      {...props}
-    >
-      {children}
-    </button>
-  ),
-  DropdownMenuContent: ElementPassThrough,
-  DropdownMenuGroup: ElementPassThrough,
-  DropdownMenuItem: Button,
-  DropdownMenuLabel: ElementPassThrough,
-  DropdownMenuSeparator: () => null,
-  DropdownMenuTrigger: PassThrough,
 }));
 
 vi.doMock('@/components/handoff/OpenInAgentEmptySpaceSubmenu', () => ({
@@ -236,6 +196,7 @@ vi.doMock('@/hooks/use-folder-config', () => ({
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     projectLocalBinding: projectLocalBindingStub,
+    projectLocalSynced,
     merged: mergedConfig,
   }),
 }));
@@ -248,8 +209,8 @@ vi.doMock('@/lib/use-workspace', () => ({
   useWorkspace: () => workspaceStub,
 }));
 
-const toastInfoMock = vi.fn((_msg: string) => {});
-const toastErrorMock = vi.fn((_msg: string) => {});
+const toastInfoMock = vi.fn((_msg: string, _options?: { id?: string }) => {});
+const toastErrorMock = vi.fn((_msg: string, _options?: { description?: string }) => {});
 vi.doMock('sonner', () => ({
   toast: {
     error: toastErrorMock,
@@ -279,6 +240,7 @@ describe('FileSidebar menu-action runtime routing', () => {
     menuActionCallback = null;
     activeTarget = ACTIVE_TARGET;
     mergedConfig = DEFAULT_MERGED_CONFIG;
+    projectLocalSynced = true;
     noAgentsInstalled = false;
     __resetSkillsSectionVisibleCacheForTests();
     if (typeof localStorage !== 'undefined') localStorage.clear();
@@ -582,6 +544,104 @@ describe('FileSidebar menu-action runtime routing', () => {
     expect(projectLocalPatch).toHaveBeenCalledWith({
       appearance: { sidebar: { showSkillsSection: false } },
     });
+  });
+
+  test('rejects a native view-toggle action until the project-local binding first syncs', async () => {
+    projectLocalSynced = false;
+    const rendered = renderSidebar();
+    await waitFor(() => expect(menuActionCallback).not.toBeNull());
+
+    menuActionCallback?.('toggle-show-hidden-files' as MenuAction);
+    expect(projectLocalPatch).not.toHaveBeenCalled();
+    expect(toastInfoMock).toHaveBeenCalledWith(
+      'Settings are still loading. Try again in a moment.',
+      { id: 'sidebar-settings-not-ready' },
+    );
+
+    projectLocalSynced = true;
+    rendered.rerender(<FileSidebar onOpenSearch={() => {}} />);
+    menuActionCallback?.('toggle-show-hidden-files' as MenuAction);
+    expect(projectLocalPatch).toHaveBeenCalledWith({
+      appearance: { sidebar: { showHiddenFiles: true } },
+    });
+  });
+
+  test('a real tree-options checkbox stays in roving focus, refuses Enter, and keeps focus when ready', async () => {
+    const user = userEvent.setup();
+    projectLocalSynced = false;
+    const rendered = renderSidebar();
+
+    await user.click(screen.getByRole('button', { name: 'Tree view options' }));
+    const menu = await screen.findByTestId('tree-options-menu');
+    const pending = within(menu).getByTestId('tree-options-show-hidden-files');
+    expect(pending.getAttribute('aria-disabled')).toBe('true');
+    expect(pending.getAttribute('data-disabled')).toBeNull();
+
+    menu.focus();
+    await user.keyboard('h');
+    expect(document.activeElement).toBe(pending);
+    expect(
+      await screen.findByRole('tooltip', {
+        name: 'Settings are still loading. Try again in a moment.',
+      }),
+    ).toBeTruthy();
+
+    await user.keyboard('{Enter}');
+    expect(projectLocalPatch).not.toHaveBeenCalled();
+    expect(toastInfoMock).toHaveBeenCalledWith(
+      'Settings are still loading. Try again in a moment.',
+      { id: 'sidebar-settings-not-ready' },
+    );
+    expect(screen.getByTestId('tree-options-menu')).toBeTruthy();
+    expect(document.activeElement).toBe(pending);
+
+    await user.keyboard('{Enter}');
+    expect(toastInfoMock).toHaveBeenNthCalledWith(
+      2,
+      'Settings are still loading. Try again in a moment.',
+      { id: 'sidebar-settings-not-ready' },
+    );
+
+    projectLocalSynced = true;
+    rendered.rerender(<FileSidebar onOpenSearch={() => {}} />);
+
+    const ready = within(screen.getByTestId('tree-options-menu')).getByTestId(
+      'tree-options-show-hidden-files',
+    );
+    expect(ready).toBe(pending);
+    expect(ready.getAttribute('aria-disabled')).toBeNull();
+    expect(document.activeElement).toBe(ready);
+  });
+
+  test('a real empty-space context checkbox refuses repeated Enter with one stable notice id', async () => {
+    const user = userEvent.setup();
+    projectLocalSynced = false;
+    renderSidebar();
+
+    fireEvent.contextMenu(screen.getByTestId('file-tree-stub'), { clientX: 10, clientY: 10 });
+    const menu = await screen.findByRole('menu');
+    const pending = await screen.findByTestId('empty-space-menu-show-hidden-files');
+    expect(pending.getAttribute('aria-disabled')).toBe('true');
+    expect(pending.getAttribute('data-disabled')).toBeNull();
+
+    menu.focus();
+    await user.keyboard('Show h');
+    await waitFor(() => expect(document.activeElement).toBe(pending));
+
+    await user.keyboard('{Enter}{Enter}');
+    expect(projectLocalPatch).not.toHaveBeenCalled();
+    expect(toastInfoMock).toHaveBeenNthCalledWith(
+      1,
+      'Settings are still loading. Try again in a moment.',
+      { id: 'sidebar-settings-not-ready' },
+    );
+    expect(toastInfoMock).toHaveBeenNthCalledWith(
+      2,
+      'Settings are still loading. Try again in a moment.',
+      { id: 'sidebar-settings-not-ready' },
+    );
+    expect(screen.getByRole('menu')).toBeTruthy();
+    expect(document.activeElement).toBe(pending);
   });
 
   test('visibility toggles read the latest merged config across a flip round-trip', async () => {

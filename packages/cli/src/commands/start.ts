@@ -2,7 +2,7 @@ import { spawn as nativeSpawn } from 'node:child_process';
 import { existsSync as fsExistsSync, realpathSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import type { Server as HttpServer } from 'node:http';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { basename, dirname, resolve as pathResolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import {
@@ -33,6 +33,9 @@ import { makeLazyEmbeddingsKeyStore } from '../auth/embeddings-key-store.ts';
 import { detectGh, detectGhAccounts } from '../auth/gh-detect.ts';
 import { makeLazyProbeTokenStore } from '../auth/token-store.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
+import { createCliStepExecutor } from '../integrations/registry-apply.ts';
+import { createCliProbeResolver } from '../integrations/registry-probes.ts';
+import { userSkillPresentAnywhere } from '../integrations/write-user-skill.ts';
 import { getNativeTomlMcpEditor } from '../native/toml-config-engine.ts';
 import { probeOwnManagedEditorMcpEntry } from './acp-harness-probe.ts';
 import {
@@ -42,6 +45,8 @@ import {
   notFoundMessage,
 } from './desktop-dispatch.ts';
 import { ensurePiBridge, probePiBridgeState } from './pi-acp-bridge.ts';
+import type { LaunchJsonRepairResult } from './repair-launch-json.ts';
+import type { RepairResult } from './repair-mcp-configs.ts';
 
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
 
@@ -292,18 +297,13 @@ interface BootStartServerOptions {
   repairMcpConfigsFn?: (opts: {
     projectDir: string;
     reclaimDisableEnv: string | null;
-    logger?: (event: { event: string }) => void;
-  }) => unknown;
+    logger?: (event: { event: string; severity: 'info' | 'warn' }) => void;
+  }) => RepairResult;
   repairLaunchJsonFn?: (opts: {
     projectDir: string;
     reclaimDisableEnv: string | null;
-    logger?: (event: { event: string }) => void;
-  }) => unknown;
-  repairSkillsFn?: (opts: {
-    projectDir: string;
-    reclaimDisableEnv: string | null;
-    logger?: (event: { event: string }) => void;
-  }) => Promise<unknown> | unknown;
+    logger?: (event: { event: string; severity: 'info' | 'warn' }) => void;
+  }) => LaunchJsonRepairResult;
   serveContentAssets?: boolean;
   reactShellDistDir?: string;
   singleFile?: string;
@@ -390,17 +390,25 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
 
     const reclaimDisableEnv = process.env.OK_RECLAIM_DISABLE ?? null;
 
-    const reclaimEventLogger = (event: { event: string }) => {
-      const name = typeof event.event === 'string' ? event.event : '';
-      if (name.endsWith('-failed') || name.endsWith('-error') || name.endsWith('-missing')) {
-        log.warn({ event }, '[start] reclaim sweep reported a problem');
-      }
+    const reclaimEventLogger = (event: { event: string; severity: 'info' | 'warn' }) => {
+      if (event.severity === 'info') log.debug({ event }, '[start] reclaim sweep event');
+      else log.warn({ event }, '[start] reclaim sweep reported a problem');
     };
 
     try {
       const repair =
         opts.repairMcpConfigsFn ?? (await import('./repair-mcp-configs.ts')).repairMcpConfigs;
-      repair({ projectDir: cwd, reclaimDisableEnv, logger: reclaimEventLogger });
+      const sweep = repair({ projectDir: cwd, reclaimDisableEnv, logger: reclaimEventLogger });
+      const unhealed = sweep.outcomes.filter(
+        (o) =>
+          o.outcome !== 'no-entry' &&
+          o.outcome !== 'canonical' &&
+          o.outcome !== 'repaired' &&
+          o.outcome !== 'foreign',
+      );
+      if (unhealed.length > 0) {
+        log.warn({ unhealed }, '[start] reclaim sweep left entries it could not heal');
+      }
     } catch (err) {
       log.warn({ err }, '[start] mcp-config repair sweep failed; continuing');
     }
@@ -411,13 +419,6 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
       repair({ projectDir: cwd, reclaimDisableEnv, logger: reclaimEventLogger });
     } catch (err) {
       log.warn({ err }, '[start] launch.json repair sweep failed; continuing');
-    }
-
-    try {
-      const repair = opts.repairSkillsFn ?? (await import('./repair-skills.ts')).repairSkills;
-      await repair({ projectDir: cwd, reclaimDisableEnv, logger: reclaimEventLogger });
-    } catch (err) {
-      log.warn({ err }, '[start] skill repair sweep failed; continuing');
     }
   }
 
@@ -481,7 +482,16 @@ export async function bootStartServer(opts: BootStartServerOptions): Promise<Boo
       probeHarnessManagedMcpEntry: (editorId, agentCwd) =>
         probeOwnManagedEditorMcpEntry(editorId, agentCwd),
       probePiAcpBridge: (agentCwd) => probePiBridgeState(agentCwd),
-      ensurePiAcpBridge: (agentCwd) => ensurePiBridge(agentCwd),
+      ensurePiAcpBridge: (agentCwd, approvedCanonicalCwd) =>
+        ensurePiBridge(agentCwd, undefined, undefined, undefined, approvedCanonicalCwd),
+      agentIntegrations: (() => {
+        const registryCtx = { cwd: ephemeralProjectDir ?? cwd, home: homedir(), env: process.env };
+        return {
+          probe: createCliProbeResolver(registryCtx),
+          execute: createCliStepExecutor(registryCtx),
+          userSkillPresentAnywhere,
+        };
+      })(),
       idleShutdownMs: idleThresholdMs,
       ...(opts.serverRuntime !== undefined ? { serverRuntime: opts.serverRuntime } : {}),
       ...(opts.bind !== undefined ? { bind: opts.bind } : {}),
@@ -726,7 +736,10 @@ export async function runStartCommand(configArg: Config, opts: StartCommandOptio
       process.exit(1);
     }
 
-    if (err instanceof serverModule.MissingOkConfigError) {
+    if (
+      err instanceof serverModule.MissingOkConfigError ||
+      err instanceof serverModule.DocumentDurabilityStateError
+    ) {
       console.error(error(err.message));
       process.exit(1);
     }
@@ -871,22 +884,8 @@ interface ResolveServerReuseDeps {
 }
 
 /**
- * Spawn-or-reuse resolution: a second `ok start` that lost the server.lock
- * acquisition reads the live holder's advertisement and reports it instead of
- * failing. Returns the holder's browser-facing URL, or `null` when the lock
- * can't be resolved to a usable address (caller falls back to the error path).
- *
- * Polls through the pre-listen window (`port: 0` sentinel) so racing a
- * predecessor that is still binding reports its real address rather than
- * failing on the sentinel. URL preference order:
- *
- * 1. lock v2 `url` when the holder advertises the `ui` capability — the
- *    canonical one-URL contract (the same record Desktop attaches through);
- * 2. the server's own `url`/port — API+MCP only (a `--only server` boot), but
- *    still the right address.
- *
- * All time + IO deps injected (precedent #13b) so tests drive every branch
- * with a virtual clock and no filesystem.
+ * All time + IO deps injected (precedent #13b) so tests drive every branch with a virtual clock and
+ * no filesystem.
  */
 export async function resolveServerReuse(
   deps: ResolveServerReuseDeps,

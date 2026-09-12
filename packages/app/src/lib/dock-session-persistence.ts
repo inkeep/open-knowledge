@@ -10,6 +10,7 @@ export interface DockSessionOrder {
 export interface DockRestoreState {
   readonly sessionOrder: DockSessionOrder | null;
   readonly terminalSnapshot: OkTerminalRestartSnapshot | undefined;
+  readonly failed: boolean;
 }
 
 const WEB_STORAGE_KEYS: Record<DockSurface, string> = {
@@ -52,20 +53,21 @@ export async function readDockRestoreState(
       const state = await bridge.terminal.getDockState();
       const record = state[surface];
       if (record == null) {
-        return { sessionOrder: null, terminalSnapshot: state.terminalSnapshot };
+        return { sessionOrder: null, terminalSnapshot: state.terminalSnapshot, failed: false };
       }
       const { order, activeKey } = coerceOrder(record);
       const sessionOrder = order.length === 0 && activeKey === null ? null : { order, activeKey };
-      return { sessionOrder, terminalSnapshot: state.terminalSnapshot };
+      return { sessionOrder, terminalSnapshot: state.terminalSnapshot, failed: false };
     } catch (err) {
-      console.warn('[dock-session-persistence] getDockState failed; cold-starting:', err);
-      return { sessionOrder: null, terminalSnapshot: undefined };
+      console.warn(`[dock-session-persistence] getDockState failed; cold-starting: ${String(err)}`);
+      return { sessionOrder: null, terminalSnapshot: undefined, failed: true };
     }
   }
 
   return {
     sessionOrder: bridge?.terminal == null ? readWebDockSessionOrder(surface) : null,
     terminalSnapshot: undefined,
+    failed: false,
   };
 }
 
@@ -97,12 +99,14 @@ export function writeDockSessionOrder(
           if (result.reason === 'ipc-unavailable') {
             console.warn('[dock-session-persistence] setDockState skipped during window teardown');
           } else {
-            console.error('[dock-session-persistence] setDockState failed:', result.reason);
+            console.error(`[dock-session-persistence] setDockState failed: ${result.reason}`);
           }
         }
       })
       .catch((err: unknown) => {
-        console.error('[dock-session-persistence] setDockState rejected:', err);
+        console.error(
+          `[dock-session-persistence] setDockState rejected: ${err instanceof Error ? (err.stack ?? err.message) : String(err)}`,
+        );
       });
     return;
   }

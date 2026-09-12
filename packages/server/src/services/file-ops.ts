@@ -17,8 +17,10 @@ import { errnoCode } from '../http/handler-utils.ts';
 import { getLogger } from '../logger.ts';
 
 export class DuplicateNameExhaustedError extends Error {
-  constructor(readonly sourcePath: string) {
+  readonly sourcePath: string;
+  constructor(sourcePath: string) {
     super(`Could not find an available duplicate name for ${sourcePath}`);
+    this.sourcePath = sourcePath;
     this.name = 'DuplicateNameExhaustedError';
   }
 }

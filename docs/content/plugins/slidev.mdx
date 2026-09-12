@@ -60,6 +60,12 @@ Edit the document and the open deck updates — Slidev watches the same file Ope
 
 Closing a deck window stops that deck's Slidev process. Quitting OpenKnowledge stops all of them.
 
+## Environment for the deck process
+
+A globally installed Slidev is started through your shell on macOS and Linux, so the `PATH` and the variables your startup files set are what the deck sees. A project-local install is started directly, without a shell, so startup files do not apply to it. On Windows both are run through `cmd.exe` with AutoRun disabled, so no shell startup file reaches the deck either way.
+
+On Linux that shell is interactive but not a login shell. Variables set only in your shell's login-only startup files (a proxy, a `JAVA_HOME`, a version manager init) do not reach the deck. For `bash` those are `/etc/profile`, `/etc/profile.d/`, `~/.profile` and `~/.bash_profile`, and for `zsh` they are `/etc/zprofile` and `~/.zprofile`. Put them in the file your shell reads for every interactive session (`~/.bashrc` for `bash`, `~/.zshrc` for `zsh`) if your deck's toolchain needs them. On macOS the deck runs in a login interactive shell, so every startup file applies.
+
 ## Writing decks
 
 Past the frontmatter flag it's ordinary Slidev:

@@ -11,6 +11,7 @@ import {
 } from '../../src/main/terminal-manager.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
+import { createStartedTerminal } from '../support/terminal-create.test-helper.ts';
 
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
@@ -60,6 +61,7 @@ function makeRig() {
   const warnings: Array<Record<string, unknown>> = [];
   let idn = 0;
   const mgr: TerminalManager = createTerminalManager({
+    canSpawnAt: () => true,
     forkPtyHost: () => {
       const u = new FakeUtility();
       forked.push(u);
@@ -81,7 +83,7 @@ function makeRig() {
   function openTerminalWindow(id: number): { win: FakeWindow; ptyId: string } {
     const win = new FakeWindow(id);
     wireWindowTerminalReap(win, reaper);
-    const res = mgr.create({
+    const res = createStartedTerminal(mgr, {
       windowId: id,
       webContents: makeWebContents(),
       projectRoot: PROJECT,

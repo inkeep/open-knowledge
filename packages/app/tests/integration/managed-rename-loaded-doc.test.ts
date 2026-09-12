@@ -1,16 +1,7 @@
 /**
- * Loaded-Y.Doc rewrite path through real Hocuspocus.
- *
- * The unit harness in api-rename-rollback-summary.test.ts stubs
- * `hocuspocus.documents = new Map()` so the loaded-Y.Doc branch of
- * `applyManagedRenameMapToLoadedDocument` is never exercised end-to-end.
- *
- * This test boots a real server + connected client, opens a doc that
- * contains a wiki-link to another renamed doc, and asserts:
- *  - the client's Y.Text observably mutates from `[[old]]` → `[[new]]`
- *  - the disk file matches
- *  - bridge invariant holds (Y.Text and XmlFragment converge through the
- *    server-authoritative observer A path; precedent #14)
+ * Loaded-Y.Doc rewrite path through a real Hocuspocus server: a connected client's Y.Text mutates
+ * from `[[old]]` to `[[new]]`, the disk file matches, and Y.Text and XmlFragment converge through
+ * the server-authoritative Observer A path (precedent #14).
  */
 
 import { readFileSync, writeFileSync } from 'node:fs';

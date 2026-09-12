@@ -3,6 +3,7 @@ import { describe, expect, test } from 'vitest';
 import { rawRequest } from '../composition-rig.test-helper.ts';
 import { buildIngressPolicy } from '../ingress-policy.ts';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
+import { createContentDispatch } from './content-dispatch.ts';
 import {
   assertSingleRouterOwnership,
   type CreateHttpAppOptions,
@@ -25,6 +26,10 @@ async function serveWith(
 ) {
   const { requestListener } = createHttpApp({
     legacyDispatch,
+    contentDispatch: createContentDispatch({
+      ingressPolicy: ingressPolicy ?? buildIngressPolicy({}),
+      log: fakeLog,
+    }),
     mcpDispatch,
     ingressPolicy,
     log: fakeLog,
@@ -50,7 +55,7 @@ describe('createHttpApp adapter boundary', () => {
       res.end();
     });
     try {
-      const res = await fetch(`${rig.baseUrl}/anything`);
+      const res = await fetch(`${rig.baseUrl}/api/anything`);
       expect(res.status).toBe(204);
       expect(globalThis.Request).toBe(RequestBefore);
       expect(globalThis.Response).toBe(ResponseBefore);
@@ -71,7 +76,7 @@ describe('createHttpApp adapter boundary', () => {
     });
     try {
       const payload = 'x'.repeat(64 * 1024);
-      const res = await fetch(`${rig.baseUrl}/echo`, { method: 'POST', body: payload });
+      const res = await fetch(`${rig.baseUrl}/api/echo`, { method: 'POST', body: payload });
       expect(res.status).toBe(200);
       expect(await res.text()).toBe(payload);
     } finally {
@@ -85,7 +90,7 @@ describe('createHttpApp adapter boundary', () => {
       throw new Error('post-head boom');
     });
     try {
-      const res = await fetch(`${rig.baseUrl}/partial`, {
+      const res = await fetch(`${rig.baseUrl}/api/partial`, {
         signal: AbortSignal.timeout(5_000),
       });
       expect(res.status).toBe(200);
@@ -134,7 +139,7 @@ describe('createHttpApp native /mcp mount', () => {
     }
   });
 
-  test('a Hono-normalized alias of /mcp falls through to the legacy dispatch', async () => {
+  test('a Hono-normalized alias of /mcp reaches content without legacy dispatch', async () => {
     let handled = 0;
     let legacyUrl: string | undefined;
     const dispatch = mcpDispatchOver(async (_req, res) => {
@@ -155,13 +160,15 @@ describe('createHttpApp native /mcp mount', () => {
       const res = await rawRequest(rig.port, '/./mcp', { method: 'POST' });
       expect(res.status).toBe(404);
       expect(handled).toBe(0);
-      expect(legacyUrl).toBe('/./mcp');
+      expect(legacyUrl).toBeUndefined();
+      expect(res.body).toContain('running without the web UI');
+      expect(res.body).toContain('No handler for /./mcp');
     } finally {
       await rig.close();
     }
   });
 
-  test('without an MCP handler /mcp falls through the strangler catch-all', async () => {
+  test('without an MCP handler /mcp reaches the native content fallback', async () => {
     let legacyUrl: string | undefined;
     const rig = await serveWith((req, res) => {
       legacyUrl = req.url;
@@ -171,7 +178,8 @@ describe('createHttpApp native /mcp mount', () => {
     try {
       const res = await fetch(`${rig.baseUrl}/mcp`, { method: 'POST' });
       expect(res.status).toBe(404);
-      expect(legacyUrl).toBe('/mcp');
+      expect(legacyUrl).toBeUndefined();
+      expect(await res.text()).toContain('running without the web UI');
     } finally {
       await rig.close();
     }

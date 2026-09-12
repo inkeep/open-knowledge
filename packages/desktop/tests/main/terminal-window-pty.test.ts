@@ -7,6 +7,7 @@ import {
   unregisterTerminalWindow,
 } from '../../src/main/terminal-window-registry.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
+import { createStartedTerminal } from '../support/terminal-create.test-helper.ts';
 
 const HOME = '/Users/test-home';
 const PROJECT = '/Users/me/proj';
@@ -30,6 +31,7 @@ function makeManager() {
   const forked: FakeHost[] = [];
   let idn = 0;
   const mgr = createTerminalManager({
+    canSpawnAt: () => true,
     forkPtyHost: () => {
       const h = new FakeHost();
       forked.push(h);
@@ -69,7 +71,7 @@ describe('terminal window ok:pty:create cwd resolution (seam 7 / D10)', () => {
     expect(cwd).toBe(PROJECT);
 
     const { mgr, forked } = makeManager();
-    const result = mgr.create({
+    const result = createStartedTerminal(mgr, {
       windowId: WIN_BOUND,
       webContents: makeWebContents(),
       projectRoot: cwd,
@@ -95,7 +97,7 @@ describe('terminal window ok:pty:create cwd resolution (seam 7 / D10)', () => {
     expect(cwd).toBe(HOME);
 
     const { mgr, forked } = makeManager();
-    const result = mgr.create({
+    const result = createStartedTerminal(mgr, {
       windowId: WIN_LESS,
       webContents: makeWebContents(),
       projectRoot: cwd,
@@ -119,14 +121,14 @@ describe('terminal window ok:pty:create cwd resolution (seam 7 / D10)', () => {
     registerTerminalWindow(WIN_B, { projectRoot: PROJECT });
     const { mgr, forked } = makeManager();
 
-    const a = mgr.create({
+    const a = createStartedTerminal(mgr, {
       windowId: WIN_A,
       webContents: makeWebContents(),
       projectRoot: resolveTerminalWindowCwd(WIN_A),
       cols: 80,
       rows: 24,
     });
-    const b = mgr.create({
+    const b = createStartedTerminal(mgr, {
       windowId: WIN_B,
       webContents: makeWebContents(),
       projectRoot: resolveTerminalWindowCwd(WIN_B),

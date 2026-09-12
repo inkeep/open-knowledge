@@ -1,8 +1,12 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
-import { isAbsolute, join, normalize, sep } from 'node:path';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { basename, dirname, isAbsolute, join, normalize, sep } from 'node:path';
 import {
+  applyPatchToFm,
   containsXmlTag,
+  detectFmRegion,
+  type FmEditError,
   SKILL_NAME_REGEX,
+  type SkillAuthoringWarningCode,
   type SkillFrontmatter,
 } from '@inkeep/open-knowledge-core';
 import { stringify as stringifyYaml } from 'yaml';
@@ -26,11 +30,22 @@ const BODY_SOFT_MAX_LINES = 500;
 const SKILL_FILE = 'SKILL.md';
 
 type SkillWriteResult =
-  | { ok: true; path: string; created: boolean; warnings: string[] }
+  | {
+      ok: true;
+      path: string;
+      created: boolean;
+      warnings: string[];
+      warningCodes: SkillAuthoringWarningCode[];
+    }
   | { ok: false; error: { code: string; message: string } };
 
 export type SkillContentResult =
-  | { ok: true; content: string; warnings: string[] }
+  | {
+      ok: true;
+      content: string;
+      warnings: string[];
+      warningCodes: SkillAuthoringWarningCode[];
+    }
   | { ok: false; error: { code: string; message: string } };
 
 type SkillDeleteResult =
@@ -75,19 +90,32 @@ export function composeSkillContent(input: {
   const content = `---\n${fmYaml}---\n${input.body}`;
 
   const warnings: string[] = [];
+  const warningCodes: SkillAuthoringWarningCode[] = [];
   const discouraged = DISCOURAGED_NAME_WORDS.filter((w) => input.name.includes(w));
   if (discouraged.length > 0) {
     warnings.push(
       `Skill name contains ${discouraged.map((w) => `"${w}"`).join(', ')} — Anthropic's authoring guidance discourages vendor words in skill names.`,
     );
+    warningCodes.push('skill-name-vendor-word');
   }
   const lineCount = input.body.split('\n').length;
   if (lineCount > BODY_SOFT_MAX_LINES) {
     warnings.push(
       `SKILL.md body is ${lineCount} lines — keep it under ${BODY_SOFT_MAX_LINES} for performance (every line is a recurring token cost). Move detail into one-level-deep references/.`,
     );
+    warningCodes.push('skill-body-too-long');
   }
-  return { ok: true, content, warnings };
+  return { ok: true, content, warnings, warningCodes };
+}
+
+function sweepStaleTmpSiblings(targetPath: string): void {
+  const dir = dirname(targetPath);
+  const prefix = `${basename(targetPath)}.tmp.`;
+  try {
+    for (const entry of readdirSync(dir)) {
+      if (entry.startsWith(prefix)) tracedUnlinkSync(join(dir, entry));
+    }
+  } catch {}
 }
 
 export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
@@ -100,7 +128,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
     frontmatter: input.frontmatter,
   });
   if (!composed.ok) return { ok: false, error: composed.error };
-  const { content, warnings } = composed;
+  const { content, warnings, warningCodes } = composed;
 
   const { skillDir, filePath } = skillPaths(input.skillsRoot, input.name);
 
@@ -118,6 +146,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
 
   const created = !existsSync(filePath);
 
+  sweepStaleTmpSiblings(filePath);
   const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
   try {
     tracedWriteFileSync(tmpPath, content, 'utf-8');
@@ -135,7 +164,53 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
     };
   }
 
-  return { ok: true, path: relPathOf(input.skillsRoot, filePath), created, warnings };
+  return {
+    ok: true,
+    path: relPathOf(input.skillsRoot, filePath),
+    created,
+    warnings,
+    warningCodes,
+  };
+}
+
+export type SkillDirNameSyncResult =
+  | { ok: true }
+  | { ok: false; stage: 'read'; cause: unknown }
+  | { ok: false; stage: 'patch'; error: FmEditError }
+  | { ok: false; stage: 'write'; cause: unknown };
+
+export function applySkillDirNameSync(input: {
+  skillDir: string;
+  toName: string;
+  skillMd?: string;
+}): SkillDirNameSyncResult {
+  const filePath = join(input.skillDir, SKILL_FILE);
+  let raw: string;
+  if (input.skillMd !== undefined) {
+    raw = input.skillMd;
+  } else {
+    try {
+      raw = readFileSync(filePath, 'utf-8');
+    } catch (cause) {
+      return { ok: false, stage: 'read', cause };
+    }
+  }
+  const { fenced, body } = detectFmRegion(raw);
+  // presence-exempt: no CRDT write, no agent identity
+  const renamed = applyPatchToFm(fenced, { name: input.toName });
+  if (!renamed.ok) return { ok: false, stage: 'patch', error: renamed.error };
+  sweepStaleTmpSiblings(filePath);
+  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  try {
+    tracedWriteFileSync(tmpPath, `${renamed.nextFenced}${body}`, 'utf-8');
+    tracedRenameSync(tmpPath, filePath);
+  } catch (cause) {
+    try {
+      tracedUnlinkSync(tmpPath);
+    } catch {}
+    return { ok: false, stage: 'write', cause };
+  }
+  return { ok: true };
 }
 
 export const BUNDLE_FILE_MAX_BYTES = 256 * 1024;
@@ -284,6 +359,7 @@ export function applySkillBundleFileWrite(
       },
     };
   }
+  sweepStaleTmpSiblings(abs);
   const tmpPath = `${abs}.tmp.${process.pid}.${Date.now()}`;
   try {
     if (typeof payload === 'string') tracedWriteFileSync(tmpPath, payload, 'utf-8');

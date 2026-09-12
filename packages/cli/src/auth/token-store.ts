@@ -43,7 +43,11 @@ export interface TokenStoreDiagnostics {
 class KeyringBackend implements TokenStore {
   readonly backend = 'keyring' as const;
 
-  constructor(private readonly onKeychainRead?: TokenStoreDiagnostics['onKeychainRead']) {}
+  private readonly onKeychainRead?: TokenStoreDiagnostics['onKeychainRead'];
+
+  constructor(onKeychainRead?: TokenStoreDiagnostics['onKeychainRead']) {
+    this.onKeychainRead = onKeychainRead;
+  }
 
   async get(host: string): Promise<TokenEntry | null> {
     const { Entry } = await import('@napi-rs/keyring');
@@ -149,10 +153,13 @@ export class FileBackend implements TokenStore {
 
 class KeychainWithFileFallback implements TokenStore {
   readonly backend = 'keyring' as const;
-  constructor(
-    private readonly keychain: TokenStore,
-    private readonly file: FileBackend,
-  ) {}
+  private readonly keychain: TokenStore;
+  private readonly file: FileBackend;
+
+  constructor(keychain: TokenStore, file: FileBackend) {
+    this.keychain = keychain;
+    this.file = file;
+  }
 
   async get(host: string): Promise<TokenEntry | null> {
     const fromKeychain = await this.keychain.get(host);

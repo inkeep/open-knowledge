@@ -1,24 +1,6 @@
 /**
- * `withValidation()` middleware wrapper for HTTP request bodies.
- *
- * Structural enforcement that handlers can't be added without going through
- * Zod validation: at handler registration, wrap with
- * `withValidation(XyzRequestSchema, async (req, res, body) => { ... })`.
- * The handler receives an already-validated, typed `body`. Failure auto-
- * routes through `errorResponse(res, 400, 'urn:ok:error:invalid-request', ...)`
- * — the inner handler never sees a malformed body.
- *
- * Body-shape errors emitted by this wrapper happen BEFORE
- * `extractAgentIdentity` is called by the inner handler, which is
- * semantically OK: no Y.Doc mutation is attempted, so the response is
- * legitimately anonymous. Semantic errors (handler-internal logic) must be
- * post-identity (attributed). The `attribution-sweep-coverage.test.ts`
- * ordering check enforces the distinction on mutating
+ * The `attribution-sweep-coverage.test.ts` ordering check enforces the distinction on mutating
  * handlers (precedent #24).
- *
- * Multipart binary parsing remains busboy's job (`POST /api/upload`); for
- * multipart handlers, call `validateBody(schema, parsedMetadata)` after
- * busboy assembles the metadata fields.
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';

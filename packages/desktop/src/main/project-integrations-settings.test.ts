@@ -1,6 +1,20 @@
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import type { McpEntryClassification } from '@inkeep/open-knowledge';
 import type { IpcMainInvokeEvent } from 'electron';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
+import { EDITOR_TARGETS } from '../../../cli/src/commands/editors.ts';
+import { removeOwnMcpEntry } from '../../../cli/src/commands/mcp-config-removal.ts';
+import { ensurePiBridge } from '../../../cli/src/commands/pi-acp-bridge.ts';
 import type {
   McpWiringEditorId,
   ProjectIntegrationsSetRequest,
@@ -36,6 +50,7 @@ interface CliOverrides {
   skillInstalled?: boolean;
   skillWriteFails?: McpWiringEditorId[];
   skillRemoveFails?: McpWiringEditorId[];
+  skillWriteUnmet?: McpWiringEditorId[];
 }
 
 function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & {
@@ -43,11 +58,9 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
   removals: McpWiringEditorId[];
   skillWrites: McpWiringEditorId[];
   skillRemovals: McpWiringEditorId[];
-  decisions: Array<{ dir: string; enabled: boolean }>;
   reports: string[];
 } {
   const writes: McpWiringEditorId[] = [];
-  const decisions: Array<{ dir: string; enabled: boolean }> = [];
   const reports: string[] = [];
   const removals: McpWiringEditorId[] = [];
   const skillWrites: McpWiringEditorId[] = [];
@@ -96,6 +109,7 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
     writeProjectSkill: (id) => {
       skillWrites.push(id);
       if (overrides.skillWriteFails?.includes(id)) return { action: 'failed', error: 'nope' };
+      if (overrides.skillWriteUnmet?.includes(id)) return { action: 'skipped-prerequisite' };
       return { action: 'written' };
     },
     removeProjectSkill: (id) => {
@@ -103,13 +117,9 @@ function makeCli(overrides: CliOverrides = {}): ProjectIntegrationsCliSurface & 
       if (overrides.skillRemoveFails?.includes(id)) return { action: 'failed', error: 'nope' };
       return { action: 'removed' };
     },
-    recordProjectSkillDecision: (dir, enabled) => {
-      decisions.push({ dir, enabled });
-    },
     reportProjectSkillInstalled: (dir) => {
       reports.push(dir);
     },
-    decisions,
     reports,
   };
 }
@@ -119,6 +129,7 @@ function register(
   opts: {
     available?: boolean;
     projectDir?: string | null;
+    logger?: Parameters<typeof registerProjectIntegrationsSettings>[0]['logger'];
     probeEditorPresence?: Parameters<
       typeof registerProjectIntegrationsSettings
     >[0]['probeEditorPresence'];
@@ -133,6 +144,7 @@ function register(
       opts.probeEditorPresence ?? (async () => ({ cliOnPath: {}, schemeHandler: {} })),
     resolveProjectDir: () => (opts.projectDir === undefined ? PROJECT : opts.projectDir),
     tildify: (p) => p,
+    logger: opts.logger,
   });
   const dispatch = ipcMain.handlers.get('ok:project-integrations:dispatch');
   if (!dispatch) throw new Error('handler not registered');
@@ -146,7 +158,7 @@ function register(
 }
 
 describe('registerProjectIntegrationsSettings — status', () => {
-  test('omits editors with no project surface; relativizes paths; carries followUp', async () => {
+  test('omits editors with no project surface; relativizes paths', async () => {
     const { status } = register(makeCli());
     const s = await status();
     expect(s.hasProject).toBe(true);
@@ -155,8 +167,6 @@ describe('registerProjectIntegrationsSettings — status', () => {
     const claude = s.editors.find((e) => e.id === 'claude');
     expect(claude?.configPath).toBe('.mcp.json');
     expect(claude?.detected).toBe(false);
-    expect(claude?.followUp).toBe('approve-once');
-    expect(s.editors.find((e) => e.id === 'codex')?.followUp).toBe('auto-connect');
   });
 
   test('marks project rows detected from the shared machine-level probes', async () => {
@@ -241,6 +251,58 @@ describe('registerProjectIntegrationsSettings — set', () => {
     expect(cli.removals).toEqual(['codex']);
   });
 
+  test.each(['kept-shared', 'kept-unowned'] as const)(
+    'logs why successful project Pi removal retains %s trust',
+    async (trust) => {
+      const root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-project-settings-pi-')));
+      const projectDir = join(root, 'project');
+      const home = join(root, 'home');
+      const trustPath = join(home, '.pi', 'agent', 'trust.json');
+      const bridgePath = join(projectDir, '.pi', 'extensions', 'open-knowledge.ts');
+      const prompts = join(projectDir, '.pi', 'prompts');
+      try {
+        mkdirSync(projectDir);
+        mkdirSync(home);
+        if (trust === 'kept-unowned') {
+          mkdirSync(dirname(trustPath), { recursive: true });
+          writeFileSync(trustPath, JSON.stringify({ [projectDir]: true }));
+        }
+        expect((await ensurePiBridge(projectDir, { mode: 'published' }, home, {})).ok).toBe(true);
+        if (trust === 'kept-shared') mkdirSync(prompts);
+        const before = readFileSync(trustPath, 'utf8');
+        const event = vi.fn();
+        const { set } = register(
+          {
+            ...makeCli(),
+            allEditorIds: ['pi'],
+            projectConfigPath: (id, cwd) => EDITOR_TARGETS[id].projectConfigPath?.(cwd) ?? null,
+            removeProjectMcpEntry: (id, cwd, path) =>
+              removeOwnMcpEntry(EDITOR_TARGETS[id], cwd, home, path, {}),
+          },
+          { projectDir, logger: { warn: vi.fn(), event } },
+        );
+
+        const result = await set({ component: { kind: 'editor', id: 'pi' }, enabled: false });
+
+        expect(result.ok).toBe(true);
+        expect(event).toHaveBeenCalledWith({
+          event: 'project-integrations-editor-removed',
+          editor: 'pi',
+          outcome: 'removed',
+          path: bridgePath,
+          trust,
+          trustDetail: expect.stringContaining(
+            trust === 'kept-shared' ? prompts : 'no OpenKnowledge ownership record',
+          ),
+        });
+        expect(existsSync(bridgePath)).toBe(false);
+        expect(readFileSync(trustPath, 'utf8')).toBe(before);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    },
+  );
+
   test('uninstall of a foreign entry refuses with an explanatory error', async () => {
     const cli = makeCli({ removeKind: 'left-foreign' });
     const { set } = register(cli);
@@ -304,12 +366,21 @@ describe('registerProjectIntegrationsSettings — set', () => {
     expect(cli.skillWrites).toEqual([]);
   });
 
+  test('an install blocked by an unmet prerequisite is not reported as installed', async () => {
+    const cli = makeCli({ skillWriteUnmet: ['claude'] });
+    const { set } = register(cli);
+
+    const r = await set({ component: { kind: 'skill' }, enabled: true });
+
+    expect(r.ok).toBe(false);
+    expect(cli.reports).toEqual([]);
+  });
+
   test('switching the skill ON records the decision and counts the install', async () => {
     const cli = makeCli();
     const { set } = register(cli);
     const r = await set({ component: { kind: 'skill' }, enabled: true });
     expect(r.ok).toBe(true);
-    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: true }]);
     expect(cli.reports).toEqual([PROJECT]);
   });
 
@@ -318,7 +389,6 @@ describe('registerProjectIntegrationsSettings — set', () => {
     const { set } = register(cli);
     const r = await set({ component: { kind: 'skill' }, enabled: false });
     expect(r.ok).toBe(true);
-    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: false }]);
     expect(cli.reports).toEqual([]);
   });
 
@@ -326,7 +396,6 @@ describe('registerProjectIntegrationsSettings — set', () => {
     const cli = makeCli({ skillWriteFails: ['codex'] as McpWiringEditorId[] });
     const { set } = register(cli);
     await set({ component: { kind: 'skill' }, enabled: true });
-    expect(cli.decisions).toEqual([{ dir: PROJECT, enabled: true }]);
     expect(cli.reports).toEqual([]);
   });
 

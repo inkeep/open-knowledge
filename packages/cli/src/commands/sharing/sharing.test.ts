@@ -188,7 +188,7 @@ describe('ok config-sharing unshare — §5.5 tracked-files refusal', () => {
     });
     expect(process.exitCode).toBe(1);
     expect(stderr).toContain('Cannot switch OpenKnowledge to local-only');
-    expect(stderr).toContain('git rm --cached .mcp.json');
+    expect(stderr).toContain('git rm --cached -- .mcp.json');
     expect(stderr).toContain('your teammates will see a deletion on their next pull');
 
     const after = readExclude(dir);

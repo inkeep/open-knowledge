@@ -1,4 +1,4 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { deriveAgentPosture } from '@inkeep/open-knowledge-core/acp/agent-posture';
 import type {
@@ -9,7 +9,7 @@ import type {
   ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { plural } from '@lingui/core/macro';
-import { useLingui } from '@lingui/react/macro';
+import { Plural, useLingui } from '@lingui/react/macro';
 import {
   ArrowUp,
   Check,
@@ -42,7 +42,6 @@ import {
   Zap,
 } from 'lucide-react';
 import {
-  createContext,
   Fragment,
   type ReactNode,
   type RefObject,
@@ -65,7 +64,9 @@ import {
 import { subscribeSendInThread } from '@/comments/open-chat-send';
 import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
+import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
+import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -103,17 +104,23 @@ import {
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import { agentDisplayName } from '@/lib/acp/agent-display';
 import {
   agentSettingsKey,
   rememberAgentConfigOption,
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
+import { useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
 import {
+  attachmentBudgetKb,
   collectAllFiles,
   collectImageFiles,
   describeImageError,
+  embeddedAttachmentBytes,
   fileToAttachment,
+  MAX_TOTAL_ATTACHMENT_BYTES,
+  totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
@@ -138,10 +145,12 @@ import {
 import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
+import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentNoticeAnnouncer } from './AgentNoticeAnnouncer';
+import { AttachFilesButton } from './AttachFilesButton';
 import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
 import {
@@ -152,9 +161,21 @@ import {
   loadFollowFilePref,
   saveFollowFilePref,
 } from './follow-file';
+import { type ImagePreview, ImagePreviewContext, PendingImageStrip } from './PendingImageStrip';
 import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
+import {
+  clickableAuthMethods,
+  isThreadResumable,
+  manualAuthMethods,
+  type ThreadAuthActionKind,
+  type ThreadAuthOffer,
+  type ThreadAuthOfferWithoutSignIn,
+  threadAuthHistoryOffer,
+  threadAuthOffer,
+  threadAuthOfferWithoutSignInMethods,
+} from './thread-auth-offer';
 import { transcriptItemId } from './transcript-item-id';
 import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
@@ -186,14 +207,6 @@ const TOOL_ICONS: Record<ToolCallGlyph, typeof Wrench> = {
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
-
-function agentDisplayName(name: string): string {
-  return name.replace(/\s+Agent$/i, '');
-}
-
-type ImagePreview = { readonly src: string; readonly name: string };
-
-const ImagePreviewContext = createContext<((preview: ImagePreview) => void) | null>(null);
 
 const RETRYABLE_FAILURE_REASONS: ReadonlySet<ThreadFailureDetail['reason']> = new Set([
   'connect',
@@ -257,12 +270,26 @@ export function ThreadView({
   const [dragActive, setDragActive] = useState(false);
   const [dropNotice, setDropNotice] = useState<{ text: string; id: number } | null>(null);
   const dropNoticeIdRef = useRef(0);
+  const attachmentsRef = useRef<readonly AttachmentPart[]>([]);
+  const attachmentsGenerationRef = useRef(0);
+  const commitPendingAttachments = (next: readonly AttachmentPart[], generation: number): void => {
+    if (generation !== attachmentsGenerationRef.current) return;
+    attachmentsRef.current = next;
+    setPendingAttachments(next);
+  };
+  const clearPendingAttachments = (): void => {
+    attachmentsGenerationRef.current += 1;
+    attachmentsRef.current = [];
+    setPendingAttachments([]);
+    setPendingUploads([]);
+  };
   useEffect(() => {
     if (dropNotice === null) return;
     const timer = setTimeout(() => setDropNotice(null), 4000);
     return () => clearTimeout(timer);
   }, [dropNotice]);
   const imagesAccepted = info.promptCapabilities?.image === true;
+  const uploadsPending = pendingUploads.length > 0;
   const composerText = (): string => composerRef.current?.getContent().instruction.trim() ?? '';
   const composerAttachments = (): readonly AttachmentPart[] => {
     const chips = composerRef.current?.getContent().attachments ?? [];
@@ -295,9 +322,14 @@ export function ThreadView({
       name: file.name || 'attachment',
       mimeType: file.type || '',
     }));
+    const generation = attachmentsGenerationRef.current;
+    const report = (message: string): void => {
+      if (generation === attachmentsGenerationRef.current) toast.error(message);
+    };
     setPendingUploads((previous) => [...previous, ...placeholders]);
     let outsideWorkspaceCount = 0;
     let unknownPathCount = 0;
+    let tooLargeTotalCount = 0;
     for (let i = 0; i < accepted.length; i += 1) {
       const file = accepted[i];
       const placeholderId = placeholders[i]?.id;
@@ -310,21 +342,30 @@ export function ThreadView({
         });
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         if (outcome.ok) {
-          setPendingAttachments((previous) => [...previous, outcome.part]);
+          const current = attachmentsRef.current;
+          if (
+            totalEmbeddedAttachmentBytes(current) + embeddedAttachmentBytes(outcome.part) >
+            MAX_TOTAL_ATTACHMENT_BYTES
+          ) {
+            tooLargeTotalCount += 1;
+          } else {
+            commitPendingAttachments([...current, outcome.part], generation);
+          }
         } else if (outcome.error.kind === 'outside-workspace') {
           outsideWorkspaceCount += 1;
         } else if (outcome.error.kind === 'unknown-path') {
           unknownPathCount += 1;
         } else {
-          toast.error(describeImageError(outcome.error));
+          report(describeImageError(outcome.error));
         }
       } catch (err) {
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         const fileName = file.name || 'attachment';
         console.error('[ingestFiles] failed to read attachment', fileName, err);
-        toast.error(t`Couldn't read ${fileName}.`);
+        report(t`Couldn't read ${fileName}.`);
       }
     }
+    const notices: string[] = [];
     const skipTotal = outsideWorkspaceCount + unknownPathCount;
     if (skipTotal > 0) {
       let noticeText: string;
@@ -344,12 +385,27 @@ export function ThreadView({
           other: "Skipped # files that couldn't be attached.",
         })}`;
       }
+      notices.push(noticeText);
+    }
+    if (tooLargeTotalCount > 0) {
+      const budgetKb = attachmentBudgetKb();
+      notices.push(
+        t`${plural(tooLargeTotalCount, {
+          one: `Skipped # file — attachments can't total more than ${budgetKb} KB per message.`,
+          other: `Skipped # files — attachments can't total more than ${budgetKb} KB per message.`,
+        })}`,
+      );
+    }
+    if (notices.length > 0 && generation === attachmentsGenerationRef.current) {
       dropNoticeIdRef.current += 1;
-      setDropNotice({ text: noticeText, id: dropNoticeIdRef.current });
+      setDropNotice({ text: notices.join(' '), id: dropNoticeIdRef.current });
     }
   };
   const removePendingAttachment = (index: number): void => {
-    setPendingAttachments((previous) => previous.filter((_, i) => i !== index));
+    commitPendingAttachments(
+      attachmentsRef.current.filter((_, i) => i !== index),
+      attachmentsGenerationRef.current,
+    );
   };
   const [followFile, setFollowFile] = useState(loadFollowFilePref);
   const scrollApiRef = useRef<ReturnType<typeof useMessageScroller> | null>(null);
@@ -365,10 +421,12 @@ export function ThreadView({
 
   const model = useAgentThreadModel(info.threadId);
   const status = info.status;
+  const agentName = agentDisplayName(info.agent.name);
   const archived = info.archived === true;
   const turnActive = model?.turnActive === true && !archived;
   const thinkingLine = useThinkingLine(turnActive);
   const [resumePending, setResumePending] = useState(false);
+  const [newChatPending, setNewChatPending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
   const hasRecoverablePromptFailure =
     !archived &&
@@ -377,12 +435,14 @@ export function ThreadView({
       (item) =>
         item.kind === 'notice' && item.superseded !== true && item.failure?.reason === 'prompt',
     );
+  const resumable = isThreadResumable(info);
   const canPrompt = archived
-    ? !resumePending
+    ? !resumePending && resumable
     : (status === 'ready' || hasRecoverablePromptFailure) && !turnActive;
   const signingIn = status === 'authenticating';
   const awaitingSignIn = status === 'auth_required' || signingIn;
   const canRetry = !archived && (status === 'error' || awaitingSignIn);
+  const terminalCli = useHarnessTerminalCli(info.agent.id);
   const [retryPending, setRetryPending] = useState(false);
   const [revertedPositions, setRevertedPositions] = useState<ReadonlySet<number>>(new Set());
   const canQueue = !archived && turnActive;
@@ -459,13 +519,13 @@ export function ThreadView({
   };
 
   const requestSteer = (): void => {
+    if (uploadsPending) return;
     const text = composerText();
     const attachments = composerAttachments();
     if (text === '' && attachments.length === 0) return;
     client.steer(info.threadId, text, attachments.length > 0 ? attachments : undefined);
     composerRef.current?.clear();
-    setPendingAttachments([]);
-    setPendingUploads([]);
+    clearPendingAttachments();
     scrollApiRef.current?.scrollToEnd();
   };
 
@@ -489,6 +549,7 @@ export function ThreadView({
     if (initialSeqRef.current === null || lastSeq === null || lastSeq <= initialSeqRef.current) {
       return;
     }
+    if (isOverlayLayerOpen()) return;
     const currentDoc = docNameFromHash(window.location.hash);
     const decision = decideFollowNavigation(followTarget, currentDoc, followNavRef.current);
     followNavRef.current = decision.state;
@@ -514,23 +575,17 @@ export function ThreadView({
   const hasQueuedComments = selectedCommentCount > 0 && commentsAttached;
   useEffect(() => subscribeCommentPosted(() => setCommentsAttached(true)), []);
 
-  const sendText = (
-    text: string,
-    failureText: string | null = text,
-    attachments: readonly AttachmentPart[] = [],
+  const resumeThreadNow = (
+    text?: string,
+    failureText: string | null = null,
+    attachments?: readonly AttachmentPart[],
   ): Promise<boolean> => {
-    const parts = attachments.length > 0 ? attachments : undefined;
-    if (!archived) {
-      client.prompt(info.threadId, text, parts);
-      scrollApiRef.current?.scrollToEnd();
-      return Promise.resolve(true);
-    }
     setResumePending(true);
     setResumeError(null);
     setFailedPrompt(null);
     scrollApiRef.current?.scrollToEnd();
     return client
-      .resumeThread(info.threadId, text, parts)
+      .resumeThread(info.threadId, text, attachments)
       .then(() => true)
       .catch((err) => {
         setResumeError(
@@ -542,6 +597,20 @@ export function ThreadView({
         return false;
       })
       .finally(() => setResumePending(false));
+  };
+
+  const sendText = (
+    text: string,
+    failureText: string | null = text,
+    attachments: readonly AttachmentPart[] = [],
+  ): Promise<boolean> => {
+    const parts = attachments.length > 0 ? attachments : undefined;
+    if (!archived) {
+      client.prompt(info.threadId, text, parts);
+      scrollApiRef.current?.scrollToEnd();
+      return Promise.resolve(true);
+    }
+    return resumeThreadNow(text, failureText, parts);
   };
 
   const resendMessage = async (
@@ -567,6 +636,7 @@ export function ThreadView({
   };
 
   const submit = (): void => {
+    if (uploadsPending) return;
     const text = composerText();
     const attachments = composerAttachments();
     if (!(canPrompt || canQueue)) return;
@@ -579,8 +649,7 @@ export function ThreadView({
     if (text === '' && attachments.length === 0) return;
     void sendText(text, text, attachments);
     composerRef.current?.clear();
-    setPendingAttachments([]);
-    setPendingUploads([]);
+    clearPendingAttachments();
   };
 
   const submitQueuedComments = async (
@@ -629,7 +698,7 @@ export function ThreadView({
     void client
       .retryThread(info.threadId)
       .catch((err: unknown) => {
-        toast.error(t`Couldn't start ${info.agent.name}: ${errorText(err)}`);
+        toast.error(t`Couldn't start ${agentName}: ${errorText(err)}`);
       })
       .finally(() => setRetryPending(false));
   };
@@ -639,23 +708,74 @@ export function ThreadView({
   };
 
   const startFreshThread = (): void => {
+    if (newChatPending) return;
+    const bannerBeforeNewChat = resumeError;
+    const promptBeforeNewChat = failedPrompt;
     const draftText = composerText();
-    const prompt = failedPrompt ?? (draftText === '' ? undefined : draftText);
+    setNewChatPending(true);
     setResumeError(null);
     setFailedPrompt(null);
-    void client
-      .createThread({
-        agent: { source: info.agent.source, id: info.agent.id },
-        prompt,
+    void launchAgentThread(
+      { source: info.agent.source, id: info.agent.id },
+      promptBeforeNewChat,
+      null,
+      null,
+      promptBeforeNewChat === null && draftText !== '' ? draftText : null,
+    )
+      .then((outcome) => {
+        if (outcome === 'started') return;
+        if (outcome === 'deduped') {
+          toast.error(t`Already starting a chat with this agent — try again in a moment.`);
+        }
+        setResumeError((current) => current ?? bannerBeforeNewChat);
+        setFailedPrompt((current) => current ?? promptBeforeNewChat);
       })
-      .catch((err) => {
-        setResumeError(
-          err instanceof ThreadResumeError
-            ? err
-            : new ThreadResumeError('internal', err instanceof Error ? err.message : String(err)),
-        );
-        setFailedPrompt(prompt ?? null);
-      });
+      .finally(() => setNewChatPending(false));
+  };
+
+  const runningAuthAction: ThreadAuthActionKind | null = resumePending
+    ? 'resume'
+    : retryPending
+      ? 'retry'
+      : newChatPending
+        ? 'new-chat'
+        : null;
+  const authActionAnnouncement = (kind: ThreadAuthActionKind): string => {
+    switch (kind) {
+      case 'resume':
+        return t`Resuming the chat`;
+      case 'retry':
+        return t`Retrying`;
+      case 'new-chat':
+        return t`Starting ${agentName}…`;
+      case 'terminal-sign-in':
+        return '';
+      default: {
+        const exhaustive: never = kind;
+        void exhaustive;
+        return '';
+      }
+    }
+  };
+  const runAuthAction = (kind: ThreadAuthActionKind): void => {
+    switch (kind) {
+      case 'resume':
+        void resumeThreadNow();
+        return;
+      case 'retry':
+        retryThread();
+        return;
+      case 'new-chat':
+        startFreshThread();
+        return;
+      case 'terminal-sign-in':
+        if (terminalCli !== null) requestTerminalLaunch('', terminalCli);
+        return;
+      default: {
+        const exhaustive: never = kind;
+        void exhaustive;
+      }
+    }
   };
 
   const foldedEntries =
@@ -683,11 +803,31 @@ export function ThreadView({
       }
     }
   }
+  const authHistoryOffer = threadAuthHistoryOffer(agentName);
+  const authOffer: ThreadAuthOfferWithoutSignIn = threadAuthOfferWithoutSignInMethods({
+    archived,
+    resumable,
+    status,
+    agentName,
+    terminalCli,
+  });
+  let authOfferNoticeIndex = -1;
+  if (authOffer.actionLabel !== null) {
+    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
+      const item = visibleItems[index];
+      if (item?.kind === 'notice' && item.failure?.reason === 'auth-required') {
+        authOfferNoticeIndex = index;
+        break;
+      }
+    }
+  }
   let restoreNoticeIndex = -1;
   if (!archived && status !== 'exited') {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
       const item = visibleItems[index];
-      if (item?.kind === 'notice' && item.failure?.reason === 'prompt') {
+      if (item?.kind !== 'notice') continue;
+      const reason = item.failure?.reason;
+      if (reason === 'prompt' || (reason === 'auth-required' && canPrompt)) {
         restoreNoticeIndex = index;
         break;
       }
@@ -732,6 +872,14 @@ export function ThreadView({
     }
   }
 
+  const resumeFailureMessage = !archived
+    ? ''
+    : !resumable
+      ? t`${agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue.`
+      : resumeError !== null
+        ? t`Couldn't resume this chat: ${resumeError.message}`
+        : '';
+
   const items = visibleItems;
   let authPrompt: ThreadFailureDetail | null = null;
   if (awaitingSignIn && !archived) {
@@ -755,25 +903,36 @@ export function ThreadView({
         className="relative flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
         data-agent-thread-root=""
         onDragEnter={(event) => {
-          if (event.dataTransfer?.types.includes('Files')) {
+          if (isExternalFileDrag(event)) {
             event.preventDefault();
             setDragActive(true);
           }
         }}
         onDragOver={(event) => {
-          if (event.dataTransfer?.types.includes('Files')) {
+          if (isExternalFileDrag(event)) {
             event.preventDefault();
             event.dataTransfer.dropEffect = 'copy';
+            setDragActive(true);
           }
         }}
         onDragLeave={(event) => {
-          if (event.currentTarget === event.target) setDragActive(false);
+          const next = event.relatedTarget;
+          if (next instanceof Node && event.currentTarget.contains(next)) return;
+          setDragActive(false);
         }}
         onDrop={(event) => {
-          const files = collectAllFiles(event.dataTransfer);
-          if (files.length === 0) return;
+          if (!isExternalFileDrag(event)) return;
           event.preventDefault();
           setDragActive(false);
+          const files = collectAllFiles(event.dataTransfer);
+          if (files.length === 0) {
+            dropNoticeIdRef.current += 1;
+            setDropNotice({
+              text: t`Folders and empty files can't be attached — drop the files themselves.`,
+              id: dropNoticeIdRef.current,
+            });
+            return;
+          }
           void ingestFiles(files);
         }}
       >
@@ -782,7 +941,7 @@ export function ThreadView({
           {}
           <AgentNoticeAnnouncer
             notices={agentNotices}
-            agentName={agentDisplayName(info.agent.name)}
+            agentName={agentName}
             replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
           />
           {model !== null && model.plan.length > 0 ? (
@@ -824,18 +983,32 @@ export function ThreadView({
                 <div className="flex min-h-full items-center justify-center">
                   <ThreadAuthPrompt
                     failure={authPrompt}
+                    offer={threadAuthOffer({
+                      authMethods: authPrompt.authMethods ?? [],
+                      agentName,
+                      terminalCli,
+                    })}
                     agent={info.agent}
-                    agentName={agentDisplayName(info.agent.name)}
+                    agentName={agentName}
                     signingIn={signingIn}
                     signInOutput={info.signInOutput}
                     showRetry={canRetry}
                     retryPending={retryPending}
                     onRetry={retryThread}
+                    onAuthAction={runAuthAction}
+                    runningAuthAction={runningAuthAction}
                     onAuthenticate={authenticateThread}
                   />
                 </div>
               ) : (
-                <ThreadEmptyState status={status} archived={archived} agent={info.agent} />
+                <ThreadEmptyState
+                  status={status}
+                  archived={archived}
+                  agent={info.agent}
+                  authOffer={authOffer}
+                  onAuthAction={runAuthAction}
+                  runningAuthAction={runningAuthAction}
+                />
               )}
             </div>
           ) : (
@@ -871,6 +1044,11 @@ export function ThreadView({
                             onRetry={retryThread}
                             showRestore={index === restoreNoticeIndex}
                             onRestore={() => restoreFailedPromptToComposer(index)}
+                            authOffer={
+                              index === authOfferNoticeIndex ? authOffer : authHistoryOffer
+                            }
+                            onAuthAction={runAuthAction}
+                            runningAuthAction={runningAuthAction}
                             onResend={resendMessage}
                             canSendHere={canPrompt || canQueue}
                             isLatestUserTurn={index === lastUserTurnIndex}
@@ -911,9 +1089,20 @@ export function ThreadView({
           )}
           <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
             {dropNotice !== null ? (
-              <div className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs">
+              <div
+                key={dropNotice.id}
+                className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+              >
                 {dropNotice.text}
               </div>
+            ) : uploadsPending ? (
+              <p className="sr-only">
+                <Plural
+                  value={pendingUploads.length}
+                  one="Uploading # attachment"
+                  other="Uploading # attachments"
+                />
+              </p>
             ) : null}
           </div>
           {info.steer !== undefined && !archived ? (
@@ -948,25 +1137,42 @@ export function ThreadView({
               </Button>
             </div>
           ) : null}
-          {archived && resumeError !== null ? (
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            data-testid="agent-thread-auth-status"
+          >
+            {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
+          </span>
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            data-testid="agent-thread-resume-status"
+          >
+            {resumeFailureMessage}
+          </span>
+          {resumeFailureMessage !== '' ? (
             <div
               className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
               data-testid="agent-thread-resume-failed"
             >
-              <span className="flex-1">
-                {resumeError.code === 'resume-unsupported'
-                  ? t`${info.agent.name} can't continue this chat — the transcript is kept, but the agent session is gone.`
-                  : t`Couldn't resume this chat: ${resumeError.message}`}
-              </span>
+              <span className="flex-1">{resumeFailureMessage}</span>
               <Button
                 type="button"
                 size="sm"
                 variant="outline"
                 className="h-6 shrink-0 text-xs"
+                disabled={runningAuthAction !== null}
+                aria-busy={runningAuthAction === 'new-chat'}
                 onClick={startFreshThread}
                 data-testid="agent-thread-resume-fallback-new"
               >
-                {t`New chat with ${info.agent.name}`}
+                {runningAuthAction === 'new-chat' ? (
+                  <Spinner className="size-3" aria-hidden="true" />
+                ) : null}
+                {t`New chat with ${agentName}`}
               </Button>
             </div>
           ) : null}
@@ -1460,14 +1666,49 @@ function ThreadTranscriptSkeleton(): ReactNode {
   );
 }
 
+function ThreadAuthOfferButton({
+  offer,
+  runningAuthAction,
+  onAction,
+}: {
+  offer: ThreadAuthOfferWithoutSignIn;
+  runningAuthAction: ThreadAuthActionKind | null;
+  onAction: (kind: ThreadAuthActionKind) => void;
+}): ReactNode {
+  if (offer.actionLabel === null) return null;
+  const busy = runningAuthAction === offer.kind;
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      className="h-6 text-xs"
+      disabled={runningAuthAction !== null}
+      aria-busy={busy}
+      onClick={() => onAction(offer.kind)}
+      data-testid="agent-thread-auth-action"
+      data-auth-offer-kind={offer.kind}
+    >
+      {busy ? <Spinner className="size-3" aria-hidden="true" /> : null}
+      {offer.actionLabel}
+    </Button>
+  );
+}
+
 function ThreadEmptyState({
   status,
   archived,
   agent,
+  authOffer,
+  onAuthAction,
+  runningAuthAction,
 }: {
   status: ThreadInfo['status'];
   archived: boolean;
   agent: ThreadInfo['agent'];
+  authOffer: ThreadAuthOfferWithoutSignIn;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
 }): ReactNode {
   const { t } = useLingui();
   const agentName = agentDisplayName(agent.name);
@@ -1489,7 +1730,7 @@ function ThreadEmptyState({
     );
   }
 
-  if (status === 'auth_required') {
+  if (authOffer.actionLabel !== null) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
         <RegisteredAgentIcon
@@ -1497,7 +1738,12 @@ function ThreadEmptyState({
           iconUrl={agent.iconUrl}
           className="size-12 opacity-25 grayscale"
         />
-        <p className="text-muted-foreground text-sm">{t`Sign in to ${agentName} to continue.`}</p>
+        <p className="text-muted-foreground text-sm">{authOffer.headline}</p>
+        <ThreadAuthOfferButton
+          offer={authOffer}
+          runningAuthAction={runningAuthAction}
+          onAction={onAuthAction}
+        />
       </div>
     );
   }
@@ -1550,6 +1796,9 @@ function ThreadItem({
   onRetry,
   showRestore,
   onRestore,
+  authOffer,
+  onAuthAction,
+  runningAuthAction,
   onResend,
   canSendHere,
   isLatestUserTurn,
@@ -1566,6 +1815,9 @@ function ThreadItem({
   onRetry: () => void;
   showRestore: boolean;
   onRestore: () => void;
+  authOffer: ThreadAuthOfferWithoutSignIn;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
   onResend: (
     text: string,
     target: ResendTarget,
@@ -1612,6 +1864,9 @@ function ThreadItem({
           onRetry={onRetry}
           showRestore={showRestore}
           onRestore={onRestore}
+          authOffer={authOffer}
+          onAuthAction={onAuthAction}
+          runningAuthAction={runningAuthAction}
         />
       );
     case 'agent_notice':
@@ -1754,6 +2009,7 @@ function SignInOutput({ output }: { output?: string[] }): ReactNode {
 
 function ThreadAuthPrompt({
   failure,
+  offer,
   agent,
   agentName,
   signingIn,
@@ -1762,8 +2018,11 @@ function ThreadAuthPrompt({
   retryPending,
   onRetry,
   onAuthenticate,
+  onAuthAction,
+  runningAuthAction,
 }: {
   failure: ThreadFailureDetail;
+  offer: ThreadAuthOffer;
   agent: ThreadInfo['agent'];
   agentName: string;
   signingIn: boolean;
@@ -1772,16 +2031,22 @@ function ThreadAuthPrompt({
   retryPending: boolean;
   onRetry: () => void;
   onAuthenticate: (methodId: string) => Promise<void>;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
 }): ReactNode {
   const { t } = useLingui();
   const [showDetail, setShowDetail] = useState(false);
   const [authPending, setAuthPending] = useState<string | null>(null);
   const authMethods = failure.authMethods ?? [];
-  const signInMethods = authMethods.filter((m) => m.kind !== 'terminal' && m.kind !== 'env_var');
-  const manualMethods = authMethods.filter((m) => m.kind === 'terminal' || m.kind === 'env_var');
+  const signInMethods = clickableAuthMethods(authMethods);
+  const manualMethods = manualAuthMethods(authMethods);
   const agentMessage = failure.agentMessage ?? '';
   const machineDetail = failure.machineDetail ?? '';
-  const framedRetry = showRetry && machineDetail === '' && !signingIn;
+  const framedRetry =
+    showRetry &&
+    machineDetail === '' &&
+    !signingIn &&
+    (signInMethods.length > 0 || manualMethods.length > 0);
   const signIn = (methodId: string): void => {
     setAuthPending(methodId);
     void onAuthenticate(methodId)
@@ -1812,7 +2077,7 @@ function ThreadAuthPrompt({
           </>
         ) : (
           <>
-            <p className="font-medium text-foreground text-sm">{t`Sign in to ${agentName} to continue.`}</p>
+            <p className="font-medium text-foreground text-sm">{offer.headline}</p>
             {agentMessage !== '' ? (
               <p className="text-muted-foreground text-1sm">{agentMessage}</p>
             ) : null}
@@ -1841,6 +2106,13 @@ function ThreadAuthPrompt({
             </Button>
           ))}
         </div>
+      ) : null}
+      {!signingIn && signInMethods.length === 0 && offer.kind === 'terminal-sign-in' ? (
+        <ThreadAuthOfferButton
+          offer={offer}
+          runningAuthAction={runningAuthAction}
+          onAction={onAuthAction}
+        />
       ) : null}
       {!signingIn && manualMethods.length > 0 ? (
         <ul className="flex flex-col gap-1 text-muted-foreground text-xs">
@@ -1913,6 +2185,9 @@ function ThreadNotice({
   onRetry,
   showRestore,
   onRestore,
+  authOffer,
+  onAuthAction,
+  runningAuthAction,
 }: {
   item: Extract<RenderedItem, { kind: 'notice' }>;
   agentName: string;
@@ -1921,6 +2196,9 @@ function ThreadNotice({
   onRetry: () => void;
   showRestore: boolean;
   onRestore: () => void;
+  authOffer: ThreadAuthOfferWithoutSignIn;
+  onAuthAction: (kind: ThreadAuthActionKind) => void;
+  runningAuthAction: ThreadAuthActionKind | null;
 }): ReactNode {
   const { t } = useLingui();
   const [showDetail, setShowDetail] = useState(false);
@@ -1928,7 +2206,7 @@ function ThreadNotice({
   const failureHeadline = (reason: ThreadFailureDetail['reason']): string => {
     switch (reason) {
       case 'auth-required':
-        return t`Sign in to ${agentName} to continue.`;
+        return authOffer.headline;
       case 'connect':
         return t`${agentName} couldn't start.`;
       case 'session-setup':
@@ -2002,6 +2280,15 @@ function ThreadNotice({
                 </pre>
               ) : null}
             </>
+          ) : null}
+          {failure.reason === 'auth-required' && !showRetry ? (
+            <div className="mt-1.5">
+              <ThreadAuthOfferButton
+                offer={authOffer}
+                runningAuthAction={runningAuthAction}
+                onAction={onAuthAction}
+              />
+            </div>
           ) : null}
           {showRetry ? (
             <div className="mt-1.5">
@@ -2935,9 +3222,11 @@ function PiBridgeOutcomeRow({
               ? t`Open Knowledge tools are unavailable: a file Open Knowledge didn't write is already at ${bridgePath}.`
               : outcome.state === 'unreadable-file'
                 ? t`Open Knowledge tools are unavailable: something is already at ${bridgePath} but couldn't be read, so Open Knowledge left it alone.`
-                : outcome.state === 'trust-failed'
-                  ? t`Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools.`
-                  : t`Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools.`}
+                : outcome.state === 'project-path-unavailable'
+                  ? t`Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry.`
+                  : outcome.state === 'trust-failed'
+                    ? t`Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools.`
+                    : t`Couldn't write the Open Knowledge extension. This thread has no Open Knowledge tools.`}
         </span>
       </div>
       {outcome.detail !== null ? (
@@ -3191,7 +3480,7 @@ function ThreadComposer({
       type="button"
       size="icon-sm"
       className="rounded-lg"
-      disabled={!(canPrompt || canQueue) || !hasSendableContent}
+      disabled={!(canPrompt || canQueue) || !hasSendableContent || pendingUploads.length > 0}
       onClick={onSubmit}
       aria-label={canQueue ? t`Queue message` : t`Send`}
       data-testid="agent-thread-send"
@@ -3240,6 +3529,7 @@ function ThreadComposer({
         ) : null}
         {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
           <PendingImageStrip
+            testIdPrefix="agent-thread"
             images={pendingAttachments}
             uploads={pendingUploads}
             onRemove={onRemovePendingAttachment}
@@ -3250,6 +3540,7 @@ function ThreadComposer({
           ariaLabel={t`Message ${agentName}`}
           onEmptyChange={setIsEmpty}
           onSubmit={onSubmit}
+          attachmentDrop={{ kind: 'host' }}
           onEscape={() => {
             if (turnActive && !cancelPending) onCancel();
           }}
@@ -3276,6 +3567,7 @@ function ThreadComposer({
         <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
           <AgentSettingsPopover info={info} />
           <AttachFilesButton
+            testId="agent-thread-attach-files"
             onFiles={onIngestAllFiles}
             referencesOnly={
               info.promptCapabilities !== null &&
@@ -3321,6 +3613,7 @@ function ThreadComposer({
                         size="icon-sm"
                         variant="outline"
                         className="rounded-lg"
+                        disabled={pendingUploads.length > 0}
                         onClick={onSteer}
                         aria-label={t`Steer now`}
                         data-testid="agent-thread-steer"
@@ -3523,92 +3816,6 @@ function QueuedMessageRow({
   );
 }
 
-function extensionLabel(name: string, mimeType: string): string {
-  const dot = name.lastIndexOf('.');
-  if (dot > 0 && dot < name.length - 1) return name.slice(dot + 1).toLowerCase();
-  const slash = mimeType.lastIndexOf('/');
-  if (slash > 0 && slash < mimeType.length - 1) return mimeType.slice(slash + 1).toLowerCase();
-  return 'file';
-}
-
-function PendingImageStrip({
-  images,
-  uploads,
-  onRemove,
-}: {
-  images: readonly AttachmentPart[];
-  uploads: readonly { readonly id: string; readonly name: string; readonly mimeType: string }[];
-  onRemove: (index: number) => void;
-}): ReactNode {
-  const { t } = useLingui();
-  const openPreview = use(ImagePreviewContext);
-  return (
-    <div className="flex flex-wrap gap-2 px-3 pt-2 pb-1" data-testid="agent-thread-pending-images">
-      {images.map((image, index) => {
-        const key =
-          image.kind === 'image' || image.kind === 'blob'
-            ? `${index}:${image.name}:${image.data.slice(0, 24)}`
-            : `${index}:${image.name}:${image.path}`;
-        const src = image.kind === 'image' ? `data:${image.mimeType};base64,${image.data}` : null;
-        const label =
-          image.kind === 'file' || image.kind === 'folder'
-            ? extensionLabel(image.name, '')
-            : extensionLabel(image.name, image.mimeType);
-        return (
-          <div key={key} className="group relative inline-flex size-14" title={image.name}>
-            {src !== null ? (
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => openPreview?.({ src, name: image.name })}
-                disabled={openPreview === null}
-                className="size-full items-center justify-center overflow-hidden rounded-md border border-input bg-muted p-0 hover:bg-muted"
-                aria-label={image.name}
-                data-testid="agent-thread-pending-image-preview"
-              >
-                <img
-                  src={src}
-                  alt={image.name}
-                  className="h-full w-full object-cover"
-                  draggable={false}
-                />
-              </Button>
-            ) : (
-              <div className="inline-flex size-full items-center justify-center overflow-hidden rounded-md border border-input bg-muted">
-                <span className="text-muted-foreground text-xs uppercase">{label}</span>
-              </div>
-            )}
-            <Button
-              type="button"
-              size="icon"
-              variant="secondary"
-              onClick={(event) => {
-                event.stopPropagation();
-                onRemove(index);
-              }}
-              aria-label={t`Remove ${image.name}`}
-              className="absolute top-0.5 right-0.5 size-5 rounded-full border border-border bg-background/80 p-0 shadow-sm opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-              data-testid="agent-thread-pending-image-remove"
-            >
-              <X className="size-3" aria-hidden="true" />
-            </Button>
-          </div>
-        );
-      })}
-      {uploads.map((upload) => (
-        <div
-          key={upload.id}
-          className="relative inline-flex size-14 items-center justify-center overflow-hidden rounded-md border border-input bg-muted"
-          title={upload.name}
-          data-testid="agent-thread-pending-upload"
-        >
-          <Spinner className="size-4 text-muted-foreground" aria-hidden="true" />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function ChatPanelDropOverlay({ onDismiss }: { onDismiss: () => void }): ReactNode {
   const { t } = useLingui();
   return (
@@ -3629,46 +3836,5 @@ function ChatPanelDropOverlay({ onDismiss }: { onDismiss: () => void }): ReactNo
         </div>
       </div>
     </div>
-  );
-}
-
-function AttachFilesButton({
-  onFiles,
-  referencesOnly,
-}: {
-  onFiles: (files: readonly File[]) => Promise<void>;
-  referencesOnly: boolean;
-}): ReactNode {
-  const { t } = useLingui();
-  const openFilePicker = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.addEventListener('change', () => {
-      const files = Array.from(input.files ?? []);
-      if (files.length > 0) void onFiles(files);
-    });
-    input.click();
-  };
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant="ghost"
-          className="rounded-lg"
-          onClick={openFilePicker}
-          aria-label={t`Attach a file`}
-          data-testid="agent-thread-attach-files"
-        >
-          <Plus className="size-4" aria-hidden="true" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent side="top">
-        {t`Attach a file`}
-        {referencesOnly ? t` · references only (no embedded contents)` : null}
-      </TooltipContent>
-    </Tooltip>
   );
 }

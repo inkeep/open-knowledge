@@ -1,0 +1,96 @@
+---
+title: Developer reference
+description: Skill file layout, install locations, CLI commands, MCP tools, and sidebar configuration.
+---
+
+For the UI walkthrough, start with [Skills Studio](./index.mdx).
+
+## File layout
+
+A skill is a folder containing `SKILL.md`, with `name` and `description` in its YAML frontmatter. Optional `references/` and `scripts/` folders travel with it.
+
+```text
+meeting-notes/
+├── SKILL.md
+├── references/
+└── scripts/
+```
+
+A new skill goes into a skills folder the project already has. OpenKnowledge never creates one for you: if no agent folder exists yet, the import is refused and names the folders it would accept. When `.agents/` already exists it wins; otherwise the first editor folder present, by precedence.
+
+| Scope | Source folder | Other locations |
+| --- | --- | --- |
+| Project | The project's existing skills folder (`.agents/skills/<name>/` when `.agents/` is there, else `.claude/skills/<name>/` and so on) | Other project-local editor skills directories |
+| Global | The same, under your home directory | Other home editor skills directories |
+
+OpenKnowledge keeps one source folder per skill. Other locations use symlinks by default, so they read the same bytes. The install menu can convert a location to a copy, which OpenKnowledge refreshes until it is edited independently outside the app.
+
+**Make source** relocates the real folder. Moving between Project and Global re-creates the skill in the destination scope: history does not transfer, and the editor locations the destination scope can host are re-projected there. Its `.agents/skills` hub entry, any **Add custom path** locations, and any AI tool with no skills folder at that scope are removed at the source and not re-created at the destination; add the ones the destination scope can hold again from the destination skill. That applies to a move that succeeded: if the move fails, the same list names locations it had already removed at the source, so adding them from the destination would spread the copy the failure left behind. Project skills are versioned with project content. Global skills outside a base carry no version history.
+
+## Existing skills
+
+OpenKnowledge discovers skills in `.claude/skills`, `.cursor/skills`, `.codex/skills`, `.opencode/skills`, `.github/skills`, `.pi/skills`, `.agents/skills`, and supported plugin locations.
+
+Detected skills are read and versioned in place. Plugin skills are read-only: **Edit a copy** creates an editable version in your base. Choosing an install destination for a plugin skill does the same thing, because install locations always link to a skill in the base. The copy no longer follows the plugin's updates.
+
+## CLI
+
+```bash
+ok skills installed
+ok skills import <source>
+ok seed --pack <id>
+ok init --skills discovery,write-skill
+ok init --no-skills
+```
+
+| Command | Purpose |
+| --- | --- |
+| `ok skills installed` | List installed skills across agents without changing them. |
+| `ok skills import <source>` | Import from skills.sh, a repository, a git URL, or a local path. |
+| `ok seed --pack <id>` | Install a starter pack's skills. |
+| `ok init --skills discovery,write-skill` | Select built-ins during setup; the default is discovery. |
+| `ok init --no-skills` | Skip skill installation for this setup run. |
+
+See the [CLI reference](../../reference/cli.mdx) for all flags.
+
+## MCP
+
+| Task | Tool |
+| --- | --- |
+| Search skills.sh | `skills({ query })` |
+| Import a skill | `import({ source, add })` |
+| Choose install locations, copies, or symlinks | `install` |
+| Author or change a skill | `write`, `edit`, `move`, `delete` with a `skill` target |
+| Inspect or restore versions | `history`, `restore_version` with a `skill` target |
+| Read a bundled file | `skills({ name, file })` |
+
+See the [MCP reference](../../reference/mcp.mdx) for parameter shapes.
+
+## Sidebar configuration
+
+| Key | Controls |
+| --- | --- |
+| `appearance.sidebar.showSkillsSection` | Whether the dock is visible. |
+| `appearance.sidebar.showSkillGroups` | Grouping by source. |
+| `appearance.sidebar.pinnedProjectSkills` | Pinned project skills. |
+| `appearance.sidebar.pinnedGlobalSkills` | Pinned global skills. |
+
+See [Configuration](../../reference/configuration.mdx) for where these settings live.
+
+## Plugin marketplace
+
+OpenKnowledge's skills and starter packs are published at [inkeep/open-knowledge-skills](https://github.com/inkeep/open-knowledge-skills). For Claude Code's plugin workflow:
+
+```bash
+/plugin marketplace add inkeep/open-knowledge-skills
+/plugin install open-knowledge@open-knowledge-skills
+```
+
+The repo is grouped by role: `skills/core/` holds the built-ins, and `skills/starter-packs/<pack>/` holds each pack's skills. Each pack is also its own plugin, so you can install just the one you want:
+
+```bash
+/plugin install knowledge-base@open-knowledge-skills
+/plugin install personal-crm@open-knowledge-skills
+```
+
+`ok seed --pack <id>` installs a pack's skills directly, without the plugin workflow.

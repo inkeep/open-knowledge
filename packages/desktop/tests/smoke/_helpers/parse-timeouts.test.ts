@@ -2,8 +2,10 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { BOOT_LOG_CAP_MS } from './launch-readiness';
 import {
   extractHelperBudgets,
+  extractReadinessBudgets,
   extractTestEntries,
   parseNumericLiteral,
   parsePlaywrightConfigTimeout,
@@ -409,6 +411,28 @@ describe('parseTestFile (real file, sanity)', () => {
     expect(fa.tests.length).toBeGreaterThanOrEqual(3);
     const byName = new Map(fa.helpers.map((h) => [h.name, h.maxTimeoutMs]));
     expect(byName.get('launchApp') ?? 0).toBeGreaterThan(0);
-    expect(byName.get('findWindowByMode') ?? 0).toBeGreaterThan(0);
+    expect(byName.get('expandAdvancedSettings') ?? 0).toBeGreaterThan(0);
+    expect(byName.get('findWindowByMode') ?? 0).toBe(BOOT_LOG_CAP_MS);
+  });
+});
+
+describe('readiness-helper attribution', () => {
+  test('scores the default cap for a plain waitForWindowByMode call', () => {
+    expect(extractReadinessBudgets('return waitForWindowByMode(app, mode);')).toEqual([
+      BOOT_LOG_CAP_MS,
+    ]);
+  });
+
+  test('prefers an inline capMs over the default', () => {
+    expect(
+      extractReadinessBudgets("waitForWindowByMode(app, 'navigator', { capMs: 60_000 })"),
+    ).toEqual([60_000]);
+  });
+
+  test('scores a waitForWindowByMode called straight from a test body', () => {
+    const src = `test('x', async () => {\n  await waitForWindowByMode(app, 'editor');\n});\n`;
+    const entry = extractTestEntries(src, [])[0];
+    expect(entry?.directTimeoutsMs).toEqual([BOOT_LOG_CAP_MS]);
+    expect(entry?.cumulativeMs).toBe(BOOT_LOG_CAP_MS);
   });
 });

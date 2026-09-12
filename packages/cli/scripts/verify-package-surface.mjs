@@ -5,9 +5,17 @@ import { fileURLToPath } from 'node:url';
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-export const REQUIRED_PACK_FILES = ['README.md', 'dist/LICENSE', 'dist/THIRD_PARTY_NOTICES.md'];
+export const REQUIRED_PACK_FILES = [
+  'README.md',
+  'dist/LICENSE',
+  'dist/THIRD_PARTY_NOTICES.md',
+  'dist/native/native-config.win32-x64-msvc.node',
+  'dist/native/native-config.win32-arm64-msvc.node',
+];
 
 export const REQUIRED_KEYWORDS = ['knowledge-base', 'markdown', 'local-first', 'mcp', 'ai', 'cli'];
+
+export const FORBIDDEN_PACK_PREFIXES = ['scripts/', 'src/', 'tests/'];
 
 export function validatePackageSurface(packageJson, packEntries) {
   const errors = [];
@@ -17,6 +25,10 @@ export function validatePackageSurface(packageJson, packEntries) {
   if (!pack) errors.push('npm pack returned no package entry');
   for (const file of REQUIRED_PACK_FILES) {
     if (!packedFiles.has(file)) errors.push(`packed artifact is missing ${file}`);
+  }
+  for (const file of packedFiles) {
+    const prefix = FORBIDDEN_PACK_PREFIXES.find((candidate) => file.startsWith(candidate));
+    if (prefix) errors.push(`packed artifact must not ship ${file} (dev-only ${prefix} tree)`);
   }
 
   if (typeof packageJson.description !== 'string' || packageJson.description.trim().length < 40) {

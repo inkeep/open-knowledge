@@ -1,38 +1,12 @@
 #!/usr/bin/env node
-/**
- * Production-artifact gate for the DEV-only ACP thread-injection harness.
- *
- * The harness is kept out of shipped code by two independent
- * `import.meta.env.DEV` guards, either of which is enough for the bundler to
- * fold the publish away. That gating lives in source, so it can regress
- * without a single suite going red: every unit, DOM, integration and browser
- * tier runs against source or a dev server, never against an emitted chunk.
- * This reads the emitted `dist/`, which is the bundle a user actually runs —
- * the CLI copies it to `cli/dist/public` and the desktop package ships that as
- * the renderer its packaged window loads. It is the only automatic check that
- * still discriminates once both guards are gone; the sentinel list in
- * `tests/perf/lib/bundle-check.ts` covers the same string but no tier collects
- * it, so it only discriminates when someone runs it by hand.
- *
- * Non-zero on a hit, on a missing build, and on a walk that found nothing to
- * read — an absence check that inspected no bytes is not a pass.
- */
 
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { argv, exit, stderr, stdout } from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-/**
- * The global the harness publishes itself on. A property name survives
- * minification verbatim, so it is the one part of the module guaranteed to
- * appear in an emitted chunk if any of it leaks. A DOM test pins that the
- * harness still uses this exact name, so a rename cannot leave this scanning
- * for a string nothing writes any more.
- */
 export const DEV_HARNESS_SENTINEL = '__acpThreadHarness';
 
-/** Extensions Vite emits code or markup into. Fonts and images cannot carry it. */
 const SCANNED_EXTENSIONS = ['.js', '.mjs', '.cjs', '.css', '.html', '.map'];
 
 const APP_ROOT = join(fileURLToPath(import.meta.url), '..', '..');
@@ -107,7 +81,6 @@ function main() {
   return 0;
 }
 
-// Importers want the sentinel alone; only a direct invocation is the gate.
 if (argv[1] !== undefined && resolve(argv[1]) === fileURLToPath(import.meta.url)) {
   exit(main());
 }

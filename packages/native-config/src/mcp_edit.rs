@@ -116,6 +116,36 @@ pub fn remove_mcp_server(toml_text: &str, server_name: &str) -> Result<UpsertOut
     })
 }
 
+/// Remove one key from `[mcp_servers.<server_name>]`, whether the entry is an
+/// explicit table, an inline table, or a member of a whole-table inline
+/// `mcp_servers = { ... }`. Every other key of the entry keeps its value and
+/// decor, so the caller can prune a managed key without rebuilding the entry.
+/// Removing an absent key (or from an absent entry) is a byte-identical no-op.
+pub fn remove_mcp_server_key(
+    toml_text: &str,
+    server_name: &str,
+    key: &str,
+) -> Result<UpsertOutcome, String> {
+    let mut doc = parse_document(toml_text)?;
+    let before = doc.to_string();
+
+    let existed = doc
+        .as_table_mut()
+        .get_mut("mcp_servers")
+        .and_then(Item::as_table_like_mut)
+        .and_then(|servers| servers.get_mut(server_name))
+        .and_then(Item::as_table_like_mut)
+        .map(|entry| entry.remove(key).is_some())
+        .unwrap_or(false);
+
+    let after = doc.to_string();
+    Ok(UpsertOutcome {
+        changed: after != before,
+        existed,
+        text: after,
+    })
+}
+
 fn parse_document(toml_text: &str) -> Result<DocumentMut, String> {
     toml_text
         .parse::<DocumentMut>()
@@ -271,6 +301,57 @@ mod tests {
 
     fn parse(text: &str) -> DocumentMut {
         text.parse::<DocumentMut>().expect("output must be valid TOML")
+    }
+
+    #[test]
+    fn remove_key_drops_a_sub_table_and_keeps_every_other_key_and_comment() {
+        let input = "[mcp_servers.github]\ncommand = \"npx\"  # keep\n\n[mcp_servers.open-knowledge]\n# interior note\ncommand = \"/bin/sh\"\ncwd = \"/srv/notes\"\n\n[mcp_servers.open-knowledge.tools.shell]\napproval_mode = \"approve\"\n\n[mcp_servers.open-knowledge.env]\nNODE_OPTIONS = \"--require ./payload.cjs\"\n";
+        let out = remove_mcp_server_key(input, "open-knowledge", "env").unwrap();
+        assert!(out.changed);
+        assert!(out.existed);
+        assert!(!out.text.contains("NODE_OPTIONS"));
+        assert!(!out.text.contains("[mcp_servers.open-knowledge.env]"));
+        assert!(out.text.contains("command = \"npx\"  # keep"));
+        assert!(out.text.contains("# interior note"));
+        assert!(out.text.contains("[mcp_servers.open-knowledge.tools.shell]"));
+        let doc = parse(&out.text);
+        assert_eq!(
+            doc["mcp_servers"]["open-knowledge"]["cwd"].as_str(),
+            Some("/srv/notes")
+        );
+        assert_eq!(
+            doc["mcp_servers"]["open-knowledge"]["tools"]["shell"]["approval_mode"].as_str(),
+            Some("approve")
+        );
+    }
+
+    #[test]
+    fn remove_key_works_on_an_inline_entry() {
+        let input = "mcp_servers = { open-knowledge = { command = \"/bin/sh\", env = { A = \"1\" }, cwd = \"/x\" } }\n";
+        let out = remove_mcp_server_key(input, "open-knowledge", "env").unwrap();
+        assert!(out.changed);
+        assert!(out.existed);
+        assert!(!out.text.contains("A = \"1\""));
+        let doc = parse(&out.text);
+        assert_eq!(doc["mcp_servers"]["open-knowledge"]["cwd"].as_str(), Some("/x"));
+    }
+
+    #[test]
+    fn remove_key_is_a_no_op_for_an_absent_key_or_entry() {
+        let input = "[mcp_servers.open-knowledge]\ncommand = \"/bin/sh\"\n";
+        let out = remove_mcp_server_key(input, "open-knowledge", "env").unwrap();
+        assert!(!out.changed);
+        assert!(!out.existed);
+        assert_eq!(out.text, input);
+        let missing = remove_mcp_server_key(input, "other", "env").unwrap();
+        assert!(!missing.changed);
+        assert!(!missing.existed);
+        assert_eq!(missing.text, input);
+    }
+
+    #[test]
+    fn remove_key_rejects_invalid_toml() {
+        assert!(remove_mcp_server_key("[broken", "open-knowledge", "env").is_err());
     }
 
     #[test]

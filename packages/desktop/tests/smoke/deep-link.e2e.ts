@@ -39,7 +39,7 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [projectDir, tmpHome] });
 
     const firstWindow = await app.firstWindow({ timeout: 15_000 });
     expect(firstWindow).toBeDefined();
@@ -79,7 +79,7 @@ test.describe('deep-link warm-start smoke (M4 US-009 / AC7)', () => {
         timeout: 30_000,
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [projectDir, tmpHome] });
 
     const firstWindow = await app.firstWindow({ timeout: 15_000 });
     expect(firstWindow).toBeDefined();

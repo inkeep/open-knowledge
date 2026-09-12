@@ -1,4 +1,5 @@
 import type { OutgoingHttpHeaders } from 'node:http';
+import { MANUAL_CHECK_WATCHDOG_MS } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
 import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
@@ -87,6 +88,8 @@ export type DispatchKind =
   | 'relaunch-refresh-timed-out'
   | 'relaunch-awaited-in-flight-staging'
   | 'relaunch-double-invoke-blocked'
+  | 'check-now-already-pending'
+  | 'check-now-watchdog-fired'
   | 'toast-a-deferred-post-update-quiet'
   | 'toast-a-quiet-window-elapsed';
 
@@ -160,7 +163,12 @@ export const UPDATE_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 export const UPDATE_CHECK_JITTER_MS = 5 * 60 * 1000;
 
+export const UPDATE_CHECK_DEADLINE_MS = 90_000;
+
 export const RELAUNCH_WATCHDOG_MS = 15_000;
+
+export const MANUAL_CHECK_TIMED_OUT_MESSAGE =
+  'The update check took too long to respond. Check your connection and try again.';
 
 export const STUCK_HINT_THRESHOLD_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -171,6 +179,10 @@ const INSTALL_IN_FLIGHT_GRACE_MS = 30 * 60 * 1000;
 const INSTALL_DEFER_MAX_BOOTS = 3;
 
 export const STUCK_HINT_DOWNLOAD_URL = 'https://github.com/inkeep/open-knowledge/releases';
+
+export const UPDATE_CHECK_FAILED_MESSAGE = 'The update check failed. Try again in a moment.';
+
+export const UPDATE_CHECK_WEDGED_MESSAGE = `OpenKnowledge is still waiting on the update server and will not check again until it restarts. Restart the app, or download the latest build from ${STUCK_HINT_DOWNLOAD_URL}.`;
 
 export const RELAUNCH_REFRESH_CHECK_MS = 4_000;
 
@@ -184,11 +196,27 @@ export function releaseUrlFor(version: string): string {
   return `https://github.com/inkeep/open-knowledge/releases/tag/v${encodeURIComponent(version)}`;
 }
 
+function errorCode(err: unknown): string | undefined {
+  if (!(err instanceof Error) || !('code' in err)) return undefined;
+  return typeof err.code === 'string' ? err.code : undefined;
+}
+
 export function isClassifiedUpdaterError(err: unknown): err is Error & { code: string } {
-  if (!(err instanceof Error)) return false;
-  const code = (err as Error & { code?: unknown }).code;
+  const code = errorCode(err);
   if (typeof code !== 'string') return false;
   return code.startsWith('ERR_UPDATER_') || code.startsWith('HTTP_ERROR_');
+}
+
+export function shouldFallBackFromProxy(err: unknown): boolean {
+  const code = errorCode(err);
+  if (typeof code !== 'string') return false;
+  // UPSTREAM(electron-updater@6.8.4): a proxy check surfaces a channel-file 404 as ERR_UPDATER_CHANNEL_FILE_NOT_FOUND, unparseable channel YAML as ERR_UPDATER_INVALID_UPDATE_INFO, and a manifest version that fails semver as ERR_UPDATER_INVALID_VERSION.
+  return (
+    /^HTTP_ERROR_5\d{2}$/.test(code) ||
+    code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND' ||
+    code === 'ERR_UPDATER_INVALID_UPDATE_INFO' ||
+    code === 'ERR_UPDATER_INVALID_VERSION'
+  );
 }
 
 export function applyChannelSettings(
@@ -209,16 +237,16 @@ export function channelFromVersion(version: string): UpdateChannel {
 }
 
 export function buildCheckNowResultFromError(err: unknown, currentVersion: string): CheckNowResult {
-  const code = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
+  const code = errorCode(err);
   if (code === 'ERR_UPDATER_CHANNEL_FILE_NOT_FOUND') {
     return { kind: 'not-available', currentVersion };
   }
   const message =
     err instanceof Error
-      ? err.message || 'Update check failed'
+      ? err.message || UPDATE_CHECK_FAILED_MESSAGE
       : typeof err === 'string'
-        ? err || 'Update check failed'
-        : 'Update check failed';
+        ? err || UPDATE_CHECK_FAILED_MESSAGE
+        : UPDATE_CHECK_FAILED_MESSAGE;
   return { kind: 'error', message };
 }
 
@@ -369,34 +397,139 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
 
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = platform !== 'linux';
-  const buildChannel = channelFromVersion(getAppVersion());
+  const appVersion = getAppVersion();
+  const buildChannel = channelFromVersion(appVersion);
   applyChannelSettings(updater, buildChannel);
 
   updater.forceDevUpdateConfig = forceDevBypass;
+  const proxyChannelPath = buildChannel === 'beta' ? 'beta' : 'stable';
+  const configuredProxyFeed =
+    !feedUrl && proxyFeed?.channels.has(buildChannel)
+      ? {
+          url: `${proxyFeed.base}/${proxyChannelPath}`,
+          channel: proxyChannelPath,
+        }
+      : null;
+  // UPSTREAM(electron-updater@6.8.4): with allowPrerelease, GitHub's Atom lookup returns the newest tag regardless of channel.
+  const githubFallbackEnabled = buildChannel !== 'beta';
   let usingProxyFeed = false;
   let proxyFallbackTried = false;
+  let fallbackRetryPending = false;
+  let proxyIneligibleLogged = false;
+  let destroyed = false;
+  type TrackedCheck = {
+    promise: Promise<unknown>;
+    startedAt: number;
+    deadline: ReturnType<typeof setTimeout>;
+    timedOut: boolean;
+  };
+  let checkInFlight: TrackedCheck | null = null;
   if (feedUrl) {
     updater.setFeedURL(feedUrl);
     logger.info('setFeedURL (dev override) — updater will pull manifest from local mock', {
       feedUrl,
     });
-  } else if (proxyFeed?.channels.has(buildChannel)) {
-    const channelPath = buildChannel === 'beta' ? 'beta' : 'stable';
-    updater.setFeedURL({ provider: 'generic', url: `${proxyFeed.base}/${channelPath}` });
+  } else if (configuredProxyFeed) {
+    updater.setFeedURL({ provider: 'generic', url: configuredProxyFeed.url });
     updater.requestHeaders = {
-      'x-ok-from-version': getAppVersion(),
-      'x-ok-channel': channelPath,
+      'x-ok-from-version': appVersion,
+      'x-ok-channel': configuredProxyFeed.channel,
     };
     usingProxyFeed = true;
     logger.info('setFeedURL (proxy) — updater feed pointed at the openknowledge.ai proxy', {
-      channel: channelPath,
+      channel: configuredProxyFeed.channel,
     });
   }
 
   const updatesEnabled = isPackaged || forceDevBypass;
 
-  const revertToGithubFeed = (cause: string): void => {
-    if (!usingProxyFeed || proxyFallbackTried) return;
+  const prepareConfiguredFeedForCheck = (): void => {
+    if (!configuredProxyFeed) return;
+    proxyFallbackTried = false;
+    fallbackRetryPending = false;
+    proxyIneligibleLogged = false;
+    if (!usingProxyFeed) {
+      updater.setFeedURL({ provider: 'generic', url: configuredProxyFeed.url });
+      usingProxyFeed = true;
+    }
+    updater.requestHeaders = {
+      'x-ok-from-version': appVersion,
+      'x-ok-channel': configuredProxyFeed.channel,
+    };
+  };
+
+  const trackCheck = (checkPromise: Promise<unknown>): TrackedCheck => {
+    const startedAt = now().getTime();
+    const deadline = clock.setTimeout(() => {
+      const ageMs = now().getTime() - startedAt;
+      entry.timedOut = true;
+      logger.warn('update check exceeded its deadline', {
+        ms: UPDATE_CHECK_DEADLINE_MS,
+        ageMs,
+        menuCheckPending: menuCheck !== null,
+        fallbackRetryPending,
+        usingProxyFeed,
+        proxyFallbackTried,
+      });
+      maybeFireStuckHint();
+      startPeriodicChecks();
+    }, UPDATE_CHECK_DEADLINE_MS);
+    const entry = { promise: checkPromise, startedAt, deadline, timedOut: false };
+    checkInFlight = entry;
+    const clearCheck = (): void => {
+      clock.clearTimeout(entry.deadline);
+      if (checkInFlight === entry) checkInFlight = null;
+    };
+    void checkPromise.then(clearCheck, clearCheck);
+    return entry;
+  };
+
+  const checkForUpdatesFromConfiguredFeed = (): Promise<unknown> => {
+    if (checkInFlight !== null) {
+      const ageMs = now().getTime() - checkInFlight.startedAt;
+      const logFn = checkInFlight.timedOut ? logger.warn : logger.info;
+      logFn('check already in flight, reusing the pending promise', {
+        ageMs,
+        timedOut: checkInFlight.timedOut,
+        menuCheckPending: menuCheck !== null,
+        fallbackRetryPending,
+        usingProxyFeed,
+        proxyFallbackTried,
+      });
+      if (checkInFlight.timedOut) {
+        maybeFireStuckHint();
+        settleMenuCheck({ kind: 'error', message: UPDATE_CHECK_WEDGED_MESSAGE });
+      }
+      return checkInFlight.promise;
+    }
+    try {
+      prepareConfiguredFeedForCheck();
+      return trackCheck(updater.checkForUpdates()).promise;
+    } catch (err) {
+      return Promise.reject(err);
+    }
+  };
+
+  const revertToGithubFeed = (err: unknown): boolean => {
+    if (destroyed) return false;
+    if (!usingProxyFeed || proxyFallbackTried) return false;
+    if (!shouldFallBackFromProxy(err)) {
+      if (proxyIneligibleLogged) return false;
+      proxyIneligibleLogged = true;
+      const code = errorCode(err);
+      const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
+      logFn('proxy check failed, not fallback-eligible, staying on proxy', { code, err });
+      return false;
+    }
+    const cause = errorCode(err);
+    if (!githubFallbackEnabled) {
+      proxyFallbackTried = true;
+      logger.warn(
+        'proxy-feed fallback skipped for beta build (beta has no GitHub fallback by design)',
+        { cause },
+      );
+      return false;
+    }
     proxyFallbackTried = true;
     usingProxyFeed = false;
     updater.requestHeaders = null;
@@ -407,20 +540,43 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         cause,
         err,
       });
-      return;
+      return false;
     }
-    logger.warn('proxy feed failed — reverted to GitHub provider for this session', { cause });
-    void updater.checkForUpdates().catch((err: Error & { code?: string }) => {
-      const ctx = {
-        code: err?.code,
-        err,
-      };
-      if (isClassifiedUpdaterError(err)) {
-        logger.warn('post-fallback checkForUpdates rejected', ctx);
+    logger.warn('proxy feed failed, reverted to GitHub provider for this check', { cause });
+    let retryPromise: Promise<unknown>;
+    try {
+      retryPromise = trackCheck(updater.checkForUpdates()).promise;
+    } catch (dispatchErr) {
+      logger.error('proxy-feed fallback checkForUpdates threw', { cause, err: dispatchErr });
+      return false;
+    }
+    fallbackRetryPending = true;
+    let retrySettled = false;
+    const settleRetry = (outcome: 'resolved' | { rejected: unknown }): void => {
+      if (retrySettled || destroyed) return;
+      retrySettled = true;
+      fallbackRetryPending = false;
+      if (outcome !== 'resolved') {
+        const ctx = {
+          code: errorCode(outcome.rejected),
+          err: outcome.rejected,
+          menuCheckPending: menuCheck !== null,
+        };
+        const logFn = isClassifiedUpdaterError(outcome.rejected) ? logger.warn : logger.debug;
+        logFn('post-fallback checkForUpdates rejected', ctx);
+        settleMenuCheck(buildCheckNowResultFromError(outcome.rejected, getAppVersion()));
       } else {
-        logger.debug('post-fallback checkForUpdates rejected', ctx);
+        logger.info('post-fallback checkForUpdates resolved', {
+          menuCheckPending: menuCheck !== null,
+        });
+        settleMenuCheck({ kind: 'not-available', currentVersion: getAppVersion() });
       }
-    });
+    };
+    void retryPromise.then(
+      () => settleRetry('resolved'),
+      (e: unknown) => settleRetry({ rejected: e }),
+    );
+    return true;
   };
 
   const broadcast = <K extends keyof EventChannels>(
@@ -505,7 +661,24 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     logger.info('checking-for-update');
   };
 
-  let menuCheckPending = false;
+  let menuCheck: { watchdog: ReturnType<typeof setTimeout> } | null = null;
+
+  const settleMenuCheck = (result: CheckNowResult | null): void => {
+    if (menuCheck === null) return;
+    clock.clearTimeout(menuCheck.watchdog);
+    menuCheck = null;
+    broadcastToAllWindows('ok:update:manual-check', { phase: 'settled' });
+    if (result !== null) {
+      try {
+        showCheckNowResult?.(result);
+      } catch (err) {
+        logger.error('showCheckNowResult threw, check-now result dialog not shown', {
+          err,
+          result,
+        });
+      }
+    }
+  };
 
   let relaunchInFlight: {
     version: string;
@@ -636,21 +809,45 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   let activeWhatsNew: { version: string; releaseUrl: string; firedAt: number } | null = null;
 
   const runMenuDrivenCheck = (): Promise<unknown> => {
-    menuCheckPending = true;
-    const checkPromise = updater.checkForUpdates();
-    void checkPromise.catch((err: unknown) => {
-      const code = err instanceof Error ? (err as Error & { code?: unknown }).code : undefined;
-      const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
-      logFn('check-now checkForUpdates rejected', {
-        code,
-        err,
-        timestamp: now().toISOString(),
+    if (destroyed) return Promise.resolve(undefined);
+    broadcastToAllWindows('ok:update:manual-check', { phase: 'started' });
+    if (menuCheck !== null) {
+      logger.info('check-now already pending, re-acknowledged');
+      onDispatch?.('check-now-already-pending');
+      return Promise.resolve(undefined);
+    }
+    menuCheck = {
+      watchdog: clock.setTimeout(() => {
+        if (menuCheck === null) return;
+        logger.warn('check-now did not settle within the watchdog window', {
+          ms: MANUAL_CHECK_WATCHDOG_MS,
+        });
+        onDispatch?.('check-now-watchdog-fired');
+        settleMenuCheck({ kind: 'error', message: MANUAL_CHECK_TIMED_OUT_MESSAGE });
+      }, MANUAL_CHECK_WATCHDOG_MS),
+    };
+    const checkPromise = checkForUpdatesFromConfiguredFeed();
+    void checkPromise
+      .then(() => {
+        // UPSTREAM(electron-updater@6.8.4): checkForUpdates emits its verdict event before its promise resolves, so a check still pending at resolve time produced no verdict; an inactive dev updater resolves the same way.
+        if (menuCheck !== null) {
+          logger.info('check-now resolved without a verdict');
+          settleMenuCheck(null);
+        }
+      })
+      .catch((err: unknown) => {
+        const retrying = revertToGithubFeed(err);
+        const code = errorCode(err);
+        const logFn = isClassifiedUpdaterError(err) ? logger.warn : logger.debug;
+        logFn('check-now checkForUpdates rejected', {
+          code,
+          err,
+          timestamp: now().toISOString(),
+        });
+        if (!retrying && !fallbackRetryPending) {
+          settleMenuCheck(buildCheckNowResultFromError(err, getAppVersion()));
+        }
       });
-      if (menuCheckPending) {
-        menuCheckPending = false;
-        showCheckNowResult?.(buildCheckNowResultFromError(err, getAppVersion()));
-      }
-    });
     return checkPromise;
   };
 
@@ -721,22 +918,21 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   };
 
   const onUpdateAvailableForMenuCheck = (info: { version?: string }): void => {
-    if (!menuCheckPending) return;
-    menuCheckPending = false;
+    if (menuCheck === null) return;
     if (classifyOffer(info.version) !== 'same-channel') {
-      showCheckNowResult?.({ kind: 'not-available', currentVersion: getAppVersion() });
+      settleMenuCheck({ kind: 'not-available', currentVersion: getAppVersion() });
       return;
     }
     const armedVersion = declinedForStagedVersion(info.version);
     if (armedVersion !== null) {
-      showCheckNowResult?.({
+      settleMenuCheck({
         kind: 'ready-to-install',
         currentVersion: getAppVersion(),
         stagedVersion: armedVersion,
       });
       return;
     }
-    showCheckNowResult?.({
+    settleMenuCheck({
       kind: 'available',
       currentVersion: getAppVersion(),
       latestVersion: typeof info.version === 'string' ? info.version : 'unknown',
@@ -747,13 +943,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     logger.info('update-not-available', { version: info.version });
     markCheckSucceeded();
     settleCheckWaiters('settled');
-    if (menuCheckPending) {
-      menuCheckPending = false;
-      showCheckNowResult?.({
-        kind: 'not-available',
-        currentVersion: getAppVersion(),
-      });
-    }
+    settleMenuCheck({
+      kind: 'not-available',
+      currentVersion: getAppVersion(),
+    });
   };
 
   const onDownloadProgress = (info: { percent?: number; bytesPerSecond?: number }): void => {
@@ -836,6 +1029,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     else fireToastA();
   };
 
+  // UPSTREAM(electron-updater@6.8.4): checkForUpdates emits 'error' before its promise rejects, so onError runs before the caller's catch.
   const onError = (err: Error & { code?: string }): void => {
     if (isClassifiedUpdaterError(err)) {
       logger.warn('error (classified)', {
@@ -856,7 +1050,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       stagingInFlight = null;
       settleStagingWaiters(false);
     }
-    revertToGithubFeed(err.code ?? err.message);
+    const retrying = revertToGithubFeed(err);
     if (relaunchInFlight) {
       const failedVersion = relaunchInFlight.version;
       const failureClass = platform === 'linux' ? classifyInstallFailure(err.message) : null;
@@ -872,9 +1066,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         offerManualInstallFallback(failedVersion, 'linux-manual-fallback-after-error');
       }
     }
-    if (menuCheckPending) {
-      menuCheckPending = false;
-      showCheckNowResult?.(buildCheckNowResultFromError(err, getAppVersion()));
+    if (!retrying && !fallbackRetryPending) {
+      settleMenuCheck(buildCheckNowResultFromError(err, getAppVersion()));
+    } else if (menuCheck !== null) {
+      logger.warn('menu check verdict deferred to the GitHub retry', { code: errorCode(err), err });
     }
     maybeFireStuckHint();
   };
@@ -921,9 +1116,10 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     const result = await firstOf<'available' | 'settled' | 'timeout'>(
       (finish) => {
         checkOutcomeWaiters.push(finish);
-        void updater.checkForUpdates().then(
+        void checkForUpdatesFromConfiguredFeed().then(
           () => finish('settled'),
           (err: unknown) => {
+            revertToGithubFeed(err);
             logger.debug('relaunch-now refresh checkForUpdates rejected', { err });
             finish('settled');
           },
@@ -1332,7 +1528,8 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     const delayMs = nextCheckDelayMs();
     timerHandle = clock.setTimeout(() => {
       timerHandle = null;
-      void updater.checkForUpdates().catch((err: unknown) => {
+      void checkForUpdatesFromConfiguredFeed().catch((err: unknown) => {
+        revertToGithubFeed(err);
         logger.debug('checkForUpdates rejected', {
           err,
         });
@@ -1343,13 +1540,12 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   };
 
   const startPeriodicChecks = (): void => {
-    if (timerHandle) return;
+    if (destroyed || !updatesEnabled || timerHandle) return;
     scheduleNextCheck();
   };
 
   const runLaunchCheck = (): void => {
-    void updater
-      .checkForUpdates()
+    void checkForUpdatesFromConfiguredFeed()
       .then(() => {
         startPeriodicChecks();
       })
@@ -1357,7 +1553,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         logger.debug('first-launch checkForUpdates rejected', {
           err,
         });
-        revertToGithubFeed('first-check-rejected');
+        revertToGithubFeed(err);
         startPeriodicChecks();
       });
   };
@@ -1427,6 +1623,13 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
       }
     },
     destroy(): void {
+      if (destroyed) return;
+      destroyed = true;
+      fallbackRetryPending = false;
+      if (checkInFlight !== null) {
+        clock.clearTimeout(checkInFlight.deadline);
+        checkInFlight = null;
+      }
       if (timerHandle) {
         clock.clearTimeout(timerHandle);
         timerHandle = null;
@@ -1439,6 +1642,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
         clock.clearTimeout(quietWindowTimer);
         quietWindowTimer = null;
       }
+      settleMenuCheck(null);
       settleCheckWaiters('settled');
       stagingInFlight = null;
       settleStagingWaiters(false);

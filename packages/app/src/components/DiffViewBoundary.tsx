@@ -1,29 +1,11 @@
 /**
- * DiffViewBoundary — peer of the editor branch inside each `<Activity>`
- * slot of EditorActivityPool. Mounted when the active doc's
- * `lifecycle.status === 'conflict'`. Sibling to (NOT a replacement of) the
- * editor `DocumentBoundary` mount; the hybrid render tree per
+ * Sibling to (NOT a replacement of) the editor `DocumentBoundary` mount; the hybrid render tree per
  * precedent #18(b) stays intact.
- *
- * Responsibilities:
- *   1. Provider-sync gating is inherited from the outer `DocumentBoundary`
- *      wrap (the conditional swap happens INSIDE that boundary's children),
- *      so Suspense / error scopes compose unchanged.
- *   2. Fetch `GET /api/sync/conflict-content?file=<path>&source=ytext` for
- *      `ours` + `theirs`. The server's `?source=ytext` branch prefers the
- *      live Y.Text snapshot for `ours` (preserves pre-conflict unflushed
- *      edits) and falls back to git-index (`git show :2:`) when Y.Text
- *      contains conflict markers — which happens on editor reopen because
- *      the file watcher seeds Y.Text with the disk's marker bytes.
- *      `theirs` always comes from `git show :3:`.
- *   3. Render `<ConflictView ours theirs base onResolve />` for both-modified
- *      conflicts. ConflictView owns a Pierre UnresolvedFile instance and
- *      calls onResolve with the resolved content when all hunks are accepted.
- *   4. Emit `editor-area-swap-to-diffview` / `editor-area-swap-from-diffview`
- *      structured log events on mount / unmount.
  */
 import type { HocuspocusProvider } from '@hocuspocus/provider';
+import type { SyncConflictContentSuccess } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
+import type { MergeConflictResolution } from '@pierre/diffs';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -46,13 +28,14 @@ interface DiffViewBoundaryProps {
   provider: HocuspocusProvider;
 }
 
-type ConflictKind = 'both-modified' | 'delete-modify' | 'modify-delete';
+type ConflictKind = SyncConflictContentSuccess['kind'];
 
 interface ConflictSides {
   base: string;
   ours: string;
   theirs: string;
   kind: ConflictKind;
+  conflictKind: SyncConflictContentSuccess['conflictKind'];
 }
 
 async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
@@ -77,7 +60,9 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
       );
       return null;
     }
-    const data = (await res.json()) as Partial<ConflictSides>;
+    const data = (await res.json()) as Partial<Omit<ConflictSides, 'conflictKind'>> & {
+      conflictKind?: unknown;
+    };
     const kind: ConflictKind =
       data.kind === 'delete-modify' ||
       data.kind === 'modify-delete' ||
@@ -93,11 +78,25 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
         }),
       );
     }
+    if (
+      data.conflictKind !== undefined &&
+      data.conflictKind !== 'git' &&
+      data.conflictKind !== 'stale-external-write'
+    ) {
+      console.warn(
+        JSON.stringify({
+          event: 'conflict-discriminator-unrecognized',
+          file,
+          receivedConflictKind: data.conflictKind,
+        }),
+      );
+    }
     return {
       base: data.base ?? '',
       ours: data.ours ?? '',
       theirs: data.theirs ?? '',
       kind,
+      conflictKind: data.conflictKind === 'stale-external-write' ? 'stale-external-write' : 'git',
     };
   } catch (err) {
     console.warn(
@@ -147,6 +146,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
       ? null
       : [
           conflictEntry.detectedAt,
+          conflictEntry.conflictKind ?? 'git',
           conflictEntry.baseSha ?? '',
           conflictEntry.oursSha ?? '',
           conflictEntry.theirsSha ?? '',
@@ -171,8 +171,10 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     };
   }, [filePath, deferFetch, conflictSignature]);
 
-  async function handleResolve(content: string) {
-    const result = await resolveConflictContent(filePath, content);
+  async function handleResolve(content: string, selection?: MergeConflictResolution) {
+    const result = await (sides?.conflictKind === 'stale-external-write' && selection === 'incoming'
+      ? resolveConflictTheirs(filePath)
+      : resolveConflictContent(filePath, content));
     if (!result.ok) {
       toast.error(t`Couldn't save the resolution for ${filePath}.`, { description: result.detail });
     }
@@ -315,6 +317,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
   return (
     <ConflictView
       fileName={filePath}
+      conflictKind={sides.conflictKind}
       ours={sides.ours}
       base={sides.base}
       theirs={sides.theirs}

@@ -1,7 +1,17 @@
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { stripFrontmatter } from '@inkeep/open-knowledge-core';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { ConfigSchema } from '../../config/schema.ts';
 import { splitPayloadFrontmatter } from '../../payload-frontmatter.ts';
-import { composeWithFrontmatter, frontmatterIgnoredNote } from './write.ts';
+import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
+import type { ServerInstance } from './shared.ts';
+import {
+  composeWithFrontmatter,
+  frontmatterIgnoredNote,
+  register as registerWrite,
+} from './write.ts';
 
 function frontmatterBlockCount(markdown: string): number {
   let remaining = markdown;
@@ -135,5 +145,71 @@ describe('frontmatterIgnoredNote — the two outcomes are distinguishable', () =
 
   it('stays silent on replace, which does not drop anything', () => {
     expect(frontmatterIgnoredNote('replace', '---\ntitle: Fine\n---\nbody\n')).toBeNull();
+  });
+});
+
+describe('write({ skill }) with bundle files — the per-file report reaches both text channels', () => {
+  interface ToolResult {
+    content: Array<{ type: 'text'; text: string }>;
+    structuredContent?: Record<string, unknown>;
+    isError?: true;
+  }
+  type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
+
+  let testServer: FetchTestServer;
+  let cwd: string;
+  let handler: Handler;
+
+  beforeAll(async () => {
+    testServer = await startFetchTestServer({
+      hostname: '127.0.0.1',
+      fetch(request) {
+        const { pathname } = new URL(request.url);
+        if (pathname === '/api/skill') {
+          return Response.json({
+            ok: true,
+            path: '.agents/skills/trip-log/SKILL.md',
+            created: true,
+          });
+        }
+        return Response.json({ error: 'Bundle file rejected by the server.' }, { status: 500 });
+      },
+    });
+    cwd = mkdtempSync(join(tmpdir(), 'ok-write-skill-files-'));
+    mkdirSync(join(cwd, '.ok'), { recursive: true });
+
+    let captured: Handler | null = null;
+    const server = {
+      registerTool(_name: string, _cfg: unknown, toolHandler: Handler) {
+        captured = toolHandler;
+      },
+    } as unknown as ServerInstance;
+    registerWrite(server, {
+      serverUrl: `http://127.0.0.1:${testServer.port}`,
+      config: ConfigSchema.parse({}),
+      resolveCwd: async () => cwd,
+    });
+    if (captured === null) throw new Error('write tool did not register');
+    handler = captured;
+  });
+
+  afterAll(() => {
+    testServer.stop();
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it('mirrors a failed bundle file into structuredContent.text, not just content[0].text', async () => {
+    const result = await handler({
+      skill: {
+        name: 'trip-log',
+        description: 'Use when logging a fishing trip.',
+        files: [{ path: 'references/gear.md', content: '# Gear\n' }],
+      },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain('0/1 bundle file(s) written.');
+    expect(result.content[0]?.text).toContain('Failed references/gear.md');
+    expect(result.structuredContent?.text).toBe(result.content[0]?.text);
   });
 });

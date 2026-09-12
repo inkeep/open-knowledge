@@ -227,6 +227,63 @@ describe('linkPreviews.enabled (external link-hover preview egress default)', ()
   });
 });
 
+describe('validation.suppressLogLinkAdvisories (reserved-log advisory policy)', () => {
+  test('defaults to enabled when the validation block is absent', () => {
+    expect(ConfigSchema.parse({}).validation.suppressLogLinkAdvisories).toBe(true);
+  });
+
+  test('defaults to enabled when validation is present but the key is absent', () => {
+    expect(
+      ConfigSchema.parse({ validation: { links: 'error' } }).validation.suppressLogLinkAdvisories,
+    ).toBe(true);
+  });
+
+  test('accepts an explicit opt-out', () => {
+    expect(
+      ConfigSchema.parse({ validation: { suppressLogLinkAdvisories: false } }).validation
+        .suppressLogLinkAdvisories,
+    ).toBe(false);
+  });
+
+  test('accepts an explicit opt-in', () => {
+    expect(
+      ConfigSchema.parse({ validation: { suppressLogLinkAdvisories: true } }).validation
+        .suppressLogLinkAdvisories,
+    ).toBe(true);
+  });
+
+  test('rejects a non-boolean value', () => {
+    expect(
+      ConfigSchema.safeParse({ validation: { suppressLogLinkAdvisories: 'yes' } }).success,
+    ).toBe(false);
+    expect(ConfigSchema.safeParse({ validation: { suppressLogLinkAdvisories: 1 } }).success).toBe(
+      false,
+    );
+  });
+
+  test('is a project-shared, live, non-agent-settable field', () => {
+    expect(
+      getLeafFieldMeta(ConfigSchema, ['validation', 'suppressLogLinkAdvisories']),
+    ).toMatchObject({
+      scope: 'project',
+      defaultScope: 'project',
+      agentSettable: false,
+      reload: 'live',
+    });
+  });
+
+  test('names the reserved logs and the stem/extension casing split in its published description', () => {
+    const description = getLeafFieldMeta(ConfigSchema, [
+      'validation',
+      'suppressLogLinkAdvisories',
+    ])?.description;
+    expect(description).toContain('log.md');
+    expect(description).toContain('log.mdx');
+    expect(description).toContain("the extension's case does not matter");
+    expect(description).toContain('LOG.md');
+  });
+});
+
 describe('slides.enabled (Slides plugin toggle default)', () => {
   test('resolves to disabled when the section is absent', () => {
     expect(ConfigSchema.parse({}).slides).toEqual({ enabled: false });
@@ -420,4 +477,70 @@ describe('server.* (canonical listener/exposure surface)', () => {
       expect(ConfigSchema.safeParse({ server: { idleShutdown: bad } }).success).toBe(false);
     }
   });
+});
+
+describe('search.semantic embedding transport tuning', () => {
+  test('accepts positive integer overrides and keeps the legacy defaults when absent', () => {
+    const configured = ConfigSchema.parse({
+      search: {
+        semantic: {
+          maxBatchSize: 2,
+          maxBatchChars: 16_000,
+          docTimeoutMs: 120_000,
+        },
+      },
+    }).search.semantic;
+    expect(configured.maxBatchSize).toBe(2);
+    expect(configured.maxBatchChars).toBe(16_000);
+    expect(configured.docTimeoutMs).toBe(120_000);
+
+    const defaults = ConfigSchema.parse({}).search.semantic;
+    expect(defaults.maxBatchSize).toBe(96);
+    expect(defaults.maxBatchChars).toBe(96_000);
+    expect(defaults.docTimeoutMs).toBe(30_000);
+  });
+
+  test.each([
+    ['maxBatchSize', 2_048, 96],
+    ['maxBatchChars', 16_384_000, 96_000],
+    ['docTimeoutMs', 600_000, 30_000],
+  ] as const)(
+    '%s preserves range endpoints and defaults invalid values',
+    (field, max, fallback) => {
+      for (const valid of [1, max]) {
+        expect(
+          ConfigSchema.parse({ search: { semantic: { [field]: valid } } }).search.semantic[field],
+        ).toBe(valid);
+      }
+      for (const invalid of [
+        0,
+        -1,
+        1.5,
+        '2',
+        null,
+        max + 1,
+        2_147_483_648,
+        Number.NaN,
+        Number.POSITIVE_INFINITY,
+      ]) {
+        const parsed = ConfigSchema.safeParse({ search: { semantic: { [field]: invalid } } });
+        expect(parsed.success).toBe(true);
+        if (parsed.success) {
+          expect(parsed.data.search.semantic[field]).toBe(fallback);
+        }
+      }
+    },
+  );
+
+  test.each(['maxBatchSize', 'maxBatchChars', 'docTimeoutMs'] as const)(
+    '%s is project-local, non-agent-settable, and live-reloaded',
+    (field) => {
+      expect(getLeafFieldMeta(ConfigSchema, ['search', 'semantic', field])).toMatchObject({
+        scope: 'project-local',
+        defaultScope: 'project-local',
+        agentSettable: false,
+        reload: 'live',
+      });
+    },
+  );
 });

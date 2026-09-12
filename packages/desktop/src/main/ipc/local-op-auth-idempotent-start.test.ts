@@ -70,7 +70,8 @@ function makeSender() {
 
 function makeDeps() {
   return {
-    resolveCliArgs: () => ['open-knowledge'],
+    resolveCliInvocation: () => ({ cliArgs: ['open-knowledge'] }),
+    logFailure: vi.fn(),
     state: createLocalOpState(),
   };
 }

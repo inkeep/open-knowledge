@@ -5,8 +5,6 @@ import { SIZE_ENVELOPES, totalDocsInMix } from './types.ts';
 import { VAULT_MIX, VAULT_NAME_PREFIX, VAULT_SEED, vault } from './vault.ts';
 
 function sha256OfCorpus(docs: ReadonlyArray<unknown>): string {
-  // Stable serialization: explicit key order so the digest doesn't drift
-  // if a future TypeScript pass reorders object literals.
   const stable = docs.map((d) => {
     const spec = d as {
       name: string;

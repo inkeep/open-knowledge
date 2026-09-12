@@ -1,36 +1,7 @@
 /**
- * Pins the structural contract for L0 + L2 catch sites in `KeyboardNav`
- * (precedent #48). Synthesizing the concurrent CRDT-edit race that
- * produces the `RangeError` is hard to make deterministic without
- * test-only injection hooks in production code (refused under greenfield
- * posture). The STATIC commitments around the catch site are pinnable
- * here as a source-grep meta-test (precedent #20(g)):
- *
- *   - the counter signature `incrementJsxArrowNodeSelectFailed(dir)` is
- *     invoked from every catch site (per-direction observability)
- *   - the structured warn shape carries
- *     `event: 'jsx-component-arrow-node-select-failed'` + `direction`
- *     + `reason` + `tier`
- *   - every catch narrows to `err instanceof RangeError` — bare
- *     `catch { return false }` widening regresses observability and
- *     hides genuine bugs
- *   - the `tier: 'L0' | 'L2' | 'L2c' | 'L2d'` field on the event JSON disambiguates
- *     auto-NodeSelect failures from block-step failures for the same
- *     direction (both tiers can fail with the same direction; the
- *     discriminator lets observability cleanly split them)
- *
- * The test reads `keyboard-nav.ts` as bytes (no module-level import — the
- * goal is structural enforcement, not behavioral). It locates the five
- * catch blocks (L0 tryL0NodeSelect helper, L2 ArrowUp keymap, L2 ArrowDown
- * keymap, L2c tryExitCompoundJsxUp helper, L2d tryEnterCompoundJsx helper)
- * and asserts each carries the required keywords. A reviewer who
- * widens `catch (err)` to a bare catch, or removes the counter call, or
- * strips the structured warn, fails this test — even if every Playwright
- * scenario still passes (because the race condition is rare in CI).
- *
- * Cross-references precedent #20(g) (source-grep STOP-rule pattern),
- * precedent #46 (tri-state predicate), precedent #48 (KeyboardNav as
- * canonical home for block-level keyboard contract).
+ * Pins the structural contract for `KeyboardNav`'s L0 and L2 catch sites (precedent #48) as a
+ * source-grep meta-test (precedent #20(g)): every catch narrows to `RangeError`, calls the
+ * per-direction counter, and emits the structured warn with its `tier` discriminator.
  */
 
 import { readFileSync } from 'node:fs';

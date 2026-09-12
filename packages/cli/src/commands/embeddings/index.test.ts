@@ -1,9 +1,27 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { DEFAULT_EMBEDDINGS_BASE_URL, DEFAULT_EMBEDDINGS_MODEL } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { embeddingsCommand } from './index.ts';
+import {
+  DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_MODEL,
+  type SemanticIndexStatus,
+} from '@inkeep/open-knowledge-core';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { stringify } from 'yaml';
+import * as embeddingsKeyStore from '../../auth/embeddings-key-store.ts';
+import { embeddingsCommand, formatSemanticCapabilityLabel } from './index.ts';
+
+const LIVE_STATUS: SemanticIndexStatus = {
+  enabled: true,
+  keyPresent: false,
+  keyNotRequired: true,
+  keySource: null,
+  keyHint: null,
+  ready: true,
+  capable: true,
+  embedded: 2,
+  total: 3,
+};
 
 function readLocalConfig(dir: string): string {
   try {
@@ -106,5 +124,79 @@ describe('ok embeddings set-url / clear-url', () => {
     await run('clear-model', '--cwd', dir);
     expect(process.exitCode).toBe(0);
     expect(readLocalConfig(dir)).toContain(DEFAULT_EMBEDDINGS_MODEL);
+  });
+});
+
+describe('ok embeddings status transport settings', () => {
+  let dir: string;
+  let stdout: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'ok-embeddings-status-'));
+    stdout = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+      stdout += typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf-8');
+      return true;
+    });
+    vi.spyOn(embeddingsKeyStore, 'resolveEmbeddingsCredential').mockResolvedValue({
+      apiKey: null,
+      keyless: true,
+      source: 'none',
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  test.each([
+    { maxBatchSize: 2, maxBatchChars: 16_000, docTimeoutMs: 120_000 },
+    { maxBatchSize: 96, maxBatchChars: 96_000, docTimeoutMs: 30_000 },
+  ])('JSON exposes resolved transport settings: %j', async (transport) => {
+    mkdirSync(join(dir, '.ok', 'local'), { recursive: true });
+    writeFileSync(
+      join(dir, '.ok', 'local', 'config.yml'),
+      stringify({ search: { semantic: { ...transport, baseUrl: 'http://localhost:11434/v1' } } }),
+    );
+
+    await embeddingsCommand().parseAsync(['status', '--cwd', dir, '--json'], { from: 'user' });
+
+    expect(JSON.parse(stdout)).toMatchObject({ project_config: { transport } });
+  });
+
+  test('text reports the defaults with indexing request and timeout units', async () => {
+    await embeddingsCommand().parseAsync(['status', '--cwd', dir], { from: 'user' });
+
+    expect(stdout).toContain('96 chunks maximum per indexing request');
+    expect(stdout).toContain('    characters: 96000 approximate characters per indexing request');
+    expect(stdout).toContain('30000 ms per indexing request attempt');
+  });
+
+  test.each([
+    ['warm', 'provider initialization failed'],
+    ['corpus', 'corpus indexing requests failed'],
+    ['query', 'query embedding failed'],
+    ['dimensions', 'RESTART REQUIRED'],
+    ['configured_dimensions', "remove search.semantic.dimensions to use the model's own size"],
+  ] as const)('renders the %s provider failure remedy', (providerErrorReason, expected) => {
+    expect(
+      formatSemanticCapabilityLabel(true, {
+        ...LIVE_STATUS,
+        capable: false,
+        providerError: true,
+        providerErrorReason,
+      }),
+    ).toContain(expected);
+  });
+
+  test('keeps an older boolean-only provider error visible', () => {
+    expect(
+      formatSemanticCapabilityLabel(true, {
+        ...LIVE_STATUS,
+        capable: false,
+        providerError: true,
+      }),
+    ).toContain('provider error');
   });
 });

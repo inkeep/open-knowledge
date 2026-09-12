@@ -161,7 +161,11 @@ function isSupersededByReady(failure: ThreadFailureDetail | null): boolean {
 }
 
 export class ThreadRenderModelBuilder {
-  constructor(private readonly agent: CodexLegacyAgentIdentity | null) {}
+  private readonly agent: CodexLegacyAgentIdentity | null;
+
+  constructor(agent: CodexLegacyAgentIdentity | null) {
+    this.agent = agent;
+  }
 
   private items: RenderedItem[] = [];
   private plan: PlanEntry[] = [];

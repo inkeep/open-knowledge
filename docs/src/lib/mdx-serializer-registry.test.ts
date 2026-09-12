@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import remarkGfm from 'remark-gfm';
 import remarkMdx from 'remark-mdx';
 import remarkParse from 'remark-parse';
@@ -138,6 +141,12 @@ describe('inputs the registry refuses rather than serializes wrong', () => {
   ])('refuses %s rather than deleting it from the rendition', (source, name) => {
     expect(() => serialize(source)).toThrow(
       new RegExp(`<${name} src=\\{hero\\}> carries its value in an expression`),
+    );
+  });
+
+  test('an Image becomes a markdown image, not a plain link', () => {
+    expect(serialize('<Image src="/images/x.png" alt="A skill" />')).toBe(
+      '![A skill](https://openknowledge.ai/images/x.png)',
     );
   });
 
@@ -347,6 +356,21 @@ describe('the docs corpus through the real registry', () => {
   test('every page serializes, so no component is left without a disposition', () => {
     expect(pages.length).toBeGreaterThan(50);
     expect(output.size).toBe(pages.length);
+  });
+
+  test('every <Image src> in the corpus resolves to a file under public/', () => {
+    const PUBLIC_DIR = fileURLToPath(new URL('../../public/', import.meta.url));
+    const missing: string[] = [];
+    let seen = 0;
+    for (const page of pages) {
+      for (const match of page.source.matchAll(/<Image\b[^>]*\bsrc="([^"]+)"/g)) {
+        const src = match[1];
+        seen += 1;
+        if (!existsSync(path.join(PUBLIC_DIR, src))) missing.push(`${page.slug}: ${src}`);
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+    expect(missing).toEqual([]);
   });
 
   test('no page leaks a JSX element into the Markdown it serves', () => {

@@ -3,34 +3,7 @@ import { dirname, join, resolve, sep } from 'node:path';
 import { fnv1aDigest } from './bridge/hash-util.ts';
 import { discoverGitRepository } from './git-repository.ts';
 
-/**
- * Writer-ID taxonomy (precedent #25). Classified system writers are non-attributable
- * actions written under a fixed writer-id. Legacy values ('human-', 'upstream',
- * 'server') are classified 'unknown' so the allowlist sweep can
- * identify and GC them without confusing them with valid attributed refs.
- *
- * Full writer-ID table:
- *   agent-<connectionId>       → 'agent'                           (MCP session)
- *   principal-<UUID>           → 'principal'                        (browser tab)
- *   git-author-<hash>          → 'classified-git-author'            (upstream commit author)
- *   file-system                → 'classified-file-system'           (disk reconcile)
- *   git-upstream               → 'classified-git-upstream'          (HEAD-move import boundary)
- *   openknowledge-service      → 'classified-openknowledge-service' (park / service)
- *   ok-generator               → 'classified-ok-generator'          (OK-authored artifacts)
- *   server, human-*, upstream  → 'unknown'                          (legacy, swept on GC)
- *
- * `ok-generator` is distinct from `openknowledge-service` on purpose: the service
- * writer is the no-contributor fallback for housekeeping, while a generated
- * artifact is a deliberate authoring action that simply has no human behind it.
- * Folding the two would put generated content under the id this precedent
- * reserves for unattributable work.
- *
- * `git-author-<hash>` gives each distinct upstream commit author their own WIP
- * ref so the per-doc Timeline query (which diffs each ref's chain) attributes a
- * pulled change to the right author. The `<hash>` is `fnv1aDigest(email)` — one
- * ref per author, not per pull. Display name / real email travel on the commit's
- * `ok-actor` line, not in the id.
- */
+/** Writer-ID taxonomy (precedent #25). */
 export type WriterClassification =
   | 'agent'
   | 'principal'

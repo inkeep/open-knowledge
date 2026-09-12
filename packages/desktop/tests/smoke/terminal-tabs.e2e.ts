@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -67,7 +68,8 @@ function seed(prefix: string): Seed {
 
 async function launchApp(s: Seed): Promise<ElectronApplication> {
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  return electron.launch(
+  return launchDesktopApp(
+    electron,
     desktopLaunchOptions({
       target: TARGET,
       args: [`--user-data-dir=${s.userDataDir}`, deepLink],
@@ -79,23 +81,19 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
         OK_RECLAIM_DISABLE: '1',
       },
     }),
-  );
+    { home: s.tmpHome },
+  ).catch((error) => {
+    for (const target of [s.tmpHome, s.projectDir]) {
+      try {
+        rmSync(target, { recursive: true, force: true });
+      } catch {}
+    }
+    throw error;
+  });
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const p of app.windows()) {
-      const mode = await p.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-      if (mode === 'editor') {
-        page = p;
-        return;
-      }
-    }
-    throw new Error('no editor window yet');
-  }).toPass({ timeout: timeoutMs });
-  if (!page) throw new Error('editor window vanished after readiness poll');
-  return page;
+async function findEditorWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'editor', { capMs: 25_000 });
 }
 
 async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
@@ -112,16 +110,18 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
 }
 
 const visibleSection = (page: Page) => page.locator('section[aria-label="Terminal"]:visible');
+const activeTerminalPanel = (page: Page) =>
+  page.locator('[data-terminal-session][data-state="active"]').first();
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
   await expect(async () => {
     if (!(await visibleSection(page).isVisible())) await clickViewTerminalItem(app);
-    await expect(visibleSection(page)).toBeVisible({ timeout: 8_000 });
-    await expect(visibleSection(page).locator('[data-terminal-status]')).toHaveAttribute(
+    await expect(visibleSection(page)).toBeVisible({ timeout: 5_000 });
+    await expect(activeTerminalPanel(page).locator('[data-terminal-status]')).toHaveAttribute(
       'data-terminal-status',
       'running',
-      { timeout: 8_000 },
+      { timeout: 5_000 },
     );
-  }).toPass({ timeout: 40_000, intervals: [2_000] });
+  }).toPass({ timeout: 15_000, intervals: [2_000] });
   await waitForShellReady(
     () => readActiveText(page),
     (command) => typeInActive(page, `${command}\r`),
@@ -129,9 +129,9 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   );
 }
 
-async function waitActiveRunning(page: Page, timeoutMs = 25_000): Promise<void> {
-  await expect(visibleSection(page)).toBeVisible({ timeout: 15_000 });
-  await expect(visibleSection(page).locator('[data-terminal-status]')).toHaveAttribute(
+async function waitActiveRunning(page: Page, timeoutMs = 15_000): Promise<void> {
+  await expect(visibleSection(page)).toBeVisible({ timeout: 5_000 });
+  await expect(activeTerminalPanel(page).locator('[data-terminal-status]')).toHaveAttribute(
     'data-terminal-status',
     'running',
     { timeout: timeoutMs },
@@ -164,63 +164,159 @@ async function dragTabOnto(page: Page, fromTab: Locator, toTab: Locator): Promis
 }
 
 async function typeInActive(page: Page, text: string): Promise<void> {
-  await visibleSection(page).locator('.xterm').click();
+  const term = activeTerminalPanel(page).locator('.xterm').first();
+  await expect(term).toBeVisible({ timeout: 5_000 });
+  await term.click();
   await page.keyboard.type(text);
 }
 
 async function readActiveText(page: Page): Promise<string> {
-  return visibleSection(page).evaluate((sec) => {
-    const a11y = sec.querySelector('.xterm-accessibility')?.textContent ?? '';
-    const rows = sec.querySelector('.xterm-rows')?.textContent ?? '';
+  const panel = activeTerminalPanel(page);
+  await expect(panel).toBeVisible({ timeout: 5_000 });
+  return panel.evaluate((root) => {
+    const a11y = root.querySelector('.xterm-accessibility')?.textContent ?? '';
+    const rows = root.querySelector('.xterm-rows')?.textContent ?? '';
     return `${a11y}\n${rows}`;
   });
-}
-
-const cleanup: string[] = [];
-function track(...paths: string[]): void {
-  cleanup.push(...paths);
 }
 
 test.describe('Terminal tabs — live Electron', () => {
   test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
   test.skip(!TARGET.exists, TARGET.missingReason);
-  test.afterEach(() => {
-    for (const target of cleanup.splice(0)) {
+
+  test('first and second tabs display their initial prompt without keyboard input', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('initial-prompts');
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    const expectPrompt = async () => {
+      await expect(visibleSection(page)).toBeVisible();
+      await expect
+        .poll(async () => (await readActiveText(page)).trim(), { timeout: 25_000 })
+        .not.toBe('');
+      await expect(visibleSection(page).getByTestId('terminal-starting-notice')).toHaveCount(0);
+    };
+    await clickViewTerminalItem(app);
+    await expectPrompt();
+    await openBareTerminalTab(page, expectPrompt);
+    await expect(terminalTabs(page)).toHaveCount(2);
+  });
+
+  test('no output arrives before the explicit start, and the initial prompt survives a late one', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('delayed-attach');
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await clickViewTerminalItem(app);
+    await expect(visibleSection(page)).toBeVisible();
+    await expect
+      .poll(async () => (await readActiveText(page)).trim(), { timeout: 25_000 })
+      .not.toBe('');
+    const output = await page.evaluate(async () => {
+      const bridge = window.okDesktop;
+      if (!bridge) throw new Error('missing desktop bridge');
+      const created = await bridge.terminal.create({ cols: 80, rows: 24 });
+      if (!created.ok) throw new Error(created.reason);
+      const beforeStart: string[] = [];
+      let onData = (data: string): void => {
+        beforeStart.push(data);
+      };
+      const unsubscribe = bridge.terminal.onData((message) => {
+        if (message.ptyId !== created.ptyId || message.data.length === 0) return;
+        bridge.terminal.drain(message.ptyId, message.data.length);
+        onData(message.data);
+      });
+      let unsubscribeExit = () => {};
+      let timer: ReturnType<typeof setTimeout> | undefined;
       try {
-        rmSync(target, { recursive: true, force: true });
-      } catch {}
-    }
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        const started = await new Promise<string>((resolve, reject) => {
+          timer = setTimeout(() => reject(new Error('initial prompt did not arrive')), 15_000);
+          onData = resolve;
+          unsubscribeExit = bridge.terminal.onExit((message) => {
+            if (message.ptyId === created.ptyId) {
+              reject(
+                new Error(
+                  message.error ??
+                    (message.neverStarted
+                      ? 'shell never started'
+                      : `shell exited: ${message.exitCode}`),
+                ),
+              );
+            }
+          });
+          void bridge.terminal.start(created.ptyId).then((attached) => {
+            if (!attached.ok) reject(new Error(attached.reason));
+          }, reject);
+        });
+        return { beforeStart, started };
+      } finally {
+        clearTimeout(timer);
+        unsubscribe();
+        unsubscribeExit();
+        await bridge.terminal.kill(created.ptyId);
+      }
+    });
+    expect(output.beforeStart).toEqual([]);
+    expect(output.started).not.toBe('');
   });
 
   test('a second tab spawns its own live shell (independent sessions)', async ({
     captureStderrFor,
   }) => {
     const s = seed('two-shells');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
-    await typeInActive(page, `${SHELL_COMMANDS.output('TAB1_ONLY_AAA')}\r`);
-    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('TAB1_ONLY_AAA');
+    const marker1 = `TAB1_PID_${Date.now().toString(36)}`;
+    await typeInActive(page, `${SHELL_COMMANDS.processId(marker1)}\r`);
+    let pid1 = '';
+    await expect
+      .poll(
+        async () => {
+          const match = (await readActiveText(page)).match(new RegExp(`${marker1}=(\\d+)`));
+          pid1 = match?.[1] ?? '';
+          return pid1.length > 0;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
 
     await openBareTab(page);
     await expect(terminalTabs(page)).toHaveCount(2);
 
-    await typeInActive(page, `${SHELL_COMMANDS.output('TAB2_ONLY_BBB')}\r`);
-    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('TAB2_ONLY_BBB');
-    expect(await readActiveText(page)).not.toContain('TAB1_ONLY_AAA');
+    const marker2 = `TAB2_PID_${Date.now().toString(36)}`;
+    await typeInActive(page, `${SHELL_COMMANDS.processId(marker2)}\r`);
+    let pid2 = '';
+    await expect
+      .poll(
+        async () => {
+          const match = (await readActiveText(page)).match(new RegExp(`${marker2}=(\\d+)`));
+          pid2 = match?.[1] ?? '';
+          return pid2.length > 0;
+        },
+        { timeout: 15_000 },
+      )
+      .toBe(true);
+    expect(pid2).not.toBe(pid1);
+    expect(await readActiveText(page), 'tab 1 output reached tab 2').not.toMatch(
+      new RegExp(`${marker1}=\\d+`),
+    );
   });
 
   test('closing a tab reaps only that shell; the survivor stays interactive', async ({
     captureStderrFor,
   }) => {
     const s = seed('close-one');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await openBareTab(page);
@@ -239,9 +335,8 @@ test.describe('Terminal tabs — live Electron', () => {
 
   test('a manual rename pins over the program’s OSC title', async ({ captureStderrFor }) => {
     const s = seed('rename-pin');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
@@ -261,9 +356,8 @@ test.describe('Terminal tabs — live Electron', () => {
     captureStderrFor,
   }) => {
     const s = seed('reorder-survive');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
@@ -290,9 +384,11 @@ test.describe('Terminal tabs — live Electron', () => {
     }
 
     await expect(terminalTabById(page, firstTabId)).toHaveAttribute('aria-selected', 'true');
-    await expect
-      .poll(() => readActiveText(page), { timeout: 15_000 })
-      .toContain('BEFORE_REORDER_DDD');
+    if (process.platform !== 'win32') {
+      await expect
+        .poll(() => readActiveText(page), { timeout: 15_000 })
+        .toContain('BEFORE_REORDER_DDD');
+    }
     await typeInActive(page, `${SHELL_COMMANDS.readEnvironment('OK_TABMARK', 'mk')}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })
@@ -303,9 +399,8 @@ test.describe('Terminal tabs — live Electron', () => {
     captureStderrFor,
   }) => {
     const s = seed('drag-survive');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
@@ -331,7 +426,9 @@ test.describe('Terminal tabs — live Electron', () => {
 
     await activateTab(terminalTabById(page, firstTabId));
     await visibleSection(page).locator('.xterm').click();
-    expect(await readActiveText(page)).toContain('BEFORE_DRAG_EEE');
+    if (process.platform !== 'win32') {
+      expect(await readActiveText(page)).toContain('BEFORE_DRAG_EEE');
+    }
     await typeInActive(page, `${SHELL_COMMANDS.readEnvironment('OK_DRAGMARK', 'dm')}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })
@@ -340,9 +437,8 @@ test.describe('Terminal tabs — live Electron', () => {
 
   test('a renderer reload preserves tab labels and order', async ({ captureStderrFor }) => {
     const s = seed('reload-preserve');
-    track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 

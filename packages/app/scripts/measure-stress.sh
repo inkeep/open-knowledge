@@ -1,67 +1,83 @@
 #!/usr/bin/env bash
-#
-# measure-stress.sh — ad-hoc sampling wrapper for server-authoritative-stress.test.ts
-#
-# Purpose
-# -------
-# Sample the architectural CRDT residual in the 5-client × 30s stress load
-# scenario, with optional seed replay for triaging known-bad seeds, and append
-# a structured JSONL record to
-# specs/2026-04-16-bridge-correctness/evidence/residual-measurements.jsonl.
-#
-# Unlike measure-fuzz.sh (which sweeps N seeds in one run), this script is
-# typically run one seed at a time — the underlying test is a 30-second
-# multi-client convergence scenario, not a seeded-PBT loop. Seed replay is
-# powered by the STRESS_SEED env override shipped in PR #212.
-#
-# Usage
-# -----
-#   bash scripts/measure-stress.sh --seed 42 --context "pre-PR-218 baseline"
-#   bash scripts/measure-stress.sh --context "investigate 2026-04 rate shift"
-#   pnpm run measure:stress --seed 1776381158793 --context "reproduce CI flake"
-#
-# Flags
-# -----
-#   --seed N          STRESS_SEED override. Default: omitted (test uses its
-#                     internal Date.now() seed, recorded in the JSONL).
-#   --context "..."   Free-text annotation for the JSONL record's context
-#                     field (required).
-#
-# The underlying test's run duration is hard-coded to 30s internally. There is
-# no run-time override flag for duration — the script enforces no knob that
-# the test does not honor, per feedback-driven principle "no config that lies."
-# If a future test parameterizes duration, add a flag here that sets the
-# corresponding env var.
-#
-# Output
-# ------
-# Same JSONL schema as measure-fuzz.sh, with these differences:
-#   - script:       "deep-stress"
-#   - seedCount:    1  (one run per invocation)
-#   - seedsFailed:  0 on pass, 1 on fail
-#   - outcome:      "pass" | "fail" (inside extra)
-#   - failingSeeds: [<seed>] on a real test failure where the seed banner
-#                   was captured; [] on pass
-#   - extra:        { stressSeed: <seed>, outcome: "pass"|"fail" }
-#
-# A run that measured nothing appends nothing: harness crashed before its
-# banner, RESULT line missing on a zero exit, RESULT-pass contradicted by
-# a non-zero exit, or no attributable seed — each aborts with a diagnostic
-# and a non-zero exit, leaving the log untouched.
-#
-# See measure-fuzz.sh for the full schema + query pattern examples.
 
 set -euo pipefail
 
-# Shared helpers — see measure-fuzz.sh for the rationale.
-# shellcheck source=./_measure-lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/_measure-lib.sh"
 
-# ── Defaults ───────────────────────────────────────────────────────────────
+usage() {
+  cat <<'EOF'
+Usage: bash scripts/measure-stress.sh --context "<why>" [--seed N]
+
+Ad-hoc sampling wrapper for tests/stress/server-authoritative-stress.test.ts.
+Samples the architectural CRDT residual in the 5-client × 30s stress-load
+scenario, with optional seed replay for triaging a known-bad seed, and appends
+one JSONL record to
+specs/2026-04-16-bridge-correctness/evidence/residual-measurements.jsonl.
+
+Every specs/ path in this message lives in Inkeep's internal tree and is absent
+from the open-source repository. The script creates the evidence directory it
+writes to, so a clone without them still measures; only the schema notes and the
+trend history are unavailable.
+
+Unlike measure-fuzz.sh, which sweeps N seeds in one run, this script measures one
+seed per invocation — the underlying test is a 30-second multi-client
+convergence scenario, not a seeded-PBT loop.
+
+Required:
+  --context "..."   Free-text annotation for the record's context field.
+
+Optional:
+  --seed N          STRESS_SEED override. Default: omitted, so the test picks its
+                    own Date.now() seed; whichever seed ran is recorded.
+  -h, --help        Show this message.
+
+The test's run duration is hard-coded to 30s internally with no env knob, so this
+script deliberately exposes no --duration flag rather than accepting one it
+cannot honor. If the test ever parameterizes duration, add the flag here and in
+the test body together.
+
+Examples:
+  bash scripts/measure-stress.sh --seed 42 --context "pre-PR-218 baseline"
+  bash scripts/measure-stress.sh --context "investigate a residual rate shift"
+  pnpm run measure:stress --seed 1776381158793 --context "reproduce a CI flake"
+
+Output:
+  Appends one record, then prints a summary — context, commit, host, stressSeed,
+  outcome, durationMs, logFile — plus a replay command on failure. The record
+  uses the measure-fuzz schema with these differences:
+    script:       "deep-stress"
+    seedCount:    1
+    seedsFailed:  0 on pass, 1 on fail
+    rate:         0.0000 on pass, 1.0000 on fail
+    failingSeeds: [<seed>] on fail, [] on pass
+    extra:        { stressSeed, outcome }, with no convergedLate and no failClasses
+  A non-zero exit with an attributable seed records outcome "fail". The seed is
+  attributable from --seed alone, so under an explicit --seed even a harness
+  crash records a fail rather than aborting.
+  A run that measured nothing appends NOTHING: the RESULT line is missing on a
+  zero exit, a RESULT-pass is contradicted by a non-zero exit, or no seed could
+  be attributed at all (no banner, no RESULT seed, no --seed).
+  Full schema + query patterns: `bash scripts/measure-fuzz.sh --help` and
+  specs/2026-04-16-bridge-correctness/evidence/residual-measurements-SCHEMA.md.
+
+Exit codes:
+  0   measurement appended, the stress run passed
+  1   nothing measured: no RESULT line on a run the runner exited 0, or an outcome
+      was classified but no seed could be attributed
+  2   usage error: unknown flag, missing --context, non-integer --seed
+  3   jq is not installed
+  4   the derived workspace root lacks its packages/app + package.json markers
+  5   neither date path produced a numeric epoch
+  6   the JSONL append could not take its lock; the record was NOT committed
+  *   otherwise the test runner's exit code: a stress failure or a crash with an
+      attributable seed (record appended), or a RESULT-pass contradicted by a
+      non-zero exit / a crash with no attributable seed (nothing appended)
+EOF
+}
+
 SEED=""
 CONTEXT=""
 
-# ── Arg parsing ────────────────────────────────────────────────────────────
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --seed)
@@ -69,10 +85,7 @@ while [[ $# -gt 0 ]]; do
     --context)
       CONTEXT="$2"; shift 2 ;;
     -h|--help)
-      # Print the full header comment block up to the first blank-comment-
-      # line sentinel `^$`. Sentinel-based extraction so --help stays
-      # accurate as the header grows.
-      sed -n '1,/^$/p' "$0"; exit 0 ;;
+      usage; exit 0 ;;
     *)
       echo "error: unknown flag: $1" >&2
       echo "run with --help for usage" >&2
@@ -86,12 +99,10 @@ if [[ -z "$CONTEXT" ]]; then
   exit 2
 fi
 
-# Validate --seed via shared helper (see _measure-lib.sh).
 if [[ -n "$SEED" ]]; then
   assert_numeric_flag "--seed" "$SEED" --signed
 fi
 
-# ── Environment ────────────────────────────────────────────────────────────
 require_jq
 REPO_ROOT="$(resolve_repo_root)"
 
@@ -102,7 +113,6 @@ TEST_FILE="tests/stress/server-authoritative-stress.test.ts"
 
 mkdir -p "$LOG_DIR"
 
-# ── Compose test invocation ────────────────────────────────────────────────
 if [[ -n "$SEED" ]]; then
   export STRESS_SEED="$SEED"
   echo "[measure-stress] seed-replay mode: STRESS_SEED=$SEED"
@@ -111,7 +121,6 @@ else
   echo "[measure-stress] fresh seed (test picks via Date.now())"
 fi
 
-# ── Capture metadata at run start ──────────────────────────────────────────
 TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 COMMIT="$(git rev-parse --short HEAD)"
 INVOKED_BY="${USER:-unknown}"
@@ -119,7 +128,6 @@ NODE_VERSION="$(node --version 2>/dev/null || echo unknown)"
 
 HOST="$(detect_host)"
 
-# ── Run test, capture output ───────────────────────────────────────────────
 OUT_FILE="$(mktemp -t measure-stress-XXXXXX)"
 trap 'rm -f "$OUT_FILE"' EXIT
 
@@ -129,42 +137,15 @@ START_MS="$(epoch_ms)"
 
 TEST_EXIT=0
 (
-  # Explicit exit: errexit is suppressed inside a piped compound, so a bare
-  # failed cd would let the test run from the wrong cwd.
   cd "$APP_DIR" || exit 1
-  # No --conditions flag: packages/app/vitest.config.ts spreads
-  # test-support/vitest.base.ts, which pins the `development` export condition
-  # in both resolve and ssr.resolve. That pin is what resolves workspace deps
-  # from source exports instead of an unbuilt dist/ (the fresh-worktree
-  # state) — without it the run dies on missing build artifacts.
   pnpm exec vitest run "$TEST_FILE" 2>&1
 ) | tee "$OUT_FILE" || TEST_EXIT=$?
 
 END_MS="$(epoch_ms)"
 DURATION_MS=$(( END_MS - START_MS ))
 
-# ── Parse results ──────────────────────────────────────────────────────────
-# Two stable signals the stress test emits:
-#
-#   (1) Startup banner — printed BEFORE any setup work in the test body:
-#         [server-authoritative stress] seed=<n>
-#         [server-authoritative stress] seed=<n> (replay)
-#       Emitted before the loop, so present unless a crash precedes the
-#       banner. Primary source for stressSeed.
-#
-#   (2) Machine-parseable result line — printed AFTER all assertions pass:
-#         [stress] RESULT outcome=pass seed=<n> edits=<n> convergenceMs=<n>
-#       Written via `process.stdout.write`, stdout-only (never stderr), so
-#       the grep below is unambiguous and insensitive to runner output drift.
-#
-# Parsing the test's own structured lines — not the runner's human summary —
-# decouples the script from the runner's output format.
-
 ACTUAL_SEED_BANNER="$(grep -oE '\[server-authoritative stress\] seed=[0-9]+' "$OUT_FILE" \
   | awk -F= '{print $2}' | head -1 || true)"
-# Secondary source: the RESULT line carries the same seed. It is emitted only on
-# a pass, so it cannot replace the banner for crash runs, but it keeps a passing
-# run attributable if the banner is ever lost again.
 ACTUAL_SEED_RESULT="$(grep -oE '^\[stress\] RESULT .*seed=[0-9]+' "$OUT_FILE" \
   | grep -oE 'seed=[0-9]+' | awk -F= '{print $2}' | head -1 || true)"
 if [[ -n "$ACTUAL_SEED_BANNER" ]]; then
@@ -177,27 +158,9 @@ else
   ACTUAL_SEED=""
 fi
 
-# Machine-parseable result line — only emitted on a successful run (after
-# all assertions pass). Absence = test failed or crashed before reaching
-# the summary.
 HAS_RESULT_PASS="$(grep -cE '^\[stress\] RESULT outcome=pass' "$OUT_FILE" || true)"
 HAS_RESULT_PASS="${HAS_RESULT_PASS:-0}"
 
-# Classify outcome:
-#   "pass"  — test exit 0 AND the RESULT line printed
-#   "fail"  — test exit != 0 AND the seed banner printed AND no RESULT
-#             line (real test failure with a known seed for replay)
-#   anything else — not a measurement. Either the harness never reached
-#             its seed banner (setup failure, OOM, pre-banner crash), or
-#             the evidence is contradictory: exit 0 without a RESULT line
-#             (no tests matched, or the RESULT emission moved or its
-#             format drifted), or a RESULT line with a non-zero exit
-#             (post-test teardown failure). Abort without appending so
-#             the trend log stays a record of true measurements.
-#
-# Note: on a successful run, exit code alone is not sufficient — a runner
-# test that ran but reported an assertion failure still has exit != 0.
-# A pass requires both the RESULT line AND exit 0; they corroborate.
 SEED_COUNT=1
 if [[ "$TEST_EXIT" -eq 0 && "$HAS_RESULT_PASS" -ge 1 ]]; then
   OUTCOME="pass"
@@ -228,11 +191,6 @@ else
   exit 1
 fi
 
-# ── Compose extra (script-specific fields) ─────────────────────────────────
-# SCHEMA.md promises a replayable stressSeed in every appended record. A
-# classified run can reach this point seedless only when the banner regex
-# matched nothing and no --seed pinned a value (banner format drift) — that
-# run is unattributable, so abort rather than record a null seed.
 if [[ -z "$ACTUAL_SEED" ]]; then
   echo "" >&2
   echo "error: outcome \"$OUTCOME\" but no seed was captured — the seed banner regex" >&2
@@ -243,7 +201,6 @@ fi
 EXTRA_JSON="$(jq -c -n --argjson stressSeed "$ACTUAL_SEED" --arg outcome "$OUTCOME" \
   '{ stressSeed: $stressSeed, outcome: $outcome }')"
 
-# ── Compose JSONL record ───────────────────────────────────────────────────
 RECORD="$(jq -c -n \
   --arg timestamp   "$TIMESTAMP" \
   --arg commit      "$COMMIT" \
@@ -276,7 +233,6 @@ RECORD="$(jq -c -n \
 
 append_jsonl_atomic "$LOG_FILE" "$RECORD"
 
-# ── Summary ────────────────────────────────────────────────────────────────
 echo ""
 echo "──────── measure-stress summary ────────"
 echo "  context:      $CONTEXT"

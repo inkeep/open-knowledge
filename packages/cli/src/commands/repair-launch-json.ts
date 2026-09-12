@@ -14,6 +14,7 @@ export interface LaunchJsonRepairResult {
 
 export interface LaunchJsonRepairLogEvent {
   event: string;
+  severity: 'info' | 'warn';
   configPath?: string;
   reason?: string;
 }
@@ -22,6 +23,7 @@ export interface LaunchJsonRepairContext {
   projectDir: string;
   logger?: (event: LaunchJsonRepairLogEvent) => void;
   reclaimDisableEnv?: string | null;
+  removeOwnLaunchEntryFn?: typeof removeOwnLaunchEntry;
 }
 
 export function repairLaunchJson(ctx: LaunchJsonRepairContext): LaunchJsonRepairResult {
@@ -29,20 +31,20 @@ export function repairLaunchJson(ctx: LaunchJsonRepairContext): LaunchJsonRepair
   const configPath = join(ctx.projectDir, '.claude', 'launch.json');
 
   if (ctx.reclaimDisableEnv === '1') {
-    logger({ event: 'launch-json-repair-skipped', reason: 'reclaim-disabled' });
+    logger({ event: 'launch-json-repair-skipped', severity: 'info', reason: 'reclaim-disabled' });
     return { outcome: { configPath, outcome: 'skipped-reclaim-disabled' }, repairedCount: 0 };
   }
 
   let result: ReturnType<typeof removeOwnLaunchEntry>;
   try {
-    result = removeOwnLaunchEntry(ctx.projectDir);
+    result = (ctx.removeOwnLaunchEntryFn ?? removeOwnLaunchEntry)(ctx.projectDir);
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
-    logger({ event: 'launch-json-repair-write-failed', configPath });
+    logger({ event: 'launch-json-repair-write-failed', severity: 'warn', configPath });
     return { outcome: { configPath, outcome: 'write-failed', error }, repairedCount: 0 };
   }
   const removed = result.kind === 'removed';
-  if (removed) logger({ event: 'launch-json-repair-removed', configPath });
+  if (removed) logger({ event: 'launch-json-repair-removed', severity: 'info', configPath });
   return { outcome: { configPath, outcome: result.kind }, repairedCount: removed ? 1 : 0 };
 }
 

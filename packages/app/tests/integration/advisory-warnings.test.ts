@@ -15,8 +15,9 @@ afterAll(async () => {
 
 interface WriteResponse {
   timestamp?: string;
-  warning?: { kind?: string };
   warnings?: AdvisoryWarning[];
+  brokenLinks?: { href: string }[];
+  brokenLinkSuppression?: { reason: string; count: number };
   [key: string]: unknown;
 }
 
@@ -103,7 +104,7 @@ describe('advisory warnings on POST /api/agent-write-md', () => {
 });
 
 describe('advisory warnings on POST /api/frontmatter-patch', () => {
-  test('a reconciled out-of-band edit reaches warnings[] alongside the deprecated slot', async () => {
+  test('a reconciled out-of-band edit reaches warnings[]', async () => {
     const { writeFileSync } = await import('node:fs');
     const { join } = await import('node:path');
     const docName = uniqueDoc('rw-fm');
@@ -125,8 +126,8 @@ describe('advisory warnings on POST /api/frontmatter-patch', () => {
     });
     expect(res.status).toBe(200);
     const body = (await res.json()) as WriteResponse;
-    expect(body.warning?.kind).toBe('disk-edit-reconciled');
     expect(body.warnings?.map((w) => w.kind)).toEqual(['disk-edit-reconciled']);
+    expect(body.warning).toBeUndefined();
   });
 });
 
@@ -154,7 +155,7 @@ describe('advisory co-occurrence (the unification win: no masking)', () => {
     expect(status).toBe(200);
     const kinds = (body.warnings ?? []).map((w) => w.kind).sort();
     expect(kinds).toEqual(['disk-edit-reconciled', 'mermaid-parse-error']);
-    expect(body.warning?.kind).toBe('disk-edit-reconciled');
+    expect(body.warning).toBeUndefined();
   });
 });
 
@@ -253,6 +254,45 @@ describe('content-rule (lint) violations on the agent write path', () => {
           (w) => w.kind === 'lint-violation' && w.code === 'dead-link',
         ),
       ).toBe(false);
+    } finally {
+      writeFileSync(cfgPath, '', 'utf-8');
+    }
+  });
+
+  test('the reserved-log policy moves both link channels together, not just brokenLinks', async () => {
+    const { writeFileSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const cfgPath = join(server.contentDir, '.ok', 'config.yml');
+    const target = `rw-log-ghost-${crypto.randomUUID().slice(0, 8)}`;
+    const body = `# Log\n\nSee [[${target}]].\n`;
+    const logDoc = `${uniqueDoc('rw-logdir')}/log`;
+
+    const deadLinkWarning = (r: { body: WriteResponse }) =>
+      (r.body.warnings ?? []).find((w) => w.kind === 'lint-violation' && w.code === 'dead-link');
+
+    const suppressed = await writeMd(body, logDoc);
+    expect(suppressed.status).toBe(200);
+    expect(suppressed.body.brokenLinks).toEqual([]);
+    expect(suppressed.body.brokenLinkSuppression).toEqual({
+      reason: 'reserved-log-policy',
+      count: 1,
+    });
+    expect(deadLinkWarning(suppressed)).toBeUndefined();
+
+    const ordinary = await writeMd(body, uniqueDoc('rw-logsibling'));
+    expect(ordinary.status).toBe(200);
+    const ordinaryDead = deadLinkWarning(ordinary);
+    expect(ordinaryDead?.kind === 'lint-violation' && ordinaryDead.linkTarget).toBe(target);
+    expect(ordinary.body.brokenLinkSuppression).toBeUndefined();
+
+    writeFileSync(cfgPath, 'validation:\n  suppressLogLinkAdvisories: false\n', 'utf-8');
+    try {
+      const restored = await writeMd(body, `${uniqueDoc('rw-logdir-off')}/log`);
+      expect(restored.status).toBe(200);
+      expect((restored.body.brokenLinks ?? []).length).toBe(1);
+      expect(restored.body.brokenLinkSuppression).toBeUndefined();
+      const restoredDead = deadLinkWarning(restored);
+      expect(restoredDead?.kind === 'lint-violation' && restoredDead.linkTarget).toBe(target);
     } finally {
       writeFileSync(cfgPath, '', 'utf-8');
     }

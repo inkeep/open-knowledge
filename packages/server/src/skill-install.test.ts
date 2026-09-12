@@ -760,18 +760,17 @@ describe('buildAndOpenSkill — install-state gate', () => {
 });
 
 describe('installUserSkill — home guard', () => {
-  test.each([
-    '',
-    '.',
-    'relative/home',
-  ])('a non-absolute home (%j) fails without writing anything', async (bogus) => {
-    const { logger, records } = makeRecordingLogger();
-    expect(await installUserSkill({ home: bogus, logger })).toBe('failed');
-    expect(findWarn(records, 'skill-install.failed')?.data).toMatchObject({
-      reason: 'home-not-absolute',
-    });
-    expect(existsSync(join(process.cwd(), bogus, '.ok'))).toBe(false);
-  });
+  test.each(['', '.', 'relative/home'])(
+    'a non-absolute home (%j) fails without writing anything',
+    async (bogus) => {
+      const { logger, records } = makeRecordingLogger();
+      expect(await installUserSkill({ home: bogus, logger })).toBe('failed');
+      expect(findWarn(records, 'skill-install.failed')?.data).toMatchObject({
+        reason: 'home-not-absolute',
+      });
+      expect(existsSync(join(process.cwd(), bogus, '.ok'))).toBe(false);
+    },
+  );
 
   test('a relative home cannot touch a matching tree in the cwd', async () => {
     const box = freshHome();

@@ -247,27 +247,26 @@ describe('generated index — heading-identity agreement with MD024', () => {
     expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
   });
 
-  test.each([
-    [['#', '##']],
-    [['#', '<b></b>']],
-    [['<b></b>', '<i></i>']],
-  ])('types whose rendered heading text is empty merge with each other: %j', async (pair) => {
-    const markdown = buildIndexMarkdown(
-      [
-        { path: 'a.md', title: 'A', description: undefined, type: pair[0] },
-        { path: 'b.md', title: 'B', description: undefined, type: pair[1] },
-      ],
-      { isRoot: false, directory: '' },
-    );
+  test.each([[['#', '##']], [['#', '<b></b>']], [['<b></b>', '<i></i>']]])(
+    'types whose rendered heading text is empty merge with each other: %j',
+    async (pair) => {
+      const markdown = buildIndexMarkdown(
+        [
+          { path: 'a.md', title: 'A', description: undefined, type: pair[0] },
+          { path: 'b.md', title: 'B', description: undefined, type: pair[1] },
+        ],
+        { isRoot: false, directory: '' },
+      );
 
-    expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
-    expect(markdown).toContain('](./a.md)');
-    expect(markdown).toContain('](./b.md)');
+      expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
+      expect(markdown).toContain('](./a.md)');
+      expect(markdown).toContain('](./b.md)');
 
-    const sections = (markdown.match(/^## .+$/gm) ?? []).map((line) => line.slice(3));
-    expect(sections, `emitted:\n${markdown}`).toHaveLength(1);
-    expect(pair, `emitted:\n${markdown}`).toContain(sections[0]);
-  });
+      const sections = (markdown.match(/^## .+$/gm) ?? []).map((line) => line.slice(3));
+      expect(sections, `emitted:\n${markdown}`).toHaveLength(1);
+      expect(pair, `emitted:\n${markdown}`).toContain(sections[0]);
+    },
+  );
 
   test('two derived sections reducing to the same content merge with each other', async () => {
     const markdown = buildIndexMarkdown(

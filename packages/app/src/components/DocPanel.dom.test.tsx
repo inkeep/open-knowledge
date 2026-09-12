@@ -2,6 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import type { DocLinkFindingsState } from '@/editor/validation-audit-client';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
@@ -47,10 +48,11 @@ vi.doMock('@/editor/lint-config-client', () => ({
 vi.doMock('@/editor/useDocDiagnostics', () => ({
   useDocDiagnostics: () => diagnosticsValue,
 }));
+let docLinkFindingsValue: DocLinkFindingsState = { status: 'loaded', findings: [] };
 vi.doMock('@/editor/validation-audit-client', () => ({
   AUDIT_SUPERSEDED: 'audit-superseded',
   runValidationAudit: async () => null,
-  useDocLinkFindings: () => ({ status: 'loaded', findings: [] }),
+  useDocLinkFindings: () => docLinkFindingsValue,
 }));
 let terminalLaunchValue: unknown = null;
 vi.doMock('@/components/handoff/TerminalLaunchContext', () => ({
@@ -99,6 +101,7 @@ afterEach(() => {
   activeProviderValue = null;
   terminalLaunchValue = null;
   lastProblemsProps = null;
+  docLinkFindingsValue = { status: 'loaded', findings: [] };
 });
 
 describe('DocPanel — tab gating', () => {
@@ -122,6 +125,21 @@ describe('DocPanel — tab gating', () => {
     expect(screen.getByTestId('problems-panel')).toBeTruthy();
     expect(lastProblemsProps?.docName).toBe('notes');
     expect(screen.getByRole('tabpanel').getAttribute('id')).toBe('panel-problems');
+  });
+
+  test('forwards reserved-log suppression from the document audit to Problems', () => {
+    docLinkFindingsValue = {
+      status: 'loaded',
+      findings: [],
+      brokenLinkSuppression: { reason: 'reserved-log-policy', count: 2 },
+    };
+
+    renderPanel('problems');
+
+    expect(lastProblemsProps?.brokenLinkSuppression).toEqual({
+      reason: 'reserved-log-policy',
+      count: 2,
+    });
   });
 });
 

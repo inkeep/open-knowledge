@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -10,7 +10,7 @@ import { promisify } from 'node:util';
 export { wait };
 
 import { HocuspocusProvider } from '@hocuspocus/provider';
-import type { LocalTransactionOrigin } from '@hocuspocus/server';
+import type { Document, LocalTransactionOrigin } from '@hocuspocus/server';
 import {
   buildProjection,
   computeBlockSplice,
@@ -43,6 +43,11 @@ import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
 import { getFreePort } from '../free-port.test-helper.ts';
+import {
+  removeAllDuringTeardown,
+  removeAllStrictDuringTeardown,
+  runTeardownPhases,
+} from '../stress/_helpers/teardown-fs.ts';
 import { ControllableWebSocket } from './network-control';
 
 export const mdManager = new MarkdownManager({ extensions: sharedExtensions });
@@ -60,6 +65,7 @@ export interface TestServer {
 }
 
 export interface CreateTestServerOptions {
+  ingressPolicy?: ServerOptions['ingressPolicy'];
   debounce?: ServerOptions['debounce'];
   maxDebounce?: ServerOptions['maxDebounce'];
   stalenessGraceMs?: ServerOptions['stalenessGraceMs'];
@@ -131,6 +137,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
   const srv = createServer({
     contentDir,
     projectDir,
+    ingressPolicy: options.ingressPolicy,
     quiet: true,
     debounce: options.debounce ?? 200,
     maxDebounce: options.maxDebounce ?? 1000,
@@ -168,6 +175,7 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
     httpServer,
     hocuspocus: srv.hocuspocus,
     nativeApi: srv.nativeApi,
+    ingressPolicy: options.ingressPolicy,
     mcpHttpHandler,
     log: getLogger('test-harness'),
     sessionManager: srv.sessionManager,
@@ -200,15 +208,16 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       await srv.destroy();
       mount.wss.close();
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-      if (createdProjectDir) {
-        rmSync(projectDir, { recursive: true, force: true });
-      }
-      if (!options.keepContentDir) {
-        rmSync(contentDir, { recursive: true, force: true });
-      }
-      if (ownedHomeDir !== null) {
-        rmSync(ownedHomeDir, { recursive: true, force: true });
-      }
+      await runTeardownPhases(
+        () => {
+          if (createdProjectDir) removeAllStrictDuringTeardown(projectDir);
+        },
+        () =>
+          removeAllDuringTeardown(
+            ...(options.keepContentDir ? [] : [contentDir]),
+            ...(ownedHomeDir !== null ? [ownedHomeDir] : []),
+          ),
+      );
     },
   };
 }
@@ -387,36 +396,7 @@ export async function assertIDBEmpty(
   }
 }
 
-/**
- * Structural quiescence gate — resolves once the doc has NO in-flight
- * transactions AND no `afterAllTransactions` listener fires for N
- * consecutive microtasks. Use instead of wall-clock `wait(ms)` when a test
- * needs to wait for a local doc's pending observer work (including the
- * settlement dispatcher's inner OBSERVER_SYNC_ORIGIN writes) to settle.
- *
- * Precedent #13(b): settlement-based, NOT wall-clock. Under the
- * server-authoritative bridge, observer work fires
- * synchronously inside `afterAllTransactions` — but some paths kick a
- * follow-up `doc.transact(..., OBSERVER_SYNC_ORIGIN)` which starts a new
- * drain. This helper waits until a short quiet window passes with no new
- * drains to catch that cascade deterministically.
- *
- * The `idleTicks` count (default 2) must be >= 2 so the first tick can
- * observe an in-flight drain and the second confirms the drain finished
- * without a follow-up. `idleTicks: 1` is INSUFFICIENT for the seed-class
- * races this helper exists to catch: Observer A's inner
- * `OBSERVER_SYNC_ORIGIN` write scheduled via `queueMicrotask` can land on
- * a later tick than the outer drain, so a single idle observation can
- * return before the cascade completes. Raise `idleTicks` for particularly
- * nested observer cascades; lower is unsafe.
- *
- * `timeoutMs` (default 2000) guards against hangs; throws a clear error
- * pointing at the doc if quiescence is never reached.
- *
- * Does NOT cover inter-doc / inter-client WebSocket propagation — for
- * multi-client convergence, combine with `assertAllConverged` or equivalent
- * polling gates.
- */
+/** Precedent #13(b): settlement-based, NOT wall-clock. */
 export async function awaitDocQuiescence(
   doc: Y.Doc,
   opts?: { timeoutMs?: number; idleTicks?: number },
@@ -779,8 +759,12 @@ export type ServerDocState = {
   connectionCount: number;
 };
 
+function getServerDoc(server: TestServer, docName: string): Document | null {
+  return server.instance.hocuspocus.documents.get(docName) ?? null;
+}
+
 export function getServerState(server: TestServer, docName: string): ServerDocState | null {
-  const document = server.instance.hocuspocus.documents.get(docName);
+  const document = getServerDoc(server, docName);
   if (!document) return null;
 
   const ytext = document.getText('source');
@@ -802,6 +786,43 @@ export function getServerState(server: TestServer, docName: string): ServerDocSt
   };
 }
 
+function docsHaveConverged(a: Y.Doc, b: Y.Doc): boolean {
+  return Y.equalSnapshots(Y.snapshot(a), Y.snapshot(b));
+}
+
+export async function awaitConvergedServerText(
+  server: TestServer,
+  client: TestClient,
+  opts: { timeoutMs?: number; pollIntervalMs?: number } = {},
+): Promise<string> {
+  const timeoutMs = opts.timeoutMs ?? 5_000;
+  const pollIntervalMs = opts.pollIntervalMs ?? 50;
+  const deadline = Date.now() + timeoutMs;
+
+  for (;;) {
+    const serverDoc = getServerDoc(server, client.docName);
+    if (serverDoc !== null && docsHaveConverged(serverDoc, client.doc)) {
+      return serverDoc.getText('source').toString();
+    }
+
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      let replicas = '\n  server has no document by that name';
+      if (serverDoc !== null) {
+        const serverText = serverDoc.getText('source').toString();
+        const clientText = client.ytext.toString();
+        replicas =
+          `\n  server Y.Text (${serverText.length} chars): ${JSON.stringify(serverText.slice(0, 200))}` +
+          `\n  client Y.Text (${clientText.length} chars): ${JSON.stringify(clientText.slice(0, 200))}`;
+      }
+      throw new Error(
+        `awaitConvergedServerText: server and client for ${client.docName} did not converge within ${timeoutMs} ms${replicas}`,
+      );
+    }
+
+    await wait(Math.min(pollIntervalMs, remainingMs));
+  }
+}
 export interface ItemOriginProbe {
   recordCapture(label?: string): void;
   assertCaptureIntact(label?: string): void;
@@ -813,18 +834,9 @@ export interface ItemOriginProbe {
 }
 
 /**
- * Create a probe wrapping Y.UndoManager that records stack state and asserts
- * Items-remained-captured. Replaces scattered inline `new Y.UndoManager(...)`
- * in test code.
- *
- * `trackedOrigins` must contain `LocalTransactionOrigin` OBJECT references per
- * precedent #1 (AGENTS.md) — e.g., per-session `session.origin`, `ORIGIN_TREE_TO_TEXT`,
- * `ORIGIN_TEXT_TO_TREE`, `FILE_WATCHER_ORIGIN`, `ROLLBACK_ORIGIN`. `Y.UndoManager`'s
- * internal `trackedOrigins.has(tx.origin)` is identity-based for objects — a raw
- * string literal would silently fail to match the production tx.origin object.
- * Note: in multi-client server-authoritative tests, server-side writes arrive
- * at clients as remote transactions (undefined origin) — pass `session.origin`
- * from a server-side `AgentSessionManager.getSession()` call to track local writes.
+ * `trackedOrigins` must contain `LocalTransactionOrigin` OBJECT references per precedent #1
+ * (AGENTS.md) — e.g., per-session `session.origin`, `ORIGIN_TREE_TO_TEXT`, `ORIGIN_TEXT_TO_TREE`,
+ * `FILE_WATCHER_ORIGIN`, `ROLLBACK_ORIGIN`.
  */
 export function createItemOriginProbe(
   ytext: Y.Text,
@@ -1087,7 +1099,7 @@ export async function createRestartableServer(
       } catch {}
     }
     if (!options.keepContentDir) {
-      rmSync(contentDir, { recursive: true, force: true });
+      removeAllStrictDuringTeardown(contentDir);
     }
   };
 
@@ -1381,9 +1393,7 @@ export async function createSyncWiredTestServer(
   );
 
   const removeScratch = (): void => {
-    rmSync(originDir, { recursive: true, force: true });
-    rmSync(authorDir, { recursive: true, force: true });
-    rmSync(cloneParent, { recursive: true, force: true });
+    removeAllStrictDuringTeardown(originDir, authorDir, cloneParent);
   };
 
   const testServer = await createTestServer({
@@ -1396,8 +1406,7 @@ export async function createSyncWiredTestServer(
 
   const engine = testServer.instance.syncEngine;
   if (engine === null) {
-    await testServer.cleanup();
-    removeScratch();
+    await runTeardownPhases(() => testServer.cleanup(), removeScratch);
     throw new Error(
       'createSyncWiredTestServer: SyncEngine did not attach — expected an origin remote on the cloned contentDir',
     );
@@ -1417,8 +1426,7 @@ export async function createSyncWiredTestServer(
     ...testServer,
     sync: { originDir, pushToOrigin, engine },
     cleanup: async () => {
-      await testServer.cleanup();
-      removeScratch();
+      await runTeardownPhases(() => testServer.cleanup(), removeScratch);
     },
   };
 }

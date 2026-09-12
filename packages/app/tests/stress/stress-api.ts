@@ -197,7 +197,7 @@ async function main(): Promise<void> {
   try {
     await fetch(`${BASE}/api/document`);
   } catch {
-    console.error('[stress-api] ERROR: Dev server not reachable. Run `bun run dev` first.');
+    console.error('[stress-api] ERROR: Dev server not reachable. Run `pnpm dev` first.');
     process.exit(1);
   }
 

@@ -28,7 +28,15 @@ export function SkillDeleteDialog({ skill, onOpenChange, onDeleted }: Props) {
       toast.error(t`Couldn't delete skill: ${error}`);
       return;
     }
-    toast.success(t`Skill "${target.name}" deleted`);
+    const title = t`Skill "${target.name}" deleted`;
+    if (result.warnings.length > 0) {
+      toast.warning(title, {
+        description: result.warnings.join(' '),
+        duration: 30_000,
+      });
+    } else {
+      toast.success(title);
+    }
     closeTabs(tabIdsForSkill(openTabs, target.scope, target.name), { force: true });
     onDeleted();
     onOpenChange(false);

@@ -7,32 +7,37 @@ import { isSupportedDocFile, stripDocExtension } from './doc-extensions.ts';
 import { findEnclosingProjectRoot, isProjectRoot } from './fs/find-project-root.ts';
 
 export class SingleFileNotFoundError extends Error {
-  constructor(readonly filePath: string) {
+  readonly filePath: string;
+  constructor(filePath: string) {
     super(`File not found: ${filePath}`);
+    this.filePath = filePath;
     this.name = 'SingleFileNotFoundError';
   }
 }
 
 export class SingleFileNotAFileError extends Error {
-  constructor(readonly filePath: string) {
+  readonly filePath: string;
+  constructor(filePath: string) {
     super(`Not a file: ${filePath}. \`ok <file>\` opens a single markdown file.`);
+    this.filePath = filePath;
     this.name = 'SingleFileNotAFileError';
   }
 }
 
 export class SingleFileProjectOverrideError extends Error {
-  constructor(
-    readonly projectRoot: string,
-    reason: string,
-  ) {
+  readonly projectRoot: string;
+  constructor(projectRoot: string, reason: string) {
     super(`Cannot open with --project ${projectRoot}: ${reason}`);
+    this.projectRoot = projectRoot;
     this.name = 'SingleFileProjectOverrideError';
   }
 }
 
 export class SingleFileNotMarkdownError extends Error {
-  constructor(readonly filePath: string) {
+  readonly filePath: string;
+  constructor(filePath: string) {
     super(`OpenKnowledge edits markdown files (.md / .mdx): ${filePath}`);
+    this.filePath = filePath;
     this.name = 'SingleFileNotMarkdownError';
   }
 }

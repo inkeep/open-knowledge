@@ -6,6 +6,7 @@ import { EDITOR_TARGETS } from '../commands/editors.ts';
 import { removeProjectSkill } from './write-project-skill.ts';
 
 const CLAUDE = EDITOR_TARGETS.claude;
+const CURSOR = EDITOR_TARGETS.cursor;
 
 describe('removeProjectSkill', () => {
   let dir: string;
@@ -98,5 +99,68 @@ describe('removeProjectSkill', () => {
     const result = removeProjectSkill(noSkill, dir);
     expect(result.action).toBe('skipped-unsupported');
     expect(result.path).toBe('');
+  });
+
+  describe('a skills root shared with another editor', () => {
+    function seedSharedRoot(): string {
+      const claudeSkill = CLAUDE.projectSkillPath?.(dir);
+      if (!claudeSkill) throw new Error('claude has no projectSkillPath');
+      mkdirSync(dirname(claudeSkill), { recursive: true });
+      writeFileSync(claudeSkill, '# open-knowledge\n');
+      mkdirSync(join(dir, '.cursor'), { recursive: true });
+      symlinkSync(join(dir, '.claude', 'skills'), join(dir, '.cursor', 'skills'), 'dir');
+      return claudeSkill;
+    }
+
+    test('removes through the link, which takes the shared bundle with it', () => {
+      const claudeSkill = seedSharedRoot();
+
+      const result = removeProjectSkill(CURSOR, dir);
+
+      expect(result.action).toBe('removed');
+      expect(existsSync(claudeSkill)).toBe(false);
+    });
+
+    test('removes from either side — sharing is not directional', () => {
+      const claudeSkill = seedSharedRoot();
+
+      const result = removeProjectSkill(CLAUDE, dir);
+
+      expect(result.action).toBe('removed');
+      expect(existsSync(claudeSkill)).toBe(false);
+    });
+
+    test('removes through an alias to the vendor-neutral hub', () => {
+      const hub = join(dir, '.agents', 'skills', 'open-knowledge');
+      mkdirSync(hub, { recursive: true });
+      writeFileSync(join(hub, 'SKILL.md'), '# open-knowledge\n');
+      mkdirSync(join(dir, '.cursor'), { recursive: true });
+      symlinkSync(join(dir, '.agents', 'skills'), join(dir, '.cursor', 'skills'), 'dir');
+
+      const result = removeProjectSkill(CURSOR, dir);
+
+      expect(result.action).toBe('removed');
+      expect(existsSync(hub)).toBe(false);
+    });
+
+    test('still removes through an alias nothing else reads', () => {
+      const own = join(dir, '.vendor', 'skills', 'open-knowledge');
+      mkdirSync(own, { recursive: true });
+      writeFileSync(join(own, 'SKILL.md'), '# open-knowledge\n');
+      mkdirSync(join(dir, '.cursor'), { recursive: true });
+      symlinkSync(join(dir, '.vendor', 'skills'), join(dir, '.cursor', 'skills'), 'dir');
+
+      const result = removeProjectSkill(CURSOR, dir);
+
+      expect(result.action).toBe('removed');
+      expect(existsSync(own)).toBe(false);
+    });
+
+    test('a dangling root is not sharing anything', () => {
+      mkdirSync(join(dir, '.cursor'), { recursive: true });
+      symlinkSync(join(dir, 'gone'), join(dir, '.cursor', 'skills'), 'dir');
+
+      expect(removeProjectSkill(CURSOR, dir).action).toBe('not-present');
+    });
   });
 });

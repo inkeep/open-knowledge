@@ -1,79 +1,110 @@
-/**
- * SelectionAnnouncer — `aria-live="polite"` region that announces block
- * selection changes to assistive technologies (Precedent #34).
- *
- * Renders a single visually-hidden `<div role="status" aria-live="polite">`
- * whose `textContent` updates 200ms after each selection change. Debounce
- * prevents screen-reader queue flooding during rapid keyboard navigation
- * (arrow-key bursts would otherwise queue dozens of announcements).
- *
- * Imperative textContent write (not React state): React batching has been
- * observed to swallow rapid aria-live updates — the region only re-announces
- * when the DOM text actually changes. Writing imperatively via ref gives
- * AT a clean mutation to latch onto every time.
- *
- * Message format:
- *   - ancestorChain.length === 1: "Selected: Card"
- *   - ancestorChain.length > 1:   "Selected: Step, 2 of 4 in Steps"
- *   - selection cleared after a non-empty selection: "Outside any block"
- *     (prevents AT silence on arrow-out — users would otherwise have no
- *     audible cue that they have left the prior selected block)
- *   - no selection at mount: "" (don't announce on initial load)
- *
- * The index-in-parent is derived from the PM doc at read time: we use the
- * selected wrapper's pos and its parent's childCount. This is cheap; the
- * computation runs once per debounce tick, not per render.
- */
-
+import { t } from '@lingui/core/macro';
 import type { Editor } from '@tiptap/core';
+import type { Transaction } from '@tiptap/pm/state';
+import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { useEffect, useRef } from 'react';
-import { useBlockSelection } from '../../editor/hooks/use-block-selection.ts';
+import { blockMoveAnnouncementKey } from '../../editor/extensions/block-mover';
+import { getBridgeId } from '../../editor/extensions/bridge-id-plugin.ts';
+import {
+  type BlockSelection,
+  getBlockSelection,
+} from '../../editor/extensions/selection-state-plugin';
 import { getEntryLabel } from '../../editor/selection/entry-label.ts';
 
 const ANNOUNCE_DEBOUNCE_MS = 200;
-const DESELECTION_MESSAGE = 'Outside any block';
+
+type SelectionContext = {
+  chain: { id: string | undefined; pos: number; yElement: object | undefined }[];
+  message: string;
+};
 
 export function SelectionAnnouncer({ editor }: { editor: Editor | null }) {
-  const blockSelection = useBlockSelection(editor);
   const regionRef = useRef<HTMLDivElement | null>(null);
-  const timeoutRef = useRef<number | null>(null);
-  const lastWasSelected = useRef(false);
 
   useEffect(() => {
-    if (timeoutRef.current !== null) {
-      window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-
-    if (!editor || !regionRef.current) return;
-
-    const isSelected = blockSelection !== null && blockSelection.ancestorChain.length > 0;
-
-    let message: string;
-    if (isSelected) {
-      message = formatSelectionMessage(editor, blockSelection);
-    } else if (lastWasSelected.current) {
-      message = DESELECTION_MESSAGE;
-    } else {
-      message = '';
-    }
-
-    timeoutRef.current = window.setTimeout(() => {
-      if (regionRef.current) {
-        regionRef.current.textContent = '';
-        regionRef.current.textContent = message;
+    if (!editor) return;
+    let timeout: number | null = null;
+    let movePending = false;
+    let lastWasSelected = false;
+    let lastContext: SelectionContext | null = null;
+    const update = (transaction?: Transaction) => {
+      const meta: unknown = transaction?.getMeta(blockMoveAnnouncementKey);
+      const direction = meta === 'up' || meta === 'down' ? meta : undefined;
+      const moved = transaction?.docChanged ? direction : undefined;
+      const region = regionRef.current;
+      if (!region) return;
+      if (!moved && movePending) return;
+      const blockSelection = getBlockSelection(editor);
+      const sync: { binding?: { mapping: Map<object, unknown> } } | undefined =
+        ySyncPluginKey.getState(editor.state);
+      const previous = lastContext;
+      const chain = blockSelection.ancestorChain.map(({ pos }, index) => {
+        const node = editor.state.doc.nodeAt(pos);
+        const prior = previous?.chain[index]?.yElement;
+        return {
+          id: getBridgeId(editor.state, pos),
+          pos,
+          yElement: prior && sync?.binding?.mapping.get(prior) === node ? prior : undefined,
+        };
+      });
+      const unresolved = new Map<unknown, (typeof chain)[number]>(
+        chain
+          .filter((entry) => !entry.yElement)
+          .map((entry) => [editor.state.doc.nodeAt(entry.pos), entry]),
+      );
+      if (unresolved.size && sync?.binding) {
+        for (const [element, node] of sync.binding.mapping) {
+          const entry = unresolved.get(node);
+          if (!entry) continue;
+          entry.yElement = element;
+          unresolved.delete(node);
+          if (!unresolved.size) break;
+        }
       }
-      lastWasSelected.current = isSelected;
-      timeoutRef.current = null;
-    }, ANNOUNCE_DEBOUNCE_MS);
-
-    return () => {
-      if (timeoutRef.current !== null) {
-        window.clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
+      const context: SelectionContext = {
+        chain,
+        message: formatSelectionMessage(editor, blockSelection),
+      };
+      const unchanged =
+        previous !== null &&
+        context.message === previous.message &&
+        context.chain.length === previous.chain.length &&
+        context.chain.every((entry, index) => {
+          const prior = previous.chain[index];
+          if (entry.yElement && prior.yElement) return entry.yElement === prior.yElement;
+          if (entry.id && entry.id === prior.id) return true;
+          const mapped = transaction?.mapping.mapResult(prior.pos, 1);
+          return !mapped?.deleted && entry.pos === (mapped?.pos ?? prior.pos);
+        });
+      lastContext = context;
+      if (!moved && unchanged) return;
+      if (timeout !== null) window.clearTimeout(timeout);
+      const isSelected = context.chain.length > 0;
+      let message: string;
+      if (moved) {
+        movePending = true;
+        message = moved === 'up' ? t`Moved up.` : t`Moved down.`;
+      } else if (isSelected) {
+        message = context.message;
+      } else {
+        message = lastWasSelected ? t`Outside any block` : '';
       }
+      region.textContent = '';
+      timeout = window.setTimeout(() => {
+        region.textContent = message;
+        lastWasSelected = isSelected;
+        movePending = false;
+        timeout = null;
+      }, ANNOUNCE_DEBOUNCE_MS);
     };
-  }, [editor, blockSelection]);
+    const onTransaction = ({ transaction }: { transaction: Transaction }) => update(transaction);
+    editor.on('transaction', onTransaction);
+    update();
+    return () => {
+      editor.off('transaction', onTransaction);
+      if (timeout !== null) window.clearTimeout(timeout);
+    };
+  }, [editor]);
 
   return (
     <div ref={regionRef} role="status" aria-live="polite" aria-atomic="true" className="sr-only" />
@@ -82,7 +113,7 @@ export function SelectionAnnouncer({ editor }: { editor: Editor | null }) {
 
 export function formatSelectionMessage(
   editor: Editor,
-  blockSelection: ReturnType<typeof useBlockSelection>,
+  blockSelection: BlockSelection | null,
 ): string {
   if (!blockSelection || blockSelection.ancestorChain.length === 0) {
     return '';
@@ -93,7 +124,7 @@ export function formatSelectionMessage(
   const innermostLabel = getEntryLabel(innermost, { unregisteredSuffix: true });
 
   if (chain.length === 1) {
-    return `Selected: ${innermostLabel}`;
+    return t`Selected: ${innermostLabel}`;
   }
 
   const parent = chain[chain.length - 2];
@@ -101,10 +132,10 @@ export function formatSelectionMessage(
 
   try {
     const $pos = editor.state.doc.resolve(innermost.pos);
-    const index = $pos.index($pos.depth);
+    const position = $pos.index($pos.depth) + 1;
     const total = $pos.parent.childCount;
-    return `Selected: ${innermostLabel}, ${index + 1} of ${total} in ${parentLabel}`;
+    return t`Selected: ${innermostLabel}, ${position} of ${total} in ${parentLabel}`;
   } catch {
-    return `Selected: ${innermostLabel} in ${parentLabel}`;
+    return t`Selected: ${innermostLabel} in ${parentLabel}`;
   }
 }

@@ -54,6 +54,18 @@ describe('marks routed into diagnostic bundles', () => {
     expect(parsed()).toEqual([{ event: 'ok/scroll-restore/phase1-success' }]);
   });
 
+  test('the caret-reveal coords failure carries the document and the surface into the breadcrumb', () => {
+    const { parsed } = captureBreadcrumbs();
+    mark('ok/caret-reveal/coords-failed', { docName: 'notes/tall', surface: 'wysiwyg' });
+    expect(parsed()).toEqual([
+      {
+        event: 'ok/caret-reveal/coords-failed',
+        docName: 'notes/tall',
+        surface: 'wysiwyg',
+      },
+    ]);
+  });
+
   test('an unlisted track writes no breadcrumb', () => {
     const { spy } = captureBreadcrumbs();
     mark('ok/nav/hash-change', { docName: 'notes/a' });
@@ -72,8 +84,8 @@ describe('marks routed into diagnostic bundles', () => {
     expect(names).toContain('ok/nav/hash-change');
   });
 
-  test('the allowlist holds exactly the one family that is safe to write per emission', () => {
-    expect([...BUNDLED_TRACKS]).toEqual(['ok/scroll-restore']);
+  test('the allowlist holds exactly the families that are safe to write per emission', () => {
+    expect([...BUNDLED_TRACKS]).toEqual(['ok/caret-reveal', 'ok/scroll-restore']);
   });
 
   test('membership is by whole track, so a lookalike prefix does not opt in', () => {

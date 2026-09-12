@@ -663,7 +663,7 @@ const KEYBOARD_SHORTCUT_DEFINITIONS = [
     id: 'move-block',
     category: 'wysiwyg',
     title: msg`Move block`,
-    description: msg`Move the current block up or down one position.`,
+    description: msg`Move the current block up or down. In lists, move the current item or selected items.`,
     scope: msg`Visual editor`,
     bindings: [
       { mac: '⇧⌘ ↑', windowsLinux: 'Ctrl Shift ↑' },

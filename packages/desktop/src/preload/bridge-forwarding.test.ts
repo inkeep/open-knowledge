@@ -23,8 +23,16 @@ type BridgeProbe = {
       zipPath: string;
       metadata: Record<string, unknown>;
       includeScreenshot?: boolean;
+      includeAttachments?: boolean;
     }): Promise<unknown>;
     create(request: Record<string, unknown>): Promise<unknown>;
+  };
+  assetUpload: {
+    uploadImage(request: {
+      contentType: string;
+      bytes: Uint8Array;
+      filename: string;
+    }): Promise<unknown>;
   };
   terminal: {
     setDockState(state: {
@@ -122,8 +130,9 @@ describe('preload bugReport.send marshalling', () => {
     const bridge = await loadBridge();
     const request = {
       zipPath: '/tmp/report.zip',
-      metadata: { level: 'full', systemWide: false },
+      metadata: { level: 'full', systemWide: false, email: 'me@example.com' },
       includeScreenshot: true,
+      includeAttachments: true,
     };
 
     await bridge.bugReport.send(request);
@@ -140,6 +149,7 @@ describe('preload bugReport.create marshalling', () => {
       note: 'a note',
       includeCrashDump: true,
       includeScreenshot: true,
+      attachments: [{ contentType: 'image/png', bytes: new Uint8Array([1, 2, 3]) }],
     };
 
     await bridge.bugReport.create(request);
@@ -147,6 +157,41 @@ describe('preload bugReport.create marshalling', () => {
     expect(dispatchedPayload('ok:bug-report:dispatch')).toEqual({
       ...request,
       kind: 'create',
+    });
+  });
+
+  it('carries the attachment bytes as a typed array, not a plain object', async () => {
+    const bridge = await loadBridge();
+    const bytes = new Uint8Array([9, 8, 7]);
+
+    await bridge.bugReport.create({
+      level: 'standard',
+      attachments: [{ contentType: 'image/webp', bytes }],
+    });
+
+    const payload = dispatchedPayload('ok:bug-report:dispatch') as {
+      attachments: { bytes: unknown }[];
+    };
+    expect(payload.attachments[0]?.bytes).toBeInstanceOf(Uint8Array);
+  });
+});
+
+describe('preload assetUpload marshalling', () => {
+  it('folds the image into the bug-report channel under the upload-image discriminant', async () => {
+    const bridge = await loadBridge();
+    const bytes = new Uint8Array([1, 2, 3, 4]);
+
+    await bridge.assetUpload.uploadImage({
+      contentType: 'image/jpeg',
+      bytes,
+      filename: 'feedback-1.jpg',
+    });
+
+    expect(dispatchedPayload('ok:bug-report:dispatch')).toEqual({
+      kind: 'upload-image',
+      contentType: 'image/jpeg',
+      bytes,
+      filename: 'feedback-1.jpg',
     });
   });
 });

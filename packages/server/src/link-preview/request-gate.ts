@@ -1,7 +1,4 @@
-/**
- * Why a request was refused, so the caller can pick the right problem type.
- * @lintignore Referenced by the exported LinkPreviewGateVerdict type; no direct importer.
- */
+/** @lintignore Referenced by the exported LinkPreviewGateVerdict type; no direct importer. */
 export type LinkPreviewGateRejection = 'origin' | 'content-type';
 
 export type LinkPreviewGateVerdict = { ok: true } | { ok: false; reason: LinkPreviewGateRejection };

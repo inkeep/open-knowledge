@@ -64,6 +64,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     retryThread: async () => {},
     authenticateThread: async () => {},
   }),
+  ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
   ThreadResumeError: class ThreadResumeError extends Error {
     readonly code: string;
     constructor(code: string, message: string) {
@@ -469,9 +470,13 @@ describe('a revision is never destroyed by something other than sending it', () 
     ).toBe('words that must survive');
 
     await userEvent.click(await screen.findByTestId('agent-thread-resume-fallback-new'));
-    const fallback = createThread.mock.calls[0]?.[0];
-    expect(fallback).toBeDefined();
-    expect(fallback?.prompt).toBeUndefined();
+    expect(launchAgentThread).toHaveBeenCalledWith(
+      { source: 'registry', id: 'claude' },
+      null,
+      null,
+      null,
+      null,
+    );
   });
 
   test('superseding a notice ahead of an open editor does not remount it away', async () => {

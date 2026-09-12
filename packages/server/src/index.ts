@@ -16,6 +16,16 @@ export { AgentFocusBroadcaster } from './agent-focus.ts';
 export { AGENT_ID_MAX_LEN, AGENT_ID_RE, toBroadcasterKey, validateAgentId } from './agent-id.ts';
 export { AgentPresenceBroadcaster } from './agent-presence.ts';
 export {
+  type ObserveReadinessInput,
+  observeReadiness,
+  type ReadinessObservationLogger,
+} from './agent-registry-gate.ts';
+export {
+  collectServerHostSnapshot,
+  createServerProbeResolver,
+  type ServerProbeOptions,
+} from './agent-registry-probes.ts';
+export {
   AGENT_WRITE_ORIGIN,
   type AgentDirectConnection,
   AgentSessionCapacityError,
@@ -75,6 +85,10 @@ export {
   type ServerExitReason,
 } from './boot.ts';
 export {
+  type AuditSuppressionTarget,
+  formatAuditBrokenLinkSuppressionLine,
+} from './broken-link-suppression.ts';
+export {
   type BuildSkillZipOptions,
   type BuildSkillZipResult,
   type BundleId,
@@ -114,11 +128,7 @@ export {
 } from './content-filter.ts';
 export { safeContentPath } from './content-path.ts';
 export {
-  // oxlint-disable-next-line typescript/no-deprecated
-  clearContributors,
   contributorCount,
-  // oxlint-disable-next-line typescript/no-deprecated
-  formatContributors,
   formatContributorsFrom,
   recordContributor,
   restoreContributors,
@@ -129,7 +139,11 @@ export {
   detectClaudeDesktopPresence,
 } from './detect-claude-desktop.ts';
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
-export { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
+export {
+  DocumentDurabilityState,
+  DocumentDurabilityStateError,
+  type StoreFailure,
+} from './document-durability-state.ts';
 export {
   canonicalProjectKey,
   clearAllEmbeddingsKeys,
@@ -257,13 +271,13 @@ export {
   type BuildConfigYmlOptions,
   buildConfigYmlContent,
   CONFIG_FILENAME,
-  ensureProjectSkillGitignore,
   type InitContentOptions,
   type InitContentResult,
   initContent,
   OK_OKIGNORE_TEMPLATE,
   packageVersionMajorMinor,
   ROOT_GITIGNORE_TEMPLATE,
+  removeProjectSkillGitignoreBlock,
   writeRootGitignoreForNewRepo,
 } from './init-project.ts';
 export {
@@ -300,6 +314,7 @@ export {
   type DeviceCompleteEvent,
   type DeviceErrorEvent,
   type DeviceVerificationEvent,
+  type LocalOpCliInvocation,
   type RawCloneEvent,
   type RepoEntry,
   type RunAuthQueryOptions,
@@ -396,20 +411,17 @@ export {
 export {
   discoverLockDirs,
   extractOkBinaryPath,
+  type LockProcessScan,
   type ProcessUsage,
   processCommand,
   processUsage,
+  scanLockProcesses,
 } from './process-scan.ts';
 export {
   type EnsureProjectGitResult,
   ensureProjectGit,
   ProjectGitInitError,
 } from './project-git.ts';
-export {
-  type UntrackProjectSkillResult,
-  type UntrackSkipReason,
-  untrackTrackedProjectSkillProjection,
-} from './project-skill-git.ts';
 export {
   type BlockConflict,
   CONFLICT_MARKER_RE,
@@ -430,8 +442,6 @@ export {
   type FileEntry,
   formatPackRationale,
   isKnownPackId,
-  // oxlint-disable-next-line typescript/no-deprecated
-  LOG_MD_TEMPLATE,
   listStarterPacks,
   type PackId,
   planSeed,
@@ -442,12 +452,8 @@ export {
   SeedRootDirError,
   type SkipEntry,
   STARTER_FOLDER_FRONTMATTER_FILENAME,
-  // oxlint-disable-next-line typescript/no-deprecated
-  STARTER_FOLDERS,
   STARTER_PACK_IDS,
   STARTER_PACKS,
-  // oxlint-disable-next-line typescript/no-deprecated
-  STARTER_TEMPLATES,
   type StarterFolder,
   type StarterPack,
   type StarterPackEntryCounts,

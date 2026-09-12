@@ -14,7 +14,7 @@ import {
 } from '@/lib/documents-events';
 import { skillEntryLiveDocName, skillLiveDocName } from '@/lib/managed-artifact-doc-name';
 import { useSkillScopeLabels } from '@/lib/skill-scope';
-import { moveSkillScope } from '@/lib/skills-api';
+import { moveSkillScope, skillMoveRetainedCopyToast } from '@/lib/skills-api';
 
 export function useMoveSkillScope(): (
   skill: { scope: SkillScope; name: string },
@@ -33,7 +33,15 @@ export function useMoveSkillScope(): (
     endOptimisticSkillMove(skill.scope, skill.name);
     if (!result.ok) {
       endSkillWrite(skill.scope, skill.name);
-      toast.error(t`Couldn't move skill: ${result.error}`);
+      toast.error(
+        t`Couldn't move skill: ${result.error}`,
+        skillMoveRetainedCopyToast({
+          outcome: result.outcome,
+          name: skill.name,
+          toScope,
+          scopeLabel: scopeLabels[toScope],
+        }),
+      );
       return false;
     }
     toast.success(t`Moved "${skill.name}" to ${scopeLabels[toScope]}`);

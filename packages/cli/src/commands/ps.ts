@@ -1,3 +1,10 @@
+import { basename, dirname } from 'node:path';
+import {
+  formatRelativeAge,
+  LOCAL_DIR,
+  OK_DIR,
+  RELATIVE_TIME_UNKNOWN,
+} from '@inkeep/open-knowledge-core';
 import { lockAdvertisesUi } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -11,12 +18,12 @@ import {
 import { inspectLock, type LockState } from './lock-state.ts';
 
 interface PsEntry {
-  directory: string;
+  directory: string | null;
   server: {
-    port: number;
-    status: LockState['status'];
+    port: number | null;
+    status: Exclude<LockState['status'], 'missing' | 'corrupt' | 'read-error'>;
     pid: number;
-    startedAt: string;
+    startedAt: string | null;
     usage: ProcessUsage | null;
   };
   ui: {
@@ -26,7 +33,7 @@ interface PsEntry {
     startedAt: string;
     usage: ProcessUsage | null;
   } | null;
-  hostname: string;
+  hostname: string | null;
   lockPath: string;
   binary: string | null;
   command: string | null;
@@ -41,30 +48,51 @@ export function isDesktopCommand(command: string | null): boolean {
   );
 }
 
-export function timeAgo(isoString: string, now = Date.now()): string {
-  const then = new Date(isoString).getTime();
-  if (Number.isNaN(then)) return '—';
-  const diffMs = now - then;
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return `${diffSec}s`;
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  return `${diffDay}d ago`;
+export function startedCell(isoString: string | null, now = Date.now()): string {
+  if (isoString === null) return '—';
+  const age = formatRelativeAge(isoString, now);
+  return age === RELATIVE_TIME_UNKNOWN ? '—' : age;
+}
+
+function projectDirectoryForLockDir(lockDir: string): string | null {
+  const parent = dirname(lockDir);
+  if (basename(lockDir) === LOCAL_DIR && basename(parent) === OK_DIR) return dirname(parent);
+  if (basename(lockDir) === OK_DIR) return parent;
+  return null;
 }
 
 function buildEntry(
-  _lockDir: string,
+  lockDir: string,
   serverState: LockState,
   command: string | null,
   serverUsage: ProcessUsage | null,
 ): PsEntry | null {
-  if (serverState.status === 'missing' || serverState.status === 'corrupt') {
+  if (
+    serverState.status === 'missing' ||
+    serverState.status === 'corrupt' ||
+    serverState.status === 'read-error'
+  ) {
     return null;
   }
 
+  if (serverState.status === 'unverified-owner') {
+    return {
+      directory: projectDirectoryForLockDir(lockDir),
+      server: {
+        port: null,
+        status: serverState.status,
+        pid: serverState.pid,
+        startedAt: null,
+        usage: null,
+      },
+      ui: null,
+      hostname: null,
+      lockPath: serverState.lockPath,
+      binary: null,
+      command: null,
+      isDesktop: false,
+    };
+  }
   const serverLock = serverState.lock;
 
   const ui: PsEntry['ui'] =
@@ -96,18 +124,32 @@ function buildEntry(
   };
 }
 
-type DisplayStatus = 'running' | 'desktop' | 'foreign' | 'stale';
+type DisplayStatus = 'running' | 'desktop' | 'foreign' | 'stale' | 'unverified';
 
 function displayStatus(entry: PsEntry): DisplayStatus {
   const serverStatus = entry.server.status;
-  if (serverStatus === 'alive' || serverStatus === 'foreign-host') {
-    if (entry.isDesktop) return 'desktop';
-    return serverStatus === 'alive' ? 'running' : 'foreign';
+  switch (serverStatus) {
+    case 'unverified-owner':
+      return 'unverified';
+    case 'alive':
+      return entry.isDesktop ? 'desktop' : 'running';
+    case 'foreign-host':
+      return entry.isDesktop ? 'desktop' : 'foreign';
+    case 'dead-pid':
+      return 'stale';
+    default: {
+      const exhaustive: never = serverStatus;
+      return exhaustive;
+    }
   }
-  return 'stale';
 }
 
-const DEFAULT_VISIBLE: ReadonlySet<DisplayStatus> = new Set(['running', 'desktop', 'foreign']);
+const DEFAULT_VISIBLE: ReadonlySet<DisplayStatus> = new Set([
+  'running',
+  'desktop',
+  'foreign',
+  'unverified',
+]);
 
 function colorStatus(label: DisplayStatus): string {
   switch (label) {
@@ -117,6 +159,7 @@ function colorStatus(label: DisplayStatus): string {
       return pc.blue(label);
     case 'foreign':
       return pc.cyan(label);
+    case 'unverified':
     case 'stale':
       return pc.yellow(label);
   }
@@ -132,7 +175,12 @@ function formatCombinedUsage(entry: PsEntry): string {
 }
 
 function formatPorts(entry: PsEntry): string {
-  const serverPort = entry.server.port === 0 ? '(starting)' : String(entry.server.port);
+  const serverPort =
+    entry.server.port === null
+      ? '—'
+      : entry.server.port === 0
+        ? '(starting)'
+        : String(entry.server.port);
   const uiPort = entry.ui == null ? '—' : String(entry.ui.port);
   return `${serverPort} / ${uiPort}`;
 }
@@ -153,12 +201,12 @@ export function renderTable(entries: PsEntry[]): string {
   ];
   const rows = entries.map((e) => {
     return [
-      e.directory,
+      e.directory ?? '—',
       formatPorts(e),
       formatCombinedUsage(e),
       displayStatus(e),
       String(e.server.pid),
-      timeAgo(e.server.startedAt),
+      startedCell(e.server.startedAt),
       e.binary ?? '—',
     ];
   });
@@ -219,11 +267,17 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   for (const lockDir of lockDirs) {
     const serverState = inspect(lockDir);
     const command =
-      serverState.status === 'missing' || serverState.status === 'corrupt'
+      serverState.status === 'missing' ||
+      serverState.status === 'corrupt' ||
+      serverState.status === 'read-error' ||
+      serverState.status === 'unverified-owner'
         ? null
         : resolveCommand(serverState.lock.pid);
     const serverUsage =
-      serverState.status === 'missing' || serverState.status === 'corrupt'
+      serverState.status === 'missing' ||
+      serverState.status === 'corrupt' ||
+      serverState.status === 'read-error' ||
+      serverState.status === 'unverified-owner'
         ? null
         : resolveUsage(serverState.lock.pid);
     const entry = buildEntry(lockDir, serverState, command, serverUsage);
@@ -249,7 +303,7 @@ export function psCommand(): Command {
   return new Command('ps')
     .description('List all running open-knowledge servers')
     .argument('[modifier]', '"all" to include stale (dead-pid) entries')
-    .option('--all', 'Include stale (dead-pid) entries (foreign-host shows by default)')
+    .option('--all', 'Include stale entries (foreign and unverified entries already show)')
     .option('--json', 'Emit structured JSON (always includes all statuses)')
     .action(async (modifier: string | undefined, opts: { all?: boolean; json?: boolean }) => {
       const all = opts.all === true || modifier === 'all';

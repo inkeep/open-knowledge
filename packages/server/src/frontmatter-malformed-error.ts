@@ -1,42 +1,6 @@
 /**
- * Malformed-frontmatter write refusal: typed error + RFC 9457 envelope helper.
- *
- * Agent writes are byte-faithful (precedent #38, Y.Text-is-truth): the bytes
- * the agent submits land in `Y.Text('source')` verbatim. That's load-bearing
- * for source-form preservation, but it means a payload whose YAML region is
- * unparseable also lands on disk verbatim — the property panel then renders
- * the "Frontmatter YAML is malformed" banner and the file's own keys are
- * unrecoverable without a hand-edit. The most common shape: a
- * string value containing an unquoted YAML-significant character (`:`, `#`,
- * leading `-`), e.g. `title: The End of 3% Mortgages: Why ...`.
- *
- * The gate lives at `applyAgentMarkdownWriteInner` and fires when the agent's
- * write actually CHANGES the FM region (`finalFm !== existingFm`). Existing
- * docs that already carry malformed FM on disk continue to accept body-only
- * writes — the rejection is targeted at the introducer, not the inheritor.
- *
- * A second arm catches the same outcome by a different route: an append or
- * prepend inherits `existingFm` by construction, so it can never trip the
- * first arm, but it CAN place a `---`-fenced non-mapping span at byte 0 of a
- * document that has no frontmatter. The composed bytes then re-partition and
- * that span becomes the FM region — malformed frontmatter the agent never
- * asked for. Same envelope, but it carries its own `refusalClass`
- * (`byte-0-promotion`) and `hint`: nothing was parsed, so the YAML-quoting
- * advice would misdirect, and counting it as a parse error would blunt the
- * one signal the class label exists to give.
- *
- * Wire shape — slim RFC 9457 envelope at HTTP 400:
- *
- *   {
- *     "type": "urn:ok:error:frontmatter-malformed",
- *     "title": "Frontmatter YAML is malformed.",
- *     "status": 400,
- *     "detail": "<parser message>. Common cause: a string value contains an
- *                unquoted YAML-significant character (`:`, `#`, leading `-`).
- *                Quote the value, e.g. `title: \"Foo: bar\"`.",
- *     "file": "<.md path>",
- *     "parseError": "<raw yaml@2 parser message>"
- *   }
+ * Agent writes are byte-faithful (precedent #38, Y.Text-is-truth): the bytes the agent submits land
+ * in `Y.Text('source')` verbatim.
  */
 
 import type { ServerResponse } from 'node:http';

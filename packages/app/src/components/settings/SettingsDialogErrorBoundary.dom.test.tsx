@@ -1,13 +1,4 @@
-/**
- * RTL mount tests for SettingsDialogErrorBoundary: the containment
- * contract for a failed lazy Settings-body chunk. Without this boundary a
- * `React.lazy` dynamic-import rejection propagates to the React root and
- * unmounts the whole app (white screen, unrecoverable). These tests pin
- * that (a) the fallback renders on a child throw and (b) a sibling
- * rendered OUTSIDE the boundary stays mounted — i.e. the failure is
- * contained, the app survives. Throw injection follows the MaybeThrow
- * (precedent #43(d)); invocation via `bun run test:dom`.
- */
+/** Throw injection follows the MaybeThrow (precedent #43(d)). */
 
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';

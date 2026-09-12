@@ -13,7 +13,8 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { ReportSidecar } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import * as coreServer from '@inkeep/open-knowledge-core/server';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   createBugReportSidecarStore,
   createInFlightRegistry,
@@ -951,11 +952,25 @@ describe('send hooks — a confirmed send is recorded even when the sidecar is u
     const store = createBugReportSidecarStore({ dir });
     expect(await store.sendHooks.onSendStart(id)).toEqual({ proceed: true });
 
+    const markerWriteEntered = Promise.withResolvers<void>();
+    const releaseMarkerWrite = Promise.withResolvers<void>();
+    const atomicWriteFile = coreServer.atomicWriteFile;
+    const write = vi.spyOn(coreServer, 'atomicWriteFile').mockImplementation(async (...args) => {
+      if (args[0] === sentMarkerPathForId(dir, id)) {
+        markerWriteEntered.resolve();
+        await releaseMarkerWrite.promise;
+      }
+      return atomicWriteFile(...args);
+    });
     const send = store.sendHooks.onSendResult(id, { kind: 'sent', reference: 'REF-RACE' });
-    const removed = await store.remove(id);
-    await send;
-
-    expect(removed).toEqual({ ok: false, reason: 'in-flight' });
+    try {
+      await markerWriteEntered.promise;
+      expect(await store.remove(id)).toEqual({ ok: false, reason: 'in-flight' });
+    } finally {
+      releaseMarkerWrite.resolve();
+      await send;
+      write.mockRestore();
+    }
     expect(existsSync(sentMarkerPathForId(dir, id))).toBe(true);
   });
 

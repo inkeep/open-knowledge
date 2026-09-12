@@ -1,22 +1,4 @@
-/**
- * Agent session management — DirectConnection lifecycle.
- *
- * Each agent gets a persistent DirectConnection to the Hocuspocus server.
- * Sessions track awareness (presence bar shows agent).
- *
- * Each session creates its own frozen LocalTransactionOrigin at birth
- * (precedent #1). All agent write paths call
- * `session.dc.document.transact(fn, session.origin)` — never `dc.transact(fn)`
- * or the shared `AGENT_WRITE_ORIGIN` constant (STOP rule).
- *
- * getSession uses an in-flight promise dedup map so concurrent first-calls
- * share one pending openDirectConnection call and produce exactly one session.
- *
- * Each session creates a Y.UndoManager tracking [Y.Text, flashMap]
- * via session.origin. session.undoOrigin is the placeholder origin for the
- * applyAgentUndo path; captureTransaction excludes it from the UM stack
- * to prevent undo-of-undo cycles (defense-in-depth).
- */
+/** Each session creates its own frozen LocalTransactionOrigin at birth (precedent #1). */
 import type { DirectConnection, Document, Hocuspocus } from '@hocuspocus/server';
 import {
   parseFrontmatterYaml,
@@ -30,7 +12,7 @@ import { splitPayloadFrontmatter } from './payload-frontmatter.ts';
 export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
 import * as Y from 'yjs';
-import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from './bridge-intake.ts';
+import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { DocInConflictError, isDocInConflict } from './conflict-errors.ts';
 import {
@@ -43,7 +25,6 @@ import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
 import { mdManager } from './md-manager.ts';
 import { incrementAgentSessionEvictions } from './metrics.ts';
-import { precomputeParse } from './parse-pool.ts';
 import { getMeter, setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
 import type { PairedWriteOrigin } from './write-origins.ts';
 
@@ -56,22 +37,9 @@ export interface AgentDirectConnection extends DirectConnection {
 }
 
 /**
- * Agent write origin — typed `PairedWriteOrigin` per precedent #1
- * extension; the typed marker carries the `paired: true` field that
- * `isPairedWriteOrigin` reads to gate paired-write transactions.
- *
- * LEGACY EXPORT — kept for unit tests that directly test observer behavior
- * against a paired-write origin. Production agent-write paths MUST use
- * `session.origin` (per-session frozen origin from getSession) instead of
- * this shared constant.
- *
- * `skipStoreHooks: false` — persistence SHOULD fire after agent writes so
- * content reaches disk through the normal debounce pipeline.
- *
- * `paired: true` — retained on the origin marker so `isPairedWriteOrigin`
- * still classifies agent writes. The `satisfies PairedWriteOrigin`
- * annotation forces the literal to carry the marker; the compile-time gate
- * catches omissions before they reach runtime.
+ * Agent write origin — typed `PairedWriteOrigin` per precedent #1 extension; the typed marker
+ * carries the `paired: true` field that `isPairedWriteOrigin` reads to gate paired-write
+ * transactions.
  */
 export const AGENT_WRITE_ORIGIN = {
   source: 'local',
@@ -87,43 +55,10 @@ function docNameToFile(docName: string): string {
 }
 
 /**
- * Y.Text-is-truth agent write composition (precedent #38).
- *
- * Composes the agent's delta against the current Y.Text bytes (the source-of-
- * truth for user-intended source bytes), then routes through the sibling
- * primitive matching the caller's INTENT: `replaceRawBody` for `replace`
- * (atomic full overwrite — prior content discarded wholesale);
- * `composeAndWriteRawBody` for `append` / `prepend` / `patch` (DMP-incremental,
- * item-preserving — merging into surrounding content the caller keeps).
- * `patch` is the `edit` find/replace path: it hands a full recomposed
- * body but wants the minimal item-preserving delta, so it deliberately does
- * NOT take the atomic primitive (which would churn the whole doc per surgical
- * edit and widen the concurrent-edit residue surface to the whole document).
- * Y.Text receives the composed bytes verbatim (no canonicalization),
- * inside the caller's outer transact.
- *
- * Atomicity boundary: caller MUST wrap this in
- * `session.dc.document.transact(fn, session.origin)`. The per-session frozen
- * origin (precedent #24) is what makes this work for `Y.UndoManager`
- * attribution.
- *
- * @see PRECEDENTS.md precedent #38 (Y.Text-is-truth contract)
+ * Y.Text-is-truth agent write composition (precedent #38): compose the delta against current
+ * Y.Text bytes, then route through the sibling primitive matching the caller's intent. The caller
+ * must wrap this in `session.dc.document.transact(fn, session.origin)` (precedent #24).
  */
-export async function prepareAgentMarkdownParse(
-  document: Document,
-  markdown: string,
-  position: 'append' | 'prepend' | 'replace' | 'patch',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
-): Promise<PrecomputedParse | undefined> {
-  if (isDocInConflict(document)) return undefined;
-  const composed = composeAgentWrite(document.getText('source').toString(), markdown, position);
-  if (composed === undefined) return undefined;
-  return precomputeParse(composed.newContent, embedResolver);
-}
-
 export function applyAgentMarkdownWrite(
   document: Document,
   markdown: string,
@@ -279,55 +214,9 @@ function applyAgentMarkdownWriteInner(
 }
 
 /**
- * Y.Text-is-truth agent undo. The only sanctioned server-side undo write
- * surface — every other path is the deleted client-side cross-CRDT
- * anti-pattern.
- *
- * Calls session.um.undo() INSIDE an outer doc.transact(..., session.undoOrigin)
- * so Y.js merges the UM's internal transaction into the outer.
- *
- * After undo, Y.Text holds the user's intended post-undo bytes (precedent
- * #38) and nothing further is written. NO canonicalize-write-back step:
- * re-serializing the document and applying that to ytext would defeat the
- * contract by canonicalizing user-typed source-form bytes (e.g. `__foo__` →
- * `**foo**`, `:---:` table widths, ATX trailing hashes).
- *
- * scope 'last': undo one UM stack item.
- * scope 'session': undo entire UM stack.
- * scope 'count': undo the `count` newest UM stack items (clamped to depth) —
- *   the scoped "undo to edit N" range. `count` is required for this scope.
- *
- * Returns `true` when at least one UM frame was popped (i.e., the undo had
- * an observable effect), `false` when the stack was already empty. Callers
- * can surface this to the HTTP response so MCP clients know the no-op case.
- *
- * Contract — every requirement is load-bearing; do not relax without re-running
- * the bridge fuzzer + conversion-PBT suite that guards against the bug-A class:
- *
- *   (1) Y.Text-is-truth composition (precedent #38). Y.UndoManager has
- *       already mutated ytext to its desired post-undo state, and that IS
- *       the result. Do NOT re-canonicalize ytext from a re-serialized
- *       document — that defeats the contract.
- *   (2) Fires under per-session `session.undoOrigin`, distinct from
- *       `session.origin`. The UM is constructed with
- *       `captureTransaction: tr => tr.origin !== session.undoOrigin` so
- *       undo-of-undo never lands on the stack.
- *   (3) No client-side cross-CRDT writes. Server-authoritative observer-
- *       bridge is the only mirror path; client observers are baseline-only
- *       (precedent #14).
- *   (4) Single `doc.transact()` block — no defensive mutex. The atomicity
- *       comes from the transact, not from extra serialization.
- *   (5) Every change here ships with fuzzer + conversion-PBT coverage.
- *
- * Cross-deploy transition: undo-stack frames captured BEFORE the
- * Y.Text-is-truth migration contain canonical bytes (post-Phase-2
- * canonicalize-write-back). After deploy, undo through those frames
- * restores canonical bytes, while frames captured under contract restore
- * raw user bytes. Mixed-form undo across the boundary is acceptable
- * transition behavior — the UM stack is per-session and ephemeral.
- *
- * @see PRECEDENTS.md precedent #38 (Y.Text-is-truth contract)
- * @see PRECEDENTS.md precedent #14 (cross-CRDT sync is single-writer, server-side)
+ * Y.Text-is-truth agent undo, the only sanctioned server-side undo write surface: after
+ * `session.um.undo()` Y.Text holds the intended post-undo bytes (precedent #38). There is no
+ * canonicalize-write-back step, which would defeat that contract.
  */
 export function applyAgentUndo(
   session: SessionRecord,
@@ -401,13 +290,7 @@ interface SessionRecord {
   lastUsedAt: number;
 }
 
-/**
- * Create a frozen per-session PairedWriteOrigin (precedent #24(b)).
- * Object-identity-unique per call; deep-frozen via Object.freeze on both
- * the context and the outer object. The returned object is the Y.UndoManager
- * trackedOrigins key for this session — a reconstructed object with the same
- * shape is NOT equivalent (Set-identity match, not structural equality).
- */
+/** Create a frozen per-session PairedWriteOrigin (precedent #24(b)). */
 function createSessionOrigin(
   sessionId: string,
   agentType?: string,
@@ -533,18 +416,8 @@ export class AgentSessionManager {
   }
 
   /**
-   * Get or create a per-agent SessionRecord (DirectConnection + per-session origin).
-   *
-   * Each new session creates a frozen LocalTransactionOrigin via
-   * `createSessionOrigin`. The returned session.origin is object-identity-unique.
-   *
-   * Concurrent first-calls for the same (docName, agentId) share one
-   * pending openDirectConnection promise — exactly one DirectConnection created.
-   *
-   * No per-doc awareness publishing: every Hocuspocus `Document` has a single
-   * shared `Awareness` clientID, so per-doc writes stomp across N concurrent
-   * agents. Presence is published on the `__system__` Y.Doc via
-   * `AgentPresenceBroadcaster` instead (precedent #3).
+   * Presence is published on the `__system__` Y.Doc via `AgentPresenceBroadcaster` instead
+   * (precedent #3).
    */
   async getSession(
     docName: string,

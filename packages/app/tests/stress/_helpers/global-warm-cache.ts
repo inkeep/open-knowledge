@@ -1,5 +1,4 @@
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
@@ -14,8 +13,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { APP_PACKAGE_ROOT, computeSeedKey } from './seed-key.ts';
 import {
-  APP_PACKAGE_ROOT,
   closeServerLog,
   getFreePort,
   killGracefully,
@@ -29,22 +28,6 @@ import { removeAllDuringTeardown } from './teardown-fs.ts';
 const SEED_KEY_FILENAME = '.seed-key';
 const OPTIMIZER_SETTLE_BUDGET_MS = 90_000;
 const WARM_ATTEMPTS = 2;
-
-function computeSeedKey(): string {
-  const inputs = [
-    join(APP_PACKAGE_ROOT, '..', '..', 'bun.lock'),
-    join(APP_PACKAGE_ROOT, 'vite.config.ts'),
-    join(APP_PACKAGE_ROOT, 'vite.dedupe.ts'),
-    join(APP_PACKAGE_ROOT, 'vite.react-babel.ts'),
-    join(APP_PACKAGE_ROOT, 'package.json'),
-  ];
-  const hash = createHash('sha256');
-  for (const file of inputs) {
-    hash.update(file);
-    hash.update(existsSync(file) ? readFileSync(file) : 'absent');
-  }
-  return hash.digest('hex');
-}
 
 function depsDirSignature(depsDir: string): string {
   try {
@@ -136,7 +119,7 @@ async function buildSeedOnce(key: string): Promise<void> {
 }
 
 export default async function globalWarmViteCache(): Promise<void> {
-  const key = computeSeedKey();
+  const key = computeSeedKey(APP_PACKAGE_ROOT);
   const keyPath = join(VITE_E2E_SEED_DIR, SEED_KEY_FILENAME);
   const metaPath = join(VITE_E2E_SEED_DIR, 'deps', '_metadata.json');
   if (existsSync(keyPath) && existsSync(metaPath) && readFileSync(keyPath, 'utf-8') === key) {

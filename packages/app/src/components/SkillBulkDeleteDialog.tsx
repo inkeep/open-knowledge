@@ -24,6 +24,7 @@ export function SkillBulkDeleteDialog({ skills, onOpenChange, onDeleted }: Props
     setDeleting(true);
     setProgress(0);
     let deleted = 0;
+    const warned: { key: string; name: string; text: string }[] = [];
     for (const target of targets) {
       setProgress((n) => n + 1);
       const result = await deleteSkill(target.scope, target.name, target.hostQualifier);
@@ -33,10 +34,32 @@ export function SkillBulkDeleteDialog({ skills, onOpenChange, onDeleted }: Props
         continue;
       }
       deleted += 1;
+      if (result.warnings.length > 0) {
+        warned.push({
+          key: `${target.scope}/${target.name}`,
+          name: target.name,
+          text: result.warnings.join(' '),
+        });
+      }
       closeTabs(tabIdsForSkill(openTabs, target.scope, target.name), { force: true });
     }
     setDeleting(false);
-    if (deleted > 0) toast.success(t`Deleted ${deleted} skills`);
+    if (warned.length > 0) {
+      toast.warning(t`Some skills were deleted with a warning`, {
+        duration: 30_000,
+        description: (
+          <ul className="flex list-none flex-col gap-1">
+            {warned.map((entry) => (
+              <li key={entry.key}>
+                {entry.name}: {entry.text}
+              </li>
+            ))}
+          </ul>
+        ),
+      });
+    } else if (deleted > 0) {
+      toast.success(t`Deleted ${deleted} skills`);
+    }
     onDeleted();
     onOpenChange(false);
   }

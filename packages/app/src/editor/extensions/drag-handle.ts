@@ -4,15 +4,19 @@ import { t } from '@lingui/core/macro';
 import { type Editor, Extension } from '@tiptap/core';
 import { DragHandlePlugin, normalizeNestedOptions } from '@tiptap/extension-drag-handle';
 import type { Node as PmNode } from '@tiptap/pm/model';
-import { TextSelection } from '@tiptap/pm/state';
+import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
+import { createDragMenuLifecycle } from '../bubble-menu/drag-menu-lifecycle.ts';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { getDescriptor } from '../registry/index.ts';
 import { createChildNode, focusInsertedComponent } from '../slash-command/component-items.tsx';
 import { GUTTER_PLUS_SVG } from './gutter-plus-icon.ts';
+import { createListItemDragController } from './list-item-drag.ts';
 
 const HANDLE_HEIGHT = 20;
 const MAX_SINGLE_LINE_HEIGHT = 44;
 const BODY_LINE_HEIGHT = 28;
+
+export const blockDragHoverKey = new PluginKey('blockDragHover');
 
 function selectNamed(name: string): string {
   return t`Select ${name}`;
@@ -20,6 +24,7 @@ function selectNamed(name: string): string {
 
 function describeBlockForGrip(node: PmNode | null): string {
   if (!node) return t`Select block`;
+  if (node.type.name === 'listItem') return t`Select list item`;
   if (node.type.name === 'jsxComponent') {
     const componentName = (node.attrs.componentName as string | undefined) ?? '';
     if (componentName) {
@@ -69,6 +74,12 @@ function createBlockControlsElement(): {
 function addBlockBelow(editor: Editor, hoveredNodePos: number, hoveredNode: PmNode): void {
   const { state, view } = editor;
 
+  if (hoveredNode.type.name === 'listItem') {
+    const $pos = state.doc.resolve(hoveredNodePos);
+    addBlockBelow(editor, $pos.before(1), $pos.node(1));
+    return;
+  }
+
   if (hoveredNode.type.name === 'jsxComponent') {
     const componentName = (hoveredNode.attrs.componentName as string | undefined) ?? '';
     if (componentName) {
@@ -110,6 +121,21 @@ export const BlockDragHandle = Extension.create({
     let currentNodePos = -1;
 
     const { container, addBtn, grip } = createBlockControlsElement();
+    const listItemDrag = createListItemDragController();
+    const dragMenu = createDragMenuLifecycle(editor);
+    editor.on('destroy', listItemDrag.destroy);
+    editor.on('destroy', dragMenu.destroy);
+    container.addEventListener(
+      'dragstart',
+      (event) => {
+        if (event.dataTransfer && editor.view.editable) dragMenu.start(editor.view);
+        const handled = listItemDrag.start(event, editor.view, currentNode, currentNodePos);
+        if (handled) {
+          event.stopImmediatePropagation();
+        }
+      },
+      { capture: true },
+    );
 
     addBtn.addEventListener('click', () => {
       if (currentNode && currentNodePos >= 0) {
@@ -148,34 +174,131 @@ export const BlockDragHandle = Extension.create({
       }
     });
 
+    function retainedListItemPoint(event: MouseEvent) {
+      if (
+        currentNode?.type.name !== 'listItem' ||
+        currentNodePos < 0 ||
+        container.style.visibility === 'hidden'
+      ) {
+        return null;
+      }
+      const item = editor.view.nodeDOM(currentNodePos);
+      if (!(item instanceof HTMLElement)) return null;
+      const itemRect = item.getBoundingClientRect();
+      const controlsRect = container.getBoundingClientRect();
+      const lineHeight = Math.min(itemRect.height, BODY_LINE_HEIGHT);
+      if (
+        event.clientX < controlsRect.left ||
+        event.clientX > itemRect.left ||
+        event.clientY < itemRect.top ||
+        event.clientY > itemRect.top + lineHeight
+      ) {
+        return null;
+      }
+      return { x: itemRect.left + Math.min(2, itemRect.width / 2), y: event.clientY };
+    }
+
+    const dragHandle = DragHandlePlugin({
+      element: container,
+      editor,
+      onElementDragEnd() {
+        const { view } = editor;
+        view.dispatch(view.state.tr.setMeta('hideDragHandle', true));
+      },
+      onNodeChange({ node, pos }: { node: PmNode | null; pos: number }) {
+        currentNode = node;
+        currentNodePos = pos ?? -1;
+        grip.setAttribute('aria-label', describeBlockForGrip(node));
+        addBtn.setAttribute('aria-label', t`Add block below`);
+      },
+      getReferencedVirtualElement() {
+        if (currentNode?.type.name !== 'listItem' || currentNodePos < 0) return null;
+        const item = editor.view.nodeDOM(currentNodePos);
+        if (!(item instanceof HTMLElement)) return null;
+        const list = item.parentElement;
+        if (!list?.matches('ul, ol')) return null;
+        return {
+          contextElement: item,
+          getBoundingClientRect() {
+            const itemRect = item.getBoundingClientRect();
+            const listRect = list.getBoundingClientRect();
+            return new DOMRect(listRect.left, itemRect.top, listRect.width, itemRect.height);
+          },
+        };
+      },
+      computePositionConfig: {
+        placement: 'left-start',
+        strategy: 'absolute',
+        middleware: [
+          offset(({ rects }) => {
+            const firstLineHeight =
+              rects.reference.height <= MAX_SINGLE_LINE_HEIGHT
+                ? rects.reference.height
+                : BODY_LINE_HEIGHT;
+            return {
+              mainAxis: 10,
+              crossAxis: (firstLineHeight - HANDLE_HEIGHT) / 2,
+            };
+          }),
+        ],
+      },
+      nestedOptions: normalizeNestedOptions({
+        edgeDetection: 'none',
+        defaultRules: false,
+        rules: [
+          {
+            id: 'list-items-and-top-level-blocks',
+            evaluate: ({ node, depth }) => {
+              if (node.type.name === 'listItem') {
+                return 0;
+              }
+              return depth === 1 && node.type.name !== 'list' ? 0 : 1000;
+            },
+          },
+        ],
+      }),
+    }).plugin;
+
     return [
-      DragHandlePlugin({
-        element: container,
-        editor,
-        onNodeChange({ node, pos }: { node: PmNode | null; pos: number }) {
-          currentNode = node;
-          currentNodePos = pos ?? -1;
-          grip.setAttribute('aria-label', describeBlockForGrip(node));
-          addBtn.setAttribute('aria-label', t`Add block below`);
+      listItemDrag.plugin,
+      new Plugin({
+        key: blockDragHoverKey,
+        appendTransaction(transactions, _oldState, state) {
+          if (currentNode && transactions.some((transaction) => transaction.docChanged)) {
+            return state.tr.setMeta('hideDragHandle', true);
+          }
+          return null;
         },
-        computePositionConfig: {
-          placement: 'left-start',
-          strategy: 'absolute',
-          middleware: [
-            offset(({ rects }) => {
-              const firstLineHeight =
-                rects.reference.height <= MAX_SINGLE_LINE_HEIGHT
-                  ? rects.reference.height
-                  : BODY_LINE_HEIGHT;
-              return {
-                mainAxis: 10,
-                crossAxis: (firstLineHeight - HANDLE_HEIGHT) / 2,
-              };
-            }),
-          ],
+        props: {
+          handleDOMEvents: {
+            mousemove(view, event) {
+              const point = retainedListItemPoint(event);
+              if (!point) return false;
+              dragHandle.props.handleDOMEvents?.mousemove?.call(
+                dragHandle,
+                view,
+                new MouseEvent('mousemove', {
+                  bubbles: event.bubbles,
+                  cancelable: event.cancelable,
+                  clientX: point.x,
+                  clientY: point.y,
+                  buttons: event.buttons,
+                  button: event.button,
+                  altKey: event.altKey,
+                  ctrlKey: event.ctrlKey,
+                  metaKey: event.metaKey,
+                  shiftKey: event.shiftKey,
+                }),
+              );
+              return true;
+            },
+            mouseleave(_view, event) {
+              return retainedListItemPoint(event) !== null;
+            },
+          },
         },
-        nestedOptions: normalizeNestedOptions(false),
-      }).plugin,
+      }),
+      dragHandle,
     ];
   },
 });

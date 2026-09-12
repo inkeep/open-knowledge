@@ -9,6 +9,16 @@ interface FallbackNode {
   textContent: string;
 }
 
+interface FallbackState {
+  count: number | null;
+  text: string | null;
+}
+
+interface PmSelectionView {
+  from: number;
+  node?: FallbackNode;
+}
+
 async function setupDoc(page: Page, api: ApiHelpers, markdown: string): Promise<string> {
   const docName = `unreg-del-${randomUUID().slice(0, 8)}`;
   await api.createPage(`${docName}.md`);
@@ -42,10 +52,10 @@ async function waitForFallback(page: Page, componentName: string): Promise<void>
   );
 }
 
-async function fallbackState(page: Page): Promise<{ count: number; text: string | null }> {
-  return page.evaluate(() => {
+async function fallbackState(page: Page): Promise<FallbackState> {
+  return page.evaluate((): FallbackState => {
     const ed = window.__activeEditor;
-    if (!ed) return { count: 0, text: null };
+    if (!ed) return { count: null, text: null };
     let count = 0;
     let text: string | null = null;
     ed.state.doc.descendants((n: FallbackNode) => {
@@ -58,10 +68,40 @@ async function fallbackState(page: Page): Promise<{ count: number; text: string 
   });
 }
 
-async function nodeSelectFallbackAndFocusPm(page: Page): Promise<void> {
-  await page.evaluate(() => {
+interface PostDeleteState {
+  count: number | null;
+  text: string | null;
+  docText: string | null;
+  selectedNodeType: string | null;
+}
+
+async function postDeleteState(page: Page): Promise<PostDeleteState> {
+  return page.evaluate((): PostDeleteState => {
     const ed = window.__activeEditor;
-    if (!ed) throw new Error('window.__activeEditor not set');
+    if (!ed) return { count: null, text: null, docText: null, selectedNodeType: null };
+    let count = 0;
+    let text: string | null = null;
+    ed.state.doc.descendants((n: FallbackNode) => {
+      if (n.type.name === 'rawMdxFallback') {
+        count += 1;
+        if (text === null) text = n.textContent;
+      }
+    });
+    const selection = ed.state.selection as PmSelectionView;
+    return {
+      count,
+      text,
+      docText: ed.state.doc.textContent,
+      selectedNodeType: selection.node?.type.name ?? null,
+    };
+  });
+}
+
+async function nodeSelectFallbackAndDispatchKey(page: Page, key: string): Promise<void> {
+  return page.evaluate((pressed) => {
+    const ed = window.__activeEditor;
+    if (!ed) throw new Error('nodeSelectFallbackAndDispatchKey: window.__activeEditor not set');
+
     let pos = -1;
     ed.state.doc.descendants((n: FallbackNode, p: number) => {
       if (pos !== -1) return false;
@@ -71,15 +111,37 @@ async function nodeSelectFallbackAndFocusPm(page: Page): Promise<void> {
       }
       return true;
     });
-    if (pos === -1) throw new Error('rawMdxFallback not found');
-    ed.chain().focus().setNodeSelection(pos).run();
-  });
-  await page.evaluate(() => {
-    const pm = document.querySelector(
-      '.ProseMirror:not(.composer-prosemirror)',
-    ) as HTMLElement | null;
-    pm?.focus();
-  });
+    if (pos === -1) {
+      throw new Error('nodeSelectFallbackAndDispatchKey: rawMdxFallback not found');
+    }
+
+    ed.commands.setNodeSelection(pos);
+    const selection = ed.state.selection as PmSelectionView;
+    if (selection.node?.type.name !== 'rawMdxFallback' || selection.from !== pos) {
+      throw new Error(
+        `nodeSelectFallbackAndDispatchKey: selection landed on ${selection.node?.type.name ?? 'no node'} at ${selection.from}, expected rawMdxFallback at ${pos}`,
+      );
+    }
+
+    const notConsumed = ed.view.dom.dispatchEvent(
+      new KeyboardEvent('keydown', { key: pressed, bubbles: true, cancelable: true }),
+    );
+    if (notConsumed) {
+      throw new Error(
+        `nodeSelectFallbackAndDispatchKey: ProseMirror did not consume ${pressed} (no handler called preventDefault)`,
+      );
+    }
+
+    let survivors = 0;
+    ed.state.doc.descendants((n: FallbackNode) => {
+      if (n.type.name === 'rawMdxFallback') survivors += 1;
+    });
+    if (survivors > 0) {
+      throw new Error(
+        `nodeSelectFallbackAndDispatchKey: ${pressed} was consumed but ${survivors} rawMdxFallback remained after the synchronous dispatch, so the consuming handler did not remove the node`,
+      );
+    }
+  }, key);
 }
 
 for (const key of ['Backspace', 'Delete'] as const) {
@@ -95,10 +157,11 @@ for (const key of ['Backspace', 'Delete'] as const) {
     await waitForFallback(page, 'UnknownWidget');
     expect((await fallbackState(page)).count).toBe(1);
 
-    await nodeSelectFallbackAndFocusPm(page);
-    await page.keyboard.press(key);
+    await nodeSelectFallbackAndDispatchKey(page, key);
 
-    await expect.poll(() => fallbackState(page).then((s) => s.count), { timeout: 2_000 }).toBe(0);
+    await expect
+      .poll(() => postDeleteState(page), { timeout: 2_000 })
+      .toEqual({ count: 0, text: null, docText: 'after', selectedNodeType: null });
   });
 }
 

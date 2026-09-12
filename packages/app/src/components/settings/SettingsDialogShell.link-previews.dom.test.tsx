@@ -1,4 +1,3 @@
-import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -12,21 +11,6 @@ vi.doMock('@/lib/file-protocol-page', () => ({
 vi.doMock('@inkeep/open-knowledge-core', () => ({
   SHOW_INSTALL_SKILL: false,
   MARKDOWNLINT_RULE_CATALOG: [],
-}));
-
-vi.doMock('@lingui/react/macro', () => ({
-  ...actualLinguiMacro,
-  Trans: ({ children }: { children?: ReactNode }) => <>{children}</>,
-  useLingui: () => ({
-    t: (strings: TemplateStringsArray | string, ...values: unknown[]) => {
-      if (typeof strings === 'string') return strings;
-      return strings.reduce(
-        (text, chunk, index) =>
-          `${text}${chunk}${index < values.length ? String(values[index]) : ''}`,
-        '',
-      );
-    },
-  }),
 }));
 
 vi.doMock('@/components/settings/SettingsDialogBodyLazy', () => ({

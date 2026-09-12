@@ -353,6 +353,15 @@ describe('CommandPalette DOM behavior', () => {
     expect(requestDocPanelTabCalls).toEqual(['graph']);
   });
 
+  test('mounts the semantic notice live region before semantic mode supplies its text', async () => {
+    await renderPalette();
+
+    const region = screen.getByTestId('command-palette-semantic-notice-region');
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.textContent).toBe('');
+  });
+
   test('routes project commands through runtime bridge entry points and exposes switch-project search tokens', async () => {
     const bridge = createBridge();
     const { onOpenChange } = await renderPalette({ bridge });

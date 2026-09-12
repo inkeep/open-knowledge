@@ -3,13 +3,7 @@
   "compilerOptions": {
     "module": "esnext",
     "noEmit": true,
-    "allowImportingTsExtensions": true,
-    "paths": {
-      "@inkeep/open-knowledge-core": ["../core/src/index.ts"],
-      "@inkeep/open-knowledge-core/*": ["../core/src/*"],
-      "@inkeep/open-knowledge-server": ["../server/src/index.ts"],
-      "@inkeep/open-knowledge-server/*": ["../server/src/*"]
-    }
+    "allowImportingTsExtensions": true
   },
   "include": ["src", "*.ts"],
   "exclude": ["node_modules", "dist", "**/*.test.ts"]

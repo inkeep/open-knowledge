@@ -8,11 +8,7 @@ import {
   writeFileSync as fsWriteFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import {
-  assertProjectPathSafe,
-  EDITOR_TARGETS,
-  HOSTS_WITH_USER_SKILL_DIR,
-} from '@inkeep/open-knowledge';
+import { HOSTS_WITH_USER_SKILL_DIR } from '@inkeep/open-knowledge';
 import { resolveBundleEnabled, USER_SKILL_HOSTS } from '@inkeep/open-knowledge-core';
 import { classifyInstallShape } from './install-shape.ts';
 
@@ -26,9 +22,6 @@ const DEFAULT_LOGGER: SkillReclaimLogger = {
   warn: (message, ctx) => console.warn('[skill-reclaim]', message, ctx ?? ''),
 };
 
-const OK_MCP_MARKER = '# ok-mcp-';
-
-const PROJECT_SKILL_DIR_NAME = 'open-knowledge';
 const LEGACY_SKILL_DIR_NAME = 'open-knowledge';
 
 interface SkillFsOps {
@@ -134,6 +127,7 @@ interface ReclaimUserSkillsOpts {
   env?: Record<string, string | undefined>;
   forceEnv?: string | null | undefined;
   reclaimDisableEnv?: string | null | undefined;
+  seed?: boolean;
   deps: {
     userGlobalBundles: ReadonlyArray<{ id: string; name: string }>;
     resolveBundledSkillDir(bundle: string): string;
@@ -303,7 +297,7 @@ function userBundleExists(home: string, bundleName: string, fs: SkillFsOps): boo
   );
 }
 
-export async function reclaimUserSkillsOnLaunch(
+export async function reconcileUserGlobalSkillBundles(
   opts: ReclaimUserSkillsOpts,
 ): Promise<UserSkillReclaimResult> {
   const {
@@ -414,6 +408,10 @@ export async function reclaimUserSkillsOnLaunch(
     return { status: 'skipped', reason: 'all-bundles-declined' };
   }
 
+  if (opts.seed === false) {
+    return { status: 'skipped', reason: 'reconcile-only' };
+  }
+
   const entries: UserSkillReclaimEntry[] = [];
   const installedBundleNames: string[] = [];
   const bundleResults: Array<{ id: string; landed: boolean; failed: boolean }> = [];
@@ -477,156 +475,4 @@ export async function reclaimUserSkillsOnLaunch(
   }
 
   return { status: 'done', version, entries };
-}
-
-type ProjectSkillReclaimEntry = {
-  editorId: string;
-  hostDir: string;
-  path: string;
-  status: 'no-token' | 'present' | 'created' | 'failed';
-  error?: string;
-};
-
-type ProjectSkillReclaimResult =
-  | { status: 'skipped'; reason: string }
-  | { status: 'done'; entries: ProjectSkillReclaimEntry[] };
-
-interface ReclaimProjectSkillsOpts {
-  projectDir: string;
-  executablePath: string;
-  isPackaged: boolean;
-  platform: 'darwin' | 'win32' | 'linux' | string;
-  env?: Record<string, string | undefined>;
-  forceEnv?: string | null | undefined;
-  reclaimDisableEnv?: string | null | undefined;
-  createIfWired?: boolean;
-  deps: {
-    resolveBundledSkillDir(): string;
-    reportInstalled?(skillNames: readonly string[], scope?: string): void;
-    readProjectSkillDecision?(projectDir: string): Promise<boolean | null>;
-  };
-  fs?: SkillFsOps;
-  logger?: SkillReclaimLogger;
-}
-
-function editorWiredForOk(configPath: string | undefined, fs: SkillFsOps): boolean {
-  if (!configPath) return false;
-  try {
-    if (!fs.existsSync(configPath)) return false;
-    const bytes = fs.readFileSync(configPath).toString('utf8');
-    return bytes.includes(OK_MCP_MARKER);
-  } catch {
-    return false;
-  }
-}
-
-export async function reclaimProjectSkillsOnProjectOpen(
-  opts: ReclaimProjectSkillsOpts,
-): Promise<ProjectSkillReclaimResult> {
-  const {
-    projectDir,
-    executablePath,
-    isPackaged,
-    platform,
-    forceEnv,
-    reclaimDisableEnv,
-    createIfWired = false,
-    deps,
-    fs = defaultFsOps,
-    logger = DEFAULT_LOGGER,
-  } = opts;
-
-  if (reclaimDisableEnv === '1') return { status: 'skipped', reason: 'reclaim-disabled' };
-  if (!isPackaged && forceEnv !== '1') return { status: 'skipped', reason: 'dev-mode' };
-  const installShape = classifyInstallShape(platform, executablePath, opts.env ?? process.env);
-  if (installShape.kind === 'appimage') {
-    return { status: 'skipped', reason: 'appimage-ephemeral' };
-  }
-  if (installShape.kind === 'unsupported') {
-    return { status: 'skipped', reason: 'bad-executable-path' };
-  }
-
-  let sourceDir: string;
-  try {
-    sourceDir = deps.resolveBundledSkillDir();
-  } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
-    logger.event({ event: 'project-skill-reclaim-bundle-missing', error });
-    return { status: 'skipped', reason: 'bundle-missing' };
-  }
-
-  const skillDecision =
-    (await deps.readProjectSkillDecision?.(projectDir).catch(() => null)) ?? null;
-  if (skillDecision === false) {
-    logger.event({ event: 'project-skill-reclaim-declined-by-user', projectDir });
-    return { status: 'skipped', reason: 'declined-by-user' };
-  }
-
-  const entries: ProjectSkillReclaimEntry[] = [];
-  for (const host of HOSTS_WITH_USER_SKILL_DIR) {
-    const dest = join(projectDir, host.hostDir, 'skills', PROJECT_SKILL_DIR_NAME);
-    const skillFile = join(dest, 'SKILL.md');
-    const skillExists = fs.existsSync(skillFile);
-    if (skillExists) {
-      entries.push({
-        editorId: host.editorId,
-        hostDir: host.hostDir,
-        path: dest,
-        status: 'present',
-      });
-      continue;
-    }
-    const projectConfigPath = EDITOR_TARGETS[host.editorId]?.projectConfigPath?.(projectDir);
-    const wired = createIfWired && editorWiredForOk(projectConfigPath, fs);
-    if (!wired) {
-      entries.push({
-        editorId: host.editorId,
-        hostDir: host.hostDir,
-        path: dest,
-        status: 'no-token',
-      });
-      logger.event({
-        event: 'project-skill-reclaim-no-token',
-        editorId: host.editorId,
-        path: dest,
-      });
-      continue;
-    }
-    try {
-      assertProjectPathSafe(dest, projectDir);
-      replaceDir(sourceDir, dest, fs);
-      entries.push({
-        editorId: host.editorId,
-        hostDir: host.hostDir,
-        path: dest,
-        status: 'created',
-      });
-      logger.event({
-        event: 'project-skill-reclaim-created',
-        editorId: host.editorId,
-        path: dest,
-      });
-    } catch (err) {
-      const error = err instanceof Error ? err.message : String(err);
-      entries.push({
-        editorId: host.editorId,
-        hostDir: host.hostDir,
-        path: dest,
-        status: 'failed',
-        error,
-      });
-      logger.event({
-        event: 'project-skill-reclaim-failed',
-        editorId: host.editorId,
-        path: dest,
-        error,
-      });
-    }
-  }
-
-  if (entries.some((e) => e.status === 'created')) {
-    deps.reportInstalled?.([PROJECT_SKILL_DIR_NAME], projectDir);
-  }
-
-  return { status: 'done', entries };
 }

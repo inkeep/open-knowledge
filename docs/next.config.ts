@@ -49,6 +49,16 @@ const nextConfig: NextConfig = {
   async redirects() {
     return [
       {
+        source: '/docs/features/skills/manage-and-share',
+        destination: '/docs/features/skills/symlink-skills',
+        permanent: true,
+      },
+      {
+        source: '/docs/features/skills/manage-and-share/',
+        destination: '/docs/features/skills/symlink-skills',
+        permanent: true,
+      },
+      {
         source: '/docs/get-started/install',
         destination: '/docs/get-started/quickstart',
         permanent: true,

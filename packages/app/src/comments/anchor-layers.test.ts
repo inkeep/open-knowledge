@@ -1,17 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { buildAnchorSegments, COMMENT_HUE, type PlacedAnchor } from './anchor-layers';
+import { buildAnchorSegments, commentColor, type PlacedAnchor } from './anchor-layers';
 
 const at = (id: string | null, from: number, to: number): PlacedAnchor => ({ id, from, to });
 
-const ACTIVE_FILL = `rgba(${COMMENT_HUE},0.45)`;
+const ACTIVE_FILL = commentColor(0.45);
 const RESTING =
-  `border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:rgba(${COMMENT_HUE},0.22);` +
-  `box-shadow:inset 0 -2px 0 rgba(${COMMENT_HUE},0.7);`;
+  `border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:${commentColor(0.22)};` +
+  `box-shadow:inset 0 -2px 0 ${commentColor(0.7)};`;
 const ACTIVE =
   `border-radius:2px;padding-bottom:1px;cursor:pointer;background-color:${ACTIVE_FILL};` +
-  `box-shadow:inset 0 -2px 0 rgba(${COMMENT_HUE},1);`;
+  `box-shadow:inset 0 -2px 0 ${commentColor(1)};`;
 
 describe('buildAnchorSegments', () => {
+  it('mixes comment opacity in sRGB to preserve the contrast contract', () => {
+    expect(commentColor(0.7)).toBe(
+      'color-mix(in srgb,var(--ok-comment-hue, rgb(37 99 235)) 70%,transparent)',
+    );
+  });
+
   it('leaves a lone unattended highlight on its original style', () => {
     expect(buildAnchorSegments([at('t1', 4, 12)])).toEqual([
       { from: 4, to: 12, threadId: 't1', style: RESTING },

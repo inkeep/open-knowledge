@@ -29,6 +29,7 @@ function normalizeSelectedIndexes(raw: unknown): number[] {
 }
 
 const RECOGNIZED_UNINSTALL_INTENT_KINDS = {
+  'progress-shown': true,
   'picker-confirm': true,
   'picker-cancel': true,
   'survey-send': true,
@@ -46,6 +47,8 @@ export function normalizeUninstallIntent(raw: unknown): UninstallIntent | null {
   if (!isRecord(raw)) return null;
   if (!isRecognizedUninstallIntentKind(raw.kind)) return null;
   switch (raw.kind) {
+    case 'progress-shown':
+      return { kind: 'progress-shown' };
     case 'picker-confirm':
       return {
         kind: 'picker-confirm',
@@ -59,10 +62,10 @@ export function normalizeUninstallIntent(raw: unknown): UninstallIntent | null {
       return { kind: 'survey-skip' };
     case 'notice-confirm':
       return { kind: 'notice-confirm' };
-    case 'notice-cancel':
-      return { kind: 'notice-cancel' };
     case 'notice-reveal-log':
       return { kind: 'notice-reveal-log' };
+    case 'notice-cancel':
+      return { kind: 'notice-cancel' };
     default: {
       const _exhaustive: never = raw.kind;
       return _exhaustive;

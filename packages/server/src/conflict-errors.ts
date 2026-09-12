@@ -62,7 +62,7 @@ export function respondDocInConflict(
   errorResponse(res, 409, 'urn:ok:error:doc-in-conflict', 'Document is in conflict.', {
     handler,
     detail:
-      'The document is in a merge-conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
+      'The document is frozen by a Git or stale external-write conflict. Call conflicts({ kind: "list" }) to identify the kind, then conflicts({ kind: "content" }) + resolve_conflict before retrying.',
     extensions: {
       file: err.file,
       resolutionOptions: RESOLUTION_OPTIONS,

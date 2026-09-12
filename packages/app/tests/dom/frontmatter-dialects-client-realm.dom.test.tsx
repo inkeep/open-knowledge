@@ -87,16 +87,16 @@ describe('frontmatter dialects in the client realm', () => {
     ).toBe('dependentRequired,pattern');
   });
 
-  test.each([
-    'http://json-schema.org/draft-06/schema#',
-    'http://json-schema.org/draft-07/schema#',
-  ])('%s still validates client-side', async ($schema) => {
-    expect(
-      await mountAndReadCodes('---\nweight: 5\n---\n', {
-        $schema,
-        type: 'object',
-        properties: { weight: { type: 'number', exclusiveMinimum: 5 } },
-      }),
-    ).toBe('exclusiveMinimum');
-  });
+  test.each(['http://json-schema.org/draft-06/schema#', 'http://json-schema.org/draft-07/schema#'])(
+    '%s still validates client-side',
+    async ($schema) => {
+      expect(
+        await mountAndReadCodes('---\nweight: 5\n---\n', {
+          $schema,
+          type: 'object',
+          properties: { weight: { type: 'number', exclusiveMinimum: 5 } },
+        }),
+      ).toBe('exclusiveMinimum');
+    },
+  );
 });

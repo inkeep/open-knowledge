@@ -1,5 +1,5 @@
-// biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-raw-html-interactive-element -- pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 import {
   type AgentPresenceEntry,
   computeInitials,
@@ -33,8 +33,6 @@ import {
   type Participant,
   usePresence,
 } from './use-presence';
-import { useSyncStatus } from './use-sync-status';
-import { useSyncToasts } from './use-sync-toasts';
 
 const M_CURRENT_PRIMARY = 4;
 const K_CROSSDOC_PRIMARY = 3;
@@ -337,8 +335,6 @@ export function PresenceBar() {
     docPanelAgentId,
   } = useDocumentContext();
   const { current, crossDoc } = usePresence(activeProvider, systemProvider, activeDocName);
-  const syncStatus = useSyncStatus(activeProvider);
-  useSyncToasts(syncStatus, activeDocName);
 
   if (current.length === 0 && crossDoc.length === 0) return null;
 

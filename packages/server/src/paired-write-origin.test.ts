@@ -1,18 +1,5 @@
 /**
- * Compile-time type assertions for `PairedWriteOrigin` (bridge-correctness
- * precedent #1 extension).
- *
- * Purpose: pin the four paired-write origins at the type level so the
- * regression class — "a paired-write origin written without `context.paired: true`
- * silently amplifies RGA-level content loss" — is impossible to reintroduce.
- * The authoring site's `as const satisfies PairedWriteOrigin` annotation forces
- * the literal to carry the marker; this file's `@ts-expect-error` tests prove
- * that omitting the marker or getting the paired flag wrong IS a compile
- * error, not just a runtime check the reviewer might miss.
- *
- * Runs as a regular unit file under `bunx tsc --noEmit` — Bun's test runner
- * executes the body as an empty test, and `turbo run typecheck` validates
- * the negative `@ts-expect-error` cases.
+ * Compile-time type assertions for `PairedWriteOrigin` (bridge-correctness precedent #1 extension).
  */
 
 import { describe, test } from 'vitest';

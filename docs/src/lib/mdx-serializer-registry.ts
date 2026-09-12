@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { visit } from 'unist-util-visit';
 import { AGENTS } from '@/components/agent-icons';
 import { mcpInstallMarkdown } from '@/components/mcp-install';
@@ -35,6 +37,12 @@ function codeCell(value: string): string {
 }
 
 const code = inlineCodeSpan;
+
+function snippet(node: MdxJsxNode, api: SerializerApi): string {
+  const file = requiredLiteral(node, api, 'file');
+  const resolved = path.resolve(process.cwd(), '_snippets', file);
+  return readFileSync(resolved, 'utf8').trim();
+}
 
 function titledBlockquote(lead: string | undefined, body: string): string {
   const lines = [...(lead ? [`**${escapeInlineProse(lead)}**`, ''] : []), ...body.split('\n')];
@@ -290,6 +298,7 @@ export const DOCS_SERIALIZER_REGISTRY: SerializerRegistry = {
     ].join('\n');
   },
   Mermaid: mermaid,
+  Snippet: snippet,
   Tab: tabPanel,
   TabPreview: tabPanel,
   Tabs: tabs('Tab'),

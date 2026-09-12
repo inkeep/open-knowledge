@@ -1,5 +1,5 @@
-// biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-raw-html-interactive-element -- pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 import {
   type HubEntry,
   HubsSuccessSchema,
@@ -424,23 +424,10 @@ export function GraphPanel({ activeDocName }: { activeDocName: string }) {
           isExpanded && isElectronHost && '[-webkit-app-region:drag]',
         )}
       >
-        {/* Fullscreen header anatomy (expanded only):
-            • `pl-[var(--ok-titlebar-reserve-left,1rem)]` reserves the macOS
-              traffic-light footprint on the chrome row (precedent #49). The
-              arbitrary `pl-` wins over PanelHeader's base `px-4` by Tailwind
-              emit order (measured: resolves to 78px under electron-mode); the
-              `,1rem` fallback keeps web layout at the base `px-4`. Because `pl-`
-              *replaces* the base `px-4` rather than stacking on it, 78px alone
-              leaves the title touching the buttons — the title cluster adds
-              `ml-4` below for the 16px of breathing room (94px total, measured).
-            • `mt-2 h-12 py-0` land the row on the editor chrome midline: the
-              overlay is pinned to the whole window, so it starts at the raw
-              window top, 8px above EditorHeader's SidebarInset-`m-2` band.
-              `mt-2` reproduces that inset, `h-12` matches the 48px band, `py-0`
-              drops the inherited `py-3` so content centers in the full band —
-              title at y=32, exactly where the traffic lights are tuned (measured).
-            • Electron: the header row is the window-drag region (so graph mode
-              stays draggable); the controls cluster opts back out below. */}
+        {/**
+         * The fullscreen chrome row reserves the macOS traffic-light footprint via
+         * `--ok-titlebar-reserve-left` (precedent #49).
+         */}
         <div
           data-slot="graph-title-cluster"
           className={cn('flex min-w-0 items-center gap-1.5', isExpanded && 'ml-4')}

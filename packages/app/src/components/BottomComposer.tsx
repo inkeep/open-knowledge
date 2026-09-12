@@ -1,9 +1,9 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { type TargetData, TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
-import { Trans, useLingui } from '@lingui/react/macro';
+import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronDown, TextQuote, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import {
   composeCommentBatchInstruction,
@@ -13,8 +13,11 @@ import {
   useSelectedCommentDocs,
 } from '@/comments/comment-chips';
 import { type BatchPreparedItem, dispatchComments, subscribeCommentPosted } from '@/comments/store';
+import { AttachFilesButton } from '@/components/acp/AttachFilesButton';
+import { PendingImageStrip } from '@/components/acp/PendingImageStrip';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
+import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
 import { AskAgentNameLabel, OpenDesktopAppLabel } from '@/components/handoff/agent-launcher-labels';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
@@ -29,11 +32,14 @@ import {
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
-import { getEditorForDoc } from '@/editor/active-editor';
 import {
+  type ComposerAttachmentDropPolicy,
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import { revealCaretAboveComposerCard } from '@/editor/caret-reveal';
+import { documentScrollports, isPinnedToEnd } from '@/editor/document-scrollports';
+import type { SuggestionPopupLabel } from '@/editor/extensions/suggestion-floating-ui';
 import { isScrollRestoreSuppressed } from '@/editor/scroll-restore-coordination';
 import {
   lightRenderMarkdownPreview,
@@ -42,11 +48,13 @@ import {
   selectionSnapshotToCompose,
 } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
+import { useComposerAttachments } from '@/editor/use-composer-attachments';
 import { useConflictComposerPrefill } from '@/hooks/use-conflict-composer-prefill';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useSelectionContext } from '@/hooks/use-selection-context';
 import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
+import { collectAllFiles, collectImageFiles } from '@/lib/acp/image-attachment';
 import {
   enabledDesktopTargets,
   enabledTerminalClis,
@@ -62,6 +70,7 @@ import {
 } from '@/lib/acp/registered-agents';
 import { VISIBLE_TARGETS } from '@/lib/handoff/targets';
 import { matchesKeyboardShortcut } from '@/lib/keyboard-shortcuts';
+import { isNoteWindow } from '@/lib/note-window-mode';
 import { recordOnboardingAskedAi } from '@/lib/onboarding-signals';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import {
@@ -120,6 +129,19 @@ function useRotatingSuggestion(
   return { text: phrases[safeIndex] ?? '', visible };
 }
 
+const COMPOSER_PORTAL_ATTRIBUTE = 'data-composer-portal';
+const COMPOSER_PORTAL_ATTRIBUTES = { [COMPOSER_PORTAL_ATTRIBUTE]: '' } as const;
+export const COMPOSER_SUGGESTION_POPUP_LABELS = [
+  'composer-mention',
+  'composer-slash',
+] as const satisfies readonly SuggestionPopupLabel[];
+const ASK_COMPOSER_HEIGHT_RESERVE_PX = 56;
+
+const COMPOSER_PORTAL_SELECTOR = [
+  ...COMPOSER_SUGGESTION_POPUP_LABELS.map((label) => `[data-suggestion-popup="${label}"]`),
+  `[${COMPOSER_PORTAL_ATTRIBUTE}]`,
+].join(',');
+
 export function BottomComposer({
   docName,
   surface,
@@ -150,75 +172,98 @@ export function BottomComposer({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isEmpty, setIsEmpty] = useState(true);
   const [pending, setPending] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<ComposerMentionInputHandle>(null);
   const { isSeedIntact, onContentChanged: onPrefillContentChanged } = useConflictComposerPrefill(
     activeDocOrNull,
     inputRef,
   );
   const cardRef = useRef<HTMLDivElement>(null);
+  const clampRef = useRef<(() => void) | null>(null);
 
   const [initialDraftDoc] = useState(() => getComposerDraft().doc ?? undefined);
+
+  const {
+    pendingAttachments,
+    pendingUploads,
+    ingestFiles,
+    removeAt: removePendingAttachment,
+    clear: clearPendingAttachments,
+  } = useComposerAttachments({
+    absPathOf:
+      typeof window !== 'undefined' && window.okDesktop
+        ? window.okDesktop.getPathForFile
+        : undefined,
+    workspaceContentDir: workspace?.contentDir,
+    pathSeparator: workspace?.pathSeparator,
+    onError: (message) => toast.error(message),
+  });
 
   useEffect(() => {
     if (folderMode || docName == null) return;
     const root = document.documentElement;
     const followBottom = () => {
+      clampRef.current?.();
       if (isScrollRestoreSuppressed(docName)) return;
-      const pinned = [...document.querySelectorAll<HTMLElement>('.editor-doc-scroll')].filter(
-        (el) => {
-          const max = el.scrollHeight - el.clientHeight;
-          return max > 0 && el.scrollTop >= max - 40;
-        },
-      );
+      const pinned = documentScrollports().filter(isPinnedToEnd);
       if (pinned.length === 0) return;
       let cancelled = false;
-      const cancel = () => {
+      let frame: number | null = null;
+      let backstop: ReturnType<typeof setTimeout> | null = null;
+      const cancelIfOutsideCard = (event: Event) => {
+        const target = event.target as Node | null;
+        if (target === null) return;
+        if (cardRef.current?.contains(target)) return;
+        if (target instanceof Element && target.closest(COMPOSER_PORTAL_SELECTOR) !== null) return;
         cancelled = true;
       };
-      window.addEventListener('wheel', cancel, { passive: true });
-      window.addEventListener('touchstart', cancel, { passive: true });
+      const dispose = () => {
+        cancelled = true;
+        if (frame !== null) cancelAnimationFrame(frame);
+        frame = null;
+        if (backstop !== null) clearTimeout(backstop);
+        backstop = null;
+        window.removeEventListener('wheel', cancelIfOutsideCard);
+        window.removeEventListener('touchstart', cancelIfOutsideCard);
+        window.removeEventListener('mousedown', cancelIfOutsideCard);
+        window.removeEventListener('keydown', cancelIfOutsideCard);
+        if (clampRef.current === dispose) clampRef.current = null;
+      };
+      clampRef.current = dispose;
+      window.addEventListener('wheel', cancelIfOutsideCard, { passive: true });
+      window.addEventListener('touchstart', cancelIfOutsideCard, { passive: true });
+      window.addEventListener('mousedown', cancelIfOutsideCard);
+      window.addEventListener('keydown', cancelIfOutsideCard);
+      backstop = setTimeout(dispose, 400);
       const start = performance.now();
       const step = () => {
+        frame = null;
         if (isScrollRestoreSuppressed(docName)) cancelled = true;
         if (cancelled || performance.now() - start >= 300) {
-          window.removeEventListener('wheel', cancel);
-          window.removeEventListener('touchstart', cancel);
+          dispose();
           return;
         }
         for (const el of pinned) el.scrollTop = el.scrollHeight - el.clientHeight;
-        requestAnimationFrame(step);
+        frame = requestAnimationFrame(step);
       };
-      requestAnimationFrame(step);
-    };
-    const revealCaret = () => {
-      if (surface !== 'wysiwyg') return;
-      requestAnimationFrame(() => {
-        if (isScrollRestoreSuppressed(docName)) return;
-        const editor = getEditorForDoc(docName);
-        const box = cardRef.current;
-        if (!editor || editor.isDestroyed || !box) return;
-        try {
-          const view = editor.view;
-          const caret = view.coordsAtPos(editor.state.selection.head);
-          const overlap = caret.bottom - (box.getBoundingClientRect().top - 28);
-          if (overlap <= 0) return;
-          const scroller = view.dom.closest('.editor-doc-scroll');
-          if (scroller instanceof HTMLElement) scroller.scrollTop += overlap;
-        } catch {}
-      });
+      frame = requestAnimationFrame(step);
     };
     const card = cardRef.current;
     if (dismissed || !card) {
       followBottom();
       root.style.removeProperty('--ask-composer-height');
-      return;
+      return () => {
+        clampRef.current?.();
+      };
     }
     const apply = () => {
       followBottom();
-      root.style.setProperty('--ask-composer-height', `${card.offsetHeight + 56}px`);
+      root.style.setProperty(
+        '--ask-composer-height',
+        `${card.offsetHeight + ASK_COMPOSER_HEIGHT_RESERVE_PX}px`,
+      );
     };
     apply();
-    revealCaret();
     const observer = new ResizeObserver(apply);
     observer.observe(card);
     return () => {
@@ -226,20 +271,45 @@ export function BottomComposer({
       followBottom();
       root.style.removeProperty('--ask-composer-height');
     };
-  }, [dismissed, surface, docName, folderMode]);
+  }, [dismissed, docName, folderMode]);
 
-  const dismissedRef = useRef(dismissed);
-  const onReopenRef = useRef(onReopen);
-  useEffect(() => {
-    dismissedRef.current = dismissed;
-    onReopenRef.current = onReopen;
+  const openAndFocus = useEffectEvent(() => {
+    if (dismissed) onReopen?.();
+    else inputRef.current?.focus();
   });
 
+  const readPaintedOver = useEffectEvent(() => ({
+    docName: activeDocOrNull,
+    effectiveSurface,
+  }));
+
   useEffect(() => {
-    const openAndFocus = () => {
-      if (dismissedRef.current) onReopenRef.current?.();
-      else inputRef.current?.focus();
-    };
+    if (dismissed) return;
+    const arrivedOver = readPaintedOver();
+    const arrivedOverDoc = arrivedOver.docName;
+    if (arrivedOverDoc == null) return;
+    const arrivedOverSurface = arrivedOver.effectiveSurface;
+    const frame = requestAnimationFrame(() => {
+      const paintedOver = readPaintedOver();
+      if (
+        paintedOver.docName !== arrivedOverDoc ||
+        paintedOver.effectiveSurface !== arrivedOverSurface
+      ) {
+        return;
+      }
+      if (isScrollRestoreSuppressed(arrivedOverDoc)) return;
+      const card = cardRef.current;
+      if (!card) return;
+      revealCaretAboveComposerCard({
+        docName: arrivedOverDoc,
+        surface: arrivedOverSurface,
+        card,
+      });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [dismissed]);
+
+  useEffect(() => {
     return subscribeToOpenAskAiComposer(openAndFocus);
   }, []);
 
@@ -334,8 +404,46 @@ export function BottomComposer({
 
   const canSend =
     !pending &&
-    (!isEmpty || pinnedSelection !== null || hasQueuedComments) &&
+    pendingUploads.length === 0 &&
+    (!isEmpty || pinnedSelection !== null || hasQueuedComments || pendingAttachments.length > 0) &&
     (isTerminalSelected || resolvedTarget !== null || isThreadSelected);
+
+  const inNoteWindow = isNoteWindow();
+  const dropRefusalReason = ((): string | null => {
+    if (inNoteWindow) {
+      return t`Attachments aren't available in note windows yet — use the main window to attach files.`;
+    }
+    switch (selection.kind) {
+      case 'thread':
+        return null;
+      case 'cli':
+        return t`${TERMINAL_CLIS[selection.cli].displayName} runs in a terminal and doesn't accept attachments — choose an in-app agent instead.`;
+      case 'desktop':
+        return resolvedTarget !== null
+          ? t`${resolvedTarget.displayName} opens via a link and doesn't accept attachments — choose an in-app agent instead.`
+          : t`This composer doesn't accept attachments.`;
+      case 'terminal':
+        return t`This composer doesn't accept attachments.`;
+      case 'none':
+        return t`No agents are set up yet — add an in-app agent in Agent connections to attach files.`;
+      default: {
+        const _exhaustive: never = selection;
+        throw new Error(`Unhandled launcher selection: ${String(_exhaustive)}`);
+      }
+    }
+  })();
+  const attachmentsAccepted = isThreadSelected && !inNoteWindow;
+  const attachmentDrop: ComposerAttachmentDropPolicy = attachmentsAccepted
+    ? {
+        kind: 'accept',
+        onFiles: (files) => {
+          void ingestFiles(files);
+        },
+      }
+    : {
+        kind: 'refuse',
+        ...(dropRefusalReason !== null ? { reason: dropRefusalReason } : {}),
+      };
 
   const desktopAgents = VISIBLE_TARGETS.filter((target) =>
     isDesktopTargetEnabled(overrides, target.id, states[target.id]?.installed),
@@ -397,6 +505,7 @@ export function BottomComposer({
     setTouchedFiles([]);
     setDismissedFiles(new Set());
     setCommentsAttached(true);
+    clearPendingAttachments();
     clearComposerDraft();
   };
 
@@ -409,6 +518,12 @@ export function BottomComposer({
     };
     if (input === null) {
       toast.error(t`Couldn't send your prompt — please try again.`);
+      return false;
+    }
+    if (pendingAttachments.length > 0 && !isThreadSelected) {
+      toast.error(
+        t`This agent doesn't accept attachments — remove them or choose an in-app agent.`,
+      );
       return false;
     }
     if (isThreadSelected) {
@@ -468,6 +583,7 @@ export function BottomComposer({
         workspace,
         instruction,
         mentions: dispatchMentions,
+        attachments: pendingAttachments,
       });
     }
 
@@ -492,6 +608,7 @@ export function BottomComposer({
       instruction,
       mentions: dispatchMentions,
       selection,
+      attachments: pendingAttachments,
     });
   };
 
@@ -530,6 +647,7 @@ export function BottomComposer({
               ...mentions,
             ]),
           ],
+          attachments: pendingAttachments,
         });
         if (input === null) {
           toast.error(t`Couldn't send your comments — please try again.`);
@@ -562,7 +680,66 @@ export function BottomComposer({
     <div
       ref={cardRef}
       onMouseDown={(event) => focusComposerInputOnCardPointer(event, inputRef)}
-      className="pointer-events-auto group relative flex cursor-text flex-col gap-1.5 rounded-2xl border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50"
+      onPaste={(event) => {
+        const files = collectImageFiles(event.clipboardData);
+        if (files.length === 0) return;
+        event.preventDefault();
+        if (!attachmentsAccepted) {
+          inputRef.current?.refuseDrop(
+            dropRefusalReason ?? t`This composer doesn't accept attachments.`,
+          );
+          return;
+        }
+        void ingestFiles(files);
+      }}
+      onDragEnter={(event) => {
+        if (isExternalFileDrag(event)) {
+          event.preventDefault();
+          setDragActive(true);
+        }
+      }}
+      onDragOver={(event) => {
+        if (isExternalFileDrag(event)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          setDragActive(true);
+        }
+      }}
+      onDragLeave={(event) => {
+        const next = event.relatedTarget;
+        if (next instanceof Node && event.currentTarget.contains(next)) return;
+        setDragActive(false);
+      }}
+      onDropCapture={() => setDragActive(false)}
+      onDrop={(event) => {
+        if (!isExternalFileDrag(event)) return;
+        event.preventDefault();
+        const files = collectAllFiles(event.dataTransfer);
+        if (files.length === 0) {
+          inputRef.current?.refuseDrop(
+            t`Folders and empty files can't be attached — drop the files themselves.`,
+          );
+          return;
+        }
+        if (!attachmentsAccepted) {
+          inputRef.current?.refuseDrop(
+            dropRefusalReason ?? t`This composer doesn't accept attachments.`,
+          );
+          return;
+        }
+        void ingestFiles(files);
+      }}
+      data-testid="ask-ai-composer-card"
+      data-drag-active={dragActive ? (attachmentsAccepted ? 'accept' : 'refuse') : undefined}
+      className={cn(
+        'pointer-events-auto group relative flex cursor-text flex-col gap-1.5 rounded-2xl border border-border/60 bg-card px-3 py-2 shadow-sm transition-colors focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50',
+        dragActive &&
+          attachmentsAccepted &&
+          'bg-primary/5 outline-2 outline-dashed outline-offset-2 outline-primary',
+        dragActive &&
+          !attachmentsAccepted &&
+          'bg-destructive/5 outline-2 outline-dashed outline-offset-2 outline-destructive/60',
+      )}
     >
       {}
       {!folderMode ? (
@@ -634,7 +811,7 @@ export function BottomComposer({
             </span>
             {selectionExpanded && pinnedPreview !== '' ? (
               <p
-                className="max-h-24 w-full basis-full overflow-y-auto whitespace-pre-wrap text-2xs text-muted-foreground/80 subtle-scrollbar"
+                className="max-h-24 w-full basis-full overflow-y-auto overscroll-contain whitespace-pre-wrap text-2xs text-muted-foreground/80 subtle-scrollbar"
                 data-testid="composer-selection-preview"
               >
                 {pinnedPreview}
@@ -653,11 +830,50 @@ export function BottomComposer({
           />
         )}
       </ComposerContextChips>
+      {pendingAttachments.length > 0 || pendingUploads.length > 0 ? (
+        <PendingImageStrip
+          testIdPrefix="ask-ai"
+          images={pendingAttachments}
+          uploads={pendingUploads}
+          onRemove={removePendingAttachment}
+        />
+      ) : null}
+      {pendingAttachments.length > 0 && dropRefusalReason !== null ? (
+        <p aria-hidden="true" className="px-1 pb-1 text-muted-foreground text-xs">
+          {dropRefusalReason}
+        </p>
+      ) : null}
+      <div
+        role="status"
+        aria-live="polite"
+        className="sr-only"
+        data-testid="composer-attachment-status"
+      >
+        {pendingAttachments.length > 0 && dropRefusalReason !== null ? (
+          dropRefusalReason
+        ) : pendingUploads.length > 0 ? (
+          <Plural
+            value={pendingUploads.length}
+            one="Uploading # attachment"
+            other="Uploading # attachments"
+          />
+        ) : pendingAttachments.length > 0 ? (
+          <Plural
+            value={pendingAttachments.length}
+            one="# attachment is ready to send"
+            other="# attachments are ready to send"
+          />
+        ) : null}
+      </div>
       <div className="flex items-end gap-2">
+        {attachmentsAccepted ? (
+          <AttachFilesButton testId="ask-ai-attach-files" onFiles={ingestFiles} />
+        ) : null}
         <div className="relative flex-1">
           <ComposerMentionInput
             ref={inputRef}
             ariaLabel={t`Ask AI`}
+            attachmentDrop={attachmentDrop}
             onEmptyChange={setIsEmpty}
             onContentChange={(doc) => {
               setComposerDraftDoc(doc);
@@ -666,7 +882,7 @@ export function BottomComposer({
             onMentionsChange={setInlineMentions}
             onSubmit={submit}
             initialDoc={initialDraftDoc}
-            className="max-h-[200px] overflow-y-auto text-base md:text-sm"
+            className="max-h-[200px] overflow-y-auto overscroll-contain text-base md:text-sm"
           />
           {}
           {isEmpty ? (
@@ -747,6 +963,7 @@ export function BottomComposer({
               )}
             </p>
           }
+          menuAttributes={COMPOSER_PORTAL_ATTRIBUTES}
           triggerAriaLabel={t`Choose agent`}
           testIds={{
             primary: 'ask-ai-send',

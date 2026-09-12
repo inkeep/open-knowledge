@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { OkUninstallBridge, UninstallDispatchResult } from '@inkeep/open-knowledge-core';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { requestUninstallScreen, sendUninstallIntent } from './bridge';
 
 function bridgeWith(ready: () => Promise<UninstallDispatchResult>): OkUninstallBridge {
@@ -15,28 +15,37 @@ describe('requestUninstallScreen', () => {
     window.okUninstall = undefined;
   });
 
-  test('returns null when the window has no bridge', async () => {
+  test('reports an absent bridge', async () => {
     window.okUninstall = undefined;
-    expect(await requestUninstallScreen()).toBeNull();
+    expect(await requestUninstallScreen()).toEqual({
+      kind: 'unavailable',
+      reason: 'missing-bridge',
+    });
   });
 
   test('returns the screen main answers the ready pull with', async () => {
     window.okUninstall = bridgeWith(() =>
       Promise.resolve({ kind: 'screen', screen: { kind: 'progress' } }),
     );
-    expect(await requestUninstallScreen()).toEqual({ kind: 'progress' });
+    expect(await requestUninstallScreen()).toEqual({
+      kind: 'screen',
+      screen: { kind: 'progress' },
+    });
   });
 
-  test('returns null when main refuses', async () => {
+  test('retains the refusal reason', async () => {
     window.okUninstall = bridgeWith(() =>
       Promise.resolve({ kind: 'refused', reason: 'unknown-window' }),
     );
-    expect(await requestUninstallScreen()).toBeNull();
+    expect(await requestUninstallScreen()).toEqual({ kind: 'refused', reason: 'unknown-window' });
   });
 
-  test('resolves to null instead of rejecting when the ready invoke rejects', async () => {
+  test('reports a rejected invoke', async () => {
     window.okUninstall = bridgeWith(() => Promise.reject(new Error('ipc channel closed')));
-    await expect(requestUninstallScreen()).resolves.toBeNull();
+    await expect(requestUninstallScreen()).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'request-failed',
+    });
   });
 });
 
@@ -63,4 +72,18 @@ describe('sendUninstallIntent', () => {
     expect(sent).toEqual({ kind: 'notice-confirm' });
     await Promise.resolve();
   });
+});
+
+test('bounds a ready request that never settles', async () => {
+  vi.useFakeTimers();
+  try {
+    window.okUninstall = bridgeWith(() => new Promise(() => {}));
+    const result = requestUninstallScreen();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await result).toEqual({ kind: 'unavailable', reason: 'timeout' });
+    expect(vi.getTimerCount()).toBe(0);
+  } finally {
+    window.okUninstall = undefined;
+    vi.useRealTimers();
+  }
 });

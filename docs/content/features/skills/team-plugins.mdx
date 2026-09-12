@@ -1,0 +1,30 @@
+---
+title: Distribute as a plugin
+description: When packaging your team's skills as a plugin is the better choice, and what you give up.
+---
+
+A Git repository is the simplest way to get skills to a team. Packaging them as a Claude Code plugin is the other option.
+
+## Choosing
+
+| Your goal | Reach for |
+| --- | --- |
+| A shared folder of instructions the team edits and pulls | [A Git repository](./for-teams.mdx) |
+| A published, versioned artifact for people outside the team | A plugin |
+| Both | The repository first; publish it as a plugin once it has settled |
+
+```bash
+/plugin marketplace add your-org/team-skills
+```
+
+## What a plugin costs
+
+**Plugin skills are read-only here, and getting one into a second tool forks it.**
+
+Every install destination offered for a plugin skill makes one real copy first, at the first location picked, and points the rest at that copy. That happens even when someone only wanted the skill in a second editor. The copy is shared across their tools normally, but it no longer follows the plugin's updates.
+
+The reason is ownership: the plugin folder belongs to the harness, which replaces its files whenever the plugin updates. A link into it would break on the next update, and OpenKnowledge could neither version nor edit what it points at.
+
+So anyone adapting a plugin skill, or spreading it across their tools, quietly leaves the channel you set up. With a repository they stay on it.
+
+Authoring is the same either way: you open the repository as an OpenKnowledge project. The plugin adds distribution, not a place to edit.

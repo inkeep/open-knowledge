@@ -1,11 +1,12 @@
+import { existsSync, rmSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { createServer, type ServerInstance } from './server-factory.ts';
+import { createServer, type ServerInstance, SHADOW_FANOUT_WARMUP_MS } from './server-factory.ts';
 import { type ShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
-import { initShadowRepo, type ShadowHandle } from './shadow-repo.ts';
+import { FANOUT_INDEX_NAME, initShadowRepo, type ShadowHandle } from './shadow-repo.ts';
 
 describe('createServer() — shadow mutator drain on destroy', () => {
   let projectDir: string;
@@ -77,6 +78,18 @@ describe('createServer() — shadow mutator drain on destroy', () => {
     await mutator;
     await destroyed;
     expect(gate.activeMutators).toBe(0);
+  });
+
+  test('destroy() cancels the pending fan-out warm-up so no shadow write lands after teardown', async () => {
+    const srv = await boot(10_000);
+    const fanoutIndex = join(shadow.gitDir, FANOUT_INDEX_NAME);
+
+    await srv.destroy();
+    rmSync(fanoutIndex, { force: true });
+    await delay(SHADOW_FANOUT_WARMUP_MS + 500);
+    await shadowOpGateFor(shadow).drain();
+
+    expect(existsSync(fanoutIndex)).toBe(false);
   });
 
   test('destroy() stays bounded when a shadow mutator never retires', async () => {

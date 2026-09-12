@@ -3,55 +3,7 @@ import { dirname, join, relative } from 'node:path';
 import { parseSkillDir } from '@inkeep/open-knowledge-core/skills-catalog';
 import { tracedMkdirSync, tracedRenameSync, tracedRmSync, tracedSymlinkSync } from './fs-traced.ts';
 
-export interface SkillFolderState {
-  host: string;
-  root: string;
-  state: 'own' | 'linked' | 'linked-parent' | 'absent';
-  target?: string;
-}
-
-export function scanSkillFolderStates(
-  base: string,
-  roots: ReadonlyArray<{ editor: string; root: string }>,
-): SkillFolderState[] {
-  let baseReal: string;
-  try {
-    baseReal = realpathSync(base);
-  } catch {
-    return roots.map(({ editor, root }) => ({ host: editor, root, state: 'absent' as const }));
-  }
-  const relTo = (abs: string): string | undefined =>
-    abs.startsWith(`${baseReal}/`) ? abs.slice(baseReal.length + 1) : undefined;
-  return roots.map(({ editor, root }) => {
-    const abs = join(base, root);
-    let st: ReturnType<typeof lstatSync>;
-    try {
-      st = lstatSync(abs);
-    } catch {
-      return { host: editor, root, state: 'absent' as const };
-    }
-    let real: string;
-    try {
-      real = realpathSync(abs);
-    } catch {
-      return { host: editor, root, state: 'absent' as const };
-    }
-    if (st.isSymbolicLink()) {
-      const target = relTo(real);
-      return { host: editor, root, state: 'linked' as const, ...(target ? { target } : {}) };
-    }
-    if (real !== join(baseReal, root)) {
-      const target = relTo(real);
-      return {
-        host: editor,
-        root,
-        state: 'linked-parent' as const,
-        ...(target ? { target } : {}),
-      };
-    }
-    return { host: editor, root, state: 'own' as const };
-  });
-}
+export { scanSkillFolderStates } from '@inkeep/open-knowledge-core/skill-folder-state';
 
 export type FolderLinkResult =
   | { ok: true; moved: string[]; dropped: string[]; linked: string[] }

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "capturedAt": "2026-04-16T08:28:01.616Z",
   "runnerClass": "local-m-series-calibration",
   "methodology": {
@@ -7,9 +7,13 @@
     "measuredIters": 10,
     "gcBetweenRuns": true
   },
-  "toolchain": {
+  "capturedUnder": {
     "runtime": "bun@1.3.11",
     "testRunner": "bun test"
+  },
+  "targetToolchain": {
+    "runtime": "node@24.19.0",
+    "testRunner": "vitest@4.1.10"
   },
   "calibrationRuns": 4,
   "threshold": {

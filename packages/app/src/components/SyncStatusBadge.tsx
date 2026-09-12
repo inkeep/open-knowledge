@@ -1,4 +1,4 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import {
   type GitStatusCode,
@@ -96,6 +96,12 @@ export function displayState(status: GitSyncStatus): GitSyncStatus['state'] {
   if (status.state === 'idle' && status.conflictCount > 0) {
     return 'conflict';
   }
+  if (
+    (status.state === 'idle' || status.state === 'offline') &&
+    status.pausedReason === 'git-operation-in-progress'
+  ) {
+    return 'disabled';
+  }
   return status.state;
 }
 
@@ -190,6 +196,8 @@ function stateLabel(status: GitSyncStatus): string {
 
 export function formatPausedReason(reason: string): string {
   switch (reason) {
+    case 'git-operation-in-progress':
+      return t`Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync.`;
     case 'external-changes-pending':
       return t`Local changes overlap with incoming sync`;
     case 'dirty-tree':

@@ -109,6 +109,18 @@ export const ROT_SIGNATURES = [
   },
 ];
 
+export const CITATION_LINE_CAP = 3;
+
+export const CITATION_CAP_FIX =
+  'Keep the sentence that carries the citation and drop the rest: a citation licenses the ' +
+  'reference, not the essay around it. The reasoning belongs in the commit message, the PR ' +
+  'body, or the precedent entry itself.';
+
+export function citationCapOverflow(bodyLines) {
+  const lines = bodyLines.filter((line) => line.trim() !== '').length;
+  return lines > CITATION_LINE_CAP ? { lines, cap: CITATION_LINE_CAP } : null;
+}
+
 export const CONTEXT_TERMS = new Map([
   [
     "milestone-tag",

@@ -143,44 +143,9 @@ function detach(entry: CacheEntry): void {
 }
 
 /**
- * Returns the cached promise for `docName`, creating one if absent.
- *
- * **Cache lifecycle:** entries persist across resolution and rejection — they
- * are removed only by `invalidateSyncPromise` (or by `ProviderPool.destroyEntry`
- * which calls invalidate). This is load-bearing for two distinct correctness
- * properties:
- *
- *   1. **Rejection survives React re-render.** When a syncPromise rejects, the
- *      DocumentBoundary's `use()` re-throws and the React error boundary
- *      schedules a re-render. During that re-render, DocumentBoundary calls
- *      `syncPromise(docName, provider)` again. If the cache had been cleared
- *      on rejection, syncPromise would create a NEW promise — and for a
- *      warm provider (`provider.synced=true`), the warm-path would resolve
- *      immediately, masking the prior rejection. The boundary would never
- *      catch and the user would see a broken editor instead of the error UI.
- *      Keeping the rejected promise in cache means React's `use()` sees the
- *      same `.status='rejected'` thenable and throws synchronously.
- *
- *   2. **Warm-path stability.** Repeat calls return the same resolved promise
- *      reference — once React has marked it `.status='fulfilled'`, subsequent
- *      `use()` calls short-circuit without a Suspense cycle.
- *
- * The promise resolves when the given provider next emits `synced`, rejects
- * with `PreSyncDisconnectError` if the provider emits `close` before `synced`,
- * and rejects with `SyncTimeoutError` after 30s. Call `invalidateSyncPromise`
- * to tear down (drops the entry; the orphaned promise neither resolves nor
- * rejects further).
- *
- * **Warm-provider fast path:** if the provider has already synced (e.g.
- * pool-resident from a prior mount), `provider.synced` is true and the
- * `'synced'` event has already fired and will not fire again — Hocuspocus's
- * `set synced(value)` is a no-op when the value is unchanged. Returning a
- * pre-resolved promise here is what makes the "cold mount, warm content" path
- * (precedent #18(c)) work — without this gate, every
- * Activity-evicted-but-pool-resident revisit would hang for 30s waiting on a
- * listener that can never fire. The first call still pays one Suspense cycle
- * (Promise.resolve has no React `.status` field on first read); subsequent calls
- * return the same cached reference and short-circuit.
+ * Returning a pre-resolved promise here is what makes the "cold mount, warm content" path
+ * (precedent #18(c)) work — without this gate, every Activity-evicted-but-pool-resident revisit
+ * would hang for 30s waiting on a listener that can never fire.
  */
 export function syncPromise(docName: string, provider: HocuspocusProvider): Promise<void> {
   const existing = cache.get(docName);

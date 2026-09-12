@@ -20,3 +20,29 @@ export function removeAllDuringTeardown(...targets: string[]): void {
   }
   if (firstUntolerated !== undefined) throw firstUntolerated;
 }
+
+export function removeAllStrictDuringTeardown(...targets: string[]): void {
+  let firstFailure: unknown;
+  for (const target of targets) {
+    try {
+      rmSync(target, { recursive: true, force: true, maxRetries: REMOVAL_RETRIES });
+    } catch (err) {
+      firstFailure ??= err;
+    }
+  }
+  if (firstFailure !== undefined) throw firstFailure;
+}
+
+export async function runTeardownPhases(
+  ...phases: Array<() => void | Promise<void>>
+): Promise<void> {
+  let firstFailure: unknown;
+  for (const phase of phases) {
+    try {
+      await phase();
+    } catch (err) {
+      firstFailure ??= err;
+    }
+  }
+  if (firstFailure !== undefined) throw firstFailure;
+}

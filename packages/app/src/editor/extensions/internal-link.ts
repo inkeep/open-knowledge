@@ -1,39 +1,4 @@
-/**
- * App-layer LinkFidelity extension — plain-DOM chip routed via the shared
- * InteractionLayer.
- *
- * `renderHTML` emits a plain `<span data-link role="link" tabindex="0">`
- * with an `aria-label`. The mark-identity / mark-interaction-bridge /
- * decoration plugin stack attaches `data-mark-id` and `data-resolution-state`
- * decoration attrs at PM render time. The InteractionLayer's event delegation
- * routes pointer AND keyboard activation to the shared PropPanel at editor
- * root. (Previously: per-instance `ReactMarkViewRenderer(InternalLinkView)`
- * mounted one React subtree per `<a>` mark — hundreds of portals per large
- * doc with seconds of React reconciliation cost.)
- *
- * **Click / hover / keyboard semantics**:
- *   - Bare click + Enter on a focused chip navigates via `handlePrimary` —
- *     external opens in a new tab; doc/anchor uses same-tab hash routing.
- *     Unresolved page links (target missing OR folder without index) return
- *     false so the popover surfaces "Create page" / "Create index" actions.
- *   - Cmd/Ctrl+click + middle-click route through `handlePrimary` with
- *     `newTab: true` to open in a new tab.
- *   - Mouse hover (with 300 ms open delay, 150 ms close delay) opens the
- *     singleton `InternalLinkPropPanel`; keyboard focus opens it
- *     immediately. Touch long-press (500 ms) is the touch equivalent.
- *   - Escape dismisses the active PropPanel (handled at the layer).
- *   - The `<a href>` child the React MarkView wrapped its text in
- *     is deliberately omitted — clicking an anchor navigates synchronously
- *     and races the InteractionLayer's click handler.
- *
- * **docName threading:** consumers call `InternalLink.configure({docName})`
- * to bind the active doc name (used by the link-resolution decoration
- * plugin to compute `data-resolution-state` against the page-list cache).
- * `TiptapEditor.tsx` invokes `.configure` with `provider.configuration.name`.
- *
- * Schema unchanged (precedent #9 add-only). All identity + resolution state
- * lives in PluginState / decoration attrs.
- */
+/** Schema unchanged (precedent #9 add-only). */
 import {
   assertNeverLinkTarget,
   classifyMarkdownHref,

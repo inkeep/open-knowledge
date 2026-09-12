@@ -4,7 +4,10 @@ import type { DevToolsTrackEntry, PerfMarkDetail } from './types';
 
 const NAME_RE = /^ok\/[a-z][a-z0-9-]*\/[a-z][a-z0-9-]*$/;
 
-export const BUNDLED_TRACKS: ReadonlySet<string> = new Set(['ok/scroll-restore']);
+export const BUNDLED_TRACKS: ReadonlySet<string> = new Set([
+  'ok/caret-reveal',
+  'ok/scroll-restore',
+]);
 
 export function validatePerfMarkName(name: string): boolean {
   return NAME_RE.test(name);

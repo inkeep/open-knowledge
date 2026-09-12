@@ -60,6 +60,11 @@ async function expectDisclosureContrast(page: Page, theme: 'light' | 'dark'): Pr
   }, theme);
 
   try {
+    await page.evaluate(async () => {
+      await Promise.all(
+        document.documentElement.getAnimations().map((animation) => animation.finished),
+      );
+    });
     const results = await new AxeBuilder({ page })
       .include('[data-testid="settings-okf-generate-index-confirm"]')
       .withRules(['color-contrast'])

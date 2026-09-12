@@ -1,5 +1,6 @@
 import type { AnsiSlotName } from '@inkeep/open-knowledge-core';
 import type { ITheme } from '@xterm/xterm';
+import { cssColorToHex } from '@/lib/css-color-to-hex';
 
 export const XTERM_DARK_THEME = {
   background: '#171717',
@@ -58,7 +59,7 @@ export type TokenColorReader = (token: string) => string | null;
 function normalizeProbedColor(resolved: string | undefined): string | null {
   if (!resolved || resolved === 'rgba(0, 0, 0, 0)' || resolved === 'transparent') return null;
   if (resolved.includes('var(')) return null;
-  return resolved;
+  return cssColorToHex(resolved, { alpha: true });
 }
 
 function readTokenColors(tokens: readonly string[]): Map<string, string | null> {
@@ -113,6 +114,23 @@ const LIVE_THEME_TOKENS: readonly string[] = [
 function createBatchedTokenReader(): TokenColorReader {
   const batch = readTokenColors(LIVE_THEME_TOKENS);
   return (token) => batch.get(token) ?? null;
+}
+
+let cachedEpoch = -1;
+let cachedTokenReader: TokenColorReader | null = null;
+
+export function liveTokenReaderForEpoch(epoch: number): TokenColorReader {
+  if (cachedEpoch !== epoch || cachedTokenReader === null) {
+    cachedEpoch = epoch;
+    cachedTokenReader = createBatchedTokenReader();
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        cachedEpoch = -1;
+        cachedTokenReader = null;
+      });
+    }
+  }
+  return cachedTokenReader;
 }
 
 export function computeLiveXtermTheme(

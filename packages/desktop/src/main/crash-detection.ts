@@ -11,6 +11,13 @@ import { dirname, join } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import { asReportableAppVersion } from './crashed-app-version.ts';
 import {
+  classifyPreviousLiveness,
+  isFileMissingError,
+  livenessLogFields,
+  type MainThreadWatchdog,
+  type MainThreadWatchdogHandle,
+} from './main-thread-watchdog.ts';
+import {
   classifyMinidumpCrashKind,
   classifyMinidumpOwnership,
   type MinidumpCrashKind,
@@ -26,17 +33,23 @@ const GPU_PROCESS_TYPE = 'GPU';
 
 const GPU_DUMP_PROCESS_TYPE = 'gpu-process';
 
-const GPU_CRASH_INVITE_THRESHOLD = 3;
+export const GPU_CRASH_INVITE_THRESHOLD = 3;
 
-const GPU_CRASH_WINDOW_MS = 5 * 60_000;
+export const GPU_CRASH_WINDOW_MS = 5 * 60_000;
 
 const INVITE_SUPERSEDE_AFTER_MS = 5 * 60_000;
+
+export const HANDOFF_TEARDOWN_WINDOW_MS = 30_000;
+
+export const INVITE_EXPIRE_AFTER_MS = 24 * 60 * 60_000;
+
+export const STALE_CRASH_AFTER_MS = 7 * 24 * 60 * 60_000;
 
 const MAX_ACKED_EVENT_IDS = 50;
 
 const DECLINED_DEATH_DUMP_MATCH_MS = 30_000;
 
-const MAX_DECLINED_DEATHS = 20;
+export const MAX_DECLINED_DEATHS = 600;
 
 const MINIDUMP_SCAN_DEPTH = 3;
 
@@ -66,6 +79,7 @@ interface ClassifiedDump {
   ownership: MinidumpOwnership;
   crashKind: MinidumpCrashKind | null;
   declined: DeclinedDeathMatch;
+  handoffShadowed: boolean;
 }
 
 interface CrashAckStore {
@@ -96,6 +110,7 @@ export interface CrashDetectionDeps {
   now(): Date;
   currentBootSessionUuid(): string | null;
   installInFlight?(span: { deathFromMs: number; deathToMs: number }): InstallInFlight | null;
+  mainThreadWatchdog: Pick<MainThreadWatchdog, 'readPrevious' | 'start'>;
   logger: CrashLogger;
 }
 
@@ -134,12 +149,6 @@ export function startLocalCrashReporter(reporter: {
   start(options: { uploadToServer: boolean }): void;
 }): void {
   reporter.start({ uploadToServer: false });
-}
-
-function isFileMissingError(err: unknown): boolean {
-  return (
-    typeof err === 'object' && err !== null && (err as NodeJS.ErrnoException).code === 'ENOENT'
-  );
 }
 
 function epochMsOrNull(iso: string | null): number | null {
@@ -217,6 +226,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
 
   let sentinel: SentinelState | null = null;
   let cleanQuitMarked = false;
+  let watchdog: MainThreadWatchdogHandle | null = null;
 
   type SentinelWriteContext = 'arm' | 'alive' | 'os-shutdown' | 'suspend' | 'resume';
 
@@ -316,6 +326,20 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
 
   function tryDeliver(): void {
     if (active === null || active.delivered) return;
+    const pendingAgeMs = deps.now().getTime() - active.armedAtMs;
+    if (pendingAgeMs >= INVITE_EXPIRE_AFTER_MS) {
+      deps.logger.info(
+        {
+          event: 'crash-detection.invitation-expired',
+          eventId: active.event.eventId,
+          pendingAgeMs,
+          expireAfterMs: INVITE_EXPIRE_AFTER_MS,
+        },
+        'crash invitation went unanswered past its staleness bound — dropping it undelivered',
+      );
+      active = null;
+      return;
+    }
     if (deps.emit(active.event)) {
       active.delivered = true;
     }
@@ -464,6 +488,24 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         prevAppVersion = asReportableAppVersion(field('appVersion'));
       }
 
+      const detectedAtMs = detectedAt.getTime();
+      const lastAliveMs = epochMsOrNull(prevLastAliveAt);
+      const deathFromMs = lastAliveMs ?? detectedAtMs;
+      const deathFromSource = lastAliveMs !== null ? 'last-alive' : 'detected-at';
+      const installInFlight =
+        deps.installInFlight?.({ deathFromMs, deathToMs: detectedAtMs }) ?? null;
+      const shadowingHandoffAt = installInFlight?.recordedHandoff
+        ? installInFlight.handoffAt
+        : null;
+
+      const livenessFields = livenessLogFields(
+        classifyPreviousLiveness(
+          deps.mainThreadWatchdog.readPrevious(),
+          prevBootId,
+          epochMsOrNull(prevLastAliveAt),
+        ),
+      );
+
       const freshDumps: ClassifiedDump[] = freshMinidumpEntries().map((entry) => {
         const ownership = classifyDump(entry.path);
         return {
@@ -474,6 +516,11 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
             ownership === 'ours'
               ? declinedDeathForDump(entry)
               : { matched: null, read: 'not-asked' },
+          handoffShadowed:
+            ownership === 'ours' &&
+            shadowingHandoffAt !== null &&
+            entry.mtimeMs >= shadowingHandoffAt &&
+            entry.mtimeMs - shadowingHandoffAt <= HANDOFF_TEARDOWN_WINDOW_MS,
         };
       });
       const foreignDumpCount = freshDumps.filter((d) => d.ownership === 'foreign').length;
@@ -496,13 +543,17 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
       const unnamedNearDeclineCount = freshDumps.filter(
         (d) => d.declined.read === 'unnamed',
       ).length;
-      if (unnamedNearDeclineCount > 0) {
+      const annotationParseFailedCount = freshDumps.filter(
+        (d) => d.declined.read === 'parse-failed',
+      ).length;
+      if (unnamedNearDeclineCount > 0 || annotationParseFailedCount > 0) {
         deps.logger.info(
           {
-            event: 'crash-detection.dump-beside-decline-unnamed',
-            count: unnamedNearDeclineCount,
+            event: 'crash-detection.dump-beside-decline-unclassified',
+            unnamed: unnamedNearDeclineCount,
+            parseFailed: annotationParseFailedCount,
           },
-          'a minidump beside a declined death named no process type, so it still arms',
+          'a minidump beside a declined death could not be classified against it, so it still arms',
         );
       }
       if (foreignDumpCount > 0 || unreadableDumpCount > 0 || nonCrashDumpCount > 0) {
@@ -516,8 +567,26 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           'ignored minidumps that this app could not claim',
         );
       }
+      if (shadowingHandoffAt !== null) {
+        const shadowingHandoffAtIso = new Date(shadowingHandoffAt).toISOString();
+        for (const shadowed of freshDumps.filter((d) => d.handoffShadowed)) {
+          deps.logger.info(
+            {
+              event: 'crash-detection.dump-handoff-shadowed',
+              dumpMtimeAt: new Date(shadowed.entry.mtimeMs).toISOString(),
+              handoffAt: shadowingHandoffAtIso,
+              teardownWindowMs: HANDOFF_TEARDOWN_WINDOW_MS,
+              attemptedInstall: installInFlight?.attemptedVersion ?? null,
+            },
+            'ignored a minidump written after this app committed to quitting for an update install',
+          );
+        }
+      }
       const arming = (d: ClassifiedDump): boolean =>
-        d.ownership !== 'foreign' && d.crashKind !== 'non-crash' && d.declined.matched === null;
+        d.ownership !== 'foreign' &&
+        d.crashKind !== 'non-crash' &&
+        d.declined.matched === null &&
+        !d.handoffShadowed;
       const newDumps = freshDumps.filter(arming).map((d) => d.entry.mtimeMs);
       const ownedDumpCount = freshDumps.filter(
         (d) => d.ownership === 'ours' && d.crashKind !== 'non-crash',
@@ -531,23 +600,37 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         sentinelPresent &&
         (rebootedBetweenSessions || prevPendingOsShutdownAt !== null || prevSuspendedAt !== null);
 
-      const detectedAtMs = detectedAt.getTime();
-      const lastAliveMs = epochMsOrNull(prevLastAliveAt);
-      const deathFromMs = lastAliveMs ?? detectedAtMs;
-      const deathFromSource = lastAliveMs !== null ? 'last-alive' : 'detected-at';
-      const installInFlight =
-        deps.installInFlight?.({ deathFromMs, deathToMs: detectedAtMs }) ?? null;
       const updateInstallDeath = sentinelPresent && installInFlight !== null;
+      const suppressibleDeath = machineLevelDeath || updateInstallDeath;
+      const sentinelAgeMs = lastAliveMs === null ? null : detectedAtMs - lastAliveMs;
+      const sentinelOutdatedByDump =
+        sentinelPresent && sentinelAgeMs !== null && sentinelAgeMs >= STALE_CRASH_AFTER_MS;
+      const newestDumpMs = newDumps.length > 0 ? Math.max(...newDumps) : null;
+      const datableLastAliveMs =
+        lastAliveMs === null || lastAliveMs > detectedAtMs ? null : lastAliveMs;
+      const deathAtMs =
+        newestDumpMs === null || datableLastAliveMs === null
+          ? (newestDumpMs ?? datableLastAliveMs)
+          : Math.max(newestDumpMs, datableLastAliveMs);
+      const deathAtSource =
+        deathAtMs === null ? null : deathAtMs === newestDumpMs ? 'dump-mtime' : 'last-alive';
+      const deathAgeMs = deathAtMs === null ? null : detectedAtMs - deathAtMs;
+      const crashTooOld = deathAgeMs !== null && deathAgeMs >= STALE_CRASH_AFTER_MS;
+      const somethingToReport = sentinelPresent || newDumps.length > 0;
+
+      const machineSuppressed = suppressibleDeath && newDumps.length === 0;
 
       let armed: OkBugReportCrashDetectedEvent | null = null;
-      if ((machineLevelDeath || updateInstallDeath) && newDumps.length === 0) {
-        const reason = rebootedBetweenSessions
-          ? 'system-reboot'
-          : prevPendingOsShutdownAt !== null
-            ? 'os-shutdown'
-            : prevSuspendedAt !== null
-              ? 'suspended'
-              : 'update-install';
+      if (machineSuppressed || crashTooOld) {
+        const reason = !machineSuppressed
+          ? 'stale-crash'
+          : rebootedBetweenSessions
+            ? 'system-reboot'
+            : prevPendingOsShutdownAt !== null
+              ? 'os-shutdown'
+              : prevSuspendedAt !== null
+                ? 'suspended'
+                : 'update-install';
         const breadcrumb = {
           event: 'crash-detection.machine-level-death',
           reason,
@@ -563,9 +646,23 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           prevBootSessionUuid,
           currentBootSessionUuid: bootSessionUuid,
           lastAliveAt: prevLastAliveAt,
+          sentinelAgeMs,
+          deathAgeMs,
+          deathAt: deathAtMs === null ? null : new Date(deathAtMs).toISOString(),
+          deathAtSource,
+          staleAfterMs: STALE_CRASH_AFTER_MS,
+          class: machineSuppressed ? 'external' : 'stale',
+          machineCause: rebootedBetweenSessions
+            ? 'system-reboot'
+            : prevPendingOsShutdownAt !== null
+              ? 'os-shutdown'
+              : prevSuspendedAt !== null
+                ? 'suspended'
+                : null,
           suspendedAt: prevSuspendedAt,
           pendingOsShutdownAt: prevPendingOsShutdownAt,
           osShutdownReasons: prevOsShutdownReasons,
+          ...livenessFields,
         };
         if (reason === 'os-shutdown') {
           deps.logger.warn(
@@ -579,11 +676,15 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
               ? 'previous session was killed by a system reboot — suppressing the report prompt'
               : reason === 'suspended'
                 ? 'previous session died asleep without resuming — suppressing the report prompt'
-                : 'previous session was killed by an update install — suppressing the report prompt',
+                : reason === 'stale-crash'
+                  ? 'previous session died too long ago to report usefully — suppressing the report prompt'
+                  : 'previous session was killed by an update install — suppressing the report prompt',
           );
         }
-      } else if (sentinelPresent || newDumps.length > 0) {
-        const dumpDriven = !sentinelPresent || machineLevelDeath || updateInstallDeath;
+      } else if (somethingToReport) {
+        const dumpDriven =
+          (!sentinelPresent || suppressibleDeath || sentinelOutdatedByDump) &&
+          deathAtSource === 'dump-mtime';
         const eventId = dumpDriven
           ? `boot:dump:${Math.max(...newDumps)}`
           : `boot:${prevBootId ?? `unreadable:${detectedAt.getTime()}`}`;
@@ -594,12 +695,14 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           const dumpAccessibilityMode =
             eventDump === undefined ? null : readMinidumpAccessibilityMode(eventDump.entry.path);
           const crashedAppVersion = dumpDriven ? (dumpVersion?.version ?? null) : prevAppVersion;
+          const crashedAtMs = dumpDriven ? (eventDump?.entry.mtimeMs ?? null) : datableLastAliveMs;
           const event: OkBugReportCrashDetectedEvent = {
             eventId,
             kind: 'boot',
             context: { dirtyShutdown: !dumpDriven, newMinidumps: newDumps.length },
             minidumpAvailable: ownedDumpCount > 0,
             ...(crashedAppVersion !== null ? { crashedAppVersion } : {}),
+            ...(crashedAtMs !== null ? { crashedAt: new Date(crashedAtMs).toISOString() } : {}),
           };
           if (armInvite(event)) {
             armed = event;
@@ -623,6 +726,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
                     }
                   : {}),
                 detectingAppVersion: deps.appVersion,
+                ...livenessFields,
               },
               'previous session ended uncleanly — arming report invitation',
             );
@@ -643,12 +747,16 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
         ...(bootSessionUuid !== null ? { bootSessionUuid } : {}),
       };
       writeSentinel('arm');
+      watchdog?.stop();
+      watchdog = deps.mainThreadWatchdog.start(sentinel.bootId);
 
       return armed;
     },
 
     markCleanQuit(): void {
       cleanQuitMarked = true;
+      watchdog?.stop();
+      watchdog = null;
       try {
         rmSync(deps.sentinelPath, { force: true });
       } catch (err) {

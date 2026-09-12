@@ -1,10 +1,11 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { PtyProcessLike, PtySpawnOptions, SpawnPty } from '../../src/utility/pty-host.ts';
 import {
   buildCwdFileProofCommand,
   createPtyHostProbe,
   type PtyStream,
   waitForCondition,
+  waitForEvaluatedInput,
   waitForShellReady,
 } from '../support/pty-readiness.test-helper.ts';
 
@@ -29,6 +30,11 @@ function createFakeStream(): FakeStream {
 }
 
 const FAST_READY = { intervalMs: 5, quietSamples: 20, timeoutMs: 5_000 } as const;
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe('shell readiness gate', () => {
   test('does not report ready while the shell is still producing startup output', async () => {
@@ -93,6 +99,34 @@ describe('cwd file proof command', () => {
 });
 
 describe('condition waits', () => {
+  test('uses the monotonic clock to enforce its timeout deadline', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const wallNow = vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const stream = createFakeStream();
+    let outcome = 'pending';
+    const pending = waitForCondition(stream, () => false, 'evaluated command output', {
+      intervalMs: 5,
+      timeoutMs: 10,
+    }).then(
+      () => {
+        outcome = 'resolved';
+      },
+      (error: unknown) => {
+        outcome = error instanceof Error ? error.message : String(error);
+      },
+    );
+    try {
+      await vi.advanceTimersByTimeAsync(9);
+      expect(outcome).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(outcome).toMatch(/timeout waiting for: evaluated command output/u);
+    } finally {
+      wallNow.mockReturnValue(1_010);
+      await vi.advanceTimersByTimeAsync(5);
+      await pending;
+    }
+  });
+
   test('surfaces a spawn failure instead of expiring as a timeout', async () => {
     const stream = createFakeStream();
     const timer = setTimeout(() => stream.fail('spawn-error: posix_spawnp failed'), 20);
@@ -266,5 +300,137 @@ describe('driving a real host through a shell that starts slowly', () => {
     } finally {
       host.killActive();
     }
+  });
+});
+
+const INPUT_READY_MARKER = 'OK_INPUT_READY_deadbeef_42_READY';
+const INPUT_READY_PROBE = {
+  input: 'Write-Output "OK_INPUT_READY_deadbeef_$((6*7))_READY"\r',
+  marker: INPUT_READY_MARKER,
+} as const;
+const INPUT_READY_FAST = { timeoutMs: 200, intervalMs: 5 } as const;
+const SLOW_EVALUATION_MS = 120;
+const READINESS_CEILING_MS = 16_000;
+
+function driveEvaluatingShell(
+  stream: FakeStream,
+  options: { evaluatesAfterMs?: number; evaluates?: boolean } = {},
+): { sent: string[]; send: (data: string) => void; dispose: () => void } {
+  const sent: string[] = [];
+  const timers: ReturnType<typeof setTimeout>[] = [];
+  return {
+    sent,
+    dispose: () => {
+      for (const timer of timers) clearTimeout(timer);
+    },
+    send: (data) => {
+      sent.push(data);
+      if (options.evaluates === false) return;
+      const typed = data.replace(/\r$/u, '');
+      const output = evaluateFakePowerShellCommand(typed);
+      if (output === null) return;
+      timers.push(
+        setTimeout(() => stream.emit(`${typed}\r\n${output}\r\n`), options.evaluatesAfterMs ?? 0),
+      );
+    },
+  };
+}
+
+describe('evaluated-input readiness', () => {
+  test('returns the monotonic clock elapsed delta for a single evaluated probe', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    vi.spyOn(Date, 'now').mockReturnValue(1_000);
+    const stream = createFakeStream();
+    const shell = driveEvaluatingShell(stream, { evaluatesAfterMs: SLOW_EVALUATION_MS });
+    try {
+      const pending = waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', {
+        timeoutMs: 5_000,
+        intervalMs: 5,
+      });
+      await vi.advanceTimersByTimeAsync(SLOW_EVALUATION_MS);
+      expect(await pending).toBe(SLOW_EVALUATION_MS);
+      expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
+    } finally {
+      shell.dispose();
+    }
+  });
+
+  test('defaults to the 16 second ceiling the four four-second attempts used to spend', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stream = createFakeStream();
+    const shell = driveEvaluatingShell(stream, { evaluates: false });
+    let outcome: 'pending' | 'resolved' | 'rejected' = 'pending';
+    const pending = waitForEvaluatedInput(
+      stream,
+      shell.send,
+      INPUT_READY_PROBE,
+      'input ready',
+    ).then(
+      () => {
+        outcome = 'resolved';
+      },
+      () => {
+        outcome = 'rejected';
+      },
+    );
+    await vi.advanceTimersByTimeAsync(READINESS_CEILING_MS - 1_000);
+    expect(outcome).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1_100);
+    expect(outcome).toBe('rejected');
+    await pending;
+  });
+
+  test('a shell that only echoes the probe never reports ready', async () => {
+    const stream = createFakeStream();
+    await expect(
+      waitForEvaluatedInput(
+        stream,
+        (data) => stream.emit(data),
+        INPUT_READY_PROBE,
+        'input ready',
+        INPUT_READY_FAST,
+      ),
+    ).rejects.toThrow(/timeout waiting for: input ready/u);
+    expect(stream.read()).toContain('Write-Output');
+    expect(stream.read()).not.toContain(INPUT_READY_MARKER);
+  });
+
+  test('a shell that never evaluates times out having written the probe once', async () => {
+    const stream = createFakeStream();
+    const shell = driveEvaluatingShell(stream, { evaluates: false });
+    await expect(
+      waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', INPUT_READY_FAST),
+    ).rejects.toThrow(/timeout waiting for: input ready/u);
+    expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
+  });
+
+  test('rejects a probe whose own echo would satisfy it', async () => {
+    const stream = createFakeStream();
+    const shell = driveEvaluatingShell(stream);
+    await expect(
+      waitForEvaluatedInput(
+        stream,
+        shell.send,
+        { ...INPUT_READY_PROBE, input: `echo ${INPUT_READY_MARKER}` },
+        'input ready',
+        INPUT_READY_FAST,
+      ),
+    ).rejects.toThrow(/must not contain its marker/u);
+    expect(shell.sent).toEqual([]);
+  });
+
+  test('a dead shell short-circuits instead of waiting out the budget', async () => {
+    const stream = createFakeStream();
+    const shell = driveEvaluatingShell(stream, { evaluates: false });
+    stream.fail('exited (code 1, signal none)');
+    const startedAt = Date.now();
+    await expect(
+      waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', {
+        timeoutMs: 5_000,
+        intervalMs: 5,
+      }),
+    ).rejects.toThrow(/shell failed before input ready/u);
+    expect(Date.now() - startedAt).toBeLessThan(1_000);
+    expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
   });
 });

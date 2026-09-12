@@ -274,7 +274,12 @@ describe('search MCP tool — happy path', () => {
           signals: { lexical: 0, fullText: 0, recency: 0, vector: 0.82 },
         },
       ],
-      semantic: { capable: true, applied: true, coverage: { embedded: 12, total: 40 } },
+      semantic: {
+        capable: true,
+        applied: true,
+        outcome: 'applied',
+        coverage: { embedded: 12, total: 40 },
+      },
       elapsedMs: 5,
     });
     const { server, registered } = makeFakeServer();
@@ -290,6 +295,8 @@ describe('search MCP tool — happy path', () => {
       semantic?: {
         capable: boolean;
         applied: boolean;
+        outcome: string;
+        providerErrorReason: string | null;
         coverage: { embedded: number; total: number };
       };
     };
@@ -297,11 +304,307 @@ describe('search MCP tool — happy path', () => {
     expect(structured.semantic).toEqual({
       capable: true,
       applied: true,
+      outcome: 'applied',
+      providerErrorReason: null,
       coverage: { embedded: 12, total: 40 },
     });
     const text = result.content?.find((c) => c.type === 'text')?.text ?? '';
     expect(text).toContain('Semantic:');
     expect(text).toContain('12/40');
+  });
+
+  test('partial semantic coverage keeps the indexing guidance', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: true,
+        applied: false,
+        outcome: 'no_match',
+        coverage: { embedded: 3, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    const text = result.content?.find((c) => c.type === 'text')?.text ?? '';
+    expect(text).toContain('indexing 3/19 pages');
+  });
+
+  test('an invalid outcome preserves a parsed provider failure reason', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: true,
+        applied: false,
+        outcome: 'future-outcome',
+        providerErrorReason: 'query',
+        coverage: { embedded: 3, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    expect(result.structuredContent?.semantic).toMatchObject({
+      capable: true,
+      applied: false,
+      outcome: 'provider_error',
+      providerErrorReason: 'query',
+      coverage: { embedded: 3, total: 19 },
+    });
+  });
+
+  test('an invalid outcome with a corpus failure preserves the warming heuristic', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: true,
+        applied: false,
+        outcome: 'future-outcome',
+        providerErrorReason: 'corpus',
+        coverage: { embedded: 0, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    expect(result.structuredContent?.semantic).toMatchObject({
+      outcome: 'warming',
+      providerErrorReason: 'corpus',
+    });
+    const text = result.content?.find((item) => item.type === 'text')?.text ?? '';
+    expect(text).toContain('indexing 0/19 pages');
+    expect(text).not.toContain('provider unavailable');
+  });
+
+  test('an invalid outcome with an unknown provider reason fails closed', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: true,
+        applied: false,
+        outcome: 'future-outcome',
+        providerErrorReason: 'future-provider-reason',
+        coverage: { embedded: 3, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    expect(result.structuredContent?.semantic).toMatchObject({
+      outcome: 'provider_error',
+      providerErrorReason: null,
+    });
+  });
+
+  test('an invalid outcome preserves an applied vector signal over provider state', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: true,
+        applied: true,
+        outcome: 'future-outcome',
+        providerErrorReason: 'warm',
+        coverage: { embedded: 3, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    expect(result.structuredContent?.semantic).toMatchObject({
+      applied: true,
+      outcome: 'applied',
+      providerErrorReason: 'warm',
+    });
+    const text = result.content?.find((item) => item.type === 'text')?.text ?? '';
+    expect(text).not.toContain('provider unavailable');
+  });
+
+  test('an invalid outcome without a provider reason preserves the warming heuristic', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: true,
+        applied: false,
+        outcome: 'future-outcome',
+        coverage: { embedded: 0, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    const text = result.content?.find((item) => item.type === 'text')?.text ?? '';
+    expect(text).toContain('indexing 0/19 pages');
+  });
+
+  test('a configured dimension mismatch names the config-key remedy', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: false,
+        applied: false,
+        outcome: 'incapable',
+        providerErrorReason: 'configured_dimensions',
+        coverage: { embedded: 0, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    const text = result.content?.find((item) => item.type === 'text')?.text ?? '';
+    expect(text).toContain("remove search.semantic.dimensions to use the model's own size");
+  });
+
+  test('an incapable provider without a failure reason explains the lexical fallback', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: false,
+        applied: false,
+        outcome: 'incapable',
+        providerErrorReason: null,
+        coverage: { embedded: 0, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    const text = result.content?.find((item) => item.type === 'text')?.text ?? '';
+    expect(text).toContain('no usable embeddings provider');
+  });
+
+  test('terminal dimension drift tells the caller to restart', async () => {
+    mockFetchOk({
+      ok: true,
+      query: 'auth retries',
+      intent: 'full_text',
+      results: [],
+      semantic: {
+        capable: false,
+        applied: false,
+        outcome: 'restart_required',
+        providerErrorReason: 'dimensions',
+        coverage: { embedded: 0, total: 19 },
+      },
+      elapsedMs: 5,
+    });
+    const { server, registered } = makeFakeServer();
+    register(server, {
+      resolveCwd: async () => '/tmp/proj',
+      config: DEFAULT_CONFIG,
+      serverUrl: 'http://localhost:1234',
+    });
+
+    const result = await expectOneRegisteredTool(registered).handler({
+      query: 'auth retries',
+      cwd: '/tmp/proj',
+    });
+
+    const text = result.content?.find((c) => c.type === 'text')?.text ?? '';
+    expect(text).toContain('restart OpenKnowledge before retrying');
   });
 
   test("kind:'file' rows survive into structured results (PRD-7117 all-files MCP)", async () => {

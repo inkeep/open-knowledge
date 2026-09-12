@@ -96,23 +96,32 @@ describe('uploaded asset names, from the wire to the reader', () => {
   test.each([
     ['nnbsp', SENT, EXPECTED],
     ['cjk', CJK, CJK],
-  ])('the in-process transport decodes identically to the socket: %s', async (id, sent, expected) => {
-    const dir = seedDir(`localapi-${id}`);
+  ])(
+    'the in-process transport decodes identically to the socket: %s',
+    async (id, sent, expected) => {
+      const dir = seedDir(`localapi-${id}`);
 
-    const form = new FormData();
-    form.append('parentDocName', `docs/localapi-${id}/guide.md`);
-    form.append('file', new Blob([pngFixture()]), sent);
-    const encoded = new Request('http://localhost/api/upload', { method: 'POST', body: form });
-    const contentType = encoded.headers.get('content-type') ?? 'multipart/form-data';
-    const bytes = new Uint8Array(await encoded.arrayBuffer());
+      const form = new FormData();
+      form.append('parentDocName', `docs/localapi-${id}/guide.md`);
+      form.append('file', new Blob([pngFixture()]), sent);
+      const encoded = new Request('http://localhost/api/upload', { method: 'POST', body: form });
+      const contentType = encoded.headers.get('content-type') ?? 'multipart/form-data';
+      const bytes = new Uint8Array(await encoded.arrayBuffer());
 
-    const out = await server.instance.localApi('POST', '/api/upload', { body: bytes, contentType });
-    expect(out, 'localApi returned null - /api/upload left the dispatch allowlist').not.toBeNull();
-    expect(out?.status, out?.bodyText).toBe(200);
+      const out = await server.instance.localApi('POST', '/api/upload', {
+        body: bytes,
+        contentType,
+      });
+      expect(
+        out,
+        'localApi returned null - /api/upload left the dispatch allowlist',
+      ).not.toBeNull();
+      expect(out?.status, out?.bodyText).toBe(200);
 
-    const parsed = JSON.parse(out?.bodyText ?? '{}') as { src: string; deduped: boolean };
-    expect(parsed.deduped).toBe(false);
-    expect(hexOf(parsed.src), `sent ${hexOf(sent)} -> got "${parsed.src}"`).toBe(hexOf(expected));
-    expect(existsSync(join(dir, parsed.src))).toBe(true);
-  });
+      const parsed = JSON.parse(out?.bodyText ?? '{}') as { src: string; deduped: boolean };
+      expect(parsed.deduped).toBe(false);
+      expect(hexOf(parsed.src), `sent ${hexOf(sent)} -> got "${parsed.src}"`).toBe(hexOf(expected));
+      expect(existsSync(join(dir, parsed.src))).toBe(true);
+    },
+  );
 });

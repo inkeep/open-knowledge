@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge",
-  "version": "0.68.12",
+  "version": "0.71.10",
   "description": "Local-first, agent-friendly Markdown knowledge base with a cross-platform CLI and web editor",
   "keywords": [
     "knowledge-base",
@@ -31,7 +31,6 @@
   },
   "files": [
     "dist",
-    "scripts",
     "!dist/**/*.map"
   ],
   "engines": {
@@ -53,8 +52,9 @@
     "test": "pnpm run build:schema && vitest run",
     "test:e2e:cli": "vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
+    "check:dts": "node scripts/check-published-dts.mjs",
     "verify:package": "node scripts/verify-package-surface.mjs",
-    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build && pnpm run verify:package"
+    "prepublishOnly": "bash ../../scripts/check-notices-clean.sh && pnpm run build && pnpm run check:dts && pnpm run verify:package"
   },
   "dependencies": {
     "@inquirer/checkbox": "^5.0.11",
@@ -70,6 +70,7 @@
     "jsonc-parser": "^3.3.1",
     "picocolors": "^1.1.1",
     "pino": "^10.3.1",
+    "proper-lockfile": "^4.1.2",
     "simple-git": "^3.36.0",
     "smol-toml": "^1.6.1",
     "yaml": "^2.7.1",
@@ -86,10 +87,11 @@
     "@inkeep/open-knowledge-native-config": "workspace:*",
     "@inkeep/open-knowledge-server": "workspace:*",
     "@types/node": "^24.7.0",
+    "@types/proper-lockfile": "^4.1.4",
     "@types/yazl": "^3.3.1",
     "ajv": "^8.18.0",
     "ajv-formats": "^3.0.1",
-    "tsdown": "^0.21.7",
-    "typescript": "^5.9.3"
+    "tsdown": "^0.22.14",
+    "typescript": "~7.0.2"
   }
 }

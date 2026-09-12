@@ -1,28 +1,6 @@
 /**
- * Unit tests for the two sibling write-side primitives in
- * `bridge-intake.ts` — the shared substrate of the Y.Text-is-truth
- * contract (precedent #38). Each primitive owns one write semantics and
- * gets its own `describe` block here:
- *
- *   - `composeAndWriteRawBody` — file-watcher + agent-write semantics
- *     (line-aligned applyFastDiff). Item-preserving via character-level
- *     DMP.
- *   - `replaceRawBody` — rollback semantics (FULL OVERWRITE
- *     delete/insert). The non-incremental replacement is the
- *     load-bearing signal to Y.UndoManager that this is a rollback, not
- *     an edit; DMP-based diff would over-preserve Items the user
- *     explicitly rolled back.
- *
- * Properties exercised across both blocks:
- *   - Y.Text receives raw bytes verbatim (no canonicalization)
- *   - The write lands inside the caller's outer transact, under the
- *     caller's origin
- *   - Whitespace-meaningful bytes (leading/trailing newlines) survive
- *   - Source-form delimiters (`__foo__` not `**foo**`) survive
- *   - Neither primitive calls doc.transact() itself (caller-wrap is
- *     mandatory)
- *   - `replaceRawBody`'s full-overwrite distinguishing-feature holds
- *     under regression
+ * Unit tests for the two sibling write-side primitives in `bridge-intake.ts` — the shared
+ * substrate of the Y.Text-is-truth contract (precedent #38).
  */
 
 import { stripFrontmatter } from '@inkeep/open-knowledge-core';

@@ -1,4 +1,4 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FileText, Folder, FolderOpenIcon, GitBranch, PlusIcon, XIcon } from 'lucide-react';
@@ -24,6 +24,7 @@ import {
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { seedClient } from '@/lib/seed-client';
 import { createCloneController } from '@/lib/share/clone-controller';
+import { useThemeColorTransitions } from '@/lib/theme-color-transitions';
 import { ipcAuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import { ipcAuthTransport } from '@/lib/transports/auth-transport';
 import { ipcCloneTransport } from '@/lib/transports/clone-transport';
@@ -93,6 +94,7 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   const { theme: themeValue } = useTheme();
   const { t } = useLingui();
 
+  useThemeColorTransitions(true);
   useThemeBridge(bridge, themeValue ?? 'system');
 
   useApplyConfigLanguage({

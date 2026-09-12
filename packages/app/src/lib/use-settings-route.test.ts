@@ -26,6 +26,7 @@ describe('isSettingsHashOpen', () => {
   });
 
   test('section deep-links open (unknown sections fall back to the default)', () => {
+    expect(isSettingsHashOpen('#settings/agent-connections')).toBe(true);
     expect(isSettingsHashOpen('#settings/configure-agents')).toBe(true);
     expect(isSettingsHashOpen('#settings/project')).toBe(true);
     expect(isSettingsHashOpen('#settings/user')).toBe(true);

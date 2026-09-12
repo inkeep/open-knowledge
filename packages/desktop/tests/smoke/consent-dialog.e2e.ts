@@ -14,6 +14,7 @@ import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { reapDetachedServers } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import { seedMcpConsentComplete } from './_helpers/mcp-consent';
 import { clickNavOpen } from './_helpers/navigator-actions';
 import {
@@ -69,7 +70,8 @@ interface LaunchOpts {
 async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<ElectronApplication> {
   const userDataDir = join(tmpHome, 'Library', 'Application Support', DESKTOP_PRODUCT_NAME);
   seedMcpConsentComplete(tmpHome);
-  return electron.launch(
+  return launchDesktopApp(
+    electron,
     desktopLaunchOptions({
       target: TARGET,
       args: [`--user-data-dir=${userDataDir}`],
@@ -80,51 +82,27 @@ async function launchApp(tmpHome: string, opts: LaunchOpts = {}): Promise<Electr
         ...(opts.pickedPath !== undefined ? { OK_DESKTOP_TEST_PICKED_PATH: opts.pickedPath } : {}),
       },
     }),
+    { home: tmpHome },
   );
 }
 
 async function findWindowByMode(
   app: ElectronApplication,
   mode: 'navigator' | 'editor',
-  timeoutMs = 20_000,
 ): Promise<Page> {
-  await expect
-    .poll(
-      async () => {
-        for (const page of app.windows()) {
-          const m = await page
-            .evaluate(() => window.okDesktop?.config?.mode)
-            .catch(() => undefined);
-          if (m === mode) return true;
-        }
-        return false;
-      },
-      { timeout: timeoutMs, message: `${mode} window did not appear within timeout` },
-    )
-    .toBe(true);
-  for (const page of app.windows()) {
-    const m = await page.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-    if (m === mode) return page;
-  }
-  throw new Error(`${mode} window vanished between poll resolution and read`);
-}
-
-async function countWindowsByMode(
-  app: ElectronApplication,
-  mode: 'navigator' | 'editor',
-): Promise<number> {
-  let n = 0;
-  for (const page of app.windows()) {
-    const m = await page.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-    if (m === mode) n += 1;
-  }
-  return n;
+  return waitForWindowByMode(app, mode);
 }
 
 async function expandAdvancedSettings(page: Page): Promise<void> {
+  const contentDir = page.locator('[data-testid="consent-content-dir"]');
+  if (await contentDir.isVisible().catch(() => false)) {
+    return;
+  }
+
   const trigger = page.locator('[data-testid="consent-advanced-trigger"]');
   await expect(trigger).toBeVisible({ timeout: 15_000 });
-  await trigger.click();
+  await trigger.click({ force: true });
+  await expect(contentDir).toBeVisible({ timeout: 15_000 });
 }
 
 const cleanupTargets: string[] = [];
@@ -153,22 +131,20 @@ test.describe('Consent-dialog smoke', () => {
     trackForCleanup(tmpHome, projectDir);
 
     const app = await launchApp(tmpHome, { pickedPath: projectDir });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);
     await expandAdvancedSettings(navigator);
     const contentDir = navigator.locator('[data-testid="consent-content-dir"]');
-    await expect(contentDir).toBeVisible({ timeout: 15_000 });
+    await expect(navigator.locator('[data-testid="consent-start"]')).toBeEnabled({
+      timeout: 30_000,
+    });
 
     await contentDir.focus();
     await contentDir.press('Enter');
 
-    await expect
-      .poll(() => countWindowsByMode(app, 'editor'), {
-        timeout: 30_000,
-      })
-      .toBeGreaterThanOrEqual(1);
+    await findWindowByMode(app, 'editor');
     await expect
       .poll(() => existsSync(join(projectDir, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);
@@ -182,14 +158,13 @@ test.describe('Consent-dialog smoke', () => {
     trackForCleanup(tmpHome, projectDir);
 
     const app = await launchApp(tmpHome, { pickedPath: projectDir });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);
     await expandAdvancedSettings(navigator);
 
     const contentDirInput = navigator.locator('[data-testid="consent-content-dir"]');
-    await expect(contentDirInput).toBeVisible({ timeout: 15_000 });
 
     await contentDirInput.fill('docs');
     await expect(contentDirInput).toHaveValue('docs');
@@ -209,24 +184,19 @@ test.describe('Consent-dialog smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedPath: subFolder });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);
     await expandAdvancedSettings(navigator);
 
     const contentDir = navigator.locator('[data-testid="consent-content-dir"]');
-    await expect(contentDir).toBeVisible({ timeout: 15_000 });
     await expect(contentDir).toHaveValue('.');
 
     const startBtn = navigator.locator('[data-testid="consent-start"]');
     await startBtn.click();
 
-    await expect
-      .poll(() => countWindowsByMode(app, 'editor'), {
-        timeout: 30_000,
-      })
-      .toBeGreaterThanOrEqual(1);
+    await findWindowByMode(app, 'editor');
     await expect
       .poll(() => existsSync(join(repoRoot, '.ok', 'config.yml')), { timeout: 15_000 })
       .toBe(true);

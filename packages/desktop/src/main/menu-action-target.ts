@@ -27,6 +27,9 @@ const ORIGIN_BY_DISPATCH_KIND = {
   command: LAUNCHER_FREE_ORIGIN,
   'open-recent-project': LAUNCHER_FREE_ORIGIN,
   role: LAUNCHER_FREE_ORIGIN,
+  'spelling-languages-query': LAUNCHER_FREE_ORIGIN,
+  'spelling-languages-set': LAUNCHER_FREE_ORIGIN,
+  'spellcheck-enabled-set': LAUNCHER_FREE_ORIGIN,
 } satisfies Record<OkMenuDispatchRequest['kind'], OkMenuActionOrigin>;
 
 export const MENU_DISPATCH_KINDS = Object.keys(

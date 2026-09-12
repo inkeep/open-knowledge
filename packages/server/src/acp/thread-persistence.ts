@@ -186,6 +186,13 @@ export class ThreadPersistenceStore {
         this.log.warn({ path }, '[acp-persist] skipping unreadable thread meta');
         continue;
       }
+      if (typeof parsed.sessionId !== 'string' && parsed.sessionId !== null) {
+        this.log.warn(
+          { path, invalidSessionId: parsed.sessionId },
+          '[acp-persist] thread meta has no usable session id; keeping the transcript as unresumable',
+        );
+        parsed.sessionId = null;
+      }
       const meta = parsed as PersistedThreadMeta;
       const threadId = meta.info.threadId;
       if (seen.has(threadId)) continue;

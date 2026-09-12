@@ -1,21 +1,4 @@
-/**
- * RTL behavioral tests for AssetPreview's loading-state contract. Sibling to
- * Image.dom.test.tsx — both surfaces consume the same shared `LoadingImage`
- * primitive, so the testids (`image-loading-skeleton` / `image-slot`) are
- * shared by design; distinct testids would fragment the contract for one
- * underlying primitive.
- *
- * Pins the no-intrinsic-dimensions branch: AssetPreview passes neither
- * `width` nor `height`, so the slot reserves space via an `aspect-[16/9]`
- * className rather than inline `style.width` / `style.aspectRatio` — that's
- * why test 2 below pins className, where Image.dom.test.tsx test 2 pins style.
- * The reservation is released post-load (test 3) so the consumer's
- * `object-contain / max-h-full` styling can govern the image's natural shape;
- * keeping the 16:9 class forever would letterbox portrait assets in the
- * sidebar — a regression vs. the bare `<img object-contain>` it replaces.
- *
- * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
- */
+/** Runs under the jsdom substrate (precedent #43). */
 
 import * as actualLinguiMacro from '@lingui/react/macro';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';

@@ -6,30 +6,14 @@ import {
   readFileSync,
   rmSync,
   statSync,
-  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
+import { reconcileUserGlobalSkillBundles } from './skill-reclaim.ts';
 
 const EXE = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
-
-const OK_WIRED_MCP_JSON = JSON.stringify({
-  mcpServers: {
-    'open-knowledge': { command: '/bin/sh', args: ['-l', '-c', '# ok-mcp-v1\nexec ok mcp'] },
-  },
-});
-const UNWIRED_MCP_JSON = JSON.stringify({ mcpServers: { other: { command: 'node' } } });
-const OK_WIRED_MCP_JSON_WIN = JSON.stringify({
-  mcpServers: {
-    'open-knowledge': {
-      command: 'powershell',
-      args: ['-NoProfile', '-NonInteractive', '-Command', '# ok-mcp-win-v1\nexit 127'],
-    },
-  },
-});
 
 const cleanupPaths: string[] = [];
 
@@ -155,11 +139,11 @@ function makeDeps(opts: {
   };
 }
 
-describe('reclaimUserSkillsOnLaunch', () => {
+describe('reconcileUserGlobalSkillBundles', () => {
   test('skipped on AppImage launches (ephemeral mount path)', async () => {
     const home = makeHome();
     const deps = makeDeps({ bundle: setupBundle() });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'linux',
@@ -176,7 +160,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     mkdirSync(join(home, '.agents'), { recursive: true });
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.0.0' });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'linux',
@@ -193,7 +177,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     const home = makeHome();
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '0.5.0-beta.41' });
-    await reclaimUserSkillsOnLaunch({
+    await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -210,7 +194,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     mkdirSync(join(home, '.pi'), { recursive: true });
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '0.5.0-beta.41' });
-    await reclaimUserSkillsOnLaunch({
+    await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -231,7 +215,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     writeFileSync(join(skillDir, 'SKILL.md'), '# existing');
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '0.5.0-beta.41', bundleDecision: null });
-    await reclaimUserSkillsOnLaunch({
+    await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -257,7 +241,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
         { id: 'write-skill', name: 'open-knowledge-write-skill' },
       ],
     };
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -282,7 +266,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     writeFileSync(join(central, 'SKILL.md'), '---\nname: open-knowledge\n---\n# v-old\n');
     writeFileSync(join(central, 'orphan.md'), 'stale');
     const deps = makeDeps({ bundle, version: '0.5.0-beta.41' });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -303,7 +287,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     mkdirSync(join(home, '.claude'), { recursive: true });
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.2.3' });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -330,7 +314,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.2.3' });
     const events: Array<Record<string, unknown>> = [];
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -364,7 +348,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     writeFileSync(join(dest, 'SKILL.md'), '---\nname: open-knowledge\n---\n# v-old\n');
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.2.3' });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -389,7 +373,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     }
     const bundle = setupBundle();
     const deps = makeDeps({ bundle, version: '1.2.3' });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -409,7 +393,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
     const home = makeHome();
     mkdirSync(join(home, '.agents'), { recursive: true });
     const deps = makeDeps({ bundle: setupBundle(), version: '3.2.1' });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -448,7 +432,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
       ],
     };
     const failingBundleDir = 'open-knowledge-write-skill';
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -496,7 +480,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
       bundle: '/does-not-matter',
       resolveThrows: new Error('not found'),
     });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -511,7 +495,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
   test('version-read failure surfaces as skipped; no state-write', async () => {
     const home = makeHome();
     const deps = makeDeps({ bundle: setupBundle(), versionThrows: new Error('bad pkg') });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -531,7 +515,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
       version: '1.2.3',
       stateWriteThrows: new Error('ENOSPC: no space left on device'),
     });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -549,7 +533,7 @@ describe('reclaimUserSkillsOnLaunch', () => {
   });
 });
 
-describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
+describe('reconcileUserGlobalSkillBundles — per-bundle opt-in gate', () => {
   const DISCOVERY_DIR = ['.agents', 'skills', 'open-knowledge-discovery'] as const;
 
   function seedCentral(home: string): void {
@@ -561,7 +545,7 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
   test('FR1: fresh machine (no decision, nothing on disk) installs nothing', async () => {
     const home = makeHome();
     const deps = makeDeps({ bundle: setupBundle(), bundleDecision: null });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -578,7 +562,7 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
     const home = makeHome();
     seedCentral(home);
     const deps = makeDeps({ bundle: setupBundle(), bundleDecision: false });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -595,7 +579,7 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
     const home = makeHome();
     seedCentral(home);
     const deps = makeDeps({ bundle: setupBundle(), version: '1.0.0', bundleDecision: null });
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -631,7 +615,7 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
         { id: 'write-skill', name: 'open-knowledge-write-skill' },
       ],
     };
-    const r = await reclaimUserSkillsOnLaunch({
+    const r = await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -660,7 +644,7 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
       ],
     };
 
-    await reclaimUserSkillsOnLaunch({
+    await reconcileUserGlobalSkillBundles({
       home,
       isPackaged: true,
       platform: 'darwin',
@@ -672,396 +656,59 @@ describe('reclaimUserSkillsOnLaunch — per-bundle opt-in gate', () => {
   });
 });
 
-describe('reclaimProjectSkillsOnProjectOpen', () => {
-  test('skipped on AppImage launches (ephemeral mount path)', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: '/tmp/.mount_okXYZ/openknowledge',
+describe('seed: false', () => {
+  test('reconciles only: no bundle is written and no state is recorded', async () => {
+    const home = makeHome();
+    const bundle = setupBundle();
+    const deps = makeDeps({ bundle, version: '1.0.0' });
+    const r = await reconcileUserGlobalSkillBundles({
+      home,
       isPackaged: true,
       platform: 'linux',
-      env: { APPIMAGE: '/home/u/OK.AppImage' },
-      deps: { resolveBundledSkillDir: () => setupBundle() },
+      executablePath: '/opt/OpenKnowledge/openknowledge',
+      deps,
+      seed: false,
     });
     expect(r.status).toBe('skipped');
-    if (r.status === 'skipped') expect(r.reason).toBe('appimage-ephemeral');
+    if (r.status === 'skipped') expect(r.reason).toBe('reconcile-only');
+    expect(existsSync(join(home, '.claude', 'skills', 'open-knowledge-discovery'))).toBe(false);
+    expect(deps.stateWrites).toEqual([]);
   });
 
-  test('an explicit OFF in Settings is honoured — no resurrection on the next open', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    mkdirSync(join(projectDir, '.claude'), { recursive: true });
-    writeFileSync(
-      join(projectDir, '.mcp.json'),
-      JSON.stringify({ mcpServers: { 'open-knowledge': { args: ['# ok-mcp-v2'] } } }),
-    );
-
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
+  test('reconcile-only still removes the legacy open-knowledge user skill folder', async () => {
+    const home = makeHome();
+    const legacy = join(home, '.claude', 'skills', 'open-knowledge');
+    mkdirSync(legacy, { recursive: true });
+    writeFileSync(join(legacy, 'SKILL.md'), 'legacy');
+    const deps = makeDeps({ bundle: setupBundle(), version: '1.0.0' });
+    const r = await reconcileUserGlobalSkillBundles({
+      home,
       isPackaged: true,
       platform: 'darwin',
-      createIfWired: true,
-      deps: {
-        resolveBundledSkillDir: () => setupBundle(),
-        readProjectSkillDecision: async () => false,
-      },
-    });
-
-    expect(r.status).toBe('skipped');
-    if (r.status === 'skipped') expect(r.reason).toBe('declined-by-user');
-    expect(existsSync(join(projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
-      false,
-    );
-  });
-
-  test('creating the project skill counts one install, scoped to the project', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    mkdirSync(join(projectDir, '.claude'), { recursive: true });
-    writeFileSync(
-      join(projectDir, '.mcp.json'),
-      JSON.stringify({ mcpServers: { 'open-knowledge': { args: ['# ok-mcp-v2'] } } }),
-    );
-    const reports: Array<{ skills: string[]; scope?: string }> = [];
-
-    await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
       executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: {
-        resolveBundledSkillDir: () => setupBundle(),
-        reportInstalled: (skills, scope) => reports.push({ skills: [...skills], scope }),
-      },
-    });
-
-    expect(reports).toEqual([{ skills: ['open-knowledge'], scope: projectDir }]);
-  });
-
-  test('reopening a project that already has the skill counts nothing', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const dest = join(projectDir, '.claude', 'skills', 'open-knowledge');
-    mkdirSync(dest, { recursive: true });
-    writeFileSync(join(dest, 'SKILL.md'), 'already here');
-    writeFileSync(
-      join(projectDir, '.mcp.json'),
-      JSON.stringify({ mcpServers: { 'open-knowledge': { args: ['# ok-mcp-v2'] } } }),
-    );
-    const reports: Array<{ skills: string[]; scope?: string }> = [];
-
-    await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: {
-        resolveBundledSkillDir: () => setupBundle(),
-        reportInstalled: (skills, scope) => reports.push({ skills: [...skills], scope }),
-      },
-    });
-
-    expect(reports).toEqual([]);
-  });
-
-  test('no SKILL.md on disk → no-token, no creation', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.every((e) => e.status === 'no-token')).toBe(true);
-    }
-    expect(existsSync(join(projectDir, '.claude'))).toBe(false);
-    expect(existsSync(join(projectDir, '.cursor'))).toBe(false);
-    expect(existsSync(join(projectDir, '.agents'))).toBe(false);
-  });
-
-  test('codex project skill at .codex/skills/open-knowledge is left present, not overwritten', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const codexSkill = join(projectDir, '.codex', 'skills', 'open-knowledge');
-    mkdirSync(codexSkill, { recursive: true });
-    writeFileSync(join(codexSkill, 'SKILL.md'), '---\nname: open-knowledge\n---\n# v-old\n');
-    const bundle = setupBundle();
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      deps: { resolveBundledSkillDir: () => bundle },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      const codex = r.entries.find((e) => e.editorId === 'codex');
-      expect(codex?.status).toBe('present');
-    }
-    expect(readFileSync(join(codexSkill, 'SKILL.md'), 'utf8')).toContain('v-old');
-    expect(existsSync(join(projectDir, '.claude'))).toBe(false);
-  });
-
-  test('seed-if-absent: existing project SKILL.md keeps its content', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const claudeSkill = join(projectDir, '.claude', 'skills', 'open-knowledge');
-    mkdirSync(claudeSkill, { recursive: true });
-    writeFileSync(join(claudeSkill, 'SKILL.md'), '---\nname: open-knowledge\n---\n# v-old\n');
-    const bundle = setupBundle();
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      deps: { resolveBundledSkillDir: () => bundle },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      const claude = r.entries.find((e) => e.editorId === 'claude');
-      expect(claude?.status).toBe('present');
-    }
-    expect(readFileSync(join(claudeSkill, 'SKILL.md'), 'utf8')).toContain('v-old');
-    expect(existsSync(join(projectDir, '.cursor'))).toBe(false);
-  });
-
-  test('a host whose replaceDir throws is reported failed, not crashed', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-      fs: {
-        existsSync: (p: string) => !String(p).endsWith('SKILL.md'),
-        isDirectory: () => false,
-        readdirSync: () => [],
-        readFileSync: () => Buffer.from(OK_WIRED_MCP_JSON),
-        writeFileSync: () => {
-          throw new Error('EACCES: permission denied');
-        },
-        mkdirSync: () => {
-          throw new Error('EACCES: permission denied');
-        },
-        rmSync: () => {},
-      },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.length).toBeGreaterThan(0);
-      expect(r.entries.every((e) => e.status === 'failed')).toBe(true);
-    }
-  });
-
-  test('reclaim disable env short-circuits', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      reclaimDisableEnv: '1',
-      deps: { resolveBundledSkillDir: () => setupBundle() },
+      deps,
+      seed: false,
     });
     expect(r.status).toBe('skipped');
-    if (r.status === 'skipped') expect(r.reason).toBe('reclaim-disabled');
-  });
-});
-
-describe('reclaimProjectSkillsOnProjectOpen — createIfWired (managed heal path)', () => {
-  test('creates SKILL.md for a host wired for OK MCP but missing the skill', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    writeFileSync(join(projectDir, '.mcp.json'), OK_WIRED_MCP_JSON);
-    const bundle = setupBundle();
-    const events: Array<Record<string, unknown>> = [];
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => bundle },
-      logger: { event: (e) => events.push(e), warn: () => {} },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('created');
-      expect(r.entries.find((e) => e.editorId === 'cursor')?.status).toBe('no-token');
-      expect(r.entries.find((e) => e.editorId === 'codex')?.status).toBe('no-token');
-    }
-    const skillFile = join(projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md');
-    expect(existsSync(skillFile)).toBe(true);
-    expect(readFileSync(skillFile, 'utf8')).toContain('v-new');
-    expect(
-      events.some((e) => e.event === 'project-skill-reclaim-created' && e.editorId === 'claude'),
-    ).toBe(true);
+    expect(existsSync(legacy)).toBe(false);
   });
 
-  test('creates SKILL.md for a host wired with the Windows chain sentinel', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    writeFileSync(join(projectDir, '.mcp.json'), OK_WIRED_MCP_JSON_WIN);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
+  test('reconcile-only still removes a bundle the user declined', async () => {
+    const home = makeHome();
+    const dir = join(home, '.agents', 'skills', 'open-knowledge-discovery');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'SKILL.md'), 'preexisting');
+    const deps = makeDeps({ bundle: setupBundle(), bundleDecision: false });
+    const r = await reconcileUserGlobalSkillBundles({
+      home,
       isPackaged: true,
       platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('created');
-    }
-    expect(existsSync(join(projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
-      true,
-    );
-  });
-
-  test('creates SKILL.md for cursor host wired via .cursor/mcp.json', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    mkdirSync(join(projectDir, '.cursor'), { recursive: true });
-    writeFileSync(join(projectDir, '.cursor', 'mcp.json'), OK_WIRED_MCP_JSON);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
       executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => setupBundle() },
+      deps,
+      seed: false,
     });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.find((e) => e.editorId === 'cursor')?.status).toBe('created');
-      expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('no-token');
-    }
-    expect(existsSync(join(projectDir, '.cursor', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
-      true,
-    );
-  });
-
-  test('creates SKILL.md for codex host wired via .codex/config.toml (TOML, marker substring)', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    mkdirSync(join(projectDir, '.codex'), { recursive: true });
-    writeFileSync(
-      join(projectDir, '.codex', 'config.toml'),
-      '[mcp_servers.open-knowledge]\ncommand = "/bin/sh"\nargs = ["-l", "-c", "# ok-mcp-v1\\nexec ok mcp"]\n',
-    );
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.find((e) => e.editorId === 'codex')?.status).toBe('created');
-      expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('no-token');
-    }
-    expect(existsSync(join(projectDir, '.codex', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
-      true,
-    );
-  });
-
-  test('does NOT create when a host config exists but has no OK marker', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    writeFileSync(join(projectDir, '.mcp.json'), UNWIRED_MCP_JSON);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.every((e) => e.status === 'no-token')).toBe(true);
-    }
-    expect(existsSync(join(projectDir, '.claude', 'skills'))).toBe(false);
-  });
-
-  test('without createIfWired, a wired host stays no-token (default no-create preserved)', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    writeFileSync(join(projectDir, '.mcp.json'), OK_WIRED_MCP_JSON);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.every((e) => e.status === 'no-token')).toBe(true);
-    }
-    expect(existsSync(join(projectDir, '.claude'))).toBe(false);
-  });
-
-  test('existing SKILL.md is left present even when wired (never re-created)', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const claudeSkill = join(projectDir, '.claude', 'skills', 'open-knowledge');
-    mkdirSync(claudeSkill, { recursive: true });
-    writeFileSync(join(claudeSkill, 'SKILL.md'), '---\nname: open-knowledge\n---\n# v-old\n');
-    writeFileSync(join(projectDir, '.mcp.json'), OK_WIRED_MCP_JSON);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      expect(r.entries.find((e) => e.editorId === 'claude')?.status).toBe('present');
-    }
-    expect(readFileSync(join(claudeSkill, 'SKILL.md'), 'utf8')).toContain('v-old');
-  });
-
-  test('refuses to create through a host-dir symlink escaping the project', async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), 'ok-proj-'));
-    cleanupPaths.push(projectDir);
-    const escapeTarget = mkdtempSync(join(tmpdir(), 'ok-escape-'));
-    cleanupPaths.push(escapeTarget);
-    const witness = join(escapeTarget, 'witness.txt');
-    writeFileSync(witness, 'do-not-touch');
-    symlinkSync(escapeTarget, join(projectDir, '.claude'));
-    writeFileSync(join(projectDir, '.mcp.json'), OK_WIRED_MCP_JSON);
-    const r = await reclaimProjectSkillsOnProjectOpen({
-      projectDir,
-      executablePath: EXE,
-      isPackaged: true,
-      platform: 'darwin',
-      createIfWired: true,
-      deps: { resolveBundledSkillDir: () => setupBundle() },
-    });
-    expect(r.status).toBe('done');
-    if (r.status === 'done') {
-      const claude = r.entries.find((e) => e.editorId === 'claude');
-      expect(claude?.status).toBe('failed');
-      expect(claude?.error ?? '').toMatch(/outside the project directory|symbolic link/i);
-    }
-    expect(readFileSync(witness, 'utf8')).toBe('do-not-touch');
+    expect(r.status).toBe('skipped');
+    expect(deps.removals).toEqual(['discovery']);
+    expect(deps.stateWrites).toEqual([]);
   });
 });

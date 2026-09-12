@@ -1,5 +1,5 @@
-// biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-raw-html-interactive-element -- pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import {
   AGENT_ICON_COLORS,
@@ -70,6 +70,21 @@ async function pollHistoryOnce(
     });
     if (!res.ok) {
       handlers.setError(handlers.unavailableMessage);
+      let type = '';
+      let detail = `HTTP ${res.status}`;
+      try {
+        const problem = ProblemDetailsSchema.safeParse(await res.json());
+        if (problem.success) {
+          type = problem.data.type;
+          detail = problem.data.title;
+        }
+      } catch {}
+      console.error('[timeline] history request failed', {
+        docName,
+        status: res.status,
+        type,
+        detail,
+      });
       return 'error';
     }
     const data = (await res.json()) as { entries: TimelineEntry[] };

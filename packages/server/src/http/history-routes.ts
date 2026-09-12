@@ -3,6 +3,7 @@ import {
   EmptyRequestSchema,
   HistorySuccessSchema,
   HistoryVersionSuccessSchema,
+  isValidBranchName,
 } from '@inkeep/open-knowledge-core';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import {
@@ -24,13 +25,14 @@ export interface HistoryRouteDeps {
   log: PinoLogger;
   shadowRef: ShadowRef | undefined;
   flushGitCommit: (() => Promise<void>) | undefined;
-  commitOkArtifactWrite: (context: string) => Promise<void>;
+  commitOkArtifactWrite: (context: string) => Promise<unknown>;
   getCurrentBranch: (() => string | null) | undefined;
   validateFolderRel: (
     raw: string,
     res: ServerResponse,
-    label?: 'path' | 'folder',
-    handler?: string,
+    label: 'path' | 'folder',
+    handler: string,
+    components: 'ok' | 'ok-and-templates',
   ) => { folderRel: string; resolvedContentDir: string } | null;
   safeDocPath: (docName: string, contentRoot: string) => { path: string } | { error: string };
   docTreePathCandidates: (docName: string, contentRoot: string) => readonly string[];
@@ -98,7 +100,7 @@ export function createHistoryRoutes(deps: HistoryRouteDeps): HistoryRoutes {
         return;
       }
 
-      if (branch.includes('..') || !/^[a-zA-Z0-9][a-zA-Z0-9._/-]*$/.test(branch)) {
+      if (!isValidBranchName(branch)) {
         errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid branch name.', {
           handler: 'history',
         });
@@ -106,7 +108,7 @@ export function createHistoryRoutes(deps: HistoryRouteDeps): HistoryRoutes {
       }
 
       if (folderParam !== null && !docName) {
-        const validated = validateFolderRel(folderParam, res, 'folder', 'history');
+        const validated = validateFolderRel(folderParam, res, 'folder', 'history', 'ok');
         if (!validated) return;
         const rawFolderLimit = Number(url.searchParams.get('limit') ?? '50');
         const folderLimit = Math.min(200, Number.isFinite(rawFolderLimit) ? rawFolderLimit : 50);

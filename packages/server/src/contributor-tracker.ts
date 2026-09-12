@@ -139,14 +139,6 @@ export function __formatContributorsForTests(): string {
   return formatted;
 }
 
-/**
- * @deprecated Use swapContributors() + formatContributorsFrom() + restoreContributors()
- * for the race-free drain pattern. Kept for backward compatibility.
- */
-export function formatContributors(): string {
-  return formatContributorsFrom(pendingContributors);
-}
-
 export function restoreContributorEntry(writerId: string, entry: ContributorEntry): void {
   let live = pendingContributors.get(writerId);
   if (!live) {
@@ -168,14 +160,6 @@ export function restoreContributorEntry(writerId: string, entry: ContributorEntr
   if (entry.previousPaths.length > 0) {
     live.previousPaths = [...entry.previousPaths, ...live.previousPaths];
   }
-}
-
-/**
- * @deprecated Use swapContributors() for atomic drain. Kept for backward compatibility.
- * Clear the pending contributors map.
- */
-export function clearContributors(): void {
-  pendingContributors.clear();
 }
 
 export function contributorCount(): number {

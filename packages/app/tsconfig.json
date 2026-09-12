@@ -27,11 +27,22 @@
   // imports and `exclude` only filters the `*.test.ts`/`*.test.tsx` entry
   // points. That is the deliberate cost of typechecking the helper, not an
   // oversight. Naming further files here is a separate change.
+  //
+  // `tests/stress/_helpers/image.ts` is named for the same reason: its
+  // `instanceof HTMLImageElement` narrowing is what gives the polled element
+  // `.complete`/`.naturalWidth`, since Playwright types `evaluate`'s argument
+  // as `SVGElement | HTMLElement`. Nothing else typechecks the E2E helpers, so
+  // without this, deleting that narrowing compiles silently; with it, deleting
+  // it fails as TS2339 on both properties. That is the whole guarantee: a cast
+  // to `HTMLImageElement` still compiles (a downcast within the union is
+  // permitted), and the `.complete` conjunct is not pinned. It imports only
+  // `@playwright/test`, so its closure adds no other file to the program.
   "include": [
     "src",
     "*.ts",
     "tests/stress/fixtures",
-    "tests/half-open-forced-close.test-helper.ts"
+    "tests/half-open-forced-close.test-helper.ts",
+    "tests/stress/_helpers/image.ts"
   ],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

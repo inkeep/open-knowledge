@@ -4,7 +4,7 @@ import { defineScenario } from '../lib/scenario.ts';
 
 const DOC_A = process.env.OK_PERF_DOC_A ?? 'README';
 const DOC_B = process.env.OK_PERF_DOC_B ?? 'AGENTS';
-const EVICT_DOCS_DEFAULT = ['STORIES', 'PROJECT'];
+const EVICT_DOCS_DEFAULT = ['perf-fixtures/medium-doc', 'perf-fixtures/big-doc'];
 const EVICT_DOCS = (process.env.OK_PERF_EVICT_DOCS ?? EVICT_DOCS_DEFAULT.join(','))
   .split(',')
   .map((s) => s.trim())

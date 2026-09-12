@@ -1,23 +1,7 @@
 /**
- * Server-hosted ACP threads — one spawned agent subprocess per thread,
- * bridged to browser/Electron clients over the `/collab/thread` WS.
- *
- * Responsibilities:
- *   - Own the agent process lifecycle (spawn → initialize → session/new →
- *     prompt turns → kill on close/shutdown/idle-reap).
- *   - Implement the client side of ACP: session/update fan-out,
- *     permission requests (policy-gated via `AcpPermissionStore`), and the
- *     `fs/*` services — the attribution path that routes agent edits of
- *     in-scope markdown through the CRDT write spine instead of raw disk.
- *   - Retain a bounded per-thread event log so a reconnecting client can
- *     replay from its last-seen seq (the WS-replay analog of the
- *     "durable truth + live push" recovery contract).
- *
- * Write attribution: markdown writes reuse `AgentSessionManager` sessions
- * keyed by a per-thread `acp-<uuid>` agent id, so every edit lands under a
- * per-session frozen paired-write origin (precedent #24) and books to the
- * `agent-*` writer namespace (precedent #25) — write-flash, activity panel,
- * and per-session undo all work exactly as MCP agent writes do.
+ * Server-hosted ACP threads: one spawned agent subprocess per thread, bridged to clients over
+ * `/collab/thread`. Markdown writes reuse `AgentSessionManager` sessions keyed by `acp-<uuid>`, so
+ * each edit lands under a per-session frozen origin (precedent #24) in the `agent-*` namespace.
  */
 
 import type { ChildProcess } from 'node:child_process';
@@ -43,9 +27,11 @@ import {
 } from '@agentclientprotocol/sdk';
 import {
   AGENT_ICON_COLORS,
+  agentIdForAcpAgent,
   changedBlockRange,
   colorFromSeed,
   type EditorId,
+  type HostSnapshot,
   iconFromClientName,
   OK_HOSTED_AGENT_ENV,
 } from '@inkeep/open-knowledge-core';
@@ -67,6 +53,7 @@ import type {
 import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { toBroadcasterKey } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
+import { observeReadiness } from '../agent-registry-gate.ts';
 import {
   type AgentSessionManager,
   applyAgentMarkdownWrite,
@@ -254,13 +241,21 @@ export interface HarnessManagedMcpEntryHit {
   configPath: string;
 }
 
-export interface PiAcpBridgeProbe {
+export type PiAcpBridgeProbe = {
+  cwd: string;
   bridgePath: string;
-  bridge: 'absent' | 'own-current' | 'own-stale' | 'foreign' | 'unreadable';
-  trust: 'trusted' | 'untrusted' | 'unreadable';
-  bridgeLoadable: boolean;
-  otherExtensions: readonly string[];
-}
+  trustPath: string;
+} & (
+  | { project: 'unavailable'; error: string }
+  | {
+      project: 'ready';
+      canonicalCwd: string;
+      bridge: 'absent' | 'own-current' | 'own-stale' | 'foreign' | 'unreadable';
+      trust: 'trusted' | 'untrusted' | 'unreadable';
+      bridgeLoadable: boolean;
+      otherExtensions: readonly string[];
+    }
+);
 
 export interface PiAcpBridgeEnsureResult {
   ok: boolean;
@@ -295,7 +290,11 @@ export interface AcpThreadManagerOptions {
     cwd: string,
   ) => HarnessManagedMcpEntryHit | null | Promise<HarnessManagedMcpEntryHit | null>;
   probePiAcpBridge?: (cwd: string) => PiAcpBridgeProbe | Promise<PiAcpBridgeProbe>;
-  ensurePiAcpBridge?: (cwd: string) => PiAcpBridgeEnsureResult | Promise<PiAcpBridgeEnsureResult>;
+  hostSnapshot?: () => Promise<HostSnapshot>;
+  ensurePiAcpBridge?: (
+    cwd: string,
+    approvedCanonicalCwd: string,
+  ) => PiAcpBridgeEnsureResult | Promise<PiAcpBridgeEnsureResult>;
   runtimeInstall?: {
     root?: string;
     fetchImpl?: typeof fetch;
@@ -487,6 +486,16 @@ export class AcpThreadManager {
     }
 
     const { info: agentInfo, custom } = await this.resolveAgentInfo(params.agent);
+
+    // STOP: this await must stay ABOVE the capacity re-check below. The check
+    await observeReadiness({
+      site: 'acp-thread',
+      agentId: custom === null ? (agentIdForAcpAgent(agentInfo.id) ?? agentInfo.id) : agentInfo.id,
+      mode: 'acp',
+      log: this.opts.log,
+      snapshot: this.opts.hostSnapshot,
+    });
+
     if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
     if (this.liveThreadCount() >= this.maxThreads) {
       throw new ThreadOpError('capacity', `maximum of ${this.maxThreads} concurrent agent threads`);
@@ -507,6 +516,7 @@ export class AcpThreadManager {
         availableCommands: null,
         lastSeq: -1,
         archived: false,
+        resumable: false,
       },
       docName: params.docName,
       agentRef: { source: params.agent.source, id: params.agent.id },
@@ -1215,6 +1225,20 @@ export class AcpThreadManager {
       return 'unknown';
     }
     if (record.closed) return 'unknown';
+    if (state.project === 'unavailable') {
+      this.opts.log.warn(
+        { threadId, cwd: state.cwd, err: new Error(state.error) },
+        '[acp-threads] Pi project folder is unavailable; this thread has no OK tools',
+      );
+      this.emitPiBridgeStatus(record, {
+        kind: 'pi_bridge_status',
+        state: 'project-path-unavailable',
+        bridgePath: state.bridgePath,
+        detail: state.error,
+        ts: Date.now(),
+      });
+      return 'unavailable';
+    }
     if (state.bridgeLoadable) {
       this.opts.log.info(
         { threadId, bridge: state.bridge, bridgePath: state.bridgePath },
@@ -1265,7 +1289,7 @@ export class AcpThreadManager {
 
     let result: PiAcpBridgeEnsureResult;
     try {
-      result = await ensure(record.cwd);
+      result = await ensure(record.cwd, state.canonicalCwd);
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       this.opts.log.warn({ err, threadId }, '[acp-threads] Pi bridge provisioning threw');
@@ -1292,13 +1316,15 @@ export class AcpThreadManager {
     const bridgeLanded =
       result.bridge === 'written' || result.bridge === 'refreshed' || result.bridge === 'unchanged';
     const state2: PiBridgeThreadState =
-      result.bridge === 'refused-foreign'
-        ? 'foreign-file'
-        : result.bridge === 'refused-unreadable'
-          ? 'unreadable-file'
-          : bridgeLanded
-            ? 'trust-failed'
-            : 'bridge-failed';
+      result.bridge === 'refused-project-path'
+        ? 'project-path-unavailable'
+        : result.bridge === 'refused-foreign'
+          ? 'foreign-file'
+          : result.bridge === 'refused-unreadable'
+            ? 'unreadable-file'
+            : bridgeLanded
+              ? 'trust-failed'
+              : 'bridge-failed';
     this.opts.log.warn(
       {
         threadId,
@@ -1347,7 +1373,7 @@ export class AcpThreadManager {
   private requestPiBridgeConsent(
     record: ThreadRecord,
     requestId: string,
-    state: PiAcpBridgeProbe,
+    state: Extract<PiAcpBridgeProbe, { project: 'ready' }>,
     budgetMs: number,
   ): Promise<'granted' | 'declined' | 'timeout' | 'closed'> {
     this.appendEvent(record, {
@@ -1355,7 +1381,7 @@ export class AcpThreadManager {
       requestId,
       agentName: record.info.agent.name,
       bridgePath: state.bridgePath,
-      cwd: record.cwd,
+      cwd: state.canonicalCwd,
       otherExtensions: state.otherExtensions,
       ts: Date.now(),
     });
@@ -1463,6 +1489,7 @@ export class AcpThreadManager {
         mcpServers,
       });
       record.sessionId = session.sessionId;
+      record.info.resumable = resumableFromCapabilities(init);
       record.envNotePending = true;
       this.persistence.queueMetaWrite(record.info.threadId, this.buildMeta(record));
       if (session.modes !== undefined && session.modes !== null) {
@@ -1554,6 +1581,10 @@ export class AcpThreadManager {
       this.emitStatus(t, 'installing');
       try {
         if (sessionId === null) {
+          this.opts.log.warn(
+            { threadId, agentId: t.info.agent.id, cause: 'no-session' },
+            '[acp-threads] thread is not resumable',
+          );
           throw new ThreadOpError(
             'resume-unsupported',
             'this thread never completed an agent session',
@@ -1564,6 +1595,7 @@ export class AcpThreadManager {
           throw new ThreadOpError('not-ready', 'thread closed during resume');
         }
         const { conn, init } = handshake;
+        t.info.resumable = resumableFromCapabilities(init);
         const { servers: mcpServers } = await this.buildMcpServers(
           t,
           init,
@@ -1592,6 +1624,10 @@ export class AcpThreadManager {
             t.suppressUpdates = false;
           }
         } else {
+          this.opts.log.warn(
+            { threadId, agentId: t.info.agent.id, cause: 'no-resume-capability' },
+            '[acp-threads] thread is not resumable',
+          );
           throw new ThreadOpError(
             'resume-unsupported',
             `${t.info.agent.name} doesn't support resuming previous sessions`,
@@ -1656,9 +1692,6 @@ export class AcpThreadManager {
     }
     if (t.info.status !== 'error' && t.info.status !== 'auth_required' && !t.authInFlight) {
       throw new ThreadOpError('not-ready', 'this thread did not fail to start');
-    }
-    if (t.sessionId !== null) {
-      throw new ThreadOpError('not-ready', 'this thread already has an agent session');
     }
     if (t.resumeInFlight) {
       throw new ThreadOpError('not-ready', 'a retry is already in progress');
@@ -2699,6 +2732,7 @@ export class AcpThreadManager {
     t.conn = null;
     t.lastInit = null;
     t.terminals = null;
+    t.sessionId = null;
     try {
       conn?.close();
     } catch {}
@@ -2877,6 +2911,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
       ...meta.info,
       status,
       archived: true,
+      resumable: meta.info.resumable === false ? false : meta.sessionId !== null,
       queue: undefined,
       steer: undefined,
       signInOutput: undefined,
@@ -2992,6 +3027,11 @@ function joinMachineDetail(...parts: Array<string | undefined>): string | undefi
 function authMachineDetail(err: unknown, t: ThreadRecord): string | undefined {
   const duringSignIn = t.authStderr === null ? undefined : t.authStderr.join('\n');
   return joinMachineDetail(agentErrorData(err), duringSignIn);
+}
+
+function resumableFromCapabilities(init: InitializeResponse): boolean {
+  const caps = init.agentCapabilities;
+  return caps?.sessionCapabilities?.resume != null || caps?.loadSession === true;
 }
 
 function threadAuthMethods(methods: InitializeResponse['authMethods']): ThreadAuthMethod[] {

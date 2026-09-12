@@ -1,70 +1,46 @@
+import { createAgentIntegrationsRoutes } from './http/agent-integrations-routes.ts';
+import { createAgentWriteRoutes } from './http/agent-write-routes.ts';
+import { createTestRoutes } from './http/test-routes.ts';
+
+export { ROLLBACK_ORIGIN } from './http/agent-write-routes.ts';
+
 import { randomUUID } from 'node:crypto';
 import {
-  createReadStream,
   type Dirent,
   existsSync,
-  lstatSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
   realpathSync,
-  rmSync,
   statSync,
-  writeFileSync,
 } from 'node:fs';
-import { readdir, readFile, realpath, stat } from 'node:fs/promises';
+import { readdir, realpath, stat } from 'node:fs/promises';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { homedir, tmpdir } from 'node:os';
-import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import { pipeline } from 'node:stream/promises';
+import { homedir } from 'node:os';
+import { dirname, extname, join, relative, resolve, sep } from 'node:path';
 import type { Document, Extension, Hocuspocus } from '@hocuspocus/server';
 import {
   type AdvisoryWarning,
   AGENT_ICON_COLORS,
   AGENTS_SKILLS_ROOT,
-  AgentActivitySuccessSchema,
-  AgentBurstDiffSuccessSchema,
-  AgentPatchRequestSchema,
-  AgentPatchSuccessSchema,
-  AgentUndoRequestSchema,
-  AgentUndoSuccessSchema,
   AgentWriteBatchRequestSchema,
   AgentWriteBatchSuccessSchema,
-  AgentWriteMdRequestSchema,
-  AgentWriteMdSuccessSchema,
   AgentWriteRequestSchema,
   AgentWriteSuccessSchema,
-  applyPatchToFm,
   type BatchEntryError,
-  CONFIG_DOC_NAME_OKIGNORE,
   type ConfigDiagnosticsReport,
   changedBlockRange,
   colorFromSeed,
-  composeWithDerivedFrontmatter,
   createCodeFenceTracker,
-  DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
   type DiskEditReconciledWarning,
   type DocumentListEntry,
-  detectFmRegion,
-  EDITOR_PROJECT_SKILL_ROOT,
-  type EditorId,
-  EmptyRequestSchema,
   estimateSkillCost,
-  externalSkillLiveDocName,
-  FrontmatterPatchRequestSchema,
-  FrontmatterPatchSuccessSchema,
   FrontmatterSchemaWriteRequestSchema,
   type HeadingEntry,
   type InlineAssetMediaKind,
-  InstallSkillRequestSchema,
-  InstallSkillSuccessSchema,
   isManagedArtifactDocName,
-  isOpenKnowledgeSkillsSource,
-  isSkillInstallTarget,
   LEGACY_SKILL_STORE_ROOT,
-  type LinksValidationSetting,
   LintConfigResponseSchema,
   type LinterConfig,
   LintFixRequestSchema,
@@ -78,117 +54,41 @@ import {
   mediaKindForSidebarAssetExtension,
   OK_DIR,
   OPENKNOWLEDGE_SKILLS_REPO,
-  PROJECT_SKILL_EDITOR_IDS,
   type Principal,
   type ProblemType,
   parseFrontmatterRecord,
-  prependFrontmatter,
-  projectSkillContentDocName,
-  RENAMED_PACK_SKILLS,
-  RollbackRequestSchema,
-  RollbackSuccessSchema,
+  pathspecArgs,
+  type ReLintFailure,
   readFmMap,
-  SaveVersionRequestSchema,
-  SaveVersionSuccessSchema,
   SKILL_NAME_REGEX,
-  SkillDeleteSuccessSchema,
-  SkillDuplicateRequestSchema,
-  SkillDuplicateSuccessSchema,
-  SkillEditExternalRequestSchema,
-  SkillEditExternalSuccessSchema,
-  SkillFileDeleteSuccessSchema,
-  SkillFileGetSuccessSchema,
-  SkillFilePutRequestSchema,
-  SkillFilePutSuccessSchema,
-  SkillFileRenameRequestSchema,
-  SkillFileRenameSuccessSchema,
-  SkillGetSuccessSchema,
-  type SkillImportBulkResult,
-  SkillImportRequestSchema,
-  SkillImportSuccessSchema,
-  SkillInstallRequestSchema,
-  SkillInstallSuccessSchema,
-  type SkillInstallWarningCode,
-  SkillMoveRequestSchema,
-  SkillMoveScopeRequestSchema,
-  SkillMoveScopeSuccessSchema,
-  SkillMoveSuccessSchema,
-  SkillPutRequestSchema,
-  SkillPutSuccessSchema,
-  type SkillReimportBulkResult,
-  SkillReimportRequestSchema,
-  SkillReimportSuccessSchema,
-  SkillRestoreRequestSchema,
-  SkillRestoreSuccessSchema,
-  SkillRevertRequestSchema,
-  SkillRevertSuccessSchema,
   SkillScopeSchema,
-  SkillsImportBulkRequestSchema,
-  SkillsImportBulkSuccessSchema,
-  SkillsListSuccessSchema,
-  SkillsReimportBulkRequestSchema,
-  SkillsReimportBulkSuccessSchema,
-  SkillTrackInGitRequestSchema,
-  SkillTrackInGitSuccessSchema,
   SkillUninstallRequestSchema,
   SkillUninstallSuccessSchema,
-  SYSTEM_DOC_NAME,
   scanHeadingLine,
-  skillLiveDocName,
   stripFrontmatter,
   summarizeLintPluginFailures,
-  TestFlushGitSuccessSchema,
-  TestRescanBacklinksSuccessSchema,
-  TestRescanFilesSuccessSchema,
-  TestResetSuccessSchema,
-  USER_SKILL_EDITOR_IDS,
   type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
+import { formatRenameSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
-  formatRenameSubject,
-  formatRollbackSubject,
-  resolveProjectIdentity,
-} from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import {
-  discoverSkillDirs,
-  enumerateInstalledSkills,
-  fetchSource,
-  type PluginUpstream,
   parseSkillDir,
-  parseSkillsLock,
-  parseSource,
   pluginRepositoryUrl,
-  pluginUpstreamsByName,
-  readRepoMarketplacePlugins,
-  readSkillDirMeta,
-  readWellKnownIndex,
-  repoMarketplacePluginFor,
-  resolvePluginUpdateSource,
-  resolveSkillsShImportSource,
-  retrofitPackLockEntry,
-  SKILLS_LOCK_REL,
-  SkillFetchError,
   type SkillsLock,
-  type SourceSpec,
-  upsertLockEntry,
-  type WellKnownIndex,
 } from '@inkeep/open-knowledge-core/skills-catalog';
-import { type Entry, fromBuffer as yauzlFromBuffer, type ZipFile } from 'yauzl';
 import {
   type AcpHarnessAvailability,
   createAcpHarnessAvailabilityProbe,
 } from './acp/harness-availability.ts';
 import type { AcpRegistry, CustomAgentEntry } from './acp/registry.ts';
 import { captureEffect } from './activity-log.ts';
-import { listAgentActivity, synthesizeVersionDiff } from './agent-activity.ts';
 import type { AgentFocusBroadcaster } from './agent-focus.ts';
 import type { AgentPresenceBroadcaster } from './agent-presence.ts';
+import type { AgentRegistryHostSeam } from './agent-registry-apply.ts';
 import {
   AgentSessionCapacityError,
   type AgentSessionManager,
   type AgentWriteContentDivergence,
   applyAgentMarkdownWrite,
-  applyAgentUndo,
   iconFromClientName,
   snapshotBlocks,
 } from './agent-sessions.ts';
@@ -201,24 +101,13 @@ import { resolveBundledSkillDir } from './build-skill-zip.ts';
 import { CommentIndex } from './comments/comment-index.ts';
 import { CommentService } from './comments/comment-service.ts';
 import { CommentThreadStore } from './comments/thread-store.ts';
-import { CONFIG_VALIDATION_REVERT_ORIGIN } from './config-edit-origin.ts';
-import { DocInConflictError, isDocInConflict, respondDocInConflict } from './conflict-errors.ts';
 import {
-  applySkillBundleFileDelete,
-  applySkillBundleFileRename,
-  applySkillBundleFileWrite,
-  applySkillDelete,
-  applySkillMove,
-  applySkillWrite,
-  BUNDLE_FILE_MAX_BYTES,
-  BUNDLE_MAX_FILES,
-  composeSkillContent,
-  countBundleFiles,
-} from './content/skills-write.ts';
-import {
-  evaluateContentDivergence,
-  toContentDivergenceWarning,
-} from './content-divergence-gate.ts';
+  DocInConflictError,
+  isDocInConflict,
+  RESOLUTION_OPTIONS,
+  respondDocInConflict,
+} from './conflict-errors.ts';
+import { toContentDivergenceWarning } from './content-divergence-gate.ts';
 import { recordContributor } from './contributor-tracker.ts';
 import type { ResolvedSemanticConfig, SemanticSearchService } from './embeddings/index.ts';
 import {
@@ -229,6 +118,7 @@ import {
 } from './frontmatter-malformed-error.ts';
 import {
   assertNoSymlinkEscape,
+  checkSymlinkLeaf,
   isContainmentRejection,
   PathContainmentError,
 } from './fs-safety.ts';
@@ -237,13 +127,18 @@ import {
   createOsProbe,
   type InstalledAgentScheme,
 } from './handoff-api.ts';
+import { createHandoffInstallRoutes } from './http/handoff-install-routes.ts';
+import { createSkillsDocumentRoutes } from './http/skills-document-routes.ts';
+import { createSkillsFileRoutes } from './http/skills-file-routes.ts';
+import { createSkillsImportRoutes } from './http/skills-import-routes.ts';
+import { createSkillsInstallRoutes } from './http/skills-install-routes.ts';
+import { createSkillsListRoutes } from './http/skills-list-routes.ts';
+import { createSkillsRecoveryRoutes } from './http/skills-recovery-routes.ts';
+import { createSkillsTrackingRoutes } from './http/skills-tracking-routes.ts';
 import { findHubCandidates } from './hub-candidates.ts';
-import {
-  readInstalledSkills,
-  recordSkillInstall,
-  removeSkillInstall,
-} from './installed-skills-marker.ts';
+import { recordSkillInstall, removeSkillInstall } from './installed-skills-marker.ts';
 import { collectDocFiles, lintAndFixSource } from './lint/audit.ts';
+import { composeAuditGeneration } from './lint/audit-generation.ts';
 import {
   createEmptyFrontmatterSchemaFile,
   deleteFrontmatterSchemaFile,
@@ -261,7 +156,6 @@ import {
   resolveNativeConfigForDoc,
 } from './lint/resolve-config.ts';
 import { createProjectValidators } from './lint/validation-audit.ts';
-import { validateMermaidFences } from './mermaid-validator.ts';
 import {
   extractPageTitle,
   type FrontmatterMetadata,
@@ -273,43 +167,21 @@ import {
   BUNDLE_SCOPE,
   BUNDLE_SKILL_NAME,
   isInternalBundleSkillName,
-  USER_GLOBAL_BUNDLE_IDS,
 } from './skill-bundles.ts';
 import {
-  buildAndOpenSkill,
-  detectProjectSkillEditors,
-  detectUserSkillHosts,
-} from './skill-install.ts';
-import {
-  listSkillBundledFilePaths,
   projectSkill,
-  readSkillBundledFiles,
   removeInPlaceSkillCopies,
-  resolvedHosts,
   resolveSkillTargets,
   reverseProjectSkill,
+  skillProjectionEditorIds,
   skillProjectionRoots,
-  validateSkillForInstall,
 } from './skill-projection.ts';
-import { rewriteSkillRefsAcrossScope, type SkillRefRewrite } from './skill-ref-rename.ts';
-
-function bundleSelfIdentifiesAsPack(dir: string): boolean {
-  try {
-    const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
-    const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---(\r?\n|$)/.exec(md)?.[1];
-    return (
-      frontmatter !== undefined && /^[ \t]+pack:[ \t]*"?[a-z0-9-]+"?[ \t]*$/m.test(frontmatter)
-    );
-  } catch {
-    return false;
-  }
-}
+import { createSkillsCatalogCache } from './skills-catalog-cache.ts';
 
 export { extractPageTitle } from './page-identity.ts';
 
-import type { SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import simpleGit from 'simple-git';
-import { parseAgentBodyFields, resolveAgentType, validateAgentId } from './agent-id.ts';
+import { parseAgentBodyFields, resolveAgentType } from './agent-id.ts';
 import {
   applyRenameMap,
   BacklinkIndexRequiredError,
@@ -322,8 +194,9 @@ import {
   ManagedRenameSourceNotFoundError,
   ManagedRenameSourceTypeMismatchError,
 } from './apply-managed-rename.ts';
-import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
+import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
+import type { ResolveStrategy } from './conflict-storage.ts';
 import {
   isReservedProjectStatePath,
   listManagedDocNamesUnderFolder,
@@ -336,7 +209,6 @@ import {
   isDerivedDocumentIndexClosedError,
 } from './derived-document-index.ts';
 import {
-  canonicalDocName,
   docNameToRelativePath,
   extensionlessDocTreePath,
   forgetDocExtension,
@@ -351,7 +223,6 @@ import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
 } from './external-change.ts';
-import { registerExternalSkill } from './external-skill-registry.ts';
 import { extractActorIdentity } from './extract-actor-identity.ts';
 import {
   contentHash,
@@ -363,7 +234,6 @@ import {
   updateFileIndex,
   upsertFolderIndexEntry as upsertFolderIndexEntryInIndex,
 } from './file-watcher.ts';
-import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import {
   tracedCpSync,
   tracedMkdirSync,
@@ -373,11 +243,15 @@ import {
 } from './fs-traced.ts';
 import { withParentLock } from './git-handle.ts';
 import { type ApiRouteTable, createApiRequestPipeline } from './http/api-pipeline.ts';
-import { catchErrors } from './http/catch-errors.ts';
+import { createAssetRoutes } from './http/asset-routes.ts';
 import { createCommentRoutes } from './http/comment-routes.ts';
 import { createConfigSystemRoutes } from './http/config-system-routes.ts';
 import { createDocumentRoutes } from './http/document-routes.ts';
-import { errorResponse, type HttpErrorStatus } from './http/error-response.ts';
+import {
+  type ErrorExtensions,
+  errorResponse,
+  type HttpErrorStatus,
+} from './http/error-response.ts';
 import {
   createFileOpsRoutes,
   type ManagedRenameRewrittenDoc,
@@ -392,7 +266,6 @@ import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
 import { createLintRoutes } from './http/lint-routes.ts';
 import { createLocalApiDispatch, type LocalApiDispatch } from './http/local-api-dispatch.ts';
 import { createLocalOpRoutes } from './http/local-op-routes.ts';
-import { methodRouter } from './http/method-router.ts';
 import { createMetricsRoutes } from './http/metrics-routes.ts';
 import { getRequestId } from './http/request-id.ts';
 import { withValidation } from './http/request-validation.ts';
@@ -408,15 +281,10 @@ import {
   type GeneratedIndexSettingsStatus,
 } from './http/workspace-tools-routes.ts';
 import {
-  aliasedSourceRoots,
-  isActivatedSkillRoot,
   removableSkillOccurrenceDirs,
-  resolveDefaultSkillHomeRel,
   resolveGlobalNativeSkillDir,
   scanGlobalInPlaceSkills,
-  scanHostRootAliases,
   scanInPlaceSkills,
-  standardSkillRoots,
 } from './in-place-skills.ts';
 import {
   buildIngressPolicy,
@@ -424,11 +292,15 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
 } from './ingress-policy.ts';
+import {
+  type LinkAdvisoryPolicy,
+  projectWriteAdvisoryLinks,
+  type WriteLinkAdvisoryProjection,
+} from './link-advisory-policy.ts';
 import type { GuardedFetch } from './link-preview/metadata.ts';
 import {
   checkLocalOpSecurity as checkLocalOpSecurityBase,
   createConcurrencyGuard,
-  isSafeLocalPath,
 } from './local-op-security.ts';
 import { localTargetInventoryFromIndexes } from './local-target-inventory.ts';
 import { getLogger } from './logger.ts';
@@ -443,77 +315,31 @@ import {
 } from './managed-rename-journal.ts';
 import { rewriteAssetReferencesForRename } from './managed-rename-rewrite.ts';
 import {
-  incrementAgentPatchFindMismatches,
   incrementAgentWriteCalls,
   incrementSummariesProvided,
   incrementSummariesTruncated,
 } from './metrics.ts';
-import { createMultipartParser, type MultipartParser } from './multipart.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
-import { openPluginBaselines } from './plugin-skill-baseline.ts';
 import {
   appendRenameLogEntry,
-  createAncestorShaSetCache,
   getOrLoadRenameLogIndex,
   type RenameLogEntry,
-  resolveDocPathAtCommit,
 } from './rename-log.ts';
 import { createAssetService } from './services/assets.ts';
 import { createFileOpsService, DuplicateNameExhaustedError } from './services/file-ops.ts';
 import { createSearchService } from './services/search.ts';
-import { createSkillImportService, type SkillImportOutcome } from './services/skill-import.ts';
+import { createSkillImportService } from './services/skill-import.ts';
 import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
 import { createSkillPlacementOpsService } from './services/skill-placement-ops.ts';
-import {
-  createSkillReimportService,
-  groupReimportNamesBySource,
-  pickReimportDir,
-  type SkillReimportOutcome,
-} from './services/skill-reimport.ts';
-import { createVersionOpsService } from './services/version-ops.ts';
-import {
-  SERVICE_WRITER,
-  type ShadowRef,
-  safetyCheckpoint,
-  shadowGit,
-  type WriterIdentity,
-} from './shadow-repo.ts';
-import { isDisallowedGitSpec, rejectDisallowedGitSpec } from './skill-git-spec-guard.ts';
-import { resolveSkillInstallReportSettings } from './skill-install-report-config.ts';
-import {
-  clearSkillPlacements,
-  readSkillInstallModeRaw,
-  readSkillPlacements,
-} from './skill-placements.ts';
-import { restoreSkillVersion } from './skill-restore.ts';
-import { mutateSkillsLock, readSkillsLockFile } from './skills-lock-store.ts';
-import { reportSkillInstall } from './skills-sh-install-report.ts';
+import { createSkillReimportService } from './services/skill-reimport.ts';
+import { SERVICE_WRITER, type ShadowRef, shadowGit } from './shadow-repo.ts';
+
+import { readSkillInstallModeRaw } from './skill-placements.ts';
+
 import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
 import type { PairedWriteOrigin } from './write-origins.ts';
-
-let _hintEmittedCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null = null;
-function hintEmittedCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
-  _hintEmittedCounter ||= getMeter().createCounter('ok.preview_attach.hint_emitted', {
-    description:
-      'Count of preview-attach hints emitted on write-tool responses when no editor is attached to __system__. Covers both attach-preview-once (URL exists, no browser) and start-ui (no UI running anywhere) variants — the tool side disambiguates via the warning action; the metric name is retained as-is so existing dashboards keep working.',
-  });
-  return _hintEmittedCounter;
-}
-
-let _agentPatchFmTouchCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
-  null;
-function agentPatchFmTouchCounter(): ReturnType<ReturnType<typeof getMeter>['createCounter']> {
-  _agentPatchFmTouchCounter ||= getMeter().createCounter(
-    'ok.frontmatter.agent_patch_fm_touch_total',
-    {
-      description:
-        'Count of agent-patch calls refused for touching the frontmatter region. Bounded labels: result ∈ {rejected, pre_deprecation_passthrough}, reason ∈ {intersect, promoted}. `intersect` is a find that MATCHED inside the existing frontmatter; `promoted` is a byte-0 replace that would CREATE frontmatter on a document that had none. They refuse for opposite reasons, so a spike in one says nothing about the other — the append/prepend surface separates the same pair via the `byte-0-promotion` class on `frontmatter-malformed-write-refused`.',
-    },
-  );
-  return _agentPatchFmTouchCounter;
-}
 
 let _renameAttributionCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
   null;
@@ -570,21 +396,8 @@ export function __resetRenameTelemetryForTesting(): void {
   _renameAttributionCounter = null;
 }
 
-export const ROLLBACK_ORIGIN = {
-  source: 'local' as const,
-  skipStoreHooks: false,
-  context: { origin: 'rollback-apply', paired: true },
-} as const satisfies PairedWriteOrigin;
-
 /**
- * Managed-rename origin — typed `PairedWriteOrigin`.
- *
- * Exported so the bridge-invariant watcher can enforce by identity (precedent #1)
- * and so server observers can resolve `context.paired` without importing the
- * object transitively.
- *
- * `paired: true` — retained so server observers still classify the write.
- * `satisfies PairedWriteOrigin` is the compile-time gate.
+ * A typed `PairedWriteOrigin`, compared by identity (precedent #1).
  */
 export const MANAGED_RENAME_ORIGIN = {
   source: 'local' as const,
@@ -593,6 +406,9 @@ export const MANAGED_RENAME_ORIGIN = {
 } as const satisfies PairedWriteOrigin;
 
 const log = getLogger('api');
+
+const storeRefusalDetail = (err: unknown): string | undefined =>
+  err instanceof Error && err.message.startsWith('Refusing to rewrite ') ? err.message : undefined;
 
 function safeDocPath(docName: string, contentRoot: string): { path: string } | { error: string } {
   if (!docName || docName.includes('..') || docName.includes('\0')) {
@@ -654,7 +470,7 @@ export async function healUnservableSkillAdmission(
   state: SkillAdmissionHealState,
 ): Promise<boolean> {
   if (!filter) return false;
-  const key = [...paths].sort().join(' ');
+  const key = [...paths].sort().join('\0');
   if (key === state.lastKey) return false;
   state.lastKey = key;
   if (!paths.some((p) => filter.isExcluded(p))) return false;
@@ -1369,7 +1185,7 @@ function renamePathOnDisk(sourcePath: string, destinationPath: string): void {
   }
 }
 
-async function renameTrackedPathInGit(
+export async function renameTrackedPathInGit(
   projectDir: string | undefined,
   sourcePath: string,
   destinationPath: string,
@@ -1383,7 +1199,7 @@ async function renameTrackedPathInGit(
     const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
     let tracked = '';
     try {
-      tracked = (await pg.raw('ls-files', '--', sourceRel)).trim();
+      tracked = (await pg.raw('ls-files', ...pathspecArgs([sourceRel]))).trim();
     } catch (err) {
       log.warn({ err }, '[renameTrackedPathInGit] git ls-files failed, falling back to fs rename');
       return false;
@@ -1468,6 +1284,7 @@ export interface ApiExtensionOptions {
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
   getPrincipal?: () => Principal | null;
   homeDirOverride?: string;
+  agentIntegrations?: AgentRegistryHostSeam;
   savedThemeLockTimeoutMs?: number;
   acpRegistry?: AcpRegistry;
   loadAcpCustomAgents?: () => Promise<CustomAgentEntry[]>;
@@ -1475,16 +1292,23 @@ export interface ApiExtensionOptions {
   contentFilter?: ContentFilter;
   installedAgentsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
   forceUnloadDocument?: (document: Document) => Promise<void>;
+  resetDocumentDurability?: (docName: string) => void;
   ready?: Promise<void>;
   recentlyRemovedDocs?: RecentlyRemovedDocs;
   serializeDoc?: (docName: string) => string | null;
+  resolveStaleExternalWrite?: (
+    file: string,
+    strategy: ResolveStrategy,
+    content?: string,
+  ) => Promise<boolean>;
   evictManagedArtifactLkg?: (docName: string) => void;
   semanticSearch?: SemanticSearchService;
   getSemanticSimilarityFloor?: () => number | undefined;
   embeddingsSecretsFile?: string;
   readSemanticProviderConfig?: () => ResolvedSemanticConfig;
   getLinterBaseConfig?: () => LinterConfig;
-  getLinksValidationSetting?: () => LinksValidationSetting;
+  getLinkAdvisoryPolicy: () => LinkAdvisoryPolicy;
+  getProjectConfigEpoch: () => number;
 }
 
 export function extractHeadings(content: string): HeadingEntry[] {
@@ -1577,6 +1401,7 @@ export function createApiExtension(
     projectDir,
     getPrincipal,
     homeDirOverride,
+    agentIntegrations,
     savedThemeLockTimeoutMs,
     acpRegistry,
     loadAcpCustomAgents,
@@ -1584,21 +1409,26 @@ export function createApiExtension(
     contentFilter,
     installedAgentsProbe,
     forceUnloadDocument,
+    resetDocumentDurability,
     ready,
     recentlyRemovedDocs,
     serializeDoc,
+    resolveStaleExternalWrite,
     evictManagedArtifactLkg,
     semanticSearch,
     getSemanticSimilarityFloor,
     embeddingsSecretsFile,
     readSemanticProviderConfig,
     getLinterBaseConfig,
-    getLinksValidationSetting,
+    getLinkAdvisoryPolicy,
+    getProjectConfigEpoch,
     ephemeral = false,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
     getConfigDiagnostics,
   } = options;
+  const catalogCache = createSkillsCatalogCache({ homeDirOverride, log });
+  const { bumpSkillsCatalogGen, enumerateInstalledSkillsCached, pluginSkillsByName } = catalogCache;
   const signalChannel: typeof rawSignalChannel = rawSignalChannel
     ? (channel) => {
         if (channel === 'files') bumpSkillsCatalogGen();
@@ -1863,24 +1693,6 @@ export function createApiExtension(
     return getAliasMap?.().get(docName) ?? docName;
   }
 
-  function getSubscriberCount(docName: string): number {
-    try {
-      const doc = hocuspocus.documents.get(docName);
-      return doc?.connections.size ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-
-  function getSystemSubscriberCount(): number {
-    try {
-      const doc = hocuspocus.documents.get(SYSTEM_DOC_NAME);
-      return doc?.connections.size ?? 0;
-    } catch {
-      return 0;
-    }
-  }
-
   function flushDocToGit(docName: string, label: string): void {
     const debounceId = `onStoreDocument-${docName}`;
     const l1 = hocuspocus.debouncer.isDebounced(debounceId)
@@ -1899,7 +1711,11 @@ export function createApiExtension(
     });
   }
 
-  type FlushOutcome = { kind: 'failure'; failure: StoreFailure } | { kind: 'divergence' } | null;
+  type FlushOutcome =
+    | { kind: 'failure'; failure: StoreFailure }
+    | { kind: 'divergence' }
+    | { kind: 'stale-external-write' }
+    | null;
 
   async function flushDiskAndDetectOutcome(docName: string): Promise<FlushOutcome> {
     const debounceId = `onStoreDocument-${docName}`;
@@ -1909,6 +1725,9 @@ export function createApiExtension(
     }
     const failure = durabilityState.takeStoreFailure(docName);
     if (failure) return { kind: 'failure', failure };
+    if (durabilityState.takeStaleExternalWriteFreeze(docName)) {
+      return { kind: 'stale-external-write' };
+    }
     if (durabilityState.takeStoreDivergence(docName)) return { kind: 'divergence' };
     return null;
   }
@@ -1938,6 +1757,27 @@ export function createApiExtension(
     );
   }
 
+  function staleExternalWriteProblem(docName: string) {
+    return {
+      type: 'urn:ok:error:stale-external-write' as const,
+      title: 'Edit retained; disk write blocked by a stale external-write conflict.',
+      detail:
+        'An older version was restored on disk. Your edit was applied and is retained in memory and in the recovery snapshot, but its Markdown disk write was skipped. Do not repeat this edit: inspect conflicts({ kind: "content" }) for this file and resolve_conflict, then re-read the document before making further changes.',
+      file:
+        durabilityState.getStaleExternalWrite(docName)?.file ??
+        relative(projectDir ?? contentDir, safeContentPath(docName, contentDir)).replaceAll(
+          '\\',
+          '/',
+        ),
+      resolutionOptions: RESOLUTION_OPTIONS,
+    } satisfies BatchEntryError;
+  }
+
+  function respondStaleExternalWrite(res: ServerResponse, handler: string, docName: string): void {
+    const { type, title, detail, ...extensions } = staleExternalWriteProblem(docName);
+    errorResponse(res, 409, type, title, { handler, detail, extensions });
+  }
+
   function buildReconcileWarning(
     reconcile: ReconcileBeforeWriteResult,
   ): DiskEditReconciledWarning | undefined {
@@ -1955,7 +1795,11 @@ export function createApiExtension(
     };
   }
 
-  // (precedent #55): a doc the watcher would refuse to index must not slip into
+  /**
+   * Content-scope exclusion for a docName, mirroring the file-watcher's markdown admission
+   * gate: a doc the watcher would refuse to index must not slip into the admitted set by
+   * another door (precedent #55).
+   */
   function isDocNameContentExcluded(docName: string): boolean {
     if (!contentFilter) return false;
     const relPath = docNameToRelativePath(docName);
@@ -2132,7 +1976,10 @@ export function createApiExtension(
     };
   }
 
-  // Mirrors the watcher's admission gate (precedent #55): a content-scope-excluded
+  /**
+   * Mirrors the watcher's admission gate (precedent #55): a content-scope-excluded doc must
+   * NOT be registered, exactly as the watcher would skip it.
+   */
   function registerWrittenDocInFileIndex(docName: string, content: string): void {
     if (isDocNameContentExcluded(docName)) return;
     mutateFileIndex?.({
@@ -3145,14 +2992,8 @@ export function createApiExtension(
   }
 
   /**
-   * Canonical identity boundary (precedent #24) — every mutating POST handler calls this
-   * before any Y.Doc mutation. Resolves request body → {agentId, agentName, colorSeed, clientName}.
-   * The meta-test in attribution-sweep-coverage.test.ts asserts all handlers call this at entry.
-   *
-   * Body parsing + sanitization is shared with `extractActorIdentity` via
-   * `parseAgentBodyFields` in `agent-id.ts`. This wrapper adds the write-handler
-   * default — absent agentId becomes `'claude-1'` so attribution always lands on
-   * a stable broadcaster key (matches `getSession()` for presence bar color).
+   * Canonical identity boundary (precedent #24) — every mutating POST handler calls this before any
+   * Y.Doc mutation.
    */
   function extractAgentIdentity(body: Record<string, unknown>): {
     rawAgentId: string | undefined;
@@ -3337,34 +3178,6 @@ export function createApiExtension(
     );
   }
 
-  let skillsCatalogGen = 0;
-  let skillsListCache: { at: number; gen: number; fp: string; body: unknown } | null = null;
-  let installedCatalogCache: {
-    at: number;
-    gen: number;
-    key: string;
-    value: ReturnType<typeof enumerateInstalledSkills>;
-  } | null = null;
-  function bumpSkillsCatalogGen(): void {
-    skillsCatalogGen += 1;
-  }
-  function enumerateInstalledSkillsCached(
-    opts: Parameters<typeof enumerateInstalledSkills>[0],
-  ): ReturnType<typeof enumerateInstalledSkills> {
-    const key = `${opts?.projectDir ?? ''}|${opts && 'home' in opts ? opts.home : ''}`;
-    const now = Date.now();
-    if (
-      installedCatalogCache !== null &&
-      installedCatalogCache.gen === skillsCatalogGen &&
-      installedCatalogCache.key === key &&
-      now - installedCatalogCache.at < 5_000
-    ) {
-      return installedCatalogCache.value;
-    }
-    const value = enumerateInstalledSkills(opts);
-    installedCatalogCache = { at: now, gen: skillsCatalogGen, key, value };
-    return value;
-  }
   let deferredIgnoreRebuildTimer: NodeJS.Timeout | null = null;
   function scheduleDeferredIgnoreRebuild(): void {
     if (!contentFilter) return;
@@ -3374,22 +3187,36 @@ export function createApiExtension(
       void contentFilter?.rebuildIgnorePatterns().catch(() => {});
     }, 120_000);
   }
+  function invalidateSkillCatalog(): void {
+    bumpSkillsCatalogGen();
+    contentFilter?.refreshInPlaceSkillDirs();
+    scheduleDeferredIgnoreRebuild();
+  }
+  function settleSkillCatalog(): void {
+    invalidateSkillCatalog();
+    signalChannel?.('files');
+  }
+  type OkArtifactFlush = 'flushed' | 'unavailable' | 'failed';
   let okArtifactFlushChain: Promise<void> = Promise.resolve();
   function scheduleOkArtifactFlush(context: string): void {
     bumpSkillsCatalogGen();
     okArtifactFlushChain = okArtifactFlushChain
-      .then(() => commitOkArtifactWrite(context))
+      .then(async () => {
+        await commitOkArtifactWrite(context);
+      })
       .catch(() => {});
   }
-  async function commitOkArtifactWrite(context: string): Promise<void> {
-    if (!flushContributors) return;
+  async function commitOkArtifactWrite(context: string): Promise<OkArtifactFlush> {
+    if (!flushContributors) return 'unavailable';
     try {
       await flushContributors();
+      return 'flushed';
     } catch (flushErr) {
       log.warn(
         { context, err: flushErr },
         `[${context}] flushContributors failed; attribution stays queued for the next flush`,
       );
+      return 'failed';
     }
   }
 
@@ -3401,7 +3228,7 @@ export function createApiExtension(
         if (rawDocName === null) return;
         const docName = resolveAlias(rawDocName);
 
-        // (precedent #24). Body-shape errors emitted by `withValidation` are
+        // Identity extraction precedes every semantic error emission below (precedent #24).
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
           extractAgentIdentity(body);
 
@@ -3495,6 +3322,10 @@ export function createApiExtension(
           respondDiskDivergence(res, 'agent-write');
           return;
         }
+        if (flushOutcome?.kind === 'stale-external-write') {
+          respondStaleExternalWrite(res, 'agent-write', docName);
+          return;
+        }
         flushDocToDisk(docName, 'agent-write');
         onAgentWrite?.();
 
@@ -3506,9 +3337,7 @@ export function createApiExtension(
           {
             timestamp,
             ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(agentWriteWarning
-              ? { warning: agentWriteWarning, warnings: [agentWriteWarning] }
-              : {}),
+            ...(agentWriteWarning ? { warnings: [agentWriteWarning] } : {}),
           },
           { handler: 'agent-write' },
         );
@@ -3541,235 +3370,11 @@ export function createApiExtension(
     { handler: 'agent-write', method: 'POST' },
   );
 
-  const handleAgentWriteMd = withValidation(
-    AgentWriteMdRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const position = body.position ?? 'append';
-        const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'agent-write-md');
-        if (effectiveDocName === null) return;
-        const resolvedDocName = canonicalDocName(resolveAlias(effectiveDocName));
-
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
-
-        if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${resolvedDocName}' is a reserved document name.`,
-            { handler: 'agent-write-md' },
-          );
-          return;
-        }
-
-        if (
-          body.extension !== undefined &&
-          !docNameExistsWithAnySupportedExtension(contentDir, resolvedDocName)
-        ) {
-          registerDocExtension(resolvedDocName, body.extension);
-        }
-
-        const normalizedSummary = normalizeSummary(body.summary);
-        const { response: summaryResponse, stored: storedSummary } =
-          summaryResponseFields(normalizedSummary);
-        const session = await sessionManager.getSession(resolvedDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-
-        const writeMdReconcile = reconcileDiskBeforeAgentWrite(
-          durabilityState,
-          hocuspocus,
-          resolvedDocName,
-          contentDir,
-        );
-
-        const timestamp = new Date().toISOString();
-
-        let writeDivergence: AgentWriteContentDivergence | undefined;
-
-        let disposeEffectCapture: (() => void) | undefined;
-
-        try {
-          const icon = iconFromClientName(clientName);
-          const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
-          agentPresenceBroadcaster?.setPresence(agentId, {
-            displayName: agentName,
-            icon,
-            color,
-            currentDoc: resolvedDocName,
-            mode: 'writing',
-            ts: Date.now(),
-          });
-          disposeEffectCapture = captureEffect(
-            session.dc.document.getText('source'),
-            agentId,
-            session.origin,
-            colorSeed,
-            clientName,
-          );
-          session.dc.document.transact(() => {
-            const beforeBlocks = snapshotBlocks(session.dc.document);
-            writeDivergence = applyAgentMarkdownWrite(session.dc.document, body.markdown, position);
-
-            const changedBlocks =
-              changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
-            const activityMap = session.dc.document.getMap('agent-flash');
-            activityMap.set(agentId, {
-              agentId,
-              timestamp: Date.now(),
-              type: 'insert',
-              description: `Added (${agentName}): ${body.markdown.trim().slice(0, 50)}`,
-              ...(changedBlocks !== undefined ? { changedBlocks } : {}),
-            });
-          }, session.origin);
-          if (writeDivergence !== undefined) {
-            console.warn(
-              JSON.stringify({
-                event: 'agent-write-content-divergence',
-                'doc.name': resolvedDocName,
-                position,
-                intendedBytes: writeDivergence.intendedBytes,
-                actualBytes: writeDivergence.actualBytes,
-                byteDelta: writeDivergence.byteDelta,
-                'agent.id': agentId,
-                'agent.client_name': clientName,
-              }),
-            );
-          }
-          recordContentDivergenceGate('agent-write-md', writeDivergence);
-          recordContributor(
-            resolvedDocName,
-            agentId,
-            agentName,
-            colorSeed,
-            undefined,
-            buildAgentActor({ clientName, clientVersion, label }),
-            storedSummary,
-          );
-          incrementAgentWriteCalls();
-          countNormalizedSummary(normalizedSummary);
-        } finally {
-          disposeEffectCapture?.();
-          agentPresenceBroadcaster?.touchMode(agentId, 'idle');
-        }
-
-        const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
-        if (flushOutcome?.kind === 'failure') {
-          respondPersistenceFailure(res, flushOutcome.failure, 'agent-write-md');
-          return;
-        }
-        if (flushOutcome?.kind === 'divergence') {
-          respondDiskDivergence(res, 'agent-write-md');
-          return;
-        }
-
-        flushDocToDisk(resolvedDocName, 'agent-write-md');
-
-        agentFocusBroadcaster?.setFocus(agentId, {
-          agentName,
-          currentDoc: resolvedDocName,
-          writeKind: 'write',
-          ts: Date.now(),
-        });
-        onAgentWrite?.();
-
-        const hints = await computeOrphanHints(resolvedDocName);
-
-        const writtenSource = session.dc.document.getText('source').toString();
-
-        registerWrittenDocInFileIndex(resolvedDocName, writtenSource);
-
-        const renderWarnings = await validateMermaidFences(writtenSource, resolvedDocName);
-
-        const admittedForLinks = await collectAdmittedDocNames();
-        admittedForLinks.add(resolvedDocName);
-        const brokenLinks = computeWriteAdvisoryLinks(
-          writtenSource,
-          resolvedDocName,
-          admittedForLinks,
-          createLinkedFileExists(),
-          createLinkedFolderExists(),
-        );
-
-        const subscriberCount = getSubscriberCount(resolvedDocName);
-        const systemSubscriberCount = getSystemSubscriberCount();
-
-        if (systemSubscriberCount === 0) {
-          hintEmittedCounter().add(1, {
-            'shadow.writer': 'agent',
-            'agent.type': resolveAgentType(clientName),
-          });
-        }
-
-        const writeMdWarning = buildReconcileWarning(writeMdReconcile);
-        const writeMdDivergenceEntry =
-          writeDivergence !== undefined ? toContentDivergenceWarning(writeDivergence) : undefined;
-        const writeMdAdvisories = [
-          ...(writeMdDivergenceEntry ? [writeMdDivergenceEntry] : []),
-          ...(writeMdWarning ? [writeMdWarning] : []),
-          ...(renderWarnings ?? []),
-          ...(await computeLintViolations(
-            session.dc.document.getText('source').toString(),
-            resolvedDocName,
-          )),
-        ];
-        successResponse(
-          res,
-          200,
-          AgentWriteMdSuccessSchema,
-          {
-            timestamp,
-            subscriberCount,
-            systemSubscriberCount,
-            ...(hints ? { hints } : {}),
-            ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(writeMdDivergenceEntry
-              ? { warning: writeMdDivergenceEntry }
-              : writeMdWarning
-                ? { warning: writeMdWarning }
-                : {}),
-            ...(writeMdAdvisories.length > 0 ? { warnings: writeMdAdvisories } : {}),
-            brokenLinks,
-          },
-          { handler: 'agent-write-md' },
-        );
-      } catch (e) {
-        if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-write-md');
-          return;
-        }
-        if (e instanceof FrontmatterMalformedError) {
-          respondFrontmatterMalformed(res, e, 'agent-write-md');
-          return;
-        }
-        if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'agent-write-md', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
-          return;
-        }
-        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-write-md] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'agent-write-md',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'agent-write-md', method: 'POST' },
-  );
-
   const handleAgentWriteBatch = withValidation(
     AgentWriteBatchRequestSchema,
     async (_req, res, body) => {
       try {
+        const linkPolicy = getLinkAdvisoryPolicy();
         const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
           extractAgentIdentity(body);
 
@@ -3778,14 +3383,13 @@ export function createApiExtension(
         interface BatchErrorResult {
           status: 'error';
           docName: string;
-          error: { type: BatchEntryError['type']; title: string; detail?: string };
+          error: BatchEntryError;
         }
-        interface BatchWrittenResult {
+        interface BatchWrittenResult extends WriteLinkAdvisoryProjection {
           status: 'written';
           docName: string;
           summary?: SummaryResponse;
           warnings?: AdvisoryWarning[];
-          brokenLinks: ReturnType<typeof computeWriteAdvisoryLinks>;
         }
         type BatchResult = BatchWrittenResult | BatchErrorResult;
 
@@ -3987,6 +3591,8 @@ export function createApiExtension(
                 title:
                   'The document changed on disk after your edit was prepared; your edit was NOT applied. Re-read the document and retry.',
               });
+            } else if (flushOutcome?.kind === 'stale-external-write') {
+              flushErrors.set(p.docName, staleExternalWriteProblem(p.docName));
             } else {
               flushErrors.set(p.docName, undefined);
             }
@@ -4008,19 +3614,22 @@ export function createApiExtension(
             }
             const writtenSource = p.session.dc.document.getText('source').toString();
             registerWrittenDocInFileIndex(p.docName, writtenSource);
-            const brokenLinks = computeWriteAdvisoryLinks(
-              writtenSource,
-              p.docName,
-              admittedForLinks,
-              linkedFileExists,
-              linkedFolderExists,
-            );
             results[p.index] = {
               status: 'written',
               docName: p.docName,
               ...(p.summaryResponse ? { summary: p.summaryResponse } : {}),
               ...(p.warnings.length > 0 ? { warnings: p.warnings } : {}),
-              brokenLinks,
+              ...projectWriteAdvisoryLinks(
+                computeWriteAdvisoryLinks(
+                  writtenSource,
+                  p.docName,
+                  admittedForLinks,
+                  linkedFileExists,
+                  linkedFolderExists,
+                ),
+                p.docName,
+                linkPolicy.suppressLogLinkAdvisories,
+              ),
             };
             lastWrittenDoc = p.docName;
           }
@@ -4070,1403 +3679,13 @@ export function createApiExtension(
     },
     { handler: 'agent-write-batch', method: 'POST' },
   );
-
-  const handleFrontmatterPatch = withValidation(
-    FrontmatterPatchRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'frontmatter-patch');
-        if (effectiveDocName === null) return;
-        const resolvedDocName = resolveAlias(effectiveDocName);
-
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
-
-        if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${resolvedDocName}' is a reserved document name.`,
-            { handler: 'frontmatter-patch' },
-          );
-          return;
-        }
-
-        const patch = body.patch ?? {};
-        const patchKeys = Object.keys(patch);
-
-        const normalizedSummary = normalizeSummary(body.summary);
-        const { response: summaryResponse, stored: storedSummary } =
-          summaryResponseFields(normalizedSummary);
-        const session = await sessionManager.getSession(resolvedDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-
-        const fmReconcile = reconcileDiskBeforeAgentWrite(
-          durabilityState,
-          hocuspocus,
-          resolvedDocName,
-          contentDir,
-        );
-
-        const timestamp = new Date().toISOString();
-
-        let editError: import('@inkeep/open-knowledge-core').FmEditError | undefined;
-        let applied = false;
-        let bodyMutated = false;
-        const appliedKeys: string[] = [];
-
-        try {
-          const icon = iconFromClientName(clientName);
-          const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
-          agentPresenceBroadcaster?.setPresence(agentId, {
-            displayName: agentName,
-            icon,
-            color,
-            currentDoc: resolvedDocName,
-            mode: 'writing',
-            ts: Date.now(),
-          });
-
-          withSpanSync(
-            'ok.frontmatter_patch',
-            {
-              attributes: {
-                'doc.name': resolvedDocName,
-                'frontmatter_patch.keys': patchKeys.length,
-              },
-            },
-            () => {
-              session.dc.document.transact(() => {
-                const ytext = session.dc.document.getText('source');
-                const currentFull = ytext.toString();
-                const { fenced: currentFenced, body: currentBody } = detectFmRegion(currentFull);
-
-                const result = applyPatchToFm(currentFenced, patch);
-                if (!result.ok) {
-                  editError = result.error;
-                  return;
-                }
-
-                for (const key of Object.keys(patch)) {
-                  appliedKeys.push(key);
-                }
-
-                if (result.nextFenced !== currentFenced) {
-                  const needsFenceSeparator =
-                    currentFenced === '' && currentBody !== '' && !currentBody.startsWith('\n');
-                  const newFull = composeWithDerivedFrontmatter(
-                    result.nextFenced,
-                    (needsFenceSeparator ? '\n' : '') + currentBody,
-                  ).md;
-                  composeAndWriteRawBody(session.dc.document, newFull, 'agent');
-                  recordFrontmatterEditSurface('mcp-write');
-                  bodyMutated = true;
-                }
-                applied = true;
-              }, session.origin);
-            },
-          );
-        } finally {
-          agentPresenceBroadcaster?.touchMode(agentId, 'idle');
-        }
-
-        if (editError) {
-          let fieldErrors: Record<string, string>;
-          switch (editError.kind) {
-            case 'invalid_value':
-              fieldErrors = { [editError.key]: editError.reason };
-              break;
-            case 'reserved_key':
-              fieldErrors = { [editError.key]: `'${editError.key}' is reserved` };
-              break;
-            case 'unknown_key':
-              fieldErrors = { [editError.key]: `'${editError.key}' is not a recognized key` };
-              break;
-            case 'duplicate_target':
-              fieldErrors = { [editError.key]: `'${editError.key}' appears more than once` };
-              break;
-            case 'reorder_mismatch':
-              fieldErrors = {
-                __region__: `frontmatter reorder mismatch (expected: ${editError.expected.join(', ')}; got: ${editError.got.join(', ')})`,
-              };
-              break;
-            case 'region_too_large':
-              fieldErrors = {
-                __region__: `frontmatter region too large (${editError.bytes} > ${editError.limit} bytes)`,
-              };
-              break;
-            case 'parse_failed':
-              fieldErrors = { __region__: `frontmatter region unparseable: ${editError.reason}` };
-              break;
-            case 'invalid_path':
-              fieldErrors = {
-                [editError.path.map(String).join('.') || '__path__']: editError.reason,
-              };
-              break;
-            default: {
-              const _exhaustive: never = editError;
-              fieldErrors = {
-                __region__: `unhandled frontmatter edit error (${String(_exhaustive)})`,
-              };
-            }
-          }
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-frontmatter-patch',
-            'Frontmatter patch rejected: schema validation failed.',
-            { handler: 'frontmatter-patch', extensions: { fieldErrors } },
-          );
-          return;
-        }
-
-        if (applied && appliedKeys.length > 0) {
-          recordContributor(
-            resolvedDocName,
-            agentId,
-            agentName,
-            colorSeed,
-            undefined,
-            buildAgentActor({ clientName, clientVersion, label }),
-            storedSummary,
-          );
-          incrementAgentWriteCalls();
-          countNormalizedSummary(normalizedSummary);
-          if (bodyMutated) {
-            const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
-            if (flushOutcome?.kind === 'failure') {
-              respondPersistenceFailure(res, flushOutcome.failure, 'frontmatter-patch');
-              return;
-            }
-            if (flushOutcome?.kind === 'divergence') {
-              respondDiskDivergence(res, 'frontmatter-patch');
-              return;
-            }
-          }
-          flushDocToDisk(resolvedDocName, 'frontmatter-patch');
-        }
-
-        agentFocusBroadcaster?.setFocus(agentId, {
-          agentName,
-          currentDoc: resolvedDocName,
-          writeKind: 'write',
-          ts: Date.now(),
-        });
-        onAgentWrite?.();
-
-        const subscriberCount = getSubscriberCount(resolvedDocName);
-        const systemSubscriberCount = getSystemSubscriberCount();
-
-        if (systemSubscriberCount === 0) {
-          hintEmittedCounter().add(1, {
-            'shadow.writer': 'agent',
-            'agent.type': resolveAgentType(clientName),
-          });
-        }
-
-        const fmWarning = buildReconcileWarning(fmReconcile);
-
-        registerWrittenDocInFileIndex(
-          resolvedDocName,
-          session.dc.document.getText('source').toString(),
-        );
-
-        const admittedForLinks = await collectAdmittedDocNames();
-        admittedForLinks.add(resolvedDocName);
-        const brokenLinks = computeWriteAdvisoryLinks(
-          session.dc.document.getText('source').toString(),
-          resolvedDocName,
-          admittedForLinks,
-          createLinkedFileExists(),
-        );
-
-        successResponse(
-          res,
-          200,
-          FrontmatterPatchSuccessSchema,
-          {
-            timestamp,
-            subscriberCount,
-            systemSubscriberCount,
-            appliedKeys,
-            ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(fmWarning ? { warning: fmWarning, warnings: [fmWarning] } : {}),
-            brokenLinks,
-          },
-          { handler: 'frontmatter-patch' },
-        );
-      } catch (e) {
-        if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'frontmatter-patch', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
-          return;
-        }
-        log.error({ err: e, requestId: getRequestId(_req) }, '[frontmatter-patch] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'frontmatter-patch',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'frontmatter-patch', method: 'POST' },
-  );
-
-  const handleAgentPatch = withValidation(
-    AgentPatchRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const { find, replace, offset } = body;
-        const effectivePatchDocName = requireNonEmptyDocName(body.docName, res, 'agent-patch');
-        if (effectivePatchDocName === null) return;
-        const docName = resolveAlias(effectivePatchDocName);
-
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
-
-        if (isSystemDoc(docName) || isConfigDoc(docName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${docName}' is a reserved document name.`,
-            { handler: 'agent-patch' },
-          );
-          return;
-        }
-
-        const normalizedSummary = normalizeSummary(body.summary);
-        const session = await sessionManager.getSession(docName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-
-        const patchReconcile = reconcileDiskBeforeAgentWrite(
-          durabilityState,
-          hocuspocus,
-          docName,
-          contentDir,
-        );
-
-        const timestamp = new Date().toISOString();
-
-        let notFound = false;
-        let staleTarget = false;
-        let fmIntersect = false;
-        let fmPromoted = false;
-        let patchDivergence: AgentWriteContentDivergence | undefined;
-        let disposeEffectCapture: (() => void) | undefined;
-        try {
-          const icon = iconFromClientName(clientName);
-          const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
-          agentPresenceBroadcaster?.setPresence(agentId, {
-            displayName: agentName,
-            icon,
-            color,
-            currentDoc: docName,
-            mode: 'writing',
-            ts: Date.now(),
-          });
-          disposeEffectCapture = captureEffect(
-            session.dc.document.getText('source'),
-            agentId,
-            session.origin,
-            colorSeed,
-            clientName,
-          );
-          session.dc.document.transact(() => {
-            // precedent #38). Searching `serialize(fragment)` would compute
-            const ytextSnapshot = session.dc.document.getText('source').toString();
-            const { frontmatter: currentFm, body: currentBody } = stripFrontmatter(ytextSnapshot);
-            const currentFull = prependFrontmatter(currentFm, currentBody);
-
-            const pos =
-              offset == null
-                ? currentFull.indexOf(find)
-                : currentFull.slice(offset, offset + find.length) === find
-                  ? offset
-                  : -1;
-            if (pos === -1) {
-              if (offset == null) {
-                notFound = true;
-              } else {
-                staleTarget = true;
-              }
-              console.warn(
-                JSON.stringify({
-                  event: 'agent-patch-find-mismatch',
-                  'doc.name': docName,
-                  findLength: find.length,
-                  replaceLength: replace.length,
-                  hadOffset: offset != null,
-                }),
-              );
-              incrementAgentPatchFindMismatches();
-              return;
-            }
-
-            if (pos < currentFm.length) {
-              fmIntersect = true;
-              return;
-            }
-
-            const newFull =
-              currentFull.slice(0, pos) + replace + currentFull.slice(pos + find.length);
-
-            if (currentFm === '' && stripFrontmatter(newFull).frontmatter !== '') {
-              fmPromoted = true;
-              return;
-            }
-
-            const { body: newBody } = stripFrontmatter(newFull);
-            const beforeBlocks = snapshotBlocks(session.dc.document);
-            patchDivergence = applyAgentMarkdownWrite(session.dc.document, newBody, 'patch');
-
-            const changedBlocks =
-              changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
-            const activityMap = session.dc.document.getMap('agent-flash');
-            activityMap.set(agentId, {
-              agentId,
-              timestamp: Date.now(),
-              type: 'insert',
-              description: `Patched (${agentName}): ${find.slice(0, 50)}`,
-              ...(changedBlocks !== undefined ? { changedBlocks } : {}),
-            });
-          }, session.origin);
-          if (patchDivergence !== undefined) {
-            console.warn(
-              JSON.stringify({
-                event: 'agent-write-content-divergence',
-                'doc.name': docName,
-                position: 'patch',
-                intendedBytes: patchDivergence.intendedBytes,
-                actualBytes: patchDivergence.actualBytes,
-                byteDelta: patchDivergence.byteDelta,
-                'agent.id': agentId,
-                'agent.client_name': clientName,
-              }),
-            );
-          }
-          if (!notFound && !staleTarget && !fmIntersect && !fmPromoted) {
-            const { stored: storedSummary } = summaryResponseFields(normalizedSummary);
-            recordContributor(
-              docName,
-              agentId,
-              agentName,
-              colorSeed,
-              undefined,
-              buildAgentActor({ clientName, clientVersion, label }),
-              storedSummary,
-            );
-            incrementAgentWriteCalls();
-            countNormalizedSummary(normalizedSummary);
-            recordContentDivergenceGate('agent-patch', patchDivergence);
-          }
-        } finally {
-          disposeEffectCapture?.();
-          agentPresenceBroadcaster?.touchMode(agentId, 'idle');
-        }
-
-        if (staleTarget) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:stale-target',
-            'Target text no longer matches at the requested offset.',
-            { handler: 'agent-patch' },
-          );
-          return;
-        }
-        if (notFound) {
-          errorResponse(res, 404, 'urn:ok:error:target-not-found', 'Text not found in document.', {
-            handler: 'agent-patch',
-          });
-          return;
-        }
-        if (fmIntersect) {
-          agentPatchFmTouchCounter().add(1, { result: 'rejected', reason: 'intersect' });
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:frontmatter-edit-not-supported',
-            'Frontmatter edits are not supported via a body find/replace. Use edit({ document: { path, frontmatter } }) to change frontmatter, or write({ document: { path, content, position: "replace" } }) to rewrite the whole document including its YAML block.',
-            { handler: 'agent-patch' },
-          );
-          return;
-        }
-        if (fmPromoted) {
-          agentPatchFmTouchCounter().add(1, { result: 'rejected', reason: 'promoted' });
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:frontmatter-edit-not-supported',
-            "This edit would turn the replacement text into the document's frontmatter: the document has no frontmatter, the match starts at byte 0, and `replace` opens a `---` fence pair — so the composed document would re-read that block as its YAML region. Use edit({ document: { path, frontmatter } }) to set frontmatter, or keep the `---` out of the first line (a leading blank line, or `***` / `___` for a thematic break).",
-            { handler: 'agent-patch' },
-          );
-          return;
-        }
-
-        const flushOutcome = await flushDiskAndDetectOutcome(docName);
-        if (flushOutcome?.kind === 'failure') {
-          respondPersistenceFailure(res, flushOutcome.failure, 'agent-patch');
-          return;
-        }
-        if (flushOutcome?.kind === 'divergence') {
-          respondDiskDivergence(res, 'agent-patch');
-          return;
-        }
-
-        flushDocToDisk(docName, 'agent-patch');
-
-        agentFocusBroadcaster?.setFocus(agentId, {
-          agentName,
-          currentDoc: docName,
-          writeKind: 'edit',
-          ts: Date.now(),
-        });
-        onAgentWrite?.();
-
-        const subscriberCount = getSubscriberCount(docName);
-        const systemSubscriberCount = getSystemSubscriberCount();
-
-        if (systemSubscriberCount === 0) {
-          hintEmittedCounter().add(1, {
-            'shadow.writer': 'agent',
-            'agent.type': resolveAgentType(clientName),
-          });
-        }
-
-        const { response: summaryResponse } = summaryResponseFields(normalizedSummary);
-
-        const patchedSource = session.dc.document.getText('source').toString();
-
-        registerWrittenDocInFileIndex(docName, patchedSource);
-
-        const renderWarnings = await validateMermaidFences(patchedSource, docName);
-
-        const admittedForLinks = await collectAdmittedDocNames();
-        admittedForLinks.add(docName);
-        const brokenLinks = computeWriteAdvisoryLinks(
-          patchedSource,
-          docName,
-          admittedForLinks,
-          createLinkedFileExists(),
-        );
-
-        const patchWarning = buildReconcileWarning(patchReconcile);
-        const patchDivergenceEntry =
-          patchDivergence !== undefined ? toContentDivergenceWarning(patchDivergence) : undefined;
-        const patchAdvisories = [
-          ...(patchDivergenceEntry ? [patchDivergenceEntry] : []),
-          ...(patchWarning ? [patchWarning] : []),
-          ...(renderWarnings ?? []),
-          ...(await computeLintViolations(
-            session.dc.document.getText('source').toString(),
-            docName,
-          )),
-        ];
-        successResponse(
-          res,
-          200,
-          AgentPatchSuccessSchema,
-          {
-            timestamp,
-            subscriberCount,
-            systemSubscriberCount,
-            ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(patchDivergenceEntry
-              ? { warning: patchDivergenceEntry }
-              : patchWarning
-                ? { warning: patchWarning }
-                : {}),
-            ...(patchAdvisories.length > 0 ? { warnings: patchAdvisories } : {}),
-            brokenLinks,
-          },
-          { handler: 'agent-patch' },
-        );
-      } catch (e) {
-        if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-patch');
-          return;
-        }
-        if (e instanceof FrontmatterMalformedError) {
-          respondFrontmatterMalformed(res, e, 'agent-patch');
-          return;
-        }
-        if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'agent-patch', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
-          return;
-        }
-        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-patch] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'agent-patch',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'agent-patch', method: 'POST' },
-  );
-
-  const handleAgentUndo = withValidation(
-    AgentUndoRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const rawDocName = requireNonEmptyDocName(body.docName, res, 'agent-undo');
-        if (rawDocName === null) return;
-        const docName = resolveAlias(rawDocName);
-
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
-
-        if (isSystemDoc(docName) || isConfigDoc(docName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${docName}' is a reserved document name.`,
-            { handler: 'agent-undo' },
-          );
-          return;
-        }
-
-        const { connectionId } = body;
-
-        let scope: 'last' | 'session' | 'count';
-        let count: number | undefined;
-        if (body.scope === 'count') {
-          scope = 'count';
-          count = body.count;
-        } else if (body.scope === 'session' || body.scope === 'file') {
-          scope = 'session';
-        } else {
-          scope = 'last';
-        }
-
-        if (!sessionManager.hasSession(docName, connectionId)) {
-          errorResponse(
-            res,
-            404,
-            'urn:ok:error:no-active-session',
-            'No active session for this connectionId and docName.',
-            { handler: 'agent-undo' },
-          );
-          return;
-        }
-
-        const session = await sessionManager.getSession(docName, connectionId);
-
-        let undone = false;
-        try {
-          const icon = iconFromClientName(clientName);
-          const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
-          agentPresenceBroadcaster?.setPresence(agentId, {
-            displayName: agentName,
-            icon,
-            color,
-            currentDoc: docName,
-            mode: 'writing',
-            ts: Date.now(),
-          });
-          undone = applyAgentUndo(session, scope, count);
-          if (undone) {
-            recordContributor(
-              docName,
-              connectionId,
-              agentName,
-              colorSeed,
-              undefined,
-              buildAgentActor({ clientName, clientVersion, label }),
-            );
-          }
-        } finally {
-          agentPresenceBroadcaster?.touchMode(agentId, 'idle');
-        }
-
-        if (undone) {
-          const flushOutcome = await flushDiskAndDetectOutcome(docName);
-          if (flushOutcome?.kind === 'failure') {
-            respondPersistenceFailure(res, flushOutcome.failure, 'agent-undo');
-            return;
-          }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'agent-undo');
-            return;
-          }
-          flushDocToGit(docName, 'agent-undo');
-        }
-
-        agentFocusBroadcaster?.setFocus(connectionId, {
-          agentName: connectionId,
-          currentDoc: docName,
-          writeKind: 'undo',
-          ts: Date.now(),
-        });
-
-        successResponse(
-          res,
-          200,
-          AgentUndoSuccessSchema,
-          { docName, scope, undone },
-          { handler: 'agent-undo' },
-        );
-      } catch (e) {
-        if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-undo');
-          return;
-        }
-        log.error({ err: e, requestId: getRequestId(_req) }, '[agent-undo] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'agent-undo',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'agent-undo', method: 'POST' },
-  );
-
-  const handleAgentActivity = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        const agentId = validateAgentId(url.searchParams.get('agentId'));
-        if (agentId === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'agentId required (alphanumeric/_/- only).',
-            { handler: 'agent-activity' },
-          );
-          return;
-        }
-        const result = listAgentActivity(sessionManager, agentId);
-        successResponse(res, 200, AgentActivitySuccessSchema, result, {
-          handler: 'agent-activity',
-        });
-      } catch (e) {
-        log.error({ err: e, requestId: getRequestId(req) }, '[agent-activity] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'agent-activity',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'agent-activity', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleAgentBurstDiff = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        const agentId = validateAgentId(url.searchParams.get('agentId'));
-        const rawDocName = url.searchParams.get('docName');
-        const keptCountStr = url.searchParams.get('keptCount');
-
-        if (agentId === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'agentId required (alphanumeric/_/- only).',
-            { handler: 'agent-burst-diff' },
-          );
-          return;
-        }
-        if (!rawDocName || rawDocName.trim() === '') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Missing docName parameter.', {
-            handler: 'agent-burst-diff',
-          });
-          return;
-        }
-        if (!isSafeDocName(rawDocName)) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
-            handler: 'agent-burst-diff',
-          });
-          return;
-        }
-        const docName = resolveAlias(rawDocName);
-        if (isSystemDoc(docName) || isConfigDoc(docName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${docName}' is a reserved document name.`,
-            { handler: 'agent-burst-diff' },
-          );
-          return;
-        }
-        if (!keptCountStr || Number.isNaN(Number(keptCountStr))) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'keptCount must be a number.', {
-            handler: 'agent-burst-diff',
-          });
-          return;
-        }
-        const keptCount = Number(keptCountStr);
-        if (!Number.isInteger(keptCount) || keptCount < 0) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'keptCount must be a non-negative integer.',
-            { handler: 'agent-burst-diff' },
-          );
-          return;
-        }
-
-        const session = sessionManager.getLiveSession(docName, agentId);
-        if (!session) {
-          errorResponse(
-            res,
-            404,
-            'urn:ok:error:no-active-session',
-            'No active session for this agentId and docName.',
-            { handler: 'agent-burst-diff' },
-          );
-          return;
-        }
-
-        const um = session.um;
-        if (keptCount > um.undoStack.length) {
-          errorResponse(
-            res,
-            404,
-            'urn:ok:error:not-found',
-            `keptCount ${keptCount} out of range (stack has ${um.undoStack.length} items).`,
-            { handler: 'agent-burst-diff' },
-          );
-          return;
-        }
-
-        const ytext = session.dc.document.getText('source');
-        const { diff, before, after, properties } = synthesizeVersionDiff(
-          // biome-ignore lint/suspicious/noExplicitAny: Y.StackItem is internal to yjs — structural shape matches YjsStackItemShape in agent-activity.ts
-          um.undoStack as any,
-          keptCount,
-          ytext,
-          docName,
-        );
-        successResponse(
-          res,
-          200,
-          AgentBurstDiffSuccessSchema,
-          { diff, before, after, properties, generatedAt: Date.now() },
-          { handler: 'agent-burst-diff' },
-        );
-      } catch (e) {
-        log.error({ err: e, requestId: getRequestId(req) }, '[agent-burst-diff] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'agent-burst-diff',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'agent-burst-diff', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleTestFlushGit = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        await flushGitCommit?.();
-        successResponse(res, 200, TestFlushGitSuccessSchema, {}, { handler: 'test-flush-git' });
-      } catch (e) {
-        log.error({ err: e, requestId: getRequestId(_req) }, '[test-flush-git] flush failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'test-flush-git',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'test-flush-git', method: 'POST', skipBodyParse: true },
-  );
-
-  const handleTestReset = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        const docName = canonicalDocName(
-          resolveAlias(url.searchParams.get('docName') ?? 'test-doc'),
-        );
-
-        let filePath: string;
-        try {
-          filePath = safeContentPath(docName, contentDir);
-        } catch (err) {
-          log.error({ err, docName }, '[test-reset] safeContentPath rejected docName');
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid docName.', {
-            handler: 'test-reset',
-            cause: err,
-          });
-          return;
-        }
-
-        await sessionManager.closeAll(docName);
-        hocuspocus.closeConnections(docName);
-
-        const debounceId = `onStoreDocument-${docName}`;
-        if (hocuspocus.debouncer.isDebounced(debounceId)) {
-          await hocuspocus.debouncer.executeNow(debounceId);
-        }
-
-        const doc = hocuspocus.documents.get(docName);
-        if (doc) await (forceUnloadDocument ?? hocuspocus.unloadDocument.bind(hocuspocus))(doc);
-        writeFileSync(filePath, '', 'utf-8');
-        await derivedDocumentIndex?.testOnly?.resetDocumentForTest(docName);
-
-        const resetOkignoreParam = url.searchParams.get('reset-okignore');
-        const resetOkignore = resetOkignoreParam !== 'false';
-        if (resetOkignore) {
-          try {
-            const okignorePath = resolve(contentDir, '.okignore');
-            const okignoreDoc = hocuspocus.documents.get(CONFIG_DOC_NAME_OKIGNORE);
-            if (okignoreDoc) {
-              const ytext = okignoreDoc.getText('source');
-              if (ytext.length > 0) {
-                okignoreDoc.transact(() => {
-                  ytext.delete(0, ytext.length);
-                }, CONFIG_VALIDATION_REVERT_ORIGIN);
-              }
-            }
-            if (existsSync(okignorePath)) {
-              writeFileSync(okignorePath, '', 'utf-8');
-            }
-            if (contentFilter) {
-              bumpSkillsCatalogGen();
-              await contentFilter.rebuildIgnorePatterns();
-            }
-          } catch (err) {
-            log.warn({ err }, '[test-reset] okignore reset partial failure');
-          }
-        }
-        signalChannel?.('files');
-        successResponse(res, 200, TestResetSuccessSchema, {}, { handler: 'test-reset' });
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'test-reset',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'test-reset', method: 'POST', skipBodyParse: true },
-  );
-
-  const handleTestRescanBacklinks = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        if (!derivedDocumentIndex?.testOnly) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:backlink-index-not-configured',
-            'Backlink index is not configured.',
-            { handler: 'test-rescan-backlinks' },
-          );
-          return;
-        }
-        await derivedDocumentIndex.testOnly.rescanBacklinksForTest();
-        successResponse(
-          res,
-          200,
-          TestRescanBacklinksSuccessSchema,
-          {},
-          { handler: 'test-rescan-backlinks' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'test-rescan-backlinks',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'test-rescan-backlinks', method: 'POST', skipBodyParse: true },
-  );
-
-  const handleTestRescanFiles = withValidation(
-    EmptyRequestSchema,
-    async (_req, res) => {
-      try {
-        if (!rescanFiles) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:file-rescan-not-configured',
-            'Watcher rescan capability is not configured.',
-            { handler: 'test-rescan-files' },
-          );
-          return;
-        }
-        await rescanFiles();
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          TestRescanFilesSuccessSchema,
-          {},
-          { handler: 'test-rescan-files' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'test-rescan-files',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'test-rescan-files', method: 'POST', skipBodyParse: true },
-  );
-
-  const versionOpsService = createVersionOpsService({ getCurrentBranch, contentRoot });
   const skillPlacementOps = createSkillPlacementOpsService();
-
-  const handleSaveVersion = withValidation(
-    SaveVersionRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const saveVersionBody = body as unknown as Record<string, unknown>;
-        const {
-          rawAgentId: svRawAgentId,
-          agentId: svAgentId,
-          agentName: svAgentName,
-          clientName: svClientName,
-        } = extractAgentIdentity(saveVersionBody);
-
-        const shadow = shadowRef?.current;
-        if (!shadow) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:shadow-not-configured',
-            'Shadow repo not configured.',
-            { handler: 'save-version' },
-          );
-          return;
-        }
-
-        const SAFE_ID_RE = /^[a-zA-Z0-9_-]+$/;
-        let writers: WriterIdentity[] = [];
-
-        if (Array.isArray(body.writers)) {
-          try {
-            writers = body.writers.map((w) => {
-              const id = w.id ?? 'unknown';
-              if (!SAFE_ID_RE.test(id)) {
-                throw new Error(`Invalid writer id: ${id}`);
-              }
-              return {
-                id,
-                name: (w.name ?? 'unknown').replace(/[\r\n]/g, ''),
-                email: (w.email ?? 'noreply@openknowledge.local').replace(/[\r\n]/g, ''),
-              };
-            });
-          } catch (e) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              e instanceof Error ? e.message : 'Invalid writer id.',
-              { handler: 'save-version', cause: e },
-            );
-            return;
-          }
-        }
-
-        const agentWriter =
-          svRawAgentId !== undefined
-            ? {
-                id: svAgentId,
-                name: svClientName ? `${svAgentName} (${svClientName})` : svAgentName,
-                email: `${svAgentId}@openknowledge.local`,
-              }
-            : undefined;
-        const checkpointSummary = normalizeSummary(
-          typeof body.summary === 'string' ? body.summary : undefined,
-        );
-        const result = await versionOpsService.saveCheckpoint(shadow, {
-          explicitWriters: writers,
-          agentWriter,
-          summary: checkpointSummary.kind === 'value' ? checkpointSummary.value : undefined,
-        });
-
-        successResponse(
-          res,
-          200,
-          SaveVersionSuccessSchema,
-          {
-            checkpointRef: result.checkpointRef,
-          },
-          { handler: 'save-version' },
-        );
-      } catch (e) {
-        log.error({ err: e, requestId: getRequestId(_req) }, '[save-version] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'save-version',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'save-version', method: 'POST' },
-  );
-
-  const handleRollback = withValidation(
-    RollbackRequestSchema,
-    async (_req, res, body) => {
-      const bodyObj = body as unknown as Record<string, unknown>;
-      const actor = extractActorIdentity(bodyObj, getPrincipal);
-      if (actor.kind === 'invalid-summary') {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-          handler: 'rollback',
-        });
-        return;
-      }
-
-      // The check fires post-identity (precedent #24) and pre-mutation.
-      const targetDoc = hocuspocus.documents.get(body.docName);
-      if (targetDoc && isDocInConflict(targetDoc)) {
-        respondDocInConflict(
-          res,
-          new DocInConflictError({ file: docNameToRelativePath(body.docName) }),
-          'rollback',
-        );
-        return;
-      }
-
-      const shadow = shadowRef?.current;
-      if (!shadow) {
-        errorResponse(
-          res,
-          503,
-          'urn:ok:error:rollback-not-configured',
-          'Shadow repo not configured.',
-          { handler: 'rollback' },
-        );
-        return;
-      }
-
-      const { docName, commitSha } = body;
-
-      const resolvedContentRoot = contentRoot ?? '.';
-      const pathResult = safeDocPath(docName, resolvedContentRoot);
-      if ('error' in pathResult) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', pathResult.error, {
-          handler: 'rollback',
-        });
-        return;
-      }
-      const sg = shadowGit(shadow);
-
-      const t0 = Date.now();
-      try {
-        const renameLogIndex = getOrLoadRenameLogIndex(shadow.gitDir);
-        const ancestorCache = createAncestorShaSetCache();
-        const branch = getCurrentBranch?.() ?? 'main';
-        const historicalPath = await resolveDocPathAtCommit(
-          shadow,
-          docName,
-          commitSha,
-          branch,
-          renameLogIndex,
-          (name) => docTreePathCandidates(name, resolvedContentRoot),
-          ancestorCache,
-        );
-        if (historicalPath === null) {
-          errorResponse(
-            res,
-            404,
-            'urn:ok:error:doc-not-found',
-            `Commit ${commitSha.slice(0, 7)} does not contain document ${docName} at any known historical path.`,
-            { handler: 'rollback' },
-          );
-          return;
-        }
-
-        const markdown = await sg.raw('show', `${commitSha}:${historicalPath}`);
-        const timestamp = new Date().toISOString();
-
-        await safetyCheckpoint(shadow, resolvedContentRoot, {
-          action: 'rollback',
-          context: { docName, targetSha: commitSha },
-        });
-
-        const document = hocuspocus.documents.get(docName);
-        if (!document) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:doc-not-open',
-            'Document is not currently open — open it in the editor first.',
-            { handler: 'rollback' },
-          );
-          return;
-        }
-
-        // (precedent #38 — Y.Text-is-truth) which performs the full ytext
-        let rollbackDivergence: AgentWriteContentDivergence | undefined;
-        document.transact(() => {
-          replaceRawBody(document, markdown);
-          rollbackDivergence = evaluateContentDivergence(
-            document.getText('source').toString(),
-            markdown,
-            'rollback',
-          );
-        }, ROLLBACK_ORIGIN);
-        if (rollbackDivergence !== undefined) {
-          console.warn(
-            JSON.stringify({
-              event: 'agent-write-content-divergence',
-              'doc.name': docName,
-              position: 'rollback',
-              intendedBytes: rollbackDivergence.intendedBytes,
-              actualBytes: rollbackDivergence.actualBytes,
-              byteDelta: rollbackDivergence.byteDelta,
-              'actor.kind': actor.kind,
-              ...(actor.kind === 'agent' || actor.kind === 'principal'
-                ? { 'actor.writer_id': actor.writerId }
-                : {}),
-            }),
-          );
-        }
-        recordContentDivergenceGate('rollback', rollbackDivergence);
-
-        let summaryResponse: SummaryResponse | undefined;
-        switch (actor.kind) {
-          case 'agent': {
-            const shaShort = commitSha.slice(0, 8);
-            const agentProvidedSummary = actor.summary.kind === 'value';
-            const effectiveNormalized = agentProvidedSummary
-              ? actor.summary
-              : normalizeSummary(`Restored to ${shaShort}`);
-            const fields = summaryResponseFields(effectiveNormalized);
-            summaryResponse =
-              agentProvidedSummary || !fields.response
-                ? fields.response
-                : stripDefaultPathTruncation(fields.response);
-            recordContributor(
-              docName,
-              actor.writerId,
-              actor.displayName,
-              actor.colorSeed,
-              formatRollbackSubject(docName, commitSha),
-              actor.actor,
-              fields.stored,
-            );
-            incrementAgentWriteCalls();
-            countNormalizedSummary(effectiveNormalized, !agentProvidedSummary);
-            break;
-          }
-          case 'principal': {
-            const fields = summaryResponseFields(actor.summary);
-            summaryResponse = fields.response;
-            recordContributor(
-              docName,
-              actor.writerId,
-              actor.displayName,
-              actor.colorSeed,
-              formatRollbackSubject(docName, commitSha),
-              actor.actor,
-              fields.stored,
-            );
-            countNormalizedSummary(actor.summary, false);
-            break;
-          }
-          case 'anonymous':
-            log.debug(
-              { docName, commitSha: commitSha.slice(0, 8) },
-              '[rollback] anonymous actor — no contributor recorded (no agentId in body and getPrincipal() returned null)',
-            );
-            break;
-          default: {
-            const _exhaustive: never = actor;
-            throw new Error(
-              `Unhandled actor kind in handleRollback: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-            );
-          }
-        }
-        renameAttributionCounter().add(1, { kind: 'rollback', attribution_kind: actor.kind });
-
-        const flushOutcome = await flushDiskAndDetectOutcome(docName);
-        if (flushOutcome?.kind === 'failure') {
-          respondPersistenceFailure(res, flushOutcome.failure, 'rollback');
-          return;
-        }
-        if (flushOutcome?.kind === 'divergence') {
-          respondDiskDivergence(res, 'rollback');
-          return;
-        }
-
-        flushDocToGit(docName, 'rollback');
-
-        const duration = Date.now() - t0;
-        getLogger('rollback').info(
-          { docName, from: commitSha.slice(0, 8), durationMs: duration },
-          'rollback',
-        );
-
-        if (actor.kind === 'agent') {
-          agentFocusBroadcaster?.setFocus(actor.writerId, {
-            agentName: actor.displayName,
-            currentDoc: docName,
-            writeKind: 'rollback-apply',
-            ts: Date.now(),
-          });
-        }
-
-        const rollbackDivergenceEntry =
-          rollbackDivergence !== undefined
-            ? toContentDivergenceWarning(rollbackDivergence)
-            : undefined;
-        successResponse(
-          res,
-          200,
-          RollbackSuccessSchema,
-          {
-            restoredFrom: commitSha,
-            timestamp,
-            ...(summaryResponse ? { summary: summaryResponse } : {}),
-            ...(rollbackDivergenceEntry
-              ? { warning: rollbackDivergenceEntry, warnings: [rollbackDivergenceEntry] }
-              : {}),
-          },
-          { handler: 'rollback' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to roll back.', {
-          handler: 'rollback',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'rollback', method: 'POST' },
-  );
 
   const assetService = createAssetService({
     contentDir,
     isPathIgnored: (relativePath) => contentFilter?.isPathIgnored(relativePath) ?? false,
     getAttachmentFolderPath,
   });
-  const ASSET_SERVE_ERRORS = {
-    'missing-path': [400, 'urn:ok:error:invalid-request', 'Missing asset path.'],
-    'unsupported-type': [415, 'urn:ok:error:unsupported-asset-type', 'Unsupported asset type.'],
-    'not-found': [404, 'urn:ok:error:asset-not-found', 'Asset not found.'],
-    'invalid-path': [400, 'urn:ok:error:invalid-request', 'Invalid asset path.'],
-  } as const;
-
-  const handleAsset = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        const assetPath = url.searchParams.get('path');
-        const resolution = assetService.resolveServableAsset(assetPath);
-        if (!resolution.ok) {
-          const [status, type, title] = ASSET_SERVE_ERRORS[resolution.reason];
-          errorResponse(res, status, type, title, {
-            handler: 'asset',
-            ...(resolution.cause !== undefined ? { cause: resolution.cause } : {}),
-          });
-          return;
-        }
-        const { asset } = resolution;
-        const headers: Record<string, string> = {
-          'Content-Type': asset.contentType,
-          'Content-Length': String(asset.size),
-          'X-Content-Type-Options': 'nosniff',
-          'Content-Disposition': asset.disposition,
-          'Cache-Control': 'no-store',
-        };
-        if (asset.csp !== null) {
-          headers['Content-Security-Policy'] = asset.csp;
-        }
-        const canonicalPath = asset.canonicalPath;
-        res.writeHead(200, headers);
-        try {
-          await pipeline(createReadStream(canonicalPath), res);
-        } catch (streamError) {
-          log.error(
-            {
-              event: 'api.asset.pipeline-failed',
-              handler: 'asset',
-              assetPath,
-              err: streamError,
-            },
-            '[asset] pipeline failed mid-stream',
-          );
-          if (!res.destroyed) {
-            res.destroy(streamError instanceof Error ? streamError : undefined);
-          }
-        }
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'asset',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'asset', method: 'GET', skipBodyParse: true },
-  );
-
-  const TEXT_VIEW_MAX_BYTES = 1_048_576;
-  const handleAssetText = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
-        const assetPath = url.searchParams.get('path');
-        const resolution = assetService.resolveTextAsset(assetPath);
-        if (!resolution.ok) {
-          const [status, type, title] = ASSET_SERVE_ERRORS[resolution.reason];
-          errorResponse(res, status, type, title, {
-            handler: 'asset-text',
-            ...(resolution.cause !== undefined ? { cause: resolution.cause } : {}),
-          });
-          return;
-        }
-        if (resolution.size > TEXT_VIEW_MAX_BYTES) {
-          errorResponse(
-            res,
-            413,
-            'urn:ok:error:payload-too-large',
-            `File exceeds the ${TEXT_VIEW_MAX_BYTES}-byte text-viewer cap.`,
-            { handler: 'asset-text' },
-          );
-          return;
-        }
-        const bytes = await readFile(resolution.canonicalPath);
-        const text = bytes.toString('utf-8');
-        res.writeHead(200, {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'X-Content-Type-Options': 'nosniff',
-          'Content-Disposition': 'inline',
-          'Cache-Control': 'no-store',
-        });
-        res.end(text);
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
-          handler: 'asset-text',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'asset-text', method: 'GET', skipBodyParse: true },
-  );
-
   const fileOpsService = createFileOpsService({
     contentDir,
     resolveContentEntryPath,
@@ -5518,47 +3737,12 @@ export function createApiExtension(
     recordDerivedMutationsBestEffort,
   });
 
-  const handleInstallSkill = withValidation(
-    InstallSkillRequestSchema,
-    async (_req, res, body) => {
-      if (body.out !== undefined && !isSafeLocalPath(body.out)) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'Output path must be within home directory.',
-          { handler: 'install-skill' },
-        );
-        return;
-      }
-
-      try {
-        const result = await buildAndOpenSkill({
-          ...(body.noOpen !== undefined ? { noOpen: body.noOpen } : {}),
-          ...(body.out !== undefined ? { out: body.out } : {}),
-        });
-        successResponse(res, 200, InstallSkillSuccessSchema, result, {
-          handler: 'install-skill',
-        });
-      } catch (err) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to install skill.', {
-          handler: 'install-skill',
-          cause: err,
-        });
-      }
-    },
-    {
-      handler: 'install-skill',
-      method: 'POST',
-      preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'install-skill' }),
-    },
-  );
-
   function validateFolderRel(
     raw: string,
     res: ServerResponse,
-    label: 'path' | 'folder' = 'path',
-    handler = 'folder-config',
+    label: 'path' | 'folder',
+    handler: string,
+    components: 'ok' | 'ok-and-templates',
   ): { folderRel: string; resolvedContentDir: string } | null {
     const folderRel = raw.replace(/^\.\//, '').replace(/^\/+/, '').replace(/\/+$/, '');
     if (folderRel.split('/').some((seg) => seg === '..') || raw.startsWith('/')) {
@@ -5583,10 +3767,57 @@ export function createApiExtension(
       });
       return null;
     }
+    /* STOP: the escape asserts below admit an IN-ROOT symlinked
+       `<folder>/.ok` OR `<folder>/.ok/templates` (their realpaths stay
+       inside the content root), which would alias every folder-config and
+       template arm — including the WRITE arms (`applyTemplateWrite`'s
+       rename lands wherever `templates` points; `applyTemplateDelete`
+       unlinks through it) — into another directory. Refuse by identity —
+       same posture as `initContent`'s `assertNotSymlink` on the root `.ok/`
+       and the templates resolver's gates. The `templates` component is
+       checked only for the template arms (`components: 'ok-and-templates'`).
+       The folder-config arms DO reach `.ok/templates` — through
+       `collectFromFolder` (content/templates-resolver.ts), which gates it by
+       identity and degrades, skipping a symlinked templates dir (and
+       reporting it via `onRefused`) rather than failing the folder payload.
+       Do not hard-fail here for those arms or the per-field degrade contract
+       breaks; do not delete the resolver-side gate, which is what makes the
+       degrade safe. The same unconditional `.ok` identity check also gates
+       the folder-history arm (http/history-routes.ts) for a uniform
+       refuse-by-identity posture, even though that arm only uses the path as
+       a `git log` pathspec and the aliasing risk above does not apply there.
+       Only an actual
+       symlink short-circuits here; a non-ENOENT lstat failure
+       (`unverifiable`) is left to the `assertNoSymlinkEscape` asserts below,
+       which classify it (ELOOP → path-escape, other errnos → 500) rather
+       than mislabel a non-symlink path as a symlink. */
+    const okDir = resolve(candidateAbs, '.ok');
+    if (checkSymlinkLeaf(okDir).kind === 'symlink') {
+      errorResponse(
+        res,
+        400,
+        'urn:ok:error:symlink-refused',
+        `${folderRel || '.'}/.ok is a symlink — refusing to operate through it. Replace the symlink with a real file or directory and retry.`,
+        { handler, detail: folderRel || '.' },
+      );
+      return null;
+    }
+    const okTemplatesDir = resolve(candidateAbs, '.ok', 'templates');
+    if (components === 'ok-and-templates' && checkSymlinkLeaf(okTemplatesDir).kind === 'symlink') {
+      errorResponse(
+        res,
+        400,
+        'urn:ok:error:symlink-refused',
+        `${folderRel || '.'}/.ok/templates is a symlink — refusing to operate through it. Replace the symlink with a real file or directory and retry.`,
+        { handler, detail: folderRel || '.' },
+      );
+      return null;
+    }
     try {
-      const okDir = resolve(candidateAbs, '.ok');
       assertNoSymlinkEscape(okDir, resolvedContentDir);
-      assertNoSymlinkEscape(resolve(okDir, 'templates'), resolvedContentDir);
+      if (components === 'ok-and-templates') {
+        assertNoSymlinkEscape(okTemplatesDir, resolvedContentDir);
+      }
     } catch (err) {
       if (isContainmentRejection(err)) {
         errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escapes content directory.', {
@@ -5629,14 +3860,19 @@ export function createApiExtension(
   function isValidSkillName(name: string): boolean {
     return Boolean(name) && name.length <= 64 && SKILL_NAME_REGEX.test(name);
   }
-  function validateSkillName(name: string, res: ServerResponse, handler: string): boolean {
+  function validateSkillName(
+    name: string,
+    res: ServerResponse,
+    handler: string,
+    extensions?: ErrorExtensions,
+  ): boolean {
     if (!isValidSkillName(name)) {
       errorResponse(
         res,
         400,
         'urn:ok:error:invalid-request',
         'Invalid skill name: lowercase letters, digits, and hyphens only (≤64 chars; no slashes, dots, spaces, or uppercase).',
-        { handler },
+        { handler, ...(extensions ? { extensions } : {}) },
       );
       return false;
     }
@@ -5719,98 +3955,6 @@ export function createApiExtension(
     );
   }
 
-  function projectionModeFor(scope: 'project' | 'global', name: string): 'symlink' | 'copy' {
-    const base = scope === 'project' ? projectDir : skillsHome;
-    if (!base) return 'symlink';
-    try {
-      const lock = readSkillsLock(join(base, ...SKILLS_LOCK_REL));
-      return lock.skills[name] !== undefined ? 'copy' : 'symlink';
-    } catch {
-      return 'symlink';
-    }
-  }
-
-  function skillLockPath(scope: 'project' | 'global'): string | null {
-    const base = scope === 'project' ? projectDir : skillsHome;
-    return base ? join(base, ...SKILLS_LOCK_REL) : null;
-  }
-
-  function rekeySkillLockEntry(
-    scope: 'project' | 'global',
-    fromName: string,
-    toName: string,
-    patch: Partial<SkillsLock['skills'][string]> = {},
-  ): Promise<void> {
-    const lockPath = skillLockPath(scope);
-    if (!lockPath) return Promise.resolve();
-    return mutateSkillsLock(lockPath, (lock) => {
-      const entry = lock.skills[fromName];
-      if (!entry) return lock;
-      const skills = { ...lock.skills };
-      delete skills[fromName];
-      skills[toName] = { ...entry, ...patch };
-      return { ...lock, skills };
-    });
-  }
-
-  async function transferSkillLockEntry(
-    fromScope: 'project' | 'global',
-    toScope: 'project' | 'global',
-    name: string,
-  ): Promise<boolean> {
-    const fromPath = skillLockPath(fromScope);
-    const toPath = skillLockPath(toScope);
-    if (!fromPath || !toPath) return false;
-    const entry = readSkillsLockFile(fromPath).skills[name];
-    if (!entry) return false;
-
-    const movedEntry = { ...entry };
-    if (toScope === 'global') delete movedEntry.baselineRef;
-    await mutateSkillsLock(toPath, (lock) => ({
-      ...lock,
-      skills: { ...lock.skills, [name]: movedEntry },
-    }));
-    await mutateSkillsLock(fromPath, (lock) => {
-      const remaining = { ...lock.skills };
-      delete remaining[name];
-      return { ...lock, skills: remaining };
-    });
-    return true;
-  }
-
-  function updateSkillLockEntry(
-    scope: 'project' | 'global',
-    name: string,
-    patch: Partial<SkillsLock['skills'][string]>,
-  ): Promise<void> {
-    const lockPath = skillLockPath(scope);
-    if (!lockPath) return Promise.resolve();
-    return mutateSkillsLock(lockPath, (lock) => {
-      const entry = lock.skills[name];
-      if (!entry) return lock;
-      return { ...lock, skills: { ...lock.skills, [name]: { ...entry, ...patch } } };
-    });
-  }
-
-  function respondSkillRestoreFailure(
-    res: ServerResponse,
-    result: {
-      code: 'no-shadow' | 'version-not-found' | 'skill-absent' | 'io-error' | 'path-escape';
-      error: string;
-    },
-    handler: 'skill-restore' | 'skill-revert',
-  ): void {
-    const map = {
-      'no-shadow': [409, 'urn:ok:error:shadow-not-configured'],
-      'version-not-found': [404, 'urn:ok:error:not-found'],
-      'skill-absent': [404, 'urn:ok:error:not-found'],
-      'io-error': [500, 'urn:ok:error:storage-error'],
-      'path-escape': [500, 'urn:ok:error:path-escape'],
-    } as const;
-    const [status, typeUri] = map[result.code];
-    errorResponse(res, status, typeUri, result.error, { handler, detail: result.code });
-  }
-
   function effectiveInstallMode(
     scope: 'project' | 'global',
     name: string,
@@ -5831,19 +3975,19 @@ export function createApiExtension(
       : `${LEGACY_SKILL_STORE_ROOT}/${name}`;
   }
 
-  const BUILTIN_PROJECT_SKILL_NAME = BUNDLE_SKILL_NAME.project;
-
   function resolveBuiltinSkillDir(
     base: string,
     name: string,
+    scope: 'project' | 'global',
     host?: string,
   ): { dir: string; skillMd: string; hosts: string[]; relPath: string } | null {
     const hosts: string[] = [];
     let chosenDir: string | null = null;
+    const scopeRoots = skillProjectionRoots(scope);
     const roots: Array<{ id: string; root: string }> = [
-      ...PROJECT_SKILL_EDITOR_IDS.map((editorId) => ({
+      ...skillProjectionEditorIds(scope).map((editorId) => ({
         id: editorId as string,
-        root: EDITOR_PROJECT_SKILL_ROOT[editorId] ?? '',
+        root: scopeRoots[editorId] ?? '',
       })),
       { id: 'agents', root: AGENTS_SKILLS_ROOT },
     ];
@@ -5876,9 +4020,13 @@ export function createApiExtension(
     };
   }
 
-  function synthBuiltinLockEntry(base: string, name: string): SkillsLock['skills'][string] | null {
+  function synthBuiltinLockEntry(
+    base: string,
+    name: string,
+    scope: 'project' | 'global',
+  ): SkillsLock['skills'][string] | null {
     if (!isInternalBundleSkillName(name)) return null;
-    const resolved = resolveBuiltinSkillDir(base, name);
+    const resolved = resolveBuiltinSkillDir(base, name, scope);
     if (!resolved) return null;
     const contentHash = parseSkillDir(resolved.dir)?.contentHash ?? '';
     let importedAt: string;
@@ -5894,33 +4042,6 @@ export function createApiExtension(
       autoUpdate: false,
       importedAt,
     };
-  }
-
-  const PLUGIN_INDEX_TTL_MS = 30_000;
-  let pluginIndex: { at: number; identity: string; byName: Map<string, PluginUpstream> } | null =
-    null;
-
-  function pluginSkillsByName(identity: string): Map<string, PluginUpstream> {
-    const now = Date.now();
-    if (
-      pluginIndex &&
-      pluginIndex.identity === identity &&
-      now - pluginIndex.at < PLUGIN_INDEX_TTL_MS
-    )
-      return pluginIndex.byName;
-    let byName = new Map<string, PluginUpstream>();
-    try {
-      byName = pluginUpstreamsByName(
-        enumerateInstalledSkillsCached(
-          homeDirOverride !== undefined ? { home: homeDirOverride } : {},
-        ).skills,
-        (home) => parseSkillDir(home)?.contentHash,
-      );
-    } catch (err) {
-      log.warn({ err }, 'plugin upstream index failed; origins will be omitted');
-    }
-    pluginIndex = { at: now, identity, byName };
-    return byName;
   }
 
   function pluginUpstreamHash(name: string, identity: string): string | null {
@@ -6007,7 +4128,7 @@ export function createApiExtension(
     size?: ReturnType<typeof estimateSkillCost>;
     origin?: ReturnType<typeof skillOriginFor>;
   } | null {
-    const resolved = resolveBuiltinSkillDir(base, name);
+    const resolved = resolveBuiltinSkillDir(base, name, scope);
     const skillMd = resolved?.skillMd ?? shippedBundleSkillMd(name);
     if (skillMd === null) return null;
     let description: string | undefined;
@@ -6015,7 +4136,7 @@ export function createApiExtension(
       const { frontmatter } = parseFrontmatterDoc(readFileSync(skillMd, 'utf-8'));
       if (typeof frontmatter.description === 'string') description = frontmatter.description;
     } catch {}
-    const synthEntry = synthBuiltinLockEntry(base, name);
+    const synthEntry = synthBuiltinLockEntry(base, name, scope);
     const parsed = parseSkillDir(dirname(skillMd));
     return {
       name,
@@ -6052,16 +4173,15 @@ export function createApiExtension(
     return scope === 'global' ? skillsHome : projectDir;
   }
 
-  async function uninstallSkillFromHostDirs(
+  function removeSkillFromHostDirs(
     base: string,
     name: string,
     scope: 'project' | 'global',
-    opts: { purge?: { contentHash: string } } = {},
-  ): Promise<boolean> {
-    const installed = await removeSkillInstall(base, name);
+    opts: { purge?: { contentHash: string } },
+  ): void {
     const scanBaseForPurge = scope === 'project' ? contentDir : skillsHome;
     if (opts.purge !== undefined) {
-      reverseProjectSkill(name, base, PROJECT_SKILL_EDITOR_IDS, skillProjectionRoots(scope));
+      reverseProjectSkill(name, base, skillProjectionEditorIds(scope), skillProjectionRoots(scope));
       for (const dir of removableSkillOccurrenceDirs(
         scanBaseForPurge,
         scope,
@@ -6070,7 +4190,7 @@ export function createApiExtension(
       )) {
         tracedRmSync(dir, { recursive: true, force: true });
       }
-      return installed !== null;
+      return;
     }
     if (!existsSync(resolve(resolveSkillsRoot(scope), name, 'SKILL.md'))) {
       const entry = (
@@ -6096,14 +4216,23 @@ export function createApiExtension(
           canonicalHash: entry.contentHash,
           name,
           cwd: base,
-          targets: [...PROJECT_SKILL_EDITOR_IDS],
+          targets: [...skillProjectionEditorIds(scope)],
           roots: skillProjectionRoots(scope),
         });
-        return installed !== null;
+        return;
       }
     }
-    reverseProjectSkill(name, base, PROJECT_SKILL_EDITOR_IDS, skillProjectionRoots(scope));
-    return installed !== null;
+    reverseProjectSkill(name, base, skillProjectionEditorIds(scope), skillProjectionRoots(scope));
+  }
+
+  async function uninstallSkillFromHostDirs(
+    base: string,
+    name: string,
+    scope: 'project' | 'global',
+    opts: { purge?: { contentHash: string } } = {},
+  ): Promise<boolean> {
+    removeSkillFromHostDirs(base, name, scope, opts);
+    return (await removeSkillInstall(base, name)) !== null;
   }
 
   function resolveSkillsList(
@@ -6164,721 +4293,6 @@ export function createApiExtension(
     return { skills, truncated };
   }
 
-  function trackInGitLine(skillDirRel: string): string {
-    const root = dirname(skillDirRel);
-    return `!/${root.split(sep).join('/')}/`;
-  }
-
-  const handleSkillTrackInGit = withValidation(
-    SkillTrackInGitRequestSchema,
-    catchErrors(
-      async (_req, res, body) => {
-        if (!validateSkillName(body.name, res, 'skill-track-in-git')) return;
-        if (body.scope !== 'project') {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Only project skills live in the repository; a global skill is outside any .gitignore.',
-            { handler: 'skill-track-in-git' },
-          );
-          return;
-        }
-        if (!projectDir) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project directory.', {
-            handler: 'skill-track-in-git',
-          });
-          return;
-        }
-        const inPlace = scanInPlaceSkills(contentDir).find((s) => s.name === body.name);
-        const mountedDirRel = inPlace?.dir ?? `${LEGACY_SKILL_STORE_ROOT}/${body.name}`;
-        const indexedFileRel =
-          indexedSkillContentPath(resolve(contentDir, mountedDirRel, 'SKILL.md'), contentDir) ??
-          `${mountedDirRel}/SKILL.md`;
-        const skillDirRel = dirname(indexedFileRel);
-        const skillFileRel = indexedFileRel;
-        const line = trackInGitLine(skillDirRel);
-        const gitignoreRel = '.gitignore';
-        const gitignoreAbs = resolve(contentDir, gitignoreRel);
-
-        if (contentFilter && !contentFilter.isPathIgnored(skillFileRel)) {
-          successResponse(
-            res,
-            200,
-            SkillTrackInGitSuccessSchema,
-            { line, gitignorePath: gitignoreRel, applied: false, alreadyTracked: true },
-            { handler: 'skill-track-in-git' },
-          );
-          return;
-        }
-        if (body.apply !== true) {
-          successResponse(
-            res,
-            200,
-            SkillTrackInGitSuccessSchema,
-            { line, gitignorePath: gitignoreRel, applied: false },
-            { handler: 'skill-track-in-git' },
-          );
-          return;
-        }
-
-        const before = existsSync(gitignoreAbs) ? readFileSync(gitignoreAbs, 'utf-8') : null;
-        const lines = (before ?? '').split('\n');
-        if (lines.some((l) => l.trim() === line)) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:invalid-request',
-            `"${line}" is already in ${gitignoreRel}, but ${skillFileRel} is still ignored — another rule excludes it.`,
-            { handler: 'skill-track-in-git' },
-          );
-          return;
-        }
-        const next = `${before === null || before.endsWith('\n') || before === '' ? (before ?? '') : `${before}\n`}${line}\n`;
-        writeFileSync(gitignoreAbs, next, 'utf-8');
-        bumpSkillsCatalogGen();
-        await contentFilter?.rebuildIgnorePatterns();
-
-        if (contentFilter?.isPathIgnored(skillFileRel)) {
-          if (before === null) rmSync(gitignoreAbs, { force: true });
-          else writeFileSync(gitignoreAbs, before, 'utf-8');
-          bumpSkillsCatalogGen();
-          await contentFilter.rebuildIgnorePatterns();
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:invalid-request',
-            `Adding "${line}" did not make ${skillFileRel} trackable — another .gitignore rule excludes a parent directory. ${gitignoreRel} was left unchanged.`,
-            { handler: 'skill-track-in-git' },
-          );
-          return;
-        }
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillTrackInGitSuccessSchema,
-          { line, gitignorePath: gitignoreRel, applied: true },
-          { handler: 'skill-track-in-git' },
-        );
-      },
-      { handler: 'skill-track-in-git', title: 'Failed to update .gitignore.' },
-    ),
-    { handler: 'skill-track-in-git', method: 'POST' },
-  );
-
-  const skillAdmissionHeal: SkillAdmissionHealState = { lastKey: null };
-
-  const handleSkillsList = withValidation(
-    EmptyRequestSchema,
-    catchErrors(
-      async (_req, res) => {
-        const inPlaceFp =
-          (contentFilter?.peekFreshInPlaceSkillDirsFingerprint() ?? '') +
-          '\u0001' +
-          (projectDir ? detectProjectSkillEditors(projectDir).join(',') : '') +
-          '\u0001' +
-          detectUserSkillHosts(skillsHome)
-            .map((h) => h.editorId)
-            .join(',') +
-          '\u0001' +
-          scanGlobalInPlaceSkills(skillsHome)
-            .map((s) => s.dir)
-            .sort()
-            .join(',');
-        if (skillsListCache !== null && skillsListCache.fp !== inPlaceFp) {
-          bumpSkillsCatalogGen();
-        }
-        if (
-          skillsListCache !== null &&
-          skillsListCache.gen === skillsCatalogGen &&
-          skillsListCache.fp === inPlaceFp &&
-          Date.now() - skillsListCache.at < 5_000
-        ) {
-          successResponse(res, 200, SkillsListSuccessSchema, skillsListCache.body, {
-            handler: 'skills-list',
-          });
-          return;
-        }
-        const projectSkillsRoot = resolveSkillsRoot('project');
-        const project = resolveSkillsList(projectSkillsRoot, 'project');
-        const globalSkills = resolveSkillsList(resolveSkillsRoot('global'), 'global');
-        const projectInstallableEditors: string[] = projectDir
-          ? detectProjectSkillEditors(projectDir)
-          : [];
-        const globalInstallableEditors: string[] = detectUserSkillHosts(skillsHome).map(
-          (h) => h.editorId,
-        );
-        const projectHubOffered: boolean = projectDir
-          ? isActivatedSkillRoot(projectDir, 'project', AGENTS_SKILLS_ROOT, skillsHome)
-          : false;
-        const globalHubOffered: boolean = isActivatedSkillRoot(
-          skillsHome,
-          'global',
-          AGENTS_SKILLS_ROOT,
-          skillsHome,
-        );
-        const projectInstalled = projectDir ? readInstalledSkills(projectDir).skills : {};
-        const globalInstalled = readInstalledSkills(skillsHome).skills;
-        const lock: SkillsLock | null = projectDir
-          ? (parseSkillsLock(
-              existsSync(join(projectDir, ...SKILLS_LOCK_REL))
-                ? readFileSync(join(projectDir, ...SKILLS_LOCK_REL), 'utf-8')
-                : '',
-            ) ?? null)
-          : null;
-        const skillOrigin = skillOriginFor;
-        const enrich = (
-          list: typeof project,
-          marker: Record<string, { hosts: string[] }>,
-          withOrigin: boolean,
-        ) =>
-          list.skills.map((skill) => {
-            const record = marker[skill.name];
-            const hosts = record?.hosts ?? [];
-            const entry = withOrigin ? lock?.skills[skill.name] : undefined;
-            const origin = entry ? skillOrigin(entry) : undefined;
-            const modified =
-              entry?.localHash !== undefined &&
-              localSkillHash(projectSkillsRoot, skill.name) !== entry.localHash;
-            const revertable = entry?.baselineRef !== undefined;
-            return {
-              ...skill,
-              installed: hosts.length > 0,
-              hosts,
-              ...(origin ? { origin } : {}),
-              ...(modified ? { modified: true } : {}),
-              ...(revertable ? { revertable: true } : {}),
-            };
-          });
-        const placements = projectDir ? readSkillPlacements(projectDir) : {};
-        const placementFlags = (
-          baseDir: string,
-          list: ReturnType<typeof readSkillPlacements>[string] | undefined,
-          canonicalAbs?: string,
-        ): { drift: string[] } => {
-          const drift: string[] = [];
-          for (const p of list ?? []) {
-            const abs = resolve(baseDir, p.path);
-            if (canonicalAbs !== undefined && abs === resolve(canonicalAbs)) continue;
-            let isLink = false;
-            try {
-              isLink = lstatSync(abs).isSymbolicLink();
-            } catch {
-              continue;
-            }
-            if ((isLink ? 'link' : 'copy') === p.mode) continue;
-            if (isLink && canonicalAbs !== undefined) {
-              try {
-                if (realpathSync(abs) === realpathSync(canonicalAbs)) continue;
-              } catch {}
-            }
-            drift.push(p.path);
-          }
-          return { drift };
-        };
-        const projectAliases = projectDir ? scanHostRootAliases(contentDir, 'project') : {};
-        const projectAliasRoots = aliasedSourceRoots(projectAliases, 'project');
-        const underRoots = (path: string, roots: ReadonlySet<string>): boolean =>
-          [...roots].some((r) => path === r || path.startsWith(`${r}/`));
-        const detectedIdentity = resolveProjectIdentity(projectDir ?? contentDir);
-        const pluginBaselines = openPluginBaselines(contentDir);
-        const stdRootsProject = standardSkillRoots('project');
-        const stdRootsGlobal = standardSkillRoots('global');
-        const dropAliased = (
-          list: ReturnType<typeof readSkillPlacements>[string] | undefined,
-          aliasRoots: Set<string>,
-        ): ReturnType<typeof readSkillPlacements>[string] =>
-          (list ?? []).filter(
-            (pl) => ![...aliasRoots].some((r) => pl.path === r || pl.path.startsWith(`${r}/`)),
-          );
-        const projectNameSeen = new Set<string>();
-        const repoPlugins = readRepoMarketplacePlugins(contentDir);
-        const repoPluginIdentity = (dir: string) => {
-          const p = repoMarketplacePluginFor(repoPlugins, dir);
-          return p
-            ? {
-                name: p.name,
-                marketplace: p.marketplace,
-                provider: 'claude',
-                ...(p.url ? { url: p.url } : {}),
-              }
-            : null;
-        };
-        const inPlace = projectDir
-          ? scanInPlaceSkills(contentDir).map((s) => {
-              const tracked = !projectNameSeen.has(s.name);
-              projectNameSeen.add(s.name);
-              const skillAbsDir = resolve(contentDir, s.dir);
-              const selfPlugin = tracked
-                ? (pluginSelfIdentity(s.name, detectedIdentity, skillAbsDir) ??
-                  repoPluginIdentity(skillAbsDir))
-                : null;
-              const entry =
-                tracked && selfPlugin === null
-                  ? (lock?.skills[s.name] ??
-                    synthBuiltinLockEntry(contentDir, s.name) ??
-                    synthPluginLockEntry(s.name, detectedIdentity, skillAbsDir))
-                  : undefined;
-              const origin = entry ? skillOrigin(entry) : undefined;
-              const modified =
-                entry?.localHash !== undefined
-                  ? s.contentHash !== entry.localHash
-                  : (() => {
-                      if (!entry || !tracked) return false;
-                      const up = pluginUpstreamHash(s.name, detectedIdentity);
-                      return (
-                        up !== null &&
-                        pluginBaselines.isModified('project', s.name, s.contentHash, up)
-                      );
-                    })();
-              return {
-                name: s.name,
-                ...(s.description ? { description: s.description } : {}),
-                scope: 'project' as const,
-                path: `${s.dir}/SKILL.md`,
-                absolutePath: resolve(contentDir, s.dir, 'SKILL.md'),
-                installed: true,
-                hosts: [...s.hosts],
-                size: s.size,
-                installableEditors: projectInstallableEditors,
-                hubOffered: projectHubOffered,
-                ...(s.pack !== undefined ? { pack: s.pack } : {}),
-                ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
-                ...(Object.keys(projectAliases).length > 0 ? { hostAliases: projectAliases } : {}),
-                ...(s.conflictHosts.length > 0 ? { conflictHosts: [...s.conflictHosts] } : {}),
-                ...(selfPlugin !== null ? { plugin: selfPlugin } : {}),
-                ...(() => {
-                  const custom = dropAliased(
-                    tracked ? placements[s.name] : undefined,
-                    projectAliasRoots,
-                  ).filter((cp) => !underRoots(cp.path, stdRootsProject));
-                  return custom.length
-                    ? { customPlacements: custom.map((cp) => ({ path: cp.path, mode: cp.mode })) }
-                    : {};
-                })(),
-                ...(() => {
-                  const f = placementFlags(
-                    projectDir,
-                    dropAliased(tracked ? placements[s.name] : undefined, projectAliasRoots),
-                    resolve(contentDir, s.dir),
-                  );
-                  return f.drift.length > 0 ? { driftPaths: f.drift } : {};
-                })(),
-                ...(effectiveInstallMode('project', s.name, s) === 'link'
-                  ? { linkMode: true }
-                  : {}),
-                ...(origin ? { origin } : {}),
-                ...(modified ? { modified: true } : {}),
-                ...(entry?.baselineRef !== undefined ? { revertable: true } : {}),
-                ...(isInternalBundleSkillName(s.name) ? { managed: true as const } : {}),
-              };
-            })
-          : [];
-        const globalPlacements = readSkillPlacements(skillsHome);
-        const globalLock = readSkillsLock(join(skillsHome, ...SKILLS_LOCK_REL));
-        const globalAliases = scanHostRootAliases(skillsHome, 'global');
-        const globalAliasRoots = aliasedSourceRoots(globalAliases, 'global');
-        const globalInPlaceNames = new Set(scanGlobalInPlaceSkills(skillsHome).map((s) => s.name));
-        globalSkills.skills = globalSkills.skills.filter((s) => !globalInPlaceNames.has(s.name));
-        const globalNameSeen = new Set<string>();
-        const globalInPlace = scanGlobalInPlaceSkills(skillsHome).map((s) => {
-          const tracked = !globalNameSeen.has(s.name);
-          globalNameSeen.add(s.name);
-          const placementsForRow = tracked ? globalPlacements[s.name] : undefined;
-          const defaultDir = resolveGlobalNativeSkillDir(skillsHome, s.name);
-          const hostQualifier =
-            defaultDir !== null && resolve(skillsHome, s.dir) !== resolve(defaultDir)
-              ? s.hosts[0]
-              : undefined;
-          return {
-            name: s.name,
-            ...(s.description ? { description: s.description } : {}),
-            scope: 'global' as const,
-            path: `${s.dir}/SKILL.md`,
-            absolutePath: resolve(skillsHome, s.dir, 'SKILL.md'),
-            installed: true,
-            hosts: [...s.hosts],
-            ...(hostQualifier !== undefined ? { hostQualifier } : {}),
-            size: s.size,
-            installableEditors: globalInstallableEditors,
-            hubOffered: globalHubOffered,
-            ...(s.pack !== undefined ? { pack: s.pack } : {}),
-            ...(s.linkedHosts.length > 0 ? { symlinkedHosts: [...s.linkedHosts] } : {}),
-            ...(Object.keys(globalAliases).length > 0 ? { hostAliases: globalAliases } : {}),
-            ...(s.conflictHosts.length > 0 ? { conflictHosts: [...s.conflictHosts] } : {}),
-            ...(() => {
-              const f = placementFlags(
-                skillsHome,
-                dropAliased(placementsForRow, globalAliasRoots),
-                resolve(skillsHome, s.dir),
-              );
-              return f.drift.length > 0 ? { driftPaths: f.drift } : {};
-            })(),
-            ...(() => {
-              const custom = dropAliased(placementsForRow, globalAliasRoots).filter(
-                (cp) => !underRoots(cp.path, stdRootsGlobal),
-              );
-              return custom.length
-                ? { customPlacements: custom.map((cp) => ({ path: cp.path, mode: cp.mode })) }
-                : {};
-            })(),
-            ...(effectiveInstallMode('global', s.name, s) === 'link' ? { linkMode: true } : {}),
-            ...(isInternalBundleSkillName(s.name) ? { managed: true as const } : {}),
-            ...(() => {
-              if (!tracked) return {};
-              const globalAbsDir = resolve(skillsHome, s.dir);
-              const selfPluginGlobal = pluginSelfIdentity(s.name, detectedIdentity, globalAbsDir);
-              if (selfPluginGlobal !== null) return { plugin: selfPluginGlobal };
-              const entry =
-                globalLock.skills[s.name] ??
-                synthBuiltinLockEntry(skillsHome, s.name) ??
-                synthPluginLockEntry(s.name, detectedIdentity, globalAbsDir);
-              if (!entry) return {};
-              const globallyModified =
-                entry.localHash !== undefined
-                  ? s.contentHash !== entry.localHash
-                  : (() => {
-                      const up = pluginUpstreamHash(s.name, detectedIdentity);
-                      return (
-                        up !== null &&
-                        pluginBaselines.isModified('global', s.name, s.contentHash, up)
-                      );
-                    })();
-              return {
-                origin: skillOrigin(entry),
-                ...(globallyModified ? { modified: true } : {}),
-              };
-            })(),
-          };
-        });
-        const inPlaceNamesEarly = new Set(inPlace.map((e) => e.name));
-        const projectBuiltin =
-          projectDir &&
-          !project.skills.some((s) => s.name === BUILTIN_PROJECT_SKILL_NAME) &&
-          !inPlaceNamesEarly.has(BUILTIN_PROJECT_SKILL_NAME)
-            ? builtinSkillListEntry(projectDir, BUILTIN_PROJECT_SKILL_NAME, 'project')
-            : null;
-        const globalInPlaceNamesEarly = new Set(globalInPlace.map((e) => e.name));
-        const globalBuiltins = USER_GLOBAL_BUNDLE_IDS.map((id) => BUNDLE_SKILL_NAME[id])
-          .filter(
-            (name) =>
-              !globalSkills.skills.some((s) => s.name === name) &&
-              !globalInPlaceNamesEarly.has(name),
-          )
-          .map((name) => builtinSkillListEntry(skillsHome, name, 'global'))
-          .filter((e): e is NonNullable<typeof e> => e !== null);
-        const inPlaceNames = new Set(inPlace.map((e) => e.name));
-        const listed = [
-          ...enrich(project, projectInstalled, true).filter((e) => !inPlaceNames.has(e.name)),
-          ...inPlace,
-          ...enrich(globalSkills, globalInstalled, false),
-          ...globalInPlace,
-          ...(projectBuiltin ? [projectBuiltin] : []),
-          ...globalBuiltins,
-        ];
-        pluginBaselines.flush();
-        const enriched = {
-          skills: listed.map((entry) => {
-            const canonicalPath =
-              entry.scope === 'project' && entry.absolutePath
-                ? indexedSkillContentPath(entry.absolutePath, contentDir)
-                : null;
-            const filePaths = entry.absolutePath
-              ? listSkillBundledFilePaths(dirname(entry.absolutePath))
-              : [];
-            const withFiles = filePaths.length > 0 ? { ...entry, filePaths } : entry;
-            const withCanonical =
-              canonicalPath === null || canonicalPath === entry.path
-                ? withFiles
-                : { ...withFiles, canonicalPath };
-            const openedPath = canonicalPath ?? entry.path;
-            return entry.scope === 'project' && contentFilter?.isPathIgnored(openedPath) === true
-              ? { ...withCanonical, ignored: true }
-              : withCanonical;
-          }),
-          truncated: project.truncated || globalSkills.truncated,
-        };
-        const healed = await healUnservableSkillAdmission(
-          inPlace.map((e) => e.path),
-          contentFilter ?? null,
-          skillAdmissionHeal,
-        );
-        const responseBody = !healed
-          ? enriched
-          : {
-              ...enriched,
-              skills: enriched.skills.map((entry) => {
-                if (entry.scope !== 'project') return entry;
-                const opened = (entry as { canonicalPath?: string }).canonicalPath ?? entry.path;
-                const nowIgnored = contentFilter?.isPathIgnored(opened) === true;
-                const wasIgnored = (entry as { ignored?: boolean }).ignored === true;
-                if (nowIgnored === wasIgnored) return entry;
-                if (nowIgnored) return { ...entry, ignored: true };
-                const { ignored: _drop, ...rest } = entry as { ignored?: boolean } & typeof entry;
-                return rest;
-              }),
-            };
-        skillsListCache = {
-          at: Date.now(),
-          gen: skillsCatalogGen,
-          fp: inPlaceFp,
-          body: responseBody,
-        };
-        successResponse(res, 200, SkillsListSuccessSchema, responseBody, {
-          handler: 'skills-list',
-        });
-      },
-      { handler: 'skills-list', title: 'Failed to list skills.' },
-    ),
-    { handler: 'skills-list', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleSkillGet = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const name = url.searchParams.get('name') ?? '';
-        if (!validateSkillName(name, res, 'skill-get')) return;
-        const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-get');
-        if (scope === null) return;
-
-        if (isInternalBundleSkillName(name)) {
-          const base = scope === 'global' ? skillsHome : projectDir;
-          const builtin = base
-            ? resolveBuiltinSkillDir(base, name, url.searchParams.get('host') ?? undefined)
-            : null;
-          if (builtin) {
-            const { frontmatter, body } = parseFrontmatterDoc(
-              await readFile(builtin.skillMd, 'utf-8'),
-            );
-            successResponse(
-              res,
-              200,
-              SkillGetSuccessSchema,
-              {
-                skill: {
-                  name,
-                  scope,
-                  path: builtin.relPath,
-                  frontmatter: {
-                    name: typeof frontmatter.name === 'string' ? frontmatter.name : name,
-                    description:
-                      typeof frontmatter.description === 'string' ? frontmatter.description : '',
-                  },
-                  body,
-                  files: readSkillBundledFiles(builtin.dir),
-                  managed: true,
-                },
-              },
-              { handler: 'skill-get' },
-            );
-            return;
-          }
-        }
-        const host = url.searchParams.get('host') ?? undefined;
-        const skillDirAbs = resolveSkillDirForRead(scope, name, host);
-        if (skillDirAbs === null) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-get',
-            detail:
-              host === undefined
-                ? `Skill "${name}" not found in ${scope} scope.`
-                : `No skill "${name}" (${scope}) in ${host}.`,
-          });
-          return;
-        }
-        const skillMd = resolve(skillDirAbs, 'SKILL.md');
-        const { frontmatter, body } = parseFrontmatterDoc(await readFile(skillMd, 'utf-8'));
-        successResponse(
-          res,
-          200,
-          SkillGetSuccessSchema,
-          {
-            skill: {
-              name,
-              scope,
-              path: skillRelPath(skillMd, scope),
-              frontmatter: {
-                name: typeof frontmatter.name === 'string' ? frontmatter.name : name,
-                description:
-                  typeof frontmatter.description === 'string' ? frontmatter.description : '',
-              },
-              body,
-              files: readSkillBundledFiles(skillDirAbs),
-            },
-          },
-          { handler: 'skill-get' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to read skill.', {
-          handler: 'skill-get',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skill-get', method: 'GET', skipBodyParse: true },
-  );
-
-  async function seedSkillDerivedViews(docName: string, markdown: string): Promise<void> {
-    if (!derivedDocumentIndex || isLinkIndexExcludedDoc(docName)) return;
-    if (contentFilter) {
-      bumpSkillsCatalogGen();
-      contentFilter.refreshInPlaceSkillDirs();
-      scheduleDeferredIgnoreRebuild();
-    }
-    void recordDerivedDocumentBestEffort(docName, markdown, 'skill-put');
-  }
-
-  const handleSkillPut = withValidation(
-    SkillPutRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-put',
-          });
-          return;
-        }
-        if (!validateSkillName(body.name, res, 'skill-put')) return;
-        if (rejectReservedBuiltinSkill(body.name, res, 'skill-put')) return;
-
-        const composed = composeSkillContent({
-          name: body.name,
-          body: typeof body.body === 'string' ? body.body : '',
-          frontmatter: { name: body.frontmatter.name, description: body.frontmatter.description },
-        });
-        if (!composed.ok) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid skill request.', {
-            handler: 'skill-put',
-            detail: composed.error.code,
-            cause: new Error(composed.error.message),
-          });
-          return;
-        }
-
-        const putBase = body.scope === 'project' ? contentDir : skillsHome;
-        const existingAbs = resolveSkillDirForRead(body.scope, body.name);
-        if (existingAbs === null) {
-          const homeRel = resolveDefaultSkillHomeRel(putBase, body.scope);
-          if (homeRel === null) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'No agent skill host is available.',
-              { handler: 'skill-put', detail: 'NO_USABLE_SKILL_HOME' },
-            );
-            return;
-          }
-          const wr = applySkillWrite({
-            skillsRoot: resolve(putBase, homeRel),
-            name: body.name,
-            body: typeof body.body === 'string' ? body.body : '',
-            frontmatter: {
-              name: body.frontmatter.name,
-              description: body.frontmatter.description,
-            },
-          });
-          if (!wr.ok) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid skill request.', {
-              handler: 'skill-put',
-              detail: wr.error.code,
-              cause: new Error(wr.error.message),
-            });
-            return;
-          }
-          if (body.scope === 'project') {
-            attributeOkArtifactWrite(
-              actor,
-              `${homeRel}/${body.name}/SKILL`,
-              `skill-create: ${homeRel}/${body.name}/SKILL.md`,
-            );
-            scheduleOkArtifactFlush('skill-put');
-          }
-          await seedSkillDerivedViews(
-            body.scope === 'project'
-              ? `${homeRel}/${body.name}/SKILL`
-              : skillLiveDocName('global', body.name),
-            composed.content,
-          );
-          signalChannel?.('files');
-          successResponse(
-            res,
-            200,
-            SkillPutSuccessSchema,
-            {
-              path: `${homeRel}/${body.name}/SKILL.md`,
-              created: true,
-              warnings: [...composed.warnings, ...wr.warnings],
-            },
-            { handler: 'skill-put' },
-          );
-          return;
-        }
-        const created = false;
-        const dirRel = relative(putBase, existingAbs).split(sep).join('/');
-        const relPath = `${dirRel}/SKILL.md`;
-        const docName =
-          body.scope === 'project' ? `${dirRel}/SKILL` : skillLiveDocName(body.scope, body.name);
-
-        if (checkSkillDocConflictGate(docName, 'skill-put', res)) return;
-
-        // CRDT write (precedent #24 / #38): route the full SKILL.md through the
-        const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
-          body as unknown as Record<string, unknown>,
-        );
-        const session = await sessionManager.getSession(docName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-        session.dc.document.transact(() => {
-          composeAndWriteRawBody(session.dc.document, composed.content, 'agent');
-        }, session.origin);
-
-        const flushOutcome = await flushDiskAndDetectOutcome(docName);
-        if (flushOutcome?.kind === 'failure') {
-          respondPersistenceFailure(res, flushOutcome.failure, 'skill-put');
-          return;
-        }
-        if (flushOutcome?.kind === 'divergence') {
-          respondDiskDivergence(res, 'skill-put');
-          return;
-        }
-
-        if (body.scope === 'project') {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('skill', '', body.name),
-            `${created ? 'skill-create' : 'skill-edit'}: ${relPath}`,
-          );
-          scheduleOkArtifactFlush('skill-put');
-        }
-        await seedSkillDerivedViews(docName, composed.content);
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillPutSuccessSchema,
-          { path: relPath, created, warnings: composed.warnings },
-          { handler: 'skill-put' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to write skill.', {
-          handler: 'skill-put',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skill-put', method: 'PUT' },
-  );
-
   function effectiveSkillRoot(
     scope: 'project' | 'global',
     name: string,
@@ -6891,1421 +4305,6 @@ export function createApiExtension(
       realDir !== null ? relative(base, realDir).split(sep).join('/') : `.ok/skills/${name}`;
     return { root, dirRel, realDir };
   }
-  function sweepSkillOccurrences(scope: 'project' | 'global', name: string): void {
-    const base = scope === 'project' ? contentDir : skillsHome;
-    const inPlace = (
-      scope === 'project' ? scanInPlaceSkills(contentDir) : scanGlobalInPlaceSkills(skillsHome)
-    ).find((sk) => sk.name === name);
-    if (!inPlace) return;
-    removeInPlaceSkillCopies({
-      canonicalAbs: resolve(base, inPlace.dir),
-      canonicalHash: inPlace.contentHash,
-      name,
-      cwd: base,
-      targets: inPlace.hosts.filter((h): h is SkillHostId => isSkillInstallTarget(h)),
-      roots: skillProjectionRoots(scope),
-    });
-  }
-
-  const handleSkillDelete = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const name = url.searchParams.get('name') ?? '';
-        if (!validateSkillName(name, res, 'skill-delete')) return;
-        const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-delete');
-        if (scope === null) return;
-        const host = url.searchParams.get('host') ?? undefined;
-        const { root: skillsRoot, dirRel, realDir } = effectiveSkillRoot(scope, name, host);
-        if (host !== undefined && realDir === null) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-delete',
-            detail: `No skill "${name}" (${scope}) in ${host}.`,
-          });
-          return;
-        }
-
-        const actor = extractActorIdentityFromQuery(url, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-delete',
-          });
-          return;
-        }
-
-        await captureAndCloseDocuments(
-          scope === 'project'
-            ? [...new Set([`${dirRel}/SKILL`, skillLiveDocName(scope, name)])]
-            : [skillLiveDocName(scope, name, host)],
-          'deleted-upstream',
-        );
-
-        if (host === undefined) sweepSkillOccurrences(scope, name);
-        const result = applySkillDelete({ skillsRoot, name });
-        const storeRoot = resolveSkillsRoot(scope);
-        if (
-          host === undefined &&
-          result.ok &&
-          storeRoot !== skillsRoot &&
-          existsSync(resolve(storeRoot, name, 'SKILL.md'))
-        ) {
-          const storeSweep = applySkillDelete({ skillsRoot: storeRoot, name });
-          if (!storeSweep.ok) {
-            log.warn(
-              { name, scope, detail: storeSweep.error.code },
-              '[skill-delete] legacy store resident survived the delete',
-            );
-          }
-        }
-        if (!result.ok) {
-          const status = result.error.code === 'UNLINK_FAILED' ? 500 : 400;
-          errorResponse(
-            res,
-            status,
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            status === 500 ? 'Failed to delete skill.' : 'Invalid skill request.',
-            {
-              handler: 'skill-delete',
-              detail: result.error.code,
-              cause: new Error(result.error.message),
-            },
-          );
-          return;
-        }
-        if (result.existed) {
-          if (scope === 'project') {
-            attributeOkArtifactWrite(actor, dirRel, `skill-delete: ${dirRel}`);
-            bumpSkillsCatalogGen();
-            void commitOkArtifactWrite('skill-delete');
-          }
-          signalChannel?.('files');
-        }
-        const uninstallBase = skillInstallBase(scope);
-        if (host === undefined && uninstallBase) {
-          await uninstallSkillFromHostDirs(uninstallBase, name, scope);
-        }
-        successResponse(
-          res,
-          200,
-          SkillDeleteSuccessSchema,
-          { existed: result.existed, path: result.path },
-          { handler: 'skill-delete' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to delete skill.', {
-          handler: 'skill-delete',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skill-delete', method: 'DELETE', skipBodyParse: true },
-  );
-
-  const handleSkillMove = withValidation(
-    SkillMoveRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-move',
-          });
-          return;
-        }
-        if (!validateSkillName(body.fromName, res, 'skill-move')) return;
-        if (!validateSkillName(body.toName, res, 'skill-move')) return;
-        if (rejectReservedBuiltinSkill(body.toName, res, 'skill-move')) return;
-        const { root: skillsRoot, dirRel: fromDirRel } = effectiveSkillRoot(
-          body.scope,
-          body.fromName,
-        );
-        if (resolveSkillDirForRead(body.scope, body.toName) !== null) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:doc-already-exists',
-            `A skill named "${body.toName}" already exists.`,
-            { handler: 'skill-move' },
-          );
-          return;
-        }
-
-        const moveBase = skillInstallBase(body.scope);
-        const priorInstall = moveBase
-          ? readInstalledSkills(moveBase).skills[body.fromName]
-          : undefined;
-        const fromScanBase = body.scope === 'project' ? contentDir : skillsHome;
-        const renameScanEntry = (
-          body.scope === 'project'
-            ? scanInPlaceSkills(contentDir)
-            : scanGlobalInPlaceSkills(skillsHome)
-        ).find((sk) => sk.name === body.fromName);
-        const renameCanonicalRootRel = renameScanEntry ? dirname(renameScanEntry.dir) : null;
-        const renameAliasAudience =
-          renameCanonicalRootRel !== null
-            ? Object.entries(scanHostRootAliases(fromScanBase, body.scope))
-                .filter(([, target]) => target === renameCanonicalRootRel)
-                .map(([editor]) => editor)
-            : [];
-        const priorHosts = [
-          ...new Set([
-            ...(priorInstall ? resolvedHosts(priorInstall.hosts) : []),
-            ...(renameScanEntry ? resolvedHosts(renameScanEntry.hosts) : []),
-            ...resolvedHosts(renameAliasAudience),
-          ]),
-        ];
-
-        await captureAndCloseDocuments(
-          body.scope === 'project'
-            ? [...new Set([`${fromDirRel}/SKILL`, skillLiveDocName(body.scope, body.fromName)])]
-            : [skillLiveDocName(body.scope, body.fromName)],
-          'renamed',
-        );
-
-        sweepSkillOccurrences(body.scope, body.fromName);
-        const result = await applySkillMove({
-          skillsRoot,
-          fromName: body.fromName,
-          toName: body.toName,
-          relocate: async (fromAbs, toAbs) => {
-            const movedWithGit = await renameTrackedPathInGit(projectDir, fromAbs, toAbs);
-            if (!movedWithGit) renamePathOnDisk(fromAbs, toAbs);
-            return movedWithGit;
-          },
-        });
-        if (!result.ok) {
-          if (result.error.code === 'SKILL_NOT_FOUND') {
-            errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-              handler: 'skill-move',
-              detail: result.error.message,
-            });
-            return;
-          }
-          if (result.error.code === 'SKILL_EXISTS') {
-            errorResponse(res, 409, 'urn:ok:error:doc-already-exists', result.error.message, {
-              handler: 'skill-move',
-              detail: result.error.code,
-            });
-            return;
-          }
-          const status = result.error.code === 'MOVE_FAILED' ? 500 : 400;
-          errorResponse(
-            res,
-            status,
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            status === 500 ? 'Failed to move skill.' : 'Invalid skill move request.',
-            {
-              handler: 'skill-move',
-              detail: result.error.code,
-              cause: new Error(result.error.message),
-            },
-          );
-          return;
-        }
-
-        let contentEditError: { code: string; message: string } | null = null;
-        const movedSkillMd = resolve(skillsRoot, body.toName, 'SKILL.md');
-        let parsedBody = '';
-        let parsedDescription = '';
-        try {
-          const parsed = parseFrontmatterDoc(readFileSync(movedSkillMd, 'utf-8'));
-          parsedBody = parsed.body;
-          if (typeof parsed.frontmatter.description === 'string') {
-            parsedDescription = parsed.frontmatter.description;
-          }
-        } catch {}
-        const writeBody = typeof body.body === 'string' ? body.body : parsedBody;
-        const writeDescription =
-          body.frontmatter !== undefined ? body.frontmatter.description : parsedDescription;
-        const rewrite = applySkillWrite({
-          skillsRoot,
-          name: body.toName,
-          body: writeBody,
-          frontmatter: { name: body.toName, description: writeDescription },
-        });
-        if (!rewrite.ok) contentEditError = rewrite.error;
-
-        let refRewrites: SkillRefRewrite[] = [];
-        if (!contentEditError) {
-          try {
-            refRewrites = rewriteSkillRefsAcrossScope({
-              base: body.scope === 'project' ? contentDir : skillsHome,
-              scope: body.scope,
-              fromName: body.fromName,
-              toName: body.toName,
-            });
-          } catch (err) {
-            getLogger('skill-move').warn(
-              { err, fromName: body.fromName, toName: body.toName },
-              'skill-ref rewrite failed — rename succeeded, refs to the old name are left as authored',
-            );
-          }
-        }
-
-        if (body.scope === 'project' && !contentEditError) {
-          bumpSkillsCatalogGen();
-          contentFilter?.refreshInPlaceSkillDirs();
-          void reindexMovedProjectSkillDocs(skillsRoot, body.fromName, body.toName)
-            .then(() => reindexRewrittenSkillRefDocs(refRewrites, body.toName))
-            .catch(() => {});
-          scheduleDeferredIgnoreRebuild();
-        }
-
-        const fromKeyPath = skillRelPath(resolve(skillsRoot, body.fromName), body.scope);
-        const toKeyPath = skillRelPath(resolve(skillsRoot, body.toName), body.scope);
-        const renamedLocalHash = localSkillHash(skillsRoot, body.toName);
-        await rekeySkillLockEntry(body.scope, body.fromName, body.toName, {
-          localHash: renamedLocalHash,
-        });
-        if (body.scope === 'project') {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('skill', '', body.toName),
-            `skill-rename: ${fromKeyPath} -> ${toKeyPath}`,
-            [{ from: fromKeyPath, to: toKeyPath }],
-          );
-          void (async () => {
-            try {
-              await commitOkArtifactWrite('skill-move');
-              const baselineRef = await shadowHeadSha(artifactWriterId(actor), toKeyPath);
-              if (baselineRef !== undefined) {
-                await updateSkillLockEntry('project', body.toName, { baselineRef });
-              }
-            } catch (err) {
-              getLogger('skill-move').warn(
-                { err, toName: body.toName },
-                'deferred shadow flush / revert-baseline failed — Revert stays unarmed until the next flush',
-              );
-            }
-          })();
-        }
-
-        if (moveBase) {
-          await removeSkillInstall(moveBase, body.fromName);
-          reverseProjectSkill(
-            body.fromName,
-            moveBase,
-            priorHosts,
-            skillProjectionRoots(body.scope),
-          );
-          const movedDir = resolve(skillsRoot, body.toName);
-          if (priorHosts.length > 0) {
-            const newHosts = projectSkill(
-              movedDir,
-              body.toName,
-              moveBase,
-              priorHosts,
-              projectionModeFor(body.scope, body.toName),
-              skillProjectionRoots(body.scope),
-            );
-            await recordSkillInstall(moveBase, body.toName, {
-              ...priorInstall,
-              scope: body.scope,
-              hosts: newHosts,
-              scripts:
-                priorInstall?.scripts ?? validateSkillForInstall(movedDir, body.toName).hasScripts,
-              installedAt: priorInstall?.installedAt ?? new Date().toISOString(),
-            });
-          }
-        }
-        signalChannel?.('files');
-
-        if (contentEditError) {
-          const isServerError = contentEditError.code === 'WRITE_ERROR';
-          errorResponse(
-            res,
-            isServerError ? 500 : 400,
-            isServerError ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            `Skill renamed to "${body.toName}", but updating its SKILL.md failed — its name frontmatter may not match the new directory.`,
-            {
-              handler: 'skill-move',
-              detail: contentEditError.code,
-              cause: new Error(contentEditError.message),
-            },
-          );
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          SkillMoveSuccessSchema,
-          {
-            from: fromKeyPath,
-            to: toKeyPath,
-            committed: result.committed,
-          },
-          { handler: 'skill-move' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to move skill.', {
-          handler: 'skill-move',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skill-move', method: 'POST' },
-  );
-
-  const handleSkillEditExternal = withValidation(
-    SkillEditExternalRequestSchema,
-    async (_req, res, body) => {
-      const { name, home } = body;
-      if (!validateSkillName(name, res, 'skill-edit-external')) return;
-      let realDir: string;
-      try {
-        realDir = realpathSync(home);
-      } catch {
-        errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill directory not found.', {
-          handler: 'skill-edit-external',
-          detail: 'HOME_NOT_FOUND',
-        });
-        return;
-      }
-      if (!statSync(realDir).isDirectory() || !existsSync(resolve(realDir, 'SKILL.md'))) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'Not a skill directory (no SKILL.md).',
-          { handler: 'skill-edit-external' },
-        );
-        return;
-      }
-      registerExternalSkill(name, realDir);
-      successResponse(
-        res,
-        200,
-        SkillEditExternalSuccessSchema,
-        { docName: externalSkillLiveDocName(name) },
-        { handler: 'skill-edit-external' },
-      );
-    },
-    {
-      handler: 'skill-edit-external',
-      method: 'POST',
-      preBodyGate: (req, res) => checkLocalOpSecurity(req, res, { handler: 'skill-edit-external' }),
-    },
-  );
-
-  const handleSkillMoveScope = withValidation(
-    SkillMoveScopeRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-move-scope',
-          });
-          return;
-        }
-        const { name, fromScope, toScope } = body;
-        if (!validateSkillName(name, res, 'skill-move-scope')) return;
-        if (isInternalBundleSkillName(name)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            `"${name}" is a built-in skill and always lives at its own scope.`,
-            { handler: 'skill-move-scope', detail: 'BUILTIN_SCOPE_FIXED' },
-          );
-          return;
-        }
-        if (fromScope === toScope) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Source and destination scope are the same.',
-            { handler: 'skill-move-scope' },
-          );
-          return;
-        }
-        if (toScope === 'project' && !projectDir) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Cannot move to project scope — no project root is resolved for this server.',
-            { handler: 'skill-move-scope', detail: 'NO_PROJECT_ROOT' },
-          );
-          return;
-        }
-
-        const { root: fromRoot, dirRel: fromDirRel, realDir } = effectiveSkillRoot(fromScope, name);
-        const fromDir = resolve(fromRoot, name);
-        const fromContentDir = (() => {
-          try {
-            return realpathSync(fromDir);
-          } catch {
-            return fromDir;
-          }
-        })();
-        const toBase2 = toScope === 'project' ? contentDir : skillsHome;
-        const toHomeRel = resolveDefaultSkillHomeRel(toBase2, toScope);
-        if (toHomeRel === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'No agent skill host is available in the destination scope.',
-            { handler: 'skill-move-scope', detail: 'NO_USABLE_SKILL_HOME' },
-          );
-          return;
-        }
-        const toRoot = resolve(toBase2, toHomeRel);
-        const toDir = resolve(toRoot, name);
-        if (realDir === null || !existsSync(fromDir)) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-move-scope',
-            detail: `Skill "${name}" not found in ${fromScope} scope.`,
-          });
-          return;
-        }
-        if (
-          resolve(realDir) === resolve(toDir) ||
-          (existsSync(toDir) && realpathSync(realDir) === realpathSync(toDir))
-        ) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:doc-already-exists',
-            'The source and destination resolve to the same skill directory.',
-            { handler: 'skill-move-scope', detail: 'SAME_STORAGE' },
-          );
-          return;
-        }
-        if (resolveSkillDirForRead(toScope, name) !== null || existsSync(toDir)) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:doc-already-exists',
-            `A ${toScope} skill named "${name}" already exists.`,
-            { handler: 'skill-move-scope' },
-          );
-          return;
-        }
-
-        const fromBase = skillInstallBase(fromScope);
-        const toBase = skillInstallBase(toScope);
-        const priorInstall = fromBase ? readInstalledSkills(fromBase).skills[name] : undefined;
-        const fromScanBase = fromScope === 'project' ? contentDir : skillsHome;
-        const scanEntry = (
-          fromScope === 'project'
-            ? scanInPlaceSkills(contentDir)
-            : scanGlobalInPlaceSkills(skillsHome)
-        ).find((sk) => sk.name === name);
-        const canonicalRootRel = scanEntry ? dirname(scanEntry.dir) : null;
-        const aliasAudience =
-          canonicalRootRel !== null
-            ? Object.entries(scanHostRootAliases(fromScanBase, fromScope))
-                .filter(([, target]) => target === canonicalRootRel)
-                .map(([editor]) => editor)
-            : [];
-        const priorHosts = [
-          ...new Set([
-            ...(priorInstall ? resolvedHosts(priorInstall.hosts) : []),
-            ...(scanEntry ? resolvedHosts(scanEntry.hosts) : []),
-            ...resolvedHosts(aliasAudience),
-          ]),
-        ];
-
-        await captureAndCloseDocuments(
-          [
-            ...new Set([
-              ...(fromScope === 'project' ? [`${fromDirRel}/SKILL`] : []),
-              skillLiveDocName(fromScope, name),
-              skillLiveDocName(toScope, name),
-            ]),
-          ],
-          'renamed',
-        );
-
-        tracedMkdirSync(toRoot, { recursive: true });
-        tracedCpSync(fromContentDir, toDir, { recursive: true, dereference: true });
-
-        sweepSkillOccurrences(fromScope, name);
-        const del = applySkillDelete({ skillsRoot: fromRoot, name });
-        if (del.ok && fromContentDir !== fromDir) {
-          const realScanBase = (() => {
-            try {
-              return realpathSync(fromScanBase);
-            } catch {
-              return fromScanBase;
-            }
-          })();
-          const relFromBase = relative(realScanBase, fromContentDir);
-          if (relFromBase !== '' && !relFromBase.startsWith('..') && !isAbsolute(relFromBase)) {
-            tracedRmSync(fromContentDir, { recursive: true, force: true });
-          }
-        }
-        if (!del.ok) {
-          applySkillDelete({ skillsRoot: toRoot, name });
-          errorResponse(
-            res,
-            500,
-            'urn:ok:error:internal-server-error',
-            'Failed to move skill (source removal failed); rolled back the copy.',
-            {
-              handler: 'skill-move-scope',
-              detail: del.error.code,
-              cause: new Error(del.error.message),
-            },
-          );
-          return;
-        }
-
-        const movedLockEntry = await transferSkillLockEntry(fromScope, toScope, name);
-
-        if (fromBase) {
-          await uninstallSkillFromHostDirs(
-            fromBase,
-            name,
-            fromScope,
-            scanEntry ? { purge: { contentHash: scanEntry.contentHash } } : {},
-          );
-        }
-        if (fromBase) await clearSkillPlacements(fromBase, name);
-        if (toBase && priorHosts.length > 0) {
-          const newHosts = projectSkill(
-            toDir,
-            name,
-            toBase,
-            priorHosts,
-            projectionModeFor(toScope, body.name),
-            skillProjectionRoots(toScope),
-          );
-          await recordSkillInstall(toBase, name, {
-            ...priorInstall,
-            scope: toScope,
-            hosts: newHosts,
-            scripts: priorInstall?.scripts ?? validateSkillForInstall(toDir, name).hasScripts,
-            installedAt: priorInstall?.installedAt ?? new Date().toISOString(),
-          });
-        }
-
-        if (movedLockEntry) {
-          const movedLocalHash = localSkillHash(toRoot, name);
-          await updateSkillLockEntry(toScope, name, { localHash: movedLocalHash });
-        }
-        if (fromScope === 'project' || toScope === 'project') {
-          attributeOkArtifactWrite(
-            actor,
-            fromScope === 'project' ? fromDirRel : relative(contentDir, toDir).split(sep).join('/'),
-            `skill-move-scope: ${fromScope} -> ${toScope} ${name}`,
-          );
-          const toKeyForBaseline = relative(contentDir, toDir).split(sep).join('/');
-          const wantBaseline = Boolean(movedLockEntry) && toScope === 'project';
-          void (async () => {
-            try {
-              await commitOkArtifactWrite('skill-move-scope');
-              if (wantBaseline) {
-                const baselineRef = await shadowHeadSha(artifactWriterId(actor), toKeyForBaseline);
-                if (baselineRef !== undefined) {
-                  await updateSkillLockEntry(toScope, name, { baselineRef });
-                }
-              }
-            } catch (err) {
-              getLogger('skill-move-scope').warn(
-                { err, name },
-                'deferred shadow flush / revert-baseline failed — Revert stays unarmed until the next flush',
-              );
-            }
-          })();
-        }
-
-        if (!existsSync(join(toDir, 'SKILL.md'))) {
-          errorResponse(
-            res,
-            500,
-            'urn:ok:error:internal-server-error',
-            'The move did not leave a readable skill at the destination; nothing was reported as moved.',
-            { handler: 'skill-move-scope', detail: relative(toBase2, toDir).split(sep).join('/') },
-          );
-          return;
-        }
-
-        bumpSkillsCatalogGen();
-        contentFilter?.refreshInPlaceSkillDirs();
-        scheduleDeferredIgnoreRebuild();
-
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillMoveScopeSuccessSchema,
-          { scope: toScope, path: relative(toBase2, toDir).split(sep).join('/') },
-          { handler: 'skill-move-scope' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to move skill across scopes.',
-          { handler: 'skill-move-scope', cause: e },
-        );
-      }
-    },
-    { handler: 'skill-move-scope', method: 'POST' },
-  );
-
-  const handleSkillDuplicate = withValidation(
-    SkillDuplicateRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-duplicate',
-          });
-          return;
-        }
-        if (!validateSkillName(body.name, res, 'skill-duplicate')) return;
-        if (!validateSkillName(body.toName, res, 'skill-duplicate')) return;
-        if (rejectReservedBuiltinSkill(body.toName, res, 'skill-duplicate')) return;
-
-        const sourceDir = resolveSkillDirForRead(body.scope, body.name);
-        if (sourceDir === null || !existsSync(join(sourceDir, 'SKILL.md'))) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-duplicate',
-            detail: 'SOURCE_NOT_FOUND',
-          });
-          return;
-        }
-        const base = body.scope === 'project' ? contentDir : skillsHome;
-        const targetHomeRel = resolveDefaultSkillHomeRel(base, body.scope);
-        if (targetHomeRel === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'No agent skill host is available.',
-            { handler: 'skill-duplicate', detail: 'NO_USABLE_SKILL_HOME' },
-          );
-          return;
-        }
-        const targetRoot = resolve(base, targetHomeRel);
-        const targetDir = resolve(targetRoot, body.toName);
-        if (resolveSkillDirForRead(body.scope, body.toName) !== null || existsSync(targetDir)) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:doc-already-exists',
-            `A ${body.scope} skill named "${body.toName}" already exists.`,
-            { handler: 'skill-duplicate' },
-          );
-          return;
-        }
-
-        const source = parseSkillDir(sourceDir);
-        if (!source) {
-          errorResponse(res, 422, 'urn:ok:error:invalid-request', 'Source has no readable skill.', {
-            handler: 'skill-duplicate',
-          });
-          return;
-        }
-        tracedMkdirSync(targetRoot, { recursive: true });
-        tracedCpSync(sourceDir, targetDir, { recursive: true, dereference: true });
-        const { fenced, body: sourceBody } = detectFmRegion(source.skillMd);
-        // presence-exempt: no CRDT write, no agent identity
-        const renamed = applyPatchToFm(fenced, { name: body.toName });
-        if (!renamed.ok) {
-          applySkillDelete({ skillsRoot: targetRoot, name: body.toName });
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Failed to write duplicated skill.',
-            {
-              handler: 'skill-duplicate',
-              detail: renamed.error.kind,
-            },
-          );
-          return;
-        }
-        try {
-          tracedWriteFileSync(join(targetDir, 'SKILL.md'), `${renamed.nextFenced}${sourceBody}`);
-        } catch (error) {
-          applySkillDelete({ skillsRoot: targetRoot, name: body.toName });
-          throw error;
-        }
-
-        if (body.scope === 'project') {
-          const targetRel = relative(contentDir, targetDir).split(sep).join('/');
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('skill', '', body.toName),
-            `skill-duplicate: ${body.name} -> ${targetRel}`,
-          );
-          void commitOkArtifactWrite('skill-duplicate');
-        }
-        signalChannel?.('files');
-        bumpSkillsCatalogGen();
-        contentFilter?.refreshInPlaceSkillDirs();
-        scheduleDeferredIgnoreRebuild();
-
-        successResponse(
-          res,
-          200,
-          SkillDuplicateSuccessSchema,
-          { name: body.toName },
-          { handler: 'skill-duplicate' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to duplicate skill.',
-          { handler: 'skill-duplicate', cause: e },
-        );
-      }
-    },
-    { handler: 'skill-duplicate', method: 'POST' },
-  );
-
-  const handleSkill = methodRouter(
-    { GET: handleSkillGet, PUT: handleSkillPut, POST: handleSkillMove, DELETE: handleSkillDelete },
-    { handler: 'skill' },
-  );
-
-  function classifySkillFilePath(rel: string): 'reference' | 'script' | 'file' | null {
-    if (rel.includes('\x00')) return null;
-    const segments = rel
-      .replace(/\\/g, '/')
-      .split('/')
-      .filter((s) => s !== '' && s !== '.');
-    if (segments.length < 1 || segments.some((s) => s === '..')) return null;
-    if (segments.length === 1 && (segments[0] as string).toLowerCase() === 'skill.md') return null;
-    if (segments[0] === 'references' && segments.length >= 2) return 'reference';
-    if (segments[0] === 'scripts' && segments.length >= 2) return 'script';
-    return 'file';
-  }
-
-  function isProjectMdReference(
-    scope: 'project' | 'global',
-    kind: 'reference' | 'script' | 'file',
-    rel: string,
-  ): boolean {
-    return scope === 'project' && kind === 'reference' && rel.toLowerCase().endsWith('.md');
-  }
-
-  function nestedProjectRefDocNames(realDir: string, dirRel: string): string[] {
-    const base = resolve(realDir, dirRel);
-    const dirDocPrefix = relative(contentDir, realDir).split(sep).join('/');
-    let entries: string[];
-    try {
-      entries = readdirSync(base, { recursive: true, encoding: 'utf-8' });
-    } catch {
-      return [];
-    }
-    return entries
-      .filter((e) => /\.md$/i.test(e))
-      .map((e) => `${dirDocPrefix}/${dirRel}/${e.split(sep).join('/').replace(/\.md$/i, '')}`);
-  }
-
-  function projectRefContentDocName(name: string, rel: string): string {
-    const extLess = rel.replace(/\.md$/i, '');
-    return `${projectSkillContentDocName(name).replace(/\/SKILL$/, '')}/${extLess}`;
-  }
-
-  function listProjectMdReferences(skillsRoot: string, name: string): string[] {
-    const refsDir = resolve(skillsRoot, name, 'references');
-    if (!existsSync(refsDir)) return [];
-    const out: string[] = [];
-    const walk = (dir: string, prefix: string): void => {
-      for (const entry of readdirSync(dir, { withFileTypes: true })) {
-        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) walk(resolve(dir, entry.name), rel);
-        else if (entry.isFile() && entry.name.toLowerCase().endsWith('.md')) {
-          out.push(`references/${rel}`);
-        }
-      }
-    };
-    walk(refsDir, '');
-    return out;
-  }
-
-  async function reindexMovedProjectSkillDocs(
-    skillsRoot: string,
-    fromName: string,
-    toName: string,
-  ): Promise<void> {
-    if (!derivedDocumentIndex) {
-      getLogger('skill-move').warn(
-        { fromName, toName },
-        'no derived-document index available — skipping re-index of the moved skill (its old entries will be dropped with no replacement)',
-      );
-      return;
-    }
-    const derivedMutations: DerivedDocumentIndexMutation[] = [];
-    const collectReindex = (oldDocName: string, newDocName: string, absFile: string): void => {
-      let markdown: string;
-      try {
-        markdown = readFileSync(absFile, 'utf-8');
-      } catch (err) {
-        getLogger('skill-move').warn(
-          { err, absFile, oldDocName, newDocName },
-          'relocated skill file unreadable after move — dropping the old index entry with no replacement',
-        );
-        derivedMutations.push({ kind: 'delete', documentName: oldDocName });
-        return;
-      }
-      derivedMutations.push({
-        kind: 'rename',
-        oldDocumentName: oldDocName,
-        newDocumentName: newDocName,
-        markdown,
-      });
-    };
-
-    const rootRel = relative(contentDir, skillsRoot).split(sep).join('/');
-    const docFor = (n: string, rel?: string): string =>
-      `${rootRel}/${n}/${rel ? rel.replace(/\.mdx?$/i, '') : 'SKILL'}`;
-    collectReindex(docFor(fromName), docFor(toName), resolve(skillsRoot, toName, 'SKILL.md'));
-    for (const rel of listProjectMdReferences(skillsRoot, toName)) {
-      collectReindex(docFor(fromName, rel), docFor(toName, rel), resolve(skillsRoot, toName, rel));
-    }
-    await derivedDocumentIndex.recordDirectMutations(derivedMutations);
-  }
-
-  async function reindexRewrittenSkillRefDocs(
-    rewrites: readonly SkillRefRewrite[],
-    movedName: string,
-  ): Promise<void> {
-    if (!derivedDocumentIndex || rewrites.length === 0) return;
-    const mutations: DerivedDocumentIndexMutation[] = [];
-    for (const rw of rewrites) {
-      if (rw.dir.split('/').pop() === movedName) continue;
-      mutations.push({
-        kind: 'link-rewrite',
-        documentName: `${rw.dir}/${rw.rel.replace(/\.mdx?$/i, '')}`,
-        markdown: rw.markdown,
-      });
-    }
-    if (mutations.length > 0) await derivedDocumentIndex.recordDirectMutations(mutations);
-  }
-
-  const handleSkillFileGet = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const name = url.searchParams.get('name') ?? '';
-        if (!validateSkillName(name, res, 'skill-file-get')) return;
-        const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-file-get');
-        if (scope === null) return;
-        const rel = url.searchParams.get('path') ?? '';
-        const builtinBase = isInternalBundleSkillName(name)
-          ? scope === 'global'
-            ? skillsHome
-            : projectDir
-          : undefined;
-        const builtinHost = url.searchParams.get('host') ?? undefined;
-        const builtin = builtinBase ? resolveBuiltinSkillDir(builtinBase, name, builtinHost) : null;
-        if (rel === '' || rel.includes('\x00')) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid skill file path.', {
-            handler: 'skill-file-get',
-          });
-          return;
-        }
-        const kind =
-          (builtin && rel === 'SKILL.md' ? 'reference' : classifySkillFilePath(rel)) ?? 'reference';
-        const host = builtinHost;
-        const resolvedSkillDir = builtinBase
-          ? (builtin?.dir ?? null)
-          : resolveSkillDirForRead(scope, name, host);
-        if (resolvedSkillDir === null && host !== undefined) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-file-get',
-            detail: `No skill "${name}" (${scope}) in ${host}.`,
-          });
-          return;
-        }
-        const skillDir = resolvedSkillDir ?? resolve(resolveSkillsRoot(scope), name);
-        const abs = resolve(skillDir, rel);
-        if (abs !== skillDir && !abs.startsWith(`${skillDir}${sep}`)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Skill file path escapes the skill dir.',
-            {
-              handler: 'skill-file-get',
-            },
-          );
-          return;
-        }
-        let resolvedAbs = abs;
-        let resolvedRel = rel;
-        if (!existsSync(resolvedAbs)) {
-          const docStem = rel.match(/^(.*)\.(?:md|mdx)$/);
-          const sibling = docStem
-            ? SUPPORTED_DOC_EXTENSIONS.map((ext) => `${docStem[1]}${ext}`).find(
-                (candidate) => candidate !== rel && existsSync(resolve(skillDir, candidate)),
-              )
-            : undefined;
-          if (sibling === undefined) {
-            errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill file not found.', {
-              handler: 'skill-file-get',
-              detail: `${rel} not found in skill "${name}" (${scope}).`,
-            });
-            return;
-          }
-          resolvedRel = sibling;
-          resolvedAbs = resolve(skillDir, sibling);
-        }
-        const buf = await readFile(resolvedAbs);
-        if (buf.includes(0)) {
-          errorResponse(
-            res,
-            415,
-            'urn:ok:error:invalid-request',
-            'Skill file is binary — only text bundle files are readable via MCP.',
-            { handler: 'skill-file-get' },
-          );
-          return;
-        }
-        successResponse(
-          res,
-          200,
-          SkillFileGetSuccessSchema,
-          { path: resolvedRel.replace(/\\/g, '/'), kind, text: buf.toString('utf-8') },
-          { handler: 'skill-file-get' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read skill file.',
-          {
-            handler: 'skill-file-get',
-            cause: e,
-          },
-        );
-      }
-    },
-    { handler: 'skill-file-get', method: 'GET', skipBodyParse: true },
-  );
-
-  const handleSkillFilePut = withValidation(
-    SkillFilePutRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-file-put',
-          });
-          return;
-        }
-        if (!validateSkillName(body.name, res, 'skill-file-put')) return;
-        if (rejectReservedBuiltinSkill(body.name, res, 'skill-file-put')) return;
-        const kind = classifySkillFilePath(body.path);
-        if (kind === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Invalid skill file path (must name a file inside the skill dir, no `..`).',
-            { handler: 'skill-file-put' },
-          );
-          return;
-        }
-        if (Buffer.byteLength(body.content, 'utf-8') > BUNDLE_FILE_MAX_BYTES) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Skill file exceeds the 256 KB per-file cap.',
-            { handler: 'skill-file-put' },
-          );
-          return;
-        }
-        const skillDirAbs = resolveSkillDirForRead(body.scope, body.name);
-        if (skillDirAbs === null || !existsSync(join(skillDirAbs, 'SKILL.md'))) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-file-put',
-            detail: `Create skill "${body.name}" before adding bundle files.`,
-          });
-          return;
-        }
-        const fileBase = body.scope === 'project' ? contentDir : skillsHome;
-        const skillDirRel = relative(fileBase, skillDirAbs).split(sep).join('/');
-        const rel = body.path.replace(/\\/g, '/');
-        const routedThroughContent = isProjectMdReference(body.scope, kind, rel);
-        let created: boolean;
-
-        if (routedThroughContent) {
-          // primitive (precedent #24 / #38), same branch as the SKILL.md body.
-          const refDocName = `${skillDirRel}/${rel.replace(/\.mdx?$/i, '')}`;
-          if (checkSkillDocConflictGate(refDocName, 'skill-file-put', res)) return;
-          created = !existsSync(resolve(skillDirAbs, rel));
-          if (created && countBundleFiles(skillDirAbs) >= BUNDLE_MAX_FILES) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              `Skill "${body.name}" already holds ${BUNDLE_MAX_FILES} bundle files (the cap) — delete one before adding another.`,
-              { handler: 'skill-file-put' },
-            );
-            return;
-          }
-          const { agentId, agentName, colorSeed, clientName } = extractAgentIdentity(
-            body as unknown as Record<string, unknown>,
-          );
-          const session = await sessionManager.getSession(refDocName, agentId, {
-            displayName: agentName,
-            colorSeed,
-            clientName,
-          });
-          session.dc.document.transact(() => {
-            composeAndWriteRawBody(session.dc.document, body.content, 'agent');
-          }, session.origin);
-          const flushOutcome = await flushDiskAndDetectOutcome(refDocName);
-          if (flushOutcome?.kind === 'failure') {
-            respondPersistenceFailure(res, flushOutcome.failure, 'skill-file-put');
-            return;
-          }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'skill-file-put');
-            return;
-          }
-        } else {
-          const fsResult = applySkillBundleFileWrite({
-            skillsRoot: dirname(skillDirAbs),
-            name: body.name,
-            relPath: rel,
-            content: body.content,
-          });
-          if (!fsResult.ok) {
-            const status =
-              fsResult.error.code === 'WRITE_ERROR'
-                ? 500
-                : fsResult.error.code === 'SKILL_NOT_FOUND'
-                  ? 404
-                  : 400;
-            errorResponse(
-              res,
-              status,
-              status === 500
-                ? 'urn:ok:error:internal-server-error'
-                : status === 404
-                  ? 'urn:ok:error:not-found'
-                  : 'urn:ok:error:invalid-request',
-              status === 500 ? 'Failed to write skill file.' : 'Invalid skill file request.',
-              {
-                handler: 'skill-file-put',
-                detail: fsResult.error.code,
-                cause: new Error(fsResult.error.message),
-              },
-            );
-            return;
-          }
-          created = fsResult.created;
-        }
-
-        if (body.scope === 'project') {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('skill', '', body.name),
-            `${created ? 'skill-file-create' : 'skill-file-edit'}: ${skillDirRel}/${rel}`,
-          );
-          void commitOkArtifactWrite('skill-file-put');
-        }
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillFilePutSuccessSchema,
-          { path: rel, created, kind, content: routedThroughContent },
-          { handler: 'skill-file-put' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to write skill file.',
-          {
-            handler: 'skill-file-put',
-            cause: e,
-          },
-        );
-      }
-    },
-    { handler: 'skill-file-put', method: 'PUT' },
-  );
-
-  const handleSkillFileDelete = withValidation(
-    EmptyRequestSchema,
-    async (req, res) => {
-      try {
-        const url = new URL(req.url ?? '', 'http://localhost');
-        const sp = url.searchParams;
-        const name = sp.get('name') ?? '';
-        if (!validateSkillName(name, res, 'skill-file-delete')) return;
-        if (rejectReservedBuiltinSkill(name, res, 'skill-file-delete')) return;
-        const scope = parseSkillScope(sp.get('scope'), res, 'skill-file-delete');
-        if (scope === null) return;
-        const rel = (sp.get('path') ?? '').replace(/\\/g, '/');
-        const kind = classifySkillFilePath(rel);
-        if (kind === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Invalid skill file path (must name a file inside the skill dir).',
-            { handler: 'skill-file-delete' },
-          );
-          return;
-        }
-        const actor = extractActorIdentityFromQuery(url, getPrincipal);
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-file-delete',
-          });
-          return;
-        }
-        const realDir = resolveSkillDirForRead(scope, name);
-        const skillsRoot = realDir !== null ? dirname(realDir) : resolveSkillsRoot(scope);
-
-        const bundleAbs = resolve(realDir ?? join(skillsRoot, name), rel);
-        if (existsSync(bundleAbs) && isProjectMdReference(scope, kind, rel)) {
-          const extLess = rel.replace(/\.md$/i, '');
-          const refDoc =
-            realDir !== null
-              ? `${relative(contentDir, realDir).split(sep).join('/')}/${extLess}`
-              : projectRefContentDocName(name, rel);
-          await captureAndCloseDocuments([refDoc], 'deleted-upstream');
-        } else if (
-          scope === 'project' &&
-          realDir !== null &&
-          existsSync(bundleAbs) &&
-          statSync(bundleAbs).isDirectory()
-        ) {
-          const docs = nestedProjectRefDocNames(realDir, rel);
-          if (docs.length > 0) await captureAndCloseDocuments(docs, 'deleted-upstream');
-        }
-
-        const result = applySkillBundleFileDelete({ skillsRoot, name, relPath: rel });
-        if (!result.ok) {
-          const status = result.error.code === 'UNLINK_FAILED' ? 500 : 400;
-          errorResponse(
-            res,
-            status,
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            status === 500 ? 'Failed to delete skill file.' : 'Invalid skill file request.',
-            {
-              handler: 'skill-file-delete',
-              detail: result.error.code,
-              cause: new Error(result.error.message),
-            },
-          );
-          return;
-        }
-        if (result.existed && scope === 'project') {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('skill', '', name),
-            `skill-file-delete: ${
-              realDir !== null
-                ? `${relative(contentDir, realDir).split(sep).join('/')}/${rel}`
-                : `${name}/${rel}`
-            }`,
-          );
-          void commitOkArtifactWrite('skill-file-delete');
-        }
-        if (result.existed) signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillFileDeleteSuccessSchema,
-          { path: rel, existed: result.existed, kind },
-          { handler: 'skill-file-delete' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to delete skill file.',
-          {
-            handler: 'skill-file-delete',
-            cause: e,
-          },
-        );
-      }
-    },
-    { handler: 'skill-file-delete', method: 'DELETE', skipBodyParse: true },
-  );
-
-  const handleSkillFile = methodRouter(
-    { GET: handleSkillFileGet, PUT: handleSkillFilePut, DELETE: handleSkillFileDelete },
-    { handler: 'skill-file' },
-  );
-  const handleSkillFileRename = withValidation(
-    SkillFileRenameRequestSchema,
-    async (_req, res, body) => {
-      try {
-        if (!validateSkillName(body.name, res, 'skill-file-rename')) return;
-        if (rejectReservedBuiltinSkill(body.name, res, 'skill-file-rename')) return;
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-file-rename',
-          });
-          return;
-        }
-        const from = body.from.replace(/\\/g, '/');
-        const to = body.to.replace(/\\/g, '/');
-        const fromKind = classifySkillFilePath(from);
-        const toKind = classifySkillFilePath(to);
-        if (fromKind === null || toKind === null) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Both paths must stay inside the skill dir.',
-            { handler: 'skill-file-rename', detail: fromKind === null ? from : to },
-          );
-          return;
-        }
-        const realDir = resolveSkillDirForRead(body.scope, body.name);
-        if (realDir === null) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-file-rename',
-          });
-          return;
-        }
-        const skillsRoot = dirname(realDir);
-
-        const fromIsDoc = isProjectMdReference(body.scope, fromKind, from);
-        const toIsDoc = isProjectMdReference(body.scope, toKind, to);
-        const dirRel = relative(contentDir, realDir).split(sep).join('/');
-        const fromDocName = fromIsDoc ? `${dirRel}/${from.replace(/\.md$/i, '')}` : null;
-        const toDocName = toIsDoc ? `${dirRel}/${to.replace(/\.md$/i, '')}` : null;
-
-        if (
-          fromDocName !== null &&
-          checkSkillDocConflictGate(fromDocName, 'skill-file-rename', res)
-        )
-          return;
-        if (fromDocName !== null) {
-          await captureAndCloseDocuments([fromDocName], 'deleted-upstream');
-        } else if (body.scope === 'project') {
-          const fromAbs = resolve(realDir, from);
-          if (existsSync(fromAbs) && statSync(fromAbs).isDirectory()) {
-            const docs = nestedProjectRefDocNames(realDir, from);
-            if (docs.length > 0) await captureAndCloseDocuments(docs, 'deleted-upstream');
-          }
-        }
-
-        const result = applySkillBundleFileRename({
-          skillsRoot,
-          name: body.name,
-          relPath: from,
-          toRelPath: to,
-        });
-        if (!result.ok) {
-          const status = result.error.code === 'RENAME_FAILED' ? 500 : 400;
-          errorResponse(
-            res,
-            status,
-            status === 500 ? 'urn:ok:error:internal-server-error' : 'urn:ok:error:invalid-request',
-            result.error.message,
-            { handler: 'skill-file-rename', detail: result.error.code },
-          );
-          return;
-        }
-
-        if (derivedDocumentIndex) {
-          const mutations: DerivedDocumentIndexMutation[] = [];
-          if (fromDocName !== null && toDocName !== null) {
-            try {
-              mutations.push({
-                kind: 'rename',
-                oldDocumentName: fromDocName,
-                newDocumentName: toDocName,
-                markdown: readFileSync(resolve(skillsRoot, body.name, to), 'utf-8'),
-              });
-            } catch {
-              mutations.push({ kind: 'delete', documentName: fromDocName });
-            }
-          } else if (fromDocName !== null) {
-            mutations.push({ kind: 'delete', documentName: fromDocName });
-          } else if (toDocName !== null) {
-            try {
-              mutations.push({
-                kind: 'upsert',
-                documentName: toDocName,
-                markdown: readFileSync(resolve(skillsRoot, body.name, to), 'utf-8'),
-              });
-            } catch {}
-          }
-          await recordDerivedMutationsBestEffort(mutations, 'skill-file-rename');
-        }
-
-        if (body.scope === 'project') {
-          attributeOkArtifactWrite(
-            actor,
-            okArtifactKey('skill', '', body.name),
-            `skill-file-rename: ${body.name}/${from} -> ${to}`,
-          );
-          void commitOkArtifactWrite('skill-file-rename');
-        }
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillFileRenameSuccessSchema,
-          {
-            from,
-            to,
-            ...(fromDocName !== null ? { fromDocName } : {}),
-            ...(toDocName !== null ? { toDocName } : {}),
-          },
-          { handler: 'skill-file-rename' },
-        );
-      } catch (err) {
-        log.error({ err }, '[skill-file-rename] failed');
-        if (!res.headersSent) {
-          errorResponse(
-            res,
-            500,
-            'urn:ok:error:internal-server-error',
-            'Failed to rename skill file.',
-            { handler: 'skill-file-rename' },
-          );
-        }
-      }
-    },
-    { handler: 'skill-file-rename', method: 'POST' },
-  );
-
-  function publisherFromSource(source: string): string | undefined {
-    const m = /github\.com[/:]([\w.-]+)\//.exec(source);
-    return m ? m[1] : undefined;
-  }
-
-  const readSkillsLock = readSkillsLockFile;
   function localSkillHash(skillsRoot: string, name: string): string | undefined {
     return parseSkillDir(resolve(skillsRoot, name))?.contentHash;
   }
@@ -8315,7 +4314,11 @@ export function createApiExtension(
   ): Promise<string | undefined> {
     const shadow = shadowRef?.current;
     if (!shadow || !writerId) return undefined;
-    // (`refs/wip/<branch>/<writerId>`, precedent #25). `commitOkArtifactWrite` has
+    /**
+     * The shadow repo has no `HEAD`/`main`: writes land on per-writer WIP refs
+     * (`refs/wip/<branch>/<writerId>`, precedent #25), so capture the actor's WIP ref rather
+     * than `rev-parse HEAD`.
+     */
     try {
       const sg = shadowGit(shadow);
       const readMine = async (): Promise<string | undefined> => {
@@ -8328,7 +4331,7 @@ export function createApiExtension(
         return (await sg.raw('rev-parse', mine)).trim();
       };
       const treeHas = async (sha: string, rel: string): Promise<boolean> => {
-        const out = await sg.raw('ls-tree', '-r', '--name-only', sha, '--', rel);
+        const out = await sg.raw('ls-tree', '-r', '--name-only', sha, ...pathspecArgs([rel]));
         return out.trim().length > 0;
       };
       let sha = await readMine();
@@ -8384,20 +4387,6 @@ export function createApiExtension(
     }
   }
 
-  function respondSkillImport(res: ServerResponse, outcome: SkillImportOutcome): void {
-    if (outcome.ok) {
-      successResponse(res, 200, SkillImportSuccessSchema, outcome.body, {
-        handler: 'skill-import',
-      });
-      return;
-    }
-    errorResponse(res, outcome.status, outcome.urn, outcome.title, {
-      handler: 'skill-import',
-      ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
-      ...(outcome.cause !== undefined ? { cause: outcome.cause } : {}),
-    });
-  }
-
   const skillImportService = createSkillImportService({
     contentDir,
     skillsHome,
@@ -8428,1316 +4417,6 @@ export function createApiExtension(
     projectImportedSkillCopy,
     signalFiles: () => signalChannel?.('files'),
   });
-
-  function respondSkillReimport(res: ServerResponse, outcome: SkillReimportOutcome): void {
-    if (outcome.ok) {
-      successResponse(res, 200, SkillReimportSuccessSchema, outcome.body, {
-        handler: 'skill-reimport',
-      });
-      return;
-    }
-    errorResponse(res, outcome.status, outcome.urn, outcome.title, {
-      handler: 'skill-reimport',
-      ...(outcome.detail !== undefined ? { detail: outcome.detail } : {}),
-      ...(outcome.cause !== undefined ? { cause: outcome.cause } : {}),
-    });
-  }
-
-  function packBundleDir(scope: 'project' | 'global', name: string, skillsRoot: string): string {
-    const base = scope === 'project' ? contentDir : skillsHome;
-    const found = (
-      scope === 'project' ? scanInPlaceSkills(contentDir) : scanGlobalInPlaceSkills(skillsHome)
-    ).find((s) => s.name === name);
-    return found ? resolve(base, found.dir) : resolve(skillsRoot, name);
-  }
-
-  function resolveReimportLockEntry(
-    scope: 'project' | 'global',
-    name: string,
-    skillsRoot: string,
-    lock: SkillsLock,
-  ): SkillsLock['skills'][string] | null {
-    const recorded = lock.skills[name];
-    if (recorded) return recorded;
-    const bundleDir = packBundleDir(scope, name, skillsRoot);
-    return (
-      retrofitPackLockEntry(
-        name,
-        parseSkillDir(bundleDir)?.contentHash ?? '',
-        new Date().toISOString(),
-        { selfIdentifiesAsPack: bundleSelfIdentifiesAsPack(bundleDir) },
-      ) ??
-      synthBuiltinLockEntry(scope === 'global' ? skillsHome : contentDir, name) ??
-      synthPluginLockEntry(name, resolveProjectIdentity(projectDir ?? contentDir), bundleDir)
-    );
-  }
-  const handleSkillImport = withValidation(
-    SkillImportRequestSchema,
-    async (_req, res, body) => {
-      let cleanup: () => void = () => {};
-      try {
-        if (!projectDir) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project root resolved.', {
-            handler: 'skill-import',
-            detail: 'NO_PROJECT_ROOT',
-          });
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-import',
-          });
-          return;
-        }
-        const scope = body.scope;
-
-        let acquiredDir: string | null = null;
-        let sourceLabel: string;
-        let ref: string | undefined;
-        let publisher: string | undefined;
-        let upstreamSkill: string | undefined;
-        let resolvedSourceForReport = body.source;
-
-        {
-          const rawSource = body.source;
-          try {
-            const skillsSh = await resolveSkillsShImportSource(rawSource, body.skill);
-            const resolvedSource = skillsSh?.source ?? rawSource;
-            resolvedSourceForReport = resolvedSource;
-            const selectedSkill = body.skill ?? skillsSh?.skill;
-            const spec = skillsSh?.spec ?? parseSource(resolvedSource);
-            if (!spec) {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                'Unrecognized import source.',
-                {
-                  handler: 'skill-import',
-                  detail:
-                    'Expected owner/repo, a git URL, a website source, a local path, or a skills.sh URL.',
-                },
-              );
-              return;
-            }
-            if (rejectDisallowedGitSpec(res, spec, 'skill-import')) return;
-            const fetched = await fetchSource(spec);
-            cleanup = fetched.cleanup;
-            ref = fetched.ref;
-            const dirs = discoverSkillDirs(fetched.dir);
-            if (dirs.length === 0) {
-              errorResponse(res, 404, 'urn:ok:error:not-found', 'No SKILL.md found in source.', {
-                handler: 'skill-import',
-              });
-              return;
-            }
-            let pick = dirs[0];
-            if (selectedSkill) {
-              const found =
-                dirs.find((d) => d.name === selectedSkill) ??
-                dirs.find((d) => readSkillDirMeta(d.dir)?.name === selectedSkill) ??
-                dirs.find((d) => d.name === RENAMED_PACK_SKILLS[selectedSkill]);
-              if (!found) {
-                errorResponse(res, 404, 'urn:ok:error:not-found', 'Named skill not in source.', {
-                  handler: 'skill-import',
-                  detail: `--skill "${selectedSkill}" not among: ${dirs.map((d) => d.name).join(', ')}.`,
-                });
-                return;
-              }
-              pick = found;
-            } else if (dirs.length > 1) {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                'Source has multiple skills; pass `skill` to choose one.',
-                { handler: 'skill-import', detail: dirs.map((d) => d.name).join(', ') },
-              );
-              return;
-            }
-            acquiredDir = pick.dir;
-            upstreamSkill = pick.name;
-            sourceLabel = rawSource;
-            publisher = skillsSh?.publisher ?? publisherFromSource(resolvedSource);
-          } catch (e) {
-            if (e instanceof SkillFetchError) {
-              errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Could not fetch source.', {
-                handler: 'skill-import',
-                cause: e,
-              });
-              return;
-            }
-            throw e;
-          }
-        }
-
-        if (!acquiredDir) {
-          errorResponse(res, 422, 'urn:ok:error:invalid-request', 'Source has no readable skill.', {
-            handler: 'skill-import',
-          });
-          return;
-        }
-        const outcome = await skillImportService.runSkillImport({
-          acquiredDir,
-          scope,
-          sourceLabel,
-          ref,
-          publisher,
-          upstreamSkill,
-          actor,
-          skipProjection: body.install === false,
-        });
-        if (
-          outcome.ok &&
-          (body.marketplace === true || isOpenKnowledgeSkillsSource(resolvedSourceForReport))
-        ) {
-          void reportSkillInstall(
-            { source: resolvedSourceForReport, skills: [outcome.body.name] },
-            resolveSkillInstallReportSettings(),
-          );
-        }
-        bumpSkillsCatalogGen();
-        contentFilter?.refreshInPlaceSkillDirs();
-        scheduleDeferredIgnoreRebuild();
-        signalChannel?.('files');
-
-        respondSkillImport(res, outcome);
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to import skill.', {
-          handler: 'skill-import',
-          cause: e,
-        });
-      } finally {
-        cleanup();
-      }
-    },
-    { handler: 'skill-import', method: 'POST' },
-  );
-
-  const handleSkillsImportBulk = withValidation(
-    SkillsImportBulkRequestSchema,
-    async (_req, res, body) => {
-      let cleanup: () => void = () => {};
-      try {
-        if (!projectDir) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project root resolved.', {
-            handler: 'skills-import-bulk',
-            detail: 'NO_PROJECT_ROOT',
-          });
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skills-import-bulk',
-          });
-          return;
-        }
-        const rawSource = body.source;
-        let siteSpec: (SourceSpec & { kind: 'well-known' }) | null = null;
-        let siteIndex: WellKnownIndex | null = null;
-        let dirs: ReturnType<typeof discoverSkillDirs> = [];
-        let ref: string | undefined;
-        let publisher: string | undefined;
-        let resolvedSourceForReport = rawSource;
-        try {
-          const skillsSh = await resolveSkillsShImportSource(rawSource, body.skills[0]);
-          const resolvedSource = skillsSh?.source ?? rawSource;
-          resolvedSourceForReport = resolvedSource;
-          const spec = skillsSh?.spec ?? parseSource(resolvedSource);
-          if (!spec) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unrecognized import source.', {
-              handler: 'skills-import-bulk',
-              detail:
-                'Expected owner/repo, a git URL, a website source, a local path, or a skills.sh URL.',
-            });
-            return;
-          }
-          if (rejectDisallowedGitSpec(res, spec, 'skills-import-bulk')) return;
-          publisher = skillsSh?.publisher ?? publisherFromSource(resolvedSource);
-          if (spec.kind === 'well-known') {
-            siteSpec = spec;
-            siteIndex = await readWellKnownIndex(spec.origin);
-          } else {
-            const fetched = await fetchSource(spec);
-            cleanup = fetched.cleanup;
-            ref = fetched.ref;
-            dirs = discoverSkillDirs(fetched.dir);
-          }
-        } catch (e) {
-          if (e instanceof SkillFetchError) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Could not fetch source.', {
-              handler: 'skills-import-bulk',
-              cause: e,
-            });
-            return;
-          }
-          throw e;
-        }
-        if (siteSpec === null && dirs.length === 0) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'No SKILL.md found in source.', {
-            handler: 'skills-import-bulk',
-          });
-          return;
-        }
-        const results: SkillImportBulkResult[] = [];
-        for (const requested of new Set(body.skills)) {
-          let acquiredDir: string;
-          let upstreamSkill: string;
-          let perSkill: () => void = () => {};
-          if (siteSpec !== null) {
-            try {
-              const one = await fetchSource(
-                { ...siteSpec, skill: requested },
-                siteIndex ? { index: siteIndex } : {},
-              );
-              acquiredDir = one.dir;
-              perSkill = one.cleanup;
-              upstreamSkill = requested;
-            } catch (e) {
-              results.push({
-                requested,
-                status: e instanceof SkillFetchError ? 'not-found' : 'failed',
-                warnings: [],
-                ...(e instanceof SkillFetchError ? {} : { error: String(e) }),
-              });
-              continue;
-            }
-          } else {
-            const found =
-              dirs.find((d) => d.name === requested) ??
-              dirs.find((d) => parseSkillDir(d.dir)?.name === requested) ??
-              dirs.find((d) => d.name === RENAMED_PACK_SKILLS[requested]);
-            if (!found) {
-              results.push({ requested, status: 'not-found', warnings: [] });
-              continue;
-            }
-            acquiredDir = found.dir;
-            upstreamSkill = found.name;
-          }
-          try {
-            const outcome = await skillImportService.runSkillImport({
-              acquiredDir,
-              scope: body.scope,
-              sourceLabel: rawSource,
-              ref,
-              publisher,
-              upstreamSkill,
-              actor,
-              skipProjection: body.install === false,
-            });
-            if (!outcome.ok) {
-              getLogger('skills-import-bulk').warn(
-                { skill: requested, err: outcome.cause, detail: outcome.detail },
-                'bulk import: one skill failed (rest continue)',
-              );
-              results.push({
-                requested,
-                status: 'failed',
-                warnings: [],
-                error: outcome.detail ?? outcome.title,
-              });
-              continue;
-            }
-            results.push({
-              requested,
-              status: outcome.body.alreadyImported ? 'already-imported' : 'imported',
-              name: outcome.body.name,
-              ...(outcome.body.collisionRenamedFrom !== undefined
-                ? { collisionRenamedFrom: outcome.body.collisionRenamedFrom }
-                : {}),
-              warnings: outcome.body.warnings,
-            });
-          } catch (e) {
-            getLogger('skills-import-bulk').warn(
-              { skill: requested, err: e },
-              'bulk import: one skill threw (rest continue)',
-            );
-            results.push({
-              requested,
-              status: 'failed',
-              warnings: [],
-              error: e instanceof Error ? e.message : String(e),
-            });
-          } finally {
-            perSkill();
-          }
-        }
-        if (body.marketplace === true || isOpenKnowledgeSkillsSource(resolvedSourceForReport)) {
-          const importedNames = results
-            .filter((r) => r.status === 'imported')
-            .map((r) => r.requested);
-          if (importedNames.length > 0) {
-            void reportSkillInstall(
-              { source: resolvedSourceForReport, skills: importedNames },
-              resolveSkillInstallReportSettings(),
-            );
-          }
-        }
-        bumpSkillsCatalogGen();
-        contentFilter?.refreshInPlaceSkillDirs();
-        scheduleDeferredIgnoreRebuild();
-        signalChannel?.('files');
-
-        successResponse(
-          res,
-          200,
-          SkillsImportBulkSuccessSchema,
-          {
-            results,
-            imported: results.filter((r) => r.status === 'imported').length,
-            alreadyImported: results.filter((r) => r.status === 'already-imported').length,
-            failed: results.filter((r) => r.status === 'failed' || r.status === 'not-found').length,
-          },
-          { handler: 'skills-import-bulk' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to import skills.', {
-          handler: 'skills-import-bulk',
-          cause: e,
-        });
-      } finally {
-        cleanup();
-      }
-    },
-    { handler: 'skills-import-bulk', method: 'POST' },
-  );
-
-  const UPLOAD_MAX_FILES = 200;
-  const UPLOAD_MAX_ENTRY_BYTES = 8 * 1024 * 1024;
-  const UPLOAD_MAX_TOTAL_BYTES = 32 * 1024 * 1024;
-
-  function resolveUploadPath(root: string, rel: string): string | null {
-    const norm = rel.split('\\').join('/').replace(/^\/+/, '');
-    if (norm === '' || norm.split('/').some((seg) => seg === '..')) return null;
-    const abs = resolve(root, norm);
-    if (abs !== root && !abs.startsWith(root + sep)) return null;
-    return abs;
-  }
-
-  interface UploadedPart {
-    relPath: string;
-    data: Buffer;
-  }
-
-  function readSkillUploadParts(req: IncomingMessage): Promise<UploadedPart[]> {
-    return new Promise((resolveP, reject) => {
-      let bb: MultipartParser;
-      try {
-        bb = createMultipartParser(req, {
-          files: UPLOAD_MAX_FILES,
-          fields: 10,
-          fieldSize: 2 * 1024,
-          fileSize: UPLOAD_MAX_ENTRY_BYTES,
-        });
-      } catch (err) {
-        reject(err);
-        return;
-      }
-      const parts: UploadedPart[] = [];
-      let total = 0;
-      let aborted: Error | null = null;
-      const abort = (err: Error) => {
-        if (aborted) return;
-        aborted = err;
-        req.unpipe(bb);
-        req.destroy();
-        bb.destroy();
-        reject(err);
-      };
-      bb.on('file', (_field, stream, info) => {
-        const chunks: Buffer[] = [];
-        let truncated = false;
-        stream.on('data', (c: Buffer) => {
-          if (aborted) return;
-          total += c.length;
-          if (total > UPLOAD_MAX_TOTAL_BYTES) {
-            abort(new Error('Upload too large.'));
-            return;
-          }
-          chunks.push(c);
-        });
-        stream.on('limit', () => {
-          truncated = true;
-        });
-        stream.on('end', () => {
-          if (aborted) return;
-          if (truncated) {
-            aborted = new Error(`File "${info.filename}" exceeds the per-file size limit.`);
-            return;
-          }
-          parts.push({ relPath: info.filename || 'file', data: Buffer.concat(chunks) });
-        });
-      });
-      bb.on('error', reject);
-      bb.on('close', () => (aborted ? reject(aborted) : resolveP(parts)));
-      req.pipe(bb);
-    });
-  }
-
-  function unzipBufferToDir(buffer: Buffer, destDir: string): Promise<void> {
-    return new Promise((resolveP, reject) => {
-      yauzlFromBuffer(buffer, { lazyEntries: true }, (err, zip?: ZipFile) => {
-        if (err || !zip) {
-          reject(err ?? new Error('Unreadable archive.'));
-          return;
-        }
-        let total = 0;
-        let entries = 0;
-        const fail = (e: unknown) => {
-          try {
-            zip.close();
-          } catch {}
-          reject(e instanceof Error ? e : new Error(String(e)));
-        };
-        zip.on('entry', (entry: Entry) => {
-          if (++entries > UPLOAD_MAX_FILES) {
-            fail(new Error('Archive has too many entries.'));
-            return;
-          }
-          const abs = resolveUploadPath(destDir, entry.fileName);
-          if (!abs) {
-            fail(new Error(`Unsafe archive entry: ${entry.fileName}`));
-            return;
-          }
-          if (entry.fileName.endsWith('/')) {
-            tracedMkdirSync(abs, { recursive: true });
-            zip.readEntry();
-            return;
-          }
-          if (entry.uncompressedSize > UPLOAD_MAX_ENTRY_BYTES) {
-            fail(new Error(`Archive entry too large: ${entry.fileName}`));
-            return;
-          }
-          zip.openReadStream(entry, (e2, rs) => {
-            if (e2 || !rs) {
-              fail(e2 ?? new Error('Could not read archive entry.'));
-              return;
-            }
-            const chunks: Buffer[] = [];
-            rs.on('data', (c: Buffer) => {
-              total += c.length;
-              if (total > UPLOAD_MAX_TOTAL_BYTES) {
-                rs.destroy();
-                fail(new Error('Archive expands beyond the size limit.'));
-                return;
-              }
-              chunks.push(c);
-            });
-            rs.on('error', fail);
-            rs.on('end', () => {
-              try {
-                tracedMkdirSync(dirname(abs), { recursive: true });
-                tracedWriteFileSync(abs, Buffer.concat(chunks));
-              } catch (writeErr) {
-                fail(writeErr instanceof Error ? writeErr : new Error(String(writeErr)));
-                return;
-              }
-              zip.readEntry();
-            });
-          });
-        });
-        zip.on('end', () => resolveP());
-        zip.on('error', fail);
-        zip.readEntry();
-      });
-    });
-  }
-
-  async function handleSkillUpload(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const tmp = mkdtempSync(join(tmpdir(), 'ok-skill-upload-'));
-    const cleanup = () => {
-      try {
-        tracedRmSync(tmp, { recursive: true, force: true });
-      } catch {}
-    };
-    try {
-      if (!projectDir) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project root resolved.', {
-          handler: 'skill-upload',
-          detail: 'NO_PROJECT_ROOT',
-        });
-        return;
-      }
-      if ((req.method ?? '').toUpperCase() !== 'POST') {
-        errorResponse(res, 405, 'urn:ok:error:invalid-request', 'Use POST to upload a skill.', {
-          handler: 'skill-upload',
-        });
-        return;
-      }
-      const url = new URL(req.url ?? '', 'http://localhost');
-      const scope = parseSkillScope(url.searchParams.get('scope'), res, 'skill-upload');
-      if (!scope) return;
-      const queryField = (key: string): string | undefined =>
-        url.searchParams.get(key) ?? undefined;
-      const actor = extractActorIdentity(
-        {
-          agentId: queryField('agentId'),
-          agentName: queryField('agentName'),
-          colorSeed: queryField('colorSeed'),
-          clientName: queryField('clientName'),
-          summary: queryField('summary'),
-        },
-        getPrincipal,
-      );
-      if (actor.kind === 'invalid-summary') {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-          handler: 'skill-upload',
-        });
-        return;
-      }
-
-      let parts: UploadedPart[];
-      try {
-        parts = await readSkillUploadParts(req);
-      } catch (e) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Could not read the upload.', {
-          handler: 'skill-upload',
-          cause: e,
-        });
-        return;
-      }
-      if (parts.length === 0) {
-        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No files uploaded.', {
-          handler: 'skill-upload',
-        });
-        return;
-      }
-
-      const single = parts.length === 1 ? parts[0] : null;
-      const zipName = single && /\.(zip|skill)$/i.test(single.relPath) ? single.relPath : null;
-      if (single && zipName) {
-        try {
-          await unzipBufferToDir(single.data, tmp);
-        } catch (e) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Could not unpack the archive.', {
-            handler: 'skill-upload',
-            cause: e,
-          });
-          return;
-        }
-      } else {
-        for (const part of parts) {
-          const abs = resolveUploadPath(tmp, part.relPath);
-          if (!abs) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unsafe file path in upload.', {
-              handler: 'skill-upload',
-              detail: part.relPath,
-            });
-            return;
-          }
-          tracedMkdirSync(dirname(abs), { recursive: true });
-          tracedWriteFileSync(abs, part.data);
-        }
-      }
-
-      const dirs = discoverSkillDirs(tmp);
-      if (dirs.length === 0) {
-        errorResponse(res, 404, 'urn:ok:error:not-found', 'No SKILL.md found in the upload.', {
-          handler: 'skill-upload',
-        });
-        return;
-      }
-      if (dirs.length > 1) {
-        errorResponse(
-          res,
-          400,
-          'urn:ok:error:invalid-request',
-          'Upload contains multiple skills; upload one at a time.',
-          { handler: 'skill-upload', detail: dirs.map((d) => d.name).join(', ') },
-        );
-        return;
-      }
-      const pick = dirs[0];
-      respondSkillImport(
-        res,
-        await skillImportService.runSkillImport({
-          acquiredDir: pick.dir,
-          scope,
-          sourceLabel: `upload:${zipName ?? pick.name}`,
-          upstreamSkill: pick.name,
-          actor,
-        }),
-      );
-    } catch (e) {
-      errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to upload skill.', {
-        handler: 'skill-upload',
-        cause: e,
-      });
-    } finally {
-      cleanup();
-    }
-  }
-
-  const handleSkillInstall = withValidation(
-    SkillInstallRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const skillsRoot = resolveSkillsRoot(body.scope);
-        if (!validateSkillName(body.name, res, 'skill-install')) return;
-
-        if (body.scope === 'project' && !projectDir) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Cannot install — no project root is resolved for this server. Skills project into editor host dirs at the project root.',
-            { handler: 'skill-install', detail: 'NO_PROJECT_ROOT' },
-          );
-          return;
-        }
-        const base = skillInstallBase(body.scope) as string;
-
-        const storeSkillDir = resolve(skillsRoot, body.name);
-        const inPlaceScanBase = body.scope === 'project' ? contentDir : skillsHome;
-        const inPlaceEntry = (
-          body.scope === 'project'
-            ? scanInPlaceSkills(contentDir)
-            : scanGlobalInPlaceSkills(skillsHome)
-        ).find((s) => s.name === body.name);
-        const bundleSource = isInternalBundleSkillName(body.name)
-          ? shippedBundleSkillMd(body.name, body.scope)
-          : null;
-        const skillDir = inPlaceEntry
-          ? resolve(inPlaceScanBase, inPlaceEntry.dir)
-          : existsSync(storeSkillDir) || bundleSource === null
-            ? storeSkillDir
-            : dirname(bundleSource);
-        if (!existsSync(skillDir)) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill not found.', {
-            handler: 'skill-install',
-            detail: `Skill "${body.name}" not found in ${body.scope} scope — create it with write({ skill }) first.`,
-          });
-          return;
-        }
-
-        const liveSkillDoc =
-          body.scope === 'project'
-            ? `${relative(inPlaceScanBase, skillDir).split(sep).join('/')}/SKILL`
-            : skillLiveDocName(body.scope, body.name);
-        await flushDiskAndDetectOutcome(liveSkillDoc);
-
-        const validity = validateSkillForInstall(skillDir, body.name, {
-          allowReservedName: isInternalBundleSkillName(body.name),
-        });
-        if (!validity.ok) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            `Skill "${body.name}" cannot be installed: ${validity.errors.join(' ')}`,
-            { handler: 'skill-install', detail: 'INVALID_SKILL_SOURCE' },
-          );
-          return;
-        }
-
-        if (body.fork !== undefined) {
-          if (!inPlaceEntry) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Skill is not in-place.', {
-              handler: 'skill-install',
-              detail: 'FORK_STORE_BACKED',
-            });
-            return;
-          }
-          const forkResolved = skillInstallOps.resolveFork({
-            scope: body.scope,
-            name: body.name,
-            fork: body.fork,
-            inPlaceEntry,
-          });
-          if (!forkResolved.ok) {
-            switch (forkResolved.kind) {
-              case 'unknown-editor':
-                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Unknown editor.', {
-                  handler: 'skill-install',
-                  detail: forkResolved.editor,
-                });
-                return;
-              case 'fork-absent':
-                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No fork at that editor.', {
-                  handler: 'skill-install',
-                  detail: 'FORK_ABSENT',
-                });
-                return;
-              case 'not-a-fork':
-                errorResponse(
-                  res,
-                  400,
-                  'urn:ok:error:invalid-request',
-                  'That copy matches the source — nothing to resolve.',
-                  { handler: 'skill-install', detail: 'NOT_A_FORK' },
-                );
-                return;
-              case 'invalid-new-name':
-                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Invalid new name.', {
-                  handler: 'skill-install',
-                  detail: forkResolved.toName,
-                });
-                return;
-              case 'name-taken':
-                errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Name already taken.', {
-                  handler: 'skill-install',
-                  detail: forkResolved.toName,
-                });
-                return;
-              default: {
-                const _exhaustive: never = forkResolved;
-                throw new Error(
-                  `Unhandled fork outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-                );
-              }
-            }
-          }
-          signalChannel?.('files');
-          bumpSkillsCatalogGen();
-          contentFilter?.refreshInPlaceSkillDirs();
-          scheduleDeferredIgnoreRebuild();
-          successResponse(
-            res,
-            200,
-            SkillInstallSuccessSchema,
-            {
-              name: body.name,
-              hosts: inPlaceEntry.hosts.filter(isSkillInstallTarget),
-              scripts: false,
-              warnings: forkResolved.warnings,
-              warningCodes: forkResolved.warnings.length > 0 ? ['skill-fork-name-unpatched'] : [],
-            },
-            { handler: 'skill-install' },
-          );
-          return;
-        }
-
-        const setSourceReq = body.setSource ?? body.source;
-        const linkModeReq =
-          body.linkMode ?? (body.mode !== undefined ? body.mode === 'link' : undefined);
-        let targetsReq = body.targets;
-        const rootAdds: string[] = [];
-        const rootRemoves: string[] = [];
-        if (body.add !== undefined || body.remove !== undefined) {
-          if (!inPlaceEntry) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'This skill still lives in the legacy .ok/skills store — promote a real location first (`source`) before using add/remove.',
-              { handler: 'skill-install', detail: 'STORE_BACKED_ADDITIVE' },
-            );
-            return;
-          }
-          const addRemove = await skillInstallOps.applyAddRemove({
-            scope: body.scope,
-            name: body.name,
-            inPlaceEntry,
-            ...(body.add !== undefined ? { add: body.add } : {}),
-            ...(body.remove !== undefined ? { remove: body.remove } : {}),
-          });
-          if (!addRemove.ok) {
-            if (addRemove.kind === 'remove-source') {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                `"${addRemove.sourceId}" is the skill's SOURCE — its folder is the skill itself, so removing it would delete the skill. Move the source first (\`source\`) or use \`delete\`.`,
-                { handler: 'skill-install', detail: 'REMOVE_SOURCE' },
-              );
-            } else {
-              errorResponse(
-                res,
-                409,
-                'urn:ok:error:invalid-request',
-                `Could not stop ${addRemove.subRoot} following its pool (${addRemove.reason}).`,
-                { handler: 'skill-install', detail: addRemove.reason },
-              );
-            }
-            return;
-          }
-          targetsReq = addRemove.targets.filter(isSkillInstallTarget);
-          rootAdds.push(...addRemove.rootAdds);
-          rootRemoves.push(...addRemove.rootRemoves);
-        }
-
-        if (setSourceReq && !inPlaceEntry) {
-          const promoted = await skillInstallOps.promoteStoreBackedSource({
-            scope: body.scope,
-            name: body.name,
-            base,
-            skillDir,
-            newSource: setSourceReq as SkillHostId,
-          });
-          if (!promoted.ok) {
-            errorResponse(
-              res,
-              409,
-              'urn:ok:error:doc-already-exists',
-              'Cannot move the source there — a different skill occupies the target.',
-              {
-                handler: 'skill-install',
-                detail: promoted.kind === 'source-occupied' ? promoted.reason : promoted.target,
-              },
-            );
-            return;
-          }
-          signalChannel?.('files');
-          bumpSkillsCatalogGen();
-          contentFilter?.refreshInPlaceSkillDirs();
-          scheduleDeferredIgnoreRebuild();
-          successResponse(
-            res,
-            200,
-            SkillInstallSuccessSchema,
-            {
-              name: body.name,
-              hosts: promoted.hosts,
-              scripts: validity.hasScripts,
-              warnings: [],
-              warningCodes: [],
-              sourceMovedTo: promoted.sourceMovedTo,
-            },
-            { handler: 'skill-install' },
-          );
-          return;
-        }
-
-        if (body.place) {
-          const placeBase = body.scope === 'project' ? projectDir : skillsHome;
-          if (!placeBase) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Cannot place — no project root is resolved for this server.',
-              { handler: 'skill-install', detail: 'NO_PROJECT_ROOT' },
-            );
-            return;
-          }
-          const placed = await skillPlacementOps.place({
-            placeBase,
-            name: body.name,
-            rawDir: body.place.dir,
-            skillDir,
-            mode: body.place.mode,
-          });
-          if (!placed.ok) {
-            if (placed.kind === 'invalid-path') {
-              errorResponse(
-                res,
-                400,
-                'urn:ok:error:invalid-request',
-                'Placement path must be a project-relative directory outside .ok/.',
-                { handler: 'skill-install', detail: 'PLACE_PATH_INVALID' },
-              );
-            } else {
-              errorResponse(
-                res,
-                409,
-                'urn:ok:error:doc-already-exists',
-                'Something already exists at that path — placement never overwrites.',
-                { handler: 'skill-install', detail: 'PLACE_DEST_EXISTS' },
-              );
-            }
-            return;
-          }
-          if (!('alreadyAtSource' in placed)) {
-            signalChannel?.('files');
-          }
-          bumpSkillsCatalogGen();
-          contentFilter?.refreshInPlaceSkillDirs();
-          scheduleDeferredIgnoreRebuild();
-          successResponse(
-            res,
-            200,
-            SkillInstallSuccessSchema,
-            {
-              name: body.name,
-              hosts: inPlaceEntry ? [...inPlaceEntry.hosts] : [],
-              scripts: validity.hasScripts,
-              warnings: [],
-              warningCodes: [],
-              placedAt: placed.placedAt,
-            },
-            { handler: 'skill-install' },
-          );
-          return;
-        }
-
-        if (body.unplace) {
-          const placeBase = body.scope === 'project' ? projectDir : skillsHome;
-          if (!placeBase) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'Cannot remove a placement — no project root is resolved for this server.',
-              { handler: 'skill-install', detail: 'NO_PROJECT_ROOT' },
-            );
-            return;
-          }
-          const unplaced = await skillPlacementOps.unplace({
-            placeBase,
-            name: body.name,
-            rawPath: body.unplace.path,
-            skillDir,
-          });
-          if (!unplaced.ok) {
-            switch (unplaced.kind) {
-              case 'not-recorded':
-                errorResponse(
-                  res,
-                  404,
-                  'urn:ok:error:not-found',
-                  'No recorded placement at that path.',
-                  { handler: 'skill-install', detail: unplaced.path },
-                );
-                return;
-              case 'unsafe-path':
-                errorResponse(
-                  res,
-                  400,
-                  'urn:ok:error:invalid-request',
-                  'Recorded placement path is no longer safe.',
-                  { handler: 'skill-install', detail: 'PLACE_PATH_INVALID' },
-                );
-                return;
-              case 'forked':
-                errorResponse(
-                  res,
-                  409,
-                  'urn:ok:error:doc-already-exists',
-                  'That copy has been edited and no longer matches the skill — remove it manually if you mean it.',
-                  { handler: 'skill-install', detail: unplaced.path },
-                );
-                return;
-              case 'canonical-dir':
-                errorResponse(
-                  res,
-                  400,
-                  'urn:ok:error:invalid-request',
-                  "That is the skill's own folder (the source) — it can't be removed here.",
-                  { handler: 'skill-install', detail: unplaced.path },
-                );
-                return;
-              default: {
-                const _exhaustive: never = unplaced;
-                throw new Error(
-                  `Unhandled unplace outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-                );
-              }
-            }
-          }
-          signalChannel?.('files');
-          bumpSkillsCatalogGen();
-          contentFilter?.refreshInPlaceSkillDirs();
-          scheduleDeferredIgnoreRebuild();
-          successResponse(
-            res,
-            200,
-            SkillInstallSuccessSchema,
-            {
-              name: body.name,
-              hosts: inPlaceEntry ? [...inPlaceEntry.hosts] : [],
-              scripts: validity.hasScripts,
-              warnings: [],
-              warningCodes: [],
-            },
-            { handler: 'skill-install' },
-          );
-          return;
-        }
-
-        if (body.convert) {
-          if (!inPlaceEntry) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'This skill still lives in the legacy .ok/skills store — promote a real location first (`source`) before converting one.',
-              { handler: 'skill-install', detail: 'STORE_BACKED_CONVERT' },
-            );
-            return;
-          }
-          const { target, mode } = body.convert;
-          const prefBase = body.scope === 'project' ? projectDir : skillsHome;
-          const converted = await skillPlacementOps.convert({
-            ledgerBase: prefBase ?? base,
-            scope: body.scope,
-            name: body.name,
-            target,
-            mode,
-            skillDir,
-            canonicalHash: inPlaceEntry.contentHash,
-          });
-          if (!converted.ok) {
-            switch (converted.kind) {
-              case 'invalid-location':
-                errorResponse(
-                  res,
-                  400,
-                  'urn:ok:error:invalid-request',
-                  'That location has no skills folder to convert.',
-                  { handler: 'skill-install', detail: target },
-                );
-                return;
-              case 'canonical-dir':
-                errorResponse(
-                  res,
-                  400,
-                  'urn:ok:error:invalid-request',
-                  "That is the skill's own folder (the source) — move the source instead of converting it.",
-                  { handler: 'skill-install', detail: target },
-                );
-                return;
-              case 'forked':
-                errorResponse(
-                  res,
-                  409,
-                  'urn:ok:error:doc-already-exists',
-                  'That copy has been edited and no longer matches the skill — resolve the fork before converting it.',
-                  { handler: 'skill-install', detail: target },
-                );
-                return;
-              case 'not-installed':
-                errorResponse(
-                  res,
-                  404,
-                  'urn:ok:error:not-found',
-                  'The skill is not installed there.',
-                  { handler: 'skill-install', detail: target },
-                );
-                return;
-              default: {
-                const _exhaustive: never = converted;
-                throw new Error(
-                  `Unhandled convert outcome: ${String((_exhaustive as { kind?: unknown }).kind)}`,
-                );
-              }
-            }
-          }
-          signalChannel?.('files');
-          successResponse(
-            res,
-            200,
-            SkillInstallSuccessSchema,
-            {
-              name: body.name,
-              hosts: [...inPlaceEntry.hosts],
-              scripts: validity.hasScripts,
-              warnings: [],
-              warningCodes: [],
-            },
-            { handler: 'skill-install' },
-          );
-          return;
-        }
-
-        const targets: EditorId[] =
-          body.scope === 'global'
-            ? targetsReq !== undefined
-              ? USER_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
-              : detectUserSkillHosts(skillsHome).map((host) => host.editorId)
-            : targetsReq !== undefined
-              ? PROJECT_SKILL_EDITOR_IDS.filter((id) => targetsReq?.some((t) => t === id))
-              : resolveSkillTargets(base);
-        const warnings: string[] = [];
-        const warningCodes: SkillInstallWarningCode[] = [];
-        if (targets.length === 0 && targetsReq === undefined) {
-          warnings.push(
-            body.scope === 'global'
-              ? 'No editor skill folders are configured to install into.'
-              : 'No project-configured editors detected — nothing was projected. Set up an editor for this project (add .mcp.json / .cursor/mcp.json / .codex/config.toml) or pass explicit `targets`.',
-          );
-          warningCodes.push('no-targets');
-        }
-        if (validity.hasScripts) {
-          warnings.push(
-            'This skill includes executable `scripts/`. After you install it, the AI agent in your editor (Claude, Cursor, Codex) can run them — Open Knowledge itself never runs anything. Review the scripts before sharing.',
-          );
-          warningCodes.push('scripts-present');
-        }
-        if (validity.warnings.length > 0) {
-          warnings.push(validity.warnings[0]);
-          warningCodes.push('no-description');
-        }
-
-        if (inPlaceEntry) {
-          const canonicalRootRel = inPlaceEntry.dir.split('/').slice(0, -1).join('/');
-          const hubTargeted =
-            targetsReq !== undefined
-              ? targetsReq.includes('agents')
-              : body.scope === 'global' && existsSync(join(skillsHome, '.agents'));
-          const inPlaceTargets: SkillHostId[] = hubTargeted ? [...targets, 'agents'] : [...targets];
-          const prefBase = body.scope === 'project' ? projectDir : skillsHome;
-          const installMode: 'copy' | 'link' =
-            linkModeReq !== undefined
-              ? linkModeReq
-                ? 'link'
-                : 'copy'
-              : effectiveInstallMode(body.scope, body.name, inPlaceEntry);
-          if (setSourceReq) {
-            const promoted = await skillInstallOps.promoteInPlaceSource({
-              scope: body.scope,
-              name: body.name,
-              base,
-              ...(prefBase ? { prefBase } : {}),
-              skillDir,
-              inPlaceEntry,
-              newSource: setSourceReq,
-            });
-            if (!promoted.ok) {
-              if (promoted.kind === 'invalid-target') {
-                errorResponse(
-                  res,
-                  400,
-                  'urn:ok:error:invalid-request',
-                  'Source target must be an editor id, "agents", or a project-relative skills root.',
-                  { handler: 'skill-install', detail: promoted.target },
-                );
-              } else {
-                errorResponse(
-                  res,
-                  409,
-                  'urn:ok:error:doc-already-exists',
-                  'Cannot move the source there — a different skill occupies the target.',
-                  { handler: 'skill-install', detail: promoted.reason },
-                );
-              }
-              return;
-            }
-            signalChannel?.('files');
-            successResponse(
-              res,
-              200,
-              SkillInstallSuccessSchema,
-              {
-                name: body.name,
-                hosts: promoted.hosts,
-                scripts: validity.hasScripts,
-                warnings: [],
-                warningCodes: [],
-                ...(promoted.sourceMovedTo !== undefined
-                  ? { sourceMovedTo: promoted.sourceMovedTo }
-                  : {}),
-              },
-              { handler: 'skill-install' },
-            );
-            return;
-          }
-
-          const fanOut = await skillInstallOps.fanOutInPlace({
-            scope: body.scope,
-            name: body.name,
-            base,
-            ...(prefBase ? { prefBase } : {}),
-            skillDir,
-            inPlaceEntry,
-            canonicalRootRel,
-            inPlaceTargets,
-            setExact: targetsReq !== undefined,
-            installMode,
-            ...(linkModeReq !== undefined ? { linkModeReq } : {}),
-            rootAdds,
-            rootRemoves,
-          });
-          if (!fanOut.ok) {
-            errorResponse(
-              res,
-              409,
-              'urn:ok:error:doc-already-exists',
-              'Cannot move the source there — a different skill occupies the target.',
-              { handler: 'skill-install', detail: fanOut.reason },
-            );
-            return;
-          }
-          warnings.push(...fanOut.warnings);
-          warningCodes.push(...fanOut.warningCodes);
-          signalChannel?.('files');
-          successResponse(
-            res,
-            200,
-            SkillInstallSuccessSchema,
-            {
-              name: body.name,
-              hosts: fanOut.hosts,
-              scripts: validity.hasScripts,
-              warnings,
-              warningCodes,
-              ...(fanOut.sourceMovedTo !== undefined
-                ? { sourceMovedTo: fanOut.sourceMovedTo }
-                : {}),
-            },
-            { handler: 'skill-install' },
-          );
-          return;
-        }
-
-        const priorHosts = resolvedHosts(readInstalledSkills(base).skills[body.name]?.hosts ?? []);
-        const dropped = priorHosts.filter((h) => !targets.includes(h));
-        if (dropped.length > 0)
-          reverseProjectSkill(body.name, base, dropped, skillProjectionRoots(body.scope));
-        const lockPathForInstall = join(base, ...SKILLS_LOCK_REL);
-        const lockRawForInstall = existsSync(lockPathForInstall)
-          ? readFileSync(lockPathForInstall, 'utf-8')
-          : null;
-        const lockForInstall =
-          lockRawForInstall !== null ? parseSkillsLock(lockRawForInstall) : null;
-        if (lockRawForInstall !== null && lockForInstall === null) {
-          log.warn(
-            { skill: body.name },
-            'skills-lock.json failed to parse — projecting as symlink (import origin unknown)',
-          );
-        }
-        const isAcquired = lockForInstall?.skills[body.name] !== undefined;
-        const projectionMode: 'symlink' | 'copy' =
-          linkModeReq !== undefined
-            ? linkModeReq
-              ? 'symlink'
-              : 'copy'
-            : isAcquired
-              ? 'copy'
-              : 'symlink';
-        const hosts = projectSkill(
-          skillDir,
-          body.name,
-          base,
-          targets,
-          projectionMode,
-          skillProjectionRoots(body.scope),
-        );
-        if (hosts.length === 0) {
-          await removeSkillInstall(base, body.name);
-        } else {
-          await recordSkillInstall(base, body.name, {
-            hosts,
-            scope: body.scope,
-            scripts: validity.hasScripts,
-            installedAt: new Date().toISOString(),
-            projection: projectionMode,
-          });
-        }
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillInstallSuccessSchema,
-          { name: body.name, hosts, scripts: validity.hasScripts, warnings, warningCodes },
-          { handler: 'skill-install' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to install skill.', {
-          handler: 'skill-install',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skill-install', method: 'POST' },
-  );
 
   const handleSkillUninstall = withValidation(
     SkillUninstallRequestSchema,
@@ -9772,613 +4451,13 @@ export function createApiExtension(
           'Failed to uninstall skill.',
           {
             handler: 'skill-uninstall',
+            ...(storeRefusalDetail(e) !== undefined ? { detail: storeRefusalDetail(e) } : {}),
             cause: e,
           },
         );
       }
     },
     { handler: 'skill-uninstall', method: 'POST' },
-  );
-
-  const handleSkillRestore = withValidation(
-    SkillRestoreRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-restore',
-          });
-          return;
-        }
-        if (!validateSkillName(body.name, res, 'skill-restore')) return;
-        if (rejectReservedBuiltinSkill(body.name, res, 'skill-restore')) return;
-        if (body.scope === 'global') {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Global skills are unversioned — there is no version history to restore from.',
-            { handler: 'skill-restore', detail: 'GLOBAL_SCOPE_UNVERSIONED' },
-          );
-          return;
-        }
-
-        const shadow = shadowRef?.current;
-        if (!shadow) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:shadow-not-configured',
-            'No version history available to restore from.',
-            {
-              handler: 'skill-restore',
-              detail: 'NO_SHADOW_REPO',
-            },
-          );
-          return;
-        }
-        const result = await restoreSkillVersion({
-          shadow,
-          contentDir,
-          contentRoot: contentRoot ?? '.',
-          name: body.name,
-          version: body.version,
-          skillDirRel: projectSkillDirRel(body.name),
-        });
-        if (!result.ok) {
-          respondSkillRestoreFailure(res, result, 'skill-restore');
-          return;
-        }
-
-        const warnings: string[] = [];
-        const skillDir = resolve(contentDir, projectSkillDirRel(body.name));
-        const validity = validateSkillForInstall(skillDir, body.name);
-        if (!validity.ok) {
-          warnings.push(
-            `Restored, but the skill no longer validates: ${validity.errors.join(' ')}`,
-          );
-        }
-
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('skill', '', body.name),
-          `skill-restore: ${body.name} @ ${body.version.slice(0, 8)}`,
-        );
-        await commitOkArtifactWrite('skill-restore');
-        signalChannel?.('files');
-        bumpSkillsCatalogGen();
-        contentFilter?.refreshInPlaceSkillDirs();
-        scheduleDeferredIgnoreRebuild();
-
-        successResponse(
-          res,
-          200,
-          SkillRestoreSuccessSchema,
-          {
-            name: body.name,
-            version: body.version,
-            restoredFiles: result.restoredFiles,
-            warnings,
-          },
-          { handler: 'skill-restore' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to restore skill.', {
-          handler: 'skill-restore',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skill-restore', method: 'POST' },
-  );
-
-  const handleSkillReimport = withValidation(
-    SkillReimportRequestSchema,
-    async (_req, res, body) => {
-      let cleanup: () => void = () => {};
-      try {
-        if (body.scope === 'project' && !projectDir) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project root resolved.', {
-            handler: 'skill-reimport',
-            detail: 'NO_PROJECT_ROOT',
-          });
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-reimport',
-          });
-          return;
-        }
-        if (!validateSkillName(body.name, res, 'skill-reimport')) return;
-
-        const reimportBase = body.scope === 'global' ? skillsHome : contentDir;
-        const {
-          root: skillsRoot,
-          dirRel: skillDirRel,
-          realDir: reimportRealDir,
-        } = effectiveSkillRoot(body.scope, body.name);
-        if (
-          reimportRealDir === null ||
-          !existsSync(resolve(reimportBase, skillDirRel, 'SKILL.md'))
-        ) {
-          errorResponse(res, 404, 'urn:ok:error:not-found', 'Skill is not installed.', {
-            handler: 'skill-reimport',
-            detail: 'SKILL_ABSENT',
-          });
-          return;
-        }
-
-        const lockPath = join(
-          body.scope === 'global' ? skillsHome : (projectDir as string),
-          ...SKILLS_LOCK_REL,
-        );
-        const entry = resolveReimportLockEntry(
-          body.scope,
-          body.name,
-          skillsRoot,
-          readSkillsLock(lockPath),
-        );
-        if (!entry) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'This skill has no recorded import source to update from.',
-            { handler: 'skill-reimport', detail: 'NOT_IMPORTED' },
-          );
-          return;
-        }
-        if (body.setAutoUpdate !== undefined) {
-          await mutateSkillsLock(lockPath, (current) => ({
-            ...current,
-            skills: {
-              ...current.skills,
-              [body.name]: {
-                ...(current.skills[body.name] ?? entry),
-                autoUpdate: body.setAutoUpdate,
-              },
-            },
-          }));
-          bumpSkillsCatalogGen();
-          contentFilter?.refreshInPlaceSkillDirs();
-          scheduleDeferredIgnoreRebuild();
-
-          successResponse(
-            res,
-            200,
-            SkillReimportSuccessSchema,
-            { name: body.name, updated: false, source: entry.source, warnings: [] },
-            { handler: 'skill-reimport' },
-          );
-          return;
-        }
-        let ref: string | undefined;
-        let acquiredDir: string | null = null;
-        try {
-          const recordedSkill = entry.skill ?? body.name;
-          const renamedSkill = RENAMED_PACK_SKILLS[recordedSkill];
-          const skillsSh = await resolveSkillsShImportSource(entry.source, recordedSkill).catch(
-            async (err: unknown) => {
-              if (renamedSkill === undefined) throw err;
-              return resolveSkillsShImportSource(entry.source, renamedSkill);
-            },
-          );
-          const resolvedSource =
-            skillsSh?.source ?? resolvePluginUpdateSource(entry.source, entry.pluginProvider);
-          const resolvedSkill = skillsSh?.skill ?? entry.skill;
-          const spec = skillsSh?.spec ?? parseSource(resolvedSource);
-          if (!spec) {
-            errorResponse(
-              res,
-              400,
-              'urn:ok:error:invalid-request',
-              'The recorded import source is no longer a valid source.',
-              { handler: 'skill-reimport', detail: entry.source },
-            );
-            return;
-          }
-          if (rejectDisallowedGitSpec(res, spec, 'skill-reimport')) return;
-          const fetched = await fetchSource(spec);
-          cleanup = fetched.cleanup;
-          ref = fetched.ref;
-          const dirs = discoverSkillDirs(fetched.dir);
-          const pick = pickReimportDir(dirs, {
-            ...(resolvedSkill !== undefined ? { recordedSkill: resolvedSkill } : {}),
-            localName: body.name,
-            frontmatterNameOf: (dir) => parseSkillDir(dir)?.name,
-          });
-          if (!pick) {
-            errorResponse(
-              res,
-              404,
-              'urn:ok:error:not-found',
-              'Could not locate this skill in its source anymore.',
-              { handler: 'skill-reimport', detail: dirs.map((d) => d.name).join(', ') },
-            );
-            return;
-          }
-          acquiredDir = pick.dir;
-        } catch (e) {
-          if (e instanceof SkillFetchError) {
-            errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Could not fetch source.', {
-              handler: 'skill-reimport',
-              cause: e,
-            });
-            return;
-          }
-          throw e;
-        }
-        if (!acquiredDir) {
-          errorResponse(res, 422, 'urn:ok:error:invalid-request', 'Source has no readable skill.', {
-            handler: 'skill-reimport',
-          });
-          return;
-        }
-        const outcome = await skillReimportService.runSkillReimport({
-          acquiredDir,
-          name: body.name,
-          scope: body.scope,
-          entry,
-          lockPath,
-          ref,
-          actor,
-          ...(body.dryRun !== undefined ? { dryRun: body.dryRun } : {}),
-        });
-        bumpSkillsCatalogGen();
-        contentFilter?.refreshInPlaceSkillDirs();
-        scheduleDeferredIgnoreRebuild();
-
-        respondSkillReimport(res, outcome);
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to reimport skill.', {
-          handler: 'skill-reimport',
-          cause: e,
-        });
-      } finally {
-        cleanup();
-      }
-    },
-    { handler: 'skill-reimport', method: 'POST' },
-  );
-
-  const handleSkillsReimportBulk = withValidation(
-    SkillsReimportBulkRequestSchema,
-    async (_req, res, body) => {
-      try {
-        if (body.scope === 'project' && !projectDir) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project root resolved.', {
-            handler: 'skills-reimport-bulk',
-            detail: 'NO_PROJECT_ROOT',
-          });
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skills-reimport-bulk',
-          });
-          return;
-        }
-        const lockPath = join(
-          body.scope === 'global' ? skillsHome : (projectDir as string),
-          ...SKILLS_LOCK_REL,
-        );
-        const lock = readSkillsLock(lockPath);
-        const results: SkillReimportBulkResult[] = [];
-        const named = new Set(body.names);
-        const wellFormed = [...named].filter((name) => {
-          if (isValidSkillName(name)) return true;
-          results.push({ requested: name, status: 'failed', warnings: [], error: 'INVALID_NAME' });
-          return false;
-        });
-        const { bySource, unrecorded } = groupReimportNamesBySource(wellFormed, (name) =>
-          resolveReimportLockEntry(
-            body.scope,
-            name,
-            effectiveSkillRoot(body.scope, name).root,
-            lock,
-          ),
-        );
-        for (const name of unrecorded) {
-          results.push({ requested: name, status: 'not-found', warnings: [] });
-        }
-
-        for (const group of bySource) {
-          let cleanup: () => void = () => {};
-          try {
-            let ref: string | undefined;
-            let dirs: ReturnType<typeof discoverSkillDirs> = [];
-            try {
-              const probe = group.names[0] as string;
-              const skillsSh = await resolveSkillsShImportSource(group.source, probe).catch(
-                async (err: unknown) => {
-                  const renamed = RENAMED_PACK_SKILLS[probe];
-                  if (renamed === undefined) throw err;
-                  return resolveSkillsShImportSource(group.source, renamed);
-                },
-              );
-              const resolvedSource =
-                skillsSh?.source ??
-                resolvePluginUpdateSource(
-                  group.source,
-                  lock.skills[group.names[0] as string]?.pluginProvider,
-                );
-              const spec = skillsSh?.spec ?? parseSource(resolvedSource);
-              if (!spec || isDisallowedGitSpec(spec)) {
-                for (const name of group.names) {
-                  results.push({
-                    requested: name,
-                    status: 'failed',
-                    source: group.source,
-                    warnings: [],
-                    error: 'INVALID_SOURCE',
-                  });
-                }
-                continue;
-              }
-              const fetched = await fetchSource(spec);
-              cleanup = fetched.cleanup;
-              ref = fetched.ref;
-              dirs = discoverSkillDirs(fetched.dir);
-            } catch (e) {
-              getLogger('skills-reimport-bulk').warn(
-                { source: group.source, err: e, requestId: getRequestId(_req) },
-                'bulk update: one source could not be fetched (rest continue)',
-              );
-              for (const name of group.names) {
-                results.push({
-                  requested: name,
-                  status: 'failed',
-                  source: group.source,
-                  warnings: [],
-                  error: e instanceof Error ? e.message : String(e),
-                });
-              }
-              continue;
-            }
-            for (const name of group.names) {
-              const entry = resolveReimportLockEntry(
-                body.scope,
-                name,
-                effectiveSkillRoot(body.scope, name).root,
-                lock,
-              );
-              if (!entry) {
-                results.push({ requested: name, status: 'not-found', warnings: [] });
-                continue;
-              }
-              const pick = pickReimportDir(dirs, {
-                ...(entry.skill !== undefined ? { recordedSkill: entry.skill } : {}),
-                localName: name,
-                frontmatterNameOf: (dir) => parseSkillDir(dir)?.name,
-              });
-              if (!pick) {
-                results.push({
-                  requested: name,
-                  status: 'not-found',
-                  source: entry.source,
-                  warnings: [],
-                });
-                continue;
-              }
-              try {
-                const outcome = await skillReimportService.runSkillReimport({
-                  acquiredDir: pick.dir,
-                  name,
-                  scope: body.scope,
-                  entry,
-                  lockPath,
-                  ref,
-                  actor,
-                });
-                if (!outcome.ok) {
-                  getLogger('skills-reimport-bulk').warn(
-                    {
-                      skill: name,
-                      err: outcome.cause,
-                      detail: outcome.detail,
-                      requestId: getRequestId(_req),
-                    },
-                    'bulk update: one skill failed (rest continue)',
-                  );
-                  results.push({
-                    requested: name,
-                    status: 'failed',
-                    source: entry.source,
-                    warnings: [],
-                    error: outcome.detail ?? outcome.title,
-                  });
-                  continue;
-                }
-                results.push({
-                  requested: name,
-                  status: outcome.body.updated ? 'updated' : 'up-to-date',
-                  source: outcome.body.source,
-                  warnings: outcome.body.warnings,
-                });
-              } catch (e) {
-                getLogger('skills-reimport-bulk').warn(
-                  { skill: name, err: e, requestId: getRequestId(_req) },
-                  'bulk update: one skill threw (rest continue)',
-                );
-                results.push({
-                  requested: name,
-                  status: 'failed',
-                  source: entry.source,
-                  warnings: [],
-                  error: e instanceof Error ? e.message : String(e),
-                });
-              }
-            }
-          } finally {
-            cleanup();
-          }
-        }
-        successResponse(
-          res,
-          200,
-          SkillsReimportBulkSuccessSchema,
-          {
-            results,
-            updated: results.filter((r) => r.status === 'updated').length,
-            upToDate: results.filter((r) => r.status === 'up-to-date').length,
-            failed: results.filter((r) => r.status === 'failed' || r.status === 'not-found').length,
-          },
-          { handler: 'skills-reimport-bulk' },
-        );
-
-        try {
-          bumpSkillsCatalogGen();
-          contentFilter?.refreshInPlaceSkillDirs();
-          bumpSkillsCatalogGen();
-          await contentFilter?.rebuildIgnorePatterns();
-        } catch (e) {
-          getLogger('skills-reimport-bulk').warn(
-            { err: e },
-            'bulk update: ignore-pattern rebuild failed after a reported success',
-          );
-        }
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to update skills.', {
-          handler: 'skills-reimport-bulk',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skills-reimport-bulk', method: 'POST' },
-  );
-
-  const handleSkillRevert = withValidation(
-    SkillRevertRequestSchema,
-    async (_req, res, body) => {
-      try {
-        if (!projectDir) {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'No project root resolved.', {
-            handler: 'skill-revert',
-            detail: 'NO_PROJECT_ROOT',
-          });
-          return;
-        }
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'skill-revert',
-          });
-          return;
-        }
-        if (!validateSkillName(body.name, res, 'skill-revert')) return;
-        if (rejectReservedBuiltinSkill(body.name, res, 'skill-revert')) return;
-        if (body.scope === 'global') {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Global skills are unversioned — there is nothing to revert to.',
-            { handler: 'skill-revert', detail: 'GLOBAL_SCOPE' },
-          );
-          return;
-        }
-
-        const lockPath = join(projectDir, ...SKILLS_LOCK_REL);
-        const lock = readSkillsLock(lockPath);
-        const entry = lock.skills[body.name];
-        if (!entry?.baselineRef) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:invalid-request',
-            'This skill has no recorded install baseline to revert to.',
-            { handler: 'skill-revert', detail: 'NO_BASELINE' },
-          );
-          return;
-        }
-        const shadow = shadowRef?.current;
-        if (!shadow) {
-          errorResponse(
-            res,
-            409,
-            'urn:ok:error:shadow-not-configured',
-            'No version history available to revert from.',
-            { handler: 'skill-revert', detail: 'NO_SHADOW_REPO' },
-          );
-          return;
-        }
-
-        const result = await restoreSkillVersion({
-          shadow,
-          contentDir,
-          contentRoot: contentRoot ?? '.',
-          name: body.name,
-          version: entry.baselineRef,
-          skillDirRel: projectSkillDirRel(body.name),
-        });
-        if (!result.ok) {
-          respondSkillRestoreFailure(res, result, 'skill-revert');
-          return;
-        }
-
-        attributeOkArtifactWrite(
-          actor,
-          okArtifactKey('skill', '', body.name),
-          `skill-revert: ${body.name} @ ${entry.baselineRef.slice(0, 8)}`,
-        );
-        await commitOkArtifactWrite('skill-revert');
-
-        const revertRoot = resolve(contentDir, projectSkillDirRel(body.name), '..');
-        const revertedLocalHash = localSkillHash(revertRoot, body.name);
-        await mutateSkillsLock(lockPath, (current) =>
-          upsertLockEntry(current, body.name, {
-            ...(current.skills[body.name] ?? entry),
-            ...(revertedLocalHash !== undefined ? { localHash: revertedLocalHash } : {}),
-          }),
-        );
-
-        if (revertRoot === resolveSkillsRoot('project')) {
-          await projectImportedSkillCopy({
-            skillsRoot: revertRoot,
-            name: body.name,
-            scope: 'project',
-            hasScripts: result.restoredFiles.some((f) => f.startsWith('scripts/')),
-            handler: 'skill-revert',
-          });
-        }
-
-        signalChannel?.('files');
-        successResponse(
-          res,
-          200,
-          SkillRevertSuccessSchema,
-          {
-            name: body.name,
-            baselineRef: entry.baselineRef,
-            restoredFiles: result.restoredFiles,
-            warnings: [],
-          },
-          { handler: 'skill-revert' },
-        );
-      } catch (e) {
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to revert skill.', {
-          handler: 'skill-revert',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'skill-revert', method: 'POST' },
   );
 
   const searchService = createSearchService({
@@ -10401,15 +4480,20 @@ export function createApiExtension(
     signalChannel?.('lint-config');
   }
 
-  const readAuditGeneration = (): string =>
-    `${lintConfigEpoch} ${durabilityState.getActiveBranch()} ${
-      derivedDocumentIndex?.readLocalTargetGeneration?.() ?? 0
-    }`;
+  const readAuditGeneration = (): string => {
+    return composeAuditGeneration({
+      lintConfigEpoch,
+      projectConfigEpoch: getProjectConfigEpoch(),
+      activeBranch: durabilityState.getActiveBranch(),
+      localTargetGeneration: derivedDocumentIndex?.readLocalTargetGeneration?.() ?? 0,
+    });
+  };
 
   const LINT_VIOLATION_CAP = 10;
   async function computeLintViolations(
     source: string,
     docName: string,
+    linkPolicy: LinkAdvisoryPolicy,
   ): Promise<LintViolationWarning[]> {
     const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
     try {
@@ -10421,15 +4505,14 @@ export function createApiExtension(
       const lintFindings = await lintDocument(source, effective, docName);
 
       let linkFindings: ValidationDiagnostic[] = [];
-      const linksSetting = getLinksValidationSetting?.() ?? DEFAULT_LINKS_VALIDATION;
-      if (derivedDocumentIndex && linksSetting !== 'off' && !isLinkIndexExcludedDoc(docName)) {
+      if (derivedDocumentIndex && linkPolicy.links !== 'off' && !isLinkIndexExcludedDoc(docName)) {
         await recordDerivedLinkRewriteBestEffort(docName, source, 'lint-validation');
         const linksValidator = createProjectValidators({
           projectDir: projectDir ?? contentDir,
           contentDir,
           baseConfig: base,
           derivedDocumentIndex,
-          linksValidation: linksSetting,
+          linkPolicy,
           admittedDocNames: collectAdmittedDocNames,
           docFilePathFor: (d) => resolveDocFilePath(contentDir, d),
         }).find((validator) => validator.id === 'links');
@@ -10677,7 +4760,7 @@ export function createApiExtension(
         });
 
         let after = before;
-        let reLintWarning: string | undefined;
+        let reLintFailure: ReLintFailure | undefined;
         const reLintFailures: LintPluginFailure[] = [];
         if (fixed !== source) {
           try {
@@ -10725,6 +4808,10 @@ export function createApiExtension(
             respondDiskDivergence(res, 'lint-fix');
             return;
           }
+          if (flushOutcome?.kind === 'stale-external-write') {
+            respondStaleExternalWrite(res, 'lint-fix', resolvedDocName);
+            return;
+          }
           flushDocToDisk(resolvedDocName, 'lint-fix');
 
           try {
@@ -10735,22 +4822,55 @@ export function createApiExtension(
               (failure) => reLintFailures.push(failure),
             );
           } catch (relintErr) {
-            reLintWarning = `Re-lint after fix failed: ${relintErr instanceof Error ? relintErr.message : String(relintErr)}`;
+            const relintMessage =
+              relintErr instanceof Error ? relintErr.message : String(relintErr);
+            reLintFailure = {
+              reason: 're-lint-threw',
+              message:
+                relintMessage.trim().length > 0
+                  ? relintMessage
+                  : `${relintErr instanceof Error ? relintErr.name : 'non-Error value'} thrown with no message`,
+            };
             log.warn(
-              { err: relintErr, handler: 'lint-fix' },
+              { err: relintErr, handler: 'lint-fix', doc: resolvedDocName, agentId },
               'post-write re-lint failed; reporting pre-fix diagnostics',
             );
             after = before;
           }
         }
 
+        const blindBeforeFix = new Set(
+          failures.filter((f) => f.phase === 'lint').map((f) => f.source),
+        );
+        const blindOnlyAfterFix = [
+          ...new Set(
+            reLintFailures
+              .filter((f) => f.phase === 'lint' && !blindBeforeFix.has(f.source))
+              .map((f) => f.source),
+          ),
+        ];
+        if (reLintFailure === undefined && blindOnlyAfterFix.length > 0) {
+          reLintFailure = {
+            reason: 'source-went-blind',
+            message: `${blindOnlyAfterFix.join(', ')} linted the pre-fix text and failed on the post-fix text, so the re-lint is short their diagnostics and cannot be compared against the pre-fix run`,
+          };
+          log.warn(
+            { handler: 'lint-fix', doc: resolvedDocName, agentId, sources: blindOnlyAfterFix },
+            'post-write re-lint lost a source that linted before the fix; reporting pre-fix diagnostics',
+          );
+          after = before;
+        }
+
         const errorCount = after.filter((d) => d.severity === 'error').length;
         const warningCount = after.length - errorCount;
-        const fixedCount = Math.max(0, before.length - after.length);
+        const comparable = (d: (typeof before)[number]) => !blindBeforeFix.has(d.source);
+        const fixedCount = Math.max(
+          0,
+          before.filter(comparable).length - after.filter(comparable).length,
+        );
         const responseWarnings = [
           ...configWarnings,
           ...summarizeLintPluginFailures([...failures, ...reLintFailures]),
-          ...(reLintWarning ? [reLintWarning] : []),
         ];
 
         successResponse(
@@ -10765,7 +4885,7 @@ export function createApiExtension(
             warningCount,
             ran,
             ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
-            ...(reLintWarning ? { warning: reLintWarning } : {}),
+            ...(reLintFailure ? { diagnosticsArePreFix: true, reLintFailure } : {}),
           },
           { handler: 'lint-fix' },
         );
@@ -10805,81 +4925,25 @@ export function createApiExtension(
   );
 
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
-    '/api/asset': handleAsset,
-    '/api/asset-text': handleAssetText,
-    '/api/skill': handleSkill,
-    '/api/skill-file': handleSkillFile,
-    '/api/skill-file/rename': handleSkillFileRename,
-    '/api/skills': handleSkillsList,
-    '/api/skill/import': handleSkillImport,
-    '/api/skills/import-bulk': handleSkillsImportBulk,
-    '/api/skill/edit-external': handleSkillEditExternal,
-    '/api/skill/duplicate': handleSkillDuplicate,
-    '/api/skill/move-scope': handleSkillMoveScope,
-    '/api/skill-upload': handleSkillUpload,
-    '/api/skill/install': handleSkillInstall,
     '/api/skill/uninstall': handleSkillUninstall,
-    '/api/skill/restore': handleSkillRestore,
-    '/api/skill/reimport': handleSkillReimport,
-    '/api/skills/reimport-bulk': handleSkillsReimportBulk,
-    '/api/skill/revert': handleSkillRevert,
-    '/api/skill/track-in-git': handleSkillTrackInGit,
     '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
     '/api/lint/frontmatter-schema': handleWriteFrontmatterSchema,
     '/api/lint/fix': handleLintFix,
     '/api/agent-write': handleAgentWrite,
-    '/api/agent-write-md': handleAgentWriteMd,
     '/api/agent-write-batch': handleAgentWriteBatch,
-    '/api/frontmatter-patch': handleFrontmatterPatch,
-    '/api/agent-patch': handleAgentPatch,
-    '/api/agent-undo': handleAgentUndo,
-    '/api/agent-activity': handleAgentActivity,
-    '/api/agent-burst-diff': handleAgentBurstDiff,
-    '/api/save-version': handleSaveVersion,
-    '/api/rollback': handleRollback,
-    '/api/install-skill': handleInstallSkill,
   };
-
-  if (enableTestRoutes) {
-    routes['/api/test-reset'] = handleTestReset;
-    routes['/api/test-flush-git'] = handleTestFlushGit;
-    routes['/api/test-rescan-backlinks'] = handleTestRescanBacklinks;
-    routes['/api/test-rescan-files'] = handleTestRescanFiles;
-  }
 
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
     '/api/lint/markdownlint-config',
     '/api/lint/frontmatter-schema',
     '/api/lint/fix',
     '/api/agent-write',
-    '/api/agent-write-md',
     '/api/agent-write-batch',
-    '/api/frontmatter-patch',
-    '/api/agent-patch',
-    '/api/agent-undo',
-    '/api/save-version',
-    '/api/rollback',
     '/api/test-reset',
     '/api/test-flush-git',
     '/api/test-rescan-backlinks',
     '/api/test-rescan-files',
-    '/api/install-skill',
-    '/api/skill',
-    '/api/skill-file',
-    '/api/skill-file/rename',
-    '/api/skill/import',
-    '/api/skills/import-bulk',
-    '/api/skill/duplicate',
-    '/api/skill/move-scope',
-    '/api/skill/edit-external',
-    '/api/skill-upload',
-    '/api/skill/install',
     '/api/skill/uninstall',
-    '/api/skill/restore',
-    '/api/skill/reimport',
-    '/api/skills/reimport-bulk',
-    '/api/skill/revert',
-    '/api/skill/track-in-git',
   ]);
 
   const apiRouteTable: ApiRouteTable = {
@@ -10954,7 +5018,7 @@ export function createApiExtension(
     isValidRelativeContentPath,
     streamShowAllEntries,
     getLinterBaseConfig,
-    getLinksValidationSetting,
+    getLinkAdvisoryPolicy,
     derivedDocumentIndex,
     collectAdmittedDocNames,
     unmatchedGlobProblems,
@@ -10970,6 +5034,108 @@ export function createApiExtension(
     validateFolderRel,
     safeDocPath,
     docTreePathCandidates,
+  });
+  const skillsFileRoutes = createSkillsFileRoutes({
+    validateSkillName,
+    parseSkillScope,
+    skillsHome,
+    projectDir,
+    resolveBuiltinSkillDir,
+    resolveSkillDirForRead,
+    resolveSkillsRoot,
+    getPrincipal,
+    rejectReservedBuiltinSkill,
+    contentDir,
+    checkSkillDocConflictGate,
+    extractAgentIdentity,
+    sessionManager,
+    flushDiskAndDetectOutcome,
+    respondStaleExternalWrite,
+    respondPersistenceFailure,
+    respondDiskDivergence,
+    attributeOkArtifactWrite,
+    okArtifactKey,
+    commitOkArtifactWrite,
+    signalChannel,
+    extractActorIdentityFromQuery,
+    captureAndCloseDocuments,
+    derivedDocumentIndex,
+    log,
+    recordDerivedMutationsBestEffort,
+  });
+  const skillsImportRoutes = createSkillsImportRoutes({
+    projectDir,
+    getPrincipal,
+    skillImportService,
+    bumpSkillsCatalogGen,
+    contentFilter,
+    scheduleDeferredIgnoreRebuild,
+    signalChannel,
+    parseSkillScope,
+  });
+  const skillsDocumentRoutes = createSkillsDocumentRoutes({
+    validateSkillName,
+    parseSkillScope,
+    skillsHome,
+    projectDir,
+    resolveBuiltinSkillDir,
+    parseFrontmatterDoc,
+    resolveSkillDirForRead,
+    skillRelPath,
+    derivedDocumentIndex,
+    contentFilter,
+    bumpSkillsCatalogGen,
+    settleSkillCatalog,
+    invalidateSkillCatalog,
+    scheduleDeferredIgnoreRebuild,
+    recordDerivedDocumentBestEffort,
+    getPrincipal,
+    rejectReservedBuiltinSkill,
+    contentDir,
+    attributeOkArtifactWrite,
+    scheduleOkArtifactFlush,
+    signalChannel,
+    checkSkillDocConflictGate,
+    extractAgentIdentity,
+    sessionManager,
+    flushDiskAndDetectOutcome,
+    respondStaleExternalWrite,
+    respondPersistenceFailure,
+    respondDiskDivergence,
+    okArtifactKey,
+    resolveSkillsRoot,
+    extractActorIdentityFromQuery,
+    captureAndCloseDocuments,
+    log,
+    commitOkArtifactWrite,
+    skillInstallBase,
+    uninstallSkillFromHostDirs,
+    renameTrackedPathInGit,
+    renamePathOnDisk,
+    localSkillHash,
+    shadowHeadSha,
+    artifactWriterId,
+    checkLocalOpSecurity,
+    effectiveSkillRoot,
+  });
+  const skillsListRoutes = createSkillsListRoutes({
+    contentDir,
+    projectDir,
+    skillsHome,
+    contentFilter,
+    catalogCache,
+    resolveSkillsRoot,
+    resolveSkillsList,
+    skillOriginFor,
+    localSkillHash,
+    effectiveInstallMode,
+    pluginSelfIdentity,
+    synthBuiltinLockEntry,
+    synthPluginLockEntry,
+    pluginUpstreamHash,
+    builtinSkillListEntry,
+    indexedSkillContentPath,
+    healUnservableSkillAdmission,
   });
   const skillsReadRoutes = createSkillsReadRoutes({
     contentDir,
@@ -11013,10 +5179,12 @@ export function createApiExtension(
     contentDir,
     getPrincipal,
     hocuspocus,
+    durabilityState,
     log,
     checkLocalOpSecurity,
     getSyncEngine,
     serializeDoc,
+    resolveStaleExternalWrite,
   });
   const shareRoutes = createShareRoutes({
     projectDir,
@@ -11087,6 +5255,7 @@ export function createApiExtension(
     log,
     checkLocalOpSecurity,
     installedAgentsCache,
+    agentIntegrations,
   });
   const folderTemplateRoutes = createFolderTemplateRoutes({
     contentDir,
@@ -11111,6 +5280,7 @@ export function createApiExtension(
     flushDiskAndDetectOutcome,
     respondPersistenceFailure,
     respondDiskDivergence,
+    respondStaleExternalWrite,
     registerWrittenDocInFileIndex,
     captureAndCloseDocuments,
     renameTrackedPathInGit,
@@ -11118,13 +5288,145 @@ export function createApiExtension(
     splitContentPath,
     mutateFileIndex,
   });
+  const assetRoutes = createAssetRoutes({ assetService, log });
+  const agentIntegrationsRoutes = createAgentIntegrationsRoutes({
+    log,
+    checkLocalOpSecurity,
+    getPrincipal,
+    homeDirOverride,
+    projectDir,
+    agentIntegrations,
+  });
+  const handoffInstallRoutes = createHandoffInstallRoutes({ checkLocalOpSecurity });
+  const skillsInstallRoutes = createSkillsInstallRoutes({
+    resolveSkillsRoot,
+    validateSkillName,
+    projectDir,
+    skillInstallBase,
+    contentDir,
+    skillsHome,
+    shippedBundleSkillMd,
+    flushDiskAndDetectOutcome,
+    respondStaleExternalWrite,
+    skillInstallOps,
+    skillPlacementOps,
+    signalChannel,
+    bumpSkillsCatalogGen,
+    contentFilter,
+    scheduleDeferredIgnoreRebuild,
+    effectiveInstallMode,
+    log,
+  });
+  const skillsRecoveryRoutes = createSkillsRecoveryRoutes({
+    synthPluginLockEntry,
+    synthBuiltinLockEntry,
+    isValidSkillName,
+    getPrincipal,
+    validateSkillName,
+    rejectReservedBuiltinSkill,
+    shadowRef,
+    contentDir,
+    contentRoot,
+    projectDir,
+    skillsHome,
+    projectSkillDirRel,
+    attributeOkArtifactWrite,
+    okArtifactKey,
+    commitOkArtifactWrite,
+    signalChannel,
+    bumpSkillsCatalogGen,
+    contentFilter,
+    scheduleDeferredIgnoreRebuild,
+    effectiveSkillRoot,
+    skillReimportService,
+    localSkillHash,
+    resolveSkillsRoot,
+    projectImportedSkillCopy,
+  });
+  const skillsTrackingRoutes = createSkillsTrackingRoutes({
+    contentDir,
+    projectDir,
+    contentFilter,
+    validateSkillName,
+    indexedSkillContentPath,
+    bumpSkillsCatalogGen,
+    signalChannel,
+  });
+  const agentWriteRoutes = createAgentWriteRoutes({
+    getLinkAdvisoryPolicy,
+    respondStaleExternalWrite,
+    requireNonEmptyDocName,
+    resolveAlias,
+    extractAgentIdentity,
+    docNameExistsWithAnySupportedExtension,
+    contentDir,
+    summaryResponseFields,
+    sessionManager,
+    durabilityState,
+    hocuspocus,
+    agentPresenceBroadcaster,
+    recordContentDivergenceGate,
+    buildAgentActor,
+    countNormalizedSummary,
+    flushDiskAndDetectOutcome,
+    respondPersistenceFailure,
+    respondDiskDivergence,
+    flushDocToDisk,
+    agentFocusBroadcaster,
+    onAgentWrite,
+    computeOrphanHints,
+    registerWrittenDocInFileIndex,
+    collectAdmittedDocNames,
+    createLinkedFileExists,
+    createLinkedFolderExists,
+    buildReconcileWarning,
+    computeLintViolations,
+    log,
+    flushDocToGit,
+    isSafeDocName,
+    shadowRef,
+    getPrincipal,
+    contentRoot,
+    safeDocPath,
+    getCurrentBranch,
+    docTreePathCandidates,
+    stripDefaultPathTruncation,
+    renameAttributionCounter,
+  });
+  const testRoutes = createTestRoutes({
+    resetDocumentDurability,
+    resolveAlias,
+    contentDir,
+    log,
+    sessionManager,
+    hocuspocus,
+    forceUnloadDocument,
+    derivedDocumentIndex,
+    contentFilter,
+    bumpSkillsCatalogGen,
+    signalChannel,
+    flushGitCommit,
+    rescanFiles,
+  });
   const nativeGroups = [
+    assetRoutes,
+    agentIntegrationsRoutes,
+    agentWriteRoutes,
+    ...(enableTestRoutes ? [testRoutes] : []),
+    skillsTrackingRoutes,
+    skillsRecoveryRoutes,
+    skillsInstallRoutes,
+    handoffInstallRoutes,
+    skillsImportRoutes,
+    skillsFileRoutes,
     linkGraphRoutes,
     metricsRoutes,
     documentRoutes,
     configSystemRoutes,
     lintRoutes,
     historyRoutes,
+    skillsDocumentRoutes,
+    skillsListRoutes,
     skillsReadRoutes,
     skillsShRoutes,
     workspaceToolsRoutes,

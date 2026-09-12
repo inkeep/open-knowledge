@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-docs",
-  "version": "0.0.169",
+  "version": "0.0.198",
   "license": "GPL-3.0-or-later",
   "private": true,
   "packageManager": "pnpm@10.33.0",
@@ -66,6 +66,6 @@
     "sharp": "^0.35.3",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4",
-    "typescript": "^5.7"
+    "typescript": "~7.0.2"
   }
 }

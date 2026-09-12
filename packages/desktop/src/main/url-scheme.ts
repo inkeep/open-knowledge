@@ -1,51 +1,22 @@
 /**
- * `openknowledge://` deep-link URL scheme — parser + runtime handler.
- *
- * Public surfaces in this module:
- *   - Pure parsers — `parseOpenKnowledgeUrl` (`open` host, document deep
- *     links), `parseShareUrl` (`share` host + `openknowledge.ai` universal
- *     links), `parseScreenUrl` (`screen` host, named-screen deep links). No
- *     Electron import at module top, so unit tests exercise them without a real
- *     Electron runtime (precedent #4 — shared computation, per-surface render).
- *   - `registerProtocolHandler(deps)` — wires `app.on('open-url', ...)` +
- *     `app.on('second-instance', ...)`, scans `process.argv` for cold-start
- *     CLI-launch delivery, and implements the VS Code queue-then-flush
- *     pattern so macOS cold-start Apple Events that fire before `whenReady`
- *     are never lost.
- *
- * **Caller contract:** `app.requestSingleInstanceLock()` MUST be acquired by
- * the caller BEFORE `registerProtocolHandler` runs. Without the lock, the
- * `second-instance` event cannot fire (Electron only dispatches it on the
- * primary when a secondary invocation relinquishes the lock), so the
- * documented "CLI launch with argv delivery" path is silently dead. The
- * current call site is `packages/desktop/src/main/index.ts`, gated on
- * `GOT_SINGLE_INSTANCE_LOCK`.
- *
- * Validation layers (URL shape: `openknowledge://open?project=<abs>&doc=<name>`):
- *   1. Reject null bytes anywhere in the raw input (`\x00`, `%00`).
- *   2. Protocol must be `openknowledge:`; host must be `open`.
- *   3. `project` + `doc` required; each URL-decoded before path checks.
- *   4. `project` must be absolute AND must not contain `..` segments after
- *      `path.normalize()` — `path.resolve` would silently flatten `../../etc/x`
- *      to `/etc/x`, so we reject ANY `..` segment in the decoded path.
- *   5. `doc` must be a relative in-project name — reject any `..` segment (so
- *      `a/../b`, `../a`, and `..` all fail) and reject Windows `\` separators.
- *      `/` IS allowed as a segment separator — nested docNames like
- *      `notes/meeting-2026` are the common MCP producer shape (see
- *      `packages/cli/src/mcp/tools/write-document.ts:31` + `preview-url.ts:183`),
- *      and the renderer round-trips them cleanly via `encodeURIComponent(doc)`
- *      + `docNameFromHash` (`packages/app/src/lib/doc-hash.ts:14`).
- *
- * URL shape is fixed by an upstream contract; this module is downstream of it —
- * changes must be made there, not here.
+ * `openknowledge://` deep-link scheme. The parsers keep no Electron import at module top, so unit
+ * tests exercise them without a real runtime (precedent #4, shared computation with per-surface
+ * rendering); `registerProtocolHandler` adds the cold-start queue-then-flush path.
  */
 
-import { isAbsolute, resolve } from 'node:path';
+/**
+ * STOP: the caller must acquire `app.requestSingleInstanceLock()` before `registerProtocolHandler`
+ * runs. Without the lock Electron never dispatches `second-instance`, so the CLI-launch argv
+ * delivery path is silently dead. The call site is `packages/desktop/src/main/index.ts`.
+ */
+
+import { extname, isAbsolute, resolve } from 'node:path';
 import { parseGitHubShareUrl } from '@inkeep/open-knowledge';
 import {
   type CandidateSelection,
   decodeShareUrl,
   InvalidShareUrlError,
+  SUPPORTED_DOC_EXTENSIONS,
   UnsupportedShareVersionError,
 } from '@inkeep/open-knowledge-core';
 import type {
@@ -287,26 +258,17 @@ export function parseOpenKnowledgeUrl(input: string): ParsedOpenKnowledgeUrl | n
   if (parsed.protocol !== 'openknowledge:') return null;
   if (parsed.hostname !== 'open') return null;
 
-  const rawProject = parsed.searchParams.get('project');
+  const project = parsed.searchParams.get('project');
   const rawDoc = parsed.searchParams.get('doc');
   const rawFolder = parsed.searchParams.get('folder');
-  if (!rawProject) return null;
+  if (!project) return null;
   if ((rawDoc == null) === (rawFolder == null)) return null;
   const kind: 'doc' | 'folder' = rawDoc != null ? 'doc' : 'folder';
-  const rawTarget = (rawDoc ?? rawFolder) as string;
-
-  let project: string;
-  let doc: string;
-  try {
-    project = decodeURIComponent(rawProject);
-    doc = decodeURIComponent(rawTarget);
-  } catch {
-    return null;
-  }
+  const doc = (rawDoc ?? rawFolder) as string;
 
   if (project.includes('\x00') || doc.includes('\x00')) return null;
 
-  if (project.length === 0 || doc.length === 0) return null;
+  if (doc.length === 0) return null;
 
   if (!isAbsolute(project)) return null;
   if (project.split(/[/\\]/).includes('..')) return null;
@@ -341,18 +303,10 @@ export function parseOpenKnowledgeFileUrl(input: string): ParsedOpenKnowledgeFil
   if (parsed.protocol !== 'openknowledge:') return null;
   if (parsed.hostname !== 'open') return null;
 
-  const rawFile = parsed.searchParams.get('file');
-  if (!rawFile) return null;
-
-  let file: string;
-  try {
-    file = decodeURIComponent(rawFile);
-  } catch {
-    return null;
-  }
+  const file = parsed.searchParams.get('file');
+  if (!file) return null;
 
   if (file.includes('\x00')) return null;
-  if (file.length === 0) return null;
 
   if (!isAbsolute(file)) return null;
   if (file.split(/[/\\]/).includes('..')) return null;
@@ -385,15 +339,8 @@ export function parseScreenUrl(input: string): ParsedScreenUrl | null {
   if (parsed.protocol !== 'openknowledge:') return null;
   if (parsed.hostname !== 'screen') return null;
 
-  const rawName = parsed.searchParams.get('name');
-  if (!rawName) return null;
-
-  let name: string;
-  try {
-    name = decodeURIComponent(rawName);
-  } catch {
-    return null;
-  }
+  const name = parsed.searchParams.get('name');
+  if (!name) return null;
   if (!isScreenTarget(name)) return null;
 
   return { host: 'screen', name };
@@ -459,7 +406,7 @@ interface ProtocolHandlerDeps {
     path: string,
   ): CheckTargetExistsResult;
   routeShareToNavigator?(payload: ShareNavigatorPayload): void;
-  openScreen?(win: BrowserWindowHandle, screen: ScreenTarget): void;
+  openScreen?(win: BrowserWindowHandle | null, screen: ScreenTarget): void;
   getFocusedWindow?(): BrowserWindowHandle | null;
   getAnyReadyWindow(): BrowserWindowHandle | null;
   getInitialArgv?: () => readonly string[];
@@ -818,7 +765,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       return;
     }
     const target = deps.getFocusedWindow?.() ?? deps.getAnyReadyWindow();
-    if (!target) {
+    if (!target && screen !== 'settings') {
       deps.log?.warn({ url, screen }, '[url-scheme] no target window — screen deep link dropped');
       return;
     }
@@ -921,20 +868,39 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     enqueueOrRoute(webpageURL);
   });
 
-  deps.app.on('second-instance', (_event, argv) => {
+  const ingestArgv = (argv: readonly string[]): void => {
+    let urlArguments = 0;
+    let fileArguments = 0;
+    let unencodableArguments = 0;
     for (const arg of argv) {
-      if (typeof arg === 'string' && arg.startsWith('openknowledge://')) {
+      if (arg.startsWith('openknowledge://')) {
+        urlArguments += 1;
         enqueueOrRoute(arg);
+      } else if (
+        platform === 'win32' &&
+        deps.app.isPackaged &&
+        isAbsolute(arg) &&
+        (SUPPORTED_DOC_EXTENSIONS as readonly string[]).includes(extname(arg).toLowerCase())
+      ) {
+        if (!arg.isWellFormed()) {
+          unencodableArguments += 1;
+          continue;
+        }
+        fileArguments += 1;
+        enqueueOrRoute(`openknowledge://open?file=${encodeURIComponent(arg)}`);
       }
     }
+    deps.log?.info?.(
+      { argvLength: argv.length, urlArguments, fileArguments, unencodableArguments },
+      '[receive] action=argv-scan',
+    );
+  };
+
+  deps.app.on('second-instance', (_event, argv) => {
+    ingestArgv(argv);
   });
 
-  const initialArgv = deps.getInitialArgv ? deps.getInitialArgv() : [];
-  for (const arg of initialArgv) {
-    if (typeof arg === 'string' && arg.startsWith('openknowledge://')) {
-      enqueueOrRoute(arg);
-    }
-  }
+  ingestArgv(deps.getInitialArgv?.() ?? []);
 
   void deps.app.whenReady().then(() => {
     if (platform === 'darwin') {

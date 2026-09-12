@@ -5,7 +5,7 @@ import {
   type ConfigBinding,
   humanFormat,
 } from '@inkeep/open-knowledge-core';
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, type ReactNode, useEffect, useRef, useState } from 'react';
 import type { FieldPath } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Form } from '@/components/ui/form';
@@ -23,6 +23,7 @@ interface BoundSchemaSectionProps {
   binding: ConfigBinding;
   fields: FieldDef[];
   scopeBadge: SettingsScope;
+  slotsAfter?: Readonly<Record<string, ReactNode>>;
 }
 
 export function BoundSchemaSection({
@@ -32,6 +33,7 @@ export function BoundSchemaSection({
   binding,
   fields,
   scopeBadge,
+  slotsAfter,
 }: BoundSchemaSectionProps) {
   const { form, commitField } = useConfigForm(binding);
   const [flashedPath, setFlashedPath] = useState<string | null>(null);
@@ -75,6 +77,7 @@ export function BoundSchemaSection({
         fields={fields}
         commitField={commitField}
         flashedPath={flashedPath}
+        slotsAfter={slotsAfter}
       />
     </Form>
   );
@@ -88,6 +91,7 @@ interface SchemaSectionProps {
   fields: FieldDef[];
   commitField: (name: FieldPath<Config>) => boolean;
   flashedPath: string | null;
+  slotsAfter?: Readonly<Record<string, ReactNode>>;
 }
 
 function SchemaSection({
@@ -98,6 +102,7 @@ function SchemaSection({
   fields,
   commitField,
   flashedPath,
+  slotsAfter,
 }: SchemaSectionProps) {
   const titleId = `settings-section-${scope}-title`;
   return (
@@ -106,15 +111,20 @@ function SchemaSection({
         {description}
       </SettingsSectionHeader>
       <div className="space-y-10">
-        {fields.map((field) => (
-          <SettingsField
-            key={field.path.join('.')}
-            field={field}
-            scope={scope}
-            commitField={commitField}
-            isFlashed={flashedPath === field.path.join('.')}
-          />
-        ))}
+        {fields.map((field) => {
+          const dotted = field.path.join('.');
+          return (
+            <Fragment key={dotted}>
+              <SettingsField
+                field={field}
+                scope={scope}
+                commitField={commitField}
+                isFlashed={flashedPath === dotted}
+              />
+              {slotsAfter?.[dotted] ?? null}
+            </Fragment>
+          );
+        })}
       </div>
     </section>
   );

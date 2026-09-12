@@ -1,3 +1,5 @@
+import { MANUAL_CHECK_NOTICE_EXPIRY_MS } from '@inkeep/open-knowledge-core';
+import { t } from '@lingui/core/macro';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
 export const TOAST_A_ACTION = 'Relaunch';
@@ -54,9 +56,11 @@ const PRIORITY_SCHEMA_INCOMPATIBILITY = 0;
 const PRIORITY_STUCK_HINT = 0;
 const PRIORITY_RELAUNCH_ERROR = 1;
 const PRIORITY_UPDATE_DOWNLOADED = 2;
-const PRIORITY_WHATS_NEW = 3;
+const PRIORITY_MANUAL_CHECK = 3;
+const PRIORITY_WHATS_NEW = 4;
 
 export const WHATS_NEW_AUTO_DISMISS_MS = 60_000;
+const MANUAL_CHECK_AUTO_DISMISS_MS = MANUAL_CHECK_NOTICE_EXPIRY_MS;
 
 type AddNoticeFn = (notice: UpdateNotice) => void;
 
@@ -71,11 +75,14 @@ export function attachUpdateSubscribers(
     isEligible: (version: string) => boolean;
     onShown: (version: string) => void;
   } = { isEligible: () => false, onShown: () => {} },
+  manualCheckAutoDismissMs: number = MANUAL_CHECK_AUTO_DISMISS_MS,
 ): () => void {
   const unsubscribers: Array<() => void> = [];
   const autoDismissTimers = new Set<ReturnType<typeof setTimeout>>();
+  let manualCheckAutoDismissTimer: ReturnType<typeof setTimeout> | null = null;
 
   const downloadedNoticeId = 'update-downloaded';
+  const manualCheckNoticeId = 'update-checking';
 
   unsubscribers.push(
     bridge.onUpdateDownloaded(({ version }) => {
@@ -254,8 +261,35 @@ export function attachUpdateSubscribers(
     }),
   );
 
+  unsubscribers.push(
+    bridge.onUpdateManualCheck(({ phase }) => {
+      if (phase === 'settled') {
+        if (manualCheckAutoDismissTimer !== null) {
+          clearTimeout(manualCheckAutoDismissTimer);
+          manualCheckAutoDismissTimer = null;
+        }
+        dismissNotice(manualCheckNoticeId);
+        return;
+      }
+      if (manualCheckAutoDismissTimer !== null) clearTimeout(manualCheckAutoDismissTimer);
+      addNotice({
+        id: manualCheckNoticeId,
+        body: t`Checking for updates…`,
+        priority: PRIORITY_MANUAL_CHECK,
+      });
+      manualCheckAutoDismissTimer = setTimeout(() => {
+        manualCheckAutoDismissTimer = null;
+        console.warn('[update-notice] manual check notice expired without settled', {
+          ms: manualCheckAutoDismissMs,
+        });
+        dismissNotice(manualCheckNoticeId);
+      }, manualCheckAutoDismissMs);
+    }),
+  );
+
   return () => {
     for (const off of unsubscribers) off();
+    if (manualCheckAutoDismissTimer !== null) clearTimeout(manualCheckAutoDismissTimer);
     for (const timer of autoDismissTimers) clearTimeout(timer);
     autoDismissTimers.clear();
   };

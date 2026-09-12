@@ -1,4 +1,4 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import {
   CreateFolderSuccessSchema,
@@ -1233,7 +1233,9 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
     for (const ancestor of activeAncestorTreePathsRef.current) {
       expanded.add(ancestor);
     }
-    return [...expanded].filter((path) => nextFolderPaths.has(path));
+    return [...expanded].filter(
+      (path) => nextFolderPaths.has(path) && hasExpandedAncestry(path, expanded),
+    );
   };
 
   const resetModelToDocuments = (nextDocuments?: readonly FileEntry[]) => {
@@ -1261,7 +1263,9 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
         (entry): entry is DocumentEntry => isDocumentEntry(entry) && entry.docName === toDocName,
       );
       const canonicalTreePath = docNameToTreePath(toDocName, destination?.docExt ?? source.docExt);
-      model.move(toDocName, canonicalTreePath);
+      if (model.getItem(canonicalTreePath) == null) {
+        model.move(toDocName, canonicalTreePath);
+      }
       lastCanonical = canonicalTreePath;
       reconciledCount += 1;
     }
@@ -3281,6 +3285,12 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
       />
     </>
   );
+}
+
+function hasExpandedAncestry(path: string, expandedPaths: ReadonlySet<string>): boolean {
+  return computeTreeAncestorPaths(path)
+    .slice(0, -1)
+    .every((ancestor) => expandedPaths.has(ancestor));
 }
 
 function findTreeItemPath(event: MouseEvent): string | null {

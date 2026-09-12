@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 import { psQuoteArg } from '@inkeep/open-knowledge-core';
@@ -71,6 +72,21 @@ export function terminalSmokeShellCommands(
       validateEnvironmentName(name);
       return `export ${name}=${quotePosix(value)}`;
     },
+  };
+}
+
+export interface InputReadyProbe {
+  marker: string;
+  command: string;
+}
+
+export function buildInputReadyProbe(
+  platform: NodeJS.Platform = process.platform,
+): InputReadyProbe {
+  const token = `OK_INPUT_READY_${randomUUID().replaceAll('-', '')}`;
+  return {
+    marker: `${token}_42_READY`,
+    command: terminalSmokeShellCommands(platform).arithmetic(token, 6, 7, 'READY'),
   };
 }
 

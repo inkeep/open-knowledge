@@ -1,8 +1,7 @@
-// biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-raw-html-interactive-element -- pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 import {
   type HeadingEntry,
-  isManagedArtifactDocName,
   PageHeadingsSuccessSchema,
   ProblemDetailsSchema,
 } from '@inkeep/open-knowledge-core';
@@ -11,6 +10,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { usePageList } from '@/components/PageListContext';
+import { isKnownPageDocName } from '@/components/page-membership';
 import {
   Panel,
   PanelBody,
@@ -29,10 +29,9 @@ import { ProfilerBoundary } from '@/lib/perf';
 import { cn } from '@/lib/utils';
 
 /**
- * Debounce window for Y.Doc update → page-headings invalidation. Matches the
- * `TYPING_DEFER_MS` convention from precedent #11 — a 300 ms trailing-edge
- * window coalesces bursts of keystrokes into a single fetch while still
- * updating the outline fast enough to feel live.
+ * Matches the `TYPING_DEFER_MS` convention from precedent #11 — a 300 ms trailing-edge window
+ * coalesces bursts of keystrokes into a single fetch while still updating the outline fast enough
+ * to feel live.
  */
 const OUTLINE_INVALIDATE_DEBOUNCE_MS = 300;
 
@@ -106,9 +105,12 @@ function OutlinePanelInner({
   className?: string;
 }) {
   const { t } = useLingui();
-  const { pages, loading } = usePageList();
+  const { pages, loading, error: pageListError } = usePageList();
   const queryClient = useQueryClient();
   const { activeProvider, activeDocName } = useDocumentContext();
+  const isKnownPage = isKnownPageDocName(pages, docName);
+  const hadResult = queryClient.getQueryState(['page-headings', docName]) !== undefined;
+  const isUnresolvable = !loading && pageListError === null && !isKnownPage && hadResult;
   const {
     data: headings = [],
     isLoading,
@@ -116,9 +118,14 @@ function OutlinePanelInner({
   } = useQuery({
     queryKey: ['page-headings', docName],
     queryFn: () => fetchHeadings(docName),
-    enabled: !loading && (pages.has(docName) || isManagedArtifactDocName(docName)),
+    enabled: !loading && isKnownPage,
     staleTime: Number.POSITIVE_INFINITY,
   });
+
+  useEffect(() => {
+    if (!isUnresolvable) return;
+    void queryClient.resetQueries({ queryKey: ['page-headings', docName] });
+  }, [isUnresolvable, docName, queryClient]);
 
   useEffect(() => {
     if (!activeProvider || activeDocName !== docName) return;
@@ -138,6 +145,7 @@ function OutlinePanelInner({
     };
   }, [activeProvider, activeDocName, docName, queryClient]);
 
+  const isResolving = loading || isLoading;
   const slugs = headings.map((h) => h.slug);
   const activeSlug = useActiveHeading(slugs, { isSourceMode, docName });
   const activeIndex = activeSlug ? headings.findIndex((h) => h.slug === activeSlug) : -1;
@@ -173,14 +181,18 @@ function OutlinePanelInner({
         <PanelTitle>
           <Trans>Outline</Trans>
         </PanelTitle>
-        {!isLoading && <PanelCount>{headings.length}</PanelCount>}
+        {!isResolving && !error && !isUnresolvable && <PanelCount>{headings.length}</PanelCount>}
       </PanelHeader>
-      <PanelBody className="px-3 py-2" aria-busy={isLoading}>
-        {error ? (
+      <PanelBody className="px-3 py-2" aria-busy={isResolving}>
+        {isUnresolvable ? (
+          <PanelEmpty className="px-2" role="status">
+            <Trans>This page is no longer at this path.</Trans>
+          </PanelEmpty>
+        ) : error ? (
           <PanelError className="px-2">
             {error instanceof Error ? error.message : t`Failed to load headings`}
           </PanelError>
-        ) : headings.length === 0 && !isLoading ? (
+        ) : headings.length === 0 && !isResolving ? (
           <PanelEmpty className="px-2">
             <Trans>No headings yet.</Trans>
           </PanelEmpty>

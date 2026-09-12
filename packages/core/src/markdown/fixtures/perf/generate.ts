@@ -109,7 +109,7 @@ function paragraphBlock(rand: () => number): string {
 }
 
 function headingBlock(rand: () => number, index: number): string {
-  const level = 1 + pickIndex(rand, 3); // h1-h3
+  const level = 1 + pickIndex(rand, 3);
   const hashes = '#'.repeat(level);
   return `${hashes} Section ${index}: ${words(rand, 3 + pickIndex(rand, 3))}`;
 }
@@ -136,8 +136,8 @@ function codeBlock(rand: () => number): string {
 }
 
 function tableBlock(rand: () => number): string {
-  const cols = 3 + pickIndex(rand, 2); // 3-4 cols
-  const rows = 2 + pickIndex(rand, 4); // 2-5 rows
+  const cols = 3 + pickIndex(rand, 2);
+  const rows = 2 + pickIndex(rand, 4);
   const header = Array.from({ length: cols }, (_, i) => `Col${i + 1}`);
   const sep = Array.from({ length: cols }, () => '---');
   const lines = [`| ${header.join(' | ')} |`, `| ${sep.join(' | ')} |`];

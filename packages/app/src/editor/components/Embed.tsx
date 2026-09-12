@@ -68,7 +68,7 @@ export function Embed({ src, title, width, height }: EmbedProps) {
     if (typeof pos !== 'number') return;
     try {
       const node = editor.state.doc.nodeAt(pos);
-      if (!node || node.type.name !== 'jsxComponent') return;
+      if (node?.type.name !== 'jsxComponent') return;
       const props = (node.attrs.props as Record<string, unknown>) ?? {};
       const nextProps = {
         ...props,

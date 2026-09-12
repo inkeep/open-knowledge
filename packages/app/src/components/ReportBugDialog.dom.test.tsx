@@ -13,6 +13,7 @@ import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
+import { contactEmailStore } from '@/lib/contact-email-store';
 import { installPointerPositionTracker } from '@/lib/pointer-position';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
@@ -72,6 +73,7 @@ type CreateRequest = {
   note?: string;
   includeCrashDump?: boolean;
   includeScreenshot?: boolean;
+  attachments?: { contentType: string; bytes: Uint8Array }[];
 };
 type SendRequest = OkBugReportSendInput;
 
@@ -260,9 +262,7 @@ describe('ReportBugDialog', () => {
     expect(screen.getByRole('dialog')).not.toBeNull();
     expect(screen.getByRole('heading', { name: 'Report a bug' })).not.toBeNull();
     expect(
-      screen.getByText(
-        "Tell us what went wrong and we'll gather the logs. Nothing leaves your computer until you've reviewed it.",
-      ),
+      screen.getByText('Nothing leaves your computer until you review and send the report.'),
     ).not.toBeNull();
 
     const noteBox = screen.getByRole('textbox', { name: /what happened\? \(optional\)/i });
@@ -276,14 +276,16 @@ describe('ReportBugDialog', () => {
     expect(logsCheckbox.getAttribute('aria-checked')).toBe('true');
     expect(logsCheckbox.hasAttribute('disabled')).toBe(true);
     expect(
-      screen.getByText(
-        'App & system info, recent app logs, and project server logs: the essentials we need to reproduce the issue.',
-      ),
+      screen.getByText('OpenKnowledge logs, including activity across projects.'),
     ).not.toBeNull();
 
     const checkbox = screen.getByRole('checkbox', { name: 'Detailed diagnostics' });
     expect(checkbox.getAttribute('aria-checked')).toBe('false');
     expect(checkbox.hasAttribute('disabled')).toBe(false);
+    expect(screen.getByText('Recommended')).not.toBeNull();
+    expect(screen.queryByText(/Adds telemetry/)).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: "What's included" }));
+    expect(checkbox.getAttribute('aria-checked')).toBe('false');
     expect(
       screen.getByText(
         'Adds telemetry, server state, and runtime info when available. Credentials are always removed; document names, if included, appear in cleartext (not redacted).',
@@ -292,13 +294,15 @@ describe('ReportBugDialog', () => {
     ).not.toBeNull();
     expect(
       screen.getByText(
-        "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, only ours and never another app's.",
+        "It also adds the crash reports macOS recorded for OpenKnowledge and its helper processes, never another app's report, though ours do name the processes they were running alongside. Each one carries machine details macOS puts in every report: your account uid, the Mac model, and the name of the process that launched the app. On a managed machine, that launching process can be internal tooling. The identifiers that would link the bug reports you file to each other are replaced first, so a collected report is not byte-identical to the one macOS wrote.",
         { exact: false },
       ),
     ).not.toBeNull();
 
     expect(
-      screen.getByText('Secrets like API keys and tokens are redacted automatically.'),
+      screen.getByText(
+        'Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending.',
+      ),
     ).not.toBeNull();
 
     expect(screen.getByRole('button', { name: 'Cancel' })).not.toBeNull();
@@ -308,6 +312,7 @@ describe('ReportBugDialog', () => {
   test('omits the macOS crash-report sentence off macOS', async () => {
     installBridge({ platform: 'win32' });
     await renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: "What's included" }));
 
     expect(
       screen.getByText('Adds telemetry, server state, and runtime info when available.', {
@@ -323,7 +328,7 @@ describe('ReportBugDialog', () => {
 
     expect(
       screen.getByText(
-        "App & system info and recent app logs. No project is open, so project logs aren't included.",
+        'OpenKnowledge logs across projects. No project is open, so project server logs are not included.',
       ),
     ).not.toBeNull();
   });
@@ -394,6 +399,7 @@ describe('ReportBugDialog', () => {
           note: 'upload me',
         },
         includeScreenshot: false,
+        includeAttachments: false,
       },
     ]);
 
@@ -427,23 +433,26 @@ describe('ReportBugDialog', () => {
         fallback: { mailtoUrl: 'mailto:support@inkeep.com?subject=OpenKnowledge%20bug' },
       },
     ],
-  ])('%s resolves outside the dialog — no terminal phase, no reopen, no draft', async (_, result) => {
-    const log = installBridge({ send: () => Promise.resolve(result) });
-    const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
-    await createReport('still my note');
+  ])(
+    '%s resolves outside the dialog — no terminal phase, no reopen, no draft',
+    async (_, result) => {
+      const log = installBridge({ send: () => Promise.resolve(result) });
+      const { openChangeCalls } = await renderDialog({}, { statefulOpen: true });
+      await createReport('still my note');
 
-    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
-    await vi.waitFor(() => {
-      expect(log.sendCalls).toHaveLength(1);
-    });
+      await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+      await vi.waitFor(() => {
+        expect(log.sendCalls).toHaveLength(1);
+      });
 
-    expect(openChangeCalls).toEqual([false]);
-    expect(screen.queryByRole('dialog')).toBeNull();
-    expect(screen.queryByRole('heading', { name: "Couldn't send the report" })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Send your report by email' })).toBeNull();
-    expect(screen.queryByRole('heading', { name: 'Thanks for the report!' })).toBeNull();
-    expect(log.opened).toEqual([]);
-  });
+      expect(openChangeCalls).toEqual([false]);
+      expect(screen.queryByRole('dialog')).toBeNull();
+      expect(screen.queryByRole('heading', { name: "Couldn't send the report" })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Send your report by email' })).toBeNull();
+      expect(screen.queryByRole('heading', { name: 'Thanks for the report!' })).toBeNull();
+      expect(log.opened).toEqual([]);
+    },
+  );
 
   test('Escape closes the dialog from review, and review keeps its close button', async () => {
     installBridge();
@@ -516,7 +525,7 @@ describe('ReportBugDialog', () => {
     expect(checkbox.getAttribute('aria-checked')).toBe('true');
     expect(
       screen.getByText(
-        'Details about the error you just hit are included. Secrets like API keys and tokens are redacted automatically.',
+        'Error details, including the document name when available, are included in the report.',
       ),
     ).not.toBeNull();
 
@@ -701,6 +710,30 @@ describe('ReportBugDialog', () => {
     expect(log.createCalls[0]?.note).not.toContain('Crashed app version');
   });
 
+  test('a crash invite that names when it crashed folds the time and its age in', async () => {
+    const log = installBridge();
+    await renderDialog({
+      crashInvite: { ...BOOT_INVITE, crashedAt: '2026-08-31T03:15:17.929Z' },
+    });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    const note = log.createCalls[0]?.note ?? '';
+    expect(note).toContain('Crashed at: 2026-08-31T03:15:17.929Z (');
+    expect(note).toMatch(/Crashed at: .+ \(\d+[smhd] ago\)/);
+  });
+
+  test('a crash invite with no crash time composes the note without that line', async () => {
+    const log = installBridge();
+    await renderDialog({ crashInvite: BOOT_INVITE });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]?.note).not.toContain('Crashed at');
+  });
+
   test('a plain compose with no dump on hand renders no crash-dump opt-in and sends no flag', async () => {
     const log = installBridge();
     await renderDialog();
@@ -755,8 +788,10 @@ describe('ReportBugDialog', () => {
 
     await screen.findByRole('checkbox', { name: 'Crash dump' });
     expect(
-      screen.queryByText('Secrets like API keys and tokens are redacted automatically.'),
-    ).toBeNull();
+      screen.getByText(
+        'Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending.',
+      ),
+    ).not.toBeNull();
   });
 
   test('with no dump on offer the plain compose keeps its redaction reassurance', async () => {
@@ -764,7 +799,9 @@ describe('ReportBugDialog', () => {
     await renderDialog();
 
     expect(
-      screen.getByText('Secrets like API keys and tokens are redacted automatically.'),
+      screen.getByText(
+        'Known secrets are scrubbed, but other sensitive information may remain. Review the ZIP before sending.',
+      ),
     ).not.toBeNull();
   });
 
@@ -962,7 +999,7 @@ describe('ReportBugDialog', () => {
     installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
     await renderDialog();
 
-    expect(screen.getByText(/with a marker showing where your pointer was/)).not.toBeNull();
+    expect(screen.getByText(/with the pointer marked/)).not.toBeNull();
   });
 
   test('with no marker drawn, the hint does not mention one', async () => {
@@ -971,10 +1008,8 @@ describe('ReportBugDialog', () => {
     await renderDialog();
 
     expect(screen.getByRole('checkbox', { name: 'Screenshot' })).not.toBeNull();
-    expect(screen.queryByText(/with a marker showing where your pointer was/)).toBeNull();
-    expect(
-      screen.getByText(/A picture of the app from just before you opened this\./),
-    ).not.toBeNull();
+    expect(screen.queryByText(/with the pointer marked/)).toBeNull();
+    expect(screen.getByText(/Captured before this dialog\./)).not.toBeNull();
   });
 
   test('a rejected capture still takes the marker off the screen', async () => {
@@ -1170,5 +1205,211 @@ describe('ReportBugDialog', () => {
     expect(log.screenshotCalls).toBe(0);
     expect(screen.queryByRole('checkbox', { name: 'Screenshot' })).toBeNull();
     expect(screen.getByText('OpenKnowledge quit unexpectedly last time.')).not.toBeNull();
+  });
+});
+
+describe('ReportBugDialog — contact email opt-in', () => {
+  afterEach(async () => {
+    cleanup();
+    contactEmailStore.forget();
+    await vi.waitFor(() => {
+      expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
+    });
+    clearBridge();
+  });
+
+  function emailCheckbox() {
+    return screen.getByRole('checkbox', { name: 'Share your email for followups' });
+  }
+
+  test('the input stays hidden until the box is ticked', async () => {
+    installBridge();
+    await renderDialog();
+
+    expect(screen.queryByPlaceholderText('you@company.com')).toBeNull();
+    await userEvent.click(emailCheckbox());
+    expect(screen.getByPlaceholderText('you@company.com')).not.toBeNull();
+  });
+
+  test('an unchecked box never blocks Create and sends no email on the wire', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(log.sendCalls).toHaveLength(1);
+    expect(log.sendCalls[0]?.metadata.email).toBeUndefined();
+  });
+
+  test('a checked box with an invalid address blocks Create with the shared message', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.click(emailCheckbox());
+    await userEvent.type(screen.getByPlaceholderText('you@company.com'), 'nope');
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+
+    expect(screen.getByText('Please enter a valid email.')).not.toBeNull();
+    expect(log.createCalls).toHaveLength(0);
+  });
+
+  test('a valid address rides the send metadata and is remembered for next time', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.click(emailCheckbox());
+    await userEvent.type(screen.getByPlaceholderText('you@company.com'), 'me@example.com');
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(log.sendCalls[0]?.metadata.email).toBe('me@example.com');
+    expect(contactEmailStore.getSnapshot().email).toBe('me@example.com');
+  });
+
+  test('a remembered address prefills the box and the input on open', async () => {
+    contactEmailStore.remember('stored@example.com');
+    installBridge();
+    await renderDialog();
+
+    expect((emailCheckbox() as HTMLInputElement).getAttribute('data-state')).toBe('checked');
+    expect(screen.getByDisplayValue('stored@example.com')).not.toBeNull();
+  });
+
+  test('unchecking and sending forgets the stored address entirely', async () => {
+    contactEmailStore.remember('stored@example.com');
+    installBridge();
+    await renderDialog();
+
+    await userEvent.click(emailCheckbox());
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(contactEmailStore.getSnapshot().email).toBeNull();
+  });
+});
+
+describe('ReportBugDialog — reporter attachments', () => {
+  afterEach(async () => {
+    cleanup();
+    contactEmailStore.forget();
+    await vi.waitFor(() => {
+      expect(bugReportSendManager.getSnapshot().some((op) => op.status === 'sending')).toBe(false);
+    });
+    clearBridge();
+  });
+
+  function pngFile(name: string, bytes = [0x89, 0x50, 0x4e, 0x47]) {
+    return new File([new Uint8Array(bytes)], name, { type: 'image/png' });
+  }
+
+  function fileInput(): HTMLInputElement {
+    const input = document.querySelector('input[type="file"]');
+    if (input === null) throw new Error('no attachment file input rendered');
+    return input as HTMLInputElement;
+  }
+
+  test('the row explains that reporter images are not redacted', async () => {
+    installBridge();
+    await renderDialog();
+
+    expect(screen.getByText('Drop images here')).not.toBeNull();
+    expect(screen.getByText(/aren't redacted/)).not.toBeNull();
+  });
+
+  test('a picked image renders a removable card and rides the create request', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.upload(fileInput(), pngFile('dialog.png'));
+    expect(screen.getByText('dialog.png')).not.toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]?.attachments).toHaveLength(1);
+    expect(log.createCalls[0]?.attachments?.[0]?.contentType).toBe('image/png');
+    expect(log.createCalls[0]?.attachments?.[0]?.bytes).toBeInstanceOf(Uint8Array);
+  });
+
+  test('removing the card drops it from the create request', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await userEvent.upload(fileInput(), pngFile('dialog.png'));
+    await userEvent.click(screen.getByRole('button', { name: 'Remove dialog.png' }));
+    expect(screen.queryByText('dialog.png')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+
+    expect(log.createCalls[0]?.attachments).toBeUndefined();
+  });
+
+  test('an over-cap selection is rejected with a visible error and can be corrected', async () => {
+    installBridge();
+    await renderDialog();
+
+    await userEvent.upload(fileInput(), [
+      pngFile('a.png', [1]),
+      pngFile('b.png', [2]),
+      pngFile('c.png', [3]),
+      pngFile('d.png', [4]),
+    ]);
+
+    expect(screen.queryByText('d.png')).toBeNull();
+    expect(screen.getByText('You can attach up to 3 images.')).not.toBeNull();
+    expect(screen.queryByText('a.png')).toBeNull();
+    await userEvent.upload(fileInput(), pngFile('a.png'));
+    expect(screen.getByText('a.png')).not.toBeNull();
+  });
+
+  test('removing an attachment clears a rejected addition and submits the remaining files', async () => {
+    const log = installBridge();
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    expect(screen.getByText('No images added.')).not.toBeNull();
+    expect(screen.getByText('You can attach up to 3 images.')).not.toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Remove a.png' }));
+    expect(screen.queryByText('You can attach up to 3 images.')).toBeNull();
+    expect(screen.queryByText('No images added.')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    await screen.findByRole('heading', { name: 'Review your report' });
+    expect(log.createCalls[0]?.attachments).toHaveLength(2);
+  });
+
+  test('a report with no attachments sends includeAttachments false', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+
+    expect(log.sendCalls[0]?.includeAttachments).toBe(false);
+  });
+});
+
+describe('compact report interactions', () => {
+  test('enlarging a screenshot preserves the note and screenshot opt-out and restores focus', async () => {
+    installBridge({ captureScreenshot: async () => SCREENSHOT });
+    await renderDialog({}, { statefulOpen: true });
+    await userEvent.type(
+      screen.getByRole('textbox', { name: /what happened/i }),
+      'Keep this draft',
+    );
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Screenshot' }));
+    const trigger = screen.getByRole('button', { name: 'Enlarge screenshot' });
+    await userEvent.click(trigger);
+    expect(screen.getByRole('heading', { name: 'Screenshot preview' })).not.toBeNull();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('heading', { name: 'Screenshot preview' })).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+    expect(screen.getByRole('checkbox', { name: 'Screenshot' }).getAttribute('aria-checked')).toBe(
+      'false',
+    );
+    expect(
+      (screen.getByRole('textbox', { name: /what happened/i }) as HTMLTextAreaElement).value,
+    ).toBe('Keep this draft');
   });
 });

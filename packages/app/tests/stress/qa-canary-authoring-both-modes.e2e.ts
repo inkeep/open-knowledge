@@ -1,23 +1,6 @@
-/** QA canary — authoring nested <Steps> across BOTH editor modes, from scratch,
- *  keystroke by keystroke through the transient-invalid states.
- *
- *  As-built model: <Steps>/<Step> are unregistered (componentMap) -> they render
- *  via the wildcard editable raw-source view even when VALID. There is no client
- *  "freeze": server parseWithFallback never throws, so an invalid span renders as
- *  rawMdxFallback (client cross-CRDT write paths are deleted, precedent #14).
- *  Transient state = rawMdxFallback, NOT a freeze.
- *
- *  Covers all three real typing surfaces: source CM, WYSIWYG ProseMirror (prose
- *  around Steps), WYSIWYG wildcard CM (the Step itself), plus a mode-flip mid-build.
- *  Includes a JITTER probe: typing in clean prose must not flash the Steps render.
- *
- *  ORACLE NOTE: CM source-mode auto-indents JSX tags on Enter while authoring. The
- *  indented shape is a stable, lossless serialize fixed point, and the bridge never
- *  GLOBALLY re-indents. Assertions therefore check STRUCTURE + CONTENT INTEGRITY,
- *  never flush-left tags, for authored-from-scratch content; SEEDED Steps guard the
- *  OUTER container against the global re-indent write-back (a contended drain may
- *  re-emit the INNER tags at the canonical nested indentation — a lossless fixed
- *  point, not the corruption class; see the T2/T3 oracle notes).
+/**
+ * There is no client "freeze": server parseWithFallback never throws, so an invalid span renders as
+ * rawMdxFallback (client cross-CRDT write paths are deleted, precedent #14).
  */
 
 import { randomUUID } from 'node:crypto';

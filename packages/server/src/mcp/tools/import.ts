@@ -1,4 +1,5 @@
 import {
+  SKILL_AUTHORING_WARNING_CODES,
   SKILL_INSTALL_WARNING_CODES,
   type SkillLocationId,
   SkillLocationIdSchema,
@@ -10,17 +11,27 @@ import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import type { AgentIdentity } from '../agent-identity.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  AUTHORING_WARNING_CODE_GLOSS,
   agentIdentityFields,
+  alignWarningCodes,
   apiTarget,
   httpPost,
+  INSTALL_WARNING_CODE_GLOSS,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
   requireProjectServer,
   summaryArgSchema,
   textPlusStructured,
   textResult,
+  warningCodesContract,
+  warningsFieldContract,
 } from './shared.ts';
 import { SkillScopeArg } from './verb-schemas.ts';
+
+const KNOWN_CODES: ReadonlySet<string> = new Set<string>([
+  ...SKILL_AUTHORING_WARNING_CODES,
+  ...SKILL_INSTALL_WARNING_CODES,
+]);
 
 const DESCRIPTION = [
   '[Requires: Hocuspocus server] Import a skill into this project as versioned content.',
@@ -95,13 +106,13 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
           .array(z.string())
           .optional()
           .describe(
-            'Non-fatal warnings from BOTH steps: the acquire (skipped unsupported bundle files) and the placement `add` runs.',
+            `Non-fatal warnings from BOTH steps: the acquire (skipped unsupported bundle files) first, then the placement \`add\` runs. ${warningsFieldContract('each step')} One step sending an unreadable shape replaces only its own slice of this list; the other step's text still comes through.`,
           ),
         warningCodes: z
-          .array(z.enum(SKILL_INSTALL_WARNING_CODES))
+          .array(z.enum([...SKILL_AUTHORING_WARNING_CODES, ...SKILL_INSTALL_WARNING_CODES]))
           .optional()
           .describe(
-            'Machine-readable codes aligned 1:1 with `warnings` (`warnings[i]` is the display text for `warningCodes[i]`) — switch on these, never on the English. `no-targets`: nothing was projected, no editor is configured for this project. `scripts-present`: the skill ships executable `scripts/` (projected, never auto-run). `no-description`: installed, but its `description` is empty, so agents cannot route to it. `name-conflict`: a DIFFERENT skill already holds that name at a location. `place-path-invalid`: a named location is not a placeable root. `place-fork-refused`: a hand-edited copy was left alone rather than deleted. `skill-fork-name-unpatched`: a fork rename moved the folder but could not rewrite `name` in its SKILL.md.',
+            `${warningCodesContract('either step')} Authoring codes (from the imported SKILL.md): ${AUTHORING_WARNING_CODE_GLOSS} Placement codes: ${INSTALL_WARNING_CODE_GLOSS}`,
           ),
       }),
     },
@@ -154,13 +165,9 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
       const alreadyImported = result.alreadyImported === true;
       const renamedFrom =
         typeof result.collisionRenamedFrom === 'string' ? result.collisionRenamedFrom : undefined;
-      const warnings = [
-        ...(Array.isArray(result.warnings) ? (result.warnings as string[]) : []),
-        ...(Array.isArray(placed.warnings) ? (placed.warnings as string[]) : []),
-      ];
-      const warningCodes = Array.isArray(placed.warningCodes)
-        ? (placed.warningCodes as string[])
-        : [];
+      const acquired = alignWarningCodes(result.warnings, result.warningCodes, KNOWN_CODES);
+      const projected = alignWarningCodes(placed.warnings, placed.warningCodes, KNOWN_CODES);
+      const warnings = [...acquired.warnings, ...projected.warnings];
       const line = alreadyImported
         ? `Skill "${name}" was already imported (identical content); its placement was applied.`
         : `Imported "${name}"${renamedFrom ? ` (renamed from "${renamedFrom}" — the name was taken)` : ''} into .agents/skills as content. Scripts shown, never run. Use \`install\` to change where it lives.`;
@@ -170,7 +177,9 @@ export function register(server: ServerInstance, deps: ImportDeps): void {
         alreadyImported,
         ...(renamedFrom ? { collisionRenamedFrom: renamedFrom } : {}),
         warnings,
-        ...(warningCodes.length > 0 ? { warningCodes } : {}),
+        ...(acquired.warningCodes && projected.warningCodes
+          ? { warningCodes: [...acquired.warningCodes, ...projected.warningCodes] }
+          : {}),
       });
     },
   );

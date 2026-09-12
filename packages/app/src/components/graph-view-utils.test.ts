@@ -172,27 +172,26 @@ describe('getGraphNodeTooltipLabel', () => {
       heading: 'Folder target',
       detail: 'This link resolves to a folder view rather than a standalone page.',
     },
-  ])('returns status-rich HTML for $displayState doc targets', ({
-    displayState,
-    heading,
-    detail,
-  }) => {
-    const html = getGraphNodeTooltipLabel(
-      {
-        kind: 'doc',
-        id: 'notes/alpha',
-        label: 'Alpha',
-        docName: 'notes/alpha',
-        anchor: null,
-      },
-      { displayState },
-    );
+  ])(
+    'returns status-rich HTML for $displayState doc targets',
+    ({ displayState, heading, detail }) => {
+      const html = getGraphNodeTooltipLabel(
+        {
+          kind: 'doc',
+          id: 'notes/alpha',
+          label: 'Alpha',
+          docName: 'notes/alpha',
+          anchor: null,
+        },
+        { displayState },
+      );
 
-    expect(html).toContain('<div');
-    expect(html).toContain(heading);
-    expect(html).toContain(detail);
-    expect(html).toContain('Alpha');
-  });
+      expect(html).toContain('<div');
+      expect(html).toContain(heading);
+      expect(html).toContain(detail);
+      expect(html).toContain('Alpha');
+    },
+  );
 });
 
 describe('resolveGraphNodeClickAction', () => {

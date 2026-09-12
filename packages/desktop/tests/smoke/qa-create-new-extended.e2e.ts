@@ -153,7 +153,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -211,7 +211,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     const dialog = navigator.locator('[data-testid="create-project-dialog"]');
@@ -265,7 +265,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app1 = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app1);
+    captureStderrFor(app1, { home: tmpHome });
     const app1Proc = captureAppProcess(app1);
     const navigator = await findWindowByMode(app1, 'navigator');
     await clickNavCreateNew(navigator);
@@ -293,7 +293,12 @@ test.describe('QA extended create-new-project', () => {
     expect(existsSync(join(firstProject, '.cursor'))).toBe(false);
     expect(existsSync(join(firstProject, '.mcp.json'))).toBe(false);
 
-    await closeAppBounded(app1Proc, { gracefulMs: 5_000 });
+    await closeAppBounded(app1Proc, { gracefulMs: 5_000 }).catch((error: unknown) => {
+      throw new Error(
+        'app1 did not close; app2 shares this userDataDir and would fail requestSingleInstanceLock',
+        { cause: error },
+      );
+    });
 
     const stateAfterSubmit = JSON.parse(readFileSync(join(userDataDir, 'state.json'), 'utf8'));
     expect(stateAfterSubmit.lastUsedProjectParent).toBe(parent);
@@ -315,7 +320,7 @@ test.describe('QA extended create-new-project', () => {
     rmSync(join(userDataDir, 'bug-report-dirty-shutdown.json'), { force: true });
 
     const app2 = await launchApp(tmpHome);
-    captureStderrFor(app2);
+    captureStderrFor(app2, { home: tmpHome });
     const navigator2 = await findWindowByMode(app2, 'navigator', 30_000);
     await clickNavCreateNew(navigator2);
     await expect(navigator2.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -350,7 +355,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -385,7 +390,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -427,7 +432,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: subFolder });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -460,7 +465,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -490,7 +495,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -529,7 +534,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: subFolder });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({
@@ -571,7 +576,7 @@ test.describe('QA extended create-new-project', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app);
+    captureStderrFor(app, { home: tmpHome });
     const navigator = await findWindowByMode(app, 'navigator');
     await clickNavCreateNew(navigator);
     await expect(navigator.locator('[data-testid="create-project-dialog"]')).toBeVisible({

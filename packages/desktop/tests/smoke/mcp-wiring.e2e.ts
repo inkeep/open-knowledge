@@ -139,7 +139,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     seedEditorDetectionDirs(tmpHome, ['.claude']);
     try {
       const app = await launchApp({ tmpHome });
-      captureStderrFor(app);
+      captureStderrFor(app, { home: tmpHome });
       const window = await waitForConsentDialog(app);
       await window.getByTestId('mcp-consent-add').click();
 
@@ -183,7 +183,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     seedEditorDetectionDirs(tmpHome, ['.claude']);
     try {
       const app = await launchApp({ tmpHome });
-      captureStderrFor(app);
+      captureStderrFor(app, { home: tmpHome });
       const window = await waitForConsentDialog(app);
 
       await app.evaluate(
@@ -224,7 +224,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
     seedEditorDetectionDirs(tmpHome, ['.claude']);
     try {
       const app = await launchApp({ tmpHome });
-      captureStderrFor(app);
+      captureStderrFor(app, { home: tmpHome });
       const window = await waitForConsentDialog(app);
       await window.keyboard.press('Escape');
 
@@ -264,7 +264,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
 
     try {
       const app = await launchApp({ tmpHome });
-      captureStderrFor(app);
+      captureStderrFor(app, { home: tmpHome });
       const firstWindow = await app.firstWindow({ timeout: 15_000 });
       expect(firstWindow).toBeDefined();
 
@@ -292,7 +292,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
 
     try {
       const app = await launchApp({ tmpHome });
-      captureStderrFor(app);
+      captureStderrFor(app, { home: tmpHome });
       const window = await waitForConsentDialog(app);
       await window.getByTestId('mcp-consent-add').click();
 
@@ -351,7 +351,7 @@ test.describe('M6b first-launch MCP-wiring smoke (US-010)', () => {
 
     try {
       const app = await launchApp({ tmpHome });
-      captureStderrFor(app, { cleanupDirs: [projectDir] });
+      captureStderrFor(app, { home: tmpHome, cleanupDirs: [projectDir] });
 
       const window = await waitForConsentDialog(app);
       await window.getByTestId('mcp-consent-add').click();

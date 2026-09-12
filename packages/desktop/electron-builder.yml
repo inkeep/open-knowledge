@@ -607,7 +607,7 @@ rpm:
   # the AppArmor block behind `apparmor_status --enabled`, which is simply
   # absent outside the Ubuntu family. There are no dpkg-isms. The one thing
   # they did NOT handle is rpm's upgrade ordering — the removal script grew a
-  # guard for it; see the header of build/deb-postrm.sh.
+  # guard for it; see the UPSTREAM marker at the head of build/deb-postrm.sh.
   afterInstall: build/deb-postinst.sh
   afterRemove: build/deb-postrm.sh
   # Our own list, not electron-builder's rpm default. The first eight entries

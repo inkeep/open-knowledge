@@ -26,6 +26,7 @@ describe('update-notices-store install-time runtime wiring', () => {
     const whatsNewUnsub = vi.fn(() => {});
     const whatsNewDismissedUnsub = vi.fn(() => {});
     const stuckHintUnsub = vi.fn(() => {});
+    const manualCheckUnsub = vi.fn(() => {});
     const bridge = {
       onUpdateDownloaded: vi.fn(() => downloadedUnsub),
       onUpdateRelaunching: vi.fn(() => relaunchingUnsub),
@@ -34,6 +35,9 @@ describe('update-notices-store install-time runtime wiring', () => {
       onWhatsNew: vi.fn(() => whatsNewUnsub),
       onWhatsNewDismissed: vi.fn(() => whatsNewDismissedUnsub),
       onUpdateStuckHint: vi.fn(() => stuckHintUnsub),
+      onUpdateManualCheck: vi.fn(
+        (_cb: (info: { phase: 'started' | 'settled' }) => void) => manualCheckUnsub,
+      ),
       update: {
         relaunchNow: vi.fn(() => Promise.resolve(undefined)),
         dismissWhatsNew: vi.fn(() => Promise.resolve(undefined)),
@@ -63,6 +67,7 @@ describe('update-notices-store install-time runtime wiring', () => {
     expect(bridge.onWhatsNew).toHaveBeenCalledWith(expect.any(Function));
     expect(bridge.onWhatsNewDismissed).toHaveBeenCalledWith(expect.any(Function));
     expect(bridge.onUpdateStuckHint).toHaveBeenCalledWith(expect.any(Function));
+    expect(bridge.onUpdateManualCheck).toHaveBeenCalledWith(expect.any(Function));
     expect(queryMock).toHaveBeenCalledTimes(1);
 
     await Promise.resolve();
@@ -76,14 +81,33 @@ describe('update-notices-store install-time runtime wiring', () => {
     expect(notice?.action?.label).toBe('Reset to defaults');
     expect(typeof notice?.action?.onClick).toBe('function');
 
+    const manualCheck = bridge.onUpdateManualCheck.mock.calls[0]?.[0];
+    expect(manualCheck).toBeDefined();
+    manualCheck?.({ phase: 'started' });
+    manualCheck?.({ phase: 'started' });
+    expect(
+      store.getNoticesSnapshot().filter((entry) => entry.id === 'update-checking'),
+    ).toHaveLength(1);
+    store.dismissNotice('update-checking');
+    manualCheck?.({ phase: 'started' });
+    expect(
+      store.getNoticesSnapshot().filter((entry) => entry.id === 'update-checking'),
+    ).toHaveLength(1);
+    manualCheck?.({ phase: 'settled' });
+    expect(
+      store.getNoticesSnapshot().filter((entry) => entry.id === 'update-checking'),
+    ).toHaveLength(0);
+
     store.installUpdateNoticesBridge();
 
     expect(bridge.onUpdateDownloaded).toHaveBeenCalledTimes(1);
     expect(bridge.onUpdateRelaunching).toHaveBeenCalledTimes(1);
+    expect(bridge.onUpdateFetchingLatest).toHaveBeenCalledTimes(1);
     expect(bridge.onUpdateRelaunchFailed).toHaveBeenCalledTimes(1);
     expect(bridge.onWhatsNew).toHaveBeenCalledTimes(1);
     expect(bridge.onWhatsNewDismissed).toHaveBeenCalledTimes(1);
     expect(bridge.onUpdateStuckHint).toHaveBeenCalledTimes(1);
+    expect(bridge.onUpdateManualCheck).toHaveBeenCalledTimes(1);
     expect(queryMock).toHaveBeenCalledTimes(1);
   });
 });

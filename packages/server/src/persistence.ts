@@ -12,6 +12,7 @@ import {
   formatFileSize,
   normalizeBridge,
   type Principal,
+  pathspecArgs,
   prependFrontmatter,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
@@ -49,6 +50,7 @@ import {
 import type { DerivedDocumentIndexPersistencePort } from './derived-document-index.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
+import { refuseStaleExternalWrite } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
 import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
@@ -124,16 +126,9 @@ export class DocumentOpenSizeLimitError extends Error {
 }
 
 /**
- * Derive a WriterIdentity from a Hocuspocus transaction origin.
- *
- * Called from onStoreDocument to determine which writer triggered the store.
- * Handles the three origin shapes Hocuspocus surfaces:
- *   - local  + context.session_id  → per-session agent writer
- *   - local  + context.origin      → classified service writer
- *   - connection + principalId     → human-browser principal writer
- *
- * precedent #1 — origins are LocalTransactionOrigin object refs, not strings.
- * Exported for unit-testing the dispatch table without spinning up a server.
+ * Derives a `WriterIdentity` from a Hocuspocus transaction origin, handling the three origin
+ * shapes it surfaces. Origins are `LocalTransactionOrigin` object refs, not strings
+ * (precedent #1). Exported so the dispatch table is unit-testable without a server.
  */
 export function resolveWriterFromOrigin(
   origin: unknown,
@@ -320,7 +315,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
   const projectDir = options?.projectDir ?? process.cwd();
   const shadowRef = options?.shadowRef;
-  const contentRoot = options?.contentRoot ?? (toPosix(relative(projectDir, contentDir)) || '.');
+  const contentRoot = options?.contentRoot || toPosix(relative(projectDir, contentDir)) || '.';
   const derivedDocumentIndex = options?.derivedDocumentIndex;
   const getPrincipal = options?.getPrincipal;
   const onAgentCommit = options?.onAgentCommit;
@@ -567,7 +562,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         }
       }
 
-      await sg.env(env).raw('add', contentRoot);
+      await sg.env(env).raw('add', ...pathspecArgs([contentRoot]));
       const treeSha = (await sg.env(env).raw('write-tree')).trim();
 
       let parentSha: string | null = null;
@@ -658,31 +653,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   }
 
   /**
-   * Re-derive XmlFragment from `parse(ytext.body)` after the persistence
-   * sanity check detected divergence. Under the Y.Text-is-truth contract
-   * (precedent #38) Y.Text holds the user's intended source-form bytes;
-   * fragment must catch up so future edits start from a consistent base.
-   *
-   * Synchronous: parse + structural diff + transact all run before the
-   * caller's next statement. The work is bounded by doc size (parseWithFallback
-   * is O(N), updateYFragment is O(N)), and the caller (storeDocumentNow)
-   * already accepts that cost — the alternative (microtask deferral) would
-   * leave fragment stale until the microtask drains, opening a window where
-   * another transaction could merge against the stale fragment.
-   *
-   * The reconciliation transacts under `OBSERVER_SYNC_ORIGIN`. Both
-   * Observer A and Observer B self-skip on this origin (their callbacks
-   * read `transaction.origin === OBSERVER_SYNC_ORIGIN` and `return`),
-   * so this nested transact does NOT cascade through the dispatch
-   * settlement — it's an Observer-B-style write of the fragment side.
-   * The OBSERVER_SYNC_ORIGIN's `skipStoreHooks: true` also prevents this
-   * helper from re-triggering `onStoreDocument`, avoiding a feedback loop.
-   *
-   * The reconciliation is best-effort: a `parseWithFallback` failure (already
-   * returns paragraph fallback rather than throwing) means fragment will
-   * have the fallback content, which still preserves Observer A's baseline
-   * tracking. Any throw deeper down logs but does not propagate — the disk
-   * write that triggered this reconciliation is what matters for durability.
+   * Under the Y.Text-is-truth contract (precedent #38) Y.Text holds the user's intended source-form
+   * bytes; fragment must catch up so future edits start from a consistent base.
    */
   function canonicalizeForEphemeralBaseline(rawBytes: string, documentName: string): string | null {
     try {
@@ -988,8 +960,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       'persistence.onStoreDocument',
       { attributes: { 'doc.name': documentName } },
       async () => {
-        const agentTriggeredStore = durabilityState.consumeAgentWriteStore(documentName);
-
         const lifecycleStatus = frozenDocLifecycleStatus(document);
         if (lifecycleStatus !== null) {
           log.info(
@@ -1029,6 +999,8 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           incrementPersistenceForceFlushDuringBurst();
         }
 
+        const agentTriggeredStore = durabilityState.consumeAgentWriteStore(documentName);
+
         const { sv: stateVectorAtRead } = captureDocSnapshotForPersistence(document);
         const ytextSnapshot = document.getText('source').toString();
 
@@ -1039,9 +1011,16 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         const normalizedMarkdown = normalizedSourceForm(ytextSnapshot);
         let markdownSemanticallyUnchanged =
           currentBase !== undefined &&
-          normalizedMarkdown === normalizeBridge(currentBase) &&
-          !addsBlankLines(currentBase, markdown);
-        if (!markdownSemanticallyUnchanged && ephemeral && currentBase !== undefined) {
+          (agentTriggeredStore
+            ? markdown === currentBase
+            : normalizedMarkdown === normalizeBridge(currentBase) &&
+              !addsBlankLines(currentBase, markdown));
+        if (
+          !markdownSemanticallyUnchanged &&
+          !agentTriggeredStore &&
+          ephemeral &&
+          currentBase !== undefined
+        ) {
           const canonicalBase = canonicalizeForEphemeralBaseline(currentBase, documentName);
           if (canonicalBase !== null && normalizedMarkdown === canonicalBase) {
             markdownSemanticallyUnchanged = true;
@@ -1249,19 +1228,37 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           await tracedWriteFile(canonicalPath, '# NATIVE\n\nnative-divergence-injected\n', 'utf-8');
         }
 
+        let diskBeforeWrite: string | null = null;
         if (agentTriggeredStore && currentBase !== undefined) {
-          let diskNow: string | null = null;
           try {
-            if (existsSync(canonicalPath)) diskNow = readFileSync(canonicalPath, 'utf-8');
+            if (existsSync(canonicalPath)) {
+              diskBeforeWrite = readFileSync(canonicalPath, 'utf-8');
+            }
           } catch (err) {
-            diskNow = null;
+            diskBeforeWrite = null;
             log.warn(
               { err, documentName },
               '[persistence] L3 disk-read failed; divergence check skipped for this store',
             );
           }
-          if (diskNow !== null && normalizeBridge(diskNow) !== normalizeBridge(currentBase)) {
-            const diskContent = diskNow;
+          if (
+            diskBeforeWrite !== null &&
+            normalizeBridge(diskBeforeWrite) !== normalizeBridge(currentBase)
+          ) {
+            const diskContent = diskBeforeWrite;
+            if (
+              refuseStaleExternalWrite(
+                durabilityState,
+                document,
+                documentName,
+                diskContent,
+                markdown,
+              )
+            ) {
+              durabilityState.recordStaleExternalWriteFreeze(documentName);
+              persistenceDeferCounts.delete(documentName);
+              return;
+            }
             console.warn(
               JSON.stringify({
                 event: 'agent-write-content-divergence',
@@ -1359,7 +1356,13 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           `[persistence] Wrote ${canonicalPath} (${markdown.length} bytes)`,
         );
 
-        durabilityState.setReconciledBase(documentName, markdown);
+        durabilityState.recordSuccessfulStore(
+          documentName,
+          markdown,
+          agentTriggeredStore && currentBase !== undefined && currentBase !== markdown
+            ? (diskBeforeWrite ?? currentBase)
+            : undefined,
+        );
         docsWithSettledWrite.add(documentName);
         tripwireResetFailedDocs.delete(documentName);
         persistenceDeferCounts.delete(documentName);
@@ -1548,11 +1551,29 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           }
 
           const raw = readFileSync(filePath, 'utf-8');
+          const currentBase = durabilityState.getReconciledBase(documentName);
+          const staleExternalWrite = refuseStaleExternalWrite(
+            durabilityState,
+            document,
+            documentName,
+            raw,
+          );
+          let contentToLoad = raw;
+          if (staleExternalWrite) {
+            const retainedContent =
+              durabilityState.getStaleExternalWrite(documentName)?.retainedContent ?? currentBase;
+            if (retainedContent === undefined) {
+              throw new Error(
+                `Missing acknowledged content for stale external write: ${documentName}`,
+              );
+            }
+            contentToLoad = retainedContent;
+          }
 
           const ytextAtLoad = document.getText('source');
           if (ytextAtLoad.length === 0) {
             document.transact(() => {
-              applyDiskContentToDoc(document, raw);
+              applyDiskContentToDoc(document, contentToLoad);
               document.getMap('lifecycle').set(LINEAGE_EPOCH_KEY, crypto.randomUUID());
             }, FILE_WATCHER_ORIGIN);
             log.info({ filePath }, `[persistence] Loaded ${filePath} into Y.Doc`);
@@ -1563,7 +1584,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             );
           }
 
-          durabilityState.setReconciledBase(documentName, raw);
+          if (!staleExternalWrite) durabilityState.setReconciledBase(documentName, raw);
         },
       ).finally(() => {
         loadDurationHist?.record((Date.now() - started) / 1000);

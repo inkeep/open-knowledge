@@ -1,20 +1,7 @@
 /**
- * Idle-shutdown primitive — WebSocket-client-count-only.
- *
- * Attaches an `upgrade` listener to the HTTP server and counts WebSocket
- * upgrade requests at `/collab`. When the counter hits zero for a configured
- * `thresholdMs`, `onShutdown` fires.
- *
- * Key property (precedent #14): DirectConnections
- * (CC1 broadcaster, AgentSessionManager) are invisible to this primitive —
- * they never transit an HTTP upgrade at `/collab`, so `getConnectionsCount()`
- * on the Hocuspocus instance is NOT consulted. Raw upgrade count is the sole
- * signal. This is the only correct way to idle-shutdown under a live
- * server whose CC1 DirectConnection is permanent.
- *
- * The scheduler is injectable per precedent #13b (implicit time
- * coupling is a test smell). Production defaults to `setTimeout`/`clearTimeout`
- * passthrough; tests inject a `ManualScheduler` for deterministic advance.
+ * Idle-shutdown primitive counting only WebSocket upgrades at `/collab`. DirectConnections are
+ * invisible to it by design (precedent #14), so `getConnectionsCount()` is never consulted; the
+ * scheduler is injectable per precedent #13(b).
  */
 
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
@@ -45,15 +32,9 @@ export interface CollabClientCounter {
 }
 
 /**
- * Count live `/collab` WebSocket upgrades on `httpServer`.
- *
- * The single counting implementation: idle-shutdown schedules off it, and the
- * server-info route discloses it so a caller about to terminate this process
- * can ask "is anything using it" rather than "who started it" (the latter is
- * unanswerable — the process title is rewritten at start). DirectConnections
- * (CC1 broadcaster, agent sessions) never transit an upgrade and are invisible
- * here, which is what keeps a permanently-connected internal consumer from
- * pinning the count above zero (precedent #14).
+ * DirectConnections (CC1 broadcaster, agent sessions) never transit an upgrade and are invisible
+ * here, which is what keeps a permanently-connected internal consumer from pinning the count above
+ * zero (precedent #14).
  */
 export function attachCollabClientCounter(
   httpServer: HttpServer,

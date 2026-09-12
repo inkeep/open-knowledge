@@ -7,6 +7,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  statfsSync,
   statSync,
   writeFileSync,
 } from 'node:fs';
@@ -17,6 +18,7 @@ import {
   ALL_EDITOR_IDS,
   addOkPathsToGitExclude,
   classifyExistingMcpEntry,
+  createCliProbeResolver,
   defaultBugReportZipPath,
   detectInstalledEditors,
   EDITOR_TARGETS,
@@ -34,13 +36,16 @@ import {
   removeOwnMcpEntry,
   removeProjectSkill,
   removeUserGlobalSkillBundle,
+  removeUserSkill,
   runStop,
   type TrackedRefusal,
+  userSkillPresentAnywhere,
   validateLocalFolderForShare,
   writeEditorMcpConfig,
   writeProjectAiIntegrations,
   writeProjectSkill,
   writeUserMcpConfigs,
+  writeUserSkill,
 } from '@inkeep/open-knowledge';
 import {
   AGENTS_SKILLS_ROOT,
@@ -50,7 +55,6 @@ import {
   type LanguagePreference,
   OPENKNOWLEDGE_SKILLS_REPO,
   PROTOCOL_VERSION,
-  projectSkillDecisionKey,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
@@ -73,13 +77,13 @@ import {
   createEphemeralProjectDir,
   discoverLockDirs,
   ensureProjectGit,
-  ensureProjectSkillGitignore,
   findEnclosingGitRoot,
   findEnclosingProjectRoot,
   getLocalDir,
   getMeter,
   initContent,
   isProcessAlive,
+  type LocalOpCliInvocation,
   normalizeFsPath,
   ONBOARDING_BUNDLE_IDS,
   prepareSingleFileOpen,
@@ -89,6 +93,7 @@ import {
   readServerLock,
   readServerPackageVersion,
   recordSkillInstallEvent,
+  removeProjectSkillGitignoreBlock,
   reportSkillInstall,
   resolveBuiltinSkillHosts,
   resolveBundledSkillDir,
@@ -97,12 +102,16 @@ import {
   runAuthStatusSubprocess,
   trustSystemCertificates,
   USER_GLOBAL_BUNDLE_IDS,
-  untrackTrackedProjectSkillProjection,
   withSpan,
   writeBundleDecision,
   writeTargetVersion,
 } from '@inkeep/open-knowledge-server';
-import type { BrowserWindowConstructorOptions, MessageBoxOptions, WebContents } from 'electron';
+import type {
+  BrowserWindowConstructorOptions,
+  IpcMainInvokeEvent,
+  MessageBoxOptions,
+  WebContents,
+} from 'electron';
 import {
   app,
   BrowserWindow,
@@ -120,6 +129,12 @@ import {
   shell,
   utilityProcess,
 } from 'electron';
+import {
+  BOOT_HEARTBEAT_EVENTS,
+  BOOT_HEARTBEAT_MAX_BEATS,
+  DESKTOP_BOOT_EVENT,
+  startupMarkLine,
+} from '../shared/boot-narration.ts';
 import type {
   ClaudeReadiness,
   CliReadiness,
@@ -135,6 +150,7 @@ import type {
   OnboardingShowPayload,
   RecentProject,
 } from '../shared/ipc-channels.ts';
+import type { EventChannels } from '../shared/ipc-events.ts';
 import { createHandler } from '../shared/ipc-handler.ts';
 import { registerPendingDelivery, sendToRenderer } from '../shared/ipc-send.ts';
 import { UNINSTALL_PRELOAD_ARG } from '../shared/uninstall-preload-arg.ts';
@@ -146,6 +162,12 @@ import {
   resolveAccessibilityFeatures,
 } from './accessibility-posture.ts';
 import { docNameFromActiveTarget, EditorActiveTargetRegistry } from './active-target-registry.ts';
+import {
+  createAgentIntegrationsApplyDelegate,
+  type GlobalWriterSurface,
+  type ProjectWriterSurface,
+} from './agent-registry-apply.ts';
+import { collectDesktopHostSnapshot, withoutProjectScope } from './agent-registry-probes.ts';
 import { appendOkIgnoreSync } from './append-okignore.ts';
 import { registerAppImageDeepLinks } from './appimage-integration.ts';
 import { openAssetSafely, revealAssetSafely } from './asset-allowlist.ts';
@@ -159,6 +181,7 @@ import {
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
 import { applyBackgroundThrottle } from './background-throttle.ts';
+import { type BootHeartbeatDeps, startBootHeartbeat } from './boot-heartbeat.ts';
 import {
   describeDesktopLanguage,
   readStoredLanguagePreference,
@@ -188,10 +211,9 @@ import {
   computeShareTargetMissing,
   resolveTargetProbeCoordinate,
 } from './check-target-exists.ts';
+import { classifyClaudeMcpScopes } from './claude-mcp-scopes.ts';
 import {
   cliProbeArgs,
-  type ProbeChild,
-  type ProbeTimers,
   probePlatformCliOnPath,
   resolveClaudeReadiness,
   resolveCliOnPath,
@@ -199,7 +221,7 @@ import {
   runLoginShellProbe,
   runWindowsPathProbe,
 } from './claude-readiness.ts';
-import { requestUserConsent, walkExceedsCap } from './consent-dialog.ts';
+import { requestUserConsent } from './consent-dialog.ts';
 import { copyImageToClipboard } from './copy-image-clipboard.ts';
 import {
   type CrashDetection,
@@ -223,21 +245,22 @@ import {
   type DesktopUninstallProjectCandidate,
   type DesktopUninstallUiPreviewMode,
   defaultDesktopUninstallLogPath,
-  desktopUninstallCompletionNotice,
   desktopUninstallConfirmNotice,
   desktopUninstallFailureNotice,
-  desktopUninstallFinalStepNotice,
   isSupportedApplicationsBundle,
   normalizeDesktopUninstallFeedbackAnswers,
-  type RunDesktopUninstallCleanupResult,
   readDesktopUninstallLogForDisplay,
   resolveAppBundleFromExecPath,
   resolveDesktopUninstallUiPreviewMode,
-  runDesktopUninstallCleanup,
   runDesktopUninstallFeedbackStep,
-  runDesktopUninstallOutcomeStep,
   selectDesktopUninstallProjectsByIndex,
 } from './desktop-uninstall.ts';
+import {
+  launchDesktopUninstallHandoff,
+  runDesktopUninstallHandoffStep,
+  showDesktopUninstallResult,
+} from './desktop-uninstall-handoff.ts';
+import { desktopUninstallResultCommand } from './desktop-uninstall-result.ts';
 import { promptForExistingFolder, promptForExistingMarkdownFile } from './dialog-helpers.ts';
 import {
   type DriverUtilityLike,
@@ -246,6 +269,7 @@ import {
 } from './driver-boot-smoke.ts';
 import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer.ts';
 import { defaultGitTopLevel, discoverProject, validateFolderPick } from './folder-admission.ts';
+import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { classifyInstallShape } from './install-shape.ts';
@@ -255,6 +279,7 @@ import {
   type EditorPresenceProbes,
   registerIntegrationsSettings,
 } from './integrations-settings.ts';
+import { handleAssetUpload } from './ipc/asset-upload.ts';
 import {
   type BugReportScreenshotEntry,
   createBugReportScreenshotHold,
@@ -293,7 +318,10 @@ import {
   detectGraphicalAuthCommand,
   runManualInstallFallbackDialog,
 } from './linux-install-fallback.ts';
+import { applyDevShmPosture } from './linux-shm-posture.ts';
+import { resolveLocalOpCliInvocation } from './local-op-cli-invocation.ts';
 import { createMenuTranslator, resolveMenuCatalogDir } from './main-i18n.ts';
+import { createMainThreadWatchdog } from './main-thread-watchdog.ts';
 import {
   checkAndRepairMcpWiringOnStartup,
   type McpStartupRepairResult,
@@ -345,6 +373,7 @@ import {
   removePathShimFromRcFiles,
 } from './path-install.ts';
 import { probeLoopbackPort } from './port-probe.ts';
+import { realProbeSpawn, realProbeTimers } from './probe-spawn.ts';
 import { installStdioBrokenPipeGuard } from './process-safety-net.ts';
 import {
   type ProjectIntegrationsCliSurface,
@@ -354,6 +383,7 @@ import {
   checkAndRepairProjectMcpOnProjectOpen,
   type ProjectMcpReclaimCliSurface,
 } from './project-mcp-reclaim.ts';
+import { createProjectSessionHandlers } from './project-session.ts';
 import { readHeadBranch as readHeadBranchImpl } from './read-head-branch.ts';
 import {
   applyReducedTransparency,
@@ -378,12 +408,19 @@ import { handleRevealExternal } from './reveal-external.ts';
 import { attachServerExitObserver } from './server-exit-observer.ts';
 import { createServerExitRecorder, type ServerExitRecorder } from './server-exit-record.ts';
 import { breakServerLockHeldBy } from './server-lock-break.ts';
+import {
+  openSettingsSurface,
+  resolveSettingsWindowKind,
+  type SettingsSurfaceOptions,
+  type SettingsWindowKind,
+  settingsHashScript,
+} from './settings-surface.ts';
 import { startFirstRunHandshake } from './share-handoff.ts';
 import { checkOutboundUrl, handleShellOpenExternal } from './shell-allowlist.ts';
 import { applyHarvestedAuthSock, harvestShellAuthSock } from './shell-env.ts';
 import { createShowGateRegistry, type ShowGateRegistry } from './show-gate.ts';
 import { installSignalCleanQuit } from './signal-clean-quit.ts';
-import { reclaimProjectSkillsOnProjectOpen, reclaimUserSkillsOnLaunch } from './skill-reclaim.ts';
+import { reconcileUserGlobalSkillBundles } from './skill-reclaim.ts';
 import { resolveDeckPath } from './slides-deck-path.ts';
 import { createSlidesDeckRegistry, type SlidesDeckWindow } from './slides-registry.ts';
 import { recordDeckOpen } from './slides-telemetry.ts';
@@ -391,7 +428,14 @@ import { createSlidesWindow, slidesWindowChrome } from './slides-window.ts';
 import { realIsExecutableFile, resolveSlidev } from './slidev-resolve.ts';
 import { findFreePort, probeSlidevReady, realSpawnSlidev } from './slidev-server.ts';
 import { attachSpellcheckContextMenu } from './spellcheck-context-menu.ts';
+import {
+  querySpellingLanguages,
+  replaceSpellingLanguages,
+  type SpellcheckLanguagesDeps,
+  setSpellcheckEnabled,
+} from './spellcheck-languages.ts';
 import { popSpellcheckMenu } from './spellcheck-menu.ts';
+import { dispatchStartupToastAcrossLoads } from './startup-toast-dispatch.ts';
 import { beginRoot, childSpan, endRoot, injectTraceparent } from './startup-trace.ts';
 import { type RendererMarks, StartupWaterfall } from './startup-waterfall.ts';
 import {
@@ -399,10 +443,8 @@ import {
   addRecentFile,
   addRecentProject,
   annotateMissing,
-  emptyProjectSessionState,
   emptyState,
   evaluateSchemaCompatibility,
-  getProjectSessionState,
   getTerminalDockState,
   MAX_SUPPORTED_SCHEMA_VERSION,
   normalizeTerminalRestartSnapshot,
@@ -414,7 +456,6 @@ import {
   saveAppStateToDir,
   setLastUsedProjectParent,
   setNoteWindowBounds,
-  setProjectSessionState,
   setProjectWindowBounds,
   setSpellCheckEnabled as setSpellCheckEnabledState,
   type UpdateChannel,
@@ -428,6 +469,7 @@ import {
   readTerminalShellSetting,
 } from './terminal-consent.ts';
 import { commitTerminalDockState } from './terminal-dock-persistence.ts';
+import { observeTerminalLaunch } from './terminal-gate-observation.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
 import {
   clampPtyDimension,
@@ -856,12 +898,35 @@ export function clearPendingSchemaIncompatibility(): void {
   pendingSchemaIncompatibility = null;
 }
 
-function setSpellCheckEnabledAppWide(enabled: boolean): void {
+function setSpellCheckEnabledAppWide(enabled: boolean): boolean {
   session.defaultSession.setSpellCheckerEnabled(enabled);
   appState = setSpellCheckEnabledState(appState, enabled);
-  saveAppState(appState);
+  const saved = saveAppState(appState);
   refreshApplicationMenu();
+  return saved;
 }
+
+const spellcheckLanguagesDeps: SpellcheckLanguagesDeps = {
+  availableLanguages: () => session.defaultSession.availableSpellCheckerLanguages,
+  selectedLanguages: () => session.defaultSession.getSpellCheckerLanguages(),
+  defaultLanguages: () => {
+    const locale = app.getLocale();
+    return [
+      session.defaultSession.availableSpellCheckerLanguages.includes(locale) ? locale : 'en-US',
+    ];
+  },
+  applyLanguages: (languages) => {
+    session.defaultSession.setSpellCheckerLanguages([...languages]);
+  },
+  isEnabled: () => appState.spellCheckEnabled,
+  applyEnabledToEngine: (enabled) => {
+    session.defaultSession.setSpellCheckerEnabled(enabled);
+  },
+  setEnabledAppWide: setSpellCheckEnabledAppWide,
+  reportFailure: (operation, err) => {
+    getLogger('spellcheck-languages').warn({ err, operation }, 'spelling preference change failed');
+  },
+};
 
 function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
   session.defaultSession.setSpellCheckerEnabled(appState.spellCheckEnabled);
@@ -939,7 +1004,29 @@ function persistTerminalDockForWindow(
   appState = committed.state;
   return committed.result;
 }
-const startupWaterfall = new StartupWaterfall({ otelEnabled: false });
+const startupWaterfall = new StartupWaterfall({
+  otelEnabled: false,
+  onMark: ({ phase, elapsedMs }) => {
+    getLogger('startup').info(startupMarkLine(phase, elapsedMs), `startup ${phase}`);
+    flushDesktopLogger();
+  },
+});
+const bootHeartbeatDeps: Required<BootHeartbeatDeps> = {
+  log: getLogger('startup'),
+  flushLog: flushDesktopLogger,
+  setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+  clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
+};
+
+const stopBootHeartbeat = startBootHeartbeat(
+  bootHeartbeatDeps,
+  BOOT_HEARTBEAT_EVENTS.boot,
+  '[startup] boot in progress',
+  () => ({ lastPhase: startupWaterfall.lastPhase ?? '(no phase marked yet)' }),
+  { maxBeats: BOOT_HEARTBEAT_MAX_BEATS },
+);
+app.on('will-quit', stopBootHeartbeat);
+
 let firstWindowShown = false;
 let waterfallDeadlineTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -964,6 +1051,7 @@ function emitStartupWaterfall(): void {
 function onFirstWindowShown(): void {
   if (firstWindowShown) return;
   firstWindowShown = true;
+  stopBootHeartbeat();
   startupWaterfall.mark('windowShown');
   if (startupWaterfall.readyToEmit) {
     emitStartupWaterfall();
@@ -1018,9 +1106,7 @@ function yieldRestoreToDeepLink(): void {
 
 const showGate: ShowGateRegistry = createShowGateRegistry({
   log: {
-    warn: (obj, msg) => {
-      console.warn(JSON.stringify({ ...obj, msg }));
-    },
+    warn: (obj, msg) => getLogger('show-gate').warn({ ...obj }, msg),
   },
   setTimeout: (cb, ms) => setTimeout(cb, ms),
   clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
@@ -1098,11 +1184,14 @@ function isDebugKeyringSmokeAllowed(): boolean {
   return !app.isPackaged || process.env.OK_DEBUG_KEYRING_SMOKE === '1';
 }
 
-function resolveLocalOpCliArgs(): string[] {
-  if (app.isPackaged) {
-    return [wrapperPathInBundle(app.getPath('exe'))];
-  }
-  return ['open-knowledge'];
+function resolveLocalOpCli(): LocalOpCliInvocation {
+  return resolveLocalOpCliInvocation({
+    platform: process.platform,
+    isPackaged: app.isPackaged,
+    execPath: app.getPath('exe'),
+    resourcesPath: process.resourcesPath,
+    parentEnv: process.env,
+  });
 }
 
 function runDriverBootSmokeInProduction(): void {
@@ -1418,6 +1507,7 @@ function ensureWindowManager() {
       ensureDebugIpc().cancelPendingForUtility(utility);
     },
     log: getLogger('window-manager'),
+    flushLog: flushDesktopLogger,
     recordServerExit: (info) =>
       getServerExitRecorder().recordExit({ ...info, observer: 'utility-process' }),
     createKeepalive: createDesktopKeepaliveFactory({
@@ -1456,7 +1546,8 @@ function ensureWindowManager() {
 function openNavigator(pendingPayload?: ShareNavigatorPayload) {
   if (navigatorWindow) {
     getLogger('navigator').debug({}, 'already open, focusing');
-    (navigatorWindow as unknown as { focus: () => void }).focus();
+    if (navigatorWindow.isMinimized?.()) navigatorWindow.restore?.();
+    navigatorWindow.focus();
     if (pendingPayload) {
       const wc = (navigatorWindow as unknown as { webContents: Electron.WebContents }).webContents;
       if (wc.isLoading()) {
@@ -1501,6 +1592,10 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
     ),
     showGate,
     pendingPayload,
+    log: getLogger('navigator'),
+    flushLog: flushDesktopLogger,
+    setInterval: (cb, ms) => setInterval(cb, ms).unref(),
+    clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>),
   });
 }
 
@@ -1526,6 +1621,7 @@ function logAiIntegrationOutcomes(result: ProjectAiIntegrationsResult): number {
 }
 
 const BOOT_BUDGET_FILE_CAP = 10_000;
+const bootBudgetDirSizeProbe = createBootBudgetDirSizeProbe(BOOT_BUDGET_FILE_CAP);
 
 async function openProject(
   projectPath: string,
@@ -1561,16 +1657,7 @@ async function openProject(
         { projectName: basename(dir), pickedName: basename(projectPath) },
         'probing ancestor size',
       );
-      try {
-        const exceedsCap = await walkExceedsCap(dir, BOOT_BUDGET_FILE_CAP);
-        return { exceedsCap };
-      } catch (err) {
-        getLogger('project').warn(
-          { err },
-          'project admission size probe failed, treating as over cap',
-        );
-        return { exceedsCap: true };
-      }
+      return bootBudgetDirSizeProbe(dir);
     },
     gitTopLevel: async (cwd) => {
       getLogger('project').info(
@@ -1628,12 +1715,33 @@ async function openProject(
     cli: createProjectMcpReclaimCliSurface(),
     forceEnv: process.env.OK_M6B_FORCE ?? null,
     reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
-    logger: { event: (payload) => getLogger('mcp-wiring').info(payload, payload.event) },
-  }).catch((err) => {
-    console.warn('[main] project-mcp reclaim failed', {
-      err: err instanceof Error ? err.message : String(err),
+    logger: {
+      event: (payload) =>
+        payload.severity === 'warn'
+          ? getLogger('mcp-wiring').warn(payload, payload.event)
+          : getLogger('mcp-wiring').info(payload, payload.event),
+    },
+  })
+    .then((result) => {
+      if (result.status !== 'done') return;
+      const unhealed = result.perEditor.filter(
+        (entry) =>
+          entry.status === 'failed' ||
+          entry.status === 'declined' ||
+          entry.status === 'prune-unchanged',
+      );
+      if (unhealed.length > 0) {
+        getLogger('mcp-wiring').warn(
+          { unhealed },
+          'project-open sweep left entries it could not heal',
+        );
+      }
+    })
+    .catch((err) => {
+      console.warn('[main] project-mcp reclaim failed', {
+        err: err instanceof Error ? err.message : String(err),
+      });
     });
-  });
   let didEnsureGit = false;
   let flowKind: OnboardingFlowKind;
   let contentDirChanged = false;
@@ -1782,10 +1890,16 @@ async function openProject(
       writeProjectAiIntegrations(discovery.projectDir, [...request.editorIds]),
     );
     try {
-      ensureProjectSkillGitignore(discovery.projectDir);
+      if (removeProjectSkillGitignoreBlock(discovery.projectDir) === 'removed') {
+        getLogger('project').info(
+          { projectDir: discovery.projectDir },
+          'removed the retired project-skill .gitignore block',
+        );
+      }
     } catch (err) {
-      console.warn(
-        `[onboarding] skipping project-skill .gitignore entry at ${discovery.projectDir}: ${err instanceof Error ? err.message : String(err)}`,
+      getLogger('project').warn(
+        { projectDir: discovery.projectDir, err },
+        'project-skill .gitignore cleanup failed',
       );
     }
     if (request.sharing === 'local-only') {
@@ -1824,60 +1938,19 @@ async function openProject(
   }
 
   if (discovery.kind === 'managed' || discovery.kind === 'managed-requires-confirmation') {
-    getLogger('project').info({ projectName }, 'reclaiming project skills');
-    void reclaimProjectSkillsOnProjectOpen({
-      projectDir: resolvedProjectDir,
-      executablePath: app.getPath('exe'),
-      isPackaged: app.isPackaged,
-      platform: process.platform,
-      forceEnv: process.env.OK_M6B_FORCE ?? null,
-      reclaimDisableEnv: process.env.OK_RECLAIM_DISABLE ?? null,
-      createIfWired: true,
-      deps: {
-        resolveBundledSkillDir: () => resolveBundledSkillDir('project', { checkDesktop: false }),
-        readProjectSkillDecision: (dir) =>
-          readBundleDecision(osHomedir(), projectSkillDecisionKey(dir)),
-        reportInstalled: (skillNames, scope) => {
-          const home = osHomedir();
-          void reportSkillInstall(
-            {
-              source: OPENKNOWLEDGE_SKILLS_REPO,
-              skills: skillNames,
-              ...(scope === undefined ? {} : { scope }),
-            },
-            { home, enabled: resolveSkillInstallReportSettings(home).enabled },
-          );
-        },
-      },
-    }).catch((err) => {
-      console.warn('[main] project-skill reclaim failed', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    });
-
     try {
-      ensureProjectSkillGitignore(resolvedProjectDir);
+      if (removeProjectSkillGitignoreBlock(resolvedProjectDir) === 'removed') {
+        getLogger('project').info(
+          { projectDir: resolvedProjectDir },
+          'removed the retired project-skill .gitignore block',
+        );
+      }
     } catch (err) {
-      console.warn('[main] project-skill .gitignore ensure failed', {
-        err: err instanceof Error ? err.message : String(err),
-      });
+      getLogger('project').warn(
+        { projectDir: resolvedProjectDir, err },
+        'project-skill .gitignore cleanup failed',
+      );
     }
-    void untrackTrackedProjectSkillProjection(resolvedProjectDir)
-      .then((result) => {
-        if (result.kind === 'untracked') {
-          getLogger('project').info(
-            { dirs: result.dirs, commitSha: result.commitSha },
-            'untracked OpenKnowledge project-skill projection (now local-only)',
-          );
-        } else if (result.kind === 'failed') {
-          console.warn('[main] project-skill untrack failed', { err: result.error });
-        }
-      })
-      .catch((err) => {
-        console.warn('[main] project-skill untrack threw', {
-          err: err instanceof Error ? err.message : String(err),
-        });
-      });
   }
 
   recordOnboardingFlow({
@@ -1899,7 +1972,7 @@ async function openProject(
     pendingShareBranchSwitch,
     didEnsureGit,
     consentVersion: 1,
-    localOpCliArgs: resolveLocalOpCliArgs(),
+    localOpCliInvocation: resolveLocalOpCli(),
     freshlyCreated: entryPoint === 'create-new',
   });
   getLogger('project').info(
@@ -2260,14 +2333,7 @@ async function runMenuDispatchCommand(
       refreshApplicationMenu();
       return;
     case 'open-settings': {
-      const target =
-        BrowserWindow.fromWebContents(sender) ??
-        BrowserWindow.getFocusedWindow() ??
-        BrowserWindow.getAllWindows()[0];
-      if (!target) return;
-      target.webContents
-        .executeJavaScript("window.location.hash = '#settings'; undefined")
-        .catch(() => {});
+      openSettings(BrowserWindow.fromWebContents(sender));
       return;
     }
     case 'check-for-updates':
@@ -2278,7 +2344,7 @@ async function runMenuDispatchCommand(
       });
       return;
     case 'reconfigure-mcp-wiring':
-      reconfigureMcpWiringNow();
+      reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog());
       return;
     case 'open-github':
       void shell.openExternal('https://github.com/inkeep/open-knowledge');
@@ -2379,7 +2445,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
     reconfigureMcpWiring:
       app.isPackaged && supportedPackagedInstall()
         ? () => {
-            reconfigureMcpWiringNow();
+            reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog());
           }
         : undefined,
     openInstallSkillDialog: () => {
@@ -2389,13 +2455,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
         "window.location.hash = '#install-claude-desktop'; undefined",
       );
     },
-    openSettings: () => {
-      const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
-      if (!target) return;
-      target.webContents
-        .executeJavaScript("window.location.hash = '#settings'; undefined")
-        .catch(() => {});
-    },
+    openSettings: () => openSettings(),
     onReportBug: () => sendMenuAction('report-bug'),
     onSendFeedback: () => sendMenuAction('send-feedback'),
     onCheckForUpdates: autoUpdaterHandle
@@ -2474,7 +2534,6 @@ async function showDesktopUninstallNotice(
     width?: number;
     height?: number;
     resizable?: boolean;
-    onRevealLog?: () => void;
   } = {},
 ): Promise<boolean> {
   const closeMeansConfirm = noticeCloseIsConfirm(spec);
@@ -2494,9 +2553,7 @@ async function showDesktopUninstallNotice(
       resizable: options.resizable ?? false,
       title: spec.title,
       onIntent: (intent, win) => {
-        if (intent.kind === 'notice-reveal-log') {
-          options.onRevealLog?.();
-        } else if (intent.kind === 'notice-confirm') {
+        if (intent.kind === 'notice-confirm') {
           finish(true, win);
         } else if (intent.kind === 'notice-cancel') {
           finish(false, win);
@@ -2775,32 +2832,38 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
   if (!confirmation.proceed) return;
 
   const projectPaths = confirmation.projectPaths;
-  const includeProjects = projectPaths.length > 0;
   const logPath = defaultDesktopUninstallLogPath(osHomedir());
-  const cleanup = await withDesktopUninstallProgress(() =>
-    runDesktopUninstallCleanup({
-      cliPath: wrapperPathInBundle(process.execPath),
-      projectPaths,
-      logPath,
-    }),
-  );
-  await runDesktopUninstallOutcomeStep({
-    cleanup,
-    runFeedbackStep: collectDesktopUninstallFeedback,
-    showCompletion: async () => {
-      getLogger('lifecycle').info(
-        { includeProjects, projectCount: projectPaths.length, logPath },
-        'desktop self-uninstall cleanup finished',
-      );
-      await showDesktopUninstallNotice(
-        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
-        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
-      );
-    },
+  await runDesktopUninstallHandoffStep({
+    collectFeedback: collectDesktopUninstallFeedback,
+    launchHandoff: () =>
+      withDesktopUninstallProgress(() =>
+        launchDesktopUninstallHandoff(
+          {
+            cliPath: wrapperPathInBundle(process.execPath),
+            projectPaths,
+            logPath,
+            appBundlePath,
+          },
+          {
+            resultCommand: desktopUninstallResultCommand(
+              process.execPath,
+              app.isPackaged,
+              app.getAppPath(),
+              resolveDesktopLocaleForPushed(
+                pushedLanguagePreference ?? readStoredLanguagePreference(osHomedir()),
+                {
+                  preferredSystemLanguages: () => app.getPreferredSystemLanguages(),
+                  env: process.env,
+                },
+              ),
+            ),
+          },
+        ),
+      ),
     showFailure: async ({ error }) => {
       getLogger('lifecycle').warn(
-        { includeProjects, projectCount: projectPaths.length, logPath, error },
-        'desktop self-uninstall cleanup reported failures',
+        { projectCount: projectPaths.length, logPath, error },
+        'desktop self-uninstall handoff failed',
       );
       await showDesktopUninstallNotice(
         desktopUninstallFailureNotice({
@@ -2810,13 +2873,16 @@ async function startDesktopSelfUninstallFlow(): Promise<void> {
         }),
         { width: 560, height: 520, resizable: true },
       );
-      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
+    },
+    suppressAutoInstallOnQuit: () => autoUpdaterHandle?.suppressAutoInstallOnQuit(),
+    quit: () => {
+      getLogger('lifecycle').info(
+        { projectCount: projectPaths.length, logPath },
+        'desktop self-uninstall scheduled after exit',
+      );
+      app.quit();
     },
   });
-
-  shell.showItemInFolder(appBundlePath);
-  autoUpdaterHandle?.suppressAutoInstallOnQuit();
-  app.quit();
 }
 
 function maybeRunDesktopUninstallUiPreview(): void {
@@ -2871,13 +2937,16 @@ async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMod
     const confirmed = await showDesktopUninstallNotice(desktopUninstallConfirmNotice(), {
       height: 280,
     });
-    let reveals = 0;
     const acknowledged = await showDesktopUninstallNotice(
-      desktopUninstallCompletionNotice({ projectCount: 2 }),
-      { height: 440, onRevealLog: () => (reveals += 1) },
+      desktopUninstallFailureNotice({
+        error: 'The cleanup helper could not start. No cleanup was started.',
+        logPath: defaultDesktopUninstallLogPath(osHomedir()),
+        logText: null,
+      }),
+      { height: 440 },
     );
     getLogger('lifecycle').info(
-      { confirmed, acknowledged, reveals },
+      { confirmed, acknowledged },
       'uninstall UI preview: notices resolved',
     );
     await openDesktopUninstallRendererWindow({
@@ -2887,8 +2956,7 @@ async function runDesktopUninstallPreviewMode(mode: DesktopUninstallUiPreviewMod
           title: 'Notice results',
           paragraphs: [
             `confirm=${confirmed ? 'confirmed' : 'cancelled'}`,
-            `completion=${acknowledged ? 'confirmed' : 'cancelled'}`,
-            `revealLog=${reveals}`,
+            `failure=${acknowledged ? 'confirmed' : 'cancelled'}`,
           ],
           confirmLabel: 'Close',
         },
@@ -2985,7 +3053,6 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
     return;
   }
 
-  const projectPaths = confirmation.projectPaths;
   const logPath = defaultDesktopUninstallLogPath(home);
   try {
     writeFileSync(
@@ -2996,22 +3063,13 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
     log.warn({ err, logPath }, 'uninstall UI preview: could not write placeholder log');
   }
 
-  const cleanup: RunDesktopUninstallCleanupResult = await withDesktopUninstallProgress(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 1400));
-    return mode === 'failure'
-      ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
-      : { ok: true };
-  });
-
-  await runDesktopUninstallOutcomeStep({
-    cleanup,
-    runFeedbackStep: collectDesktopUninstallFeedbackPreview,
-    showCompletion: async () => {
-      await showDesktopUninstallNotice(
-        desktopUninstallCompletionNotice({ projectCount: projectPaths.length }),
-        { height: 440, onRevealLog: () => shell.showItemInFolder(logPath) },
-      );
-    },
+  await runDesktopUninstallHandoffStep({
+    collectFeedback: collectDesktopUninstallFeedbackPreview,
+    launchHandoff: () =>
+      withDesktopUninstallProgress(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1400));
+        return { ok: true };
+      }),
     showFailure: async ({ error }) => {
       await showDesktopUninstallNotice(
         desktopUninstallFailureNotice({
@@ -3021,8 +3079,22 @@ async function runDesktopUninstallUiPreview(mode: DesktopUninstallFlowPreviewMod
         }),
         { width: 560, height: 520, resizable: true },
       );
-      await showDesktopUninstallNotice(desktopUninstallFinalStepNotice(), { height: 240 });
     },
+    suppressAutoInstallOnQuit: () => {},
+    quit: () =>
+      showDesktopUninstallResult(
+        {
+          appBundlePath: resolveAppBundleFromExecPath(process.execPath) ?? process.execPath,
+          logPath,
+          cleanup:
+            mode === 'failure'
+              ? { ok: false, error: 'Simulated cleanup failure (preview) — nothing was removed.' }
+              : { ok: true },
+        },
+        {
+          result: desktopUninstallResultCommand(process.execPath, app.isPackaged, app.getAppPath()),
+        },
+      ),
   });
 
   log.warn({ mode }, 'desktop uninstall UI preview finished — OpenKnowledge is still installed');
@@ -3270,10 +3342,11 @@ function createProjectMcpReclaimCliSurface(): ProjectMcpReclaimCliSurface {
     allEditorIds: ALL_EDITOR_IDS,
     classifyExistingProjectMcpConfig: (editorId, projectDir, projectPath) =>
       classifyExistingMcpEntry(EDITOR_TARGETS[editorId], projectDir, undefined, projectPath),
-    writeProjectMcpConfig: ({ editorId, projectDir, projectPath }) => {
+    writeProjectMcpConfig: ({ editorId, projectDir, projectPath, pruneOnly }) => {
       const installOpts: McpInstallOptions = {
         mode: 'published',
         skipAvailabilityCheck: true,
+        ...(pruneOnly === true ? { pruneOnly: true } : {}),
       };
       const result = writeEditorMcpConfig(
         EDITOR_TARGETS[editorId],
@@ -3288,7 +3361,7 @@ function createProjectMcpReclaimCliSurface(): ProjectMcpReclaimCliSurface {
       if (result.action === 'declined') {
         return { action: 'declined', reason: result.declineReason };
       }
-      return { action: 'overwritten' };
+      return { action: result.action === 'skipped-flag' ? 'unchanged' : 'overwritten' };
     },
   };
 }
@@ -3316,7 +3389,7 @@ function buildEnsureCliOnPathOpts() {
   };
 }
 
-function buildReclaimUserSkillsOpts(): Parameters<typeof reclaimUserSkillsOnLaunch>[0] {
+function buildUserGlobalSkillInstallOpts(): Parameters<typeof reconcileUserGlobalSkillBundles>[0] {
   return {
     home: osHomedir(),
     isPackaged: app.isPackaged,
@@ -3415,7 +3488,7 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
           }
         }
         try {
-          await reclaimUserSkillsOnLaunch(buildReclaimUserSkillsOpts());
+          await reconcileUserGlobalSkillBundles(buildUserGlobalSkillInstallOpts());
         } catch (err) {
           return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
         }
@@ -3434,7 +3507,9 @@ function createMcpWiringOpts(opts: ArmMcpWiringOpts = {}) {
       error: (msg: string, ctx?: object) =>
         getLogger('mcp-wiring').error((ctx ?? {}) as Record<string, unknown>, msg),
       event: (payload: { event: string; [k: string]: unknown }) =>
-        getLogger('mcp-wiring').info(payload, payload.event),
+        payload.severity === 'warn'
+          ? getLogger('mcp-wiring').warn(payload, payload.event)
+          : getLogger('mcp-wiring').info(payload, payload.event),
     },
   };
 }
@@ -3443,14 +3518,86 @@ function armMcpWiring(opts: ArmMcpWiringOpts = {}): RunMcpWiringHandle {
   return runMcpWiringOnFirstLaunch(createMcpWiringOpts(opts));
 }
 
-function reconfigureMcpWiringNow(): boolean {
+function settingsWindowKind(win: BrowserWindow): SettingsWindowKind {
+  return resolveSettingsWindowKind(win, {
+    isDestroyed: (target) => target.isDestroyed(),
+    isNavigator: (target) => target === navigatorWindow,
+    getEditorContext: (target) =>
+      wm?.getContextForBrowserWindow(target as unknown as BrowserWindowLike),
+    getNoteContext: (target) => getNoteWindowContext(target.id),
+    getTerminalContext: (target) => getTerminalWindowContext(target.id),
+  });
+}
+
+function openSettings(
+  explicit: BrowserWindow | null = null,
+  options: SettingsSurfaceOptions = {},
+): void {
+  openSettingsSurface(
+    explicit,
+    {
+      kindOf: settingsWindowKind,
+      getFocusedWindow: () => BrowserWindow.getFocusedWindow(),
+      getAllWindows: () => BrowserWindow.getAllWindows(),
+      showEditor: (win, section) => {
+        if (win.isMinimized()) win.restore();
+        win.focus();
+        void win.webContents.executeJavaScript(settingsHashScript(section)).catch((err) => {
+          getLogger('settings').warn({ err }, 'failed to open editor settings');
+        });
+      },
+      showNavigator: (win) => {
+        if (win?.isMinimized()) win.restore();
+        win?.focus();
+        if (!(app.isPackaged && supportedPackagedInstall())) {
+          getLogger('settings').warn(
+            { packaged: app.isPackaged, supported: supportedPackagedInstall() },
+            'navigator settings unavailable on this install',
+          );
+          const options: MessageBoxOptions = {
+            type: 'info',
+            buttons: ['OK'],
+            defaultId: 0,
+            cancelId: 0,
+            title: 'Settings unavailable',
+            message:
+              'Settings from the navigator is unavailable in this build. Open Settings from a project window instead.',
+          };
+          void (win ? dialog.showMessageBox(win, options) : dialog.showMessageBox(options));
+          return false;
+        }
+        return reconfigureMcpWiringNow(
+          win && !win.webContents.isLoading() ? win.webContents : undefined,
+        );
+      },
+      openNavigator,
+      onEditorRequired: (win) => {
+        getLogger('settings').info({}, 'account settings require an open project');
+        const options: MessageBoxOptions = {
+          type: 'info',
+          buttons: ['OK'],
+          defaultId: 0,
+          cancelId: 0,
+          title: 'Open a project',
+          message: 'Open a project to connect your account in Settings.',
+        };
+        void (win && !win.isDestroyed()
+          ? dialog.showMessageBox(win, options)
+          : dialog.showMessageBox(options));
+      },
+    },
+    options,
+  );
+}
+
+function reconfigureMcpWiringNow(target: McpWiringDispatchTarget | undefined): boolean {
   if (!(app.isPackaged && supportedPackagedInstall())) return false;
   mcpWiringHandle?.destroy();
   mcpWiringHandle = null;
   try {
     mcpWiringHandle = armMcpWiring({
       forceShow: true,
-      immediateDispatchTarget: pickLoadedRendererForMcpDialog(),
+      immediateDispatchTarget: target,
     });
     return true;
   } catch (err) {
@@ -3467,30 +3614,6 @@ function reconfigureMcpWiringNow(): boolean {
 function formatUnknownError(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
-
-function realProbeSpawn(file: string, spawnArgs: readonly string[]): ProbeChild {
-  const child = spawn(file, [...spawnArgs], {
-    stdio: 'ignore',
-    shell: false,
-    windowsHide: true,
-  });
-  return {
-    onExit: (cb) => {
-      child.on('exit', (code) => cb(code));
-    },
-    onError: (cb) => {
-      child.on('error', (err) => cb(err));
-    },
-    kill: () => {
-      child.kill('SIGKILL');
-    },
-  };
-}
-
-const realProbeTimers: ProbeTimers = {
-  setTimer: (cb, ms) => setTimeout(cb, ms),
-  clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
-};
 
 function probeWindowsPath(bin: string): Promise<number | null> {
   const systemRoot = getWindowsEnvValue(process.env, 'SystemRoot') ?? 'C:\\Windows';
@@ -3512,16 +3635,8 @@ function probeLoginShellOnPath(args?: readonly string[]): Promise<number | null>
   );
 }
 
-function isProjectClaudeMcpOwn(projectRoot: string | undefined): boolean {
-  if (projectRoot === undefined) return false;
-  const target = EDITOR_TARGETS.claude;
-  const projectPath = target.projectConfigPath?.(projectRoot);
-  if (projectPath === undefined) return false;
-  const classified = classifyExistingMcpEntry(target, projectRoot, undefined, projectPath);
-  return classified.kind === 'present' && isOwnManagedEntry(classified.entry);
-}
-
 function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promise<ClaudeReadiness> {
+  const scopes = classifyClaudeMcpScopes(projectRoot, osHomedir());
   return resolveClaudeReadiness({
     probeClaude: () =>
       probePlatformCliOnPath({
@@ -3530,9 +3645,10 @@ function resolveTerminalClaudeReadiness(projectRoot: string | undefined): Promis
         probePosix: (args) => probeLoginShellOnPath(args),
         probeWindows: (bin) => probeWindowsPath(bin),
       }),
-    classifyMcpEntry: () =>
-      createMcpWiringCliSurface().classifyExistingMcpEntry('claude', osHomedir()).kind,
-    isProjectMcpPreApprovable: () => isProjectClaudeMcpOwn(projectRoot),
+    classifyMcpEntry: () => scopes.globalKind,
+    isProjectMcpPreApprovable: () => scopes.projectOwn,
+    hasProjectMcpEntry: () => scopes.projectEntryPresent,
+    isGlobalMcpOwnManaged: () => scopes.globalOwn,
   });
 }
 
@@ -3594,7 +3710,11 @@ function dispatchStartupReclaimToastWhenReady(results: {
   if (mcp.status === 'failed') {
     dispatchToastWhenReady({
       kind: 'startup-reclaim',
-      mcp: { status: 'failed', editors: mcp.failedEditors.map((f) => f.editor) },
+      mcp: {
+        status: 'failed',
+        failures: mcp.failedEditors.map((f) => ({ editor: f.editor, reason: f.error })),
+        repaired: mcp.repairedEditors,
+      },
       path: pathLeg,
     });
     return;
@@ -3608,51 +3728,18 @@ function dispatchStartupReclaimToastWhenReady(results: {
   });
 }
 
-function dispatchToastWhenReady(payload: {
-  readonly kind: 'startup-reclaim';
-  readonly mcp:
-    | { readonly status: 'none' }
-    | { readonly status: 'repaired'; readonly editors: readonly string[] }
-    | { readonly status: 'failed'; readonly editors: readonly string[] };
-  readonly path:
-    | { readonly status: 'none' }
-    | { readonly status: 'installed'; readonly summary: string }
-    | { readonly status: 'failed'; readonly summary: string };
-}): void {
-  let dispatched = false;
-  const send = (win: Electron.BrowserWindow): void => {
-    if (dispatched || win.isDestroyed()) return;
-    try {
-      sendToRenderer(win.webContents, 'ok:onboarding:toast', payload);
-      dispatched = true;
-    } catch (err) {
-      console.warn('[main] startup reclaim toast send failed', {
-        err: err instanceof Error ? err.message : String(err),
-      });
-    }
-  };
-  const tryDispatch = (win: Electron.BrowserWindow): void => {
-    if (dispatched || win.isDestroyed()) return;
-    if (win.webContents.isLoading()) {
-      win.webContents.once('did-finish-load', () => send(win));
-      return;
-    }
-    send(win);
-  };
-  for (const win of BrowserWindow.getAllWindows()) {
-    tryDispatch(win);
-    if (dispatched) return;
-  }
-  const onCreated = (_event: Electron.Event, win: Electron.BrowserWindow) => {
-    win.webContents.once('did-finish-load', () => {
-      send(win);
-      if (dispatched) app.off('browser-window-created', onCreated);
-    });
-  };
-  app.on('browser-window-created', onCreated);
-  setTimeout(() => {
-    app.off('browser-window-created', onCreated);
-  }, 60_000);
+function dispatchToastWhenReady(payload: EventChannels['ok:onboarding:toast']['payload']): void {
+  dispatchStartupToastAcrossLoads(payload, {
+    getAllWindows: () => BrowserWindow.getAllWindows(),
+    onWindowCreated: (listener) => {
+      const onCreated = (_event: Electron.Event, win: Electron.BrowserWindow) => listener(win);
+      app.on('browser-window-created', onCreated);
+      return () => app.off('browser-window-created', onCreated);
+    },
+    setTimeout: (fn, ms) => setTimeout(fn, ms),
+    now: () => Date.now(),
+    warn: (message, context) => console.warn(message, context),
+  });
 }
 
 const RECENT_GIT_ROOTS_CAP = 256;
@@ -3660,7 +3747,10 @@ const RECENT_GIT_ROOTS_CAP = 256;
 function registerIpcHandlers() {
   const handle = createHandler(ipcMain);
 
-  handle('ok:mcp-wiring:reconfigure', async (): Promise<boolean> => reconfigureMcpWiringNow());
+  handle(
+    'ok:mcp-wiring:reconfigure',
+    async (): Promise<boolean> => reconfigureMcpWiringNow(pickLoadedRendererForMcpDialog()),
+  );
 
   handle('ok:spellcheck:toggle', async (): Promise<boolean> => {
     setSpellCheckEnabledAppWide(!appState.spellCheckEnabled);
@@ -3693,7 +3783,10 @@ function registerIpcHandlers() {
     newPtyId: () => randomUUID(),
     setTimer: (cb, ms) => setTimeout(cb, ms),
     clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
-    logger: { warn: (data) => getLogger('terminal').warn(data, 'unexpected pty-host message') },
+    logger: {
+      warn: (data) => getLogger('terminal').warn(data, String(data.event ?? 'terminal-manager')),
+    },
+    canSpawnAt: (projectRoot) => isTerminalConsented(projectRoot),
     recordShellExit,
     recordTerminalSession,
     recordConcurrentSessions,
@@ -3726,6 +3819,17 @@ function registerIpcHandlers() {
         handler: 'createPty',
       });
       return { ok: false, reason: 'not-consented' };
+    }
+    if (opts.launchCli !== undefined) {
+      await observeTerminalLaunch({
+        launchCli: opts.launchCli,
+        projectRoot: projectPath,
+        log: getLogger('agent-gate'),
+        snapshot: (projectRoot) =>
+          collectDesktopHostSnapshot({
+            resolve: createCliProbeResolver({ cwd: projectRoot, home: osHomedir() }),
+          }),
+      });
     }
     const shellSetting =
       process.platform === 'win32'
@@ -3784,11 +3888,21 @@ function registerIpcHandlers() {
       });
       return { ok: false, reason: 'unknown-session' };
     }
-    return terminalManager.adoptSession({
+    const outcome = terminalManager.adoptSession({
+      start: req.start,
       windowId: win.id,
       ptyId: req.ptyId,
       webContents: win.webContents,
     });
+    if (!outcome.ok) {
+      logIpcError({
+        event: 'ipc.error',
+        channel: 'ok:pty:adopt',
+        reason: outcome.reason,
+        handler: 'adoptPty',
+      });
+    }
+    return outcome;
   });
   handle('ok:pty:set-meta', async (event, req) => {
     const win = BrowserWindow.fromWebContents(event.sender);
@@ -3807,29 +3921,13 @@ function registerIpcHandlers() {
       terminalManager.setSessionOrder({ windowId: win.id, orderedPtyIds: req.orderedPtyIds });
     return undefined;
   });
-  handle('ok:terminal:claude-assist', async (event, req) => {
-    let rewireError: string | undefined;
-    if (req.action === 'rewire' && app.isPackaged && supportedPackagedInstall()) {
-      const win = BrowserWindow.fromWebContents(event.sender);
-      mcpWiringHandle?.destroy();
-      mcpWiringHandle = null;
-      try {
-        mcpWiringHandle = armMcpWiring({
-          forceShow: true,
-          immediateDispatchTarget: win?.webContents,
-        });
-      } catch (err) {
-        rewireError = formatUnknownError(err);
-        getLogger('terminal').warn({ err: rewireError }, 'claude mcp rewire failed');
-      }
-    }
+  handle('ok:terminal:claude-assist', async (event) => {
     const callerWin = BrowserWindow.fromWebContents(event.sender);
     const projectRoot =
       callerWin && wm
         ? wm.getContextForBrowserWindow(callerWin as unknown as BrowserWindowLike)?.projectPath
         : undefined;
-    const readiness = await resolveTerminalClaudeReadiness(projectRoot);
-    return rewireError === undefined ? readiness : { ...readiness, rewireError };
+    return resolveTerminalClaudeReadiness(projectRoot);
   });
 
   handle('ok:terminal:cli-preflight', async (_event, req): Promise<CliReadiness> => {
@@ -4335,6 +4433,12 @@ function registerIpcHandlers() {
       case 'role':
         applyMenuDispatchRole(request.role, event.sender);
         return undefined;
+      case 'spelling-languages-query':
+        return querySpellingLanguages(spellcheckLanguagesDeps);
+      case 'spelling-languages-set':
+        return replaceSpellingLanguages(spellcheckLanguagesDeps, request.languages);
+      case 'spellcheck-enabled-set':
+        return setSpellcheckEnabled(spellcheckLanguagesDeps, request.enabled);
       default: {
         const _exhaustive: never = request;
         return _exhaustive;
@@ -4522,6 +4626,17 @@ function registerIpcHandlers() {
             },
           },
           screenshotPngBytes: (reportId) => bugReportSendScreenshots.read(reportId),
+          attachmentBytes: (reportId) => bugReportSendScreenshots.readAttachments(reportId),
+        },
+        request,
+      );
+    }
+    if (request.kind === 'upload-image') {
+      return handleAssetUpload(
+        {
+          intakeBaseUrl: resolveBugReportIntakeUrl({
+            envUrl: process.env.OK_BUG_REPORT_INTAKE_URL,
+          }),
         },
         request,
       );
@@ -4586,6 +4701,16 @@ function registerIpcHandlers() {
             bugReportSendScreenshots.forgetOwner(composedBy);
           });
         },
+        onAttachmentsStaged: (reportId, attachments) => {
+          const composedBy = event.sender.id;
+          bugReportSendScreenshots.rememberAttachments(reportId, attachments, composedBy);
+          if (bugReportSendScreenshotReapers.has(composedBy)) return;
+          bugReportSendScreenshotReapers.add(composedBy);
+          event.sender.once('destroyed', () => {
+            bugReportSendScreenshotReapers.delete(composedBy);
+            bugReportSendScreenshots.forgetOwner(composedBy);
+          });
+        },
         onReportGenerated: (meta) => bugReportSidecar.recordGenerated(meta),
         logger: getLogger('bug-report'),
         flushLogger: flushDesktopLogger,
@@ -4624,21 +4749,24 @@ function registerIpcHandlers() {
     return undefined;
   });
 
-  handle('ok:project:get-session-state', async (event) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || !wm) return emptyProjectSessionState();
-    const ctx = wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
-    if (!ctx) return emptyProjectSessionState();
-    return getProjectSessionState(appState, ctx.projectPath);
+  const projectSessionHandlers = createProjectSessionHandlers({
+    resolveContext: (sender: WebContents) => {
+      const win = BrowserWindow.fromWebContents(sender);
+      return win && wm
+        ? wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike)
+        : undefined;
+    },
+    getState: () => appState,
+    saveState: (state) => {
+      appState = state;
+      saveAppState(appState);
+    },
   });
 
+  handle('ok:project:get-session-state', async (event) => projectSessionHandlers.get(event.sender));
+
   handle('ok:project:set-session-state', async (event, state) => {
-    const win = BrowserWindow.fromWebContents(event.sender);
-    if (!win || !wm) return undefined;
-    const ctx = wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike);
-    if (!ctx) return undefined;
-    appState = setProjectSessionState(appState, ctx.projectPath, state);
-    saveAppState(appState);
+    projectSessionHandlers.set(event.sender, state);
     return undefined;
   });
 
@@ -4840,7 +4968,7 @@ function registerIpcHandlers() {
     try {
       const senderWindow = BrowserWindow.fromWebContents(event.sender);
       const outcome = await wm.restartServerForWindow(senderWindow, projectPath, {
-        localOpCliArgs: resolveLocalOpCliArgs(),
+        localOpCliInvocation: resolveLocalOpCli(),
       });
       if (outcome.ok === false) {
         logIpcError({
@@ -5108,7 +5236,8 @@ function registerIpcHandlers() {
   });
 
   const localOpDeps: LocalOpDeps = {
-    resolveCliArgs: resolveLocalOpCliArgs,
+    resolveCliInvocation: resolveLocalOpCli,
+    logFailure: logIpcError,
     state: createLocalOpState(),
   };
   handle('ok:local-op:auth:start', async (event) => {
@@ -5173,7 +5302,7 @@ function probeEditorPresence(): Promise<EditorPresenceProbes> {
 async function probeEditorPresenceUncached(): Promise<EditorPresenceProbes> {
   const [cliOnPath, ...schemes] = await Promise.all([
     resolveTerminalCliInstalledMap().catch(() => ({}) as Record<TerminalCli, boolean>),
-    ...(['claude', 'codex', 'cursor'] as const).map((scheme) =>
+    ...(['claude', 'codex', 'cursor', 'lmstudio'] as const).map((scheme) =>
       detectProtocolImpl(
         {
           platform: process.platform,
@@ -5191,8 +5320,85 @@ async function probeEditorPresenceUncached(): Promise<EditorPresenceProbes> {
       'claude-code': schemes[0] ?? false,
       codex: schemes[1] ?? false,
       cursor: schemes[2] ?? false,
+      'lm-studio': schemes[3] ?? false,
     },
   };
+}
+
+function globalMcpWriterSurface(): GlobalWriterSurface {
+  return {
+    allEditorIds: ALL_EDITOR_IDS.filter((id) => EDITOR_TARGETS[id].scope === 'global'),
+    writeUserMcpConfigs: (writeOpts) => writeUserMcpConfigs({ ...writeOpts, replaceEntry: true }),
+    removeUserMcpEntry: (editorId) => removeOwnMcpEntry(EDITOR_TARGETS[editorId], '', osHomedir()),
+    writeUserSkill: (editorId) => {
+      const result = writeUserSkill(editorId, osHomedir());
+      return result.error === undefined
+        ? { action: result.action }
+        : { action: result.action, error: result.error };
+    },
+    removeUserSkill: (editorId) => {
+      const result = removeUserSkill(editorId, osHomedir());
+      return result.error === undefined
+        ? { action: result.action }
+        : { action: result.action, error: result.error };
+    },
+    userSkillPresentAnywhere: () => userSkillPresentAnywhere(osHomedir()),
+    recordUserSkillDecision: (enabled) => {
+      void writeBundleDecision(osHomedir(), BUNDLE_SKILL_NAME.discovery, enabled).catch(
+        (err: unknown) => {
+          getLogger('agent-integrations-apply').warn(
+            { err, enabled },
+            'user-skill decision not recorded',
+          );
+        },
+      );
+    },
+  };
+}
+
+const PROJECT_INSTALL_OPTS: McpInstallOptions = {
+  mode: 'published',
+  skipAvailabilityCheck: true,
+  replaceEntry: true,
+};
+
+function projectWriterSurface(): ProjectWriterSurface {
+  return {
+    projectConfigPath: (id, projectDir) =>
+      EDITOR_TARGETS[id].projectConfigPath?.(projectDir) ?? null,
+    writeProjectMcpConfig: ({ id, projectDir, projectPath }) => {
+      const result = writeEditorMcpConfig(
+        EDITOR_TARGETS[id],
+        projectDir,
+        PROJECT_INSTALL_OPTS,
+        undefined,
+        projectPath,
+      );
+      if (result.action === 'written' || result.action === 'overwritten') {
+        return { action: result.action };
+      }
+      if (result.action === 'declined') {
+        return { action: 'declined', reason: result.declineReason };
+      }
+      return { action: 'failed', error: result.error };
+    },
+    removeProjectMcpEntry: (id, projectDir, projectPath) =>
+      removeOwnMcpEntry(EDITOR_TARGETS[id], projectDir, undefined, projectPath),
+    writeProjectSkill: (id, projectDir) => {
+      const result = writeProjectSkill(EDITOR_TARGETS[id], projectDir);
+      return { action: result.action, ...(result.error ? { error: result.error } : {}) };
+    },
+    removeProjectSkill: (id, projectDir) => {
+      const result = removeProjectSkill(EDITOR_TARGETS[id], projectDir);
+      return { action: result.action, ...(result.error ? { error: result.error } : {}) };
+    },
+  };
+}
+
+function projectDirForSender(event: IpcMainInvokeEvent): string | null {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  if (!win) return null;
+  return wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike)?.projectPath ?? null;
 }
 
 function registerIntegrationsSettingsIpc(): void {
@@ -5203,12 +5409,28 @@ function registerIntegrationsSettingsIpc(): void {
     !['appimage', 'unsupported'].includes(
       classifyInstallShape(process.platform, app.getPath('exe'), process.env).kind,
     );
+  const applyLogger = getLogger('agent-integrations-apply');
   registerIntegrationsSettings({
     home: osHomedir(),
     available,
     ipcMain,
+    applyBatch: createAgentIntegrationsApplyDelegate({
+      available,
+      surfaces: { global: globalMcpWriterSurface(), project: projectWriterSurface() },
+      resolveProjectDir: projectDirForSender,
+      snapshot: (projectDir) => {
+        const resolve = createCliProbeResolver({ cwd: projectDir ?? '', home: osHomedir() });
+        return collectDesktopHostSnapshot({
+          resolve: projectDir === null ? withoutProjectScope(resolve) : resolve,
+          probeEditorPresence,
+        });
+      },
+      logger: {
+        warn: (msg, ctx) => applyLogger.warn((ctx ?? {}) as Record<string, unknown>, msg),
+      },
+    }),
     cli: {
-      allEditorIds: ALL_EDITOR_IDS.filter((id) => EDITOR_TARGETS[id].scope === 'global'),
+      ...globalMcpWriterSurface(),
       editorLabel: (editorId) => EDITOR_TARGETS[editorId].label,
       classifyExistingMcpEntry: (editorId, home) =>
         classifyExistingMcpEntry(EDITOR_TARGETS[editorId], '', home),
@@ -5216,9 +5438,6 @@ function registerIntegrationsSettingsIpc(): void {
       editorConfigPath: (editorId) =>
         editorConfigPathDisplay(EDITOR_TARGETS[editorId], osHomedir()),
       editorEntryLocator: (editorId) => editorEntryLocator(EDITOR_TARGETS[editorId]),
-      writeUserMcpConfigs: (writeOpts) => writeUserMcpConfigs(writeOpts),
-      removeUserMcpEntry: (editorId) =>
-        removeOwnMcpEntry(EDITOR_TARGETS[editorId], '', osHomedir()),
     },
     probeEditorPresence,
     path: {
@@ -5308,7 +5527,7 @@ function registerIntegrationsSettingsIpc(): void {
           return { ok: true as const };
         }
         try {
-          const result = await reclaimUserSkillsOnLaunch(buildReclaimUserSkillsOpts());
+          const result = await reconcileUserGlobalSkillBundles(buildUserGlobalSkillInstallOpts());
           if (result.status === 'skipped') {
             return {
               ok: false as const,
@@ -5343,13 +5562,11 @@ function registerProjectIntegrationsSettingsIpc(): void {
     return path.startsWith(`${home}/`) ? `~${path.slice(home.length)}` : path;
   };
   const canonicalSkillTarget = EDITOR_TARGETS.claude;
-  const projectInstallOpts: McpInstallOptions = { mode: 'published', skipAvailabilityCheck: true };
 
   const cli: ProjectIntegrationsCliSurface = {
+    ...projectWriterSurface(),
     allEditorIds: ALL_EDITOR_IDS,
     editorLabel: (id) => EDITOR_TARGETS[id].label,
-    projectConfigPath: (id, projectDir) =>
-      EDITOR_TARGETS[id].projectConfigPath?.(projectDir) ?? null,
     projectSkillPath: (id, projectDir) => EDITOR_TARGETS[id].projectSkillPath?.(projectDir) ?? null,
     projectSkillBundle: () => {
       const sourceDir = resolveBundledSkillDir('project', { checkDesktop: false });
@@ -5372,36 +5589,9 @@ function registerProjectIntegrationsSettingsIpc(): void {
     classifyExistingProjectMcpConfig: (id, projectDir, projectPath) =>
       classifyExistingMcpEntry(EDITOR_TARGETS[id], projectDir, undefined, projectPath),
     isOwnEntry: (entry) => isEntryUpToDate(entry) || isOwnManagedEntry(entry),
-    writeProjectMcpConfig: ({ id, projectDir, projectPath }) => {
-      const result = writeEditorMcpConfig(
-        EDITOR_TARGETS[id],
-        projectDir,
-        projectInstallOpts,
-        undefined,
-        projectPath,
-      );
-      if (result.action === 'written' || result.action === 'overwritten') {
-        return { action: result.action };
-      }
-      if (result.action === 'declined') {
-        return { action: 'declined', reason: result.declineReason };
-      }
-      return { action: 'failed', error: result.error };
-    },
-    removeProjectMcpEntry: (id, projectDir, projectPath) =>
-      removeOwnMcpEntry(EDITOR_TARGETS[id], projectDir, undefined, projectPath),
     isProjectSkillInstalled: (projectDir) => {
       const skillPath = canonicalSkillTarget.projectSkillPath?.(projectDir);
       return skillPath !== undefined && existsSync(skillPath);
-    },
-    recordProjectSkillDecision: (projectDir, enabled) => {
-      void writeBundleDecision(osHomedir(), projectSkillDecisionKey(projectDir), enabled).catch(
-        (err: unknown) => {
-          console.warn('[main] project-skill decision not recorded', {
-            err: err instanceof Error ? err.message : String(err),
-          });
-        },
-      );
     },
     reportProjectSkillInstalled: (projectDir) => {
       const home = osHomedir();
@@ -5414,14 +5604,6 @@ function registerProjectIntegrationsSettingsIpc(): void {
         { home, enabled: resolveSkillInstallReportSettings(home).enabled },
       );
     },
-    writeProjectSkill: (id, projectDir) => {
-      const result = writeProjectSkill(EDITOR_TARGETS[id], projectDir);
-      return { action: result.action, ...(result.error ? { error: result.error } : {}) };
-    },
-    removeProjectSkill: (id, projectDir) => {
-      const result = removeProjectSkill(EDITOR_TARGETS[id], projectDir);
-      return { action: result.action, ...(result.error ? { error: result.error } : {}) };
-    },
   };
 
   registerProjectIntegrationsSettings({
@@ -5429,13 +5611,7 @@ function registerProjectIntegrationsSettingsIpc(): void {
     ipcMain,
     cli,
     probeEditorPresence,
-    resolveProjectDir: (event) => {
-      const win = BrowserWindow.fromWebContents(event.sender);
-      if (!win) return null;
-      return (
-        wm.getContextForBrowserWindow(win as unknown as BrowserWindowLike)?.projectPath ?? null
-      );
-    },
+    resolveProjectDir: projectDirForSender,
     tildify: tildifyHomePath,
     logger: {
       warn: (msg, ctx) => projectLogger.warn((ctx ?? {}) as Record<string, unknown>, msg),
@@ -5450,10 +5626,10 @@ function installDockIcon(instanceLabel: string | null) {
   if (process.platform !== 'darwin') return;
   if (app.isPackaged) return;
   /*
-   * UPSTREAM(electron/electron#3391): macOS reads the Dock tile name from the
-   * running bundle's Info.plist — Electron's own for an unpackaged app — and
-   * `app.setName()` does not reach it. A badge is the only runtime way to put
-   * an instance label on the Dock icon.
+   * UPSTREAM(electron@43.4.0): an unpackaged app runs out of Electron's own
+   * bundle, so macOS reads the Dock tile name from that Info.plist and
+   * `app.setName()` cannot reach it. A badge is the only runtime way to put an
+   * instance label on the Dock icon.
    */
   if (instanceLabel) {
     try {
@@ -5529,6 +5705,15 @@ installStdioBrokenPipeGuard(process, {
 
 app.commandLine.appendSwitch('use-system-ca');
 trustSystemCertificates();
+
+applyDevShmPosture({
+  platform: process.platform,
+  statfs: (path) => statfsSync(path),
+  env: process.env,
+  appendSwitch: (name) => app.commandLine.appendSwitch(name),
+  log: (level, facts) =>
+    getRootDesktopLogger()[level](facts, 'linux shared-memory posture for chromium'),
+});
 
 if (!app.isPackaged) {
   const resolved = resolveEffectiveInstanceName(process.env, app.getAppPath(), {
@@ -5612,7 +5797,7 @@ if (isDriverBootSmokeMode(process.env)) {
 function bootPrimaryInstance(): void {
   getRootDesktopLogger().info(
     {
-      event: 'desktop.boot',
+      event: DESKTOP_BOOT_EVENT,
       version: app.getVersion(),
       isPackaged: app.isPackaged,
       electronVersion: process.versions.electron,
@@ -5662,6 +5847,10 @@ function bootPrimaryInstance(): void {
         span,
         bootStateSnapshot.versionPendingInstallStagedAt,
       ),
+    mainThreadWatchdog: createMainThreadWatchdog({
+      path: join(app.getPath('userData'), 'bug-report-main-thread-liveness.json'),
+      logger: getLogger('main-thread-watchdog'),
+    }),
     logger: getLogger('crash-detection'),
   });
   crashDetection.detectBootCrash();
@@ -5822,7 +6011,7 @@ function bootPrimaryInstance(): void {
       let authenticated = false;
       try {
         const status = await runAuthStatusSubprocess({
-          cliArgs: resolveLocalOpCliArgs(),
+          ...resolveLocalOpCli(),
           host,
         });
         authenticated = status.authenticated;
@@ -5845,13 +6034,7 @@ function bootPrimaryInstance(): void {
         ? await dialog.showMessageBox(parentWindow, messageBoxOptions)
         : await dialog.showMessageBox(messageBoxOptions);
       if (response === 0) {
-        if (parentWindow) {
-          (parentWindow as BrowserWindowLike).webContents.executeJavaScript(
-            "window.location.hash = '#settings/account'; undefined",
-          );
-        } else {
-          openNavigator();
-        }
+        openSettings(parentWindow ?? null, { section: 'account', editorOnly: true });
         return 'connect';
       }
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -5878,14 +6061,22 @@ function bootPrimaryInstance(): void {
       openNavigator(payload);
     },
     openScreen: (win, screen) => {
+      if (screen === 'settings') {
+        openSettings(win as BrowserWindow | null, { origin: 'deep-link' });
+        return;
+      }
+      if (!win) return;
       const w = win as BrowserWindowLike;
-      const hashByScreen: Record<ScreenTarget, string> = {
-        settings: '#settings',
+      const hashByScreen: Record<Exclude<ScreenTarget, 'settings'>, string> = {
         'install-claude': '#install-claude-desktop',
       };
-      w.webContents.executeJavaScript(
-        `window.location.hash = '${hashByScreen[screen]}'; undefined`,
-      );
+      void w.webContents
+        .executeJavaScript(
+          `window.location.hash = ${JSON.stringify(hashByScreen[screen])}; undefined`,
+        )
+        .catch((err) => {
+          getLogger('url-scheme').warn({ err, screen }, 'failed to open screen deep link');
+        });
     },
     getFocusedWindow: () => {
       const focused = BrowserWindow.getFocusedWindow();
@@ -6001,7 +6192,7 @@ function bootPrimaryInstance(): void {
           const mcp: McpStartupRepairResult =
             mcpSettled.status === 'fulfilled'
               ? mcpSettled.value
-              : { status: 'failed', failedEditors: [] };
+              : { status: 'failed', failedEditors: [], repairedEditors: [] };
           const path: EnsureCliOnPathResult =
             pathSettled.status === 'fulfilled'
               ? pathSettled.value
@@ -6169,10 +6360,11 @@ function bootPrimaryInstance(): void {
         });
       }
 
-      void reclaimUserSkillsOnLaunch(buildReclaimUserSkillsOpts()).catch((err) => {
-        console.warn('[main] user-skill reclaim failed', {
-          err: err instanceof Error ? err.message : String(err),
-        });
+      void reconcileUserGlobalSkillBundles({
+        ...buildUserGlobalSkillInstallOpts(),
+        seed: false,
+      }).catch((err) => {
+        getLogger('main').warn({ err }, 'user-global skill reconcile failed');
       });
 
       maybeRunDesktopUninstallUiPreview();

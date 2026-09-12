@@ -20,6 +20,7 @@ import {
   type PathInstallMarker,
   pathInstallMarkerPath,
 } from '@inkeep/open-knowledge';
+import { posixOkManagedBinDir } from '@inkeep/open-knowledge-core';
 import type { McpWiringPathInstallDescriptor } from '../shared/ipc-channels.ts';
 import { classifyInstallShape } from './install-shape.ts';
 
@@ -148,7 +149,7 @@ function writeMarker(home: string, marker: PathInstallMarker, fs: PathInstallFsO
 }
 
 function okBin(home: string): string {
-  return join(home, '.ok', 'bin');
+  return posixOkManagedBinDir(home);
 }
 
 function envShim(home: string): string {
@@ -341,7 +342,7 @@ async function discoverRealInteractivePath(
   const spawn = opts.spawn ?? defaultSpawn;
   const logger = opts.logger ?? DEFAULT_LOGGER;
   try {
-    // biome-ignore lint/plugin/require-windowshide-on-spawn: injected command-runner seam; defaultSpawn owns child_process options
+    // oxlint-disable-next-line ok/require-windowshide-on-spawn -- injected command-runner seam; defaultSpawn owns child_process options
     const result = await spawn(shell, ['-ilc', 'printf %s "$PATH"'], { timeoutMs: 2000, env });
     if (result.code !== 0 || result.timedOut || !result.stdout) {
       logger.event({

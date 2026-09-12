@@ -1,20 +1,7 @@
 /**
- * editor-area-viewport-resize.e2e.ts — Editor mount stability across viewport resize.
- *
- * Pins the invariant: the editor mount substrate (EditorActivityPool → ActivityEntry →
- * TiptapEditor + V2 mount-promise + portalTarget) MUST survive viewport-driven layout
- * transitions for the active doc. The hybrid render tree (precedent #18(b)) was
- * designed for flash-free doc-switch transitions; this test extends the contract to
- * the right doc-panel collapse/expand transition at the 1024px threshold.
- *
- * The right doc-panel is a `react-resizable-panels` Panel that is a STABLE SIBLING of
- * the editor in one `ResizablePanelGroup` (precedent #18(b)): crossing the threshold
- * collapses/expands the panel's flex size; it must never unmount the editor subtree.
- * The editor + doc-panel are NOT swapped between distinct React tree positions, so
- * the portal-target DOM identity is stable across any number of collapse cycles.
- *
- * Per CLAUDE.md STOP rule: each test creates its own unique doc via api.seedDocs —
- * no hardcoded `'test-doc'`.
+ * Editor mount stability across viewport resize: the right doc-panel is a stable sibling of the
+ * editor in one `ResizablePanelGroup` (precedent #18(b)), so crossing the 1024px threshold
+ * collapses the panel's flex size and must never unmount the editor subtree.
  */
 
 import type { Page } from '@playwright/test';

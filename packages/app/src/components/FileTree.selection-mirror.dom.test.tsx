@@ -1,20 +1,4 @@
-/**
- * RTL behavioral counterpart to the source-grep
- * `FileTree.selection-mirror.test.ts`. Pins the singleton-selection invariant
- * at runtime through the extracted
- * `useSelectionMirror` hook.
- *
- * The full FileTree component requires 8+ contexts plus Pierre shadow DOM,
- * which exceeds the <500ms budget. This test exercises the hook
- * directly with a minimal stub that satisfies the model interface
- * (`getItem`, `getSelectedPaths`) plus the per-item handles the hook calls
- * (`getPath`, `isSelected`, `select`, `deselect`, `isExpanded`, `expand`,
- * `focus`). Production callers always pass real Pierre models — the cast
- * through `unknown` makes that boundary explicit.
- *
- * Exercises `render` + `userEvent` under the jsdom substrate (precedent #43);
- * invocation via `bun run test:dom`.
- */
+/** Exercises `render` + `userEvent` under the jsdom substrate (precedent #43). */
 
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

@@ -21,6 +21,7 @@ import {
 export interface DeinitOptions {
   cwd?: string;
   home?: string;
+  env?: NodeJS.ProcessEnv;
   yes?: boolean;
   dryRun?: boolean;
   json?: boolean;
@@ -95,7 +96,10 @@ export async function runDeinit(opts: DeinitOptions = {}): Promise<DeinitResult>
     }
   }
 
-  const outcome = await runRemoval(plan, opts.runRemovalDeps);
+  const outcome = await runRemoval(plan, {
+    env: opts.env ?? (opts.home === undefined ? process.env : {}),
+    ...opts.runRemovalDeps,
+  });
   return {
     status: outcome.failed.length > 0 ? 'failed' : 'done',
     message: opts.json

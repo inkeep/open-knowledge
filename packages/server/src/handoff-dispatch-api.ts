@@ -1,6 +1,12 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { sleep as defaultSleep, type HandoffTarget } from '@inkeep/open-knowledge-core';
+import {
+  agentIdForHandoffTarget,
+  sleep as defaultSleep,
+  type HandoffTarget,
+  type HostSnapshot,
+} from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
+import { observeReadiness } from './agent-registry-gate.ts';
 import { createOsProbe, type InstalledAgentScheme } from './handoff-api.ts';
 import { errorResponse } from './http/error-response.ts';
 import {
@@ -9,12 +15,15 @@ import {
   readBoundedJsonBody,
 } from './http/request-validation.ts';
 import { successResponse } from './http/success-response.ts';
+import { getLogger } from './logger.ts';
 import {
   isPathWithinDir,
   resolveCursorBinaryDefault,
   resolveCursorSpawnInvocation,
 } from './spawn-cursor-api.ts';
 import { type SpawnDetachedOutcome, spawnDetached as spawnDetachedReal } from './spawn-detached.ts';
+
+const log = getLogger('handoff-dispatch');
 
 const HANDLER = 'handoff';
 const HANDOFF_MAX_BODY_BYTES = 4 * 1024;
@@ -97,6 +106,7 @@ export interface HandleHandoffDispatchDeps {
   ) => Promise<SpawnDetachedOutcome>;
   readonly resolveCursorBinary?: (timeoutMs: number) => Promise<string | null>;
   readonly isSchemeRegistered?: (scheme: InstalledAgentScheme) => Promise<boolean>;
+  readonly hostSnapshot?: () => Promise<HostSnapshot>;
 }
 
 export type { SpawnDetachedOutcome as SpawnOutcome } from './spawn-detached.ts';
@@ -177,6 +187,14 @@ export async function handleHandoffDispatch(
   const sleep = deps.sleep ?? defaultSleep;
   const spawnDetached = deps.spawnDetached ?? spawnDetachedReal;
   const isSchemeRegistered = deps.isSchemeRegistered ?? createOsProbe(deps.platform);
+
+  await observeReadiness({
+    site: 'deep-link',
+    agentId: agentIdForHandoffTarget(target) ?? target,
+    mode: 'external',
+    log,
+    snapshot: deps.hostSnapshot,
+  });
 
   if (recipe.type === 'app-bundle') {
     if (deps.platform === 'darwin') {

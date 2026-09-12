@@ -140,7 +140,7 @@ test.describe('Project Navigator return-affordance smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject('happy');
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
     await expect.poll(() => countNavigatorWindows(app)).toBe(0);
@@ -176,7 +176,7 @@ test.describe('Project Navigator return-affordance smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject('close');
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
     await expect.poll(() => countEditorWindows(app)).toBe(1);

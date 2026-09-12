@@ -12,6 +12,7 @@ import { basename, join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -107,11 +108,20 @@ function seed(prefix: string, opts: SeedOpts = {}): Seed {
 
 interface LaunchOpts {
   restrictPath?: boolean;
+  connectionsAvailable?: boolean;
 }
 
 async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplication> {
+  if (opts.connectionsAvailable) {
+    mkdirSync(join(s.tmpHome, '.ok'), { recursive: true });
+    writeFileSync(
+      join(s.tmpHome, '.ok', 'mcp-status.json'),
+      JSON.stringify({ configured: false, skippedAt: new Date().toISOString() }),
+    );
+  }
   const deepLink = `openknowledge://open?project=${encodeURIComponent(s.projectDir)}&doc=start`;
-  return electron.launch(
+  return launchDesktopApp(
+    electron,
     desktopLaunchOptions({
       target: TARGET,
       args: [`--user-data-dir=${s.userDataDir}`, deepLink],
@@ -123,26 +133,16 @@ async function launchApp(s: Seed, opts: LaunchOpts = {}): Promise<ElectronApplic
           restrictPath: opts.restrictPath,
         }),
         OK_DESKTOP_E2E_SMOKE: '1',
-        OK_RECLAIM_DISABLE: '1',
+        OK_RECLAIM_DISABLE: opts.connectionsAvailable ? '0' : '1',
+        OK_M6B_FORCE: opts.connectionsAvailable ? '1' : '0',
       },
     }),
+    { home: s.tmpHome },
   );
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const p of app.windows()) {
-      const mode = await p.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-      if (mode === 'editor') {
-        page = p;
-        return;
-      }
-    }
-    throw new Error('no editor window yet');
-  }).toPass({ timeout: timeoutMs });
-  if (!page) throw new Error('editor window vanished after readiness poll');
-  return page;
+async function findEditorWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'editor');
 }
 
 async function dispatchRendererMenuAction(
@@ -247,7 +247,8 @@ async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
 
 const terminalSection = (page: Page) => page.locator('section[aria-label="Terminal"]');
 const terminalStatus = (page: Page) => page.locator('[data-terminal-status]');
-const readinessBanner = (page: Page) => page.getByTestId('terminal-readiness-banner');
+const readinessBanner = (page: Page) =>
+  page.getByRole('tabpanel').getByTestId('terminal-readiness-banner');
 
 async function waitForRendererResponsive(page: Page): Promise<void> {
   await expect(async () => {
@@ -393,7 +394,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('default-on');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -406,7 +407,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('default-on-no-write');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -422,7 +423,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('opt-out', { optOut: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await revealTerminalSurface(app, page.getByRole('region', { name: 'Terminal disabled' }));
@@ -440,7 +441,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('toggle', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     expect(await viewTerminalLabel(app)).toBe('Show Terminal');
@@ -457,7 +458,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('placement-menu', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     await findEditorWindow(app);
 
     expect(await terminalPlacementLabel(app)).toBe('Move Terminal to right');
@@ -478,7 +479,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('header-placement', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await widenEditorWindow(app, page, 1900, 900);
@@ -516,7 +517,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('divider-pointerleave', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await widenEditorWindow(app, page, 1900, 900);
@@ -583,7 +584,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('rail-admission', { consent: true, skipRestoreState: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await widenEditorWindow(app, page, 1900, 900);
@@ -592,6 +593,7 @@ test.describe('Docked terminal — live Electron', () => {
     await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
       timeout: 10_000,
     });
+    await waitForStatus(page, 'running', 25_000);
     await clickViewAgentsItem(app);
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     await expect
@@ -601,7 +603,6 @@ test.describe('Docked terminal — live Electron', () => {
           .evaluate((element) => element.getBoundingClientRect().width),
       )
       .toBeGreaterThan(739);
-    await waitForStatus(page, 'running', 25_000);
     await typeInTerminal(page, `${SHELL_COMMANDS.columns('RAIL_COLS')}\r`);
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toMatch(/RAIL_COLS=\d+/);
     const columns = (await readTerminalText(page)).match(/RAIL_COLS=(\d+)/)?.[1];
@@ -637,7 +638,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('perf', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await waitForRendererResponsive(page);
@@ -664,7 +665,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('cmd', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -685,7 +686,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('resize-storm', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -729,7 +730,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('dock-controls', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -746,7 +747,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('dock-edges', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -763,7 +764,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('a11y', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -780,7 +781,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('escape', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -805,7 +806,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('ctrl-backtick', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -834,7 +835,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('inert', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -859,7 +860,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('resize', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -905,7 +906,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('exit', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -929,7 +930,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('claude-missing', { consent: true, pinRestrictedPath: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -944,28 +945,30 @@ test.describe('Docked terminal — live Electron', () => {
       );
     });
 
-    const banner = readinessBanner(page);
+    const banner = page.getByRole('tabpanel').getByTestId('terminal-cli-missing-banner');
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner).toContainText('installed or on your PATH');
     await expect(page.getByRole('button', { name: 'Get Claude Code' })).toBeVisible();
   });
 
-  test('QA-018 missing OK MCP entry shows Connect-tools affordance', async ({
+  test('QA-018 Connect tools opens Claude setup and can restart the terminal afterward', async ({
     captureStderrFor,
   }) => {
     const s = seed('mcp-rewire', {
       consent: true,
-      fakeClaudeOnPath: true,
+      fakeClaudeTui: true,
       claudeJson: { mcpServers: { 'some-other': { command: 'noop' } } },
     });
     track(s.tmpHome, s.projectDir);
-    const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    const app = await launchApp(s, { restrictPath: true, connectionsAvailable: true });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
 
     await expect(readinessBanner(page)).toHaveCount(0);
+    const initialSessions = await page.evaluate(() => window.okDesktop?.terminal.list());
+    expect(initialSessions).toHaveLength(1);
 
     await page.evaluate(() => {
       window.dispatchEvent(
@@ -978,7 +981,134 @@ test.describe('Docked terminal — live Electron', () => {
     const banner = readinessBanner(page);
     await expect(banner).toBeVisible({ timeout: 15_000 });
     await expect(banner).toContainText('OpenKnowledge tools');
-    await page.getByRole('button', { name: 'Connect tools' }).click({ trial: true });
+    await page.getByRole('button', { name: 'Connect tools' }).click();
+    const setup = page.getByRole('dialog', { name: 'Claude', exact: true });
+    await expect(setup).toContainText('Choose what OpenKnowledge sets up for Claude.');
+    await expect(page.getByText('Welcome to OpenKnowledge', { exact: true })).toHaveCount(0);
+    await setup.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(banner).toBeVisible();
+
+    await page.getByRole('button', { name: 'Connect tools' }).click();
+    await setup.getByRole('checkbox', { name: 'Global MCP server', exact: true }).uncheck();
+    await setup
+      .getByRole('checkbox', { name: 'OpenKnowledge discovery skill', exact: true })
+      .uncheck();
+    await setup.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(setup).toHaveCount(0);
+    await expect(banner).toHaveCount(0);
+    const restartNotice = page.getByTestId('terminal-restart-banner');
+    await expect(restartNotice).toContainText(
+      'Restart this terminal session to use the newly installed OpenKnowledge tools.',
+    );
+    const beforeRestart = await page.evaluate(() => window.okDesktop?.terminal.list());
+    expect(beforeRestart).toHaveLength(2);
+    const terminalOutput = page
+      .getByRole('region', { name: 'Terminal', exact: true })
+      .locator('.xterm-accessibility');
+    await expect(terminalOutput).toContainText('FAKE_CLAUDE_TUI_READY');
+    await restartNotice.getByRole('button', { name: 'Restart terminal' }).click();
+    await expect(restartNotice).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const sessions = await page.evaluate(() => window.okDesktop?.terminal.list());
+        return sessions?.filter(
+          (session) => !beforeRestart?.some((old) => old.ptyId === session.ptyId),
+        ).length;
+      })
+      .toBe(1);
+    const afterRestart = await page.evaluate(() => window.okDesktop?.terminal.list());
+    expect(afterRestart).toHaveLength(2);
+    expect(afterRestart).toEqual(expect.arrayContaining(initialSessions ?? []));
+    await expect(terminalOutput).toContainText('FAKE_CLAUDE_TUI_READY');
+    await expect(banner).toHaveCount(0);
+    expect(
+      JSON.parse(readFileSync(join(s.projectDir, '.mcp.json'), 'utf8')).mcpServers[
+        'open-knowledge'
+      ],
+    ).toBeDefined();
+    expect(existsSync(join(s.projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+      true,
+    );
+  });
+
+  test('Settings installation prompts both running Claude terminals to restart', async ({
+    captureStderrFor,
+  }) => {
+    const s = seed('settings-agent-tools', {
+      consent: true,
+      fakeClaudeTui: true,
+      claudeJson: { mcpServers: { 'some-other': { command: 'noop' } } },
+    });
+    track(s.tmpHome, s.projectDir);
+    const app = await launchApp(s, { restrictPath: true, connectionsAvailable: true });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await openTerminal(app, page);
+    await waitForStatus(page, 'running', 25_000);
+    for (let index = 0; index < 2; index += 1) {
+      await page.evaluate(() => {
+        window.dispatchEvent(
+          new CustomEvent('open-knowledge:terminal-launch', {
+            detail: { prompt: '', cli: 'claude', stage: false },
+          }),
+        );
+      });
+      await expect(
+        page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab'),
+      ).toHaveCount(index + 2);
+      await expect(readinessBanner(page)).toBeVisible({ timeout: 15_000 });
+    }
+    const sessionsBefore = await page.evaluate(() => window.okDesktop?.terminal.list());
+    expect(sessionsBefore).toHaveLength(3);
+    await page.evaluate(() => {
+      window.location.hash = '#settings/agent-connections';
+    });
+    await page
+      .getByTestId('configure-agents-terminal-row-claude')
+      .getByRole('button', { name: 'Add MCP & skill for Claude CLI', exact: true })
+      .click();
+    const setup = page.getByRole('dialog', { name: 'Claude', exact: true });
+    await expect(setup).toContainText('Choose what OpenKnowledge sets up for Claude.');
+    await setup.getByRole('checkbox', { name: 'Project MCP server', exact: true }).check();
+    await setup.getByRole('checkbox', { name: 'Project skill', exact: true }).check();
+    await setup.getByRole('checkbox', { name: 'Global MCP server', exact: true }).uncheck();
+    await setup
+      .getByRole('checkbox', { name: 'OpenKnowledge discovery skill', exact: true })
+      .uncheck();
+    await setup.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await expect(setup).toHaveCount(0);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    const restart = page.getByRole('tabpanel').getByTestId('terminal-restart-banner');
+    await expect(restart).toBeVisible();
+    await expect(readinessBanner(page)).toHaveCount(0);
+    const tabs = page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab');
+    await tabs.nth(1).click();
+    await expect(restart).toBeVisible();
+    await expect(readinessBanner(page)).toHaveCount(0);
+    expect(await page.evaluate(() => window.okDesktop?.terminal.list())).toEqual(sessionsBefore);
+    await restart.getByRole('button', { name: 'Restart terminal', exact: true }).click();
+    await expect(restart).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const sessions = await page.evaluate(() => window.okDesktop?.terminal.list());
+        return sessions?.filter(
+          (session) => !sessionsBefore?.some((old) => old.ptyId === session.ptyId),
+        ).length;
+      })
+      .toBe(1);
+    await expect(readinessBanner(page)).toHaveCount(0);
+    await tabs.nth(2).click();
+    await expect(restart).toBeVisible();
+    await expect(readinessBanner(page)).toHaveCount(0);
+    expect(existsSync(join(s.projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'))).toBe(
+      true,
+    );
+    expect(
+      JSON.parse(readFileSync(join(s.projectDir, '.mcp.json'), 'utf8')).mcpServers[
+        'open-knowledge'
+      ],
+    ).toBeDefined();
   });
 
   test('a renderer reload preserves the open terminal and its live session', async ({
@@ -987,7 +1117,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('reload-survival', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
     await waitForStatus(page, 'running', 25_000);
@@ -1019,7 +1149,7 @@ test.describe('Docked terminal — live Electron', () => {
     const s = seed('stage', { consent: true, fakeClaudeTui: true, skipRestoreState: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await page.evaluate(() => {

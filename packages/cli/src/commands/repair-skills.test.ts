@@ -8,6 +8,7 @@ import { EDITOR_TARGETS } from './editors.ts';
 import {
   __testing,
   type RepairSkillsDeps,
+  type RepairSkillsFsOps,
   type RepairSkillsLogEvent,
   type RepairSkillsResult,
   repairSkills,
@@ -173,7 +174,7 @@ describe('repairSkills — project sweep (AC-A1, AC-A2, AC-A3)', () => {
     writeFileSync(join(scratch.project, '.cursor', 'mcp.json'), OK_WIRED_MCP_JSON);
 
     const realFs = await import('node:fs');
-    const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
+    const customFs: RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
       isDirectory: (p) => {
         try {
@@ -654,7 +655,7 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     mkdirSync(join(scratch.home, '.agents'), { recursive: true });
     const realFs = await import('node:fs');
-    const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
+    const customFs: RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
       isDirectory: (p) => {
         try {
@@ -844,7 +845,7 @@ describe('repairSkills — user sweep version gate (AC-B1, AC-B2, AC-B3, AC-B4)'
 
   it('does NOT advance the version when every per-host AND central write failed', async () => {
     const realFs = await import('node:fs');
-    const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
+    const customFs: RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
       isDirectory: (p) => {
         try {
@@ -1132,7 +1133,7 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
   it('emits no failure when no user-skill host exists', async () => {
     const realFs = await import('node:fs');
     const presentPaths = new Set<string>();
-    const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
+    const customFs: RepairSkillsFsOps = {
       existsSync: (p) => presentPaths.has(p),
       isDirectory: (p) => {
         try {
@@ -1175,7 +1176,7 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     mkdirSync(join(scratch.home, '.cursor'), { recursive: true });
     const realFs = await import('node:fs');
-    const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
+    const customFs: RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
       isDirectory: (p) => {
         try {
@@ -1224,7 +1225,7 @@ describe('repairSkills — JSONL telemetry parity with Desktop', () => {
     mkdirSync(join(scratch.home, '.claude'), { recursive: true });
     const realFs = await import('node:fs');
     const failingBundleDir = 'open-knowledge-write-skill';
-    const customFs: import('./repair-skills.ts').RepairSkillsFsOps = {
+    const customFs: RepairSkillsFsOps = {
       existsSync: (p) => realFs.existsSync(p),
       isDirectory: (p) => {
         try {

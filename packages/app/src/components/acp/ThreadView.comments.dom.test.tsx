@@ -31,6 +31,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     resumeThread,
   }),
   ThreadResumeError: class ThreadResumeError extends Error {},
+  ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
   useAgentThread: () => ({ info: undefined, events: [], lastSeq: 5 }),
   useAgentThreadModel: () => model,
 }));
@@ -114,6 +115,7 @@ vi.doMock('@/comments/store', () => ({
 }));
 
 const { ThreadView } = await import('./ThreadView');
+const { subscribeStagedThreadDraft } = await import('@/lib/acp/thread-draft-staging');
 
 let model: ThreadRenderModel | null = null;
 
@@ -270,6 +272,10 @@ describe('ThreadView queued-comment chip', () => {
   test('a failed resume never hands the composed batch to the new-thread fallback', async () => {
     const user = userEvent.setup();
     render(<ThreadView info={makeInfo({ archived: true })} />);
+    let staged: string | null = null;
+    const stopStaging = subscribeStagedThreadDraft('new', (text) => {
+      staged = text;
+    });
 
     const field = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
     await user.click(field);
@@ -281,7 +287,8 @@ describe('ThreadView queued-comment chip', () => {
     await user.click(await screen.findByTestId('agent-thread-resume-fallback-new'));
 
     const started = createThread.mock.calls[0]?.[0];
-    expect(started?.prompt).toBe('look at these');
-    expect(started?.prompt).not.toContain('tighten this');
+    expect(started?.prompt).toBeUndefined();
+    await waitFor(() => expect(staged).toBe('look at these'));
+    stopStaging();
   });
 });

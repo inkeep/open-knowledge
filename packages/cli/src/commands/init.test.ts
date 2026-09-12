@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -135,6 +136,18 @@ describe('runInit', () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
+  it('drains the retired project-skill block from an existing .gitignore, keeping user lines', async () => {
+    writeFileSync(
+      join(testDir, '.gitignore'),
+      'node_modules/\n.claude/skills/open-knowledge/\n.cursor/skills/open-knowledge/\n',
+      'utf-8',
+    );
+
+    await runInitForTest({ mcp: false });
+
+    expect(readFileSync(join(testDir, '.gitignore'), 'utf-8')).toBe('node_modules/\n');
+  });
+
   it('scaffolds .ok/ and writes a fresh global Claude config', async () => {
     const result = await runInitForTest();
 
@@ -224,7 +237,7 @@ describe('runInit', () => {
     expect(config.mcpServers['open-knowledge']).toEqual(PUBLISHED_CHAIN_ENTRY);
   });
 
-  it('preserves user-added fields while updating the managed launcher', async () => {
+  it('keeps user-added fields but drops env while updating the managed launcher', async () => {
     writeFileSync(
       claudeConfigPath(),
       JSON.stringify(
@@ -251,7 +264,6 @@ describe('runInit', () => {
     expect(config.mcpServers['open-knowledge']).toEqual({
       ...PUBLISHED_CHAIN_ENTRY,
       cwd: testDir,
-      env: { OK_MODE: 'local' },
     });
   });
 
@@ -278,10 +290,7 @@ describe('runInit', () => {
     expect(result.editors[0].action).toBe('overwritten');
 
     const config = JSON.parse(readFileSync(claudeConfigPath(), 'utf-8'));
-    expect(config.mcpServers['open-knowledge']).toEqual({
-      command: expectedDevMcpEntry().command,
-      args: expectedDevMcpEntry().args,
-    });
+    expect(config.mcpServers['open-knowledge']).toEqual(expectedDevMcpEntry());
   });
 
   it('does not touch ~/.claude.json when --no-mcp is passed', async () => {
@@ -320,10 +329,58 @@ describe('runInit', () => {
     expect(readFileSync(claudeConfigPath(), 'utf-8')).toBe(original);
 
     const output = formatInitResult(result, testDir);
-    expect(output).toContain('left unchanged (config not readable)');
+    expect(output).toContain('left unchanged (config could not be parsed)');
 
     expect(existsSync(join(testDir, OK_DIR, 'config.yml'))).toBe(true);
   });
+
+  it.each(['claude', 'codex', 'hermes'] as const)(
+    'reports a %s config directory without changing its contents',
+    async (editorId) => {
+      const configPath = EDITOR_TARGETS[editorId].configPath(testDir, fakeHome);
+      mkdirSync(configPath, { recursive: true });
+      const childPath = join(configPath, 'keep.txt');
+      writeFileSync(childPath, 'keep this file');
+
+      const result = await runInitForTest({ editors: [editorId] });
+
+      expect(result.editors).toMatchObject([
+        { editorId, action: 'declined', declineReason: 'not-a-file' },
+      ]);
+      expect(formatInitResult(result, testDir)).toContain(
+        'left unchanged (config path is not a regular file)',
+      );
+      expect(lstatSync(configPath).isDirectory()).toBe(true);
+      expect(readFileSync(childPath, 'utf-8')).toBe('keep this file');
+    },
+  );
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0).each([
+    ['claude', '{"mcpServers":{}}\n'],
+    ['codex', '[mcp_servers]\n'],
+    ['hermes', 'mcp_servers: {}\n'],
+  ] as const)(
+    'reports unreadable %s config permissions without changing its bytes',
+    async (editorId, raw) => {
+      const configPath = EDITOR_TARGETS[editorId].configPath(testDir, fakeHome);
+      mkdirSync(dirname(configPath), { recursive: true });
+      writeFileSync(configPath, raw);
+      chmodSync(configPath, 0o000);
+      try {
+        const result = await runInitForTest({ editors: [editorId] });
+
+        expect(result.editors).toMatchObject([
+          { editorId, action: 'declined', declineReason: 'permission-denied' },
+        ]);
+        expect(formatInitResult(result, testDir)).toContain(
+          'left unchanged (permission denied; check file and parent-directory permissions)',
+        );
+      } finally {
+        chmodSync(configPath, 0o600);
+      }
+      expect(readFileSync(configPath, 'utf-8')).toBe(raw);
+    },
+  );
 
   describe('Cursor', () => {
     it('writes ~/.cursor/mcp.json with mcpServers key', async () => {
@@ -1173,7 +1230,7 @@ describe('runInit', () => {
       expect(output).toContain(`Seeded .gitignore at ${testDir}/.gitignore (.DS_Store)`);
     });
 
-    it('pre-existing .git/ → preserves a hand-authored .gitignore but appends the always-excluded project-skill block', async () => {
+    it('pre-existing .git/ → leaves a hand-authored .gitignore completely alone', async () => {
       mkdirSync(join(testDir, '.git'));
       writeFileSync(join(testDir, '.git/HEAD'), 'ref: refs/heads/main\n');
       const original = '# user-authored\nnode_modules/\n';
@@ -1185,13 +1242,10 @@ describe('runInit', () => {
       expect(result.rootGitignoreCreated).toBe(false);
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
-      const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-      expect(after.startsWith(original)).toBe(true);
-      expect(after).toContain('.claude/skills/open-knowledge/');
-      expect(after).toContain('.pi/skills/open-knowledge/');
+      expect(readFileSync(join(testDir, '.gitignore'), 'utf-8')).toBe(original);
     });
 
-    it('fresh tmpdir WITH a pre-existing .gitignore → .DS_Store seed skipped, project-skill block appended', async () => {
+    it('fresh tmpdir WITH a pre-existing .gitignore → .DS_Store seed skipped, file untouched', async () => {
       const original = 'secrets.env\n';
       writeFileSync(join(testDir, '.gitignore'), original, 'utf-8');
 
@@ -1199,9 +1253,7 @@ describe('runInit', () => {
 
       expect(result.didGitInit).toBe(true);
       expect(result.rootGitignoreCreated).toBe(false);
-      const after = readFileSync(join(testDir, '.gitignore'), 'utf-8');
-      expect(after.startsWith(original)).toBe(true);
-      expect(after).toContain('.claude/skills/open-knowledge/');
+      expect(readFileSync(join(testDir, '.gitignore'), 'utf-8')).toBe(original);
       const output = formatInitResult(result, testDir);
       expect(output).not.toContain('Seeded .gitignore');
     });
@@ -1325,7 +1377,7 @@ describe('runInit', () => {
         join(fakeHome, '.copilot', 'mcp-config.json'),
         JSON.stringify({
           mcpServers: {
-            'open-knowledge': { command: 'custom-ok', args: ['mcp'] },
+            'open-knowledge': { ...PUBLISHED_CHAIN_ENTRY, cwd: testDir },
           },
         }),
       );
@@ -2191,10 +2243,9 @@ describe('detectInstalledEditors', () => {
     expect(detectInstalledEditors(testDir, fakeHome)).not.toContain('copilot');
   });
 
-  it('detects Claude Desktop when its config directory exists', async () => {
+  it('never detects Claude Desktop, even with its config directory present', async () => {
     mkdirSync(dirname(resolveClaudeDesktopConfigPath({ home: fakeHome })), { recursive: true });
-    const detected = detectInstalledEditors(testDir, fakeHome);
-    expect(detected).toContain('claude-desktop');
+    expect(detectInstalledEditors(testDir, fakeHome)).not.toContain('claude-desktop');
   });
 
   it('does NOT detect Claude Desktop when its config dir is absent', async () => {
@@ -2215,8 +2266,10 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(lmStudioConfigPath()), { recursive: true });
     mkdirSync(join(fakeHome, '.hermes'), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
-    expect(detected).toEqual(expect.arrayContaining([...ALL_EDITOR_IDS]));
-    expect(detected).toHaveLength(ALL_EDITOR_IDS.length);
+    const expected = ALL_EDITOR_IDS.filter((id) => id !== 'claude-desktop');
+    expect(detected).toEqual(expect.arrayContaining([...expected]));
+    expect(detected).toHaveLength(expected.length);
+    expect(detected).not.toContain('claude-desktop');
   });
 
   it('detects Pi via ~/.pi/agent (not the bare ~/.pi dotdir)', async () => {
@@ -2232,7 +2285,7 @@ describe('detectInstalledEditors', () => {
     mkdirSync(dirname(cursorConfigPath()), { recursive: true });
     mkdirSync(dirname(codexConfigPath()), { recursive: true });
     const detected = detectInstalledEditors(testDir, fakeHome);
-    expect(detected).toEqual(['claude', 'claude-desktop', 'cursor', 'codex']);
+    expect(detected).toEqual(['claude', 'cursor', 'codex']);
   });
 
   it('returns empty list when the cwd itself does not exist (zero-detected edge case)', () => {
@@ -2599,6 +2652,26 @@ describe('classifyExistingMcpEntry', () => {
       kind: 'absent',
     });
   });
+
+  it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'reports an unreadable file as permission denied rather than malformed JSON',
+    () => {
+      const path = resolveCursorConfigPath({ home: fakeHome });
+      mkdirSync(dirname(path), { recursive: true });
+      const raw = '{"mcpServers":{}}';
+      writeFileSync(path, raw);
+      chmodSync(path, 0o000);
+      try {
+        expect(classifyExistingMcpEntry(EDITOR_TARGETS.cursor, '', fakeHome)).toEqual({
+          kind: 'decline',
+          reason: 'permission-denied',
+        });
+      } finally {
+        chmodSync(path, 0o600);
+      }
+      expect(readFileSync(path, 'utf8')).toBe(raw);
+    },
+  );
 
   it('absent when configPath throws (platform-mismatched target)', () => {
     Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
@@ -3014,7 +3087,7 @@ describe('runInit — sharing mode', () => {
     expect(result.sharing.kind).toBe('refused-tracked');
     if (result.sharing.kind !== 'refused-tracked') throw new Error('expected refused-tracked');
     expect(result.sharing.tracked).toContain('.mcp.json');
-    expect(result.sharing.remediation).toContain('git rm --cached .mcp.json');
+    expect(result.sharing.remediation).toContain('git rm --cached -- .mcp.json');
     expect(existsSync(join(testDir, '.mcp.json'))).toBe(true);
   });
 

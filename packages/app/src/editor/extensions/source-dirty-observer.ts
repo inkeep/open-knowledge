@@ -30,7 +30,7 @@ export const SourceDirtyObserver = Extension.create({
             const oldPos = invertedMapping.map(pos);
             const oldNode = oldState.doc.nodeAt(oldPos);
 
-            const isFreshInsert = !oldNode || oldNode.type.name !== 'jsxComponent';
+            const isFreshInsert = oldNode?.type.name !== 'jsxComponent';
             const hasAuthoritativeSource =
               typeof node.attrs.sourceRaw === 'string' && node.attrs.sourceRaw.length > 0;
             if (isFreshInsert && hasAuthoritativeSource) {

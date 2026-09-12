@@ -93,12 +93,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Best-effort staging of the 8-target native-config prebuilt set
-      # (mirrors release.yml's step in spirit, but always degrades instead
-      # of failing: these are QA artifacts, not published releases, and the
-      # smol-toml fallback keeps the CLI functional without the addon —
-      # only the Codex TOML write degrades to a decline). The host `napi
-      # build` below still produces the linux-x64 binary either way.
       - name: Stage native-config prebuilt binaries (best-effort)
         env:
           GH_TOKEN: ${{ github.token }}
@@ -107,11 +101,11 @@ jobs:
           run_id=$(gh run list --workflow=native-config-prebuild.yml --branch main --event push \
             --status success --limit 1 --json databaseId --jq '.[0].databaseId // empty' 2>/dev/null || true)
           if [ -z "$run_id" ]; then
-            echo "::warning::no successful native-config-prebuild run found; win/arm64 targets ship without the toml_edit addon (smol-toml fallback)"
+            echo "::warning::no successful native-config-prebuild run found; Windows cleanup requires the native addon; QA artifacts may lack it"
             exit 0
           fi
           if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then
-            echo "::warning::could not download native-config-bindings-all from run $run_id; continuing with host binary only"
+            echo "::warning::could not download native-config-bindings-all from run $run_id; Windows cleanup requires the native addon; QA artifacts may lack it"
             exit 0
           fi
           find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;

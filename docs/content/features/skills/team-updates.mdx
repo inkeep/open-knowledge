@@ -1,0 +1,24 @@
+---
+title: Keep team skills current
+description: How a change to a team skill reaches everyone, and what happens to one somebody adapted.
+---
+
+Every skill installed from a repository remembers where it came from. Nothing is rewritten without the person's say-so: a skill runs instructions inside their agent, so following a source is an explicit choice, made per skill.
+
+<Snippet file="skill-update-states.mdx" />
+
+A source group's menu also offers **Update all from this source**, with a result per skill.
+
+## Rolling out a change
+
+1. Edit the skill in the repository, review it, push.
+2. Anyone with **Auto-update** on gets it on their next run.
+3. Everyone else sees **Update from source** and applies it when ready.
+
+No version to bump, no release to cut. The repository's history is the skill's history.
+
+## When someone adapts a skill
+
+Editing an installed skill pauses its automatic updates, so their change is not overwritten. It shows as **Modified**, and **Revert** puts them back on yours whenever they want.
+
+If several people make the same edit, fold it into the repository so nobody has to make it again.

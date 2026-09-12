@@ -9,7 +9,7 @@ import { markerFor } from '../lib/doc-markers.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_TARGET = 'http://localhost:5173';
-const DEFAULT_DOC = 'PROJECT';
+const DEFAULT_DOC = 'perf-fixtures/big-doc';
 const DEFAULT_CYCLES = 10;
 const DEFAULT_TOP_N = 20;
 const DEFAULT_OUT_DIR = resolve(

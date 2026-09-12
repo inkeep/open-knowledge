@@ -10,6 +10,7 @@ import {
   INERT_SEND_SPAN,
 } from '@/lib/bug-report-send-otel';
 import { zipBasename } from '@/lib/bug-report-support';
+import { type ContactEmailStore, contactEmailStore } from '@/lib/contact-email-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 
 export type BugReportSendBridge = Pick<OkDesktopBridge['bugReport'], 'send'>;
@@ -50,6 +51,8 @@ export type BugReportSendRequest =
       readonly report: CreatedBugReport;
       readonly note?: string;
       readonly includeScreenshot: boolean;
+      readonly includeAttachments?: boolean;
+      readonly email?: string;
     }
   | { readonly kind: 'history-row'; readonly row: OkBugReportListRow };
 
@@ -66,11 +69,16 @@ interface SendInput {
   readonly zipSizeBytes: number;
   readonly metadata: OkBugReportSendMetadata;
   readonly includeScreenshot?: boolean;
+  readonly includeAttachments?: boolean;
 }
 
-function toSendInput(request: BugReportSendRequest): SendInput {
+function toSendInput(
+  request: BugReportSendRequest,
+  store: ContactEmailStore = contactEmailStore,
+): SendInput {
   if (request.kind === 'history-row') {
     const { row } = request;
+    const remembered = store.getSnapshot().email;
     return {
       zipPath: row.zipPath,
       zipSizeBytes: row.zipBytes,
@@ -79,10 +87,11 @@ function toSendInput(request: BugReportSendRequest): SendInput {
         systemWide: row.systemWide,
         projectSlug: row.projectSlug,
         ...(row.note !== undefined ? { note: row.note } : {}),
+        ...(remembered !== null ? { email: remembered } : {}),
       },
     };
   }
-  const { report, note, includeScreenshot } = request;
+  const { report, note, includeScreenshot, includeAttachments, email } = request;
   return {
     zipPath: report.zipPath,
     zipSizeBytes: report.zipSizeBytes,
@@ -91,8 +100,10 @@ function toSendInput(request: BugReportSendRequest): SendInput {
       systemWide: report.summary.systemWide,
       projectSlug: report.summary.projectSlug,
       note,
+      ...(email !== undefined ? { email } : {}),
     },
     includeScreenshot,
+    ...(includeAttachments !== undefined ? { includeAttachments } : {}),
   };
 }
 
@@ -109,6 +120,7 @@ interface OperationRecord {
 
 export function createBugReportSendManager(
   getBridge: () => BugReportSendBridge | undefined,
+  emailStore: ContactEmailStore = contactEmailStore,
 ): BugReportSendManager {
   const records = new Map<string, OperationRecord>();
   const listeners = new Set<() => void>();
@@ -240,6 +252,9 @@ export function createBugReportSendManager(
         ...(input.includeScreenshot !== undefined
           ? { includeScreenshot: input.includeScreenshot }
           : {}),
+        ...(input.includeAttachments !== undefined
+          ? { includeAttachments: input.includeAttachments }
+          : {}),
         ...(traceparent === undefined ? {} : { traceparent }),
       });
       settleFromResult(record, result);
@@ -251,7 +266,7 @@ export function createBugReportSendManager(
 
   return {
     startBugReportSend(request): BugReportSendOperation {
-      const input = toSendInput(request);
+      const input = toSendInput(request, emailStore);
       const operationId = zipBasename(input.zipPath);
       const existing = records.get(operationId);
 

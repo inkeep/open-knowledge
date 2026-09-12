@@ -11,8 +11,7 @@ export interface AnchorSegment {
   threadId: string | null;
 }
 
-export const COMMENT_HUE = 'var(--ok-comment-hue,37,99,235)';
-const HUE = COMMENT_HUE;
+const COMMENT_HUE = 'var(--ok-comment-hue, rgb(37 99 235))';
 
 const RESTING = { fill: 0.22, line: 0.7 };
 
@@ -20,15 +19,18 @@ const ACTIVE = { fill: 0.45, line: 1 };
 
 export const COMMENT_ACTIVE_FILL = 0.45;
 
+export function commentColor(alpha: number): string {
+  return `color-mix(in srgb,${COMMENT_HUE} ${alpha * 100}%,transparent)`;
+}
+
 function style(anchor: PlacedAnchor, active: boolean): string {
-  const hue = HUE;
   const { fill, line } = active ? ACTIVE : RESTING;
   return [
     'border-radius:2px',
     'padding-bottom:1px',
     ...(anchor.id === null ? [] : ['cursor:pointer']),
-    `background-color:rgba(${hue},${fill})`,
-    `box-shadow:inset 0 -2px 0 rgba(${hue},${line})`,
+    `background-color:${commentColor(fill)}`,
+    `box-shadow:inset 0 -2px 0 ${commentColor(line)}`,
     '',
   ].join(';');
 }

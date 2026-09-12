@@ -6,9 +6,17 @@ export type MapDrivenSpliceFallbackReason =
   | 'parse-error'
   | 'missing-position';
 
+export type MapDrivenSpliceMemoSkipReason =
+  | 'narrowed'
+  | 'empty-children'
+  | 'entry-already-current'
+  | 'position-not-numeric'
+  | 'compose-failed';
+
 export interface ReconciliationMetrics {
   reconcileCount: number;
   conflictCount: number;
+  staleExternalWriteRefused: number;
   batchCount: number;
   upstreamImportCount: number;
   persistenceStoreRemovedDocCount: number;
@@ -39,6 +47,7 @@ export interface ReconciliationMetrics {
   persistenceStalenessDetected: number;
   persistenceStalenessForcedStores: number;
   persistenceStalenessStoodDown: number;
+  persistenceStalenessForceStoreTimeouts: number;
   collabSocketEpipeCount: number;
   collabSocketEconnresetCount: number;
   collabMessageTooLargeCount: number;
@@ -55,15 +64,14 @@ export interface ReconciliationMetrics {
   observerAPathBFiresSuppressed: number;
   mapDrivenSpliceApplied: number;
   mapDrivenSpliceFallback: Partial<Record<MapDrivenSpliceFallbackReason, number>>;
+  mapDrivenSpliceMemoHits: number;
+  mapDrivenSpliceMemoSkips: Partial<Record<MapDrivenSpliceMemoSkipReason, number>>;
   observerAResidualMergeRuns: number;
-  /** Count of Observer A duplication-gate recoveries — a substantive body
-   *  line materialized more times in the fragment than clean Y.Text justified,
-   *  provenance-confirmed as a server-vs-client CRDT double-materialization
-   *  (one copy minted by Observer B under the server's own clientID, another
-   *  by a foreign client), and re-derived from Y.Text before it could persist
-   *  (precedent #38, Y.Text-is-truth). Counter only, incremented once per
-   *  confirmed recovery; the rate-limited `bridge-split-brain-rederive`
-   *  console event under site `duplication-guard` carries the per-doc signal. */
+  /**
+   * Count of Observer A duplication-gate recoveries: a substantive body line materialized more times
+   * in the fragment than clean Y.Text justified, provenance-confirmed as a server-versus-client
+   * double-materialization and re-derived from Y.Text before it could persist (precedent #38).
+   */
   observerADuplicationRederives: number;
   observerADuplicationCheckpointCreated: number;
   observerAApplyLoss: number;
@@ -84,25 +92,18 @@ export interface ReconciliationMetrics {
   managedArtifactReconcileCheckpointCreated: number;
   managedArtifactReconcileDeduped: number;
   reDeriveBackstopTripped: number;
-  /** Y.Text-is-truth contract (precedent #38) — count of Observer A
-   *  settlement checks that detected a drain settling split-brain (Y.Text
-   *  vs serialize(fragment) divergence beyond `normalizeBridge` tolerance)
-   *  and enqueued a same-drain Observer B re-derive, that escaped the
-   *  per-(site, doc) rate-limiter and emitted a structured
-   *  `bridge-split-brain-rederive` event. No organic input produces this
-   *  divergence at HEAD — producers were narrowed to dependency/plugin
-   *  drift — so this firing in production is itself the drift alert: a
-   *  new divergent fallback producer has appeared. Also the operator
-   *  signal for a doc stuck re-deriving its fragment on every edit (the
-   *  divergence is structural and persists by design; the re-derive cost
-   *  recurs per drain). Counter increments only on emit; the companion
-   *  suppressed counter preserves `actual_rate = fires + suppressed`. */
+  /**
+   * Count of Observer A settlement checks that detected a drain settling split-brain beyond
+   * `normalizeBridge` tolerance (precedent #38) and enqueued a same-drain Observer B re-derive.
+   * No organic input produces that divergence at HEAD, so a firing is itself the drift alert.
+   */
   bridgeSplitBrainRederives: number;
   bridgeSplitBrainRederivesSuppressed: number;
   persistenceReconciliationFailures: number;
   externalChangeHandlerErrors: number;
   reconcileOwnFlushSkips: number;
   reconcileInFlightFallthroughs: number;
+  inFlightFlushExpired: number;
   persistenceSanityCheckSerializeFailures: number;
   deferredStoreFailures: number;
   authRenameRedirectCount: number;
@@ -118,6 +119,7 @@ export interface ReconciliationMetrics {
 const counters: ReconciliationMetrics = {
   reconcileCount: 0,
   conflictCount: 0,
+  staleExternalWriteRefused: 0,
   batchCount: 0,
   upstreamImportCount: 0,
   persistenceStoreRemovedDocCount: 0,
@@ -148,6 +150,7 @@ const counters: ReconciliationMetrics = {
   persistenceStalenessDetected: 0,
   persistenceStalenessForcedStores: 0,
   persistenceStalenessStoodDown: 0,
+  persistenceStalenessForceStoreTimeouts: 0,
   collabSocketEpipeCount: 0,
   collabSocketEconnresetCount: 0,
   collabMessageTooLargeCount: 0,
@@ -163,6 +166,8 @@ const counters: ReconciliationMetrics = {
   observerAPathBFires: 0,
   observerAPathBFiresSuppressed: 0,
   mapDrivenSpliceApplied: 0,
+  mapDrivenSpliceMemoHits: 0,
+  mapDrivenSpliceMemoSkips: {},
   mapDrivenSpliceFallback: {},
   observerAResidualMergeRuns: 0,
   observerADuplicationRederives: 0,
@@ -191,6 +196,7 @@ const counters: ReconciliationMetrics = {
   externalChangeHandlerErrors: 0,
   reconcileOwnFlushSkips: 0,
   reconcileInFlightFallthroughs: 0,
+  inFlightFlushExpired: 0,
   persistenceSanityCheckSerializeFailures: 0,
   deferredStoreFailures: 0,
   authRenameRedirectCount: 0,
@@ -209,6 +215,10 @@ export function incrementReconcile(): void {
 
 export function incrementConflict(): void {
   counters.conflictCount++;
+}
+
+export function incrementStaleExternalWriteRefused(): void {
+  counters.staleExternalWriteRefused++;
 }
 
 export function incrementBatch(): void {
@@ -372,6 +382,14 @@ export function incrementReconcileInFlightFallthroughs(): void {
   counters.reconcileInFlightFallthroughs++;
 }
 
+export function incrementInFlightFlushExpired(count: number): void {
+  counters.inFlightFlushExpired += count;
+}
+
+export function incrementPersistenceStalenessForceStoreTimeouts(): void {
+  counters.persistenceStalenessForceStoreTimeouts++;
+}
+
 export function incrementDeferredStoreFailures(): void {
   counters.deferredStoreFailures++;
 }
@@ -430,33 +448,8 @@ export function incrementAgentPresenceMutationError(): void {
 }
 
 /**
- * Classify a collab-socket error. Returns `true` if the error is a
- * known-safe kernel TCP-teardown signal (EPIPE or ECONNRESET) that should
- * be filtered out of logs per precedent #22. As a side effect, increments
- * the corresponding per-code metric counter so operators can see the rate
- * during incident triage.
- *
- * Returns `false` for any other error code — the caller surfaces those
- * via their normal logging path.
- *
- * Contract: callers MUST use this helper rather than re-implementing the
- * `code === 'EPIPE' || code === 'ECONNRESET'` check inline. Centralizing
- * the filter surface prevents future skew (e.g., if ETIMEDOUT or ECONNABORTED
- * become known-safe, the decision flips in one place).
- *
- * Usage shape:
- *
- *   socket.on('error', (err: NodeJS.ErrnoException) => {
- *     if (handleCollabSocketError(err)) return;
- *     log.error({ err }, 'Upgrade socket error');
- *   });
- *
- *   ws.on('error', (err: NodeJS.ErrnoException) => {
- *     if (!handleCollabSocketError(err)) {
- *       log.error({ err }, 'WebSocket error');
- *     }
- *     ws.terminate();
- *   });
+ * Returns `true` if the error is a known-safe kernel TCP-teardown signal (EPIPE or ECONNRESET) that
+ * should be filtered out of logs per precedent #23.
  */
 export function handleCollabSocketError(err: NodeJS.ErrnoException): boolean {
   if (err.code === 'EPIPE' || err.code === 'ECONNRESET') {
@@ -476,12 +469,14 @@ export function getMetrics(): ReconciliationMetrics {
     cc1LastSeq: { ...counters.cc1LastSeq },
     bridgeToleranceApplied: { ...counters.bridgeToleranceApplied },
     mapDrivenSpliceFallback: { ...counters.mapDrivenSpliceFallback },
+    mapDrivenSpliceMemoSkips: { ...counters.mapDrivenSpliceMemoSkips },
   };
 }
 
 export function resetMetrics(): void {
   counters.reconcileCount = 0;
   counters.conflictCount = 0;
+  counters.staleExternalWriteRefused = 0;
   counters.batchCount = 0;
   counters.upstreamImportCount = 0;
   counters.persistenceStoreRemovedDocCount = 0;
@@ -512,6 +507,7 @@ export function resetMetrics(): void {
   counters.persistenceStalenessDetected = 0;
   counters.persistenceStalenessForcedStores = 0;
   counters.persistenceStalenessStoodDown = 0;
+  counters.persistenceStalenessForceStoreTimeouts = 0;
   counters.collabSocketEpipeCount = 0;
   counters.collabSocketEconnresetCount = 0;
   counters.collabMessageTooLargeCount = 0;
@@ -528,6 +524,8 @@ export function resetMetrics(): void {
   counters.observerAPathBFiresSuppressed = 0;
   counters.mapDrivenSpliceApplied = 0;
   counters.mapDrivenSpliceFallback = {};
+  counters.mapDrivenSpliceMemoHits = 0;
+  counters.mapDrivenSpliceMemoSkips = {};
   counters.observerAResidualMergeRuns = 0;
   counters.observerADuplicationRederives = 0;
   counters.observerADuplicationCheckpointCreated = 0;
@@ -555,6 +553,7 @@ export function resetMetrics(): void {
   counters.externalChangeHandlerErrors = 0;
   counters.reconcileOwnFlushSkips = 0;
   counters.reconcileInFlightFallthroughs = 0;
+  counters.inFlightFlushExpired = 0;
   counters.persistenceSanityCheckSerializeFailures = 0;
   counters.deferredStoreFailures = 0;
   counters.authRenameRedirectCount = 0;

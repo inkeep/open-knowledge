@@ -2,11 +2,11 @@ import { markerFor } from '../lib/doc-markers.ts';
 import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer.ts';
 import { defineScenario } from '../lib/scenario.ts';
 
-const TARGET_DOC = process.env.OK_PERF_M2_DOC ?? 'PROJECT';
+const TARGET_DOC = process.env.OK_PERF_M2_DOC ?? 'perf-fixtures/big-doc';
 const MARKER_KEY = process.env.OK_PERF_M2_MARKER_KEY ?? TARGET_DOC;
 const VIEW_COUNT_HINT = process.env.OK_PERF_M2_VIEW_COUNT ?? '';
 const PRIMING_DOC = process.env.OK_PERF_M2_PRIMING ?? 'README';
-const EVICT_DOCS_DEFAULT = ['AGENTS', 'CLAUDE', 'STORIES'];
+const EVICT_DOCS_DEFAULT = ['AGENTS', 'CLAUDE', 'perf-fixtures/medium-doc'];
 const EVICT_DOCS = (process.env.OK_PERF_M2_EVICT_DOCS ?? EVICT_DOCS_DEFAULT.join(','))
   .split(',')
   .map((s) => s.trim())

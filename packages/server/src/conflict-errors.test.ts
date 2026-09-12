@@ -66,7 +66,7 @@ describe('respondDocInConflict — slim RFC 9457 envelope', () => {
     expect(body.title).toBe('Document is in conflict.');
     expect(body.status).toBe(409);
     expect(body.detail).toBe(
-      'The document is in a merge-conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
+      'The document is frozen by a Git or stale external-write conflict. Call conflicts({ kind: "list" }) to identify the kind, then conflicts({ kind: "content" }) + resolve_conflict before retrying.',
     );
 
     expect(body.file).toBe('docs/notes.md');

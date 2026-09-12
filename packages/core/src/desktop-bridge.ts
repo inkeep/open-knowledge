@@ -1,3 +1,5 @@
+import type { ApplyReport } from './agent-registry/apply.ts';
+import type { HostSnapshot } from './agent-registry/snapshot.ts';
 import type { CreateNewBannerKind } from './constants/create-new-banner.ts';
 import type { EditorId } from './constants/editors.ts';
 import type { OkFolderState } from './constants/folder-state.ts';
@@ -10,6 +12,7 @@ import type {
   TerminalCli,
   TerminalLaunchCommand,
   WindowsShellFamily,
+  WindowsShellLaunchFailureReason,
 } from './handoff/terminal-launch.ts';
 import type { HandoffFailureReason, HandoffScope } from './handoff/types.ts';
 import type { LanguagePreference } from './i18n/locales.ts';
@@ -23,6 +26,7 @@ import type {
   OkBugReportScreenshot,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
+  OkImageAttachmentContentType,
   ReportBundleLevel,
 } from './logger-types.ts';
 import type { LintPluginId } from './markdown/lint/types.ts';
@@ -259,6 +263,10 @@ export interface OkUpdateStuckHintInfo {
   readonly downloadUrl: string;
 }
 
+export interface OkUpdateManualCheckInfo {
+  readonly phase: 'started' | 'settled';
+}
+
 export type ShareTarget =
   | { readonly kind: 'doc'; readonly docPath: string }
   | { readonly kind: 'folder'; readonly folderPath: string };
@@ -400,12 +408,6 @@ export type OkIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkIntegrationsStatus };
 
-export type OkProjectIntegrationsFollowUp =
-  | 'approve-once'
-  | 'enable-manually'
-  | 'auto-connect'
-  | 'none';
-
 export interface OkProjectIntegrationsStatus {
   readonly available: boolean;
   readonly hasProject: boolean;
@@ -417,7 +419,6 @@ export interface OkProjectIntegrationsStatus {
     readonly state: OkIntegrationsEditorState;
     readonly configPath: string;
     readonly entryLocator: string;
-    readonly followUp: OkProjectIntegrationsFollowUp;
   }[];
   readonly skill: {
     readonly installed: boolean;
@@ -440,6 +441,29 @@ export type OkProjectIntegrationsSetResult =
   | { readonly ok: true; readonly status: OkProjectIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: OkProjectIntegrationsStatus };
 
+export interface OkAgentIntegrationsIntent {
+  readonly satisfierId: string;
+  readonly desired: 'present' | 'absent';
+}
+
+export interface OkAgentIntegrationsApplyRequest {
+  readonly intents: readonly OkAgentIntegrationsIntent[];
+}
+
+export type OkAgentIntegrationsApplyResult =
+  | {
+      readonly ok: true;
+      readonly report: ApplyReport;
+      readonly snapshot: HostSnapshot;
+    }
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly unavailable?: boolean;
+      readonly report: ApplyReport;
+      readonly snapshot: HostSnapshot;
+    };
+
 export type OkOnboardingWarningKind =
   | 'root'
   | 'home'
@@ -459,6 +483,41 @@ export interface OkOnboardingShowPayload {
   readonly gitRootPromoted: boolean;
   readonly warnings: readonly { readonly kind: OkOnboardingWarningKind }[];
 }
+
+export interface OkDeepLinkPayload {
+  doc: string;
+  kind: 'doc' | 'folder';
+  branch?: string | null;
+  multiCandidate?: boolean;
+  targetMissing?: boolean;
+  repositoryPath?: string;
+  contentRootDepth?: number;
+}
+
+export type OkOnboardingToastPayload =
+  | { readonly kind: 'ancestor-promote'; readonly ancestorPath: string }
+  | { readonly kind: 'git-root-promote'; readonly gitRoot: string; readonly pickedPath: string }
+  | {
+      readonly kind: 'startup-reclaim';
+      readonly mcp:
+        | { readonly status: 'none' }
+        | { readonly status: 'repaired'; readonly editors: readonly string[] }
+        | {
+            readonly status: 'failed';
+            readonly failures: readonly { readonly editor: string; readonly reason?: string }[];
+            readonly repaired?: readonly string[];
+          };
+      readonly path:
+        | { readonly status: 'none' }
+        | { readonly status: 'installed'; readonly summary: string }
+        | { readonly status: 'failed'; readonly summary: string };
+    }
+  | {
+      readonly kind: 'sharing-refused-tracked';
+      readonly tracked: readonly string[];
+      readonly remediation: string;
+    }
+  | { readonly kind: 'sharing-no-git'; readonly requestedMode: 'local-only' };
 
 export interface OkOnboardingConfirmRequest {
   readonly initGit: boolean;
@@ -633,7 +692,7 @@ export interface OkLocalOpRepoEntry {
 
 export type OkLocalOpAuthReposResponse =
   | { ok: true; host: string; repos: OkLocalOpRepoEntry[] }
-  | { ok: false; error: string };
+  | { ok: false; error: string; authenticated?: false };
 
 export type OkEditorActiveTargetSnapshot =
   | { readonly kind: 'doc'; readonly identifier: string }
@@ -691,7 +750,69 @@ export type OkMenuDispatchRequest =
   | { readonly kind: 'menu-action'; readonly action: OkMenuAction }
   | { readonly kind: 'command'; readonly command: OkMenuDispatchCommand }
   | { readonly kind: 'open-recent-project'; readonly path: string }
-  | { readonly kind: 'role'; readonly role: OkMenuDispatchRole };
+  | { readonly kind: 'role'; readonly role: OkMenuDispatchRole }
+  | { readonly kind: 'spelling-languages-query' }
+  | { readonly kind: 'spelling-languages-set'; readonly languages: readonly string[] }
+  | { readonly kind: 'spellcheck-enabled-set'; readonly enabled: boolean };
+
+export type OkSpellingLanguagesSetReason =
+  | 'invalid-request'
+  | 'empty-selection'
+  | 'unsupported-language'
+  | 'engine-error';
+
+export interface OkSpellingLanguagesState {
+  readonly available: readonly string[];
+  readonly selected: readonly string[];
+  readonly defaults: readonly string[];
+}
+
+export type OkSpellingLanguagesQueryResult =
+  | {
+      readonly kind: 'spelling-languages-query';
+      readonly ok: true;
+      readonly state: OkSpellingLanguagesState;
+    }
+  | {
+      readonly kind: 'spelling-languages-query';
+      readonly ok: false;
+      readonly reason: 'engine-error';
+    };
+
+export type OkSpellingLanguagesSetResult =
+  | {
+      readonly kind: 'spelling-languages-set';
+      readonly ok: true;
+      readonly state: OkSpellingLanguagesState;
+    }
+  | {
+      readonly kind: 'spelling-languages-set';
+      readonly ok: false;
+      readonly reason: OkSpellingLanguagesSetReason;
+    };
+
+export type OkSpellcheckEnabledSetResult =
+  | {
+      readonly kind: 'spellcheck-enabled-set';
+      readonly ok: true;
+      readonly enabled: boolean;
+      readonly saved: boolean;
+    }
+  | {
+      readonly kind: 'spellcheck-enabled-set';
+      readonly ok: false;
+      readonly reason: 'engine-error' | 'invalid-request';
+    };
+
+export type OkSpellingDispatchResult =
+  | OkSpellingLanguagesQueryResult
+  | OkSpellingLanguagesSetResult
+  | OkSpellcheckEnabledSetResult;
+
+export type OkMenuUiDispatchRequest = Exclude<
+  OkMenuDispatchRequest,
+  { readonly kind: OkSpellingDispatchResult['kind'] }
+>;
 
 export interface OkMenuRendererSnapshot {
   readonly recentProjects: ReadonlyArray<{ readonly path: string; readonly name: string }>;
@@ -703,12 +824,30 @@ export interface OkMenuRendererSnapshot {
   readonly viewMenuState: OkEditorViewMenuStateSnapshot;
 }
 
+export type OkMenuDispatchResult = OkMenuRendererSnapshot | OkSpellingDispatchResult | undefined;
+
 export interface OkBugReportSendInput {
   zipPath: string;
   metadata: OkBugReportSendMetadata;
   includeScreenshot?: boolean;
+  includeAttachments?: boolean;
   traceparent?: string;
 }
+
+export interface OkBugReportAttachmentInput {
+  contentType: OkImageAttachmentContentType;
+  bytes: Uint8Array;
+}
+
+export interface OkAssetUploadRequest {
+  contentType: OkImageAttachmentContentType;
+  bytes: Uint8Array;
+  filename: string;
+}
+
+export type OkAssetUploadResult =
+  | { assetUrl: string }
+  | { error: 'invalid-request' | 'unconfigured' | 'mint' | 'upload' };
 
 export interface OkSharingStatusResult {
   readonly kind: 'status';
@@ -739,6 +878,7 @@ export type SlidevOpenFailureReason =
   | 'not-available'
   | 'invalid-path'
   | 'spawn-error'
+  | 'port-error'
   | 'exited-early'
   | 'cancelled'
   | 'load-failed'
@@ -770,14 +910,30 @@ export type OkServerRestartOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: 'eperm' | 'other' };
 
+export type OkPtyCreateReason = 'no-project' | 'not-consented';
+
+export function assertNeverPtyCreateReason(value: never): never {
+  throw new Error(`unhandled pty create reason: ${String(value)}`);
+}
+
 export type OkPtyCreateResult =
   | { readonly ok: true; readonly ptyId: string }
-  | { readonly ok: false; readonly reason: 'no-project' | 'not-consented' };
+  | { readonly ok: false; readonly reason: OkPtyCreateReason };
 
 export interface OkPtyListEntry {
   readonly ptyId: string;
   readonly customLabel: string | null;
   readonly ordinal: number | null;
+}
+
+export type OkPtyAdoptReason =
+  | 'unknown-session'
+  | 'not-started'
+  | 'not-consented'
+  | 'host-unavailable';
+
+export function assertNeverPtyAdoptReason(value: never): never {
+  throw new Error(`unhandled pty adopt reason: ${String(value)}`);
 }
 
 export type OkPtyAdoptResult =
@@ -787,19 +943,32 @@ export type OkPtyAdoptResult =
       readonly shellFamily?: WindowsShellFamily;
       readonly shellNoticeReason?: Extract<TerminalShellNoticeReason, 'unsupported-family'>;
     }
-  | { readonly ok: false; readonly reason: 'unknown-session' };
+  | {
+      readonly ok: false;
+      readonly reason: OkPtyAdoptReason;
+    };
 
 export interface OkPtyData {
   readonly ptyId: string;
   readonly data: string;
 }
 
-export interface OkPtyExit {
-  readonly ptyId: string;
-  readonly exitCode: number;
-  readonly signal: number | null;
-  readonly error?: string;
-}
+export type OkPtyExit =
+  | {
+      readonly ptyId: string;
+      readonly neverStarted: true;
+      readonly error?: string;
+      readonly hostExited?: true;
+      readonly launchFailure?: WindowsShellLaunchFailureReason;
+    }
+  | {
+      readonly ptyId: string;
+      readonly neverStarted?: false;
+      readonly exitCode: number;
+      readonly signal: number | null;
+      readonly error?: string;
+      readonly hostExited?: true;
+    };
 
 const TERMINAL_SHELL_NOTICE_REASON_VOCABULARY = [
   'config-unreadable',
@@ -861,9 +1030,8 @@ export type OkPtyNotice =
 
 export interface ClaudeReadiness {
   readonly claude: 'present' | 'not-found' | 'unknown';
-  readonly mcp: 'wired' | 'needs-rewire';
   readonly mcpPreApprovable?: boolean;
-  readonly rewireError?: string;
+  readonly okToolsAutoApprovable?: boolean;
 }
 
 export interface CliReadiness {
@@ -883,17 +1051,8 @@ export interface OkDesktopBridge {
   onWhatsNew(cb: (info: OkWhatsNewInfo) => void): OkUnsubscribe;
   onWhatsNewDismissed(cb: (info: { readonly version: string }) => void): OkUnsubscribe;
   onUpdateStuckHint(cb: (info: OkUpdateStuckHintInfo) => void): OkUnsubscribe;
-  onDeepLink(
-    cb: (evt: {
-      doc: string;
-      kind: 'doc' | 'folder';
-      branch?: string | null;
-      multiCandidate?: boolean;
-      targetMissing?: boolean;
-      repositoryPath?: string;
-      contentRootDepth?: number;
-    }) => void,
-  ): OkUnsubscribe;
+  onUpdateManualCheck(cb: (info: OkUpdateManualCheckInfo) => void): OkUnsubscribe;
+  onDeepLink(cb: (evt: OkDeepLinkPayload) => void): OkUnsubscribe;
   onShareReceived(cb: (payload: OkShareReceivedPayload) => void): OkUnsubscribe;
 
   onServerVersionDrift(cb: (info: OkServerVersionDriftInfo) => void): OkUnsubscribe;
@@ -1046,6 +1205,7 @@ export interface OkDesktopBridge {
       note?: string;
       includeCrashDump?: boolean;
       includeScreenshot?: boolean;
+      attachments?: OkBugReportAttachmentInput[];
     }): Promise<OkBugReportCreateResult>;
     captureScreenshot(): Promise<OkBugReportScreenshot | null>;
     crashDumpAvailability(): Promise<OkBugReportCrashDumpAvailability>;
@@ -1054,6 +1214,10 @@ export interface OkDesktopBridge {
     list(): Promise<OkBugReportListResult>;
     delete(id: string): Promise<OkBugReportDeleteResult>;
     onCrashDetected(cb: (event: OkBugReportCrashDetectedEvent) => void): OkUnsubscribe;
+  };
+
+  assetUpload: {
+    uploadImage(request: OkAssetUploadRequest): Promise<OkAssetUploadResult>;
   };
 
   fs: {
@@ -1126,6 +1290,9 @@ export interface OkDesktopBridge {
 
   spellcheck: {
     toggle(): Promise<boolean>;
+    languages(): Promise<OkSpellingLanguagesQueryResult>;
+    setLanguages(languages: readonly string[]): Promise<OkSpellingLanguagesSetResult>;
+    setEnabled(enabled: boolean): Promise<OkSpellcheckEnabledSetResult>;
   };
 
   integrations: {
@@ -1138,6 +1305,10 @@ export interface OkDesktopBridge {
     setComponent(request: OkProjectIntegrationsSetRequest): Promise<OkProjectIntegrationsSetResult>;
   };
 
+  agentIntegrations: {
+    apply(request: OkAgentIntegrationsApplyRequest): Promise<OkAgentIntegrationsApplyResult>;
+  };
+
   remoteAccess: {
     probePort(port: number): Promise<boolean>;
   };
@@ -1148,34 +1319,7 @@ export interface OkDesktopBridge {
     confirm(request: OkOnboardingConfirmRequest): Promise<OkOnboardingResult>;
     cancel(): Promise<OkOnboardingResult>;
     probeContent(request: OkOnboardingProbeContentRequest): Promise<OkOnboardingProbeContentResult>;
-    onToast(
-      cb: (
-        payload:
-          | { readonly kind: 'ancestor-promote'; readonly ancestorPath: string }
-          | {
-              readonly kind: 'git-root-promote';
-              readonly gitRoot: string;
-              readonly pickedPath: string;
-            }
-          | {
-              readonly kind: 'startup-reclaim';
-              readonly mcp:
-                | { readonly status: 'none' }
-                | { readonly status: 'repaired'; readonly editors: readonly string[] }
-                | { readonly status: 'failed'; readonly editors: readonly string[] };
-              readonly path:
-                | { readonly status: 'none' }
-                | { readonly status: 'installed'; readonly summary: string }
-                | { readonly status: 'failed'; readonly summary: string };
-            }
-          | {
-              readonly kind: 'sharing-refused-tracked';
-              readonly tracked: readonly string[];
-              readonly remediation: string;
-            }
-          | { readonly kind: 'sharing-no-git'; readonly requestedMode: 'local-only' },
-      ) => void,
-    ): OkUnsubscribe;
+    onToast(cb: (payload: OkOnboardingToastPayload) => void): OkUnsubscribe;
   };
 
   localOp: {
@@ -1209,7 +1353,7 @@ export interface OkDesktopBridge {
   };
 
   menu: {
-    dispatch(request: OkMenuDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
+    dispatch(request: OkMenuUiDispatchRequest): Promise<OkMenuRendererSnapshot | undefined>;
   };
 
   startup: {
@@ -1222,17 +1366,20 @@ export interface OkDesktopBridge {
   };
 
   terminal: {
+    // STOP: create only reserves a session; install onData/onExit before start(ptyId) posts the deferred spawn in terminal-manager.ts.
     create(opts: {
       cols: number;
       rows: number;
       launchCommand?: string | TerminalLaunchCommand;
+      launchCli?: TerminalCli;
     }): Promise<OkPtyCreateResult>;
     input(ptyId: string, data: string): void;
     resize(ptyId: string, cols: number, rows: number): void;
     kill(ptyId: string): Promise<void>;
     drain(ptyId: string, bytes: number): void;
     list(): Promise<OkPtyListEntry[]>;
-    adopt(ptyId: string): Promise<OkPtyAdoptResult>;
+    adopt(ptyId: string, opts?: { start?: boolean }): Promise<OkPtyAdoptResult>;
+    start(ptyId: string): Promise<OkPtyAdoptResult>;
     setMeta(ptyId: string, meta: { customLabel?: string | null; ordinal?: number }): void;
     setOrder(orderedPtyIds: readonly string[]): void;
     getDockState(): Promise<OkTerminalDockState>;
@@ -1243,7 +1390,6 @@ export interface OkDesktopBridge {
     claudePreflight(): Promise<ClaudeReadiness>;
     cliPreflight(cli: TerminalCli): Promise<CliReadiness>;
     cliInstalledMap(): Promise<Partial<Record<TerminalCli, boolean>>>;
-    rewireClaudeMcp(): Promise<ClaudeReadiness>;
   };
 
   accessibility?: {

@@ -6,12 +6,7 @@ const RING_BUFFER_LIMIT = 50;
 
 let _effectCounter = 0;
 
-/**
- * Typed origin for effect-capture writes to Y.Map('agent-effects') (precedent #1).
- * `paired: false` because this origin mutates only the agent-effects ring-buffer,
- * not the bridge-coupled Y.Text/Y.XmlFragment pair — server observers must NOT
- * short-circuit on this origin (isPairedWriteOrigin returns false).
- */
+/** Typed origin for effect-capture writes to Y.Map('agent-effects') (precedent #1). */
 const EFFECT_CAPTURE_ORIGIN: LocalTransactionOrigin = Object.freeze({
   source: 'local',
   skipStoreHooks: true,
@@ -27,31 +22,9 @@ export interface EffectValue {
 }
 
 /**
- * Register a one-shot ytext observer that captures the delta of the agent's own
- * write transact into Y.Map('agent-effects'). Must be called BEFORE that
- * transact.
- *
- * The observer is ORIGIN-KEYED, not merely one-shot: it consumes only an event
- * whose `transaction.origin` is `writeOrigin` by identity (the same frozen
- * per-session object `Y.UndoManager` matches on, precedent #24). Origin-blind
- * arming is unsound because non-agent Y.Text writes legitimately land between
- * arming and the agent's transact — the pre-drain flush (`agentWritePreDrain`,
- * under `OBSERVER_SYNC_ORIGIN`) is exactly that, and consuming it would file the
- * USER's un-propagated keystroke as an agent effect while the agent's own write
- * produced no row at all.
- *
- * Returns a disposer the caller runs when the operation ends (a `finally` beside
- * the write). Arming is therefore scoped to the operation: a write that produces
- * no Y.Text delta at all (an empty append `composeAgentWrite` declines) leaves no
- * armed observer behind to consume a LATER same-session write's delta under this
- * call's stale key. Idempotent — the observer disarms itself on capture.
- *
- * @param ytext        The Y.Text('source') instance to observe.
- * @param sessionId    The agent's writer ID (e.g. 'agent-<connectionId>').
- * @param writeOrigin  The transaction origin the agent's write will run under
- *                     (`session.origin`); matched by object identity.
- * @param colorSeed    Color seed for UI rendering (defaults to sessionId).
- * @param agentType    Agent type string for UI aggregation (e.g. 'claude', 'cursor').
+ * The observer is ORIGIN-KEYED, not merely one-shot: it consumes only an event whose
+ * `transaction.origin` is `writeOrigin` by identity (the same frozen per-session object
+ * `Y.UndoManager` matches on, precedent #24).
  */
 export function captureEffect(
   ytext: Y.Text,

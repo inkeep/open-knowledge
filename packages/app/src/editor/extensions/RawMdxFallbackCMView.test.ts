@@ -1,11 +1,7 @@
 /**
- * Nested CodeMirror sync math tests.
- *
- * Tests the `computeChange` function that computes minimal string diffs
- * for PM→CM and CM→PM synchronization, the `shouldEscapeNestedCM` boundary
- * predicate that drives arrow-key escape from nested CM to outer PM, and
- * `computeCMSelectionForwarding` — the PM→CM selection mirror decision
- * (Precedent #31 "Selection state as typed PM PluginState").
+ * Nested CodeMirror sync math: `computeChange`'s minimal diffs, the `shouldEscapeNestedCM`
+ * boundary predicate, and `computeCMSelectionForwarding`, the PM-to-CM selection mirror decision
+ * (precedent #31, selection state as typed PM PluginState).
  */
 
 import { EditorState as CMEditorState } from '@codemirror/state';

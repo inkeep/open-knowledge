@@ -2,11 +2,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import {
   type FrontmatterPatch,
   renderInventoryList,
+  SKILL_AUTHORING_WARNING_CODES,
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
 import { parse as parseYaml } from 'yaml';
 import { z } from 'zod';
+import { formatBrokenLinkSuppressionLine } from '../../broken-link-suppression.ts';
 import { resolveContentDir, resolveLockDir } from '../../config/paths.ts';
 import { mergePatch } from '../../content/frontmatter-merge.ts';
 import type { TemplateFrontmatter } from '../../content/templates-write.ts';
@@ -16,12 +18,14 @@ import {
   formatAdvisoryLines,
   formatBrokenLinkLines,
   parseAdvisoryWarnings,
+  parseBrokenLinkSuppression,
   parseBrokenLinks,
 } from './advisory-warnings.ts';
 import { resolveWithinRoot } from './path-safety.ts';
 import { buildPreviewAttachWarning, resolvePreviewUrl, START_UI_TEXT_HINT } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
+  AUTHORING_WARNING_CODE_GLOSS,
   agentIdentityFields,
   documentResultBaseShape,
   HOCUSPOCUS_NOT_RUNNING_ERROR,
@@ -39,6 +43,8 @@ import {
   summaryArgSchema,
   textPlusStructured,
   textResult,
+  WARNING_CODES_CONTRACT,
+  WARNINGS_FIELD_CONTRACT,
 } from './shared.ts';
 import {
   fetchSkill,
@@ -273,6 +279,7 @@ function composeWritePreviewResult(
   const summaryHint = typeof summaryResult?.hint === 'string' ? summaryResult.hint : undefined;
   const advisoryWarnings = parseAdvisoryWarnings(result.warnings);
   const brokenLinks = parseBrokenLinks(result.brokenLinks);
+  const brokenLinkSuppression = parseBrokenLinkSuppression(result.brokenLinkSuppression);
 
   const lines: string[] = [leadLine];
   if (noPreviewAnywhere && !preview) lines.push(START_UI_TEXT_HINT);
@@ -281,10 +288,12 @@ function composeWritePreviewResult(
     lines.push(...formatAdvisoryLines(advisoryWarnings));
   }
   lines.push(...formatBrokenLinkLines(brokenLinks));
+  if (brokenLinkSuppression) lines.push(formatBrokenLinkSuppressionLine(brokenLinkSuppression));
   const text = lines.join('\n');
   const document: Record<string, unknown> = {
     brokenLinks,
   };
+  if (brokenLinkSuppression) document.brokenLinkSuppression = brokenLinkSuppression;
   if (summaryResult) document.summary = summaryResult;
   if (advisoryWarnings) document.warnings = advisoryWarnings;
   const warning = noPreviewAnywhere ? buildPreviewAttachWarning(preview, autoOpen) : undefined;
@@ -651,7 +660,7 @@ export function register(server: ServerInstance, deps: EditDeps): void {
           .object(documentResultBaseShape)
           .optional()
           .describe(
-            'Document edit result. Always present on a successful document edit (body or frontmatter) — it carries `brokenLinks` (possibly `[]`) plus any `summary`/`warnings`. Absent only for folder/template edits.',
+            'Document edit result. Always present on a successful document edit (body or frontmatter) — it carries `brokenLinks` (possibly `[]`) plus any `brokenLinkSuppression`/`summary`/`warnings`. Read `brokenLinkSuppression` before concluding anything from an empty `brokenLinks`: when it is present, a project policy withheld findings and none of them is yours to repair. Absent only for folder/template edits.',
           ),
         folder: z
           .object({
@@ -675,6 +684,16 @@ export function register(server: ServerInstance, deps: EditDeps): void {
               .boolean()
               .optional()
               .describe('Always false for an edit (the skill already existed).'),
+            warnings: z
+              .array(z.string())
+              .optional()
+              .describe(
+                `Non-fatal authoring warnings for the SKILL.md that was written. ${WARNINGS_FIELD_CONTRACT}`,
+              ),
+            warningCodes: z
+              .array(z.enum(SKILL_AUTHORING_WARNING_CODES))
+              .optional()
+              .describe(`${WARNING_CODES_CONTRACT} ${AUTHORING_WARNING_CODE_GLOSS}`),
             file: z
               .object({
                 path: z.string(),

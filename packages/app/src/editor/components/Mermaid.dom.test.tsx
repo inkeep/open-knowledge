@@ -173,8 +173,6 @@ describe('MermaidView controls', () => {
       onchange: null,
       addEventListener: () => {},
       removeEventListener: () => {},
-      addListener: () => {},
-      removeListener: () => {},
       dispatchEvent: () => false,
     })) as typeof window.matchMedia;
     try {

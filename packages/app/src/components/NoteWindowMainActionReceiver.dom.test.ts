@@ -51,6 +51,7 @@ describe('dispatchNoteWindowMainAction', () => {
         prompt: 'Review',
         docName: 'notes/alpha',
         titleHint: 'Review',
+        attachments: null,
       },
       { prompt: 'Review', cli: 'codex', stage: false },
     ]);

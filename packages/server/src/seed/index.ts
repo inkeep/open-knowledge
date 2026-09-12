@@ -7,18 +7,12 @@ export {
   coercePackId,
   DEFAULT_PACK_ID,
   isKnownPackId,
-  // oxlint-disable-next-line typescript/no-deprecated
-  LOG_MD_TEMPLATE,
   listStarterPacks,
   type PackId,
   resolvePack,
   STARTER_FOLDER_FRONTMATTER_FILENAME,
-  // oxlint-disable-next-line typescript/no-deprecated
-  STARTER_FOLDERS,
   STARTER_PACK_IDS,
   STARTER_PACKS,
-  // oxlint-disable-next-line typescript/no-deprecated
-  STARTER_TEMPLATES,
   type StarterFolder,
   type StarterPack,
   type StarterPackEntryCounts,

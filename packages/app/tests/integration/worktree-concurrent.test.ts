@@ -67,9 +67,8 @@ describe('Two linked worktrees boot in parallel with isolated state (D13)', () =
       expect(existsSync(lockPathB)).toBe(true);
       const lockContentsA = readFileSync(lockPathA, 'utf-8');
       const lockContentsB = readFileSync(lockPathB, 'utf-8');
-      expect(lockContentsA).toContain(String(bootedA.port));
-      expect(lockContentsB).toContain(String(bootedB.port));
-      expect(lockContentsA).not.toContain(String(bootedB.port));
+      expect(JSON.parse(lockContentsA)).toMatchObject({ port: bootedA.port });
+      expect(JSON.parse(lockContentsB)).toMatchObject({ port: bootedB.port });
 
       const refsA = execFileSync(
         'git',

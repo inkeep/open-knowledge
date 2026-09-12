@@ -1,7 +1,12 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { type RawCloneEvent, runCloneSubprocess, validateCloneInputs } from './clone-flow.ts';
+import {
+  type RawCloneEvent,
+  type RunCloneController,
+  runCloneSubprocess,
+  validateCloneInputs,
+} from './clone-flow.ts';
 
 const HOME_PATH = join(homedir(), 'open-knowledge-test-clone');
 
@@ -142,6 +147,68 @@ describe('runCloneSubprocess', () => {
     expect(events[0]).toEqual({ type: 'error', message: 'permission denied' });
   });
 
+  test('CLI-emitted error message is redacted and capped before it reaches the consumer', async () => {
+    const events: RawCloneEvent[] = [];
+    const token = `ghp_${'b'.repeat(36)}`;
+    const ctrl = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        const message = "[auth] Failed to parse auth.yml at line 2:\\n  token: ${token} " + "y".repeat(3000);
+        console.log(JSON.stringify({type:'error', message}));
+      `),
+      url: 'https://github.com/octocat/locked.git',
+      dir: '/tmp/locked',
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('error');
+    if (events[0].type === 'error') {
+      expect(events[0].message).not.toContain(token);
+      expect(events[0].message).toContain('[REDACTED-GH-PAT]');
+      expect(events[0].message.length).toBeLessThanOrEqual(500);
+    }
+  });
+
+  test('CLI-emitted error message that redacts to nothing falls back to "Unknown error"', async () => {
+    const events: RawCloneEvent[] = [];
+    const ctrl = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        console.log(JSON.stringify({type:'error', message:'   \\n  '}));
+      `),
+      url: 'https://github.com/octocat/blank-msg.git',
+      dir: '/tmp/blank-msg',
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events).toEqual([{ type: 'error', message: 'Unknown error' }]);
+  });
+
+  test('a cancel landing after the timeout still reports the timeout', async () => {
+    const events: RawCloneEvent[] = [];
+    const ctrl: RunCloneController = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        process.on('SIGTERM', () => {
+          console.log(JSON.stringify({type:'progress', phase:'terminating', pct:99}));
+          setTimeout(() => process.exit(7), 200);
+        });
+        setInterval(() => {}, 1000);
+      `),
+      url: 'https://github.com/octocat/slow.git',
+      dir: '/tmp/slow',
+      timeoutMs: 800,
+      onEvent: (e) => {
+        events.push(e);
+        if (e.type === 'progress') ctrl.cancel();
+      },
+    });
+    await ctrl.done;
+    const errEvent = events.find((e) => e.type === 'error');
+    expect(errEvent).toBeDefined();
+    if (errEvent?.type === 'error') {
+      expect(errEvent.message).toMatch(/timed out/i);
+    }
+  });
+
   test('progress events with missing fields are dropped', async () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({
@@ -191,7 +258,7 @@ describe('runCloneSubprocess', () => {
     expect(events.map((e) => e.type)).toEqual(['complete']);
   });
 
-  test('cancel SIGTERMs the subprocess', async () => {
+  test('cancel SIGTERMs the subprocess without synthesizing an error event', async () => {
     const events: RawCloneEvent[] = [];
     const ctrl = runCloneSubprocess({
       cliArgs: fixtureCli(`setInterval(() => {}, 1000)`),
@@ -201,8 +268,22 @@ describe('runCloneSubprocess', () => {
     });
     setTimeout(() => ctrl.cancel(), 50);
     await ctrl.done;
-    const errEvent = events.find((e) => e.type === 'error');
-    expect(errEvent).toBeDefined();
+    expect(events).toEqual([]);
+  });
+
+  test('forwards cliEnv through to the spawned CLI', async () => {
+    const events: RawCloneEvent[] = [];
+    const ctrl = runCloneSubprocess({
+      cliArgs: fixtureCli(`
+        console.log(JSON.stringify({type:'complete', dir: process.env.OK_CLONE_ENV_MARKER || 'unset'}));
+      `),
+      cliEnv: { OK_CLONE_ENV_MARKER: '/tmp/marker-from-cli-env' },
+      url: 'https://github.com/octocat/hello.git',
+      dir: '/tmp/cloned-repo',
+      onEvent: (e) => events.push(e),
+    });
+    await ctrl.done;
+    expect(events).toEqual([{ type: 'complete', dir: '/tmp/marker-from-cli-env' }]);
   });
 
   test('handles a chunked stream that splits a JSON line across writes', async () => {

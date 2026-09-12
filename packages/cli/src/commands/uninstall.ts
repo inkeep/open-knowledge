@@ -372,7 +372,10 @@ export async function runUninstall(opts: UninstallOptions = {}): Promise<Uninsta
     }
   }
 
-  const outcome = await runRemoval(plan, opts.deps?.runRemovalDeps);
+  const outcome = await runRemoval(plan, {
+    env: opts.env ?? (opts.home === undefined ? process.env : {}),
+    ...opts.deps?.runRemovalDeps,
+  });
 
   const runFeedbackAfterReport =
     outcome.failed.length === 0

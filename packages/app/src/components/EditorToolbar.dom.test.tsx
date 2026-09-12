@@ -140,15 +140,15 @@ describe('EditorToolbar runtime layout', () => {
     expect(screen.getByRole('radio', { name: 'Markdown source' })).toBeTruthy();
   });
 
-  test.each([
-    'glossary.csv',
-    'settings.json',
-  ])('%s omits the Markdown-only Add properties affordance', async (docName) => {
-    expect(isEditableTextDocFile(docName)).toBe(true);
-    await renderToolbar(docName);
+  test.each(['glossary.csv', 'settings.json'])(
+    '%s omits the Markdown-only Add properties affordance',
+    async (docName) => {
+      expect(isEditableTextDocFile(docName)).toBe(true);
+      await renderToolbar(docName);
 
-    expect(screen.queryByRole('button', { name: /add properties/i })).toBeNull();
-  });
+      expect(screen.queryByRole('button', { name: /add properties/i })).toBeNull();
+    },
+  );
 
   test('keeps Add properties available while the document name is loading', async () => {
     await renderToolbar(null);

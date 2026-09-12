@@ -21,6 +21,7 @@ import {
   type WorkspaceSearchRanking,
   type WorkspaceSearchScope,
 } from '@inkeep/open-knowledge-core';
+import { skillFolderStateForWire } from '@inkeep/open-knowledge-core/skill-folder-state';
 import { z } from 'zod';
 import { isActivatedSkillRoot, knownSkillRootsFor } from '../in-place-skills.ts';
 import { guardedFetch } from '../link-preview/guarded-fetch.ts';
@@ -357,7 +358,7 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
                 ? scanSkillFolderStates(contentDir, knownSkillRootsFor(contentDir, 'project'))
                     .filter((f) => isActivatedSkillRoot(contentDir, 'project', f.root, skillsHome))
                     .map((f) => ({
-                      ...f,
+                      ...skillFolderStateForWire(f),
                       scope: 'project' as const,
                       ...withDrift(contentDir, f),
                     }))
@@ -365,7 +366,7 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
               ...scanSkillFolderStates(skillsHome, knownSkillRootsFor(skillsHome, 'global'))
                 .filter((f) => isActivatedSkillRoot(skillsHome, 'global', f.root, skillsHome))
                 .map((f) => ({
-                  ...f,
+                  ...skillFolderStateForWire(f),
                   scope: 'global' as const,
                   ...withDrift(skillsHome, f),
                 })),

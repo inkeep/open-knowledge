@@ -13,6 +13,7 @@ import {
   composeWindowsShellLaunchArgs,
   encodePowerShellCommand,
   isWindowsShellFamily,
+  isWindowsShellLaunchFailureReason,
   launchWithoutSupportFile,
   OK_GATED_TOOL_NAMES,
   psQuoteArg,
@@ -23,6 +24,7 @@ import {
   TERMINAL_CLI_IDS,
   TERMINAL_CLIS,
   WINDOWS_SHELL_FAMILIES,
+  WindowsShellLaunchError,
 } from './terminal-launch.ts';
 
 const CLAUDE_PREAPPROVE = `--settings '{"enabledMcpjsonServers":["${MCP_SERVER_NAME}"]}'`;
@@ -178,7 +180,52 @@ describe('Windows launch composition', () => {
         executable: 'agent.cmd',
         args: ['safe', '" & calc & "'],
       }),
-    ).toThrow(/unsafe batch argument/);
+    ).toThrow(
+      expect.objectContaining({ name: 'WindowsShellLaunchError', reason: 'unsafe-argument' }),
+    );
+  });
+
+  it('reports every compose refusal as a typed reason rather than a display string', () => {
+    const reasons = [
+      [
+        'unsupported-shell',
+        () =>
+          composeWindowsShellLaunchArgs('C:\\Tools\\fish.exe', {
+            executable: 'npm',
+            args: [],
+          }),
+      ],
+      [
+        'invalid-launch',
+        () =>
+          composeWindowsShellLaunchArgs('C:\\Windows\\System32\\cmd.exe', {
+            executable: '',
+            args: [],
+          }),
+      ],
+      [
+        'unsafe-argument',
+        () =>
+          composeWindowsShellLaunchArgs('C:\\Windows\\System32\\cmd.exe', {
+            executable: 'npm',
+            args: ['a b'],
+          }),
+      ],
+    ] as const;
+    for (const [reason, compose] of reasons) {
+      let caught: unknown = null;
+      try {
+        compose();
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBeInstanceOf(WindowsShellLaunchError);
+      expect((caught as WindowsShellLaunchError).reason).toBe(reason);
+      expect(isWindowsShellLaunchFailureReason((caught as WindowsShellLaunchError).reason)).toBe(
+        true,
+      );
+    }
+    expect(isWindowsShellLaunchFailureReason('unsafe batch argument')).toBe(false);
   });
 
   it('base64-transports Git Bash argv across the MSYS parser without interpolation or byte loss', () => {

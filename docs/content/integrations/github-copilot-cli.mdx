@@ -10,11 +10,25 @@ icon: custom/GitHub
 
 <McpInstall editor="GitHub Copilot CLI" />
 
-`ok init` writes the MCP server to `~/.copilot/mcp-config.json`, or to `$COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is set. The configuration is global because Copilot CLI prioritizes global MCP configuration over project configuration.
+`ok init` writes the MCP server to `~/.copilot/mcp-config.json`, or to `$COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is set. That machine-wide file is the one OpenKnowledge manages for Copilot, so it is where the entry goes. Copilot also reads the project `.mcp.json` OpenKnowledge writes for Claude Code, and a project-level definition of the same server takes precedence over the global one.
 
 If the Copilot config directory does not exist yet, launch Copilot CLI once and rerun `ok init` so it can write the MCP configuration.
 
 It also installs the project skill at `.github/skills/open-knowledge/SKILL.md` so Copilot can follow the project's OpenKnowledge workflow.
+
+## Folder trust
+
+The machine-wide entry `ok init` writes to `~/.copilot/mcp-config.json`, or to `$COPILOT_HOME/mcp-config.json` when `COPILOT_HOME` is set, is not affected by folder trust.
+
+The project `.mcp.json` is a different path. Copilot loads project-level MCP servers only after you confirm folder trust on first launch, and skips them silently in untrusted folders, including under `copilot -p`, which cannot show the trust prompt.
+
+When you launch `copilot` in a folder for the first time it asks whether you trust it. Trusting it for the current session is enough to load the project `.mcp.json`; choosing to remember the folder makes the grant permanent, as does adding it to Copilot's trusted directories. See GitHub's [Configuring Copilot CLI](https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/configure-copilot-cli) docs for the trusted-directories setting.
+
+<Callout type="warn">
+  Folder trust is not scoped to MCP: a trusted folder lets Copilot read, modify, and execute files in and below it, and loads that repository's hooks. `ok init` commits `.mcp.json` so the repo is ready for teammates, which means a knowledge base you cloned carries one someone else wrote. Read it before trusting it.
+</Callout>
+
+`GITHUB_COPILOT_PROMPT_MODE_WORKSPACE_MCP=true` overrides the skip, but it is an environment variable, not a per-folder grant: while it is set, `copilot -p` starts project MCP servers declared by any untrusted repository it runs in.
 
 ## Open with AI
 

@@ -7,7 +7,6 @@ import {
   EmptyRequestSchema,
   FrontmatterSchemasListSuccessSchema,
   isFrontmatterSchemaAsset,
-  type LinksValidationSetting,
   LintAuditResponseSchema,
   LintConfigResponseSchema,
   LintDocResultSchema,
@@ -19,6 +18,7 @@ import {
 import type { ContentFilter } from '../content-filter.ts';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
 import { isContainmentRejection } from '../fs-safety.ts';
+import type { LinkAdvisoryPolicy } from '../link-advisory-policy.ts';
 import { AuditSupersededError, auditProject, lintDoc } from '../lint/audit.ts';
 import { AuditCache } from '../lint/audit-cache.ts';
 import { listProjectSchemaFiles, SCHEMA_LIST_CAP } from '../lint/frontmatter-schemas.ts';
@@ -55,7 +55,7 @@ export interface LintRouteDeps {
     maxEntries: number;
   }) => AsyncGenerator<DocumentListEntry, { truncated: boolean }, void>;
   getLinterBaseConfig: (() => LinterConfig) | undefined;
-  getLinksValidationSetting: (() => LinksValidationSetting) | undefined;
+  getLinkAdvisoryPolicy: () => LinkAdvisoryPolicy;
   derivedDocumentIndex: DerivedDocumentIndexApiPort | undefined;
   collectAdmittedDocNames: () => Promise<Set<string>>;
   unmatchedGlobProblems: (effective: LinterConfig) => string[];
@@ -78,7 +78,7 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
     isValidRelativeContentPath,
     streamShowAllEntries,
     getLinterBaseConfig,
-    getLinksValidationSetting,
+    getLinkAdvisoryPolicy,
     derivedDocumentIndex,
     collectAdmittedDocNames,
     unmatchedGlobProblems,
@@ -326,13 +326,14 @@ export function createLintRoutes(deps: LintRouteDeps): LintRoutes {
           target = resolveDocFilePath(contentDir, docParam) ?? `${docParam}.md`;
         }
         const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
+        const linkPolicy = getLinkAdvisoryPolicy();
         const validators = createProjectValidators({
           projectDir: projectDir ?? contentDir,
           contentDir,
           baseConfig,
           liveSourceFor: liveLintSourceFor,
           derivedDocumentIndex: derivedDocumentIndex ?? null,
-          linksValidation: getLinksValidationSetting?.(),
+          linkPolicy,
           admittedDocNames: collectAdmittedDocNames,
           docFilePathFor: (docName) => resolveDocFilePath(contentDir, docName),
           cache: auditCache,

@@ -41,6 +41,15 @@ describe('TerminalCliMissingBanner', () => {
     expect(openExternal).toHaveBeenCalledWith(TERMINAL_CLIS.codex.docsUrl);
   });
 
+  test('Claude uses the missing-CLI banner and opens its installation docs', async () => {
+    const { bridge, openExternal } = makeBridge();
+    render(<TerminalCliMissingBanner cli="claude" bridge={bridge} onDismiss={() => {}} />);
+    expect(screen.getByTestId('terminal-cli-missing-banner').textContent).toContain('Claude Code');
+    expect(screen.queryByTestId('terminal-readiness-banner')).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: 'Get Claude Code' }));
+    expect(openExternal).toHaveBeenCalledWith(TERMINAL_CLIS.claude.docsUrl);
+  });
+
   test('"Get Cursor" opens the Cursor CLI docs URL (binary is cursor-agent)', async () => {
     const { bridge, openExternal } = makeBridge();
     render(<TerminalCliMissingBanner cli="cursor" bridge={bridge} onDismiss={() => {}} />);

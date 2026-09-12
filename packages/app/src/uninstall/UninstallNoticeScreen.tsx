@@ -1,12 +1,10 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
-
 import type {
   UninstallNoticeChecklistItem,
   UninstallNoticeScreen as UninstallNoticeSpec,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check } from 'lucide-react';
-import { useEffect, useId } from 'react';
+import { useEffect, useId, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -21,18 +19,17 @@ function NoticeChecklist({ items }: { items: readonly UninstallNoticeChecklistIt
   return (
     <ol className="mb-1.5">
       {items.map((item, index) => (
-        <li key={item.label} className="relative pb-5 pl-[30px] last:pb-1">
+        <li key={item.label} className="relative pb-5 ps-[30px] last:pb-1">
           {index < items.length - 1 && (
             <span
               aria-hidden="true"
-              className="absolute top-[22px] bottom-0.5 left-[9px] w-0.5 bg-border"
+              className="absolute top-[22px] bottom-0.5 start-[9px] w-0.5 bg-border"
             />
           )}
-          {}
           <span
             aria-hidden="true"
             className={cn(
-              'absolute top-px left-0 inline-flex size-5 items-center justify-center rounded-full',
+              'absolute top-px start-0 inline-flex size-5 items-center justify-center rounded-full',
               item.done
                 ? 'bg-primary/15 text-primary'
                 : 'border-[1.5px] border-muted-foreground/50',
@@ -64,25 +61,45 @@ export function UninstallNoticeScreen({
   const { t } = useLingui();
   const titleId = useId();
   const bodyId = useId();
+  const subtitleId = useId();
+  const root = useRef<HTMLDivElement>(null);
   const hasCancel = notice.cancelLabel !== undefined;
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.isComposing) return;
+      if (event.key === 'Tab') {
+        const buttons = root.current?.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), [tabindex="0"]',
+        );
+        const first = buttons?.[0];
+        const last = buttons?.[buttons.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+        return;
+      }
       if (event.key !== 'Escape') return;
-      if (hasCancel) onCancel();
+      if (hasCancel || notice.logRevealLabel !== undefined) onCancel();
       else onConfirm();
     };
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
     };
-  }, [hasCancel, onCancel, onConfirm]);
+  }, [hasCancel, notice.logRevealLabel, onCancel, onConfirm]);
 
   return (
     <div
+      ref={root}
       role="alertdialog"
       aria-labelledby={titleId}
-      aria-describedby={bodyId}
+      aria-modal="true"
+      aria-describedby={notice.subtitle === undefined ? bodyId : `${subtitleId} ${bodyId}`}
       className="flex h-dvh flex-col bg-background text-foreground"
     >
       <header className="shrink-0 space-y-4 px-6 pt-5 pb-3.5">
@@ -90,7 +107,9 @@ export function UninstallNoticeScreen({
           {notice.title}
         </h1>
         {notice.subtitle !== undefined && (
-          <p className="text-muted-foreground text-sm leading-snug">{notice.subtitle}</p>
+          <p id={subtitleId} className="text-muted-foreground text-sm leading-snug">
+            {notice.subtitle}
+          </p>
         )}
       </header>
 

@@ -1,6 +1,6 @@
-// biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button> awaiting shadcn Button migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+// oxlint-disable ok/no-raw-html-interactive-element -- pre-rule backlog — file uses raw <button> awaiting shadcn Button migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
 
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
@@ -29,6 +29,7 @@ import { cn } from '@/lib/utils';
 import { LINT_PLUGIN_META } from './lint-plugin-meta';
 import {
   isOkDesktopHost as isOkDesktopHostGate,
+  isSpellcheckLanguageSelectionAvailable,
   isTerminalSettingsAvailable,
 } from './settings-host-gates';
 import { buildSettingsSearchIndex, type SettingsSearchEntry } from './settings-search-index';
@@ -39,6 +40,9 @@ function releaseNotesUrl(version: string): string {
 }
 
 const LEGACY_SECTION_ALIASES: Record<string, { sectionId: string; anchor: string }> = {
+  'ai-tools': { sectionId: 'agent-connections', anchor: 'section:agent-connections' },
+  'project-ai-tools': { sectionId: 'agent-connections', anchor: 'section:agent-connections' },
+  'configure-agents': { sectionId: 'agent-connections', anchor: 'section:agent-connections' },
   'content-rules': { sectionId: 'project-preferences', anchor: 'section:content-rules' },
   terminal: { sectionId: 'project-preferences', anchor: 'section:terminal' },
   sharing: { sectionId: 'sync', anchor: 'section:sharing' },
@@ -109,6 +113,13 @@ export function SettingsDialogShell({
     const tryFlash = (): boolean => {
       const el = container.querySelector<HTMLElement>(`[data-field="${fieldFlash.path}"]`);
       if (!el) return false;
+      const closedDisclosure = el.closest('[data-slot="collapsible"][data-state="closed"]');
+      if (closedDisclosure) {
+        closedDisclosure
+          .querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]')
+          ?.click();
+        return false;
+      }
       el.scrollIntoView({ block: 'center' });
       el.classList.add(FLASH_CLASS);
       flashed = el;
@@ -116,11 +127,23 @@ export function SettingsDialogShell({
       return true;
     };
 
-    if (!tryFlash()) {
-      observer = new MutationObserver(() => {
-        if (tryFlash()) observer?.disconnect();
-      });
-      observer.observe(container, { childList: true, subtree: true });
+    observer = new MutationObserver(() => {
+      if (!tryFlash()) return;
+      observer?.disconnect();
+      if (giveUpTimer) {
+        clearTimeout(giveUpTimer);
+        giveUpTimer = null;
+      }
+    });
+    observer.observe(container, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-state'],
+    });
+    if (tryFlash()) {
+      observer.disconnect();
+    } else {
       giveUpTimer = setTimeout(() => observer?.disconnect(), 4000);
     }
 
@@ -136,6 +159,7 @@ export function SettingsDialogShell({
 
   const isOkDesktopHost = isOkDesktopHostGate();
   const terminalSettingsAvailable = isTerminalSettingsAvailable();
+  const spellcheckLanguagesAvailable = isSpellcheckLanguageSelectionAvailable();
 
   const enabledPluginItems: SidebarItem[] = LINT_PLUGIN_META.filter(
     (p) => projectConfig?.contentRules?.[p.id]?.enabled === true,
@@ -149,17 +173,52 @@ export function SettingsDialogShell({
 
   const groups: SidebarGroup[] = [
     {
+      id: 'agents',
+      label: t`Agents`,
+      enabled: true,
+      items: [
+        {
+          id: 'agent-connections',
+          label: t`Agent connections`,
+          keywords: [t`AI tools`, t`Configure agents`],
+        },
+      ],
+    },
+    {
       id: 'user',
       label: t`User`,
       enabled: true,
       items: [
-        { id: 'preferences', label: t`Preferences` },
-        { id: 'configure-agents', label: t`Configure agents` },
+        {
+          id: 'preferences',
+          label: t`Preferences`,
+          subsections: [
+            ...(isOkDesktopHost
+              ? [
+                  {
+                    id: 'spellcheck',
+                    label: t`Check spelling while typing`,
+                    anchor: 'spellcheck.enabled',
+                    keywords: [t({ message: 'spellcheck', context: 'settings search keyword' })],
+                  },
+                ]
+              : []),
+            ...(spellcheckLanguagesAvailable
+              ? [
+                  {
+                    id: 'spellcheck-languages',
+                    label: t`Spelling languages`,
+                    anchor: 'spellcheck.languages',
+                    keywords: [t({ message: 'spellcheck', context: 'settings search keyword' })],
+                  },
+                ]
+              : []),
+          ] satisfies SidebarSubsection[],
+        },
         { id: 'hotkeys', label: t`Hotkeys` },
         { id: 'account', label: t`Account` },
         { id: 'user-plugins-manage', label: t`Plugins` },
         { id: 'user-skills', label: t`Skills Studio` },
-        ...(isOkDesktopHost ? [{ id: 'ai-tools', label: t`AI tools & CLI` }] : []),
       ],
     },
     {
@@ -185,10 +244,28 @@ export function SettingsDialogShell({
             { id: 'sharing', label: t`Config sharing`, anchor: 'section:sharing' },
           ] satisfies SidebarSubsection[],
         },
-        { id: 'search', label: t`Search` },
+        {
+          id: 'search',
+          label: t`Search`,
+          subsections: [
+            {
+              id: 'performance',
+              label: t`Embedding request settings`,
+              anchor: 'search.semantic.maxBatchSize',
+              keywords: [
+                t({ message: 'batch', context: 'settings search keyword' }),
+                t({ message: 'characters', context: 'settings search keyword' }),
+                t({ message: 'timeout', context: 'settings search keyword' }),
+                t({ message: 'embeddings', context: 'settings search keyword' }),
+                t({ message: 'requests', context: 'settings search keyword' }),
+                t({ message: 'performance', context: 'settings search keyword' }),
+                'Ollama',
+              ],
+            },
+          ] satisfies SidebarSubsection[],
+        },
         { id: 'plugins-manage', label: t`Plugins` },
         ...(isFileProtocolRenderer ? [] : [{ id: 'link-previews', label: t`Link previews` }]),
-        ...(isOkDesktopHost ? [{ id: 'project-ai-tools', label: t`AI tools` }] : []),
         ...(isOkDesktopHost ? [{ id: 'network-access', label: t`Remote control` }] : []),
         { id: 'project-templates', label: t`Templates` },
         { id: 'skills', label: t`Skills Studio` },
@@ -238,6 +315,14 @@ export function SettingsDialogShell({
           electronDragBandClearance(),
         )}
         data-testid="settings-dialog"
+        onEscapeKeyDown={(event) => {
+          if (
+            event.target instanceof Element &&
+            event.target.closest('[data-slot="combobox-chip-input"][aria-expanded="true"]')
+          ) {
+            event.preventDefault();
+          }
+        }}
       >
         <DialogTitle className="sr-only">
           <Trans>Settings</Trans>

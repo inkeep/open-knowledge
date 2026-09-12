@@ -2,6 +2,7 @@ import type {
   FileContents,
   FileDiffMetadata,
   MergeConflictMarkerRow,
+  MergeConflictResolution,
   UnresolvedFile,
 } from '@pierre/diffs';
 
@@ -12,6 +13,7 @@ export interface ConflictSnapshot {
   fileDiff?: FileDiffMetadata;
   actions?: ResolveReturn['actions'];
   markerRows?: MergeConflictMarkerRow[];
+  selection?: MergeConflictResolution;
 }
 
 const MAX_DEPTH = 50;

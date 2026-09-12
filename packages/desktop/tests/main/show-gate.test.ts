@@ -437,7 +437,9 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
       event: 'show-gate-show-failed',
       windowKind: 'editor',
     });
-    expect((failure?.obj as { err?: Error }).err?.message).toBe('Object has been destroyed');
+    expect((failure?.obj as { err?: Error } | undefined)?.err?.message).toBe(
+      'Object has been destroyed',
+    );
   });
 
   test('happy-path show throws → states Map entry is released (no leak)', () => {
@@ -462,7 +464,9 @@ describe('createShowGateRegistry — show() throws past the destroyed-window gua
       event: 'show-gate-show-failed',
       windowKind: 'navigator',
     });
-    expect((failure?.obj as { err?: Error }).err?.message).toBe('Object has been destroyed');
+    expect((failure?.obj as { err?: Error } | undefined)?.err?.message).toBe(
+      'Object has been destroyed',
+    );
     const timeout = env.warns.find(
       (w) => (w.obj as { event?: unknown }).event === 'show-gate-timeout',
     );

@@ -251,7 +251,7 @@ describe('OpenInAgentContextSubmenu runtime behavior', () => {
 
     window.location.hash = '';
     await userEvent.click(screen.getByTestId('file-tree-open-in-settings'));
-    expect(window.location.hash).toBe('#settings/configure-agents');
+    expect(window.location.hash).toBe('#settings/agent-connections');
     expect(threadLaunchCalls).toEqual([]);
   });
 

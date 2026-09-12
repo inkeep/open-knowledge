@@ -11,22 +11,8 @@ export interface PropDefBase {
   hideWhen?: (values: Record<string, unknown>) => boolean;
   advanced?: boolean;
   /**
-   * Opt-in: when the prop value strictly equals the declared `defaultValue`,
-   * omit the attribute on emit. The renderer applies the default at parse
-   * time anyway (descriptor `translateProps` and React component-level
-   * defaults), so the on-disk attribute is redundant.
-   *
-   * Distinct from `defaultValue`: `defaultValue` doubles as a UI initial-
-   * state hint AND may carry semantic meaning (e.g., `<img alt="">` is
-   * "decorative" — different from absent — even though defaultValue is `''`).
-   * Set this flag only when the rendered behavior of `prop=default` and
-   * `prop absent` is truly identical at the browser layer (e.g., HTML
-   * `loading` defaults to `lazy`; HTML5 `<video controls>` defaults to
-   * absent-controls = no controls but our descriptor flips that with
-   * `defaultValue: true`).
-   *
-   * Strips redundant attrs on the dirty serialize path only — pristine
-   * sourceRaw round-trips byte-identically (precedent #9 untouched).
+   * Strips redundant attrs on the dirty serialize path only — pristine sourceRaw round-trips
+   * byte-identically (precedent #9 untouched).
    */
   omitOnDefault?: boolean;
 }

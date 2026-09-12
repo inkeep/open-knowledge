@@ -1,10 +1,12 @@
 import type {
+  ApplyReport,
   BranchInfoResponse,
   CheckoutResponse,
   CreateNewBannerKind,
   EditorId,
   HandoffFailureReason,
   HandoffScope,
+  HostSnapshot,
   LanguagePreference,
   LocalOpOkInitResponse,
   OkBugReportCrashAckResult,
@@ -30,6 +32,7 @@ import type {
   ClaudeReadiness,
   CliReadiness,
   OkHeadBranchInfo as HeadBranchInfo,
+  OkAssetUploadResult,
   OkChromeColors,
   OkDesktopConfig,
   OkEditorActiveTargetSnapshot,
@@ -38,6 +41,7 @@ import type {
   OkLocalOpAuthStatusResponse,
   OkMenuDispatchCommand,
   OkMenuDispatchRequest,
+  OkMenuDispatchResult,
   OkMenuDispatchRole,
   OkMenuRendererSnapshot,
   OkNoteWindowMainAction,
@@ -79,6 +83,7 @@ export type { SkillCostTiers };
 export type MenuDispatchRole = OkMenuDispatchRole;
 export type MenuDispatchCommand = OkMenuDispatchCommand;
 export type MenuDispatchRequest = OkMenuDispatchRequest;
+export type MenuDispatchResult = OkMenuDispatchResult;
 export type MenuRendererSnapshot = OkMenuRendererSnapshot;
 
 export type { OkSharingSetModeResult, OkSharingStatusResult };
@@ -296,12 +301,6 @@ export type IntegrationsSetResult =
   | { readonly ok: true; readonly status: IntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: IntegrationsStatus };
 
-export type ProjectIntegrationsFollowUp =
-  | 'approve-once'
-  | 'enable-manually'
-  | 'auto-connect'
-  | 'none';
-
 export interface ProjectIntegrationsEditorStatus {
   readonly id: McpWiringEditorId;
   readonly label: string;
@@ -309,7 +308,6 @@ export interface ProjectIntegrationsEditorStatus {
   readonly state: IntegrationsEditorState;
   readonly configPath: string;
   readonly entryLocator: string;
-  readonly followUp: ProjectIntegrationsFollowUp;
 }
 
 export interface ProjectIntegrationsSkillStatus {
@@ -341,6 +339,25 @@ export interface ProjectIntegrationsSetRequest {
 export type ProjectIntegrationsSetResult =
   | { readonly ok: true; readonly status: ProjectIntegrationsStatus }
   | { readonly ok: false; readonly error: string; readonly status: ProjectIntegrationsStatus };
+
+export interface AgentIntegrationsIntent {
+  readonly satisfierId: string;
+  readonly desired: 'present' | 'absent';
+}
+
+export interface AgentIntegrationsApplyRequest {
+  readonly intents: readonly AgentIntegrationsIntent[];
+}
+
+export type AgentIntegrationsApplyResult =
+  | { readonly ok: true; readonly report: ApplyReport; readonly snapshot: HostSnapshot }
+  | {
+      readonly ok: false;
+      readonly error: string;
+      readonly unavailable?: boolean;
+      readonly report: ApplyReport;
+      readonly snapshot: HostSnapshot;
+    };
 
 interface DialogOpenFolderOpts {
   readonly defaultPath?: string;
@@ -428,6 +445,7 @@ export interface RequestChannels {
       | OkBugReportScreenshot
       | OkBugReportListResult
       | OkBugReportDeleteResult
+      | OkAssetUploadResult
       | null;
   };
   'ok:project:list-recent': { args: []; result: RecentProject[] };
@@ -571,8 +589,13 @@ export interface RequestChannels {
   'ok:spellcheck:toggle': { args: []; result: boolean };
 
   'ok:integrations:dispatch': {
-    args: [request: { kind: 'status' } | ({ kind: 'set' } & IntegrationsSetRequest)];
-    result: IntegrationsStatus | IntegrationsSetResult;
+    args: [
+      request:
+        | { kind: 'status' }
+        | ({ kind: 'set' } & IntegrationsSetRequest)
+        | ({ kind: 'apply-batch' } & AgentIntegrationsApplyRequest),
+    ];
+    result: IntegrationsStatus | IntegrationsSetResult | AgentIntegrationsApplyResult;
   };
 
   'ok:project-integrations:dispatch': {
@@ -634,7 +657,7 @@ export interface RequestChannels {
   };
   'ok:menu:dispatch': {
     args: [request: MenuDispatchRequest];
-    result: MenuRendererSnapshot | undefined;
+    result: MenuDispatchResult;
   };
 
   'ok:uninstall:dispatch': {
@@ -648,6 +671,7 @@ export interface RequestChannels {
         cols: number;
         rows: number;
         launchCommand?: string | TerminalLaunchCommand;
+        launchCli?: TerminalCli;
       },
     ];
     result: OkPtyCreateResult;
@@ -673,7 +697,7 @@ export interface RequestChannels {
     result: OkPtyListEntry[];
   };
   'ok:pty:adopt': {
-    args: [req: { ptyId: string }];
+    args: [req: { ptyId: string; start?: boolean }];
     result: OkPtyAdoptResult;
   };
   'ok:pty:set-meta': {
@@ -685,7 +709,7 @@ export interface RequestChannels {
     result: undefined;
   };
   'ok:terminal:claude-assist': {
-    args: [req: { action: 'preflight' | 'rewire' }];
+    args: [req: { action: 'preflight' }];
     result: ClaudeReadiness;
   };
   'ok:terminal:cli-preflight': {

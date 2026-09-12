@@ -91,22 +91,22 @@ describe('DropdownMenu runtime class contracts', () => {
     }
   });
 
-  test.each([
-    'dropdown-menu-content',
-    'dropdown-menu-sub-content',
-  ] as const)('%s carries keyframe motion and reduced-motion opt-in at runtime', async (slot) => {
-    await renderDropdownMenu();
+  test.each(['dropdown-menu-content', 'dropdown-menu-sub-content'] as const)(
+    '%s carries keyframe motion and reduced-motion opt-in at runtime',
+    async (slot) => {
+      await renderDropdownMenu();
 
-    const surface = document.querySelector(`[data-slot="${slot}"]`);
-    expect(surface).toBeTruthy();
-    const className = surface?.getAttribute('class') ?? '';
+      const surface = document.querySelector(`[data-slot="${slot}"]`);
+      expect(surface).toBeTruthy();
+      const className = surface?.getAttribute('class') ?? '';
 
-    expectVisualClassTokens(className, [
-      ...UPSTREAM_MOTION_TOKENS,
-      'origin-(--radix-dropdown-menu-content-transform-origin)',
-      ...A11Y_OPT_IN,
-    ]);
-  });
+      expectVisualClassTokens(className, [
+        ...UPSTREAM_MOTION_TOKENS,
+        'origin-(--radix-dropdown-menu-content-transform-origin)',
+        ...A11Y_OPT_IN,
+      ]);
+    },
+  );
 
   test('content keeps its closed-state overflow clip and subtrigger highlight classes', async () => {
     await renderDropdownMenu();

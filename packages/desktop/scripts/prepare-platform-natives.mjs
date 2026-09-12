@@ -1,24 +1,4 @@
 #!/usr/bin/env node
-/**
- * Force-install the @napi-rs/keyring prebuilt binary packages a Windows or
- * Linux desktop build needs before electron-builder runs.
- *
- * Sibling of `prepare-universal.mjs` (the darwin/universal variant — kept
- * separate so the shipping mac pipeline stays untouched). Same root cause:
- * `@napi-rs/keyring` publishes per-arch binaries as optionalDependencies
- * with `cpu`/`os` constraints, and pnpm installs only the host-matching one.
- * The `win.extraResources` / `linux.extraResources` rules in
- * electron-builder.yml copy BOTH arch packages (x64 + arm64) into
- * `cli/node_modules/`, so a single-arch host must fetch the missing ones
- * from the registry first or the copy rule fails the build.
- *
- * Pulls each missing tarball from registry.npmjs.org and extracts to
- * <repo-root>/node_modules/@napi-rs/keyring-<platform>-<arch>/, matching
- * the layout the package manager produces for the host package. Idempotent: skips when the
- * target dir already has a matching-version package.json.
- *
- * No-op on darwin (use `prepare-universal.mjs` there).
- */
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
@@ -45,10 +25,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '..', '..', '..');
 const NAPI_DIR = join(REPO_ROOT, 'node_modules', '@napi-rs');
 
-// Resolve the target version from the installed wrapper package — it is a
-// plain dependency (no cpu/os constraint) and present on every platform,
-// unlike the host binary package prepare-universal keys off (its name
-// varies with libc on linux, e.g. -gnu vs -musl hosts).
 const wrapperPkgJson = join(NAPI_DIR, 'keyring', 'package.json');
 if (!existsSync(wrapperPkgJson)) {
   console.error(
@@ -58,14 +34,6 @@ if (!existsSync(wrapperPkgJson)) {
 }
 const version = JSON.parse(readFileSync(wrapperPkgJson, 'utf8')).version;
 
-/**
- * Expected sha512 integrity for `<pkgName>@<version>` from pnpm-lock.yaml —
- * the registry fetch below deliberately bypasses the package manager (the
- * packages are cpu/os-gated so pnpm won't install them here), so the
- * lockfile's recorded integrity is re-checked by hand. Fail-closed: a
- * package missing from the lockfile means the fetch would be entirely
- * unpinned, which is exactly the supply-chain gap this check closes.
- */
 function lockfileIntegrityFor(pkgName, pkgVersion) {
   const lockfile = readFileSync(join(REPO_ROOT, 'pnpm-lock.yaml'), 'utf8');
   const key = `${pkgName}@${pkgVersion}`;
@@ -128,12 +96,6 @@ for (const suffix of suffixes) {
     }
 
     mkdirSync(targetDir, { recursive: true });
-    // Extract with bsdtar. On Windows a bare `tar` resolved from a Git-bash
-    // PATH is GNU tar, which misreads the absolute `C:\...` tarball path as an
-    // rsync-style `host:path` remote and dies with "Cannot connect to C:".
-    // Windows 10+ ships bsdtar at System32\tar.exe, which handles drive-letter
-    // paths natively — invoke it by absolute path rather than trusting PATH
-    // resolution. Linux runners keep plain `tar`.
     const tarBin =
       process.platform === 'win32'
         ? join(process.env.SystemRoot || 'C:\\Windows', 'System32', 'tar.exe')

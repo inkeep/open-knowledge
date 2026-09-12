@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { collectImageParts } from '@/editor/composer-drop.test-helper';
 import {
   inAppEnabledKey,
   reloadEnabledAgentsFromStorage,
@@ -79,6 +80,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     deleteThread,
     markThreadViewed: () => {},
   }),
+  ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
 }));
 
 vi.doMock('@/components/acp/ThreadView', () => ({
@@ -252,6 +254,37 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     _resetReusableSession();
   });
 
+  test('a thread-launch intent carrying an image attachment forwards it to launchAgentThread', async () => {
+    render(
+      <Harness
+        threadLaunch={
+          {
+            agentSource: 'registry',
+            agentId: 'acme-agent',
+            prompt: 'describe the screenshot',
+            docName: null,
+            titleHint: null,
+            nonce: 7,
+            attachments: [
+              {
+                kind: 'image',
+                mimeType: 'image/png',
+                data: 'iVBORw==',
+                name: 'drop-me.png',
+                sizeBytes: 4,
+              },
+            ],
+          } as ThreadLaunchIntent
+        }
+      />,
+    );
+
+    await waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));
+    expect(collectImageParts(launchAgentThread.mock.calls[0])).toContainEqual(
+      expect.objectContaining({ kind: 'image', mimeType: 'image/png', data: 'iVBORw==' }),
+    );
+  });
+
   test('a server thread becomes a tab rendering its ThreadView', async () => {
     render(<Harness />);
     setOpenThreads([makeThread({ threadId: 't1', title: 'Refactor' })]);
@@ -269,7 +302,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     await user.click(button);
 
     expect(launchAgentThread).not.toHaveBeenCalled();
-    expect(window.location.hash).toBe('#settings/configure-agents');
+    expect(window.location.hash).toBe('#settings/agent-connections');
   });
 
   test('the tab list mirrors the store: add + remove', async () => {
@@ -347,7 +380,17 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setOpenThreads([makeThread({ threadId: 't1', title: 'History', archived: true })]);
 
     await new Promise((r) => setTimeout(r, 50));
-    expect(onVisibleChange).not.toHaveBeenCalledWith(true);
+    expect(onVisibleChange).not.toHaveBeenCalled();
+  });
+
+  test('a live thread already in the roster at first render does NOT auto-reveal the dock', async () => {
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+
+    render(<Harness initialVisible={false} onVisibleChange={onVisibleChange} />);
+    await screen.findByRole('tab', { name: /Pre-existing/ });
+
+    expect(onVisibleChange).not.toHaveBeenCalled();
   });
 
   test('the history menu reopens an archived conversation as a tab', async () => {
@@ -637,7 +680,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       });
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
   });
 
@@ -648,6 +691,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       prompt: null,
       docName: null,
       titleHint: null,
+      attachments: null,
       nonce,
     });
 
@@ -662,6 +706,8 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         null,
         null,
         null,
+        null,
+        undefined,
       ]);
       expect(window.location.hash).toBe('');
       expect(registerAgent).not.toHaveBeenCalled();
@@ -673,7 +719,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
 
     test('an agent the user disabled is never what a pickerless launch leads with', () => {
@@ -683,7 +729,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
 
     test('an agent with no launchable build on this host is not what a launch leads with', () => {
@@ -697,7 +743,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
     });
 
     test('an explicitly persisted default still wins over the presented agent', () => {
@@ -718,7 +764,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       render(<Harness threadLaunch={sentinelLaunch(1)} control={control} />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
 
       mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
       act(() => control.current?.rerender());
@@ -732,7 +778,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       mockRegisteredAgent = null;
       const control = makeControl();
       render(<Harness threadLaunch={sentinelLaunch(1)} control={control} />);
-      expect(window.location.hash).toBe('#settings/configure-agents');
+      expect(window.location.hash).toBe('#settings/agent-connections');
 
       window.location.hash = '#settings/some-other-tab';
       act(() => control.current?.rerender());
@@ -753,6 +799,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
             prompt: 'do the thing',
             docName: 'notes',
             titleHint: 'Notes',
+            attachments: null,
             nonce: 1,
           }}
         />,
@@ -764,6 +811,8 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         'do the thing',
         'notes',
         'Notes',
+        null,
+        undefined,
       ]);
     });
   });
@@ -781,6 +830,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
             prompt: 'the words I just typed',
             docName: null,
             titleHint: null,
+            attachments: null,
             nonce: 1,
           }}
         />,
@@ -801,6 +851,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
             prompt: 'the words I just typed',
             docName: null,
             titleHint: null,
+            attachments: null,
             nonce: 1,
           }}
         />,
@@ -908,6 +959,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
           prompt: 'do it',
           docName: null,
           titleHint: null,
+          attachments: null,
           nonce: 1,
         });
         control.current?.setVisible(true);
@@ -930,6 +982,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
           prompt: 'do it',
           docName: null,
           titleHint: null,
+          attachments: null,
           nonce: 1,
         });
         control.current?.setVisible(true);
@@ -956,6 +1009,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
           prompt: null,
           docName: null,
           titleHint: null,
+          attachments: null,
           nonce: 1,
         });
         control.current?.setVisible(true);

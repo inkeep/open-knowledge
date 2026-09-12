@@ -1,9 +1,7 @@
 import { closeSync, openSync, readSync } from 'node:fs';
 
-/** Prevent a corrupt prefix from allocating an attacker-sized buffer. */
 export const MAX_ASAR_HEADER_BYTES = 64 * 1024 * 1024;
 
-/** Read and parse the bounded JSON directory header from an Electron asar. */
 export function readAsarHeader(asarPath) {
   const fd = openSync(asarPath, 'r');
   try {

@@ -190,6 +190,9 @@ class StubModel {
     if (item == null) {
       throw new Error(`Source path does not exist: "${source}"`);
     }
+    if (this.items.has(dest)) {
+      throw new Error(`Destination already exists: "${dest}"`);
+    }
     if (this.focusedPath === source) {
       this.focusedPath = dest;
     }
@@ -552,6 +555,42 @@ describe('FileTree post-rename Pierre/React store reconciliation', () => {
     });
 
     expect(model.getFocusedPath()).toBe('subfolder/foo.md');
+    expect(toastErrorMock).not.toHaveBeenCalled();
+  });
+
+  test('DESTINATION_OCCUPIED — canonical destination already in the store; reconciliation short-circuits instead of throwing', async () => {
+    documentsFetchResult = [
+      ...INITIAL_DOCUMENTS,
+      {
+        kind: 'document',
+        docName: 'bar',
+        docExt: '.md',
+        size: 1,
+        modified: '2026-05-22T00:00:00.000Z',
+      },
+    ];
+
+    render(<FileTree />);
+
+    await waitFor(() => {
+      expect(capturedOptions).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(model.getItem('foo.md')).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(model.getItem('bar.md')).not.toBeNull();
+    });
+
+    model.focusPath('foo.md');
+    simulatePierreCommitRename('foo.md', 'bar', false);
+
+    await waitFor(() => {
+      expect(addPageMock).toHaveBeenCalledWith('bar');
+    });
+    expect(model.getItem('bar.md')).not.toBeNull();
+    expect(model.getFocusedPath()).toBe('bar.md');
+    expect(model.getItem('bar')).toBeNull();
     expect(toastErrorMock).not.toHaveBeenCalled();
   });
 

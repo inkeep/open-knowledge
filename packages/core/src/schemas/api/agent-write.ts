@@ -1,14 +1,6 @@
 /**
- * Cluster A: agent-write / -write-md / -patch / -undo
- *
- * Mutating handlers that write to Y.Docs through the agent attribution path
- * (precedent #24). `withValidation()` enforces these schemas at the wire
- * boundary; the handler receives an already-typed body. Body-shape failures
- * (schema rejection) emit `urn:ok:error:invalid-request` PRE-identity —
- * semantically OK because no Y.Doc mutation is attempted. Semantic failures
- * (reserved docname, target-not-found, stale-target, no-active-session) emit
- * POST-identity. The `attribution-sweep-coverage.test.ts` ordering check
- * enforces this distinction.
+ * Cluster A: agent-write / -write-md / -patch / -undo Mutating handlers that write to Y.Docs
+ * through the agent attribution path (precedent #24).
  */
 
 import type { StandardSchemaV1 } from '@standard-schema/spec';
@@ -132,6 +124,24 @@ export const WriteWarningSchema = z.discriminatedUnion('kind', [
 ]);
 export type WriteWarning = z.infer<typeof WriteWarningSchema>;
 
+const WRITE_WARNING_KIND_TABLE = {
+  'content-divergence': true,
+  'disk-edit-reconciled': true,
+} as const satisfies Record<WriteWarning['kind'], true>;
+
+export type WriteWarningKind = keyof typeof WRITE_WARNING_KIND_TABLE;
+export const WRITE_WARNING_KINDS = Object.keys(
+  WRITE_WARNING_KIND_TABLE,
+) as readonly WriteWarningKind[];
+
+export function isWriteWarningKind(kind: string): kind is WriteWarningKind {
+  return (WRITE_WARNING_KINDS as readonly string[]).includes(kind);
+}
+
+export function assertNeverWriteWarning(value: never): never {
+  throw new Error(`Unexpected WriteWarning variant: ${JSON.stringify(value)}`);
+}
+
 export const RenderWarningSchema = z
   .object({
     kind: z.literal('mermaid-parse-error'),
@@ -201,12 +211,21 @@ export type BrokenLink = z.infer<typeof BrokenLinkSchema>;
 
 export const BrokenLinksSchema = z.array(BrokenLinkSchema);
 
+export const BROKEN_LINK_SUPPRESSION_REASONS = ['reserved-log-policy'] as const;
+export type BrokenLinkSuppressionReason = (typeof BROKEN_LINK_SUPPRESSION_REASONS)[number];
+
+export const BrokenLinkSuppressionSchema = z
+  .object({
+    reason: z.string().min(1),
+    count: z.number().int().positive(),
+  })
+  .loose() satisfies StandardSchemaV1;
+export type BrokenLinkSuppression = z.infer<typeof BrokenLinkSuppressionSchema>;
+
 export const AgentWriteSuccessSchema = z
   .object({
     timestamp: z.string().min(1),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
@@ -219,10 +238,9 @@ export const AgentWriteMdSuccessSchema = z
     systemSubscriberCount: z.number().int().nonnegative(),
     hints: z.array(OrphanHintSchema).optional(),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
+    brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type AgentWriteMdSuccess = z.infer<typeof AgentWriteMdSuccessSchema>;
@@ -233,10 +251,9 @@ export const AgentPatchSuccessSchema = z
     subscriberCount: z.number().int().nonnegative(),
     systemSubscriberCount: z.number().int().nonnegative(),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
+    brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type AgentPatchSuccess = z.infer<typeof AgentPatchSuccessSchema>;
@@ -288,6 +305,7 @@ export const AgentWriteBatchResultSchema = z.discriminatedUnion('status', [
       summary: SummaryResponseFieldSchema.optional(),
       warnings: AdvisoryWarningsSchema.optional(),
       brokenLinks: BrokenLinksSchema,
+      brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
     })
     .loose(),
   z
@@ -328,10 +346,9 @@ export const FrontmatterPatchSuccessSchema = z
     systemSubscriberCount: z.number().int().nonnegative(),
     appliedKeys: z.array(z.string()),
     summary: SummaryResponseFieldSchema.optional(),
-    /** @deprecated Read `warnings` — kept emitting in parallel for one deprecation window. */
-    warning: WriteWarningSchema.optional(),
     warnings: AdvisoryWarningsSchema.optional(),
     brokenLinks: BrokenLinksSchema,
+    brokenLinkSuppression: BrokenLinkSuppressionSchema.optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type FrontmatterPatchSuccess = z.infer<typeof FrontmatterPatchSuccessSchema>;

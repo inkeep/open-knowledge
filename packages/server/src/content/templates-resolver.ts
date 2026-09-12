@@ -3,7 +3,7 @@ import { readdir, stat } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { parseTemplateFile } from '@inkeep/open-knowledge-core';
 import { SymlinkEscapeError } from '../apply-managed-rename.ts';
-import { assertNoSymlinkEscape } from '../fs-safety.ts';
+import { assertNoSymlinkEscape, checkSymlinkLeaf } from '../fs-safety.ts';
 import { errnoCode } from '../http/handler-utils.ts';
 import { getLogger } from '../logger.ts';
 
@@ -18,29 +18,36 @@ export interface TemplateEntry {
   scope: TemplateScope;
 }
 
+type TemplateDirRefusal =
+  | { kind: 'symlink'; folder: string; component: '.ok' | '.ok/templates' }
+  | { kind: 'unverifiable'; folder: string; component: '.ok/templates'; code: string | undefined };
+
+export type TemplateDirRefusalListener = (refusal: TemplateDirRefusal) => void;
+
 interface ResolveTemplatesOptions {
-  depth?: number;
+  onRefused?: TemplateDirRefusalListener;
 }
 
 export function resolveTemplatesAvailable(
   projectDir: string,
   folderRelPath: string,
-  _options: ResolveTemplatesOptions = {},
+  options: ResolveTemplatesOptions = {},
 ): TemplateEntry[] {
   const normalized = normalizeFolderPath(folderRelPath);
   const segments = normalized === '' ? [] : normalized.split('/');
 
   const seen = new Set<string>();
   const out: TemplateEntry[] = [];
+  const onRefused = options.onRefused;
 
-  collectFromFolder(projectDir, normalized, 'local', seen, out);
+  collectFromFolder(projectDir, normalized, 'local', seen, out, onRefused);
 
   for (let i = segments.length - 1; i >= 1; i--) {
     const ancestorPath = segments.slice(0, i).join('/');
-    collectFromFolder(projectDir, ancestorPath, 'inherited', seen, out);
+    collectFromFolder(projectDir, ancestorPath, 'inherited', seen, out, onRefused);
   }
   if (segments.length > 0) {
-    collectFromFolder(projectDir, '', 'inherited', seen, out);
+    collectFromFolder(projectDir, '', 'inherited', seen, out, onRefused);
   }
 
   return out;
@@ -137,16 +144,56 @@ function collectFromFolder(
   scope: TemplateScope,
   seen: Set<string>,
   out: TemplateEntry[],
+  onRefused?: TemplateDirRefusalListener,
 ): void {
-  const templatesDir = folderRelPath
-    ? join(projectDir, folderRelPath, '.ok', 'templates')
-    : join(projectDir, '.ok', 'templates');
+  const okDir = join(projectDir, folderRelPath, '.ok');
+  const templatesDir = join(okDir, 'templates');
+
+  /* STOP: `lstat` below refuses only when `templates` ITSELF is the link —
+     the kernel dereferences a symlinked `.ok` on the way there, so the `.ok`
+     component needs its own identity check or an in-root `.ok` alias is
+     enumerated here while the fetch-by-name walk
+     (`findTemplateLeafToRoot` in folder-template-routes.ts) refuses it.
+     `onRefused` fires only for a symlink or a non-ENOTDIR lstat failure: a
+     non-directory `templates` (a regular file, or ENOTDIR under a
+     non-directory `.ok`) provably holds no templates, so it degrades to a
+     log warn with no refusal and no API warning code — matching the
+     ANCESTOR walk's ENOTDIR carve-out in `findTemplateLeafToRoot`. On the
+     TEMPLATE arms the entry gate (`validateFolderRel`, `'ok-and-templates'`)
+     has no such carve-out for a non-directory `.ok` on the REQUESTED folder:
+     `assertNoSymlinkEscape(okTemplatesDir)` raises ENOTDIR and the gate
+     500s. The folder-config arm skips that assert, so the same shape reaches
+     this function and degrades here. The folder-history arm skips it too
+     (same `'ok'` scope) but never reaches this function — `getFolderTimeline`
+     uses `<folder>/.ok` only as a `git log` pathspec — so the shape produces
+     no signal there. */
+  if (checkSymlinkLeaf(okDir).kind === 'symlink') {
+    onRefused?.({ kind: 'symlink', folder: folderRelPath, component: '.ok' });
+    if (!templateMetaWarnedPaths.has(okDir)) {
+      templateMetaWarnedPaths.add(okDir);
+      getLogger('templates').warn(
+        { dir: okDir },
+        `${okDir} is a symlink — its templates are not enumerated. Replace the symlink with a real directory.`,
+      );
+    }
+    return;
+  }
 
   let dirStat: ReturnType<typeof lstatSync>;
   try {
     dirStat = lstatSync(templatesDir);
   } catch (err) {
-    if (errnoCode(err) !== 'ENOENT' && !templateMetaWarnedPaths.has(templatesDir)) {
+    const code = errnoCode(err);
+    if (code === 'ENOENT') return;
+    if (code !== 'ENOTDIR') {
+      onRefused?.({
+        kind: 'unverifiable',
+        folder: folderRelPath,
+        component: '.ok/templates',
+        code,
+      });
+    }
+    if (!templateMetaWarnedPaths.has(templatesDir)) {
       templateMetaWarnedPaths.add(templatesDir);
       const reason = err instanceof Error ? err.message : String(err);
       getLogger('templates').warn(
@@ -157,6 +204,9 @@ function collectFromFolder(
     return;
   }
   if (!dirStat.isDirectory()) {
+    if (dirStat.isSymbolicLink()) {
+      onRefused?.({ kind: 'symlink', folder: folderRelPath, component: '.ok/templates' });
+    }
     if (!templateMetaWarnedPaths.has(templatesDir)) {
       templateMetaWarnedPaths.add(templatesDir);
       getLogger('templates').warn(

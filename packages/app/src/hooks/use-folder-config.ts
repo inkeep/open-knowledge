@@ -1,4 +1,8 @@
-import { type TemplatesListEntry, TemplatesListSuccessSchema } from '@inkeep/open-knowledge-core';
+import {
+  type FolderConfigWarningCode,
+  type TemplatesListEntry,
+  TemplatesListSuccessSchema,
+} from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { useEffect, useState } from 'react';
 import { subscribeToTemplatesChanged } from '@/lib/documents-events';
@@ -21,6 +25,8 @@ interface FolderConfig {
 export interface FolderConfigSnapshot {
   folder: FolderConfig;
   frontmatterLocal: Record<string, unknown> | null;
+  warningCodes: FolderConfigWarningCode[];
+  warnings: string[];
 }
 
 export interface TemplateMenuEntry {
@@ -72,6 +78,8 @@ export function useFolderConfig(folderPath: string | null): FolderConfigHandle {
         return r.json() as Promise<{
           folder: FolderConfig;
           frontmatter_local?: Record<string, unknown> | null;
+          warnings?: string[];
+          warningCodes?: FolderConfigWarningCode[];
         }>;
       })
       .then((payload) => {
@@ -85,6 +93,8 @@ export function useFolderConfig(folderPath: string | null): FolderConfigHandle {
           data: {
             folder: payload.folder,
             frontmatterLocal: payload.frontmatter_local ?? null,
+            warnings: payload.warnings ?? [],
+            warningCodes: payload.warningCodes ?? [],
           },
         });
       })

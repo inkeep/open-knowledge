@@ -89,11 +89,21 @@ const ALL_ROUTES = [...READ_200, '/api/acp/catalog', '/api/installed-agents', '/
 let tmpRoot: string;
 let server: BootedServer;
 
+const acpRegistryRequests: string[] = [];
+
+const acpRegistryFetchImpl = (async (input: Parameters<typeof fetch>[0]) => {
+  acpRegistryRequests.push(new Request(input as RequestInfo).url);
+  return new Response('{"agents":[]}', {
+    status: 200,
+    headers: { 'content-type': 'application/json' },
+  });
+}) as typeof fetch;
+
 beforeAll(async () => {
   tmpRoot = await mkdtemp(resolve(tmpdir(), 'ok-config-system-native-'));
   const contentDir = mkdtempSync(resolve(tmpRoot, 'content-'));
   writeFileSync(resolve(contentDir, 'alpha.md'), '# Alpha\n\nBody.\n', 'utf-8');
-  server = await bootCompositionRig(contentDir);
+  server = await bootCompositionRig(contentDir, { acpRegistryFetchImpl });
   await server.ready;
 }, 60_000);
 
@@ -130,9 +140,12 @@ describe('config-system group over the composed listener — served natively', (
     }
   });
 
-  test('acp/catalog serves natively without depending on live CDN egress (200 or 502)', async () => {
+  test('acp/catalog serves natively against a stubbed registry (200, no live CDN egress)', async () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/acp/catalog`);
-    expect([200, 502]).toContain(res.status);
+    expect(res.status).toBe(200);
+    expect(acpRegistryRequests).toEqual([
+      'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json',
+    ]);
   });
 
   test('principal serves natively behind its inline gate (200 when resolvable, else its own 404)', async () => {

@@ -142,6 +142,8 @@ export const ConflictEntrySchema = z
   .object({
     file: z.string().min(1),
     detectedAt: z.string().min(1),
+    conflictKind: z.enum(['git', 'stale-external-write']).optional().catch(undefined),
+    variant: z.literal('working-tree').optional().catch(undefined),
     oursSha: z.string().optional(),
     theirsSha: z.string().optional(),
     baseSha: z.string().optional(),
@@ -163,8 +165,9 @@ export const SyncResolveConflictRequestSchema = z
     content: z.string().optional(),
   })
   .loose()
-  .refine((d) => d.strategy !== 'content' || (d.content !== undefined && d.content !== ''), {
-    message: "content must be a non-empty string when strategy is 'content'",
+  .refine((d) => d.strategy !== 'content' || d.content !== undefined, {
+    message:
+      "content must be provided when strategy is 'content' (an empty string keeps an empty file)",
     path: ['content'],
   }) satisfies StandardSchemaV1;
 export type SyncResolveConflictRequest = z.infer<typeof SyncResolveConflictRequestSchema>;
@@ -180,6 +183,7 @@ export const SyncConflictContentSuccessSchema = z
     theirs: z.string(),
     kind: z.enum(['both-modified', 'delete-modify', 'modify-delete']),
     lifecycleStatus: z.string().nullable(),
+    conflictKind: z.enum(['git', 'stale-external-write']).optional(),
   })
   .loose() satisfies StandardSchemaV1;
 export type SyncConflictContentSuccess = z.infer<typeof SyncConflictContentSuccessSchema>;

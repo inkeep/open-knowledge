@@ -80,6 +80,41 @@ describe('buildCleanPlan', () => {
 });
 
 describe('runClean', () => {
+  test('reports foreign ownership as a refusal instead of claiming no stale locks', () => {
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const unlinked: string[] = [];
+    const outcome = runClean({
+      lockDir: '/tmp/x',
+      inspect: foreign,
+      unlink: (path) => unlinked.push(path),
+      log: (message) => logs.push(message),
+      error: (message) => errors.push(message),
+    });
+    expect(outcome.failed).toHaveLength(1);
+    expect(unlinked).toEqual([]);
+    expect(logs).toEqual([]);
+    expect(errors.join(' ')).toContain('another machine');
+  });
+
+  test('reports unreadable locks without deleting them or claiming no stale locks', () => {
+    const logs: string[] = [];
+    const errors: string[] = [];
+    const unlinked: string[] = [];
+    const outcome = runClean({
+      lockDir: '/tmp/x',
+      inspect: () => ({ status: 'read-error', lockPath: '/tmp/server.lock', error: 'EACCES' }),
+      unlink: (path) => unlinked.push(path),
+      log: (message) => logs.push(message),
+      error: (message) => errors.push(message),
+    });
+    expect(unlinked).toEqual([]);
+    expect(logs).toEqual([]);
+    expect(outcome.failed).toHaveLength(1);
+    expect(errors.join(' ')).toContain('Restore file and parent-directory access');
+    expect(errors.join(' ')).toContain('EACCES');
+  });
+
   test('no stale locks → log, no unlinks', () => {
     const logs: string[] = [];
     const unlinked: string[] = [];
@@ -128,4 +163,17 @@ describe('runClean', () => {
     expect(outcome.failed[0]?.error).toBe('EACCES');
     expect(errors.at(0)).toContain('server (/tmp/server.lock)');
   });
+});
+
+test('never prunes a malformed foreign-owned lock', () => {
+  const unlinked: string[] = [];
+  const outcome = runClean({
+    lockDir: '/tmp/x',
+    inspect: () => ({ status: 'corrupt', lockPath: '/tmp/foreign.lock', foreignHost: true }),
+    unlink: (path) => unlinked.push(path),
+    log: () => {},
+    error: () => {},
+  });
+  expect(unlinked).toEqual([]);
+  expect(outcome.failed[0]?.error).toContain('owning machine');
 });

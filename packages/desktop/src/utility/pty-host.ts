@@ -1,34 +1,43 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { userInfo } from 'node:os';
-import { basename, delimiter, join, win32 } from 'node:path';
+import { basename, win32 } from 'node:path';
 import {
   composeWindowsShellLaunchArgs,
   launchWithoutSupportFile,
   OK_DESKTOP_TERMINAL_ENV,
   resolveWindowsShellFamily,
+  shellSingleQuote,
   type TerminalLaunchCommand,
   type WindowsShellFamily,
+  WindowsShellLaunchError,
+  type WindowsShellLaunchFailureReason,
 } from '@inkeep/open-knowledge-core';
 import { isTerminalShellNoticeReason } from '@inkeep/open-knowledge-core/desktop-bridge';
 import type {
   TerminalShellNoticeReason,
   TerminalSupportFileNoticeReason,
 } from '../shared/bridge-contract.ts';
-import { interactiveShellArgs } from '../shared/terminal-shell.ts';
-import { getWindowsEnvValue, windowsPathKey, windowsWherePathArgs } from '../shared/windows-env.ts';
+import {
+  composeOkChildEnv,
+  hasNoResolvableOkHome,
+  okChildEnvOptions,
+  okManagedBinDirs,
+  okPackagedCliBinDir,
+} from '../shared/ok-child-env.ts';
+import {
+  commandWithManagedPath,
+  interactiveShellArgs,
+  shellCommandFamily,
+} from '../shared/terminal-shell.ts';
+import { getWindowsEnvValue, windowsWherePathArgs } from '../shared/windows-env.ts';
 import {
   materializeSupportFileSync,
   TERMINAL_SUPPORT_FILE_ESCAPE_CODE,
 } from './support-file-write.ts';
 
 const DARWIN_FALLBACK_SHELL = '/bin/zsh';
-
-const STRIPPED_ENV_MARKERS = [
-  'OK_ELECTRON_PROTOCOL_HOST',
-  'OK_LOCK_KIND',
-  'ELECTRON_RUN_AS_NODE',
-] as const;
+const KILL_ESCALATE_MS = 250;
 
 export interface PtyCreateMessage {
   type: 'create';
@@ -86,11 +95,19 @@ interface PtyExitMessage {
   exitCode: number | undefined;
   signal: number | null;
 }
-interface PtySpawnErrorMessage {
-  type: 'spawn-error';
-  ptyId: string;
-  message: string;
-}
+type PtySpawnErrorMessage =
+  | {
+      type: 'spawn-error';
+      ptyId: string;
+      message: string;
+      launchFailure?: undefined;
+    }
+  | {
+      type: 'spawn-error';
+      ptyId: string;
+      message?: undefined;
+      launchFailure: WindowsShellLaunchFailureReason;
+    };
 type PtyShellNoticeMessage =
   | {
       type: 'shell-notice';
@@ -486,7 +503,8 @@ export function resolveShell(
 export function buildShellArgs(
   platform: NodeJS.Platform,
   shell: string,
-  launchCommand?: string | TerminalLaunchCommand,
+  launchCommand: string | TerminalLaunchCommand | undefined,
+  managedBinDirs: readonly string[],
 ): string[] | string {
   if (platform === 'win32') {
     return typeof launchCommand === 'object'
@@ -495,43 +513,36 @@ export function buildShellArgs(
   }
   const interactiveArgs = [...interactiveShellArgs(platform)];
   if (typeof launchCommand !== 'string' || launchCommand.length === 0) return interactiveArgs;
-  const quotedShell = `'${shell.replace(/'/g, "'\\''")}'`;
+  const quotedShell = shellSingleQuote(shell);
   return [
     ...interactiveArgs,
     '-c',
-    `${launchCommand}; exec ${quotedShell} ${interactiveArgs.join(' ')}`,
+    commandWithManagedPath(
+      shell,
+      `${launchCommand}; exec ${quotedShell} ${interactiveArgs.join(' ')}`,
+      managedBinDirs,
+    ),
   ];
 }
 
 export function buildShellEnv(
   parentEnv: Record<string, string | undefined>,
-  options: { platform?: NodeJS.Platform; cliBinDir?: string } = {},
-): Record<string, string> {
-  const stripped = new Set<string>(STRIPPED_ENV_MARKERS);
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(parentEnv)) {
-    if (value === undefined) continue;
-    if (stripped.has(key) || key.startsWith('GDK_PIXBUF_')) continue;
-    out[key] = value;
+  options: {
+    platform?: NodeJS.Platform;
+    cliBinDir?: string;
+    logger?: { warn: (data: Record<string, unknown>) => void };
+  } = {},
+): { env: Record<string, string>; managedBinDirs: readonly string[] } {
+  const childOptions = okChildEnvOptions(parentEnv, {
+    platform: options.platform,
+    cliBinDir: options.cliBinDir,
+  });
+  if (hasNoResolvableOkHome(childOptions)) {
+    options.logger?.warn({ event: 'pty-host-no-ok-managed-home', platform: childOptions.platform });
   }
-  const platform = options.platform ?? process.platform;
-  const pathKey = windowsPathKey(out);
-  if (platform === 'win32' && options.cliBinDir) {
-    const entries = (out[pathKey] ?? '').split(';').filter(Boolean);
-    if (!entries.some((entry) => entry.toLowerCase() === options.cliBinDir?.toLowerCase())) {
-      out[pathKey] = [options.cliBinDir, ...entries].join(';');
-    }
-  }
-  const home = out.HOME;
-  if (platform !== 'win32' && home) {
-    const okBin = join(home, '.ok', 'bin');
-    const entries = (out[pathKey] ?? '').split(delimiter).filter(Boolean);
-    if (!entries.includes(okBin)) {
-      out[pathKey] = [okBin, ...entries].join(delimiter);
-    }
-  }
+  const out = composeOkChildEnv(parentEnv, childOptions);
   out[OK_DESKTOP_TERMINAL_ENV] = '1';
-  return out;
+  return { env: out, managedBinDirs: okManagedBinDirs(childOptions) };
 }
 
 const CONPTY_DLL_LOAD_ERROR_PREFIXES = {
@@ -560,6 +571,19 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   const clearHostTimer = deps.clearTimer ?? clearTimeout;
   const materializeSupportFile = deps.materializeSupportFile ?? materializeSupportFileSync;
   const cachedWindowsPaths = new Map<string, string>();
+  const killEscalateTokens = new Map<string, ReturnType<typeof setHostTimer>>();
+
+  function clearKillEscalate(ptyId: string): void {
+    const token = killEscalateTokens.get(ptyId);
+    if (token === undefined) return;
+    killEscalateTokens.delete(ptyId);
+    clearHostTimer(token);
+  }
+
+  function clearAllKillEscalates(): void {
+    for (const token of killEscalateTokens.values()) clearHostTimer(token);
+    killEscalateTokens.clear();
+  }
 
   function probeWindowsShellPath(
     command: string,
@@ -578,9 +602,13 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     deps.parentPort?.postMessage(message);
   }
 
-  function safeKill(pty: PtyProcessLike): void {
+  function safeKill(pty: PtyProcessLike, signal?: string): void {
     try {
-      pty.kill();
+      if (signal === undefined) {
+        pty.kill();
+      } else {
+        pty.kill(signal);
+      }
     } catch (err) {
       const code = (err as { code?: string } | null)?.code;
       if (code !== 'ESRCH') {
@@ -627,6 +655,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       event: 'pty-host-shell-resolved',
       platform,
       rung: resolution.rung,
+      shellCommandFamily: platform === 'win32' ? undefined : shellCommandFamily(resolution.shell),
     });
     const shell = resolution.shell;
     if (platform === 'win32') {
@@ -635,7 +664,11 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
         post({ type: 'shell-notice', ptyId, notice: 'shell-resolved', shellFamily });
       }
     }
-    const shellEnv = buildShellEnv(env, { platform, cliBinDir: deps.cliBinDir });
+    const { env: shellEnv, managedBinDirs } = buildShellEnv(env, {
+      platform,
+      cliBinDir: deps.cliBinDir,
+      logger: deps.logger,
+    });
     let launchCommand = message.launchCommand;
     if (
       platform === 'win32' &&
@@ -676,18 +709,24 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     }
     let shellArgs: string[] | string;
     try {
-      shellArgs = buildShellArgs(platform, shell, launchCommand);
+      shellArgs = buildShellArgs(platform, shell, launchCommand, managedBinDirs);
     } catch (error) {
+      const launchFailure = error instanceof WindowsShellLaunchError ? error.reason : null;
       deps.logger?.warn({
         event: 'pty-host-launch-compose-failed',
         platform,
         rung: resolution.rung,
+        ...(launchFailure === null ? {} : { launchFailure }),
       });
-      post({
-        type: 'spawn-error',
-        ptyId,
-        message: error instanceof Error ? error.message : String(error),
-      });
+      post(
+        launchFailure === null
+          ? {
+              type: 'spawn-error',
+              ptyId,
+              message: error instanceof Error ? error.message : String(error),
+            }
+          : { type: 'spawn-error', ptyId, launchFailure },
+      );
       return;
     }
     const spawnOptions: PtySpawnOptions = {
@@ -730,6 +769,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       if (sessions.get(ptyId) === pty) post({ type: 'data', ptyId, data });
     });
     pty.onExit(({ exitCode, signal }) => {
+      clearKillEscalate(ptyId);
       if (sessions.get(ptyId) === pty) sessions.delete(ptyId);
       post({ type: 'exit', ptyId, exitCode, signal: signal ?? null });
       if (shuttingDown && sessions.size === 0) finishShutdown();
@@ -746,7 +786,18 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
 
   function handleKill(message: PtyKillMessage): void {
     const pty = sessions.get(message.ptyId);
-    if (pty) safeKill(pty);
+    if (!pty) return;
+    const ptyId = message.ptyId;
+    safeKill(pty);
+    if (sessions.get(ptyId) !== pty) return;
+    clearKillEscalate(ptyId);
+    const token = setHostTimer(() => {
+      killEscalateTokens.delete(ptyId);
+      if (sessions.get(ptyId) !== pty) return;
+      safeKill(pty, 'SIGKILL');
+    }, KILL_ESCALATE_MS);
+    if (typeof token.unref === 'function') token.unref();
+    killEscalateTokens.set(ptyId, token);
   }
 
   function handlePause(message: PtyPauseMessage): void {
@@ -758,6 +809,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   }
 
   function killActiveSessions(): void {
+    clearAllKillEscalates();
     for (const pty of sessions.values()) safeKill(pty);
     sessions.clear();
   }
@@ -769,6 +821,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   function finishShutdown(): void {
     if (hostExited) return;
     hostExited = true;
+    clearAllKillEscalates();
     if (shutdownToken !== null) {
       clearHostTimer(shutdownToken);
       shutdownToken = null;
@@ -781,6 +834,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   function handleShutdown(): void {
     if (shuttingDown) return;
     shuttingDown = true;
+    clearAllKillEscalates();
     for (const pty of sessions.values()) safeKill(pty);
     if (sessions.size === 0) {
       finishShutdown();
@@ -895,14 +949,10 @@ if ((process as NodeJS.Process & { parentPort?: unknown }).parentPort) {
       exitHost: (code) => process.exit(code),
       flushLogger,
       env: process.env,
-      cliBinDir:
-        process.platform === 'win32'
-          ? join(
-              (process as NodeJS.Process & { resourcesPath: string }).resourcesPath,
-              'cli',
-              'bin',
-            )
-          : undefined,
+      cliBinDir: okPackagedCliBinDir(
+        process.platform,
+        (process as NodeJS.Process & { resourcesPath?: string }).resourcesPath,
+      ),
       logger: {
         warn: (o) => log.warn(o, 'pty-host warning'),
         info: (o) => log.info(o, 'pty-host shell resolution'),

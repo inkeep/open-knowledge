@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import {
   OK_DIR,
   type PullOutcome,
+  pathspecArgs,
   type SyncMode,
   type SyncModeChangeSource,
   tryLineLevelCombine,
@@ -85,6 +86,13 @@ const TRACKED_MCP_CONFIG_TARGET_SET: ReadonlySet<string> = new Set(TRACKED_MCP_C
 const SHA_HEX_40 = /^[0-9a-f]{40}$/i;
 
 const execFileAsync = promisify(execFile);
+
+class GitOperationInProgressError extends Error {
+  constructor() {
+    super('Sync paused while a Git operation is in progress or the index has unresolved conflicts');
+    this.name = 'GitOperationInProgressError';
+  }
+}
 
 class ShareableOkEnumerationError extends Error {
   constructor(relDir: string, cause: unknown) {
@@ -218,14 +226,9 @@ interface MergePreparation {
 }
 
 /**
- * ContentFilter read-opts for the two staging-path consultations
- * (`gatherContentFilesSync`, `listHeadContentPaths`): admits the shareable
- * `.ok` artifact allow-list for staging and deletion tracking. Both paths
- * must consult the identical predicate — a HEAD path the head listing admits
- * but the gather walk refuses would be committed as a spurious deletion on
- * every push cycle (precedent #55). The conflict partition
- * (`isContentConflictPath` / `handleMergeConflict`) deliberately stays
- * unscoped so these artifacts keep the non-content auto-resolve class.
+ * ContentFilter read-opts for the two staging-path consultations, admitting the shareable `.ok`
+ * artifact allow-list. Both must consult the identical predicate (precedent #55): a HEAD path the
+ * listing admits but the gather walk refuses commits as a spurious deletion on every push.
  */
 const CONTENT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'content' } } as const;
 const PROJECT_SYNC_STAGING_SCOPE = { syncScope: { pathBase: 'project' } } as const;
@@ -235,9 +238,10 @@ type PullInvocation = 'explicit' | 'sync';
 
 const BLOCKING_PATHS_CAP = 50;
 
-const FORWARD_ONLY_PAUSES: ReadonlySet<string | undefined> = new Set([
+const ONE_SHOT_PAUSES: ReadonlySet<string | undefined> = new Set([
   'diverged-local-commits',
   'external-changes-pending',
+  'git-operation-in-progress',
 ]);
 
 const COMMIT_BLOCKING_MESSAGE = 'Commit local changes before syncing';
@@ -331,11 +335,9 @@ export class SyncEngine {
   private contentFilter: ContentFilter;
   private contentRoot: string;
   /**
-   * True when the project-root `.ok/` directory sits outside the contentDir
-   * walk (content.dir configured as a subfolder). The push cycle then runs a
-   * second enumeration rooted at the project root so shareable `.ok`
-   * artifacts still stage and deletion-track; gather and head listing consult
-   * this flag in lock-step (precedent #55).
+   * The push cycle then runs a second enumeration rooted at the project root so shareable `.ok`
+   * artifacts still stage and deletion-track; gather and head listing consult this flag in
+   * lock-step (precedent #55).
    */
   private rootOkOutsideContentWalk: boolean;
   private pullIntervalSeconds: number;
@@ -400,8 +402,7 @@ export class SyncEngine {
   private blockingPaths: string[] = [];
   private currentBranch = 'main';
 
-  private pullInFlight = false;
-  private pushInFlight = false;
+  private cycleInFlight: 'pull' | 'push' | null = null;
 
   private hasRemote = false;
 
@@ -744,10 +745,10 @@ export class SyncEngine {
   private async drainInFlightCycles(): Promise<void> {
     const DRAIN_TIMEOUT_MS = 30_000;
     const drainStartMs = Date.now();
-    while (this.pullInFlight || this.pushInFlight) {
+    while (this.cycleInFlight !== null) {
       if (Date.now() - drainStartMs > DRAIN_TIMEOUT_MS) {
         log.warn(
-          { pullInFlight: this.pullInFlight, pushInFlight: this.pushInFlight },
+          { cycleInFlight: this.cycleInFlight },
           '[sync] drain: timed out waiting for in-flight cycle',
         );
         break;
@@ -922,9 +923,9 @@ export class SyncEngine {
   }
 
   private async runOneShotPush(): Promise<void> {
-    if (this.pushInFlight || this.pullInFlight) {
+    if (this.cycleInFlight !== null) {
       log.info(
-        { pushInFlight: this.pushInFlight, pullInFlight: this.pullInFlight },
+        { cycleInFlight: this.cycleInFlight },
         '[sync] one-shot push refused — a cycle is already in flight',
       );
       return;
@@ -950,11 +951,11 @@ export class SyncEngine {
     }
 
     const restingState = this.state;
-    this.pushInFlight = true;
+    this.cycleInFlight = 'push';
     try {
       await this.doPushCycle(1);
     } finally {
-      this.pushInFlight = false;
+      this.cycleInFlight = null;
       if (this.pushCycleLanded) this.markRun();
       const settled = this.currentState();
       if (settled !== 'conflict' && settled !== 'auth-error') {
@@ -966,7 +967,7 @@ export class SyncEngine {
 
   async fetchOnly(): Promise<boolean> {
     if (!this.hasRemote || isUnbornHead(this.projectDir)) return false;
-    if (this.pullInFlight || this.pushInFlight || this.fetchOnlyInFlight) return false;
+    if (this.cycleInFlight !== null || this.fetchOnlyInFlight) return false;
 
     this.fetchOnlyInFlight = true;
     const handle = this.gitHandle();
@@ -1003,9 +1004,9 @@ export class SyncEngine {
   }
 
   private async runOneShotPull(invocation: PullInvocation): Promise<PullOutcome> {
-    if (this.pullInFlight || this.pushInFlight) {
+    if (this.cycleInFlight !== null) {
       log.info(
-        { pullInFlight: this.pullInFlight, pushInFlight: this.pushInFlight },
+        { cycleInFlight: this.cycleInFlight },
         '[sync] one-shot pull refused — a cycle is already in flight',
       );
       return this.recordPullOutcome('refused');
@@ -1028,14 +1029,14 @@ export class SyncEngine {
     const restingMode = this.mode;
     const restingState = this.state;
     const restingPausedReason = this.pausedReason;
-    this.pullInFlight = true;
+    this.cycleInFlight = 'pull';
     try {
       return this.recordPullOutcome(await this.doPullCycle(invocation));
     } finally {
-      this.pullInFlight = false;
+      this.cycleInFlight = null;
       if (restingMode === 'off') {
-        if (!FORWARD_ONLY_PAUSES.has(this.pausedReason)) {
-          if (!FORWARD_ONLY_PAUSES.has(restingPausedReason)) {
+        if (!ONE_SHOT_PAUSES.has(this.pausedReason)) {
+          if (!ONE_SHOT_PAUSES.has(restingPausedReason)) {
             this.pausedReason = restingPausedReason;
           }
         }
@@ -1105,18 +1106,22 @@ export class SyncEngine {
     return withParentLock(async () => {
       await this.applyCommitIdentity(handle);
       try {
-        await handle.git.raw(['add', '--', ...paths]);
+        await handle.git.raw(['add', ...pathspecArgs(paths)]);
         const staged = await listNames(handle.git, [
           'diff',
           '--cached',
           '--name-only',
-          '--',
-          ...paths,
+          ...pathspecArgs(paths),
         ]);
         if (staged.length === 0) return null;
-        await handle.git.raw(['commit', '-m', COMMIT_BLOCKING_MESSAGE, '--', ...paths]);
+        await handle.git.raw(['commit', '-m', COMMIT_BLOCKING_MESSAGE, ...pathspecArgs(paths)]);
       } catch (err) {
-        await handle.git.raw(['reset', '--', ...paths]).catch(() => {});
+        await handle.git.raw(['reset', ...pathspecArgs(paths)]).catch((resetErr: unknown) => {
+          log.warn(
+            { resetErr, files: paths.length },
+            '[sync] blocking-path index reset failed; paths may remain staged',
+          );
+        });
         log.error({ err, files: paths.length }, '[sync] commit of blocking paths failed');
         throw err;
       }
@@ -1486,7 +1491,10 @@ export class SyncEngine {
   }
 
   private async runPullCycle(): Promise<void> {
-    if (this.pullInFlight) return;
+    if (this.cycleInFlight !== null) {
+      if (this.cycleInFlight === 'push' && this.pullTimer === null) this.schedulePull();
+      return;
+    }
     if (this.state === 'dormant' || this.state === 'disabled' || this.state === 'auth-error')
       return;
     if (this.state === 'conflict') {
@@ -1498,18 +1506,29 @@ export class SyncEngine {
       return;
     }
 
-    if (this.mode === 'follow') await this.refreshAuthTier();
-
-    this.pullInFlight = true;
+    this.cycleInFlight = 'pull';
     try {
+      if (this.mode === 'follow') await this.refreshAuthTier();
       this.recordPullOutcome(await this.doPullCycle(this.mode === 'full' ? 'sync' : 'explicit'));
     } finally {
-      this.pullInFlight = false;
+      this.cycleInFlight = null;
       this.schedulePull();
     }
   }
 
   private async doPullCycle(invocation: PullInvocation): Promise<PullOutcome> {
+    if (this.pausedReason === 'git-operation-in-progress') {
+      try {
+        await this.assertNoGitOperationInProgress();
+      } catch (e) {
+        if (e instanceof GitOperationInProgressError) {
+          this.handleGitOperationRefusal(e, 'pull');
+          return 'refused';
+        }
+        this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'pull');
+        return 'error';
+      }
+    }
     const handle = this.gitHandle();
 
     let branch: string;
@@ -1585,6 +1604,10 @@ export class SyncEngine {
         this.scheduleSaveState();
         return 'succeeded';
       } catch (e) {
+        if (e instanceof GitOperationInProgressError) {
+          this.handleGitOperationRefusal(e, 'pull');
+          return 'refused';
+        }
         const classified = classifyGitError(e instanceof Error ? e : new Error(String(e)));
         if (classified.class === 'semantic' && classified.subclass === 'merge-conflict') {
           await this.handleMergeConflict();
@@ -1660,8 +1683,7 @@ export class SyncEngine {
             '--source=HEAD',
             '--staged',
             '--worktree',
-            '--',
-            ...overlapping,
+            ...pathspecArgs(overlapping),
           ]);
         } catch (e) {
           log.warn(
@@ -1980,8 +2002,8 @@ export class SyncEngine {
     const guardOpts = { allowShareableOkArtifact: isShareableOkArtifact };
     for (const { path, bytes } of writes) {
       const abs = join(this.projectDir, path);
-      assertRealpathWithinDir(abs, this.projectDir, guardOpts);
-      tracedWriteFileSync(abs, bytes);
+      const target = assertRealpathWithinDir(abs, this.projectDir, guardOpts);
+      tracedWriteFileSync(target, bytes);
     }
     for (const path of deletions) {
       const abs = join(this.projectDir, path);
@@ -2031,7 +2053,6 @@ export class SyncEngine {
   }
 
   private async runPushCycle(): Promise<void> {
-    if (this.pushInFlight) return;
     if (this.mode !== 'full') return;
     if (this.state === 'dormant' || this.state === 'disabled') return;
     if (this.state === 'conflict' || this.state === 'auth-error') return;
@@ -2043,17 +2064,16 @@ export class SyncEngine {
       this.schedulePush();
       return;
     }
-    if (this.pullInFlight) {
-      log.info({ pullInFlight: true }, '[sync] push cycle deferred — a pull cycle holds the tree');
-      if (this.pushTimer === null) this.schedulePush();
+    if (this.cycleInFlight !== null) {
+      if (this.cycleInFlight === 'pull' && this.pushTimer === null) this.schedulePush();
       return;
     }
 
-    this.pushInFlight = true;
+    this.cycleInFlight = 'push';
     try {
       await this.doPushCycle(1);
     } finally {
-      this.pushInFlight = false;
+      this.cycleInFlight = null;
       if (this.pushCycleLanded) this.markRun();
       this.schedulePush();
     }
@@ -2064,11 +2084,11 @@ export class SyncEngine {
     const tmpIndexPath = join(tmpdir(), `ok-sync-idx-${process.pid}-${Date.now()}.idx`);
     let commitSha: string | null = null;
 
-    this.transitionTo('pushing');
-
     try {
       const contentFiles = this.gatherContentFilesSync();
       await withParentLock(async () => {
+        await this.assertNoGitOperationInProgress();
+        this.transitionTo('pushing');
         const handle = this.gitHandle(tmpIndexPath);
 
         if (isUnbornHead(this.projectDir)) {
@@ -2245,6 +2265,10 @@ export class SyncEngine {
         }
       }
     } catch (e) {
+      if (e instanceof GitOperationInProgressError) {
+        this.handleGitOperationRefusal(e, 'push');
+        return;
+      }
       const err = e instanceof Error ? e : new Error(String(e));
       if (err instanceof ShareableOkEnumerationError) {
         log.warn({ err }, '[sync] push cycle: staging error detail');
@@ -2282,6 +2306,10 @@ export class SyncEngine {
             if (!overlaysRestored) throw new Error('failed to restore reconciled MCP overlays');
             await this.persistReconciledMcpEntries(mergePrep.reconciled);
           } catch (mergeErr) {
+            if (mergeErr instanceof GitOperationInProgressError) {
+              this.handleGitOperationRefusal(mergeErr, 'push');
+              return;
+            }
             const mc = classifyGitError(
               mergeErr instanceof Error ? mergeErr : new Error(String(mergeErr)),
             );
@@ -2321,6 +2349,7 @@ export class SyncEngine {
   }
 
   private async commitDirtyContentFilesToHead(handle: GitHandle): Promise<string | null> {
+    await this.assertNoGitOperationInProgress();
     const status = await handle.git.status();
     if (status.files.length === 0) return null;
 
@@ -2516,8 +2545,7 @@ export class SyncEngine {
           '--source=HEAD',
           '--staged',
           '--worktree',
-          '--',
-          ...reconciled.map((item) => item.path),
+          ...pathspecArgs(reconciled.map((item) => item.path)),
         ]);
       } catch (err) {
         log.warn({ err }, '[sync] could not isolate reconciled MCP paths from pre-merge stash');
@@ -2551,17 +2579,17 @@ export class SyncEngine {
     for (const item of reconciled) {
       try {
         const absolutePath = join(this.projectDir, item.path);
-        assertRealpathWithinDir(absolutePath, this.projectDir);
+        const target = assertRealpathWithinDir(absolutePath, this.projectDir);
         let existing: string | null = null;
         try {
-          existing = readFileSync(absolutePath, 'utf8');
+          existing = readFileSync(target, 'utf8');
         } catch (err) {
           log.warn(
             { err, path: item.path },
             '[sync] could not read MCP config before restoring reconciled overlay',
           );
         }
-        if (existing !== item.raw) tracedWriteFileSync(absolutePath, item.raw, 'utf8');
+        if (existing !== item.raw) tracedWriteFileSync(target, item.raw, 'utf8');
       } catch (err) {
         restored = false;
         log.warn({ err, path: item.path }, '[sync] could not restore reconciled MCP overlay');
@@ -2578,6 +2606,39 @@ export class SyncEngine {
       log.warn({ err }, '[sync] stash pop failed — stash remains on stack');
       return false;
     }
+  }
+
+  private async assertNoGitOperationInProgress(): Promise<void> {
+    if (this.hasGitOperationInProgress()) throw new GitOperationInProgressError();
+    const unmerged = await listNames(this.gitHandle().git, [
+      'diff',
+      '--name-only',
+      '--diff-filter=U',
+    ]);
+    if (unmerged.length > 0 || this.hasGitOperationInProgress()) {
+      throw new GitOperationInProgressError();
+    }
+    if (this.pausedReason === 'git-operation-in-progress') {
+      this.pausedReason = undefined;
+      this.cc1Broadcaster?.signal('sync-status');
+      this.scheduleSaveState();
+    }
+  }
+
+  private handleGitOperationRefusal(error: GitOperationInProgressError, op: 'push' | 'pull'): void {
+    if (this.state === 'conflict' || this.conflictCount > 0) {
+      this.transitionTo('conflict');
+    } else {
+      this.pausedReason = 'git-operation-in-progress';
+      if (op === 'push') this.clearPushError();
+      else this.clearPullError();
+      if (this.state === 'pushing' || this.state === 'pulling' || this.state === 'fetching') {
+        this.transitionTo('idle');
+      }
+    }
+    log.warn({ err: error, op }, '[sync] cycle refused because a Git operation holds the tree');
+    this.cc1Broadcaster?.signal('sync-status');
+    this.scheduleSaveState();
   }
 
   private hasGitOperationInProgress(): boolean {
@@ -2622,7 +2683,11 @@ export class SyncEngine {
           });
           if (commitRaw === null) throw new Error(`cannot edit tracked MCP path: ${item.path}`);
 
-          const treeLine = await isolated.git.raw(['ls-tree', headSha, '--', item.path]);
+          const treeLine = await isolated.git.raw([
+            'ls-tree',
+            headSha,
+            ...pathspecArgs([item.path]),
+          ]);
           const mode = treeLine.match(/^(100644|100755)\s/)?.[1];
           if (!mode) throw new Error(`unsafe tracked MCP mode: ${item.path}`);
 
@@ -2695,9 +2760,9 @@ export class SyncEngine {
               `${replay.mode},${replay.blobSha},${replay.path}`,
             ]);
             const absolutePath = join(this.projectDir, replay.path);
-            assertRealpathWithinDir(absolutePath, this.projectDir);
-            if (readFileSync(absolutePath, 'utf8') !== replay.raw) {
-              tracedWriteFileSync(absolutePath, replay.raw, 'utf8');
+            const target = assertRealpathWithinDir(absolutePath, this.projectDir);
+            if (readFileSync(target, 'utf8') !== replay.raw) {
+              tracedWriteFileSync(target, replay.raw, 'utf8');
             }
           }
         } catch (err) {
@@ -2726,27 +2791,8 @@ export class SyncEngine {
   }
 
   /**
-   * Stage content files into the handle's index, dropping ignored-AND-untracked
-   * paths first. Content scope is broader than git scope: the content filter
-   * admits `<folder>/.ok/templates/*.md` regardless of ignore state so templates
-   * stay visible in the editor, but a local-only-sharing project excludes `.ok/`
-   * in `.git/info/exclude`, and naming such a path in `git add` fatals with
-   * `addIgnoredFile`, wedging every push cycle. Precedent #55 (walker and
-   * `git add` agree on scope) is enforced here rather than in content admission.
-   *
-   * Tracked files are exempt from ignore rules and must keep syncing, but
-   * `git add` (Apple git 2.39.5) still refuses a named path under an ignored
-   * directory even when tracked — so paths carrying a `.ok/` segment (the only
-   * carve-out shape content admission holds above git scope) are added with
-   * `-f`. Everything else keeps the plain fail-loud `add`: if the probe and the
-   * add ever disagree (a future git version, a `.gitattributes` edge), an
-   * unexpected refusable path surfaces as an error instead of being silently
-   * force-added. On probe failure, stage unfiltered WITHOUT `-f` and let the
-   * old error surface.
-   *
-   * Call only after the caller's `read-tree` seed: against an empty index a
-   * tracked-but-ignored file reads as refusable and its HEAD entry would be
-   * committed as a deletion. Returns the staged files for deletion-set pairing.
+   * Precedent #55 (walker and `git add` agree on scope) is enforced here rather than in content
+   * admission.
    */
   private async stageContentFiles(
     handle: GitHandle,
@@ -2764,8 +2810,7 @@ export class SyncEngine {
           '--others',
           '--ignored',
           '--exclude-standard',
-          '--',
-          ...batch,
+          ...pathspecArgs(batch),
         ]);
         for (const p of ignored) refused.add(p);
       } catch (err) {
@@ -2784,12 +2829,12 @@ export class SyncEngine {
     const forced = probeOk ? stageable.filter((f) => hasOkSegment(f.projectRelPath)) : [];
     const plain = probeOk ? stageable.filter((f) => !hasOkSegment(f.projectRelPath)) : stageable;
     for (const [addArgs, group] of [
-      [['add', '--'], plain],
-      [['add', '-f', '--'], forced],
+      [['add'], plain],
+      [['add', '-f'], forced],
     ] as const) {
       for (let i = 0; i < group.length; i += BATCH) {
         const batch = group.slice(i, i + BATCH).map((f) => f.projectRelPath);
-        await handle.git.raw([...addArgs, ...batch]);
+        await handle.git.raw([...addArgs, ...pathspecArgs(batch)]);
       }
     }
     return stageable;
@@ -2863,14 +2908,9 @@ export class SyncEngine {
   }
 
   /**
-   * Whether a project-relative path is inside the set this engine will commit.
-   *
-   * The staging walk, HEAD deletion tracking, and the working-tree status
-   * surface must all answer this identically — a path one admits and another
-   * refuses is precedent #55's failure mode (a HEAD path the gather walk
-   * refuses gets committed as a spurious deletion every cycle). Public because
-   * the status endpoint marks out-of-scope paths in the UI, and a second
-   * predicate for that marking would be free to drift.
+   * The staging walk, HEAD deletion tracking, and the working-tree status surface must all answer
+   * this identically — a path one admits and another refuses is precedent #55's failure mode (a
+   * HEAD path the gather walk refuses gets committed as a spurious deletion every cycle).
    */
   isSyncScopedPath(projRelPath: string): boolean {
     const absPath = join(this.projectDir, projRelPath);
@@ -2904,7 +2944,7 @@ export class SyncEngine {
     const BATCH = 100;
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = unique.slice(i, i + BATCH);
-      await handle.git.raw(['rm', '--cached', '--', ...batch]);
+      await handle.git.raw(['rm', '--cached', ...pathspecArgs(batch)]);
     }
   }
 
@@ -2916,8 +2956,13 @@ export class SyncEngine {
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = unique.slice(i, i + BATCH);
       try {
-        await realIndexHandle.git.raw(['reset', 'HEAD', '--', ...batch]);
-      } catch {}
+        await realIndexHandle.git.raw(['reset', 'HEAD', ...pathspecArgs(batch)]);
+      } catch (resetErr: unknown) {
+        log.warn(
+          { resetErr, files: batch.length },
+          '[sync] real-index reset failed; paths may remain staged',
+        );
+      }
     }
   }
 
@@ -2971,8 +3016,8 @@ export class SyncEngine {
     );
     for (const file of nonContentConflicts) {
       try {
-        await handle.git.raw(['checkout', '--theirs', '--', file]);
-        await handle.git.raw(['add', '--', file]);
+        await handle.git.raw(['checkout', '--theirs', ...pathspecArgs([file])]);
+        await handle.git.raw(['add', ...pathspecArgs([file])]);
         if (file.toLowerCase() === projectConfigRelPath.toLowerCase()) {
           log.warn(
             { file },
@@ -3132,6 +3177,10 @@ export class SyncEngine {
       this.pausedReason = 'protected-branch';
       void this.onAutoDisable?.('protected-branch');
     } else if (classified.class === 'local' && classified.subclass === 'dirty-tree') {
+      if (this.state === 'conflict' || this.conflictCount > 0) {
+        this.transitionTo('conflict');
+        return;
+      }
       this.bumpFailureCount(op);
       this.transitionTo('idle');
       this.pausedReason = 'dirty-tree';

@@ -82,28 +82,15 @@ describe('parseCommand — write_blocked (redirection and write flags)', () => {
   test('`>>` append', () => expectError('cat a >> b', 'write_blocked'));
   test('`<` input redirection', () => expectError('cat < file', 'shell_construct_blocked'));
 
-  test.each([
-    '||',
-    '&&',
-    ';;',
-    '|&',
-    '<(',
-    '<<<',
-    '>>',
-    '>&',
-    '<&',
-    '&',
-    ';',
-    '(',
-    ')',
-    '<',
-    '>',
-  ])('%s is classified, not left to the generic operator message', (op) => {
-    const result = parseCommand(`cat a.md ${op} b.md`);
-    expect('error' in result).toBe(true);
-    if (!('error' in result)) return;
-    expect(result.error.message).not.toMatch(/^Operator /);
-  });
+  test.each(['||', '&&', ';;', '|&', '<(', '<<<', '>>', '>&', '<&', '&', ';', '(', ')', '<', '>'])(
+    '%s is classified, not left to the generic operator message',
+    (op) => {
+      const result = parseCommand(`cat a.md ${op} b.md`);
+      expect('error' in result).toBe(true);
+      if (!('error' in result)) return;
+      expect(result.error.message).not.toMatch(/^Operator /);
+    },
+  );
   test('find -exec rejected (via ; op token)', () =>
     expectError('find . -exec rm {} ;', 'shell_construct_blocked'));
   test('find -execdir rejected (via ; op token)', () =>
@@ -412,13 +399,10 @@ describe('glob operands', () => {
 });
 
 describe('find flags that run another command', () => {
-  test.each([
-    '-exec',
-    '-execdir',
-    '-ok',
-    '-okdir',
-  ])('find %s is refused by the parser, since it runs a command the allowlist never sees', (flag) =>
-    expectError(`find . ${flag} rm {} +`, 'shell_construct_blocked'));
+  test.each(['-exec', '-execdir', '-ok', '-okdir'])(
+    'find %s is refused by the parser, since it runs a command the allowlist never sees',
+    (flag) => expectError(`find . ${flag} rm {} +`, 'shell_construct_blocked'),
+  );
 });
 
 describe('a flag value is not a positional', () => {

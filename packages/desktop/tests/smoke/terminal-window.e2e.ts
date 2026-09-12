@@ -161,7 +161,7 @@ test.describe('Standalone terminal window — live Electron', () => {
     const s = seed('open-close');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const editor = await findWindowByMode(app, 'editor');
     await waitForRendererResponsive(editor);
     const editorWindow = await app.browserWindow(editor);
@@ -206,7 +206,7 @@ test.describe('Standalone terminal window — live Electron', () => {
     const s = seed('multi');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     await waitForRendererResponsive(await findWindowByMode(app, 'editor'));
 
     expect(await clickNewTerminalWindow(app)).toBe(true);

@@ -75,7 +75,7 @@ function makeFetchSpy() {
 
 function bodyOf(spy: ReturnType<typeof makeFetchSpy>): { entries: Array<Record<string, unknown>> } {
   const call = spy.mock.calls.at(-1);
-  return JSON.parse((call?.[1] as RequestInit).body as string);
+  return JSON.parse((call?.[1] as RequestInit | undefined)?.body as string);
 }
 
 function install(
@@ -254,7 +254,7 @@ describe('installClientLogForwarder', () => {
     const entry = bodyOf(fetchSpy).entries[0];
     expect(entry?.event).toBe('big-event');
     expect(entry?.fields).toBeUndefined();
-    expect((entry?.message as string).length).toBeLessThanOrEqual(8192);
+    expect((entry?.message as string | undefined)?.length).toBeLessThanOrEqual(8192);
   });
 
   test('a failed POST is counted and carried as droppedSinceLastFlush on the next batch', async () => {

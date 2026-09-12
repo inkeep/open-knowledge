@@ -35,7 +35,7 @@ function writeRegistry(value: unknown): void {
 function provenanceOf(): Record<string, unknown> {
   const bundles = enumerateClaudePlugins(root, 'claude');
   expect(bundles).toHaveLength(1);
-  return (bundles[0]?.skills[0] as { provenance: Record<string, unknown> }).provenance;
+  return (bundles[0]?.skills[0] as { provenance: Record<string, unknown> } | undefined)?.provenance;
 }
 
 describe('enumerateClaudePlugins — repository URL stamp', () => {

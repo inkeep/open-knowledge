@@ -10,7 +10,6 @@ import type {
   McpWiringEditorId,
   ProjectIntegrationsComponentRef,
   ProjectIntegrationsEditorStatus,
-  ProjectIntegrationsFollowUp,
   ProjectIntegrationsSetRequest,
   ProjectIntegrationsSetResult,
   ProjectIntegrationsStatus,
@@ -23,16 +22,6 @@ import {
   safeDetectedEditors,
 } from './integrations-settings.ts';
 import { logIpcError } from './ipc-log.ts';
-
-const EDITOR_FOLLOW_UP: Partial<Record<McpWiringEditorId, ProjectIntegrationsFollowUp>> = {
-  claude: 'approve-once',
-  cursor: 'enable-manually',
-  codex: 'auto-connect',
-};
-
-function followUpFor(id: McpWiringEditorId): ProjectIntegrationsFollowUp {
-  return EDITOR_FOLLOW_UP[id] ?? 'none';
-}
 
 export interface ProjectIntegrationsCliSurface {
   allEditorIds: readonly McpWiringEditorId[];
@@ -72,8 +61,10 @@ export interface ProjectIntegrationsCliSurface {
   removeProjectSkill(
     id: McpWiringEditorId,
     projectDir: string,
-  ): { action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed'; error?: string };
-  recordProjectSkillDecision?(projectDir: string, enabled: boolean): void;
+  ): {
+    action: 'removed' | 'not-present' | 'skipped-unsupported' | 'failed';
+    error?: string;
+  };
   reportProjectSkillInstalled?(projectDir: string): void;
 }
 
@@ -149,7 +140,6 @@ export function registerProjectIntegrationsSettings(
         state,
         configPath: relative(projectDir, projectPath),
         entryLocator: cli.entryLocator(id),
-        followUp: followUpFor(id),
       });
     }
     return statuses;
@@ -252,6 +242,9 @@ export function registerProjectIntegrationsSettings(
           event: 'project-integrations-editor-removed',
           editor: id,
           outcome: outcome.kind,
+          ...(outcome.kind === 'removed' && outcome.trustDetail
+            ? { path: projectPath, trust: outcome.trust, trustDetail: outcome.trustDetail }
+            : {}),
         });
         return { ok: true };
       case 'left-foreign':
@@ -265,6 +258,12 @@ export function registerProjectIntegrationsSettings(
           error: `Couldn't safely edit ${label}'s project config — it was left unchanged.`,
         };
     }
+  }
+
+  function skillActionSucceeded(action: string, enabled: boolean): boolean {
+    return enabled
+      ? action === 'written' || action === 'overwritten'
+      : action === 'removed' || action === 'not-present';
   }
 
   async function setSkill(
@@ -281,7 +280,7 @@ export function registerProjectIntegrationsSettings(
         const result = enabled
           ? cli.writeProjectSkill(id, projectDir)
           : cli.removeProjectSkill(id, projectDir);
-        if (result.action === 'failed') {
+        if (!skillActionSucceeded(result.action, enabled)) {
           failures.push(`${cli.editorLabel(id)}${result.error ? ` (${result.error})` : ''}`);
         }
       } catch (err) {
@@ -290,7 +289,6 @@ export function registerProjectIntegrationsSettings(
         );
       }
     }
-    cli.recordProjectSkillDecision?.(projectDir, enabled);
     if (enabled && failures.length === 0) cli.reportProjectSkillInstalled?.(projectDir);
     if (failures.length > 0) {
       return {

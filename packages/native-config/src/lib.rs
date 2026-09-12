@@ -14,6 +14,7 @@ use napi_derive::napi;
 mod document_helpers;
 mod mcp_edit;
 mod path_resolve;
+mod process_start;
 mod toml_json;
 
 use std::path::Path;
@@ -70,6 +71,23 @@ pub fn remove_mcp_server(toml_text: String, server_name: String) -> napi::Result
     })
 }
 
+/// Remove one key from `[mcp_servers.<server_name>]`, leaving every other key
+/// of the entry and its decor in place. Throws only for unparseable TOML.
+#[napi]
+pub fn remove_mcp_server_key(
+    toml_text: String,
+    server_name: String,
+    key: String,
+) -> napi::Result<McpEditResult> {
+    let outcome = mcp_edit::remove_mcp_server_key(&toml_text, &server_name, &key)
+        .map_err(napi::Error::from_reason)?;
+    Ok(McpEditResult {
+        text: outcome.text,
+        changed: outcome.changed,
+        existed: outcome.existed,
+    })
+}
+
 /// Where to read the existing config from and where to write the updated one
 /// after following any symlink chain. `read_path` is absent when the chain
 /// cycles or can't be resolved, in which case `write_path` is the original path
@@ -93,4 +111,15 @@ pub fn resolve_symlink_write_path(path: String) -> napi::Result<SymlinkWritePath
             .map(|p| p.to_string_lossy().into_owned()),
         write_path: resolved.write_path.to_string_lossy().into_owned(),
     })
+}
+
+/// Read the creation time of the process at `pid`, in milliseconds since the
+/// Unix epoch, for comparing a running process against the lock that claims
+/// it. `None` on every platform but Windows, and on Windows when the creation
+/// time predates the epoch. Throws `OpenProcess: <os error>` when the process
+/// cannot be opened and `GetProcessTimes: <os error>` when the times cannot be
+/// read.
+#[napi]
+pub fn read_process_start(pid: u32) -> napi::Result<Option<i64>> {
+    process_start::read(pid).map_err(napi::Error::from_reason)
 }

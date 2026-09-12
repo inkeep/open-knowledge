@@ -1,7 +1,7 @@
 import { unlinkSync } from 'node:fs';
 import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import { inspectLock, type LockState } from './lock-state.ts';
+import { describeLockOwnershipRefusal, inspectLock, type LockState } from './lock-state.ts';
 
 interface PruneTarget {
   name: 'server';
@@ -11,14 +11,46 @@ interface PruneTarget {
 
 interface CleanPlan {
   prune: PruneTarget[];
+  refusal?: { lockPath: string; error: string };
 }
 
 export function buildCleanPlan(server: LockState): CleanPlan {
-  const prune: PruneTarget[] = [];
-  if (server.status === 'dead-pid' || server.status === 'corrupt') {
-    prune.push({ name: 'server', lockPath: server.lockPath, reason: server.status });
+  switch (server.status) {
+    case 'read-error':
+      return {
+        prune: [],
+        refusal: {
+          lockPath: server.lockPath,
+          error: `Cannot read the server lock: ${server.error}. Restore file and parent-directory access, then retry.`,
+        },
+      };
+    case 'corrupt':
+      if (server.foreignHost) {
+        return {
+          prune: [],
+          refusal: {
+            lockPath: server.lockPath,
+            error: describeLockOwnershipRefusal(server),
+          },
+        };
+      }
+      return { prune: [{ name: 'server', lockPath: server.lockPath, reason: server.status }] };
+    case 'dead-pid':
+      return { prune: [{ name: 'server', lockPath: server.lockPath, reason: server.status }] };
+    case 'unverified-owner':
+    case 'foreign-host':
+      return {
+        prune: [],
+        refusal: { lockPath: server.lockPath, error: describeLockOwnershipRefusal(server) },
+      };
+    case 'alive':
+    case 'missing':
+      return { prune: [] };
+    default: {
+      const exhaustive: never = server;
+      return exhaustive;
+    }
   }
-  return { prune };
 }
 
 interface RunCleanDeps {
@@ -31,7 +63,7 @@ interface RunCleanDeps {
 
 interface CleanOutcome {
   pruned: PruneTarget[];
-  failed: Array<{ target: PruneTarget; error: string }>;
+  failed: Array<{ target: Pick<PruneTarget, 'name' | 'lockPath'>; error: string }>;
 }
 
 export function runClean(deps: RunCleanDeps): CleanOutcome {
@@ -42,13 +74,22 @@ export function runClean(deps: RunCleanDeps): CleanOutcome {
 
   const plan = buildCleanPlan(inspect());
 
+  if (plan.refusal) {
+    error(`${plan.refusal.lockPath}: ${plan.refusal.error}`);
+    return {
+      pruned: [],
+      failed: [
+        { target: { name: 'server', lockPath: plan.refusal.lockPath }, error: plan.refusal.error },
+      ],
+    };
+  }
   if (plan.prune.length === 0) {
     log('No stale locks.');
     return { pruned: [], failed: [] };
   }
 
   const pruned: PruneTarget[] = [];
-  const failed: Array<{ target: PruneTarget; error: string }> = [];
+  const failed: Array<{ target: Pick<PruneTarget, 'name' | 'lockPath'>; error: string }> = [];
   for (const target of plan.prune) {
     try {
       unlink(target.lockPath);

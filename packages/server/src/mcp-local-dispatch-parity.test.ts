@@ -9,10 +9,10 @@ import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { OK_DIR } from '@inkeep/open-knowledge-core';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { type BootedServer, bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
+import { connectMcpTestClient } from './mcp/client.test-helper.ts';
 import { createMcpHttpHandler, type McpHttpHandler } from './mcp-http.ts';
 
 const TEST_CONFIG = ConfigSchema.parse({});
@@ -37,11 +37,8 @@ function seedOkScaffold(projectDir: string): void {
   writeFileSync(resolve(okDir, '.gitignore'), '', 'utf-8');
 }
 
-async function connectClient(url: string, name: string): Promise<Client> {
-  const client = new Client({ name, version: '0.0.0-test' });
-  await client.connect(new StreamableHTTPClientTransport(new URL(url)));
-  return client;
-}
+const connectClient = (url: string, name: string): Promise<Client> =>
+  connectMcpTestClient(url, { name, version: '0.0.0-test' });
 
 function maskVolatile(result: ToolResult): unknown {
   return JSON.parse(

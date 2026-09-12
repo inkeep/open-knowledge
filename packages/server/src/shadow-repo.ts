@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { SYSTEM_WRITER_DISPLAY_NAMES } from '@inkeep/open-knowledge-core';
+import { pathspecArgs, SYSTEM_WRITER_DISPLAY_NAMES } from '@inkeep/open-knowledge-core';
 import {
   type AutoConsolidationTrigger,
   CHECKPOINT_KIND_REGISTRY,
@@ -316,7 +316,7 @@ async function commitWipInner(
         GIT_WORK_TREE: shadow.workTree,
         GIT_INDEX_FILE: tmpIndex,
       })
-      .raw('add', gitPathspec);
+      .raw('add', ...pathspecArgs([gitPathspec]));
     const treeSha = (
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
     ).trim();
@@ -357,7 +357,7 @@ async function commitWipInner(
   }
 }
 
-const FANOUT_INDEX_NAME = 'index-wip-fanout';
+export const FANOUT_INDEX_NAME = 'index-wip-fanout';
 
 function sweepOrphanedScratchState(shadow: ShadowHandle): number {
   let deleted = 0;
@@ -393,7 +393,7 @@ async function buildWipTreeWithIndex(
       GIT_WORK_TREE: shadow.workTree,
       GIT_INDEX_FILE: indexFile,
     })
-    .raw('add', gitPathspec);
+    .raw('add', ...pathspecArgs([gitPathspec]));
   return (
     await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: indexFile }).raw('write-tree')
   ).trim();
@@ -509,13 +509,8 @@ export const SERVICE_WRITER: WriterIdentity = {
 };
 
 /**
- * Artifacts OK authors itself — today the generated root `index.md`.
- *
- * Deliberately NOT `SERVICE_WRITER`: that one is the fallback for work with no
- * contributor behind it, and precedent #25 reserves it for exactly that. A
- * generated document is an authoring action with a real author; the author just
- * is not a person. Keeping them apart is what lets a reader tell "OK wrote this
- * file" from "OK flushed something nobody claimed".
+ * Deliberately NOT `SERVICE_WRITER`: that one is the fallback for work with no contributor behind
+ * it, and precedent #25 reserves it for exactly that.
  */
 export const OK_GENERATOR_WRITER: WriterIdentity = {
   id: OK_GENERATOR_WRITER_ID,
@@ -1449,7 +1444,7 @@ async function saveVersionInner(
         GIT_WORK_TREE: shadow.workTree,
         GIT_INDEX_FILE: shadowTmpIndex,
       })
-      .raw('add', gitPathspec);
+      .raw('add', ...pathspecArgs([gitPathspec]));
     const shadowTreeSha = (
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: shadowTmpIndex }).raw('write-tree')
     ).trim();

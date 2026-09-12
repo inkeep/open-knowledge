@@ -34,7 +34,7 @@ const TRIGGERS: Trigger[] = [
   { keyPrefix: 'slashCommand', typed: 'x /head', literal: '/head' },
 ];
 
-const ENTER: KeyboardEventInit & { key: string } = { key: 'Enter', code: 'Enter', keyCode: 13 };
+const ENTER: KeyboardEventInit & { key: string } = { key: 'Enter', code: 'Enter' };
 
 function mountEditor(context: Context): { editor: Editor; container: HTMLDivElement } {
   const container = document.createElement('div');
@@ -194,12 +194,13 @@ describe('Suggestion plugins refuse inside literal text (byte-preservation contr
       }
     });
 
-    test('still activates in a plain paragraph', async () => {
+    test('still activates in a plain paragraph and consumes Enter', async () => {
       const { editor, container } = mountEditor('paragraph');
       try {
         typeChars(editor, typed);
         await flush();
         expect(getSuggestionState(editor, keyPrefix)?.active).toBe(true);
+        expect(pressEnter(editor)).toBe(true);
       } finally {
         teardown(editor, container);
       }

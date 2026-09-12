@@ -1,6 +1,5 @@
 import type { Page } from '@playwright/test';
-
-const TOOLBAR_OVERLAP_PX = 56;
+import { TOOLBAR_OVERLAP_PX } from './landing.ts';
 
 interface ScrollportContainmentOptions {
   toolbarPx?: number;

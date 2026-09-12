@@ -1,27 +1,6 @@
 /**
- * InteractionPropPanel — shared primitive for InteractionLayer PropPanels.
- *
- * Wraps shadcn `Popover` (Radix Popover) with a virtual anchor that tracks
- * the active chip's bounding rect via `@floating-ui/dom` `autoUpdate`. We
- * can't use `<PopoverTrigger>` directly because chips render as plain DOM
- * (precedent #18 — 768 React portals collapses
- * to one singleton). Instead, a zero-pointer-events `<PopoverAnchor>` span
- * follows the chip's rect; Radix anchors `<PopoverContent>` to it with
- * built-in flip + shift collision handling and focus management.
- *
- * **Trigger model:** open state is controlled externally by the
- * InteractionLayer's hover/focus state machine — chips don't toggle the
- * popover directly. The layer calls `store.setActiveNode(id)` from
- * pointerover/focusin/long-press; Radix sees `open=true` and mounts content.
- * Radix's own `onInteractOutside` / Escape handling routes to
- * `onOpenChange(false)` → `onDeactivate()` → `setActiveNode(null)`.
- *
- * **Focus discipline:** `onOpenAutoFocus={(e) => e.preventDefault()}` keeps
- * focus on the originating chip when the popover opens via hover. Keyboard
- * focus into the popover is driven by the layer's Tab interception (see
- * `interaction-layer.tsx`) so the chip stays the keyboard tabstop.
- * `onCloseAutoFocus={(e) => e.preventDefault()}` lets our own focus-
- * restoration in the layer handle the post-close target.
+ * We can't use `<PopoverTrigger>` directly because chips render as plain DOM (precedent #18 — 768
+ * React portals collapses to one singleton).
  */
 
 import { autoUpdate, type VirtualElement } from '@floating-ui/dom';

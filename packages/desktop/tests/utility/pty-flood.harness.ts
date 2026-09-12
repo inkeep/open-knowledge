@@ -16,6 +16,7 @@ import {
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
+import { createStartedTerminal } from '../support/terminal-create.test-helper.ts';
 
 const require = createRequire(import.meta.url);
 
@@ -201,6 +202,7 @@ async function runFloodScenario(opts: FloodOptions): Promise<FloodMetrics> {
   };
 
   manager = createTerminalManager({
+    canSpawnAt: () => true,
     forkPtyHost: () => bridge,
     sendData: (_wc, payload) => {
       chunks.push(payload.data);
@@ -253,7 +255,13 @@ async function runFloodScenario(opts: FloodOptions): Promise<FloodMetrics> {
       : null;
 
   try {
-    manager.create({ windowId: 1, webContents, projectRoot: tmp, cols: 80, rows: 24 });
+    createStartedTerminal(manager, {
+      windowId: 1,
+      webContents,
+      projectRoot: tmp,
+      cols: 80,
+      rows: 24,
+    });
     await waitFor(() => totalPushed > 0, 'shell prompt', 15000);
 
     const floodStart = Date.now();
@@ -398,6 +406,7 @@ function createMultiSessionRig(opts: {
   };
 
   manager = createTerminalManager({
+    canSpawnAt: () => true,
     forkPtyHost: () => bridge,
     sendData: (_wc, payload) => {
       const session = sessions.get(payload.ptyId);
@@ -460,7 +469,7 @@ function createMultiSessionRig(opts: {
     bridge,
     tmp,
     addSession(spec): SessionRuntime {
-      const result = manager.create({
+      const result = createStartedTerminal(manager, {
         windowId: 1,
         webContents,
         projectRoot: tmp,

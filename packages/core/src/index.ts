@@ -1,4 +1,5 @@
 export { VFileMessage } from 'vfile-message';
+export * from './agent-registry/index.ts';
 // Bridge — observer/CRDT-bridge shared utilities (precedent #14)
 export {
   addsBlankLines,
@@ -104,6 +105,7 @@ export {
   toBridgeInvariantLog,
   tryLineLevelCombine,
 } from './bridge/index.ts';
+
 export {
   clampToCodeUnits,
   isBlankNoteContent,
@@ -265,9 +267,11 @@ export {
   isKnownConfigError,
   type KnownConfigValidationError,
   KnownConfigValidationErrorSchema,
+  type RecoveredConfigDiagnostic,
   type RemovedKeyDiagnostic,
   type ScopedConfigDiagnostic,
   ScopedConfigDiagnosticSchema,
+  type ValueFallbackDiagnostic,
   type WriteScope,
   WriteScopeSchema,
 } from './config/errors.ts';
@@ -301,6 +305,9 @@ export {
   ConfigSchema,
   checkEmbeddingsBaseUrl,
   DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
   DEFAULT_EMBEDDINGS_MODEL,
   DEFAULT_LOGS_MAX_BYTES,
   DEFAULT_SERVER_BIND,
@@ -310,6 +317,12 @@ export {
   IDLE_SHUTDOWN_DURATION_RE,
   isLoopbackEmbeddingsUrl,
   isValidAttachmentFolderPath,
+  MAX_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MAX_EMBEDDINGS_MAX_BATCH_CHARS,
+  MAX_EMBEDDINGS_MAX_BATCH_SIZE,
+  MIN_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MIN_EMBEDDINGS_MAX_BATCH_CHARS,
+  MIN_EMBEDDINGS_MAX_BATCH_SIZE,
   normalizeAttachmentFolderPath,
 } from './config/schema.ts';
 export { getLeafFieldMeta, resolveLeafSchema } from './config/schema-leaf.ts';
@@ -409,7 +422,7 @@ export {
   HOSTS_WITH_USER_SKILL_DIR,
   HUB_READER_EDITORS,
   PROJECT_SKILL_EDITOR_IDS,
-  PROJECT_SKILL_PROJECTION_IGNORE_PATHS,
+  PROJECT_SKILL_PROJECTION_PATHS,
   RESERVED_PROJECT_SKILL_NAME,
   receivesProjectIntegrationWrite,
   skillRootActivationPath,
@@ -442,6 +455,10 @@ export {
   sliceLastSpawnAttempt,
   spawnErrorLogOpenMode,
 } from './constants/lifecycle.ts';
+export {
+  MANUAL_CHECK_NOTICE_EXPIRY_MS,
+  MANUAL_CHECK_WATCHDOG_MS,
+} from './constants/manual-update-check.ts';
 export {
   GREP_MAX_RESULTS,
   MCP_SERVER_NAME,
@@ -477,7 +494,13 @@ export {
   NATIVE_MENU_LABELS,
   type NativeMenuLabelKey,
 } from './constants/native-menu-labels.ts';
-export { LOCAL_DIR, OK_DIR, OK_PROJECT_MARKER, SAVED_THEMES_DIRNAME } from './constants/ok-dir.ts';
+export {
+  LOCAL_DIR,
+  OK_DIR,
+  OK_PROJECT_MARKER,
+  posixOkManagedBinDir,
+  SAVED_THEMES_DIRNAME,
+} from './constants/ok-dir.ts';
 export {
   PREVIEW_EMBED_STARTERS,
   type PreviewEmbedStarter,
@@ -488,6 +511,7 @@ export {
   type PreviewThemeToken,
 } from './constants/preview-theme-tokens.ts';
 export { PRODUCT_NAME } from './constants/product.ts';
+export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
   AGENTS_SKILLS_ROOT,
@@ -496,7 +520,6 @@ export {
   isSkillRefCandidate,
   OPENKNOWLEDGE_SKILLS_REPO,
   PACK_SKILL_PREFIX,
-  projectSkillDecisionKey,
   RENAMED_PACK_SKILLS,
   rewriteSkillRefs,
   SKILL_REF_RE,
@@ -588,7 +611,10 @@ export {
   WikiLink,
   type WikiLinkAttrs,
 } from './extensions/wiki-link.ts';
-// schema-add-only per precedent #9, so the export commits to additive
+/**
+ * The re-exported attrs are schema-add-only per precedent #9, so this public import path
+ * commits to additive evolution only.
+ */
 export {
   WikiLinkEmbed,
   type WikiLinkEmbedAttrs,
@@ -663,6 +689,12 @@ export {
   type WorktreeSelectorModel,
 } from './git/worktree-selector-model.ts';
 export {
+  type Pathspec,
+  pathspecArgs,
+  stripPathspecMagic,
+  toPathspec,
+} from './git-pathspec.ts';
+export {
   type AssembleHandoffPromptInput,
   assembleHandoffPrompt,
   assertNeverUrnIpcLookup,
@@ -699,6 +731,7 @@ export {
   type IpcChannelReason,
   type IpcChannelWithUrn,
   isWindowsShellFamily,
+  isWindowsShellLaunchFailureReason,
   type LintFixPromptInput,
   launchWithoutSupportFile,
   lookupUrnInRegistry,
@@ -724,6 +757,8 @@ export {
   type UrnIpcLookup,
   WINDOWS_SHELL_FAMILIES,
   type WindowsShellFamily,
+  WindowsShellLaunchError,
+  type WindowsShellLaunchFailureReason,
   withSkillPointer,
 } from './handoff/index.ts';
 export { asBcp47Tag, type Bcp47Tag, toBcp47Tags } from './i18n/bcp47.ts';
@@ -778,15 +813,24 @@ export type {
   OkBugReportSendFallbackReason,
   OkBugReportSendMetadata,
   OkBugReportSendResult,
+  OkImageAttachmentContentType,
   ReportBundleLevel,
   ReportBundleSummary,
   SerializedError,
   SerializedErrorTruncation,
 } from './logger-types.ts';
 export {
+  BUG_REPORT_ATTACHMENT_CONTENT_TYPES,
+  BUG_REPORT_ATTACHMENT_EXTENSIONS,
+  BUG_REPORT_ATTACHMENTS_ZIP_DIR,
+  BUG_REPORT_ATTACHMENTS_ZIP_PREFIX,
+  BUG_REPORT_CONTACT_EMAIL_MAX_LENGTH,
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  isBugReportAttachmentEntry,
   LOG_LEVELS,
+  MAX_BUG_REPORT_ATTACHMENTS,
+  MAX_BUG_REPORT_ATTACHMENTS_TOTAL_BYTES,
 } from './logger-types.ts';
 export {
   LOGGER_OWNED_FIELDS,
@@ -833,6 +877,7 @@ export {
   DEFAULT_LINTER_CONFIG,
   DEFAULT_MARKDOWNLINT_CONFIG,
   DEFAULT_SCHEMA_DIALECT,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
   deriveValidationRunSources,
   displayCategoryForRule,
   emptyFrontmatterSchemaText,
@@ -856,6 +901,8 @@ export {
   isFrontmatterScoped,
   isMarkdownlintJsonConfig,
   isOkfRuleEnabled,
+  isReLintFailedWarning,
+  isReLintFailureReason,
   isSupportedSchemaDialect,
   isToolManagedSchemaPath,
   LINKS_VALIDATION_SETTINGS,
@@ -909,6 +956,11 @@ export {
   okfAdvertisedSchemaMappings,
   okfSchemaPathFor,
   type PersistedLinterConfig,
+  RE_LINT_FAILED_WARNING_PREFIX,
+  RE_LINT_FAILURE_REASONS,
+  type ReLintFailure,
+  type ReLintFailureReason,
+  ReLintFailureSchema,
   type ResolvedFrontmatterSchemaEntry,
   RULE_DISPLAY_CATEGORIES,
   type RuleCatalogEntry,
@@ -1062,6 +1114,16 @@ export {
   type AgentEffectEntryWire,
   AgentEffectsDocSchema,
   type AgentEffectsDocWire,
+  AgentIntegrationsAppliedStepSchema,
+  type AgentIntegrationsApplyRequest,
+  AgentIntegrationsApplyRequestSchema,
+  type AgentIntegrationsApplySuccess,
+  AgentIntegrationsApplySuccessSchema,
+  AgentIntegrationsIntentSchema,
+  type AgentIntegrationsIntentWire,
+  AgentIntegrationsPlanConflictSchema,
+  AgentIntegrationsProbeSchema,
+  AgentIntegrationsSnapshotSchema,
   type AgentPatchRequest,
   AgentPatchRequestSchema,
   type AgentPatchSuccess,
@@ -1092,6 +1154,9 @@ export {
   type ApiConfigSuccess,
   ApiConfigSuccessSchema,
   assertNeverProblemType,
+  assertNeverSemanticProviderErrorReason,
+  assertNeverSemanticQueryOutcome,
+  assertNeverWriteWarning,
   type BacklinkCountsSuccess,
   BacklinkCountsSuccessSchema,
   type BacklinkEntry,
@@ -1101,11 +1166,15 @@ export {
   type BatchEntryError,
   BatchEntryErrorSchema,
   BROKEN_LINK_REASONS,
+  BROKEN_LINK_SUPPRESSION_REASONS,
   type BranchInfoResponse,
   BranchInfoResponseSchema,
   type BrokenLink,
   type BrokenLinkReason,
   BrokenLinkSchema,
+  type BrokenLinkSuppression,
+  type BrokenLinkSuppressionReason,
+  BrokenLinkSuppressionSchema,
   BrokenLinksSchema,
   type CheckoutFailureReason,
   CheckoutFailureReasonSchema,
@@ -1141,6 +1210,7 @@ export {
   type CreatePageSuccess,
   CreatePageSuccessSchema,
   classifyGitAuthError,
+  classifySemanticProviderError,
   containsXmlTag,
   type DeadLinkEntry,
   DeadLinkEntrySchema,
@@ -1177,12 +1247,14 @@ export {
   type EmbedProbeEntryWire,
   type EmptyRequest,
   EmptyRequestSchema,
+  FOLDER_CONFIG_WARNING_CODES,
   type FolderConfigGetSuccess,
   FolderConfigGetSuccessSchema,
   type FolderConfigPutRequest,
   FolderConfigPutRequestSchema,
   type FolderConfigPutSuccess,
   FolderConfigPutSuccessSchema,
+  type FolderConfigWarningCode,
   type ForwardLinkDocEntry,
   ForwardLinkDocEntrySchema,
   type ForwardLinkEntry,
@@ -1225,9 +1297,16 @@ export {
   InstallSkillRequestSchema,
   type InstallSkillSuccess,
   InstallSkillSuccessSchema,
+  interpretSkillMoveFailure,
   isBranchNotFoundGitError,
   isLoginFixableGitAuthError,
+  isSemanticSearchOffered,
+  isSkillMoveRetainedDestinationCode,
+  isSkillMoveStateCode,
+  isSkillRetentionLedgerCode,
+  isSkillSourceStateCode,
   isValidBranchName,
+  isWriteWarningKind,
   type LifecycleStatus,
   LifecycleStatusSchema,
   type LinkGraphDocNode,
@@ -1288,6 +1367,7 @@ export {
   MetricsReconciliationSuccessSchema,
   type MetricsWatcherRecentSuccess,
   MetricsWatcherRecentSuccessSchema,
+  normalizeApiWarnings,
   type OrphanEntry,
   OrphanEntrySchema,
   type OrphanHint,
@@ -1388,6 +1468,11 @@ export {
   SeedPlanSuccessSchema,
   type SemanticIndexStatus,
   SemanticIndexStatusSchema,
+  type SemanticProviderErrorReason,
+  SemanticProviderErrorReasonSchema,
+  type SemanticProviderFailureOutcome,
+  type SemanticQueryOutcome,
+  SemanticQueryOutcomeSchema,
   type ServerInfoBoot,
   ServerInfoBootSchema,
   type ServerInfoSuccess,
@@ -1424,9 +1509,15 @@ export {
   ShareTargetStatusResponseSchema,
   type ShareTargetStatusVerdict,
   ShareTargetStatusVerdictSchema,
+  SKILL_AUTHORING_WARNING_CODES,
   SKILL_INSTALL_WARNING_CODES,
+  SKILL_MOVE_RETAINED_DESTINATION,
+  SKILL_MOVE_STATE_CODES,
   SKILL_NAME_REGEX,
+  SKILL_RETENTION_LEDGER_CODES,
+  SKILL_SOURCE_STATE_CODES,
   SKILLS_IMPORT_BULK_MAX,
+  type SkillAuthoringWarningCode,
   type SkillDeleteSuccess,
   SkillDeleteSuccessSchema,
   type SkillDuplicateRequest,
@@ -1482,12 +1573,14 @@ export {
   type SkillInstallWarningCode,
   type SkillLocationId,
   SkillLocationIdSchema,
+  type SkillMoveFailureOutcome,
   type SkillMoveRequest,
   SkillMoveRequestSchema,
   type SkillMoveScopeRequest,
   SkillMoveScopeRequestSchema,
   type SkillMoveScopeSuccess,
   SkillMoveScopeSuccessSchema,
+  type SkillMoveStateCode,
   type SkillMoveSuccess,
   SkillMoveSuccessSchema,
   type SkillOrigin,
@@ -1508,6 +1601,7 @@ export {
   SkillRestoreRequestSchema,
   type SkillRestoreSuccess,
   SkillRestoreSuccessSchema,
+  type SkillRetentionLedgerCode,
   type SkillRevertRequest,
   SkillRevertRequestSchema,
   type SkillRevertSuccess,
@@ -1515,6 +1609,7 @@ export {
   SkillRootPathSchema,
   type SkillScope,
   SkillScopeSchema,
+  type SkillSourceStateCode,
   type SkillsImportBulkRequest,
   SkillsImportBulkRequestSchema,
   type SkillsImportBulkSuccess,
@@ -1582,6 +1677,7 @@ export {
   SyncTriggerRequestSchema,
   type SyncTriggerSuccess,
   SyncTriggerSuccessSchema,
+  semanticProviderErrorBlocks,
   type TagSummaryEntry,
   TagSummaryEntrySchema,
   type TagsDocEntry,
@@ -1628,6 +1724,7 @@ export {
   TrashCleanupRequestSchema,
   type TrashCleanupSuccess,
   TrashCleanupSuccessSchema,
+  UNREADABLE_WARNINGS_TEXT,
   type UploadAssetSuccess,
   UploadAssetSuccessSchema,
   type UploadRequest,
@@ -1636,7 +1733,9 @@ export {
   type WatcherDecisionEntryWire,
   type WorkspaceSuccess,
   WorkspaceSuccessSchema,
+  WRITE_WARNING_KINDS,
   type WriteWarning,
+  type WriteWarningKind,
   WriteWarningSchema,
 } from './schemas/api/index.ts';
 export {
@@ -1895,6 +1994,7 @@ export type {
   UninstallProjectRow,
   UninstallScreenSpec,
 } from './uninstall-bridge.ts';
+export { UNINSTALL_RESULT_WAIT_TIMEOUT_MS } from './uninstall-bridge.ts';
 export {
   HIDDEN_CONFIG_BASENAMES,
   isHiddenDocName,
@@ -1951,6 +2051,7 @@ export {
 export { type BasenameIndex, createBasenameIndex } from './utils/path-resolve.ts';
 export { type PdfAnchorParts, parsePdfAnchor } from './utils/pdf-anchor.ts';
 export { randomUUID } from './utils/random-uuid.ts';
+export { formatRelativeAge, RELATIVE_TIME_UNKNOWN } from './utils/relative-time.ts';
 export {
   decodeHrefPath,
   encodeHrefPath,

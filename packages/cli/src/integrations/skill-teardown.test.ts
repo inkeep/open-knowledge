@@ -244,14 +244,12 @@ describe('legacy fan-out sweep — refuses unsafe inputs', () => {
     return dir;
   }
 
-  test.each([
-    '',
-    '.',
-    'relative/path',
-    'x/../y',
-  ])('a non-absolute home (%j) throws instead of resolving against cwd', (bogus) => {
-    expect(() => planLegacyFanoutSweep(bogus)).toThrow(/absolute home/);
-  });
+  test.each(['', '.', 'relative/path', 'x/../y'])(
+    'a non-absolute home (%j) throws instead of resolving against cwd',
+    (bogus) => {
+      expect(() => planLegacyFanoutSweep(bogus)).toThrow(/absolute home/);
+    },
+  );
 
   test('the filesystem root is refused', () => {
     expect(() => planLegacyFanoutSweep(sep)).toThrow(/filesystem root/);

@@ -14,6 +14,7 @@ import {
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
+import { createStartedTerminal } from '../support/terminal-create.test-helper.ts';
 
 const HOME = '/Users/test-home';
 const PROJECT = '/tmp/attach-survival-project';
@@ -54,6 +55,7 @@ function makeTerminalManager() {
   const shutdownTimers: Array<() => void> = [];
   let idn = 0;
   const mgr = createTerminalManager({
+    canSpawnAt: () => true,
     forkPtyHost: () => {
       const h = new FakeHost();
       forked.push(h);
@@ -181,7 +183,7 @@ describe('terminal window PTY survives owner-server teardown (seam 6 / FR4 / D2)
 
     const { mgr, forked, dataPushes, runShutdownTimers } = makeTerminalManager();
     const termWc = makeWebContents();
-    const created = mgr.create({
+    const created = createStartedTerminal(mgr, {
       windowId: TERM_WIN_ID,
       webContents: termWc,
       projectRoot: cwd,

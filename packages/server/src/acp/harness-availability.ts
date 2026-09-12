@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import type { TerminalCli } from '@inkeep/open-knowledge-core';
+import { ACP_AGENT_HARNESS_CLI_MAP, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 import { AgentLaunchError, mergedEnv, preflightLaunch, withLoginShellPath } from './launch.ts';
 import { getSharedLoginShellPathProvider } from './login-shell-path.ts';
@@ -17,14 +17,8 @@ interface HarnessSignals {
 
 export type AcpHarnessCli = TerminalCli | 'gemini';
 
-export const ACP_AGENT_HARNESS_CLIS: Readonly<Record<string, AcpHarnessCli | undefined>> = {
-  'claude-acp': 'claude',
-  'codex-acp': 'codex',
-  cursor: 'cursor',
-  gemini: 'gemini',
-  opencode: 'opencode',
-  'pi-acp': 'pi',
-};
+export const ACP_AGENT_HARNESS_CLIS: Readonly<Record<string, AcpHarnessCli | undefined>> =
+  ACP_AGENT_HARNESS_CLI_MAP;
 
 const HARNESS_BINS: Readonly<Record<AcpHarnessCli, string>> = {
   claude: 'claude',

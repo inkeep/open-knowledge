@@ -1,16 +1,12 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-
-const GLOBALS_CSS = resolve(dirname(fileURLToPath(import.meta.url)), 'globals.css');
+import { blankComments, readGlobalsCssRaw } from './globals-css.test-helper';
 
 const SHRINK_SELECTOR = '[data-suggestion-popup][data-suggestion-clipped] *';
 
 const LAYERS_BEFORE_UTILITIES = ['theme', 'base', 'components'];
 
 function enclosingLayer(source: string, selector: string): string | null {
-  const css = source.replace(/\/\*[\s\S]*?\*\//g, (block) => ' '.repeat(block.length));
+  const css = blankComments(source);
   const prelude = new RegExp(`${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{`);
   const found = prelude.exec(css);
   if (!found) throw new Error(`cascade-position: no rule with prelude ${selector} in globals.css`);
@@ -38,7 +34,7 @@ function enclosingLayer(source: string, selector: string): string | null {
 
 describe('suggestion picker shrink rule cascade position', () => {
   test('sits in a layer that Tailwind utilities can override', () => {
-    const css = readFileSync(GLOBALS_CSS, 'utf8');
+    const css = readGlobalsCssRaw();
     const layer = enclosingLayer(css, SHRINK_SELECTOR);
     expect(
       layer,

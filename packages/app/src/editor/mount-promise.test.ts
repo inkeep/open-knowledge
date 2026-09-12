@@ -1,12 +1,4 @@
-/**
- * Unit tests for mount-promise: module-level promise cache for the Pattern D
- * (Suspense + `use(promise)`) TipTap mount-split. Mirrors precedent #18(d)
- * sync-promise.test.ts shape.
- *
- * Tests use the same fake-DOM + fake-Editor harness as editor-cache.test.ts
- * (Bun test env has no DOM globals; we install a minimal `globalThis.document`
- * stub before the suites that exercise the cache-MISS path).
- */
+/** Mirrors precedent #18(d) sync-promise.test.ts shape. */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Editor } from '@tiptap/core';

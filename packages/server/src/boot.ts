@@ -1,24 +1,3 @@
-/**
- * `bootServer` — HTTP + WebSocket wrapping layer around `createServer()`.
- *
- * Three consumers share this composed boot path:
- *   1. CLI `ok start` (via `bootStartServer` in packages/cli)
- *   2. Electron utility process (direct import — precedent #14-adjacent)
- *   3. Integration tests
- *
- * Before this extraction every consumer reimplemented HTTP + WS upgrade
- * + `listen()` + `updateServerLockPort` + idle-shutdown + composite destroy.
- * The extraction consolidates those ~150 LOC here so all three callers share
- * a single tested orchestrator.
- *
- * Opt-outs (Electron utility uses these):
- *   - `idleShutdownMs: null` — disable idle-shutdown entirely
- *   - `skipAutoInit: true` — skip the pre-createServer scaffold hook
- *
- * CLI-specific concerns (`initContent`, banner, signal handlers)
- * are NOT part of bootServer — the CLI wrapper layers them on top via
- * injected callbacks + post-return orchestration.
- */
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
 import { homedir } from 'node:os';
@@ -47,6 +26,7 @@ import {
   type AcpThreadManagerOptions,
   buildOkMcpStdioCommand,
 } from './acp/thread-manager.ts';
+import { collectServerHostSnapshot } from './agent-registry-probes.ts';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { bootElapsedMs, recordBootPhase, startBootTimings } from './boot-timings.ts';
 import type { Config } from './config/schema.ts';
@@ -173,12 +153,14 @@ export interface BootServerOptions
     | 'enableTestRoutes'
     | 'lockKind'
     | 'detectGh'
+    | 'agentIntegrations'
     | 'detectGhAccounts'
     | 'tokenStore'
     | 'embeddingsKeyStore'
     | 'singleDocRelPath'
     | 'ephemeral'
     | 'configHomedirOverride'
+    | 'acpRegistryFetchImpl'
   > {
   config: Config;
   skipAutoInit?: boolean;
@@ -405,6 +387,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
 
   const serverInstance = createServer({
     getCollabClientCount: () => collabClientCounter?.getCount() ?? 0,
+    acpRegistryFetchImpl: opts.acpRegistryFetchImpl,
     contentDir: opts.contentDir,
     projectDir: opts.projectDir,
     ingressPolicy,
@@ -430,6 +413,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     detectGh: opts.detectGh,
     detectGhAccounts: opts.detectGhAccounts,
     tokenStore: opts.tokenStore,
+    agentIntegrations: opts.agentIntegrations,
     embeddingsKeyStore: opts.embeddingsKeyStore,
     singleDocRelPath: opts.singleDocRelPath,
     ephemeral: opts.ephemeral,
@@ -511,6 +495,8 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
         probePiAcpBridge: opts.probePiAcpBridge,
         ensurePiAcpBridge: opts.ensurePiAcpBridge,
+        hostSnapshot: () =>
+          collectServerHostSnapshot({ env: 'local-web', resolve: opts.agentIntegrations?.probe }),
         log,
       });
   if (acpThreadManager !== null) await acpThreadManager.init();

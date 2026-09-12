@@ -15,7 +15,11 @@ import { extractFirstHeading } from '../page-identity.ts';
 import { readFolderFrontmatter } from './nested-folder-rules.ts';
 import { type GitCommit, type ProjectHistorySource, readProjectGitLog } from './project-log.ts';
 import { type HistorySource, readShadowLog, type ShadowCommit } from './shadow-log.ts';
-import { resolveTemplatesAvailable, type TemplateEntry } from './templates-resolver.ts';
+import {
+  resolveTemplatesAvailable,
+  type TemplateDirRefusalListener,
+  type TemplateEntry,
+} from './templates-resolver.ts';
 
 const DIRECTORY_SCAN_CAP = 1000;
 
@@ -543,9 +547,14 @@ async function scanDirectory(absDir: string, projectDir: string): Promise<DirSca
   return result;
 }
 
+export interface EnrichDirectoryOptions {
+  onTemplateRefused?: TemplateDirRefusalListener;
+}
+
 export async function enrichDirectory(
   relPathInput: string,
   deps: Pick<EnrichPathDeps, 'projectDir' | 'contentDir' | 'frontmatterSchemas' | 'serverUrl'>,
+  options: EnrichDirectoryOptions = {},
 ): Promise<DirectoryMeta> {
   const contained = resolveWithinRoot(deps.projectDir, relPathInput);
   if (!contained.ok) {
@@ -580,7 +589,9 @@ export async function enrichDirectory(
   if (own.description !== undefined) result.description = own.description;
   if ((own.tags?.length ?? 0) > 0) result.tags = own.tags;
 
-  const templates = resolveTemplatesAvailable(deps.projectDir, relPath);
+  const templates = resolveTemplatesAvailable(deps.projectDir, relPath, {
+    onRefused: options.onTemplateRefused,
+  });
   if (templates.length > 0) result.templates_available = templates;
 
   const folderSchemas = schemasApplicableToFolder(deps, relPath);

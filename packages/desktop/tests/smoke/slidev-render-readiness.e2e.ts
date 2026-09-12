@@ -98,11 +98,14 @@ async function isReachable(url: string): Promise<boolean> {
 }
 
 async function closeElectronAppBounded(app: ElectronApplication): Promise<void> {
-  const process = captureAppProcess(app);
-  await Promise.race([
-    app.close().catch(() => undefined),
-    closeAppBounded(process, { gracefulMs: 5_000 }),
-  ]);
+  const proc = captureAppProcess(app);
+  void app.close().catch(() => undefined);
+  await closeAppBounded(proc, { gracefulMs: 5_000 }).catch((error: unknown) => {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[slidev-render-readiness] cleanup incomplete, fixture teardown reports it: ${reason}`,
+    );
+  });
 }
 
 test.describe('Slidev renderer readiness smoke', () => {
@@ -125,7 +128,7 @@ test.describe('Slidev renderer readiness smoke', () => {
         },
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
     try {
       await expect
         .poll(() => findEditor(app), { timeout: 30_000, message: 'editor window did not open' })
@@ -202,7 +205,7 @@ test.describe('Slidev renderer readiness smoke', () => {
         },
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
     try {
       await expect
         .poll(() => findEditor(app), { timeout: 30_000, message: 'editor window did not open' })

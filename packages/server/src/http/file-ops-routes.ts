@@ -1463,8 +1463,10 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     }
     const { parentDocName, placement } = validated.value;
 
-    // attribution — mirrors precedent #24/#25 and lets operators trace
-    // (precedent #24).
+    /**
+     * Identity extraction precedes every semantic error emission below (precedent #24/#25),
+     * so upload logs carry attribution operators can trace.
+     */
     const { agentId, agentName } = extractAgentIdentity(
       Object.fromEntries(new URL(req.url ?? '', 'http://localhost').searchParams.entries()),
     );

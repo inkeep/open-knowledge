@@ -139,7 +139,7 @@ function buildOccluderKeyframes(range: FreezeRange, scrollMax: number): Keyframe
   return buildBoundaryFlipKeyframes(range, scrollMax, { opacity: '0' }, { opacity: '1' });
 }
 
-function applyScrollDrivenFreeze(
+export function applyScrollDrivenFreeze(
   cell: HTMLTableCellElement,
   timeline: AnimationTimeline,
   range: FreezeRange,
@@ -158,10 +158,25 @@ function applyScrollDrivenFreeze(
     ...base,
     pseudoElement: '::before',
   });
-  appliedFreezes.set(cell, {
-    key,
-    animations: [transformAnimation, chromeAnimation, occluderAnimation],
-  });
+  const animations = [transformAnimation, chromeAnimation, occluderAnimation];
+  for (const animation of animations) anchorScrollDrivenStartTime(animation);
+  appliedFreezes.set(cell, { key, animations });
+}
+
+let scrollDrivenStartTimeRejectionWarned = false;
+
+export function anchorScrollDrivenStartTime(animation: Animation): void {
+  try {
+    animation.startTime = CSS.percent(0);
+  } catch (error) {
+    if (import.meta.env.DEV && !scrollDrivenStartTimeRejectionWarned) {
+      scrollDrivenStartTimeRejectionWarned = true;
+      console.warn(
+        '[frozen-table-headers] scroll-driven startTime assignment rejected; frozen headers will drop one frame on every freeze recompute in this browser',
+        error,
+      );
+    }
+  }
 }
 
 function applyInstantFreeze(cell: HTMLTableCellElement, shift: number): void {

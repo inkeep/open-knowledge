@@ -32,6 +32,7 @@ export function dispatchNoteWindowMainAction(
           prompt: action.prompt,
           docName: action.docName,
           titleHint: action.titleHint,
+          attachments: null,
         },
         target,
       );

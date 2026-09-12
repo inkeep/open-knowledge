@@ -12,6 +12,7 @@ export interface NativeTomlBinding {
   parseTomlToJson(tomlText: string): string;
   upsertMcpServer(tomlText: string, serverName: string, entryJson: string): NativeMcpEditResult;
   removeMcpServer(tomlText: string, serverName: string): NativeMcpEditResult;
+  removeMcpServerKey(tomlText: string, serverName: string, key: string): NativeMcpEditResult;
 }
 
 export interface TomlUpsertResult {
@@ -27,6 +28,7 @@ interface NativeTomlConfigEngine extends TomlConfigEngineBase {
   readonly backend: 'native';
   upsertEntry(raw: string, serverName: string, entry: Record<string, unknown>): TomlUpsertResult;
   removeEntry(raw: string, serverName: string): TomlUpsertResult;
+  removeEntryKey(raw: string, serverName: string, key: string): TomlUpsertResult;
 }
 
 interface FallbackTomlConfigEngine extends TomlConfigEngineBase {
@@ -69,6 +71,10 @@ function makeNativeEngine(binding: NativeTomlBinding): NativeTomlConfigEngine {
     },
     removeEntry(raw, serverName) {
       const result = binding.removeMcpServer(raw, serverName);
+      return { text: result.text, existed: result.existed };
+    },
+    removeEntryKey(raw, serverName, key) {
+      const result = binding.removeMcpServerKey(raw, serverName, key);
       return { text: result.text, existed: result.existed };
     },
   };

@@ -72,9 +72,16 @@ function applyColumnCount(popup: HTMLDivElement, regionWidth: number | null): vo
   popup.toggleAttribute('data-suggestion-narrow', regionWidth < SUGGESTION_TWO_COLUMN_MIN_PX);
 }
 
+export type SuggestionPopupLabel =
+  | 'composer-mention'
+  | 'composer-slash'
+  | 'slash-command'
+  | 'tag-suggestion'
+  | 'wiki-link-suggestion';
+
 export function createSuggestionPopup(
   getCurrentProps: () => SuggestionProps<unknown> | null,
-  label: string,
+  label: SuggestionPopupLabel,
   { clipToEditorPane = false }: { clipToEditorPane?: boolean } = {},
 ): {
   popup: HTMLDivElement;

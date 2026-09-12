@@ -2,6 +2,7 @@ import {
   classifyGitAuthError,
   type GitAuthFailureSubclass,
   type SyncErrorCode,
+  stripPathspecMagic,
 } from '@inkeep/open-knowledge-core';
 
 type NetworkSubclass = 'dns' | 'timeout' | '5xx' | '429' | 'connection-refused' | 'unknown-network';
@@ -394,7 +395,7 @@ function classifyGitErrorBase(error: Error | unknown): ClassifiedErrorBase {
     class: 'local',
     subclass: 'unknown-local',
     retryable: true,
-    message: err.message || 'Unknown git error',
+    message: stripPathspecMagic(err.message) || 'Unknown git error',
     rawStderr: raw,
   };
 }

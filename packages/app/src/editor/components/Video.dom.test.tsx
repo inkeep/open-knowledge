@@ -1,12 +1,4 @@
-/**
- * RTL behavioral tests for the `Video` canonical's dispatch contract.
- * Pins the three render branches: native `<video>` for file-served media,
- * `<LiteYouTubeEmbed>` (thumbnail-first facade — iframe mounts on click)
- * for recognized YouTube URLs, and `@u-wave/react-vimeo` (eager iframe via
- * Vimeo's Player SDK) for recognized Vimeo URLs.
- *
- * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
- */
+/** Runs under the jsdom substrate (precedent #43). */
 
 import { cleanup, fireEvent, render } from '@testing-library/react';
 import { useEffect, useRef } from 'react';

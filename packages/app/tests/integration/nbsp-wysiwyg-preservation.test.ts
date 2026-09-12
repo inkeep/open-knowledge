@@ -1,12 +1,6 @@
 /**
- * Document NBSP (U+00A0) preservation through a WYSIWYG edit.
- *
- * Agent writes land raw bytes into Y.Text verbatim (byte-sacred), so a document
- * NBSP is intact at rest. A WYSIWYG edit re-serializes the edited block through
- * the projection splice, so the NBSP must survive the full mdast<->PM
- * round-trip, not just the write. Per precedent #57, an agent-authored byte the
- * human never touched must survive that splice — covered for a SAME-block and a
- * DIFFERENT-block edit; the no-edit control pins the byte-sacred write path.
+ * Per precedent #57, an agent-authored byte the human never touched must survive the
+ * projection splice.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';

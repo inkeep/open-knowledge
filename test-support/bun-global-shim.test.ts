@@ -62,11 +62,8 @@ describe('Bun global facade', () => {
       writeFileSync(join(root, 'sub', 'nested.ts'), '');
 
       const found = [...new bunFacade.Glob('**/*.ts').scanSync({ cwd: root })];
-      // Visible files (including those in normal subdirs) are matched.
       expect(found).toContain('visible.ts');
       expect(found).toContain('sub/nested.ts');
-      // Dotfiles and anything under a dot-directory are neither matched nor
-      // descended into — matching real Bun.Glob's `dot: false` default.
       expect(found).not.toContain('.hidden.ts');
       expect(found).not.toContain('.git/inside.ts');
     } finally {
@@ -79,10 +76,6 @@ describe('Bun global facade', () => {
   });
 
   test('Bun.resolveSync ignores the development condition (matches bun production resolution)', () => {
-    // micromark ships a `./dev/` build under its `development` export condition.
-    // The Vitest worker runs with `--conditions development`, so a naive
-    // require.resolve would land in `dev/`; bun's Bun.resolveSync resolves to
-    // the production entry. The facade must match bun.
     const resolved = bunFacade.resolveSync('micromark', selfDir).replaceAll('\\', '/');
     expect(resolved).toContain('/node_modules/micromark/');
     expect(resolved).not.toContain('/micromark/dev/');
@@ -91,12 +84,9 @@ describe('Bun global facade', () => {
   test('Bun.Transpiler compiles TypeScript and throws on a syntax error', () => {
     const transpiler = new bunFacade.Transpiler({ loader: 'ts' });
     const out = transpiler.transformSync('const x: number = 1;\n');
-    // Type annotation erased.
     expect(out).not.toContain(': number');
     expect(out).toContain('const x');
     expect(() => transpiler.transformSync('const = ;')).toThrow();
-    // Enum lowering needs `transform` mode; on strip-only runtimes (Node 26)
-    // the facade falls back and TS-only constructs throw instead of compiling.
     let transformAvailable = true;
     try {
       stripTypeScriptTypes('0', { mode: 'transform' });
@@ -126,11 +116,6 @@ describe('Bun global facade', () => {
   });
 
   test('spawnSync surfaces a launch failure instead of reporting exit 0', () => {
-    // Regression guard. `spawnSync` returns `{status: null, error: ENOENT}` when
-    // the child cannot be launched; mapping that to `exitCode: 0` reported a
-    // process that never ran as a clean success, and would let a test asserting
-    // `exitCode === 0` pass against a command that never executed. Both shapes
-    // below produce that state on every platform.
     expect(() => bunFacade.spawnSync(['definitely-not-a-real-binary-xyz'])).toThrow();
     expect(() =>
       bunFacade.spawnSync({
@@ -141,8 +126,6 @@ describe('Bun global facade', () => {
   });
 
   test('a real non-zero exit still reports its code (not swallowed by the guard)', () => {
-    // The complement of the guard above: a process that DID run and exited
-    // non-zero must still surface its code rather than throwing.
     const result = bunFacade.spawnSync([process.execPath, '-e', 'process.exit(78)']);
     expect(result.exitCode).toBe(78);
     expect(result.success).toBe(false);
@@ -150,9 +133,6 @@ describe('Bun global facade', () => {
 });
 
 describe('Bun.CryptoHasher', () => {
-  // Published SHA-256 vector for the ASCII string "abc" — independent of the
-  // node:crypto the facade wraps, so a wrong wiring (bad algorithm, dropped
-  // data) fails against a real answer rather than tautologically agreeing.
   const SHA256_ABC_HEX = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
   const SHA256_ABC_BASE64 = 'ungWv48Bz+pBQUDeXa4iI7ADYaOWF3qctBD/YfIAFa0=';
 
@@ -165,9 +145,7 @@ describe('Bun.CryptoHasher', () => {
 
   test('.update() returns the hasher and accumulates across chained calls', () => {
     const hasher = new bunFacade.CryptoHasher('sha256');
-    // Chainable: update must return the same instance.
     expect(hasher.update('a')).toBe(hasher);
-    // Two separate updates of 'a' then 'bc' must digest identically to one 'abc'.
     expect(hasher.update('bc').digest('hex')).toBe(SHA256_ABC_HEX);
   });
 });

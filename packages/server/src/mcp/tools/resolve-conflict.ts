@@ -11,22 +11,22 @@ import {
 } from './shared.ts';
 
 const DESCRIPTION = [
-  '[Requires: Hocuspocus server] Resolve a tracked merge conflict by writing the chosen content to disk and committing.',
+  '[Requires: Hocuspocus server] Resolve a tracked Git merge or local stale external-write conflict. Inspect `conflictKind` and any `variant` from conflicts({ kind: "list" }), then fetch conflicts({ kind: "content", file }) to choose exact versions.',
   '',
   'Strategy:',
-  '- `mine` — runs `git checkout --ours -- <file>` then `git add` (your committed ours stage, stage 2). Fails on delete-modify (DU) conflicts where stage 2 is missing — use `delete` instead.',
-  '- `theirs` — runs `git checkout --theirs -- <file>` then `git add` (their committed stage 3). Fails on modify-delete (UD) conflicts where stage 3 is missing — use `delete` instead.',
-  '- `content` — writes the provided `content` argument (e.g. a per-hunk merged result, or the live Y.Text bytes the user sees in the DiffView). The provided string must be non-empty — use `delete` to remove the file entirely (an agent constructing a per-hunk merge that happens to land on `""` gets a 400 at the Zod boundary rather than a misleading 500).',
-  '- `delete` — runs `git rm <file>` then commits the deletion. Honors deletion intent for delete-modify (DU: "keep deletion") and modify-delete (UD: "accept their deletion") shapes. Inspect the `shape` field on `conflicts({ kind: "content" })` to pick the right strategy for the conflict shape.',
+  '- `mine` — for a stale external write, keeps the protected live or recovered version. For a Git index conflict, selects committed stage 2; for a working-tree conflict, keeps the current working-tree file. A missing Git stage requires `delete` instead.',
+  '- `theirs` — for a stale external write, accepts the rejected disk version. For a Git conflict, selects the incoming version (stage 3 for index conflicts). A missing Git stage requires `delete` instead.',
+  '- `content` — writes the exact provided string, including `""` to keep an empty file. Use this to preserve the live Y.Text bytes returned as `ours`, which can differ from the Git version selected by `mine`. Omitted content is rejected.',
+  '- `delete` — removes the file explicitly. For Git index conflicts, stages the deletion. For stale external writes and Git working-tree overlays, clears the conflict without a resolution commit.',
   '',
-  'Returns 200 on success. 422 (`urn:ok:error:unresolved-conflict-markers`) means the `content` you sent still contains a `<<<<<<< … >>>>>>>` block — a permanent rejection of those bytes, so resolve every region before retrying rather than re-sending. 500 indicates commit failure (re-call `conflicts({ kind: "list" })` to confirm post-state — the resolve API is best-effort, non-atomic, and the file may have been resolved by another session).',
+  'Returns 200 on success. 422 (`urn:ok:error:unresolved-conflict-markers`) means the provided content still contains an unresolved conflict block. A 500 can indicate disk, bridge, recovery-snapshot, or Git commit failure. Re-call conflicts({ kind: "list" }) and inspect content before retrying: resolution is best-effort and non-atomic. Local stale-write protection remains until resolution succeeds.',
   '',
-  '**DESTRUCTIVE:** this modifies the working tree and creates a git commit.',
+  '**DESTRUCTIVE:** this modifies the working tree. Git index resolutions stage each file and commit when the last conflict clears. Local stale external-write and Git working-tree overlay resolutions do not create a resolution commit.',
   '',
   '**Parameters:**',
-  '- `file` — Relative-to-projectDir path WITH .md extension (e.g. `notes/sso.md`).',
+  '- `file` — Exact relative-to-projectDir path WITH .md or .mdx extension (e.g. `notes/sso.md`).',
   '- `strategy` — One of `mine` | `theirs` | `content` | `delete`.',
-  '- `content` — Required (non-empty) when `strategy === "content"`; ignored otherwise.',
+  '- `content` — Required when `strategy === "content"`; an empty string keeps an empty file. Ignored otherwise.',
 ].join('\n');
 
 interface ResolveConflictDeps {
@@ -49,17 +49,19 @@ export function register(server: ServerInstance, deps: ResolveConflictDeps): voi
         file: z
           .string()
           .min(1)
-          .describe('Relative-to-projectDir path WITH .md extension (e.g. `notes/sso.md`).'),
+          .describe(
+            'Exact relative-to-projectDir path WITH .md or .mdx extension (e.g. `notes/sso.md`).',
+          ),
         strategy: z
           .enum(['mine', 'theirs', 'content', 'delete'])
           .describe(
-            'Resolution strategy. `content` requires the `content` arg. `delete` runs `git rm` — use for delete-vs-modify (DU/UD) shapes where one stage is missing.',
+            'Resolution strategy. `content` requires exact bytes, including an empty string. `delete` explicitly removes the file. Inspect list conflictKind and variant, then content: Git index, working-tree, and stale external-write sides differ.',
           ),
         content: z
           .string()
           .optional()
           .describe(
-            'Exact bytes to write. Required when `strategy === "content"`; ignored otherwise.',
+            'Exact bytes to write, including an empty string to keep an empty file. Required when strategy is content; ignored otherwise.',
           ),
         cwd: z.string().optional().describe(ROUTED_CWD_DESCRIPTION),
       },

@@ -42,10 +42,27 @@ export const TagsForNameSuccessSchema = z
   .loose() satisfies StandardSchemaV1;
 export type TagsForNameSuccess = z.infer<typeof TagsForNameSuccessSchema>;
 
+export const FOLDER_CONFIG_WARNING_CODES = [
+  'symlink-refused',
+  'malformed-yaml',
+  'unverifiable',
+  'templates-symlink-refused',
+  'templates-unverifiable',
+] as const;
+export type FolderConfigWarningCode = (typeof FOLDER_CONFIG_WARNING_CODES)[number];
+
 export const FolderConfigGetSuccessSchema = z
   .object({
     folder: z.unknown(),
     frontmatter_local: z.record(z.string(), z.unknown()).nullable(),
+    warnings: z.array(z.string()).optional().meta({
+      description:
+        'Non-fatal degradations of this response, one per entry; the field each affects is absent, null, or incomplete — the aligned `warningCodes` entry names which field and how.',
+    }),
+    warningCodes: z.array(z.enum(FOLDER_CONFIG_WARNING_CODES)).optional().meta({
+      description:
+        "Machine-readable codes aligned 1:1 with `warnings`; switch on these, never on the English. `symlink-refused` / `malformed-yaml` / `unverifiable`: this folder's own `.ok/frontmatter.yml` (a symlink, malformed YAML, or an lstat failure) — `frontmatter_local` is null. `templates-symlink-refused` / `templates-unverifiable`: the `.ok/templates` directory on this folder, or a `.ok` or `.ok/templates` directory on an ancestor it inherits from — a symlink (wherever it points, dangling included), or a non-ENOTDIR `lstat` failure — `folder.templates_available` omits that directory's templates and may still list others. A non-directory `.ok` / `.ok/templates` (ENOTDIR) is treated as empty and yields no `templates-*` code. This folder's own symlinked `.ok` is a 400, never a warning.",
+    }),
   })
   .loose() satisfies StandardSchemaV1;
 export type FolderConfigGetSuccess = z.infer<typeof FolderConfigGetSuccessSchema>;
@@ -338,11 +355,22 @@ export const SkillPutRequestSchema = z
   .strict() satisfies StandardSchemaV1;
 export type SkillPutRequest = z.infer<typeof SkillPutRequestSchema>;
 
+export const SKILL_AUTHORING_WARNING_CODES = [
+  'skill-name-vendor-word',
+  'skill-body-too-long',
+] as const;
+export type SkillAuthoringWarningCode = (typeof SKILL_AUTHORING_WARNING_CODES)[number];
+const authoringWarningCodesField = z.array(z.enum(SKILL_AUTHORING_WARNING_CODES)).meta({
+  description:
+    'Machine-readable codes aligned 1:1 with `warnings` (`warnings[i]` is the display text for `warningCodes[i]`).',
+});
+
 export const SkillPutSuccessSchema = z
   .object({
     path: z.string().min(1),
     created: z.boolean(),
     warnings: z.array(z.string()),
+    warningCodes: authoringWarningCodesField,
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillPutSuccess = z.infer<typeof SkillPutSuccessSchema>;
@@ -368,6 +396,7 @@ export const SkillReimportSuccessSchema = z
     upstreamBody: z.string().optional(),
     gitTracked: z.boolean().optional(),
     warnings: z.array(z.string()),
+    warningCodes: authoringWarningCodesField,
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillReimportSuccess = z.infer<typeof SkillReimportSuccessSchema>;
@@ -392,10 +421,19 @@ export const SkillRevertSuccessSchema = z
   .strict() satisfies StandardSchemaV1;
 export type SkillRevertSuccess = z.infer<typeof SkillRevertSuccessSchema>;
 
+const BOOKKEEPING_WARNING_CLAUSE =
+  'This member also carries the one bookkeeping failure that does not undo the operation: the content change landed, but a state file this server keeps beside it refused to be rewritten because it could not be read, so the install or import records still describe the old state until an operator repairs that file. Absent when there is nothing to report; a server that predates this member omits it, so treat its absence as no warning rather than as an error.';
+
 export const SkillDeleteSuccessSchema = z
   .object({
     existed: z.boolean(),
     path: z.string().min(1),
+    warnings: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description: `Present when this delete removed a directory a retention record ties to a recovery copy an earlier failed move kept, whose source was never verified unchanged — either because this server verified the deleted directory against the copy that record describes, or because it could not read the directory and so could not confirm either way. Each entry says which of the two it is; neither claims more than the check established. ${BOOKKEEPING_WARNING_CLAUSE}`,
+      }),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillDeleteSuccess = z.infer<typeof SkillDeleteSuccessSchema>;
@@ -418,6 +456,12 @@ export const SkillMoveSuccessSchema = z
     from: z.string().min(1),
     to: z.string().min(1),
     committed: z.boolean(),
+    warnings: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description: `Present when the rename itself completed but something beside it did not. ${BOOKKEEPING_WARNING_CLAUSE}`,
+      }),
   })
   .strict() satisfies StandardSchemaV1;
 export type SkillMoveSuccess = z.infer<typeof SkillMoveSuccessSchema>;
@@ -425,6 +469,10 @@ export type SkillMoveSuccess = z.infer<typeof SkillMoveSuccessSchema>;
 export const SkillMoveScopeRequestSchema = z
   .object({
     name: z.string(),
+    toName: z.string().optional().meta({
+      description:
+        'Name for the skill at the destination scope; defaults to `name`. The SKILL.md `name` frontmatter is rewritten to match.',
+    }),
     fromScope: SkillScopeSchema,
     toScope: SkillScopeSchema,
     ...agentIdentityFields,
@@ -433,12 +481,130 @@ export const SkillMoveScopeRequestSchema = z
   .strict() satisfies StandardSchemaV1;
 export type SkillMoveScopeRequest = z.infer<typeof SkillMoveScopeRequestSchema>;
 
+export const SKILL_MOVE_STATE_CODES = [
+  'nothing-written',
+  'destination-removed',
+  'destination-stray',
+  'destination-retained',
+  'destination-retained-blocking',
+  'destination-unreadable',
+  'partially-applied',
+] as const;
+export type SkillMoveStateCode = (typeof SKILL_MOVE_STATE_CODES)[number];
+
+export function isSkillMoveStateCode(value: unknown): value is SkillMoveStateCode {
+  return typeof value === 'string' && (SKILL_MOVE_STATE_CODES as readonly string[]).includes(value);
+}
+
+export const SKILL_SOURCE_STATE_CODES = ['intact', 'lossy', 'unknown'] as const;
+export type SkillSourceStateCode = (typeof SKILL_SOURCE_STATE_CODES)[number];
+
+export function isSkillSourceStateCode(value: unknown): value is SkillSourceStateCode {
+  return (
+    typeof value === 'string' && (SKILL_SOURCE_STATE_CODES as readonly string[]).includes(value)
+  );
+}
+
+export const SKILL_RETENTION_LEDGER_CODES = ['unreadable', 'occupant-unverifiable'] as const;
+export type SkillRetentionLedgerCode = (typeof SKILL_RETENTION_LEDGER_CODES)[number];
+
+export function isSkillRetentionLedgerCode(value: unknown): value is SkillRetentionLedgerCode {
+  return (
+    typeof value === 'string' && (SKILL_RETENTION_LEDGER_CODES as readonly string[]).includes(value)
+  );
+}
+
+export const SKILL_MOVE_RETAINED_DESTINATION: Record<SkillMoveStateCode, boolean> = {
+  'nothing-written': false,
+  'destination-removed': false,
+  'destination-stray': false,
+  'destination-retained': true,
+  'destination-retained-blocking': true,
+  'destination-unreadable': false,
+  'partially-applied': false,
+};
+
+export function isSkillMoveRetainedDestinationCode(value: SkillMoveStateCode): boolean {
+  return SKILL_MOVE_RETAINED_DESTINATION[value];
+}
+
+interface SkillMoveFailureFields {
+  moveState?: SkillMoveStateCode;
+  sourceState?: SkillSourceStateCode;
+  retentionLedger?: SkillRetentionLedgerCode;
+}
+
+export type SkillMoveFailureOutcome =
+  | ({ kind: 'coherent' } & SkillMoveFailureFields)
+  | ({ kind: 'unverified' } & SkillMoveFailureFields);
+
+export function interpretSkillMoveFailure(body: unknown): SkillMoveFailureOutcome {
+  const fields: Record<string, unknown> =
+    typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : {};
+  const rawMoveState = fields.moveState;
+  const rawSourceState = fields.sourceState;
+  const rawRetentionLedger = fields.retentionLedger;
+  if (
+    rawMoveState === undefined &&
+    rawSourceState === undefined &&
+    rawRetentionLedger === undefined
+  ) {
+    return { kind: 'coherent' };
+  }
+  const moveState = isSkillMoveStateCode(rawMoveState) ? rawMoveState : undefined;
+  const sourceState = isSkillSourceStateCode(rawSourceState) ? rawSourceState : undefined;
+  const retentionLedger = isSkillRetentionLedgerCode(rawRetentionLedger)
+    ? rawRetentionLedger
+    : undefined;
+  const decoded: SkillMoveFailureFields = {
+    ...(moveState !== undefined ? { moveState } : {}),
+    ...(sourceState !== undefined ? { sourceState } : {}),
+    ...(retentionLedger !== undefined ? { retentionLedger } : {}),
+  };
+  const unrecognized =
+    (rawMoveState !== undefined && moveState === undefined) ||
+    (rawSourceState !== undefined && sourceState === undefined) ||
+    (rawRetentionLedger !== undefined && retentionLedger === undefined);
+  if (unrecognized || moveState === undefined) return { kind: 'unverified', ...decoded };
+  const coherent = isSkillMoveRetainedDestinationCode(moveState)
+    ? sourceState !== undefined && retentionLedger === undefined
+    : moveState === 'nothing-written'
+      ? sourceState === undefined
+      : sourceState === undefined && retentionLedger === undefined;
+  return coherent ? { kind: 'coherent', ...decoded } : { kind: 'unverified', ...decoded };
+}
+
+export const UNREADABLE_WARNINGS_TEXT =
+  'The server reported warnings in a shape this build does not recognise; treat this result as unverified.';
+
+export function normalizeApiWarnings(value: unknown): string[] {
+  if (value === undefined) return [];
+  const unreadable = UNREADABLE_WARNINGS_TEXT;
+  if (!Array.isArray(value)) return [unreadable];
+  const warnings = value.filter((entry): entry is string => typeof entry === 'string');
+  return warnings.length === value.length ? warnings : [...warnings, unreadable];
+}
+
 export const SkillMoveScopeSuccessSchema = z
   .object({
     scope: SkillScopeSchema,
     path: z.string().optional(),
+    droppedLocations: z.array(z.string()).default([]).meta({
+      description:
+        "Locations the skill occupied at the source that were removed and not re-created at the destination: the `agents` hub and custom roots, which projection does not cover. Entries are install location ids, so they can be passed straight back as an install `add` list with `scope` set to the destination scope; custom roots resolve against that scope's base.",
+    }),
+    warnings: z
+      .array(z.string())
+      .optional()
+      .meta({
+        description: `Present when the move itself completed but something beside it did not. ${BOOKKEEPING_WARNING_CLAUSE}`,
+      }),
   })
-  .strict() satisfies StandardSchemaV1;
+  .strict()
+  .meta({
+    description:
+      'Scope-move result. Rename paths deliberately do not emit authoring warnings, consistent with same-scope rename and duplicate. Content-authoring and import responses carry those warnings and their codes. The Skills Studio client parses `droppedLocations` off the wire but deliberately does not render it yet; how a human is told what was removed is an open product decision.',
+  }) satisfies StandardSchemaV1;
 export type SkillMoveScopeSuccess = z.infer<typeof SkillMoveScopeSuccessSchema>;
 
 export const SkillDuplicateRequestSchema = z
@@ -878,10 +1044,78 @@ export const SearchResultEntrySchema = z
   .loose() satisfies StandardSchemaV1;
 export type SearchResultEntry = z.infer<typeof SearchResultEntrySchema>;
 
+export const SemanticQueryOutcomeSchema = z.enum([
+  'applied',
+  'no_match',
+  'warming',
+  'incapable',
+  'provider_error',
+  'restart_required',
+  'query_too_short',
+]);
+export type SemanticQueryOutcome = z.infer<typeof SemanticQueryOutcomeSchema>;
+
+export const SemanticProviderErrorReasonSchema = z.enum([
+  'warm',
+  'corpus',
+  'query',
+  'dimensions',
+  'configured_dimensions',
+]);
+export type SemanticProviderErrorReason = z.infer<typeof SemanticProviderErrorReasonSchema>;
+
+export type SemanticProviderFailureOutcome = Extract<
+  SemanticQueryOutcome,
+  'incapable' | 'provider_error' | 'restart_required'
+>;
+
+export function classifySemanticProviderError(
+  status: Pick<SemanticIndexStatus, 'providerError' | 'providerErrorReason'> | null | undefined,
+): SemanticProviderFailureOutcome | null {
+  if (status?.providerErrorReason === 'dimensions') return 'restart_required';
+  if (status?.providerErrorReason === 'configured_dimensions') return 'incapable';
+  if (status?.providerError || status?.providerErrorReason) return 'provider_error';
+  return null;
+}
+
+export function assertNeverSemanticProviderErrorReason(value: never): never {
+  throw new Error(
+    `Unhandled SemanticProviderErrorReason variant: ${JSON.stringify(value as unknown)}`,
+  );
+}
+
+export function semanticProviderErrorBlocks(
+  status: Pick<SemanticIndexStatus, 'providerError' | 'providerErrorReason'> | null | undefined,
+  phase: 'probe' | 'query',
+): boolean {
+  const reason = status?.providerErrorReason;
+  switch (reason) {
+    case null:
+    case undefined:
+      return status?.providerError === true;
+    case 'corpus':
+      return false;
+    case 'query':
+      return phase === 'query';
+    case 'warm':
+    case 'dimensions':
+    case 'configured_dimensions':
+      return true;
+    default:
+      return assertNeverSemanticProviderErrorReason(reason);
+  }
+}
+
+export function assertNeverSemanticQueryOutcome(value: never): never {
+  throw new Error(`Unhandled SemanticQueryOutcome variant: ${JSON.stringify(value as unknown)}`);
+}
+
 export const SearchSemanticStatusSchema = z
   .object({
     capable: z.boolean(),
     applied: z.boolean(),
+    outcome: SemanticQueryOutcomeSchema,
+    providerErrorReason: SemanticProviderErrorReasonSchema.nullable().optional().catch(null),
     coverage: z.object({
       embedded: z.number().int().nonnegative(),
       total: z.number().int().nonnegative(),
@@ -899,11 +1133,19 @@ export const SemanticIndexStatusSchema = z
     keyHint: z.string().nullable(),
     ready: z.boolean(),
     capable: z.boolean(),
+    providerError: z.boolean().optional(),
+    providerErrorReason: SemanticProviderErrorReasonSchema.nullable().optional().catch(null),
     embedded: z.number().int().nonnegative(),
     total: z.number().int().nonnegative(),
   })
   .loose() satisfies StandardSchemaV1;
 export type SemanticIndexStatus = z.infer<typeof SemanticIndexStatusSchema>;
+
+export function isSemanticSearchOffered(
+  status: Pick<SemanticIndexStatus, 'enabled' | 'keyPresent' | 'keyNotRequired'> | null | undefined,
+): boolean {
+  return Boolean(status?.enabled && (status.keyPresent || status.keyNotRequired));
+}
 
 export const SearchSuccessSchema = z
   .object({
@@ -994,6 +1236,7 @@ export const SkillImportBulkResultSchema = z
     name: z.string().optional(),
     collisionRenamedFrom: z.string().optional(),
     warnings: z.array(z.string()),
+    warningCodes: authoringWarningCodesField,
     error: z.string().optional(),
   })
   .loose() satisfies StandardSchemaV1;
@@ -1029,6 +1272,7 @@ export const SkillReimportBulkResultSchema = z
     status: z.enum(['updated', 'up-to-date', 'not-found', 'failed']),
     source: z.string().optional(),
     warnings: z.array(z.string()),
+    warningCodes: authoringWarningCodesField,
     error: z.string().optional(),
   })
   .loose() satisfies StandardSchemaV1;
@@ -1073,6 +1317,7 @@ export const SkillImportSuccessSchema = z
     warnings: z
       .array(z.string())
       .meta({ description: 'Non-fatal import warnings, such as skipped unsupported files.' }),
+    warningCodes: authoringWarningCodesField,
   })
   .loose() satisfies StandardSchemaV1;
 export type SkillImportSuccess = z.infer<typeof SkillImportSuccessSchema>;

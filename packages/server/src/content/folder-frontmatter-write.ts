@@ -10,6 +10,7 @@ import {
 } from 'node:fs';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { checkSymlinkLeaf } from '../fs-safety.ts';
 import { type FrontmatterRecord, mergePatch } from './frontmatter-merge.ts';
 
 export interface FolderFrontmatterPatchInput {
@@ -18,12 +19,18 @@ export interface FolderFrontmatterPatchInput {
   patch: FrontmatterRecord;
 }
 
+export type FolderFrontmatterErrorCode =
+  | 'BAD_CONTENT_DIR'
+  | 'PATH_ESCAPE'
+  | 'SYMLINK_REFUSED'
+  | 'WRITE_ERROR';
+
 export type FolderFrontmatterPatchResult =
   | { ok: true; path: string; action: 'written' | 'deleted' | 'noop' }
   | {
       ok: false;
       error: {
-        code: 'BAD_CONTENT_DIR' | 'PATH_ESCAPE' | 'WRITE_ERROR';
+        code: FolderFrontmatterErrorCode;
         message: string;
       };
     };
@@ -58,6 +65,16 @@ export function applyFolderFrontmatterPatch(
 
   const okDir = join(targetAbs, '.ok');
   const fmPath = join(okDir, 'frontmatter.yml');
+
+  if (checkSymlinkLeaf(fmPath).kind === 'symlink') {
+    return {
+      ok: false,
+      error: {
+        code: 'SYMLINK_REFUSED',
+        message: `Refusing to operate on "${folderRel === '' ? '' : `${folderRel}/`}.ok/frontmatter.yml": it is a symlink. Replace the symlink with a real file or directory and retry.`,
+      },
+    };
+  }
 
   try {
     const existing = readExistingFrontmatter(fmPath);

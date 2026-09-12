@@ -92,25 +92,26 @@ describe('a completion keystroke whose match window spans an inline object', () 
     expect(unmarked, 'every leaf of the delimited span carries strong').toEqual([]);
   });
 
-  test.each(
-    INLINE_OBJECT_NAMES,
-  )('leaves preceding text untouched when the range stays positive (%s)', (name) => {
-    const editor = mountEditor();
-    const object = inlineObject(editor, name, 'x');
-    expect(object).not.toBeNull();
-    const lead = `${'lorem ipsum dolor sit amet '.repeat(2)}**see `;
-    seedParagraph(editor, lead, object as PMNode, ' here*');
+  test.each(INLINE_OBJECT_NAMES)(
+    'leaves preceding text untouched when the range stays positive (%s)',
+    (name) => {
+      const editor = mountEditor();
+      const object = inlineObject(editor, name, 'x');
+      expect(object).not.toBeNull();
+      const lead = `${'lorem ipsum dolor sit amet '.repeat(2)}**see `;
+      seedParagraph(editor, lead, object as PMNode, ' here*');
 
-    expect(() => typeCharacter(editor, '*')).not.toThrow();
+      expect(() => typeCharacter(editor, '*')).not.toThrow();
 
-    const text = editor.state.doc.firstChild?.textContent ?? '';
-    expect(text.startsWith('lorem ipsum dolor sit amet '.repeat(2))).toBe(true);
-    expect(text).not.toContain('*');
-    const strong = editor.schema.marks.strong;
-    expect(strong).toBeDefined();
-    const leadEnd = 1 + 'lorem ipsum dolor sit amet '.repeat(2).length;
-    expect(editor.state.doc.rangeHasMark(1, leadEnd, strong as MarkType)).toBe(false);
-  });
+      const text = editor.state.doc.firstChild?.textContent ?? '';
+      expect(text.startsWith('lorem ipsum dolor sit amet '.repeat(2))).toBe(true);
+      expect(text).not.toContain('*');
+      const strong = editor.schema.marks.strong;
+      expect(strong).toBeDefined();
+      const leadEnd = 1 + 'lorem ipsum dolor sit amet '.repeat(2).length;
+      expect(editor.state.doc.rangeHasMark(1, leadEnd, strong as MarkType)).toBe(false);
+    },
+  );
 
   test('a node with children is faithful regardless of how much it holds', () => {
     for (const body of ['a', 'ab', 'abc', '<Foo bar="baz" />']) {

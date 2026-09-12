@@ -1,4 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
@@ -22,6 +24,90 @@ const stagingStep = (yaml) => {
   const rest = yaml.slice(start);
   const end = rest.indexOf('\n      - name: ');
   return end === -1 ? rest : rest.slice(0, end);
+};
+
+const stagingFunctions = (yaml) => {
+  const step = stagingStep(yaml);
+  const start = step.indexOf('          summarize() {');
+  const close = '\n          }\n';
+  const end = step.indexOf(close, step.indexOf('          degrade_or_fail() {'));
+  if (start === -1 || end === -1) throw new Error('no staging function block in the step');
+  return step
+    .slice(start, end + close.length)
+    .split('\n')
+    .map((line) => line.replace(/^ {10}/, ''))
+    .join('\n');
+};
+
+const runDegradeOrFail = (functions, { isStable, staged }) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-native-staging-'));
+  try {
+    mkdirSync(join(dir, 'packages', 'native-config'), { recursive: true });
+    for (const target of staged) {
+      writeFileSync(join(dir, 'packages', 'native-config', `native-config.${target}.node`), '');
+    }
+    const script = join(dir, 'staging.sh');
+    writeFileSync(
+      script,
+      `${functions}\ndegrade_or_fail "could not download native-config-bindings-all from run 1" "0/8"\n`,
+    );
+    const result = spawnSync('bash', [script], {
+      encoding: 'utf8',
+      timeout: 10_000,
+      cwd: dir,
+      env: {
+        ...process.env,
+        IS_STABLE: String(isStable),
+        GITHUB_STEP_SUMMARY: join(dir, 'step-summary.txt'),
+      },
+    });
+    return { status: result.status, output: `${result.stdout}${result.stderr}` };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+const runDownloadBindings = (functions, { failures }) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-native-download-'));
+  try {
+    const bin = join(dir, 'bin');
+    mkdirSync(bin, { recursive: true });
+    const attempts = join(dir, 'attempts');
+    const bindingsDir = join(dir, 'nc-bindings');
+    writeFileSync(
+      join(bin, 'gh'),
+      `#!/bin/bash\necho x >> "${attempts}"\nif [ -n "$(ls -A "${bindingsDir}" 2>/dev/null)" ]; then exit 1; fi\nif [ "$(wc -l < "${attempts}" | tr -d ' ')" -le ${failures} ]; then mkdir -p "${bindingsDir}"; touch "${bindingsDir}/partial.node"; exit 1; fi\nexit 0\n`,
+    );
+    spawnSync('chmod', ['+x', join(bin, 'gh')]);
+    const script = join(dir, 'download.sh');
+    if (!functions.includes('/tmp/nc-bindings')) {
+      throw new Error('staging bytes no longer name /tmp/nc-bindings; the rescope would silently no-op');
+    }
+    const scoped = functions.replaceAll('/tmp/nc-bindings', bindingsDir);
+    writeFileSync(script, `${scoped}\ndownload_bindings 1\n`);
+    const result = spawnSync('bash', [script], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      cwd: dir,
+      env: {
+        ...process.env,
+        PATH: `${bin}:${process.env.PATH}`,
+        IS_STABLE: 'false',
+        NC_RETRY_BACKOFF_S: '0',
+      },
+    });
+    const calls = readFileSync(attempts, 'utf8').trim().split('\n').filter(Boolean).length;
+    return { status: result.status, calls };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+};
+
+const BOTH_WINDOWS_TARGETS = ['win32-x64-msvc', 'win32-arm64-msvc'];
+
+const REFUSAL_RECOVERY_SECTION = {
+  'release.yml': 'Native addon staging (Windows is mandatory)',
+  'desktop-release.yml': 'Resuming a blocked cut',
 };
 
 const chainFixture = (chain) => {
@@ -217,18 +303,68 @@ describe('listPrebuildRuns', () => {
     expect(DEFAULT_CANDIDATE_LIMIT).toBeGreaterThan(1);
   });
 
+  test('the lane whose job restates token scopes keeps the Actions read it stages with', () => {
+    const yaml = workflow('desktop-release.yml');
+    const jobStart = yaml.indexOf('\n  prepare:');
+    expect(jobStart).toBeGreaterThan(-1);
+    const block = yaml.slice(jobStart);
+    const permissionsStart = block.indexOf('permissions:');
+    expect(permissionsStart).toBeGreaterThan(-1);
+    const permissions = block.slice(permissionsStart);
+    const permissionsEnd = permissions.indexOf('\n    defaults:');
+    expect(permissionsEnd).toBeGreaterThan(-1);
+    const declared = permissions.slice(0, permissionsEnd);
+    expect(declared).toContain('actions: read');
+    expect(stagingStep(yaml)).toContain('gh run download');
+  });
+
   test('reports a spawn failure, which leaves stderr empty', () => {
     expect(() =>
       listPrebuildRuns({
         run: () => ({ status: null, stdout: '', stderr: '', error: new Error('spawn gh ENOENT') }),
+        sleep: () => {},
       }),
     ).toThrow(/spawn gh ENOENT/);
   });
 
   test('throws on an unreadable answer rather than reading it as "no runs"', () => {
     expect(() =>
-      listPrebuildRuns({ run: () => ({ status: 1, stdout: '', stderr: 'rate limited' }) }),
+      listPrebuildRuns({
+        run: () => ({ status: 1, stdout: '', stderr: 'rate limited' }),
+        sleep: () => {},
+      }),
     ).toThrow(/rate limited/);
+  });
+
+  test('a transient gh failure never reaches the caller as a refusal', () => {
+    let calls = 0;
+    const slept = [];
+    const runs = listPrebuildRuns({
+      run: () => {
+        calls += 1;
+        return calls < 3
+          ? { status: 1, stdout: '', stderr: 'API rate limit exceeded' }
+          : { status: 0, stdout: '[{"databaseId":7,"headSha":"abc1234"}]', stderr: '' };
+      },
+      sleep: (ms) => slept.push(ms),
+    });
+    expect(runs).toEqual([{ databaseId: 7, headSha: 'abc1234' }]);
+    expect(calls).toBe(3);
+    expect(slept).toEqual([1000, 2000]);
+  });
+
+  test('gives up after a bounded number of attempts instead of retrying forever', () => {
+    let calls = 0;
+    expect(() =>
+      listPrebuildRuns({
+        run: () => {
+          calls += 1;
+          return { status: 1, stdout: '', stderr: 'API rate limit exceeded' };
+        },
+        sleep: () => {},
+      }),
+    ).toThrow(/failed after 3 attempts: API rate limit exceeded/);
+    expect(calls).toBe(3);
   });
 });
 
@@ -295,6 +431,67 @@ describe('workflow wiring', () => {
         /if \[ "\$IS_STABLE" = "true" \]; then\n\s+echo "::error::[^\n]+\n\s+exit 1/,
       );
       expect(step).toMatch(/echo "::warning::[^\n]+\n\s+exit 0/);
+    });
+
+    test(`${name} requires both Windows binaries at every staging outcome`, () => {
+      const step = stagingStep(workflow(name));
+      for (const target of BOTH_WINDOWS_TARGETS) {
+        expect(step).toContain(`native-config.${target}.node`);
+      }
+      expect(step).toMatch(/summarize "\$2 — \$1"\n\s+require_windows_targets "\$1"/);
+      expect(step).toMatch(/-lt 8 \]; then\n(?:.*\n)*?\s+fi\n\s+require_windows_targets /);
+    });
+
+    test(`${name} refuses a beta cut whose staged set lacks either Windows binary`, () => {
+      const functions = stagingFunctions(workflow(name));
+      expect(functions).toContain('require_windows_targets');
+
+      const recovered = runDownloadBindings(functions, { failures: 2 });
+      expect(recovered.status).toBe(0);
+      expect(recovered.calls).toBe(3);
+      const exhausted = runDownloadBindings(functions, { failures: 99 });
+      expect(exhausted.status).not.toBe(0);
+      expect(exhausted.calls).toBe(3);
+
+      const complete = runDegradeOrFail(functions, {
+        isStable: false,
+        staged: BOTH_WINDOWS_TARGETS,
+      });
+      expect(complete.status).toBe(0);
+      expect(complete.output).toContain('::warning::');
+      expect(complete.output).not.toContain('::error::');
+
+      for (const missing of BOTH_WINDOWS_TARGETS) {
+        const staged = BOTH_WINDOWS_TARGETS.filter((target) => target !== missing);
+        const refused = runDegradeOrFail(functions, { isStable: false, staged });
+        expect(refused.status).toBe(1);
+        expect(refused.output).toContain(`native-config.${missing}.node was not staged`);
+        expect(refused.output).not.toContain('::warning::');
+        expect(refused.output).toContain(
+          `resume per RELEASES.md '${REFUSAL_RECOVERY_SECTION[name]}'`,
+        );
+      }
+    });
+
+    test(`${name} still refuses a stable cut with a complete Windows pair`, () => {
+      const refused = runDegradeOrFail(stagingFunctions(workflow(name)), {
+        isStable: true,
+        staged: BOTH_WINDOWS_TARGETS,
+      });
+      expect(refused.status).toBe(1);
+      expect(refused.output).toContain('incomplete native-config binary set');
+      expect(refused.output).not.toContain('::warning::');
+    });
+
+    test(`${name} names the missing Windows binary on the stable channel too`, () => {
+      const functions = stagingFunctions(workflow(name));
+      for (const missing of BOTH_WINDOWS_TARGETS) {
+        const staged = BOTH_WINDOWS_TARGETS.filter((target) => target !== missing);
+        const refused = runDegradeOrFail(functions, { isStable: true, staged });
+        expect(refused.status).toBe(1);
+        expect(refused.output).toContain(`native-config.${missing}.node was not staged`);
+        expect(refused.output).not.toContain('incomplete native-config binary set');
+      }
     });
 
     test(`${name} asserts the selector's output shape, not just non-emptiness`, () => {

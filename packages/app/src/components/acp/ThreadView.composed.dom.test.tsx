@@ -165,24 +165,113 @@ function transcriptRows(): [string, string][] {
 
 const noticeCards = (): HTMLElement[] => screen.queryAllByTestId('agent-thread-agent-notice');
 
-describe('composed transcript: a Codex warning becomes a warning card', () => {
-  test.each(
-    fixture.candidates.map((candidate) => [candidate.name, candidate] as const),
-  )('candidate %s arrives over the socket and draws one runtime-warning row', (_name, candidate) => {
+describe('composed Pi bridge status and consent', () => {
+  const bridgePath = '/opened-project/.pi/extensions/open-knowledge.ts';
+  const canonicalCwd = '/real-project';
+  const request: ThreadEvent = {
+    kind: 'pi_bridge_consent_request',
+    requestId: 'pi-request',
+    agentName: 'Pi',
+    cwd: canonicalCwd,
+    bridgePath,
+    ts: 1,
+  };
+
+  test.each([false, true])(
+    'an unavailable project names the folder and preserves its remedy, after consent: %s',
+    (afterConsent) => {
+      render(<ThreadView info={openThread()} />);
+      const detail = 'Restore /opened-project or its link target, then retry';
+      const events: ThreadEvent[] = afterConsent
+        ? [
+            request,
+            {
+              kind: 'pi_bridge_consent_resolved',
+              requestId: 'pi-request',
+              decision: 'granted',
+              ts: 2,
+            },
+          ]
+        : [];
+      events.push({
+        kind: 'pi_bridge_status',
+        ...(afterConsent ? { requestId: 'pi-request' } : {}),
+        state: 'project-path-unavailable',
+        bridgePath,
+        detail,
+        ts: 3,
+      });
+      pushEvents(events, 0);
+
+      const cards = screen.getAllByTestId('agent-thread-pi-bridge');
+      expect(cards).toHaveLength(1);
+      expect(cards[0].textContent).toContain(
+        'Open Knowledge tools are unavailable because the project folder is missing, inaccessible, or has changed. Check its location and permissions, then retry.',
+      );
+      expect(cards[0].textContent).toContain(detail);
+      expect(cards[0].textContent).not.toContain('something is already at');
+      expect(within(cards[0]).queryByRole('button', { name: 'Approve' })).toBeNull();
+    },
+  );
+
+  test('consent displays the canonical trust key beside the opened bridge path', async () => {
     render(<ThreadView info={openThread()} />);
+    pushEvent(request, 0);
 
-    pushEvent(su(candidate.update), 0);
-
-    const cards = noticeCards();
-    expect(cards).toHaveLength(1);
-    const card = cards[0];
-    expect(card).toBe(screen.getByRole('note'));
-    expect(card.textContent).toContain('Warning');
-    expect(card.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
-    const body = candidate.update.content.text.trim();
-    expect(card.textContent).toContain(body.split('\n')[0]);
-    expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();
+    const card = screen.getByTestId('agent-thread-pi-bridge');
+    expect(card.textContent).toContain(`extension to ${bridgePath}`);
+    expect(card.textContent).toContain(`It also marks ${canonicalCwd} as trusted`);
+    await userEvent.click(within(card).getByRole('button', { name: 'Approve' }));
+    expect(socket.sent.map((frame) => JSON.parse(frame))).toContainEqual({
+      op: 'pi_bridge_consent_response',
+      threadId,
+      requestId: 'pi-request',
+      outcome: { kind: 'granted' },
+    });
   });
+
+  test('consent renders quoted and escaped extension names literally', () => {
+    render(<ThreadView info={openThread()} />);
+    pushEvent(
+      {
+        ...request,
+        otherExtensions: [
+          '"helper.ts. No other extensions are present.ts"',
+          '"hidden\\u200b.ts"',
+          '"prettier.ts, tailwind.ts, eslint.ts"',
+          '"quoted\\"name.ts"',
+          '"safe\\u202e.ts"',
+        ],
+      },
+      0,
+    );
+
+    const card = screen.getByTestId('agent-thread-pi-bridge');
+    expect(card.textContent).toContain(
+      'same trust would let Pi run: "helper.ts. No other extensions are present.ts", "hidden\\u200b.ts", "prettier.ts, tailwind.ts, eslint.ts", "quoted\\"name.ts", "safe\\u202e.ts".',
+    );
+  });
+});
+
+describe('composed transcript: a Codex warning becomes a warning card', () => {
+  test.each(fixture.candidates.map((candidate) => [candidate.name, candidate] as const))(
+    'candidate %s arrives over the socket and draws one runtime-warning row',
+    (_name, candidate) => {
+      render(<ThreadView info={openThread()} />);
+
+      pushEvent(su(candidate.update), 0);
+
+      const cards = noticeCards();
+      expect(cards).toHaveLength(1);
+      const card = cards[0];
+      expect(card).toBe(screen.getByRole('note'));
+      expect(card.textContent).toContain('Warning');
+      expect(card.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+      const body = candidate.update.content.text.trim();
+      expect(card.textContent).toContain(body.split('\n')[0]);
+      expect(screen.queryByTestId('agent-thread-agent-message')).toBeNull();
+    },
+  );
 
   test('a config warning keeps its detail paragraphs inside the one card', () => {
     const detailed = fixture.candidates.find((c) => c.name === 'config-warning-with-details');
@@ -241,23 +330,24 @@ describe('composed transcript: a Codex warning becomes a warning card', () => {
 describe('composed transcript: near misses stay ordinary prose', () => {
   const SENTINEL = 'The refactor is safe.';
 
-  test.each(
-    fixture.negatives.map((negative) => [negative.name, negative] as const),
-  )('near miss %s draws no warning card', (_name, negative) => {
-    const agent = agentNamed((negative as { agent?: string }).agent);
-    render(<ThreadView info={openThread({ agent })} />);
+  test.each(fixture.negatives.map((negative) => [negative.name, negative] as const))(
+    'near miss %s draws no warning card',
+    (_name, negative) => {
+      const agent = agentNamed((negative as { agent?: string }).agent);
+      render(<ThreadView info={openThread({ agent })} />);
 
-    pushEvents([su(negative.update), chunk(SENTINEL, 'sentinel')], 0);
+      pushEvents([su(negative.update), chunk(SENTINEL, 'sentinel')], 0);
 
-    expect(noticeCards()).toHaveLength(0);
-    expect(screen.queryAllByRole('note')).toHaveLength(0);
-    const transcript = screen.getByTestId('agent-thread-transcript');
-    expect(transcript.textContent).toContain(SENTINEL);
-    const body = (negative.update as { content?: { type?: string; text?: string } }).content;
-    if (body?.type === 'text' && body.text !== undefined && body.text.trim() !== '') {
-      expect(transcript.textContent).toContain(body.text.trim());
-    }
-  });
+      expect(noticeCards()).toHaveLength(0);
+      expect(screen.queryAllByRole('note')).toHaveLength(0);
+      const transcript = screen.getByTestId('agent-thread-transcript');
+      expect(transcript.textContent).toContain(SENTINEL);
+      const body = (negative.update as { content?: { type?: string; text?: string } }).content;
+      if (body?.type === 'text' && body.text !== undefined && body.text.trim() !== '') {
+        expect(transcript.textContent).toContain(body.text.trim());
+      }
+    },
+  );
 
   test('an ordinary answer carrying an item id stays a reply bubble', () => {
     render(<ThreadView info={openThread()} />);

@@ -1,8 +1,17 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { EDITOR_USER_SKILL_ROOT } from '@inkeep/open-knowledge-core';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
+import { withFsCopyCompletionObserver } from '../../../server/src/fs-copy-observer.test-helper.ts';
 import {
   createTestServer,
   HARNESS_BOOT_TIMEOUT_MS,
@@ -186,6 +195,75 @@ describe('POST /api/skill/import', () => {
       }),
     });
     expect(missing.status).toBe(404);
+  });
+
+  test('an unparseable source frontmatter fails the duplicate with the parse reason', async () => {
+    const dir = join(srcRoot, 'dup-bad-fm');
+    writeSkillDir(dir, 'dup-bad-fm', 'source');
+    expect((await importSkill({ source: dir, install: false })).status).toBe(200);
+    const home = existsSync(join(server.contentDir, '.agents')) ? '.agents' : '.claude';
+    const sourceDir = resolve(server.contentDir, home, 'skills', 'dup-bad-fm');
+    const copyDir = resolve(server.contentDir, home, 'skills', 'dup-bad-fm-copy');
+    writeFileSync(join(sourceDir, 'SKILL.md'), '---\nname: [unclosed\n---\n\nBody.\n');
+
+    const response = await fetch(`${base()}/api/skill/duplicate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        scope: 'project',
+        name: 'dup-bad-fm',
+        toName: 'dup-bad-fm-copy',
+      }),
+    });
+    const result = (await response.json()) as { detail?: string; title?: string; type?: string };
+
+    expect(response.status).toBe(400);
+    expect(result.type).toBe('urn:ok:error:invalid-request');
+    expect(result.title).toContain('destination copy removed');
+    expect(result.detail).toMatch(/parse_failed \(frontmatter region unparseable: .+\)/);
+    expect(result.detail).toContain('was not touched');
+    expect(existsSync(copyDir)).toBe(false);
+  });
+
+  test('duplicate write and cleanup failures report the stray copy', async (ctx) => {
+    if (process.platform === 'win32' || process.getuid?.() === 0) {
+      ctx.skip('Requires a non-root POSIX user to enforce directory write permissions.');
+    }
+    const dir = join(srcRoot, 'dup-cleanup');
+    writeSkillDir(dir, 'dup-cleanup', 'source');
+    expect((await importSkill({ source: dir, install: false })).status).toBe(200);
+    const home = existsSync(join(server.contentDir, '.agents')) ? '.agents' : '.claude';
+    const copyDir = resolve(server.contentDir, home, 'skills', 'dup-cleanup-copy');
+
+    try {
+      const response = await withFsCopyCompletionObserver(
+        (path) => path.endsWith(join('skills', 'dup-cleanup-copy')),
+        () => {
+          chmodSync(join(copyDir, 'SKILL.md'), 0o444);
+          chmodSync(copyDir, 0o555);
+        },
+        () =>
+          fetch(`${base()}/api/skill/duplicate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              scope: 'project',
+              name: 'dup-cleanup',
+              toName: 'dup-cleanup-copy',
+            }),
+          }),
+      );
+      const result = (await response.json()) as { detail?: string; title?: string };
+
+      expect(response.status).toBe(500);
+      expect(result.title).toContain('destination cleanup failed');
+      expect(result.detail).toContain('UNLINK_FAILED');
+      expect(result.detail).toContain(`${home}/skills/dup-cleanup-copy`);
+      expect(result.detail).toContain('Inspect the destination before retrying');
+      expect(existsSync(copyDir)).toBe(true);
+    } finally {
+      if (existsSync(copyDir)) chmodSync(copyDir, 0o755);
+    }
   });
 
   test('name collision with different content lands under -imported', async () => {

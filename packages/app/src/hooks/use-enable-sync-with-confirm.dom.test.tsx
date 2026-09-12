@@ -13,21 +13,41 @@ vi.doMock('@lingui/react/macro', () => ({
 }));
 
 const toastErrors: string[] = [];
+const toastInfos: Array<{ message: string; id: string | number | undefined }> = [];
 vi.doMock('sonner', () => ({
   toast: {
     error: (message: string) => toastErrors.push(message),
+    info: (message: string, options?: { id?: string | number }) =>
+      toastInfos.push({ message, id: options?.id }),
   },
 }));
+
+const syncSettingsNotReadyInfo = {
+  message: 'Sync settings not yet loaded — try again in a moment',
+  id: 'sync-settings-not-ready',
+};
+
+function expectRepeatedSyncSettingsNotReadyInfo(): void {
+  expect(toastInfos).toEqual([syncSettingsNotReadyInfo, syncSettingsNotReadyInfo]);
+  expect(toastErrors).toEqual([]);
+}
 
 let projectLocalBinding: null | {
   patch: (patch: unknown) => { ok: true } | { ok: false; error: unknown };
 } = null;
+let projectLocalSynced = true;
 let projectBinding: null | {
   patch: (patch: unknown) => { ok: true } | { ok: false; error: unknown };
 } = null;
+let projectSynced = true;
 
 vi.doMock('@/lib/config-provider', () => ({
-  useConfigContext: () => ({ projectBinding, projectLocalBinding }),
+  useConfigContext: () => ({
+    projectBinding,
+    projectSynced,
+    projectLocalBinding,
+    projectLocalSynced,
+  }),
 }));
 
 type Writer = ((enabled: boolean) => { ok: true } | { ok: false; error: string }) | null;
@@ -81,6 +101,40 @@ function DefaultWriterProbe() {
   return <div data-testid="default-writer-present">{String(latestDefaultWriter !== null)}</div>;
 }
 
+type IntervalWriter =
+  | ((next: {
+      pullIntervalSeconds: number;
+      pushIntervalSeconds: number;
+    }) => { ok: true } | { ok: false; error: string })
+  | null;
+let latestIntervalWriter: IntervalWriter | undefined;
+
+function IntervalWriterProbe() {
+  if (!hooks) throw new Error('hooks not loaded');
+  latestIntervalWriter = hooks.useSyncIntervalWriter();
+  return <div data-testid="interval-writer-present">{String(latestIntervalWriter !== null)}</div>;
+}
+
+type AutoSyncPatch = {
+  mode?: SyncMode;
+  enabled?: null;
+  resumeMode?: Exclude<SyncMode, 'off'> | null;
+};
+type AutoSyncPatchWriter =
+  | ((patch: AutoSyncPatch) => { ok: true } | { ok: false; error: string })
+  | null;
+let latestAutoSyncPatchWriter: AutoSyncPatchWriter | undefined;
+
+function AutoSyncPatchWriterProbe() {
+  if (!hooks) throw new Error('hooks not loaded');
+  latestAutoSyncPatchWriter = hooks.useAutoSyncPatchWriter();
+  return (
+    <div data-testid="auto-sync-patch-writer-present">
+      {String(latestAutoSyncPatchWriter !== null)}
+    </div>
+  );
+}
+
 type ModeSelectionState = {
   confirmOpen: boolean;
   pendingMode: 'follow' | 'full' | null;
@@ -111,6 +165,17 @@ function ModeSelectionProbe({
   );
 }
 
+type BadgeControlsState = {
+  onModeSelect: (next: SyncMode) => void;
+};
+let latestBadgeControls: BadgeControlsState | null = null;
+
+function BadgeControlsProbe({ mode }: { mode: SyncMode }) {
+  if (!hooks) throw new Error('hooks not loaded');
+  latestBadgeControls = hooks.useBadgeSyncControls({ mode }, 0);
+  return null;
+}
+
 describe('useEnableSyncWithConfirm runtime behavior', () => {
   let consoleErrorSpy: ReturnType<typeof spyOn>;
 
@@ -120,10 +185,16 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
     latestWriter = undefined;
     latestModeWriter = undefined;
     latestDefaultWriter = undefined;
+    latestIntervalWriter = undefined;
+    latestAutoSyncPatchWriter = undefined;
     latestModeSelection = null;
+    latestBadgeControls = null;
     projectLocalBinding = null;
+    projectLocalSynced = true;
     projectBinding = null;
+    projectSynced = true;
     toastErrors.length = 0;
+    toastInfos.length = 0;
     consoleErrorSpy?.mockRestore();
   });
 
@@ -133,6 +204,8 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
     expect(typeof mod.useSyncEnabledWriter).toBe('function');
     expect(typeof mod.useSyncModeWriter).toBe('function');
     expect(typeof mod.useSyncDefaultWriter).toBe('function');
+    expect(typeof mod.useSyncIntervalWriter).toBe('function');
+    expect(typeof mod.useAutoSyncPatchWriter).toBe('function');
   });
 
   test('off to on opens confirmation and writes true only after confirm', async () => {
@@ -187,6 +260,22 @@ describe('useEnableSyncWithConfirm runtime behavior', () => {
 
     expect(screen.getByTestId('confirm-open').textContent).toBe('true');
     expect(toastErrors).toEqual(['Failed to enable sync — branch is protected']);
+    expect(toastInfos).toEqual([]);
+  });
+
+  test('an unavailable writer reports the loading wait as information', async () => {
+    await loadHooks();
+    render(<ConfirmProbe writer={null} />);
+
+    await act(async () => {
+      latestConfirmState?.onToggleRequest(true);
+    });
+    await act(async () => {
+      latestConfirmState?.onConfirm();
+      latestConfirmState?.onConfirm();
+    });
+
+    expectRepeatedSyncSettingsNotReadyInfo();
   });
 
   test('fires opts.onEnabled once, only after a successful confirm', async () => {
@@ -228,6 +317,7 @@ describe('useSyncEnabledWriter runtime behavior', () => {
     cleanup();
     latestWriter = undefined;
     projectLocalBinding = null;
+    projectLocalSynced = true;
   });
 
   test('returns null until the project-local binding mounts', async () => {
@@ -239,7 +329,7 @@ describe('useSyncEnabledWriter runtime behavior', () => {
     expect(latestWriter).toBeNull();
   });
 
-  test('patches both autoSync.mode and the legacy enabled leaf so a set mode cannot mask the enable', async () => {
+  test('returns null while the project-local binding awaits its first sync', async () => {
     await loadHooks();
     const patches: unknown[] = [];
     projectLocalBinding = {
@@ -248,6 +338,24 @@ describe('useSyncEnabledWriter runtime behavior', () => {
         return { ok: true };
       },
     };
+    projectLocalSynced = false;
+    render(<WriterProbe />);
+
+    expect(latestWriter).toBeNull();
+    latestWriter?.(true);
+    expect(patches).toEqual([]);
+  });
+
+  test('after first sync, patches both autoSync.mode and the legacy enabled leaf', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectLocalBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectLocalSynced = true;
     render(<WriterProbe />);
 
     expect(latestWriter?.(true)).toEqual({ ok: true });
@@ -277,6 +385,7 @@ describe('useSyncModeWriter runtime behavior', () => {
     cleanup();
     latestModeWriter = undefined;
     projectLocalBinding = null;
+    projectLocalSynced = true;
   });
 
   test('returns null until the project-local binding mounts', async () => {
@@ -288,7 +397,7 @@ describe('useSyncModeWriter runtime behavior', () => {
     expect(latestModeWriter).toBeNull();
   });
 
-  test('patches autoSync.mode on the project-local binding', async () => {
+  test('returns null while the project-local binding awaits its first sync', async () => {
     await loadHooks();
     const patches: unknown[] = [];
     projectLocalBinding = {
@@ -297,6 +406,24 @@ describe('useSyncModeWriter runtime behavior', () => {
         return { ok: true };
       },
     };
+    projectLocalSynced = false;
+    render(<ModeWriterProbe />);
+
+    expect(latestModeWriter).toBeNull();
+    latestModeWriter?.('full');
+    expect(patches).toEqual([]);
+  });
+
+  test('after first sync, patches autoSync.mode on the project-local binding', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectLocalBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectLocalSynced = true;
     render(<ModeWriterProbe />);
 
     expect(latestModeWriter?.('follow')).toEqual({ ok: true });
@@ -322,7 +449,9 @@ describe('useSyncDefaultWriter runtime behavior', () => {
     cleanup();
     latestDefaultWriter = undefined;
     projectBinding = null;
+    projectSynced = true;
     projectLocalBinding = null;
+    projectLocalSynced = true;
   });
 
   test('returns null until the committed project binding mounts', async () => {
@@ -334,7 +463,24 @@ describe('useSyncDefaultWriter runtime behavior', () => {
     expect(latestDefaultWriter).toBeNull();
   });
 
-  test('patches autoSync.default on the COMMITTED project binding, not project-local', async () => {
+  test('returns null while the committed project binding awaits its first sync', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectSynced = false;
+    render(<DefaultWriterProbe />);
+
+    expect(latestDefaultWriter).toBeNull();
+    latestDefaultWriter?.(true);
+    expect(patches).toEqual([]);
+  });
+
+  test('after first sync, patches autoSync.default on the committed project binding', async () => {
     await loadHooks();
     const committedPatches: unknown[] = [];
     const localPatches: unknown[] = [];
@@ -344,6 +490,7 @@ describe('useSyncDefaultWriter runtime behavior', () => {
         return { ok: true };
       },
     };
+    projectSynced = true;
     projectLocalBinding = {
       patch: (patch: unknown) => {
         localPatches.push(patch);
@@ -393,6 +540,94 @@ describe('useSyncDefaultWriter runtime behavior', () => {
   });
 });
 
+describe('useSyncIntervalWriter runtime behavior', () => {
+  afterEach(() => {
+    cleanup();
+    latestIntervalWriter = undefined;
+    projectLocalBinding = null;
+    projectLocalSynced = true;
+  });
+
+  test('returns null while the project-local binding awaits its first sync', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectLocalBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectLocalSynced = false;
+    render(<IntervalWriterProbe />);
+
+    expect(latestIntervalWriter).toBeNull();
+    latestIntervalWriter?.({ pullIntervalSeconds: 120, pushIntervalSeconds: 45 });
+    expect(patches).toEqual([]);
+  });
+
+  test('patches both intervals after the project-local binding completes its first sync', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectLocalBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectLocalSynced = true;
+    render(<IntervalWriterProbe />);
+
+    expect(latestIntervalWriter?.({ pullIntervalSeconds: 120, pushIntervalSeconds: 45 })).toEqual({
+      ok: true,
+    });
+    expect(patches).toEqual([{ autoSync: { pullIntervalSeconds: 120, pushIntervalSeconds: 45 } }]);
+  });
+});
+
+describe('useAutoSyncPatchWriter runtime behavior', () => {
+  afterEach(() => {
+    cleanup();
+    latestAutoSyncPatchWriter = undefined;
+    projectLocalBinding = null;
+    projectLocalSynced = true;
+  });
+
+  test('returns null while the project-local binding awaits its first sync', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectLocalBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectLocalSynced = false;
+    render(<AutoSyncPatchWriterProbe />);
+
+    expect(latestAutoSyncPatchWriter).toBeNull();
+    latestAutoSyncPatchWriter?.({ mode: 'full', enabled: null, resumeMode: null });
+    expect(patches).toEqual([]);
+  });
+
+  test('patches autoSync after the project-local binding completes its first sync', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectLocalBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectLocalSynced = true;
+    render(<AutoSyncPatchWriterProbe />);
+
+    expect(latestAutoSyncPatchWriter?.({ mode: 'full', enabled: null, resumeMode: null })).toEqual({
+      ok: true,
+    });
+    expect(patches).toEqual([{ autoSync: { mode: 'full', enabled: null, resumeMode: null } }]);
+  });
+});
+
 describe('useSyncModeSelection runtime behavior', () => {
   let consoleErrorSpy: ReturnType<typeof spyOn> | undefined;
 
@@ -401,6 +636,7 @@ describe('useSyncModeSelection runtime behavior', () => {
     latestModeSelection = null;
     projectLocalBinding = null;
     toastErrors.length = 0;
+    toastInfos.length = 0;
     consoleErrorSpy?.mockRestore();
     consoleErrorSpy = undefined;
   });
@@ -496,6 +732,7 @@ describe('useSyncModeSelection runtime behavior', () => {
 
     expect(screen.getByTestId('mode-selection').textContent).toBe('true:full');
     expect(toastErrors).toEqual(['Failed to update sync mode — branch is protected']);
+    expect(toastInfos).toEqual([]);
   });
 
   test('fires opts.onApplied with the confirmed mode after a successful write', async () => {
@@ -570,16 +807,75 @@ describe('useSyncModeSelection runtime behavior', () => {
     render(
       <ModeSelectionProbe
         writer={null}
-        currentMode="full"
+        currentMode="off"
         onApplied={(mode) => applied.push(mode)}
       />,
     );
 
     await act(async () => {
-      latestModeSelection?.onModeSelect('off');
+      latestModeSelection?.onModeSelect('full');
+    });
+    await act(async () => {
+      latestModeSelection?.onConfirm();
+      latestModeSelection?.onConfirm();
     });
 
     expect(applied).toEqual([]);
-    expect(toastErrors).toEqual(['Sync settings not yet loaded — try again in a moment']);
+    expectRepeatedSyncSettingsNotReadyInfo();
+  });
+});
+
+describe('useBadgeSyncControls loading feedback', () => {
+  let consoleErrorSpy: ReturnType<typeof spyOn> | undefined;
+
+  afterEach(() => {
+    cleanup();
+    latestBadgeControls = null;
+    projectLocalBinding = null;
+    projectLocalSynced = true;
+    toastErrors.length = 0;
+    toastInfos.length = 0;
+    consoleErrorSpy?.mockRestore();
+    consoleErrorSpy = undefined;
+  });
+
+  test('an unavailable writer reports the loading wait as information', async () => {
+    await loadHooks();
+    const patches: unknown[] = [];
+    projectLocalBinding = {
+      patch: (patch: unknown) => {
+        patches.push(patch);
+        return { ok: true };
+      },
+    };
+    projectLocalSynced = false;
+    render(<BadgeControlsProbe mode="full" />);
+
+    await act(async () => {
+      latestBadgeControls?.onModeSelect('off');
+      latestBadgeControls?.onModeSelect('off');
+    });
+
+    expect(patches).toEqual([]);
+    expectRepeatedSyncSettingsNotReadyInfo();
+  });
+
+  test('an actual patch failure remains an error', async () => {
+    await loadHooks();
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    projectLocalBinding = {
+      patch: () => ({ ok: false, error: { code: 'WRITE_ERROR', detail: 'disk denied' } }),
+    };
+    projectLocalSynced = true;
+    render(<BadgeControlsProbe mode="full" />);
+
+    await act(async () => {
+      latestBadgeControls?.onModeSelect('off');
+    });
+
+    expect(toastErrors).toEqual([
+      'Failed to update sync — Failed to write config file: disk denied',
+    ]);
+    expect(toastInfos).toEqual([]);
   });
 });

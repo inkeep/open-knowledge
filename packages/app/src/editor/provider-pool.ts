@@ -163,21 +163,23 @@ type ClientPersistenceFactory = (args: {
 type PeekStoredLineageEpoch = (args: PeekStoredLineageEpochArgs) => Promise<string | null>;
 
 class ClientPersistenceClearTimeoutError extends Error {
-  constructor(
-    readonly docName: string,
-    readonly timeoutMs: number,
-  ) {
+  readonly docName: string;
+  readonly timeoutMs: number;
+  constructor(docName: string, timeoutMs: number) {
     super(`client persistence clearData timed out for ${docName} after ${timeoutMs}ms`);
+    this.docName = docName;
+    this.timeoutMs = timeoutMs;
     this.name = 'ClientPersistenceClearTimeoutError';
   }
 }
 
 class StoredEpochPeekTimeoutError extends Error {
-  constructor(
-    readonly docName: string,
-    readonly timeoutMs: number,
-  ) {
+  readonly docName: string;
+  readonly timeoutMs: number;
+  constructor(docName: string, timeoutMs: number) {
     super(`stored-state epoch peek timed out for ${docName} after ${timeoutMs}ms`);
+    this.docName = docName;
+    this.timeoutMs = timeoutMs;
     this.name = 'StoredEpochPeekTimeoutError';
   }
 }
@@ -186,25 +188,14 @@ const LAST_OBSERVED_BRANCH_KEY = 'ok-last-observed-branch';
 
 const DOC_LINEAGE_EPOCHS_KEY = 'ok-doc-lineage-epochs';
 
-const FORCE_SYNC_INTERVAL_MS = 5_000;
+export const FORCE_SYNC_INTERVAL_MS = 5_000;
 
 const MAX_BUFFER_BYTES = readNumericOverride('MAX_BUFFER_BYTES', 1 * 1024 * 1024);
 
 /**
- * Default pool capacity. Exported so the single point of truth lives in this
- * module (the pool that owns the constraint), and so callers that construct
- * a `ProviderPool` can reference the same name rather than a magic literal.
- *
- * Coupled to `ACTIVITY_MOUNT_LIMIT = 3` (exported from `EditorActivityPool.tsx`)
- * per precedent #18(c): `MAX_POOL` bounds how many warm
- * providers we keep; `ACTIVITY_MOUNT_LIMIT` bounds how many editor subtrees
- * are Activity-mounted inside those providers. The two constraints are
- * intentionally independent — pool-resident-but-not-Activity-mounted docs
- * keep their warm provider (≈5–10 MB) for fast Suspense-gated remount
- * without paying per-editor memory or observer-CPU cost.
- *
- * Changing either constant is an ASK_FIRST boundary. If one moves,
- * audit the other for sympathetic impact.
+ * Default pool capacity, coupled to `EditorActivityPool.tsx`'s `ACTIVITY_MOUNT_LIMIT` per
+ * precedent #18(c): this bounds warm providers, that one bounds Activity-mounted editor subtrees.
+ * Moving either constant needs the other audited.
  */
 export const MAX_POOL = readNumericOverride('MAX_POOL', 10);
 
@@ -504,7 +495,7 @@ export class ProviderPool {
 
   observeDiskAck(docName: string, sv: Uint8Array): void {
     const entry = this.entries.get(docName);
-    if (!entry || entry.kind !== 'active') return;
+    if (entry?.kind !== 'active') return;
     entry.lastDiskAckedSV = mergeStateVectors(entry.lastDiskAckedSV, sv);
   }
 
@@ -2082,7 +2073,7 @@ export class ProviderPool {
 
   private recycleDisconnectedEntry(docName: string): void {
     const entry = this.entries.get(docName);
-    if (!entry || entry.kind !== 'active') return;
+    if (entry?.kind !== 'active') return;
 
     const wasActive = this.activeDocName === docName;
     mark('ok/pool/recycle-disconnected', { docName, wasActive });

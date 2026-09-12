@@ -1,47 +1,11 @@
 #!/usr/bin/env node
-/**
- * Effect-level control: the packaged `app.asar` must actually carry the runtime
- * dependencies the main process imports.
- *
- * A packaged Electron app whose asar has no `node_modules` installs fine and
- * then dies on the first bare import, BEFORE `app.ready` — so there is no
- * window, no dialog, and no crash report. From the outside it is
- * indistinguishable from "nothing happened". Every other packaging control we
- * have (an executable exists, the smoke suite passes) stays green through it,
- * because the smoke suite drives the electron-vite `out/` build where the dev
- * `node_modules` are still on disk to resolve against.
- *
- * Reads the asar header directly rather than shelling out to the `asar` CLI:
- * the format is a 16-byte prefix whose last uint32 is the length of a JSON
- * directory listing, which is all we need and costs one read of the first few
- * hundred KB of a ~250 MB file.
- *
- * Usage: node assert-asar-complete.mjs <search-root> [label]
- *   <search-root>  directory to find app.asar under (e.g. dist-desktop)
- */
 
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { readAsarHeader } from './lib/asar-header.mjs';
 
-/**
- * Packages asserted present by name. `pino` is the one that actually broke —
- * `desktop-logger` imports it at module scope, so it is the first bare specifier
- * the main process resolves and thus the observed failure. The others are listed
- * so a partial collection (rather than a wholesale omission) still fails.
- * `node-pty` pins the terminal payload on every platform: the win files rules
- * once excluded it wholesale, and a regressed exclude would ship a
- * dead-on-arrival terminal while every other packaging control stays green.
- */
 const REQUIRED_PACKAGES = ['pino', 'electron-updater', 'node-pty'];
 
-/**
- * EVERY asar under the root, not the first one found. A single `electron-builder
- * --win` run with `arch: [x64, arm64]` writes `win-unpacked/` AND
- * `win-arm64-unpacked/`, each with its own `app.asar`; checking only one would
- * let a broken second arch ship. (`--dir` builds the host arch alone, which is
- * why the PR-gate cells see exactly one.)
- */
 function findAsars(root) {
   if (!existsSync(root)) return [];
   const found = [];
@@ -57,7 +21,6 @@ function findAsars(root) {
     for (const entry of entries) {
       const full = join(dir, entry.name);
       if (entry.isFile() && entry.name === 'app.asar') found.push(full);
-      // `*-unpacked/` trees mirror the asar's contents and would double the walk.
       if (entry.isDirectory() && !entry.name.endsWith('.asar.unpacked')) stack.push(full);
     }
   }

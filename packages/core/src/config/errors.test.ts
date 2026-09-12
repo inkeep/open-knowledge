@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
+  ConfigDiagnosticSchema,
+  ConfigDiagnosticsReportSchema,
   ConfigValidationErrorSchema,
   FieldScopeSchema,
   humanFormat,
@@ -57,6 +59,18 @@ describe('ConfigValidationErrorSchema', () => {
     expect(parsed.code).toBe('MIXED_SCOPE');
   });
 
+  test('parses NOT_SYNCED with diagnostic detail', () => {
+    const parsed = ConfigValidationErrorSchema.parse({
+      code: 'NOT_SYNCED',
+      detail: 'project-local binding is awaiting initial sync',
+    });
+    expect(parsed).toEqual({
+      code: 'NOT_SYNCED',
+      detail: 'project-local binding is awaiting initial sync',
+    });
+    expect(isKnownConfigError(parsed)).toBe(true);
+  });
+
   test('forward-compat tail accepts unknown codes without throwing', () => {
     const parsed = ConfigValidationErrorSchema.parse({
       code: 'FUTURE_CODE_NOT_YET_KNOWN',
@@ -74,6 +88,7 @@ describe('ConfigValidationErrorSchema', () => {
       'SCOPE_VIOLATION',
       'NOT_AGENT_SETTABLE',
       'MIXED_SCOPE',
+      'NOT_SYNCED',
       'WRITE_ERROR',
       'OKIGNORE_INVALID',
       'UNKNOWN',
@@ -130,6 +145,75 @@ describe('ConfigValidationErrorSchema', () => {
 });
 
 describe('humanFormat', () => {
+  test('VALUE_FALLBACK describes recovered settings without rejecting the file or exposing its value', () => {
+    const diagnostic = {
+      code: 'VALUE_FALLBACK',
+      issues: [
+        {
+          path: ['search', 'semantic', 'maxBatchSize'],
+          message: 'Expected an integer between 1 and 2048; using default 96.',
+          source: {
+            file: '/project/.ok/local/config.yml',
+            line: 3,
+            column: 19,
+            snippet: 'maxBatchSize: PRIVATE_INVALID_VALUE',
+          },
+        },
+      ],
+    };
+
+    const parsed = ConfigDiagnosticSchema.parse(diagnostic);
+    expect(parsed.code).toBe('VALUE_FALLBACK');
+    expect(isKnownConfigError(parsed)).toBe(false);
+    expect(JSON.stringify(parsed)).not.toContain('PRIVATE_INVALID_VALUE');
+    const output = humanFormat(diagnostic);
+    expect(output).toContain('Configuration loaded with defaults for invalid settings:');
+    expect(output).toContain('/project/.ok/local/config.yml:3:19');
+    expect(output).toContain('search.semantic.maxBatchSize: Expected an integer');
+    expect(output).toContain('using default 96.');
+    expect(output).not.toContain('Invalid configuration');
+    expect(output).not.toContain('PRIVATE_INVALID_VALUE');
+  });
+
+  test('VALUE_FALLBACK with no located issues still reports recovery', () => {
+    expect(humanFormat({ code: 'VALUE_FALLBACK', issues: [] })).toBe(
+      'Configuration loaded with defaults for invalid settings.',
+    );
+    expect(
+      humanFormat({
+        code: 'VALUE_FALLBACK',
+        issues: [{ path: ['search', 'semantic', 'maxBatchSize'], message: 'Using default 96.' }],
+      }),
+    ).toContain('search.semantic.maxBatchSize: Using default 96.');
+  });
+
+  test('scoped fallback diagnostics preserve safe field details and discard raw-value fields', () => {
+    const report = ConfigDiagnosticsReportSchema.parse({
+      diagnostics: [
+        {
+          code: 'VALUE_FALLBACK',
+          scope: 'project-local',
+          file: '/project/.ok/local/config.yml',
+          issues: [
+            {
+              path: ['search', 'semantic', 'maxBatchSize'],
+              message: 'Expected an integer between 1 and 2048; using default 96.',
+              line: 3,
+              column: 19,
+              snippet: 'PRIVATE_INVALID_VALUE',
+              raw: 'PRIVATE_INVALID_VALUE',
+            },
+          ],
+        },
+      ],
+    });
+    expect(report.diagnostics[0]).toMatchObject({
+      code: 'VALUE_FALLBACK',
+      issues: [{ path: ['search', 'semantic', 'maxBatchSize'], line: 3, column: 19 }],
+    });
+    expect(JSON.stringify(report)).not.toContain('PRIVATE_INVALID_VALUE');
+  });
+
   test('YAML_PARSE renders detail', () => {
     expect(humanFormat({ code: 'YAML_PARSE', detail: 'bad indentation' })).toContain(
       'bad indentation',
@@ -201,6 +285,16 @@ describe('humanFormat', () => {
     expect(out).toContain('content.dir → .ok/config.yml (project)');
     expect(out).toContain('mcp.tools.grep.maxResults → ~/.ok/global.yml (user)');
     expect(out).toContain('one file at a time');
+  });
+
+  test('NOT_SYNCED describes a temporary loading state without exposing diagnostic detail', () => {
+    const out = humanFormat({
+      code: 'NOT_SYNCED',
+      detail: 'ConfigBinding (project-local) has not completed initial sync',
+    });
+    expect(out).toBe('Settings are still loading. Try again in a moment.');
+    expect(out).not.toContain('ConfigBinding');
+    expect(out).not.toContain('write config file');
   });
 
   test('UNKNOWN with message renders message; without message renders generic', () => {

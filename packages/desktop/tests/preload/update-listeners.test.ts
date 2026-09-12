@@ -81,6 +81,7 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
       'ok:update:whats-new',
       'ok:update:whats-new-dismissed',
       'ok:update:stuck-hint',
+      'ok:update:manual-check',
     ] as const;
     for (const channel of channels) {
       const ipc = makeFakeIpc();
@@ -90,5 +91,18 @@ describe('M3 update-listener subscribe/unsubscribe pattern', () => {
       unsubscribe();
       expect(ipc.removeListener.mock.calls[0]?.[0]).toBe(channel);
     }
+  });
+
+  test('manual-check payload is delivered and unsubscribed by wrapper identity', () => {
+    const ipc = makeFakeIpc();
+    const cb = vi.fn<(info: { phase: 'started' | 'settled' }) => void>(() => {});
+    const unsubscribe = createUpdateSubscription(ipc, 'ok:update:manual-check', cb);
+    const registeredWrapper = ipc.on.mock.calls[0]?.[1] as FakeListener | undefined;
+
+    registeredWrapper?.(null, { phase: 'started' });
+    expect(cb).toHaveBeenCalledWith({ phase: 'started' });
+
+    unsubscribe();
+    expect(ipc.removeListener).toHaveBeenCalledWith('ok:update:manual-check', registeredWrapper);
   });
 });

@@ -39,12 +39,15 @@ function manifestIdentityDims(manifest: ManifestFile, want: IdentityDims): Ident
   return want === 'auto' ? 'auto' : manifest.dims;
 }
 
-interface VectorCacheOptions {
-  cacheDir: string | null;
+interface VectorCacheIdentity {
   providerId: string;
   modelId: string;
-  dims: number | null;
+  identityDims: IdentityDims;
   chunkConfigId: string;
+}
+
+interface VectorCacheOptions extends VectorCacheIdentity {
+  cacheDir: string | null;
 }
 
 export function hashContent(content: string): string {
@@ -97,13 +100,22 @@ export class VectorCache {
     this.manifestPath = options.cacheDir ? join(options.cacheDir, MANIFEST_NAME) : null;
     this.providerId = options.providerId;
     this.modelId = options.modelId;
-    this.identityDims = options.dims ?? 'auto';
-    this.pinnedDims = options.dims;
+    this.identityDims = options.identityDims;
+    this.pinnedDims = options.identityDims === 'auto' ? null : options.identityDims;
     this.chunkConfigId = options.chunkConfigId;
   }
 
   get dims(): number | null {
     return this.pinnedDims;
+  }
+
+  matchesIdentity(identity: VectorCacheIdentity): boolean {
+    return (
+      identity.providerId === this.providerId &&
+      identity.modelId === this.modelId &&
+      identity.identityDims === this.identityDims &&
+      identity.chunkConfigId === this.chunkConfigId
+    );
   }
 
   pinDims(dims: number): void {
@@ -133,10 +145,12 @@ export class VectorCache {
     const identityMatches =
       manifest !== null &&
       manifest.schemaVersion === MANIFEST_SCHEMA_VERSION &&
-      manifest.providerId === this.providerId &&
-      manifest.modelId === this.modelId &&
-      manifestIdentityDims(manifest, this.identityDims) === this.identityDims &&
-      manifest.chunkConfigId === this.chunkConfigId;
+      this.matchesIdentity({
+        providerId: manifest.providerId,
+        modelId: manifest.modelId,
+        identityDims: manifestIdentityDims(manifest, this.identityDims),
+        chunkConfigId: manifest.chunkConfigId,
+      });
 
     if (!identityMatches) {
       if (manifest !== null) {

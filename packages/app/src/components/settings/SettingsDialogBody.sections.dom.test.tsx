@@ -458,6 +458,34 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.queryByTestId('settings-scope-badge-project')).toBeNull();
   });
 
+  test('the ok CLI row is wired into the user Preferences page', async () => {
+    Object.defineProperty(window, 'okDesktop', {
+      value: {
+        integrations: {
+          status: async () => ({
+            available: true,
+            editors: [],
+            skills: [],
+            path: { shellDetected: true, rcFilesToTouch: ['~/.zshrc'], installed: false },
+          }),
+          setComponent: async () => ({ ok: true }),
+        },
+      },
+      configurable: true,
+      writable: true,
+    });
+    try {
+      await renderBody({
+        activeId: 'preferences',
+        userBinding: { current: () => ({}), subscribe: () => () => {} },
+      });
+      expect(await screen.findByTestId('ok-cli-path-row')).not.toBeNull();
+    } finally {
+      // biome-ignore lint/suspicious/noExplicitAny: test-only global teardown.
+      (window as any).okDesktop = undefined;
+    }
+  });
+
   test('sync page stacks the config-sharing block under the sync controls', async () => {
     syncStatus = { state: 'dormant', hasRemote: false, syncEnabled: false };
 

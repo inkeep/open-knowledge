@@ -9,12 +9,11 @@ const appRoot = resolve(fileURLToPath(new URL('../../../app/', import.meta.url))
 type EntryInput = Record<string, string>;
 
 interface RendererBuild {
-  rollupOptions?: { input?: EntryInput };
   rolldownOptions?: { input?: EntryInput };
 }
 
 function entryInput(build: RendererBuild | undefined): EntryInput {
-  const input = build?.rolldownOptions?.input ?? build?.rollupOptions?.input;
+  const input = build?.rolldownOptions?.input;
   if (input === undefined) throw new Error('renderer build declares no HTML entry input');
   return input;
 }

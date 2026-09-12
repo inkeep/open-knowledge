@@ -1,21 +1,7 @@
 /**
- * `normalizeBridge` output must never drive a byte write.
- *
- * `normalizeBridge` collapses tolerance-class differences (trailing whitespace,
- * blank-line runs, escape forms) so two representations can be COMPARED for
- * bridge equality. Its output is a lossy canonical form — writing it back to
- * disk or into `Y.Text`/`Y.XmlFragment` would silently rewrite the user's
- * byte-sacred source (precedent #57). Every `normalizeBridge` caller today is
- * comparison-only; this gate keeps it that way by failing the build when a
- * `normalizeBridge` result flows (directly, or via a one-hop local const) into
- * a byte-write sink argument.
- *
- * Blindness residual: cross-function flow (a function that RETURNS
- * `normalizeBridge` output whose caller then writes it) is not statically
- * traced here — that needs whole-program type resolution. The compensating
- * controls are the manual audit that verified every caller comparison-only and
- * the per-write-path byte-sacred discipline (precedent #57). The realistic
- * regression — someone writing a freshly-normalized value — is caught.
+ * `normalizeBridge` output must never drive a byte write: its lossy canonical form would rewrite
+ * the user's byte-sacred source (precedent #57). This gate fails the build when a result flows,
+ * directly or via a one-hop local const, into a byte-write sink argument.
  */
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';

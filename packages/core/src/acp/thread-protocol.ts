@@ -29,6 +29,7 @@ export type PiBridgeWriteAction =
   | 'refreshed'
   | 'refused-foreign'
   | 'refused-unreadable'
+  | 'refused-project-path'
   | 'failed';
 
 export type PiTrustWriteAction =
@@ -44,6 +45,7 @@ export type PiBridgeThreadState =
   | 'ready'
   | 'foreign-file'
   | 'unreadable-file'
+  | 'project-path-unavailable'
   | 'bridge-failed'
   | 'trust-failed';
 
@@ -123,6 +125,7 @@ export interface ThreadInfo {
   availableCommands?: AvailableCommand[] | null;
   lastSeq: number;
   archived?: boolean;
+  resumable?: boolean;
   queue?: QueuedMessage[];
   steer?: SteerMessage;
   signInOutput?: string[];

@@ -120,16 +120,19 @@ describe('resolveSelfSpawn', () => {
   it.each([
     ['linux', PACKAGED_EXEC],
     ['win32', 'C:\\Program Files\\OpenKnowledge\\OpenKnowledge.exe'],
-  ] as const)('non-darwin (%s) → command stays execPath (no LaunchServices)', (platform, execPath) => {
-    const result = resolveSelfSpawn({
-      execPath,
-      platform,
-      argv: ['runtime', '/entry/script'],
-      exists: () => true,
-    });
-    expect(result.command).toBe(execPath);
-    expect(result.prefixArgs).toEqual(['/entry/script']);
-  });
+  ] as const)(
+    'non-darwin (%s) → command stays execPath (no LaunchServices)',
+    (platform, execPath) => {
+      const result = resolveSelfSpawn({
+        execPath,
+        platform,
+        argv: ['runtime', '/entry/script'],
+        exists: () => true,
+      });
+      expect(result.command).toBe(execPath);
+      expect(result.prefixArgs).toEqual(['/entry/script']);
+    },
+  );
 
   it.each([
     '/usr/local/bin/node',

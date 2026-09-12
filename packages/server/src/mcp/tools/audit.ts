@@ -1,5 +1,10 @@
-import { validationCoverageLines } from '@inkeep/open-knowledge-core';
+import { BrokenLinkSuppressionSchema, validationCoverageLines } from '@inkeep/open-knowledge-core';
 import { z } from 'zod';
+import {
+  formatAuditBrokenLinkSuppressionLine,
+  formatUnreadableAuditSuppressionWarning,
+} from '../../broken-link-suppression.ts';
+import { parseBrokenLinkSuppression } from './advisory-warnings.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   AUDIT_FILE_CAP,
@@ -25,6 +30,7 @@ export const DESCRIPTION = [
   '- The result reports `ran`, the source families selected for this run. Project audit can report `markdownlint`, `frontmatter`, `okf`, and `links`. A family absent from `ran` was not checked. `okf` covers both document and project-tree OKF checks here.',
   '- A selected family stays in `ran` if it degrades, with the reason in `warnings`. A partial degradation may still have contributed findings.',
   '- To CHECK whether links resolve, use this tool: each broken link is reported under the SOURCE doc that contains it, at the offending line. (The `links` tool is the navigation/graph reader — backlinks, forward links, orphans, hubs — not the validation surface.)',
+  '- Broken links written INSIDE a lowercase-stemmed `log.md`/`log.mdx` are omitted at any depth while the project\'s default-on `validation.suppressLogLinkAdvisories` setting is enabled. When findings are withheld, `brokenLinkSuppression: { reason: "reserved-log-policy", count: N }` makes the filtered result explicit without exposing paths or hrefs. A log is an append-only history whose entries deliberately reference pages that moved or were never written, so repairing them would rewrite that history. `LOG.md` is an ordinary doc and keeps its findings, and `links({ kind: "dead" })` reads the raw state unconditionally.',
   '',
   "Each diagnostic carries a `source` naming the validator ('markdownlint' rule violations; 'links' broken internal links), a `code` (e.g. MD010, dead-link), `message`, a 0-based LSP `range` (for links: line exact, column approximate), and `severity` ('error' | 'warning' — broken links default to warnings; the project's `validation.links` setting can raise them to errors or hide them). Only files with at least one problem are listed, plus `fileCount`/`errorCount`/`warningCount` totals. Output (text and structured) is capped at 10 files × 10 diagnostics per file and project-wide at 10 warnings, with explicit '… and N more' indicators and `omittedWarningCount` when warnings are dropped; the counts always reflect the full scan — re-run with `path` scoped to a folder or file to see what was omitted.",
   '',
@@ -62,6 +68,7 @@ interface AuditResponsePayload {
   warningCount?: number;
   warnings?: string[];
   ran?: string[];
+  brokenLinkSuppression?: unknown;
 }
 
 export interface AuditDeps {
@@ -103,6 +110,9 @@ export function register(server: ServerInstance, deps: AuditDeps): void {
           .describe(
             'Validation source families selected for this run. A family absent from `ran` was not checked.',
           ),
+        brokenLinkSuppression: BrokenLinkSuppressionSchema.optional().describe(
+          'Present when the reserved-log policy withheld broken-link findings. Carries only the reason and count, never paths or hrefs. Absent both when nothing was withheld and when a withholding arrived in a shape this build cannot validate. In that second case `warnings` carries the disclosure, so an empty `brokenLinkSuppression` beside a non-empty `warnings` is not an all-clear.',
+        ),
         omittedWarningCount: z
           .number()
           .optional()
@@ -144,6 +154,13 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
   const errorCount = data.errorCount ?? 0;
   const warningCount = data.warningCount ?? 0;
   const coverageLines = validationCoverageLines(data.ran);
+  const rawSuppression = data.brokenLinkSuppression;
+  const suppressionPresent = rawSuppression !== undefined && rawSuppression !== null;
+  const suppression = parseBrokenLinkSuppression(rawSuppression);
+  const suppressionUnreadable = suppressionPresent && suppression === undefined;
+  const suppressionLine = suppression
+    ? formatAuditBrokenLinkSuppressionLine(suppression, { surface: 'mcp' })
+    : undefined;
 
   const shownFiles = files.slice(0, AUDIT_FILE_CAP).map((file) => {
     const diagnostics = file.diagnostics ?? [];
@@ -157,7 +174,10 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
   });
   const omittedFileCount = files.length - shownFiles.length;
 
-  const warnings = data.warnings ?? [];
+  const warnings = [
+    ...(suppressionUnreadable ? [formatUnreadableAuditSuppressionWarning({ surface: 'mcp' })] : []),
+    ...(data.warnings ?? []),
+  ];
   const { shownWarnings, omittedWarningCount } = capAuditWarnings(warnings);
 
   const structured = {
@@ -166,6 +186,7 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
     errorCount,
     warningCount,
     ...(data.ran === undefined ? {} : { ran: data.ran }),
+    ...(suppression === undefined ? {} : { brokenLinkSuppression: suppression }),
     ...(shownWarnings.length > 0 ? { warnings: shownWarnings } : {}),
     ...(omittedWarningCount > 0 ? { omittedWarningCount } : {}),
     ...(omittedFileCount > 0 ? { omittedFileCount } : {}),
@@ -180,7 +201,15 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
       warnings.length > 0
         ? `No problems found across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}, but the audit could not fully complete.`
         : `No problems across ${fileCount} document${fileCount === 1 ? '' : 's'}${scope}.`;
-    return textPlusStructured([summary, ...coverageLines, ...warningBlock].join('\n'), structured);
+    return textPlusStructured(
+      [
+        summary,
+        ...(suppressionLine === undefined ? [] : [suppressionLine]),
+        ...coverageLines,
+        ...warningBlock,
+      ].join('\n'),
+      structured,
+    );
   }
   const header = `${files.length} of ${fileCount} document${fileCount === 1 ? '' : 's'}${scope} with problems — ${countSummary(errorCount, warningCount)}:`;
   const fileBlocks = shownFiles.map((file) => {
@@ -197,9 +226,15 @@ async function runAudit(path: string | undefined, url: string, cwd: string) {
       ? [`… and ${omittedFileCount} more file${omittedFileCount === 1 ? '' : 's'} with problems`]
       : [];
   return textPlusStructured(
-    [header, ...fileBlocks, ...footer, ...warningBlock, FIX_ROUTING_HINT, ...coverageLines].join(
-      '\n',
-    ),
+    [
+      header,
+      ...fileBlocks,
+      ...footer,
+      ...warningBlock,
+      ...(suppressionLine === undefined ? [] : [suppressionLine]),
+      FIX_ROUTING_HINT,
+      ...coverageLines,
+    ].join('\n'),
     structured,
   );
 }

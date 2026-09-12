@@ -1,11 +1,4 @@
-/**
- * Behavioral tests for the not-in-sidebar indicator: per-axis attribution
- * rendering, per-axis flip patches, recompute after a flip that leaves the
- * doc hidden by the other axis, and the silent cases (visible docs, skills /
- * templates / `.ok` docs, which never have a row the toggles govern).
- *
- * Runs under `bun run test:dom` (jsdom substrate per precedent #43).
- */
+/** Runs under the jsdom substrate (precedent #43). */
 
 import type { Config } from '@inkeep/open-knowledge-core';
 import * as actualLinguiMacro from '@lingui/react/macro';

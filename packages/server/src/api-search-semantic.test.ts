@@ -5,13 +5,18 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
-import { createWorkspaceSearchDocument } from '@inkeep/open-knowledge-core';
+import {
+  createWorkspaceSearchDocument,
+  type SemanticProviderErrorReason,
+  type SemanticQueryOutcome,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { createConceptEmbedder, type Embedder, SemanticSearchService } from './embeddings/index.ts';
@@ -41,7 +46,13 @@ interface SearchRow {
 }
 interface SearchBody {
   results?: SearchRow[];
-  semantic?: { capable: boolean; applied: boolean; coverage: { embedded: number; total: number } };
+  semantic?: {
+    capable: boolean;
+    applied: boolean;
+    outcome: SemanticQueryOutcome;
+    providerErrorReason?: SemanticProviderErrorReason | null;
+    coverage: { embedded: number; total: number };
+  };
 }
 
 function makeReq(method: string, url: string, body = ''): IncomingMessage {
@@ -163,6 +174,7 @@ describe('POST /api/search — semantic (opt-in)', () => {
       expect(rotation?.signals.vector ?? 0).toBeGreaterThan(0.3);
       expect(semantic?.capable).toBe(true);
       expect(semantic?.applied).toBe(true);
+      expect(semantic?.outcome).toBe('applied');
       expect(semantic?.coverage.total).toBe(3);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -182,6 +194,7 @@ describe('POST /api/search — semantic (opt-in)', () => {
       );
       expect(results?.find((r) => r.path === 'guides/credential-rotation')).toBeDefined();
       expect(semantic?.applied).toBe(true);
+      expect(semantic?.outcome).toBe('applied');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -242,6 +255,35 @@ describe('POST /api/search — semantic (opt-in)', () => {
     }
   });
 
+  test('a first semantic search reports warming while the provider initializes', async () => {
+    const dir = seed();
+    const loader = Promise.withResolvers<Embedder | null>();
+    try {
+      const fileIndex = buildFileIndex(dir);
+      const service = new SemanticSearchService({
+        loadEmbedder: () => loader.promise,
+        cacheDir: null,
+        enabled: true,
+      });
+      const { results, semantic } = await searchPost(
+        dir,
+        fileIndex,
+        { query: 'auth retries', intent: 'full_text', semantic: true },
+        service,
+      );
+      expect((results ?? []).length).toBeGreaterThan(0);
+      expect(semantic).toMatchObject({
+        capable: false,
+        applied: false,
+        outcome: 'warming',
+        coverage: { embedded: 0, total: 3 },
+      });
+    } finally {
+      loader.resolve(null);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test('a sub-min-length query stays lexical even when opted in (gated, block still present)', async () => {
     const dir = seed();
     try {
@@ -255,6 +297,7 @@ describe('POST /api/search — semantic (opt-in)', () => {
       );
       for (const r of results ?? []) expect('vector' in r.signals).toBe(false);
       expect(semantic?.applied).toBe(false);
+      expect(semantic?.outcome).toBe('query_too_short');
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -275,6 +318,98 @@ describe('POST /api/search — semantic (opt-in)', () => {
       for (const r of results ?? []) expect('vector' in r.signals).toBe(false);
       expect(semantic?.capable).toBe(false);
       expect(semantic?.applied).toBe(false);
+      expect(semantic?.outcome).toBe('incapable');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a query provider failure is distinct from no semantic match', async () => {
+    const dir = seed();
+    try {
+      const fileIndex = buildFileIndex(dir);
+      const inner = createConceptEmbedder({ concepts: CONCEPTS });
+      const failingQueries: Embedder = {
+        ...inner,
+        embed: (texts, opts) =>
+          opts.role === 'query'
+            ? Promise.reject(new Error('provider down'))
+            : inner.embed(texts, opts),
+      };
+      const service = await makeService(fileIndex, {
+        enabled: true,
+        embedder: failingQueries,
+      });
+      const { results, semantic } = await searchPost(
+        dir,
+        fileIndex,
+        { query: 'auth retries', intent: 'full_text', semantic: true },
+        service,
+      );
+      expect((results ?? []).length).toBeGreaterThan(0);
+      expect(semantic).toMatchObject({
+        capable: true,
+        applied: false,
+        outcome: 'provider_error',
+        providerErrorReason: 'query',
+      });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test('a partial corpus failure does not replace a no-match query outcome', async () => {
+    const dir = seed();
+    try {
+      let failDocuments = false;
+      const inner = createConceptEmbedder({ concepts: CONCEPTS });
+      const failingCorpus: Embedder = {
+        ...inner,
+        embed: (texts, opts) => {
+          if (opts.role === 'document' && failDocuments) {
+            return Promise.reject(new Error('corpus provider down'));
+          }
+          if (opts.role === 'query' && failDocuments) {
+            return Promise.resolve([]);
+          }
+          return inner.embed(texts, opts);
+        },
+      };
+      let fileIndex = buildFileIndex(dir);
+      const service = await makeService(fileIndex, { enabled: true, embedder: failingCorpus });
+
+      failDocuments = true;
+      const updatedAt = new Date(Date.now() + 1000);
+      for (const [rel, content] of Object.entries(FILES)) {
+        const path = join(dir, rel);
+        writeFileSync(path, `${content}\nUpdated.\n`, 'utf-8');
+        utimesSync(path, updatedAt, updatedAt);
+      }
+      fileIndex = buildFileIndex(dir);
+      const changedDocs = [...fileIndex].map(([docName, entry]) =>
+        createWorkspaceSearchDocument({
+          kind: 'page',
+          path: docName,
+          content: readFileSync(entry.canonicalPath, 'utf-8'),
+          modifiedTs: Date.parse(entry.modified),
+        }),
+      );
+      await service.embedCorpus(changedDocs);
+      expect(service.getStatus().providerErrorReason).toBe('corpus');
+
+      const { semantic } = await searchPost(
+        dir,
+        fileIndex,
+        { query: 'zzzxxyy unique', intent: 'full_text', semantic: true },
+        service,
+      );
+
+      expect(semantic).toMatchObject({
+        capable: true,
+        applied: false,
+        outcome: 'no_match',
+        providerErrorReason: 'corpus',
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

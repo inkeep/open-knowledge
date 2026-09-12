@@ -238,7 +238,12 @@ function extractCopyrights(licenseText) {
         ) {
           break;
         }
-        if (/^[-*•]/.test(next) || /^\S+ <\S+@\S+>/.test(next) || /^copyright\b/i.test(next)) {
+        if (
+          /^[-*•]/.test(next) ||
+          /^\S+ <\S+@\S+>/.test(next) ||
+          /\(\S+@\S+\)\s*$/.test(next) ||
+          /^copyright\b/i.test(next)
+        ) {
           block.push(next);
           j++;
         } else {

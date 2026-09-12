@@ -11,13 +11,7 @@ function ConfigThemeHarness({ themeValue }: { themeValue: string | undefined }) 
 
 function themeTree(themeValue: string | undefined): ReactElement {
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-      storageKey="ok-theme-v1"
-    >
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem storageKey="ok-theme-v1">
       <ConfigThemeHarness themeValue={themeValue} />
     </ThemeProvider>
   );

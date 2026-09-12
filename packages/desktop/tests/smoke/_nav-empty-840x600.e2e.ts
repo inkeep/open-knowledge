@@ -91,7 +91,7 @@ test.describe('Navigator empty-state screenshot (dev-only)', () => {
     const tmpHome = seedEmptyHome('shot');
     try {
       const app = await launchApp(tmpHome);
-      captureStderrFor(app);
+      captureStderrFor(app, { home: tmpHome });
 
       const nav = await findNavigator(app);
       const winHandle: JSHandle = await app.browserWindow(nav);

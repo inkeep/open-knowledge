@@ -12,6 +12,8 @@ import {
   type PerfBlockCount,
 } from '../../src/markdown/fixtures/index.ts';
 import { MarkdownManager } from '../../src/markdown/index.ts';
+import { collectGarbage, gcAvailable } from './gc.ts';
+import type { FreshResults } from './regression-gate.ts';
 
 const BENCH_ENABLED = process.env.RUN_BENCH === '1' || process.env.RUN_BENCH === 'true';
 
@@ -69,7 +71,7 @@ function readVitestVersion(): string {
   }
 }
 
-interface RunnerInfo {
+type RunnerInfo = {
   nodeVersion: string;
   vitestVersion: string;
   gitSha: string;
@@ -79,7 +81,7 @@ interface RunnerInfo {
   ramGB: number;
   platform: string;
   runnerClass: string;
-}
+};
 
 function runnerInfo(): RunnerInfo {
   const cpuList = cpus();
@@ -96,12 +98,12 @@ function runnerInfo(): RunnerInfo {
   };
 }
 
-const GC_FORCED = typeof (globalThis as { gc?: () => void }).gc === 'function';
+const GC_FORCED = gcAvailable();
 
 function measure(op: () => void, n: number): number[] {
   const samples: number[] = [];
   for (let i = 0; i < n; i++) {
-    (globalThis as { gc?: () => void }).gc?.();
+    collectGarbage();
     const t0 = performance.now();
     op();
     samples.push(performance.now() - t0);
@@ -164,7 +166,7 @@ describeBench('markdown pipeline benchmark harness (R1)', () => {
       }
 
       const output = {
-        schemaVersion: 1,
+        schemaVersion: 2,
         startedAt,
         finishedAt: new Date().toISOString(),
         methodology: {
@@ -172,9 +174,13 @@ describeBench('markdown pipeline benchmark harness (R1)', () => {
           measuredIters: MEASURED_ITERS,
           gcBetweenRuns: GC_FORCED,
         },
+        toolchain: {
+          runtime: `node@${process.versions.node}`,
+          testRunner: `vitest@${readVitestVersion()}`,
+        },
         runner: runnerInfo(),
         results,
-      };
+      } satisfies FreshResults;
 
       const stamp = startedAt.replace(/[:.]/g, '-');
       const target = resolve(HARNESS_DIR, `results.${stamp}.json`);

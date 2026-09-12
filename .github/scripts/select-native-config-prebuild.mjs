@@ -47,33 +47,48 @@ export function describeSelectionFailure({ candidates = [], treeAt, releaseRef =
   return describeNoSelection(candidates);
 }
 
-export function listPrebuildRuns({ limit = DEFAULT_CANDIDATE_LIMIT, run = spawnSync } = {}) {
-  const res = run(
-    'gh',
-    [
-      'run',
-      'list',
-      `--workflow=${PREBUILD_WORKFLOW}`,
-      '--branch',
-      'main',
-      '--event',
-      'push',
-      '--status',
-      'success',
-      '--limit',
-      String(limit),
-      '--json',
-      'databaseId,headSha',
-    ],
-    { encoding: 'utf8' },
-  );
-  if (res.status !== 0) {
-    throw new Error(
-      `gh run list for ${PREBUILD_WORKFLOW} failed: ${res.error?.message ?? String(res.stderr || '').trim()}`,
+const LIST_ATTEMPTS = 3;
+
+function sleepSyncMs(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+export function listPrebuildRuns({
+  limit = DEFAULT_CANDIDATE_LIMIT,
+  run = spawnSync,
+  sleep = sleepSyncMs,
+} = {}) {
+  let lastFailure = '';
+  for (let attempt = 1; attempt <= LIST_ATTEMPTS; attempt += 1) {
+    const res = run(
+      'gh',
+      [
+        'run',
+        'list',
+        `--workflow=${PREBUILD_WORKFLOW}`,
+        '--branch',
+        'main',
+        '--event',
+        'push',
+        '--status',
+        'success',
+        '--limit',
+        String(limit),
+        '--json',
+        'databaseId,headSha',
+      ],
+      { encoding: 'utf8' },
     );
+    if (res.status === 0) {
+      const parsed = JSON.parse(String(res.stdout || '[]').trim() || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    }
+    lastFailure = res.error?.message ?? String(res.stderr || '').trim();
+    if (attempt < LIST_ATTEMPTS) sleep(attempt * 1000);
   }
-  const parsed = JSON.parse(String(res.stdout || '[]').trim() || '[]');
-  return Array.isArray(parsed) ? parsed : [];
+  throw new Error(
+    `gh run list for ${PREBUILD_WORKFLOW} failed after ${LIST_ATTEMPTS} attempts: ${lastFailure}`,
+  );
 }
 
 export function makeIsAncestor(run = spawnSync) {

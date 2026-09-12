@@ -1,11 +1,21 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ConflictMarkersInContentError } from './conflict-errors.ts';
 import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
+import { getLogger } from './logger.ts';
 
 let tmpDir = '';
 let projectDir = '';
@@ -34,6 +44,37 @@ function makeEntry(file: string, overrides: Partial<ConflictEntry> = {}): Confli
 function readStore(): { version: number; branch: string; conflicts: ConflictEntry[] } {
   return JSON.parse(readFileSync(storePath, 'utf-8'));
 }
+
+describe('ConflictStore variant discipline', () => {
+  test('an unrecognized variant is reported once per load, not once per read', () => {
+    writeFileSync(
+      storePath,
+      JSON.stringify({
+        version: 1,
+        branch: 'main',
+        conflicts: [
+          { file: 'weird.md', detectedAt: '2026-09-08T10:00:00.000Z', variant: 'index' },
+          { file: 'ok.md', detectedAt: '2026-09-08T10:01:00.000Z', variant: 'working-tree' },
+        ],
+      }),
+    );
+    const warn = vi.spyOn(getLogger('conflict-storage'), 'warn').mockImplementation(() => {});
+    try {
+      const store = new ConflictStore(projectDir, 'main');
+      store.list();
+      store.list();
+      expect(warn.mock.calls.map(([payload]) => payload)).toEqual([
+        expect.objectContaining({
+          event: 'conflict-discriminator-unrecognized',
+          file: 'weird.md',
+          receivedVariant: 'index',
+        }),
+      ]);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
 
 describe('ConflictStore CRUD', () => {
   test('starts empty when no conflicts.json exists', () => {
@@ -328,6 +369,38 @@ describe('ConflictStore resolveConflict()', () => {
 });
 
 describe('ConflictStore resolveConflict() — working-tree variant', () => {
+  test('rejects a content target replaced by an escaping symlink after ledger removal', async () => {
+    const { blobSha } = await seedOverlay('a.md', 'remote', 'local');
+    const target = join(projectDir, 'a.md');
+    const outside = join(tmpDir, 'outside.md');
+    writeFileSync(target, 'local');
+    writeFileSync(outside, 'private');
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
+    const removeConflict = store.removeConflict.bind(store);
+    store.removeConflict = (file) => {
+      const result = removeConflict(file);
+      unlinkSync(target);
+      symlinkSync(outside, target);
+      return result;
+    };
+    await expect(store.resolveConflict('a.md', 'content', 'replacement')).rejects.toThrow(
+      /outside/,
+    );
+    expect(readFileSync(outside, 'utf-8')).toBe('private');
+    expect(store.hasConflicts()).toBe(true);
+  });
+
+  test('deleting a tracked symlink preserves its in-project content target', async () => {
+    const { blobSha } = await seedOverlay('real.md', 'remote', 'keep target');
+    symlinkSync('real.md', join(projectDir, 'link.md'));
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('link.md', { variant: 'working-tree', theirsSha: blobSha }));
+    await store.resolveConflict('link.md', 'delete');
+    expect(existsSync(join(projectDir, 'link.md'))).toBe(false);
+    expect(readFileSync(join(projectDir, 'real.md'), 'utf-8')).toBe('keep target');
+  });
+
   async function seedOverlay(
     file: string,
     remote: string,
@@ -402,6 +475,19 @@ describe('ConflictStore resolveConflict() — working-tree variant', () => {
     await store.resolveConflict('a.md', 'content', 'HAND-MERGED\n');
 
     expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('HAND-MERGED\n');
+    expect(store.count()).toBe(0);
+    expect(await headSha()).toBe(before);
+  });
+
+  test("'content' with an empty string keeps an empty file without committing", async () => {
+    const { blobSha, headSha: before } = await seedOverlay('a.md', 'REMOTE\n', 'LOCAL\n');
+    const store = new ConflictStore(projectDir, 'main');
+    store.addConflict(makeEntry('a.md', { variant: 'working-tree', theirsSha: blobSha }));
+
+    await store.resolveConflict('a.md', 'content', '');
+
+    expect(existsSync(join(projectDir, 'a.md'))).toBe(true);
+    expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('');
     expect(store.count()).toBe(0);
     expect(await headSha()).toBe(before);
   });

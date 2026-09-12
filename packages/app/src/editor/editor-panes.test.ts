@@ -748,38 +748,38 @@ describe('editor pane workspace', () => {
     });
   });
 
-  test.each([
-    'preview',
-    'permanent',
-  ] as const)('consumes an active blank independently of %s disposition', (disposition) => {
-    const workspace: EditorWorkspaceState = {
-      panes: [
-        {
-          ...pane('pane-a', ['existing'], null),
-          newTabIds: ['new-tab:1'],
-          activeNewTabId: 'new-tab:1',
-        },
-      ],
-      focusedPaneId: 'pane-a',
-    };
+  test.each(['preview', 'permanent'] as const)(
+    'consumes an active blank independently of %s disposition',
+    (disposition) => {
+      const workspace: EditorWorkspaceState = {
+        panes: [
+          {
+            ...pane('pane-a', ['existing'], null),
+            newTabIds: ['new-tab:1'],
+            activeNewTabId: 'new-tab:1',
+          },
+        ],
+        focusedPaneId: 'pane-a',
+      };
 
-    const transition = transitionEditorWorkspace(workspace, {
-      type: 'open-target',
-      paneId: 'pane-a',
-      tabId: 'opened',
-      target: docTarget('opened'),
-      disposition,
-      consumeActiveNewTab: true,
-    });
+      const transition = transitionEditorWorkspace(workspace, {
+        type: 'open-target',
+        paneId: 'pane-a',
+        tabId: 'opened',
+        target: docTarget('opened'),
+        disposition,
+        consumeActiveNewTab: true,
+      });
 
-    expect(transition.consumedNewTabId).toBe('new-tab:1');
-    expect(transition.workspace.panes[0]).toMatchObject({
-      openTabs: ['existing', 'opened'],
-      newTabIds: [],
-      activeNewTabId: null,
-      previewTabId: disposition === 'preview' ? 'opened' : null,
-    });
-  });
+      expect(transition.consumedNewTabId).toBe('new-tab:1');
+      expect(transition.workspace.panes[0]).toMatchObject({
+        openTabs: ['existing', 'opened'],
+        newTabIds: [],
+        activeNewTabId: null,
+        previewTabId: disposition === 'preview' ? 'opened' : null,
+      });
+    },
+  );
 
   test('activates, creates, closes, pins, and promotes tabs through the command boundary', () => {
     let workspace: EditorWorkspaceState = {

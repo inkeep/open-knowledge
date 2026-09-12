@@ -77,34 +77,34 @@ describe('useDocDiagnostics', () => {
     await waitFor(() => expect(result.current.some((d) => d.code === 'MD010')).toBe(true));
   });
 
-  test.each(editableTextCases)('$docName stays outside Markdown and OKF diagnostics', async ({
-    docName,
-    source,
-  }) => {
-    expect(isEditableTextDocFile(docName)).toBe(true);
+  test.each(editableTextCases)(
+    '$docName stays outside Markdown and OKF diagnostics',
+    async ({ docName, source }) => {
+      expect(isEditableTextDocFile(docName)).toBe(true);
 
-    const markdownProvider = fakeProvider(source, 'notes').provider;
-    const editableTextProvider = fakeProvider(source, docName).provider;
-    const { result, rerender } = renderHook(
-      ({ provider }: { provider: HocuspocusProvider }) =>
-        useDocDiagnostics(provider, markdownAndOkfEnabled),
-      { initialProps: { provider: markdownProvider } },
-    );
+      const markdownProvider = fakeProvider(source, 'notes').provider;
+      const editableTextProvider = fakeProvider(source, docName).provider;
+      const { result, rerender } = renderHook(
+        ({ provider }: { provider: HocuspocusProvider }) =>
+          useDocDiagnostics(provider, markdownAndOkfEnabled),
+        { initialProps: { provider: markdownProvider } },
+      );
 
-    await waitFor(() => {
-      const sources = new Set(result.current.map((diagnostic) => diagnostic.source));
-      expect(sources.has('markdownlint')).toBe(true);
-      expect(sources.has('okf')).toBe(true);
-    });
+      await waitFor(() => {
+        const sources = new Set(result.current.map((diagnostic) => diagnostic.source));
+        expect(sources.has('markdownlint')).toBe(true);
+        expect(sources.has('okf')).toBe(true);
+      });
 
-    rerender({ provider: editableTextProvider });
-    expect(result.current).toEqual([]);
+      rerender({ provider: editableTextProvider });
+      expect(result.current).toEqual([]);
 
-    rerender({ provider: markdownProvider });
-    await waitFor(() => {
-      const sources = new Set(result.current.map((diagnostic) => diagnostic.source));
-      expect(sources.has('markdownlint')).toBe(true);
-      expect(sources.has('okf')).toBe(true);
-    });
-  });
+      rerender({ provider: markdownProvider });
+      await waitFor(() => {
+        const sources = new Set(result.current.map((diagnostic) => diagnostic.source));
+        expect(sources.has('markdownlint')).toBe(true);
+        expect(sources.has('okf')).toBe(true);
+      });
+    },
+  );
 });

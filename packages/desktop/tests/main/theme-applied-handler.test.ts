@@ -51,7 +51,7 @@ describe('applyThemeApplied — show-gate dispatch', () => {
     applyThemeApplied(deps, null, undefined);
     const warns = trace.filter((t) => t.step === 'warn');
     expect(warns).toHaveLength(1);
-    const line = (warns[0]?.args as { line: string }).line;
+    const line = (warns[0]?.args as { line: string } | undefined)?.line;
     expect(JSON.parse(line)).toEqual({
       event: 'theme-applied-no-window-for-sender',
     });

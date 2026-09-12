@@ -55,7 +55,7 @@ describe('createRendererReadySink', () => {
     sink.ipcMain.handle('ok:mcp-wiring:renderer-ready', listener);
     await expect(real.invoke('ok:mcp-wiring:renderer-ready')).resolves.toBeUndefined();
     expect(listener).toHaveBeenCalledTimes(1);
-    expect((listener.mock.calls[0]?.[0] as IpcMainInvokeEvent).sender.id).toBe(7);
+    expect((listener.mock.calls[0]?.[0] as IpcMainInvokeEvent | undefined)?.sender.id).toBe(7);
     await expect(real.invoke('ok:onboarding:renderer-ready')).resolves.toBeUndefined();
   });
 

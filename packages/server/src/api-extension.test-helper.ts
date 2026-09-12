@@ -1,4 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import {
+  DEFAULT_LINKS_VALIDATION,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
+} from '@inkeep/open-knowledge-core';
 import type { ApiExtensionOptions } from './api-extension.ts';
 import { createApiExtension as createApiExtensionBase } from './api-extension.ts';
 import type { BacklinkIndex } from './backlink-index.ts';
@@ -7,6 +11,7 @@ import type {
   DerivedDocumentIndexMutation,
 } from './derived-document-index.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
+import type { LinkAdvisoryPolicy } from './link-advisory-policy.ts';
 import type { TagIndex } from './tag-index.ts';
 
 export * from './api-extension.ts';
@@ -219,15 +224,36 @@ function createLegacyDerivedIndexPort(
 }
 
 export function createApiExtension(
-  options: Omit<ApiExtensionOptions, 'durabilityState' | 'derivedDocumentIndex' | 'signalChannel'> &
+  options: Omit<
+    ApiExtensionOptions,
+    | 'durabilityState'
+    | 'derivedDocumentIndex'
+    | 'signalChannel'
+    | 'getProjectConfigEpoch'
+    | 'getLinkAdvisoryPolicy'
+  > &
     LegacyIndexOptions & {
       derivedDocumentIndex?: DerivedDocumentIndexApiPort;
       signalChannel?: LegacySignalChannel;
+      getProjectConfigEpoch?: () => number;
+      getLinkAdvisoryPolicy?: () => LinkAdvisoryPolicy;
     },
 ): ReturnType<typeof createApiExtensionBase> {
-  const { backlinkIndex, tagIndex, derivedDocumentIndex, ...apiOptions } = options;
+  const {
+    backlinkIndex,
+    tagIndex,
+    derivedDocumentIndex,
+    getProjectConfigEpoch = () => 0,
+    getLinkAdvisoryPolicy = () => ({
+      links: DEFAULT_LINKS_VALIDATION,
+      suppressLogLinkAdvisories: DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
+    }),
+    ...apiOptions
+  } = options;
   const extension = createApiExtensionBase({
     ...apiOptions,
+    getProjectConfigEpoch,
+    getLinkAdvisoryPolicy,
     durabilityState: new DocumentDurabilityState(),
     derivedDocumentIndex:
       derivedDocumentIndex ??

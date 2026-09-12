@@ -68,18 +68,19 @@ describe('fixed cross-version corpus', () => {
 });
 
 describe('v2 codec and content projection', () => {
-  test.each(
-    v2Shares,
-  )('$id decodes its repository source and content-relative target', (fixture) => {
-    expect(decodeShareUrl(fixture.token)).toEqual(
-      expect.objectContaining({
-        version: 2,
-        contentRootDepth: fixture.contentRootDepth,
-        sharedUrl: fixture.sharedUrl,
-        target: fixture.target,
-      }),
-    );
-  });
+  test.each(v2Shares)(
+    '$id decodes its repository source and content-relative target',
+    (fixture) => {
+      expect(decodeShareUrl(fixture.token)).toEqual(
+        expect.objectContaining({
+          version: 2,
+          contentRootDepth: fixture.contentRootDepth,
+          sharedUrl: fixture.sharedUrl,
+          target: fixture.target,
+        }),
+      );
+    },
+  );
 
   test.each(v2Shares)('$id encodes to the fixed literal token', (fixture) => {
     expect(encodeShareUrl(fixture.sharedUrl, fixture.contentRootDepth)).toBe(fixture.token);

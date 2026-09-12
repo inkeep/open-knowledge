@@ -148,7 +148,7 @@ function RegisteredInlineView({
               const p = typeof getPos === 'function' ? getPos() : undefined;
               if (typeof p !== 'number') return;
               const curNode = editor.state.doc.nodeAt(p);
-              if (!curNode || curNode.type.name !== 'jsxInline') return;
+              if (curNode?.type.name !== 'jsxInline') return;
               const nextProps = { ...curNode.attrs.props, [propName]: value };
               const tr = editor.state.tr.setNodeMarkup(p, null, {
                 ...curNode.attrs,

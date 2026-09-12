@@ -1,7 +1,7 @@
-import { runSubprocess } from './subprocess.ts';
+import { stderrDetailSuffix } from './clone-error-classify.ts';
+import { type LocalOpCliInvocation, runSubprocess } from './subprocess.ts';
 
-export interface RunPatOptions {
-  cliArgs: readonly string[];
+export interface RunPatOptions extends LocalOpCliInvocation {
   host?: string;
   token: string;
   timeoutMs?: number;
@@ -19,6 +19,7 @@ export async function runPatSubprocess(opts: RunPatOptions): Promise<RunPatResul
 
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
+    cliEnv: opts.cliEnv,
     trailingArgs: ['auth', 'pat', '--json', '--host', host, '--token-stdin'],
     stdinData: opts.token,
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -42,9 +43,6 @@ export async function runPatSubprocess(opts: RunPatOptions): Promise<RunPatResul
 
   const result = await proc.done;
   if (terminal) return terminal;
-  return {
-    ok: false,
-    host,
-    error: result.timedOut ? 'Token validation timed out.' : 'Token validation failed.',
-  };
+  if (result.timedOut) return { ok: false, host, error: 'Token validation timed out.' };
+  return { ok: false, host, error: `Token validation failed.${stderrDetailSuffix(result.stderr)}` };
 }

@@ -1,7 +1,10 @@
 export class LruStringCache {
   private readonly map = new Map<string, string>();
 
-  constructor(private readonly limit: number) {
+  private readonly limit: number;
+
+  constructor(limit: number) {
+    this.limit = limit;
     if (limit <= 0) {
       throw new Error(`LruStringCache: limit must be > 0 (got ${limit})`);
     }

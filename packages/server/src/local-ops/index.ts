@@ -21,6 +21,7 @@ export {
   validateCloneInputs,
 } from './clone-flow.ts';
 export { cachedGhBinaryPath, runGhDeviceLoginSubprocess } from './gh-login.ts';
+export type { LocalOpCliInvocation } from './subprocess.ts';
 export type {
   AuthEvent,
   CloneCompleteEvent,

@@ -11,6 +11,10 @@ import {
   type TerminalLaunchCommand,
   type WindowsShellFamily,
 } from '@inkeep/open-knowledge-core';
+import {
+  assertNeverPtyAdoptReason,
+  assertNeverPtyCreateReason,
+} from '@inkeep/open-knowledge-core/desktop-bridge';
 import { useLingui } from '@lingui/react/macro';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
@@ -20,11 +24,10 @@ import { Terminal } from '@xterm/xterm';
 import { useTheme } from 'next-themes';
 import { use, useEffect, useRef, useState } from 'react';
 import { ConfigContext } from '@/lib/config-context';
-import type { ClaudeReadiness, OkDesktopBridge, OkPtyNotice } from '@/lib/desktop-bridge-types';
+import type { OkDesktopBridge, OkPtyNotice } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
 import { getPageListCache } from '../editor/page-list-cache';
 import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/doc-hash';
-import { ClaudeReadinessBanner } from './ClaudeReadinessBanner';
 import type { TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
 import {
@@ -32,12 +35,14 @@ import {
   terminalCommandFor,
   windowsTerminalCommandFor,
 } from './handoff/terminal-command-events';
+import { TerminalAgentConnectionBanner } from './TerminalAgentConnectionBanner';
 import { TerminalCliMissingBanner } from './TerminalCliMissingBanner';
 import { TerminalCliUnverifiedBanner } from './TerminalCliUnverifiedBanner';
 import { type TerminalExitInfo, TerminalExitNotice } from './TerminalExitNotice';
 import { TerminalNoticeBanner } from './TerminalNoticeBanner';
 import { TerminalRefusalNotice } from './TerminalRefusalNotice';
 import { TerminalStartingNotice } from './TerminalStartingNotice';
+import { isRenderedContainer, shouldFitForResize } from './terminal-fit-gate';
 import { createTerminalFileLinkProvider } from './terminal-link-provider';
 import { createRecentOpenGuard, type TerminalLinkTarget } from './terminal-links';
 import { createSameFrameRepaint } from './terminal-render-flush';
@@ -139,7 +144,7 @@ function TerminalSession({
   const initialXtermThemeRef = useRef(xtermTheme);
   const [status, setStatus] = useState<SessionStatus>('starting');
   const [hasOutput, setHasOutput] = useState(false);
-  const [readiness, setReadiness] = useState<ClaudeReadiness | null>(null);
+  const [connectionCli, setConnectionCli] = useState<TerminalCli | null>(null);
   const [exitInfo, setExitInfo] = useState<TerminalExitInfo | null>(null);
   const [shellNotice, setShellNotice] = useState<Extract<
     OkPtyNotice,
@@ -155,9 +160,7 @@ function TerminalSession({
   const terminalInputEnabledRef = useRef(false);
   const terminalInputRef = useRef<(data: string) => void>(() => undefined);
   const [cliNotice, setCliNotice] = useState<
-    | { cli: TerminalCli; kind: 'unverified' }
-    | { cli: Exclude<TerminalCli, 'claude'>; kind: 'not-found' }
-    | null
+    { cli: TerminalCli; kind: 'unverified' } | { cli: TerminalCli; kind: 'not-found' } | null
   >(null);
 
   const configCtx = use(ConfigContext);
@@ -175,6 +178,8 @@ function TerminalSession({
     const container = containerRef.current;
     if (!container) return;
 
+    setConnectionCli(null);
+    setCliNotice(null);
     setManualSubmitNotice(false);
     setSupportFileNotice(null);
     setShellNotice(null);
@@ -183,6 +188,7 @@ function TerminalSession({
 
     let cancelled = false;
     let sessionEnded = false;
+    let shellLive = false;
     let ptyId: string | null = null;
     let unsubData: (() => void) | undefined;
     let unsubExit: (() => void) | undefined;
@@ -336,7 +342,11 @@ function TerminalSession({
       }
     }
 
-    fit.fit();
+    if (
+      isRenderedContainer(container.getBoundingClientRect(), window.getComputedStyle(container))
+    ) {
+      fit.fit();
+    }
 
     const repaintSameFrame = createSameFrameRepaint(term);
 
@@ -513,15 +523,30 @@ function TerminalSession({
         if (msg.ptyId !== ptyId) return;
         sessionEnded = true;
         terminalInputEnabledRef.current = false;
-        setExitInfo({ exitCode: msg.exitCode, signal: msg.signal, error: msg.error });
+        setExitInfo(
+          msg.neverStarted
+            ? msg.hostExited === true
+              ? { phase: 'start', reason: 'host-exited' }
+              : msg.launchFailure !== undefined
+                ? { phase: 'start', reason: 'launch-unsupported' }
+                : { phase: 'start', detail: msg.error ?? '' }
+            : {
+                phase: 'exit',
+                exitCode: msg.exitCode,
+                signal: msg.signal,
+                error: msg.error,
+                ...(msg.hostExited === true ? ({ hostExited: true } as const) : {}),
+              },
+        );
         setStatus('exited');
-        onExitRef.current?.({ exitCode: msg.exitCode, signal: msg.signal });
+        if (!msg.neverStarted) onExitRef.current?.({ exitCode: msg.exitCode, signal: msg.signal });
       });
 
       ptyResizeThrottle = createResizeThrottle(() => {
         if (ptyId) bridge.terminal.resize(ptyId, term.cols, term.rows);
       }, PTY_RESIZE_THROTTLE_MS);
-      observer = new ResizeObserver(() => {
+      observer = new ResizeObserver((entries) => {
+        if (!shouldFitForResize(entries)) return;
         const colsBefore = term.cols;
         const rowsBefore = term.rows;
         fit.fit();
@@ -532,6 +557,54 @@ function TerminalSession({
         ptyResizeThrottle?.request();
       });
       observer.observe(container);
+    };
+
+    const startSession = async (livePtyId: string): Promise<void> => {
+      let failure: TerminalExitInfo;
+      try {
+        const attached = await bridge.terminal.start(livePtyId);
+        if (attached.ok) {
+          shellLive = true;
+          if (cancelled) return;
+          if (attached.shellFamily !== undefined) shellFamilyRef.current = attached.shellFamily;
+          if (attached.shellNoticeReason !== undefined) {
+            applyShellNotice({
+              ptyId: livePtyId,
+              notice: 'invalid-shell-override',
+              reason: attached.shellNoticeReason,
+            });
+          }
+          if (attached.replay !== '') {
+            markFirstOutput();
+            term.write(attached.replay);
+          }
+          return;
+        }
+        if (cancelled) return;
+        console.error('[terminal] shell start refused:', attached.reason, livePtyId);
+        switch (attached.reason) {
+          case 'not-consented':
+            sessionEnded = true;
+            terminalInputEnabledRef.current = false;
+            setStatus('not-consented');
+            return;
+          case 'not-started':
+          case 'unknown-session':
+          case 'host-unavailable':
+            failure = { phase: 'start', reason: attached.reason };
+            break;
+          default:
+            assertNeverPtyAdoptReason(attached.reason);
+        }
+      } catch (err) {
+        console.error('[terminal] initial start() failed:', err);
+        failure = { phase: 'start', detail: err instanceof Error ? err.message : String(err) };
+      }
+      if (cancelled || sessionEnded || shellLive) return;
+      sessionEnded = true;
+      terminalInputEnabledRef.current = false;
+      setExitInfo(failure);
+      setStatus('exited');
     };
 
     const resolveLaunchCommand = async (
@@ -545,15 +618,16 @@ function TerminalSession({
         try {
           const fresh = await bridge.terminal.claudePreflight();
           if (fresh.claude === 'present') {
-            if (!cancelled) setReadiness(fresh);
+            if (!cancelled) setConnectionCli('claude');
             return buildLaunch({
               mcpPreApprove: fresh.mcpPreApprovable === true,
-              autoApproveOkTools: autoApproveOkToolsRef.current && fresh.mcpPreApprovable === true,
+              autoApproveOkTools:
+                autoApproveOkToolsRef.current && fresh.okToolsAutoApprovable === true,
             });
           }
           if (!cancelled) {
             if (fresh.claude === 'not-found') {
-              setReadiness(fresh);
+              setCliNotice({ cli: 'claude', kind: 'not-found' });
             } else {
               setCliNotice({ cli: 'claude', kind: 'unverified' });
             }
@@ -571,6 +645,7 @@ function TerminalSession({
           res = await bridge.terminal.cliPreflight(intent.cli);
         }
         if (res.onPath === 'present') {
+          if (!cancelled) setConnectionCli(intent.cli);
           return buildLaunch({
             autoApproveOkTools:
               intent.cli === 'codex' &&
@@ -615,19 +690,21 @@ function TerminalSession({
           const replay = adopted.replay;
           const hasReplay = replay !== '';
           attachSession(adoptPtyId);
+          shellLive = true;
           if (hasReplay) {
             markFirstOutput();
             term.write(replay, markInteractive);
           } else {
             markInteractive();
           }
-          bridge.terminal.resize(adoptPtyId, term.cols, term.rows);
           return;
         }
       }
 
       let launchCommand: string | TerminalLaunchCommand | undefined;
+      let launchCli: TerminalCli | undefined;
       if (launch !== null && adoptPtyId === null) {
+        launchCli = launch.cli;
         launchCommand = await resolveLaunchCommand(launch);
         if (cancelled) return;
       } else if (commandId !== null && adoptPtyId === null) {
@@ -639,14 +716,18 @@ function TerminalSession({
 
       let result: Awaited<ReturnType<typeof bridge.terminal.create>>;
       try {
-        result = await bridge.terminal.create({ cols: term.cols, rows: term.rows, launchCommand });
+        result = await bridge.terminal.create({
+          cols: term.cols,
+          rows: term.rows,
+          launchCommand,
+          launchCli,
+        });
       } catch (err) {
         console.error('[terminal] create() failed:', err);
         if (cancelled) return;
         setExitInfo({
-          exitCode: 1,
-          signal: null,
-          error: err instanceof Error ? err.message : String(err),
+          phase: 'start',
+          detail: err instanceof Error ? err.message : String(err),
         });
         setStatus('exited');
         return;
@@ -660,11 +741,21 @@ function TerminalSession({
         return;
       }
       if (!result.ok) {
-        setStatus(result.reason === 'not-consented' ? 'not-consented' : 'no-project');
+        switch (result.reason) {
+          case 'not-consented':
+          case 'no-project':
+            setStatus(result.reason);
+            break;
+          default:
+            assertNeverPtyCreateReason(result.reason);
+        }
         return;
       }
 
+      // STOP: attachSession installs onData/onExit before start() posts the spawn (terminal-manager.ts, same tick); once start() resolves, nothing below may await before the readinessScan assignment or the shell's first output outruns the scanner.
       attachSession(result.ptyId);
+      await startSession(result.ptyId);
+      if (cancelled || sessionEnded) return;
       markInteractive();
 
       const staged = launch?.stagePaste;
@@ -722,7 +813,18 @@ function TerminalSession({
           term.focus();
         }, STAGE_PASTE_SETTLE_MS);
       }
-    })();
+    })().catch((err) => {
+      console.error('[terminal] mount sequence failed:', err);
+      if (cancelled || sessionEnded) return;
+      if (shellLive) {
+        markInteractive();
+        return;
+      }
+      sessionEnded = true;
+      terminalInputEnabledRef.current = false;
+      setExitInfo({ phase: 'start', detail: err instanceof Error ? err.message : String(err) });
+      setStatus('exited');
+    });
 
     return () => {
       cancelled = true;
@@ -812,13 +914,15 @@ function TerminalSession({
     };
   }, [bridge]);
 
+  const isSettling = status === 'starting' || (status === 'running' && !hasOutput);
+
   return (
     <div className="flex h-full w-full flex-col">
-      {status === 'running' && readiness ? (
-        <ClaudeReadinessBanner
-          readiness={readiness}
-          bridge={bridge}
-          onDismiss={() => setReadiness(null)}
+      {status === 'running' && connectionCli !== null ? (
+        <TerminalAgentConnectionBanner
+          key={connectionCli}
+          cli={connectionCli}
+          onRestart={onRestart}
         />
       ) : null}
       {status === 'running' && cliNotice ? (
@@ -875,8 +979,13 @@ function TerminalSession({
       ) : null}
       {}
       <div className="relative min-h-0 flex-1">
-        <div ref={containerRef} data-terminal-status={status} className="h-full w-full px-1.5" />
-        {status === 'starting' || (status === 'running' && !hasOutput) ? (
+        <div
+          ref={containerRef}
+          data-terminal-status={status}
+          aria-busy={isSettling}
+          className="h-full w-full px-1.5"
+        />
+        {isSettling ? (
           <TerminalStartingNotice className="pointer-events-none absolute inset-0 z-20" />
         ) : null}
       </div>

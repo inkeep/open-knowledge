@@ -120,7 +120,9 @@ describe('AddPropertyNameField — schema field picker', () => {
     await userEvent.keyboard('{ArrowDown}{Enter}');
 
     expect(onPick).toHaveBeenCalledTimes(1);
-    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion).name).toBe('status');
+    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion | undefined)?.name).toBe(
+      'status',
+    );
     expect(onCommit).not.toHaveBeenCalled();
   });
 
@@ -132,7 +134,9 @@ describe('AddPropertyNameField — schema field picker', () => {
 
     await userEvent.keyboard('{ArrowDown}{ArrowDown}{Enter}');
 
-    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion).name).toBe('tags');
+    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion | undefined)?.name).toBe(
+      'tags',
+    );
   });
 
   test('ArrowUp enters the list at the last option', async () => {
@@ -143,7 +147,9 @@ describe('AddPropertyNameField — schema field picker', () => {
 
     await userEvent.keyboard('{ArrowUp}{Enter}');
 
-    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion).name).toBe('reviewedAt');
+    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion | undefined)?.name).toBe(
+      'reviewedAt',
+    );
   });
 
   test('typing after arrowing into the list drops back out of it', async () => {
@@ -307,7 +313,9 @@ describe('AddPropertyNameField — schema field picker', () => {
     await userEvent.hover(tags);
     await userEvent.keyboard('{Enter}');
 
-    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion).name).toBe('tags');
+    expect((onPick.mock.calls[0]?.[0] as AddPropertyFieldSuggestion | undefined)?.name).toBe(
+      'tags',
+    );
   });
 
   test('a required field is marked in the list', async () => {

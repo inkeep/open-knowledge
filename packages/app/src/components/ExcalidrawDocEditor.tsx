@@ -7,6 +7,7 @@ import { type ComponentProps, useEffect, useRef, useState } from 'react';
 import { replaceYText } from './MermaidDocEditor';
 
 import '@/lib/excalidraw-env';
+import { excalidrawLangCode } from '@/lib/excalidraw-lang.ts';
 import { type ExcalidrawScene, restoreScene, serializeScene } from '@/lib/excalidraw-scene.ts';
 
 type ExcalidrawProps = ComponentProps<typeof Excalidraw>;
@@ -27,7 +28,7 @@ function parseSnapshot(str: string): ParseOutcome {
 }
 
 export function ExcalidrawDocEditor({ provider }: { provider: HocuspocusProvider }) {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const ytext = provider.document.getText('source');
   const [excalidrawAPI, setExcalidrawAPI] = useState<ExcalidrawImperativeAPI | null>(null);
 
@@ -90,6 +91,7 @@ export function ExcalidrawDocEditor({ provider }: { provider: HocuspocusProvider
           onExcalidrawAPI={setExcalidrawAPI}
           initialData={initialOutcome.scene}
           onChange={handleChange}
+          langCode={excalidrawLangCode(i18n.locale)}
         />
       </div>
     </main>

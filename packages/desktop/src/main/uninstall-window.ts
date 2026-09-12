@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { SupportedLocale } from '@inkeep/open-knowledge-core';
 
 export type UninstallWindowTheme = 'light' | 'dark';
 
@@ -28,12 +29,13 @@ export function noticeCloseIsConfirm(spec: { readonly cancelLabel?: string }): b
 export function resolveUninstallEntryTarget(
   deps: UninstallEntryDeps,
   theme: UninstallWindowTheme,
+  locale?: SupportedLocale,
 ): UninstallEntryTarget {
   if (deps.devServerUrl !== null && deps.devServerUrl !== '') {
     const origin = deps.devServerUrl.replace(/\/+$/, '');
     return {
       kind: 'url',
-      url: `${origin}/${UNINSTALL_HTML}?${UNINSTALL_THEME_QUERY_KEY}=${theme}`,
+      url: `${origin}/${UNINSTALL_HTML}?${UNINSTALL_THEME_QUERY_KEY}=${theme}${locale === undefined ? '' : `&locale=${locale}`}`,
     };
   }
   return {
@@ -41,7 +43,7 @@ export function resolveUninstallEntryTarget(
     path: deps.isPackaged
       ? join(deps.resourcesPath, 'app', UNINSTALL_HTML)
       : join(deps.mainDir, '..', 'renderer', UNINSTALL_HTML),
-    query: { [UNINSTALL_THEME_QUERY_KEY]: theme },
+    query: { [UNINSTALL_THEME_QUERY_KEY]: theme, ...(locale === undefined ? {} : { locale }) },
   };
 }
 

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, test } from 'vitest';
+import { assert, describe, expect, test } from 'vitest';
 
 const GLOBALS_CSS = resolve(dirname(fileURLToPath(import.meta.url)), '../globals.css');
 
@@ -41,7 +41,9 @@ function declarations(name: string): string[] {
 }
 
 function hue(declaration: string): number[] {
-  const parts = declaration.split(',').map((p) => Number(p.trim()));
+  const match = /^rgb\((.+)\)$/.exec(declaration);
+  assert(match, 'Expected an rgb color declaration');
+  const parts = match[1].split(/\s+/).map(Number);
   expect(parts).toHaveLength(3);
   for (const part of parts) expect(Number.isFinite(part)).toBe(true);
   return parts;

@@ -1,11 +1,6 @@
 /**
- * React NodeView for the visual-mode code block.
- *
- * Visual design — zero permanent chrome: the code body renders solo, with a
- * hover/selection-revealed chrome bar floating above the block edge that
- * carries the language picker, edit-source, preview toggle, settings, Ask AI,
- * copy, and delete affordances. Mirrors the JsxComponentView chrome pattern
- * (precedent #30) so codeblocks compose visually with other rich blocks.
+ * Mirrors the JsxComponentView chrome pattern (precedent #30) so codeblocks compose visually with
+ * other rich blocks.
  */
 
 import { Trans, useLingui } from '@lingui/react/macro';
@@ -36,7 +31,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
-import { useColorThemeEpoch } from '@/lib/color-theme-epoch';
+import { subscribeColorThemeEpoch } from '@/lib/color-theme-epoch';
 import { cn } from '@/lib/utils';
 import { OPT_OUT_ATTR } from '../clipboard/index.ts';
 import { CodePreviewEditModal } from '../components/CodePreviewEditModal';
@@ -110,7 +105,6 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   const { resolvedTheme } = useTheme();
   const appTheme: PreviewTheme =
     resolvedTheme === 'dark' || resolvedTheme === 'light' ? resolvedTheme : readAppTheme();
-  const colorThemeEpoch = useColorThemeEpoch();
   const [bakedTheme] = useState<PreviewTheme>(readAppTheme);
   const rawLanguage = (node.attrs.language as string | null) ?? null;
   const rawMeta = (node.attrs.meta as string | null) ?? null;
@@ -160,10 +154,14 @@ export function CodeBlockView({ node, updateAttributes, editor, getPos, selected
   const editable = editor.isEditable;
   const cursorInside = useCursorInside(editor, getPos);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: colorThemeEpoch is a signal-only dependency — its bump re-runs this effect so the live iframe re-reads the palette's tokens; it is intentionally not referenced in the body.
   useEffect(() => {
-    previewFrameRef.current?.contentWindow?.postMessage(buildPreviewThemeMessage(appTheme), '*');
-  }, [appTheme, colorThemeEpoch]);
+    if (!previewActive) return;
+    const postTheme = () => {
+      previewFrameRef.current?.contentWindow?.postMessage(buildPreviewThemeMessage(appTheme), '*');
+    };
+    postTheme();
+    return subscribeColorThemeEpoch(postTheme);
+  }, [appTheme, previewActive]);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {

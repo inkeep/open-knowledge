@@ -4,6 +4,7 @@ packages/desktop/out/
 packages/desktop/dist-desktop/
 packages/desktop/dev-app-update.yml
 .turbo/
+turbo-cache-key.json
 tmp/
 .DS_Store
 *.log
@@ -17,6 +18,7 @@ test-results/
 packages/desktop/test-results-packaged/
 packages/app/test-results/
 playwright-report/
+playwright-report-json/
 blob-report/
 .vscode/
 .mcp.json

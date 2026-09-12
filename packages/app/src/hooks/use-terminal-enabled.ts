@@ -20,8 +20,8 @@ export function useTerminalConsentState(): TerminalConsentState {
 }
 
 export function useTerminalEnabledWriter(): TerminalEnabledWriter | null {
-  const { projectLocalBinding } = useConfigContext();
-  if (projectLocalBinding === null) return null;
+  const { projectLocalBinding, projectLocalSynced } = useConfigContext();
+  if (projectLocalBinding === null || !projectLocalSynced) return null;
   return (enabled: boolean) => {
     const result = projectLocalBinding.patch({ terminal: { enabled } });
     if (result.ok && enabled) recordShellConsentGranted();

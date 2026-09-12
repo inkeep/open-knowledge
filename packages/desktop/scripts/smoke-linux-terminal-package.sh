@@ -1,25 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# One-time pre-ship verification for packaged Linux terminals. Run both Fedora
-# rows on matching native hosts, then run one Debian 11 row to anchor the
-# Electron-inherited glibc generation documented for Linux:
-#
-#   ./scripts/smoke-linux-terminal-package.sh \
-#     --image fedora:41 --arch x86_64 --package dist-desktop/OpenKnowledge-x86_64.rpm
-#   ./scripts/smoke-linux-terminal-package.sh \
-#     --image fedora:41 --arch aarch64 --package dist-desktop/OpenKnowledge-aarch64.rpm
-#   ./scripts/smoke-linux-terminal-package.sh \
-#     --image debian:11 --arch x86_64 --package dist-desktop/OpenKnowledge-amd64.deb
-#
-# These are deliberate one-time package rows, not recurring CI. The recurring
-# rpm metadata guard remains electron-builder-linux-depends-parity.test.ts.
-#
-# Chromium first launches with its normal sandbox. In containers where user
-# namespaces prevent startup, OK_CONTAINER_SANDBOX=auto retries once with
-# --no-sandbox. Set OK_CONTAINER_SANDBOX=require to prohibit that fallback, or
-# OK_CONTAINER_SANDBOX=disable to use --no-sandbox immediately.
-
 SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 DRIVER_PATH="$SCRIPT_DIR/smoke-terminal-package-cdp.py"
 

@@ -8,6 +8,8 @@ export function gitCleanEnv(base = process.env) {
     GIT_ALTERNATE_OBJECT_DIRECTORIES: _a,
     GIT_NAMESPACE: _n,
     GIT_PREFIX: _p,
+    GIT_CEILING_DIRECTORIES: _cdirs,
+    GIT_DISCOVERY_ACROSS_FILESYSTEM: _dafs,
     ...env
   } = base;
   return env;

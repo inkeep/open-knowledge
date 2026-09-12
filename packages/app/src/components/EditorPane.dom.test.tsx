@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { registerEditor, unregisterEditor } from '@/editor/active-editor';
+import { collectImageParts } from '@/editor/composer-drop.test-helper';
 import { RAW_MDX_NAV_EVENT } from '@/editor/extensions/raw-mdx-nav-event';
 import { publishSelectionContext } from '@/editor/selection-context';
 import type { EditorSurface } from '@/editor/selection-stats';
@@ -18,7 +19,10 @@ import {
 import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
 import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
 import { subscribeToActiveTerminalInput } from './handoff/terminal-input-events';
-import { requestAgentThreadLaunch } from './handoff/thread-launch-events';
+import {
+  type AgentThreadLaunchDetail,
+  requestAgentThreadLaunch,
+} from './handoff/thread-launch-events';
 
 const TEST_DOC = 'docs/notes';
 
@@ -195,6 +199,7 @@ vi.doMock('./SessionsHost', () => ({
     onTerminalPlacementChange,
     reserveRightRevealTabGutter,
     visible,
+    onVisibleChange,
     launch,
     threadLaunch,
   }: {
@@ -205,6 +210,7 @@ vi.doMock('./SessionsHost', () => ({
     onTerminalPlacementChange?: (placement: 'bottom' | 'right') => void;
     reserveRightRevealTabGutter?: boolean;
     visible?: boolean;
+    onVisibleChange?: (visible: boolean) => void;
     launch?: { nonce: number; stagePaste?: string } | null;
     threadLaunch?: { nonce: number; agentId?: string; prompt?: string | null } | null;
   }) => {
@@ -220,8 +226,13 @@ vi.doMock('./SessionsHost', () => ({
         data-launch-stage={launch?.stagePaste ?? 'none'}
         data-thread-launch-nonce={threadLaunch ? String(threadLaunch.nonce) : 'none'}
         data-thread-launch-agent={threadLaunch?.agentId ?? 'none'}
+        data-thread-launch-image-parts={String(collectImageParts(threadLaunch).length)}
       >
-        {surface === 'terminal-dock' ? (
+        {surface === 'agents-panel' ? (
+          <button type="button" onClick={() => onVisibleChange?.(true)}>
+            mock SessionsHost requests reveal
+          </button>
+        ) : (
           <>
             <button type="button" onClick={() => onTerminalPlacementChange?.('right')}>
               Move mock Terminal right
@@ -230,7 +241,7 @@ vi.doMock('./SessionsHost', () => ({
               Move mock Terminal bottom
             </button>
           </>
-        ) : null}
+        )}
       </div>
     );
   },
@@ -376,17 +387,20 @@ describe('EditorPane auto-sync onboarding gate', () => {
       { autoSync: { enabled: null } },
       { autoSync: { default: true } },
     ],
-  ] as const)('stays closed when %s', async (_label, nextHasRemote, nextProjectSynced, nextSynced, nextProjectLocalConfig, nextProjectConfig) => {
-    hasRemote = nextHasRemote;
-    projectSynced = nextProjectSynced;
-    projectLocalSynced = nextSynced;
-    projectLocalConfig = nextProjectLocalConfig;
-    projectConfig = nextProjectConfig;
+  ] as const)(
+    'stays closed when %s',
+    async (_label, nextHasRemote, nextProjectSynced, nextSynced, nextProjectLocalConfig, nextProjectConfig) => {
+      hasRemote = nextHasRemote;
+      projectSynced = nextProjectSynced;
+      projectLocalSynced = nextSynced;
+      projectLocalConfig = nextProjectLocalConfig;
+      projectConfig = nextProjectConfig;
 
-    await renderEditorPane();
+      await renderEditorPane();
 
-    expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('false');
-  });
+      expect(screen.getByTestId('auto-sync-onboarding').getAttribute('data-open')).toBe('false');
+    },
+  );
 
   test('a denied push probe opens the pull-only variant', async () => {
     hasRemote = true;
@@ -770,6 +784,17 @@ describe('EditorPane session-panel wiring', () => {
     expect(terminalOpenedCalls).toHaveLength(0);
   });
 
+  test('a SessionsHost reveal request opens the agents panel', async () => {
+    const user = userEvent.setup();
+    await renderEditorPane();
+
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('false');
+
+    await user.click(screen.getByRole('button', { name: 'mock SessionsHost requests reveal' }));
+
+    expect(screen.getByTestId('agents-panel').getAttribute('data-visible')).toBe('true');
+  });
+
   test('desktop: a reload re-expands an agents panel that was open before it', async () => {
     (window as { okDesktop?: unknown }).okDesktop = {
       config: { ptyAvailable: true },
@@ -904,6 +929,7 @@ describe('EditorPane session-panel wiring', () => {
         prompt: 'summarize this doc',
         docName: TEST_DOC,
         titleHint: null,
+        attachments: null,
       });
     });
 
@@ -911,6 +937,33 @@ describe('EditorPane session-panel wiring', () => {
     expect(agents.getAttribute('data-visible')).toBe('true');
     expect(agents.getAttribute('data-thread-launch-agent')).toBe('acme-agent');
     expect(agents.getAttribute('data-thread-launch-nonce')).not.toBe('none');
+  });
+
+  test('a launch request carrying an image attachment forwards it into the thread-launch intent', async () => {
+    await renderEditorPane();
+
+    await act(async () => {
+      requestAgentThreadLaunch({
+        agentSource: 'registry',
+        agentId: 'acme-agent',
+        prompt: 'describe the screenshot',
+        docName: TEST_DOC,
+        titleHint: null,
+        attachments: [
+          {
+            kind: 'image',
+            mimeType: 'image/png',
+            data: 'iVBORw==',
+            name: 'drop-me.png',
+            sizeBytes: 4,
+          },
+        ],
+      } as AgentThreadLaunchDetail);
+    });
+
+    const agents = screen.getByTestId('agents-panel');
+    expect(agents.getAttribute('data-thread-launch-agent')).toBe('acme-agent');
+    expect(agents.getAttribute('data-thread-launch-image-parts')).toBe('1');
   });
 
   test('desktop: a rejecting getDockState still settles the gate so the view-menu push converges', async () => {

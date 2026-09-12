@@ -25,10 +25,10 @@ import {
   DEFAULT_ATTACHMENT_FOLDER_PATH,
   DEFAULT_LINKS_VALIDATION,
   DEFAULT_LINTER_CONFIG,
+  DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
   DOCUMENT_OPEN_BYTE_LIMIT,
   humanFormat,
   isKnownConfigError,
-  type LinksValidationSetting,
   type LinterConfig,
   type MarkdownManager,
   modeFromCommittedDefault,
@@ -60,6 +60,7 @@ import { AcpPermissionStore } from './acp/permissions.ts';
 import { AcpRegistry, loadCustomAgents } from './acp/registry.ts';
 import { AgentFocusBroadcaster } from './agent-focus.ts';
 import { AgentPresenceBroadcaster } from './agent-presence.ts';
+import type { AgentRegistryHostSeam } from './agent-registry-apply.ts';
 import { AgentSessionManager } from './agent-sessions.ts';
 import { type CommentDocHooks, createApiExtension, isSafeDocName } from './api-extension.ts';
 import { assetReferencesChanged } from './asset-references.ts';
@@ -84,12 +85,14 @@ import {
   startConfigFileWatcher,
   startMultiPathConfigFileWatcher,
 } from './config-file-watcher.ts';
-import { applyExternalConfigChange } from './config-persistence.ts';
+import { applyExternalConfigChange, isConfigEcho } from './config-persistence.ts';
 import { isDocInConflict } from './conflict-errors.ts';
 import {
   createConflictLifecycleSeedExtension,
   entryMatchesDocName,
 } from './conflict-lifecycle-seed.ts';
+import { requireConflictResolutionContent } from './conflict-resolution-input.ts';
+import type { ResolveStrategy } from './conflict-storage.ts';
 import { type GeneratedArtifactEnv, writeGeneratedArtifact } from './content/generated-artifact.ts';
 import {
   type GeneratedIndexGitAttributesStatus,
@@ -107,7 +110,11 @@ import {
   planDirectoryIndexRegenerations,
   ROOT_INDEX_DOC_NAME,
 } from './content/regenerate-index.ts';
-import { type ContentFilter, createContentFilter } from './content-filter.ts';
+import {
+  type ContentFilter,
+  createContentFilter,
+  isShareableOkArtifact,
+} from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
 import {
@@ -118,6 +125,7 @@ import {
   canonicalDocName,
   docNameToRelativePath,
   getDocExtension,
+  isRegisteredMarkdownDocName,
   stripDocExtension,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
@@ -125,6 +133,7 @@ import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   type Embedder,
   type EmbeddingsKeyStore,
+  type LoadOpenAiEmbedderInput,
   loadOpenAiEmbedder,
   normalizeProviderId,
   type ResolvedSemanticConfig,
@@ -132,7 +141,11 @@ import {
   SemanticSearchService,
   secretsFilePath,
 } from './embeddings/index.ts';
-import { applyExternalChange, serializeYDocSource } from './external-change.ts';
+import {
+  applyExternalChange,
+  refuseStaleExternalWrite,
+  serializeYDocSource,
+} from './external-change.ts';
 import {
   assertNeverDiskEvent,
   contentHash,
@@ -143,7 +156,7 @@ import {
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
-import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync } from './fs-traced.ts';
+import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync, tracedUnlinkSync } from './fs-traced.ts';
 import { buildSyncCredentialConfig } from './git-handle.ts';
 import type {
   CheckPushPermissionOptions,
@@ -168,6 +181,7 @@ import {
   isHostAdmitted,
   isPeerAdmitted,
 } from './ingress-policy.ts';
+import type { LinkAdvisoryPolicy } from './link-advisory-policy.ts';
 import { ensureOkfSchemaFiles } from './lint/write-okf-schemas.ts';
 import { createLiveDerivedIndexExtension } from './live-derived-index.ts';
 import { localTargetInventoryFromWatcher } from './local-target-inventory.ts';
@@ -197,7 +211,6 @@ import {
   incrementUpstreamImport,
   setRecentlyRemovedDocsSize,
 } from './metrics.ts';
-import { destroyParsePool } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import { createPersistenceExtension, type PersistenceOptions } from './persistence.ts';
 import {
@@ -247,6 +260,7 @@ import {
 import { readOriginGitHubRepo, shouldResetAmbientCredentials } from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
+import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
@@ -255,6 +269,7 @@ import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
 import type { PairedWriteOrigin } from './write-origins.ts';
 
 export interface ServerOptions {
+  acpRegistryFetchImpl?: typeof fetch;
   ingressPolicy?: IngressPolicy;
   port?: number;
   host?: string;
@@ -287,13 +302,14 @@ export interface ServerOptions {
   configHomedirOverride?: string;
   mdManager?: MarkdownManager;
   detectGh?: DetectGhFn;
+  agentIntegrations?: AgentRegistryHostSeam;
   detectGhAccounts?: DetectGhAccountsFn;
   tokenStore?: ProbeTokenStore | null;
   checkPushPermissionFn?: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
   pullIntervalSeconds?: number;
   pushIntervalSeconds?: number;
   embeddingsKeyStore?: EmbeddingsKeyStore | null;
-  embedderLoader?: () => Promise<Embedder | null>;
+  embedderLoader?: (input: LoadOpenAiEmbedderInput) => Promise<Embedder | null>;
   singleDocRelPath?: string;
   ephemeral?: boolean;
   generatedIndexTestHooks?: {
@@ -344,6 +360,8 @@ export interface ServerInstance {
   readonly acpRegistry: AcpRegistry;
   readonly acpPermissions: AcpPermissionStore;
 }
+
+export const SHADOW_FANOUT_WARMUP_MS = 3000;
 
 const PARK_SNAPSHOT_ORIGIN = (() => {
   const ctx = Object.freeze({ origin: 'park-snapshot', paired: true as const });
@@ -459,7 +477,14 @@ export function createServer(options: ServerOptions): ServerInstance {
   } = options;
 
   const log = getLogger('server');
-  const durabilityState = new DocumentDurabilityState();
+  const lockDir = getLocalDir(projectDir);
+  const durabilityState = new DocumentDurabilityState('main', {
+    persistencePath: join(lockDir, 'stale-external-writes.json'),
+    onStaleExternalWriteChange: () => signalChannel('sync-status'),
+    fileForDocName: (docName) =>
+      relative(projectDir, safeContentPath(docName, contentDir)).replaceAll('\\', '/'),
+    hasResolvedExtension: isRegisteredMarkdownDocName,
+  });
   const getActiveBranch = () => durabilityState.getActiveBranch();
   const getReconciledBase = (docName: string) => durabilityState.getReconciledBase(docName);
   const setReconciledBase = (docName: string, content: string) =>
@@ -555,14 +580,18 @@ export function createServer(options: ServerOptions): ServerInstance {
     return base;
   }
 
-  function readLinksValidationSetting(): LinksValidationSetting {
+  function readLinkAdvisoryPolicy(): LinkAdvisoryPolicy {
     const project = readConfigSafely({
       absPath: resolveConfigPath('project', projectDir),
       sideline: false,
       warn: (message) =>
         log.warn({ message }, '[config] could not read project config for link validation'),
     });
-    return project.value.validation?.links ?? DEFAULT_LINKS_VALIDATION;
+    return {
+      links: project.value.validation?.links ?? DEFAULT_LINKS_VALIDATION,
+      suppressLogLinkAdvisories:
+        project.value.validation?.suppressLogLinkAdvisories ?? DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
+    };
   }
 
   function readSemanticSearchConfig(): ResolvedSemanticConfig {
@@ -590,8 +619,32 @@ export function createServer(options: ServerOptions): ServerInstance {
     });
   }
 
-  function logConfigDiagnosticsOnce(): void {
+  function logConfigDiagnostics(configDocName?: string): void {
+    const configDocNamesByScope = {
+      user: CONFIG_DOC_NAME_USER,
+      project: CONFIG_DOC_NAME_PROJECT,
+      'project-local': CONFIG_DOC_NAME_PROJECT_LOCAL,
+    };
     for (const finding of readConfigDiagnostics().diagnostics) {
+      if (configDocName !== undefined && configDocNamesByScope[finding.scope] !== configDocName) {
+        continue;
+      }
+      if (finding.code === 'VALUE_FALLBACK') {
+        for (const issue of finding.issues) {
+          log.warn(
+            {
+              code: finding.code,
+              scope: finding.scope,
+              file: finding.file,
+              path: issue.path.join('.'),
+              line: issue.line,
+              column: issue.column,
+            },
+            `[config] ${issue.path.join('.')}: ${issue.message}`,
+          );
+        }
+        continue;
+      }
       if (finding.code !== 'REMOVED_KEY') continue;
       log.warn(
         { scope: finding.scope, file: finding.file, path: finding.path.join('.') },
@@ -604,7 +657,12 @@ export function createServer(options: ServerOptions): ServerInstance {
     return `${normalizeProviderId(cfg.baseUrl)}|${cfg.model}|${cfg.dimensions ?? 'auto'}`;
   }
 
+  function semanticTransportFingerprint(cfg: ResolvedSemanticConfig): string {
+    return `${cfg.maxBatchSize}|${cfg.maxBatchChars}|${cfg.docTimeoutMs}`;
+  }
+
   let lastAppliedAttachmentFolderPath: string | undefined;
+  let projectConfigEpoch = 0;
 
   function applyPersistedConfigToConsumers(
     configDocName: string,
@@ -630,8 +688,11 @@ export function createServer(options: ServerOptions): ServerInstance {
     semanticSearch.applyConfig({
       enabled: semCfg.enabled,
       providerFingerprint: semanticProviderFingerprint(semCfg),
+      transportFingerprint: semanticTransportFingerprint(semCfg),
+      maxBatchSize: semCfg.maxBatchSize,
     });
     if (configDocName === CONFIG_DOC_NAME_PROJECT) {
+      projectConfigEpoch += 1;
       try {
         const nextAttachmentFolderPath = readProjectAttachmentFolderPath({ requireValid: true });
         contentFilter?.setAttachmentFolderPath(nextAttachmentFolderPath);
@@ -686,9 +747,11 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const serverInstanceId = randomUUID();
 
-  const lockDir = getLocalDir(projectDir);
-
-  const acpRegistry = new AcpRegistry({ localDir: lockDir, log: getLogger('acp-registry') });
+  const acpRegistry = new AcpRegistry({
+    localDir: lockDir,
+    log: getLogger('acp-registry'),
+    fetchImpl: options.acpRegistryFetchImpl,
+  });
   const acpPermissions = new AcpPermissionStore(lockDir, getLogger('acp-permissions'));
 
   acquireServerLock(lockDir, {
@@ -746,6 +809,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   let localApi: LocalApiDispatch;
   let cc1Broadcaster: CC1Broadcaster | null = null;
   let inPlaceRescanTimer: ReturnType<typeof setTimeout> | null = null;
+  let shadowWarmupTimer: ReturnType<typeof setTimeout> | null = null;
   const IN_PLACE_RESCAN_DEBOUNCE_MS = 500;
   let agentFocusBroadcaster: AgentFocusBroadcaster | null = null;
   let agentPresenceBroadcaster: AgentPresenceBroadcaster | null = null;
@@ -754,19 +818,25 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const initialSemanticConfig = readSemanticSearchConfig();
   const semanticSearch = new SemanticSearchService({
-    loadEmbedder:
-      options.embedderLoader ??
-      (() => {
-        const cfg = readSemanticSearchConfig();
-        return loadOpenAiEmbedder({
-          keyStore: options.embeddingsKeyStore ?? null,
-          projectDir,
-          config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
-        });
-      }),
+    loadEmbedder: () => {
+      const cfg = readSemanticSearchConfig();
+      const input: LoadOpenAiEmbedderInput = {
+        keyStore: options.embeddingsKeyStore ?? null,
+        projectDir,
+        config: { baseUrl: cfg.baseUrl, model: cfg.model, dimensions: cfg.dimensions },
+        options: {
+          maxBatchSize: cfg.maxBatchSize,
+          maxBatchChars: cfg.maxBatchChars,
+          docTimeoutMs: cfg.docTimeoutMs,
+        },
+      };
+      return (options.embedderLoader ?? loadOpenAiEmbedder)(input);
+    },
     cacheDir: join(getLocalDir(projectDir), 'embeddings'),
     enabled: initialSemanticConfig.enabled,
     providerFingerprint: semanticProviderFingerprint(initialSemanticConfig),
+    transportFingerprint: semanticTransportFingerprint(initialSemanticConfig),
+    maxBatchSize: initialSemanticConfig.maxBatchSize,
   });
 
   let loadedPrincipal: Principal | null = null;
@@ -821,6 +891,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       | 'tags'
       | 'comments'
       | 'lint-config'
+      | 'sync-status'
       | 'local-targets',
   ): void {
     cc1Broadcaster?.signal(channel);
@@ -1210,6 +1281,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       log.warn({ err }, '[index] generated-index settings reflection deferred to config watcher');
     }
     applyPersistedConfigToConsumers(CONFIG_DOC_NAME_PROJECT, enabled);
+    logConfigDiagnostics(CONFIG_DOC_NAME_PROJECT);
     return { ...getGeneratedIndexSettingsStatus(), applied: true };
   }
 
@@ -1539,7 +1611,10 @@ export function createServer(options: ServerOptions): ServerInstance {
       },
       onConfigRejected: (docName, error) =>
         cc1Broadcaster?.emitConfigValidationRejected(docName, error),
-      onConfigPersisted: applyPersistedConfigToConsumers,
+      onConfigPersisted: (docName) => {
+        applyPersistedConfigToConsumers(docName);
+        logConfigDiagnostics(docName);
+      },
       onManagedSkillPersisted: (docName) => {
         const parsed = parseManagedArtifactName(docName);
         if (parsed?.kind !== 'skill' || parsed.scope !== 'global') return;
@@ -1596,7 +1671,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         forceStore: (document, documentName) => persistence.forceStore(document, documentName),
         getBase: (documentName) => durabilityState.getReconciledBase(documentName),
         isBatchActive: () => durabilityState.isBatchInProgress(),
-        peekInFlight: (documentName) => durabilityState.peekInFlightFlush(documentName),
+        hasInFlight: (documentName) => durabilityState.inFlightFlushCount(documentName) > 0,
         readDiskBytes: (documentName) => {
           const requestedPath = safeContentPath(documentName, contentDir);
           let canonical: string;
@@ -1897,20 +1972,90 @@ export function createServer(options: ServerOptions): ServerInstance {
       projectDir,
       resolveEmbed,
       getPrincipal: () => loadedPrincipal,
+      agentIntegrations: options.agentIntegrations,
       acpRegistry,
       loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
       homeDirOverride: configHomedirOverride,
       forceUnloadDocument,
+      resetDocumentDurability: deleteReconciledBase,
       ready,
       recentlyRemovedDocs,
       serializeDoc,
+      resolveStaleExternalWrite: async (
+        file: string,
+        strategy: ResolveStrategy,
+        content?: string,
+      ) => {
+        const requestedFile = file.replaceAll('\\', '/');
+        const staleConflict = durabilityState
+          .listStaleExternalWrites()
+          .find((entry) => entry.file === requestedFile);
+        if (!staleConflict) return false;
+        const { docName } = staleConflict;
+        const absolute = resolve(projectDir, staleConflict.file);
+        if (!isWithinContentDir(absolute, contentDir)) return false;
+        const target = assertRealpathWithinDir(absolute, contentDir, {
+          allowShareableOkArtifact: isShareableOkArtifact,
+        });
+        const document = hocuspocus.documents.get(docName);
+        const lifecycle = document?.getMap('lifecycle');
+
+        if (strategy === 'delete') {
+          if (existsSync(target)) tracedUnlinkSync(target);
+          await derivedDocumentIndex.recordDiskDelete(docName);
+          scheduleIndexRegenerationAfterRemoval(docName);
+          deleteReconciledBase(docName);
+          lifecycle?.set('status', 'deleted-upstream');
+        } else {
+          let resolved: string | null | undefined;
+          switch (strategy) {
+            case 'mine':
+              resolved =
+                serializeDoc(docName) ??
+                staleConflict.retainedContent ??
+                getReconciledBase(docName);
+              break;
+            case 'theirs':
+              resolved = staleConflict.diskContent;
+              break;
+            case 'content':
+              resolved = requireConflictResolutionContent(file, content);
+              break;
+            default: {
+              const exhaustive: never = strategy;
+              throw new Error(`[conflicts] unknown resolve strategy: ${exhaustive}`);
+            }
+          }
+          if (resolved === null || resolved === undefined) {
+            throw new Error(`Unable to resolve stale external write for ${file}`);
+          }
+          await atomicWriteFile(target, resolved, { fs: tracedAtomicFs });
+          registerWrite(target, contentHash(resolved));
+          if (document) applyToDoc(docName, resolved);
+          else setReconciledBase(docName, resolved);
+          await derivedDocumentIndex.recordDiskUpsert(docName, resolved);
+        }
+        if (strategy === 'mine' || strategy === 'content') {
+          durabilityState.recordDisplacedVersion(docName, staleConflict.diskContent);
+        } else {
+          durabilityState.clearDisplacedVersions(docName);
+        }
+        durabilityState.clearStaleExternalWrite(docName);
+        if (strategy !== 'delete') lifecycle?.delete('status');
+        lifecycle?.delete('reason');
+        lifecycle?.delete('detectedAt');
+        signalChannel('sync-status');
+        signalChannel('files');
+        return true;
+      },
       evictManagedArtifactLkg: (docName: string) => {
         persistence.managedArtifactCtx.lkgCache.delete(docName);
       },
       semanticSearch,
       getSemanticSimilarityFloor: () => readSemanticSearchConfig().similarityFloor,
       getLinterBaseConfig: () => readLinterBaseConfig(),
-      getLinksValidationSetting: () => readLinksValidationSetting(),
+      getLinkAdvisoryPolicy: readLinkAdvisoryPolicy,
+      getProjectConfigEpoch: () => projectConfigEpoch,
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
       getConfigDiagnostics: readConfigDiagnostics,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
@@ -2022,6 +2167,36 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
   }
 
+  const rescueUnflushedEditsBeforeTeardown = (
+    docName: string,
+    branch: string,
+    site: 'delete' | 'rename' | 'branch-switch',
+  ): boolean => {
+    const base = getReconciledBase(docName) ?? '';
+    const ours = serializeDoc(docName) ?? '';
+    const isDirty = ours !== base;
+    if (!isDirty || !shadowRef.current) return isDirty;
+    const shadowForCheckpoint = shadowRef.current;
+    queueMicrotask(() => {
+      saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
+        kind: 'external-change-rescue',
+        docName,
+        contents: ours,
+        label: `External change recovered @ ${new Date().toISOString()}`,
+        branch,
+        metadata: { incomingDiskSha: '' },
+      })
+        .then(() => {
+          incrementRescueBuffer();
+          log.info({ docName, site }, `[reconcile] rescue checkpoint saved (${site}): ${docName}`);
+        })
+        .catch((e: unknown) => {
+          log.error({ docName, err: e }, `[reconcile] rescue checkpoint write failed: ${docName}`);
+        });
+    });
+    return isDirty;
+  };
+
   async function handleDiskEvent(event: DiskEvent): Promise<void> {
     try {
       switch (event.kind) {
@@ -2041,8 +2216,15 @@ export function createServer(options: ServerOptions): ServerInstance {
           }
           const document = hocuspocus.documents.get(docName);
           if (!document) {
+            if (refuseStaleExternalWrite(durabilityState, undefined, docName, theirs)) {
+              return;
+            }
             await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
             return;
+          }
+
+          if (refuseStaleExternalWrite(durabilityState, document, docName, theirs)) {
+            break;
           }
 
           const base = getReconciledBase(docName) ?? '';
@@ -2151,6 +2333,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           const { docName } = event;
           const document = hocuspocus.documents.get(docName);
           if (!document) {
+            deleteReconciledBase(docName);
             await derivedDocumentIndex.recordDiskDelete(docName);
             signalChannel('files');
             onUpstreamDelete(docName);
@@ -2166,34 +2349,11 @@ export function createServer(options: ServerOptions): ServerInstance {
             return;
           }
 
-          const base = getReconciledBase(docName) ?? '';
-          const ours = serializeDoc(docName) ?? '';
-          const isDirty = ours !== base;
-
-          if (isDirty && shadowRef.current) {
-            const shadowForCheckpoint = shadowRef.current;
-            const branch = headWatcher?.getLastKnownBranch() ?? 'main';
-            queueMicrotask(() => {
-              saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
-                kind: 'external-change-rescue',
-                docName,
-                contents: ours,
-                label: `External change recovered @ ${new Date().toISOString()}`,
-                branch,
-                metadata: { incomingDiskSha: '' },
-              })
-                .then(() => {
-                  incrementRescueBuffer();
-                  log.info({ docName }, `[reconcile] rescue checkpoint saved (delete): ${docName}`);
-                })
-                .catch((e: unknown) => {
-                  log.error(
-                    { docName, err: e },
-                    `[reconcile] rescue checkpoint write failed: ${docName}`,
-                  );
-                });
-            });
-          }
+          const isDirty = rescueUnflushedEditsBeforeTeardown(
+            docName,
+            headWatcher?.getLastKnownBranch() ?? 'main',
+            'delete',
+          );
 
           const lifecycleMap = document.getMap('lifecycle');
           lifecycleMap.set('status', 'deleted-upstream');
@@ -2220,21 +2380,70 @@ export function createServer(options: ServerOptions): ServerInstance {
 
         case 'rename': {
           const { oldDocName, newDocName, content } = event;
-          const document = hocuspocus.documents.get(oldDocName);
+          const freezeAsRenamed = (doc: Document): void => {
+            const lifecycleMap = doc.getMap('lifecycle');
+            lifecycleMap.set('status', 'renamed');
+            lifecycleMap.set('newPath', newDocName);
+          };
+          const loadedBeforeIndex = hocuspocus.documents.get(oldDocName);
+          const isDirty = loadedBeforeIndex
+            ? rescueUnflushedEditsBeforeTeardown(
+                oldDocName,
+                headWatcher?.getLastKnownBranch() ?? 'main',
+                'rename',
+              )
+            : false;
+          if (loadedBeforeIndex) freezeAsRenamed(loadedBeforeIndex);
 
           deleteReconciledBase(oldDocName);
           setReconciledBase(newDocName, content);
-          await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
 
-          if (document) {
-            const lifecycleMap = document.getMap('lifecycle');
-            lifecycleMap.set('status', 'renamed');
-            lifecycleMap.set('newPath', newDocName);
+          log.info(
+            { oldDocName, newDocName, isDirty },
+            `[reconcile] rename: ${oldDocName} → ${newDocName} (dirty=${isDirty})`,
+          );
+          signalChannel('files');
+          onUpstreamAdd(newDocName);
+          onUpstreamRename(oldDocName, newDocName);
+
+          try {
+            await derivedDocumentIndex.recordDiskRename(oldDocName, newDocName, content);
+          } catch (err) {
+            log.error(
+              { oldDocName, newDocName, err },
+              `[reconcile] rename: index update failed for ${oldDocName} → ${newDocName}; completing client teardown anyway`,
+            );
           }
 
-          log.info({ oldDocName, newDocName }, `[reconcile] rename: ${oldDocName} → ${newDocName}`);
-          signalChannel('files');
-          onUpstreamRename(oldDocName, newDocName);
+          const document = hocuspocus.documents.get(oldDocName);
+          if (document && document !== loadedBeforeIndex) freezeAsRenamed(document);
+
+          const resident = hocuspocus.documents.get(newDocName);
+          if (resident && resident.getMap('lifecycle').get('status') === 'renamed') {
+            const residentLifecycle = resident.getMap('lifecycle');
+            residentLifecycle.delete('status');
+            residentLifecycle.delete('newPath');
+            applyToDoc(newDocName, content);
+            log.info(
+              { newDocName },
+              `[reconcile] rename: cleared stale renamed lifecycle on ${newDocName}`,
+            );
+          }
+
+          await sessionManager.closeAllForDoc(oldDocName);
+          const closedConnections = document?.getConnectionsCount() ?? 0;
+          /* WARN: the `delete` branch above and `captureAndCloseDocuments` pair their
+             close with `forceUnloadDocument`; this branch does not, so the frozen doc
+             stays resident under the old name and template-watcher-capabilities.test.ts
+             pins that residency. The destination clear above is what stops a move back
+             to this path from being served that stale frozen doc. */
+          hocuspocus.closeConnections(oldDocName);
+          if (closedConnections > 0) {
+            log.info(
+              { oldDocName, newDocName, closedConnections },
+              `[reconcile] rename: closed ${closedConnections} connection(s) on ${oldDocName}`,
+            );
+          }
           console.info(
             JSON.stringify({
               event: 'recently-removed-docs-populate',
@@ -2524,6 +2733,10 @@ export function createServer(options: ServerOptions): ServerInstance {
               clearTimeout(inPlaceRescanTimer);
               inPlaceRescanTimer = null;
             }
+            if (shadowWarmupTimer) {
+              clearTimeout(shadowWarmupTimer);
+              shadowWarmupTimer = null;
+            }
             if (headWatcher) {
               await headWatcher.unsubscribe();
               headWatcher = null;
@@ -2585,16 +2798,6 @@ export function createServer(options: ServerOptions): ServerInstance {
               error: err instanceof Error ? err.message : String(err),
             });
             log.error({ err }, '[server] shutdown phase-2 agent session drain failed');
-          }
-
-          try {
-            await destroyParsePool();
-          } catch (err) {
-            phaseErrors.push({
-              phase: 'parse-pool-teardown',
-              error: err instanceof Error ? err.message : String(err),
-            });
-            log.error({ err }, '[server] shutdown phase-2b parse pool teardown failed');
           }
 
           try {
@@ -2792,14 +2995,16 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
     }
 
-    if (shadowRef.current) {
+    if (shadowRef.current && inflightDestroy === null) {
       const warmShadow = shadowRef.current;
       const warmContentRoot = toPosix(relative(projectDir, contentDir)) || '.';
-      setTimeout(() => {
+      shadowWarmupTimer = setTimeout(() => {
+        shadowWarmupTimer = null;
         void buildWipTree(warmShadow, warmContentRoot).catch((e) => {
           log.debug({ err: e }, '[shadow] fan-out index warm-up failed (non-fatal)');
         });
-      }, 3000).unref();
+      }, SHADOW_FANOUT_WARMUP_MS);
+      shadowWarmupTimer.unref?.();
     }
 
     if (shadowRef.current) {
@@ -2942,6 +3147,11 @@ export function createServer(options: ServerOptions): ServerInstance {
         log.info({ docName: configDocName, path: absPath }, '[config-file-watcher] starting');
         const cleanup = await startConfigFileWatcher(absPath, (content) => {
           const document = hocuspocus.documents.get(configDocName);
+          const alreadyApplied = isConfigEcho(
+            configDocName,
+            content,
+            persistence.configPersistenceCtx,
+          );
           log.info(
             {
               docName: configDocName,
@@ -2957,10 +3167,13 @@ export function createServer(options: ServerOptions): ServerInstance {
             persistence.configPersistenceCtx,
           );
           log.info(
-            { docName: configDocName, outcome },
+            { docName: configDocName, outcome, isEcho: alreadyApplied },
             '[config-file-watcher] applyExternalConfigChange outcome',
           );
           applyPersistedConfigToConsumers(configDocName);
+          if (!alreadyApplied) {
+            logConfigDiagnostics(configDocName);
+          }
         });
         configFileWatcherCleanups.push({ docName: configDocName, cleanup });
         log.info({ docName: configDocName, path: absPath }, '[config-file-watcher] started');
@@ -3446,36 +3659,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                 try {
                   const filePath = safeContentPath(docName, contentDir);
                   if (!existsSync(filePath)) {
-                    const base = getReconciledBase(docName) ?? '';
-                    const ours = serializeDoc(docName) ?? '';
-                    const isDirty = ours !== base;
-
-                    if (isDirty && shadowRef.current) {
-                      const shadowForCheckpoint = shadowRef.current;
-                      queueMicrotask(() => {
-                        saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
-                          kind: 'external-change-rescue',
-                          docName,
-                          contents: ours,
-                          label: `External change recovered @ ${new Date().toISOString()}`,
-                          branch: newBranch,
-                          metadata: { incomingDiskSha: '' },
-                        })
-                          .then(() => {
-                            incrementRescueBuffer();
-                            log.info(
-                              { docName },
-                              `[reconcile] rescue checkpoint saved on branch switch: ${docName}`,
-                            );
-                          })
-                          .catch((e: unknown) => {
-                            log.error(
-                              { docName, err: e },
-                              `[reconcile] rescue checkpoint write failed: ${docName}`,
-                            );
-                          });
-                      });
-                    }
+                    rescueUnflushedEditsBeforeTeardown(docName, newBranch, 'branch-switch');
 
                     const lifecycleMap = document.getMap('lifecycle');
                     lifecycleMap.set('status', 'deleted-upstream');
@@ -3788,7 +3972,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     const readyElapsed = bootElapsedMs();
     if (readyElapsed !== undefined) recordBootPhase('readyMs', readyElapsed);
 
-    logConfigDiagnosticsOnce();
+    logConfigDiagnostics();
   }
 
   initAsync().then(

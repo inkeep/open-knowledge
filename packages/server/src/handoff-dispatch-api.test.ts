@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
+import { EMPTY_DETECTION_SNAPSHOT, EMPTY_PROBE_SNAPSHOT } from '@inkeep/open-knowledge-core';
 import { describe, expect, test, vi } from 'vitest';
 import {
   type HandleHandoffDispatchDeps,
@@ -614,5 +615,99 @@ describe('handleHandoffDispatch — cursor recipe (cli-binary)', () => {
     );
     expectProblem(captured, 502, 'urn:ok:error:handoff-spawn-failed');
     expect(captured.body).toMatchObject({ target: 'cursor' });
+  });
+});
+
+describe('handleHandoffDispatch — readiness observation', () => {
+  test('consults the host snapshot without changing the dispatched steps', async () => {
+    const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
+      calls.push({ exec, args: [...args] });
+      return { ok: true } as SpawnOutcome;
+    });
+    const hostSnapshot = vi.fn(async () => ({
+      probes: EMPTY_PROBE_SNAPSHOT,
+      detection: EMPTY_DETECTION_SNAPSHOT,
+    }));
+    const { res, captured } = makeRes();
+
+    await handleHandoffDispatch(
+      makeReq('POST', { target: 'codex', url: CODEX_URL }),
+      res,
+      makeDeps({ spawnDetached, hostSnapshot }),
+    );
+
+    expect(hostSnapshot).toHaveBeenCalledTimes(1);
+    expect(captured.status).toBe(200);
+    expect(captured.body).toEqual({});
+    expect(calls).toEqual([
+      { exec: '/usr/bin/osascript', args: ['-e', 'tell application "Codex" to quit'] },
+      { exec: '/usr/bin/open', args: ['-a', 'Codex'] },
+      { exec: '/usr/bin/open', args: [CODEX_URL] },
+    ]);
+  });
+
+  test('dispatches unchanged when the host snapshot throws', async () => {
+    const calls: Array<{ exec: string; args: ReadonlyArray<string> }> = [];
+    const spawnDetached = vi.fn(async (exec: string, args: ReadonlyArray<string>) => {
+      calls.push({ exec, args: [...args] });
+      return { ok: true } as SpawnOutcome;
+    });
+    const { res, captured } = makeRes();
+
+    await handleHandoffDispatch(
+      makeReq('POST', { target: 'cursor', url: CURSOR_URL, workspacePath: VALID_PATH }),
+      res,
+      makeDeps({
+        spawnDetached,
+        hostSnapshot: async () => {
+          throw new Error('probe blew up');
+        },
+      }),
+    );
+
+    expect(captured.status).toBe(200);
+    expect(calls).toEqual([
+      { exec: '/usr/local/bin/cursor', args: [VALID_PATH] },
+      { exec: '/usr/bin/open', args: [CURSOR_URL] },
+    ]);
+  });
+
+  test('leaves the not-installed outcome intact', async () => {
+    const hostSnapshot = vi.fn(async () => ({
+      probes: EMPTY_PROBE_SNAPSHOT,
+      detection: EMPTY_DETECTION_SNAPSHOT,
+    }));
+    const { res, captured } = makeRes();
+
+    await handleHandoffDispatch(
+      makeReq('POST', { target: 'claude-cowork', url: CLAUDE_URL }),
+      res,
+      makeDeps({
+        platform: 'win32',
+        isSchemeRegistered: async () => false,
+        spawnDetached: vi.fn(async () => ({ ok: true }) as SpawnOutcome),
+        hostSnapshot,
+      }),
+    );
+
+    expectProblem(captured, 422, 'urn:ok:error:handoff-target-not-installed');
+  });
+
+  test('never reaches the observation for a body it rejects', async () => {
+    const hostSnapshot = vi.fn(async () => ({
+      probes: EMPTY_PROBE_SNAPSHOT,
+      detection: EMPTY_DETECTION_SNAPSHOT,
+    }));
+    const { res, captured } = makeRes();
+
+    await handleHandoffDispatch(
+      makeReq('POST', { target: 'codex', url: CLAUDE_URL }),
+      res,
+      makeDeps({ hostSnapshot }),
+    );
+
+    expectProblem(captured, 400, 'urn:ok:error:invalid-request');
+    expect(hostSnapshot).not.toHaveBeenCalled();
   });
 });

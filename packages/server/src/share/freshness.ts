@@ -1,4 +1,4 @@
-import type { ShareFreshness } from '@inkeep/open-knowledge-core';
+import { pathspecArgs, type ShareFreshness } from '@inkeep/open-knowledge-core';
 import { truncateError } from '../error-format.ts';
 import { createGitInstance } from '../git-handle.ts';
 import { getLogger } from '../logger.ts';
@@ -20,15 +20,15 @@ export async function computeShareFreshness(
 
     await git.raw(['rev-parse', '--verify', ref]);
 
-    const pathspec = gitPath === '' ? '.' : gitPath;
+    const scope = pathspecArgs([gitPath === '' ? '.' : gitPath]);
 
     const [present, trackedDiff, untracked] = await Promise.all([
       git
         .raw(['cat-file', '-e', `${ref}:${gitPath}`])
         .then(() => true)
         .catch(() => false),
-      git.raw(['diff', '--name-only', ref, '--', pathspec]),
-      git.raw(['status', '--porcelain', '--untracked-files=all', '--', pathspec]),
+      git.raw(['diff', '--name-only', ref, ...scope]),
+      git.raw(['status', '--porcelain', '--untracked-files=all', ...scope]),
     ]);
 
     if (!present) {

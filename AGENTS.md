@@ -51,11 +51,12 @@ pnpm run dev
 
 Keep only these, and nothing else:
 
-- **Directives a tool parses**, anchored at the comment's first line: `biome-ignore lint/style/noVar: reason`, `@ts-expect-error the fixture is deliberately malformed` (a reason is required), `oxlint-disable-next-line`, `@vitest-environment jsdom`, `@ts-nocheck`, `prettier-ignore`, `@vite-ignore`, `/// <reference types="vite/client" />`, `SPDX-License-Identifier: GPL-3.0-or-later`, `/* @lintignore knip cannot see the dynamic import site */` (block or JSDoc form only; the line-comment form is rejected because knip does not read it). If a tool reads it, it is code.
+- **Directives a tool parses**, anchored at the comment's first line: `biome-ignore lint/style/noVar: reason`, `@ts-expect-error the fixture is deliberately malformed` (a reason is required), `oxlint-disable-next-line`, `@vitest-environment jsdom`, `@ts-nocheck`, `@vite-ignore`, `/// <reference types="vite/client" />`, `SPDX-License-Identifier: GPL-3.0-or-later`, `/* @lintignore knip cannot see the dynamic import site */` (block or JSDoc form only; the line-comment form is rejected because knip does not read it). If a tool reads it, it is code.
 - **JSDoc carrying `@deprecated`.** The allowlist also defines an audit-tag class, but its tag list is empty in this repo, so that class admits nothing here: a tag-bearing JSDoc block is rejected as prose.
 - **Contract markers**, which the comment must BEGIN with: `STOP: a cross-file contract a reader must not break`, `WARN: a sibling that silently drifts if this changes`, `UPSTREAM(electron/electron#19920): a code shape forced on us from outside this repo`.
-- **A validated citation**, as in `precedent #42`.
-- **Registered guard markers**, each of which a specific checker reads: `error-log-shape-ok: <why>`, `presence-exempt: <why>`, and `documented exemption from Precedent #30`. The set is fixed — you cannot invent a new one.
+- **A validated citation**, as in `precedent #42`; the numbered titles are listed in [`PRECEDENTS.md`](./PRECEDENTS.md) at the repo root.
+- **Registered guard markers**: write `error-log-shape-ok: <why>` and `presence-exempt: <why>` only. The predicate also admits `documented exemption from Precedent #30`, `Defect class: <slug>` and `TOLERATED: <why>`, but their checkers live in test trees the mirror does not carry, so lint accepts them here while nothing reads them — that is prose wearing a marker, and it is a review finding even though the gate is green. The set is fixed; you cannot invent a new one.
+- **Type-only JSDoc**, in a .mjs or .js file only: a JSDoc block whose every line is a bare type annotation, which is the only typing mechanism the JavaScript strata have. Two hard edges: a description after the identifier makes the block prose, and the same block in a .ts file is prose, because TypeScript has real syntax there.
 
 An `UPSTREAM` referent must be one of four shapes, so it always resolves to something a reader can look up: a GitHub issue (`electron/electron#19920`), an RFC (`RFC 9457`), a CommonMark section (`CommonMark §6.5`), or a package version (`vite@7.1.0`). Anything else fails lint.
 
@@ -64,6 +65,8 @@ Banned: `plain prose`, JSDoc description text, `//////// section dividers`, comm
 A marker is not a license, and passing lint is not the same as being legitimate. Lint rejects a referent it cannot resolve (`UPSTREAM(some blog post): not a resolvable referent`) and a citation of a precedent that does not exist (`precedent #999`). It cannot tell whether a well-formed marker is load-bearing, so a `STOP:` essay or a `WARN:` that warns of nothing passes lint and gets caught in review instead — as a worse finding than the comment it disguises. The same applies to reasoning parked in a suppression's reason slot: a suppression reason is free text, so a paragraph of design rationale smuggled into one passes lint, and is a review finding for the same reason.
 
 If `pnpm run lint` fails on a comment, the diagnostic names the class, the fix, and a link into [`lint-plugins/no-comments/README.md`](./lint-plugins/no-comments/README.md), which is the full policy. Delete the comment, or convert it to one of the forms above.
+
+Shell scripts are declared in scope by `no-comments.config.jsonc`, but the sweep that reads the hash grammars is not part of this mirror, so `pnpm run lint` here checks the JavaScript and TypeScript families only. A `.sh` file is gated upstream; the same policy applies to it, and a reviewer will hold it to that.
 
 ## Public Mirror Rules
 

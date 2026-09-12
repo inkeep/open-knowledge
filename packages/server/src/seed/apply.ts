@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import type { LintPluginId } from '@inkeep/open-knowledge-core';
+import { tracedWriteFileSync } from '../fs-traced.ts';
 import { scanInPlaceSkills } from '../in-place-skills.ts';
 import { CONFIG_FILENAME } from '../init-project.ts';
 import {
@@ -91,7 +92,12 @@ export async function applySeed(plan: ScaffoldPlan, opts: SeedOptions = {}): Pro
       continue;
     }
     try {
-      writeFileSync(absPath, content, 'utf-8');
+      /* STOP: `wx` (O_EXCL) is load-bearing — `path-safety`'s ancestor walk
+         short-circuits on the first existing component and cannot see a
+         DANGLING symlinked leaf (existsSync reports it absent), so O_EXCL is
+         what stops a write-through to the link target outside the project.
+         Do not relax to `w`. */
+      tracedWriteFileSync(absPath, content, { encoding: 'utf-8', flag: 'wx' });
       applied += 1;
     } catch (err) {
       errors.push({ path: entry.path, error: err instanceof Error ? err.message : String(err) });

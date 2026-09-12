@@ -5,7 +5,7 @@ import {
   type McpInstallOptions,
 } from '../commands/editors.ts';
 import { type McpDeclineReason, writeEditorMcpConfig } from '../commands/init.ts';
-import { writeProjectSkill } from './write-project-skill.ts';
+import { writeProjectSkill, writeProjectSkillToHub } from './write-project-skill.ts';
 
 type IntegrationId = 'mcp-config' | 'project-skill';
 
@@ -128,6 +128,16 @@ export function applyProjectIntegrations(
     for (const writer of writers) {
       outcomes.push(writer.write(target, projectDir, options));
     }
+  }
+  const hub = writeProjectSkillToHub(projectDir, editorIds);
+  if (hub) {
+    outcomes.push({
+      integration: 'project-skill',
+      editorId: hub.editorId,
+      action: hub.action,
+      ...(hub.path ? { path: hub.path } : {}),
+      ...(hub.error ? { error: hub.error } : {}),
+    });
   }
   return outcomes;
 }

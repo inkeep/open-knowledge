@@ -1,11 +1,4 @@
-/**
- * RTL mount tests for `useServerKeepalive` — start-once lifecycle,
- * presence-invisible options, the Electron gate, latest-collabUrl resolution
- * without socket churn, and teardown on unmount. Invoked via `bun run test:dom`
- * (jsdom substrate, precedent #43). Behavior-only per AGENTS.md React-test
- * discipline: we assert what the hook does (start/skip/close, resolver output),
- * never its source text.
- */
+/** Runs under the jsdom substrate (precedent #43). */
 
 import type { KeepaliveHandle, KeepaliveOptions } from '@inkeep/open-knowledge-core/keepalive';
 import { act, cleanup, render, waitFor } from '@testing-library/react';

@@ -497,14 +497,17 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const defaultAuthHost = (): string => originGitHubHost(projectDir ?? contentDir);
 
   type StreamingAuthController = { done: Promise<void>; cancel(): void };
-  const authLoginInFlight: { current: StreamingAuthController | null } = { current: null };
-  const authGhLoginInFlight: { current: StreamingAuthController | null } = { current: null };
+  type InFlightAuthStream = { cancel(): void; notifyDisplaced(): void };
+  const authLoginInFlight: { current: InFlightAuthStream | null } = { current: null };
+  const authGhLoginInFlight: { current: InFlightAuthStream | null } = { current: null };
+
+  const DISPLACED_STREAM_MESSAGE = 'Sign-in was replaced by a newer sign-in attempt.';
 
   function streamAuthFlow(cfg: {
     res: ServerResponse;
     handler: string;
     guardKey: string;
-    inFlight: { current: StreamingAuthController | null };
+    inFlight: { current: InFlightAuthStream | null };
     concurrentMessage: string;
     streamErrorMessage: string;
     makeFlow: (onEvent: (event: AuthEvent) => void) => StreamingAuthController;
@@ -529,6 +532,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
         });
         return;
       }
+      stale.notifyDisplaced();
       stale.cancel();
       inFlight.current = null;
       console.warn(
@@ -576,11 +580,21 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
       resumeSyncOnAuthEvent(event, getSyncEngine);
       writeLine(`${JSON.stringify(event)}\n`);
     });
-    inFlight.current = flow;
+    const slot: InFlightAuthStream = {
+      cancel: () => {
+        flow.cancel();
+      },
+      notifyDisplaced: () => {
+        stopHeartbeat();
+        if (res.writableEnded || res.destroyed) return;
+        writeStreamError(409, 'urn:ok:error:concurrent-operation', DISPLACED_STREAM_MESSAGE);
+      },
+    };
+    inFlight.current = slot;
 
     const onClientClose = () => {
       stopHeartbeat();
-      if (inFlight.current !== flow) return;
+      if (inFlight.current !== slot) return;
       console.warn(
         JSON.stringify({
           event: 'ok-local-op:auth-stream-detached',
@@ -600,7 +614,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
           res.end();
         } catch {}
       }
-      if (inFlight.current === flow) {
+      if (inFlight.current === slot) {
         inFlight.current = null;
         localOpGuard.release(guardKey);
       }

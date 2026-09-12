@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openknowledge.ai/schemas/no-comments.config.schema.json",
+  "title": "no-comments scope configuration",
+  "description": "Declares which files the comment-policy predicate governs at this repository root. Membership is derived from units[].roots crossed with the extensions of each unit's family, plus any explicit units[].files; it is never restated as a list of globs.",
+  "type": "object",
+  "required": ["version", "families", "units", "exclude"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": {
+      "description": "The schema major this file is written against. A predicate that does not recognise the major refuses to load rather than reading a shape it cannot represent; unknown additive keys under a recognised major load and are reported.",
+      "type": "integer",
+      "enum": [1]
+    },
+    "families": {
+      "description": "Grammar families, keyed by id. A family names the extensions it owns and the extractor that reads its comment grammar.",
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "$ref": "#/$defs/family" }
+    },
+    "units": {
+      "description": "Named scope units. Each crosses one family with a list of roots.",
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/unit" }
+    },
+    "exclude": {
+      "description": "Globs removed from membership, evaluated before include. A `**/<name>/**` entry additionally prunes any directory called <name> during discovery.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/glob" }
+    }
+  },
+  "$defs": {
+    "literalPath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![/\\\\])(?![A-Za-z]:[/\\\\])(?!(?:.*/)?\\.\\.(?:/|$))[^*?!{}\\[\\]()]+$",
+      "description": "A repository-relative path naming exactly one file. Unlike a glob it is never expanded and never matched: discovery stats it, so a wildcard or a brace could not add a member while the matcher would still route whatever it matched into this unit. The same canonicalization as `glob` applies, and an absolute path or a `..` segment is refused by name at load."
+    },
+    "glob": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?![/\\\\])(?![A-Za-z]:[/\\\\])(?!(?:.*/)?\\.\\.(?:/|$))[^?!\\[\\]()]+$",
+      "description": "A repository-relative glob over `*`, `**`, brace alternations and literal segments. Braces expand at load, and the loader canonicalizes each expansion before anything reads it: a leading `./` is stripped, repeated slashes collapse, and a trailing `/` is dropped, so `./packages/` and `packages` are the same declaration and `.` is the only spelling of the repository root. The matcher sees no braces and no `./`. An absolute path or a `..` segment is refused by name at load rather than normalized, because either one names a tree the root does not own."
+    },
+    "family": {
+      "type": "object",
+      "required": ["extensions", "extractor"],
+      "additionalProperties": true,
+      "properties": {
+        "extensions": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "pattern": "^\\.", "minLength": 2 }
+        },
+        "extractor": {
+          "description": "Id of the comment extractor that reads this grammar family.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "unit": {
+      "type": "object",
+      "required": ["id", "family"],
+      "anyOf": [
+        { "required": ["roots"], "properties": { "roots": { "type": "array", "minItems": 1 } } },
+        { "required": ["files"], "properties": { "files": { "type": "array", "minItems": 1 } } }
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "family": { "type": "string", "minLength": 1 },
+        "roots": {
+          "description": "Directory prefixes, optionally carrying `*` or `**`. `.` means the repository root itself and is the one non-recursive root.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/glob" }
+        },
+        "files": {
+          "description": "Paths that are members without matching a root, for scripts an extension-keyed rule can never discover. Each names one file: wildcards and braces are refused at load. A path carrying an extension must carry one whose extractor matches its own family, since the unit reads it under that extractor regardless. An extensionless path is the intended case under a hash family whose extensions resolve to a single dialect, and is refused under c-family, which takes its file class from the extension.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/literalPath" }
+        },
+        "allowEmpty": {
+          "description": "Set when a unit is expected to discover nothing. Without it, a unit that matches no file is a loud failure rather than a silent zero.",
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}

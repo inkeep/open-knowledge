@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { resolveBuildArgs } from './build.mjs';
 
-// This package has no Vitest dependency, so the plain-JS harness uses Node's built-in runner.
 describe('resolveBuildArgs', () => {
   test('uses the napi cross toolchain for Linux x64 release builds', () => {
     assert.deepEqual(resolveBuildArgs({ platform: 'linux', arch: 'x64', release: true }), [

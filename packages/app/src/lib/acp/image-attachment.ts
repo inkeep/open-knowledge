@@ -1,4 +1,5 @@
 import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { t } from '@lingui/core/macro';
 
 export const ALLOWED_IMAGE_MIMES: ReadonlySet<string> = new Set([
   'image/png',
@@ -7,7 +8,24 @@ export const ALLOWED_IMAGE_MIMES: ReadonlySet<string> = new Set([
   'image/webp',
 ]);
 
-export const MAX_IMAGE_BYTES = 700 * 1024;
+const EMBEDDED_ATTACHMENT_BYTE_LIMIT = 700 * 1024;
+
+export const MAX_IMAGE_BYTES = EMBEDDED_ATTACHMENT_BYTE_LIMIT;
+
+export const MAX_TOTAL_ATTACHMENT_BYTES = EMBEDDED_ATTACHMENT_BYTE_LIMIT;
+
+export function embeddedAttachmentBytes(part: AttachmentPart): number {
+  if (part.kind !== 'image' && part.kind !== 'blob') return 0;
+  return part.sizeBytes ?? part.data.length;
+}
+
+export function totalEmbeddedAttachmentBytes(parts: readonly AttachmentPart[]): number {
+  return parts.reduce((sum, part) => sum + embeddedAttachmentBytes(part), 0);
+}
+
+export function attachmentBudgetKb(): number {
+  return Math.round(MAX_TOTAL_ATTACHMENT_BYTES / 1024);
+}
 
 export type ImageAttachmentError =
   | { readonly kind: 'unsupported-type'; readonly mimeType: string }
@@ -19,19 +37,24 @@ export type FileAttachmentError = ImageAttachmentError;
 
 export function describeImageError(error: ImageAttachmentError): string {
   if (error.kind === 'unsupported-type') {
-    if (error.mimeType.startsWith('image/')) {
-      return `Only PNG, JPEG, GIF, and WebP images are supported (got ${error.mimeType}).`;
+    const mimeType = error.mimeType;
+    if (mimeType.startsWith('image/')) {
+      return t`Only PNG, JPEG, GIF, and WebP images are supported (got ${mimeType}).`;
     }
-    return `Unsupported file type: ${error.mimeType || 'unknown'}.`;
+    const fileType = mimeType || 'unknown';
+    return t`Unsupported file type: ${fileType}.`;
   }
   if (error.kind === 'outside-workspace') {
-    return `${error.name} is outside the workspace. Move it into your project first.`;
+    const name = error.name;
+    return t`${name} is outside the workspace. Move it into your project first.`;
   }
   if (error.kind === 'unknown-path') {
-    return `${error.name} has no resolvable path — the agent can only read files inside the workspace.`;
+    const name = error.name;
+    return t`${name} has no resolvable path — the agent can only read files inside the workspace.`;
   }
-  const mb = (error.limitBytes / (1024 * 1024)).toFixed(1);
-  return `File is too large (${(error.sizeBytes / (1024 * 1024)).toFixed(1)} MB) — max ${mb} MB per attachment.`;
+  const limitKb = Math.round(error.limitBytes / 1024);
+  const sizeKb = Math.round(error.sizeBytes / 1024);
+  return t`File is too large (${sizeKb} KB) — each attachment is capped at ${limitKb} KB. Crop or resize it and try again.`;
 }
 
 async function encodeImageFile(file: File): Promise<{
@@ -113,7 +136,7 @@ function collectFiles(dataTransfer: DataTransfer | null, accept: (file: File) =>
   if (items) {
     for (let i = 0; i < items.length; i += 1) {
       const it = items[i];
-      if (!it || it.kind !== 'file') continue;
+      if (it?.kind !== 'file') continue;
       const file = it.getAsFile();
       if (file === null) continue;
       itemsYieldedFiles = true;

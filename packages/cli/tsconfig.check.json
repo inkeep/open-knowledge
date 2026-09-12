@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "noEmit": true,
+    "skipLibCheck": false,
+    "types": [],
+    "customConditions": []
+  },
+  "files": ["dist/index.d.mts"]
+}

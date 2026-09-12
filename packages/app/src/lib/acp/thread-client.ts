@@ -1,6 +1,7 @@
 import type {
   AttachmentPart,
   ThreadClientFrame,
+  ThreadErrorCode,
   ThreadEvent,
   ThreadInfo,
   ThreadServerFrame,
@@ -48,13 +49,13 @@ const RECONNECT_MAX_MS = 15_000;
 const CREATE_TIMEOUT_MS = 30_000;
 const RESUME_TIMEOUT_MS = THREAD_REOPEN_OP_TIMEOUT_MS;
 const RETRY_TIMEOUT_MS = THREAD_REOPEN_OP_TIMEOUT_MS;
-const AUTHENTICATE_TIMEOUT_MS = 180_000;
+const AUTHENTICATE_TIMEOUT_MS = 5 * 60 * 1000 + 30_000;
 const CHANNEL_WAIT_MS = 8_000;
 const QUEUE_EDIT_TIMEOUT_MS = 10_000;
 
 export class ThreadResumeError extends Error {
-  readonly code: string;
-  constructor(code: string, message: string) {
+  readonly code: ThreadErrorCode | 'timeout';
+  constructor(code: ThreadErrorCode | 'timeout', message: string) {
     super(message);
     this.name = 'ThreadResumeError';
     this.code = code;
@@ -82,6 +83,7 @@ export class AgentThreadClient {
   private pendingQueueEdits = new Map<string, PendingQueueEdit>();
   private openedArchived = new Set<string>();
   private lastViewedByThread = new Map<string, number>();
+  private resumingThreads = new Set<string>();
   private reqCounter = 0;
   private status: ThreadConnectionStatus = 'idle';
   private version = 0;
@@ -336,6 +338,7 @@ export class AgentThreadClient {
   deleteThread(threadId: string): void {
     this.send({ op: 'delete', threadId });
     this.openedArchived.delete(threadId);
+    this.resumingThreads.delete(threadId);
     this.modelBuilders.delete(threadId);
     if (this.threads.delete(threadId)) this.bump();
   }
@@ -356,6 +359,7 @@ export class AgentThreadClient {
       }, RESUME_TIMEOUT_MS);
       this.pendingResumes.set(reqId, { resolve, reject, timer });
     });
+    this.resumingThreads.add(threadId);
     this.send({
       op: 'resume',
       threadId,
@@ -474,6 +478,7 @@ export class AgentThreadClient {
       pending.reject(new ThreadChannelUnavailableError());
     }
     this.pendingResumes.clear();
+    this.resumingThreads.clear();
     for (const pending of this.pendingRetries.values()) {
       clearTimeout(pending.timer);
       pending.reject(new ThreadChannelUnavailableError());
@@ -554,6 +559,7 @@ export class AgentThreadClient {
             this.threads.delete(threadId);
             this.modelBuilders.delete(threadId);
             this.openedArchived.delete(threadId);
+            this.resumingThreads.delete(threadId);
             dropped = true;
           }
         }
@@ -561,6 +567,7 @@ export class AgentThreadClient {
         return;
       }
       case 'resumed': {
+        this.resumingThreads.delete(frame.info.threadId);
         const pending = this.pendingResumes.get(frame.reqId);
         if (pending !== undefined) {
           this.pendingResumes.delete(frame.reqId);
@@ -622,6 +629,9 @@ export class AgentThreadClient {
       }
       case 'error': {
         if (frame.reqId !== undefined) {
+          if (frame.reqId.startsWith('resume-') && frame.threadId !== undefined) {
+            this.resumingThreads.delete(frame.threadId);
+          }
           const pending = this.pendingCreates.get(frame.reqId);
           if (pending !== undefined) {
             this.pendingCreates.delete(frame.reqId);
@@ -713,7 +723,11 @@ export class AgentThreadClient {
       if (!this.lastViewedByThread.has(info.threadId)) {
         this.lastViewedByThread.set(info.threadId, info.lastActivityAt);
       }
-    } else if (info.archived === true && existing.info.archived !== true) {
+    } else if (
+      info.archived === true &&
+      existing.info.archived !== true &&
+      !this.resumingThreads.has(info.threadId)
+    ) {
       this.openedArchived.delete(info.threadId);
       this.modelBuilders.delete(info.threadId);
       this.threads.set(info.threadId, {

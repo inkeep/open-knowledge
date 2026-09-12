@@ -34,7 +34,7 @@ const isCI = !!process.env.CI;
 /**
  * Logical CPUs one worker occupies. Since the per-worker-server migration a
  * worker is not just a browser: it owns a Vite dev server, a Hocuspocus CRDT
- * server, a parse-worker pool, two filesystem watchers, AND its Chromium.
+ * server, two filesystem watchers, AND its Chromium.
  * Playwright's built-in default (`max(1, floor(os.cpus().length / 2))`) is
  * calibrated for the stock topology it ships with — many browser-only workers
  * sharing one `webServer` —
@@ -64,6 +64,13 @@ export function resolveWorkerCount(logicalCpus: number): number {
   return Math.max(1, Math.floor(logicalCpus / LOGICAL_CPUS_PER_WORKER));
 }
 
+/**
+ * Shared with the a11y and visual configs, which import it: all three tiers
+ * run on the same per-worker fixture, so they share one convergence band.
+ * Rationale for the value itself is on `expect` below.
+ */
+export const EXPECT_TIMEOUT_MS = isCI ? 15_000 : 5_000;
+
 export default defineConfig({
   testDir: './tests/stress',
   testMatch: /.*\.e2e\.ts$/,
@@ -85,7 +92,7 @@ export default defineConfig({
   // assertions safe by default; the per-test `timeout: 120_000` still bounds
   // total damage. Keep inline `timeout:` overrides for genuinely exceptional
   // waits only (cold-start, provider sync) — not as the default idiom.
-  expect: { timeout: isCI ? 15_000 : 5_000 },
+  expect: { timeout: EXPECT_TIMEOUT_MS },
   // failOnFlakyTests: false globally — retries absorb infra flake. Setting it
   // true (so retry-success still fails the PR) promoted infrastructure noise
   // (WebSocket EPIPE/ECONNRESET, transient CC1 broadcast jitter) to PR-red,
@@ -112,7 +119,16 @@ export default defineConfig({
   // left to Playwright's shared-server default — see LOGICAL_CPUS_PER_WORKER.
   fullyParallel: true,
   workers: isCI ? 4 : resolveWorkerCount(availableParallelism()),
-  reporter: [['html', { open: 'never' }], ['list'], ...(isCI ? [['github'] as const] : [])],
+  reporter: [
+    ['html', { open: 'never' }],
+    ['list'],
+    ...(isCI
+      ? [
+          ['github'] as const,
+          ['json', { outputFile: 'playwright-report-json/results.json' }] as const,
+        ]
+      : []),
+  ],
   use: {
     // `baseURL` is populated by the worker-scoped fixture in
     // `tests/stress/_helpers/fixtures.ts`. Leaving it unset here so the

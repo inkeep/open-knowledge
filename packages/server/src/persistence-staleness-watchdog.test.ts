@@ -1,8 +1,9 @@
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { isPersistenceExcludedDoc } from './cc1-broadcast.ts';
 import { FROZEN_LIFECYCLE_STATUSES } from './conflict-errors.ts';
+import { DocumentDurabilityState } from './document-durability-state.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import {
   createPersistenceStalenessWatchdog,
@@ -22,7 +23,9 @@ interface Rig {
   forceCalls: string[];
   clock: { nowMs: number };
   batchActive: { value: boolean };
-  inFlight: Map<string, string>;
+  inFlight: Set<string>;
+  hangDocs: Set<string>;
+  hangSettlers: Map<string, { resolve: () => void; reject: (err: unknown) => void }>;
   forceBehavior: {
     mode: 'advance-base' | 'no-op' | 'throw';
   };
@@ -43,7 +46,9 @@ function makeRig(overrides: Partial<StalenessWatchdogOptions> = {}): Rig {
   const forceCalls: string[] = [];
   const clock = { nowMs: 100_000 };
   const batchActive = { value: false };
-  const inFlight = new Map<string, string>();
+  const inFlight = new Set<string>();
+  const hangDocs = new Set<string>();
+  const hangSettlers = new Map<string, { resolve: () => void; reject: (err: unknown) => void }>();
   const forceBehavior: Rig['forceBehavior'] = { mode: 'advance-base' };
   const diskReadFault: Rig['diskReadFault'] = { kind: null };
 
@@ -51,6 +56,11 @@ function makeRig(overrides: Partial<StalenessWatchdogOptions> = {}): Rig {
     getLoadedDocuments: () => docs,
     forceStore: async (document, documentName) => {
       forceCalls.push(documentName);
+      if (hangDocs.has(documentName)) {
+        await new Promise<void>((resolve, reject) => {
+          hangSettlers.set(documentName, { resolve, reject });
+        });
+      }
       if (forceBehavior.mode === 'throw') throw new Error('injected store failure');
       if (forceBehavior.mode === 'advance-base') {
         const bytes = document.getText('source').toString();
@@ -70,7 +80,7 @@ function makeRig(overrides: Partial<StalenessWatchdogOptions> = {}): Rig {
     now: () => clock.nowMs,
     getBase: (documentName) => bases.get(documentName),
     isBatchActive: () => batchActive.value,
-    peekInFlight: (documentName) => inFlight.get(documentName),
+    hasInFlight: (documentName) => inFlight.has(documentName),
     msSinceLastUserTx: (doc) => {
       for (const [name, d] of docs) {
         if (d === doc) return txAges.get(name) ?? null;
@@ -90,6 +100,8 @@ function makeRig(overrides: Partial<StalenessWatchdogOptions> = {}): Rig {
     clock,
     batchActive,
     inFlight,
+    hangDocs,
+    hangSettlers,
     forceBehavior,
     diskReadFault,
   };
@@ -307,7 +319,7 @@ describe('exclusions', () => {
 
   test('skips a doc whose flush is currently mid-commit', async () => {
     seedWedgedDoc(rig, 'inflight-doc');
-    rig.inFlight.set('inflight-doc', 'anything');
+    rig.inFlight.add('inflight-doc');
 
     await rig.watchdog.sweep();
 
@@ -499,5 +511,196 @@ describe('retry and suppression discipline', () => {
 
     await rig.watchdog.sweep();
     expect(rig.forceCalls).toEqual(['transient-doc', 'transient-doc']);
+  });
+});
+
+describe('in-flight suppression against the real durability state', () => {
+  test('a fresh record suppresses the sweep and an expired one stops suppressing it', async () => {
+    vi.useFakeTimers();
+    const durabilityState = new DocumentDurabilityState();
+    const local = makeRig({
+      hasInFlight: (documentName) => durabilityState.inFlightFlushCount(documentName) > 0,
+    });
+    try {
+      seedWedgedDoc(local, 'in-flight-doc');
+      durabilityState.beginInFlightFlush('in-flight-doc', 'bytes-never-settled');
+
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual([]);
+
+      vi.advanceTimersByTime(61_000);
+
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['in-flight-doc']);
+      expect(getMetrics().inFlightFlushExpired).toBe(1);
+    } finally {
+      await local.watchdog.dispose();
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('a stalled forced store does not wedge the sweep', () => {
+  test('a store that never settles times out, is suppressed, and later documents still sweep', async () => {
+    const local = makeRig({ forceStoreTimeoutMs: 50 });
+    try {
+      seedWedgedDoc(local, 'a-stalled-doc');
+      seedWedgedDoc(local, 'b-healthy-doc');
+      local.hangDocs.add('a-stalled-doc');
+
+      await local.watchdog.sweep();
+
+      expect(local.forceCalls).toEqual(['a-stalled-doc', 'b-healthy-doc']);
+      expect(getMetrics().persistenceStalenessForceStoreTimeouts).toBe(1);
+      expect(local.bases.get('b-healthy-doc')).toBe('# edited in memory\n');
+
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+
+      expect(local.forceCalls).toEqual(['a-stalled-doc', 'b-healthy-doc']);
+    } finally {
+      await local.watchdog.dispose();
+    }
+  });
+
+  test('a store that times out and then fails is retried once it settles', async () => {
+    const local = makeRig({ forceStoreTimeoutMs: 50 });
+    try {
+      seedWedgedDoc(local, 'late-failing-doc');
+      local.hangDocs.add('late-failing-doc');
+
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['late-failing-doc']);
+
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['late-failing-doc']);
+
+      local.hangDocs.delete('late-failing-doc');
+      local.hangSettlers.get('late-failing-doc')?.reject(new Error('injected late EIO'));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['late-failing-doc', 'late-failing-doc']);
+      expect(getMetrics().persistenceStalenessDetected).toBe(1);
+    } finally {
+      await local.watchdog.dispose();
+    }
+  });
+
+  test('a re-armed document still waits a grace window before it is forced again', async () => {
+    const local = makeRig({ forceStoreTimeoutMs: 50 });
+    try {
+      seedWedgedDoc(local, 'backoff-doc');
+      local.hangDocs.add('backoff-doc');
+
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['backoff-doc']);
+
+      local.hangDocs.delete('backoff-doc');
+      local.hangSettlers.get('backoff-doc')?.reject(new Error('injected late EIO'));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['backoff-doc']);
+
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['backoff-doc', 'backoff-doc']);
+    } finally {
+      await local.watchdog.dispose();
+    }
+  });
+
+  test('a timed-out store that later succeeds without clearing divergence is retried after a grace window', async () => {
+    const local = makeRig({ forceStoreTimeoutMs: 50 });
+    try {
+      local.forceBehavior.mode = 'no-op';
+      seedWedgedDoc(local, 'late-landing-doc');
+      local.hangDocs.add('late-landing-doc');
+
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['late-landing-doc']);
+
+      local.hangDocs.delete('late-landing-doc');
+      local.hangSettlers.get('late-landing-doc')?.resolve();
+      await new Promise((resolve) => setImmediate(resolve));
+
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['late-landing-doc']);
+
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['late-landing-doc', 'late-landing-doc']);
+    } finally {
+      await local.watchdog.dispose();
+    }
+  });
+
+  test('a forceStore that throws synchronously does not abort the sweep and is retried after a grace window', async () => {
+    const syncThrowCalls: string[] = [];
+    const syncThrowingForceStore = (_document: Y.Doc, documentName: string): Promise<void> => {
+      syncThrowCalls.push(documentName);
+      throw new Error('injected synchronous store failure');
+    };
+    const local = makeRig({ forceStore: syncThrowingForceStore });
+    try {
+      const throwingDoc = seedWedgedDoc(local, 'sync-throw-doc');
+      seedWedgedDoc(local, 'later-doc');
+
+      await local.watchdog.sweep();
+
+      expect(syncThrowCalls).toEqual(['sync-throw-doc', 'later-doc']);
+      expect(getMetrics().persistenceStalenessForcedStores).toBe(2);
+      expect(getMetrics().persistenceStalenessForceStoreTimeouts).toBe(0);
+
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+
+      expect(syncThrowCalls).toEqual([
+        'sync-throw-doc',
+        'later-doc',
+        'sync-throw-doc',
+        'later-doc',
+      ]);
+
+      expect(() => syncThrowingForceStore(throwingDoc, 'premise-probe')).toThrow(
+        'injected synchronous store failure',
+      );
+    } finally {
+      await local.watchdog.dispose();
+    }
+  });
+
+  test('a late-settling old store does not clobber a newer attempt carrying the same fingerprint', async () => {
+    const local = makeRig({ forceStoreTimeoutMs: 50 });
+    try {
+      const doc = seedWedgedDoc(local, 'reloaded-doc');
+      local.hangDocs.add('reloaded-doc');
+
+      await local.watchdog.sweep();
+      const settlerA = local.hangSettlers.get('reloaded-doc');
+      expect(local.forceCalls).toEqual(['reloaded-doc']);
+
+      local.docs.delete('reloaded-doc');
+      await local.watchdog.sweep();
+
+      local.docs.set('reloaded-doc', doc);
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['reloaded-doc', 'reloaded-doc']);
+
+      expect(getMetrics().persistenceStalenessForceStoreTimeouts).toBe(2);
+
+      settlerA?.reject(new Error('injected late EIO'));
+      await new Promise((resolve) => setImmediate(resolve));
+
+      local.clock.nowMs += GRACE_MS * 2;
+      await local.watchdog.sweep();
+      expect(local.forceCalls).toEqual(['reloaded-doc', 'reloaded-doc']);
+    } finally {
+      await local.watchdog.dispose();
+    }
   });
 });

@@ -1,10 +1,26 @@
+import remarkGfm from 'remark-gfm';
+import remarkParse from 'remark-parse';
+import { unified } from 'unified';
+import { visit } from 'unist-util-visit';
 import { describe, expect, test } from 'vitest';
 import { getLLMText } from '@/lib/get-llm-text';
 import type { FidelityViolation } from '@/lib/markdown-fidelity.test-helper';
 import { markdownFidelityViolations } from '@/lib/markdown-fidelity.test-helper';
+import { absoluteSiteUrl, SITE_URL } from '@/lib/site';
 import { source } from '@/lib/source';
 
 const pages = source.getPages();
+
+function hrefsIn(markdown: string): string[] {
+  const tree = unified().use(remarkParse).use(remarkGfm).parse(markdown);
+  const urls: string[] = [];
+  visit(tree, (node) => {
+    if (node.type === 'link' || node.type === 'image' || node.type === 'definition') {
+      urls.push(node.url);
+    }
+  });
+  return urls;
+}
 
 describe('every page the real loader hands to the Markdown pipeline', () => {
   test('is a census, so a broken content glob cannot vacuously pass this suite', () => {
@@ -17,6 +33,20 @@ describe('every page the real loader hands to the Markdown pipeline', () => {
       violations.push(...markdownFidelityViolations(page.url, await getLLMText(page)));
     }
     expect(violations.map((violation) => violation.message)).toEqual([]);
+  });
+
+  test('resolves every docs href to a page the loader actually serves', async () => {
+    const pageUrls = new Set(pages.map((page) => absoluteSiteUrl(page.url)));
+    const failures: string[] = [];
+    for (const page of pages) {
+      for (const href of hrefsIn(await getLLMText(page))) {
+        const target = href.split(/[#?]/)[0] ?? href;
+        if (target.startsWith(`${SITE_URL}/docs/`) && !pageUrls.has(target)) {
+          failures.push(`${page.url}: resolved docs href is not a page (${target})`);
+        }
+      }
+    }
+    expect(failures).toEqual([]);
   });
 });
 

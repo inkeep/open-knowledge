@@ -42,12 +42,13 @@ ok migrate notion /path/to/unzipped-export --apply
 ```
 
 <Callout type="info">
-  The desktop app ships the `ok` CLI. The Windows installer and the Linux
-  packages put it on your `PATH` on their own. On macOS it installs to
-  `$HOME/.ok/bin`, and a pre-checked toggle in the first-launch dialog puts it
-  on your `PATH` — if `ok` isn't found, add it from **File → Set up
-  OpenKnowledge integrations…**, then open a new terminal window. If it's
-  still missing, add `$HOME/.ok/bin` to your `PATH` manually.
+  The desktop app ships the `ok` CLI. The Windows installer puts it on your
+  `PATH` on its own. On macOS and Linux it installs to `$HOME/.ok/bin`, and a
+  pre-checked toggle in the first-launch dialog puts it on your `PATH` (on
+  Linux the package's install script also links `/usr/bin/ok` either way). If
+  `ok` isn't found, add it from **File → Set up OpenKnowledge
+  integrations…**, then open a new terminal window. If it's still missing,
+  add `$HOME/.ok/bin` to your `PATH` manually.
 </Callout>
 
 Every transform is **idempotent**, so re-running is safe. See the tables below for a full list of differences between the Notion export and what OpenKnowledge supports.

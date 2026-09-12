@@ -24,7 +24,7 @@ function Host({ content }: { content: object }) {
   }, [portalTarget]);
 
   return createPortal(
-    // biome-ignore lint/plugin/no-unportaled-editor-content: portalled per the H6 contract — this IS the sanctioned createPortal shape, in a test harness with a per-render exclusive target
+    // oxlint-disable-next-line ok/no-unportaled-editor-content -- portalled per the H6 contract — this IS the sanctioned createPortal shape, in a test harness with a per-render exclusive target
     <EditorContent editor={editor} />,
     portalTarget,
   );

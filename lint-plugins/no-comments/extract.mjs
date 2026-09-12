@@ -1,3 +1,5 @@
+import { commentFactory } from './text-position.mjs';
+
 const KEYWORDS_BEFORE_REGEX = new Set([
   'return',
   'typeof',
@@ -54,32 +56,6 @@ const IDENT_START = /[A-Za-z_$]/;
 const IDENT_PART = /[A-Za-z0-9_$]/;
 const DIGIT = /[0-9]/;
 
-function buildLineStarts(source) {
-  const starts = [0];
-  for (let i = 0; i < source.length; i += 1) {
-    if (source.charCodeAt(i) === 10) starts.push(i + 1);
-  }
-  return starts;
-}
-
-function positionAt(lineStarts, offset) {
-  let lo = 0;
-  let hi = lineStarts.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (lineStarts[mid] <= offset) lo = mid;
-    else hi = mid - 1;
-  }
-  return { line: lo + 1, column: offset - lineStarts[lo] + 1 };
-}
-
-function precededByCodeOnLine(source, offset) {
-  for (let i = offset - 1; i >= 0 && source.charCodeAt(i) !== 10; i -= 1) {
-    if (!/\s/.test(source[i])) return true;
-  }
-  return false;
-}
-
 const TYPE_PARAM_SCAN_LIMIT = 300;
 const NEVER_IN_TYPE_PARAMS = /[{};]/;
 
@@ -108,7 +84,7 @@ function looksLikeTypeParameterList(source, afterAngle) {
 
 export function extractComments(source, { jsx = false } = {}) {
   const comments = [];
-  const lineStarts = buildLineStarts(source);
+  const emit = commentFactory(source);
   const stack = [{ kind: 'code', braceDepth: 0, closing: false }];
   let lastTok = '';
   let i = 0;
@@ -119,16 +95,7 @@ export function extractComments(source, { jsx = false } = {}) {
   }
 
   const pushComment = (kind, start, end) => {
-    const { line, column } = positionAt(lineStarts, start);
-    comments.push({
-      kind,
-      text: source.slice(start, end),
-      start,
-      end,
-      line,
-      column,
-      precededByCode: precededByCodeOnLine(source, start),
-    });
+    comments.push(emit(kind, start, end));
   };
 
   const readLineComment = (start) => {

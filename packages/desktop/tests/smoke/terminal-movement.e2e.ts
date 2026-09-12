@@ -452,7 +452,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     test.setTimeout(260_000);
     const s = seed();
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await widenEditorWindow(app, page, 1900, 900);
 
@@ -528,7 +528,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     test.setTimeout(290_000);
     const s = seed({ skipRestoreState: true });
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await widenEditorWindow(app, page, 1900, 900);
 
@@ -633,7 +633,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
   }) => {
     const s = seed();
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
 
     await openTerminal(app, page);

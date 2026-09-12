@@ -1,7 +1,7 @@
 import { installLongtaskObserver, readLongtasks } from '../lib/longtask-observer.ts';
 import { defineScenario } from '../lib/scenario.ts';
 
-const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'PROJECT';
+const BIG_DOC = process.env.OK_PERF_BIG_DOC ?? 'perf-fixtures/big-doc';
 
 const PM_READY_CHARS = 500;
 
@@ -9,7 +9,8 @@ const PM_READY_TIMEOUT_MS = 90_000;
 
 export default defineScenario({
   name: 'cold-load-big-doc',
-  description: 'Cold-load a large doc (default PROJECT.md) and measure TTI + longest task.',
+  description:
+    'Cold-load a large doc (default perf-fixtures/big-doc.md) and measure TTI + longest task.',
 
   async run(ctx) {
     const { page, opts } = ctx;

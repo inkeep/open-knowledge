@@ -1,8 +1,7 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { atomicWriteFile } from '@inkeep/open-knowledge-core/server';
-import { tracedMkdir } from './fs-traced.ts';
-import { TRACED_FS_ADAPTER } from './installed-skills-marker.ts';
+import { tracedAtomicFs, tracedMkdir } from './fs-traced.ts';
 import { createKeyedSerializer } from './keyed-serializer.ts';
 import { getLogger } from './logger.ts';
 
@@ -120,38 +119,41 @@ function parseFolders(base: string, value: unknown): Record<string, FolderExpect
   return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
+function normalizePlacements(base: string, parsed: Record<string, unknown>): SkillPlacementsStore {
+  const skills: Record<string, SkillPlacement[]> = {};
+  if (parsed.skills && typeof parsed.skills === 'object') {
+    for (const [name, list] of Object.entries(parsed.skills)) {
+      if (!Array.isArray(list)) continue;
+      const valid = list.filter((placement) => isPlacement(base, placement));
+      if (valid.length > 0) skills[name] = valid;
+    }
+  }
+  const roots = Array.isArray(parsed.roots)
+    ? parsed.roots.filter(
+        (root): root is string =>
+          typeof root === 'string' && resolveSkillPlacementPath(base, root) !== null,
+      )
+    : [];
+  const preferences = parsePreferences(parsed.preferences);
+  const sources = parseSources(parsed.sources);
+  const folders = parseFolders(base, parsed.folders);
+  return {
+    schema: SCHEMA_VERSION,
+    skills,
+    ...(preferences ? { preferences } : {}),
+    ...(sources ? { sources } : {}),
+    ...(roots.length > 0 ? { roots } : {}),
+    ...(folders ? { folders } : {}),
+  };
+}
+
 export function readSkillPlacementsStore(base: string): SkillPlacementsStore {
   const path = skillPlacementsPath(base);
   if (!existsSync(path)) return emptyStore();
   try {
     const parsed = JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown> | null;
     if (!parsed || typeof parsed !== 'object') return emptyStore();
-
-    const skills: Record<string, SkillPlacement[]> = {};
-    if (parsed.skills && typeof parsed.skills === 'object') {
-      for (const [name, list] of Object.entries(parsed.skills)) {
-        if (!Array.isArray(list)) continue;
-        const valid = list.filter((placement) => isPlacement(base, placement));
-        if (valid.length > 0) skills[name] = valid;
-      }
-    }
-    const roots = Array.isArray(parsed.roots)
-      ? parsed.roots.filter(
-          (root): root is string =>
-            typeof root === 'string' && resolveSkillPlacementPath(base, root) !== null,
-        )
-      : [];
-    const preferences = parsePreferences(parsed.preferences);
-    const sources = parseSources(parsed.sources);
-    const folders = parseFolders(base, parsed.folders);
-    return {
-      schema: SCHEMA_VERSION,
-      skills,
-      ...(preferences ? { preferences } : {}),
-      ...(sources ? { sources } : {}),
-      ...(roots.length > 0 ? { roots } : {}),
-      ...(folders ? { folders } : {}),
-    };
+    return normalizePlacements(base, parsed);
   } catch (err) {
     getLogger('skill-placements').warn(
       { err, path },
@@ -161,6 +163,47 @@ export function readSkillPlacementsStore(base: string): SkillPlacementsStore {
   }
 }
 
+type PlacementsRead =
+  | { ok: true; store: SkillPlacementsStore }
+  | { ok: false; reason: string; cause?: unknown };
+
+function readSkillPlacementsForMutation(base: string): PlacementsRead {
+  const path = skillPlacementsPath(base);
+  if (!existsSync(path)) return { ok: true, store: emptyStore() };
+  let raw: string;
+  try {
+    raw = readFileSync(path, 'utf-8');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ENOENT') return { ok: true, store: emptyStore() };
+    return {
+      ok: false,
+      reason: code ? `it could not be read (${code})` : 'it could not be read',
+      cause: err,
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (err) {
+    return { ok: false, reason: 'it is not valid JSON', cause: err };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { ok: false, reason: 'its contents are not a placements ledger' };
+  }
+  const schema = (parsed as { schema?: unknown }).schema;
+  if (schema !== undefined && schema !== SCHEMA_VERSION) {
+    return {
+      ok: false,
+      reason:
+        typeof schema === 'number'
+          ? `it declares schema ${schema}, which this server does not understand (it writes schema ${SCHEMA_VERSION})`
+          : 'it declares an unsupported schema value',
+    };
+  }
+  return { ok: true, store: normalizePlacements(base, parsed as Record<string, unknown>) };
+}
+
 const serializeLedgerWrite = createKeyedSerializer();
 
 export function mutateSkillPlacementsStore(
@@ -168,7 +211,16 @@ export function mutateSkillPlacementsStore(
   mutate: (store: SkillPlacementsStore) => void,
 ): Promise<void> {
   return serializeLedgerWrite(skillPlacementsPath(base), async () => {
-    const store = readSkillPlacementsStore(base);
+    const read = readSkillPlacementsForMutation(base);
+    if (!read.ok) {
+      const path = skillPlacementsPath(base);
+      getLogger('skill-placements').error(
+        { path, reason: read.reason, err: read.cause },
+        'refusing to rewrite skill-placements.json because it could not be read — rewriting it would replace every placement it records with this one',
+      );
+      throw new Error(`Refusing to rewrite ${path}: ${read.reason}`);
+    }
+    const store = read.store;
     mutate(store);
     await writeSkillPlacementsStore(base, store);
   });
@@ -178,7 +230,7 @@ async function writeSkillPlacementsStore(base: string, store: SkillPlacementsSto
   const path = skillPlacementsPath(base);
   await tracedMkdir(dirname(path), { recursive: true });
   await atomicWriteFile(path, `${JSON.stringify(store, null, 2)}\n`, {
-    fs: TRACED_FS_ADAPTER,
+    fs: tracedAtomicFs,
   });
 }
 

@@ -138,20 +138,20 @@ describe('GET /api/asset', () => {
     expect(res.status).toBe(415);
   });
 
-  test.each([
-    'docs/page.html',
-    'docs/legacy.htm',
-  ])('serves %s inside a sandboxed opaque origin (scripts run, network blocked, isolated from OK)', async (assetPath) => {
-    const res = await fetch(assetUrl(harness.baseURL, assetPath));
+  test.each(['docs/page.html', 'docs/legacy.htm'])(
+    'serves %s inside a sandboxed opaque origin (scripts run, network blocked, isolated from OK)',
+    async (assetPath) => {
+      const res = await fetch(assetUrl(harness.baseURL, assetPath));
 
-    expect(res.status).toBe(200);
-    expect(res.headers.get('content-type')).toMatch(/^text\/html/);
-    expect(res.headers.get('content-disposition')).toBe('inline');
-    expect(res.headers.get('content-security-policy')).toBe(
-      "sandbox allow-scripts; connect-src 'none'",
-    );
-    expect(res.headers.get('x-content-type-options')).toBe('nosniff');
-  });
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toMatch(/^text\/html/);
+      expect(res.headers.get('content-disposition')).toBe('inline');
+      expect(res.headers.get('content-security-policy')).toBe(
+        "sandbox allow-scripts; connect-src 'none'",
+      );
+      expect(res.headers.get('x-content-type-options')).toBe('nosniff');
+    },
+  );
 
   test('rejects traversal and symlink escapes', async () => {
     expect((await fetch(assetUrl(harness.baseURL, '../outside.png'))).status).toBe(400);

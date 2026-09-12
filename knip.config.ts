@@ -1,19 +1,29 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
 import type { KnipConfig } from 'knip';
 
 const fidelityOnlyAppDeps = existsSync('packages/app/tests/fidelity')
   ? []
   : ['fast-check', 'commonmark.json', 'remark-mdx', 'remark-parse'];
 
+const PREDICATE_DIR = 'lint-plugins/no-comments';
+
+const differentialOnlyRootDeps =
+  existsSync(PREDICATE_DIR) &&
+  readdirSync(PREDICATE_DIR).some((entry) => entry.includes('.private.'))
+    ? []
+    : ['yaml'];
+
 export default {
   tags: ['-lintignore'],
   ignore: ['plugins/*/skills/*/scripts/**'],
   ignoreDependencies: [
+    ...differentialOnlyRootDeps,
     'lint-staged', // not sure if it's false positive
     'husky',
     '@lingui/babel-plugin-lingui-macro',
     '@lingui/format-po',
     'micromark',
+    '@typescript/native',
   ],
   ignoreBinaries: [
     'printf',
@@ -43,6 +53,7 @@ export default {
     'packages/desktop/src/shared/ipc-events.ts': ['files'],
     'packages/app/src/components/CloneDialog.tsx': ['files'],
     'docs/content/**/*.mdx': ['files'],
+    'docs/_snippets/**/*.mdx': ['files'],
     'packages/app/src/components/McpConsentDialogBody.tsx': ['duplicates'],
     'packages/core/src/extensions/list.ts': ['duplicates'],
     'packages/desktop/src/main/auto-updater.ts': ['types'],
@@ -52,12 +63,13 @@ export default {
     'packages/app/src/editor/typing-burst-detector.ts': ['exports', 'types'],
     'packages/server/src/bridge-intake.ts': ['types'],
     'packages/core/src/schemas/api.type-tests.ts': ['files'],
+    'packages/core/src/git-pathspec.type-tests.ts': ['files'],
     'packages/server/src/http/request-validation.ts': ['exports', 'types'],
     'packages/server/src/http/error-response.ts': ['exports'],
     'packages/app/src/editor/http-client.ts': ['types'],
     '.{agents,codex}/skills/**': ['files'],
     'lint-plugins/no-comments/__fixtures__/**': ['files'],
-    'biome-plugins/__fixtures__/**': ['files'],
+    'lint-plugins/ok-rules/__fixtures__/**': ['files'],
     'scripts/compute-next-beta.mjs': ['files'],
     'scripts/build-slack-release-payload.mjs': ['files'],
     'scripts/assert-smoke-not-vacuous.mjs': ['files'],
@@ -89,6 +101,9 @@ export default {
     'packages/native-config/index.js': ['unlisted', 'unresolved'],
   },
   workspaces: {
+    '.': {
+      entry: ['test-support/fixtures/no-net-connect/no-net-connect.fixture.ts'],
+    },
     'packages/app': {
       entry: [
         'src/**/*.test.{ts,tsx}',
@@ -125,19 +140,25 @@ export default {
       entry: ['src/**/*.test.{ts,tsx}'],
     },
     'packages/server': {
-      entry: ['src/**/*.test.ts', 'src/parse-worker.ts'],
+      entry: ['src/**/*.test.ts'],
       project: 'src/**',
       ignoreDependencies: ['@types/shell-quote'],
     },
     'packages/cli': {
-      entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
-      ignoreDependencies: [
-        '@inkeep/open-knowledge-app', // the CLI's `build:assets` script runs `cp -r ../app/dist dist/public`
-        'yjs',
-      ],
+      entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts'],
+      ignoreDependencies: ['yjs'],
     },
     'packages/desktop': {
-      entry: ['src/**/*.test.ts', 'scripts/*.mjs', 'tests/**/*.test.ts', 'tests/**/*.test.mjs'],
+      entry: [
+        'src/main/entry.ts',
+        'src/utility/server-entry.ts',
+        'src/utility/pty-host.ts',
+        'src/**/*.test.ts',
+        'src/**/*.typelock.ts',
+        'scripts/*.mjs',
+        'tests/**/*.test.ts',
+        'tests/**/*.test.mjs',
+      ],
       ignoreDependencies: ['@inkeep/open-knowledge-native-config', 'culori'],
       project: 'src/**',
     },

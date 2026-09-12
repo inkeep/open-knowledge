@@ -10,7 +10,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { EDITOR_TARGETS, type EditorId } from '../commands/editors.ts';
+import { buildManagedServerEntry, EDITOR_TARGETS, type EditorId } from '../commands/editors.ts';
 import {
   applyProjectIntegrations,
   DEFAULT_PROJECT_INTEGRATIONS,
@@ -18,6 +18,11 @@ import {
   mcpConfigWriter,
   projectSkillWriter,
 } from './project-integration-writers.ts';
+
+const OWN_MCP_ENTRY = buildManagedServerEntry({
+  mode: 'published',
+  platformName: process.platform,
+});
 
 let tmpRoot: string;
 let projectDir: string;
@@ -164,7 +169,7 @@ describe('projectSkillWriter', () => {
     writeFileSync(
       join(copilotHome, 'mcp-config.json'),
       JSON.stringify({
-        mcpServers: { 'open-knowledge': { command: 'custom-ok', args: ['mcp'] } },
+        mcpServers: { 'open-knowledge': OWN_MCP_ENTRY },
       }),
     );
 
@@ -194,12 +199,98 @@ describe('projectSkillWriter', () => {
     expect(existsSync(outcome.path ?? '')).toBe(false);
   });
 
-  test('does not write the Copilot skill when only shared project MCP wiring exists', () => {
+  test('writes the Copilot skill over the dev launcher OpenKnowledge writes for itself', () => {
+    const savedEntry = process.argv[1];
+    process.argv[1] = join(tmpRoot, 'ok-dev-repo', 'packages', 'cli', 'src', 'cli.ts');
+    try {
+      writeFileSync(
+        join(projectDir, '.mcp.json'),
+        JSON.stringify({
+          mcpServers: { 'open-knowledge': buildManagedServerEntry({ mode: 'dev' }) },
+        }),
+      );
+
+      const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+        home: tmpRoot,
+      });
+
+      expect(outcome.action).toBe('written');
+    } finally {
+      process.argv[1] = savedEntry;
+    }
+  });
+
+  test('writes the Copilot skill over a legacy npx entry that runs our package', () => {
     writeFileSync(
       join(projectDir, '.mcp.json'),
       JSON.stringify({
-        mcpServers: { 'open-knowledge': { command: 'custom-ok', args: ['mcp'] } },
+        mcpServers: {
+          'open-knowledge': {
+            command: 'npx',
+            args: ['-y', '@inkeep/open-knowledge@latest', 'mcp'],
+          },
+        },
       }),
+    );
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('written');
+  });
+
+  test('does not write the Copilot skill over our own entry when the host disabled it', () => {
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({
+        mcpServers: { 'open-knowledge': { ...OWN_MCP_ENTRY, enabled: false } },
+      }),
+    );
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('skipped-prerequisite');
+  });
+
+  test('does not write the Copilot skill for a foreign entry squatting our server name', () => {
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({
+        mcpServers: { 'open-knowledge': { command: 'curl', args: ['https://example.invalid'] } },
+      }),
+    );
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('skipped-prerequisite');
+    expect(existsSync(outcome.path ?? '')).toBe(false);
+  });
+
+  test('writes the Copilot skill when only the shared project .mcp.json carries the entry', () => {
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({
+        mcpServers: { 'open-knowledge': OWN_MCP_ENTRY },
+      }),
+    );
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
+      home: tmpRoot,
+    });
+
+    expect(outcome.action).toBe('written');
+    expect(existsSync(outcome.path ?? '')).toBe(true);
+  });
+
+  test('does not read a .mcp.json without our entry as the Copilot skill prerequisite', () => {
+    writeFileSync(
+      join(projectDir, '.mcp.json'),
+      JSON.stringify({ mcpServers: { other: { command: 'echo', args: ['hi'] } } }),
     );
 
     const outcome = projectSkillWriter.write(EDITOR_TARGETS.copilot, projectDir, {
@@ -374,5 +465,19 @@ describe('applyProjectIntegrations', () => {
     } finally {
       process.argv[1] = originalArgv1;
     }
+  });
+});
+
+describe('a skill folder OpenKnowledge did not write', () => {
+  test('is not replaced: a folder with no SKILL.md fails the write instead of being deleted', () => {
+    const stray = join(projectDir, '.claude', 'skills', 'open-knowledge');
+    mkdirSync(stray, { recursive: true });
+    writeFileSync(join(stray, 'notes.txt'), 'mine');
+
+    const outcome = projectSkillWriter.write(EDITOR_TARGETS.claude, projectDir, {});
+
+    expect(outcome.action).toBe('failed');
+    expect(outcome.error).toContain('no SKILL.md');
+    expect(existsSync(join(stray, 'notes.txt'))).toBe(true);
   });
 });

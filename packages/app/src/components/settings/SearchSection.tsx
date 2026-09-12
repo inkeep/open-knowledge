@@ -1,11 +1,24 @@
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import {
+  type ConfigBinding,
   checkEmbeddingsBaseUrl,
+  classifySemanticProviderError,
   DEFAULT_EMBEDDINGS_BASE_URL,
+  DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS,
+  DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE,
   DEFAULT_EMBEDDINGS_MODEL,
   humanFormat,
+  isSemanticSearchOffered,
   type LocalOpEmbeddingsTestResponse,
+  MAX_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MAX_EMBEDDINGS_MAX_BATCH_CHARS,
+  MAX_EMBEDDINGS_MAX_BATCH_SIZE,
+  MIN_EMBEDDINGS_DOC_TIMEOUT_MS,
+  MIN_EMBEDDINGS_MAX_BATCH_CHARS,
+  MIN_EMBEDDINGS_MAX_BATCH_SIZE,
+  type SemanticIndexStatus,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { ChevronRight } from 'lucide-react';
@@ -23,6 +36,7 @@ import {
   Dialog as DialogRoot,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Field, FieldDescription, FieldLabel } from '@/components/ui/field';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { useSemanticSearchStatus } from '@/hooks/use-semantic-search-status';
@@ -34,6 +48,7 @@ import {
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 const SETTLE_REFRESH_DELAYS_MS = [2500, 5000] as const;
+const PERFORMANCE_CLEAR_HINT_ID = 'settings-search-performance-clear-hint';
 
 export function SearchSection({ transport }: { transport?: EmbeddingsKeyTransport }) {
   const { t } = useLingui();
@@ -55,6 +70,12 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   const configuredBaseUrl =
     projectLocalConfig?.search?.semantic?.baseUrl ?? DEFAULT_EMBEDDINGS_BASE_URL;
   const configuredModel = projectLocalConfig?.search?.semantic?.model ?? DEFAULT_EMBEDDINGS_MODEL;
+  const configuredMaxBatchSize =
+    projectLocalConfig?.search?.semantic?.maxBatchSize ?? DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE;
+  const configuredMaxBatchChars =
+    projectLocalConfig?.search?.semantic?.maxBatchChars ?? DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS;
+  const configuredDocTimeoutMs =
+    projectLocalConfig?.search?.semantic?.docTimeoutMs ?? DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS;
 
   const [baseUrlDraft, setBaseUrlDraft] = useState(configuredBaseUrl);
   const [modelDraft, setModelDraft] = useState(configuredModel);
@@ -63,6 +84,9 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     model: string;
   } | null>(null);
   const [disclosureOverride, setDisclosureOverride] = useState<boolean | null>(null);
+  const [performanceDisclosureOverride, setPerformanceDisclosureOverride] = useState<
+    boolean | null
+  >(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<{
     response: LocalOpEmbeddingsTestResponse | null;
@@ -86,11 +110,21 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
   const hasProviderOverride =
     configuredBaseUrl !== DEFAULT_EMBEDDINGS_BASE_URL ||
     configuredModel !== DEFAULT_EMBEDDINGS_MODEL;
+  const hasTransportOverride =
+    configuredMaxBatchSize !== DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE ||
+    configuredMaxBatchChars !== DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS ||
+    configuredDocTimeoutMs !== DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS;
   const disclosureOpen = disclosureOverride ?? hasProviderOverride;
+  const performanceDisclosureOpen = performanceDisclosureOverride ?? hasTransportOverride;
 
   function scheduleSettleRefresh() {
     for (const timer of settleTimersRef.current) clearTimeout(timer);
     settleTimersRef.current = SETTLE_REFRESH_DELAYS_MS.map((delay) => setTimeout(refresh, delay));
+  }
+
+  function onTuningCommitted() {
+    refresh();
+    scheduleSettleRefresh();
   }
 
   function write(next: boolean): boolean {
@@ -189,7 +223,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     if (problem === null) return null;
     return problem === 'invalid-url'
       ? t`Enter a valid URL (for example https://api.openai.com/v1).`
-      : t`Use an https:// URL — http:// is only allowed for localhost.`;
+      : t`Use an https:// URL — http:// is only allowed for loopback endpoints.`;
   }
 
   function onBaseUrlChange(value: string): void {
@@ -208,14 +242,10 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
     });
   }
 
-  const serverEnabled = status?.enabled ?? false;
   const keyPresent = status?.keyPresent ?? false;
   const keyNotRequired = status?.keyNotRequired ?? false;
   const keyHint = status?.keyHint ?? null;
   const keySource = status?.keySource ?? null;
-  const ready = status?.ready ?? false;
-  const capable = status?.capable ?? false;
-  const embedded = status?.embedded ?? 0;
   const total = status?.total ?? 0;
 
   const endpointHost = hostOf(configuredBaseUrl) ?? configuredBaseUrl;
@@ -269,18 +299,7 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
           />
         </div>
 
-        {enabled ? (
-          <SemanticStatusPanel
-            loaded={status !== null}
-            serverEnabled={serverEnabled}
-            keyPresent={keyPresent}
-            keyNotRequired={keyNotRequired}
-            ready={ready}
-            capable={capable}
-            embedded={embedded}
-            total={total}
-          />
-        ) : null}
+        {enabled ? <SemanticStatusPanel status={status} /> : null}
       </div>
 
       <EmbeddingsKeyField
@@ -413,6 +432,87 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         </CollapsibleContent>
       </Collapsible>
 
+      <Collapsible
+        open={performanceDisclosureOpen}
+        onOpenChange={setPerformanceDisclosureOverride}
+        className="rounded-md border"
+        data-testid="settings-search-performance"
+        data-field="search.semantic.maxBatchSize"
+      >
+        <CollapsibleTrigger
+          className="group flex w-full items-center justify-between gap-2 px-3 py-2 text-sm font-medium hover:bg-muted/50"
+          data-testid="settings-search-performance-trigger"
+        >
+          <Trans>Embedding request settings</Trans>
+          <ChevronRight
+            className="size-4 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+            aria-hidden
+          />
+        </CollapsibleTrigger>
+        <CollapsibleContent
+          className="flex flex-col gap-4 border-t px-3 py-3"
+          onFocusCapture={() => setPerformanceDisclosureOverride(true)}
+        >
+          <p className="text-muted-foreground text-1sm">
+            <Trans>
+              Adjust indexing request size and timeout for slow or memory-constrained embedding
+              servers. Most setups should keep the defaults.
+            </Trans>
+          </p>
+          <p id={PERFORMANCE_CLEAR_HINT_ID} className="text-muted-foreground text-1sm">
+            <Trans>Clear a field to restore its default value.</Trans>
+          </p>
+          <PerformanceTuningField
+            id="settings-search-max-batch-size"
+            label={<Trans>Maximum text chunks per indexing request</Trans>}
+            help={
+              <Trans>
+                Lower this to reduce memory use and work per request. Smaller batches send more
+                requests and may make indexing slower overall.
+              </Trans>
+            }
+            configKey="maxBatchSize"
+            configuredValue={configuredMaxBatchSize}
+            defaultValue={DEFAULT_EMBEDDINGS_MAX_BATCH_SIZE}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+            onCommitted={onTuningCommitted}
+          />
+          <PerformanceTuningField
+            id="settings-search-max-batch-chars"
+            label={<Trans>Character budget per indexing request</Trans>}
+            help={
+              <Trans>
+                Limits the combined text sent in each request. A single larger chunk is sent on its
+                own; documents are not split again.
+              </Trans>
+            }
+            configKey="maxBatchChars"
+            configuredValue={configuredMaxBatchChars}
+            defaultValue={DEFAULT_EMBEDDINGS_MAX_BATCH_CHARS}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+            onCommitted={onTuningCommitted}
+          />
+          <PerformanceTuningField
+            id="settings-search-doc-timeout-seconds"
+            label={<Trans>Indexing request timeout (seconds)</Trans>}
+            help={
+              <Trans>
+                How long OpenKnowledge waits for each embedding request while indexing. Search
+                requests use a fixed 8-second timeout per attempt, unchanged by this setting.
+              </Trans>
+            }
+            configKey="docTimeoutMs"
+            configuredValue={configuredDocTimeoutMs}
+            defaultValue={DEFAULT_EMBEDDINGS_DOC_TIMEOUT_MS}
+            binding={projectLocalBinding}
+            bindingReady={bindingReady}
+            onCommitted={onTuningCommitted}
+          />
+        </CollapsibleContent>
+      </Collapsible>
+
       <EnableSemanticSearchConfirmDialog
         open={confirmOpen}
         onOpenChange={setConfirmOpen}
@@ -425,6 +525,165 @@ export function SearchSection({ transport }: { transport?: EmbeddingsKeyTranspor
         onConfirm={onConfirmProviderChange}
       />
     </section>
+  );
+}
+
+type PerformanceTuningKey = 'maxBatchSize' | 'maxBatchChars' | 'docTimeoutMs';
+
+const PERFORMANCE_TUNING_BOUNDS: Record<
+  PerformanceTuningKey,
+  { min: number; max: number; displayDivisor?: number }
+> = {
+  maxBatchSize: { min: MIN_EMBEDDINGS_MAX_BATCH_SIZE, max: MAX_EMBEDDINGS_MAX_BATCH_SIZE },
+  maxBatchChars: { min: MIN_EMBEDDINGS_MAX_BATCH_CHARS, max: MAX_EMBEDDINGS_MAX_BATCH_CHARS },
+  docTimeoutMs: {
+    min: MIN_EMBEDDINGS_DOC_TIMEOUT_MS,
+    max: MAX_EMBEDDINGS_DOC_TIMEOUT_MS,
+    displayDivisor: 1000,
+  },
+};
+
+interface PerformanceTuningFieldProps {
+  id: string;
+  label: ReactNode;
+  help: ReactNode;
+  configKey: PerformanceTuningKey;
+  configuredValue: number;
+  defaultValue: number;
+  binding: ConfigBinding | null;
+  bindingReady: boolean;
+  onCommitted: () => void;
+}
+
+function PerformanceTuningField({
+  id,
+  label,
+  help,
+  configKey,
+  configuredValue,
+  defaultValue,
+  binding,
+  bindingReady,
+  onCommitted,
+}: PerformanceTuningFieldProps) {
+  const { t, i18n } = useLingui();
+  const bounds = PERFORMANCE_TUNING_BOUNDS[configKey];
+  const displayDivisor = bounds.displayDivisor ?? 1;
+  const displayedConfiguredValue = configuredValue / displayDivisor;
+  const displayedDefaultValue = defaultValue / displayDivisor;
+  const displayedMinimum = bounds.min / displayDivisor;
+  const displayedMaximum = bounds.max / displayDivisor;
+  const [draft, setDraft] = useState(String(displayedConfiguredValue));
+  const [error, setError] = useState<string | null>(null);
+  const [savedValue, setSavedValue] = useState<number | null>(null);
+  const [previousConfiguredValue, setPreviousConfiguredValue] = useState(displayedConfiguredValue);
+
+  if (displayedConfiguredValue !== previousConfiguredValue) {
+    setPreviousConfiguredValue(displayedConfiguredValue);
+    setDraft(String(displayedConfiguredValue));
+    setError(null);
+    if (savedValue !== configuredValue) setSavedValue(null);
+  }
+
+  useEffect(() => {
+    if (savedValue === null) return;
+    const timer = setTimeout(() => setSavedValue(null), 1500);
+    return () => clearTimeout(timer);
+  }, [savedValue]);
+
+  const acceptsFractionalDisplay = displayDivisor > 1;
+
+  function commit(): void {
+    const trimmed = draft.trim();
+    const source = trimmed === '' ? String(displayedDefaultValue) : trimmed;
+    const pattern = acceptsFractionalDisplay ? /^\d+(?:\.\d+)?$/ : /^\d+$/;
+    const displayValue = Number(source);
+    const storedValue = Math.round(displayValue * displayDivisor);
+    if (
+      !pattern.test(source) ||
+      !Number.isSafeInteger(storedValue) ||
+      displayValue < displayedMinimum ||
+      displayValue > displayedMaximum
+    ) {
+      const numberFormat = new Intl.NumberFormat(i18n.locale);
+      const minimum = numberFormat.format(displayedMinimum);
+      const maximum = numberFormat.format(displayedMaximum);
+      setError(
+        acceptsFractionalDisplay
+          ? t`Enter a number of seconds between ${minimum} and ${maximum}.`
+          : t`Enter a whole number between ${minimum} and ${maximum}.`,
+      );
+      return;
+    }
+    if (binding === null) {
+      setError(t`Search settings not yet loaded — try again in a moment`);
+      return;
+    }
+    if (storedValue === configuredValue) {
+      setDraft(String(displayValue));
+      setError(null);
+      return;
+    }
+
+    const semanticPatch: Partial<Record<PerformanceTuningKey, number>> = {
+      [configKey]: storedValue,
+    };
+    const result = binding.patch({ search: { semantic: semanticPatch } });
+    if (!result.ok) {
+      const detail = humanFormat(result.error);
+      const message = t`Failed to update performance setting — ${detail}`;
+      setError(message);
+      toast.error(message);
+      return;
+    }
+    setDraft(String(displayValue));
+    setError(null);
+    setSavedValue(storedValue);
+    onCommitted();
+  }
+
+  const messageId = `${id}-message`;
+  const helpId = `${id}-help`;
+  return (
+    <Field data-invalid={error !== null} data-disabled={!bindingReady} className="gap-2">
+      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+      <Input
+        id={id}
+        value={draft}
+        onChange={(event) => {
+          setDraft(event.currentTarget.value);
+          setSavedValue(null);
+          if (error !== null) setError(null);
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' && !event.nativeEvent.isComposing) {
+            event.preventDefault();
+            commit();
+          }
+        }}
+        disabled={!bindingReady}
+        inputMode={acceptsFractionalDisplay ? 'decimal' : 'numeric'}
+        autoComplete="off"
+        spellCheck={false}
+        aria-invalid={error !== null}
+        aria-describedby={`${helpId} ${messageId} ${PERFORMANCE_CLEAR_HINT_ID}`}
+        data-testid={id}
+        className="h-8 font-mono text-sm"
+      />
+      <FieldDescription id={helpId} className="nth-last-2:mt-0" data-testid={`${id}-help`}>
+        {help}
+      </FieldDescription>
+      <FieldDescription
+        id={messageId}
+        aria-live="polite"
+        aria-atomic="true"
+        className={error ? 'text-1sm text-destructive' : 'text-muted-foreground text-1sm'}
+        data-testid={error ? `${id}-error` : `${id}-saved`}
+      >
+        {error ?? (savedValue !== null ? <Trans>Saved</Trans> : null)}
+      </FieldDescription>
+    </Field>
   );
 }
 
@@ -488,7 +747,7 @@ function EmbeddingsKeyField({
         <p className="text-muted-foreground text-1sm">
           {keyNotRequired ? (
             <Trans>
-              Not required for a localhost endpoint like{' '}
+              Not required for a loopback endpoint like{' '}
               <span className="font-medium">{endpointHost}</span> — most local servers ignore it.
               Add one only if yours needs it.
             </Trans>
@@ -597,27 +856,11 @@ function EmbeddingsKeyField({
 }
 
 interface SemanticStatusPanelProps {
-  loaded: boolean;
-  serverEnabled: boolean;
-  keyPresent: boolean;
-  keyNotRequired: boolean;
-  ready: boolean;
-  capable: boolean;
-  embedded: number;
-  total: number;
+  status: SemanticIndexStatus | null;
 }
 
-function SemanticStatusPanel({
-  loaded,
-  serverEnabled,
-  keyPresent,
-  keyNotRequired,
-  ready,
-  capable,
-  embedded,
-  total,
-}: SemanticStatusPanelProps) {
-  if (!loaded || !serverEnabled) {
+function SemanticStatusPanel({ status }: SemanticStatusPanelProps) {
+  if (!status?.enabled) {
     return (
       <p
         role="status"
@@ -630,7 +873,7 @@ function SemanticStatusPanel({
     );
   }
 
-  if (!keyPresent && !keyNotRequired) {
+  if (!isSemanticSearchOffered(status)) {
     return (
       <div
         role="alert"
@@ -640,6 +883,42 @@ function SemanticStatusPanel({
         <Trans>
           Semantic search is on, but no API key is set — search falls back to keyword matching. Add
           one below.
+        </Trans>
+      </div>
+    );
+  }
+
+  const { ready, capable, embedded, total } = status;
+  const providerFailure = classifySemanticProviderError(status);
+
+  if (providerFailure === 'restart_required') {
+    return (
+      <div
+        role="alert"
+        className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-1sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+        data-testid="settings-search-restart-required"
+      >
+        <Trans>
+          The embeddings provider's vector size kept changing. Semantic search is off until
+          OpenKnowledge restarts.
+        </Trans>
+      </div>
+    );
+  }
+
+  if (providerFailure === 'incapable') {
+    return (
+      <div
+        role="alert"
+        className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-1sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+        data-testid="settings-search-dimensions-mismatch"
+      >
+        <Trans>
+          This endpoint ignored the vector size you configured. Remove{' '}
+          <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
+            search.semantic.dimensions
+          </code>{' '}
+          to use the model's own size.
         </Trans>
       </div>
     );
@@ -747,8 +1026,8 @@ function TestConnectionFailure({
     case 'invalid_endpoint':
       return (
         <Trans>
-          That endpoint can't be used. Enter an https:// URL — http:// is only allowed for
-          localhost.
+          That endpoint can't be used. Enter an https:// URL — http:// is only allowed for loopback
+          endpoints.
         </Trans>
       );
     case 'rate_limit':

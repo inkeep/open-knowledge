@@ -23,7 +23,8 @@ const { createLocalOpState, handleAuthRepos, handleAuthStatus } = await import('
 
 function makeDeps() {
   return {
-    resolveCliArgs: () => ['open-knowledge'],
+    resolveCliInvocation: () => ({ cliArgs: ['open-knowledge'] }),
+    logFailure: vi.fn(),
     state: createLocalOpState(),
   };
 }
@@ -68,6 +69,13 @@ describe('handleAuthStatus — coalescing + concurrency cap', () => {
       authenticated: false,
       host: 'h5',
       error: 'too many concurrent auth status queries',
+    });
+    expect(deps.logFailure).toHaveBeenCalledTimes(1);
+    expect(deps.logFailure).toHaveBeenCalledWith({
+      event: 'ipc.error',
+      channel: 'ok:local-op:auth:status',
+      reason: 'too many concurrent auth status queries',
+      handler: 'handleAuthStatus',
     });
 
     for (const call of statusCalls) {
@@ -121,6 +129,13 @@ describe('handleAuthRepos — coalescing + concurrency cap', () => {
     expect(overflow).toEqual({
       ok: false,
       error: 'too many concurrent auth repos queries',
+    });
+    expect(deps.logFailure).toHaveBeenCalledTimes(1);
+    expect(deps.logFailure).toHaveBeenCalledWith({
+      event: 'ipc.error',
+      channel: 'ok:local-op:auth:repos',
+      reason: 'too many concurrent auth repos queries',
+      handler: 'handleAuthRepos',
     });
 
     for (const call of reposCalls) {

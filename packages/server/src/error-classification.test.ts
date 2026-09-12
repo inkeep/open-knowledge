@@ -513,6 +513,15 @@ describe('classifyGitError', () => {
       expect(r.userFacingCode).toBeNull();
     });
 
+    test('the raw-passthrough message drops literal-pathspec magic but rawStderr keeps it', () => {
+      const raw = "fatal: pathspec ':(literal)notes/plan.md' did not match any files";
+      const r = classifyGitError(mkErr(raw, raw));
+      expect(r.subclass).toBe('unknown-local');
+      expect(r.userFacingCode).toBeNull();
+      expect(r.message).toBe("fatal: pathspec 'notes/plan.md' did not match any files");
+      expect(r.rawStderr).toContain(':(literal)');
+    });
+
     test('userFacingCode is either a bounded enum value or null on every classification', () => {
       const validCodes = new Set([
         'auth-403',

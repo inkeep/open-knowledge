@@ -261,28 +261,29 @@ describe('coalesceChunkInto — Codex legacy warning boundaries', () => {
     expect(coalesceChunkInto(warning, neighbor('contextCompacted'), CODEX_CUSTOM)).toBe(true);
   });
 
-  test.each(
-    fixture.negatives.map((n) => [n.name, n] as const),
-  )('near miss %s folds as if the guard were not there', (_name, negative) => {
-    const agentKey = (negative as { agent?: string }).agent;
-    const declared =
-      agentKey === undefined
-        ? CODEX
-        : (fixture.agents as Record<string, CodexLegacyAgentIdentity>)[agentKey];
+  test.each(fixture.negatives.map((n) => [n.name, n] as const))(
+    'near miss %s folds as if the guard were not there',
+    (_name, negative) => {
+      const agentKey = (negative as { agent?: string }).agent;
+      const declared =
+        agentKey === undefined
+          ? CODEX
+          : (fixture.agents as Record<string, CodexLegacyAgentIdentity>)[agentKey];
 
-    const asDeclared = coalesceChunkInto(
-      nearMiss(negative),
-      neighbor('contextCompacted'),
-      declared,
-    );
-    const guardUnreachable = coalesceChunkInto(
-      nearMiss(negative),
-      neighbor('contextCompacted'),
-      OTHER_AGENT,
-    );
+      const asDeclared = coalesceChunkInto(
+        nearMiss(negative),
+        neighbor('contextCompacted'),
+        declared,
+      );
+      const guardUnreachable = coalesceChunkInto(
+        nearMiss(negative),
+        neighbor('contextCompacted'),
+        OTHER_AGENT,
+      );
 
-    expect(asDeclared).toBe(guardUnreachable);
-  });
+      expect(asDeclared).toBe(guardUnreachable);
+    },
+  );
 
   test('a warning is preserved even when the neighbour would otherwise fold', () => {
     const chrome = neighbor('turnError');

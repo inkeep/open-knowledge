@@ -1,8 +1,14 @@
-// biome-ignore-all lint/plugin/no-raw-html-interactive-element: pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-raw-html-interactive-elementgrit
+// oxlint-disable ok/no-raw-html-interactive-element -- pre-rule backlog — file uses raw <button>/<input>/<textarea> awaiting shadcn migration; tracked at https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-raw-html-interactive-element
 
-// biome-ignore-all lint/plugin/no-physical-direction-utility: pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/biome-plugins/README.md#no-physical-direction-utilitygrit
+// oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
-import type { WorktreeSelectorEntry } from '@inkeep/open-knowledge-core';
+import {
+  assertNeverSemanticQueryOutcome,
+  classifySemanticProviderError,
+  isSemanticSearchOffered,
+  semanticProviderErrorBlocks,
+  type WorktreeSelectorEntry,
+} from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Check, FileText, Folder, GitBranch, Hash, Sparkles } from 'lucide-react';
 import {
@@ -42,7 +48,11 @@ import {
   type WorkspaceEntry,
   type WorkspaceSearchEntry,
 } from '@/components/command-palette-search';
-import { computeSemanticModeView } from '@/components/command-palette-semantic';
+import {
+  COMMAND_PALETTE_SEARCH_TIMEOUT_MS,
+  computeSemanticModeView,
+  type SemanticModeState,
+} from '@/components/command-palette-semantic';
 import {
   fetchDocsForTag,
   fetchTagsList,
@@ -105,7 +115,6 @@ import { RecentItemContextMenu, RecentRemoveButton } from './recent-remove-contr
 
 const BugReportHistoryDialog = lazy(() => import('@/components/BugReportHistoryDialog'));
 
-const COMMAND_PALETTE_SEARCH_TIMEOUT_MS = 3000;
 const COMMAND_PALETTE_SEARCH_WARMING_POLL_MS = 600;
 const COMMAND_PALETTE_SEARCH_MAX_WARMING_POLLS = 20;
 
@@ -266,9 +275,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const [isSemanticMode, setIsSemanticMode] = useState(false);
   const [semanticResults, setSemanticResults] = useState<WorkspaceSearchEntry[]>([]);
   const [semanticFiredQuery, setSemanticFiredQuery] = useState<string | null>(null);
-  const [semanticStatus, setSemanticStatus] = useState<'idle' | 'loading' | 'success' | 'error'>(
-    'idle',
-  );
+  const [semanticStatus, setSemanticStatus] = useState<SemanticModeState['status']>('idle');
   const [projectRecents, setProjectRecents] = useState<RecentProjectEntry[]>([]);
   const [recentNavigation, setRecentNavigation] = useState<OmnibarRecentEntry[]>([]);
   const [createDialogKind, setCreateDialogKind] = useState<'file' | 'folder' | null>(null);
@@ -306,21 +313,36 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
   const workspace = useWorkspace();
   const { states: installStates, refresh: refreshInstallStates } = useInstalledAgents();
   const { dispatch: dispatchHandoff } = useHandoffDispatch();
-  const { status: semanticCapability, refresh: refreshSemanticStatus } = useSemanticSearchStatus({
-    enabled: open,
-  });
-  const semanticCapable =
-    (semanticCapability?.enabled ?? false) && (semanticCapability?.keyPresent ?? false);
+  const {
+    status: semanticCapability,
+    stale: semanticStatusStale,
+    refresh: refreshSemanticStatus,
+  } = useSemanticSearchStatus({ enabled: open, retryUnavailable: false });
+  const semanticSearchOffered = isSemanticSearchOffered(semanticCapability);
   const semanticIndexedCount = semanticCapability?.embedded ?? 0;
   const semanticTotalCount = semanticCapability?.total ?? 0;
-  const semanticIndexing =
-    semanticCapable && semanticTotalCount > 0 && semanticIndexedCount < semanticTotalCount;
+  const classifiedSemanticProbeStatus = classifySemanticProviderError(semanticCapability);
+  const semanticProbeBlockingStatus: SemanticModeState['status'] | null =
+    semanticProviderErrorBlocks(semanticCapability, 'probe') ? classifiedSemanticProbeStatus : null;
+  const presentedSemanticStatus: SemanticModeState['status'] =
+    semanticStatus === 'loading' ? 'loading' : (semanticProbeBlockingStatus ?? semanticStatus);
+  const semanticStatusBlocksPolling =
+    presentedSemanticStatus === 'provider_error' ||
+    presentedSemanticStatus === 'restart_required' ||
+    presentedSemanticStatus === 'incapable';
+  const semanticCoverageIncomplete =
+    !semanticStatusBlocksPolling &&
+    semanticSearchOffered &&
+    semanticTotalCount > 0 &&
+    semanticIndexedCount < semanticTotalCount;
+  const semanticStatusPollNeeded =
+    !semanticStatusBlocksPolling && (semanticStatusStale || semanticCoverageIncomplete);
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshSemanticStatus is behaviorally stable; re-arm only on the gating booleans.
   useEffect(() => {
-    if (!open || !isSemanticMode || !semanticIndexing) return;
+    if (!open || !isSemanticMode || !semanticStatusPollNeeded) return;
     const id = window.setInterval(() => refreshSemanticStatus(), 2500);
     return () => window.clearInterval(id);
-  }, [open, isSemanticMode, semanticIndexing]);
+  }, [open, isSemanticMode, semanticStatusPollNeeded]);
   const handoffInput = buildHandoffInput({ docName: activeDocName, workspace });
 
   const workspaceEntries = buildWorkspaceEntries(
@@ -411,7 +433,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     ? computeSemanticModeView({
         query: semanticQueryText,
         firedQuery: semanticFiredQuery,
-        status: semanticStatus,
+        status: presentedSemanticStatus,
         resultCount: semanticResults.length,
       })
     : null;
@@ -807,11 +829,58 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       semantic: true,
       limit: SEMANTIC_RESULT_LIMIT,
     })
-      .then(({ entries }) => {
+      .then(({ entries, semantic, ready }) => {
         clearThisFire(timeout, controller);
-        setSemanticResults(entries);
-        setSemanticFiredQuery(q);
-        setSemanticStatus('success');
+        refreshSemanticStatus();
+        if (!ready) {
+          setSemanticResults([]);
+          setSemanticFiredQuery(null);
+          setSemanticStatus('idle');
+        } else if (!semantic) {
+          setSemanticResults([]);
+          setSemanticFiredQuery(null);
+          setSemanticStatus('error');
+        } else {
+          switch (semantic.outcome) {
+            case 'warming':
+              setSemanticResults([]);
+              setSemanticFiredQuery(null);
+              setSemanticStatus('idle');
+              break;
+            case 'no_match':
+              setSemanticResults([]);
+              setSemanticFiredQuery(q);
+              setSemanticStatus('success');
+              break;
+            case 'applied':
+              setSemanticResults(entries);
+              setSemanticFiredQuery(q);
+              setSemanticStatus('success');
+              break;
+            case 'restart_required':
+              setSemanticResults([]);
+              setSemanticFiredQuery(q);
+              setSemanticStatus('restart_required');
+              break;
+            case 'incapable':
+              setSemanticResults([]);
+              setSemanticFiredQuery(q);
+              setSemanticStatus('incapable');
+              break;
+            case 'query_too_short':
+              setSemanticResults([]);
+              setSemanticFiredQuery(q);
+              setSemanticStatus('query_too_short');
+              break;
+            case 'provider_error':
+              setSemanticResults([]);
+              setSemanticFiredQuery(null);
+              setSemanticStatus('provider_error');
+              break;
+            default:
+              assertNeverSemanticQueryOutcome(semantic.outcome);
+          }
+        }
       })
       .catch((error: unknown) => {
         clearThisFire(timeout, controller);
@@ -833,7 +902,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
       e.preventDefault();
       e.stopPropagation();
       fireSemanticSearch(semanticView.submit.query);
-    } else if (semanticStatus === 'loading') {
+    } else if (presentedSemanticStatus === 'loading') {
       e.preventDefault();
       e.stopPropagation();
     }
@@ -898,7 +967,7 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
             </span>
           </button>
           {}
-          {semanticCapable ? (
+          {semanticSearchOffered ? (
             <button
               type="button"
               onClick={() => (isSemanticMode ? exitSemanticMode() : enterSemanticMode())}
@@ -923,17 +992,18 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
           {isSemanticMode && semanticView ? (
             <>
               {}
-              {semanticIndexing ? (
+              {semanticCoverageIncomplete ? (
                 <div
-                  className="flex items-center gap-2 px-3 py-2 text-muted-foreground text-xs"
-                  role="status"
-                  aria-live="polite"
-                  data-testid="command-palette-semantic-indexing"
+                  className="px-3 py-2 text-muted-foreground text-xs"
+                  data-testid="command-palette-semantic-coverage"
                 >
-                  <Spinner aria-hidden="true" className="size-3.5" />
+                  <span role="status" aria-live="polite">
+                    <Trans>
+                      Pages indexed: {semanticIndexedCount} of {semanticTotalCount}.
+                    </Trans>
+                  </span>{' '}
                   <Trans>
-                    Indexing your pages — {semanticIndexedCount} of {semanticTotalCount} ready.
-                    Results may be incomplete.
+                    Missing pages are indexed when you search. Search again for fuller results.
                   </Trans>
                 </div>
               ) : null}
@@ -950,7 +1020,11 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                       <>
                         <Sparkles />
                         <span className="min-w-0 flex-1 truncate text-amber-700 dark:text-amber-400">
-                          <Trans>Couldn't reach the embeddings provider — retry</Trans>
+                          {presentedSemanticStatus === 'provider_error' ? (
+                            <Trans>Couldn't reach the embeddings provider — retry</Trans>
+                          ) : (
+                            <Trans>Couldn't complete semantic search — retry</Trans>
+                          )}
                         </span>
                         <CommandShortcut>↵</CommandShortcut>
                       </>
@@ -966,32 +1040,70 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
                   </CommandItem>
                 </CommandGroup>
               ) : null}
+            </>
+          ) : null}
 
-              {semanticView.notice === 'empty' ? (
-                <CommandEmpty data-testid="command-palette-semantic-empty">
-                  <Trans>
-                    Type a query, then press <Kbd aria-label={t`Enter`}>↵</Kbd> to search your pages
-                    by meaning.
-                  </Trans>
-                </CommandEmpty>
-              ) : null}
-              {semanticView.notice === 'searching' ? (
-                <div
-                  className="flex items-center justify-center gap-2 py-6 text-muted-foreground text-sm"
-                  role="status"
-                  aria-live="polite"
-                  data-testid="command-palette-semantic-searching"
-                >
-                  <Spinner aria-hidden="true" className="size-4" />
-                  <Trans>Searching by meaning</Trans>
-                </div>
-              ) : null}
-              {semanticView.notice === 'no-results' ? (
-                <CommandEmpty data-testid="command-palette-semantic-no-results">
-                  <Trans>No pages matched "{semanticQueryText}" by meaning.</Trans>
-                </CommandEmpty>
-              ) : null}
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="command-palette-semantic-notice-region"
+          >
+            {isSemanticMode && semanticView ? (
+              <>
+                {semanticView.notice === 'empty' ? (
+                  <CommandEmpty data-testid="command-palette-semantic-empty">
+                    <Trans>
+                      Type a query, then press <Kbd aria-label={t`Enter`}>↵</Kbd> to search your
+                      pages by meaning.
+                    </Trans>
+                  </CommandEmpty>
+                ) : null}
+                {semanticView.notice === 'searching' ? (
+                  <div
+                    className="flex items-center justify-center gap-2 py-6 text-muted-foreground text-sm"
+                    data-testid="command-palette-semantic-searching"
+                  >
+                    <Spinner aria-hidden="true" className="size-4" />
+                    <Trans>Searching by meaning</Trans>
+                  </div>
+                ) : null}
+                {semanticView.notice === 'no-results' ? (
+                  <CommandEmpty data-testid="command-palette-semantic-no-results">
+                    <Trans>No pages matched "{semanticQueryText}" by meaning.</Trans>
+                  </CommandEmpty>
+                ) : null}
+                {semanticView.notice === 'provider-error' ? (
+                  <CommandEmpty data-testid="command-palette-semantic-provider-error">
+                    <Trans>Couldn't reach the embeddings provider — retry</Trans>
+                  </CommandEmpty>
+                ) : null}
+                {semanticView.notice === 'restart-required' ? (
+                  <CommandEmpty data-testid="command-palette-semantic-restart-required">
+                    <Trans>
+                      The provider's vector size kept changing. Restart OpenKnowledge before
+                      searching by meaning again.
+                    </Trans>
+                  </CommandEmpty>
+                ) : null}
+                {semanticView.notice === 'incapable' ? (
+                  <CommandEmpty data-testid="command-palette-semantic-incapable">
+                    <Trans>
+                      Semantic search isn't available with the current embeddings provider setup.
+                      Check Settings → Search.
+                    </Trans>
+                  </CommandEmpty>
+                ) : null}
+                {semanticView.notice === 'query-too-short' ? (
+                  <CommandEmpty data-testid="command-palette-semantic-query-too-short">
+                    <Trans>Enter at least 3 characters to search by meaning.</Trans>
+                  </CommandEmpty>
+                ) : null}
+              </>
+            ) : null}
+          </div>
 
+          {isSemanticMode && semanticView ? (
+            <>
               {}
               {semanticView.results.show ? (
                 <CommandGroup

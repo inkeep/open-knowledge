@@ -102,7 +102,7 @@ describe('parseStructuredConsoleMessage', () => {
     );
     expect(JSON.stringify(out?.fields)).not.toContain(secret);
     expect(JSON.stringify(out?.fields)).toContain('[REDACTED-GH-PAT]');
-    expect((out?.fields.nested as Record<string, unknown>).inner).toBeTypeOf('string');
+    expect((out?.fields.nested as Record<string, unknown> | undefined)?.inner).toBeTypeOf('string');
     expect(Array.isArray(out?.fields.list)).toBe(true);
   });
 

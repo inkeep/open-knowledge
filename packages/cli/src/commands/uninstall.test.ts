@@ -1,8 +1,9 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { describe, expect, test } from 'vitest';
+import { ensurePiBridge } from './pi-acp-bridge.ts';
 import { detectInstallMethods, resolveRecentDeinitProjects, runUninstall } from './uninstall.ts';
 
 function write(path: string, content: string): void {
@@ -193,6 +194,49 @@ describe('resolveRecentDeinitProjects', () => {
 });
 
 describe('runUninstall', () => {
+  test('uses its explicit environment to clean Pi trust for selected projects', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninstall-pi-'));
+    const cwd = join(home, 'project');
+    const agentDir = join(home, 'custom-pi');
+    const trustPath = join(agentDir, 'trust.json');
+    const defaultTrustPath = join(home, '.pi', 'agent', 'trust.json');
+    const unrelated = join(home, 'other-project');
+    const env = { PI_CODING_AGENT_DIR: agentDir };
+    const defaultTrust = `${JSON.stringify({ [cwd]: true })}\n`;
+    try {
+      write(join(cwd, '.ok', 'config.yml'), 'content:\n  dir: .\n');
+      write(defaultTrustPath, defaultTrust);
+      write(trustPath, JSON.stringify({ [unrelated]: true }));
+      await ensurePiBridge(cwd, { mode: 'published' }, home, env);
+
+      const result = await runUninstall({
+        home,
+        cwd,
+        env,
+        platform: 'darwin',
+        yes: true,
+        deps: {
+          discoverLockDirs: async () => [],
+          resolveRecentProjects: async () => [cwd],
+          detectInstallMethods: () => [],
+          probeClients: async () => null,
+          runRemovalDeps: {
+            clearToken: async () => ({ touched: [] }),
+            clearEmbeddingsKey: async () => ({ touched: [] }),
+            stopServer: async () => ({ stopped: 0, failed: [] }),
+          },
+        },
+      });
+
+      expect(result.status).toBe('done');
+      expect(existsSync(join(cwd, '.pi', 'extensions', 'open-knowledge.ts'))).toBe(false);
+      expect(JSON.parse(readFileSync(trustPath, 'utf8'))).toEqual({ [unrelated]: true });
+      expect(readFileSync(defaultTrustPath, 'utf8')).toBe(defaultTrust);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   test('dry-run renders the plan + binary instructions, removing nothing', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-uninst-cmd-'));
     try {
@@ -421,3 +465,45 @@ describe('runUninstall attached-client disclosure', () => {
     }
   });
 });
+
+test.each([false, true])(
+  'unreadable editor configuration reports incomplete uninstall (json=%s)',
+  async (json) => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-uninstall-incomplete-'));
+    try {
+      write(join(home, '.cursor', 'mcp.json'), '{broken json');
+      const result = await runUninstall({
+        home,
+        cwd: home,
+        platform: 'darwin',
+        yes: true,
+        json,
+        deps: {
+          discoverLockDirs: async () => [],
+          resolveRecentProjects: async () => [],
+          detectInstallMethods: () => [],
+          runRemovalDeps: {
+            clearToken: async () => ({ touched: [] }),
+            clearEmbeddingsKey: async () => ({ touched: [] }),
+          },
+        },
+      });
+      expect(result.status).toBe('failed');
+      expect(result.exitCode).toBe(1);
+      expect(result.runFeedbackAfterReport).toBeUndefined();
+      if (json)
+        expect(
+          JSON.parse(result.message).failed.some((item: { label: string }) =>
+            item.label.includes('Cursor'),
+          ),
+        ).toBe(true);
+      else
+        expect(result.message).not.toContain(
+          "OpenKnowledge's files have been removed from this machine.",
+        );
+      expect(existsSync(join(home, '.cursor', 'mcp.json'))).toBe(true);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  },
+);

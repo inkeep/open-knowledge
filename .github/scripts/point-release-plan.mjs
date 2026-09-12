@@ -32,7 +32,9 @@ export function guardAnchor({ anchorVersion, latestStableTag }) {
     return refuse(
       'anchor-drift',
       `${verdict.reason} Refusing rather than waiting: this lane holds the release-cadence lock, ` +
-        'and the consolidation that clears the drift needs it. Re-run once the anchor is level.',
+        'and the consolidation that clears the drift needs it. Re-run once the anchor is level. ' +
+        'If main-reset itself keeps failing its version guard, dispatch it with anchor_override=true ' +
+        '(RELEASES.md, Recovering anchor drift).',
     );
   }
   return pass(verdict.reason);

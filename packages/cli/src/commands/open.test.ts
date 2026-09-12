@@ -192,15 +192,18 @@ describe('runOpen', () => {
     ['nested ..', 'a/../b'],
     ['leading slash', '/abs/doc'],
     ['backslash', 'a\\b'],
-  ])('rejects names the desktop parser would drop (%s) instead of false success', async (_label, name) => {
-    const { deps, opened, errors } = makeDeps({
-      detectBundlePath: () => '/Applications/OpenKnowledge.app',
-    });
-    const code = await runOpen(name, { project: '/p' }, deps);
-    expect(code).toBe(1);
-    expect(opened).toEqual([]);
-    expect(errors).toHaveLength(1);
-  });
+  ])(
+    'rejects names the desktop parser would drop (%s) instead of false success',
+    async (_label, name) => {
+      const { deps, opened, errors } = makeDeps({
+        detectBundlePath: () => '/Applications/OpenKnowledge.app',
+      });
+      const code = await runOpen(name, { project: '/p' }, deps);
+      expect(code).toBe(1);
+      expect(opened).toEqual([]);
+      expect(errors).toHaveLength(1);
+    },
+  );
 
   test('rejects unsafe folder names too', async () => {
     const { deps, opened, errors } = makeDeps({ resolveBaseUrl: () => 'http://localhost:5173' });

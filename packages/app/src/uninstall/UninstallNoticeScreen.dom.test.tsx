@@ -8,37 +8,11 @@ const CONFIRM_NOTICE: UninstallNoticeSpec = {
   title: 'Uninstall OpenKnowledge?',
   paragraphs: [
     'This removes OpenKnowledge’s settings and integrations from your Mac, but keeps your markdown content and authored skills.',
-    'When cleanup finishes, OpenKnowledge will help you remove the app itself, then quit.',
+    'OpenKnowledge will quit before cleanup starts. A dialog will show the result and help you remove the app itself.',
   ],
   confirmLabel: 'Uninstall OpenKnowledge',
   cancelLabel: 'Cancel',
   danger: true,
-};
-
-const COMPLETION_NOTICE: UninstallNoticeSpec = {
-  title: 'OpenKnowledge files were removed',
-  subtitle: "Almost done. Here's what happened and what's left.",
-  paragraphs: [],
-  checklist: [
-    {
-      label: 'Kept your content',
-      detail: 'Markdown files and authored skills were left untouched.',
-      done: true,
-    },
-    {
-      label: 'Removed OpenKnowledge files',
-      detail: 'Cleaned up, including from 2 projects.',
-      done: true,
-    },
-    {
-      label: 'Move OpenKnowledge.app to the Trash',
-      detail:
-        'Reveal in Finder shows the app and quits OpenKnowledge, so you can drag it to the Trash.',
-      done: false,
-    },
-  ],
-  logRevealLabel: 'Cleanup log',
-  confirmLabel: 'Reveal in Finder',
 };
 
 const FAILURE_NOTICE: UninstallNoticeSpec = {
@@ -87,9 +61,9 @@ describe('uninstall notice screen', () => {
   });
 
   test('confirm holds focus on a single-button notice, where there is nothing else to choose', () => {
-    renderNotice(COMPLETION_NOTICE);
+    renderNotice(FAILURE_NOTICE);
 
-    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reveal in Finder' }));
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Continue' }));
   });
 
   test('Escape cancels a two-button notice', async () => {
@@ -102,40 +76,12 @@ describe('uninstall notice screen', () => {
   });
 
   test('Escape confirms a single-button notice', async () => {
-    const { user, onConfirm, onCancel } = renderNotice(COMPLETION_NOTICE);
+    const { user, onConfirm, onCancel } = renderNotice(FAILURE_NOTICE);
 
     await user.keyboard('{Escape}');
 
     expect(onConfirm).toHaveBeenCalledTimes(1);
     expect(onCancel).not.toHaveBeenCalled();
-  });
-
-  test('recaps what was kept and removed, and what the user still has to do', () => {
-    renderNotice(COMPLETION_NOTICE);
-
-    expect(screen.getByText("Almost done. Here's what happened and what's left.")).toBeDefined();
-    for (const item of COMPLETION_NOTICE.checklist ?? []) {
-      expect(screen.getByText(item.label)).toBeDefined();
-      if (item.detail !== undefined) expect(screen.getByText(item.detail)).toBeDefined();
-    }
-
-    expect(screen.getAllByText('Done.')).toHaveLength(2);
-    expect(screen.getAllByText('To do.')).toHaveLength(1);
-  });
-
-  test('revealing the log leaves the notice up', async () => {
-    const { user, onConfirm, onRevealLog } = renderNotice(COMPLETION_NOTICE);
-
-    await user.click(screen.getByRole('button', { name: 'Cleanup log' }));
-
-    expect(onRevealLog).toHaveBeenCalledTimes(1);
-    expect(onConfirm).not.toHaveBeenCalled();
-  });
-
-  test('offers no log reveal when there is no log to reveal', () => {
-    renderNotice(CONFIRM_NOTICE);
-
-    expect(screen.queryByRole('button', { name: 'Cleanup log' })).toBeNull();
   });
 
   test('shows the cleanup detail and where the full log was written', () => {
@@ -150,4 +96,79 @@ describe('uninstall notice screen', () => {
     expect(log.textContent).toContain('deinit=1 global=0');
     expect(log.getAttribute('tabindex')).toBe('0');
   });
+});
+
+const SUCCESS_NOTICE = {
+  title: 'OpenKnowledge files were removed',
+  subtitle: "Almost done. Here's what happened and what's left.",
+  paragraphs: [],
+  checklist: [
+    {
+      label: 'Kept your content',
+      detail: 'Markdown files and authored skills were left untouched.',
+      done: true,
+    },
+    {
+      label: 'Removed OpenKnowledge files',
+      detail: 'Settings and integrations were cleaned up.',
+      done: true,
+    },
+    {
+      label: 'Move OpenKnowledge.app to the Trash',
+      detail: 'Reveal in Finder shows the app so you can drag it to the Trash.',
+      done: false,
+    },
+  ],
+  logRevealLabel: 'Cleanup log',
+  confirmLabel: 'Reveal in Finder',
+};
+
+test('shows completed cleanup and the remaining app removal step with separate actions', async () => {
+  const { user, onConfirm, onRevealLog } = renderNotice(SUCCESS_NOTICE);
+  expect(screen.getByText(SUCCESS_NOTICE.subtitle)).toBeDefined();
+  const items = screen.getAllByRole('listitem');
+  expect(items).toHaveLength(3);
+  expect(items[0]?.textContent).toContain('Done.');
+  expect(items[1]?.textContent).toContain('Done.');
+  expect(items[2]?.textContent).toContain('To do.');
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Reveal in Finder' }));
+  await user.click(screen.getByRole('button', { name: 'Cleanup log' }));
+  expect(onRevealLog).toHaveBeenCalledTimes(1);
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
+test('dismisses a completion notice on Escape without revealing the app', async () => {
+  const { user, onConfirm, onCancel } = renderNotice(SUCCESS_NOTICE);
+  await user.keyboard('{Escape}');
+  expect(onCancel).toHaveBeenCalledTimes(1);
+  expect(onConfirm).not.toHaveBeenCalled();
+});
+
+test('keeps an inline failure log reachable by keyboard', async () => {
+  const { user } = renderNotice(FAILURE_NOTICE);
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(screen.getByRole('region', { name: 'Cleanup log' }));
+});
+
+test('announces the completion subtitle as part of the modal description', () => {
+  renderNotice(SUCCESS_NOTICE);
+  const dialog = screen.getByRole('alertdialog');
+  const description = dialog
+    .getAttribute('aria-describedby')
+    ?.split(' ')
+    .map((id) => document.getElementById(id)?.textContent)
+    .join(' ');
+  expect(description).toContain(SUCCESS_NOTICE.subtitle);
+  expect(dialog.getAttribute('aria-modal')).toBe('true');
+});
+
+test('wraps focus from the first and last control in the failure notice', async () => {
+  const { user } = renderNotice(FAILURE_NOTICE);
+  const log = screen.getByRole('region', { name: 'Cleanup log' });
+  const confirm = screen.getByRole('button', { name: FAILURE_NOTICE.confirmLabel });
+  confirm.focus();
+  await user.tab();
+  expect(document.activeElement).toBe(log);
+  await user.tab({ shift: true });
+  expect(document.activeElement).toBe(confirm);
 });

@@ -27,6 +27,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       throw new Error('unused');
     },
   }),
+  ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
   ThreadResumeError: class ThreadResumeError extends Error {
     readonly code: string;
     constructor(code: string, message: string) {

@@ -1,6 +1,4 @@
-import type { Dirent } from 'node:fs';
 import { existsSync } from 'node:fs';
-import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { ALL_EDITOR_IDS } from '@inkeep/open-knowledge-core';
 import type { IpcMain, IpcMainInvokeEvent } from 'electron';
@@ -16,6 +14,7 @@ import type {
 import { createHandler } from '../shared/ipc-handler.ts';
 import { type SendableWebContents, sendToRenderer } from '../shared/ipc-send.ts';
 import { getLogger } from './desktop-logger.ts';
+import { walkExceedsCap } from './fs-walk-budget.ts';
 import { logIpcError } from './ipc-log.ts';
 
 export interface ConsentIpcMainLike extends Pick<IpcMain, 'handle' | 'removeHandler'> {}
@@ -210,7 +209,15 @@ export function requestUserConsent(
           });
           return { ok: false, error: 'Probe must come from the dialog window.' };
         }
+        logger.info('probing content dir', { contentDir: request.contentDir });
+        const probeStartedAt = Date.now();
         const result = await runProbe(previewContent, payload.projectDir, request);
+        logger.info('probe complete', {
+          contentDir: request.contentDir,
+          elapsedMs: Date.now() - probeStartedAt,
+          ok: result.ok,
+          truncated: result.ok ? result.truncated : undefined,
+        });
         if (!result.ok) {
           logIpcError({
             event: 'ipc.error',
@@ -309,7 +316,9 @@ export async function runProbe(
   previewContent: PreviewContentFn,
   projectDir: string,
   request: OnboardingProbeContentRequest,
+  options: { readonly walkCapForTests?: number } = {},
 ): Promise<OnboardingProbeContentResult> {
+  const walkCap = options.walkCapForTests ?? PROBE_WALK_CAP;
   if (!isContentDirSafe(request.contentDir)) {
     return { ok: false, error: 'Content directory must be inside the project' };
   }
@@ -322,9 +331,9 @@ export async function runProbe(
   }
   await new Promise<void>((r) => setImmediate(r));
   try {
-    const truncated = await walkExceedsCap(target, PROBE_WALK_CAP);
+    const truncated = await walkExceedsCap(target, walkCap, { descendSymlinks: true });
     if (truncated) {
-      return { ok: true, count: PROBE_WALK_CAP, sample: [], truncated: true };
+      return { ok: true, count: walkCap, sample: [], truncated: true };
     }
     const result = previewContent({
       projectDir,
@@ -338,46 +347,7 @@ export async function runProbe(
       truncated: false,
     };
   } catch (err) {
+    getLogger('consent-dialog').error({ err }, 'probe failed');
     return { ok: false, error: err instanceof Error ? err.message : 'probe failed' };
   }
-}
-
-const CHUNK_YIELD_EVERY = 1000;
-
-export async function walkExceedsCap(
-  root: string,
-  cap: number,
-  options: {
-    readonly readdirImpl?: (path: string) => Promise<readonly Dirent[]>;
-    readonly chunkYieldEvery?: number;
-  } = {},
-): Promise<boolean> {
-  const readdirImpl = options.readdirImpl ?? ((p: string) => readdir(p, { withFileTypes: true }));
-  const chunkYieldEvery = options.chunkYieldEvery ?? CHUNK_YIELD_EVERY;
-  let count = 0;
-  const stack: string[] = [root];
-  while (stack.length > 0) {
-    const dir = stack.pop();
-    if (dir === undefined) break;
-    let entries: readonly Dirent[];
-    try {
-      entries = await readdirImpl(dir);
-    } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code;
-      if (code === 'EMFILE' || code === 'ENFILE') return true;
-      continue;
-    }
-    for (const entry of entries) {
-      count += 1;
-      if (count > cap) return true;
-      if (count % chunkYieldEvery === 0) {
-        await new Promise<void>((r) => setImmediate(r));
-      }
-      if (entry.isDirectory()) {
-        if (entry.name === 'node_modules' || entry.name === '.git') continue;
-        stack.push(join(dir, entry.name));
-      }
-    }
-  }
-  return false;
 }

@@ -39,11 +39,12 @@ const HEADS = [
 const TAILS = [TERMINATOR, '\nx', 'x\n', '  ', 'ab'];
 
 describe('isCodexLegacyWarningUpdate — recorded producer envelopes', () => {
-  test.each(
-    fixture.candidates.map((c) => [c.name, c] as const),
-  )('accepts %s', (_name, candidate) => {
-    expect(isCodexLegacyWarningUpdate(asUpdate(candidate.update), CODEX)).toBe(true);
-  });
+  test.each(fixture.candidates.map((c) => [c.name, c] as const))(
+    'accepts %s',
+    (_name, candidate) => {
+      expect(isCodexLegacyWarningUpdate(asUpdate(candidate.update), CODEX)).toBe(true);
+    },
+  );
 
   test('a config warning with internal detail paragraphs matches as ONE candidate', () => {
     const configWarning = fixture.candidates.find((c) => c.name === 'config-warning-with-details');

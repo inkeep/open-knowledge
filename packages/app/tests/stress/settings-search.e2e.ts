@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { join } from 'node:path';
 import {
   expect,
   SETTINGS_PANEL_TIMEOUT_MS,
@@ -136,5 +139,140 @@ test.describe('Settings search — scope badges + markdownlint rules', () => {
     await page.getByTestId('settings-search-input').fill('MD013');
     await expect(page.getByTestId('settings-search-result-rule:MD013')).toHaveCount(0);
     await expect(page.getByTestId('settings-search-empty')).toBeVisible({ timeout: 5_000 });
+  });
+});
+
+test.describe('Settings → Search — embedding request settings', () => {
+  test('persists overrides and hot-applies request batching without restarting the server', async ({
+    page,
+    api,
+    workerServer,
+  }) => {
+    test.setTimeout(90_000);
+    const requests: string[][] = [];
+    const fakeProvider = createServer((request, response) => {
+      let body = '';
+      request.setEncoding('utf8');
+      request.on('data', (chunk) => {
+        body += chunk;
+      });
+      request.on('end', () => {
+        const input = (JSON.parse(body) as { input?: string[] }).input ?? [];
+        requests.push(input);
+        response.writeHead(200, { 'content-type': 'application/json' });
+        response.end(
+          JSON.stringify({
+            data: input.map((_, index) => ({ index, embedding: [1, 0, 0, 0, 0, 0, 0, 0] })),
+            usage: { total_tokens: input.length },
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => fakeProvider.listen(0, '127.0.0.1', resolve));
+
+    try {
+      const address = fakeProvider.address();
+      if (address === null || typeof address === 'string')
+        throw new Error('fake provider did not bind');
+      const providerBaseUrl = `http://127.0.0.1:${address.port}/v1`;
+      await api.seedDocs(
+        Array.from({ length: 5 }, (_, index) => ({
+          name: `embedding-default-${index}`,
+          markdown: `# Default ${index}\n\nDEFAULT-BATCH-DOCUMENT-${index} unique semantic content.`,
+        })),
+      );
+
+      await openSettings(page);
+      await page.getByTestId('settings-sidebar-item-search').click();
+      await page.getByTestId('settings-search-custom-endpoint-trigger').click();
+      await page.getByTestId('settings-search-base-url').fill(providerBaseUrl);
+      await page.getByTestId('settings-search-base-url').press('Enter');
+      await page.getByTestId('settings-search-provider-confirm-apply').click();
+      await page.getByTestId('settings-search-semantic-toggle').click();
+      await page.getByTestId('settings-search-confirm-enable').click();
+
+      const configPath = join(workerServer.contentDir, '.ok', 'local', 'config.yml');
+      const readConfig = () => (existsSync(configPath) ? readFileSync(configPath, 'utf8') : '');
+      await expect.poll(readConfig, { timeout: 10_000 }).toMatch(/enabled:\s*true/);
+
+      const runSemanticSearch = async (query: string) => {
+        const result = await page.request.post('/api/search', {
+          data: { query, intent: 'full_text', semantic: true },
+        });
+        expect(result.ok()).toBe(true);
+      };
+      await runSemanticSearch('default embedding batch');
+      await expect
+        .poll(
+          () =>
+            requests.some(
+              (input) =>
+                input.length >= 5 && input.some((text) => text.includes('DEFAULT-BATCH-DOCUMENT')),
+            ),
+          { timeout: 20_000 },
+        )
+        .toBe(true);
+
+      const readEmbeddedCount = async () => {
+        const status = await page.request.get('/api/semantic-status');
+        expect(status.ok()).toBe(true);
+        return ((await status.json()) as { embedded: number }).embedded;
+      };
+      await expect.poll(readEmbeddedCount, { timeout: 10_000 }).toBeGreaterThanOrEqual(5);
+      const initialEmbeddedCount = await readEmbeddedCount();
+      requests.length = 0;
+
+      await page.getByTestId('settings-search-performance-trigger').click();
+      for (const [testId, value] of [
+        ['settings-search-max-batch-size', '2'],
+        ['settings-search-max-batch-chars', '16000'],
+        ['settings-search-doc-timeout-seconds', '120'],
+      ] as const) {
+        const input = page.getByTestId(testId);
+        await input.fill(value);
+        await input.press('Enter');
+      }
+
+      await expect
+        .poll(readConfig, { timeout: 10_000 })
+        .toMatch(/maxBatchSize:\s*2[\s\S]*maxBatchChars:\s*16000[\s\S]*docTimeoutMs:\s*120000/);
+      expect(await readEmbeddedCount()).toBe(initialEmbeddedCount);
+
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('settings-dialog')).toBeHidden();
+      await openSettings(page);
+      await page.getByTestId('settings-sidebar-item-search').click();
+      await expect(page.getByTestId('settings-search-max-batch-size')).toHaveValue('2');
+      await expect(page.getByTestId('settings-search-max-batch-chars')).toHaveValue('16000');
+      await expect(page.getByTestId('settings-search-doc-timeout-seconds')).toHaveValue('120');
+
+      for (let index = 0; index < 5; index += 1) {
+        const name = `embedding-retuned-${index}`;
+        await api.createPage(`${name}.md`);
+        await api.replaceDoc(
+          name,
+          `# Retuned ${index}\n\nRETUNED-BATCH-DOCUMENT-${index} unique semantic content.`,
+        );
+      }
+      await runSemanticSearch('retuned embedding batch');
+      await expect
+        .poll(
+          () => {
+            const retuned = requests.filter((input) =>
+              input.some((text) => text.includes('RETUNED-BATCH-DOCUMENT')),
+            );
+            return retuned.length >= 3 && retuned.every((input) => input.length <= 2);
+          },
+          { timeout: 30_000 },
+        )
+        .toBe(true);
+
+      await expect.poll(readEmbeddedCount, { timeout: 10_000 }).toBe(initialEmbeddedCount + 5);
+      expect(requests.flat().some((input) => input.includes('DEFAULT-BATCH-DOCUMENT'))).toBe(false);
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        fakeProvider.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
 });

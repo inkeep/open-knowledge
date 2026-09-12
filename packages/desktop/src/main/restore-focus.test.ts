@@ -74,12 +74,12 @@ describe('shouldRevealInactiveNow', () => {
     { restoreInProgress: true, appHasEverBeenActive: false, appIsActive: true, expected: false },
     { restoreInProgress: true, appHasEverBeenActive: true, appIsActive: false, expected: true },
     { restoreInProgress: true, appHasEverBeenActive: true, appIsActive: true, expected: false },
-  ])('restore=$restoreInProgress everActive=$appHasEverBeenActive active=$appIsActive → $expected', ({
-    expected,
-    ...state
-  }) => {
-    expect(shouldRevealInactiveNow(state)).toBe(expected);
-  });
+  ])(
+    'restore=$restoreInProgress everActive=$appHasEverBeenActive active=$appIsActive → $expected',
+    ({ expected, ...state }) => {
+      expect(shouldRevealInactiveNow(state)).toBe(expected);
+    },
+  );
 
   test('a restore that has never been frontmost reveals normally, not quietly', () => {
     expect(

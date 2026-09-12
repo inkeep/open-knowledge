@@ -1,6 +1,7 @@
 export interface SidebarSubsection {
   id: string;
   label: string;
+  keywords?: string[];
   anchor: string;
 }
 
@@ -8,10 +9,11 @@ export interface SidebarItem {
   id: string;
   label: string;
   subsections?: SidebarSubsection[];
+  keywords?: string[];
 }
 
 export interface SidebarGroup {
-  id: 'user' | 'project' | 'plugins' | 'integrations';
+  id: 'agents' | 'user' | 'project' | 'plugins' | 'integrations';
   label: string;
   enabled: boolean;
   items: SidebarItem[];

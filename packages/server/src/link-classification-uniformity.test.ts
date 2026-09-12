@@ -1,30 +1,6 @@
 /**
- * Cross-plane link-classification uniformity.
- *
- * Every authored link occurrence must have exactly ONE canonical
- * classification — `{targetKind, resolvedTarget, status, reason,
- * resolutionMethod}` — computed once against the complete inventory
- * (documents AND files) over the complete form set (wiki, inline, reference,
- * html-img), and consumed verbatim by every reporting surface.
- *
- * Each classification plane already has its own unit tests and each one passes.
- * That is precisely the gap this file closes: the planes are only ever exercised
- * in isolation, so a disagreement between them is invisible until they are
- * COMPARED over the same document and the same inventory. `link-syntax.ts` cites
- * precedent #56 and is pinned by divergence tests for *recognition*; this is the
- * equivalent pin for *classification*.
- *
- * The two planes under comparison:
- *
- * - **A — document graph** (`backlink-index.ts`): feeds Links ▸ Outgoing and the
- *   Problems rows that carry `linkTarget`.
- * - **B — local-target assessment** (`local-target-assessment.ts`): feeds
- *   Links ▸ Local files and the Problems rows that carry `localTarget`.
- *
- * The inventory below is a boundary fake, not a mock of either plane: both
- * planes run their real production classifiers over it, and the assertions check
- * what those classifiers conclude. A fake reporting the wrong membership would
- * fail these tests rather than hide a bug.
+ * `link-syntax.ts` cites precedent #56 and is pinned by divergence tests for *recognition*; this is
+ * the equivalent pin for *classification*.
  */
 
 import { describe, expect, test } from 'vitest';

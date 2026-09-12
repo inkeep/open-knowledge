@@ -9,6 +9,7 @@ import {
   type EditorId,
   PROJECT_SKILL_EDITOR_IDS,
   RENAMED_PACK_SKILLS,
+  USER_SKILL_EDITOR_IDS,
 } from '@inkeep/open-knowledge-core';
 import type { SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { parse as parseYaml } from 'yaml';
@@ -22,8 +23,8 @@ import {
 import { isInternalBundleSkillName } from './skill-bundles.ts';
 import { inspectSkillPathEntry } from './skill-path-entry.ts';
 
-export function resolvedHosts(hosts: readonly string[]): EditorId[] {
-  const valid = PROJECT_SKILL_EDITOR_IDS as readonly string[];
+export function resolvedHosts(hosts: readonly string[], scope: 'project' | 'global'): EditorId[] {
+  const valid = skillProjectionEditorIds(scope) as readonly string[];
   return hosts.filter((h): h is EditorId => valid.includes(h));
 }
 
@@ -132,6 +133,10 @@ export function resolveSkillTargets(cwd: string, explicit?: readonly string[]): 
 export type SkillProjectionRoots = Record<EditorId, string | null>;
 export function skillProjectionRoots(scope: 'project' | 'global'): SkillProjectionRoots {
   return scope === 'global' ? EDITOR_USER_SKILL_ROOT : EDITOR_PROJECT_SKILL_ROOT;
+}
+
+export function skillProjectionEditorIds(scope: 'project' | 'global'): readonly EditorId[] {
+  return scope === 'global' ? USER_SKILL_EDITOR_IDS : PROJECT_SKILL_EDITOR_IDS;
 }
 
 export function skillHostDir(
@@ -407,15 +412,15 @@ export function relocateInPlaceCanonical(opts: {
   return { ok: true, newAbs: dest };
 }
 
-const ALL_TARGET_HOSTS: readonly SkillHostId[] = [
-  'agents',
-  ...(PROJECT_SKILL_EDITOR_IDS as readonly EditorId[]),
-];
+function targetHostsFor(roots: SkillProjectionRoots): readonly SkillHostId[] {
+  const scope = roots === EDITOR_USER_SKILL_ROOT ? 'global' : 'project';
+  return ['agents', ...(skillProjectionEditorIds(scope) as readonly SkillHostId[])];
+}
 
 export function hostSlotPaths(cwd: string, name: string, roots: SkillProjectionRoots): string[] {
-  return ALL_TARGET_HOSTS.map((host) => skillTargetDir(cwd, host, name, roots)).filter(
-    (p): p is string => p !== null,
-  );
+  return targetHostsFor(roots)
+    .map((host) => skillTargetDir(cwd, host, name, roots))
+    .filter((p): p is string => p !== null);
 }
 
 export function repointSiblingLinks(opts: {

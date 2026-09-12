@@ -219,6 +219,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'telemetry.localSink.spans.maxBytes',
       'validation.fileTreeIndicators',
       'validation.links',
+      'validation.suppressLogLinkAdvisories',
     ]);
   });
 
@@ -244,7 +245,10 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'linkPreviews.enabled',
       'search.semantic.baseUrl',
       'search.semantic.dimensions',
+      'search.semantic.docTimeoutMs',
       'search.semantic.enabled',
+      'search.semantic.maxBatchChars',
+      'search.semantic.maxBatchSize',
       'search.semantic.model',
       'search.semantic.similarityFloor',
       'server.allowExternal',

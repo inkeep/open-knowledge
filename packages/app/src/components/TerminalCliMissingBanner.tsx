@@ -18,6 +18,12 @@ export function TerminalCliMissingBanner({
   const { t } = useLingui();
   const { bin, displayName, docsUrl } = TERMINAL_CLIS[cli];
 
+  const message =
+    cli === 'claude'
+      ? t`Claude Code (claude) isn't installed or on your PATH.`
+      : t`${displayName} (${bin}) isn't installed or on your PATH.`;
+  const actionLabel = cli === 'claude' ? t`Get Claude Code` : t`Get ${displayName}`;
+
   return (
     <TerminalNoticeBanner
       testId="terminal-cli-missing-banner"
@@ -29,11 +35,11 @@ export function TerminalCliMissingBanner({
           className="shrink-0"
           onClick={() => void bridge.shell.openExternal(docsUrl)}
         >
-          {t`Get ${displayName}`}
+          {actionLabel}
         </Button>
       }
     >
-      {t`${displayName} (${bin}) isn't installed or on your PATH.`}
+      {message}
     </TerminalNoticeBanner>
   );
 }

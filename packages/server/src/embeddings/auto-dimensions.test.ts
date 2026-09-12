@@ -5,7 +5,8 @@ import {
   createWorkspaceSearchDocument,
   type WorkspaceSearchDocument,
 } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { getLogger } from '../logger.ts';
 import { createOpenAiEmbedder } from './embedder.ts';
 import {
   createFakeEmbeddingsFetch,
@@ -131,21 +132,41 @@ describe('auto-detected embedding dimensions', () => {
   });
 
   test('a query-side size change recovers even when no document changed', async () => {
-    const { service } = makeService({ dims: 1024, driftDims: 1536, driftAfterRequests: 1 });
-    await service.embedCorpus(corpus);
-    expect(service.getStatus().embeddedCount).toBe(corpus.length);
+    const info = vi.spyOn(getLogger('embeddings'), 'info');
+    const warn = vi.spyOn(getLogger('embeddings'), 'warn');
+    try {
+      const { service } = makeService({ dims: 1024, driftDims: 1536, driftAfterRequests: 1 });
+      await service.embedCorpus(corpus);
+      expect(service.getStatus().embeddedCount).toBe(corpus.length);
 
-    expect(await service.queryScores('session credentials', corpus)).toBeNull();
-    expect(service.getStatus().ready).toBe(false);
+      expect(await service.queryScores('session credentials', corpus)).toBeNull();
+      expect(service.getStatus().ready).toBe(false);
+      expect(info).toHaveBeenCalledWith(
+        {
+          reason: 'dimensions',
+          retainedInMemoryDocumentCount: 0,
+          unloadedInMemoryDocumentCount: corpus.length,
+        },
+        '[embeddings] resetting embedder',
+      );
+      expect(warn).toHaveBeenCalledWith(
+        { expected: 1024, got: 1536, phase: 'query', recovery: 'recovered' },
+        '[embeddings] provider vector length changed — discarding cached vectors and re-embedding',
+      );
 
-    await service.embedCorpus(corpus);
-    const scores = await service.queryScores('session credentials', corpus);
-    expect(scores?.size).toBe(corpus.length);
-    expect(readManifest().dims).toBe(1536);
+      await service.embedCorpus(corpus);
+      const scores = await service.queryScores('session credentials', corpus);
+      expect(scores?.size).toBe(corpus.length);
+      expect(readManifest().dims).toBe(1536);
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   test('survives exactly MAX_DIMS_DRIFT_RESETS size changes, then gives up', async () => {
     expect(MAX_DIMS_DRIFT_RESETS).toBe(2);
+    const error = vi.spyOn(getLogger('embeddings'), 'error');
 
     let servedDims = 1024;
     const requests: string[][] = [];
@@ -195,19 +216,33 @@ describe('auto-detected embedding dimensions', () => {
 
     servedDims = servedDims === 1024 ? 1536 : 1024;
     await service.embedCorpus(nextCorpus());
-    expect(service.getStatus().capable).toBe(false);
+    expect(service.getStatus()).toMatchObject({
+      capable: false,
+      providerError: true,
+      providerErrorReason: 'dimensions',
+    });
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'corpus', recovery: 'drift_exhausted' }),
+      '[embeddings] provider vector length keeps changing — disabling semantic search until restart',
+    );
 
     const spent = requests.length;
     await service.embedCorpus(nextCorpus());
     expect(await service.queryScores('session credentials', corpus)).toBeNull();
     expect(requests.length).toBe(spent);
 
-    service.applyConfig({ enabled: true, providerFingerprint: `${BASE_URL}|other|auto` });
+    service.applyConfig({
+      enabled: true,
+      providerFingerprint: `${BASE_URL}|other|auto`,
+      transportFingerprint: '',
+      maxBatchSize: 96,
+    });
     await service.embedCorpus(nextCorpus());
     await service.embedCorpus(nextCorpus());
     expect(requests.length).toBeGreaterThan(spent);
     expect(service.getStatus().capable).toBe(true);
     expect(service.getStatus().embeddedCount).toBe(corpus.length);
+    error.mockRestore();
   });
 
   test('changing the model resets coverage to zero, then refills at the new size', async () => {
@@ -218,6 +253,8 @@ describe('auto-detected embedding dimensions', () => {
     first.service.applyConfig({
       enabled: true,
       providerFingerprint: `${BASE_URL}|another-model|auto`,
+      transportFingerprint: '',
+      maxBatchSize: 96,
     });
     expect(first.service.getStatus().embeddedCount).toBe(0);
 
@@ -228,6 +265,7 @@ describe('auto-detected embedding dimensions', () => {
   });
 
   test('an explicitly configured size that the server ignores fails loudly, no rebuild', async () => {
+    const error = vi.spyOn(getLogger('embeddings'), 'error');
     const { service, requests } = makeService(
       { dims: 1024, ignoreDimensionsParam: true },
       { dimensions: 1536 },
@@ -235,7 +273,20 @@ describe('auto-detected embedding dimensions', () => {
     await service.embedCorpus(corpus);
 
     expect(requests[0]?.dimensions).toBe(1536);
-    expect(service.getStatus().embeddedCount).toBe(0);
+    expect(service.getStatus()).toMatchObject({
+      capable: false,
+      providerError: true,
+      providerErrorReason: 'configured_dimensions',
+      embeddedCount: 0,
+    });
     expect(requests).toHaveLength(1);
+    expect(error).toHaveBeenCalledWith(
+      expect.objectContaining({ phase: 'corpus', recovery: 'configured_mismatch' }),
+      '[embeddings] provider ignored the configured vector size — check search.semantic.dimensions',
+    );
+
+    await service.embedCorpus(corpus.map((item) => doc(item.path, `${item.content} updated`, 2)));
+    expect(requests).toHaveLength(1);
+    error.mockRestore();
   });
 });

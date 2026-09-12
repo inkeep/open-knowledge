@@ -127,21 +127,21 @@ export interface RepairSkillsContext {
   confirmLegacyCleanup?: (plan: LegacyFanoutSweepPlan) => Promise<boolean>;
 }
 
-export type ProjectSkillOutcome =
+type ProjectSkillOutcome =
   | 'no-token'
   | 'present'
   | 'created'
   | 'failed'
   | 'skipped-global-collision';
-export type UserSkillCentralOutcome = 'written' | 'skipped-present' | 'failed';
-export type UserSkillHostOutcome =
+type UserSkillCentralOutcome = 'written' | 'skipped-present' | 'failed';
+type UserSkillHostOutcome =
   | 'written'
   | 'skipped-present'
   | 'skipped-host-absent'
   | 'skipped-collapsed-with-central'
   | 'failed';
 
-export interface ProjectSkillEntry {
+interface ProjectSkillEntry {
   editorId: string;
   hostDir: string;
   path: string;
@@ -149,7 +149,7 @@ export interface ProjectSkillEntry {
   error?: string;
 }
 
-export type UserSkillEntry =
+type UserSkillEntry =
   | {
       kind: 'central';
       path: string;
@@ -165,11 +165,11 @@ export type UserSkillEntry =
       error?: string;
     };
 
-export type ProjectSweepResult =
+type ProjectSweepResult =
   | { outcome: 'done'; entries: ProjectSkillEntry[] }
   | { outcome: 'skipped'; reason: string };
 
-export type UserSweepResult =
+type UserSweepResult =
   | { outcome: 'done'; version: string; entries: UserSkillEntry[] }
   | { outcome: 'skipped'; reason: string };
 

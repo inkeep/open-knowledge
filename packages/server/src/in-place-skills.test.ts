@@ -33,14 +33,14 @@ describe('resolveDefaultSkillHomeRel', () => {
     rmSync(base, { recursive: true, force: true });
   });
 
-  test.each([
-    'project',
-    'global',
-  ] as const)('returns no %s home and creates nothing when no host root exists', (scope) => {
-    expect(resolveDefaultSkillHomeRel(base, scope)).toBeNull();
-    expect(existsSync(join(base, '.claude'))).toBe(false);
-    expect(existsSync(join(base, '.agents'))).toBe(false);
-  });
+  test.each(['project', 'global'] as const)(
+    'returns no %s home and creates nothing when no host root exists',
+    (scope) => {
+      expect(resolveDefaultSkillHomeRel(base, scope)).toBeNull();
+      expect(existsSync(join(base, '.claude'))).toBe(false);
+      expect(existsSync(join(base, '.agents'))).toBe(false);
+    },
+  );
 
   test('keeps existing hub and concrete roots selectable by precedence', () => {
     mkdirSync(join(base, '.codex'), { recursive: true });

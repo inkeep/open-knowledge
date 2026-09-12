@@ -47,6 +47,7 @@ import { mark } from '@/lib/perf';
 import { wrapExtensionsWithTiming } from '@/lib/perf/cold-mount-instrumentation';
 import { useIdentity } from '../presence/identity';
 import { registerEditor, unregisterEditor } from './active-editor';
+import { changedRangeIsOnScreen } from './agent-follow-scroll';
 import { applyLintFixes } from './apply-lint-fix.ts';
 import { getAwarenessHeartbeat } from './awareness-heartbeat-runtime';
 import { buildAwarenessUser } from './awareness-user';
@@ -101,6 +102,7 @@ import {
 } from './source-editor-navigation';
 import { TableCellHandles } from './table-controls/TableCellHandles';
 import { attachTypingBurstDetector } from './typing-burst-detector';
+import { editorVisibleBand } from './utils/editor-visible-region';
 import { getEditorView } from './utils/get-editor-view';
 import { getProjectionMarkdownManager } from './utils/md-singleton';
 
@@ -335,34 +337,9 @@ export function buildPatternDConstructorOptions(
 }
 
 /**
- * TiptapEditor — Pattern D (Suspense + `use(promise)`) mount path. The only
- * editor mount path in the app; precedent #18(d) substrate is the production
- * default since the rollout retirement.
- *
- * Editor reference is stable from render 1: `use(mountTiptapEditorPromise(...))`
- * suspends until the editor is constructed AND mounted (mount-promise.ts owns
- * `await scheduler.yield()` → `new Editor({element: null})` →
- * `await scheduler.yield()` → `editor.mount(transient)`).
- * `<EditorContent>` only ever sees a fully-mounted editor — no null-state hop,
- * no `EditorContentWithKey` random-key cascade.
- *
- * Suspense fallback: the parent `EditorActivityPool` already wraps with
- * `<Suspense fallback={<EditorSkeleton/>}>` (same skeleton precedent #18(d)
- * source-mode-defer uses); user sees one atomic skeleton-to-editor transition.
- *
- * Mount failure: promise rejects → `use()` throws → `DocumentErrorBoundary`
- * catches → "Try again" recycles cache.
- *
- * Cancellation: `parkTiptapEditor(entry)` on unmount → mount-promise cache is
- * preserved across V2-admit park (so warm reopen returns the same resolved
- * promise reference and `use()` short-circuits without Suspense). On
- * V2-refuse park or kill-switch, `invalidateMountPromise(docName)` aborts
- * any in-flight construction via AbortController.
- *
- * StrictMode: editor reference is stable across the dev-mode double-invoke —
- * the V2 cache HIT path on remount returns the same parked entry, and
- * mount-promise's module-level cache returns the same promise reference within
- * a single mount lifecycle.
+ * The only editor mount path in the app: Suspense plus `use(mountTiptapEditorPromise(...))` per
+ * precedent #18(d), so `<EditorContent>` only ever sees a fully mounted editor and a mount
+ * failure surfaces through `DocumentErrorBoundary`.
  */
 export const TiptapEditor: FC<TiptapEditorProps> = ({
   provider,
@@ -839,25 +816,41 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       if (!loadFollowFilePref()) return;
       if (document.visibilityState !== 'visible') return;
       if (view.hasFocus()) return;
-      const scrollToChange = (): void => {
-        const sv = liveView();
-        if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
-        if (isScrollRestoreSuppressed(docName)) return;
+      const elementAtPos = (sv: PMEditorView, pos: number): HTMLElement | null => {
         try {
-          const docSize = sv.state.doc.content.size;
-          const pos = Math.max(0, Math.min(Math.floor((from + to) / 2), docSize - 1));
           const domRef = sv.domAtPos(pos);
           const node = domRef.node;
           const raw =
             node.nodeType === Node.TEXT_NODE
               ? node.parentElement
               : (node.childNodes[domRef.offset] ?? node);
-          const el = raw instanceof HTMLElement ? raw : (raw?.parentElement ?? null);
-          if (el == null) return;
-          const rect = el.getBoundingClientRect();
-          if (rect.top >= 0 && rect.bottom <= window.innerHeight) return;
-          el.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        } catch {}
+          return raw instanceof HTMLElement ? raw : (raw?.parentElement ?? null);
+        } catch {
+          return null;
+        }
+      };
+      const scrollToChange = (): void => {
+        const sv = liveView();
+        if (sv == null || sv.hasFocus() || document.visibilityState !== 'visible') return;
+        if (isScrollRestoreSuppressed(docName)) return;
+        const docSize = sv.state.doc.content.size;
+        const clamp = (pos: number): number => Math.max(0, Math.min(pos, docSize - 1));
+        let start: { top: number; bottom: number };
+        let end: { top: number; bottom: number };
+        try {
+          start = sv.coordsAtPos(clamp(from));
+          end = sv.coordsAtPos(clamp(to));
+        } catch {
+          return;
+        }
+        const range = {
+          top: Math.min(start.top, end.top),
+          bottom: Math.max(start.bottom, end.bottom),
+        };
+        if (changedRangeIsOnScreen(range, editorVisibleBand(editor))) return;
+        const target = elementAtPos(sv, clamp(Math.floor((from + to) / 2)));
+        if (target === null) return;
+        target.scrollIntoView({ block: 'center', behavior: 'smooth' });
       };
       requestAnimationFrame(scrollToChange);
       followUpTimers.push(
@@ -1159,7 +1152,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       {}
       <div ref={portalSlotRef} style={{ display: 'contents' }} />
       {createPortal(
-        // biome-ignore lint/plugin/no-unportaled-editor-content: canonical portaled site — H6 fix per PRECEDENTS.md #44
+        // oxlint-disable-next-line ok/no-unportaled-editor-content -- canonical portaled site — H6 fix per PRECEDENTS.md #44
         <EditorContent
           key={editorContentRevision}
           editor={editor}
@@ -1169,19 +1162,9 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       )}
       {}
       <SelectionAnnouncer editor={editor} />
-      {/*
-       * <InteractionLayerView> renders the singleton PropPanel / Toolbar /
-       * Breadcrumb subtree FOR THE ACTIVE chip — inside the main React tree
-       * so PropPanel renderers (InternalLinkPropPanel, WikiLinkPropPanel)
-       * inherit context providers like <PageListProvider> + <ThemeProvider>.
-       * The layer host (per-editor WeakMap) provides the store; the View
-       * subscribes via useState + subscribe and renders the active
-       * registration's controls. RawMdxFallback is handled inline
-       * via `RawMdxFallbackCMView` (per precedent #30 "all user content
-       * visible and editable") and does not register with InteractionLayer.
-       *
-       * Rendered AFTER EditorContent so its absolute-positioned PropPanels
-       * stack above editor content (z-index handled in CSS).
+      {/**
+       * RawMdxFallback renders inline via `RawMdxFallbackCMView` (precedent #30) and never
+       * registers with InteractionLayer.
        */}
       <InteractionLayerView store={getInteractionLayer(editor).store} />
     </div>

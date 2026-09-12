@@ -4,6 +4,7 @@ import {
   type ApiHelpers,
   assertLanded,
   blockMarker,
+  CHUNK_WRAPPER_SELECTOR,
   expect,
   generateTallDoc,
   landingMarkCount,
@@ -83,22 +84,61 @@ async function settleScrollPosition(page: Page): Promise<void> {
   );
 }
 
-async function startEstimateOscillation(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const STYLE_ID = 'ok-abandon-oscillation';
-    const existing = document.getElementById(STYLE_ID);
-    const style = existing instanceof HTMLStyleElement ? existing : document.createElement('style');
-    style.id = STYLE_ID;
-    if (!existing) document.head.appendChild(style);
+interface EstimateDriftReport {
+  frames: number;
+  steps: number;
+  intrinsicHeight: string | null;
+  intrinsicHeightPx: number | null;
+  lastEstimatePx: number;
+}
+
+interface EstimateDriftHandle {
+  stop: () => EstimateDriftReport;
+}
+
+async function startEstimateDrift(page: Page): Promise<void> {
+  await page.evaluate((wrapperSelector) => {
+    const SHORT_PX = 100;
+    const TALL_PX = 1400;
+    const STEP_PX = 4;
+    const root = document.documentElement;
     let tall = false;
-    const tick = (): void => {
-      tall = !tall;
-      style.textContent = `:root{--ok-cv-h:${tall ? 1400 : 100}px;}`;
+    let frames = 0;
+    let steps = 0;
+    let frame = 0;
+    let lastEstimatePx = SHORT_PX;
+    const apply = (): void => {
+      lastEstimatePx = (tall ? TALL_PX : SHORT_PX) + steps * STEP_PX;
+      root.style.setProperty('--ok-cv-h', `${lastEstimatePx}px`);
     };
-    tick();
-    const win = window as unknown as { __okAbandonOsc?: number };
-    win.__okAbandonOsc = window.setInterval(tick, 30);
-  });
+    const advance = (): void => {
+      steps += 1;
+      apply();
+    };
+    const onFrame = (): void => {
+      frames += 1;
+      tall = !tall;
+      apply();
+      frame = requestAnimationFrame(onFrame);
+    };
+    const stop = (): EstimateDriftReport => {
+      cancelAnimationFrame(frame);
+      document.removeEventListener('contentvisibilityautostatechange', advance, true);
+      const wrapper = document.querySelector<HTMLElement>(wrapperSelector);
+      const intrinsicHeight = wrapper
+        ? getComputedStyle(wrapper).getPropertyValue('contain-intrinsic-height')
+        : null;
+      const length = intrinsicHeight ? /(-?\d+(?:\.\d+)?)px\s*$/.exec(intrinsicHeight) : null;
+      const intrinsicHeightPx = length ? Number(length[1]) : null;
+      root.style.removeProperty('--ok-cv-h');
+      return { frames, steps, intrinsicHeight, intrinsicHeightPx, lastEstimatePx };
+    };
+    // STOP: this must stay a capture-phase registration on an ancestor of the scroll container, because landing-controller.ts measures from its own capture listener on that container.
+    document.addEventListener('contentvisibilityautostatechange', advance, true);
+    (window as unknown as { __okEstimateDrift?: EstimateDriftHandle }).__okEstimateDrift = { stop };
+    apply();
+    frame = requestAnimationFrame(onFrame);
+  }, CHUNK_WRAPPER_SELECTOR);
 }
 
 async function expectLandingFlashOn(
@@ -123,14 +163,13 @@ async function expectLandingFlashOn(
   }
 }
 
-async function stopEstimateOscillation(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    const win = window as unknown as { __okAbandonOsc?: number };
-    if (win.__okAbandonOsc !== undefined) {
-      window.clearInterval(win.__okAbandonOsc);
-      win.__okAbandonOsc = undefined;
-    }
-    document.getElementById('ok-abandon-oscillation')?.remove();
+async function stopEstimateDrift(page: Page): Promise<EstimateDriftReport | null> {
+  return page.evaluate(() => {
+    const state = window as unknown as { __okEstimateDrift?: EstimateDriftHandle };
+    const handle = state.__okEstimateDrift;
+    if (!handle) return null;
+    state.__okEstimateDrift = undefined;
+    return handle.stop();
   });
 }
 
@@ -309,13 +348,51 @@ test('a source-to-WYSIWYG landing that can never settle abandons with a target a
     'setup W->S did not land',
   ).toBe('land');
 
-  await startEstimateOscillation(page);
+  await startEstimateDrift(page);
   const before = await landingMarkCount(page);
-  await toggleMode(page, 'wysiwyg');
-  const mark = await waitForLandingSettled(page, { since: before, timeout: 6_000 });
-  await stopEstimateOscillation(page);
+  let drift: EstimateDriftReport | null = null;
+  try {
+    await toggleMode(page, 'wysiwyg');
+    const mark = await waitForLandingSettled(page, { since: before, timeout: 6_000 });
+    drift = await stopEstimateDrift(page);
+    if (drift === null) throw new Error('stopEstimateDrift: the handle was gone before teardown');
 
-  expect(mark.kind, 'a never-settling landing should abandon, not land').toBe('abandoned');
-  expect(Number.isFinite(mark.target), 'abandoned mark is missing a numeric target').toBe(true);
-  expect(Number.isFinite(mark.delta), 'abandoned mark is missing a numeric delta').toBe(true);
+    expect(
+      drift.frames,
+      `the estimate drift never advanced its frame loop, so the target was not moving (frames ${drift.frames}, steps ${drift.steps})`,
+    ).toBeGreaterThan(10);
+    expect(
+      drift.intrinsicHeightPx,
+      `the estimate drift no longer propagates to the chunk wrappers' computed contain-intrinsic-height (computed ${drift.intrinsicHeight})`,
+    ).toBe(drift.lastEstimatePx);
+
+    expect(
+      mark.kind,
+      `a never-settling landing should abandon, not land (frames ${drift.frames}, steps ${drift.steps}, estimate ${drift.lastEstimatePx}px)`,
+    ).toBe('abandoned');
+    expect(Number.isFinite(mark.target), 'abandoned mark is missing a numeric target').toBe(true);
+    expect(Number.isFinite(mark.delta), 'abandoned mark is missing a numeric delta').toBe(true);
+  } finally {
+    drift ??= await stopEstimateDrift(page).catch((teardownErr: unknown) => {
+      console.warn(
+        '[mode-switch-landing] estimate-drift teardown failed:',
+        teardownErr instanceof Error ? teardownErr.message : String(teardownErr),
+      );
+      return null;
+    });
+    if (drift !== null) {
+      await test
+        .info()
+        .attach('estimate-drift.json', {
+          body: JSON.stringify(drift, null, 2),
+          contentType: 'application/json',
+        })
+        .catch((attachErr: unknown) => {
+          console.warn(
+            '[mode-switch-landing] estimate-drift attach failed:',
+            attachErr instanceof Error ? attachErr.message : String(attachErr),
+          );
+        });
+    }
+  }
 });

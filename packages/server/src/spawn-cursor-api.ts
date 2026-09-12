@@ -1,48 +1,7 @@
 /**
- * POST /api/spawn-cursor — server-side `cursor <path>` spawn for the web host.
- *
- * Cursor's deep-link API has no single-call "open this folder" semantic; you
- * have to invoke the `cursor` CLI to spawn the workspace window, then fire
- * `cursor://anysphere.cursor-deeplink/prompt?...` to seed the prompt. Browsers
- * can't spawn processes, so the OK web UI defers step 1 to the server (which
- * runs on the user's machine via `open-knowledge start` and has filesystem +
- * `child_process` access).
- *
- * Sibling of:
- *   - Electron IPC `ok:shell:spawn-cursor` in
- *     `packages/desktop/src/main/ipc-handlers.ts` (electron host)
- *   - GET `/api/installed-agents` in `./handoff-api.ts` (install detection)
- *
- * HTTP wire shape follows RFC 9457 (codebase precedent #39): 4xx/5xx errors
- * emit `application/problem+json` via `errorResponse(...)`; 200 success
- * emits empty `{}` via `successResponse(SpawnCursorSuccessSchema, ...)`.
- *
- * Note: after the `/api/handoff` unification, the OK renderer's Open-in-
- * Cursor dispatch goes through `packages/app/src/lib/handoff/dispatch.ts`
- * → `POST /api/handoff` (target: `cursor`), and the handoff dispatcher in
- * turn reuses the helpers in this file (`isPathWithinDir`,
- * `resolveCursorBinaryDefault`, `resolveCursorSpawnInvocation`). `/api/spawn-
- * cursor` remains for direct/legacy callers and as the install-state
- * sibling of `/api/installed-agents` — the wire shape contract above
- * still governs it. The Electron IPC layer (`ok:shell:spawn-cursor`)
- * keeps its typed `SpawnOutcome` contract via `createHandler` /
- * `createInvoker` — RFC 9457 is HTTP-only
- * by construction (it specifies media type `application/problem+json`).
- *
- * Security model — same shape as `/api/workspace`:
- *   - Loopback-only (TCP peer + Host header gates) — endpoint is unreachable
- *     over network.
- *   - Path containment: the requested path must canonically resolve at or
- *     under `contentDir`. A renderer compromise can't steer Cursor at
- *     arbitrary filesystem locations (`~/.ssh`, `/etc`, …).
- *   - Hardcoded `cursor` binary, argv-array (`shell: false`) — no shell
- *     interpolation, no user-supplied executable.
- *   - Detached + `stdio: 'ignore'` + `unref()` — OK does not parent Cursor's
- *     process tree, so killing OK doesn't kill Cursor.
- *
- * Loopback gating is applied at the route registration layer in
- * `api-extension.ts`, not here, to match the convention for `/api/workspace`
- * and `/api/installed-agents`.
+ * `POST /api/spawn-cursor` runs the `cursor` CLI for the web host, which cannot spawn processes;
+ * the renderer then fires the deep link to seed the prompt. The wire shape follows RFC 9457 per
+ * precedent #39: errors emit `application/problem+json`, success emits an empty body.
  */
 
 import { execFile } from 'node:child_process';

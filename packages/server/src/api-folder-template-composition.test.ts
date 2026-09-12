@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
@@ -104,9 +113,115 @@ describe('folder-template group over the composed listener — served natively',
       }),
     });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:path-escape');
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:symlink-refused');
     expect(existsSync(resolve(outside, 'planted.md'))).toBe(false);
   });
+
+  test('PUT /api/template refuses an IN-ROOT symlinked templates dir and writes nothing through it', async () => {
+    mkdirSync(resolve(contentDir, 'inroot-target'), { recursive: true });
+    mkdirSync(resolve(contentDir, 'tpl-inroot', '.ok'), { recursive: true });
+    symlinkSync(
+      '../../inroot-target',
+      resolve(contentDir, 'tpl-inroot', '.ok', 'templates'),
+      'dir',
+    );
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: 'tpl-inroot',
+        name: 'planted',
+        body: 'body',
+        frontmatter: { title: 'Planted' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:symlink-refused');
+    expect(existsSync(resolve(contentDir, 'inroot-target', 'planted.md'))).toBe(false);
+  });
+
+  test('PUT /api/template refuses an IN-ROOT symlinked template LEAF and leaves the target intact', async () => {
+    mkdirSync(resolve(contentDir, '.claude'), { recursive: true });
+    writeFileSync(resolve(contentDir, '.claude', 'CLAUDE.md'), '# victim\n', 'utf-8');
+    mkdirSync(resolve(contentDir, 'tpl-leaf', '.ok', 'templates'), { recursive: true });
+    const leaf = resolve(contentDir, 'tpl-leaf', '.ok', 'templates', 'meeting.md');
+    symlinkSync('../../../.claude/CLAUDE.md', leaf);
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        folder: 'tpl-leaf',
+        name: 'meeting',
+        body: '# overwritten body',
+        frontmatter: { title: 'Meeting' },
+      }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:symlink-refused');
+    expect(lstatSync(leaf).isSymbolicLink()).toBe(true);
+    expect(readFileSync(resolve(contentDir, '.claude', 'CLAUDE.md'), 'utf-8')).toBe('# victim\n');
+  });
+
+  test('DELETE /api/template refuses an IN-ROOT symlinked templates dir and unlinks nothing through it', async () => {
+    mkdirSync(resolve(contentDir, 'del-target'), { recursive: true });
+    const victim = resolve(contentDir, 'del-target', 'keep.md');
+    writeFileSync(victim, '# keep me\n', 'utf-8');
+    mkdirSync(resolve(contentDir, 'tpl-del', '.ok'), { recursive: true });
+    symlinkSync('../../del-target', resolve(contentDir, 'tpl-del', '.ok', 'templates'), 'dir');
+    const res = await fetch(
+      `http://127.0.0.1:${server.port}/api/template?folder=tpl-del&name=keep`,
+      { method: 'DELETE' },
+    );
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:symlink-refused');
+    expect(readFileSync(victim, 'utf-8')).toBe('# keep me\n');
+  });
+
+  test('POST /api/template/import refuses an IN-ROOT symlinked template LEAF and leaves the link and its target intact', async () => {
+    mkdirSync(resolve(contentDir, '.agents'), { recursive: true });
+    const victim = resolve(contentDir, '.agents', 'AGENTS.md');
+    writeFileSync(victim, '# victim agent definition\n', 'utf-8');
+    mkdirSync(resolve(contentDir, 'tpl-import', '.ok', 'templates'), { recursive: true });
+    const leaf = resolve(contentDir, 'tpl-import', '.ok', 'templates', 'alpha.md');
+    symlinkSync('../../../.agents/AGENTS.md', leaf);
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/template/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sourcePath: 'alpha', targetFolder: 'tpl-import', name: 'alpha' }),
+    });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { type?: string }).type).toBe('urn:ok:error:symlink-refused');
+    expect(lstatSync(leaf).isSymbolicLink()).toBe(true);
+    expect(readFileSync(victim, 'utf-8')).toBe('# victim agent definition\n');
+  });
+
+  test.runIf(process.getuid?.() !== 0)(
+    'POST /api/template (move) surfaces an uninspectable ANCESTOR .ok/templates as 500, not 404',
+    async () => {
+      const ancestorOk = resolve(contentDir, 'mv-root', '.ok');
+      mkdirSync(ancestorOk, { recursive: true });
+      mkdirSync(resolve(contentDir, 'mv-root', 'child'), { recursive: true });
+      chmodSync(ancestorOk, 0o000);
+      try {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fromFolder: 'mv-root/child',
+            fromName: 'ghost',
+            toFolder: 'mv-root/child',
+            toName: 'ghost-renamed',
+          }),
+        });
+        expect(res.status).toBe(500);
+        const body = (await res.json()) as { type?: string; detail?: string };
+        expect(body.type).toBe('urn:ok:error:internal-server-error');
+        expect(body.detail).toBe('EACCES');
+      } finally {
+        chmodSync(ancestorOk, 0o755);
+      }
+    },
+  );
 
   test('template/import refuses a schema-invalid body with 400 before any doc read', async () => {
     const res = await fetch(`http://127.0.0.1:${server.port}/api/template/import`, {

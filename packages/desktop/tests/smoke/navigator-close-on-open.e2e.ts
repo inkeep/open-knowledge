@@ -136,7 +136,7 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithoutLastOpenedProject('happy');
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     await expect
       .poll(() => countWindowsByMode(app, 'navigator'), {
@@ -175,7 +175,7 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
   }) => {
     const { tmpHome, projectAPath, projectBPath } = seedHomeWithLastOpenedProjectAndExtra('switch');
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectAPath, projectBPath] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectAPath, projectBPath] });
 
     await expect
       .poll(() => countWindowsByMode(app, 'editor'), {
@@ -223,7 +223,7 @@ test.describe('Project Navigator close-on-project-open smoke', () => {
     const { tmpHome, projectDir } = seedHomeWithoutLastOpenedProject('failure');
     const bogusProjectPath = join(tmpHome, 'does-not-exist');
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     await expect
       .poll(() => countWindowsByMode(app, 'navigator'), {

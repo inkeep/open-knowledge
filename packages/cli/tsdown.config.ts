@@ -10,24 +10,6 @@ import { defineConfig } from 'tsdown';
 // `jsonc-parser` specifier straight to that ESM entry before bundling.
 const jsoncParserEsmEntry = createRequire(import.meta.url).resolve('jsonc-parser/lib/esm/main.js');
 
-// rolldown-plugin-dts emits this advisory via raw `console.warn` (not through
-// rolldown's log pipeline, so `inputOptions.onLog` can't filter it) when tsc
-// emit-skips a cross-package source file. The cli's dts entries import from
-// `@inkeep/open-knowledge-server` / `-core` whose .ts sources are not in the
-// cli's tsconfig include — tsc skips them, the plugin falls back to a
-// different emit path, and emits a correct final dist/index.d.mts. The
-// recommended fix (`dts.eager`) forces tsc over the full tsconfig graph and
-// OOMs node@22 on this monorepo. Suppress the noise; emit correctness is
-// verified by the size of dist/index.d.mts (≈106 kB with the expected types).
-const dtsEmitFallbackNotice = '[rolldown-plugin-dts] Warning: Failed to emit declaration file';
-const originalWarn = console.warn;
-console.warn = (...args: unknown[]) => {
-  if (typeof args[0] === 'string' && args[0].startsWith(dtsEmitFallbackNotice)) {
-    return;
-  }
-  originalWarn(...args);
-};
-
 // Native addons stay external in EVERY build — they ship .node binaries
 // resolved at runtime and the desktop bundle places them under
 // app.asar.unpacked/node_modules/.
@@ -40,7 +22,7 @@ const nativeAddonNeverBundle = [
 // tsdown defaults to externalizing entries in `dependencies`, but the
 // desktop install ships no node_modules/ next to dist/cli.mjs, so bare
 // specifiers crash on resolve. Force-inline every pure-JS runtime dep in the
-// standalone (cli / parse-worker) build. Keep this in sync with
+// standalone cli build. Keep this in sync with
 // packages/cli/package.json `dependencies` (tsdown-bundle-coverage.test.ts
 // enforces).
 const alwaysBundlePureJsDeps = [
@@ -69,6 +51,7 @@ const alwaysBundlePureJsDeps = [
   // can't cross into the sibling app.asar/ for node_modules. Inlining
   // here removes the runtime resolution entirely.
   /^pino(\/|$)/,
+  /^proper-lockfile(\/|$)/,
   /^shell-quote(\/|$)/,
   /^simple-git(\/|$)/,
   // sirv is inlined TRANSITIVELY via @inkeep/open-knowledge-server (boot.ts's
@@ -119,7 +102,7 @@ const sharedPlugins: NonNullable<UserConfig['plugins']> = [
 ];
 
 const sharedInputOptions: NonNullable<UserConfig['inputOptions']> = (options) => {
-  // Filter known false-positive warnings. Each branch documents WHY the
+  // Filter a known false-positive warning. The branch below documents WHY the
   // warning is suppressed — re-evaluate when bumping rolldown / tsdown /
   // rolldown-plugin-dts. Anything not matched falls through to default.
   options.onLog = (level, log, defaultHandler) => {
@@ -131,28 +114,6 @@ const sharedInputOptions: NonNullable<UserConfig['inputOptions']> = (options) =>
       log.code === 'EVAL' &&
       typeof log.id === 'string' &&
       log.id.includes('/@protobufjs/inquire/')
-    ) {
-      return;
-    }
-    // rolldown-plugin-dts strips `type` modifiers from emitted intermediate
-    // .d.ts before tracing cross-package re-exports, then warns that the
-    // names "are not exported as values". The recommended fix (`dts.eager`)
-    // forces tsc over the full tsconfig graph and OOMs node@22 on this
-    // monorepo. The names ARE exported as types in source and are correctly
-    // bundled into the final dist/index.d.mts.
-    if (
-      log.code === 'MISSING_EXPORT' &&
-      typeof log.id === 'string' &&
-      (log.id.endsWith('/src/commands/init.d.ts') || log.id.endsWith('/src/config/schema.d.ts'))
-    ) {
-      return;
-    }
-    // Same root cause as MISSING_EXPORT above — the plugin advises
-    // enabling `eager` after a fall-back emit; that path OOMs.
-    if (
-      log.pluginCode === 'rolldown-plugin-dts' &&
-      typeof log.message === 'string' &&
-      log.message.includes('Failed to emit declaration file')
     ) {
       return;
     }
@@ -174,13 +135,10 @@ const sharedInputOptions: NonNullable<UserConfig['inputOptions']> = (options) =>
 // clobber the other's output.
 export default defineConfig([
   {
-    // `parse-worker` ships as its own entry so the server's parse pool can
-    // spawn `./parse-worker.mjs` next to dist/cli.mjs at runtime (the
-    // published install has no node_modules to resolve through).
-    entry: { cli: 'src/cli.ts', 'parse-worker': 'src/parse-worker.ts' },
+    entry: { cli: 'src/cli.ts' },
     unbundle: false,
     format: 'esm',
-    dts: true,
+    dts: false,
     clean: false,
     minify: true,
     plugins: sharedPlugins,
@@ -200,7 +158,7 @@ export default defineConfig([
     entry: { index: 'src/index.ts' },
     unbundle: false,
     format: 'esm',
-    dts: true,
+    dts: { tsconfig: 'tsconfig.build.json' },
     clean: false,
     minify: true,
     plugins: sharedPlugins,

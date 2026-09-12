@@ -1,39 +1,7 @@
 /**
- * Page-list side-channel for plain-DOM chip consumers.
- *
- * InternalLink + WikiLink chips render via renderHTML (PM layer, no React
- * context access). They still need live resolution-state classification —
- * `pages: Set<string>` + `folderPaths: Set<string>` — normally provided by
- * <PageListProvider /> via React context + usePageList().
- *
- * This module is the bridge:
- * - PageListProvider calls setPageListCache({pages, folderPaths, assetPaths}) on value change.
- * - Chip PM plugins call subscribePageListCache(fn) to dispatch decoration refresh
- *   when page list mutates; they read via getPageListCache() inside decorations(state).
- *
- * Design notes
- * ------------
- * - Change detection via Set-content equality so render-frequent setPageListCache
- *   calls with stable content don't storm subscribers. Single writer (provider);
- *   many readers (PM plugins). No locking required — React renders and PM plugin
- *   dispatches both run on the main thread synchronously.
- * - Reads are synchronous + cheap. Subscribers receive the snapshot on invocation
- *   so they don't need a separate getPageListCache() call.
- * - DEV-only `window.__okPageListCache` write (gated on import.meta.env?.DEV per
- *   the repo's DEV-gated test-hook convention — precedent #20(b)). Debug-visible
- *   in devtools; stripped in production bundles.
- *
- * Scope carve-outs
- * ----------------
- * - This module is purely a store. The PageListProvider → setPageListCache
- *   wiring lives in `PageListContext.tsx` (a useEffect that publishes
- *   {pages, folderPaths} on every render — no-ops absorbed by the equality gate).
- * - Consumer renderDecorationRefresh is a separate concern (the PM plugin in
- *   internal-link.ts will subscribe here and dispatch a transaction carrying
- *   a custom meta to force mark-identity-decoration re-run).
- *
- * @see packages/app/src/editor/extensions/mark-identity-decoration.ts
- * @see packages/app/src/editor/extensions/mark-interaction-bridge.ts
+ * Subscribers receive the snapshot on invocation so they don't need a separate getPageListCache()
+ * call. - DEV-only `window.__okPageListCache` write (gated on import.meta.env?.DEV per the repo's
+ * DEV-gated test-hook convention — precedent #20(b)).
  */
 
 import { buildPagesByBasenameIndex, buildPagesBySlugIndex } from '@inkeep/open-knowledge-core';

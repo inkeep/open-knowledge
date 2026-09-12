@@ -8,6 +8,16 @@ import { OK_DIR } from '@inkeep/open-knowledge-core';
 import { type BootedServer, type BootServerOptions, bootServer } from './boot.ts';
 import { ConfigSchema } from './config/schema.ts';
 
+const LEGACY_ROUTE_REGISTRY_PATTERN = /const routes:[\s\S]*?= (\{[\s\S]*?\n {2}\});/;
+
+export function assertPathAbsentFromLegacyRegistry(source: string, path: string): string {
+  const registry = source.match(LEGACY_ROUTE_REGISTRY_PATTERN)?.[1];
+  if (registry === undefined) throw new Error('legacy route registry declaration is absent');
+  if (registry.includes(`'${path}'`))
+    throw new Error(`${path} remains in the legacy route registry`);
+  return registry;
+}
+
 function seedOkScaffold(projectDir: string): void {
   const okDir = resolve(projectDir, OK_DIR);
   mkdirSync(okDir, { recursive: true });

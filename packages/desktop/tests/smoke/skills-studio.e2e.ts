@@ -42,7 +42,7 @@ test.describe('Skills Studio', () => {
       env: { ...process.env, HOME: tmpHome, OK_M6B_FORCE: '1' },
       timeout: 30_000,
     });
-    captureStderrFor(app, { cleanupDirs: [projectDir, tmpHome] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [projectDir, tmpHome] });
     await app.firstWindow({ timeout: 15_000 });
 
     const page = await (async () => {
@@ -96,10 +96,10 @@ test.describe('Skills Studio', () => {
     await expect(page.getByTestId('settings-builtin-skills')).toBeVisible({ timeout: 10_000 });
     await expect(page.getByTestId('skills-studio-intro')).toBeHidden();
 
-    await page.getByTestId('settings-sidebar-item-ai-tools').click();
-    const aiTools = page.getByTestId('ai-tools-skills-moved');
-    await expect(aiTools).toBeVisible();
-    await expect(aiTools).toContainText('Skills Studio');
+    await page.getByTestId('settings-sidebar-item-agent-connections').click();
+    await expect(page.getByTestId('settings-configure-agents')).toBeVisible({
+      timeout: 10_000,
+    });
     await expect(page.getByTestId('skills-studio-skill-uninstall-write-skill')).toBeHidden();
 
     await page.getByTestId('settings-sidebar-item-skills').click();

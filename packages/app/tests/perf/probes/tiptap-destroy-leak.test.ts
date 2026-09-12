@@ -142,7 +142,7 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
   test('parseCliArgs accepts default args (no flags)', () => {
     const args = parseCliArgs([]);
     expect(args.target).toBe('http://localhost:5173');
-    expect(args.doc).toBe('PROJECT');
+    expect(args.doc).toBe('perf-fixtures/big-doc');
     expect(args.cycles).toBe(10);
     expect(args.topN).toBe(20);
     expect(args.updateBaseline).toBe(false);
@@ -199,7 +199,7 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
         schemaVersion: 1,
         measuredAt: new Date().toISOString(),
         target: 'http://localhost:5173',
-        doc: 'PROJECT',
+        doc: 'perf-fixtures/big-doc',
         cycles: 10,
         cycleHeapsMb: [120],
         leakRateMbPerCycle: 0,
@@ -221,7 +221,7 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
         schemaVersion: 1,
         measuredAt: new Date().toISOString(),
         target: 'http://localhost:5173',
-        doc: 'PROJECT',
+        doc: 'perf-fixtures/big-doc',
         cycles: 10,
         cycleHeapsMb: cycleHeaps,
         leakRateMbPerCycle: computeLeakRateMbPerCycle(cycleHeaps),
@@ -247,7 +247,7 @@ describe('tiptap-destroy-leak probe CLI shape', () => {
   test('ProbeOptions + ProbeResult types are exported (compile-time check)', () => {
     const sample: ProbeOptions = {
       target: 'http://localhost:5173',
-      doc: 'PROJECT',
+      doc: 'perf-fixtures/big-doc',
       cycles: 10,
       outDir: '/tmp',
       topN: 20,

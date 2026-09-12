@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { buildShiftKeyframes, computeFreezeRange } from './frozen-table-headers.ts';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  anchorScrollDrivenStartTime,
+  applyScrollDrivenFreeze,
+  buildShiftKeyframes,
+  computeFreezeRange,
+} from './frozen-table-headers.ts';
 
 describe('computeFreezeRange (scroll-driven animation ranges)', () => {
   it('returns null for a single-row table (header is the whole table)', () => {
@@ -63,5 +68,82 @@ describe('buildShiftKeyframes', () => {
     const frames = buildShiftKeyframes({ startOffset: 500, endOffset: 3000, maxShift: 2500 }, 1000);
     expect(frames.map((f) => f.offset)).toEqual([0, 0.5, 1]);
     expect(frames.map(ty)).toEqual([0, 0, 500]);
+  });
+});
+
+describe('anchorScrollDrivenStartTime (deletion guard, not browser-rung coverage)', () => {
+  const realCss = (globalThis as { CSS?: unknown }).CSS;
+
+  afterEach(() => {
+    (globalThis as { CSS?: unknown }).CSS = realCss;
+    vi.restoreAllMocks();
+  });
+
+  function stubCssPercent(): void {
+    (globalThis as { CSS?: unknown }).CSS = { percent: (value: number) => ({ percent: value }) };
+  }
+
+  it('anchors the replacement at zero progress so it is not left play-pending', () => {
+    stubCssPercent();
+    let assigned: unknown;
+    const animation = {
+      set startTime(value: unknown) {
+        assigned = value;
+      },
+    } as unknown as Animation;
+
+    anchorScrollDrivenStartTime(animation);
+
+    expect(assigned).toEqual({ percent: 0 });
+  });
+
+  it('contains a rejected assignment and reports it once rather than per animation', () => {
+    stubCssPercent();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rejecting = {
+      set startTime(_value: unknown) {
+        throw new TypeError('percentage start time is not supported on this timeline');
+      },
+    } as unknown as Animation;
+
+    expect(() => {
+      anchorScrollDrivenStartTime(rejecting);
+      anchorScrollDrivenStartTime(rejecting);
+    }).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('applyScrollDrivenFreeze (every animation it creates is anchored)', () => {
+  const realCss = (globalThis as { CSS?: unknown }).CSS;
+
+  afterEach(() => {
+    (globalThis as { CSS?: unknown }).CSS = realCss;
+  });
+
+  it('anchors all three tracks, not only the transform', () => {
+    (globalThis as { CSS?: unknown }).CSS = { percent: (value: number) => ({ percent: value }) };
+    const anchored: unknown[] = [];
+    const cell = {
+      cellIndex: 0,
+      animate: () => {
+        const index = anchored.length;
+        anchored.push(undefined);
+        return {
+          set startTime(value: unknown) {
+            anchored[index] = value;
+          },
+        } as unknown as Animation;
+      },
+    } as unknown as HTMLTableCellElement;
+
+    applyScrollDrivenFreeze(
+      cell,
+      {} as AnimationTimeline,
+      { startOffset: 100, endOffset: 1000, maxShift: 900 },
+      2_000,
+    );
+
+    expect(anchored).toEqual([{ percent: 0 }, { percent: 0 }, { percent: 0 }]);
   });
 });

@@ -2,7 +2,8 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig, type ViteUserConfig } from 'vitest/config';
 import { appVitestConfig } from './vitest.config';
 
-// Tier-3 DOM project: the `*.dom.test.tsx` React-runtime suite. A dedicated
+// Tier-3 DOM project: the `*.dom.test.ts?(x)` suite — `.tsx` mounts React,
+// `.ts` is the same jsdom tier for DOM-only tests. A dedicated
 // vitest project with the jsdom environment and per-file isolation, replacing
 // the invocation-scoped `bun test --isolate --preload ./tests/dom/jsdom-preload.ts`
 // chain the retired scripts/run-test-dom.sh carried. Everything else (lingui
@@ -29,9 +30,8 @@ export const appDomVitestConfig = {
       ...appVitestConfig.resolve.alias,
       // Excalidraw's dev bundle imports `roughjs/bin/rough` without the
       // extension, which Vite's Node resolver rejects. The browser build
-      // resolves it through bundling, so this only bites the one tier that
-      // imports the real package rather than stubbing it
-      // (`excalidraw-scene.roundtrip.dom.test.ts`). Drop this alias if a
+      // resolves it through bundling, so this only bites the suites that
+      // import the real package rather than stubbing it. Drop this alias if a
       // future Excalidraw ships the extension.
       { find: /^roughjs\/bin\/rough$/, replacement: 'roughjs/bin/rough.js' },
     ],
@@ -45,7 +45,7 @@ export const appDomVitestConfig = {
     // `.tsx` mounts React; `.ts` is the same jsdom tier for DOM-only tests
     // that never render a component (shadow-root helpers, for instance).
     include: ['**/*.dom.test.ts?(x)'],
-    // The base config excludes `**/*.dom.test.tsx` so the unit tier stays
+    // The base config excludes `**/*.dom.test.ts?(x)` so the unit tier stays
     // no-DOM; this is the one project that runs them, so drop that single
     // exclusion while keeping node_modules / .spec / .e2e out.
     exclude: appVitestConfig.test.exclude.filter((pattern) => pattern !== '**/*.dom.test.ts?(x)'),
@@ -57,9 +57,7 @@ export const appDomVitestConfig = {
     hookTimeout: 30_000,
     isolate: true,
     // Route the real Excalidraw through Vite's transform rather than Node's
-    // resolver, so the `roughjs/bin/rough` alias above is honoured. Only the
-    // round-trip suite imports the package for real; every other Excalidraw
-    // test stubs it via `vi.doMock`, which intercepts ahead of resolution.
+    // resolver, so the `roughjs/bin/rough` alias above is honoured.
     server: { deps: { inline: [/@excalidraw[/\\]excalidraw/] } },
   },
 } satisfies ViteUserConfig;

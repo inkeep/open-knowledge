@@ -1,18 +1,7 @@
 /**
- * Live-read a boolean frontmatter flag off `Y.Text('source')`, re-reading as
- * the user edits frontmatter. Boolean sibling of `useFrontmatterField`
- * (string-only — it reads '' for a boolean).
- *
- * Strict identity: only the YAML boolean `true` yields `true`. The string
- * "true" and the number `1` yield `false`, so a coincidentally-truthy value
- * can't trip a gate this drives.
- *
- * The subscription lives in a `useEffect` so React tears it down on unmount and
- * when an enclosing `<Activity>` flips to hidden — a Y.js observer attached off
- * the effect lifecycle (a ref, a module singleton) would keep processing remote
- * updates for every hidden document (precedent #18(c)). The `useState`
- * initializer's one-shot binding is created, read, and disposed in the same
- * breath, so it leaves nothing attached.
+ * The subscription lives in a `useEffect` so React tears it down on unmount and when an enclosing
+ * `<Activity>` flips to hidden — a Y.js observer attached off the effect lifecycle (a ref, a module
+ * singleton) would keep processing remote updates for every hidden document (precedent #18(c)).
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';

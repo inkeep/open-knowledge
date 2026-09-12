@@ -1,24 +1,4 @@
-/**
- * Error-path pins for `applySlashCommandItem` (precedent #58 boundary).
- *
- * The happy-path single-transaction semantics are pinned in
- * `../extensions/slash-command-atomicity.dom.test.tsx`; this file pins the
- * three deliberate failure-mode behaviors of the boundary:
- *
- *   1. An item whose `command` throws must NOT roll back the trigger-range
- *      delete — the chain's `.command()` step returns true unconditionally so
- *      the user's `/query` text does not survive a broken item. The failure
- *      is surfaced via `console.error` after the dispatch.
- *   2. A throwing `afterCommit` callback must not starve the remaining
- *      deferred callbacks, and its log message must be distinguishable from
- *      an item-command failure (the two share a catch-shaped code path but
- *      mean different things when debugging).
- *   3. A throwing item must not poison the dispatch: the delete still lands
- *      as a doc-changing transaction and the editor stays usable.
- *
- * Tier: `.dom.test.tsx` (jsdom) — `applySlashCommandItem` drives a real
- * `editor.chain()`, so it needs a mounted TipTap Editor.
- */
+/** Error-path pins for `applySlashCommandItem` (precedent #58 boundary). */
 
 import { cleanup } from '@testing-library/react';
 import { Editor } from '@tiptap/core';

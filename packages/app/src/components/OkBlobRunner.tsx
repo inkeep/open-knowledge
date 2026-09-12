@@ -231,7 +231,7 @@ export function OkBlobRunner({ autoStart = false }: OkBlobRunnerProps = {}) {
             ref={(node) => {
               obstacleRefs.current[i] = node;
             }}
-            // biome-ignore lint/plugin/no-physical-direction-utility: physical origin is load-bearing here
+            // oxlint-disable-next-line ok/no-physical-direction-utility -- physical origin is load-bearing here
             className="absolute bottom-0 left-0 rounded-sm bg-muted-foreground/70 will-change-transform"
             style={{ opacity: 0 }}
           />

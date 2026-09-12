@@ -18,6 +18,10 @@ const TARGET = resolveDesktopTarget();
 
 const DARWIN = process.platform === 'darwin';
 
+const HEADER_SETTLE_FRAMES = 4;
+
+const PROBE_INSET_PX = 4;
+
 interface SeededHome {
   tmpHome: string;
   projectDir: string;
@@ -97,7 +101,7 @@ test.describe('Windows/Linux window chrome smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject();
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
     const winHandle: JSHandle = await app.browserWindow(editor);
@@ -136,7 +140,7 @@ test.describe('Editor header drag-region smoke', () => {
   }) => {
     const { tmpHome, projectDir } = seedHomeWithLastOpenedProject();
     const app = await launchApp(tmpHome);
-    captureStderrFor(app, { cleanupDirs: [tmpHome, projectDir] });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
 
     const editor = await findEditorWindow(app);
     const filesToggle = editor
@@ -145,14 +149,49 @@ test.describe('Editor header drag-region smoke', () => {
     await expect(filesToggle).toBeVisible();
     await filesToggle.click();
     await expect
-      .poll(() =>
-        editor.evaluate(() =>
-          document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'),
-        ),
+      .poll(
+        () =>
+          editor.evaluate(
+            (frames) =>
+              new Promise<string>((resolve) => {
+                const headerGeometrySignature = () => {
+                  const sidebar = document.querySelector('[data-slot="sidebar"]');
+                  const leadingActions = document.querySelector(
+                    '[data-editor-header-leading-actions]',
+                  );
+                  const overflowRoot = document.querySelector('[data-editor-tab-overflow-root]');
+                  if (!sidebar || !leadingActions || !overflowRoot)
+                    return 'header chrome not mounted';
+                  const leading = leadingActions.getBoundingClientRect();
+                  const overflow = overflowRoot.getBoundingClientRect();
+                  return `${sidebar.getAttribute('data-state')} leadingRight=${leading.right} overflowLeft=${overflow.left} overflowWidth=${overflow.width}`;
+                };
+                const readings = [headerGeometrySignature()];
+                const sample = () => {
+                  readings.push(headerGeometrySignature());
+                  if (readings.length > frames) {
+                    const settled = readings.every((reading) => reading === readings[0]);
+                    resolve(
+                      settled
+                        ? readings[0]
+                        : `still moving after ${frames} frames: ${readings[0]} -> ${readings[readings.length - 1]}`,
+                    );
+                    return;
+                  }
+                  requestAnimationFrame(sample);
+                };
+                requestAnimationFrame(sample);
+              }),
+            HEADER_SETTLE_FRAMES,
+          ),
+        {
+          timeout: 5_000,
+          message: 'editor header geometry did not settle after the sidebar collapsed',
+        },
       )
-      .toBe('collapsed');
+      .toMatch(/^collapsed /);
 
-    const appRegions = await editor.evaluate(() => {
+    const appRegions = await editor.evaluate((probeInsetPx) => {
       const requireElement = (selector: string): HTMLElement => {
         const element = document.querySelector<HTMLElement>(selector);
         if (!element) throw new Error(`Missing drag-region fixture: ${selector}`);
@@ -178,12 +217,22 @@ test.describe('Editor header drag-region smoke', () => {
       const overflowRootRect = overflowRoot.getBoundingClientRect();
       const shareButtonRect = shareButton.getBoundingClientRect();
       const trailingActionsRect = trailingActions.getBoundingClientRect();
+      const leadingGapPx = overflowRootRect.left - leadingActionsRect.right;
+      const probeLeadingGapRegion = () => {
+        const measured = `${leadingGapPx.toFixed(2)}px`;
+        if (leadingGapPx <= 0) return `tab strip reaches the leading actions (${measured})`;
+        if (leadingGapPx <= probeInsetPx) return `leading gap too narrow to probe (${measured})`;
+        const probeX = leadingActionsRect.right + Math.min(probeInsetPx, leadingGapPx / 2);
+        const probeY = (leadingActionsRect.top + leadingActionsRect.bottom) / 2;
+        const probeElement = document.elementFromPoint(probeX, probeY);
+        if (!(probeElement instanceof HTMLElement)) return 'leading gap covered by no element';
+        return appRegion(probeElement);
+      };
 
       return {
         filesButton: appRegionFor('[data-editor-header-leading-actions] [data-sidebar="trigger"]'),
         headerCanvas: appRegionFor('header[data-electron-drag]'),
-        leadingGapIsDraggable:
-          overflowRootRect.left > leadingActionsRect.right && appRegion(paneTabs) === 'drag',
+        leadingGapRegion: probeLeadingGapRegion(),
         leadingActions: appRegion(leadingActions),
         newTabButton: appRegionFor('[data-testid="editor-new-tab-button"]'),
         overflowRoot: appRegion(overflowRoot),
@@ -200,12 +249,12 @@ test.describe('Editor header drag-region smoke', () => {
           precedes(tabsHost, leadingActions) && precedes(tabsHost, trailingActions),
         trailingActions: appRegion(trailingActions),
       };
-    });
+    }, PROBE_INSET_PX);
 
     expect(appRegions).toEqual({
       filesButton: 'no-drag',
       headerCanvas: 'drag',
-      leadingGapIsDraggable: true,
+      leadingGapRegion: 'drag',
       leadingActions: 'drag',
       newTabButton: 'no-drag',
       overflowRoot: 'drag',

@@ -6,8 +6,8 @@ import type { EditorView as ProseMirrorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
 import { editorToolbarOverlapPx } from '@/lib/editor-toolbar-overlap';
 import { getEditorForDoc } from './active-editor';
-import { getSourceViewForDoc } from './active-source-view';
 import { visibleEditorScrollContainer } from './editor-cache';
+import { getMarkdownSourceViewForDoc } from './full-page-cm-views';
 import { type LandingHandle, startLanding, type TargetMetrics } from './landing-controller';
 import {
   createApproxResolver,
@@ -231,7 +231,7 @@ function captureWysiwygToSource(docName: string, ytext: Y.Text): void {
 }
 
 function captureSourceToWysiwyg(docName: string, ytext: Y.Text): void {
-  const view = getSourceViewForDoc(docName);
+  const view = getMarkdownSourceViewForDoc(docName);
   if (!view) return;
   const container = findScrollContainer();
   if (!container) return;

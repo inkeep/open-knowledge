@@ -34,6 +34,7 @@ export {
   buildWindowsCliLaunch,
   composeWindowsShellLaunchArgs,
   isWindowsShellFamily,
+  isWindowsShellLaunchFailureReason,
   launchWithoutSupportFile,
   OK_GATED_TOOL_NAMES,
   psQuoteArg,
@@ -48,6 +49,8 @@ export {
   type TerminalLaunchCommand,
   WINDOWS_SHELL_FAMILIES,
   type WindowsShellFamily,
+  WindowsShellLaunchError,
+  type WindowsShellLaunchFailureReason,
 } from './terminal-launch.ts';
 export type {
   DocContext,

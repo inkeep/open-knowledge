@@ -1,20 +1,12 @@
-import { SUPPORTED_DOC_EXTENSIONS } from '../../../constants/doc-extensions.ts';
+import { docStem, RESERVED_LOG_STEM } from '../../../constants/reserved-docs.ts';
 import { defineOkfRule } from '../okf-runner.ts';
 
-const RESERVED_STEMS = ['index', 'log'] as const;
-
-function stemOf(docName: string): string {
-  const base = docName.slice(docName.lastIndexOf('/') + 1);
-  const dot = base.lastIndexOf('.');
-  if (dot <= 0) return base;
-  const ext = base.slice(dot).toLowerCase();
-  return (SUPPORTED_DOC_EXTENSIONS as readonly string[]).includes(ext) ? base.slice(0, dot) : base;
-}
+const RESERVED_STEMS = ['index', RESERVED_LOG_STEM] as const;
 
 export const reservedCasing = defineOkfRule('reserved-casing', (_tree, file) => {
   const docName = file.data.okfDocName;
   if (docName === undefined) return;
-  const stem = stemOf(docName);
+  const stem = docStem(docName);
   const lower = stem.toLowerCase();
   if (!RESERVED_STEMS.includes(lower as (typeof RESERVED_STEMS)[number])) return;
   if (stem === lower) return;

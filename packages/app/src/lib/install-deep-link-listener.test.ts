@@ -2,16 +2,10 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { normalizeTargetPath } from '@/components/navigation-targets';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { pendingReceiveNavStore } from '@/lib/share/pending-receive-nav-store';
-import type { OkDesktopBridge, OkDesktopConfig } from './desktop-bridge-types';
+import type { OkDeepLinkPayload, OkDesktopBridge, OkDesktopConfig } from './desktop-bridge-types';
 import { deriveShareReceiveToast, installDeepLinkListener } from './install-deep-link-listener';
 
-type DeepLinkPayload = {
-  doc: string;
-  kind?: 'doc' | 'folder';
-  branch?: string | null;
-  multiCandidate?: boolean;
-  targetMissing?: boolean;
-};
+type DeepLinkPayload = OkDeepLinkPayload;
 
 function makeBridge(overrides: Partial<OkDesktopBridge> = {}): OkDesktopBridge & {
   fireDeepLink: (evt: DeepLinkPayload) => void;

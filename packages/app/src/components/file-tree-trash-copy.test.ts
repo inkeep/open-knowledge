@@ -212,23 +212,25 @@ describe('file-tree-trash-copy — ICU escape regression guard', () => {
     ).toBe(false);
   }
 
-  test.each(
-    shippedLocales,
-  )('compiled `%s` catalog: single-file trash-copy entry has an interpolation slot', (locale) => {
-    if (fileId === undefined)
-      throw new Error('anchor missing — earlier test surfaces the root cause');
-    const entry = loadCatalog(locale).messages[fileId];
-    assertInterpolatingSlot(entry, `${locale}/${fileId}`);
-  });
+  test.each(shippedLocales)(
+    'compiled `%s` catalog: single-file trash-copy entry has an interpolation slot',
+    (locale) => {
+      if (fileId === undefined)
+        throw new Error('anchor missing — earlier test surfaces the root cause');
+      const entry = loadCatalog(locale).messages[fileId];
+      assertInterpolatingSlot(entry, `${locale}/${fileId}`);
+    },
+  );
 
-  test.each(
-    shippedLocales,
-  )('compiled `%s` catalog: single-folder trash-copy entry has an interpolation slot', (locale) => {
-    if (folderId === undefined)
-      throw new Error('anchor missing — earlier test surfaces the root cause');
-    const entry = loadCatalog(locale).messages[folderId];
-    assertInterpolatingSlot(entry, `${locale}/${folderId}`);
-  });
+  test.each(shippedLocales)(
+    'compiled `%s` catalog: single-folder trash-copy entry has an interpolation slot',
+    (locale) => {
+      if (folderId === undefined)
+        throw new Error('anchor missing — earlier test surfaces the root cause');
+      const entry = loadCatalog(locale).messages[folderId];
+      assertInterpolatingSlot(entry, `${locale}/${folderId}`);
+    },
+  );
 });
 
 describe('file-tree-trash-copy — source-layer smoke tests', () => {

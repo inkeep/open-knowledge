@@ -1,26 +1,19 @@
 import { readFile } from 'node:fs/promises';
 import { arch, platform } from 'node:os';
 import { join } from 'node:path';
-import type { EditorId } from '@inkeep/open-knowledge-core';
+import {
+  ACP_AGENT_EDITOR_ID_MAP,
+  ACP_FEATURED_AGENT_IDS,
+  type EditorId,
+} from '@inkeep/open-knowledge-core';
 import type { PinoLogger } from '../logger.ts';
 
 const ACP_REGISTRY_URL = 'https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json';
 
-export const FEATURED_AGENT_IDS: readonly string[] = [
-  'claude-acp',
-  'codex-acp',
-  'gemini',
-  'cursor',
-  'github-copilot-cli',
-  'opencode',
-];
+export const FEATURED_AGENT_IDS: readonly string[] = ACP_FEATURED_AGENT_IDS;
 
-export const ACP_AGENT_EDITOR_IDS: { readonly [agentId: string]: EditorId | undefined } = {
-  'claude-acp': 'claude',
-  'codex-acp': 'codex',
-  opencode: 'opencode',
-  'pi-acp': 'pi',
-};
+export const ACP_AGENT_EDITOR_IDS: { readonly [agentId: string]: EditorId | undefined } =
+  ACP_AGENT_EDITOR_ID_MAP;
 
 export interface RegistryBinaryTarget {
   archive: string;

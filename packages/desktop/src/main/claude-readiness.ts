@@ -6,7 +6,6 @@ import { windowsWherePathArgs } from '../shared/windows-env.ts';
 import { getLogger } from './desktop-logger.ts';
 
 export type ClaudeOnPath = ClaudeReadiness['claude'];
-export type McpWiringStatus = ClaudeReadiness['mcp'];
 
 export function cliProbeArgs(
   bin: string,
@@ -47,41 +46,37 @@ interface InjectedProbeSpec {
 function runInjectedProbe(spec: InjectedProbeSpec): Promise<number | null> {
   const { spawn, file, args, timers, timeoutMs, loggerName, label, attrs } = spec;
   return new Promise<number | null>((resolve) => {
+    function recordSettled(code: number | null, reason: Record<string, unknown> = {}): void {
+      const outcome = interpretClaudeProbe(code);
+      const log = getLogger(loggerName);
+      const record = { ...attrs, ...reason, label, outcome, exitCode: code };
+      const message = `${label} PATH probe settled`;
+      if (outcome === 'unknown') log.warn(record, message);
+      else log.info(record, message);
+    }
     let child: ProbeChild;
     try {
-      // biome-ignore lint/plugin/require-windowshide-on-spawn: injected probe seam; the production child_process adapter owns its spawn options
+      // oxlint-disable-next-line ok/require-windowshide-on-spawn -- injected probe seam; the production child_process adapter owns its spawn options
       child = spawn(file, args);
     } catch (err) {
-      getLogger(loggerName).warn(
-        { ...attrs, err },
-        `${label} PATH probe spawn threw; presence unknown`,
-      );
+      recordSettled(null, { err, failurePhase: 'spawn' });
       resolve(null);
       return;
     }
     let settled = false;
     const timer = timers.setTimer(() => {
-      getLogger(loggerName).warn(
-        { ...attrs, timeoutMs },
-        `${label} PATH probe timed out; presence unknown`,
-      );
       child.kill();
-      finish(null);
+      finish(null, { timedOut: true, timeoutMs });
     }, timeoutMs);
-    function finish(code: number | null): void {
+    function finish(code: number | null, reason: Record<string, unknown> = {}): void {
       if (settled) return;
       settled = true;
       timers.clearTimer(timer);
+      recordSettled(code, reason);
       resolve(code);
     }
     child.onError((err) => {
-      if (!settled) {
-        getLogger(loggerName).warn(
-          { ...attrs, err },
-          `${label} PATH probe failed to run; presence unknown`,
-        );
-      }
-      finish(null);
+      finish(null, { err, failurePhase: 'onError' });
     });
     child.onExit((code) => finish(code));
   });
@@ -122,7 +117,7 @@ export function runWindowsPathProbe(
     timeoutMs,
     loggerName: 'windows-path-probe',
     label: 'where.exe',
-    attrs: { whereExe, bin, args },
+    attrs: { bin, args },
   });
 }
 
@@ -131,14 +126,22 @@ export function interpretClaudeProbe(code: number | null): ClaudeOnPath {
   return code === 0 ? 'present' : 'not-found';
 }
 
-export function mcpStatusFromClassification(kind: McpEntryKind): McpWiringStatus {
-  return kind === 'present' ? 'wired' : 'needs-rewire';
-}
-
 export interface ResolveClaudeReadinessDeps {
   probeClaude(): Promise<number | null>;
   classifyMcpEntry(): McpEntryKind;
   isProjectMcpPreApprovable(): boolean;
+  hasProjectMcpEntry?(): boolean;
+  isGlobalMcpOwnManaged?(): boolean;
+}
+
+function resolveOkToolsAutoApprovable(scopes: {
+  projectEntryPresent: boolean;
+  projectEntryIsOwn: boolean;
+  globalEntryPresent: boolean;
+  globalEntryIsOwn: boolean;
+}): boolean {
+  if (scopes.globalEntryPresent && !scopes.globalEntryIsOwn) return false;
+  return scopes.projectEntryPresent ? scopes.projectEntryIsOwn : scopes.globalEntryIsOwn;
 }
 
 export async function resolveClaudeReadiness(
@@ -157,9 +160,9 @@ export async function resolveClaudeReadiness(
   } catch (err) {
     getLogger('claude-readiness').warn(
       { err },
-      'classifyMcpEntry threw (never-throws contract violated); treating MCP as not-wired',
+      'classifyMcpEntry threw (never-throws contract violated); treating MCP as unreadable',
     );
-    kind = 'absent';
+    kind = 'decline';
   }
   let mcpPreApprovable: boolean;
   try {
@@ -171,10 +174,36 @@ export async function resolveClaudeReadiness(
     );
     mcpPreApprovable = false;
   }
+  let projectEntryPresent: boolean;
+  try {
+    projectEntryPresent = deps.hasProjectMcpEntry?.() ?? true;
+  } catch (err) {
+    getLogger('claude-readiness').warn(
+      { err },
+      'hasProjectMcpEntry threw; assuming a project MCP entry exists (fail-closed)',
+    );
+    projectEntryPresent = true;
+  }
+  let globalEntryIsOwn: boolean;
+  try {
+    globalEntryIsOwn = deps.isGlobalMcpOwnManaged?.() ?? false;
+  } catch (err) {
+    getLogger('claude-readiness').warn(
+      { err },
+      'isGlobalMcpOwnManaged threw; treating the global MCP entry as not OK-owned',
+    );
+    globalEntryIsOwn = false;
+  }
   return {
     claude: interpretClaudeProbe(code),
-    mcp: mcpStatusFromClassification(kind),
     mcpPreApprovable,
+    okToolsAutoApprovable: resolveOkToolsAutoApprovable({
+      projectEntryPresent,
+      projectEntryIsOwn: mcpPreApprovable,
+      globalEntryPresent:
+        deps.isGlobalMcpOwnManaged !== undefined && (kind === 'present' || kind === 'decline'),
+      globalEntryIsOwn,
+    }),
   };
 }
 

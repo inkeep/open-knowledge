@@ -1,8 +1,9 @@
 import { useLingui } from '@lingui/react/macro';
 import type { JSONContent } from '@tiptap/core';
 import { EditorContent, useEditor } from '@tiptap/react';
-import { type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
+import { type DragEvent, type Ref, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { clearComposerDraft } from '@/components/composer-draft-store';
+import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import {
   type ComposerAttachmentPart,
   composerMentionExtensions,
@@ -20,6 +21,7 @@ import {
   setSlashCommands,
 } from '@/editor/composer-mention/composer-slash-command';
 import { suggestionHasSelectableItem } from '@/editor/extensions/suggestion-floating-ui';
+import { collectAllFiles } from '@/lib/acp/image-attachment';
 import { cn } from '@/lib/utils';
 
 function seedDocHasContent(doc: JSONContent | undefined): boolean {
@@ -33,8 +35,14 @@ interface ComposerEditorView {
   dispatch: (tr: unknown) => void;
 }
 
+export type ComposerAttachmentDropPolicy =
+  | { readonly kind: 'accept'; readonly onFiles: (files: readonly File[]) => void }
+  | { readonly kind: 'refuse'; readonly reason?: string }
+  | { readonly kind: 'host' };
+
 export interface ComposerMentionInputHandle {
   focus: () => void;
+  refuseDrop: (reason: string) => void;
   focusEnd: () => void;
   blur: () => void;
   clear: () => void;
@@ -69,6 +77,7 @@ export function ComposerMentionInput({
   disabled = false,
   testId,
   slashCommands,
+  attachmentDrop,
 }: {
   ref?: Ref<ComposerMentionInputHandle>;
   ariaLabel: string;
@@ -83,9 +92,21 @@ export function ComposerMentionInput({
   disabled?: boolean;
   testId?: string;
   slashCommands?: SlashCommandItem[] | null;
+  attachmentDrop: ComposerAttachmentDropPolicy;
 }) {
   const { t } = useLingui();
   const [slashHint, setSlashHint] = useState<SlashTokenHint | null>(null);
+  const [dropRefusal, setDropRefusal] = useState<{ text: string; id: number } | null>(null);
+  const dropRefusalIdRef = useRef(0);
+  const refuseDrop = (reason: string) => {
+    dropRefusalIdRef.current += 1;
+    setDropRefusal({ text: reason, id: dropRefusalIdRef.current });
+  };
+  useEffect(() => {
+    if (dropRefusal === null) return;
+    const timer = setTimeout(() => setDropRefusal(null), 4000);
+    return () => clearTimeout(timer);
+  }, [dropRefusal]);
 
   const onEmptyChangeRef = useRef(onEmptyChange);
   const onContentChangeRef = useRef(onContentChange);
@@ -193,6 +214,10 @@ export function ComposerMentionInput({
     ref,
     () => ({
       focus: () => editor?.commands.focus(),
+      refuseDrop: (reason: string) => {
+        dropRefusalIdRef.current += 1;
+        setDropRefusal({ text: reason, id: dropRefusalIdRef.current });
+      },
       focusEnd: () => editor?.commands.focus('end'),
       blur: () => editor?.commands.blur(),
       clear: () => editor?.commands.clearContent(true),
@@ -235,10 +260,50 @@ export function ComposerMentionInput({
     [editor],
   );
 
+  const dropPolicy = attachmentDrop;
+  const dropSurfaceProps =
+    dropPolicy.kind === 'host'
+      ? {}
+      : {
+          onDragEnter: (event: DragEvent<HTMLDivElement>) => {
+            if (isExternalFileDrag(event)) event.preventDefault();
+          },
+          onDragOver: (event: DragEvent<HTMLDivElement>) => {
+            if (isExternalFileDrag(event)) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'copy';
+            }
+          },
+          onDrop: (event: DragEvent<HTMLDivElement>) => {
+            if (!isExternalFileDrag(event)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            const files = collectAllFiles(event.dataTransfer);
+            if (files.length === 0) {
+              refuseDrop(t`Folders and empty files can't be attached — drop the files themselves.`);
+              return;
+            }
+            if (dropPolicy.kind === 'accept') {
+              dropPolicy.onFiles(files);
+              return;
+            }
+            refuseDrop(dropPolicy.reason ?? t`This composer doesn't accept attachments.`);
+          },
+        };
+
   return (
     <>
-      {/* biome-ignore lint/plugin/no-unportaled-editor-content: standalone single-instance composer editor — not an Activity-pool document editor. EditorContent's own wrapper element still exclusively parents view.dom (the slash hint below is a sibling of that wrapper, never inside it), so the H6 cross-doc DOM vacuum the portal guards against (precedent #44) cannot apply here. */}
-      <EditorContent editor={editor} className={className} />
+      {/* oxlint-disable-next-line ok/no-unportaled-editor-content -- standalone single-instance composer editor — not an Activity-pool document editor. EditorContent's own wrapper element still exclusively parents view.dom (every other node this component renders is a sibling of that wrapper, never inside it), so the H6 cross-doc DOM vacuum the portal guards against (precedent #44) cannot apply here. */}
+      <EditorContent editor={editor} className={className} {...dropSurfaceProps} />
+      {dropPolicy.kind !== 'host' ? (
+        <div role="status" aria-live="polite" data-testid="composer-drop-refusal">
+          {dropRefusal !== null ? (
+            <p key={dropRefusal.id} className="px-2.5 py-1 text-muted-foreground text-xs">
+              {dropRefusal.text}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {}
       {slashCommands !== undefined ? (
         <p

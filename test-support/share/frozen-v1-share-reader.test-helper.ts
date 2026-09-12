@@ -5,10 +5,6 @@ export type FrozenV1TokenOutcome =
 
 export type FrozenV1CustomOutcome = 'invalid' | 'ok-v1-url';
 
-/**
- * Release-baseline v1 decoder copied before v2 exists. It deliberately owns
- * its base64url and UTF-8 paths and must never import the production codec.
- */
 export function frozenV1DecodeShareToken(encoded: string): FrozenV1TokenOutcome {
   const cleaned = encoded.split(/[?#]/)[0];
   if (cleaned.length === 0) return { kind: 'invalid' };
@@ -32,10 +28,6 @@ export function frozenV1DecodeShareToken(encoded: string): FrozenV1TokenOutcome 
   }
 }
 
-/**
- * Release-baseline custom-scheme routing ignores unknown query parameters and
- * reads only the historical url field. Token-only input is therefore invalid.
- */
 export function frozenV1CustomSchemeOutcome(input: string): FrozenV1CustomOutcome {
   let parsed: URL;
   try {

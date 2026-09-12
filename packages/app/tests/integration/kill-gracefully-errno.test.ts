@@ -67,30 +67,25 @@ describe('killGroup errno policy', () => {
     expect(String(warn.mock.calls[0]?.[0])).toContain('EPERM');
   });
 
-  test.each([
-    'EACCES',
-    'EINVAL',
-    'ENOSYS',
-    undefined,
-  ])('rethrows %s rather than hiding it', (code) => {
-    const err = code === undefined ? new Error('not an errno at all') : errnoError(code);
-    vi.spyOn(process, 'kill').mockImplementation(() => {
-      throw err;
-    });
-    expect(() => killGroup(9_001, 'SIGTERM')).toThrow(err);
-  });
+  test.each(['EACCES', 'EINVAL', 'ENOSYS', undefined])(
+    'rethrows %s rather than hiding it',
+    (code) => {
+      const err = code === undefined ? new Error('not an errno at all') : errnoError(code);
+      vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw err;
+      });
+      expect(() => killGroup(9_001, 'SIGTERM')).toThrow(err);
+    },
+  );
 
-  test.each([
-    0,
-    1,
-    -5,
-    1.5,
-    Number.NaN,
-  ])('refuses pid %p instead of signalling our own process group', (pid) => {
-    const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
-    expect(killGroup(pid, 'SIGKILL')).toBe(false);
-    expect(kill).not.toHaveBeenCalled();
-  });
+  test.each([0, 1, -5, 1.5, Number.NaN])(
+    'refuses pid %p instead of signalling our own process group',
+    (pid) => {
+      const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
+      expect(killGroup(pid, 'SIGKILL')).toBe(false);
+      expect(kill).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe('signalTree errno policy', () => {

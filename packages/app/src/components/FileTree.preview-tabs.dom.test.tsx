@@ -327,37 +327,40 @@ describe('FileTree preview-tab activation', () => {
   test.each([
     ['enabled', true, 'preview'],
     ['disabled', false, 'permanent'],
-  ] as const)('opens document and folder rows as %s tabs without dropping hash or selection notifications', async (_state, enabled, disposition) => {
-    previewTabsEnabled = enabled;
-    render(<FileTree />);
+  ] as const)(
+    'opens document and folder rows as %s tabs without dropping hash or selection notifications',
+    async (_state, enabled, disposition) => {
+      previewTabsEnabled = enabled;
+      render(<FileTree />);
 
-    await screen.findByTestId('fake-pierre-tree');
-    await waitFor(() => expect(model.getItem('docs/')).not.toBeNull());
+      await screen.findByTestId('fake-pierre-tree');
+      await waitFor(() => expect(model.getItem('docs/')).not.toBeNull());
 
-    fireEvent.click(screen.getByRole('treeitem', { name: 'note.md' }));
+      fireEvent.click(screen.getByRole('treeitem', { name: 'note.md' }));
 
-    await waitFor(() =>
-      expect(openTargetMock).toHaveBeenNthCalledWith(
-        1,
-        { kind: 'doc', target: 'note', docName: 'note' },
-        { disposition, consumeActiveNewTab: true },
-      ),
-    );
-    expect(window.location.hash).toBe('#/note');
-    expect(notifySidebarFileSelectedMock).toHaveBeenCalledTimes(1);
+      await waitFor(() =>
+        expect(openTargetMock).toHaveBeenNthCalledWith(
+          1,
+          { kind: 'doc', target: 'note', docName: 'note' },
+          { disposition, consumeActiveNewTab: true },
+        ),
+      );
+      expect(window.location.hash).toBe('#/note');
+      expect(notifySidebarFileSelectedMock).toHaveBeenCalledTimes(1);
 
-    fireEvent.click(screen.getByRole('treeitem', { name: 'docs/' }));
+      fireEvent.click(screen.getByRole('treeitem', { name: 'docs/' }));
 
-    await waitFor(() =>
-      expect(openTargetMock).toHaveBeenNthCalledWith(
-        2,
-        { kind: 'folder', target: 'docs', folderPath: 'docs' },
-        { disposition, consumeActiveNewTab: true },
-      ),
-    );
-    expect(window.location.hash).toBe('#/docs/');
-    expect(notifySidebarFileSelectedMock).toHaveBeenCalledTimes(2);
-  });
+      await waitFor(() =>
+        expect(openTargetMock).toHaveBeenNthCalledWith(
+          2,
+          { kind: 'folder', target: 'docs', folderPath: 'docs' },
+          { disposition, consumeActiveNewTab: true },
+        ),
+      );
+      expect(window.location.hash).toBe('#/docs/');
+      expect(notifySidebarFileSelectedMock).toHaveBeenCalledTimes(2);
+    },
+  );
 
   test('leaves a click on a pinned folder header to the tree, so it collapses instead of reopening', async () => {
     render(<FileTree />);

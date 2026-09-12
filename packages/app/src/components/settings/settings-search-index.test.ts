@@ -29,7 +29,21 @@ function groupsFixture(opts: {
       id: 'project',
       label: 'This project',
       enabled: projectEnabled,
-      items: [{ id: 'sync', label: 'Sync' }],
+      items: [
+        { id: 'sync', label: 'Sync' },
+        {
+          id: 'search',
+          label: 'Search',
+          subsections: [
+            {
+              id: 'performance',
+              label: 'Embedding request settings',
+              anchor: 'search.semantic.maxBatchSize',
+              keywords: ['batch', 'characters', 'timeout', 'embeddings', 'Ollama'],
+            },
+          ],
+        },
+      ],
     },
     { id: 'plugins', label: 'Plugins', enabled: true, items: pluginItems },
   ];
@@ -145,6 +159,35 @@ describe('buildSettingsSearchIndex', () => {
     expect(disabled.some((e) => e.id.startsWith('subsection:'))).toBe(false);
   });
 
+  test('a subsection can carry its own search synonyms alongside the inherited context', () => {
+    const groups: SidebarGroup[] = [
+      {
+        id: 'user',
+        label: 'User',
+        enabled: true,
+        items: [
+          {
+            id: 'preferences',
+            label: 'Preferences',
+            subsections: [
+              {
+                id: 'spellcheck',
+                label: 'Check spelling while typing',
+                anchor: 'spellcheck.enabled',
+                keywords: ['spellcheck'],
+              },
+            ],
+          },
+        ],
+      },
+    ];
+    const entries = buildSettingsSearchIndex({ groups, translate });
+    const sub = entries.find((e) => e.id === 'subsection:preferences:spellcheck');
+
+    expect(sub?.keywords).toEqual(['User', 'Preferences', 'spellcheck']);
+    expect(matchesCommandQuery(sub?.label ?? '', 'spellcheck', sub?.keywords ?? [])).toBe(true);
+  });
+
   test('theme field indexed only when the theme plugin is a visible section', () => {
     const withTheme = buildSettingsSearchIndex({
       groups: groupsFixture({ themeVisible: true }),
@@ -205,6 +248,18 @@ describe('buildSettingsSearchIndex + matchesCommandQuery', () => {
   test('a section is found by its label', () => {
     expect(find('Sync').some((e) => e.kind === 'section' && e.sectionId === 'sync')).toBe(true);
   });
+
+  test.each(['batch', 'characters', 'timeout', 'embeddings', 'Ollama'])(
+    'embedding performance is found by the %s keyword',
+    (query) => {
+      expect(
+        find(query).some(
+          (entry) =>
+            entry.sectionId === 'search' && entry.targetField === 'search.semantic.maxBatchSize',
+        ),
+      ).toBe(true);
+    },
+  );
 
   test('a query matching nothing returns no entries', () => {
     expect(find('zzzznomatch')).toHaveLength(0);

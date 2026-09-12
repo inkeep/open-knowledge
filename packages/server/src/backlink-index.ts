@@ -955,7 +955,7 @@ export function computeBrokenOutboundLinks(
 
   const recordWikiLink = (target: string, anchor: string | null): void => {
     const resolved = resolveWikiLinkTarget(target, anchor, wikiLookup);
-    if (!resolved || resolved.kind !== 'doc') return;
+    if (resolved?.kind !== 'doc') return;
     if (
       resolveWikiLinkTargetDocName(resolved.docName, wikiLookup) === undefined &&
       folderExists?.(resolved.docName) !== true

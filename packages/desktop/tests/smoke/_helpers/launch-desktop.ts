@@ -95,5 +95,5 @@ export function desktopLaunchOptions(input: DesktopLaunchOptionsInput = {}): Des
       ? { args: [...extraArgs], timeout, executablePath: target.targetPath }
       : { args: [target.targetPath, ...extraArgs], timeout };
 
-  return { ...base, env: { ...process.env, ...input.env, OK_LANG: 'en' } };
+  return { ...base, env: { ...process.env, ...input.env, OK_LANG: 'en', OK_LOG_LEVEL: 'info' } };
 }

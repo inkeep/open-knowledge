@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { RE_LINT_FAILED_WARNING_PREFIX } from '@inkeep/open-knowledge-core';
 import { normalizeObjectSchema } from '@modelcontextprotocol/sdk/server/zod-compat.js';
 import { toJsonSchemaCompat } from '@modelcontextprotocol/sdk/server/zod-json-schema-compat.js';
 import { AjvJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/ajv';
@@ -8,13 +9,18 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register as registerAudit } from './audit.ts';
 import { register as registerConfig } from './config.ts';
+import { register as registerEdit } from './edit.ts';
+import { register as registerImport } from './import.ts';
 import { registerAllTools } from './index.ts';
+import { register as registerInstall } from './install.ts';
 import { register as registerLint } from './lint.ts';
 import { register as registerPalette } from './palette.ts';
 import { register as registerSearch } from './search.ts';
-import { AUDIT_WARNING_CAP, type ServerInstance } from './shared.ts';
+import { AUDIT_WARNING_CAP, type ServerInstance, WARNINGS_FIELD_CONTRACT } from './shared.ts';
 
 const BASE_CONFIG: Config = ConfigSchema.parse({});
+
+const legacyReLint = (message: string) => `${RE_LINT_FAILED_WARNING_PREFIX}${message}`;
 
 interface ToolResult {
   content: Array<{ type: 'text'; text: string }>;
@@ -422,35 +428,82 @@ describe('audit and lint emitted coverage validates against the client schema', 
     );
   });
 
-  test('the deprecated fix `warning` rides `warnings` too, and renders once', async () => {
+  test('diagnosticsArePreFix drives the fix header, renders the bare reason once, and drops the remaining-problems footer', async () => {
     const captured = captureRegistration(registerLint, {
       config: BASE_CONFIG,
       resolveCwd: async () => newProject(),
       serverUrl: 'http://127.0.0.1:31337',
     });
-    const reLint = 'Re-lint after fix failed: boom';
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async () =>
-        Response.json({
-          file: 'notes.md',
-          fixedCount: 1,
-          diagnostics: [],
-          errorCount: 0,
-          warningCount: 0,
-          ran: ['markdownlint'],
-          warning: reLint,
-          warnings: [reLint],
-        }),
-      ),
-    );
+    const reLint = legacyReLint('boom');
+    const fixPayload = (
+      warnings: string[],
+      diagnosticsArePreFix?: boolean,
+    ): Record<string, unknown> => ({
+      file: 'notes.md',
+      fixedCount: diagnosticsArePreFix ? 0 : 1,
+      diagnostics: [warningDiagnostic('markdownlint')],
+      errorCount: 0,
+      warningCount: 1,
+      ran: ['markdownlint'],
+      warnings,
+      ...(diagnosticsArePreFix === undefined ? {} : { diagnosticsArePreFix }),
+    });
+    const call = async (warnings: string[], diagnosticsArePreFix?: boolean) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Response.json(fixPayload(warnings, diagnosticsArePreFix))),
+      );
+      return captured.handler({ document: 'notes', fix: true });
+    };
 
-    const result = await captured.handler({ document: 'notes', fix: true });
+    const result = await call([reLint], true);
 
-    const structured = result.structuredContent as { warnings?: string[] };
-    expect(structured.warnings).toEqual([reLint]);
+    expect(result.structuredContent).not.toHaveProperty('warnings');
+    expect(result.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'boom' },
+    });
     const text = result.content[0]?.text ?? '';
-    expect(text.split(reLint)).toHaveLength(2);
+    expect(text.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+    expect(text).not.toContain('problem remain');
+
+    const legacyOnly = await (async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            errorCount: 0,
+            warningCount: 1,
+            ran: ['markdownlint'],
+            warning: reLint,
+          }),
+        ),
+      );
+      return captured.handler({ document: 'notes', fix: true });
+    })();
+    const legacyText = legacyOnly.content[0]?.text ?? '';
+    expect(legacyText.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(legacyText).not.toContain('problem remain');
+    expect(legacyOnly.structuredContent).not.toHaveProperty('warnings');
+    expect(legacyOnly.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'boom' },
+    });
+
+    const ordinary = await call(['source "markdownlint" lint failed on "notes.md": boom']);
+    const ordinaryStructured = ordinary.structuredContent as { diagnosticsArePreFix?: boolean };
+    expect(ordinaryStructured.diagnosticsArePreFix).toBeUndefined();
+    const ordinaryText = ordinary.content[0]?.text ?? '';
+    expect(ordinaryText.split('\n')[0]).toBe('Fixed 1 problem in notes.md.');
+    expect(ordinaryText).toContain('1 problem remain');
 
     const validator = new AjvJsonSchemaValidator();
     const validate = validator.getValidator(
@@ -460,6 +513,263 @@ describe('audit and lint emitted coverage validates against the client schema', 
       valid: boolean;
       errorMessage?: string;
     };
+    expect(validation.valid, validation.errorMessage).toBe(true);
+  });
+
+  test('the pre-fix signal survives a server that sends only the prefix or only the boolean', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    const call = async (extra: Record<string, unknown>) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            errorCount: 0,
+            warningCount: 1,
+            ran: ['markdownlint'],
+            ...extra,
+          }),
+        ),
+      );
+      return captured.handler({ document: 'notes', fix: true });
+    };
+
+    const prefixOnly = await call({ warnings: [legacyReLint('boom')] });
+    expect(
+      (prefixOnly.structuredContent as { diagnosticsArePreFix?: boolean }).diagnosticsArePreFix,
+    ).toBe(true);
+    expect(prefixOnly.structuredContent).not.toHaveProperty('warnings');
+    expect(prefixOnly.structuredContent).toHaveProperty('reLintFailure', {
+      reason: 're-lint-threw',
+      message: 'boom',
+    });
+    const prefixText = prefixOnly.content[0]?.text ?? '';
+    expect(prefixText.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(prefixText).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+    expect(prefixText).not.toContain('problem remain');
+
+    const booleanOnly = await call({ diagnosticsArePreFix: true });
+    expect(booleanOnly.structuredContent).toHaveProperty('diagnosticsArePreFix', true);
+    expect(booleanOnly.structuredContent).not.toHaveProperty('reLintFailure');
+    expect((booleanOnly.content[0]?.text ?? '').split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed; the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+  });
+
+  test.each(['boom', ' \tboom\n '])(
+    'reLintFailure alone marks diagnostics as pre-fix and carries its message in both outputs (%j)',
+    async (message) => {
+      const captured = captureRegistration(registerLint, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => newProject(),
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      const diagnostics = [warningDiagnostic('markdownlint')];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics,
+            ran: ['markdownlint'],
+            reLintFailure: { reason: 'source-went-blind', message },
+          }),
+        ),
+      );
+
+      const result = await captured.handler({ document: 'notes', fix: true });
+      const text = result.content[0]?.text ?? '';
+      expect(text.split('\n')[0]).toBe(
+        'Applied auto-fixes to notes.md, but re-lint failed (boom); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+      );
+      expect(text.match(/boom/g)).toHaveLength(1);
+      expect(text).not.toContain('problem remain');
+      expect(result.structuredContent).toMatchObject({
+        files: [{ file: 'notes.md', diagnostics }],
+        fixedCount: 0,
+        errorCount: 0,
+        warningCount: 1,
+        diagnosticsArePreFix: true,
+        reLintFailure: { reason: 'source-went-blind', message: 'boom' },
+      });
+      expect(result.structuredContent).not.toHaveProperty('warnings');
+      expect(result.structuredContent).not.toHaveProperty('warning');
+      const validate = new AjvJsonSchemaValidator().getValidator(
+        compileOutputSchemaForClient(captured.cfg.outputSchema),
+      );
+      const validation = validate(result.structuredContent);
+      expect(validation.valid, validation.errorMessage).toBe(true);
+    },
+  );
+
+  test.each([{}, { reason: 're-lint-threw', message: '   ' }])(
+    'a malformed typed reLintFailure (%j) falls through to the legacy prefixed warning without throwing',
+    async (reLintFailure) => {
+      const captured = captureRegistration(registerLint, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => newProject(),
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            ran: ['markdownlint'],
+            warnings: [legacyReLint('legacy reason')],
+            reLintFailure,
+          }),
+        ),
+      );
+
+      const result = await captured.handler({ document: 'notes', fix: true });
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toMatchObject({
+        diagnosticsArePreFix: true,
+        reLintFailure: { reason: 're-lint-threw', message: 'legacy reason' },
+      });
+      expect(result.structuredContent).not.toHaveProperty('warnings');
+      const text = result.content[0]?.text ?? '';
+      expect(text.split('\n')[0]).toContain('re-lint failed (legacy reason);');
+      expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+      const validate = new AjvJsonSchemaValidator().getValidator(
+        compileOutputSchemaForClient(captured.cfg.outputSchema),
+      );
+      const validation = validate(result.structuredContent);
+      expect(validation.valid, validation.errorMessage).toBe(true);
+    },
+  );
+
+  test.each([
+    { reLintFailure: undefined, reason: 're-lint-threw', message: 'plural reason' },
+    {
+      reLintFailure: { reason: 'source-went-blind', message: '  typed reason  ' },
+      reason: 'source-went-blind',
+      message: 'typed reason',
+    },
+  ])(
+    'fix output keeps ordinary warnings and normalizes legacy failures to $message',
+    async ({ reLintFailure, reason, message }) => {
+      const captured = captureRegistration(registerLint, {
+        config: BASE_CONFIG,
+        resolveCwd: async () => newProject(),
+        serverUrl: 'http://127.0.0.1:31337',
+      });
+      const warnings = [
+        'source "markdownlint" fix failed on "notes.md": unavailable',
+        'frontmatter schema unavailable',
+      ];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () =>
+          Response.json({
+            file: 'notes.md',
+            fixedCount: 0,
+            diagnostics: [warningDiagnostic('markdownlint')],
+            warnings: [
+              warnings[0],
+              legacyReLint('plural reason'),
+              warnings[1],
+              legacyReLint('another legacy reason'),
+            ],
+            warning: legacyReLint('singular reason'),
+            reLintFailure,
+          }),
+        ),
+      );
+
+      const result = await captured.handler({ document: 'notes', fix: true });
+      expect(result.structuredContent).toMatchObject({
+        warnings,
+        diagnosticsArePreFix: true,
+        reLintFailure: { reason, message },
+      });
+      const text = result.content[0]?.text ?? '';
+      expect(text.split('\n')[0]).toContain(`re-lint failed (${message});`);
+      expect(text).toContain('Lint incomplete — 2 warnings (findings may be partial):');
+      for (const warning of warnings) expect(text).toContain(warning);
+      expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+      expect(text).not.toContain('another legacy reason');
+      expect(text).not.toContain('singular reason');
+      expect(text).not.toContain('problem remain');
+    },
+  );
+
+  test('an older server that sends the same prefixed string in warning and warnings renders it once', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          file: 'notes.md',
+          fixedCount: 0,
+          diagnostics: [warningDiagnostic('markdownlint')],
+          ran: ['markdownlint'],
+          warning: legacyReLint('same'),
+          warnings: [legacyReLint('same')],
+        }),
+      ),
+    );
+
+    const result = await captured.handler({ document: 'notes', fix: true });
+
+    expect(result.structuredContent).not.toHaveProperty('warnings');
+    expect(result.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'same' },
+    });
+    const text = result.content[0]?.text ?? '';
+    expect(text.split('\n')[0]).toBe(
+      'Applied auto-fixes to notes.md, but re-lint failed (same); the fix landed — problems below are the pre-fix set, re-run `lint` to confirm.',
+    );
+    expect(text.match(/same/g)).toHaveLength(1);
+    expect(text).not.toContain(RE_LINT_FAILED_WARNING_PREFIX);
+  });
+
+  test('a reason an older or newer server does not share normalizes to the closed discriminant', async () => {
+    const captured = captureRegistration(registerLint, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => newProject(),
+      serverUrl: 'http://127.0.0.1:31337',
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          file: 'notes.md',
+          fixedCount: 0,
+          diagnostics: [warningDiagnostic('markdownlint')],
+          ran: ['markdownlint'],
+          reLintFailure: { reason: 'a-reason-from-the-future', message: 'still readable' },
+        }),
+      ),
+    );
+
+    const result = await captured.handler({ document: 'notes', fix: true });
+
+    expect(result.structuredContent).toMatchObject({
+      diagnosticsArePreFix: true,
+      reLintFailure: { reason: 're-lint-threw', message: 'still readable' },
+    });
+    const validate = new AjvJsonSchemaValidator().getValidator(
+      compileOutputSchemaForClient(captured.cfg.outputSchema),
+    );
+    const validation = validate(result.structuredContent);
     expect(validation.valid, validation.errorMessage).toBe(true);
   });
 
@@ -520,6 +830,66 @@ describe('audit and lint emitted coverage validates against the client schema', 
   }
 });
 
+describe('the warnings-field contract is single-sourced across every tool that states it', () => {
+  const INVARIANT_TAIL = WARNINGS_FIELD_CONTRACT.slice(
+    WARNINGS_FIELD_CONTRACT.indexOf('`content[0].text`'),
+  );
+
+  function warningsDescriptions(tool: string, container: string | null): string[] {
+    const cwd = newProject();
+    const captured: Array<{ name: string; outputSchema?: unknown }> = [];
+    const server = {
+      registerTool(name: string, cfg: { outputSchema?: unknown }) {
+        captured.push({ name, outputSchema: cfg.outputSchema });
+      },
+      tool() {},
+    } as unknown as ServerInstance;
+    registerAllTools(server, {
+      config: BASE_CONFIG,
+      resolveCwd: async () => cwd,
+      serverUrl: undefined,
+    });
+    const registered = captured.find((r) => r.name === tool);
+    if (!registered?.outputSchema) throw new Error(`${tool} did not register an outputSchema`);
+    const found: string[] = [];
+    const walk = (node: unknown, key: string | null): void => {
+      if (!node || typeof node !== 'object') return;
+      const record = node as Record<string, unknown>;
+      if (key === 'warnings' && typeof record.description === 'string') {
+        found.push(record.description);
+      }
+      for (const [childKey, child] of Object.entries(record.properties ?? {})) {
+        walk(child, childKey);
+      }
+      for (const branch of ['items', 'anyOf', 'allOf', 'oneOf'] as const) {
+        const value = record[branch];
+        if (Array.isArray(value)) for (const entry of value) walk(entry, key);
+        else if (value) walk(value, key);
+      }
+    };
+    const compiled = compileOutputSchemaForClient(registered.outputSchema);
+    const properties = (compiled.properties ?? {}) as Record<string, unknown>;
+    walk(container === null ? compiled : properties[container], null);
+    return found;
+  }
+
+  test.each([
+    ['write', 'skill'],
+    ['edit', 'skill'],
+    ['install', null],
+    ['import', null],
+  ] as ReadonlyArray<readonly [string, string | null]>)(
+    '%s states the same unreadable-payload invariant, verbatim',
+    (tool, container) => {
+      const descriptions = warningsDescriptions(tool, container);
+      expect(descriptions.length).toBeGreaterThan(0);
+      for (const description of descriptions) {
+        expect(description).toContain(INVARIANT_TAIL);
+      }
+    },
+  );
+});
+
 describe('move outputSchema admits the cross-level skill-move payloads (CORR-1)', () => {
   function moveOutputJsonSchema(): Record<string, unknown> {
     const cwd = newProject();
@@ -547,17 +917,49 @@ describe('move outputSchema admits the cross-level skill-move payloads (CORR-1)'
     crossScope: true,
     text: 'Moved skill "trip-log" (Project) → "trip-log" (Global). …',
   };
+  const crossScopeRefusal = {
+    ok: false,
+    kind: 'skill',
+    error: 'A global skill named "fishing-log" already exists.',
+    moveState: 'nothing-written',
+    droppedLocations: [],
+    text: 'Error: A global skill named "fishing-log" already exists.',
+  };
   const crossScopePartialFailure = {
     ok: false,
     kind: 'skill',
-    error: 'source delete failed',
-    bothScopes: true,
-    text: 'Partially moved skill … exists in BOTH levels …',
+    error: 'Failed to move skill (source removal failed); destination copy retained for recovery.',
+    moveState: 'destination-retained',
+    sourceState: 'lossy',
+    droppedLocations: ['.team/skills', 'agents'],
+    text: 'Error: Failed to move skill (source removal failed); destination copy retained for recovery.',
+  };
+  const crossScopeRefusalWithUnverifiableOccupant = {
+    ...crossScopeRefusal,
+    retentionLedger: 'occupant-unverifiable',
+  };
+  const crossScopeRefusalWithUnreadableLedger = {
+    ...crossScopeRefusal,
+    retentionLedger: 'unreadable',
+  };
+  const crossScopeSuccessWithDroppedLocations = {
+    ...crossScopeSuccess,
+    droppedLocations: ['.team/skills', 'agents'],
   };
 
   for (const [label, payload] of [
     ['cross-level success', crossScopeSuccess],
-    ['cross-level partial-failure (both levels)', crossScopePartialFailure],
+    ['cross-level success carrying droppedLocations', crossScopeSuccessWithDroppedLocations],
+    ['cross-level refusal (destination taken)', crossScopeRefusal],
+    ['cross-level partial failure (destination retained)', crossScopePartialFailure],
+    [
+      'cross-level refusal with an unverifiable occupant',
+      crossScopeRefusalWithUnverifiableOccupant,
+    ],
+    [
+      'cross-level refusal with an unreadable retention ledger',
+      crossScopeRefusalWithUnreadableLedger,
+    ],
   ] as const) {
     test(`${label} structuredContent validates against the compiled move schema`, () => {
       const validator = new AjvJsonSchemaValidator();
@@ -641,4 +1043,203 @@ describe('share_link outputSchema admits emitted success and error payloads', ()
       }
     });
   }
+});
+
+describe('skill warningCodes normalize across server skew (closed enum, 1:1 with warnings)', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const skillDeps = () => ({
+    config: BASE_CONFIG,
+    resolveCwd: async () => newProject(),
+    serverUrl: 'http://127.0.0.1:31337',
+  });
+
+  const jsonRoutes = (routes: Array<[test: (url: string) => boolean, body: unknown]>) =>
+    vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      const hit = routes.find(([matches]) => matches(href));
+      if (!hit) throw new Error(`unexpected fetch: ${href}`);
+      return Response.json(hit[1]);
+    });
+
+  const expectValidates = (captured: Captured, structured: unknown) => {
+    const validate = new AjvJsonSchemaValidator().getValidator(
+      compileOutputSchemaForClient(captured.cfg.outputSchema),
+    );
+    const validation = validate(structured);
+    expect(validation.valid, validation.errorMessage).toBe(true);
+  };
+
+  test('edit withholds authoring codes a newer server skewed, and keeps every warning', async () => {
+    const captured = captureRegistration(registerEdit, skillDeps());
+    vi.stubGlobal(
+      'fetch',
+      jsonRoutes([
+        [
+          (href) => href.includes('/api/skill?'),
+          { skill: { frontmatter: { description: 'old' }, body: 'body', files: [] } },
+        ],
+        [
+          () => true,
+          {
+            path: '.agents/skills/review-bot/SKILL.md',
+            created: false,
+            warnings: ['Skill name contains "claude".', 'A warning from the future.'],
+            warningCodes: ['skill-name-vendor-word', 'skill-warning-from-the-future'],
+          },
+        ],
+      ]),
+    );
+
+    const result = await captured.handler({ skill: { name: 'review-bot', description: 'new' } });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent?.skill).toMatchObject({
+      warnings: ['Skill name contains "claude".', 'A warning from the future.'],
+    });
+    expect(result.structuredContent?.skill).not.toHaveProperty('warningCodes');
+    expect(result.content[0]?.text).toContain('A warning from the future.');
+    expectValidates(captured, result.structuredContent);
+  });
+
+  test('import keeps a code-less half text and omits warningCodes rather than reporting an all-clear', async () => {
+    const captured = captureRegistration(registerImport, skillDeps());
+    vi.stubGlobal(
+      'fetch',
+      jsonRoutes([
+        [
+          (href) => href.endsWith('/api/skill/import'),
+          {
+            name: 'review-bot',
+            warnings: ['Skill name contains "claude".', 'SKILL.md body is 600 lines.'],
+            warningCodes: ['skill-name-vendor-word', 'skill-body-too-long'],
+          },
+        ],
+        [() => true, { warnings: ['An older server sent no codes.'] }],
+      ]),
+    );
+
+    const result = await captured.handler({ source: 'acme/skills', add: ['agents'] });
+
+    expect(result.isError).toBeUndefined();
+    expect(result.structuredContent).toMatchObject({
+      warnings: [
+        'Skill name contains "claude".',
+        'SKILL.md body is 600 lines.',
+        'An older server sent no codes.',
+      ],
+    });
+    expect(result.structuredContent).not.toHaveProperty('warningCodes');
+    expect(result.content[0]?.text).toContain('An older server sent no codes.');
+    expectValidates(captured, result.structuredContent);
+  });
+
+  test('import withholds codes when a step sent one a newer server invented, and keeps every warning', async () => {
+    const captured = captureRegistration(registerImport, skillDeps());
+    vi.stubGlobal(
+      'fetch',
+      jsonRoutes([
+        [(href) => href.endsWith('/api/skill/import'), { name: 'review-bot', warnings: [] }],
+        [
+          () => true,
+          {
+            warnings: ['A placement warning from the future.', 'Nothing was projected.'],
+            warningCodes: ['place-from-the-future', 'no-targets'],
+          },
+        ],
+      ]),
+    );
+
+    const result = await captured.handler({ source: 'acme/skills', add: ['agents'] });
+
+    expect(result.structuredContent).toMatchObject({
+      warnings: ['A placement warning from the future.', 'Nothing was projected.'],
+    });
+    expect(result.structuredContent).not.toHaveProperty('warningCodes');
+    expect(result.content[0]?.text).toContain('A placement warning from the future.');
+    expectValidates(captured, result.structuredContent);
+  });
+
+  test('import emits both arrays empty rather than absent when there are no warnings', async () => {
+    const captured = captureRegistration(registerImport, skillDeps());
+    vi.stubGlobal(
+      'fetch',
+      jsonRoutes([
+        [(href) => href.endsWith('/api/skill/import'), { name: 'review-bot', warnings: [] }],
+        [() => true, { warnings: [] }],
+      ]),
+    );
+
+    const result = await captured.handler({ source: 'acme/skills', add: ['agents'] });
+
+    expect(result.structuredContent).toHaveProperty('warnings', []);
+    expect(result.structuredContent).toHaveProperty('warningCodes', []);
+    expectValidates(captured, result.structuredContent);
+  });
+  test('install withholds codes on an unknown one, and still emits both arrays when there are none', async () => {
+    const skewed = captureRegistration(registerInstall, skillDeps());
+    vi.stubGlobal(
+      'fetch',
+      jsonRoutes([
+        [
+          () => true,
+          {
+            hosts: ['agents'],
+            scripts: false,
+            warnings: ['A placement warning from the future.', 'Nothing was projected.'],
+            warningCodes: ['place-from-the-future', 'no-targets'],
+          },
+        ],
+      ]),
+    );
+
+    const skewedResult = await skewed.handler({ name: 'review-bot', add: ['agents'] });
+
+    expect(skewedResult.structuredContent).toMatchObject({
+      warnings: ['A placement warning from the future.', 'Nothing was projected.'],
+    });
+    expect(skewedResult.structuredContent).not.toHaveProperty('warningCodes');
+    expect(skewedResult.content[0]?.text).toContain('A placement warning from the future.');
+    expectValidates(skewed, skewedResult.structuredContent);
+
+    vi.unstubAllGlobals();
+    const quiet = captureRegistration(registerInstall, skillDeps());
+    vi.stubGlobal(
+      'fetch',
+      jsonRoutes([[() => true, { hosts: ['agents'], scripts: false, warnings: [] }]]),
+    );
+
+    const quietResult = await quiet.handler({ name: 'review-bot', add: ['agents'] });
+
+    expect(quietResult.structuredContent).toHaveProperty('warnings', []);
+    expect(quietResult.structuredContent).toHaveProperty('warningCodes', []);
+    expectValidates(quiet, quietResult.structuredContent);
+  });
+
+  test('install keeps a pre-codes server warnings and omits warningCodes rather than reporting an all-clear', async () => {
+    const captured = captureRegistration(registerInstall, skillDeps());
+    vi.stubGlobal(
+      'fetch',
+      jsonRoutes([
+        [
+          () => true,
+          {
+            hosts: ['agents'],
+            scripts: true,
+            warnings: ['This skill ships executable scripts/.'],
+          },
+        ],
+      ]),
+    );
+
+    const result = await captured.handler({ name: 'review-bot', add: ['agents'] });
+
+    expect(result.structuredContent).toMatchObject({
+      warnings: ['This skill ships executable scripts/.'],
+    });
+    expect(result.structuredContent).not.toHaveProperty('warningCodes');
+    expectValidates(captured, result.structuredContent);
+  });
 });

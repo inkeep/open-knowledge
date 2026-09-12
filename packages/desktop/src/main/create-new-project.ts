@@ -18,7 +18,6 @@ import {
   coercePackId,
   type EnsureProjectGitResult,
   ensureProjectGit,
-  ensureProjectSkillGitignore,
   findEnclosingProjectRoot,
   initContent,
   planSeed,
@@ -260,14 +259,6 @@ export async function runCreateNew(
   }
 
   const aiIntegrations = writeProjectAiIntegrations(projectDir, [...editors]);
-
-  try {
-    ensureProjectSkillGitignore(projectDir);
-  } catch (err) {
-    console.warn(
-      `[create-new-project] skipping project-skill .gitignore entry at ${projectDir}: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
 
   const desiredSharing: 'shared' | 'local-only' =
     args.sharing === 'local-only' ? 'local-only' : 'shared';

@@ -1,10 +1,15 @@
 import {
   type AdvisoryWarning,
   AdvisoryWarningSchema,
+  assertNeverWriteWarning,
   type BrokenLink,
   BrokenLinkSchema,
+  type BrokenLinkSuppression,
+  BrokenLinkSuppressionSchema,
+  isWriteWarningKind,
   type LintViolationWarning,
   type RenderWarning,
+  WRITE_WARNING_KINDS,
   type WriteWarning,
 } from '@inkeep/open-knowledge-core';
 
@@ -23,6 +28,11 @@ export function parseBrokenLinks(value: unknown): BrokenLink[] {
     const parsed = BrokenLinkSchema.safeParse(entry);
     return parsed.success ? [parsed.data] : [];
   });
+}
+
+export function parseBrokenLinkSuppression(value: unknown): BrokenLinkSuppression | undefined {
+  const parsed = BrokenLinkSuppressionSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
 
 export function formatBrokenLinkLines(links: BrokenLink[]): string[] {
@@ -50,9 +60,7 @@ function formatBrokenLink(link: BrokenLink): string {
 }
 
 function integrityEntries(warnings: AdvisoryWarning[]): WriteWarning[] {
-  return warnings.filter(
-    (w): w is WriteWarning => w.kind === 'content-divergence' || w.kind === 'disk-edit-reconciled',
-  );
+  return warnings.filter((w): w is WriteWarning => isWriteWarningKind(w.kind));
 }
 
 function renderEntries(warnings: AdvisoryWarning[]): RenderWarning[] {
@@ -63,9 +71,8 @@ function lintEntries(warnings: AdvisoryWarning[]): LintViolationWarning[] {
   return warnings.filter((w): w is LintViolationWarning => w.kind === 'lint-violation');
 }
 
-const RELAYED_KINDS: ReadonlySet<string> = new Set([
-  'content-divergence',
-  'disk-edit-reconciled',
+const RELAYED_KINDS: ReadonlySet<string> = new Set<string>([
+  ...WRITE_WARNING_KINDS,
   'mermaid-parse-error',
   'lint-violation',
 ]);
@@ -110,15 +117,25 @@ export function formatAdvisoryBriefs(warnings: AdvisoryWarning[]): string[] {
 }
 
 function formatIntegrityLine(d: WriteWarning): string {
-  return d.kind === 'content-divergence'
-    ? `⚠ Content divergence: ${d.actualBytes} actual bytes vs ${d.intendedBytes} intended (byteDelta=${d.byteDelta}). ${d.hint ?? 'currentState carries the converged content (re-read only if it is truncated).'}`
-    : `⚠ ${d.hint ?? 'An out-of-band edit was reconciled into this document before your edit landed on top — re-read for the combined result.'}`;
+  switch (d.kind) {
+    case 'content-divergence':
+      return `⚠ Content divergence: ${d.actualBytes} actual bytes vs ${d.intendedBytes} intended (byteDelta=${d.byteDelta}). ${d.hint ?? 'currentState carries the converged content (re-read only if it is truncated).'}`;
+    case 'disk-edit-reconciled':
+      return `⚠ ${d.hint ?? 'An out-of-band edit was reconciled into this document before your edit landed on top — re-read for the combined result.'}`;
+    default:
+      return assertNeverWriteWarning(d);
+  }
 }
 
 function formatIntegrityBrief(d: WriteWarning): string {
-  return d.kind === 'content-divergence'
-    ? `⚠ Content divergence: ${d.actualBytes} actual vs ${d.intendedBytes} intended (byteDelta=${d.byteDelta}).`
-    : '⚠ Out-of-band disk edit reconciled before this write — re-read for the combined result.';
+  switch (d.kind) {
+    case 'content-divergence':
+      return `⚠ Content divergence: ${d.actualBytes} actual vs ${d.intendedBytes} intended (byteDelta=${d.byteDelta}).`;
+    case 'disk-edit-reconciled':
+      return '⚠ Out-of-band disk edit reconciled before this write — re-read for the combined result.';
+    default:
+      return assertNeverWriteWarning(d);
+  }
 }
 
 export function formatRenderWarningsLine(warnings: RenderWarning[]): string {

@@ -110,10 +110,30 @@ describe('config-edit OTel spans', () => {
   });
 
   describe('config.patch + L1 config.validate (binding path)', () => {
+    it('distinguishes an initial-sync rejection from a write failure', () => {
+      const ydoc = new Y.Doc();
+      const mock = createMockProvider(ydoc);
+      const binding = bindConfigDoc(mock, 'project');
+
+      const result = binding.patch({ content: { dir: './notes' } } as ConfigPatch);
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected initial-sync rejection');
+      expect(result.error.code).toBe('NOT_SYNCED');
+
+      const patchSpan = requireSpan('config.patch');
+      expect(attr(patchSpan, 'config.outcome')).toBe('rejected');
+      expect(attr(patchSpan, 'config.error.code')).toBe('NOT_SYNCED');
+      expect(spansByName('config.validate')).toHaveLength(0);
+
+      binding.dispose();
+      ydoc.destroy();
+    });
+
     it('emits config.patch + config.validate(L1) on a successful patch', () => {
       const ydoc = new Y.Doc();
       const mock = createMockProvider(ydoc);
       const binding = bindConfigDoc(mock, 'project');
+      mock.emitSynced();
       const result = binding.patch({
         content: { dir: './notes' },
       } as ConfigPatch);
@@ -136,6 +156,7 @@ describe('config-edit OTel spans', () => {
       const ydoc = new Y.Doc();
       const mock = createMockProvider(ydoc);
       const binding = bindConfigDoc(mock, 'project');
+      mock.emitSynced();
       const result = binding.patch({
         content: { dir: 42 as unknown as string },
       } as ConfigPatch);
@@ -269,6 +290,7 @@ describe('config-edit OTel spans', () => {
       const mock = createMockProvider(ydoc);
       expect(() => {
         const binding = bindConfigDoc(mock, 'project');
+        mock.emitSynced();
         binding.patch({ appearance: { theme: 'system' } } as ConfigPatch);
       }).not.toThrow();
     });

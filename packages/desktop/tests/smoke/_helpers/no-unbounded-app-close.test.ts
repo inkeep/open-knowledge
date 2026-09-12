@@ -99,6 +99,10 @@ function formatViolations(violations: Violation[]): string {
   lines.push('Test bodies should NOT introduce an unbounded `await app.close()` ahead');
   lines.push("of the fixture teardown — Playwright runs the body's `finally` first,");
   lines.push('and an unbounded await there hangs through the 150 s outer timeout.');
+  lines.push('`closeAppBounded` REJECTS with `AppCleanupIncompleteError` when it cannot');
+  lines.push('establish `close`, so a test body that calls it directly must handle that');
+  lines.push('rejection: an unhandled one inside a `finally` replaces the real failure the');
+  lines.push('body was reporting. The fixture aggregates and reports every unclosed app.');
   lines.push('See `_helpers/electron-cleanup.ts` for the bounded primitive contract.');
   return lines.join('\n');
 }

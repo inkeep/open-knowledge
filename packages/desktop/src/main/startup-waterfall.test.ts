@@ -175,3 +175,102 @@ describe('StartupWaterfall', () => {
     expect(p?.otelEnabled).toBe(false);
   });
 });
+
+describe('mark-time narration (the boot log the smoke harness reads)', () => {
+  test('reports every phase as it happens, not only at emit time', () => {
+    const seen: { phase: string; elapsedMs: number }[] = [];
+    let clock = 500;
+    const w = new StartupWaterfall({
+      otelEnabled: false,
+      now: () => clock,
+      onMark: (m) => seen.push(m),
+    });
+    clock = 1_500;
+    w.mark('appReady', clock);
+    clock = 9_000;
+    w.mark('serverSpawned', clock);
+    clock = 26_000;
+    w.mark('serverLockReady', clock);
+    expect(seen.map((s) => s.phase)).toEqual(['appReady', 'serverSpawned', 'serverLockReady']);
+    expect(seen.map((s) => s.elapsedMs)).toEqual([0, 7_500, 24_500]);
+  });
+
+  test('shares one time origin with the waterfall payload, so both are comparable', () => {
+    const seen: { phase: string; elapsedMs: number }[] = [];
+    const w = new StartupWaterfall({
+      otelEnabled: false,
+      now: () => 0,
+      onMark: (m) => seen.push(m),
+    });
+    w.mark('appReady', 1_000);
+    w.mark('windowShown', 4_200);
+    expect(seen.find((s) => s.phase === 'windowShown')?.elapsedMs).toBe(
+      w.buildPayload().totalLaunchToShownMs,
+    );
+  });
+
+  test('measures a mark that precedes appReady from construction, the only origin it has', () => {
+    const seen: { phase: string; elapsedMs: number }[] = [];
+    const w = new StartupWaterfall({
+      otelEnabled: false,
+      now: () => 500,
+      onMark: (m) => seen.push(m),
+    });
+    w.mark('bootstrapDone', 900);
+    expect(seen[0]?.elapsedMs).toBe(400);
+  });
+
+  test('never lets a telemetry callback abandon boot', () => {
+    const w = new StartupWaterfall({
+      otelEnabled: false,
+      now: () => 0,
+      onMark: () => {
+        throw new Error('logger not ready');
+      },
+    });
+    expect(() => w.mark('appReady', 10)).not.toThrow();
+    expect(() => w.mark('windowShown', 2_010)).not.toThrow();
+    expect(w.buildPayload().totalLaunchToShownMs).toBe(2_000);
+  });
+
+  test('narrates a phase once, matching the first-write-wins mark semantics', () => {
+    const seen: string[] = [];
+    const w = new StartupWaterfall({
+      otelEnabled: false,
+      now: () => 0,
+      onMark: (m) => seen.push(m.phase),
+    });
+    w.mark('appReady', 10);
+    w.mark('appReady', 20);
+    expect(seen).toEqual(['appReady']);
+  });
+});
+
+describe('lastPhase (what the boot heartbeat names while it waits)', () => {
+  test('is undefined before anything is marked', () => {
+    expect(new StartupWaterfall({ otelEnabled: false }).lastPhase).toBeUndefined();
+  });
+
+  test('names the phase with the latest timestamp, not the last call', () => {
+    const w = new StartupWaterfall({ otelEnabled: false });
+    w.mark('serverSpawned', 9_000);
+    w.mark('appReady', 1_000);
+    expect(w.lastPhase).toBe('serverSpawned');
+  });
+
+  test('a repeat mark cannot rewind the phase, since the first write wins', () => {
+    const w = new StartupWaterfall({ otelEnabled: false });
+    w.mark('appReady', 1_000);
+    w.mark('serverSpawned', 2_000);
+    w.mark('appReady', 9_000);
+    expect(w.lastPhase).toBe('serverSpawned');
+  });
+
+  test('advances as boot advances', () => {
+    const w = new StartupWaterfall({ otelEnabled: false });
+    w.mark('appReady', 1_000);
+    expect(w.lastPhase).toBe('appReady');
+    w.mark('windowCreated', 3_000);
+    expect(w.lastPhase).toBe('windowCreated');
+  });
+});

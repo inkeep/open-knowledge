@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import {
   AdvisoryWarningSchema,
   BrokenLinkSchema,
+  BrokenLinkSuppressionSchema,
+  UNREADABLE_WARNINGS_TEXT,
   validateDocName,
 } from '@inkeep/open-knowledge-core';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -16,12 +18,7 @@ import { resolveWithinRoot } from './path-safety.ts';
 export type ServerInstance = McpServer;
 export type ConfigOrResolver = Config | ((cwd?: string) => Promise<Config>);
 
-/**
- * The agent-identity fields every mutating route accepts for attribution
- * (precedent #24/#25). Spread into a POST body: `{ ...agentIdentityFields(id) }`.
- * Returns an empty object when no identity is bound, so anonymous writes stay
- * anonymous. Single source for the four CRUD verbs + any future write tool.
- */
+/** The agent-identity fields every mutating route accepts for attribution (precedent #24/#25). */
 export function agentIdentityFields(identity: AgentIdentity | undefined): Record<string, unknown> {
   return identity
     ? {
@@ -87,8 +84,12 @@ export const previewAttachWarningField = z
 const brokenLinksOutputField = z
   .array(BrokenLinkSchema)
   .describe(
-    'Outbound internal links in the just-written doc that do not resolve. Always present — `[]` means every link resolves. Each: `{ href (as written), resolvedTo (the docName or content-root file path it pointed at, or null), reason: "no-such-doc" | "no-such-file" | "unresolvable" }`. Report-only — the write landed regardless; fix in a follow-up edit.',
+    'Outbound internal links in the just-written doc that do not resolve. Always present — `[]` means every link resolves UNLESS `brokenLinkSuppression` is also present, in which case a project policy withheld findings. A withholding that arrives in a shape this build cannot validate is dropped rather than relayed, so `brokenLinkSuppression` stays absent even though findings were withheld. The `audit` tool is the surface that discloses that case, through its `warnings`. Each: `{ href (as written), resolvedTo (the docName or content-root file path it pointed at, or null), reason: "no-such-doc" | "no-such-file" | "unresolvable" }`. Report-only — the write landed regardless; fix in a follow-up edit.',
   );
+
+const brokenLinkSuppressionOutputField = BrokenLinkSuppressionSchema.optional().describe(
+  'Present ONLY when a project policy omitted detected broken links from `brokenLinks` — so an empty `brokenLinks` beside it does NOT mean every link resolves. `{ reason, count }`; `reason` today is `"reserved-log-policy"` (a reserved `log.md` records history whose links are expected not to resolve) and is an open token, so treat one you do not recognize as a withholding policy all the same. `count` is how many findings were withheld; the hrefs are deliberately not returned, because none of them is yours to repair.',
+);
 
 export function docExtensionOnDisk(
   contentDir: string,
@@ -111,6 +112,7 @@ export const documentResultBaseShape = {
       "Advisory entries discriminated by `kind`. Write-integrity kinds — `content-divergence` (converged Y.Text didn't byte-match what you composed) and `disk-edit-reconciled` (an out-of-band disk edit was folded in before your write) — mean re-read the doc. The renderability kind `mermaid-parse-error` means the write landed but that fence will not render — fix it and re-edit.",
     ),
   brokenLinks: brokenLinksOutputField,
+  brokenLinkSuppression: brokenLinkSuppressionOutputField,
   templateHint: z
     .array(z.object({ name: z.string(), description: z.string().optional() }))
     .min(1)
@@ -296,21 +298,8 @@ export function normalizeDocName(
 }
 
 /**
- * Canonicalize a server response into the `{ ok: boolean, ...payload }` shape
- * MCP-tool consumers read against. The boundary canonicalizer pattern lets
- * tool handlers stay unaware of HTTP status semantics or the RFC 9457 wire
- * shape (precedent #38).
- *
- * Server contract:
- *   - 2xx: flat success body, e.g. `{ renamed, rewrittenDocs, summary? }`
- *     with `application/json`. No `ok` wrapper.
- *   - 4xx/5xx: RFC 9457 `{ type, title, status, instance, detail?, ...extensions }`
- *     with `application/problem+json`. Extensions (e.g. `colliding`) ride
- *     alongside the canonical fields.
- *
- * Body extension members are spread onto the top level so consumers
- * automatically pick up new typed extensions (e.g. `colliding[]`) without a
- * per-tool change.
+ * The boundary canonicalizer pattern lets tool handlers stay unaware of HTTP status semantics or
+ * the RFC 9457 wire shape (precedent #38).
  */
 function normalizeResponse(
   res: { ok: boolean; status: number },
@@ -546,6 +535,44 @@ export function parseRenameCollidingPairs(value: unknown): RenameCollisionPair[]
       : [];
   });
 }
+
+export { UNREADABLE_WARNINGS_TEXT };
+
+export function alignWarningCodes(
+  warnings: unknown,
+  codes: unknown,
+  known: ReadonlySet<string>,
+): { warnings: string[]; warningCodes?: string[] } {
+  if (warnings !== undefined && !Array.isArray(warnings)) {
+    return { warnings: [UNREADABLE_WARNINGS_TEXT] };
+  }
+  const text = (Array.isArray(warnings) ? warnings : []).map((entry) =>
+    typeof entry === 'string' ? entry : String(entry),
+  );
+  const rawCodes = Array.isArray(codes) ? (codes as string[]) : [];
+  if (text.length !== rawCodes.length) return { warnings: text };
+  return rawCodes.every((code) => known.has(code))
+    ? { warnings: text, warningCodes: rawCodes }
+    : { warnings: text };
+}
+
+export function warningCodesContract(reporter: string): string {
+  return `Machine-readable codes aligned 1:1 with \`warnings\` (\`warnings[i]\` is the display text for \`warningCodes[i]\`) — switch on these, never on the English. Absent when ${reporter} sent warning text it did not pair with codes, or paired one with a code this build does not recognise; \`warnings\` still carries the full text either way, so treat a missing field as unknown rather than as an all-clear.`;
+}
+
+export const WARNING_CODES_CONTRACT = warningCodesContract('the server');
+
+export function warningsFieldContract(reporter: string): string {
+  return `Always emitted, \`[]\` when there were none. \`warningCodes\` accompanies this list 1:1 whenever ${reporter} paired every warning it sent with a code this build recognises; otherwise \`warningCodes\` is absent and this list still carries the full text. \`content[0].text\` lists every warning either way. A \`warnings\` payload in a shape this build cannot read at all becomes one entry saying so, with \`warningCodes\` absent — \`[]\` never means "unreadable".`;
+}
+
+export const WARNINGS_FIELD_CONTRACT = warningsFieldContract('the server');
+
+export const AUTHORING_WARNING_CODE_GLOSS =
+  '`skill-name-vendor-word`: the name contains a vendor word. `skill-body-too-long`: the body exceeds the 500-line soft cap.';
+
+export const INSTALL_WARNING_CODE_GLOSS =
+  '`no-targets`: nothing was projected, no editor is configured for this project. `scripts-present`: the skill ships executable `scripts/` (projected, never auto-run). `no-description`: installed, but its `description` is empty, so agents cannot route to it. `name-conflict`: a DIFFERENT skill already holds that name at a location. `place-path-invalid`: a named location is not a placeable root. `place-fork-refused`: a hand-edited copy was left alone rather than deleted. `skill-fork-name-unpatched`: a fork rename moved the folder but could not rewrite `name` in its SKILL.md.';
 
 export const AUDIT_FILE_CAP = 10;
 export const AUDIT_FILE_DIAGNOSTIC_CAP = 10;

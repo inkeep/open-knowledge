@@ -1,39 +1,24 @@
 /**
- * no-roundtrip-identity-oracle — Biome GritQL plugin fixture test.
- *
- * Plugin:  `biome-plugins/no-roundtrip-identity-oracle.grit`
- * Fixture: `biome-plugins/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx`
- *
- * Per precedent #42 (custom Biome enforcement is GritQL plugins). Forbids the
- * byte-fidelity round-trip oracle — `serialize(parse(x))` (or the
- * MarkdownManager method form) asserted equal to the same input `x` — in
- * public-mirrored tests, so a new public test can't reintroduce the engine's
- * byte-identity correctness oracle that the engine fidelity suite owns
- * privately.
- *
- * The fixture pairs 10 positive cases (the identity oracle through toBe /
- * toEqual / toStrictEqual and `===`, in both bare `serialize(parse(...))` and
- * MarkdownManager method forms) with 7 negative cases (a fixed-literal contract
- * assertion, the `normalizeBridge(a) === normalizeBridge(b)` Bridge-invariant
- * contract from precedent #38, the `!==` normalizing-construct detector, the
- * helper-wrapped and two-statement round-trip forms, and a two-different-manager
- * comparison). Exact-equality (`toBe(10)`) catches both false-negative
- * regressions (a weakened pattern drops below 10) and false-positive widenings
- * (a negative starts firing, rising above 10).
+ * The `no-roundtrip-identity-oracle` oxlint rule fixture test, per precedent #42; its negative
+ * cases include the `normalizeBridge(a) === normalizeBridge(b)` contract from precedent #38.
  */
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import { readBiomeConfig } from '../../../../test-support/read-biome-config.test-helper';
+import {
+  oxlintFixtureArgs,
+  readEnabledRuleIds,
+  readRegisteredRuleNames,
+  readRuleScope,
+} from '../../../../test-support/read-ok-rules-config.test-helper';
 
 const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
-const FIXTURE_REL = 'biome-plugins/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx';
-const PLUGIN_REL = './biome-plugins/no-roundtrip-identity-oracle.grit';
+const FIXTURE_REL = 'lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx';
 
-describe('no-roundtrip-identity-oracle GritQL plugin', () => {
+describe('no-roundtrip-identity-oracle oxlint rule', () => {
   test('fires on exactly 10 byte-identity oracle assertions (and on no negative case)', () => {
-    const result = spawnSync('pnpm', ['exec', 'biome', 'check', FIXTURE_REL], {
+    const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
       cwd: REPO_ROOT,
       encoding: 'utf-8',
     });
@@ -44,27 +29,28 @@ describe('no-roundtrip-identity-oracle GritQL plugin', () => {
     expect(fires).toBe(10);
     expect(output).toContain('assert a fixed expected literal for a specific contract');
     expect(output).toMatch(/https?:\/\/[^\s]+/);
-    expect(output).toContain('biome-plugins/README.md#no-roundtrip-identity-oraclegrit');
+    expect(output).toContain('lint-plugins/ok-rules/README.md#no-roundtrip-identity-oracle');
   });
 
-  test('plugin is registered as an override scoped to the public test surface (not workspace-wide)', () => {
-    const config = readBiomeConfig(REPO_ROOT);
-    const rootPlugins: string[] = config.plugins ?? [];
-    expect(rootPlugins).not.toContain(PLUGIN_REL);
+  test('rule is registered, enabled, and scoped to the public test surface', async () => {
+    expect(await readRegisteredRuleNames(REPO_ROOT)).toContain('no-roundtrip-identity-oracle');
+    expect(await readEnabledRuleIds(REPO_ROOT)).toContain('ok/no-roundtrip-identity-oracle');
+  });
 
-    const overrides: Array<{ includes?: string[]; plugins?: string[] }> = config.overrides ?? [];
-    const entry = overrides.find((o) => (o.plugins ?? []).includes(PLUGIN_REL));
-    expect(entry).toBeDefined();
-    const includes = entry?.includes ?? [];
-    expect(includes).toContain(FIXTURE_REL);
-    for (const excluded of [
-      '!packages/md-conformance/**',
-      '!packages/app/tests/fidelity/**',
-      '!packages/core/src/markdown/**/*.test.ts',
-      '!packages/core/src/bridge/**/*.test.ts',
-      '!**/*.private.*',
-    ]) {
-      expect(includes).toContain(excluded);
-    }
+  test('its scope table still carries every include and exclude the rule depends on', () => {
+    const scope = readRuleScope(REPO_ROOT, 'no-roundtrip-identity-oracle');
+    expect(scope.sort()).toEqual(
+      [
+        'packages/**/*.test.ts',
+        'packages/**/*.test.tsx',
+        'packages/**/*.e2e.ts',
+        '!packages/md-conformance/**',
+        '!packages/app/tests/fidelity/**',
+        '!packages/core/src/markdown/**/*.test.ts',
+        '!packages/core/src/bridge/**/*.test.ts',
+        '!**/*.private.*',
+        'lint-plugins/ok-rules/__fixtures__/no-roundtrip-identity-oracle.fixture.tsx',
+      ].sort(),
+    );
   });
 });

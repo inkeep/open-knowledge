@@ -1,6 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
-import { resolveWorkerCount } from './playwright.config.ts';
+import { EXPECT_TIMEOUT_MS, resolveWorkerCount } from './playwright.config.ts';
 
 /**
  * Visual Playwright config — per-worker fixture isolation (same shape as
@@ -38,6 +38,7 @@ export default defineConfig({
   testDir: './tests/visual',
   testMatch: /.*\.e2e\.ts$/,
   timeout: 120_000,
+  expect: { timeout: EXPECT_TIMEOUT_MS },
   retries: 0,
   // Fail when baselines are missing rather than silently auto-blessing the
   // first run. Baseline updates require the explicit `test:visual:update`

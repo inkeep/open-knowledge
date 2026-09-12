@@ -189,28 +189,29 @@ describe('buildIndexMarkdown', () => {
     }
   });
 
-  test.each([
-    ...GENERATOR_OWNED_HEADINGS,
-  ])('a colliding type cannot rename the generator-owned heading %j, reached from the entry loop alone', (owned) => {
-    for (const order of [
-      [
-        entry({ path: 'a.md', title: 'Alpha', type: owned }),
-        entry({ path: 'b.md', title: 'Beta', type: `<b></b>${owned}` }),
-      ],
-      [
-        entry({ path: 'b.md', title: 'Beta', type: `<b></b>${owned}` }),
-        entry({ path: 'a.md', title: 'Alpha', type: owned }),
-      ],
-    ]) {
-      const label = `${owned} order=${order.map((e) => e.type).join(',')}`;
-      const out = buildIndexMarkdown(order, { isRoot: false });
+  test.each([...GENERATOR_OWNED_HEADINGS])(
+    'a colliding type cannot rename the generator-owned heading %j, reached from the entry loop alone',
+    (owned) => {
+      for (const order of [
+        [
+          entry({ path: 'a.md', title: 'Alpha', type: owned }),
+          entry({ path: 'b.md', title: 'Beta', type: `<b></b>${owned}` }),
+        ],
+        [
+          entry({ path: 'b.md', title: 'Beta', type: `<b></b>${owned}` }),
+          entry({ path: 'a.md', title: 'Alpha', type: owned }),
+        ],
+      ]) {
+        const label = `${owned} order=${order.map((e) => e.type).join(',')}`;
+        const out = buildIndexMarkdown(order, { isRoot: false });
 
-      expect(headingContents(out), label).toContain(owned);
-      expect(out, label).not.toContain('<b>');
-      expect(out, label).toContain('](./a.md)');
-      expect(out, label).toContain('](./b.md)');
-    }
-  });
+        expect(headingContents(out), label).toContain(owned);
+        expect(out, label).not.toContain('<b>');
+        expect(out, label).toContain('](./a.md)');
+        expect(out, label).toContain('](./b.md)');
+      }
+    },
+  );
 
   test('a document sharing the title heading renders under it, byte for byte', () => {
     const out = buildIndexMarkdown(

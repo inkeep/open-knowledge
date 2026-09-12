@@ -155,7 +155,9 @@ test('AC27: SelectionAnnouncer aria-live updates through TextSelection-inside â†
   await setupDoc(page, api, '<Callout type="note">\n\nbody\n\n</Callout>\n\nafter paragraph\n');
   const callout = page.locator('.jsx-component-wrapper[data-component-type="callout"]').first();
   await callout.waitFor({ state: 'visible' });
-  const liveRegion = page.locator('[role="status"][aria-live="polite"]');
+  const liveRegion = page
+    .getByTestId('editor-scroll-container')
+    .locator('[role="status"][aria-live="polite"]');
 
   await driftSelectionIntoFirstJsxBody(page, 'Callout');
   await expect(liveRegion).toContainText('Selected: Callout', { timeout: 2_000 });

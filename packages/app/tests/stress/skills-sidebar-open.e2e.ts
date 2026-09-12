@@ -347,6 +347,129 @@ test('shift-click ranges and cmd-click toggles drag the whole selection to the o
     .toBe(`${names[0]}:global,${names[2]}:global`);
 });
 
+test('UI wiring against routed failures: a wholly failed bulk move reports one summary naming every skill, cleared by a successful retry', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  await api.testReset();
+  const names = ['bulk-retained-a', 'bulk-retained-b'];
+  for (const n of names) {
+    await createSkill(workerServer.baseURL, n, `# Bulk ${n}\n`);
+  }
+
+  await page.goto('/');
+  await expandSkillsDock(page);
+  await skillRow(page, `Project/${names[0]}/`).waitFor({ timeout: 15_000 });
+
+  let failMoves = true;
+  await page.route('**/api/skill/move-scope', async (route) => {
+    if (!failMoves) {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ scope: 'global', droppedLocations: [] }),
+      });
+      return;
+    }
+    const sent = route.request().postDataJSON() as { name?: string } | null;
+    const skill = sent?.name ?? '';
+    await route.fulfill({
+      status: 409,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        type: 'urn:ok:error:conflict',
+        title: `A global skill named "${skill}" already exists.`,
+        status: 409,
+        moveState: 'nothing-written',
+        retentionLedger: 'occupant-unverifiable',
+        detail: `A directory exists at .claude/skills/${skill} and this server could not read it to determine whether it is a skill (EACCES). Verify it against the source before removing it. This call wrote nothing.`,
+        droppedLocations: [],
+      }),
+    });
+  });
+
+  const selectedPaths = () =>
+    page.evaluate(() => {
+      const out: string[] = [];
+      const walk = (root: Document | ShadowRoot) => {
+        for (const e of root.querySelectorAll('[data-item-path][data-item-selected="true"]'))
+          out.push(e.getAttribute('data-item-path') ?? '');
+        for (const e of root.querySelectorAll('*')) if (e.shadowRoot) walk(e.shadowRoot);
+      };
+      walk(document);
+      return out.sort().join(',');
+    });
+
+  const selectBoth = async () => {
+    await skillRow(page, `Project/${names[0]}/`).click();
+    await skillRow(page, `Project/${names[0]}/`).click({ modifiers: ['ControlOrMeta'] });
+    await skillRow(page, `Project/${names[1]}/`).click({ modifiers: ['ControlOrMeta'] });
+    await expect.poll(selectedPaths, { timeout: 15_000 }).toContain(`Project/${names[1]}/`);
+  };
+
+  const dragSelectionToGlobal = () =>
+    page.evaluate(
+      ({ src, dst }) => {
+        const find = (p: string) => {
+          let el: Element | null = null;
+          const walk = (root: Document | ShadowRoot) => {
+            for (const e of root.querySelectorAll(`[data-item-path="${p}"]`)) el = e;
+            for (const e of root.querySelectorAll('*')) if (e.shadowRoot) walk(e.shadowRoot);
+          };
+          walk(document);
+          return el;
+        };
+        const source = find(src);
+        const target = find(dst);
+        if (!source || !target) throw new Error('drag rows missing');
+        const dt = new DataTransfer();
+        const fire = (el: Element, type: string) =>
+          el.dispatchEvent(
+            new DragEvent(type, {
+              bubbles: true,
+              composed: true,
+              cancelable: true,
+              dataTransfer: dt,
+            }),
+          );
+        fire(source, 'dragstart');
+        fire(target, 'dragover');
+        fire(target, 'drop');
+        fire(source, 'dragend');
+      },
+      { src: `Project/${names[0]}/`, dst: 'Global/' },
+    );
+
+  const toasts = page.locator('[data-sonner-toast]');
+  const retainedGuidanceTexts = async () => {
+    const texts = await toasts.allInnerTexts();
+    return texts.filter((text) => /compare|don't delete|do not delete/i.test(text));
+  };
+  const retainedGuidanceToasts = async () => (await retainedGuidanceTexts()).length;
+
+  await selectBoth();
+  await dragSelectionToGlobal();
+
+  await expect.poll(retainedGuidanceToasts, { timeout: 20_000 }).toBe(1);
+  const summary = ((await retainedGuidanceTexts())[0] ?? '').replace(/\s+/g, ' ');
+  expect(summary).toContain(names[0]);
+  expect(summary).toContain(names[1]);
+  expect(summary).not.toMatch(/moved \d+ skills?/i);
+  expect((await toasts.allInnerTexts()).join(' | ')).not.toMatch(/moved \d+ skills? to/i);
+  await expect(skillRow(page, `Project/${names[0]}/`)).toHaveCount(1);
+  await expect(skillRow(page, `Project/${names[1]}/`)).toHaveCount(1);
+
+  failMoves = false;
+  await selectBoth();
+  await dragSelectionToGlobal();
+
+  await expect
+    .poll(async () => (await toasts.allInnerTexts()).join(' | '), { timeout: 30_000 })
+    .toMatch(/moved 2 skills to global/i);
+  await expect.poll(retainedGuidanceToasts, { timeout: 20_000 }).toBe(0);
+});
+
 test('shift+arrow walks visible rows through read-only plugin skills; drag moves only movable members', async ({
   page,
   api,

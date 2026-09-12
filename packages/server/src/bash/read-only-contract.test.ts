@@ -132,27 +132,29 @@ describe('exec is read-only — no allowlisted command may alter the tree', () =
     expect(snapshot(root)).toEqual(before);
   });
 
-  test.each(
-    ENGINE_DOES_NOT_IMPLEMENT,
-  )('%s dies on an option just-bash does not implement, which is not the mount', async (command) => {
-    const root = build();
-    const before = snapshot(root);
-    const result = await attempt(root, command);
-    expect(result.disposition).toBe('engine-rejected');
-    expect(result.stderr).toMatch(
-      /invalid option|unrecognized option|unknown predicate|No such file/,
-    );
-    expect(snapshot(root)).toEqual(before);
-  });
+  test.each(ENGINE_DOES_NOT_IMPLEMENT)(
+    '%s dies on an option just-bash does not implement, which is not the mount',
+    async (command) => {
+      const root = build();
+      const before = snapshot(root);
+      const result = await attempt(root, command);
+      expect(result.disposition).toBe('engine-rejected');
+      expect(result.stderr).toMatch(
+        /invalid option|unrecognized option|unknown predicate|No such file/,
+      );
+      expect(snapshot(root)).toEqual(before);
+    },
+  );
 
-  test.each(
-    INERT_UNDER_THIS_ENGINE,
-  )('%s runs to completion because this engine never writes for it', async (command) => {
-    const root = build();
-    const before = snapshot(root);
-    expect(await attempt(root, command)).toEqual({ disposition: 'ran' });
-    expect(snapshot(root)).toEqual(before);
-  });
+  test.each(INERT_UNDER_THIS_ENGINE)(
+    '%s runs to completion because this engine never writes for it',
+    async (command) => {
+      const root = build();
+      const before = snapshot(root);
+      expect(await attempt(root, command)).toEqual({ disposition: 'ran' });
+      expect(snapshot(root)).toEqual(before);
+    },
+  );
 
   test('expansion can hand sort a genuine -o, and the filesystem refuses it', async () => {
     const root = build();
