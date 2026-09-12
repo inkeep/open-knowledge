@@ -890,36 +890,6 @@ describe('createServer() — config-doc admission (US-005)', () => {
     await srv.destroy();
   });
 
-  test('Y.Text mutation on a config doc does NOT engage the markdown bridge (D41)', async () => {
-    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
-    const srv = createServer({
-      contentDir,
-      projectDir: testProjectDir,
-      quiet: true,
-    });
-
-    await srv.ready;
-
-    const configDoc = srv.hocuspocus.documents.get('__config__/project');
-    expect(configDoc).toBeDefined();
-    if (!configDoc) return;
-
-    const ytext = configDoc.getText('source');
-    const xmlFragment = configDoc.getXmlFragment('default');
-    expect(xmlFragment.length).toBe(0);
-
-    configDoc.transact(() => {
-      ytext.insert(0, 'theme: dark\n');
-    });
-
-    await new Promise((r) => setTimeout(r, 50));
-
-    expect(ytext.toString()).toBe('theme: dark\n');
-    expect(xmlFragment.length).toBe(0);
-
-    await srv.destroy();
-  });
-
   test('connecting a transient client to a config doc succeeds via existing collab WS (D49)', async () => {
     const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
     const srv = createServer({

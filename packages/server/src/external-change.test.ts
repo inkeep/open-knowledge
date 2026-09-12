@@ -50,11 +50,6 @@ describe('applyExternalChange — throwing helper', () => {
     expect(frontmatter).toContain('title: Test');
     expect(frontmatter).toContain('---');
 
-    const xmlFragment = doc.getXmlFragment('default');
-    const xmlString = xmlFragment.toString();
-    expect(xmlString).not.toContain('title: Test');
-    expect(xmlString).not.toContain('tags: [a, b]');
-
     await conn.disconnect();
   });
 

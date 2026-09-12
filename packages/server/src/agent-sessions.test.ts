@@ -1,7 +1,5 @@
 import type { Document } from '@hocuspocus/server';
-import { sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
-import { getSchema } from '@tiptap/core';
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
@@ -523,7 +521,7 @@ describe('empty / whitespace content writes (PRD-6835)', () => {
     expect(stripFrontmatter(after).body.trim()).toBe('');
   });
 
-  test('replace with empty markdown on a frontmatter-less doc clears to empty (bridge converges)', async () => {
+  test('replace with empty markdown on a frontmatter-less doc clears to empty', async () => {
     const session = await manager.getSession('clear-plain.md', 'agent-clear-plain');
     const ytext = session.dc.document.getText('source');
 
@@ -537,12 +535,6 @@ describe('empty / whitespace content writes (PRD-6835)', () => {
     }, session.origin);
 
     expect(ytext.toString()).toBe('');
-    const schema = getSchema(sharedExtensions);
-    const node = yXmlFragmentToProseMirrorRootNode(
-      session.dc.document.getXmlFragment('default'),
-      schema,
-    );
-    expect(node.textContent).toBe('');
   });
 
   test('append with empty markdown is a no-op (no \\n\\n injection, byte-unchanged)', async () => {

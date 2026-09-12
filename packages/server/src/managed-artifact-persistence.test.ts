@@ -251,7 +251,6 @@ describe('store/load round-trip', () => {
     const fresh = new Y.Doc();
     loadManagedArtifactDoc(fresh, projectDocName, ctx);
     expect(fresh.getText('source').toString()).toBe('');
-    expect(fresh.getXmlFragment('default').length).toBe(0);
   });
 
   test('__template__ synthetic doc is INERT in load + store (tombstone, never creates a file)', async () => {
@@ -265,7 +264,6 @@ describe('store/load round-trip', () => {
     const fresh = new Y.Doc();
     expect(() => loadManagedArtifactDoc(fresh, templateDocName, ctx)).not.toThrow();
     expect(fresh.getText('source').toString()).toBe('');
-    expect(fresh.getXmlFragment('default').length).toBe(0);
     expect(fresh.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).toBeUndefined();
 
     expect(existsSync(join(projectDir, '__template__', 'notes', 'daily.md'))).toBe(false);

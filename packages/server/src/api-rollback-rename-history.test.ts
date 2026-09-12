@@ -133,7 +133,6 @@ describe('handleRollback — rename history mitigation (US-005)', () => {
 
     const docName = 'b';
     const yDoc = new Y.Doc();
-    yDoc.getXmlFragment('default');
     yDoc.getText('source').insert(0, '# B post-rename\n');
 
     const shadowRef: ShadowRef = { current: shadow };
