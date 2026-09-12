@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { FuseV1Options, getCurrentFuseWire } from '@electron/fuses';
 import { notarize } from '@electron/notarize';
+import { createFuseFailure } from './packaging-diagnostics.mjs';
 import { resolveElectronBinary } from './resolve-electron-binary.mjs';
 import { expectedFuseState, fuseStateName, targetFuses } from './target-fuses.mjs';
 
@@ -114,8 +115,8 @@ async function verifyFuses(electronBinary, expected) {
   try {
     wire = await getCurrentFuseWire(electronBinary);
   } catch (err) {
-    throw new Error(
-      `[afterSign] getCurrentFuseWire failed on ${electronBinary}: ${
+    throw createFuseFailure(
+      `[afterSign] fuse verification read failed on ${electronBinary}: ${
         err instanceof Error ? err.message : String(err)
       }`,
       { cause: err },
@@ -134,8 +135,8 @@ async function verifyFuses(electronBinary, expected) {
     }
   }
   if (mismatches.length > 0) {
-    throw new Error(
-      `[afterSign] Fuse verification failed (D17 paranoid check):\n  ${mismatches.join('\n  ')}`,
+    throw createFuseFailure(
+      `[afterSign] fuse verification failed (D17 paranoid check):\n  ${mismatches.join('\n  ')}`,
     );
   }
   console.log('[afterSign] fuse verification passed — all 6 fuses match targetFuses');
