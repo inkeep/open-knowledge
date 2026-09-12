@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { __iconNode as packageIcon } from 'lucide-react/dist/esm/icons/package';
 import { useTheme } from 'next-themes';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AgentBrandIcon } from '@/components/AgentIconCluster';
 import { createFileTreeStyle } from '@/components/file-tree-density';
@@ -70,6 +70,7 @@ import {
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -78,8 +79,10 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { asDirectoryHandle } from '@/components/use-selection-mirror';
 import { useOpenSkill } from '@/hooks/use-open-skill';
+import { useSettingsLoadingReason } from '@/lib/config-context';
 import { openExternalUrl } from '@/lib/external-link';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { groupDeletableSkills, groupUpdatableSkills } from '@/lib/skill-group-update';
@@ -218,18 +221,41 @@ function PinMenuItem({
   scope,
   name,
   pinned,
+  pending,
   onToggle,
 }: {
   scope: SkillScope;
   name: string;
   pinned: boolean;
+  pending: boolean;
   onToggle: (scope: SkillScope, name: string, pinned: boolean) => void;
 }) {
+  const loadingReasonId = useId();
+  const loadingReason = useSettingsLoadingReason();
   return (
-    <DropdownMenuItem onSelect={() => onToggle(scope, name, !pinned)}>
-      {pinned ? <PinOff aria-hidden /> : <Pin aria-hidden />}
-      {pinned ? <Trans>Unpin</Trans> : <Trans>Pin to top</Trans>}
-    </DropdownMenuItem>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <DropdownMenuGroup>
+          <DropdownMenuItem
+            aria-disabled={pending || undefined}
+            aria-describedby={pending ? loadingReasonId : undefined}
+            onSelect={(event) => {
+              if (pending) event.preventDefault();
+              onToggle(scope, name, !pinned);
+            }}
+          >
+            {pinned ? <PinOff aria-hidden /> : <Pin aria-hidden />}
+            {pinned ? <Trans>Unpin</Trans> : <Trans>Pin to top</Trans>}
+          </DropdownMenuItem>
+          {pending ? (
+            <span id={loadingReasonId} className="sr-only">
+              {loadingReason}
+            </span>
+          ) : null}
+        </DropdownMenuGroup>
+      </TooltipTrigger>
+      {pending ? <TooltipContent>{loadingReason}</TooltipContent> : null}
+    </Tooltip>
   );
 }
 
@@ -243,6 +269,7 @@ export function SkillsTree({
   detectedByPrefix,
   groupByPrefix,
   pinnedPrefixes,
+  pinningReadyByScope,
   labelToScope,
   scopeDescription,
   existingNames,
@@ -265,6 +292,7 @@ export function SkillsTree({
   detectedByPrefix: Map<string, CatalogSkill>;
   groupByPrefix: ReadonlyMap<string, ProvenanceBucket>;
   pinnedPrefixes: ReadonlySet<string>;
+  pinningReadyByScope: Record<SkillScope, boolean>;
   labelToScope: Map<string, SkillScope>;
   scopeDescription: Record<SkillScope, string>;
   existingNames: Record<SkillScope, Set<string>>;
@@ -1391,6 +1419,7 @@ export function SkillsTree({
                     scope={scope}
                     name={d.name}
                     pinned={isPinned(scope, d.name)}
+                    pending={!pinningReadyByScope[scope]}
                     onToggle={onTogglePin}
                   />
                 </>
@@ -1411,6 +1440,7 @@ export function SkillsTree({
                           scope={scope}
                           name={skill.name}
                           pinned={isPinned(scope, skill.name)}
+                          pending={!pinningReadyByScope[scope]}
                           onToggle={onTogglePin}
                         />
                       </>
@@ -1430,6 +1460,7 @@ export function SkillsTree({
                       scope={scope}
                       name={skill.name}
                       pinned={isPinned(scope, skill.name)}
+                      pending={!pinningReadyByScope[scope]}
                       onToggle={onTogglePin}
                     />
                   </>

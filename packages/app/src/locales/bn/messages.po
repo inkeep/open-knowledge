@@ -940,6 +940,10 @@ msgstr "{name}-এর কোনো সমাধানযোগ্য পাথ �
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} ওয়ার্কস্পেসের বাইরে আছে। আগে এটি আপনার প্রকল্পে সরান।"
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} সরানো হয়েছে, কিন্তু এর পিন সরেনি। সেটিংস লোড হওয়া শেষ হলে আবার পিন করুন।"
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# নোড} other {# নোড}}"
@@ -12560,6 +12564,10 @@ msgstr "সেটিং"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "সেটিংস এবং ইন্টিগ্রেশন সরানো হয়েছে।"
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "সেটিংস এখনও লোড হচ্ছে। একটু পরে আবার চেষ্টা করুন।"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

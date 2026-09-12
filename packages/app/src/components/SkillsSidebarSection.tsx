@@ -1,5 +1,6 @@
 import {
   type CatalogSkill,
+  type ConfigBinding,
   catalogRawScopeToOkScope,
   externalSkillLiveDocName,
   humanFormat,
@@ -21,6 +22,7 @@ import { useCreateBlankSkill } from '@/hooks/use-create-blank-skill';
 import { useOpenSkill } from '@/hooks/use-open-skill';
 import { useOpenSkillForEdit } from '@/hooks/use-open-skill-for-edit';
 import { useSkills } from '@/hooks/use-skills';
+import { useSettingsLoadingReason } from '@/lib/config-context';
 import { useConfigContext } from '@/lib/config-provider';
 import {
   hashFromDocName,
@@ -50,8 +52,10 @@ const ImportSkillDialog = lazy(() =>
 
 export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: boolean } = {}) {
   const state = useSkills();
+  const { t } = useLingui();
   const { openTarget, activeDocName, activeTarget, openTabs, activateTab } = useDocumentContext();
-  const { merged, userBinding, projectLocalBinding } = useConfigContext();
+  const { merged, userBinding, userSynced, projectLocalBinding, projectLocalSynced } =
+    useConfigContext();
   const tabBehavior: 'append' | 'replace-active' =
     (merged?.editor?.previewTabs ?? true) ? 'replace-active' : 'append';
   const showSkillGroups = merged?.appearance?.sidebar?.showSkillGroups ?? true;
@@ -59,9 +63,21 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
     project: readPins(merged, 'project'),
     global: readPins(merged, 'global'),
   };
+  const pinBindingByScope: Record<SkillScope, ConfigBinding | null> = {
+    global: userSynced ? userBinding : null,
+    project: projectLocalSynced ? projectLocalBinding : null,
+  };
+  const pinningReadyByScope: Record<SkillScope, boolean> = {
+    global: pinBindingByScope.global !== null,
+    project: pinBindingByScope.project !== null,
+  };
+  const settingsLoadingReason = useSettingsLoadingReason();
   const togglePinned = (scope: SkillScope, name: string, pinned: boolean) => {
-    const binding = scope === 'global' ? userBinding : projectLocalBinding;
-    if (binding === null) return;
+    const binding = pinBindingByScope[scope];
+    if (binding === null) {
+      toast.info(settingsLoadingReason, { id: `pin-not-ready-${scope}` });
+      return;
+    }
     const next = togglePin(pinnedByScope[scope], name, pinned);
     const result = binding.patch({ appearance: { sidebar: { [PIN_FIELD[scope]]: next } } });
     if (!result.ok) {
@@ -74,7 +90,6 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   const openSkill = useOpenSkill();
   const openSkillForEdit = useOpenSkillForEdit();
   const actions = useSkillActions();
-  const { t } = useLingui();
   const scopeLabel = useSkillScopeLabels();
   const scopeDescription = useSkillScopeDescriptions();
 
@@ -86,14 +101,27 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
   useEffect(() => {
     pinnedByScopeRef.current = pinnedByScope;
   });
+  const pinningReadyByScopeRef = useRef(pinningReadyByScope);
+  useEffect(() => {
+    pinningReadyByScopeRef.current = pinningReadyByScope;
+  });
   useEffect(
     () =>
       subscribeToSkillScopeMoved(({ name, fromScope, toScope }) => {
         if (!pinnedByScopeRef.current[fromScope].has(name)) return;
+        if (
+          !pinningReadyByScopeRef.current[fromScope] ||
+          !pinningReadyByScopeRef.current[toScope]
+        ) {
+          toast.info(
+            t`${name} moved, but its pin did not. Pin it again after settings finish loading.`,
+          );
+          return;
+        }
         togglePinnedRef.current(fromScope, name, false);
         togglePinnedRef.current(toScope, name, true);
       }),
-    [],
+    [t],
   );
 
   const skills = state.status === 'ready' ? state.data : [];
@@ -369,6 +397,7 @@ export function SkillsSidebarSection({ dockExpanded = false }: { dockExpanded?: 
           onExpandedChange={setUserExpanded}
           sort={skillSort}
           pinnedPrefixes={pinnedPrefixes}
+          pinningReadyByScope={pinningReadyByScope}
           isPinned={(scope, name) => pinnedByScope[scope].has(name)}
           onTogglePin={togglePinned}
           skillByPrefix={skillByPrefix}

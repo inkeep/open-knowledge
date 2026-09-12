@@ -14,7 +14,15 @@ import {
   SquarePen,
   UnfoldVertical,
 } from 'lucide-react';
-import { type FC, type MouseEventHandler, useEffect, useRef, useState } from 'react';
+import {
+  type FC,
+  type MouseEventHandler,
+  type ReactElement,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import { ErrorBoundary } from 'react-error-boundary';
 import { toast } from 'sonner';
 import { ConflictsSection } from '@/components/ConflictsSection';
@@ -52,6 +60,7 @@ import {
   ContextMenu,
   ContextMenuCheckboxItem,
   ContextMenuContent,
+  ContextMenuGroup,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuSub,
@@ -99,6 +108,7 @@ import {
   useDefaultRegisteredAgent,
   useRegisteredAgents,
 } from '@/lib/acp/registered-agents';
+import { useSettingsLoadingReason } from '@/lib/config-context';
 import { useConfigContext } from '@/lib/config-provider';
 import { subscribeToCreateTopLevelFile } from '@/lib/create-file-events';
 import {
@@ -162,8 +172,24 @@ const ToolbarDropdownTrigger: FC<ToolbarButtonProps> = ({ icon: Icon, label, ...
   );
 };
 
+function SettingsLoadingMenuGroupTooltip({
+  children,
+  reason,
+}: {
+  children: ReactElement;
+  reason: string | null;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      {reason === null ? null : <TooltipContent>{reason}</TooltipContent>}
+    </Tooltip>
+  );
+}
+
 function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const { t } = useLingui();
+  const settingsLoadingReasonId = useId();
   const [tree, setTree] = useState<FileTreeHandle | null>(null);
 
   const { activeDocName, activeTarget } = useDocumentContext();
@@ -238,7 +264,10 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
   const registeredAgents = useRegisteredAgents();
   const defaultRegisteredAgent = useDefaultRegisteredAgent();
   const stickyAgentId = useStickyAgent();
-  const { projectLocalBinding, merged } = useConfigContext();
+  const { projectLocalBinding, projectLocalSynced, merged } = useConfigContext();
+  const projectLocalBindingReady = projectLocalSynced && projectLocalBinding !== null;
+  const settingsLoadingReason = useSettingsLoadingReason();
+  const pendingSettingsReason = projectLocalBindingReady ? null : settingsLoadingReason;
   const showHiddenFiles = merged?.appearance?.sidebar?.showHiddenFiles ?? false;
   const showOkFolders = merged?.appearance?.sidebar?.showOkFolders ?? false;
   const showOnlyMarkdownFiles = merged?.appearance?.sidebar?.showOnlyMarkdownFiles ?? false;
@@ -326,7 +355,10 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
     showSkillsSection?: boolean;
     showSkillGroups?: boolean;
   }) => {
-    if (projectLocalBinding === null) return;
+    if (!projectLocalBindingReady) {
+      toast.info(settingsLoadingReason, { id: 'sidebar-settings-not-ready' });
+      return;
+    }
     const result = projectLocalBinding.patch({ appearance: { sidebar } });
     if (!result.ok) {
       console.warn('[FileSidebar] sidebar visibility toggle rejected:', humanFormat(result.error));
@@ -334,6 +366,9 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
         description: humanFormat(result.error),
       });
     }
+  };
+  const preventPendingSettingsSelection = (event: Event) => {
+    if (!projectLocalBindingReady) event.preventDefault();
   };
   const handleEmptySpaceExpandAll = () => {
     tree?.expandAll();
@@ -366,7 +401,7 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
     sidebarState,
   ]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: patchSidebarVisibility is behaviorally stable — it reads only projectLocalBinding + t, both already deps; listing the helper itself would re-create the subscription every render (sibling pattern: CommandPalette's refreshSemanticStatus).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: patchSidebarVisibility is behaviorally stable — its binding, readiness, and t inputs are already deps; listing the helper itself would re-create the subscription every render (sibling pattern: CommandPalette's refreshSemanticStatus).
   useEffect(() => {
     return subscribeLocalMenuAction((action) => {
       const isOkManagedTarget =
@@ -529,6 +564,8 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
     activeTarget,
     initialCreateDir,
     projectLocalBinding,
+    projectLocalBindingReady,
+    settingsLoadingReason,
     showHiddenFiles,
     showOkFolders,
     showOnlyMarkdownFiles,
@@ -546,6 +583,11 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
 
   return (
     <Sidebar variant="inset">
+      {pendingSettingsReason ? (
+        <span id={settingsLoadingReasonId} className="sr-only">
+          {pendingSettingsReason}
+        </span>
+      ) : null}
       {}
       <ContextMenu>
         <ContextMenuTrigger asChild>
@@ -647,65 +689,91 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
                             ) : null}
                             {showTreeStateSection ? <DropdownMenuSeparator /> : null}
                             {}
-                            <DropdownMenuGroup aria-label={t`Show`}>
-                              <DropdownMenuLabel>
-                                <Trans>Show</Trans>
-                              </DropdownMenuLabel>
-                              <DropdownMenuCheckboxItem
-                                checked={showHiddenFiles}
-                                onCheckedChange={(checked) =>
-                                  patchSidebarVisibility({ showHiddenFiles: checked })
-                                }
-                                disabled={projectLocalBinding === null}
-                                data-testid="tree-options-show-hidden-files"
-                              >
-                                <Trans>Hidden files</Trans>
-                              </DropdownMenuCheckboxItem>
-                              <DropdownMenuCheckboxItem
-                                checked={showOkFolders}
-                                onCheckedChange={(checked) =>
-                                  patchSidebarVisibility({ showOkFolders: checked })
-                                }
-                                disabled={projectLocalBinding === null}
-                                data-testid="tree-options-show-ok-folders"
-                              >
-                                <Trans>.ok folders</Trans>
-                              </DropdownMenuCheckboxItem>
-                              <DropdownMenuCheckboxItem
-                                checked={showOnlyMarkdownFiles}
-                                onCheckedChange={(checked) =>
-                                  patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
-                                }
-                                disabled={projectLocalBinding === null}
-                                data-testid="tree-options-show-only-markdown-files"
-                              >
-                                <Trans>Only markdown files</Trans>
-                              </DropdownMenuCheckboxItem>
-                              <DropdownMenuCheckboxItem
-                                checked={showSkillsSection}
-                                onCheckedChange={(checked) =>
-                                  patchSidebarVisibility({ showSkillsSection: checked })
-                                }
-                                disabled={projectLocalBinding === null}
-                                data-testid="tree-options-show-skills"
-                              >
-                                <Trans>Skills Studio</Trans>
-                              </DropdownMenuCheckboxItem>
-                            </DropdownMenuGroup>
+                            <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
+                              <DropdownMenuGroup aria-label={t`Show`}>
+                                <DropdownMenuLabel>
+                                  <Trans>Show</Trans>
+                                </DropdownMenuLabel>
+                                <DropdownMenuCheckboxItem
+                                  checked={showHiddenFiles}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showHiddenFiles: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-hidden-files"
+                                >
+                                  <Trans>Hidden files</Trans>
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                  checked={showOkFolders}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showOkFolders: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-ok-folders"
+                                >
+                                  <Trans>.ok folders</Trans>
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                  checked={showOnlyMarkdownFiles}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-only-markdown-files"
+                                >
+                                  <Trans>Only markdown files</Trans>
+                                </DropdownMenuCheckboxItem>
+                                <DropdownMenuCheckboxItem
+                                  checked={showSkillsSection}
+                                  onCheckedChange={(checked) =>
+                                    patchSidebarVisibility({ showSkillsSection: checked })
+                                  }
+                                  aria-disabled={pendingSettingsReason ? true : undefined}
+                                  onSelect={preventPendingSettingsSelection}
+                                  aria-describedby={
+                                    pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                  }
+                                  data-testid="tree-options-show-skills"
+                                >
+                                  <Trans>Skills Studio</Trans>
+                                </DropdownMenuCheckboxItem>
+                              </DropdownMenuGroup>
+                            </SettingsLoadingMenuGroupTooltip>
                             {}
                             {showSkillsSection ? (
                               <>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuCheckboxItem
-                                  checked={showSkillGroups}
-                                  onCheckedChange={(checked) =>
-                                    patchSidebarVisibility({ showSkillGroups: checked })
-                                  }
-                                  disabled={projectLocalBinding === null}
-                                  data-testid="tree-options-group-skills"
-                                >
-                                  <Trans>Group skills by source</Trans>
-                                </DropdownMenuCheckboxItem>
+                                <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
+                                  <DropdownMenuGroup>
+                                    <DropdownMenuCheckboxItem
+                                      checked={showSkillGroups}
+                                      onCheckedChange={(checked) =>
+                                        patchSidebarVisibility({ showSkillGroups: checked })
+                                      }
+                                      aria-disabled={pendingSettingsReason ? true : undefined}
+                                      onSelect={preventPendingSettingsSelection}
+                                      aria-describedby={
+                                        pendingSettingsReason ? settingsLoadingReasonId : undefined
+                                      }
+                                      data-testid="tree-options-group-skills"
+                                    >
+                                      <Trans>Group skills by source</Trans>
+                                    </DropdownMenuCheckboxItem>
+                                  </DropdownMenuGroup>
+                                </SettingsLoadingMenuGroupTooltip>
                               </>
                             ) : null}
                           </DropdownMenuContent>
@@ -857,40 +925,54 @@ function FileSidebarInner({ onOpenSearch }: FileSidebarProps) {
             ) : null}
           </ContextMenuItem>
           <ContextMenuSeparator />
-          <ContextMenuCheckboxItem
-            checked={showHiddenFiles}
-            onCheckedChange={(checked) => patchSidebarVisibility({ showHiddenFiles: checked })}
-            disabled={projectLocalBinding === null}
-            data-testid="empty-space-menu-show-hidden-files"
-          >
-            <Trans>Show hidden files</Trans>
-          </ContextMenuCheckboxItem>
-          <ContextMenuCheckboxItem
-            checked={showOkFolders}
-            onCheckedChange={(checked) => patchSidebarVisibility({ showOkFolders: checked })}
-            disabled={projectLocalBinding === null}
-            data-testid="empty-space-menu-show-ok-folders"
-          >
-            <Trans>Show .ok folders</Trans>
-          </ContextMenuCheckboxItem>
-          <ContextMenuCheckboxItem
-            checked={showOnlyMarkdownFiles}
-            onCheckedChange={(checked) =>
-              patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
-            }
-            disabled={projectLocalBinding === null}
-            data-testid="empty-space-menu-show-only-markdown-files"
-          >
-            <Trans>Show only markdown files</Trans>
-          </ContextMenuCheckboxItem>
-          <ContextMenuCheckboxItem
-            checked={showSkillsSection}
-            onCheckedChange={(checked) => patchSidebarVisibility({ showSkillsSection: checked })}
-            disabled={projectLocalBinding === null}
-            data-testid="empty-space-menu-show-skills-section"
-          >
-            <Trans>Skills section</Trans>
-          </ContextMenuCheckboxItem>
+          <SettingsLoadingMenuGroupTooltip reason={pendingSettingsReason}>
+            <ContextMenuGroup>
+              <ContextMenuCheckboxItem
+                checked={showHiddenFiles}
+                onCheckedChange={(checked) => patchSidebarVisibility({ showHiddenFiles: checked })}
+                aria-disabled={pendingSettingsReason ? true : undefined}
+                onSelect={preventPendingSettingsSelection}
+                aria-describedby={pendingSettingsReason ? settingsLoadingReasonId : undefined}
+                data-testid="empty-space-menu-show-hidden-files"
+              >
+                <Trans>Show hidden files</Trans>
+              </ContextMenuCheckboxItem>
+              <ContextMenuCheckboxItem
+                checked={showOkFolders}
+                onCheckedChange={(checked) => patchSidebarVisibility({ showOkFolders: checked })}
+                aria-disabled={pendingSettingsReason ? true : undefined}
+                onSelect={preventPendingSettingsSelection}
+                aria-describedby={pendingSettingsReason ? settingsLoadingReasonId : undefined}
+                data-testid="empty-space-menu-show-ok-folders"
+              >
+                <Trans>Show .ok folders</Trans>
+              </ContextMenuCheckboxItem>
+              <ContextMenuCheckboxItem
+                checked={showOnlyMarkdownFiles}
+                onCheckedChange={(checked) =>
+                  patchSidebarVisibility({ showOnlyMarkdownFiles: checked })
+                }
+                aria-disabled={pendingSettingsReason ? true : undefined}
+                onSelect={preventPendingSettingsSelection}
+                aria-describedby={pendingSettingsReason ? settingsLoadingReasonId : undefined}
+                data-testid="empty-space-menu-show-only-markdown-files"
+              >
+                <Trans>Show only markdown files</Trans>
+              </ContextMenuCheckboxItem>
+              <ContextMenuCheckboxItem
+                checked={showSkillsSection}
+                onCheckedChange={(checked) =>
+                  patchSidebarVisibility({ showSkillsSection: checked })
+                }
+                aria-disabled={pendingSettingsReason ? true : undefined}
+                onSelect={preventPendingSettingsSelection}
+                aria-describedby={pendingSettingsReason ? settingsLoadingReasonId : undefined}
+                data-testid="empty-space-menu-show-skills-section"
+              >
+                <Trans>Skills section</Trans>
+              </ContextMenuCheckboxItem>
+            </ContextMenuGroup>
+          </SettingsLoadingMenuGroupTooltip>
           {showTreeStateSection ? <ContextMenuSeparator /> : null}
           {showExpandAll ? (
             <ContextMenuItem

@@ -116,9 +116,17 @@ describe('useTerminalEnabledWriter', () => {
     expect(captured?.writer).toBeNull();
   });
 
-  test('grant patches terminal.enabled true on the project-local binding', () => {
+  test('is null while a replacement project-local binding awaits its first sync', () => {
     const { binding, patches } = makeFakeBinding({ ok: true });
-    renderWith({ ...emptyContext, projectLocalBinding: binding });
+    renderWith({ ...emptyContext, projectLocalBinding: binding, projectLocalSynced: false });
+
+    expect(captured?.writer).toBeNull();
+    expect(patches).toEqual([]);
+  });
+
+  test('after first sync, grant patches terminal.enabled true on the project-local binding', () => {
+    const { binding, patches } = makeFakeBinding({ ok: true });
+    renderWith({ ...emptyContext, projectLocalBinding: binding, projectLocalSynced: true });
 
     const result = captured?.writer?.(true);
     expect(result).toEqual({ ok: true });
@@ -127,7 +135,7 @@ describe('useTerminalEnabledWriter', () => {
 
   test('revoke patches terminal.enabled false on the project-local binding', () => {
     const { binding, patches } = makeFakeBinding({ ok: true });
-    renderWith({ ...emptyContext, projectLocalBinding: binding });
+    renderWith({ ...emptyContext, projectLocalBinding: binding, projectLocalSynced: true });
 
     const result = captured?.writer?.(false);
     expect(result).toEqual({ ok: true });
@@ -139,7 +147,7 @@ describe('useTerminalEnabledWriter', () => {
       ok: false,
       error: { code: 'WRITE_ERROR', detail: 'disk full' },
     });
-    renderWith({ ...emptyContext, projectLocalBinding: binding });
+    renderWith({ ...emptyContext, projectLocalBinding: binding, projectLocalSynced: true });
 
     const result = captured?.writer?.(true);
     expect(result?.ok).toBe(false);
@@ -148,7 +156,7 @@ describe('useTerminalEnabledWriter', () => {
 
   test('a successful grant records the shell-consent-granted event once', () => {
     const { binding } = makeFakeBinding({ ok: true });
-    renderWith({ ...emptyContext, projectLocalBinding: binding });
+    renderWith({ ...emptyContext, projectLocalBinding: binding, projectLocalSynced: true });
 
     captured?.writer?.(true);
     expect(consentGrants).toHaveLength(1);
@@ -156,7 +164,7 @@ describe('useTerminalEnabledWriter', () => {
 
   test('a revoke does not record a consent grant', () => {
     const { binding } = makeFakeBinding({ ok: true });
-    renderWith({ ...emptyContext, projectLocalBinding: binding });
+    renderWith({ ...emptyContext, projectLocalBinding: binding, projectLocalSynced: true });
 
     captured?.writer?.(false);
     expect(consentGrants).toEqual([]);
@@ -167,7 +175,7 @@ describe('useTerminalEnabledWriter', () => {
       ok: false,
       error: { code: 'WRITE_ERROR', detail: 'disk full' },
     });
-    renderWith({ ...emptyContext, projectLocalBinding: binding });
+    renderWith({ ...emptyContext, projectLocalBinding: binding, projectLocalSynced: true });
 
     captured?.writer?.(true);
     expect(consentGrants).toEqual([]);

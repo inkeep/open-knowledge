@@ -14,8 +14,8 @@ import { useConfigContext } from '@/lib/config-provider';
 type SyncEnabledWriter = (enabled: boolean) => { ok: true } | { ok: false; error: string };
 
 export function useSyncEnabledWriter(): SyncEnabledWriter | null {
-  const { projectLocalBinding } = useConfigContext();
-  if (projectLocalBinding === null) return null;
+  const { projectLocalBinding, projectLocalSynced } = useConfigContext();
+  if (projectLocalBinding === null || !projectLocalSynced) return null;
   return (enabled: boolean) => {
     const mode: SyncMode = enabled ? 'full' : 'off';
     const result = projectLocalBinding.patch({ autoSync: { mode, enabled } });
@@ -26,8 +26,8 @@ export function useSyncEnabledWriter(): SyncEnabledWriter | null {
 type SyncModeWriter = (mode: SyncMode) => { ok: true } | { ok: false; error: string };
 
 export function useSyncModeWriter(): SyncModeWriter | null {
-  const { projectLocalBinding } = useConfigContext();
-  if (projectLocalBinding === null) return null;
+  const { projectLocalBinding, projectLocalSynced } = useConfigContext();
+  if (projectLocalBinding === null || !projectLocalSynced) return null;
   return (mode: SyncMode) => {
     const result = projectLocalBinding.patch({ autoSync: { mode, enabled: null } });
     return result.ok ? { ok: true } : { ok: false, error: humanFormat(result.error) };
@@ -39,8 +39,8 @@ type SyncDefaultWriter = (
 ) => { ok: true } | { ok: false; error: string };
 
 export function useSyncDefaultWriter(): SyncDefaultWriter | null {
-  const { projectBinding } = useConfigContext();
-  if (projectBinding === null) return null;
+  const { projectBinding, projectSynced } = useConfigContext();
+  if (projectBinding === null || !projectSynced) return null;
   return (next: boolean | SyncMode | null) => {
     const result = projectBinding.patch({ autoSync: { default: next } });
     return result.ok ? { ok: true } : { ok: false, error: humanFormat(result.error) };
@@ -53,8 +53,8 @@ type SyncIntervalWriter = (next: {
 }) => { ok: true } | { ok: false; error: string };
 
 export function useSyncIntervalWriter(): SyncIntervalWriter | null {
-  const { projectLocalBinding } = useConfigContext();
-  if (projectLocalBinding === null) return null;
+  const { projectLocalBinding, projectLocalSynced } = useConfigContext();
+  if (projectLocalBinding === null || !projectLocalSynced) return null;
   return (next) => {
     const result = projectLocalBinding.patch({ autoSync: next });
     return result.ok ? { ok: true } : { ok: false, error: humanFormat(result.error) };
@@ -77,7 +77,9 @@ export function useEnableSyncWithConfirm(
 
   function applyEnabled(next: boolean): boolean {
     if (writer === null) {
-      toast.error(t`Sync settings not yet loaded — try again in a moment`);
+      toast.info(t`Sync settings not yet loaded — try again in a moment`, {
+        id: 'sync-settings-not-ready',
+      });
       return false;
     }
     const result = writer(next);
@@ -132,7 +134,9 @@ export function useSyncModeSelection(
 
   function applyMode(next: SyncMode): boolean {
     if (writer === null) {
-      toast.error(t`Sync settings not yet loaded — try again in a moment`);
+      toast.info(t`Sync settings not yet loaded — try again in a moment`, {
+        id: 'sync-settings-not-ready',
+      });
       return false;
     }
     const result = writer(next);
@@ -170,8 +174,8 @@ type AutoSyncPatch = { mode?: SyncMode; enabled?: null; resumeMode?: SyncActiveM
 type AutoSyncPatchWriter = (patch: AutoSyncPatch) => { ok: true } | { ok: false; error: string };
 
 export function useAutoSyncPatchWriter(): AutoSyncPatchWriter | null {
-  const { projectLocalBinding } = useConfigContext();
-  if (projectLocalBinding === null) return null;
+  const { projectLocalBinding, projectLocalSynced } = useConfigContext();
+  if (projectLocalBinding === null || !projectLocalSynced) return null;
   return (patch: AutoSyncPatch) => {
     const result = projectLocalBinding.patch({ autoSync: patch });
     return result.ok ? { ok: true } : { ok: false, error: humanFormat(result.error) };
@@ -207,7 +211,9 @@ export function useBadgeSyncControls(
 
   function apply(patch: AutoSyncPatch): boolean {
     if (writer === null) {
-      toast.error(t`Sync settings not yet loaded — try again in a moment`);
+      toast.info(t`Sync settings not yet loaded — try again in a moment`, {
+        id: 'sync-settings-not-ready',
+      });
       return false;
     }
     const result = writer(patch);

@@ -177,6 +177,7 @@
       "Sélectionnez, entrez dans ou quittez les composants de bloc et les blocs source de repli depuis les limites clavier."
     ],
     "0t0bbC": ["Impossible d'enregistrer la préférence de synchronisation : ", ["detail"]],
+    "0tV-rz": ["Les paramètres sont toujours en cours de chargement. Réessayez dans un instant."],
     "0uTHCg": ["Démarrez un nouveau projet OpenKnowledge."],
     "0wkh7o": ["Journaux OpenKnowledge, y compris l’activité de plusieurs projets."],
     "0wswKc": ["Filet horizontal qui sépare les sections."],
@@ -5639,6 +5640,10 @@
     "seeS6l": ["Configurer OpenKnowledge dans ce dossier ?"],
     "sgmRY8": ["Téléchargement de ", ["0"], " ignoré."],
     "shNd9t": ["Menu des commandes slash"],
+    "shRu04": [
+      ["name"],
+      " a été déplacé, mais pas son épingle. Épinglez-le de nouveau une fois les paramètres chargés."
+    ],
     "skf5Ix": ["Augmente ou réduit le retrait des lignes de l'éditeur de source."],
     "skvOCc": [
       "Le fichier est dans votre ",

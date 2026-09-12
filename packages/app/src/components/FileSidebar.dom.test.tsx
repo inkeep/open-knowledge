@@ -106,6 +106,7 @@ let mergedConfig: {
   appearance: { sidebar: { showHiddenFiles: false } },
 };
 let projectLocalBindingNull = false;
+let projectLocalSynced = true;
 let sidebarSearchThrows = false;
 let projectPatchResult: { ok: true } | { ok: false; error: unknown } = { ok: true };
 let openInAgentSubmenuProps: Array<{
@@ -113,6 +114,7 @@ let openInAgentSubmenuProps: Array<{
 }> = [];
 let toastSuccesses: unknown[][] = [];
 let toastErrors: unknown[][] = [];
+let toastInfos: unknown[][] = [];
 let pillRenderErrors: unknown[][] = [];
 const treeListeners = new Set<() => void>();
 
@@ -243,6 +245,7 @@ vi.doMock('@/components/ui/button', () => ({
 vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenu: PassThrough,
   ContextMenuContent: ({ children }: { children?: ReactNode }) => <div role="menu">{children}</div>,
+  ContextMenuGroup: ElementPassThrough,
   ContextMenuItem: ({
     children,
     disabled,
@@ -271,12 +274,14 @@ vi.doMock('@/components/ui/context-menu', () => ({
     children,
     disabled,
     onCheckedChange,
+    onSelect,
     ...props
   }: {
     checked?: boolean;
     children?: ReactNode;
     disabled?: boolean;
     onCheckedChange?: (checked: boolean) => void;
+    onSelect?: (event: Event) => void;
     [key: string]: unknown;
   }) => (
     <button
@@ -285,7 +290,9 @@ vi.doMock('@/components/ui/context-menu', () => ({
       aria-checked={checked ? 'true' : 'false'}
       disabled={disabled}
       onClick={() => {
-        if (!disabled) onCheckedChange?.(!checked);
+        if (disabled) return;
+        onSelect?.(new Event('menu.itemSelect', { cancelable: true }));
+        onCheckedChange?.(!checked);
       }}
       {...props}
     >
@@ -306,12 +313,14 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
     children,
     disabled,
     onCheckedChange,
+    onSelect,
     ...props
   }: {
     checked?: boolean;
     children?: ReactNode;
     disabled?: boolean;
     onCheckedChange?: (checked: boolean) => void;
+    onSelect?: (event: Event) => void;
     [key: string]: unknown;
   }) => (
     <button
@@ -320,7 +329,9 @@ vi.doMock('@/components/ui/dropdown-menu', () => ({
       aria-checked={checked ? 'true' : 'false'}
       disabled={disabled}
       onClick={() => {
-        if (!disabled) onCheckedChange?.(!checked);
+        if (disabled) return;
+        onSelect?.(new Event('menu.itemSelect', { cancelable: true }));
+        onCheckedChange?.(!checked);
       }}
       {...props}
     >
@@ -419,6 +430,7 @@ vi.doMock('@/hooks/use-folder-config', () => ({
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: mergedConfig,
+    projectLocalSynced,
     projectLocalBinding: projectLocalBindingNull
       ? null
       : {
@@ -434,6 +446,7 @@ vi.doMock('@/lib/use-workspace', () => ({
 vi.doMock('sonner', () => ({
   toast: {
     error: (...args: unknown[]) => toastErrors.push(args),
+    info: (...args: unknown[]) => toastInfos.push(args),
     success: (...args: unknown[]) => toastSuccesses.push(args),
   },
 }));
@@ -460,11 +473,13 @@ describe('FileSidebar runtime behavior', () => {
     hasTemplates = true;
     mergedConfig = { appearance: { sidebar: { showHiddenFiles: false } } };
     projectLocalBindingNull = false;
+    projectLocalSynced = true;
     sidebarSearchThrows = false;
     projectPatchResult = { ok: true };
     openInAgentSubmenuProps = [];
     toastSuccesses = [];
     toastErrors = [];
+    toastInfos = [];
     pillRenderErrors = [];
     treeListeners.clear();
     for (const fn of [
@@ -738,32 +753,77 @@ describe('FileSidebar runtime behavior', () => {
     });
   });
 
-  test('Show checkboxes disable while the project-local binding is unavailable', async () => {
+  test('Show checkboxes explain why they are disabled while project settings load', async () => {
+    const user = userEvent.setup();
     projectLocalBindingNull = true;
     await renderSidebar();
     const menu = screen.getByTestId('tree-options-menu');
 
-    for (const id of [
+    const treeCheckboxes = [
       'tree-options-show-hidden-files',
       'tree-options-show-ok-folders',
       'tree-options-show-only-markdown-files',
       'tree-options-show-skills',
-    ]) {
-      const checkbox = within(menu).getByTestId(id) as HTMLButtonElement;
-      expect(checkbox.disabled).toBe(true);
-      fireEvent.click(checkbox);
-    }
-    for (const id of [
+      'tree-options-group-skills',
+    ].map((id) => within(menu).getByTestId(id) as HTMLButtonElement);
+    const contextCheckboxes = [
       'empty-space-menu-show-hidden-files',
       'empty-space-menu-show-ok-folders',
       'empty-space-menu-show-only-markdown-files',
       'empty-space-menu-show-skills-section',
-    ]) {
-      const checkbox = screen.getByTestId(id) as HTMLButtonElement;
-      expect(checkbox.disabled).toBe(true);
+    ].map((id) => screen.getByTestId(id) as HTMLButtonElement);
+
+    for (const checkbox of [...treeCheckboxes, ...contextCheckboxes]) {
+      expect(checkbox.disabled).toBe(false);
+      expect(checkbox.getAttribute('aria-disabled')).toBe('true');
+      const descriptionId = checkbox.getAttribute('aria-describedby');
+      expect(descriptionId).toBeTruthy();
+      expect(document.getElementById(descriptionId ?? '')?.textContent).toBe(
+        'Settings are still loading. Try again in a moment.',
+      );
       fireEvent.click(checkbox);
     }
+    expect(toastInfos).toHaveLength(9);
+    for (const args of toastInfos) {
+      expect(args).toEqual([
+        'Settings are still loading. Try again in a moment.',
+        { id: 'sidebar-settings-not-ready' },
+      ]);
+    }
+    await user.hover(treeCheckboxes[0]?.parentElement as HTMLElement);
+    expect(
+      await screen.findByRole('tooltip', {
+        name: 'Settings are still loading. Try again in a moment.',
+      }),
+    ).toBeTruthy();
     expect(projectLocalPatch).not.toHaveBeenCalled();
+  });
+
+  test('Show checkboxes reject input until the project-local binding first syncs', async () => {
+    projectLocalSynced = false;
+    const rendered = await renderSidebar();
+    const checkbox = within(screen.getByTestId('tree-options-menu')).getByTestId(
+      'tree-options-show-hidden-files',
+    ) as HTMLButtonElement;
+
+    expect(checkbox.disabled).toBe(false);
+    expect(checkbox.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(checkbox);
+    expect(projectLocalPatch).not.toHaveBeenCalled();
+
+    projectLocalSynced = true;
+    const { FileSidebar } = await import('./FileSidebar');
+    rendered.rerender(<FileSidebar onOpenSearch={onOpenSearch} />);
+
+    const readyCheckbox = within(screen.getByTestId('tree-options-menu')).getByTestId(
+      'tree-options-show-hidden-files',
+    ) as HTMLButtonElement;
+    expect(readyCheckbox.disabled).toBe(false);
+    expect(readyCheckbox.getAttribute('aria-disabled')).toBeNull();
+    fireEvent.click(readyCheckbox);
+    expect(projectLocalPatch).toHaveBeenCalledWith({
+      appearance: { sidebar: { showHiddenFiles: true } },
+    });
   });
 
   test('a rejected visibility patch surfaces the settings toast', async () => {
@@ -801,11 +861,13 @@ describe('FileSidebar runtime behavior', () => {
       'empty-space-menu-expand-all',
       'empty-space-menu-collapse-all',
     ];
-    const positions = itemIds.map((id) => {
-      const element = screen.getByTestId(id);
-      return Array.from(element.parentElement?.children ?? []).indexOf(element);
-    });
-    expect(positions).toEqual([...positions].sort((a, b) => a - b));
+    const items = itemIds.map((id) => screen.getByTestId(id));
+    for (const [index, item] of items.entries()) {
+      const next = items[index + 1];
+      if (next) {
+        expect(item.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      }
+    }
 
     fireEvent.click(screen.getByTestId('empty-space-menu-new-file'));
     fireEvent.click(screen.getByTestId('empty-space-menu-new-from-template'));

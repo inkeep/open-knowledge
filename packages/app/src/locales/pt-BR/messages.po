@@ -940,6 +940,10 @@ msgstr "{name} não tem um caminho resolvível — o agente só consegue ler arq
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} está fora do espaço de trabalho. Mova-o para o seu projeto primeiro."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} foi movido, mas a fixação não foi movida junto. Fixe-o novamente quando as configurações terminarem de carregar."
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# nó} many {# nós} other {# nós}}"
@@ -12560,6 +12564,10 @@ msgstr "Configurações"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "As configurações e integrações foram removidas."
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "As configurações ainda estão carregando. Tente de novo em instantes."
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

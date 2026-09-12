@@ -1,4 +1,3 @@
-
 import { ROLLBACK_ORIGIN } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';

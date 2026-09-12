@@ -30,7 +30,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { useConfigContextOptional } from '@/lib/config-context';
+import { useConfigContextOptional, useSettingsLoadingReason } from '@/lib/config-context';
 import type { OkMcpWiringShowPayload } from '@/lib/desktop-bridge-types';
 import { type McpConsentStore, mcpConsentStore } from '@/lib/mcp-consent-store';
 import { formatToolList } from '@/lib/tool-list-format';
@@ -155,18 +155,27 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
   const { theme, setTheme } = useTheme();
   const themePreference = narrowThemePreference(theme);
   const configContext = useConfigContextOptional();
+  const readyUserBinding = configContext?.userSynced ? configContext.userBinding : null;
+  const themeBindingPending =
+    configContext !== null && configContext.userBinding !== null && !configContext.userSynced;
 
   function commitTheme(next: ThemePreference): void {
-    setTheme(next);
-    const binding = configContext?.userBinding;
-    if (!binding) return;
-    const result = binding.patch({ appearance: { theme: next } });
+    if (configContext === null || configContext.userBinding === null) {
+      setTheme(next);
+      return;
+    }
+    if (readyUserBinding === null) return;
+    const result = readyUserBinding.patch({ appearance: { theme: next } });
     if (!result.ok) {
       toast.error(t`Couldn't save your theme preference.`);
+      return;
     }
+    setTheme(next);
   }
   const [busy, setBusy] = useState(false);
   const idPrefix = useId();
+  const themePendingReasonId = `${idPrefix}-theme-pending`;
+  const settingsLoadingReason = useSettingsLoadingReason();
   const showReplaceWarning = connectChecked && replacing.length > 0;
 
   async function onContinue() {
@@ -502,9 +511,15 @@ function McpConsentDialogForm({ payload, store, toast }: McpConsentDialogFormPro
             <ThemePicker
               value={themePreference}
               onValueChange={commitTheme}
-              disabled={busy}
+              disabled={busy || themeBindingPending}
               aria-label={t`Choose your theme`}
+              aria-describedby={themeBindingPending ? themePendingReasonId : undefined}
             />
+            {themeBindingPending ? (
+              <p id={themePendingReasonId} className={SECTION_SUBTEXT}>
+                {settingsLoadingReason}
+              </p>
+            ) : null}
           </div>
         </Surface.Body>
         <Surface.Footer className="sm:justify-between">

@@ -105,11 +105,13 @@ function makeHarness({
   skipResult = async () => ({ ok: true as const }),
   snapshot = payload,
   userBinding,
+  userSynced,
 }: {
   confirmResult?: (editorIds: readonly string[]) => Promise<OkMcpWiringResult>;
   skipResult?: () => Promise<OkMcpWiringResult>;
   snapshot?: OkMcpWiringShowPayload;
   userBinding?: { patch: (patch: unknown) => unknown } | null;
+  userSynced?: boolean;
 } = {}) {
   const confirmCalls: RecordedConfirm[] = [];
   const skipCalls: string[] = [];
@@ -150,6 +152,7 @@ function makeHarness({
     toastMessages,
     snapshot,
     userBinding,
+    userSynced,
   };
 }
 
@@ -179,7 +182,11 @@ async function renderDialog(harness = makeHarness()) {
     harness.userBinding === undefined ? (
       body
     ) : (
-      <ConfigContext.Provider value={{ userBinding: harness.userBinding } as never}>
+      <ConfigContext.Provider
+        value={
+          { userBinding: harness.userBinding, userSynced: harness.userSynced ?? false } as never
+        }
+      >
         {body}
       </ConfigContext.Provider>
     ),
@@ -950,7 +957,7 @@ describe('McpConsentDialog theme picker', () => {
 
   test('canonicalizes the pick into user config when a binding is mounted', async () => {
     const patch = vi.fn(() => ({ ok: true as const, value: { effective: {}, appliedPaths: [] } }));
-    await renderDialog(makeHarness({ userBinding: { patch } }));
+    await renderDialog(makeHarness({ userBinding: { patch }, userSynced: true }));
 
     await userEvent.click(screen.getByTestId('theme-picker-dark'));
 
@@ -959,20 +966,52 @@ describe('McpConsentDialog theme picker', () => {
 
   test('a failed config write is reported without taking the dialog down', async () => {
     const patch = vi.fn(() => ({ ok: false as const, error: { message: 'read-only' } }));
-    const harness = await renderDialog(makeHarness({ userBinding: { patch } }));
+    const harness = await renderDialog(makeHarness({ userBinding: { patch }, userSynced: true }));
 
     await userEvent.click(screen.getByTestId('theme-picker-dark'));
 
-    expect(themeState.setTheme).toHaveBeenCalledWith('dark');
+    expect(themeState.setTheme).not.toHaveBeenCalled();
     expect(harness.toastErrors).toEqual(["Couldn't save your theme preference."]);
     expect(screen.getByTestId('mcp-consent-add')).toBeTruthy();
   });
 
-  test('a pick still applies in a window with no config binding', async () => {
-    await renderDialog(makeHarness({ userBinding: null }));
+  test('a navigator window with no config provider still applies a local theme pick', async () => {
+    await renderDialog();
 
     await userEvent.click(screen.getByTestId('theme-picker-dark'));
 
+    expect(themeState.setTheme).toHaveBeenCalledWith('dark');
+  });
+
+  test('a window with a config provider but no binding still applies a local theme pick', async () => {
+    await renderDialog(makeHarness({ userBinding: null, userSynced: false }));
+
+    const choice = screen.getByTestId('theme-picker-dark');
+    expect(choice.getAttribute('data-disabled')).toBeNull();
+    await userEvent.click(choice);
+
+    expect(themeState.setTheme).toHaveBeenCalledWith('dark');
+    expect(screen.queryByText('Settings are still loading. Try again in a moment.')).toBeNull();
+  });
+
+  test('theme input is rejected until the mounted user binding first syncs, then persists and applies', async () => {
+    const patch = vi.fn(() => ({ ok: true as const, value: { effective: {}, appliedPaths: [] } }));
+    await renderDialog(makeHarness({ userBinding: { patch }, userSynced: false }));
+
+    const syncingChoice = screen.getByTestId('theme-picker-dark');
+    const syncingPicker = screen.getByTestId('theme-picker');
+    expect(syncingChoice.getAttribute('data-disabled')).not.toBeNull();
+    fireEvent.click(syncingChoice);
+    expect(patch).not.toHaveBeenCalled();
+    expect(themeState.setTheme).not.toHaveBeenCalled();
+    const pendingReason = screen.getByText('Settings are still loading. Try again in a moment.');
+    expect(syncingPicker.getAttribute('aria-describedby')).toBe(pendingReason.id);
+
+    cleanup();
+    await renderDialog(makeHarness({ userBinding: { patch }, userSynced: true }));
+    await userEvent.click(screen.getByTestId('theme-picker-dark'));
+
+    expect(patch).toHaveBeenCalledWith({ appearance: { theme: 'dark' } });
     expect(themeState.setTheme).toHaveBeenCalledWith('dark');
   });
 });

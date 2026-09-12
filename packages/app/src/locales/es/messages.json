@@ -175,6 +175,7 @@
       "Selecciona, entra o sale de componentes de bloque y bloques de código alternativos desde los límites del teclado."
     ],
     "0t0bbC": ["No se pudo guardar la preferencia de sincronización: ", ["detail"]],
+    "0tV-rz": ["Los ajustes todavía se están cargando. Inténtalo de nuevo en un momento."],
     "0uTHCg": ["Empieza un proyecto de OpenKnowledge."],
     "0wkh7o": ["Registros de OpenKnowledge, incluida actividad de varios proyectos."],
     "0wswKc": ["Línea horizontal que separa secciones."],
@@ -5572,6 +5573,11 @@
     "seeS6l": ["¿Configurar OpenKnowledge en esta carpeta?"],
     "sgmRY8": ["Se omitió la descarga de ", ["0"], "."],
     "shNd9t": ["Menú de comandos de barra"],
+    "shRu04": [
+      "Se movió ",
+      ["name"],
+      ", pero su fijación no. Vuelve a fijarlo cuando terminen de cargarse los ajustes."
+    ],
     "skf5Ix": ["Aumenta o reduce la sangría de las líneas del editor de código."],
     "skvOCc": [
       "El archivo está en tu ",

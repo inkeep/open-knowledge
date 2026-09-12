@@ -940,6 +940,10 @@ msgstr ""
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr ""
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr ""
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr ""
@@ -12559,6 +12563,10 @@ msgstr ""
 
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
+msgstr ""
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
 msgstr ""
 
 #: src/components/settings/SettingsDialogShell.tsx

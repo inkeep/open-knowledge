@@ -287,13 +287,40 @@ describe('TerminalGate', () => {
     expect(notice()).toBeNull();
   });
 
-  test('re-enable with no writer yet surfaces an actionable toast, no crash', () => {
+  test('keeps re-enable unavailable during a replacement binding sync, then enables it', () => {
     consentState = { enabled: false, synced: true };
+    const readyWriter = writerImpl;
+    const view = renderGate();
+
+    consentState = { enabled: null, synced: false };
     writerImpl = null;
-    renderGate();
-    act(() => screen.getByRole('button', { name: 'Enable terminal' }).click());
+    view.rerender(<TerminalGate bridge={bridge} />);
+
+    const syncingButton = screen.getByRole('button', { name: 'Enable terminal' });
+    expect((syncingButton as HTMLButtonElement).disabled).toBe(true);
+    const pendingReason = screen.getByText(
+      'Terminal settings not loaded yet — try again in a moment.',
+    );
+    expect(pendingReason.textContent).toBe(
+      'Terminal settings not loaded yet — try again in a moment.',
+    );
+    expect(pendingReason.getAttribute('role')).toBeNull();
+    expect(syncingButton.getAttribute('aria-describedby')).toBe(pendingReason.id);
+    act(() => syncingButton.click());
     expect(writerCalls).toEqual([]);
-    expect(toastErrors.length).toBe(1);
+    expect(toastErrors).toEqual([]);
+
+    consentState = { enabled: false, synced: true };
+    writerImpl = readyWriter;
+    view.rerender(<TerminalGate bridge={bridge} />);
+
+    const readyButton = screen.getByRole('button', { name: 'Enable terminal' });
+    expect((readyButton as HTMLButtonElement).disabled).toBe(false);
+    expect(
+      screen.queryByText('Terminal settings not loaded yet — try again in a moment.'),
+    ).toBeNull();
+    act(() => readyButton.click());
+    expect(writerCalls).toEqual([true]);
   });
 
   test('a writer that fails to persist surfaces a toast and never mounts the shell', () => {

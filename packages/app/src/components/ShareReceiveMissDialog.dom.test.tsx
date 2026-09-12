@@ -19,6 +19,7 @@ vi.doMock('@/lib/config-provider', () => ({
         return configPatchResult;
       },
     },
+    projectLocalSynced: true,
   }),
 }));
 

@@ -940,6 +940,10 @@ msgstr "{name} کا کوئی قابلِ حل راستہ نہیں — ایجنٹ 
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} ورک اسپیس سے باہر ہے۔ پہلے اسے اپنے پروجیکٹ میں منتقل کریں۔"
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} منتقل ہو گیا، لیکن اس کی پن ساتھ منتقل نہیں ہوئی۔ ترتیبات لوڈ ہونے کے بعد اسے دوبارہ پن کریں۔"
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# نوڈ} other {# نوڈز}}"
@@ -12564,6 +12568,10 @@ msgstr "ترتیبات"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "ترتیبات اور انضمام ہٹا دیے گئے۔"
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "ترتیبات ابھی لوڈ ہو رہی ہیں۔ تھوڑی دیر بعد دوبارہ کوشش کریں۔"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

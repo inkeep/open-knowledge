@@ -14,6 +14,7 @@ vi.doMock('@/lib/config-provider', () => ({
         return { ok: true };
       },
     },
+    projectLocalSynced: true,
   }),
 }));
 

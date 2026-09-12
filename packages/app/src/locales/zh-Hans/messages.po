@@ -940,6 +940,10 @@ msgstr "{name} 没有可解析的路径 — 智能体只能读取工作区内的
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} 位于工作区之外。请先将它移入你的项目。"
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} 已移动，但置顶状态未随之移动。设置加载完成后，请重新置顶。"
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, other {# 个节点}}"
@@ -12564,6 +12568,10 @@ msgstr "设置"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "已清理设置和集成。"
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "设置仍在加载中。请稍后再试。"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

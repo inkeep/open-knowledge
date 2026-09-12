@@ -145,6 +145,7 @@
       "Select, enter, or leave block components and fallback source blocks from keyboard boundaries."
     ],
     "0t0bbC": ["Could not save sync preference: ", ["detail"]],
+    "0tV-rz": ["Settings are still loading. Try again in a moment."],
     "0uTHCg": ["Start a new OpenKnowledge project."],
     "0wkh7o": ["OpenKnowledge logs, including activity across projects."],
     "0wswKc": ["Horizontal rule that divides sections."],
@@ -4836,6 +4837,10 @@
     "seeS6l": ["Setup OpenKnowledge in this folder?"],
     "sgmRY8": ["Skipped downloading ", ["0"], "."],
     "shNd9t": ["Slash command menu"],
+    "shRu04": [
+      ["name"],
+      " moved, but its pin did not. Pin it again after settings finish loading."
+    ],
     "skf5Ix": ["Indent or outdent source editor lines."],
     "skvOCc": ["The file is in your ", ["trashNoun"], "; the file-watcher will reconcile."],
     "sn5BEU": [

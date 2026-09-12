@@ -940,6 +940,10 @@ msgstr "{name} has no resolvable path — the agent can only read files inside t
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} is outside the workspace. Move it into your project first."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} moved, but its pin did not. Pin it again after settings finish loading."
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# node} other {# nodes}}"
@@ -12564,6 +12568,10 @@ msgstr "Settings"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "Settings and integrations were cleaned up."
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "Settings are still loading. Try again in a moment."
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

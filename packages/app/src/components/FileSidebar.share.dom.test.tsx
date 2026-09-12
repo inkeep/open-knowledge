@@ -109,6 +109,7 @@ vi.doMock('@/components/ui/context-menu', () => ({
   ContextMenu: PassThrough,
   ContextMenuCheckboxItem: Button,
   ContextMenuContent: ElementPassThrough,
+  ContextMenuGroup: ElementPassThrough,
   ContextMenuItem: Button,
   ContextMenuSeparator: () => <hr />,
   ContextMenuSub: PassThrough,

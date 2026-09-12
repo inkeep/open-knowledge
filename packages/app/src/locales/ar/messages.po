@@ -940,6 +940,10 @@ msgstr "{name} ليس له مسار يمكن تحديده — لا يستطيع 
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} خارج مساحة العمل. انقله إلى مشروعك أولًا."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "تم نقل {name}، لكن لم ينتقل التثبيت معه. أعد تثبيته بعد اكتمال تحميل الإعدادات."
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, zero {# عقدة} one {عقدة واحدة} two {عقدتان} few {# عقد} many {# عقدةً} other {# عقدة}}"
@@ -12564,6 +12568,10 @@ msgstr "الإعدادات"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "تمت إزالة الإعدادات والتكاملات."
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "لا تزال الإعدادات قيد التحميل. أعد المحاولة بعد قليل."
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

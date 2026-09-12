@@ -78,6 +78,10 @@ export const KnownConfigValidationErrorSchema = z.discriminatedUnion('code', [
   }),
   RemovedKeyErrorSchema,
   z.object({
+    code: z.literal('NOT_SYNCED'),
+    detail: z.string(),
+  }),
+  z.object({
     code: z.literal('WRITE_ERROR'),
     detail: z.string(),
   }),
@@ -297,6 +301,8 @@ export function humanFormat(error: ConfigValidationError): string {
       }
       return lines.join('\n');
     }
+    case 'NOT_SYNCED':
+      return 'Settings are still loading. Try again in a moment.';
     case 'WRITE_ERROR':
       return `Failed to write config file: ${error.detail}`;
     case 'OKIGNORE_INVALID':

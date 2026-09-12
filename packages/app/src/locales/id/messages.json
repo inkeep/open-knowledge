@@ -143,6 +143,7 @@
       "Memilih, masuk, atau keluar dari komponen blok dan blok sumber cadangan dari batas papan ketik."
     ],
     "0t0bbC": ["Preferensi sinkronisasi tidak dapat disimpan: ", ["detail"]],
+    "0tV-rz": ["Pengaturan masih dimuat. Coba lagi sebentar."],
     "0uTHCg": ["Mulai proyek OpenKnowledge baru."],
     "0wkh7o": ["Log OpenKnowledge, termasuk aktivitas lintas proyek."],
     "0wswKc": ["Garis mendatar yang memisahkan bagian."],
@@ -4857,6 +4858,10 @@
     "seeS6l": ["Siapkan OpenKnowledge di folder ini?"],
     "sgmRY8": ["Unduhan ", ["0"], " dilewati."],
     "shNd9t": ["Menu perintah garis miring"],
+    "shRu04": [
+      ["name"],
+      " telah dipindahkan, tetapi sematannya tidak ikut berpindah. Sematkan lagi setelah pengaturan selesai dimuat."
+    ],
     "skf5Ix": ["Menambah atau mengurangi indentasi baris penyunting sumber."],
     "skvOCc": ["Berkas ada di ", ["trashNoun"], " Anda; pengawas berkas akan menyelaraskannya."],
     "sn5BEU": [

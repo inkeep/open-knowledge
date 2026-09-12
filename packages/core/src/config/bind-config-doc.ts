@@ -140,6 +140,12 @@ function bindConfigDocInner(
         detail: `ConfigBinding (${scope}) has been disposed`,
       });
     }
+    if (!synced) {
+      return err({
+        code: 'NOT_SYNCED',
+        detail: `ConfigBinding (${scope}) has not completed initial sync`,
+      });
+    }
 
     const scopeViolation = validatePatchScopes(patch, scope);
     if (scopeViolation !== null) {

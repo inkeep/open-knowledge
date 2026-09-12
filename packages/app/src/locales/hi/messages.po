@@ -940,6 +940,10 @@ msgstr "{name} का कोई हल करने योग्य पथ न�
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} कार्यक्षेत्र के बाहर है। पहले इसे अपने प्रोजेक्ट में ले जाएँ।"
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} को स्थानांतरित कर दिया गया, लेकिन उसका पिन साथ नहीं गया। सेटिंग लोड होने के बाद उसे फिर से पिन करें।"
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# नोड} other {# नोड}}"
@@ -12560,6 +12564,10 @@ msgstr "सेटिंग"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "सेटिंग और इंटीग्रेशन हटा दिए गए।"
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "सेटिंग अभी भी लोड हो रही हैं। कुछ देर बाद फिर कोशिश करें।"
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

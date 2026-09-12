@@ -1,4 +1,5 @@
 import type { Config, ConfigBinding, OkignoreBinding } from '@inkeep/open-knowledge-core';
+import { useLingui } from '@lingui/react/macro';
 import { createContext, use } from 'react';
 
 export interface ConfigContextValue {
@@ -28,4 +29,9 @@ export function useConfigContext(): ConfigContextValue {
 
 export function useConfigContextOptional(): ConfigContextValue | null {
   return use(ConfigContext);
+}
+
+export function useSettingsLoadingReason(): string {
+  const { t } = useLingui();
+  return t`Settings are still loading. Try again in a moment.`;
 }

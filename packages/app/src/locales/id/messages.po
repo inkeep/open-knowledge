@@ -940,6 +940,10 @@ msgstr "{name} tidak memiliki jalur yang dapat diuraikan — agen hanya bisa mem
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} berada di luar ruang kerja. Pindahkan dulu ke proyek Anda."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} telah dipindahkan, tetapi sematannya tidak ikut berpindah. Sematkan lagi setelah pengaturan selesai dimuat."
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, other {# simpul}}"
@@ -12560,6 +12564,10 @@ msgstr "Pengaturan"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "Pengaturan dan integrasi telah dihapus."
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "Pengaturan masih dimuat. Coba lagi sebentar."
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

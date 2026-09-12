@@ -940,6 +940,10 @@ msgstr "{name} n'a pas de chemin résoluble — l'agent ne peut lire que les fic
 msgid "{name} is outside the workspace. Move it into your project first."
 msgstr "{name} se trouve hors de l'espace de travail. Déplacez-le d'abord dans votre projet."
 
+#: src/components/SkillsSidebarSection.tsx
+msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
+msgstr "{name} a été déplacé, mais pas son épingle. Épinglez-le de nouveau une fois les paramètres chargés."
+
 #: src/components/GraphPanel.tsx
 msgid "{nodeCount, plural, one {# node} other {# nodes}}"
 msgstr "{nodeCount, plural, one {# nœud} many {# nœuds} other {# nœuds}}"
@@ -12564,6 +12568,10 @@ msgstr "Paramètres"
 #: src/uninstall/UninstallResultScreen.tsx
 msgid "Settings and integrations were cleaned up."
 msgstr "Les réglages et les intégrations ont été supprimés."
+
+#: src/lib/config-context.ts
+msgid "Settings are still loading. Try again in a moment."
+msgstr "Les paramètres sont toujours en cours de chargement. Réessayez dans un instant."
 
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Settings content"

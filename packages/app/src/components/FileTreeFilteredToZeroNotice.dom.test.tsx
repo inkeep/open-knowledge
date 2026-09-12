@@ -11,6 +11,7 @@ vi.doMock('@lingui/react/macro', () => ({
 }));
 
 let projectLocalBindingNull = false;
+let projectLocalSynced = true;
 let patchResultOk = true;
 const patchCalls: unknown[] = [];
 const toastErrors: unknown[][] = [];
@@ -18,6 +19,7 @@ const toastErrors: unknown[][] = [];
 vi.doMock('@/lib/config-provider', () => ({
   useConfigContext: () => ({
     merged: null,
+    projectLocalSynced,
     projectLocalBinding: projectLocalBindingNull
       ? null
       : {
@@ -45,6 +47,7 @@ const resetButton = () => screen.queryByTestId('reset-view-filters');
 describe('FileTreeFilteredToZeroNotice', () => {
   beforeEach(() => {
     projectLocalBindingNull = false;
+    projectLocalSynced = true;
     patchResultOk = true;
     patchCalls.length = 0;
     toastErrors.length = 0;
@@ -84,6 +87,28 @@ describe('FileTreeFilteredToZeroNotice', () => {
     expect((resetButton() as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(resetButton() as HTMLElement);
     expect(patchCalls).toEqual([]);
+  });
+
+  test('reset rejects input until the project-local binding first syncs', () => {
+    projectLocalSynced = false;
+    const rendered = render(<FileTreeFilteredToZeroNotice />);
+
+    const syncingButton = resetButton() as HTMLButtonElement;
+    const pendingReason = screen.getByText('Settings are still loading. Try again in a moment.');
+    expect(syncingButton.disabled).toBe(true);
+    expect(syncingButton.getAttribute('aria-describedby')).toBe(pendingReason.id);
+    fireEvent.click(syncingButton);
+    expect(patchCalls).toEqual([]);
+
+    projectLocalSynced = true;
+    rendered.rerender(<FileTreeFilteredToZeroNotice />);
+
+    const readyButton = resetButton() as HTMLButtonElement;
+    expect(readyButton.disabled).toBe(false);
+    expect(readyButton.getAttribute('aria-describedby')).toBeNull();
+    expect(screen.queryByText('Settings are still loading. Try again in a moment.')).toBeNull();
+    fireEvent.click(readyButton);
+    expect(patchCalls).toHaveLength(1);
   });
 
   test('a rejected patch surfaces the shared settings toast', () => {
