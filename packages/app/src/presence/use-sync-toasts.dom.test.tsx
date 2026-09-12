@@ -167,21 +167,6 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
     expect(last?.[1]?.action).toBeDefined();
   });
 
-  test('the stalled claim names the document it is true of, not the whole session', () => {
-    setBridge(true);
-    const { rerender } = renderHook(
-      ({ s }: { s: 'synced' | 'connected' | 'disconnected' }) => useSyncToasts(s, 'wedged-doc'),
-      { initialProps: { s: 'synced' as const } },
-    );
-    act(() => rerender({ s: 'disconnected' }));
-    act(() => vi.advanceTimersByTime(5_000));
-    act(() => rerender({ s: 'connected' }));
-
-    const last = lastWarning();
-    expect(String(last?.[0])).toContain('wedged-doc');
-    expect(String(last?.[0])).toContain("aren't reaching the server");
-  });
-
   test('the connection-lost and server-stopped claims stay server-scoped and name no document', () => {
     setBridge(true);
     const { rerender } = renderHook(

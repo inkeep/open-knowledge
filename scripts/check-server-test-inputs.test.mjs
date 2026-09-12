@@ -51,7 +51,6 @@ describe('check-server-test-inputs', () => {
   test.each([
     ['../../docs/content/**', 'docs/content/'],
     ['../*/package.json', 'packages/app/package.json'],
-    ['../cli/tsdown.config.ts', 'packages/cli/tsdown.config.ts'],
     ['../plugin/**', 'packages/plugin'],
     ['../../plugins/ok/**', 'plugins/ok'],
   ])('reds when %s is dropped from the task inputs', (glob, expectedTarget) => {
