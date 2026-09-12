@@ -82,7 +82,9 @@ Every behavior-changing PR ships a `.changeset/<kebab-name>.md` file. The body b
 
 - Create one with `pnpm run changeset`, or hand-write a file named `.changeset/<descriptive-kebab-slug>.md`.
 - Front-matter: at minimum `'@inkeep/open-knowledge': patch`. OpenKnowledge follows semver with a **pre-1.0 shift-down**: while we're below `1.0.0`, what semver would call a major (breaking API change) is encoded as `minor`, and what semver would call a minor (new feature) is encoded as `patch`. Most changesets are `patch`. `minor` is rare — reserve it for large API contract changes or large feature additions. **Never declare `major` pre-1.0** (see the `"//"` line in `.changeset/config.json`).
-- Body should lead with the user-visible verb, name the affected command or surface in a code-span, and (if relevant) show before/after. Skip internal references like spec IDs or story numbers — those rot and aren't visible to readers of the public release notes.
+
+**Changelog authoring and review.** Use one short sentence for the user-visible outcome; a second only for a necessary qualification or upgrade action. Maximum 50 words per changeset body, across all paragraphs and bullets. Omit implementation details, internal identifiers and exhaustive edge cases; link migration instructions. Reviewers check accuracy, required actions and brevity; request technical detail in docs. Never split one explanation across changesets to evade the budget.
+
 - Don't write inline references to sibling-package versions (e.g. `@inkeep/open-knowledge-core@0.5.0-beta.6`) — the fixed-group lock-step bumps are computed at release time and any number you'd write would be wrong.
 - Skip changesets for docs-only edits, test-only edits, or CI-only edits that don't change runtime behavior.
 
