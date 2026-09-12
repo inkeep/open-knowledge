@@ -498,6 +498,146 @@ test('typing after a trailing space stays in its paragraph when a peer edits els
   }
 });
 
+async function remoteCaretAt(page: import('@playwright/test').Page): Promise<number[] | null> {
+  return page.evaluate(() => {
+    const caret = document.querySelector('.collaboration-cursor__caret');
+    const editor = window.__activeEditor;
+    if (!caret || !editor) return null;
+    const $at = editor.state.doc.resolve(editor.view.posAtDOM(caret, 0));
+    return [$at.index(0), $at.parentOffset];
+  });
+}
+
+test('a peer caret stays at its text while you type spaces the source does not spell yet', async ({
+  browser,
+  api,
+  baseURL,
+}) => {
+  const docName = `remote-carets-unwritten-${randomUUID().slice(0, 8)}`;
+  await api.createPage(`${docName}.md`);
+  await api.testReset(docName);
+  await api.replaceDoc(docName, SEED);
+
+  const ctxA = await browser.newContext({ baseURL });
+  const ctxB = await browser.newContext({ baseURL });
+  const pageA = await ctxA.newPage();
+  const pageB = await ctxB.newPage();
+
+  try {
+    await openDoc(pageA, docName);
+    await openDoc(pageB, docName);
+
+    const ends = await pageA.evaluate(() => {
+      const doc = window.__activeEditor?.state.doc;
+      if (!doc) throw new Error('no editor');
+      const first = doc.child(0).content.size + 1;
+      return { first, second: doc.child(0).nodeSize + doc.child(1).content.size + 1 };
+    });
+    const bravo = 'Bravo paragraph one.'.length;
+    await placeCaretAt(pageB, ends.second);
+    await placeCaretAt(pageA, ends.first);
+    await expect.poll(async () => remoteCaretAt(pageA), { timeout: 10_000 }).toEqual([1, bravo]);
+
+    const steps = [
+      [' ', 'Alpha paragraph zero. '],
+      [' ', 'Alpha paragraph zero.  '],
+      ['Backspace', 'Alpha paragraph zero. '],
+    ] as const;
+    for (const [index, [key, text]] of steps.entries()) {
+      if (key === 'Backspace') await pageA.keyboard.press(key);
+      else await pageA.keyboard.type(key);
+      await expect
+        .poll(async () =>
+          pageA.evaluate(() => window.__activeEditor?.state.doc.child(0).textContent),
+        )
+        .toBe(text);
+      await awarenessBarrier(pageB, pageA, `unwritten-${index}`);
+      expect(
+        await remoteCaretAt(pageA),
+        `after ${JSON.stringify(key)} the peer caret left the end of its paragraph`,
+      ).toEqual([1, bravo]);
+    }
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
+test('carets stay put when both peers type spaces, move down a paragraph, and type more', async ({
+  browser,
+  api,
+  baseURL,
+}) => {
+  const four =
+    'Alpha paragraph zero.\n\nBravo paragraph one.\n\nCharlie paragraph two.\n\nDelta paragraph three.\n';
+  const docName = `remote-carets-unwritten-moved-${randomUUID().slice(0, 8)}`;
+  await api.createPage(`${docName}.md`);
+  await api.testReset(docName);
+  await api.replaceDoc(docName, four);
+
+  const ctxA = await browser.newContext({ baseURL });
+  const ctxB = await browser.newContext({ baseURL });
+  const pageA = await ctxA.newPage();
+  const pageB = await ctxB.newPage();
+
+  const placeAtEndOfBlock = async (
+    page: import('@playwright/test').Page,
+    index: number,
+  ): Promise<void> => {
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').click();
+    await page.waitForFunction(() => window.__activeEditor?.isFocused === true, null, {
+      timeout: 10_000,
+    });
+    await page.evaluate((i: number) => {
+      const editor = window.__activeEditor;
+      if (!editor) throw new Error('no editor');
+      const doc = editor.state.doc;
+      let pos = 0;
+      for (let k = 0; k < i; k++) pos += doc.child(k).nodeSize;
+      editor.commands.setTextSelection(pos + doc.child(i).content.size + 1);
+    }, index);
+  };
+
+  const blockText = (page: import('@playwright/test').Page, index: number): Promise<string> =>
+    page.evaluate(
+      (i: number) => window.__activeEditor?.state.doc.child(i).textContent ?? '',
+      index,
+    );
+
+  try {
+    await openDoc(pageA, docName);
+    await openDoc(pageB, docName);
+
+    for (const [round, [blockA, blockB]] of [
+      [0, 1],
+      [1, 2],
+    ].entries()) {
+      await placeAtEndOfBlock(pageA, blockA);
+      await placeAtEndOfBlock(pageB, blockB);
+      const textA = await blockText(pageA, blockA);
+      const textB = await blockText(pageB, blockB);
+      await pageA.keyboard.type('  ');
+      await pageB.keyboard.type('  ');
+      await expect.poll(async () => blockText(pageA, blockA)).toBe(`${textA}  `);
+      await expect.poll(async () => blockText(pageB, blockB)).toBe(`${textB}  `);
+      await awarenessBarrier(pageA, pageB, `moved-a-${round}`);
+      await awarenessBarrier(pageB, pageA, `moved-b-${round}`);
+
+      expect(
+        await remoteCaretAt(pageA),
+        `round ${round}: A drew B's caret away from the end of B's text`,
+      ).toEqual([blockB, textB.trimEnd().length]);
+      expect(
+        await remoteCaretAt(pageB),
+        `round ${round}: B drew A's caret away from the end of A's text`,
+      ).toEqual([blockA, textA.trimEnd().length]);
+    }
+  } finally {
+    await ctxA.close();
+    await ctxB.close();
+  }
+});
+
 test('a selected range survives a peer typing elsewhere', async ({ browser, api, baseURL }) => {
   const docName = `remote-carets-range-${randomUUID().slice(0, 8)}`;
   await api.createPage(`${docName}.md`);

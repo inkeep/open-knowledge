@@ -25,15 +25,34 @@ async function openWithCaret(page: Page, docName: string, place: 'end' | 'home')
     { timeout: 15_000 },
   );
   await page.locator(EDITOR).getByText(TARGET, { exact: false }).first().click();
-  await page.keyboard.press(place === 'end' ? 'End' : 'Home');
+  await page.waitForFunction(() => window.__activeEditor?.isFocused === true, null, {
+    timeout: 10_000,
+  });
+  await page.evaluate(
+    ({ b, atEnd }: { b: string; atEnd: boolean }) => {
+      const editor = window.__activeEditor;
+      if (!editor) throw new Error('no active editor');
+      let target = -1;
+      editor.state.doc.descendants((node, pos) => {
+        if (target >= 0) return false;
+        if (!node.isTextblock || !node.textContent.includes(b)) return true;
+        target = atEnd ? pos + 1 + node.content.size : pos + 1;
+        return false;
+      });
+      if (target < 0) throw new Error('the target paragraph is not in the editor');
+      editor.commands.setTextSelection(target);
+    },
+    { b: TARGET, atEnd: place === 'end' },
+  );
   await page.waitForFunction(
-    (b: string) => {
+    ({ b, atEnd }: { b: string; atEnd: boolean }) => {
       const editor = window.__activeEditor;
       if (!editor) return false;
       const { $from, empty } = editor.state.selection;
-      return empty && editor.isFocused && $from.parent.textContent.includes(b);
+      if (!empty || !editor.isFocused || !$from.parent.textContent.includes(b)) return false;
+      return $from.parentOffset === (atEnd ? $from.parent.content.size : 0);
     },
-    TARGET,
+    { b: TARGET, atEnd: place === 'end' },
     { timeout: 10_000 },
   );
 }

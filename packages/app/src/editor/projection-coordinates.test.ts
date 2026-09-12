@@ -16,6 +16,7 @@ import {
   liveCaretPmPosToSourceOffset,
   pmPosToSourceOffset,
   sourceEndOffsetToPmPos,
+  sourceOffsetToLiveCaretPos,
   sourceOffsetToPmPos,
 } from './projection-coordinates';
 
@@ -299,12 +300,56 @@ describe('a caret after characters the source does not spell yet', () => {
 
   const editorMd = new MarkdownManager({ extensions: sharedExtensions });
 
-  function withTrailingSpace(projection: Projection): Projection['doc'] {
+  function withTrailingSpace(projection: Projection, count = 1): Projection['doc'] {
     const { doc } = buildProjection(projection.source, editorMd);
     const first = doc.child(0);
-    const spaced = first.type.create(first.attrs, doc.type.schema.text(`${first.textContent} `));
+    const spaced = first.type.create(
+      first.attrs,
+      doc.type.schema.text(`${first.textContent}${' '.repeat(count)}`),
+    );
     return doc.copy(doc.content.replaceChild(0, spaced));
   }
+
+  for (const count of [1, 2]) {
+    it(`draws a peer caret in a later block at its bytes, not one to the left per unwritten character (${count})`, () => {
+      const full = buildProjection(SOURCE, md);
+      const live = withTrailingSpace(full, count);
+      const start = live.child(0).nodeSize + 1;
+      const text = 'Bravo paragraph one.';
+      const wrong: string[] = [];
+      for (let k = 0; k <= text.length; k++) {
+        const pos = sourceOffsetToLiveCaretPos(full, live, SOURCE.indexOf(text) + k);
+        if (pos !== start + k) wrong.push(`k=${k} -> ${pos - start}`);
+      }
+      expect(wrong).toEqual([]);
+    });
+  }
+
+  it('draws a peer caret at the end of the bytes before the unwritten space, not after it', () => {
+    const full = buildProjection(SOURCE, md);
+    const live = withTrailingSpace(full, 2);
+    const pos = sourceOffsetToLiveCaretPos(full, live, 'Alpha paragraph zero.'.length);
+    expect(pos).toBe(1 + 'Alpha paragraph zero.'.length);
+  });
+
+  it('draws a peer caret by the plain caret mapping when the live document is the parse', () => {
+    const full = buildProjection(SOURCE, md);
+    for (let offset = 0; offset <= SOURCE.length; offset++) {
+      expect(sourceOffsetToLiveCaretPos(full, full.doc, offset)).toBe(
+        caretSourceOffsetToPmPos(full, offset),
+      );
+    }
+  });
+
+  it('round trips a live caret in a later block through the bytes', () => {
+    const full = buildProjection(SOURCE, md);
+    const live = withTrailingSpace(full, 2);
+    const start = live.child(0).nodeSize + 1;
+    for (let pos = start; pos < start + live.child(1).content.size; pos++) {
+      const offset = liveCaretPmPosToSourceOffset(full, live, pos);
+      expect(sourceOffsetToLiveCaretPos(full, live, offset)).toBe(pos);
+    }
+  });
 
   it('builds the live document in a schema of its own, as the editor does', () => {
     const full = buildProjection(SOURCE, md);

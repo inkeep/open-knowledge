@@ -805,6 +805,112 @@ describe('projection binding — a trailing space the source does not spell yet'
   });
 });
 
+describe('projection binding — unwritten trailing spaces collapse when the caret leaves them', () => {
+  const SEED = 'Alpha paragraph zero.\n\nBravo paragraph one.\n\nCharlie paragraph two.\n';
+
+  function endOf(rig: Rig, index: number): number {
+    const doc = rig.editor.state.doc;
+    let pos = 0;
+    for (let i = 0; i < index; i++) pos += doc.child(i).nodeSize;
+    return pos + doc.child(index).content.size + 1;
+  }
+
+  function caretAt(rig: Rig, pos: number): void {
+    rig.editor.view.dispatch(
+      rig.editor.state.tr.setSelection(TextSelection.create(rig.editor.state.doc, pos)),
+    );
+  }
+
+  function typeAtEnd(rig: Rig, index: number, text: string): void {
+    caretAt(rig, endOf(rig, index));
+    rig.editor.view.dispatch(rig.editor.state.tr.insertText(text));
+  }
+
+  function blockText(rig: Rig, index: number): string {
+    return rig.editor.state.doc.child(index).textContent;
+  }
+
+  it('keeps the spaces while the caret sits after them', () => {
+    const rig = createRig(SEED);
+    try {
+      typeAtEnd(rig, 0, ' ');
+      rig.editor.view.dispatch(rig.editor.state.tr.insertText(' '));
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.  ');
+      expect(rig.ytext.toString()).toBe(SEED);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('drops them when the caret moves to another paragraph', () => {
+    const rig = createRig(SEED);
+    try {
+      typeAtEnd(rig, 0, '  ');
+      caretAt(rig, endOf(rig, 1));
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.');
+      const { $head } = rig.editor.state.selection;
+      expect([$head.index(0), $head.parentOffset]).toEqual([1, 'Bravo paragraph one.'.length]);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('drops them when the caret moves back inside their own paragraph', () => {
+    const rig = createRig(SEED);
+    try {
+      typeAtEnd(rig, 0, '  ');
+      caretAt(rig, 1 + 'Alpha'.length);
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.');
+      expect(rig.editor.state.selection.head).toBe(1 + 'Alpha'.length);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('writes nothing and pushes no undo step when it drops them', () => {
+    const rig = createRig(SEED);
+    try {
+      const undoManager = sharedUndoManagerFor(rig.ytext);
+      const writes: unknown[] = [];
+      rig.ytext.observe((event) => writes.push(event.changes.delta));
+      typeAtEnd(rig, 0, '  ');
+      caretAt(rig, endOf(rig, 1));
+      expect(writes).toEqual([]);
+      expect(undoManager.undoStack.length).toBe(0);
+      expect(rig.ytext.toString()).toBe(SEED);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('never leaves unwritten spaces in two paragraphs', () => {
+    const rig = createRig(SEED);
+    try {
+      typeAtEnd(rig, 0, '  ');
+      typeAtEnd(rig, 1, '   ');
+      expect(blockText(rig, 0)).toBe('Alpha paragraph zero.');
+      expect(blockText(rig, 1)).toBe('Bravo paragraph one.   ');
+      expect(rig.ytext.toString()).toBe(SEED);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('keeps trailing spaces in a code block, which are written', () => {
+    const rig = createRig('```\ncode\n```\n\nTail.\n');
+    try {
+      expect(rig.editor.state.doc.child(0).type.spec.code).toBe(true);
+      typeAtEnd(rig, 0, '  ');
+      expect(rig.ytext.toString()).toContain('code  ');
+      caretAt(rig, endOf(rig, 1));
+      expect(blockText(rig, 0)).toBe('code  ');
+      expect(rig.ytext.toString()).toContain('code  ');
+    } finally {
+      rig.destroy();
+    }
+  });
+});
+
 describe('projection binding — a remote edit keeps a selection it did not touch', () => {
   const SEED = 'Alpha paragraph zero.\n\nBravo paragraph one.\n\nCharlie paragraph two.\n';
 

@@ -5,9 +5,9 @@ import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import { liveProjection } from '../projection-binding';
 import {
-  caretSourceOffsetToPmPos,
   createFullPrecisionResolver,
   liveCaretPmPosToSourceOffset,
+  sourceOffsetToLiveCaretPos,
 } from '../projection-coordinates';
 
 const remoteCaretsKey = new PluginKey<DecorationSet>('okRemoteCarets');
@@ -126,7 +126,10 @@ export function createRemoteCaretsPlugin(options: RemoteCaretsOptions): Plugin<D
           if (headIndex === null) continue;
           const user = (peer.user ?? {}) as AwarenessUser;
           if (user.type === 'agent') continue;
-          const raw = Math.max(0, Math.min(caretSourceOffsetToPmPos(full, headIndex), size));
+          const raw = Math.max(
+            0,
+            Math.min(sourceOffsetToLiveCaretPos(full, view.state.doc, headIndex), size),
+          );
           /* STOP: a widget decoration at a top-level block boundary is rendered as a direct
              child of .ProseMirror, between two paragraphs, where it reads as an empty paragraph
              that is not in the document -- visible in WYSIWYG, absent in markdown, and alarming.

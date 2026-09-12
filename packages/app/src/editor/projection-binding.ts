@@ -63,6 +63,37 @@ function dropMove(tr: Transaction): DropMove | null {
   return { before: tr.before, removed, after: tr.doc };
 }
 
+const TRAILING_BLANKS = /[ \t]+$/;
+
+function trailingBlanks(block: PmNode): number {
+  if (!block.isTextblock || block.type.spec.code) return 0;
+  const text = block.textBetween(0, block.content.size, undefined, '￼');
+  return TRAILING_BLANKS.exec(text)?.[0].length ?? 0;
+}
+
+/* STOP: trailing spaces are the one thing a user types that the bytes cannot spell, so they live
+   only in this editor. They are kept while the caret sits after them, and dropped the moment it
+   does not: the editor then shows exactly what Y.Text holds, as every other client already does,
+   and the live document never differs from the source in more than the caret's own textblock.
+   Diffing several textblocks instead was built and rejected. */
+function collapseLeftBehindSpaces(
+  trs: readonly Transaction[],
+  oldState: EditorState,
+  newState: EditorState,
+): Transaction | null {
+  if (trs.some((tr) => tr.getMeta('composition') !== undefined)) return null;
+  const $old = oldState.selection.$head;
+  if (trailingBlanks($old.parent) === 0) return null;
+  let end = $old.end();
+  for (const tr of trs) end = tr.mapping.map(end, -1);
+  const $end = newState.doc.resolve(end);
+  const blanks = trailingBlanks($end.parent);
+  if (blanks === 0 || $end.pos !== $end.end()) return null;
+  const { selection } = newState;
+  if (selection.empty && selection.head === $end.pos) return null;
+  return newState.tr.delete($end.pos - blanks, $end.pos);
+}
+
 export interface ProjectionBindingPluginState {
   undoManager: Y.UndoManager;
   binding: ProjectionBindingState;
@@ -324,6 +355,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
       init: () => ({ undoManager: options.undoManager, binding: stats, visibility, move: null }),
       apply: (tr, value) => (tr.docChanged ? { ...value, move: dropMove(tr) } : value),
     },
+    appendTransaction: collapseLeftBehindSpaces,
     view(view) {
       let projection = options.initial;
       let destroyed = false;

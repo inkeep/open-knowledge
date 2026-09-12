@@ -237,22 +237,48 @@ function unwrittenRun(live: PmNode, full: PmNode): UnwrittenRun | null {
    live position read through that rebuild lands one block too far or one character too far
    right. The position is carried across the difference first. Only a difference inside one
    textblock is carried; anything wider keeps the plain mapping rather than guess. */
-export function liveToFullPos(full: Projection, live: PmNode, pos: number): number {
-  if (live === full.doc) return pos;
+function unwrittenRunBetween(full: Projection, live: PmNode): UnwrittenRun | null {
   let cached = unwrittenRuns.get(live);
   if (cached === undefined || cached.full !== full.doc) {
     cached = { full: full.doc, run: unwrittenRun(live, full.doc) };
     unwrittenRuns.set(live, cached);
   }
-  const { run } = cached;
+  return cached.run;
+}
+
+export function liveToFullPos(full: Projection, live: PmNode, pos: number): number {
+  if (live === full.doc) return pos;
+  const run = unwrittenRunBetween(full, live);
   if (run === null) return pos;
   if (pos >= run.endLive) return pos - run.endLive + run.endFull;
   if (pos > run.start) return run.start;
   return pos;
 }
 
+/* STOP: the inverse of liveToFullPos, and just as required. A peer's offset resolved through the
+   rebuild is a position in the rebuild, which is short by every character the local user typed
+   that the source cannot spell yet; drawing it in the live document without carrying it back puts
+   the peer one character left per unwritten character before them. A position at the start of the
+   run stays before it: the peer never typed past the local user's unwritten characters. */
+export function fullToLivePos(full: Projection, live: PmNode, pos: number): number {
+  if (live === full.doc) return pos;
+  const run = unwrittenRunBetween(full, live);
+  if (run === null) return pos;
+  if (pos <= run.start) return pos;
+  if (pos >= run.endFull) return pos - run.endFull + run.endLive;
+  return run.start;
+}
+
 export function liveCaretPmPosToSourceOffset(full: Projection, live: PmNode, pos: number): number {
   return caretPmPosToSourceOffset(full, liveToFullPos(full, live, pos));
+}
+
+export function sourceOffsetToLiveCaretPos(
+  full: Projection,
+  live: PmNode,
+  sourceOffset: number,
+): number {
+  return fullToLivePos(full, live, caretSourceOffsetToPmPos(full, sourceOffset));
 }
 
 export interface PmRange {
