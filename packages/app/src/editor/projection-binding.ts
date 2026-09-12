@@ -104,16 +104,14 @@ function collapseLeftBehindSpaces(
   return newState.tr.delete($end.pos - blanks, $end.pos);
 }
 
-export interface ProjectionBindingPluginState {
+interface ProjectionBindingPluginState {
   undoManager: Y.UndoManager;
   binding: ProjectionBindingState;
   visibility: ProjectionVisibility;
   move: DropMove | null;
 }
 
-export const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>(
-  'okProjectionBinding',
-);
+const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>('okProjectionBinding');
 
 export function projectionUndoManager(state: EditorState): Y.UndoManager | null {
   return projectionBindingKey.getState(state)?.undoManager ?? null;

@@ -260,7 +260,7 @@ export function liveToFullPos(full: Projection, live: PmNode, pos: number): numb
    that the source cannot spell yet; drawing it in the live document without carrying it back puts
    the peer one character left per unwritten character before them. A position at the start of the
    run stays before it: the peer never typed past the local user's unwritten characters. */
-export function fullToLivePos(full: Projection, live: PmNode, pos: number): number {
+function fullToLivePos(full: Projection, live: PmNode, pos: number): number {
   if (live === full.doc) return pos;
   const run = unwrittenRunBetween(full, live);
   if (run === null) return pos;

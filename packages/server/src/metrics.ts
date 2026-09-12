@@ -264,19 +264,8 @@ export function incrementPersistenceDiskWrite(): void {
   counters.persistenceDiskWrites++;
 }
 
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementServerObserverError(direction: 'a' | 'b'): void {
-  if (direction === 'a') counters.serverObserverErrorsA++;
-  else counters.serverObserverErrorsB++;
-}
-
 export function incrementBridgeMergeContentLoss(): void {
   counters.bridgeMergeContentLoss++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementBridgeMergeContentGrowth(): void {
-  counters.bridgeMergeContentGrowth++;
 }
 
 export function incrementAgentWriteCalls(): void {
@@ -297,31 +286,6 @@ export function incrementSummariesTruncated(): void {
 
 export function incrementBridgeMergeCheckpointCreated(): void {
   counters.bridgeMergeCheckpointCreated++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementProducerGuardCheckpointCreated(): void {
-  counters.producerGuardCheckpointCreated++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementProducerGuardFires(): void {
-  counters.producerGuardFires++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementProducerGuardFiresSuppressed(): void {
-  counters.producerGuardFiresSuppressed++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementBridgeInvariantViolations(): void {
-  counters.bridgeInvariantViolations++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementBridgeInvariantViolationsSuppressed(): void {
-  counters.bridgeInvariantViolationsSuppressed++;
 }
 
 export function incrementPersistenceSkipNonQuiescent(): void {
@@ -348,77 +312,12 @@ export function incrementAgentPatchFindMismatches(): void {
   counters.agentPatchFindMismatches++;
 }
 
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementBridgeToleranceApplied(toleranceClass: BridgeToleranceSignal): void {
-  counters.bridgeToleranceApplied[toleranceClass] =
-    (counters.bridgeToleranceApplied[toleranceClass] ?? 0) + 1;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementObserverAPathBFires(): void {
-  counters.observerAPathBFires++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementObserverAPathBFiresSuppressed(): void {
-  counters.observerAPathBFiresSuppressed++;
-}
-
 export function incrementMapDrivenSpliceApplied(): void {
   counters.mapDrivenSpliceApplied++;
 }
 
 export function incrementMapDrivenSpliceFallback(reason: MapDrivenSpliceFallbackReason): void {
   counters.mapDrivenSpliceFallback[reason] = (counters.mapDrivenSpliceFallback[reason] ?? 0) + 1;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementObserverAResidualMergeRuns(): void {
-  counters.observerAResidualMergeRuns++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementObserverADuplicationRederives(): void {
-  counters.observerADuplicationRederives++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementObserverADuplicationCheckpointCreated(): void {
-  counters.observerADuplicationCheckpointCreated++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementObserverAApplyLoss(): void {
-  counters.observerAApplyLoss++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementObserverAApplyLossCheckpointCreated(): void {
-  counters.observerAApplyLossCheckpointCreated++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementDeriveTimingDeferForceResolved(): void {
-  counters.deriveTimingDeferForceResolved++;
-}
-
-export function incrementPersistenceDeferHold(): void {
-  counters.persistenceDeferHold++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementPersistenceReconcileLoss(): void {
-  counters.persistenceReconcileLoss++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementPersistenceReconcileLossCheckpointCreated(): void {
-  counters.persistenceReconcileLossCheckpointCreated++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementPersistenceReconcileLossDeduped(): void {
-  counters.persistenceReconcileLossDeduped++;
 }
 
 export function incrementPersistenceDuplicationReset(): void {
@@ -461,25 +360,6 @@ export function incrementManagedArtifactReconcileDeduped(): void {
   counters.managedArtifactReconcileDeduped++;
 }
 
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementReDeriveBackstopTripped(): void {
-  counters.reDeriveBackstopTripped++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementBridgeSplitBrainRederives(): void {
-  counters.bridgeSplitBrainRederives++;
-}
-
-/** @deprecated Bridge-era counter, permanently zero since the single-CRDT cutover. */
-export function incrementBridgeSplitBrainRederivesSuppressed(): void {
-  counters.bridgeSplitBrainRederivesSuppressed++;
-}
-
-export function incrementPersistenceReconciliationFailures(): void {
-  counters.persistenceReconciliationFailures++;
-}
-
 export function incrementExternalChangeHandlerErrors(): void {
   counters.externalChangeHandlerErrors++;
 }
@@ -490,10 +370,6 @@ export function incrementReconcileOwnFlushSkips(): void {
 
 export function incrementReconcileInFlightFallthroughs(): void {
   counters.reconcileInFlightFallthroughs++;
-}
-
-export function incrementPersistenceSanityCheckSerializeFailures(): void {
-  counters.persistenceSanityCheckSerializeFailures++;
 }
 
 export function incrementDeferredStoreFailures(): void {
