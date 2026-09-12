@@ -32,9 +32,6 @@
     "@opentelemetry/sdk-metrics": "^2.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",
     "@opentelemetry/semantic-conventions": "^1.30.0",
-    "@tiptap/core": "^3.22.3",
-    "@tiptap/pm": "^3.22.4",
-    "@tiptap/y-tiptap": "3.0.3",
     "@types/busboy": "^1.5.4",
     "busboy": "^1.6.0",
     "chokidar": "^5.0.0",
@@ -73,7 +70,6 @@
     "typecheck:bash": "tsc -p tsconfig.bash.json"
   },
   "devDependencies": {
-    "@types/mdast": "^4.0.4",
     "@types/node": "^24.7.0",
     "@types/shell-quote": "^1.7.5",
     "@types/ws": "^8.18.1",

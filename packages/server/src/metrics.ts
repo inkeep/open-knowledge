@@ -6,7 +6,7 @@ export type MapDrivenSpliceFallbackReason =
   | 'parse-error'
   | 'missing-position';
 
-export type MapDrivenSpliceMemoSkipReason =
+type MapDrivenSpliceMemoSkipReason =
   | 'narrowed'
   | 'empty-children'
   | 'entry-already-current'
