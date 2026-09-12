@@ -193,28 +193,51 @@ export function processUsage(pid: number): ProcessUsage | null {
   return { cpuPercent, memPercent };
 }
 
-export async function pidCwd(pid: number): Promise<string | null> {
+function parsePidCwds(stdout: string): Map<number, string> {
+  const cwds = new Map<number, string>();
+  let pid: number | null = null;
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('p')) {
+      const parsed = Number.parseInt(line.slice(1), 10);
+      pid = Number.isNaN(parsed) ? null : parsed;
+    } else if (line.startsWith('n') && line.length > 1 && pid !== null && !cwds.has(pid)) {
+      cwds.set(pid, line.slice(1));
+    }
+  }
+  return cwds;
+}
+
+function queryPidCwds(pids: readonly number[]): {
+  cwds: Map<number, string>;
+  queryFailed: boolean;
+} {
   const result = spawnSync(
     'lsof',
-    ['-p', String(pid), '-a', '-d', 'cwd', '-Fn'],
+    ['-p', pids.join(','), '-a', '-d', 'cwd', '-Fn'],
     withHiddenWindowsConsole({
       encoding: 'utf-8',
       timeout: SPAWN_TIMEOUT_MS,
     }),
   );
-
   if (result.error != null) {
-    return null;
+    return {
+      cwds: new Map(),
+      queryFailed: true,
+    };
   }
+  return { cwds: parsePidCwds(result.stdout ?? ''), queryFailed: false };
+}
 
-  const output = result.stdout ?? '';
-  for (const line of output.split('\n')) {
-    if (line.startsWith('n') && line.length > 1) {
-      return line.slice(1);
-    }
+export function readPidCwds(pids: readonly number[]): Map<number, string> {
+  if (pids.length === 0) return new Map();
+  const batched = queryPidCwds(pids);
+  if (!batched.queryFailed || pids.length === 1) return batched.cwds;
+  const cwds = new Map<number, string>();
+  for (const pid of pids) {
+    const cwd = queryPidCwds([pid]).cwds.get(pid);
+    if (cwd !== undefined) cwds.set(pid, cwd);
   }
-
-  return null;
+  return cwds;
 }
 
 function parseListeningPids(output: string): number[] {
@@ -285,8 +308,8 @@ export async function discoverLockDirs(): Promise<string[]> {
   const candidateDirs = new Set<string>();
 
   const okEntries = await findOkProcessEntries();
-  const cwdPromises = okEntries.map((e) => pidCwd(e.pid));
-  const cwds = await Promise.all(cwdPromises);
+  const okCwds = readPidCwds(okEntries.map((entry) => entry.pid));
+  const cwds = okEntries.map((entry) => okCwds.get(entry.pid) ?? null);
 
   for (const entry of okEntries) {
     const markedLockDir = extractMarkedLockDir(entry.command);
@@ -318,8 +341,8 @@ export async function discoverLockDirs(): Promise<string[]> {
     const listeningPids = parseListeningPids(lsofResult.stdout);
     const knownPidSet = new Set(okEntries.map((e) => e.pid));
     const newPids = listeningPids.filter((p) => !knownPidSet.has(p));
-    const portCwdPromises = newPids.map((pid) => pidCwd(pid));
-    const portCwds = await Promise.all(portCwdPromises);
+    const portCwdsByPid = readPidCwds(newPids);
+    const portCwds = newPids.map((pid) => portCwdsByPid.get(pid) ?? null);
 
     for (const cwd of portCwds) {
       if (cwd == null) continue;
@@ -378,19 +401,14 @@ export async function scanLockProcesses(): Promise<LockProcessScan> {
     await add(join(project, '.ok', 'local'), pid, source);
     await add(join(project, '.ok'), pid, source);
   };
-  const addCwd = async (pid: number, source: 'process-cwd' | 'listener-cwd') => {
-    const cwd = await pidCwd(pid);
-    if (cwd) await addProject(cwd, pid, source);
-    else if (isProcessAlive(pid))
-      scan.unavailable.push(`Could not read the working directory of process ${pid}`);
-  };
+  const pendingCwd: Array<{ pid: number; source: 'process-cwd' | 'listener-cwd' }> = [];
   for (const entry of entries) {
     if (!isValidLockPid(entry.pid)) continue;
     const marked = extractMarkedLockDir(entry.command);
     const project = extractProjectPathArg(entry.command);
     if (marked) await add(marked, entry.pid, 'lock-dir-argument');
     else if (project) await addProject(project, entry.pid, 'project-argument');
-    else await addCwd(entry.pid, 'process-cwd');
+    else pendingCwd.push({ pid: entry.pid, source: 'process-cwd' });
   }
   const listeners = spawnSync(
     'lsof',
@@ -400,16 +418,22 @@ export async function scanLockProcesses(): Promise<LockProcessScan> {
       timeout: SPAWN_TIMEOUT_MS,
     }),
   );
-  if (
-    listeners.error ||
-    (listeners.status !== 0 && !(listeners.status === 1 && !listeners.stdout && !listeners.stderr))
-  ) {
-    scan.unavailable.push('Could not enumerate TCP listeners with lsof');
-    return scan;
+  const listenersUnavailable =
+    listeners.error != null ||
+    (listeners.status !== 0 && !(listeners.status === 1 && !listeners.stdout && !listeners.stderr));
+  if (!listenersUnavailable) {
+    const known = new Set(entries.map((entry) => entry.pid));
+    for (const pid of parseListeningPids(listeners.stdout ?? '')) {
+      if (isValidLockPid(pid) && !known.has(pid)) pendingCwd.push({ pid, source: 'listener-cwd' });
+    }
   }
-  const known = new Set(entries.map((entry) => entry.pid));
-  for (const pid of parseListeningPids(listeners.stdout ?? '')) {
-    if (isValidLockPid(pid) && !known.has(pid)) await addCwd(pid, 'listener-cwd');
+  const cwds = readPidCwds(pendingCwd.map(({ pid }) => pid));
+  for (const { pid, source } of pendingCwd) {
+    const cwd = cwds.get(pid);
+    if (cwd) await addProject(cwd, pid, source);
+    else if (isProcessAlive(pid))
+      scan.unavailable.push(`Could not read the working directory of process ${pid}`);
   }
+  if (listenersUnavailable) scan.unavailable.push('Could not enumerate TCP listeners with lsof');
   return scan;
 }

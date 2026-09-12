@@ -70,13 +70,15 @@ exec sleep 60 1>/dev/null 2>/dev/null
     );
     chmodSync(cancelGh, 0o755);
     const events: AuthEvent[] = [];
-    const ctl = runGhDeviceLoginSubprocess({
+    const ctl: RunGhDeviceLoginController = runGhDeviceLoginSubprocess({
       host: 'ghes.test',
       ghPath: cancelGh,
       verificationDeadlineMs: 10_000,
-      onEvent: (e) => events.push(e),
+      onEvent: (e) => {
+        events.push(e);
+        if (e.type === 'verification') ctl.cancel();
+      },
     });
-    setTimeout(() => ctl.cancel(), 300);
     await ctl.done;
     expect(events).toEqual([
       {
