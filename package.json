@@ -43,7 +43,8 @@
     "prepare": "bash scripts/husky-prepare.sh",
     "changeset": "changeset",
     "version": "changeset version",
-    "release": "changeset publish"
+    "release": "changeset publish",
+    "typecheck:no-net-connect": "tsc --noEmit -p test-support/tsconfig.no-net-connect.json"
   },
   "lint-staged": {
     "packages/**/*.{ts,tsx,js,jsx,json,md}": [
@@ -67,6 +68,7 @@
   "devDependencies": {
     "@biomejs/biome": "2.5.11",
     "@changesets/cli": "^2.29.7",
+    "@types/node": "^24.7.0",
     "@typescript/native": "npm:typescript@~7.0.2",
     "husky": "^9.1.7",
     "knip": "^6.26.0",
@@ -79,6 +81,7 @@
     "tsx": "^4.20.0",
     "turbo": "^2.7.0",
     "typescript": "~6.0.3",
+    "undici": "~7.29.0",
     "vitest": "^4.1.0",
     "yaml": "^2.8.3"
   },

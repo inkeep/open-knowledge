@@ -41,7 +41,15 @@
     },
     "lint": {},
     "typecheck": {
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build", "//#typecheck:no-net-connect"]
+    },
+    "//#typecheck:no-net-connect": {
+      "inputs": [
+        "test-support/*.ts",
+        "test-support/fixtures/no-net-connect/**/*.ts",
+        "test-support/tsconfig.no-net-connect.json",
+        "tsconfig.json"
+      ]
     },
     "@inkeep/open-knowledge#check:dts": {
       "dependsOn": ["build"],

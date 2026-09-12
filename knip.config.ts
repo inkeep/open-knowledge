@@ -101,6 +101,9 @@ export default {
     'packages/native-config/index.js': ['unlisted', 'unresolved'],
   },
   workspaces: {
+    '.': {
+      entry: ['test-support/fixtures/no-net-connect/no-net-connect.fixture.ts'],
+    },
     'packages/app': {
       entry: [
         'src/**/*.test.{ts,tsx}',

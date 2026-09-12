@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "allowImportingTsExtensions": true
+  },
+  "include": [
+    "no-net-connect*.ts",
+    "turbo-typecheck-attachment.test.ts",
+    "fixtures/no-net-connect/**/*.ts"
+  ]
+}

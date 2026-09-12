@@ -25,6 +25,7 @@ const KNOWN_TEST_PROJECTS = [
   'packages/md-conformance/md-audit/vitest.config.ts',
   'packages/md-conformance/vitest.config.ts',
   'packages/server/vitest.config.ts',
+  'test-support/fixtures/no-net-connect/vitest.no-net-connect-fixture.config.ts',
   'vitest.config.ts',
   'vitest.scripts.config.ts',
 ];
@@ -100,16 +101,17 @@ describe('vitest setupFiles contract', () => {
     );
   });
 
-  test.each(
-    configs.filter(isTestConfig),
-  )('%s resolves setupFiles containing every entry the shared base installs', async (relPath) => {
-    const setupFiles = await resolveSetupFiles(relPath);
-    const missing = okVitestBase.test.setupFiles.filter((entry) => !setupFiles.includes(entry));
-    expect(
-      missing,
-      `${relPath} omits ${missing.length} shared setup file(s); it resolves ` +
-        `[${setupFiles.join(', ')}]. Build it from okVitestBase.test.setupFiles ` +
-        'rather than listing entries by hand.',
-    ).toEqual([]);
-  });
+  test.each(configs.filter(isTestConfig))(
+    '%s resolves setupFiles containing every entry the shared base installs',
+    async (relPath) => {
+      const setupFiles = await resolveSetupFiles(relPath);
+      const missing = okVitestBase.test.setupFiles.filter((entry) => !setupFiles.includes(entry));
+      expect(
+        missing,
+        `${relPath} omits ${missing.length} shared setup file(s); it resolves ` +
+          `[${setupFiles.join(', ')}]. Build it from okVitestBase.test.setupFiles ` +
+          'rather than listing entries by hand.',
+      ).toEqual([]);
+    },
+  );
 });
