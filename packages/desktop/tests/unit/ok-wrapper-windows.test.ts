@@ -1,4 +1,7 @@
 import { spawnSync } from 'node:child_process';
+
+const WRAPPER_SPAWN_TIMEOUT_MS = 90_000;
+
 import { copyFileSync, mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -35,6 +38,7 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
     const wrapper = stageOrphanedWrapper('ok.cmd');
     const result = spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', wrapper], {
       encoding: 'utf8',
+      timeout: WRAPPER_SPAWN_TIMEOUT_MS,
     });
 
     expect(result.status).toBe(69);
@@ -49,7 +53,7 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
     const result = spawnSync(
       'powershell.exe',
       ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', wrapper],
-      { encoding: 'utf8' },
+      { encoding: 'utf8', timeout: WRAPPER_SPAWN_TIMEOUT_MS },
     );
 
     expect(result.status).toBe(69);
@@ -63,6 +67,7 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
     const runs = [
       spawnSync(process.env.ComSpec ?? 'cmd.exe', ['/d', '/c', stageOrphanedWrapper('ok.cmd')], {
         encoding: 'utf8',
+        timeout: WRAPPER_SPAWN_TIMEOUT_MS,
       }),
       spawnSync(
         'powershell.exe',
@@ -74,7 +79,7 @@ describe.skipIf(!WINDOWS)('Windows ok wrapper bundle-missing contract', () => {
           '-File',
           stageOrphanedWrapper('ok.ps1'),
         ],
-        { encoding: 'utf8' },
+        { encoding: 'utf8', timeout: WRAPPER_SPAWN_TIMEOUT_MS },
       ),
     ];
     const [cmdLines, ps1Lines] = runs.map((r) => stderrLines(r.stderr));
