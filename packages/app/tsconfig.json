@@ -37,12 +37,31 @@
   // to `HTMLImageElement` still compiles (a downcast within the union is
   // permitted), and the `.complete` conjunct is not pinned. It imports only
   // `@playwright/test`, so its closure adds no other file to the program.
+  //
+  // `tests/stress/_helpers/theme-fade.ts` is named for the same reason, and its
+  // guarantee is narrower. It pins the transition probe's own types: the
+  // `Capture` discriminated union that makes a matched capture missing its
+  // `transition`, `durationMs` or `delayMs` unrepresentable, the
+  // `transitionFor` type predicate that keeps `getAnimations().find(...)`
+  // returning `CSSTransition | undefined` with no cast at the use site, and the
+  // `typeof duration !== 'number'` and `typeof delay !== 'number'` rejections
+  // that narrow what `getComputedTiming()` gives those two: respectively a
+  // `string | number | CSSNumericValue | undefined` union and an optional
+  // `number`. Delete any of them and this compile fails inside `armThemeFade`.
+  // As with `image.ts` above, replacing one with a cast still compiles: the pin
+  // is against silent removal, not against a deliberate assertion. The
+  // guarantee also stops at the module boundary: the three `*.e2e.ts` call
+  // sites stay outside the program, so their
+  // `window as typeof window & ThemeFadeProbeWindow` casts and their reads off
+  // the returned report are unchecked. It imports only `@playwright/test`, so
+  // its closure adds no other file to the program.
   "include": [
     "src",
     "*.ts",
     "tests/stress/fixtures",
     "tests/half-open-forced-close.test-helper.ts",
-    "tests/stress/_helpers/image.ts"
+    "tests/stress/_helpers/image.ts",
+    "tests/stress/_helpers/theme-fade.ts"
   ],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

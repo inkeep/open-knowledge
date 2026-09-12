@@ -2,6 +2,7 @@ import type { Locator, Page } from '@playwright/test';
 import { expect } from './fixtures.ts';
 
 export const SETTINGS_PANEL_TIMEOUT_MS = 30_000;
+const SETTINGS_DIALOG_TIMEOUT_MS = 15_000;
 
 const PLUGIN_BINDING_TIMEOUT_MS = process.env.CI ? 15_000 : 10_000;
 
@@ -18,6 +19,18 @@ export async function openSettingsSection(
 ): Promise<void> {
   await page.goto(`/#settings/${sectionId}`);
   await waitForSettingsPanel(page, panelTestId);
+}
+
+export async function openColorThemes(page: Page): Promise<void> {
+  await page.goto('/#settings');
+  await expect(page.getByTestId('settings-dialog')).toBeVisible({
+    timeout: SETTINGS_DIALOG_TIMEOUT_MS,
+  });
+  await page.getByTestId('settings-search-input').fill('Color theme');
+  await page.getByTestId('settings-search-results').getByText('Color theme').first().click();
+  await expect(page.getByRole('group', { name: 'Dracula' })).toBeVisible({
+    timeout: SETTINGS_PANEL_TIMEOUT_MS,
+  });
 }
 
 export async function openProjectPluginsPanel(page: Page): Promise<void> {
