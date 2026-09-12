@@ -17,7 +17,6 @@ import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
-import * as Y from 'yjs';
 import { MAX_AGENT_SESSIONS } from './agent-sessions.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
@@ -424,10 +423,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('hello world')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'hello world\n');
     });
 
     const doc = server.hocuspocus.documents.get('test-doc');
@@ -467,10 +463,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-doc-2');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('commit me')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'commit me\n');
     });
 
     const doc = server.hocuspocus.documents.get('test-doc-2');
@@ -511,10 +504,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection(docName);
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('order-marker')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'order-marker\n');
     });
     const doc = server.hocuspocus.documents.get(docName);
     expect(doc).toBeDefined();
@@ -561,10 +551,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('pathological-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('will not be flushed')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'will not be flushed\n');
     });
 
     const doc = server.hocuspocus.documents.get('pathological-doc');
@@ -614,10 +601,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-idempotent');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('idempotent content')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'idempotent content\n');
     });
     const doc = server.hocuspocus.documents.get('test-idempotent');
     expect(doc).toBeDefined();
@@ -709,22 +693,13 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const conn3 = await server.hocuspocus.openDirectConnection('doc-c');
 
     await conn1.transact((doc) => {
-      const frag = doc.getXmlFragment('default');
-      const p = new Y.XmlElement('paragraph');
-      p.insert(0, [new Y.XmlText('content A')]);
-      frag.insert(0, [p]);
+      doc.getText('source').insert(0, 'content A\n');
     });
     await conn2.transact((doc) => {
-      const frag = doc.getXmlFragment('default');
-      const p = new Y.XmlElement('paragraph');
-      p.insert(0, [new Y.XmlText('content B')]);
-      frag.insert(0, [p]);
+      doc.getText('source').insert(0, 'content B\n');
     });
     await conn3.transact((doc) => {
-      const frag = doc.getXmlFragment('default');
-      const p = new Y.XmlElement('paragraph');
-      p.insert(0, [new Y.XmlText('content C')]);
-      frag.insert(0, [p]);
+      doc.getText('source').insert(0, 'content C\n');
     });
 
     for (const name of ['doc-a', 'doc-b', 'doc-c']) {
@@ -2884,10 +2859,7 @@ describe('createServer() — phantom-doc unload', () => {
       const docName = 'transient-with-content';
       const conn = await server.hocuspocus.openDirectConnection(docName);
       await conn.transact((doc) => {
-        const fragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('user-typed-content')]);
-        fragment.insert(0, [paragraph]);
+        doc.getText('source').insert(0, 'user-typed-content\n');
       });
       await conn.disconnect();
 
