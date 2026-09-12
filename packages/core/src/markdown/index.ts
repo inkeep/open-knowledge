@@ -369,6 +369,18 @@ export class MarkdownManager {
     return parseWithFallback(markdown, { parse: (md) => this.parse(md, opts) });
   }
 
+  withParseContext(ctx: ParseContext): MarkdownManager {
+    const bound: MarkdownManager = Object.create(this);
+    bound.parse = (markdown, opts) => this.parse(markdown, { ...ctx, ...opts });
+    bound.parseWithSourceMap = (markdown, opts) =>
+      this.parseWithSourceMap(markdown, { ...ctx, ...opts });
+    bound.parseWithSourceMapOrFallback = (markdown, opts) =>
+      this.parseWithSourceMapOrFallback(markdown, { ...ctx, ...opts });
+    bound.parseWithFallback = (markdown, opts) =>
+      this.parseWithFallback(markdown, { ...ctx, ...opts });
+    return bound;
+  }
+
   serialize(json: JSONContent, opts?: SerializeCallOptions): string {
     let doc: PmNode;
     try {

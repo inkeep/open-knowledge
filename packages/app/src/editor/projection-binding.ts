@@ -138,6 +138,7 @@ interface ProjectionBindingOptions {
   stats?: ProjectionBindingState;
   origin: unknown;
   undoManager: Y.UndoManager;
+  subscribeEmbedAssets?: (listener: () => void) => () => void;
 }
 
 /* STOP: ONE contiguous delete plus ONE insert per range the user's transaction names, never a
@@ -303,6 +304,21 @@ function restoreSelection(doc: PmNode, at: CarriedSelection): Selection {
   const head = clamp(at.head);
   if (anchor === head) return TextSelection.near(doc.resolve(anchor));
   return TextSelection.between(doc.resolve(anchor), doc.resolve(head));
+}
+
+function embedSources(doc: PmNode): string[] {
+  const sources: string[] = [];
+  doc.descendants((node) => {
+    const componentName = node.attrs.componentName;
+    if (typeof componentName === 'string' && componentName.startsWith('WikiEmbed')) {
+      sources.push(String((node.attrs.props as { src?: unknown } | null)?.src ?? ''));
+    }
+    for (const mark of node.marks) {
+      if (mark.attrs.sourceForm === 'wikiembed') sources.push(String(mark.attrs.href ?? ''));
+    }
+    return true;
+  });
+  return sources;
 }
 
 function replaceDoc(
@@ -533,6 +549,23 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         });
       }
 
+      const unsubscribeEmbedAssets = options.subscribeEmbedAssets?.(() => {
+        if (destroyed || settling) return;
+        if (visibility.hidden) {
+          visibility.stale = true;
+          return;
+        }
+        const source = ytext.toString();
+        if (source !== projection.source) return;
+        const live = embedSources(view.state.doc);
+        if (live.length === 0) return;
+        const next = embedSources(buildProjection(source, md).doc);
+        if (live.length === next.length && live.every((src, i) => src === next[i])) return;
+        const kept = caretTrailingBlanks(view.state);
+        project(source, liveSelection(), true);
+        restoreTrailingBlanks(kept);
+      });
+
       const settle = (
         base: Projection,
         after: PmNode,
@@ -669,6 +702,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         destroy() {
           destroyed = true;
           ytext.unobserve(onYText);
+          unsubscribeEmbedAssets?.();
         },
       };
     },

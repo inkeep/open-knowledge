@@ -60,6 +60,7 @@ import {
   createHandlePaste,
 } from './clipboard/index.ts';
 import { useDocumentContext } from './DocumentContext';
+import { resolveEmbedAsset, subscribeEmbedAssets } from './embed-asset-index';
 import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit.ts';
 import { createBareHtmlImageDecoration } from './extensions/bare-html-image-decoration';
 import { setEditorDocName } from './extensions/doc-context.ts';
@@ -316,7 +317,11 @@ export function buildPatternDConstructorOptions(
   const { provider, placeholder, clipboard, ctorStart } = args;
   const projection = createProjectionBinding({
     ytext: provider.document.getText('source'),
-    md: getProjectionMarkdownManager(),
+    md: getProjectionMarkdownManager().withParseContext({
+      resolveEmbed: resolveEmbedAsset,
+      sourcePath: provider.configuration.name ?? '',
+    }),
+    subscribeEmbedAssets,
   });
   const baseOptions = buildEditorOptions({
     provider,

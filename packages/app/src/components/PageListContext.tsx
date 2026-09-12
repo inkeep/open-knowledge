@@ -1,6 +1,7 @@
 import { toWikiLinkSlug } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { createContext, type ReactNode, use, useEffect, useRef, useState } from 'react';
+import { setEmbedAssetPaths } from '@/editor/embed-asset-index';
 import {
   buildPageIconsIndex,
   buildPagesByBasenameIndex,
@@ -261,6 +262,10 @@ export function PageListProvider({ children }: { children: ReactNode }) {
       pageIcons,
     });
   }, [pages, folderPaths, pagesBySlug, pagesByBasename, assetPaths, filePaths, pageIcons]);
+
+  useEffect(() => {
+    setEmbedAssetPaths([...assetPaths, ...filePaths]);
+  }, [assetPaths, filePaths]);
 
   return (
     <PageListContext
