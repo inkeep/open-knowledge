@@ -192,45 +192,40 @@ jobs:
       - name: Install
         run: pnpm install --frozen-lockfile
 
-      # The cross-platform native-config `.node` binaries are produced by the
-      # standalone native-config-prebuild workflow (kept separate so the beta
-      # cadence stays pure-JS-fast). Stage the newest qualifying run's bundle
-      # into packages/native-config/ so the cli `build:native` step copies all
-      # eight platforms into dist/native/ before publish. The bundle must come
-      # from a prebuild run whose head commit is an ancestor of the release
-      # commit (provenance), so the native code we ship was built from source
-      # actually in this release rather than a later main commit racing the cut.
-      # Beta is resilient by design: a missing, failed, stale, or incomplete
-      # bundle warns and ships host-only, with non-host platforms on the
-      # non-destructive smol-toml fallback, so a beta is never worse than
-      # host-only and the cadence never blocks. Stable @latest is held higher:
-      # an incomplete set hard-fails the cut rather than silently shipping
-      # degraded native fidelity to the default install channel. Binaries are
-      # ABI-stable (napi6); the latest qualifying run's set is reused until
-      # native-config changes and a fresh prebuild run completes.
       - name: Stage native-config prebuilt binaries
         env:
           GH_TOKEN: ${{ github.token }}
-          # Stable @latest cuts arrive as repository_dispatch (publish-stable);
-          # beta + manual recovery arrive as push/workflow_dispatch. Only stable
-          # hard-fails on an incomplete native-config set.
           IS_STABLE: ${{ github.event_name == 'repository_dispatch' }}
         run: |
-          # Record the staged-binary outcome in the job summary, then either
-          # warn-and-proceed (beta) or hard-fail (stable). A stable @latest
-          # publish shipping host-only native binaries is a fidelity regression,
-          # so it pages rather than ships silently degraded.
           summarize() {
             echo "Staged native-config binaries: $1" >> "$GITHUB_STEP_SUMMARY"
+          }
+          require_windows_targets() {
+            for required in native-config.win32-x64-msvc.node native-config.win32-arm64-msvc.node; do
+              if [ -f "packages/native-config/$required" ]; then continue; fi
+              echo "::error::$1; $required was not staged, and Windows removal reads process identity through the native addon, so this cut cannot publish. If no prebuild run matches this commit's packages/native-config tree, re-run native-config-prebuild.yml on an ancestor of this commit; if staging failed for another reason, re-run this workflow. Either way resume per RELEASES.md 'Native addon staging (Windows is mandatory)'."
+              exit 1
+            done
+          }
+          download_bindings() {
+            for attempt in 1 2 3; do
+              rm -rf /tmp/nc-bindings
+              if gh run download "$1" --name native-config-bindings-all --dir /tmp/nc-bindings; then
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * ${NC_RETRY_BACKOFF_S:-5})); fi
+            done
+            return 1
           }
           degrade_or_fail() {
             # $1: human-readable reason, $2: staged-count label for the summary
             summarize "$2 — $1"
+            require_windows_targets "$1"
             if [ "$IS_STABLE" = "true" ]; then
               echo "::error::$1; refusing to cut a stable @latest release with an incomplete native-config binary set"
               exit 1
             fi
-            echo "::warning::$1; CLI ships the host binary only (other platforms use the smol-toml fallback)"
+            echo "::warning::$1; both Windows binaries were staged, so only other targets are missing"
             exit 0
           }
 
@@ -279,8 +274,8 @@ jobs:
           run_id="${selection%%$'\t'*}"
           head_sha="${selection##*$'\t'}"
 
-          if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then
-            degrade_or_fail "could not download native-config-bindings-all from run $run_id" "0/8"
+          if ! download_bindings "$run_id"; then
+            degrade_or_fail "could not download native-config-bindings-all from run $run_id after 3 attempts" "0/8"
           fi
           find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;
           count=$(find packages/native-config -maxdepth 1 -name '*.node' | wc -l | tr -d ' ')
@@ -288,6 +283,7 @@ jobs:
           if [ "$count" -lt 8 ]; then
             degrade_or_fail "staged only $count/8 native-config binaries" "$count/8"
           fi
+          require_windows_targets "staged $count/8 native-config binaries from run $run_id"
           summarize "$count/8 from run $run_id (commit $head_sha)"
 
       # `pnpm run build` builds the native-config addon's host `.node` via

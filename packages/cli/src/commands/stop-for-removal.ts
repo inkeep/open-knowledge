@@ -8,7 +8,11 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { getCliLogger } from '../cli-logger.ts';
 import { describeLockOwnershipRefusal, inspectLock } from './lock-state.ts';
-import { readRemovalProcessStart } from './removal-process-start.ts';
+import {
+  type NativeFailure,
+  type ProcessStartOptions,
+  readRemovalProcessStart,
+} from './removal-process-start.ts';
 import { runStop } from './stop.ts';
 
 interface StopForRemovalOptions {
@@ -16,8 +20,12 @@ interface StopForRemovalOptions {
   scanProcesses?: () => Promise<LockProcessScan>;
   timeoutMs?: number;
   pollIntervalMs?: number;
-  readProcessStart?: (pid: number) => number | null;
+  readProcessStart?: (
+    pid: number,
+    options?: Pick<ProcessStartOptions, 'platform' | 'onNativeFailure'>,
+  ) => number | null;
   isAlive?: (pid: number) => boolean;
+  platform?: NodeJS.Platform;
 }
 
 export async function stopServerForRemoval(
@@ -29,8 +37,38 @@ export async function stopServerForRemoval(
   const lockRecovery =
     'Quit OpenKnowledge and stop any OpenKnowledge server processes. ' +
     `Once you have confirmed they have exited, remove the stale lock file at ${state.lockPath} and retry cleanup.`;
-  const refusal = (message: string): Error => {
-    getCliLogger()?.warn({ lockDir, lockPath: state.lockPath, status: state.status }, message);
+  const recordedPid = (): number | undefined => {
+    switch (state.status) {
+      case 'alive':
+      case 'dead-pid':
+      case 'foreign-host':
+        return state.lock.pid;
+      case 'unverified-owner':
+        return state.pid;
+      case 'missing':
+      case 'corrupt':
+      case 'read-error':
+        return undefined;
+      default: {
+        const exhaustive: never = state;
+        return exhaustive;
+      }
+    }
+  };
+  const logContext = (): Record<string, unknown> => {
+    const lockPid = recordedPid();
+    return {
+      ...(lockPid === undefined ? {} : { lockPid }),
+      lockDir,
+      lockPath: state.lockPath,
+      status: state.status,
+    };
+  };
+  const refusal = (message: string, nativeFailures: NativeFailure[] = []): Error => {
+    getCliLogger()?.warn(
+      nativeFailures.length > 0 ? { ...logContext(), nativeFailures } : logContext(),
+      message,
+    );
     return new Error(message);
   };
   if (state.status === 'read-error') {
@@ -97,17 +135,50 @@ export async function stopServerForRemoval(
     if (!Number.isFinite(lockStartedAt)) {
       throw refusal(`The server lock has no valid start time. ${lockRecovery}`);
     }
-    const processStartedAt = (options.readProcessStart ?? readRemovalProcessStart)(state.lock.pid);
+    const nativeFailures: NativeFailure[] = [];
+    const platform = options.platform ?? process.platform;
+    const processStartedAt = (options.readProcessStart ?? readRemovalProcessStart)(state.lock.pid, {
+      platform,
+      onNativeFailure: (failure) => {
+        nativeFailures.push(failure);
+      },
+    });
     if (processStartedAt === null) {
       if (!isAlive(state.lock.pid)) return { stopped: 0, failed: [] };
+      const componentUnavailable = nativeFailures.some((failure) => {
+        switch (failure.kind) {
+          case 'unavailable':
+            return true;
+          case 'query-failed':
+            return false;
+          default: {
+            const exhaustive: never = failure.kind;
+            return exhaustive;
+          }
+        }
+      });
+      const windowsRecovery =
+        nativeFailures.length === 0
+          ? 'Stop the server manually. '
+          : componentUnavailable
+            ? 'Reinstall OpenKnowledge to restore the Windows component that verifies process identity, or stop the server manually. '
+            : 'The Windows component loaded but the operating system refused the query, so reinstalling will not help; retry from an account that can inspect that process, or stop the server manually. ';
       const probeRecovery =
-        process.platform === 'linux'
+        platform === 'linux'
           ? 'Linux requires ps supporting -p and -o lstart= (such as procps). Install a compatible ps and retry, or stop the server manually. '
-          : 'Stop the server manually. ';
+          : platform === 'win32'
+            ? windowsRecovery
+            : 'Stop the server manually. ';
+      const causeRecord =
+        nativeFailures.length > 0
+          ? 'The failure detail is recorded in the CLI log under ~/.ok/logs. '
+          : '';
       throw refusal(
-        `Cannot verify the identity of process ${state.lock.pid}; the OS process-start query failed or is unavailable, so it was not signalled. ` +
+        `Cannot verify the identity of process ${state.lock.pid} recorded in the server lock at ${state.lockPath}; the OS process-start query failed or is unavailable, so it was not signalled. ` +
           probeRecovery +
+          causeRecord +
           'Confirm the OpenKnowledge server has exited before retrying cleanup after a manual stop.',
+        nativeFailures,
       );
     }
     if (processStartedAt > lockStartedAt) {

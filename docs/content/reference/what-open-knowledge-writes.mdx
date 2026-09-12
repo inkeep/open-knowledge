@@ -165,7 +165,7 @@ Installing `@inkeep/open-knowledge` from npm (or invoking it with `npx`) drops t
 | Path | What it is | Scope |
 | --- | --- | --- |
 | `ok`, `open-knowledge` (on your `PATH`) | The two CLI binaries (identical entry point) | Outside-project (npm global/bin) |
-| `<pkg>/dist/native/` | Bundled native TOML-editing addon, shipped inside the package | Outside-project (package dir) |
+| `<pkg>/dist/native/` | Bundled native addon, shipped inside the package: TOML editing on all platforms, plus a Windows-only reader that checks a running server's process creation time during `ok uninstall` / `ok deinit` | Outside-project (package dir) |
 
 <Callout type="info" title="Opt out">
   Installing the package writes nothing outside its own directory, so there is nothing to opt out of here. The user-global skills are installed by `ok init`, and `ok init --no-skills` skips installing them for that run.

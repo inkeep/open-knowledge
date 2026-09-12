@@ -148,10 +148,6 @@ jobs:
       # and GitHub's releases API only returns drafts to push-level tokens
       # (contents: read gets a 404 and the assert would block every release).
       contents: write
-      # A job-level permissions block REPLACES the default token scopes, so
-      # the native-config staging step's `gh run list/view/download` needs
-      # its scope restated or it 403s (beta degrades to host-only; stable
-      # hard-fails the cut).
       actions: read
     defaults:
       run:
@@ -323,16 +319,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # The cross-platform native-config `.node` binaries are produced by the
-      # standalone native-config-prebuild workflow. Stage the latest successful
-      # run's bundle into packages/native-config/ so the cli `build:native`
-      # step copies all eight platforms into dist/native/ — the Windows/Linux
-      # installers packaged from this bundle then carry their own arch's
-      # toml_edit addon. Provenance + degrade-vs-fail semantics mirror
-      # release.yml's step: beta warns and ships host-only (non-host platforms
-      # use the non-destructive smol-toml fallback), stable hard-fails rather
-      # than silently shipping degraded native fidelity to the default install
-      # channel.
       - name: Stage native-config prebuilt binaries
         env:
           GH_TOKEN: ${{ github.token }}
@@ -341,14 +327,32 @@ jobs:
           summarize() {
             echo "Staged native-config binaries: $1" >> "$GITHUB_STEP_SUMMARY"
           }
+          require_windows_targets() {
+            for required in native-config.win32-x64-msvc.node native-config.win32-arm64-msvc.node; do
+              if [ -f "packages/native-config/$required" ]; then continue; fi
+              echo "::error::$1; $required was not staged, and the Windows installer built from this bundle would refuse removal without it. If no prebuild run matches this commit's packages/native-config tree, re-run native-config-prebuild.yml on an ancestor of this commit; if staging failed for another reason, re-run this workflow. Either way resume per RELEASES.md 'Resuming a blocked cut'."
+              exit 1
+            done
+          }
+          download_bindings() {
+            for attempt in 1 2 3; do
+              rm -rf /tmp/nc-bindings
+              if gh run download "$1" --name native-config-bindings-all --dir /tmp/nc-bindings; then
+                return 0
+              fi
+              if [ "$attempt" -lt 3 ]; then sleep $((attempt * ${NC_RETRY_BACKOFF_S:-5})); fi
+            done
+            return 1
+          }
           degrade_or_fail() {
             # $1: human-readable reason, $2: staged-count label for the summary
             summarize "$2 — $1"
+            require_windows_targets "$1"
             if [ "$IS_STABLE" = "true" ]; then
               echo "::error::$1; refusing to cut a stable release with an incomplete native-config binary set"
               exit 1
             fi
-            echo "::warning::$1; installers ship the host binary only (other platforms use the smol-toml fallback)"
+            echo "::warning::$1; both Windows binaries were staged, so only other targets are missing"
             exit 0
           }
 
@@ -397,8 +401,8 @@ jobs:
           run_id="${selection%%$'\t'*}"
           head_sha="${selection##*$'\t'}"
 
-          if ! gh run download "$run_id" --name native-config-bindings-all --dir /tmp/nc-bindings; then
-            degrade_or_fail "could not download native-config-bindings-all from run $run_id" "0/8"
+          if ! download_bindings "$run_id"; then
+            degrade_or_fail "could not download native-config-bindings-all from run $run_id after 3 attempts" "0/8"
           fi
           find /tmp/nc-bindings -name '*.node' -exec cp -f {} packages/native-config/ \;
           count=$(find packages/native-config -maxdepth 1 -name '*.node' | wc -l | tr -d ' ')
@@ -406,6 +410,7 @@ jobs:
           if [ "$count" -lt 8 ]; then
             degrade_or_fail "staged only $count/8 native-config binaries" "$count/8"
           fi
+          require_windows_targets "staged $count/8 native-config binaries from run $run_id"
           summarize "$count/8 from run $run_id (commit $head_sha)"
 
       # The workspace build produces native-config's host `.node` via `napi

@@ -5,7 +5,13 @@ import { fileURLToPath } from 'node:url';
 
 const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-export const REQUIRED_PACK_FILES = ['README.md', 'dist/LICENSE', 'dist/THIRD_PARTY_NOTICES.md'];
+export const REQUIRED_PACK_FILES = [
+  'README.md',
+  'dist/LICENSE',
+  'dist/THIRD_PARTY_NOTICES.md',
+  'dist/native/native-config.win32-x64-msvc.node',
+  'dist/native/native-config.win32-arm64-msvc.node',
+];
 
 export const REQUIRED_KEYWORDS = ['knowledge-base', 'markdown', 'local-first', 'mcp', 'ai', 'cli'];
 

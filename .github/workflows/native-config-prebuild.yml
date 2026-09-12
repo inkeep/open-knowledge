@@ -150,6 +150,12 @@ jobs:
         # `build` script.
         run: pnpm exec napi build --platform --release --target ${{ matrix.settings.target }} ${{ matrix.settings.napiFlags }}
 
+      - name: Test the crate on the one Windows target this x64 host can execute
+        if: matrix.settings.target == 'x86_64-pc-windows-msvc'
+        working-directory: packages/native-config
+        shell: bash
+        run: cargo test
+
       - name: Upload binding
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
-import { requireNativeConfigModule } from './load-native-config.ts';
+import { describeNativeFailure, requireNativeConfigModule } from './load-native-config.ts';
 
 function withCapturedStderr(fn: () => void): string {
   const original = process.stderr.write.bind(process.stderr);
@@ -117,5 +117,30 @@ describe('broken-binary diagnostic (OK_DEBUG_NATIVE)', () => {
       expect(mod).toBeNull();
     });
     expect(captured).toBe('');
+  });
+});
+
+describe('describeNativeFailure', () => {
+  test('renders the innermost cause first and drops the outermost past the bound', () => {
+    let err = new Error('link-1');
+    for (let i = 2; i <= 6; i++) err = Object.assign(new Error(`link-${i}`), { cause: err });
+    const rendered = describeNativeFailure('load failed', err);
+    expect(rendered).toBe('load failed: link-1 -> link-2 -> link-3 -> link-4 -> link-5');
+    expect(rendered).not.toContain('link-6');
+  });
+
+  test('terminates on a cause chain that points back into itself', () => {
+    const outer = new Error('outer');
+    const inner = Object.assign(new Error('inner'), { cause: outer });
+    outer.cause = inner;
+    const rendered = describeNativeFailure('load failed', outer);
+    expect(rendered).toBe('load failed: inner -> outer');
+  });
+
+  test('renders a non-Error without a chain', () => {
+    expect(describeNativeFailure('load failed', null)).toBe('load failed: null');
+    expect(describeNativeFailure('load failed', { code: 'EACCES' })).toBe(
+      'load failed: object keys=[code]',
+    );
   });
 });

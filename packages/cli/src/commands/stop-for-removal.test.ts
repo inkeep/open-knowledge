@@ -85,6 +85,7 @@ describe('stopServerForRemoval', () => {
     await expect(stopServerForRemoval(dir, { isAlive: () => true })).rejects.toThrow(
       'does not record its owning machine',
     );
+    expect(warnings[0]).toMatchObject({ status: 'unverified-owner', lockPid: 4242 });
   });
 
   test('reports no server when no lock exists', async () => {
@@ -310,19 +311,216 @@ describe('stopServerForRemoval', () => {
     expectRefusalLogged('alive', 'valid start time');
   });
 
-  test('does not signal when the process start probe is unavailable and explains recovery', async () => {
+  test.each([
+    ['linux', 'ps supporting -p and -o lstart='],
+    ['darwin', 'Stop the server manually.'],
+  ] as const)(
+    'explains the %s probe recovery when the process start probe is unavailable',
+    async (platform, expected) => {
+      const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+      await expect(
+        stopServerForRemoval(dir, { platform, readProcessStart: () => null }),
+      ).rejects.toThrow('Confirm the OpenKnowledge server has exited before retrying cleanup');
+      expect(isProcessAlive(pid)).toBe(true);
+      expectRefusalLogged('alive', 'Cannot verify the identity');
+      expect(warnings[0]).toMatchObject({ lockPid: pid });
+      expect(warnings[0]?.msg).toContain(expected);
+    },
+  );
+
+  test('records the native identity failure cause in the CLI log, never in the refusal a user reads', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    await expect(
+      stopServerForRemoval(dir, {
+        readProcessStart: (_pid, options) => {
+          options?.onNativeFailure?.({
+            kind: 'query-failed',
+            reason: 'readProcessStart failed: OpenProcess: os error 5',
+          });
+          return null;
+        },
+      }),
+    ).rejects.toThrow('Cannot verify the identity');
+    expect(isProcessAlive(pid)).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      nativeFailures: [
+        { kind: 'query-failed', reason: 'readProcessStart failed: OpenProcess: os error 5' },
+      ],
+    });
+    expect(warnings[0]?.msg).toContain(lockFilePath(dir, 'server'));
+    expect(warnings[0]?.msg).not.toContain('OpenProcess: os error 5');
+    expect(warnings[0]?.msg).toContain('recorded in the CLI log under ~/.ok/logs');
+  });
+
+  test.each([
+    [
+      'unavailable',
+      'Reinstall OpenKnowledge to restore the Windows component that verifies process identity',
+      'the operating system refused the query',
+    ],
+    [
+      'query-failed',
+      'the operating system refused the query, so reinstalling will not help',
+      'Reinstall OpenKnowledge',
+    ],
+  ] as const)(
+    'picks the win32 remedy for a %s fault on any host',
+    async (kind, expected, absent) => {
+      const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+      await expect(
+        stopServerForRemoval(dir, {
+          platform: 'win32',
+          readProcessStart: (_pid, options) => {
+            options?.onNativeFailure?.({ kind, reason: 'probe detail' });
+            return null;
+          },
+        }),
+      ).rejects.toThrow(expected);
+      expect(isProcessAlive(pid)).toBe(true);
+      expect(warnings[0]?.msg).not.toContain(absent);
+    },
+  );
+
+  test('names no remedy on win32 when nothing was reported', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    await expect(
+      stopServerForRemoval(dir, { platform: 'win32', readProcessStart: () => null }),
+    ).rejects.toThrow('Stop the server manually.');
+    expect(isProcessAlive(pid)).toBe(true);
+    expect(warnings[0]?.msg).not.toContain('Reinstall OpenKnowledge');
+    expect(warnings[0]?.msg).not.toContain('refused the query');
+  });
+
+  test('does not prescribe a reinstall when the component loaded and the OS refused the query', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    await expect(
+      stopServerForRemoval(dir, {
+        readProcessStart: (_pid, options) => {
+          options?.onNativeFailure?.({
+            kind: 'query-failed',
+            reason: 'readProcessStart failed: OpenProcess: os error 5',
+          });
+          return null;
+        },
+      }),
+    ).rejects.toThrow('Cannot verify the identity');
+    expect(isProcessAlive(pid)).toBe(true);
+    expect(warnings[0]).toMatchObject({
+      nativeFailures: [{ kind: 'query-failed' }],
+    });
+  });
+
+  test('never repeats upstream install advice to a user removing the product', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    const napiAdvisory =
+      'bundled loader failed to load: \\\\?\\C:\\app\\dist\\native\\native-config.win32-x64-msvc.node is not a valid Win32 application. -> Cannot find native binding. npm has a bug related to optional dependencies (https://github.com/npm/cli/issues/4828). Please try `npm i` again after removing both package-lock.json and node_modules directory.';
+    const error = await stopServerForRemoval(dir, {
+      readProcessStart: (_pid, options) => {
+        options?.onNativeFailure?.({ kind: 'unavailable', reason: napiAdvisory });
+        return null;
+      },
+    }).then(
+      () => undefined,
+      (err: unknown) => err as Error,
+    );
+    expect(isProcessAlive(pid)).toBe(true);
+    expect(error?.message).toContain('Cannot verify the identity');
+    for (const upstreamOnly of ['package-lock.json', 'node_modules', 'npm i', 'npm/cli/issues']) {
+      expect(error?.message).not.toContain(upstreamOnly);
+    }
+    expect(warnings[0]).toMatchObject({
+      nativeFailures: [{ kind: 'unavailable', reason: napiAdvisory }],
+    });
+  });
+
+  test('keeps every native failure cause, not only the last one', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    await expect(
+      stopServerForRemoval(dir, {
+        readProcessStart: (_pid, options) => {
+          options?.onNativeFailure?.({
+            kind: 'unavailable',
+            reason: 'bundled loader failed to load: invalid ELF header',
+          });
+          options?.onNativeFailure?.({
+            kind: 'unavailable',
+            reason: 'the Windows native addon did not load',
+          });
+          return null;
+        },
+      }),
+    ).rejects.toThrow('Cannot verify the identity');
+    expect(isProcessAlive(pid)).toBe(true);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      level: 40,
+      lockDir: dir,
+      lockPath: lockFilePath(dir, 'server'),
+      lockPid: pid,
+      status: 'alive',
+      nativeFailures: [
+        { kind: 'unavailable', reason: 'bundled loader failed to load: invalid ELF header' },
+        { kind: 'unavailable', reason: 'the Windows native addon did not load' },
+      ],
+    });
+  });
+
+  test('omits the log pointer and the cause field when the reader reported none', async () => {
     const pid = await startServer(`
       process.send('ready');
       setInterval(() => {}, 1000);
     `);
     await expect(stopServerForRemoval(dir, { readProcessStart: () => null })).rejects.toThrow(
-      'Confirm the OpenKnowledge server has exited before retrying cleanup',
+      'Cannot verify the identity',
     );
     expect(isProcessAlive(pid)).toBe(true);
-    expectRefusalLogged('alive', 'Cannot verify the identity');
-    if (process.platform === 'linux') {
-      expect(warnings[0]?.msg).toContain('ps supporting -p and -o lstart=');
-    }
+    expect(warnings[0]?.msg).not.toContain('~/.ok/logs');
+    expect(warnings[0]).not.toHaveProperty('nativeFailures');
+  });
+
+  test('does not log a native failure when the liveness recheck accepts an exited process', async () => {
+    const pid = await startServer(`
+      process.send('ready');
+      setInterval(() => {}, 1000);
+    `);
+    const isAlive = vi.fn().mockReturnValueOnce(true).mockReturnValueOnce(false);
+    expect(
+      await stopServerForRemoval(dir, {
+        readProcessStart: (_pid, options) => {
+          options?.onNativeFailure?.({
+            kind: 'query-failed',
+            reason: 'readProcessStart failed: OpenProcess: os error 87',
+          });
+          return null;
+        },
+        isAlive,
+      }),
+    ).toEqual({ stopped: 0, failed: [] });
+    expect(warnings).toEqual([]);
+    expect(isAlive).toHaveBeenCalledTimes(2);
+    expect(isProcessAlive(pid)).toBe(true);
   });
 
   test('requires a liveness recheck to accept an exited process after an unavailable identity probe', async () => {
@@ -377,6 +575,7 @@ describe('stopServerForRemoval', () => {
     );
     expect(isProcessAlive(pid)).toBe(true);
     expectRefusalLogged('foreign-host', 'another machine');
+    expect(warnings[0]).toMatchObject({ lockPid: pid });
     expect(warnings[0]?.msg).toContain(lockFilePath(dir, 'server'));
   });
 

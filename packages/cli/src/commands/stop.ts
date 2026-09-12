@@ -26,6 +26,7 @@ export async function probeCollabClients(
   try {
     const res = await fetch(`${baseUrl}/api/server-info`, {
       signal: AbortSignal.timeout(CLIENT_PROBE_TIMEOUT_MS),
+      redirect: 'manual',
     });
     if (!res.ok) {
       logger?.warn(
