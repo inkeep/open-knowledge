@@ -934,6 +934,147 @@ describe('projection binding — a remote edit keeps a selection it did not touc
   });
 });
 
+describe('projection binding — a drop that moves content writes its two ranges', () => {
+  const SEED = 'Alpha paragraph zero.\n\nBravo paragraph one.\n\nCharlie paragraph two.\n';
+  type Delta = Array<Record<string, unknown>>;
+
+  function blockStart(editor: Editor, blockIndex: number): number {
+    let pos = 0;
+    for (let i = 0; i < blockIndex; i++) pos += editor.state.doc.child(i).nodeSize;
+    return pos;
+  }
+
+  function textPos(editor: Editor, blockIndex: number, word: string, offset = 0): number {
+    const text = editor.state.doc.child(blockIndex).textContent;
+    return blockStart(editor, blockIndex) + 1 + text.indexOf(word) + offset;
+  }
+
+  function dropWord(editor: Editor, word: string, target: number, asDrop = true): void {
+    const from = textPos(editor, 0, word);
+    const tr = editor.state.tr.setSelection(
+      TextSelection.create(editor.state.doc, from, from + word.length),
+    );
+    const slice = tr.doc.slice(from, from + word.length);
+    tr.deleteSelection();
+    const at = tr.mapping.map(target);
+    tr.replaceRange(at, at, slice);
+    if (asDrop) tr.setMeta('uiEvent', 'drop');
+    editor.view.dispatch(tr);
+  }
+
+  function dropFirstBlockAtEnd(editor: Editor): void {
+    const node = editor.state.doc.child(0);
+    const target = editor.state.doc.content.size;
+    const tr = editor.state.tr.delete(0, node.nodeSize);
+    const at = tr.mapping.map(target);
+    tr.replaceRangeWith(at, at, node);
+    editor.view.dispatch(tr.setMeta('uiEvent', 'drop'));
+  }
+
+  function recordDeltas(rig: Rig): Delta[] {
+    const deltas: Delta[] = [];
+    rig.ytext.observe((event) => deltas.push(event.changes.delta as Delta));
+    return deltas;
+  }
+
+  function createPeers(): [Rig, Rig] {
+    const first = createRig(SEED);
+    const replica = new Y.Doc();
+    Y.applyUpdate(replica, Y.encodeStateAsUpdate(first.ydoc));
+    return [first, createRigOn(replica)];
+  }
+
+  function syncBoth(left: Rig, right: Rig): void {
+    Y.applyUpdate(right.ydoc, Y.encodeStateAsUpdate(left.ydoc, Y.encodeStateVector(right.ydoc)));
+    Y.applyUpdate(left.ydoc, Y.encodeStateAsUpdate(right.ydoc, Y.encodeStateVector(left.ydoc)));
+  }
+
+  it('writes a dragged word as its removal and its insertion, and leaves the text between alone', () => {
+    const rig = createRig(SEED);
+    try {
+      const deltas = recordDeltas(rig);
+      dropWord(rig.editor, 'zero', textPos(rig.editor, 2, 'two', 3));
+      expect(rig.ytext.toString()).toBe(
+        'Alpha paragraph .\n\nBravo paragraph one.\n\nCharlie paragraph twozero.\n',
+      );
+      expect(deltas).toEqual([[{ retain: 16 }, { delete: 4 }, { retain: 46 }, { insert: 'zero' }]]);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('writes a dragged block as its removal and its insertion', () => {
+    const rig = createRig(SEED);
+    try {
+      const deltas = recordDeltas(rig);
+      dropFirstBlockAtEnd(rig.editor);
+      expect(rig.ytext.toString()).toBe(
+        'Bravo paragraph one.\n\nCharlie paragraph two.\n\nAlpha paragraph zero.\n',
+      );
+      expect(deltas).toEqual([
+        [{ delete: 23 }, { retain: 44 }, { insert: '\n\nAlpha paragraph zero.' }],
+      ]);
+      expect(md.parse(rig.ytext.toString())).toEqual(rig.editor.state.doc.toJSON());
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  for (const [shape, drop, block] of [
+    ['word', (editor: Editor) => dropWord(editor, 'zero', textPos(editor, 2, 'two', 3)), 1],
+    ['block', dropFirstBlockAtEnd, 0],
+  ] as const) {
+    it(`keeps a peer caret between a dragged ${shape}'s two ranges where it was`, () => {
+      const [a, b] = createPeers();
+      try {
+        const caret = textPos(b.editor, 1, 'Bravo', 5);
+        b.editor.view.dispatch(
+          b.editor.state.tr.setSelection(TextSelection.create(b.editor.state.doc, caret)),
+        );
+        drop(a.editor);
+        syncBoth(a, b);
+        expect(b.ytext.toString()).toBe(a.ytext.toString());
+        const $at = b.editor.state.doc.resolve(b.editor.state.selection.from);
+        expect([$at.index(0), $at.parentOffset]).toEqual([block, 5]);
+      } finally {
+        a.destroy();
+        b.destroy();
+      }
+    });
+  }
+
+  it('undoes a drop in one step, both ranges together', () => {
+    const rig = createRig(SEED);
+    try {
+      const undoManager = sharedUndoManagerFor(rig.ytext);
+      dropWord(rig.editor, 'zero', textPos(rig.editor, 2, 'two', 3));
+      undoManager.undo();
+      expect(rig.ytext.toString()).toBe(SEED);
+      expect(rig.editor.state.doc.child(0).textContent).toBe('Alpha paragraph zero.');
+      undoManager.undo();
+      expect(rig.ytext.toString()).toBe(SEED);
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  it('writes the same two steps as one run when they are not a drop', () => {
+    const rig = createRig(SEED);
+    try {
+      const deltas = recordDeltas(rig);
+      dropWord(rig.editor, 'zero', textPos(rig.editor, 2, 'two', 3), false);
+      expect(rig.ytext.toString()).toBe(
+        'Alpha paragraph .\n\nBravo paragraph one.\n\nCharlie paragraph twozero.\n',
+      );
+      expect(deltas).toHaveLength(1);
+      const edits = (deltas[0] as Delta).filter((op) => op.retain === undefined);
+      expect(edits).toHaveLength(2);
+    } finally {
+      rig.destroy();
+    }
+  });
+});
+
 describe('the extension list services the projection, never a fragment binding', () => {
   function makeProvider() {
     const ydoc = new Y.Doc();

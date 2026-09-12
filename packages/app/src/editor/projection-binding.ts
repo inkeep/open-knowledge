@@ -2,6 +2,7 @@ import {
   alignProjectionToDoc,
   applySplice,
   buildProjection,
+  type ChangedBlocks,
   changedProjectionBlocks,
   computeBlockSplice,
   type MarkdownManager,
@@ -19,6 +20,7 @@ import {
   PluginKey,
   type Selection,
   TextSelection,
+  type Transaction,
 } from '@tiptap/pm/state';
 import type { EditorView } from '@tiptap/pm/view';
 import type * as Y from 'yjs';
@@ -48,10 +50,24 @@ interface ProjectionVisibility {
   show: (() => void) | null;
 }
 
+interface DropMove {
+  before: PmNode;
+  removed: PmNode;
+  after: PmNode;
+}
+
+function dropMove(tr: Transaction): DropMove | null {
+  if (tr.getMeta('uiEvent') !== 'drop' || tr.steps.length !== 2) return null;
+  const removed = tr.docs[1];
+  if (removed === undefined) return null;
+  return { before: tr.before, removed, after: tr.doc };
+}
+
 export interface ProjectionBindingPluginState {
   undoManager: Y.UndoManager;
   binding: ProjectionBindingState;
   visibility: ProjectionVisibility;
+  move: DropMove | null;
 }
 
 export const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>(
@@ -85,11 +101,15 @@ interface ProjectionBindingOptions {
   undoManager: Y.UndoManager;
 }
 
-/* STOP: ONE contiguous delete plus ONE insert, never a multi-range character-minimal diff --
-   that is the content-loss class external-change-stale-anchor-interleave.test.ts exists to pin.
-   The run must still be narrowed to the bytes that differ: rewriting shared affixes makes two
-   peers editing one block each delete the shared text and insert a whole copy of it, and Yjs
-   merges the deletes while keeping both inserts, so the block is duplicated. */
+/* STOP: ONE contiguous delete plus ONE insert per range the user's transaction names, never a
+   multi-range character-minimal diff -- that is the content-loss class
+   external-change-stale-anchor-interleave.test.ts exists to pin. A drop that moves content names
+   two ranges, its removal and its insertion, split at ProseMirror's own step boundary; widening it
+   to one run re-inserts every byte between them and every peer caret there collapses. Ranges come
+   from steps, never from comparing bytes. Each run must still be narrowed to the bytes that
+   differ: rewriting shared affixes makes two peers editing one block each delete the shared text
+   and insert a whole copy of it, and Yjs merges the deletes while keeping both inserts, so the
+   block is duplicated. */
 export function narrowSplice(before: string, splice: SourceSplice): SourceSplice {
   const { prefix, suffix } = sharedAffixes(before.slice(splice.from, splice.to), splice.text);
   return {
@@ -301,8 +321,8 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   return new Plugin<ProjectionBindingPluginState>({
     key: projectionBindingKey,
     state: {
-      init: () => ({ undoManager: options.undoManager, binding: stats, visibility }),
-      apply: (_tr, value) => value,
+      init: () => ({ undoManager: options.undoManager, binding: stats, visibility, move: null }),
+      apply: (tr, value) => (tr.docChanged ? { ...value, move: dropMove(tr) } : value),
     },
     view(view) {
       let projection = options.initial;
@@ -450,6 +470,70 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         });
       }
 
+      const settle = (
+        base: Projection,
+        after: PmNode,
+        changed: ChangedBlocks,
+        splice: SourceSplice,
+      ): void => {
+        const nextSource = applySplice(base.source, splice);
+        const rebased = rebaseProjection(base, after, changed, splice, noteDecline);
+        if (rebased !== null) {
+          adopt(rebased);
+          return;
+        }
+        stats.rebaseDeclines++;
+        emitDiagnosticBreadcrumb(REBASE_DECLINED_EVENT, {
+          ...takeDecline(),
+          declines: stats.rebaseDeclines,
+        });
+
+        let rebuiltChildren = -1;
+        const reprojected = reprojectAgainst(nextSource, after, md, (children) => {
+          rebuiltChildren = children;
+        });
+        stats.rebuilds++;
+        if (reprojected !== null) {
+          adopt(reprojected);
+          return;
+        }
+        stats.reprojectMismatches++;
+        emitDiagnosticBreadcrumb(REPROJECT_MISMATCH_EVENT, {
+          rebuiltChildren,
+          children: after.childCount,
+          mismatches: stats.reprojectMismatches,
+        });
+        if (adoptAligned(buildProjection(nextSource, md), after, 'reproject-fallback')) return;
+        project(nextSource, null, false);
+      };
+
+      const writeMove = (move: DropMove): boolean => {
+        const doc = ytext.doc;
+        if (doc === null) return false;
+        const removal = changedProjectionBlocks(projection.doc, move.removed);
+        const removalSplice =
+          removal === null ? null : computeBlockSplice(projection, move.removed, md, removal);
+        if (removal === null || removalSplice === null) return false;
+        const middleSource = applySplice(projection.source, removalSplice);
+        let middle = rebaseProjection(projection, move.removed, removal, removalSplice);
+        if (middle === null) {
+          middle = reprojectAgainst(middleSource, move.removed, md);
+          stats.rebuilds++;
+        }
+        if (middle === null || middle.map.blocks.length !== middle.doc.childCount) return false;
+        const insertion = changedProjectionBlocks(middle.doc, move.after);
+        const insertionSplice =
+          insertion === null ? null : computeBlockSplice(middle, move.after, md, insertion);
+        if (insertion === null || insertionSplice === null) return false;
+        doc.transact(() => {
+          applyToYText(ytext, narrowSplice(projection.source, removalSplice));
+          applyToYText(ytext, narrowSplice(middleSource, insertionSplice));
+        }, origin);
+        stats.writes++;
+        settle(middle, move.after, insertion, insertionSplice);
+        return true;
+      };
+
       return {
         update(updatedView) {
           if (applyingRemote || settling) return;
@@ -475,6 +559,11 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             return;
           }
 
+          const move = projectionBindingKey.getState(updatedView.state)?.move ?? null;
+          if (move !== null && move.before === projection.doc && move.after === after) {
+            if (writeMove(move)) return;
+          }
+
           const splice = computeBlockSplice(projection, after, md, changed, noteDecline);
           if (splice === null) {
             stats.spliceDeclines++;
@@ -487,7 +576,6 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             return;
           }
 
-          const nextSource = applySplice(projection.source, splice);
           const writesBytes = projection.source.slice(splice.from, splice.to) !== splice.text;
           if (writesBytes) {
             const doc = ytext.doc;
@@ -513,34 +601,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             stats.writes++;
           }
 
-          const rebased = rebaseProjection(projection, after, changed, splice, noteDecline);
-          if (rebased !== null) {
-            adopt(rebased);
-            return;
-          }
-          stats.rebaseDeclines++;
-          emitDiagnosticBreadcrumb(REBASE_DECLINED_EVENT, {
-            ...takeDecline(),
-            declines: stats.rebaseDeclines,
-          });
-
-          let rebuiltChildren = -1;
-          const reprojected = reprojectAgainst(nextSource, after, md, (children) => {
-            rebuiltChildren = children;
-          });
-          stats.rebuilds++;
-          if (reprojected !== null) {
-            adopt(reprojected);
-            return;
-          }
-          stats.reprojectMismatches++;
-          emitDiagnosticBreadcrumb(REPROJECT_MISMATCH_EVENT, {
-            rebuiltChildren,
-            children: after.childCount,
-            mismatches: stats.reprojectMismatches,
-          });
-          if (adoptAligned(buildProjection(nextSource, md), after, 'reproject-fallback')) return;
-          project(nextSource, null, false);
+          settle(projection, after, changed, splice);
         },
         destroy() {
           destroyed = true;
