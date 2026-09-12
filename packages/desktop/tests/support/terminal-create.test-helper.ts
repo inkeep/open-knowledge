@@ -16,3 +16,8 @@ export function createStartedTerminal(
   }
   return result;
 }
+
+export function startedPtyId(result: ReturnType<TerminalManager['create']>): string {
+  if (!result.ok) throw new Error(result.reason);
+  return result.ptyId;
+}

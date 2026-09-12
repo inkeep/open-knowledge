@@ -1,3 +1,4 @@
+import type { OkPtyExit } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { describe, expect, test } from 'vitest';
 import {
   createTerminalManager,
@@ -7,7 +8,7 @@ import {
 } from '../../src/main/terminal-manager.ts';
 import type { SendableWebContents } from '../../src/shared/ipc-send.ts';
 import type { PtyHostIncomingMessage } from '../../src/utility/pty-host.ts';
-import { createStartedTerminal } from '../support/terminal-create.test-helper.ts';
+import { createStartedTerminal, startedPtyId } from '../support/terminal-create.test-helper.ts';
 
 class FakeUtility {
   posted: PtyHostIncomingMessage[] = [];
@@ -49,6 +50,8 @@ function makeWebContents(): FakeWebContents {
 
 function makeManager(over?: Partial<TerminalManagerDeps>) {
   const forked: FakeUtility[] = [];
+  const exits: OkPtyExit[] = [];
+  const shellExits: Array<{ crashed: boolean }> = [];
   let idn = 0;
   const mgr = createTerminalManager({
     canSpawnAt: () => true,
@@ -58,14 +61,19 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
       return u as unknown as PtyUtilityLike;
     },
     sendData: () => {},
-    sendExit: () => {},
+    sendExit: (_wc, payload) => {
+      exits.push(payload);
+    },
+    recordShellExit: (info) => {
+      shellExits.push(info);
+    },
     newPtyId: () => `pty-${++idn}`,
     setTimer: () => 0,
     clearTimer: () => {},
     logger: { warn: () => {} },
     ...over,
   });
-  return { mgr, forked };
+  return { mgr, forked, exits, shellExits };
 }
 
 function resolveLiveSessionIds(mgr: TerminalManager, windowId: number): readonly string[] | null {
@@ -432,5 +440,92 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
       webContents: makeWebContents(),
     });
     expect(outcome).toEqual({ ok: false, reason: 'unknown-session' });
+  });
+});
+
+describe('a session the window asked to kill is no longer a survivor, before the host reports its exit', () => {
+  test('a killed session leaves the reload inventory at the kill, not at the exit', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    const kept = createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const closed = createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const idKept = startedPtyId(kept);
+    const idClosed = startedPtyId(closed);
+
+    h.mgr.kill({ windowId: 1, ptyId: idClosed });
+
+    expect(h.forked[0]?.posted).toContainEqual({ type: 'kill', ptyId: idClosed });
+    expect(h.mgr.listSessions(1).map((s) => s.ptyId)).toEqual([idKept]);
+    expect(h.exits).toEqual([]);
+
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: idClosed, exitCode: 0, signal: null });
+
+    expect(h.exits).toEqual([{ ptyId: idClosed, exitCode: 0, signal: null }]);
+    expect(h.shellExits).toEqual([{ crashed: false }]);
+    expect(h.mgr.listSessions(1).map((s) => s.ptyId)).toEqual([idKept]);
+  });
+
+  test('a replacement spawned while the killed shell is still dying is the only session of its tab', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    const first = createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const idFirst = startedPtyId(first);
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: idFirst, ordinal: 2 });
+
+    h.mgr.kill({ windowId: 1, ptyId: idFirst });
+    const replacement = createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const idReplacement = startedPtyId(replacement);
+    h.mgr.setSessionMeta({ windowId: 1, ptyId: idReplacement, ordinal: 2 });
+
+    expect(h.mgr.listSessions(1)).toEqual([
+      { ptyId: idReplacement, customLabel: null, ordinal: 2 },
+    ]);
+  });
+
+  test('adopting a killed session is refused while the host still holds it', () => {
+    const h = makeManager();
+    const created = createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    const idClosed = startedPtyId(created);
+
+    h.mgr.kill({ windowId: 1, ptyId: idClosed });
+    const postedBeforeAdopt = [...(h.forked[0]?.posted ?? [])];
+    const outcome = h.mgr.adoptSession({
+      windowId: 1,
+      ptyId: idClosed,
+      webContents: makeWebContents(),
+    });
+
+    expect(outcome).toEqual({ ok: false, reason: 'unknown-session' });
+    expect(h.forked[0]?.posted).toEqual(postedBeforeAdopt);
   });
 });

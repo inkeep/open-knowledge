@@ -280,6 +280,34 @@ describe('terminal creation waits for the renderer to subscribe', () => {
     );
   });
 
+  test('a killed session is refused by both adopt forms, and the refusal names the session', () => {
+    const h = makeManager();
+    const wc = makeWebContents();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: wc,
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+
+    expect(h.mgr.adoptSession({ windowId: 1, ptyId: 'pty-1', webContents: wc })).toEqual({
+      ok: false,
+      reason: 'unknown-session',
+    });
+    expect(
+      h.mgr.adoptSession({ windowId: 1, ptyId: 'pty-1', webContents: wc, start: true }),
+    ).toEqual({ ok: false, reason: 'unknown-session' });
+    expect(h.warns).toContainEqual(
+      expect.objectContaining({
+        event: 'terminal-manager-adopt-killed-session',
+        windowId: 1,
+        ptyId: 'pty-1',
+      }),
+    );
+  });
+
   test('logs the reservations it reaps when the owning window closes', () => {
     const h = reserve();
     h.mgr.killForWindow(1);
@@ -1130,6 +1158,68 @@ describe('createTerminalManager — backpressure', () => {
     expect(h.forked[0]?.posted).not.toContainEqual({ type: 'resume', ptyId: 'pty-1' });
   });
 
+  test('a kill lifts the pause it can no longer drain, before it posts the kill', () => {
+    const h = makeManager({ highWaterBytes: 100, lowWaterBytes: 20 });
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
+    h.runTimers();
+    expect(h.forked[0]?.posted).toContainEqual({ type: 'pause', ptyId: 'pty-1' });
+
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+
+    const posted = h.forked[0]?.posted ?? [];
+    const resumedAt = posted.findIndex((m) => m.type === 'resume' && m.ptyId === 'pty-1');
+    const killedAt = posted.findIndex((m) => m.type === 'kill' && m.ptyId === 'pty-1');
+    expect(resumedAt).toBeGreaterThanOrEqual(0);
+    expect(killedAt).toBeGreaterThan(resumedAt);
+  });
+
+  test('post-kill output does not re-arm the pause the kill just lifted', () => {
+    const h = makeManager({ highWaterBytes: 100, lowWaterBytes: 20 });
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(150) });
+    h.runTimers();
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'y'.repeat(150) });
+    h.runTimers();
+
+    expect(h.dataPayloads()).toEqual(['x'.repeat(150), 'y'.repeat(150)]);
+    expect(
+      (h.forked[0]?.posted ?? []).filter((m) => m.type === 'pause' && m.ptyId === 'pty-1'),
+    ).toHaveLength(1);
+  });
+
+  test('a kill on an unpaused session posts no resume', () => {
+    const h = makeManager({ highWaterBytes: 100, lowWaterBytes: 20 });
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'x'.repeat(10) });
+    h.runTimers();
+
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+
+    expect(h.forked[0]?.posted).not.toContainEqual({ type: 'resume', ptyId: 'pty-1' });
+    expect(h.forked[0]?.posted).toContainEqual({ type: 'kill', ptyId: 'pty-1' });
+  });
+
   test('drain for a stale ptyId is ignored', () => {
     const h = makeManager({ highWaterBytes: 100, lowWaterBytes: 20 });
     createStartedTerminal(h.mgr, {
@@ -1502,6 +1592,26 @@ describe('createTerminalManager — telemetry', () => {
       h.mgr.adoptSession({ windowId: 1, ptyId: 'pty-2', webContents: wc, start: true }).ok,
     ).toBe(true);
     expect(h.concurrent).toEqual([{ count: 1 }, { count: 2 }]);
+  });
+
+  test('the concurrency count drops a killed shell at the kill, not at its exit', () => {
+    const h = makeTelemetryManager();
+    h.start(1);
+    h.start(1);
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+    h.start(1);
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+    h.start(1);
+    expect(h.concurrent.map((c) => c.count)).toEqual([1, 2, 2, 3]);
+  });
+
+  test('a host death books a shell the window had already closed as a clean exit', () => {
+    const h = makeTelemetryManager();
+    h.start(1);
+    h.start(1);
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+    h.forked[0]?.emitExit(1);
+    expect(h.shellExits).toEqual([{ crashed: false }, { crashed: true }]);
   });
 
   test('a spawn-error books no shell exit at all — the shell never ran', () => {

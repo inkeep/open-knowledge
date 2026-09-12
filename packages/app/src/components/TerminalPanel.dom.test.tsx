@@ -2148,6 +2148,9 @@ describe('TerminalPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Restart terminal' }));
       await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(3));
       expect(terminal.kill).toHaveBeenCalledExactlyOnceWith('pty-1');
+      expect(terminal.kill.mock.invocationCallOrder[0]).toBeLessThan(
+        terminal.create.mock.invocationCallOrder[2],
+      );
       expect(originalTerm?.dispose).toHaveBeenCalledTimes(1);
       expect(siblingTerm?.dispose).not.toHaveBeenCalled();
       expect(terminal.create).toHaveBeenLastCalledWith(

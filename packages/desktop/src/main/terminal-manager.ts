@@ -83,6 +83,7 @@ interface SessionState {
   staleToken: TimerToken | null;
   pendingBytes: number;
   paused: boolean;
+  killRequested: boolean;
   commandRan: boolean;
   customLabel: string | null;
   ordinal: number | null;
@@ -98,6 +99,10 @@ interface PtyWindowHandle {
   shutdownToken: TimerToken | null;
   shutdownPromise: Promise<void> | null;
   shutdownResolve: (() => void) | null;
+}
+
+function isLiveSession(session: SessionState): boolean {
+  return session.pendingCreate === null && !session.killRequested;
 }
 
 const DEFAULT_COALESCE_MS = 5;
@@ -227,7 +232,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
     session.outbound = '';
     pushData(handle, ptyId, chunk);
     session.pendingBytes += chunk.length;
-    if (!session.paused && session.pendingBytes > highWater) {
+    if (!session.paused && !session.killRequested && session.pendingBytes > highWater) {
       handle.utility.postMessage({ type: 'pause', ptyId });
       session.paused = true;
     }
@@ -408,7 +413,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         pushExit(handle, { ptyId, neverStarted: true, hostExited: true });
       } else {
         maybeRecordSession(session);
-        deps.recordShellExit?.({ crashed: true });
+        deps.recordShellExit?.({ crashed: !session.killRequested });
         pushExit(handle, { ptyId, exitCode: code ?? 1, signal: null, hostExited: true });
       }
     }
@@ -469,6 +474,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         flushToken: null,
         pendingBytes: 0,
         paused: false,
+        killRequested: false,
         commandRan: false,
         customLabel: null,
         ordinal: null,
@@ -526,6 +532,12 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         handle.sessions.delete(req.ptyId);
         return;
       }
+      session.killRequested = true;
+      if (session.paused) {
+        session.paused = false;
+        session.pendingBytes = 0;
+        handle.utility.postMessage({ type: 'resume', ptyId: req.ptyId });
+      }
       handle.utility.postMessage({ type: 'kill', ptyId: req.ptyId });
     },
 
@@ -544,7 +556,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       const handle = handles.get(windowId);
       if (!handle) return [];
       return [...handle.sessions.entries()]
-        .filter(([, session]) => session.pendingCreate === null)
+        .filter(([, session]) => isLiveSession(session))
         .sort((a, b) => a[1].order - b[1].order)
         .map(([ptyId, session]) => ({
           ptyId,
@@ -579,6 +591,14 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       const handle = handles.get(req.windowId);
       const session = handle?.sessions.get(req.ptyId);
       if (!handle || !session) return { ok: false, reason: 'unknown-session' };
+      if (session.killRequested) {
+        deps.logger?.warn({
+          event: 'terminal-manager-adopt-killed-session',
+          windowId: req.windowId,
+          ptyId: req.ptyId,
+        });
+        return { ok: false, reason: 'unknown-session' };
+      }
       if (session.pendingCreate !== null) {
         if (!req.start) {
           deps.logger?.warn({
@@ -602,9 +622,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         handle.webContents = req.webContents;
         session.pendingCreate = null;
         clearSessionTimers(session);
-        const liveCount = [...handle.sessions.values()].filter(
-          (live) => live.pendingCreate === null,
-        ).length;
+        const liveCount = [...handle.sessions.values()].filter(isLiveSession).length;
         // STOP: post and return in the same tick; TerminalPanel installs its readiness scanner after this reply, so an await below would let the shell's first output outrun it.
         try {
           handle.utility.postMessage(message);
