@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -355,11 +355,8 @@ describe('the worker witness', () => {
     const deadline = Date.now() + 10_000;
     while (written === null && Date.now() < deadline) {
       await delay(20);
-      try {
-        written = parseWatchdogRecord(readFileSync(path, 'utf8'));
-      } catch {
-        written = null;
-      }
+      const observed = watchdog.readPrevious();
+      written = observed.kind === 'record' ? observed.record : null;
       if (written !== null && written.mainTicksObserved < 1) written = null;
     }
 
@@ -369,8 +366,6 @@ describe('the worker witness', () => {
     expect(written?.mainTicksObserved).toBeGreaterThanOrEqual(1);
     expect(written?.blockedForMs).toBeLessThan(1_000);
     expect(Number.isFinite(Date.parse(written?.writtenAt ?? ''))).toBe(true);
-
-    expect(watchdog.readPrevious()).toEqual({ kind: 'record', record: written });
 
     handle.stop();
     handle.stop();

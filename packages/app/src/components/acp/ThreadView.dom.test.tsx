@@ -2925,9 +2925,10 @@ describe('ThreadView drop-notice for unattachable files', () => {
     model = makeModel({ items: [], turnActive: false });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     fireDrop([makeFile('foo.ts', 'text/typescript')]);
-    await vi.waitFor(() =>
-      expect(screen.getByTestId('agent-thread-drop-notice').textContent).toContain('Skipped'),
-    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toContain('Skipped');
     act(() => {
       vi.advanceTimersByTime(4100);
     });

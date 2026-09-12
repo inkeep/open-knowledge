@@ -320,7 +320,14 @@ describe('createServer() — derived-index branch lifecycle', () => {
     const coordinator = beginStartup.mock.instances[0] as DerivedDocumentIndex;
     beginStartup.mockRestore();
     const settle = vi.spyOn(DerivedDocumentIndex.prototype, 'settleBranchFromDisk');
-    const emit = vi.spyOn(server.cc1Broadcaster, 'emitBranchSwitched');
+    const batchStatesAtBroadcast: boolean[] = [];
+    const broadcast = server.cc1Broadcaster.emitBranchSwitched.bind(server.cc1Broadcaster);
+    const emit = vi
+      .spyOn(server.cc1Broadcaster, 'emitBranchSwitched')
+      .mockImplementation((branch) => {
+        batchStatesAtBroadcast.push(server.durabilityState.isBatchInProgress());
+        broadcast(branch);
+      });
 
     await git.checkout('feature');
     await vi.waitFor(() => expect(emit).toHaveBeenCalledWith('feature'), {
@@ -330,7 +337,7 @@ describe('createServer() — derived-index branch lifecycle', () => {
 
     expect(settle).toHaveBeenCalledTimes(1);
     expect(settle.mock.invocationCallOrder[0]).toBeLessThan(emit.mock.invocationCallOrder[0] ?? 0);
-    expect(server.durabilityState.isBatchInProgress()).toBe(false);
+    expect(batchStatesAtBroadcast).toEqual([false]);
     expect(await coordinator.getDocsForTagWithMatches('feature-branch')).toEqual([
       { docName: 'feature', matchingTags: ['feature-branch'] },
     ]);
@@ -353,7 +360,14 @@ describe('createServer() — derived-index branch lifecycle', () => {
       new Error('injected branch settlement failure'),
     );
     const abort = vi.spyOn(DerivedDocumentIndex.prototype, 'abortBranchSwitch');
-    const emit = vi.spyOn(server.cc1Broadcaster, 'emitBranchSwitched');
+    const batchStatesAtBroadcast: boolean[] = [];
+    const broadcast = server.cc1Broadcaster.emitBranchSwitched.bind(server.cc1Broadcaster);
+    const emit = vi
+      .spyOn(server.cc1Broadcaster, 'emitBranchSwitched')
+      .mockImplementation((branch) => {
+        batchStatesAtBroadcast.push(server.durabilityState.isBatchInProgress());
+        broadcast(branch);
+      });
 
     await git.checkout('feature');
     await vi.waitFor(() => expect(emit).toHaveBeenCalledWith('feature'), {
@@ -362,7 +376,7 @@ describe('createServer() — derived-index branch lifecycle', () => {
     });
 
     expect(abort).toHaveBeenCalled();
-    expect(server.durabilityState.isBatchInProgress()).toBe(false);
+    expect(batchStatesAtBroadcast).toEqual([false]);
     await expect(coordinator.getIndexedDocNames()).resolves.toBeInstanceOf(Array);
   }, 20_000);
 

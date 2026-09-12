@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createServer as createHttpServer } from 'node:http';
 import { createServer as createNetServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -52,6 +52,11 @@ import type { ProviderPool } from '../../src/editor/provider-pool';
 import { dispatchCC1Stateless, SYSTEM_DOC_NAME } from '../../src/lib/cc1';
 import { createSyncedReconnectGate, refreshServerInfo } from '../../src/lib/server-info-refresh';
 import { getFreePort } from '../free-port.test-helper.ts';
+import {
+  removeAllDuringTeardown,
+  removeAllStrictDuringTeardown,
+  runTeardownPhases,
+} from '../stress/_helpers/teardown-fs.ts';
 import { ControllableWebSocket } from './network-control';
 
 export const mdManager = new MarkdownManager({ extensions: sharedExtensions });
@@ -212,15 +217,16 @@ export async function createTestServer(options: CreateTestServerOptions = {}): P
       await srv.destroy();
       mount.wss.close();
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-      if (createdProjectDir) {
-        rmSync(projectDir, { recursive: true, force: true });
-      }
-      if (!options.keepContentDir) {
-        rmSync(contentDir, { recursive: true, force: true });
-      }
-      if (ownedHomeDir !== null) {
-        rmSync(ownedHomeDir, { recursive: true, force: true });
-      }
+      await runTeardownPhases(
+        () => {
+          if (createdProjectDir) removeAllStrictDuringTeardown(projectDir);
+        },
+        () =>
+          removeAllDuringTeardown(
+            ...(options.keepContentDir ? [] : [contentDir]),
+            ...(ownedHomeDir !== null ? [ownedHomeDir] : []),
+          ),
+      );
     },
   };
 }
@@ -1162,7 +1168,7 @@ export async function createRestartableServer(
       } catch {}
     }
     if (!options.keepContentDir) {
-      rmSync(contentDir, { recursive: true, force: true });
+      removeAllStrictDuringTeardown(contentDir);
     }
   };
 
@@ -1456,9 +1462,7 @@ export async function createSyncWiredTestServer(
   );
 
   const removeScratch = (): void => {
-    rmSync(originDir, { recursive: true, force: true });
-    rmSync(authorDir, { recursive: true, force: true });
-    rmSync(cloneParent, { recursive: true, force: true });
+    removeAllStrictDuringTeardown(originDir, authorDir, cloneParent);
   };
 
   const testServer = await createTestServer({
@@ -1471,8 +1475,7 @@ export async function createSyncWiredTestServer(
 
   const engine = testServer.instance.syncEngine;
   if (engine === null) {
-    await testServer.cleanup();
-    removeScratch();
+    await runTeardownPhases(() => testServer.cleanup(), removeScratch);
     throw new Error(
       'createSyncWiredTestServer: SyncEngine did not attach — expected an origin remote on the cloned contentDir',
     );
@@ -1492,8 +1495,7 @@ export async function createSyncWiredTestServer(
     ...testServer,
     sync: { originDir, pushToOrigin, engine },
     cleanup: async () => {
-      await testServer.cleanup();
-      removeScratch();
+      await runTeardownPhases(() => testServer.cleanup(), removeScratch);
     },
   };
 }

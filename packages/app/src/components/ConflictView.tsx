@@ -105,11 +105,11 @@ export function ConflictView({
   >(null);
   const handleUndoRef = useRef<(() => void) | null>(null);
   const handleRedoRef = useRef<(() => void) | null>(null);
-  const handleIdenticalChoiceRef = useRef<((selection: MergeConflictResolution) => void) | null>(
-    null,
-  );
   const handleApplyRef = useRef<(() => void | Promise<void>) | null>(null);
   const [controls, setControls] = useState<ConflictControl[]>([]);
+  const [identicalChoiceHandler, setIdenticalChoiceHandler] = useState<
+    ((selection: MergeConflictResolution) => void) | null
+  >(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [allResolved, setAllResolved] = useState(false);
@@ -273,7 +273,7 @@ export function ConflictView({
       rerenderAndRestore(snapshot);
     };
 
-    handleIdenticalChoiceRef.current = (selection) => {
+    const handleIdenticalChoice = (selection: MergeConflictResolution) => {
       if (parseMismatched) {
         console.warn(
           JSON.stringify({
@@ -290,6 +290,7 @@ export function ConflictView({
       syncState(snapshot);
       rerenderAndRestore(snapshot);
     };
+    setIdenticalChoiceHandler(() => handleIdenticalChoice);
 
     handleApplyRef.current = () => {
       const content = matchTrailingNewline(history.current.file.contents, ours, theirs);
@@ -328,7 +329,7 @@ export function ConflictView({
       handleActionRef.current = null;
       handleUndoRef.current = null;
       handleRedoRef.current = null;
-      handleIdenticalChoiceRef.current = null;
+      setIdenticalChoiceHandler(null);
       handleApplyRef.current = null;
       setControls([]);
       setCanUndo(false);
@@ -418,11 +419,9 @@ export function ConflictView({
           </Button>
         ) : null}
       </div>
-      {identicalStaleVersions && !parseMismatch && !allResolved && (
+      {identicalStaleVersions && identicalChoiceHandler && !parseMismatch && !allResolved && (
         <div className="shrink-0 px-3 py-2">
-          <ConflictActions
-            onSelect={(selection) => handleIdenticalChoiceRef.current?.(selection)}
-          />
+          <ConflictActions onSelect={identicalChoiceHandler} />
         </div>
       )}
       <section

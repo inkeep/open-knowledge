@@ -339,6 +339,58 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     },
   );
 
+  test.each(['current', 'incoming'] as const)(
+    'accepts identical stale-write %s when activated as soon as it becomes observable',
+    async (choice) => {
+      globalThis.fetch = (input: RequestInfo | URL) => {
+        const url = typeof input === 'string' ? input : input.toString();
+        return Promise.resolve(
+          Response.json(
+            url === '/api/sync/conflicts'
+              ? {
+                  conflicts: [
+                    {
+                      file: 'foo.md',
+                      detectedAt: '2026-05-20T00:00:00.000Z',
+                      conflictKind: 'stale-external-write',
+                    },
+                  ],
+                }
+              : {
+                  file: 'foo.md',
+                  base: 'Same content.\n',
+                  ours: 'Same content.\n',
+                  theirs: 'Same content.\n',
+                  kind: 'both-modified',
+                  conflictKind: 'stale-external-write',
+                  lifecycleStatus: 'conflict',
+                },
+          ),
+        );
+      };
+
+      let activated = false;
+      const observer = new MutationObserver(() => {
+        if (activated) return;
+        const choiceButton = screen.queryByRole('button', {
+          name: new RegExp(`^Accept ${choice}`),
+        });
+        if (!choiceButton) return;
+        activated = true;
+        fireEvent.click(choiceButton);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      try {
+        render(<DiffViewBoundary docName="foo" provider={makeProvider('Same content.\n')} />);
+        expect(await screen.findByRole('button', { name: 'Apply changes' })).toBeTruthy();
+        expect(activated).toBe(true);
+      } finally {
+        observer.disconnect();
+      }
+    },
+  );
+
   test('emits editor-area-swap-to-diffview on mount and -from on unmount', async () => {
     const provider = makeProvider('seed\n');
     const { unmount } = render(<DiffViewBoundary docName="logs/entry" provider={provider} />);

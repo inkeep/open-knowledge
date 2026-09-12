@@ -4056,9 +4056,9 @@ describe('agent failures reach the server log', () => {
     );
     writeFileSync(dieFile, 'now');
     await waitUntil(
-      () => manager.getInfo(info.threadId)?.status === 'exited',
+      () => lines.some((line) => line.msg.includes('agent exited unexpectedly')),
       15_000,
-      'the agent to exit',
+      'the agent process exit to be logged',
     );
 
     const exitLine = lines.find((l) => l.msg.includes('agent exited unexpectedly'));

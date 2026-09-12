@@ -216,6 +216,7 @@ vi.doMock('react-resizable-panels', () => ({
     current: {
       getLayout: () => groupLayout,
       setLayout: (layout: Record<string, number>) => {
+        groupLayout = layout;
         groupSetLayoutCalls.push(layout);
       },
     },
@@ -926,6 +927,12 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
   test('a view with no document pane pins the slot shut and ignores the toggle', async () => {
     setViewportWidth(1400);
     docCtx = ASSET_DOC_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'doc-panel': 0,
+      'terminal-column': 0,
+      'agents-column': pctOf(480),
+    };
     render(<EditorArea {...baseProps} agentsVisible />);
     groupSetLayoutCalls = [];
     groupLayout = {
