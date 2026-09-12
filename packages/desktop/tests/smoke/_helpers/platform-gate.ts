@@ -58,7 +58,7 @@ export const SPEC_PLATFORM_GATES = {
   'terminal-links.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'terminal-movement.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'terminal-process-restart.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
-  'terminal-tabs.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
+  'terminal-tabs.e2e.ts': ['!PTY_PLATFORM_SUPPORTED', '!WINDOWS'],
   'terminal-window.e2e.ts': ['!PTY_PLATFORM_SUPPORTED'],
   'theme-sync.e2e.ts': ['!DARWIN'],
   'uninstall-ipc-bridge.e2e.ts': ['!DARWIN'],

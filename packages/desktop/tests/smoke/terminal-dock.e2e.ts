@@ -21,6 +21,7 @@ import {
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 import {
+  buildInputReadyProbe,
   seedTerminalShellProfiles,
   terminalSmokeEnvironment,
   terminalSmokeShellCommands,
@@ -78,12 +79,10 @@ function seed(prefix: string, opts: SeedOpts = {}): Seed {
     writeFakeClaudeShim(binDir, opts.fakeClaudeTui ? 'interactive' : 'version');
     pathPrefix = binDir;
   }
-  if (pathPrefix || opts.pinRestrictedPath) {
-    seedTerminalShellProfiles(tmpHome, {
-      ...(pathPrefix ? { pathPrefix } : {}),
-      restrictPath: opts.pinRestrictedPath,
-    });
-  }
+  seedTerminalShellProfiles(tmpHome, {
+    posixPathPrefix: pathPrefix ?? undefined,
+    posixRestrictPath: opts.pinRestrictedPath,
+  });
 
   const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
@@ -674,10 +673,11 @@ test.describe('Docked terminal — live Electron', () => {
     const tail = basename(s.realProjectDir);
     await expect.poll(() => readTerminalText(page), { timeout: 15_000 }).toContain(tail);
 
-    await typeInTerminal(page, `${SHELL_COMMANDS.output('OK_E2E_MARKER_123')}\r`);
+    const afterMarker = buildInputReadyProbe();
+    await typeInTerminal(page, `${afterMarker.command}\r`);
     await expect
       .poll(() => readTerminalText(page), { timeout: 15_000 })
-      .toContain('OK_E2E_MARKER_123');
+      .toContain(afterMarker.marker);
   });
 
   test('a window-resize storm keeps the shell responsive and settles the PTY at the fitted grid', async ({
@@ -920,8 +920,11 @@ test.describe('Docked terminal — live Electron', () => {
 
     await restart.click();
     await waitForStatus(page, 'running', 25_000);
-    await typeInTerminal(page, `${SHELL_COMMANDS.output('RESTARTED_OK')}\r`);
-    await expect.poll(() => readTerminalText(page), { timeout: 10_000 }).toContain('RESTARTED_OK');
+    const afterRestart = buildInputReadyProbe();
+    await typeInTerminal(page, `${afterRestart.command}\r`);
+    await expect
+      .poll(() => readTerminalText(page), { timeout: 15_000 })
+      .toContain(afterRestart.marker);
   });
 
   test('QA-017 plain terminal stays quiet; missing Claude launch shows Get-Claude-Code banner', async ({

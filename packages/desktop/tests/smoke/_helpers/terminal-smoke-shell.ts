@@ -1,10 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 import { psQuoteArg } from '@inkeep/open-knowledge-core';
 import { getWindowsEnvValue, windowsPathKey } from '../../../src/shared/windows-env.ts';
 
 const POSIX_SYSTEM_PATH = '/usr/bin:/bin:/usr/sbin:/sbin';
+const WINDOWS_PSREADLINE_HISTORY_SEGMENTS = ['PSReadLine', 'ConsoleHost_history.txt'] as const;
+const WINDOWS_PROFILE_DIRECTORIES = ['PowerShell', 'WindowsPowerShell'] as const;
+const WINDOWS_PROFILE_FILE = 'Microsoft.PowerShell_profile.ps1';
+const PSREADLINE_PREDICTION_FLOOR = '2.1.0';
+const UTF8_BOM = '\ufeff';
+const WINDOWS_PROFILE_FAILURE_FILE = 'ok-shell-profile-error.log';
 
 function quotePosix(value: string): string {
   return `'${value.replaceAll("'", "'\\''")}'`;
@@ -132,8 +138,8 @@ export function terminalSmokeEnvironment(
 }
 
 interface TerminalShellProfileOptions {
-  pathPrefix?: string;
-  restrictPath?: boolean;
+  posixPathPrefix?: string;
+  posixRestrictPath?: boolean;
 }
 
 export function seedTerminalShellProfiles(
@@ -141,17 +147,115 @@ export function seedTerminalShellProfiles(
   options: TerminalShellProfileOptions,
   platform: NodeJS.Platform = process.platform,
 ): void {
-  if (platform === 'win32') return;
+  if (platform === 'win32') {
+    const profile = windowsShellProfile(tmpHome);
+    for (const directory of WINDOWS_PROFILE_DIRECTORIES) {
+      const profileDirectory = join(tmpHome, 'Documents', directory);
+      mkdirSync(profileDirectory, { recursive: true });
+      writeFileSync(join(profileDirectory, WINDOWS_PROFILE_FILE), profile);
+    }
+    return;
+  }
+  if (!options.posixPathPrefix && !options.posixRestrictPath) return;
   const path = terminalSmokeEnvironment(tmpHome, {
     env: { PATH: process.env.PATH },
-    pathPrefix: options.pathPrefix,
+    pathPrefix: options.posixPathPrefix,
     platform,
-    restrictPath: options.restrictPath,
+    restrictPath: options.posixRestrictPath,
   }).PATH;
   const escapedPath = path.replace(/["\\$`]/g, '\\$&');
   const profile = `export PATH="${escapedPath}"\n`;
   writeFileSync(join(tmpHome, '.zprofile'), profile);
   writeFileSync(join(tmpHome, '.zshrc'), profile);
+}
+
+export function windowsPSReadLineHistoryPath(tmpHome: string): string {
+  return win32.join(tmpHome, ...WINDOWS_PSREADLINE_HISTORY_SEGMENTS);
+}
+
+export function windowsShellProfileFailurePath(tmpHome: string): string {
+  return win32.join(tmpHome, WINDOWS_PROFILE_FAILURE_FILE);
+}
+
+/*
+ * UPSTREAM(PowerShell/PSReadLine#2189): the host supplies PSReadLine, so a bundled version older
+ * than a parameter rejects it with a statement-terminating error.
+ */
+function windowsShellProfile(tmpHome: string): string {
+  const history = psQuoteArg(windowsPSReadLineHistoryPath(tmpHome));
+  const failure = psQuoteArg(windowsShellProfileFailurePath(tmpHome));
+  return (
+    UTF8_BOM +
+    [
+      'try {',
+      '  Import-Module PSReadLine -ErrorAction SilentlyContinue',
+      '  $okPSReadLine = Get-Module PSReadLine',
+      '  if ($okPSReadLine) {',
+      `    Set-PSReadLineOption -HistorySavePath ${history}`,
+      `    if ($okPSReadLine.Version -ge [version]'${PSREADLINE_PREDICTION_FLOOR}') {`,
+      '      Set-PSReadLineOption -PredictionSource None',
+      '    }',
+      '  }',
+      `} catch { $_ | Out-String | Set-Content -LiteralPath ${failure} -Encoding utf8 -ErrorAction SilentlyContinue }`,
+      '',
+    ].join('\r\n')
+  );
+}
+
+export type WindowsShellProfileFailure =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'record'; readonly text: string }
+  | { readonly kind: 'unreadable'; readonly code: string };
+
+export function readWindowsShellProfileFailure(home: string): WindowsShellProfileFailure {
+  const path = windowsShellProfileFailurePath(home);
+  let text: string;
+  try {
+    text = readFileSync(path, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === 'ENOENT') return { kind: 'absent' };
+    return { kind: 'unreadable', code: code ?? String(error) };
+  }
+  const trimmed = text.trim();
+  return trimmed ? { kind: 'record', text: trimmed } : { kind: 'absent' };
+}
+
+export const WINDOWS_PSREADLINE_STATE_ABSENT = 'absent';
+export const WINDOWS_PSREADLINE_PREDICTION_UNSUPPORTED = 'unsupported';
+const WINDOWS_PSREADLINE_STATE_END = 'END';
+
+export type WindowsPSReadLineStateField = 'version' | 'prediction' | 'history';
+
+const WINDOWS_PSREADLINE_STATE_GROUPS = {
+  version: 1,
+  prediction: 2,
+  history: 3,
+} as const satisfies Record<WindowsPSReadLineStateField, number>;
+
+export function windowsPSReadLineStateField(
+  marker: string,
+  text: string,
+  field: WindowsPSReadLineStateField,
+): string | null {
+  const match = new RegExp(
+    `${marker}=([^|]*)\\|([^|]*)\\|([^|]*)\\|${WINDOWS_PSREADLINE_STATE_END}`,
+  ).exec(text);
+  if (!match) return null;
+  return match[WINDOWS_PSREADLINE_STATE_GROUPS[field]] ?? null;
+}
+
+export function windowsPSReadLineStateCommand(marker: string, tmpHome: string): string {
+  const home = psQuoteArg(tmpHome);
+  const absent = psQuoteArg(WINDOWS_PSREADLINE_STATE_ABSENT);
+  return [
+    '$okModule = Get-Module PSReadLine',
+    '$okOptions = if ($okModule) { Get-PSReadLineOption } else { $null }',
+    `$okVersion = if ($okModule) { [string]$okModule.Version } else { ${absent} }`,
+    `$okPrediction = if (-not $okOptions) { ${absent} } elseif ($okOptions.PSObject.Properties['PredictionSource']) { [string]$okOptions.PredictionSource } else { ${psQuoteArg(WINDOWS_PSREADLINE_PREDICTION_UNSUPPORTED)} }`,
+    `$okHistory = if ($okOptions) { [string]$okOptions.HistorySavePath.StartsWith(${home}, [System.StringComparison]::OrdinalIgnoreCase) } else { ${absent} }`,
+    `Write-Output (${psQuoteArg(marker)} + '=' + $okVersion + '|' + $okPrediction + '|' + $okHistory + '|' + ${psQuoteArg(WINDOWS_PSREADLINE_STATE_END)})`,
+  ].join('; ');
 }
 
 export type FakeClaudeMode = 'interactive' | 'version';
