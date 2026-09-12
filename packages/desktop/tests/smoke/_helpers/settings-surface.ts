@@ -357,12 +357,12 @@ export async function readMenuSnapshotSpellcheck(editor: Page): Promise<boolean 
   });
 }
 
-export interface EditorSelectionSnapshot {
+interface EditorSelectionSnapshot {
   readonly held: boolean;
   readonly text: string;
 }
 
-export async function readEditorSelectionSnapshot(editor: Page): Promise<EditorSelectionSnapshot> {
+async function readEditorSelectionSnapshot(editor: Page): Promise<EditorSelectionSnapshot> {
   return editorBody(editor).evaluate(async (element) => {
     const menu = window.okDesktop?.menu;
     if (!menu) throw new Error('the editor window exposes no okDesktop.menu bridge');
@@ -378,6 +378,19 @@ export async function readEditorSelectionSnapshot(editor: Page): Promise<EditorS
       text: insideEditor ? (selection?.toString() ?? '') : '',
     } satisfies EditorSelectionSnapshot;
   });
+}
+
+export async function waitForEditorSelection(
+  editor: Page,
+  expected: string,
+  timeoutMs = 15_000,
+): Promise<void> {
+  await expect
+    .poll(() => readEditorSelectionSnapshot(editor), {
+      timeout: timeoutMs,
+      message: `the editor never held a selection reading ${JSON.stringify(expected)}`,
+    })
+    .toEqual({ held: true, text: expected } satisfies EditorSelectionSnapshot);
 }
 
 export async function applicationMenuSpellcheck(

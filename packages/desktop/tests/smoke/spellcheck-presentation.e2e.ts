@@ -4,7 +4,6 @@ import { PLATFORM_SKIP_REASON, PLATFORM_SUPPORTED, SMOKE_ENABLED } from './_help
 import {
   addLanguageInSelector,
   closeSettingsDialog,
-  type EditorSelectionSnapshot,
   editorBody,
   findEditorWindow,
   launchOnSeededProfile,
@@ -12,11 +11,11 @@ import {
   openSettingsDialog,
   openSpellingSettings,
   pickNonDefaultSelection,
-  readEditorSelectionSnapshot,
   readSessionSpellingTruth,
   seedProjectProfile,
   setSpellcheckToggle,
   showUserPreferences,
+  waitForEditorSelection,
 } from './_helpers/settings-surface';
 import { expect, test } from './_helpers/smoke-test';
 
@@ -61,16 +60,6 @@ async function readStamps(editor: Page): Promise<SurfaceStamps> {
     };
     return { editable: read(element), host: read(window) };
   }, STAMP_KEY);
-}
-
-async function waitForEditorSelection(
-  editor: Page,
-  expected: string,
-  timeoutMs = 15_000,
-): Promise<void> {
-  await expect
-    .poll(() => readEditorSelectionSnapshot(editor), { timeout: timeoutMs })
-    .toEqual({ held: true, text: expected } satisfies EditorSelectionSnapshot);
 }
 
 async function selectMarkerBackwards(editor: Page, timeoutMs = 30_000): Promise<void> {
