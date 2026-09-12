@@ -16,11 +16,6 @@ packages/content/
 test-results/
 packages/desktop/test-results-packaged/
 packages/app/test-results/
-# Vendored Excalidraw fonts (~13 MB), re-copied from node_modules by
-# packages/app/scripts/copy-excalidraw-assets.mjs on every build and `predev`.
-# Generated, never authored — without this line a routine `pnpm run check`
-# leaves it untracked in the tree, one `git add -A` away from the repo.
-packages/app/public/excalidraw-assets/
 playwright-report/
 blob-report/
 .vscode/

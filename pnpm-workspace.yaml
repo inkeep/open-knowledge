@@ -4,10 +4,7 @@ packages:
 
 # Patch application failures fail the install CLOSED (never silently skipped) —
 # the markdown pipeline depends on the pinned/patched remark-prosemirror hunks.
-#
-# There is deliberately no `ignorePatchFailures` key: fail-closed is pnpm's
-# default, so pinning it only adds a warning line. If a future pnpm reintroduces
-# an opt-out, set it here explicitly.
+ignorePatchFailures: false
 
 # Supply-chain cooldown (admission-time): refuse npm versions published less
 # than 3 days ago, to dodge freshly-published malware. Unit = MINUTES

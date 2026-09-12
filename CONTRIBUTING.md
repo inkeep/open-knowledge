@@ -16,8 +16,6 @@ pnpm install
 pnpm run check        # lint, typecheck, and tests
 ```
 
-No `.env` is needed, but two system tools are: a **Rust toolchain** and **pkg-config**. `packages/native-config` is a Rust (napi) addon that the rest of the workspace depends on, so `pnpm run check` builds it and runs `cargo test` — without cargo, the command above fails before it reaches any TypeScript. CI provisions the same stable toolchain via `dtolnay/rust-toolchain`.
-
 Run the editor app (http://localhost:5173):
 
 ```bash
@@ -34,11 +32,9 @@ See `.env.example` for optional settings (OpenTelemetry, a custom dev port).
 
 ### Toolchain
 
-**Node.js.** `.node-version` pins the exact version CI and every release build run on (currently 24.18.0), and `engines` declares the floor (`>=24`). Use a version manager that reads the pin — `fnm install`, `mise install`, or `volta install` from the repo root all pick it up. Note what `engine-strict` does and does not do: it fails `pnpm install` fast on Node *older* than the floor, but a *newer* Node (25, 26) installs and tests without complaint. That is the drift to watch — you can green a change locally on a runtime nothing ships on. Match the pin.
+The repo pins **Node.js 24+** and **pnpm 10+** (via `.node-version`, the `packageManager` field, and `engines`). Enable pnpm with `corepack enable pnpm`, or install it standalone (`npm install -g pnpm@10`). With a Node version manager, use `fnm install`, `mise install`, or `volta install node@24`. pnpm enforces the engine range (`engine-strict`), so on older Node `pnpm install` fails fast — pin Node 24+ first.
 
-**pnpm.** The repo needs **pnpm 10+**, pinned exactly by the `packageManager` field. Install it however you like — `brew install pnpm`, `npm install -g pnpm@10`, or your package manager of choice. You do not need to match the pinned major yourself: pnpm self-manages, so a newer pnpm on your PATH transparently delegates to the pinned version inside this repo (`pnpm -v` will report the pin here and your own version elsewhere). `corepack enable pnpm` also works, but only on Node 24 and older — corepack is no longer part of the Node distribution.
-
-Patched dependencies (listed under `patchedDependencies` in `pnpm-workspace.yaml`, with the diffs in `patches/`) are authored with pnpm: run `pnpm patch <name>@<version>`, edit the printed temp directory, then `pnpm patch-commit <temp-dir>` to write the patch file and register it. A patch that fails to apply fails the install closed (`ERR_PNPM_PATCH_FAILED`) — it is never silently skipped.
+Patched dependencies (listed under `patchedDependencies` in `pnpm-workspace.yaml`, with the diffs in `patches/`) are authored with pnpm: run `pnpm patch <name>@<version>`, edit the printed temp directory, then `pnpm patch-commit <temp-dir>` to write the patch file and register it. A patch that fails to apply fails the install closed — it is never silently skipped.
 
 ## Common commands
 
