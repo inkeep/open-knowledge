@@ -272,6 +272,44 @@ test.describe('source undo after a mode flip (live app)', () => {
     expect(await readSource(page)).toBe(before);
   });
 
+  test('Cmd+Z with focus left on the mode toggle undoes each visual edit through the shared stack', async ({
+    page,
+    api,
+  }) => {
+    const docName = await seedParagraphs(api, 'toggle-focus');
+    await openSeeded(page, docName);
+    const edits: Array<[string, string]> = [
+      [ONE, ' first'],
+      [FILLER, ' second'],
+      [THREE, ' third'],
+    ];
+    for (const [paragraph, text] of edits) {
+      await caretAtEndOfParagraph(page, paragraph);
+      await page.keyboard.type(text, { delay: 30 });
+      await expect
+        .poll(() => readSource(page), { timeout: 10_000 })
+        .toContain(`${paragraph}${text}`);
+      await waitForSourceQuiescence(page);
+      await closeUndoStep(page);
+    }
+
+    await sourceToggle(page).click();
+    await expect(page.locator('.cm-content').first()).toBeVisible({ timeout: 10_000 });
+    await expect
+      .poll(() => page.evaluate(() => document.activeElement?.getAttribute('role') ?? null))
+      .toBe('radio');
+
+    const expected = [
+      `${ONE} first\n\n${FILLER} second\n\n${THREE}\n`,
+      `${ONE} first\n\n${FILLER}\n\n${THREE}\n`,
+      `${ONE}\n\n${FILLER}\n\n${THREE}\n`,
+    ];
+    for (const next of expected) {
+      await page.keyboard.press('ControlOrMeta+z');
+      await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe(next);
+    }
+  });
+
   test('guard: a casual peek at Visual editor with no edit preserves source undo history', async ({
     page,
     api,

@@ -380,6 +380,18 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
       apply: (tr, value) => (tr.docChanged ? { ...value, move: dropMove(tr) } : value),
     },
     appendTransaction: collapseLeftBehindSpaces,
+    props: {
+      handleDOMEvents: {
+        beforeinput(_view, event) {
+          const { inputType } = event as InputEvent;
+          if (inputType !== 'historyUndo' && inputType !== 'historyRedo') return false;
+          event.preventDefault();
+          if (inputType === 'historyUndo') options.undoManager.undo();
+          else options.undoManager.redo();
+          return true;
+        },
+      },
+    },
     view(view) {
       let projection = options.initial;
       let destroyed = false;

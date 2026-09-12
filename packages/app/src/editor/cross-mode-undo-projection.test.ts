@@ -169,6 +169,38 @@ describe('one undo stack across both surfaces', () => {
   });
 });
 
+function nativeHistoryEvent(inputType: 'historyUndo' | 'historyRedo'): Event {
+  const event = new Event('beforeinput', { bubbles: true, cancelable: true });
+  Object.defineProperty(event, 'inputType', { value: inputType });
+  return event;
+}
+
+describe("the browser's own undo and redo", () => {
+  it('reach the shared manager instead of editing the DOM', () => {
+    const rig = createCrossModeRig(DOC);
+    typeInWysiwyg(rig.wysiwyg, 1, ' one');
+    rig.breakFrame();
+    typeInWysiwyg(rig.wysiwyg, 0, ' two');
+    rig.breakFrame();
+
+    const undo = nativeHistoryEvent('historyUndo');
+    rig.wysiwyg.view.dom.dispatchEvent(undo);
+    expect(undo.defaultPrevented).toBe(true);
+    expect(rig.ytext.toString()).toBe('# Heading\n\nBody paragraph. one\n');
+
+    rig.wysiwyg.view.dom.dispatchEvent(nativeHistoryEvent('historyUndo'));
+    expect(rig.ytext.toString()).toBe(DOC);
+    expect(rig.undoManager.undoStack).toHaveLength(0);
+
+    const redo = nativeHistoryEvent('historyRedo');
+    rig.wysiwyg.view.dom.dispatchEvent(redo);
+    expect(redo.defaultPrevented).toBe(true);
+    expect(rig.ytext.toString()).toBe('# Heading\n\nBody paragraph. one\n');
+    expect(rig.undoManager.redoStack).toHaveLength(1);
+    rig.destroy();
+  });
+});
+
 describe('undo frames across surfaces', () => {
   it('merges a source and a WYSIWYG edit when no boundary closes the frame', () => {
     const rig = createCrossModeRig(DOC);
