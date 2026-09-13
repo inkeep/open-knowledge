@@ -809,6 +809,7 @@ type HeaderControlProbe = {
   occludedBy: string | null;
   occluderInTrailingRail: boolean;
   inTrailingRail: boolean;
+  inParticipantBar: boolean;
 };
 
 type HeaderProbe = {
@@ -913,6 +914,7 @@ async function probeHeader(page: Page, controlSelector: string): Promise<HeaderP
         occludedBy: reachable ? null : (nameOf(owner) ?? hit?.tagName.toLowerCase() ?? null),
         occluderInTrailingRail: !reachable && owner != null && trailingRail.contains(owner),
         inTrailingRail: trailingRail.contains(el),
+        inParticipantBar: el.closest('[data-slot="presence-bar"]') != null,
       };
     };
     const rendered = all
@@ -998,7 +1000,15 @@ function actionsMissingFrom(available: string[], required: string[]) {
   );
 }
 
-test.describe('phone-width header layout — controls must not occlude one another', () => {
+function trailingHeaderActionControls(probe: HeaderProbe): HeaderControlProbe[] {
+  return probe.controls.filter((control) => control.inTrailingRail && !control.inParticipantBar);
+}
+
+function trailingHeaderActionKeys(probe: HeaderProbe): string[] {
+  return trailingHeaderActionControls(probe).map((control) => control.key);
+}
+
+test.describe('below-threshold header layout — controls must not occlude one another', () => {
   test.use({ userAgent: CHROME_VANILLA, viewport: PHONE_STANDARD });
 
   test('MOBILE-HEADER-1: 393x852 — the file-navigator toggle stays hit-testable with the navigator open', async ({
@@ -1016,7 +1026,7 @@ test.describe('phone-width header layout — controls must not occlude one anoth
     expect(
       probe.toggle?.occluderInTrailingRail ?? false,
       `393x852 (header ${probe.headerWidth}px): the file-navigator toggle's own centre is owned ` +
-        `by trailing header action "${probe.toggle?.occludedBy ?? ''}"`,
+        `by "${probe.toggle?.occludedBy ?? ''}" from the trailing rail`,
     ).toBe(false);
     expect(
       probe.toggle?.directlyReachable ?? false,
@@ -1040,7 +1050,7 @@ test.describe('phone-width header layout — controls must not occlude one anoth
     await openFileNavigator(page);
 
     const roomy = await probeHeader(page, HEADER_CONTROL_SELECTOR);
-    const roomyTrailing = roomy.controls.filter((control) => control.inTrailingRail);
+    const roomyTrailing = trailingHeaderActionControls(roomy);
     expect(
       roomyTrailing.filter((control) => control.key.length === 0).map((control) => control.index),
       'baseline: an unnamed trailing control can never be matched back, so it would sit in ' +
@@ -1103,10 +1113,7 @@ test.describe('phone-width header layout — controls must not occlude one anoth
     await waitForShellLayoutSettled(page);
 
     const collapsed = await probeHeader(page, HEADER_CONTROL_SELECTOR);
-    const collapsedActions = collapsed.controls
-      .filter((control) => control.inTrailingRail)
-      .map((control) => control.key)
-      .sort();
+    const collapsedActions = trailingHeaderActionKeys(collapsed).sort();
     expect(
       collapsedActions.length,
       'baseline: the roomy header must expose trailing actions',
@@ -1119,10 +1126,7 @@ test.describe('phone-width header layout — controls must not occlude one anoth
 
     await openFileNavigator(page);
     const expanded = await probeHeader(page, HEADER_CONTROL_SELECTOR);
-    const expandedActions = expanded.controls
-      .filter((control) => control.inTrailingRail)
-      .map((control) => control.key)
-      .sort();
+    const expandedActions = trailingHeaderActionKeys(expanded).sort();
 
     expect(
       expandedActions,
@@ -1149,6 +1153,86 @@ test.describe('phone-width header layout — controls must not occlude one anoth
       `900x900 (header ${expanded.headerWidth}px): the tab strip has room for both header ` +
         `reservations here, so it must still be painted`,
     ).not.toBe('hidden');
+  });
+
+  test('MOBILE-HEADER-4: 900x900 — a participant badge in the trailing rail is not a trailing header action', async ({
+    page,
+    api,
+  }) => {
+    await seedDoc(api, 'mobile-header-participant');
+    await page.setViewportSize(ROOMY_BELOW_THRESHOLD);
+    await page.goto('/#/mobile-header-participant');
+    await waitForActiveProviderSynced(page);
+    await waitForShellLayoutSettled(page);
+
+    const agentName = 'Probe Agent';
+    const namesPlantedAgent = (control: HeaderControlProbe) => control.name.includes(agentName);
+    await expect
+      .poll(
+        async () => {
+          const reArmWriteError = await api
+            .writeAsAgent(
+              'mobile-header-participant',
+              '# mobile-header-participant\n\nwritten by a peer agent\n',
+              { agentId: 'mobile-header-probe', agentName, clientName: 'claude-code' },
+            )
+            .then(
+              () => null,
+              (error: unknown) => (error instanceof Error ? error.message : String(error)),
+            );
+          const probe = await probeHeader(page, HEADER_CONTROL_SELECTOR);
+          const headerActions = trailingHeaderActionControls(probe);
+          const headerActionIndexes = new Set(headerActions.map((control) => control.index));
+          const droppedFromTrailingRail = probe.controls.filter(
+            (control) => control.inTrailingRail && !headerActionIndexes.has(control.index),
+          );
+          return {
+            reArmWriteError,
+            headerNamesPlantedAgent: probe.controls.some(namesPlantedAgent),
+            badgeIsTrailingRailControl: probe.controls.some(
+              (control) =>
+                namesPlantedAgent(control) && control.inParticipantBar && control.inTrailingRail,
+            ),
+            badgeCountedAsHeaderAction: headerActions.some(namesPlantedAgent),
+            headerExposesItsOwnActions: headerActions.length > 0,
+            droppedTrailingControlKeysOutsideThePresenceBar: droppedFromTrailingRail
+              .filter((control) => !control.inParticipantBar)
+              .map((control) => control.key),
+          };
+        },
+        {
+          message:
+            `900x900: "${agentName}" must reach the header as a control inside the presence bar ` +
+            `and must not be counted among the header's own trailing actions, or a badge ` +
+            `arriving or going stale reads as actions collapsing behind an overflow affordance. ` +
+            `The presence bar must also be the only thing trailingHeaderActionControls drops ` +
+            `from the trailing rail, since MOBILE-HEADER-2 derives its reachability requirement ` +
+            `from what survives that filter. Each attempt re-arms the presence entry immediately ` +
+            `before probing, so a stale entry costs a retry rather than deciding the ` +
+            `outcome. A re-arm write whose rejection lands inside the poll's remaining budget ` +
+            `surfaces as reArmWriteError, because expect.poll aborts on a callback that throws ` +
+            `rather than retrying it; one that outlives the deadline ends the assertion as a ` +
+            `bare poll timeout with no compared value. When reArmWriteError is null, ` +
+            `headerNamesPlantedAgent reports whether HEADER_CONTROL_SELECTOR matched a control ` +
+            `inside <header> naming the agent, so a false badgeIsTrailingRailControl splits ` +
+            `two ways. True narrows it to the badge being in the header but outside the ` +
+            `presence bar or outside the trailing rail. False leaves the badge unobserved by ` +
+            `this probe, which covers an entry that aged out or never arrived, a presence bar ` +
+            `rendered outside <header> such as the collapsed state where it lives in a closed ` +
+            `portaled popover, and the inert div role=img badge shape the selector does not ` +
+            `match`,
+          timeout: 15_000,
+          intervals: [250, 500, 1_000],
+        },
+      )
+      .toEqual({
+        reArmWriteError: null,
+        headerNamesPlantedAgent: true,
+        badgeIsTrailingRailControl: true,
+        badgeCountedAsHeaderAction: false,
+        headerExposesItsOwnActions: true,
+        droppedTrailingControlKeysOutsideThePresenceBar: [],
+      });
   });
 });
 
