@@ -5,6 +5,7 @@ import {
   type TerminalPlacement,
 } from '@inkeep/open-knowledge-core';
 import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { isMacOS } from '@tiptap/core';
 import {
   lazy,
   Suspense,
@@ -18,6 +19,7 @@ import { getEditorForDoc } from '@/editor/active-editor';
 import { EmojiInsertPopover } from '@/editor/components/EmojiInsertPopover';
 import { TagDialog } from '@/editor/components/TagDialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import { documentUndoKeyAction } from '@/editor/document-undo-keys';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { captureModeSwitchAnchor, requestViewInSource } from '@/editor/mode-switch-landing';
 import { requestPreviewTabPromotion } from '@/editor/preview-tab-promotion';
@@ -415,6 +417,16 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     setPersistedMode(mode);
   }
 
+  const routeDocumentUndoKeyEvent = useEffectEvent((event: KeyboardEvent) => {
+    if (!activeProvider || isOverlayLayerOpen()) return;
+    const action = documentUndoKeyAction(event, isMacOS() ? 'mac' : 'windowsLinux');
+    if (action === null) return;
+    event.preventDefault();
+    const undoManager = sharedUndoManagerFor(activeProvider.document.getText('source'));
+    if (action === 'undo') undoManager.undo();
+    else undoManager.redo();
+  });
+
   const toggleEditorModeEvent = useEffectEvent(() => {
     handleModeChange(editorMode === 'source' ? 'wysiwyg' : 'source');
   });
@@ -448,7 +460,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         if (isOverlayLayerOpen()) return;
         event.preventDefault();
         requestViewInSourceEvent();
+        return;
       }
+      routeDocumentUndoKeyEvent(event);
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });

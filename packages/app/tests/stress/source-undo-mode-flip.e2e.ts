@@ -272,7 +272,7 @@ test.describe('source undo after a mode flip (live app)', () => {
     expect(await readSource(page)).toBe(before);
   });
 
-  test('Cmd+Z with focus left on the mode toggle undoes each visual edit through the shared stack', async ({
+  test('undo and redo with focus left on the mode toggle walk the shared stack one edit at a time', async ({
     page,
     api,
   }) => {
@@ -306,6 +306,16 @@ test.describe('source undo after a mode flip (live app)', () => {
     ];
     for (const next of expected) {
       await page.keyboard.press('ControlOrMeta+z');
+      await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe(next);
+    }
+
+    const redone = [
+      `${ONE} first\n\n${FILLER}\n\n${THREE}\n`,
+      `${ONE} first\n\n${FILLER} second\n\n${THREE}\n`,
+      `${ONE} first\n\n${FILLER} second\n\n${THREE} third\n`,
+    ];
+    for (const next of redone) {
+      await page.keyboard.press('ControlOrMeta+Shift+z');
       await expect.poll(() => readSource(page), { timeout: 10_000 }).toBe(next);
     }
   });
