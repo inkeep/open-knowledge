@@ -371,6 +371,10 @@
       "dependsOn": ["^build"],
       "cache": false
     },
+    "@inkeep/open-knowledge-app#test:visual": {
+      "dependsOn": ["^build", "build"],
+      "cache": false
+    },
     "test:perf": {
       "dependsOn": [],
       "cache": true,
@@ -388,6 +392,10 @@
     },
     "test:a11y": {
       "dependsOn": ["^build"],
+      "cache": false
+    },
+    "@inkeep/open-knowledge-app#test:a11y": {
+      "dependsOn": ["^build", "build"],
       "cache": false
     },
     "test:perf:bench": {

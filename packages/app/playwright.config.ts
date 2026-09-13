@@ -74,13 +74,16 @@ export const EXPECT_TIMEOUT_MS = isCI ? 15_000 : 5_000;
 export default defineConfig({
   testDir: './tests/stress',
   testMatch: /.*\.e2e\.ts$/,
-  // Build the per-run Vite optimizer seed cache once, before any worker
-  // boots. Every fixture-spawned dev server copies it (see
-  // tests/stress/_helpers/server-process.ts `VITE_E2E_SEED_DIR`) so no
-  // server pays a cold dependency scan+optimize — the cold-optimizer
-  // mid-test reload storms were the suite's dominant cross-cutting flake
-  // class. Fail-open: a failed warm build logs and falls back to cold boots.
-  globalSetup: './tests/stress/_helpers/global-warm-cache.ts',
+  globalSetup: [
+    './tests/stress/_helpers/i18n-catalog-freshness.ts',
+    // Build the per-run Vite optimizer seed cache once, before any worker
+    // boots. Every fixture-spawned dev server copies it (see
+    // tests/stress/_helpers/server-process.ts `VITE_E2E_SEED_DIR`) so no
+    // server pays a cold dependency scan+optimize — the cold-optimizer
+    // mid-test reload storms were the suite's dominant cross-cutting flake
+    // class. Fail-open: a failed warm build logs and falls back to cold boots.
+    './tests/stress/_helpers/global-warm-cache.ts',
+  ],
   timeout: 120_000,
   // Web-first assertions poll until this budget, not Playwright's 5s default.
   // Under 4-worker CI load the suite's empirical convergence budget for
