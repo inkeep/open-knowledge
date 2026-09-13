@@ -16,6 +16,9 @@ export interface StoreFailure {
   message: string;
 }
 
+export const OK_DOC_REMOVED = 'OK_DOC_REMOVED';
+export const OK_PATH_UNRESOLVABLE = 'OK_PATH_UNRESOLVABLE';
+
 const IN_FLIGHT_FLUSH_TTL_MS = 60_000;
 
 export const DISPLACED_VERSION_TTL_MS = 30 * 60_000;

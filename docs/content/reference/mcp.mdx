@@ -79,6 +79,10 @@ Git-index resolution stages the file and creates a merge commit after the final 
 
 A write that detects a stale file during its final disk flush returns the distinct `urn:ok:error:stale-external-write` (409): the edit reached collaborative state and the recovery snapshot, but the disk write was skipped. Resolve and re-read before retrying to avoid duplicating an already-applied append.
 
+A write to a document whose file has been deleted returns `urn:ok:error:doc-removed` (409): the edit reached collaborative state, but the disk write was refused rather than recreating the removed file. This is not retryable — the document is gone. Re-create it with `write` if you still want the content.
+
+A write whose document path cannot be resolved inside the content directory returns `urn:ok:error:path-escape` (400): the edit reached collaborative state, but the disk write was refused. This covers a symlink cycle at the document's own path and a link resolving outside the content directory. It is not retryable — repair the path on disk before writing this content again.
+
 To detect conflict state proactively without waiting for a 409, call `conflicts({ kind: "list" })`; each entry is `{ file, detectedAt, conflictKind, … }`. `conflicts({ kind: "content" })` adds the doc's `lifecycleStatus` alongside its versions.
 
 ## Preview links

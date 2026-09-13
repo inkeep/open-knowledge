@@ -2496,6 +2496,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           if (loadedBeforeIndex) freezeAsRenamed(loadedBeforeIndex);
 
           deleteReconciledBase(oldDocName);
+          persistence.forgetObservedFile(oldDocName);
           setReconciledBase(newDocName, content);
 
           log.info(

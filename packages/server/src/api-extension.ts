@@ -222,7 +222,12 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
-import type { DocumentDurabilityState, StoreFailure } from './document-durability-state.ts';
+import {
+  type DocumentDurabilityState,
+  OK_DOC_REMOVED,
+  OK_PATH_UNRESOLVABLE,
+  type StoreFailure,
+} from './document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
@@ -1739,11 +1744,39 @@ export function createApiExtension(
     return null;
   }
 
+  function removedDocProblem(failure: StoreFailure) {
+    return {
+      type: 'urn:ok:error:doc-removed' as const,
+      title:
+        'Edit applied in memory; disk write refused because the document is no longer on disk.',
+      detail: `${failure.message}. Retrying will not help: re-create the document before writing this content again.`,
+    } satisfies BatchEntryError;
+  }
+
+  function pathFaultProblem(failure: StoreFailure) {
+    return {
+      type: 'urn:ok:error:path-escape' as const,
+      title:
+        'Edit applied in memory; disk write refused because the document path could not be resolved.',
+      detail: `${failure.message}. Retrying will not help: the path has to be repaired on disk before this content can be written.`,
+    } satisfies BatchEntryError;
+  }
+
   function respondPersistenceFailure(
     res: ServerResponse,
     failure: StoreFailure,
     handler: string,
   ): void {
+    if (failure.code === OK_DOC_REMOVED) {
+      const { type, title, detail } = removedDocProblem(failure);
+      errorResponse(res, 409, type, title, { handler, detail });
+      return;
+    }
+    if (failure.code === OK_PATH_UNRESOLVABLE) {
+      const { type, title, detail } = pathFaultProblem(failure);
+      errorResponse(res, 400, type, title, { handler, detail });
+      return;
+    }
     const reason = classifyUploadErrno({ code: failure.code } as NodeJS.ErrnoException);
     errorResponse(
       res,
@@ -3626,14 +3659,20 @@ export function createApiExtension(
             if (flushErrors.has(p.docName)) continue;
             const flushOutcome = await flushDiskAndDetectOutcome(p.docName);
             if (flushOutcome?.kind === 'failure') {
-              const reason = classifyUploadErrno({
-                code: flushOutcome.failure.code,
-              } as NodeJS.ErrnoException);
-              flushErrors.set(p.docName, {
-                type: reason,
-                title: 'Write applied in memory but failed to persist to disk.',
-                detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
-              });
+              if (flushOutcome.failure.code === OK_DOC_REMOVED) {
+                flushErrors.set(p.docName, removedDocProblem(flushOutcome.failure));
+              } else if (flushOutcome.failure.code === OK_PATH_UNRESOLVABLE) {
+                flushErrors.set(p.docName, pathFaultProblem(flushOutcome.failure));
+              } else {
+                const reason = classifyUploadErrno({
+                  code: flushOutcome.failure.code,
+                } as NodeJS.ErrnoException);
+                flushErrors.set(p.docName, {
+                  type: reason,
+                  title: 'Write applied in memory but failed to persist to disk.',
+                  detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
+                });
+              }
             } else if (flushOutcome?.kind === 'divergence') {
               flushErrors.set(p.docName, {
                 type: 'urn:ok:error:disk-divergence',
@@ -5366,6 +5405,8 @@ export function createApiExtension(
     shippedBundleSkillMd,
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
+    respondPersistenceFailure,
+    respondDiskDivergence,
     skillInstallOps,
     skillPlacementOps,
     signalChannel,

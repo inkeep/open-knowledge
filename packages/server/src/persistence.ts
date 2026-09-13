@@ -54,7 +54,12 @@ import {
 } from './contributor-tracker.ts';
 import type { DerivedDocumentIndexPersistencePort } from './derived-document-index.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
-import { DocumentDurabilityState, type StoreFailure } from './document-durability-state.ts';
+import {
+  DocumentDurabilityState,
+  OK_DOC_REMOVED,
+  OK_PATH_UNRESOLVABLE,
+  type StoreFailure,
+} from './document-durability-state.ts';
 import { refuseStaleExternalWrite } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
 import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
@@ -302,6 +307,34 @@ function connectionCount(document: Y.Doc): number {
   }
 }
 
+const PATH_CANNOT_EXIST_CODES = new Set(['ENOENT', 'ENOTDIR']);
+
+type DocumentFileProbe = { readonly onDisk: boolean } | { readonly error: unknown };
+
+function classifyProbeError(
+  err: unknown,
+): { readonly onDisk: false } | { readonly error: unknown } {
+  const code = errnoCode(err);
+  if (code !== undefined && PATH_CANNOT_EXIST_CODES.has(code)) return { onDisk: false };
+  return { error: err };
+}
+
+function probeDocumentFileOnDisk(path: string): DocumentFileProbe {
+  try {
+    const entry = lstatSync(path, { throwIfNoEntry: false });
+    if (entry === undefined) return { onDisk: false };
+    if (!entry.isSymbolicLink()) return { onDisk: true };
+  } catch (err) {
+    return classifyProbeError(err);
+  }
+  try {
+    realpathSync(path);
+    return { onDisk: true };
+  } catch (err) {
+    return classifyProbeError(err);
+  }
+}
+
 function toStoreFailure(err: unknown): StoreFailure {
   let code: string | undefined;
   try {
@@ -329,6 +362,7 @@ export interface PersistenceHandle {
   waitForPendingCommits: () => Promise<void>;
   getQueueDepths: () => PersistenceQueueDepths;
   forceStore: (document: Y.Doc, documentName: string) => Promise<void>;
+  forgetObservedFile: (docName: string) => void;
   readonly configPersistenceCtx: ConfigPersistenceCtx;
   readonly managedArtifactCtx: ManagedArtifactCtx;
 }
@@ -384,6 +418,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const tripwireResetFailedDocs = new Set<string>();
   const docsWithSettledWrite = new Set<string>();
+  const docsWithFileObservedOnDisk = new Set<string>();
   const applyDiskContent = options?.applyDiskContentToDoc ?? applyDiskContentToDoc;
   let pendingDeferredStoreFlushMode: 'within-branch' | 'discard-stale' | null = null;
 
@@ -1106,6 +1141,82 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     });
   }
 
+  const abandonmentsRecorded = new WeakSet<object>();
+
+  function recordPathFault(
+    documentName: string,
+    err: unknown,
+    callerAwaitingFlush: boolean,
+    containmentEscape = false,
+  ): void {
+    persistenceDeferCounts.delete(documentName);
+    if (typeof err === 'object' && err !== null) abandonmentsRecorded.add(err);
+    if (!callerAwaitingFlush) return;
+    const errno = errnoCode(err);
+    const pathIsUnrepairable = containmentEscape || errno === 'ELOOP';
+    durabilityState.recordStoreFailure(
+      documentName,
+      pathIsUnrepairable
+        ? {
+            code: OK_PATH_UNRESOLVABLE,
+            message: `the path for ${documentName} could not be resolved inside the content directory${
+              errno === undefined ? '' : ` (${errno})`
+            }`,
+          }
+        : toStoreFailure(err),
+    );
+  }
+
+  function refuseRemovedDocPublish(
+    documentName: string,
+    base: string | undefined,
+    candidate: string,
+    callerAwaitingFlush: boolean,
+  ): void {
+    incrementPersistenceStoreRemovedDoc();
+    console.warn(
+      JSON.stringify({
+        event: 'persistence-store-removed-doc',
+        'doc.name': documentName,
+        reason: options?.isRecentlyRemoved?.(documentName) ? 'recently-removed' : 'file-absent',
+        baseBytes: base?.length ?? null,
+        candidateBytes: candidate.length,
+      }),
+    );
+    if (callerAwaitingFlush) {
+      durabilityState.recordStoreFailure(documentName, {
+        code: OK_DOC_REMOVED,
+        message: `${documentName} is no longer on disk, so the store was refused rather than recreating the removed file`,
+      });
+    }
+    persistenceDeferCounts.delete(documentName);
+  }
+
+  function documentHadFileOnDisk(documentName: string, base: string | undefined): boolean {
+    return base !== undefined || docsWithFileObservedOnDisk.has(documentName);
+  }
+
+  function resolveStorePathPresence(
+    documentName: string,
+    path: string,
+    base: string | undefined,
+    candidate: string,
+    callerAwaitingFlush: boolean,
+  ): 'on-disk' | 'refused' {
+    const probe = probeDocumentFileOnDisk(path);
+    if ('error' in probe) {
+      recordPathFault(documentName, probe.error, callerAwaitingFlush);
+      log.error(
+        { err: probe.error, documentName, path },
+        `[persistence] Could not determine whether ${path} still exists; store abandoned`,
+      );
+      throw probe.error;
+    }
+    if (probe.onDisk) return 'on-disk';
+    refuseRemovedDocPublish(documentName, base, candidate, callerAwaitingFlush);
+    return 'refused';
+  }
+
   async function storeDocumentNow({
     document,
     documentName,
@@ -1391,6 +1502,18 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         durabilityState.beginInFlightFlush(documentName, inFlightFlushValue);
 
         const requestedPath = safeContentPath(documentName, contentDir);
+        if (
+          documentHadFileOnDisk(documentName, currentBase) &&
+          resolveStorePathPresence(
+            documentName,
+            requestedPath,
+            currentBase,
+            markdown,
+            agentTriggeredStore,
+          ) === 'refused'
+        ) {
+          return;
+        }
         await tracedMkdir(dirname(requestedPath), { recursive: true });
 
         let canonicalPath: string;
@@ -1418,12 +1541,18 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             }
             canonicalPath = requestedPath;
           } else if (code === 'ELOOP') {
+            recordPathFault(documentName, e, agentTriggeredStore);
             log.error(
-              { path: requestedPath, err: e },
+              { docName: documentName, path: requestedPath, err: e },
               `[persistence] Symlink cycle at ${requestedPath}`,
             );
             throw new Error(`Symlink cycle detected at ${requestedPath}`);
           } else {
+            recordPathFault(documentName, e, agentTriggeredStore);
+            log.error(
+              { docName: documentName, path: requestedPath, err: e },
+              `[persistence] Could not canonicalize ${requestedPath}; store abandoned`,
+            );
             throw e;
           }
         }
@@ -1439,7 +1568,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             },
             `[persistence] ${msg}`,
           );
-          throw new Error(msg);
+          const escapeErr = new Error(msg);
+          recordPathFault(documentName, escapeErr, agentTriggeredStore, true);
+          throw escapeErr;
         }
 
         if (
@@ -1531,14 +1662,17 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           }
         }
 
-        if (options?.isRecentlyRemoved?.(documentName)) {
-          incrementPersistenceStoreRemovedDoc();
-          console.warn(
-            JSON.stringify({
-              event: 'persistence-store-removed-doc',
-              'doc.name': documentName,
-            }),
-          );
+        if (
+          documentHadFileOnDisk(documentName, currentBase) &&
+          resolveStorePathPresence(
+            documentName,
+            canonicalPath,
+            currentBase,
+            markdown,
+            agentTriggeredStore,
+          ) === 'refused'
+        ) {
+          return;
         }
 
         const tmpPath = `${canonicalPath}.tmp.${crypto.randomUUID()}`;
@@ -1551,6 +1685,28 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             throw faultErr;
           }
           await tracedWriteFile(tmpPath, markdown, 'utf-8');
+          if (
+            documentHadFileOnDisk(documentName, currentBase) &&
+            resolveStorePathPresence(
+              documentName,
+              canonicalPath,
+              currentBase,
+              markdown,
+              agentTriggeredStore,
+            ) === 'refused'
+          ) {
+            try {
+              tracedUnlinkSync(tmpPath);
+            } catch (cleanupErr) {
+              if (errnoCode(cleanupErr) !== 'ENOENT') {
+                log.warn(
+                  { err: cleanupErr, docName: documentName, path: tmpPath },
+                  '[persistence] could not remove the temp file after refusing the publish',
+                );
+              }
+            }
+            return;
+          }
           await tracedRename(tmpPath, canonicalPath);
           registerWrite(canonicalPath, contentHash(markdown));
           durabilityState.clearStoreFailure(documentName);
@@ -1568,7 +1724,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             tracedUnlinkSync(tmpPath);
           } catch {}
           persistenceDeferCounts.delete(documentName);
-          durabilityState.recordStoreFailure(documentName, toStoreFailure(e));
+          if (!(typeof e === 'object' && e !== null && abandonmentsRecorded.has(e))) {
+            durabilityState.recordStoreFailure(documentName, toStoreFailure(e));
+          }
           log.error({ err: e, documentName }, `[persistence] Failed to save ${documentName}`);
           throw e;
         }
@@ -1585,6 +1743,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             : undefined,
         );
         docsWithSettledWrite.add(documentName);
+        docsWithFileObservedOnDisk.add(documentName);
         tripwireResetFailedDocs.delete(documentName);
         persistenceDeferCounts.delete(documentName);
 
@@ -1710,6 +1869,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   const extension: Extension = {
     async onLoadDocument({ document, documentName, context: _context }) {
       docsWithSettledWrite.delete(documentName);
+      docsWithFileObservedOnDisk.delete(documentName);
       if (isSystemDoc(documentName)) return;
       if (isConfigDoc(documentName)) {
         loadConfigDoc(document, documentName, configPersistenceCtx);
@@ -1739,6 +1899,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           );
           const filePath = safeContentPath(documentName, contentDir);
           if (!existsSync(filePath)) return;
+          docsWithFileObservedOnDisk.add(documentName);
 
           let canonical = filePath;
           try {
@@ -1958,6 +2119,10 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     return storeDocumentNow({ document, documentName, lastTransactionOrigin: null });
   }
 
+  function forgetObservedFile(docName: string): void {
+    docsWithFileObservedOnDisk.delete(docName);
+  }
+
   return {
     extension,
     durabilityState,
@@ -1967,6 +2132,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     waitForPendingCommits,
     getQueueDepths,
     forceStore,
+    forgetObservedFile,
     configPersistenceCtx,
     managedArtifactCtx,
   };
