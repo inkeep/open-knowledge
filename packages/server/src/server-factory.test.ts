@@ -7,6 +7,7 @@ import {
   renameSync,
   rmSync,
   statSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -863,6 +864,29 @@ describe('createServer() degraded signal', () => {
     expect(srv.degraded.filter((s) => s === 'shadow-repo')).toHaveLength(1);
 
     await srv.destroy();
+  });
+
+  test('shadow exclude write refusal — degraded includes "shadow-excludes"', async () => {
+    mkdirSync(resolve(testProjectDir, '.git', 'ok', 'info'), { recursive: true });
+    symlinkSync(
+      resolve(testProjectDir, 'planted-exclude-target'),
+      resolve(testProjectDir, '.git', 'ok', 'info', 'exclude'),
+    );
+
+    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
+    const srv = createServer({
+      contentDir,
+      projectDir: testProjectDir,
+      quiet: true,
+    });
+
+    try {
+      await srv.ready;
+      expect(srv.degraded).toContain('shadow-excludes');
+      expect(srv.degraded.filter((s) => s === 'shadow-excludes')).toHaveLength(1);
+    } finally {
+      await srv.destroy();
+    }
   });
 
   test.each([

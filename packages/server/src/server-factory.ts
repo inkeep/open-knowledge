@@ -258,6 +258,7 @@ import {
   configureShadowGc,
   destroyShadowRepo,
   initShadowRepo,
+  isShadowExcludesDegraded,
   OK_GENERATOR_WRITER,
   type ParkableDoc,
   parkBranch,
@@ -3063,6 +3064,9 @@ export function createServer(options: ServerOptions): ServerInstance {
           { gitDir: shadowRef.current.gitDir },
           `[server] history repo initialized at ${shadowRef.current.gitDir}`,
         );
+        if (isShadowExcludesDegraded(shadowRef.current) && !degraded.includes('shadow-excludes')) {
+          degraded.push('shadow-excludes');
+        }
       } catch (e) {
         log.error({ err: e }, '[server] history repo init failed');
         degraded.push('shadow-repo');
@@ -3097,6 +3101,12 @@ export function createServer(options: ServerOptions): ServerInstance {
           log.warn({}, '[server] history repo appears corrupted — reinitializing');
           try {
             shadowRef.current = await initShadowRepo(projectDir, { deferGcConfig: true });
+            if (
+              isShadowExcludesDegraded(shadowRef.current) &&
+              !degraded.includes('shadow-excludes')
+            ) {
+              degraded.push('shadow-excludes');
+            }
           } catch (e2) {
             log.error({ err: e2 }, '[server] history repo reinit failed');
             shadowRef.current = undefined;

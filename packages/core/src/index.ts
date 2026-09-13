@@ -497,10 +497,17 @@ export {
 } from './constants/native-menu-labels.ts';
 export {
   LOCAL_DIR,
+  OK_ACTIVE_MACHINE_LOCAL_ROOT_DIRS,
   OK_DIR,
+  OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_FILES,
   OK_PROJECT_MARKER,
+  type OkMachineLocalRootDir,
+  type OkMachineLocalRootFile,
   posixOkManagedBinDir,
   SAVED_THEMES_DIRNAME,
+  WORKTREES_DIRNAME,
 } from './constants/ok-dir.ts';
 export {
   PREVIEW_EMBED_STARTERS,

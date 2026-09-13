@@ -1,6 +1,6 @@
-import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   tracedMkdirSync,
   tracedRenameSync,
@@ -622,7 +622,7 @@ export class DocumentDurabilityState {
     }
     const serialized = parts.join('');
     tracedMkdirSync(dirname(this.persistencePath), { recursive: true });
-    const temporaryPath = `${this.persistencePath}.tmp.${randomUUID()}`;
+    const temporaryPath = atomicTempPath(this.persistencePath);
     try {
       tracedWriteFileSync(temporaryPath, serialized, {
         encoding: 'utf-8',

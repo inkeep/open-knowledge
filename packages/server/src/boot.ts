@@ -10,6 +10,8 @@ import {
   isLoopbackOnlyBind,
   LOCAL_DIR,
   OK_DIR,
+  OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_FILES,
   requiresExternalConsent,
   resolveServerRuntimeConfig,
   type ServerRuntimeConfig,
@@ -70,18 +72,6 @@ import {
   teardownToleranceTelemetryWriter,
 } from './tolerance-telemetry-writer.ts';
 
-const LEGACY_RUNTIME_FILENAMES = [
-  'server.lock',
-  'ui.lock',
-  'state.json',
-  'principal.json',
-  'sync-state.json',
-  'conflicts.json',
-  'last-spawn-error.log',
-] as const;
-
-const LEGACY_RUNTIME_DIRNAMES = ['cache', 'tmp'] as const;
-
 export function findLegacyRuntimeFiles(okDir: string): string[] {
   const localDir = resolve(okDir, LOCAL_DIR);
   const localDirEmpty = (() => {
@@ -95,10 +85,10 @@ export function findLegacyRuntimeFiles(okDir: string): string[] {
   if (!localDirEmpty) return [];
 
   const found: string[] = [];
-  for (const name of LEGACY_RUNTIME_FILENAMES) {
+  for (const name of OK_MACHINE_LOCAL_ROOT_FILES) {
     if (existsSync(resolve(okDir, name))) found.push(name);
   }
-  for (const name of LEGACY_RUNTIME_DIRNAMES) {
+  for (const name of OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS) {
     const candidate = resolve(okDir, name);
     try {
       if (existsSync(candidate) && statSync(candidate).isDirectory()) {

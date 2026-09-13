@@ -1,4 +1,5 @@
 import { isAbsolute, relative } from 'node:path';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { tracedRenameSync, tracedUnlinkSync, tracedWriteFileSync } from '../fs-traced.ts';
 
 export function isInside(path: string, root: string): boolean {
@@ -7,7 +8,7 @@ export function isInside(path: string, root: string): boolean {
 }
 
 export function writeFileAtomic(file: string, content: string): void {
-  const tmp = `${file}.tmp.${process.pid}.${Date.now()}`;
+  const tmp = atomicTempPath(file);
   try {
     tracedWriteFileSync(tmp, content, 'utf-8');
     tracedRenameSync(tmp, file);

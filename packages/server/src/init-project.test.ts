@@ -11,7 +11,11 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { OK_DIR } from '@inkeep/open-knowledge-core';
+import {
+  OK_DIR,
+  OK_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_FILES,
+} from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildConfigYmlContent,
@@ -130,7 +134,7 @@ describe('initContent', () => {
 
     const after = readFileSync(join(okDir, '.gitignore'), 'utf-8');
     expect(after).toBe(
-      `cache/\nserver.lock\nui.lock\nsync-state.json\nlocal/\nworktrees/\nprincipal.json\nstate.json\nlast-spawn-error.log\n`,
+      `cache/\nserver.lock\nui.lock\nsync-state.json\nlocal/\nworktrees/\ntmp/\nprincipal.json\nstate.json\nconflicts.json\nlast-spawn-error.log\n`,
     );
     expect(result.updated).toContain('.gitignore');
     expect(result.created).not.toContain('.gitignore');
@@ -200,6 +204,21 @@ describe('initContent', () => {
       expect(existsSync(join(decoy, '.gitignore'))).toBe(false);
       expect(existsSync(join(decoy, 'config.yml'))).toBe(false);
     });
+  });
+
+  it('ignores every machine-local name the product can leave at the .ok/ root', () => {
+    initContent(testDir);
+    const lines = readFileSync(join(testDir, OK_DIR, '.gitignore'), 'utf-8')
+      .split('\n')
+      .map((l) => l.trim());
+
+    for (const name of OK_MACHINE_LOCAL_ROOT_FILES) {
+      expect(lines, `${name} must be ignored`).toContain(name);
+    }
+    for (const name of OK_MACHINE_LOCAL_ROOT_DIRS) {
+      expect(lines, `${name}/ must be ignored`).toContain(`${name}/`);
+    }
+    expect(lines).not.toContain('config.yml');
   });
 
   it('does not duplicate .gitignore entries on repeated initContent calls', () => {

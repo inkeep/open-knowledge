@@ -18,6 +18,7 @@ import {
   prependFrontmatter,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   composeCommitSubject,
   formatOkActor,
@@ -1675,7 +1676,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           return;
         }
 
-        const tmpPath = `${canonicalPath}.tmp.${crypto.randomUUID()}`;
+        const tmpPath = atomicTempPath(canonicalPath);
         try {
           if (process.env.NODE_ENV === 'test' && process.env.OK_TEST_STORE_FAULT === documentName) {
             const faultErr = new Error(

@@ -1,4 +1,6 @@
-export const WORKTREES_PARENT_DIR = '.ok/worktrees';
+import { OK_DIR, WORKTREES_DIRNAME } from '../constants/ok-dir.ts';
+
+export const WORKTREES_PARENT_DIR = `${OK_DIR}/${WORKTREES_DIRNAME}`;
 
 export function worktreeRelativeDir(branch: string): string | null {
   const trimmed = branch.trim();

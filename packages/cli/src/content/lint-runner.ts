@@ -18,6 +18,7 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   summarizeLintPluginFailures,
 } from '@inkeep/open-knowledge-core';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   composeEffectiveLinterConfig,
   composeFrontmatterSchemasConfig,
@@ -136,7 +137,7 @@ export async function runLint(opts: RunLintOptions): Promise<LintRunResult> {
     if (fix && cfg.enabled) {
       const fixedText = fixDocument(text, cfg, rel, pushPluginFailure);
       if (fixedText !== text) {
-        const tmp = `${abs}.tmp.${process.pid}.${Date.now()}`;
+        const tmp = atomicTempPath(abs);
         try {
           writeFileSync(tmp, fixedText, 'utf-8');
           renameSync(tmp, abs);

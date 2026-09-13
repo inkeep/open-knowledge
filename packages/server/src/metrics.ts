@@ -52,6 +52,8 @@ export interface ReconciliationMetrics {
   collabSocketEconnresetCount: number;
   collabMessageTooLargeCount: number;
   shadowMigrationLegacyRefsDeleted: number;
+  shadowExcludeIndexEntriesDropped: number;
+  shadowExcludeIndexSweepFailures: number;
   effectDiffCaptureFailures: number;
   agentPresenceMutationErrors: number;
   agentWriteCalls: number;
@@ -155,6 +157,8 @@ const counters: ReconciliationMetrics = {
   collabSocketEconnresetCount: 0,
   collabMessageTooLargeCount: 0,
   shadowMigrationLegacyRefsDeleted: 0,
+  shadowExcludeIndexEntriesDropped: 0,
+  shadowExcludeIndexSweepFailures: 0,
   effectDiffCaptureFailures: 0,
   agentPresenceMutationErrors: 0,
   agentWriteCalls: 0,
@@ -549,6 +553,14 @@ export function incrementShadowMigrationLegacyRefsDeleted(count: number): void {
   counters.shadowMigrationLegacyRefsDeleted += count;
 }
 
+export function incrementShadowExcludeIndexEntriesDropped(count: number): void {
+  counters.shadowExcludeIndexEntriesDropped += count;
+}
+
+export function incrementShadowExcludeIndexSweepFailures(): void {
+  counters.shadowExcludeIndexSweepFailures++;
+}
+
 export function incrementEffectDiffCaptureFailures(): void {
   counters.effectDiffCaptureFailures++;
 }
@@ -622,6 +634,8 @@ export function resetMetrics(): void {
   counters.collabSocketEconnresetCount = 0;
   counters.collabMessageTooLargeCount = 0;
   counters.shadowMigrationLegacyRefsDeleted = 0;
+  counters.shadowExcludeIndexEntriesDropped = 0;
+  counters.shadowExcludeIndexSweepFailures = 0;
   counters.effectDiffCaptureFailures = 0;
   counters.agentPresenceMutationErrors = 0;
   counters.agentWriteCalls = 0;

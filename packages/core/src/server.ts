@@ -32,6 +32,12 @@ export {
   readNodeLocaleSignal,
 } from './i18n/node-locale-provider.ts';
 export {
+  ATOMIC_TEMP_GLOB,
+  ATOMIC_TEMP_INFIX,
+  ATOMIC_TEMP_PATH_RE,
+  atomicTempPath,
+} from './util/atomic-temp-path.ts';
+export {
   type AtomicWriteFsAdapter,
   type AtomicWriteOptions,
   type AtomicWriteSyncOptions,

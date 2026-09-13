@@ -1,8 +1,10 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   CHECKPOINT_KIND_REGISTRY,
   CHECKPOINT_KINDS,
@@ -13,15 +15,19 @@ import {
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { applySkillWrite } from './content/skills-write.ts';
 import { getLogger } from './logger.ts';
+import { getMetrics, resetMetrics } from './metrics.ts';
 import {
   buildWipTree,
   commitUpstreamImport,
   commitWip,
   DEFAULT_CHECKPOINT_RETENTION,
+  FANOUT_INDEX_NAME,
   GIT_UPSTREAM_WRITER,
   type InMemoryCheckpointParams,
   initShadowRepo,
+  isShadowExcludesDegraded,
   listRescueCheckpoints,
   type ParkableDoc,
   parkBranch,
@@ -36,6 +42,19 @@ import {
   sweepLegacyShadowRefs,
   type WriterIdentity,
 } from './shadow-repo';
+
+const fsTracedRecorder = vi.hoisted(() => ({ renameSources: [] as string[] }));
+
+vi.mock('./fs-traced.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./fs-traced.ts')>();
+  return {
+    ...actual,
+    tracedRenameSync: (from: string, to: string): void => {
+      fsTracedRecorder.renameSources.push(from);
+      actual.tracedRenameSync(from, to);
+    },
+  };
+});
 
 let tmpDir: string;
 
@@ -1869,5 +1888,565 @@ describe('sweepLegacyShadowRefs (US-018, D35, NFR-6)', () => {
   test('fresh repo with no refs returns 0 (US-018)', async () => {
     const deleted = await sweepLegacyShadowRefs(shadow);
     expect(deleted).toBe(0);
+  });
+});
+
+const STOCK_GIT_EXCLUDE = `# git ls-files --others --exclude-from=.git/info/exclude
+# Lines that start with '#' are comments.
+`;
+
+describe('shadow repo excludes OpenKnowledge machine-local state', () => {
+  let projectRoot: string;
+  let shadow: ShadowHandle;
+
+  const writer: WriterIdentity = {
+    id: 'human-ada',
+    name: 'Ada Lovelace',
+    email: 'ada@example.com',
+  };
+
+  beforeEach(async () => {
+    projectRoot = resolve(tmpDir, 'project');
+    mkdirSync(resolve(projectRoot, '.ok/local/cache/main'), { recursive: true });
+    mkdirSync(resolve(projectRoot, '.ok/worktrees/feature'), { recursive: true });
+
+    const git = simpleGit(projectRoot);
+    await git.init();
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+
+    writeFileSync(resolve(projectRoot, 'intro.md'), '# Hello\n');
+    writeFileSync(resolve(projectRoot, '.ok/config.yml'), 'content:\n  dir: .\n');
+    writeFileSync(
+      resolve(projectRoot, '.ok/local/principal.json'),
+      '{"email":"ada@example.com"}\n',
+    );
+    writeFileSync(resolve(projectRoot, '.ok/local/server.lock'), '{"pid":1}\n');
+    writeFileSync(resolve(projectRoot, '.ok/local/cache/main/backlinks.json'), '{}\n');
+    writeFileSync(resolve(projectRoot, '.ok/worktrees/feature/scratch.md'), '# scratch\n');
+
+    shadow = await initShadowRepo(projectRoot);
+  });
+
+  async function seedStaleWipRef(handle: ShadowHandle, writerId: string): Promise<void> {
+    const excludeFile = resolve(handle.gitDir, 'info/exclude');
+    const realExclude = existsSync(excludeFile) ? readFileSync(excludeFile, 'utf-8') : '';
+    const seedIndex = resolve(handle.gitDir, `index-stale-seed-${writerId}`);
+    rmSync(seedIndex, { force: true });
+    writeFileSync(excludeFile, STOCK_GIT_EXCLUDE);
+    const gitEnv = { ...process.env, GIT_DIR: handle.gitDir, GIT_INDEX_FILE: seedIndex };
+    try {
+      execFileSync('git', ['add', '-A', '.'], {
+        cwd: handle.workTree,
+        env: { ...gitEnv, GIT_WORK_TREE: handle.workTree },
+      });
+      const tree = execFileSync('git', ['write-tree'], {
+        cwd: handle.workTree,
+        env: gitEnv,
+        encoding: 'utf-8',
+      }).trim();
+      const commit = execFileSync('git', ['commit-tree', tree, '-m', 'WIP: pre-upgrade'], {
+        cwd: handle.workTree,
+        env: gitEnv,
+        encoding: 'utf-8',
+      }).trim();
+      execFileSync('git', ['update-ref', `refs/wip/main/${writerId}`, commit], {
+        cwd: handle.workTree,
+        env: gitEnv,
+      });
+    } finally {
+      writeFileSync(excludeFile, realExclude);
+      rmSync(seedIndex, { force: true });
+    }
+  }
+
+  function seedStaleFanoutIndex(handle: ShadowHandle): string {
+    const excludeFile = resolve(handle.gitDir, 'info/exclude');
+    const realExclude = existsSync(excludeFile) ? readFileSync(excludeFile, 'utf-8') : '';
+    const fanoutIndex = resolve(handle.gitDir, FANOUT_INDEX_NAME);
+    rmSync(fanoutIndex, { force: true });
+    writeFileSync(excludeFile, STOCK_GIT_EXCLUDE);
+    try {
+      execFileSync('git', ['add', '-A', '.'], {
+        cwd: handle.workTree,
+        env: {
+          ...process.env,
+          GIT_DIR: handle.gitDir,
+          GIT_WORK_TREE: handle.workTree,
+          GIT_INDEX_FILE: fanoutIndex,
+        },
+      });
+    } finally {
+      writeFileSync(excludeFile, realExclude);
+    }
+    return fanoutIndex;
+  }
+
+  function indexPaths(handle: ShadowHandle, indexFile: string): string[] {
+    return execFileSync('git', ['ls-files'], {
+      cwd: handle.workTree,
+      env: { ...process.env, GIT_DIR: handle.gitDir, GIT_INDEX_FILE: indexFile },
+      encoding: 'utf-8',
+    })
+      .split('\n')
+      .map((path) => path.trim())
+      .filter((path) => path.length > 0);
+  }
+
+  async function wipTreePaths(handle: ShadowHandle, writerId: string): Promise<string[]> {
+    const sg = shadowGit(handle);
+    return (await sg.raw('ls-tree', '-r', '--name-only', `refs/wip/main/${writerId}`))
+      .split('\n')
+      .map((path) => path.trim())
+      .filter((path) => path.length > 0);
+  }
+
+  async function checkpointTreePaths(ref: string): Promise<string[]> {
+    const sg = shadowGit(shadow);
+    return (await sg.raw('ls-tree', '-r', '--name-only', ref))
+      .split('\n')
+      .map((path) => path.trim())
+      .filter((path) => path.length > 0);
+  }
+
+  test('the shadow does not see .ok/local or .ok/worktrees as content', async () => {
+    const sg = shadowGit(shadow);
+    const status = await sg.raw('status', '--porcelain', '--untracked-files=all');
+    const paths = status
+      .split('\n')
+      .map((line) => line.slice(3).trim())
+      .filter((p) => p.length > 0);
+
+    expect(paths).toContain('intro.md');
+    expect(paths).toContain('.ok/config.yml');
+    expect(paths.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
+    expect(paths.filter((p) => p.startsWith('.ok/worktrees/'))).toEqual([]);
+  });
+
+  test('a checkpoint keeps machine-local state out of version history', async () => {
+    const result = await saveVersion(shadow, '.', [writer]);
+    const sg = shadowGit(shadow);
+    const tree = (await sg.raw('ls-tree', '-r', '--name-only', result.checkpointRef))
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    expect(tree).toContain('intro.md');
+    expect(tree).toContain('.ok/config.yml');
+    expect(tree.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
+    expect(tree.filter((p) => p.startsWith('.ok/worktrees/'))).toEqual([]);
+  });
+
+  test('a nested content dir keeps its own .ok/local out of the staged tree', async () => {
+    mkdirSync(resolve(projectRoot, 'docs/.ok/local'), { recursive: true });
+    writeFileSync(resolve(projectRoot, 'docs/note.md'), '# note\n');
+    writeFileSync(resolve(projectRoot, 'docs/.ok/local/comments.json'), '{}\n');
+
+    const result = await saveVersion(shadow, 'docs', [writer]);
+    const sg = shadowGit(shadow);
+    const tree = (await sg.raw('ls-tree', '-r', '--name-only', result.checkpointRef))
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    expect(tree).toContain('docs/note.md');
+    expect(tree.filter((p) => p.startsWith('docs/.ok/local/'))).toEqual([]);
+  });
+
+  test('legacy machine-local files at the .ok root stay out of a checkpoint', async () => {
+    const legacyRootFiles = [
+      'principal.json',
+      'state.json',
+      'server.lock',
+      'ui.lock',
+      'sync-state.json',
+      'conflicts.json',
+      'last-spawn-error.log',
+    ];
+    const legacyRootDirs = ['local', 'worktrees', 'cache', 'tmp'];
+    for (const name of legacyRootFiles) {
+      writeFileSync(resolve(projectRoot, '.ok', name), '{"legacy":true}\n');
+    }
+    for (const name of legacyRootDirs) {
+      mkdirSync(resolve(projectRoot, '.ok', name), { recursive: true });
+      writeFileSync(resolve(projectRoot, '.ok', name, 'residue.json'), '{}\n');
+    }
+
+    const result = await saveVersion(shadow, '.', [writer]);
+    const sg = shadowGit(shadow);
+    const tree = (await sg.raw('ls-tree', '-r', '--name-only', result.checkpointRef))
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    expect(tree).toContain('.ok/config.yml');
+    expect(tree).toContain('intro.md');
+    for (const name of legacyRootFiles) {
+      expect(tree).not.toContain(`.ok/${name}`);
+    }
+    for (const name of legacyRootDirs) {
+      expect(tree.filter((p) => p.startsWith(`.ok/${name}/`))).toEqual([]);
+    }
+  });
+
+  test('an in-flight document flush is not staged into a checkpoint', async () => {
+    const inFlight = atomicTempPath(resolve(projectRoot, 'intro.md'));
+    writeFileSync(inFlight, '# half written\n');
+
+    const result = await saveVersion(shadow, '.', [writer]);
+    const sg = shadowGit(shadow);
+    const tree = (await sg.raw('ls-tree', '-r', '--name-only', result.checkpointRef))
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    expect(tree).toContain('intro.md');
+    expect(tree.filter((p) => p.includes('.tmp.'))).toEqual([]);
+  });
+
+  test('an in-flight skill write is not staged into a checkpoint', async () => {
+    const skillsRoot = resolve(projectRoot, '.ok/skills');
+    const skillFile = resolve(skillsRoot, 'trip-log/SKILL.md');
+    fsTracedRecorder.renameSources.length = 0;
+
+    const written = applySkillWrite({
+      skillsRoot,
+      name: 'trip-log',
+      body: '# Steps\n\nDo the thing.',
+      frontmatter: { name: 'trip-log', description: 'Use when logging a fishing trip.' },
+    });
+    expect(written.ok).toBe(true);
+
+    const inFlight = fsTracedRecorder.renameSources.find((from) =>
+      from.startsWith(`${skillFile}.`),
+    );
+    expect(inFlight).toBeDefined();
+    writeFileSync(inFlight as string, '# half written\n');
+
+    const result = await saveVersion(shadow, '.', [writer]);
+    const sg = shadowGit(shadow);
+    const tree = (await sg.raw('ls-tree', '-r', '--name-only', result.checkpointRef))
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    expect(tree).toContain('.ok/skills/trip-log/SKILL.md');
+    expect(tree.filter((p) => p.startsWith('.ok/skills/trip-log/SKILL.md.'))).toEqual([]);
+  });
+
+  test('a WIP commit drops machine-local paths a previous build had staged', async () => {
+    const agentWriter: WriterIdentity = {
+      id: 'agent-cursor',
+      name: 'cursor-agent',
+      email: 'cursor@openknowledge.local',
+    };
+    await seedStaleWipRef(shadow, agentWriter.id);
+    expect(await wipTreePaths(shadow, agentWriter.id)).toContain('.ok/local/principal.json');
+
+    const reinit = await initShadowRepo(projectRoot);
+    writeFileSync(resolve(projectRoot, 'intro.md'), '# Hello again\n');
+    await commitWip(reinit, agentWriter, '.', 'WIP: post-upgrade');
+    const freshTree = await wipTreePaths(reinit, agentWriter.id);
+
+    expect(freshTree).toContain('intro.md');
+    expect(freshTree.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
+  });
+
+  test('paths that only share a prefix with a machine-local name stay in a checkpoint', async () => {
+    mkdirSync(resolve(projectRoot, 'docs/.ok'), { recursive: true });
+    writeFileSync(resolve(projectRoot, '.ok/state.json'), '{"machine":true}\n');
+    writeFileSync(resolve(projectRoot, '.ok/state.jsonl'), '{"content":true}\n');
+    writeFileSync(resolve(projectRoot, '.ok/principal.json'), '{"machine":true}\n');
+    writeFileSync(resolve(projectRoot, '.ok/principal.json.bak'), '{"content":true}\n');
+    writeFileSync(resolve(projectRoot, 'docs/.ok/server.lock'), '{"machine":true}\n');
+    writeFileSync(resolve(projectRoot, 'docs/.ok/server.lock.disabled'), '{"content":true}\n');
+
+    const result = await saveVersion(shadow, '.', [writer]);
+    const tree = await checkpointTreePaths(result.checkpointRef);
+
+    expect(tree).toContain('.ok/state.jsonl');
+    expect(tree).toContain('.ok/principal.json.bak');
+    expect(tree).toContain('docs/.ok/server.lock.disabled');
+    expect(tree).not.toContain('.ok/state.json');
+    expect(tree).not.toContain('.ok/principal.json');
+    expect(tree).not.toContain('docs/.ok/server.lock');
+  });
+
+  test('a staged path whose name begins with a dash is still dropped', async () => {
+    const agentWriter: WriterIdentity = {
+      id: 'agent-dash',
+      name: 'dash-agent',
+      email: 'dash@openknowledge.local',
+    };
+    const leadingDash = `-lead.md${atomicTempPath('x').slice(1)}`;
+    writeFileSync(resolve(projectRoot, leadingDash), '# half written\n');
+    await seedStaleWipRef(shadow, agentWriter.id);
+    expect(await wipTreePaths(shadow, agentWriter.id)).toContain(leadingDash);
+
+    const reinit = await initShadowRepo(projectRoot);
+    await commitWip(reinit, agentWriter, '.', 'WIP: post-upgrade');
+    const freshTree = await wipTreePaths(reinit, agentWriter.id);
+
+    expect(freshTree).toContain('intro.md');
+    expect(freshTree).not.toContain(leadingDash);
+  });
+
+  test('a contaminated index larger than the argv ceiling is still repaired', async () => {
+    const agentWriter: WriterIdentity = {
+      id: 'agent-bulk',
+      name: 'bulk-agent',
+      email: 'bulk@openknowledge.local',
+    };
+    const leaf = 'q'.repeat(160);
+    const threadsDir = resolve(projectRoot, '.ok/local/threads');
+    mkdirSync(threadsDir, { recursive: true });
+    const bulk = Array.from(
+      { length: 8_000 },
+      (_unused, i) => `${String(i).padStart(6, '0')}-${leaf}.ndjson`,
+    );
+    for (const name of bulk) writeFileSync(resolve(threadsDir, name), '{}\n');
+    const argvBytes = bulk.reduce((acc, name) => acc + `.ok/local/threads/${name}`.length + 1, 0);
+    expect(argvBytes).toBeGreaterThan(1_500_000);
+
+    await seedStaleWipRef(shadow, agentWriter.id);
+    const staleTree = await wipTreePaths(shadow, agentWriter.id);
+    expect(staleTree.filter((p) => p.startsWith('.ok/local/threads/'))).toHaveLength(8_000);
+
+    const reinit = await initShadowRepo(projectRoot);
+    await commitWip(reinit, agentWriter, '.', 'WIP: post-upgrade');
+    const freshTree = await wipTreePaths(reinit, agentWriter.id);
+
+    expect(freshTree).toContain('intro.md');
+    expect(freshTree.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
+  });
+
+  test('a repair the index sweep cannot run does not abort initialization, but degrades the shadow', async () => {
+    writeFileSync(resolve(shadow.gitDir, FANOUT_INDEX_NAME), 'GARBAGE-NOT-AN-INDEX-FILE');
+    resetMetrics();
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
+
+    try {
+      const reinit = await initShadowRepo(projectRoot);
+
+      expect(existsSync(resolve(reinit.gitDir, 'info/exclude'))).toBe(true);
+      expect(isShadowExcludesDegraded(reinit)).toBe(true);
+      expect(getMetrics().shadowExcludeIndexSweepFailures).toBe(1);
+      expect(getMetrics().shadowExcludeIndexEntriesDropped).toBe(0);
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      expect(
+        warnings.some((message) =>
+          message.includes(
+            '[shadow-repo] could not read the index to clear machine-local entries — none were dropped and an unknown number are still staged',
+          ),
+        ),
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('an index sweep blocked partway reports how many machine-local entries it left staged', async () => {
+    const fanoutIndex = seedStaleFanoutIndex(shadow);
+    const machineLocalStaged = indexPaths(shadow, fanoutIndex).filter(
+      (path) => path.startsWith('.ok/local/') || path.startsWith('.ok/worktrees/'),
+    );
+    expect(machineLocalStaged.length).toBeGreaterThan(0);
+    writeFileSync(`${fanoutIndex}.lock`, '');
+    resetMetrics();
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
+    const infoSpy = vi.spyOn(getLogger('shadow-repo'), 'info');
+
+    try {
+      const reinit = await initShadowRepo(projectRoot);
+
+      expect(isShadowExcludesDegraded(reinit)).toBe(true);
+      expect(getMetrics().shadowExcludeIndexSweepFailures).toBe(1);
+      expect(getMetrics().shadowExcludeIndexEntriesDropped).toBe(0);
+      expect(
+        indexPaths(reinit, fanoutIndex).filter(
+          (path) => path.startsWith('.ok/local/') || path.startsWith('.ok/worktrees/'),
+        ),
+      ).toEqual(machineLocalStaged);
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      expect(
+        warnings.some((message) =>
+          message.includes(`dropped 0, left ${machineLocalStaged.length} still staged`),
+        ),
+      ).toBe(true);
+      const infos = infoSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      expect(
+        infos.some((message) =>
+          message.includes(
+            '[shadow-repo] dropped machine-local entries a previous build had staged',
+          ),
+        ),
+      ).toBe(false);
+    } finally {
+      warnSpy.mockRestore();
+      infoSpy.mockRestore();
+    }
+  });
+
+  test('a checkpoint stays clean even when the shadow exclude file is gone', async () => {
+    writeFileSync(resolve(shadow.gitDir, 'info/exclude'), STOCK_GIT_EXCLUDE);
+
+    const result = await saveVersion(shadow, '.', [writer]);
+    const tree = await checkpointTreePaths(result.checkpointRef);
+
+    expect(tree).toContain('intro.md');
+    expect(tree).toContain('.ok/config.yml');
+    expect(tree.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
+    expect(tree.filter((p) => p.startsWith('.ok/worktrees/'))).toEqual([]);
+  });
+
+  test('a shadow whose exclude file cannot be written reports itself degraded', async () => {
+    const excludeFile = resolve(shadow.gitDir, 'info/exclude');
+    rmSync(excludeFile, { force: true });
+    symlinkSync(resolve(tmpDir, 'planted-exclude'), excludeFile);
+
+    const reinit = await initShadowRepo(projectRoot);
+
+    expect(isShadowExcludesDegraded(reinit)).toBe(true);
+  });
+
+  test('a symlink at the exclude path is refused at error level, not warned as I/O', async () => {
+    const excludeFile = resolve(shadow.gitDir, 'info/exclude');
+    rmSync(excludeFile, { force: true });
+    symlinkSync(resolve(tmpDir, 'planted-exclude'), excludeFile);
+    const errorSpy = vi.spyOn(getLogger('shadow-repo'), 'error');
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
+
+    try {
+      await initShadowRepo(projectRoot);
+
+      const errors = errorSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      expect(
+        errors.some((message) =>
+          message.includes('[shadow-repo] refused to write the shadow exclude file'),
+        ),
+      ).toBe(true);
+      expect(
+        warnings.some((message) =>
+          message.includes('[shadow-repo] could not write the shadow exclude file'),
+        ),
+      ).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a symlinked shadow info directory pointing at a live directory is refused, not followed', async () => {
+    const infoDir = resolve(shadow.gitDir, 'info');
+    const plantedInfo = resolve(tmpDir, 'planted-info-live');
+    mkdirSync(plantedInfo, { recursive: true });
+    rmSync(infoDir, { recursive: true, force: true });
+    symlinkSync(plantedInfo, infoDir);
+    const errorSpy = vi.spyOn(getLogger('shadow-repo'), 'error');
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
+
+    try {
+      const reinit = await initShadowRepo(projectRoot);
+
+      expect(isShadowExcludesDegraded(reinit)).toBe(true);
+      expect(existsSync(resolve(plantedInfo, 'exclude'))).toBe(false);
+      const errors = errorSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      expect(
+        errors.some((message) =>
+          message.includes('[shadow-repo] refused to write the shadow exclude file'),
+        ),
+      ).toBe(true);
+      expect(
+        warnings.some((message) =>
+          message.includes('[shadow-repo] could not write the shadow exclude file'),
+        ),
+      ).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a dangling symlink at the shadow info directory is refused, not warned as I/O', async () => {
+    const infoDir = resolve(shadow.gitDir, 'info');
+    rmSync(infoDir, { recursive: true, force: true });
+    symlinkSync(resolve(tmpDir, 'planted-info-absent'), infoDir);
+    const errorSpy = vi.spyOn(getLogger('shadow-repo'), 'error');
+    const warnSpy = vi.spyOn(getLogger('shadow-repo'), 'warn');
+
+    try {
+      const reinit = await initShadowRepo(projectRoot);
+
+      expect(isShadowExcludesDegraded(reinit)).toBe(true);
+      const errors = errorSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      const warnings = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
+      expect(
+        errors.some((message) =>
+          message.includes('[shadow-repo] refused to write the shadow exclude file'),
+        ),
+      ).toBe(true);
+      expect(
+        warnings.some((message) =>
+          message.includes('[shadow-repo] could not write the shadow exclude file'),
+        ),
+      ).toBe(false);
+    } finally {
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('the index repair reports its drop count through the metrics surface', async () => {
+    const agentWriter: WriterIdentity = {
+      id: 'agent-metrics',
+      name: 'metrics-agent',
+      email: 'metrics@openknowledge.local',
+    };
+    await seedStaleWipRef(shadow, agentWriter.id);
+    const reinit = await initShadowRepo(projectRoot);
+    resetMetrics();
+
+    await commitWip(reinit, agentWriter, '.', 'WIP: post-upgrade');
+
+    expect(getMetrics().shadowExcludeIndexEntriesDropped).toBeGreaterThan(0);
+  });
+
+  test('re-initializing drops a fan-out index that already staged machine-local state', async () => {
+    const fanoutIndex = seedStaleFanoutIndex(shadow);
+    expect(indexPaths(shadow, fanoutIndex)).toContain('.ok/local/principal.json');
+
+    const reinit = await initShadowRepo(projectRoot);
+    const freshTree = await buildWipTree(reinit, '.');
+    const sgFresh = shadowGit(reinit);
+    const freshNames = (await sgFresh.raw('ls-tree', '-r', '--name-only', freshTree))
+      .split('\n')
+      .map((p) => p.trim())
+      .filter((p) => p.length > 0);
+
+    expect(freshNames).toContain('intro.md');
+    expect(freshNames.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
+  });
+
+  test('a fan-out WIP tree stays clean even when the shadow exclude file is gone', async () => {
+    writeFileSync(resolve(shadow.gitDir, 'info/exclude'), STOCK_GIT_EXCLUDE);
+
+    const tree = await buildWipTree(shadow, '.');
+    const names = await checkpointTreePaths(tree);
+
+    expect(names).toContain('intro.md');
+    expect(names.filter((p) => p.startsWith('.ok/local/'))).toEqual([]);
+    expect(names.filter((p) => p.startsWith('.ok/worktrees/'))).toEqual([]);
+  });
+
+  test('re-initializing an existing shadow restores the exclusions', async () => {
+    writeFileSync(resolve(shadow.gitDir, 'info/exclude'), STOCK_GIT_EXCLUDE);
+
+    const reinit = await initShadowRepo(projectRoot);
+    const sg = shadowGit(reinit);
+    const status = await sg.raw('status', '--porcelain', '--untracked-files=all');
+
+    expect(status).not.toContain('.ok/local/');
   });
 });

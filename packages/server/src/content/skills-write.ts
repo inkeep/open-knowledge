@@ -9,6 +9,7 @@ import {
   type SkillAuthoringWarningCode,
   type SkillFrontmatter,
 } from '@inkeep/open-knowledge-core';
+import { ATOMIC_TEMP_INFIX, atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { stringify as stringifyYaml } from 'yaml';
 /*
  * STOP: every disk write in this module goes through `fs-traced.ts` so it
@@ -110,7 +111,7 @@ export function composeSkillContent(input: {
 
 function sweepStaleTmpSiblings(targetPath: string): void {
   const dir = dirname(targetPath);
-  const prefix = `${basename(targetPath)}.tmp.`;
+  const prefix = `${basename(targetPath)}${ATOMIC_TEMP_INFIX}`;
   try {
     for (const entry of readdirSync(dir)) {
       if (entry.startsWith(prefix)) tracedUnlinkSync(join(dir, entry));
@@ -147,7 +148,7 @@ export function applySkillWrite(input: WriteSkillInput): SkillWriteResult {
   const created = !existsSync(filePath);
 
   sweepStaleTmpSiblings(filePath);
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  const tmpPath = atomicTempPath(filePath);
   try {
     tracedWriteFileSync(tmpPath, content, 'utf-8');
     tracedRenameSync(tmpPath, filePath);
@@ -200,7 +201,7 @@ export function applySkillDirNameSync(input: {
   const renamed = applyPatchToFm(fenced, { name: input.toName });
   if (!renamed.ok) return { ok: false, stage: 'patch', error: renamed.error };
   sweepStaleTmpSiblings(filePath);
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  const tmpPath = atomicTempPath(filePath);
   try {
     tracedWriteFileSync(tmpPath, `${renamed.nextFenced}${body}`, 'utf-8');
     tracedRenameSync(tmpPath, filePath);
@@ -360,7 +361,7 @@ export function applySkillBundleFileWrite(
     };
   }
   sweepStaleTmpSiblings(abs);
-  const tmpPath = `${abs}.tmp.${process.pid}.${Date.now()}`;
+  const tmpPath = atomicTempPath(abs);
   try {
     if (typeof payload === 'string') tracedWriteFileSync(tmpPath, payload, 'utf-8');
     else tracedWriteFileSync(tmpPath, payload);
