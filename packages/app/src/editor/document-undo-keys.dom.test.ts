@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { documentUndoKeyAction } from './document-undo-keys';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { documentUndoKeyAction, performHistoryCommand } from './document-undo-keys';
 
 interface Press {
   key: string;
@@ -65,5 +65,49 @@ describe('documentUndoKeyAction', () => {
     expect(
       documentUndoKeyAction(press({ key: 'z', metaKey: true, altKey: true }), 'mac'),
     ).toBeNull();
+  });
+});
+
+describe('performHistoryCommand', () => {
+  const execCommand = vi.fn(() => true);
+  let original: PropertyDescriptor | undefined;
+
+  beforeAll(() => {
+    original = Object.getOwnPropertyDescriptor(document, 'execCommand');
+    Object.defineProperty(document, 'execCommand', { value: execCommand, configurable: true });
+  });
+  afterEach(() => {
+    execCommand.mockClear();
+    document.body.replaceChildren();
+  });
+  afterAll(() => {
+    if (original) Object.defineProperty(document, 'execCommand', original);
+    else Reflect.deleteProperty(document, 'execCommand');
+  });
+
+  it('hands the key to the target and skips the browser when the target handles it', () => {
+    const surface = document.createElement('div');
+    const seen: string[] = [];
+    surface.addEventListener('keydown', (event) => {
+      seen.push(`${event.metaKey ? 'Meta-' : ''}${event.shiftKey ? 'Shift-' : ''}${event.key}`);
+      event.preventDefault();
+    });
+    document.body.appendChild(surface);
+
+    performHistoryCommand('redo', 'mac', surface);
+    performHistoryCommand('undo', 'mac', surface);
+
+    expect(seen).toEqual(['Meta-Shift-z', 'Meta-z']);
+    expect(execCommand).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the browser when nothing handles the key', () => {
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+
+    performHistoryCommand('undo', 'windowsLinux', input);
+    performHistoryCommand('redo', 'windowsLinux', null);
+
+    expect(execCommand.mock.calls).toEqual([['undo'], ['redo']]);
   });
 });

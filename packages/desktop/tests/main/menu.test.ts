@@ -1473,6 +1473,35 @@ describe('buildMenuTemplate — Edit → Check spelling while typing', () => {
   });
 });
 
+describe('buildMenuTemplate — Edit → Undo and Redo', () => {
+  test('are app items, not native roles, and click through to the deps', () => {
+    const onUndo = vi.fn(() => {});
+    const onRedo = vi.fn(() => {});
+    const template = buildMenuTemplate(makeDeps({ onUndo, onRedo }));
+    const undo = findByLabel(template, 'Undo');
+    const redo = findByLabel(template, 'Redo');
+    expect(undo?.role).toBeUndefined();
+    expect(redo?.role).toBeUndefined();
+    (undo?.click as (() => void) | undefined)?.();
+    (redo?.click as (() => void) | undefined)?.();
+    expect(onUndo).toHaveBeenCalledTimes(1);
+    expect(onRedo).toHaveBeenCalledTimes(1);
+  });
+
+  test('keep the platform accelerators', () => {
+    const accelerators = (platform: NodeJS.Platform) => {
+      const template = buildMenuTemplateForPlatform(platform, makeDeps());
+      return [
+        findByLabel(template, 'Undo')?.accelerator,
+        findByLabel(template, 'Redo')?.accelerator,
+      ];
+    };
+    expect(accelerators('darwin')).toEqual(['CmdOrCtrl+Z', 'Shift+CmdOrCtrl+Z']);
+    expect(accelerators('win32')).toEqual(['CmdOrCtrl+Z', 'CmdOrCtrl+Y']);
+    expect(accelerators('linux')).toEqual(['CmdOrCtrl+Z', 'Shift+CmdOrCtrl+Z']);
+  });
+});
+
 describe('Terminal menu — New Terminal Window', () => {
   test('appears in the Terminal submenu beside New Terminal', () => {
     const template = buildMenuTemplateForPlatform(

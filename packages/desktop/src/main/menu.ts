@@ -22,6 +22,8 @@ import { type MenuTranslator, translateEnglish } from './menu-translator.ts';
 export interface MenuDeps {
   onNavigateBack?(): void;
   onNavigateForward?(): void;
+  onUndo?(): void;
+  onRedo?(): void;
   appName: string;
   showDevToolsMenu: boolean;
   terminalCapable: boolean;
@@ -556,8 +558,16 @@ export function buildMenuTemplate(deps: MenuDeps): MenuItemConstructorOptions[] 
     {
       label: translate(NATIVE_MENU_LABELS.menuEdit),
       submenu: [
-        roleItem('undo'),
-        roleItem('redo'),
+        {
+          label: translate(NATIVE_MENU_LABELS.roleUndo),
+          accelerator: 'CmdOrCtrl+Z',
+          click: () => deps.onUndo?.(),
+        },
+        {
+          label: translate(NATIVE_MENU_LABELS.roleRedo),
+          accelerator: process.platform === 'win32' ? 'CmdOrCtrl+Y' : 'Shift+CmdOrCtrl+Z',
+          click: () => deps.onRedo?.(),
+        },
         { type: 'separator' },
         roleItem('cut'),
         roleItem('copy'),

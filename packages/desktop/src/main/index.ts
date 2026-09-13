@@ -2475,6 +2475,8 @@ async function runApplicationMenuRefresh(): Promise<void> {
       : undefined,
     onNavigateBack: () => sendMenuAction('navigate-back'),
     onNavigateForward: () => sendMenuAction('navigate-forward'),
+    onUndo: () => sendMenuAction('undo'),
+    onRedo: () => sendMenuAction('redo'),
     noteWindow: focusedWindow !== null && getNoteWindowContext(focusedWindow.id) !== undefined,
     activeTarget: currentActiveTarget(),
     onOpenInNewWindow: () => {

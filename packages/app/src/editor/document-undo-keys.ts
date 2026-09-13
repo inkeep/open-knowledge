@@ -35,3 +35,32 @@ export function documentUndoKeyAction(
   if (action === null || isEditableTarget(event.target)) return null;
   return action;
 }
+
+interface HistoryCommandHost {
+  document?: { execCommand(command: DocumentUndoAction): boolean };
+}
+
+interface LegacyKeyboardEventInit extends KeyboardEventInit {
+  keyCode: number;
+}
+
+export function performHistoryCommand(
+  action: DocumentUndoAction,
+  platform: ShortcutPlatform,
+  target: Element | null,
+): void {
+  const mac = platform === 'mac';
+  const init: LegacyKeyboardEventInit = {
+    key: 'z',
+    code: 'KeyZ',
+    keyCode: 90,
+    metaKey: mac,
+    ctrlKey: !mac,
+    shiftKey: action === 'redo',
+    bubbles: true,
+    cancelable: true,
+  };
+  const event = new KeyboardEvent('keydown', init);
+  if (!(target ?? document.body).dispatchEvent(event)) return;
+  (globalThis as HistoryCommandHost).document?.execCommand(action);
+}
