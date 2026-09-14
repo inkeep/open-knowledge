@@ -64,6 +64,7 @@ import {
 import { subscribeSendInThread } from '@/comments/open-chat-send';
 import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
+import { CopyButton } from '@/components/CopyButton';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
@@ -144,9 +145,11 @@ import {
   resolvePermissionOutcome,
 } from '@/lib/acp/thread-event-model';
 import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
+import { toolFailureHint } from '@/lib/acp/tool-failure-hint';
 import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
@@ -2567,6 +2570,7 @@ function ToolCallCard({
   terminals: Record<string, RenderedTerminal>;
   permission?: RenderedPermission;
 }): ReactNode {
+  const { t } = useLingui();
   const [open, setOpen] = useState(call.status === 'failed');
   const userToggledRef = useRef(false);
   const prevStatusRef = useRef(call.status);
@@ -2594,12 +2598,15 @@ function ToolCallCard({
     .map((id) => terminals[id])
     .filter((terminal): terminal is RenderedTerminal => terminal !== undefined);
   const rawInput = formatRawInput(call.rawInput);
+  const failureText = call.status === 'failed' ? call.content.join('\n').trim() : '';
+  const failureHint = toolFailureHint(call, permission);
   const hasBody =
     call.diffs.length > 0 ||
     call.content.length > 0 ||
     call.locations.length > 0 ||
     callTerminals.length > 0 ||
-    rawInput !== null;
+    rawInput !== null ||
+    failureHint !== null;
   const expanded = open && hasBody;
   const row = (
     <>
@@ -2654,6 +2661,20 @@ function ToolCallCard({
               {stripWrappingFence(text)}
             </pre>
           ))}
+          {failureHint !== null || failureText !== '' ? (
+            <div className="flex items-center gap-2" data-testid="agent-thread-tool-failure-help">
+              <span className="flex-1 text-muted-foreground">{failureHint}</span>
+              {failureText !== '' ? (
+                <CopyButton
+                  copyContent={failureText}
+                  clipboardWrite={scheduleClipboardWrite}
+                  size="icon-xs"
+                  ariaLabel={t`Copy error`}
+                  testId="agent-thread-tool-failure-copy"
+                />
+              ) : null}
+            </div>
+          ) : null}
           {rawInput !== null ? <RawInputBlock text={rawInput} /> : null}
           {call.locations.length > 0 ? (
             <div className="flex flex-wrap gap-1 text-muted-foreground">

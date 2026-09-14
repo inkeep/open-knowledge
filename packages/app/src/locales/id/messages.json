@@ -165,6 +165,9 @@
     "110eEb": [
       "Open Knowledge membuat dan memelihara file navigasi bernama index.md di setiap folder yang berisi Markdown."
     ],
+    "113NNl": [
+      "Server OpenKnowledge terlalu lama merespons, dan perubahan mungkin tetap diterapkan. Minta agen memeriksanya sebelum mencoba lagi."
+    ],
     "11ukmX": ["Gagal mengganti nama: ", ["0"]],
     "12F9WL": ["(tanpa id)"],
     "151wvk": ["Tampilkan bilah sisi"],
@@ -827,6 +830,7 @@
     ],
     "99eR72": ["Pilihan tabel penyunting visual"],
     "9Bd18D": ["Gagal memuat halaman pusat"],
+    "9CNRDG": ["Server OpenKnowledge terlalu lama merespons. Minta agen mencoba lagi."],
     "9E_WAi": [["errorText"], " dan ", ["warningText"]],
     "9EykGQ": ["Sisipkan kolom di kanan"],
     "9GbR5F": ["MAKS"],
@@ -2834,6 +2838,9 @@
     "XPqe3B": ["Buat tag baru #", ["tagValue"]],
     "XRuL0i": ["Buat halaman"],
     "XSb9HS": ["Buang suntingan lokal, pulihkan versi yang terpasang"],
+    "XSy4nN": [
+      "Alat OpenKnowledge milik agen tidak bisa menjangkau server. Minta agen untuk mencoba lagi, dan jika terus gagal, mulai obrolan baru."
+    ],
     "XT-L4j": ["Nyalakan sebuah agen untuk membuat dengan AI"],
     "XU5AOg": ["Masukan"],
     "XV5sC0": ["Buka worktree"],
@@ -3149,6 +3156,7 @@
     "_rP3HI": [["minutes"], " mnt lalu"],
     "_tekeB": ["properti folder diperbarui"],
     "_tjopj": ["Tempel gandaan"],
+    "_uOJBO": ["Anda menolak ini. Agar bisa berjalan, minta agen untuk mencoba lagi lalu setujui."],
     "_uxBz5": ["Tambahkan MCP & keterampilan untuk ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " berhenti dengan galat."],
     "_yB-24": ["semua yang ada di folder ", ["0"], "/ mana pun"],
@@ -4304,6 +4312,7 @@
     "lwCV5v": [["0"], " tidak bisa dibuka untuk disunting: ", ["1"]],
     "lyWa43": ["Halaman terputus di tingkat proyek"],
     "lzmtKp": ["Gagal memuat properti folder: ", ["message"]],
+    "lzsa2d": ["Salin galat"],
     "lzwo7p": ["Halaman masuk GitHub tidak dapat dibuka. Silakan coba lagi."],
     "m-1Z7o": ["Pakai paket awal ini"],
     "m0eHej": [

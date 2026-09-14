@@ -4,6 +4,8 @@ import {
   AdvisoryWarningSchema,
   BrokenLinkSchema,
   BrokenLinkSuppressionSchema,
+  SERVER_TIMEOUT_ERROR_PREFIX,
+  SERVER_UNREACHABLE_ERROR_PREFIX,
   UNREADABLE_WARNINGS_TEXT,
   validateDocName,
 } from '@inkeep/open-knowledge-core';
@@ -347,6 +349,20 @@ export function apiTarget(url: string, local: LocalApiDispatch | undefined): Api
   return local ? { url, local } : url;
 }
 
+export function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && err.name === 'TimeoutError';
+}
+
+export function serverRequestFailure(err: unknown, opts?: { mutating?: boolean }): string {
+  const detail = err instanceof Error ? err.message : String(err);
+  if (!isTimeoutError(err)) return `${SERVER_UNREACHABLE_ERROR_PREFIX} ${detail}`;
+  const caution =
+    opts?.mutating === false
+      ? ''
+      : ' The server may still have applied the request, so check before retrying.';
+  return `${SERVER_TIMEOUT_ERROR_PREFIX} ${detail}.${caution}`;
+}
+
 async function localApiCall(
   local: LocalApiDispatch,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
@@ -364,7 +380,7 @@ async function localApiCall(
         : undefined,
     );
   } catch (err) {
-    return { ok: false, error: `Server unreachable: ${err instanceof Error ? err.message : err}` };
+    return { ok: false, error: serverRequestFailure(err) };
   }
   if (raw === null) return null;
   const ok = raw.status >= 200 && raw.status <= 299;
@@ -404,12 +420,19 @@ export async function httpGet(
   try {
     res = await fetch(`${base}${path}`, { signal: AbortSignal.timeout(30_000) });
   } catch (err) {
-    return { ok: false, error: `Server unreachable: ${err instanceof Error ? err.message : err}` };
+    return { ok: false, error: serverRequestFailure(err, { mutating: false }) };
   }
   let body: unknown;
   try {
     body = await res.json();
   } catch (parseErr) {
+    if (isTimeoutError(parseErr)) {
+      return {
+        ok: false,
+        httpStatus: res.status,
+        error: serverRequestFailure(parseErr, { mutating: false }),
+      };
+    }
     const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
     if (res.ok) {
       return {
@@ -475,12 +498,13 @@ async function httpSend(
       signal: AbortSignal.timeout(30_000),
     });
   } catch (err) {
-    return { ok: false, error: `Server unreachable: ${err instanceof Error ? err.message : err}` };
+    return { ok: false, error: serverRequestFailure(err) };
   }
   let parsed: unknown;
   try {
     parsed = await res.json();
   } catch (parseErr) {
+    if (isTimeoutError(parseErr)) return { ok: false, error: serverRequestFailure(parseErr) };
     const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
     if (res.ok) {
       return {

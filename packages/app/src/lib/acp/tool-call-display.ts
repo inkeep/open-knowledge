@@ -53,6 +53,10 @@ function identifyOpenKnowledgeCall(title: string, rawInput: unknown): OpenKnowle
   return { tool, args: unwrapped?.args ?? {} };
 }
 
+export function openKnowledgeToolName(call: { title: string; rawInput: unknown }): string | null {
+  return identifyOpenKnowledgeCall(call.title, call.rawInput)?.tool ?? null;
+}
+
 function pathsOf(value: unknown): string[] {
   if (typeof value === 'string') return value.trim() === '' ? [] : [value.trim()];
   if (Array.isArray(value)) return value.flatMap(pathsOf);

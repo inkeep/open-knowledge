@@ -14,9 +14,11 @@ import { encodeDocName, resolvePreviewUrlForTool } from './preview-url.ts';
 import type { ConfigOrResolver, ServerInstance, ServerUrlOrResolver } from './shared.ts';
 import {
   HOCUSPOCUS_NOT_RUNNING_ERROR,
+  isTimeoutError,
   outputSchemaWithText,
   ROUTED_CWD_DESCRIPTION,
   resolveProjectServerContext,
+  serverRequestFailure,
   textPlusStructured,
   textResult,
 } from './shared.ts';
@@ -265,7 +267,7 @@ export function register(server: ServerInstance, deps: ShareLinkDeps): void {
           signal: AbortSignal.timeout(30_000),
         });
       } catch (err) {
-        const errMessage = `Server unreachable: ${err instanceof Error ? err.message : String(err)}`;
+        const errMessage = serverRequestFailure(err, { mutating: false });
         return textPlusStructured(
           `Error: ${errMessage}`,
           { ok: false, error: 'unknown', message: errMessage } satisfies ShareLinkError,
@@ -276,9 +278,11 @@ export function register(server: ServerInstance, deps: ShareLinkDeps): void {
       try {
         rawBody = await res.json();
       } catch (parseErr) {
-        const errMessage = `Server returned non-JSON body: ${
-          parseErr instanceof Error ? parseErr.message : String(parseErr)
-        }`;
+        const errMessage = isTimeoutError(parseErr)
+          ? serverRequestFailure(parseErr, { mutating: false })
+          : `Server returned non-JSON body: ${
+              parseErr instanceof Error ? parseErr.message : String(parseErr)
+            }`;
         return textPlusStructured(
           `Error: ${errMessage}`,
           { ok: false, error: 'unknown', message: errMessage } satisfies ShareLinkError,

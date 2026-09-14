@@ -199,6 +199,9 @@
     "110eEb": [
       "Open Knowledge crée et gère un fichier de navigation nommé index.md dans chaque dossier contenant Markdown."
     ],
+    "113NNl": [
+      "Le serveur OpenKnowledge a mis trop de temps a repondre et la modification a peut-etre quand meme ete appliquee. Demandez a l'agent de verifier avant de reessayer."
+    ],
     "11ukmX": ["Échec du renommage : ", ["0"]],
     "12F9WL": ["(aucun id)"],
     "151wvk": ["Afficher la barre latérale"],
@@ -977,6 +980,9 @@
     ],
     "99eR72": ["Sélection de tableau de l'éditeur visuel"],
     "9Bd18D": ["Échec du chargement des pages pivots"],
+    "9CNRDG": [
+      "Le serveur OpenKnowledge a mis trop de temps a repondre. Demandez a l'agent de reessayer."
+    ],
     "9E_WAi": [["errorText"], " et ", ["warningText"]],
     "9EykGQ": ["Insérer une colonne à droite"],
     "9GbR5F": ["MAX"],
@@ -3310,6 +3316,9 @@
     "XPqe3B": ["Créer l'étiquette #", ["tagValue"]],
     "XRuL0i": ["Créer la page"],
     "XSb9HS": ["Abandonner les modifications locales, restaurer la version installée"],
+    "XSy4nN": [
+      "Les outils OpenKnowledge de l'agent n'ont pas pu joindre le serveur. Demandez à l'agent de réessayer et, si l'échec persiste, démarrez un nouveau chat."
+    ],
     "XT-L4j": ["Activez un agent pour créer avec l'IA"],
     "XU5AOg": ["Entrée"],
     "XV5sC0": ["Ouvrir le worktree"],
@@ -3674,6 +3683,9 @@
     "_rP3HI": ["il y a ", ["minutes"], " min"],
     "_tekeB": ["propriétés du dossier mises à jour"],
     "_tjopj": ["Coller le duplicata"],
+    "_uOJBO": [
+      "Vous l'avez refusé. Pour qu'il s'exécute, demandez à l'agent de réessayer et approuvez-le."
+    ],
     "_uxBz5": ["Ajouter MCP et la compétence pour ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " s'est arrêté sur une erreur."],
     "_yB-24": ["tout ce qui se trouve sous n'importe quel dossier ", ["0"], "/"],
@@ -4985,6 +4997,7 @@
     "lwCV5v": ["Impossible d'ouvrir ", ["0"], " pour modification : ", ["1"]],
     "lyWa43": ["Pages isolées au niveau du projet"],
     "lzmtKp": ["Échec du chargement des propriétés du dossier : ", ["message"]],
+    "lzsa2d": ["Copier l'erreur"],
     "lzwo7p": ["Impossible d'ouvrir la connexion GitHub. Veuillez réessayer."],
     "m-1Z7o": ["Utiliser ce pack de démarrage"],
     "m0eHej": [

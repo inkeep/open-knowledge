@@ -3682,6 +3682,10 @@ msgstr "Copier le code {userCode}"
 msgid "Copy command"
 msgstr "Copier la commande"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "Copier l'erreur"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -13911,6 +13915,10 @@ msgstr "L'agent travaille"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "L'agent ne s'arrête pas. L'arrêt forcé ferme ce chat et quitte l'agent."
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "Les outils OpenKnowledge de l'agent n'ont pas pu joindre le serveur. Demandez à l'agent de réessayer et, si l'échec persiste, démarrez un nouveau chat."
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "La personnalité, les valeurs et le ton de l'agent."
@@ -14027,6 +14035,14 @@ msgstr "L'id du modèle servi par votre point de terminaison. La taille de ses v
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "l'agent ouvert"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "Le serveur OpenKnowledge a mis trop de temps a repondre et la modification a peut-etre quand meme ete appliquee. Demandez a l'agent de verifier avant de reessayer."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "Le serveur OpenKnowledge a mis trop de temps a repondre. Demandez a l'agent de reessayer."
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -15982,6 +15998,10 @@ msgstr "Vous avez annulé le chargement de « {docName} »."
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "Vous avez supprimé <0>{filePath}</0> en local, mais il a été modifié en amont."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "Vous l'avez refusé. Pour qu'il s'exécute, demandez à l'agent de réessayer et approuvez-le."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."

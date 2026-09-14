@@ -3682,6 +3682,10 @@ msgstr "复制验证码 {userCode}"
 msgid "Copy command"
 msgstr "复制命令"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "复制错误"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -13911,6 +13915,10 @@ msgstr "智能体正在工作"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "智能体没有停止。强制停止将关闭此对话并退出智能体。"
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "智能体的 OpenKnowledge 工具无法连接到服务器。请让智能体重试；如果一直失败，请开始新对话。"
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "智能体的人设、价值观和语气。"
@@ -14027,6 +14035,14 @@ msgstr "你的端点提供的模型 id。它的向量维度会自动检测——
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "已打开的智能体"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "OpenKnowledge 服务器响应超时，更改可能已经生效。请让代理先确认，然后再重试。"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "OpenKnowledge 服务器响应超时。请让代理重试。"
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -15982,6 +15998,10 @@ msgstr "你取消了“{docName}”的加载。"
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "你在本地删除了 <0>{filePath}</0>，但它在上游被修改过。"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "你拒绝了此操作。如需运行，请让智能体重试并批准。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."

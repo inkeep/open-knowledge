@@ -160,6 +160,129 @@ function toolCall(overrides?: Partial<Extract<RenderedItem, { kind: 'tool_call' 
   };
 }
 
+describe('ThreadView failed tool rows', () => {
+  const okTool = 'mcp__open-knowledge__write';
+
+  test('a failure it recognises says what to do about it and offers the error for pasting', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        toolCall({
+          title: okTool,
+          status: 'failed',
+          content: ['Error: Server unreachable: fetch failed'],
+        }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const help = screen.getByTestId('agent-thread-tool-failure-help');
+    expect(help.textContent).toContain('start a new chat');
+    expect(screen.getByRole('button', { name: 'Copy error' })).toBeTruthy();
+  });
+
+  test('a denial shows even when the failed call left nothing else to show', () => {
+    const denial = permission({
+      toolCallId: 'c1',
+      mergedIntoToolCall: true,
+      options: [{ optionId: 'no', name: 'Reject', kind: 'reject_once' }],
+      resolved: { optionId: 'no', auto: false },
+    });
+    model = makeModel({
+      turnActive: false,
+      items: [toolCall({ status: 'failed' }), denial],
+      permissionsByToolCall: { c1: denial },
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-tool-failure-help').textContent).toContain(
+      'You denied this',
+    );
+    expect(screen.queryByRole('button', { name: 'Copy error' })).toBeNull();
+  });
+
+  test('another tool with a lookalike error gets no OpenKnowledge advice', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [toolCall({ status: 'failed', content: ['TypeError: fetch failed'] })],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-tool-failure-help').textContent?.trim()).toBe('');
+  });
+
+  test('a tool you denied says so and how to let it run', () => {
+    const denial = permission({
+      toolCallId: 'c1',
+      mergedIntoToolCall: true,
+      options: [{ optionId: 'no', name: 'Reject', kind: 'reject_once' }],
+      resolved: { optionId: 'no', auto: false },
+    });
+    model = makeModel({
+      turnActive: false,
+      items: [toolCall({ status: 'failed', content: ['User refused permission'] }), denial],
+      permissionsByToolCall: { c1: denial },
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-tool-failure-help').textContent).toContain(
+      'You denied this',
+    );
+  });
+
+  test('a failure it does not recognise still offers the error, and invents no advice', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [toolCall({ status: 'failed', content: ['Error: exit code 2'] })],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const help = screen.getByTestId('agent-thread-tool-failure-help');
+    expect(help.textContent?.trim()).toBe('');
+    expect(screen.getByTestId('agent-thread-tool-failure-copy')).toBeTruthy();
+  });
+
+  test('a tool call that has not failed carries no error help at all', () => {
+    for (const status of ['in_progress', 'completed'] as const) {
+      model = makeModel({
+        turnActive: false,
+        items: [toolCall({ status, content: ['all good'] })],
+      });
+      const view = render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+      expect({ status, help: screen.queryByTestId('agent-thread-tool-failure-help') }).toEqual({
+        status,
+        help: null,
+      });
+      view.unmount();
+    }
+  });
+
+  test('the copy button carries the raw error, not the rendered hint', async () => {
+    const writeText = vi.fn((_text: string) => Promise.resolve());
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
+    try {
+      model = makeModel({
+        turnActive: false,
+        items: [
+          toolCall({
+            title: okTool,
+            status: 'failed',
+            content: ['Error: Server unreachable: fetch failed'],
+          }),
+        ],
+      });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Copy error' }));
+      await waitFor(() =>
+        expect(writeText).toHaveBeenCalledWith('Error: Server unreachable: fetch failed'),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+});
+
 describe('ThreadView permission gate shows the command', () => {
   const COMPOUND =
     'ps -p $$ -o pid,command 2>/dev/null | tail -n +1; echo "----unavailable----"; curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:5173/ 2>&1 || echo "curl failed"';

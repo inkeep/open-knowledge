@@ -3678,6 +3678,10 @@ msgstr "কোড {userCode} কপি করুন"
 msgid "Copy command"
 msgstr "কমান্ড কপি করুন"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "ত্রুটি কপি করুন"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -13907,6 +13911,10 @@ msgstr "এজেন্ট কাজ করছে"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "এজেন্ট থামছে না। ফোর্স স্টপ এই চ্যাট বন্ধ করবে এবং এজেন্ট থেকে বেরিয়ে যাবে।"
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "এজেন্টের OpenKnowledge টুলগুলো সার্ভারে পৌঁছাতে পারেনি। এজেন্টকে আবার চেষ্টা করতে বলুন, আর বারবার ব্যর্থ হলে একটি নতুন চ্যাট শুরু করুন।"
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "এজেন্টের ব্যক্তিত্ব, মূল্যবোধ ও স্বর।"
@@ -14023,6 +14031,14 @@ msgstr "আপনার এন্ডপয়েন্ট যে মডেল id
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "খোলা এজেন্ট"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "OpenKnowledge সার্ভার সাড়া দিতে অনেক সময় নিয়েছে, এবং পরিবর্তনটি তবুও প্রয়োগ হয়ে থাকতে পারে। আবার চেষ্টা করার আগে এজেন্টকে যাচাই করতে বলুন।"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "OpenKnowledge সার্ভার সাড়া দিতে অনেক সময় নিয়েছে। এজেন্টকে আবার চেষ্টা করতে বলুন।"
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -15978,6 +15994,10 @@ msgstr "আপনি \"{docName}\" লোড করা বাতিল করে
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "আপনি <0>{filePath}</0> স্থানীয়ভাবে মুছে ফেলেছেন, কিন্তু সেটি আপস্ট্রিমে বদলানো হয়েছিল।"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "আপনি এটি প্রত্যাখ্যান করেছেন। এটি চালাতে এজেন্টকে আবার চেষ্টা করতে বলুন, তারপর অনুমোদন করুন।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."

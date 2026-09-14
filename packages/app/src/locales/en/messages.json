@@ -167,6 +167,9 @@
     "110eEb": [
       "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
     ],
+    "113NNl": [
+      "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+    ],
     "11ukmX": ["Rename failed: ", ["0"]],
     "12F9WL": ["(no id)"],
     "151wvk": ["Show sidebar"],
@@ -808,6 +811,7 @@
     ],
     "99eR72": ["Visual editor table selection"],
     "9Bd18D": ["Failed to load hub pages"],
+    "9CNRDG": ["The OpenKnowledge server took too long to answer. Ask the agent to try again."],
     "9E_WAi": [["errorText"], " and ", ["warningText"]],
     "9EykGQ": ["Insert column right"],
     "9GbR5F": ["HI"],
@@ -2800,6 +2804,9 @@
     "XPqe3B": ["Create new tag #", ["tagValue"]],
     "XRuL0i": ["Create page"],
     "XSb9HS": ["Discard local edits, restore the installed version"],
+    "XSy4nN": [
+      "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+    ],
     "XT-L4j": ["Turn on an agent to create with AI"],
     "XU5AOg": ["Input"],
     "XV5sC0": ["Open worktree"],
@@ -3124,6 +3131,7 @@
     "_rP3HI": [["minutes"], "m ago"],
     "_tekeB": ["updated folder properties"],
     "_tjopj": ["Paste duplicate"],
+    "_uOJBO": ["You denied this. To let it run, ask the agent to try again and approve it."],
     "_uxBz5": ["Add MCP & skill for ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " stopped with an error."],
     "_yB-24": ["everything under any ", ["0"], "/ folder"],
@@ -4264,6 +4272,7 @@
     "lwCV5v": ["Couldn't open ", ["0"], " for editing: ", ["1"]],
     "lyWa43": ["Project-level disconnected pages"],
     "lzmtKp": ["Failed to load folder properties: ", ["message"]],
+    "lzsa2d": ["Copy error"],
     "lzwo7p": ["Could not open GitHub sign-in. Please try again."],
     "m-1Z7o": ["Use this starter pack"],
     "m0eHej": [

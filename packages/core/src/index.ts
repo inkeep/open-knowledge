@@ -470,6 +470,8 @@ export {
   type OpenKnowledgeMcpTool,
   READ_DOCUMENT_HISTORY_DEPTH,
   resolveIsHostedAgent,
+  SERVER_TIMEOUT_ERROR_PREFIX,
+  SERVER_UNREACHABLE_ERROR_PREFIX,
 } from './constants/mcp.ts';
 export {
   classifyMcpLauncherEntry,

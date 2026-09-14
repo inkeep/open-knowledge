@@ -197,6 +197,9 @@
     "110eEb": [
       "Open Knowledge crea y mantiene un archivo de navegación llamado index.md en cada carpeta que contiene Markdown."
     ],
+    "113NNl": [
+      "El servidor de OpenKnowledge tardo demasiado en responder y es posible que el cambio se haya aplicado igualmente. Pide al agente que lo compruebe antes de volver a intentarlo."
+    ],
     "11ukmX": ["Falló al renombrar: ", ["0"]],
     "12F9WL": ["(sin id)"],
     "151wvk": ["Mostrar la barra lateral"],
@@ -950,6 +953,9 @@
     ],
     "99eR72": ["Selección de tabla del editor visual"],
     "9Bd18D": ["No se pudieron cargar las páginas índice"],
+    "9CNRDG": [
+      "El servidor de OpenKnowledge tardo demasiado en responder. Pide al agente que vuelva a intentarlo."
+    ],
     "9E_WAi": [["errorText"], " y ", ["warningText"]],
     "9EykGQ": ["Insertar columna a la derecha"],
     "9GbR5F": ["MÁX"],
@@ -3262,6 +3268,9 @@
     "XPqe3B": ["Crear la etiqueta nueva #", ["tagValue"]],
     "XRuL0i": ["Crear página"],
     "XSb9HS": ["Descartar las ediciones locales y restaurar la versión instalada"],
+    "XSy4nN": [
+      "Las herramientas de OpenKnowledge del agente no pudieron conectar con el servidor. Pide al agente que vuelva a intentarlo y, si sigue fallando, empieza un chat nuevo."
+    ],
     "XT-L4j": ["Activa un agente para crear con IA"],
     "XU5AOg": ["Entrada"],
     "XV5sC0": ["Abrir el worktree"],
@@ -3627,6 +3636,9 @@
     "_rP3HI": ["hace ", ["minutes"], " min"],
     "_tekeB": ["se actualizaron las propiedades de la carpeta"],
     "_tjopj": ["Pegar duplicado"],
+    "_uOJBO": [
+      "Lo denegaste. Para que se ejecute, pide al agente que vuelva a intentarlo y apruébalo."
+    ],
     "_uxBz5": ["Añadir MCP y habilidad para ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " se detuvo con un error."],
     "_yB-24": ["todo lo que hay en cualquier carpeta ", ["0"], "/"],
@@ -4942,6 +4954,7 @@
     "lwCV5v": ["No se pudo abrir ", ["0"], " para editarlo: ", ["1"]],
     "lyWa43": ["Páginas desconectadas de todo el proyecto"],
     "lzmtKp": ["No se pudieron cargar las propiedades de la carpeta: ", ["message"]],
+    "lzsa2d": ["Copiar el error"],
     "lzwo7p": ["No se pudo abrir el inicio de sesión de GitHub. Inténtalo de nuevo."],
     "m-1Z7o": ["Usar este paquete inicial"],
     "m0eHej": [

@@ -3678,6 +3678,10 @@ msgstr "कोड {userCode} कॉपी करें"
 msgid "Copy command"
 msgstr "कमांड कॉपी करें"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "त्रुटि कॉपी करें"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -13907,6 +13911,10 @@ msgstr "एजेंट काम कर रहा है"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "एजेंट रुक नहीं रहा है। फ़ोर्स स्टॉप इस चैट को बंद कर देगा और एजेंट से बाहर निकल जाएगा।"
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "एजेंट के OpenKnowledge टूल सर्वर तक नहीं पहुँच सके। एजेंट से फिर से कोशिश करने को कहें, और अगर यह बार-बार विफल हो, तो नई चैट शुरू करें।"
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "एजेंट का व्यक्तित्व, मूल्य और स्वर।"
@@ -14023,6 +14031,14 @@ msgstr "वह मॉडल id जो आपका एंडपॉइंट द�
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "खुला हुआ एजेंट"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "OpenKnowledge सर्वर ने जवाब देने में बहुत समय लिया, और हो सकता है कि बदलाव फिर भी लागू हो गया हो। दोबारा कोशिश करने से पहले एजेंट से जाँच करने को कहें।"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "OpenKnowledge सर्वर ने जवाब देने में बहुत समय लिया। एजेंट से दोबारा कोशिश करने को कहें।"
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -15978,6 +15994,10 @@ msgstr "आपने \"{docName}\" लोड करना रद्द कर �
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "आपने <0>{filePath}</0> स्थानीय रूप से हटाई, पर उसे अपस्ट्रीम में बदला गया था।"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "आपने इसे अस्वीकार किया। इसे चलाने के लिए एजेंट से फिर से कोशिश करने को कहें और स्वीकृति दें।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."

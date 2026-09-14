@@ -3678,6 +3678,10 @@ msgstr ""
 msgid "Copy command"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr ""
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -13907,6 +13911,10 @@ msgstr ""
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr ""
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr ""
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr ""
@@ -14022,6 +14030,14 @@ msgstr ""
 
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
+msgstr ""
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr ""
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
 msgstr ""
 
 #: src/comments/ThreadCard.tsx
@@ -15977,6 +15993,10 @@ msgstr ""
 
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
+msgstr ""
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx

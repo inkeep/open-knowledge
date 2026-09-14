@@ -197,6 +197,9 @@
     "110eEb": [
       "Open Knowledge cria e mantém um arquivo de navegação denominado index.md em cada pasta que contém Markdown."
     ],
+    "113NNl": [
+      "O servidor do OpenKnowledge demorou demais para responder e a alteracao pode ter sido aplicada mesmo assim. Peca ao agente que verifique antes de tentar de novo."
+    ],
     "11ukmX": ["Falha ao renomear: ", ["0"]],
     "12F9WL": ["(sem id)"],
     "151wvk": ["Mostrar a barra lateral"],
@@ -942,6 +945,9 @@
     ],
     "99eR72": ["Seleção de tabela do editor visual"],
     "9Bd18D": ["Falha ao carregar as páginas de índice"],
+    "9CNRDG": [
+      "O servidor do OpenKnowledge demorou demais para responder. Peca ao agente que tente de novo."
+    ],
     "9E_WAi": [["errorText"], " e ", ["warningText"]],
     "9EykGQ": ["Inserir coluna à direita"],
     "9GbR5F": ["MÁX"],
@@ -3217,6 +3223,9 @@
     "XPqe3B": ["Criar a nova tag #", ["tagValue"]],
     "XRuL0i": ["Criar página"],
     "XSb9HS": ["Descartar as edições locais e restaurar a versão instalada"],
+    "XSy4nN": [
+      "As ferramentas do OpenKnowledge do agente não conseguiram alcançar o servidor. Peça ao agente para tentar de novo e, se continuar falhando, comece um novo chat."
+    ],
     "XT-L4j": ["Ligue um agente para criar com IA"],
     "XU5AOg": ["Entrada"],
     "XV5sC0": ["Abrir o worktree"],
@@ -3559,6 +3568,7 @@
     "_rP3HI": ["há ", ["minutes"], " min"],
     "_tekeB": ["propriedades da pasta atualizadas"],
     "_tjopj": ["Colar duplicado"],
+    "_uOJBO": ["Você negou isto. Para deixar rodar, peça ao agente para tentar de novo e aprove."],
     "_uxBz5": ["Adicionar MCP e habilidade para ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " parou com um erro."],
     "_yB-24": ["tudo dentro de qualquer pasta ", ["0"], "/"],
@@ -4842,6 +4852,7 @@
     "lwCV5v": ["Não deu para abrir ", ["0"], " para edição: ", ["1"]],
     "lyWa43": ["Páginas desconectadas em todo o projeto"],
     "lzmtKp": ["Falha ao carregar as propriedades da pasta: ", ["message"]],
+    "lzsa2d": ["Copiar o erro"],
     "lzwo7p": ["Não foi possível abrir o login do GitHub. Tente de novo."],
     "m-1Z7o": ["Usar este pacote inicial"],
     "m0eHej": [

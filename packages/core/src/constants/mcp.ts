@@ -4,6 +4,10 @@ export const GREP_MAX_RESULTS = 50;
 
 export const MCP_SERVER_NAME = 'open-knowledge';
 
+export const SERVER_UNREACHABLE_ERROR_PREFIX = 'Server unreachable:';
+
+export const SERVER_TIMEOUT_ERROR_PREFIX = 'Server timed out:';
+
 export const OPEN_KNOWLEDGE_MCP_TOOLS = [
   'exec',
   'search',

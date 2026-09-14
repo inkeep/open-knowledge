@@ -3678,6 +3678,10 @@ msgstr "Copiar o código {userCode}"
 msgid "Copy command"
 msgstr "Copiar comando"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "Copiar o erro"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -13907,6 +13911,10 @@ msgstr "O agente está trabalhando"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "O agente não está parando. A parada forçada fecha este chat e encerra o agente."
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "As ferramentas do OpenKnowledge do agente não conseguiram alcançar o servidor. Peça ao agente para tentar de novo e, se continuar falhando, comece um novo chat."
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "A personalidade, os valores e a voz do agente."
@@ -14023,6 +14031,14 @@ msgstr "O id do modelo que seu endpoint serve. O tamanho do vector é detectado 
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "o agente aberto"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "O servidor do OpenKnowledge demorou demais para responder e a alteracao pode ter sido aplicada mesmo assim. Peca ao agente que verifique antes de tentar de novo."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "O servidor do OpenKnowledge demorou demais para responder. Peca ao agente que tente de novo."
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -15978,6 +15994,10 @@ msgstr "Você cancelou o carregamento de \"{docName}\"."
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "Você excluiu <0>{filePath}</0> localmente, mas ele foi modificado no remoto."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "Você negou isto. Para deixar rodar, peça ao agente para tentar de novo e aprove."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."
