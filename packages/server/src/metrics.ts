@@ -20,6 +20,7 @@ export interface ReconciliationMetrics {
   batchCount: number;
   upstreamImportCount: number;
   persistenceStoreRemovedDocCount: number;
+  persistenceStoreSupersededCount: number;
   rescueBufferCount: number;
   branchSwitchCount: number;
   parkCount: number;
@@ -125,6 +126,7 @@ const counters: ReconciliationMetrics = {
   batchCount: 0,
   upstreamImportCount: 0,
   persistenceStoreRemovedDocCount: 0,
+  persistenceStoreSupersededCount: 0,
   rescueBufferCount: 0,
   branchSwitchCount: 0,
   parkCount: 0,
@@ -235,6 +237,10 @@ export function incrementUpstreamImport(): void {
 
 export function incrementPersistenceStoreRemovedDoc(): void {
   counters.persistenceStoreRemovedDocCount++;
+}
+
+export function incrementPersistenceStoreSuperseded(): void {
+  counters.persistenceStoreSupersededCount++;
 }
 
 export function incrementRescueBuffer(): void {
@@ -602,6 +608,7 @@ export function resetMetrics(): void {
   counters.batchCount = 0;
   counters.upstreamImportCount = 0;
   counters.persistenceStoreRemovedDocCount = 0;
+  counters.persistenceStoreSupersededCount = 0;
   counters.rescueBufferCount = 0;
   counters.branchSwitchCount = 0;
   counters.parkCount = 0;

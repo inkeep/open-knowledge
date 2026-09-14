@@ -57,6 +57,7 @@ import {
 import type { DerivedDocumentIndexPersistencePort } from './derived-document-index.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 import {
+  assertNeverStorePublishOutcome,
   DocumentDurabilityState,
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
@@ -64,7 +65,7 @@ import {
 } from './document-durability-state.ts';
 import { refuseStaleExternalWrite } from './external-change.ts';
 import { contentHash, registerWrite } from './file-watcher.ts';
-import { tracedMkdir, tracedRename, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
+import { tracedMkdir, tracedRenameSync, tracedUnlinkSync, tracedWriteFile } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
 import {
@@ -110,6 +111,7 @@ import {
   incrementPersistenceSanityCheckSerializeFailures,
   incrementPersistenceSkipNonQuiescent,
   incrementPersistenceStoreRemovedDoc,
+  incrementPersistenceStoreSuperseded,
 } from './metrics.ts';
 import { toPosix } from './path-utils.ts';
 import { classifyDuplication } from './persistence-tripwire.ts';
@@ -1291,6 +1293,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
         const { sv: stateVectorAtRead, json } = captureDocSnapshotForPersistence(document);
         const ytextSnapshot = document.getText('source').toString();
+        const storeAttempt = durabilityState.beginStoreAttempt(documentName);
 
         const { frontmatter, body } = stripFrontmatter(ytextSnapshot);
         const markdown = prependFrontmatter(frontmatter, body);
@@ -1723,7 +1726,48 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             }
             return;
           }
-          await tracedRename(tmpPath, canonicalPath);
+          const outcome = durabilityState.tryPublishStore(storeAttempt, () => {
+            tracedRenameSync(tmpPath, canonicalPath);
+          });
+          if (outcome !== 'published') {
+            try {
+              tracedUnlinkSync(tmpPath);
+            } catch (cleanupErr) {
+              if (errnoCode(cleanupErr) !== 'ENOENT') {
+                log.warn(
+                  { err: cleanupErr, docName: documentName, path: tmpPath },
+                  '[persistence] could not remove the temp file after dropping the refused publish',
+                );
+              }
+            }
+            persistenceDeferCounts.delete(documentName);
+            if (outcome === 'reentrant') {
+              console.warn(
+                JSON.stringify({
+                  event: 'persistence-store-reentrant-refused',
+                  'doc.name': documentName,
+                  generation: storeAttempt.generation,
+                  baseBytes: currentBase?.length ?? null,
+                  candidateBytes: markdown.length,
+                }),
+              );
+              return;
+            }
+            if (outcome === 'stale') {
+              incrementPersistenceStoreSuperseded();
+              console.warn(
+                JSON.stringify({
+                  event: 'persistence-store-superseded',
+                  'doc.name': documentName,
+                  generation: storeAttempt.generation,
+                  baseBytes: currentBase?.length ?? null,
+                  candidateBytes: markdown.length,
+                }),
+              );
+              return;
+            }
+            return assertNeverStorePublishOutcome(outcome);
+          }
           registerWrite(canonicalPath, contentHash(markdown));
           durabilityState.clearStoreFailure(documentName);
           incrementPersistenceDiskWrite();
@@ -2016,12 +2060,11 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
      * `captureDocSnapshotForPersistence` at the top of the body — its
      * co-capture of `{sv, json}` is what guarantees the disk-ack
      * watermark reflects the exact doc state that lands on disk. A
-     * second SV captured later (e.g., after `await tracedRename`) would
-     * include updates from the async write window, falsely advancing the
-     * watermark past content that's NOT durably persisted, and
-     * clients would drop those bytes from the recycle buffer →
-     * unsynced-edit loss on server-restart. See the helper's docstring
-     * for the full timing contract.
+     * second SV captured later (e.g., after the `await tracedWriteFile`
+     * that stages the temp file) would include updates from the async
+     * write window, falsely advancing the watermark past content that's
+     * NOT durably persisted, and clients would drop those bytes from
+     * the recycle buffer → unsynced-edit loss on server-restart.
      */
     async onStoreDocument({
       document,

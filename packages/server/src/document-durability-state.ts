@@ -16,6 +16,17 @@ export interface StoreFailure {
   message: string;
 }
 
+export interface StoreAttemptToken {
+  readonly docName: string;
+  readonly generation: number;
+}
+
+export type StorePublishOutcome = 'published' | 'stale' | 'reentrant';
+
+export function assertNeverStorePublishOutcome(outcome: never): never {
+  throw new Error(`[StorePublishOutcome] unhandled variant: ${JSON.stringify(outcome)}`);
+}
+
 export const OK_DOC_REMOVED = 'OK_DOC_REMOVED';
 export const OK_PATH_UNRESOLVABLE = 'OK_PATH_UNRESOLVABLE';
 
@@ -83,6 +94,33 @@ function snapshotParts(branches: ReadonlyMap<string, string[]>): string[] {
   }
   parts.push('}}');
   return parts;
+}
+
+function isThenable(
+  value: unknown,
+): value is { then: (onFulfilled: () => void, onRejected: (cause: unknown) => void) => unknown } {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
+}
+
+function logRefusedPublishRejection(token: StoreAttemptToken, cause: unknown): void {
+  let reason: string;
+  try {
+    reason = cause instanceof Error ? String(cause.message) : String(cause);
+  } catch {
+    reason = 'unserializable rejection reason';
+  }
+  console.warn(
+    JSON.stringify({
+      event: 'persistence-store-publish-async-rejected',
+      'doc.name': token.docName,
+      generation: token.generation,
+      error: reason,
+    }),
+  );
 }
 
 function sameStaleConflict(
@@ -209,6 +247,9 @@ export class DocumentDurabilityState {
     Map<string, StaleExternalWriteConflict>
   >();
   private readonly inFlightFlushByDoc = new Map<string, PendingFlush[]>();
+  private readonly storeAttemptGenerations = new Map<string, number>();
+  private readonly publishedStoreGenerations = new Map<string, number>();
+  private readonly documentsWithPublishInFlight = new Set<string>();
   private readonly agentWriteStores = new Set<string>();
   private readonly storeFailures = new Map<string, StoreFailure>();
   private readonly storeDivergences = new Set<string>();
@@ -688,6 +729,50 @@ export class DocumentDurabilityState {
       pending.splice(i, 1);
       if (pending.length === 0) this.inFlightFlushByDoc.delete(docName);
       return;
+    }
+  }
+
+  beginStoreAttempt(docName: string): StoreAttemptToken {
+    const generation = (this.storeAttemptGenerations.get(docName) ?? 0) + 1;
+    this.storeAttemptGenerations.set(docName, generation);
+    return { docName, generation };
+  }
+
+  /**
+   * STOP: `publish` must complete the disk write synchronously before returning — a
+   * `'published'` return promises the caller the bytes are already on disk, and the call
+   * site's post-publish bookkeeping (writeTracker registration, recordSuccessfulStore) runs
+   * on that promise. The call site must pass a synchronous rename (`tracedRenameSync`), never
+   * the async `tracedRename`: a callback that returns before the rename lands advances the
+   * published watermark over content that is not durably persisted. A thenable return throws,
+   * with a rejection handler attached first so its in-flight work cannot crash the process. A
+   * nested `tryPublishStore` for the same document while a publish is in flight returns
+   * `'reentrant'` before its callback runs — distinct from `'stale'` — and the in-flight
+   * attempt owns the document's publish gate and completes normally: a `'reentrant'` result
+   * is not a superseded drop, the in-flight capture is the one that lands.
+   */
+  tryPublishStore(token: StoreAttemptToken, publish: () => void): StorePublishOutcome {
+    if (this.documentsWithPublishInFlight.has(token.docName)) return 'reentrant';
+    const publishedAtEntry = this.publishedStoreGenerations.get(token.docName) ?? 0;
+    if (token.generation <= publishedAtEntry) return 'stale';
+    this.documentsWithPublishInFlight.add(token.docName);
+    try {
+      const outcome: unknown = publish();
+      if (isThenable(outcome)) {
+        try {
+          outcome.then(
+            () => {},
+            (cause: unknown) => logRefusedPublishRejection(token, cause),
+          );
+        } catch {}
+        throw new TypeError(
+          `tryPublishStore: the publish callback must complete synchronously, but it returned a thenable (${token.docName} generation ${token.generation})`,
+        );
+      }
+      this.publishedStoreGenerations.set(token.docName, token.generation);
+      return 'published';
+    } finally {
+      this.documentsWithPublishInFlight.delete(token.docName);
     }
   }
 

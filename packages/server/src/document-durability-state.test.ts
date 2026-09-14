@@ -24,6 +24,7 @@ import {
   DISPLACED_VERSION_TTL_MS,
   DocumentDurabilityState,
   DocumentDurabilityStateError,
+  type StorePublishOutcome,
 } from './document-durability-state.ts';
 import * as tracedFs from './fs-traced.ts';
 import { getLogger } from './logger.ts';
@@ -832,5 +833,434 @@ describe('displaced-version history', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('store publish generation primitives', () => {
+  test('beginStoreAttempt issues monotonically increasing tokens per document', () => {
+    const state = new DocumentDurabilityState();
+    expect(state.beginStoreAttempt('doc')).toEqual({ docName: 'doc', generation: 1 });
+    expect(state.beginStoreAttempt('doc')).toEqual({ docName: 'doc', generation: 2 });
+    expect(state.beginStoreAttempt('doc')).toEqual({ docName: 'doc', generation: 3 });
+    expect(state.beginStoreAttempt('other')).toEqual({ docName: 'other', generation: 1 });
+  });
+
+  test('tryPublishStore refuses a stale token without publishing and without moving the published watermark', () => {
+    const state = new DocumentDurabilityState();
+    const first = state.beginStoreAttempt('doc');
+    const second = state.beginStoreAttempt('doc');
+    let publishCalls = 0;
+    expect(
+      state.tryPublishStore(second, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(publishCalls).toBe(1);
+    expect(
+      state.tryPublishStore(first, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(publishCalls).toBe(1);
+    expect(
+      state.tryPublishStore(first, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(publishCalls).toBe(1);
+  });
+
+  test('tryPublishStore refuses an already-published token and advances the watermark only on publish', () => {
+    const state = new DocumentDurabilityState();
+    const first = state.beginStoreAttempt('doc');
+    const second = state.beginStoreAttempt('doc');
+    const third = state.beginStoreAttempt('doc');
+    let publishCalls = 0;
+    expect(
+      state.tryPublishStore(second, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(
+      state.tryPublishStore(second, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(
+      state.tryPublishStore(first, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(
+      state.tryPublishStore(third, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(
+      state.tryPublishStore(second, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(
+      state.tryPublishStore(third, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(publishCalls).toBe(2);
+  });
+
+  test('tryPublishStore invokes the publish callback synchronously before returning', () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    let committed = false;
+    const accepted = state.tryPublishStore(token, () => {
+      committed = true;
+    });
+    expect(accepted).toBe('published');
+    expect(committed).toBe(true);
+  });
+
+  test('tryPublishStore rejects a publish callback that returns a thenable instead of publishing synchronously', () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    let renamed = false;
+    expect(() =>
+      state.tryPublishStore(token, async () => {
+        await Promise.resolve();
+        renamed = true;
+      }),
+    ).toThrow(TypeError);
+    expect(renamed).toBe(false);
+    expect(
+      state.tryPublishStore(token, () => {
+        renamed = true;
+      }),
+    ).toBe('published');
+    expect(renamed).toBe(true);
+  });
+
+  test('a rejecting async publish callback throws without leaking an unhandled rejection', async () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(() =>
+        state.tryPublishStore(token, async () => {
+          await Promise.reject(new Error('in-flight rename failed'));
+        }),
+      ).toThrow(TypeError);
+      await new Promise((resolve) => setImmediate(resolve));
+      const events = warnSpy.mock.calls
+        .map((call) => call.map(String).join(' '))
+        .filter((line) => line.includes('"event":"persistence-store-publish-async-rejected"'));
+      expect(events).toHaveLength(1);
+      const payload = JSON.parse(events[0]) as Record<string, unknown>;
+      expect(payload['doc.name']).toBe('doc');
+      expect(payload.generation).toBe(1);
+      expect(payload.error).toBe('in-flight rename failed');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a non-Error rejection reason still lands the async-rejected event without crashing the handler', async () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      expect(() =>
+        state.tryPublishStore(token, async () => {
+          await Promise.reject({ toString: 1 });
+        }),
+      ).toThrow(TypeError);
+      await new Promise((resolve) => setImmediate(resolve));
+      const events = warnSpy.mock.calls
+        .map((call) => call.map(String).join(' '))
+        .filter((line) => line.includes('"event":"persistence-store-publish-async-rejected"'));
+      expect(events).toHaveLength(1);
+      const payload = JSON.parse(events[0]) as Record<string, unknown>;
+      expect(payload['doc.name']).toBe('doc');
+      expect(payload.generation).toBe(1);
+      expect(typeof payload.error).toBe('string');
+      expect(payload.error).not.toBe('');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('an Error cause carrying a non-string message still lands the event with a string reason', async () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const hostile = new Error('placeholder');
+      const circular: Record<string, unknown> = {};
+      circular.self = circular;
+      hostile.message = circular;
+      expect(() =>
+        state.tryPublishStore(token, async () => {
+          await Promise.reject(hostile);
+        }),
+      ).toThrow(TypeError);
+      await new Promise((resolve) => setImmediate(resolve));
+      const events = warnSpy.mock.calls
+        .map((call) => call.map(String).join(' '))
+        .filter((line) => line.includes('"event":"persistence-store-publish-async-rejected"'));
+      expect(events).toHaveLength(1);
+      const payload = JSON.parse(events[0]) as Record<string, unknown>;
+      expect(payload['doc.name']).toBe('doc');
+      expect(payload.generation).toBe(1);
+      expect(typeof payload.error).toBe('string');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a sync-throwing then on a refused thenable still surfaces the TypeError contract', () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    const syncThrowing = () => {};
+    Reflect.set(syncThrowing, 'then', () => {
+      throw new Error('then threw synchronously');
+    });
+    expect(() => state.tryPublishStore(token, () => syncThrowing)).toThrow(TypeError);
+    expect(state.tryPublishStore(token, () => {})).toBe('published');
+  });
+
+  test('a self-resolving thenable return is refused without assimilating it into the promise machinery', () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    const selfResolving = () => {};
+    Reflect.set(selfResolving, 'then', (onFulfilled: (value: unknown) => void) => {
+      onFulfilled(selfResolving);
+    });
+    expect(() => state.tryPublishStore(token, () => selfResolving)).toThrow(TypeError);
+    expect(state.tryPublishStore(token, () => {})).toBe('published');
+  });
+
+  test('tryPublishStore rejects a thenable that is a function carrying a then method', () => {
+    const state = new DocumentDurabilityState();
+    const token = state.beginStoreAttempt('doc');
+    const callableThenable = () => {};
+    Reflect.set(callableThenable, 'then', () => {});
+    expect(() => state.tryPublishStore(token, () => callableThenable)).toThrow(TypeError);
+    expect(state.tryPublishStore(token, () => {})).toBe('published');
+  });
+
+  test('a nested publish attempt inside the gate is refused before its callback runs and the outer attempt completes', () => {
+    const state = new DocumentDurabilityState();
+    const stale = state.beginStoreAttempt('doc');
+    const outer = state.beginStoreAttempt('doc');
+    const afterOuter = state.beginStoreAttempt('doc');
+    let publishCalls = 0;
+    let nestedOutcome: StorePublishOutcome | undefined;
+    expect(
+      state.tryPublishStore(outer, () => {
+        publishCalls += 1;
+        nestedOutcome = state.tryPublishStore(stale, () => {
+          publishCalls += 1;
+        });
+      }),
+    ).toBe('published');
+    expect(nestedOutcome).toBe('reentrant');
+    expect(publishCalls).toBe(1);
+    expect(
+      state.tryPublishStore(outer, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(
+      state.tryPublishStore(afterOuter, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(publishCalls).toBe(2);
+  });
+
+  test('a reentrant attempt with a higher generation is still refused while the outer publish is in flight', () => {
+    const state = new DocumentDurabilityState();
+    const outer = state.beginStoreAttempt('doc');
+    const nested = state.beginStoreAttempt('doc');
+    let publishCalls = 0;
+    let nestedOutcome: StorePublishOutcome | undefined;
+    expect(
+      state.tryPublishStore(outer, () => {
+        publishCalls += 1;
+        nestedOutcome = state.tryPublishStore(nested, () => {
+          publishCalls += 1;
+        });
+      }),
+    ).toBe('published');
+    expect(nestedOutcome).toBe('reentrant');
+    expect(publishCalls).toBe(1);
+    expect(
+      state.tryPublishStore(outer, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(
+      state.tryPublishStore(nested, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(publishCalls).toBe(2);
+  });
+
+  test('an in-flight publish for one document does not refuse a nested publish for another document', () => {
+    const state = new DocumentDurabilityState();
+    const docToken = state.beginStoreAttempt('doc');
+    const otherToken = state.beginStoreAttempt('other');
+    let docPublishCalls = 0;
+    let otherPublishCalls = 0;
+    let nestedOtherOutcome: StorePublishOutcome | undefined;
+    let docReentryOutcome: StorePublishOutcome | undefined;
+    expect(
+      state.tryPublishStore(docToken, () => {
+        docPublishCalls += 1;
+        nestedOtherOutcome = state.tryPublishStore(otherToken, () => {
+          otherPublishCalls += 1;
+        });
+        docReentryOutcome = state.tryPublishStore(docToken, () => {
+          docPublishCalls += 1;
+        });
+      }),
+    ).toBe('published');
+    expect(nestedOtherOutcome).toBe('published');
+    expect(otherPublishCalls).toBe(1);
+    expect(docReentryOutcome).toBe('reentrant');
+    expect(docPublishCalls).toBe(1);
+    const otherFollowUp = state.beginStoreAttempt('other');
+    expect(
+      state.tryPublishStore(otherFollowUp, () => {
+        otherPublishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(otherPublishCalls).toBe(2);
+  });
+
+  test('a reentrant attempt that is also stale is still refused as reentrant while the outer publish is in flight', () => {
+    const state = new DocumentDurabilityState();
+    const first = state.beginStoreAttempt('doc');
+    expect(state.tryPublishStore(first, () => {})).toBe('published');
+    const outer = state.beginStoreAttempt('doc');
+    let publishCalls = 0;
+    let nestedOutcome: StorePublishOutcome | undefined;
+    expect(
+      state.tryPublishStore(outer, () => {
+        publishCalls += 1;
+        nestedOutcome = state.tryPublishStore(first, () => {
+          publishCalls += 1;
+        });
+      }),
+    ).toBe('published');
+    expect(nestedOutcome).toBe('reentrant');
+    expect(publishCalls).toBe(1);
+  });
+
+  test('a throwing publish callback propagates without advancing the published watermark', () => {
+    const state = new DocumentDurabilityState();
+    const first = state.beginStoreAttempt('doc');
+    expect(state.tryPublishStore(first, () => {})).toBe('published');
+    const second = state.beginStoreAttempt('doc');
+    expect(() =>
+      state.tryPublishStore(second, () => {
+        throw new Error('rename failed');
+      }),
+    ).toThrow('rename failed');
+    expect(state.tryPublishStore(second, () => {})).toBe('published');
+    const third = state.beginStoreAttempt('doc');
+    expect(state.tryPublishStore(third, () => {})).toBe('published');
+  });
+
+  test('a pre-delete store token stays outranked across the delete boundary', () => {
+    const state = new DocumentDurabilityState();
+    const stale = state.beginStoreAttempt('doc');
+    const current = state.beginStoreAttempt('doc');
+    const otherFirst = state.beginStoreAttempt('other');
+    const otherSecond = state.beginStoreAttempt('other');
+    let publishCalls = 0;
+    expect(
+      state.tryPublishStore(current, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(
+      state.tryPublishStore(stale, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(
+      state.tryPublishStore(otherSecond, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+
+    state.deleteReconciledBase('doc');
+
+    expect(state.beginStoreAttempt('doc')).toEqual({ docName: 'doc', generation: 3 });
+    expect(
+      state.tryPublishStore(stale, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    const postDelete = state.beginStoreAttempt('doc');
+    expect(postDelete).toEqual({ docName: 'doc', generation: 4 });
+    expect(
+      state.tryPublishStore(postDelete, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(
+      state.tryPublishStore(stale, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(publishCalls).toBe(3);
+    expect(state.beginStoreAttempt('other')).toEqual({ docName: 'other', generation: 3 });
+    expect(
+      state.tryPublishStore(otherFirst, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(publishCalls).toBe(3);
+  });
+
+  test('a pre-delete store token stays outranked across a persisted delete', () => {
+    const state = new DocumentDurabilityState();
+    state.recordDisplacedVersion('doc', 'displaced bytes');
+    const stale = state.beginStoreAttempt('doc');
+    const current = state.beginStoreAttempt('doc');
+    let publishCalls = 0;
+    expect(
+      state.tryPublishStore(current, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(
+      state.tryPublishStore(stale, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+
+    state.deleteReconciledBase('doc');
+
+    expect(state.beginStoreAttempt('doc')).toEqual({ docName: 'doc', generation: 3 });
+    expect(
+      state.tryPublishStore(stale, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    const postDelete = state.beginStoreAttempt('doc');
+    expect(
+      state.tryPublishStore(postDelete, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('published');
+    expect(
+      state.tryPublishStore(stale, () => {
+        publishCalls += 1;
+      }),
+    ).toBe('stale');
+    expect(publishCalls).toBe(2);
   });
 });

@@ -625,7 +625,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     await storeDocument(persistence, document, docName);
     setBatchInProgress(false);
 
-    const renameSpy = vi.spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
+    const renameSpy = vi.spyOn(fsTraced, 'tracedRenameSync').mockImplementation(() => {
       const malformed = Object.create(Error.prototype) as Error & { name: string };
       Object.defineProperty(malformed, 'message', { value: 'malformed-error', enumerable: true });
       Object.defineProperty(malformed, 'name', { value: 'MalformedError', enumerable: true });
@@ -683,7 +683,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     await storeDocument(persistence, document, docName);
     setBatchInProgress(false);
 
-    const renameSpy = vi.spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
+    const renameSpy = vi.spyOn(fsTraced, 'tracedRenameSync').mockImplementation(() => {
       const malformed = Object.create(Error.prototype) as Error & { name: string };
       Object.defineProperty(malformed, 'name', { value: 'MalformedError', enumerable: true });
       Object.defineProperty(malformed, 'message', {
@@ -731,7 +731,7 @@ describe('FR-9 — deferred-store-failed event + counter', () => {
     await storeDocument(persistence, document, docName);
     setBatchInProgress(false);
 
-    const renameSpy = vi.spyOn(fsTraced, 'tracedRename').mockImplementation(async () => {
+    const renameSpy = vi.spyOn(fsTraced, 'tracedRenameSync').mockImplementation(() => {
       const malformed = Object.create(Error.prototype) as Error & { name: string };
       Object.defineProperty(malformed, 'message', {
         value: 'malformed-error-verbose',
