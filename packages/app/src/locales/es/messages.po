@@ -14375,6 +14375,10 @@ msgstr "Esta rama está extraída en:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Esto se puede configurar en Ajustes > Herramientas de IA y CLI"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "Este comando contiene caracteres ocultos que pueden hacer que se vea distinto de lo que se ejecuta. Aquí se muestran como ⟨U+…⟩."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "Este comentario es sobre toda la propiedad"

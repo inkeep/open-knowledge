@@ -14375,6 +14375,10 @@ msgstr "이 브랜치의 체크아웃 위치:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Settings > AI tools & CLI에서 설정 가능"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "이 명령에는 실제로 실행되는 내용과 다르게 보이게 할 수 있는 숨겨진 문자가 있습니다. 여기서는 ⟨U+…⟩ 형식으로 표시됩니다."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "이 댓글, 속성 전체에 적용됨"

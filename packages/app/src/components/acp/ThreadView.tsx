@@ -125,6 +125,7 @@ import {
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import { isPermissiveMode } from '@/lib/acp/permissive-mode';
+import { formatShellCommand, revealHiddenCharacters } from '@/lib/acp/shell-command-format';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
 import {
@@ -2892,6 +2893,42 @@ function RawInputBlock({ text }: { text: string }): ReactNode {
   );
 }
 
+function ShellCommandBlock({ id, command }: { id: string; command: string }): ReactNode {
+  const { t } = useLingui();
+  const lines = formatShellCommand(command).map((line) => ({
+    ...line,
+    shown: revealHiddenCharacters(line.text),
+  }));
+  const concealed = lines.some((line) => line.shown !== line.text);
+  return (
+    <div className="mb-1.5" data-testid="agent-thread-permission-command">
+      <pre
+        id={id}
+        dir="ltr"
+        translate="no"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard-focusable scroll container — a long command scrolls inside this bounded box, and Safari leaves overflow:auto elements out of the tab order.
+        tabIndex={0}
+        className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 text-start font-mono text-[11px] leading-relaxed"
+      >
+        <code>
+          {lines.map((line, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: shell lines are positional
+            <Fragment key={index}>
+              {index > 0 ? '\n' : null}
+              <span className={line.continuation ? 'ps-4' : undefined}>{line.shown}</span>
+            </Fragment>
+          ))}
+        </code>
+      </pre>
+      {concealed ? (
+        <p className="mt-1 text-amber-700 text-xs dark:text-amber-400">
+          {t`This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩.`}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function PermissionPrompt({
   item,
   threadId,
@@ -2923,6 +2960,10 @@ function PermissionPrompt({
       ? []
       : [primaryReject, ...rejectOptions.filter((option) => option !== primaryReject)];
   const focusRefForDeny = primaryAllow === undefined ? primaryRef : undefined;
+  const titleId = useId();
+  const commandId = useId();
+  const describedBy = item.command !== null ? commandId : undefined;
+  const denyDescribedBy = primaryAllow === undefined ? describedBy : undefined;
 
   useEffect(() => {
     if (!pending || !actionable) return;
@@ -2934,15 +2975,21 @@ function PermissionPrompt({
   const resolvedLabel = outcomeLabel(outcome);
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a permission card is a title, a command and decision buttons, not a form-control set, so <fieldset> would impose form-field semantics and chrome.
     <div
       ref={cardRef}
       className={cn(
         'rounded-md border px-2.5 py-2 text-sm',
         pending && actionable ? 'border-border bg-muted/30' : 'border-border/60 bg-muted/20',
       )}
+      role="group"
+      aria-labelledby={titleId}
       data-testid="agent-thread-permission"
     >
-      <div className="mb-1.5 font-medium">{item.title}</div>
+      <div id={titleId} className="mb-1.5 font-medium">
+        {item.title}
+      </div>
+      {item.command !== null ? <ShellCommandBlock id={commandId} command={item.command} /> : null}
       {!pending ? (
         <div
           className="text-muted-foreground text-xs"
@@ -2961,6 +3008,7 @@ function PermissionPrompt({
                 <Button
                   key={option.optionId}
                   ref={isPrimary ? primaryRef : undefined}
+                  aria-describedby={isPrimary ? describedBy : undefined}
                   type="button"
                   size="sm"
                   variant={isPrimary ? 'default' : 'outline'}
@@ -2985,6 +3033,7 @@ function PermissionPrompt({
                 <Button
                   key={option.optionId}
                   ref={index === 0 ? focusRefForDeny : undefined}
+                  aria-describedby={index === 0 ? denyDescribedBy : undefined}
                   type="button"
                   size="sm"
                   variant={index === 0 ? 'outline' : 'ghost'}
@@ -2999,6 +3048,7 @@ function PermissionPrompt({
             ) : (
               <Button
                 ref={focusRefForDeny}
+                aria-describedby={denyDescribedBy}
                 type="button"
                 size="sm"
                 variant="outline"
@@ -3021,6 +3071,7 @@ function PermissionPrompt({
               return (
                 <Button
                   ref={focusRefForDeny}
+                  aria-describedby={denyDescribedBy}
                   type="button"
                   size="sm"
                   variant="outline"
@@ -3037,6 +3088,7 @@ function PermissionPrompt({
           ) : (
             <Button
               ref={focusRefForDeny}
+              aria-describedby={denyDescribedBy}
               type="button"
               size="sm"
               variant="outline"
@@ -3052,6 +3104,7 @@ function PermissionPrompt({
           {primaryAllow !== undefined ? (
             <Button
               ref={primaryRef}
+              aria-describedby={describedBy}
               type="button"
               size="sm"
               className="text-xs normal-case font-sans"

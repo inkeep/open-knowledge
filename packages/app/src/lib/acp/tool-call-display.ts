@@ -1,6 +1,6 @@
 import { OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
 import { plural, t } from '@lingui/core/macro';
-import { stringField, unwrapMcpInput } from '@/lib/acp/mcp-input';
+import { asRecord, stringField, unwrapMcpInput } from '@/lib/acp/mcp-input';
 
 export type ToolCallGlyph =
   | 'read'
@@ -35,12 +35,6 @@ const OPEN_KNOWLEDGE_TITLE = /^(?:mcp[^a-z0-9]+)?(?:open[-_ ]?knowledge|ok)[^a-z
 interface OpenKnowledgeCall {
   tool: string;
   args: Record<string, unknown>;
-}
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 function toolFromTitle(title: string): string | null {

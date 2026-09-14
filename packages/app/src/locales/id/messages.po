@@ -14371,6 +14371,10 @@ msgstr "Cabang ini sedang dipakai di:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Ini bisa diatur di Pengaturan > Alat AI & CLI"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "Perintah ini berisi karakter tersembunyi yang dapat membuatnya terlihat berbeda dari yang dijalankan. Karakter tersebut ditampilkan di sini sebagai ⟨U+…⟩."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "Komentar ini berlaku untuk seluruh properti"

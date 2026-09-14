@@ -14375,6 +14375,10 @@ msgstr "Cette branche est extraite dans :"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Cela se configure dans Paramètres > Outils IA et CLI"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "Cette commande contient des caractères masqués qui peuvent la faire paraître différente de ce qui s’exécute. Ils sont affichés ici sous la forme ⟨U+…⟩."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "Ce commentaire porte sur toute la propriété"

@@ -1,4 +1,4 @@
-import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type { ThreadEvent, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import {
   act,
   cleanup,
@@ -113,6 +113,7 @@ const { resetStagedThreadDrafts, subscribeStagedThreadDraft } = await import(
 );
 const { launchAgentThread } = await import('@/lib/acp/launch-agent-thread');
 const { ThreadResumeError } = await import('@/lib/acp/thread-client');
+const { buildThreadRenderModel } = await import('@/lib/acp/thread-event-model');
 const { agentSettingsKey, getRememberedAgentConfig, getRememberedAgentMode } = await import(
   '@/lib/acp/agent-settings-store'
 );
@@ -159,12 +160,161 @@ function toolCall(overrides?: Partial<Extract<RenderedItem, { kind: 'tool_call' 
   };
 }
 
+describe('ThreadView permission gate shows the command', () => {
+  const COMPOUND =
+    'ps -p $$ -o pid,command 2>/dev/null | tail -n +1; echo "----unavailable----"; curl -s -o /dev/null -w "%{http_code}" --max-time 5 http://localhost:5173/ 2>&1 || echo "curl failed"';
+
+  const request = (toolCall: Record<string, unknown>): ThreadEvent => ({
+    kind: 'permission_request',
+    requestId: 'r1',
+    toolCall: {
+      toolCallId: 'tc1',
+      title: 'Run a diagnostic',
+      kind: 'execute',
+      ...toolCall,
+    } as never,
+    options: [{ optionId: 'yes', name: 'Allow', kind: 'allow_once' }],
+    ts: 3,
+  });
+  const call = (update: Record<string, unknown>): ThreadEvent => ({
+    kind: 'session_update',
+    update: {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'tc1',
+      title: 'Run a diagnostic',
+      kind: 'execute',
+      status: 'pending',
+      ...update,
+    } as never,
+    ts: 2,
+  });
+  const showGate = (...events: ThreadEvent[]): void => {
+    model = buildThreadRenderModel([{ kind: 'turn_started', ts: 1 }, ...events], null);
+    render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
+  };
+  const commandLines = (): string[] =>
+    [...screen.getByTestId('agent-thread-permission-command').querySelectorAll('code > span')].map(
+      (row) => row.textContent ?? '',
+    );
+
+  test('the gate shows the command it is asking you to approve, not just the description', () => {
+    showGate(
+      call({ rawInput: { command: COMPOUND } }),
+      request({
+        title: 'Run a long compound diagnostic',
+        rawInput: { command: COMPOUND, description: 'Run a long compound diagnostic' },
+      }),
+    );
+
+    const body = screen.getByTestId('agent-thread-permission-command');
+    expect(body.textContent).toContain('ps -p $$');
+    expect(body.textContent).toContain('curl failed');
+  });
+
+  test('a request that arrives before its call shows the command it carries', () => {
+    showGate(request({ rawInput: { command: 'ls -la' } }));
+
+    expect(commandLines()).toEqual(['ls -la']);
+  });
+
+  test('a Codex exec approval, which lands before its call, shows the script inside its shell wrapper', () => {
+    showGate(
+      request({
+        rawInput: {
+          call_id: 'tc1',
+          command: ['/bin/zsh', '-lc', 'ls; pwd'],
+          cwd: '/repo',
+          parsed_cmd: [],
+        },
+      }),
+    );
+
+    expect(commandLines()).toEqual(['ls;', 'pwd']);
+  });
+
+  test("the gate shows the request's own command, not the one on the call it gates", () => {
+    showGate(
+      call({ rawInput: { command: 'echo from-call' } }),
+      request({ rawInput: { command: 'echo from-request' } }),
+    );
+
+    expect(commandLines()).toEqual(['echo from-request']);
+  });
+
+  test('each statement lands on its own line rather than one unreadable run', () => {
+    showGate(request({ rawInput: { command: 'one && two; three' } }));
+
+    expect(commandLines()).toEqual(['one &&', 'two;', 'three']);
+  });
+
+  test('a long command stays whole, with nothing to expand, while the gate waits for an answer', () => {
+    const long = Array.from({ length: 10 }, (_, index) => `step${index}`).join('; ');
+    showGate(request({ rawInput: { command: long } }));
+
+    expect(commandLines()).toHaveLength(10);
+    expect(commandLines().at(-1)).toBe('step9');
+    expect(
+      within(screen.getByTestId('agent-thread-permission-command')).queryByRole('button'),
+    ).toBeNull();
+  });
+
+  test('the command reads left to right as code and is never auto-translated, whatever the page direction', () => {
+    document.documentElement.dir = 'rtl';
+    try {
+      showGate(request({ rawInput: { command: 'one && two' } }));
+
+      const pre = screen.getByTestId('agent-thread-permission-command').querySelector('pre');
+      expect(pre?.getAttribute('dir')).toBe('ltr');
+      expect(pre?.getAttribute('translate')).toBe('no');
+      expect(pre?.querySelector('code')?.textContent).toBe('one &&\ntwo');
+      expect(pre?.querySelector('div')).toBeNull();
+    } finally {
+      document.documentElement.dir = '';
+    }
+  });
+
+  test('the button that takes focus is described by the command, inside a group named by the request', () => {
+    showGate(request({ title: 'Run the tests', rawInput: { command: 'npm test' } }));
+
+    const gate = screen.getByRole('group', { name: 'Run the tests' });
+    expect(
+      within(gate).getByRole('button', { name: 'Allow', description: 'npm test' }),
+    ).toBeTruthy();
+  });
+
+  test('hidden characters in the command are spelled out, with a warning', () => {
+    showGate(request({ rawInput: { command: 'echo safe\u202e; rm -rf ~' } }));
+
+    const block = screen.getByTestId('agent-thread-permission-command');
+    expect(block.textContent).toContain('⟨U+202E⟩');
+    expect(block.textContent).not.toContain('\u202e');
+    expect(within(block).getByText(/hidden characters/)).toBeTruthy();
+  });
+
+  test('a non-execute tool is never rendered as a shell command', () => {
+    const renameInput = { command: 'rename; this is not a shell command' };
+    showGate(
+      call({ kind: 'edit', rawInput: renameInput }),
+      request({ kind: 'edit', rawInput: renameInput }),
+    );
+
+    expect(screen.queryByTestId('agent-thread-permission-command')).toBeNull();
+  });
+
+  test('a permission with no shell command behind it shows no command block', () => {
+    showGate(request({ toolCallId: undefined }));
+
+    expect(screen.queryByTestId('agent-thread-permission-command')).toBeNull();
+  });
+});
+
 function permission(overrides?: Partial<Extract<RenderedItem, { kind: 'permission' }>>) {
   return {
     kind: 'permission' as const,
     requestId: 'r1',
     title: 'Run npm test?',
     toolKind: 'execute',
+    command: null,
     options: [{ optionId: 'yes', name: 'Allow', kind: 'allow_once' }],
     resolved: null,
     toolCallId: null,

@@ -14371,6 +14371,10 @@ msgstr "এই ব্রাঞ্চটি এখানে চেক আউট �
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "এটি Settings > AI tools & CLI-তে কনফিগার করা যায়"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "এই কমান্ডে লুকানো অক্ষর আছে, যার ফলে এটি আসলে যা চলে তার থেকে আলাদা দেখাতে পারে। এগুলো এখানে ⟨U+…⟩ হিসেবে দেখানো হয়েছে।"
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "এই মন্তব্যটি পুরো প্রপার্টির উপর"

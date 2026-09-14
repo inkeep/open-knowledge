@@ -14375,6 +14375,10 @@ msgstr "یہ برانچ یہاں چیک آؤٹ ہے:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "یہ ترتیبات > AI ٹولز اور CLI میں مقرر کیا جا سکتا ہے"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "اس کمانڈ میں پوشیدہ حروف ہیں جن کی وجہ سے یہ اصل میں چلنے والی چیز سے مختلف دکھائی دے سکتی ہے۔ انہیں یہاں ⟨U+…⟩ کی صورت میں دکھایا گیا ہے۔"
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "یہ تبصرہ پوری خصوصیت پر ہے"

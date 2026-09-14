@@ -1,3 +1,9 @@
+export function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
 export function stringField(obj: Record<string, unknown>, key: string): string | null {
   const value = obj[key];
   return typeof value === 'string' && value !== '' ? value : null;

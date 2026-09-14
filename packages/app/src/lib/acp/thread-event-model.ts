@@ -10,6 +10,7 @@ import type {
   ThreadFailureDetail,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t } from '@lingui/core/macro';
+import { shellCommandFromRawInput } from '@/lib/acp/shell-command-format';
 
 type RenderedMessage =
   | {
@@ -45,6 +46,7 @@ export interface RenderedPermission {
   requestId: string;
   title: string;
   toolKind: string;
+  command: string | null;
   options: PermissionOption[];
   resolved: { optionId: string | null; auto: boolean } | null;
   toolCallId: string | null;
@@ -149,6 +151,10 @@ function textFromContent(content: unknown): string | null {
   if (typeof content !== 'object' || content === null) return null;
   const c = content as { type?: string; text?: string };
   return c.type === 'text' && typeof c.text === 'string' ? c.text : null;
+}
+
+function shellCommandOf(toolKind: string, rawInput: unknown): string | null {
+  return toolKind === 'execute' ? shellCommandFromRawInput(rawInput) : null;
 }
 
 function isSupersededByReady(failure: ThreadFailureDetail | null): boolean {
@@ -305,15 +311,22 @@ export class ThreadRenderModelBuilder {
         break;
       case 'permission_request': {
         const toolCallId = event.toolCall.toolCallId ?? null;
+        const callIndex = toolCallId === null ? undefined : this.toolCallIndex.get(toolCallId);
+        const call = callIndex === undefined ? undefined : this.items[callIndex];
+        const linkedKind = call?.kind === 'tool_call' ? call.toolKind : undefined;
+        const toolKind = event.toolCall.kind ?? linkedKind ?? 'other';
         const permission: RenderedPermission = {
           kind: 'permission',
           requestId: event.requestId,
           title: event.toolCall.title ?? t`Permission required`,
-          toolKind: event.toolCall.kind ?? 'other',
+          toolKind,
+          command:
+            shellCommandOf(toolKind, event.toolCall.rawInput) ??
+            shellCommandOf(toolKind, call?.kind === 'tool_call' ? call.rawInput : undefined),
           options: event.options,
           resolved: null,
           toolCallId,
-          mergedIntoToolCall: toolCallId !== null && this.toolCallIndex.has(toolCallId),
+          mergedIntoToolCall: callIndex !== undefined,
         };
         this.permissionIndex.set(event.requestId, this.items.length);
         if (toolCallId !== null) {
@@ -474,6 +487,18 @@ export class ThreadRenderModelBuilder {
     this.permissionsByToolCall[toolCallId] = merged;
   }
 
+  private fillPermissionCommand(toolCallId: string, kind: string, rawInput: unknown): void {
+    const index = this.permissionByToolCall.get(toolCallId);
+    if (index === undefined) return;
+    const target = this.items[index];
+    if (target?.kind !== 'permission' || target.command !== null) return;
+    const command = shellCommandOf(target.toolKind === 'other' ? kind : target.toolKind, rawInput);
+    if (command === null) return;
+    const filled: RenderedPermission = { ...target, command };
+    this.items[index] = filled;
+    this.permissionsByToolCall[toolCallId] = filled;
+  }
+
   private pushMessageChunk(role: RenderedMessage['role'], messageId: string, text: string): void {
     const key = `${role}:${messageId}`;
     const index = this.messageIndex.get(key);
@@ -531,6 +556,7 @@ export class ThreadRenderModelBuilder {
         this.toolCallIndex.set(update.toolCallId, this.items.length);
         this.items.push(call);
         this.mergePermissionInto(update.toolCallId);
+        this.fillPermissionCommand(update.toolCallId, call.toolKind, call.rawInput);
         break;
       }
       case 'tool_call_update': {
@@ -548,7 +574,10 @@ export class ThreadRenderModelBuilder {
         if (update.title) call.title = update.title;
         if (update.locations) call.locations = normalizeLocations(update.locations);
         const rawInput = (update as { rawInput?: unknown }).rawInput;
-        if (rawInput !== undefined) call.rawInput = rawInput;
+        if (rawInput !== undefined) {
+          call.rawInput = rawInput;
+          this.fillPermissionCommand(update.toolCallId, call.toolKind, rawInput);
+        }
         mergeToolContent(call, update.content);
         this.items[index] = call;
         break;

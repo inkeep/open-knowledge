@@ -14375,6 +14375,10 @@ msgstr "這個分支已在以下位置簽出："
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "這可以在「設定 > AI 工具與 CLI」中設定"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "此指令包含隱藏字元，可能使其看起來與實際執行的內容不同。這些字元在此顯示為 ⟨U+…⟩。"
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "這則註解是針對整個屬性的"

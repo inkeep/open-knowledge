@@ -14375,6 +14375,10 @@ msgstr "هذا الفرع مسحوب في:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "يمكن ضبط هذا في الإعدادات > أدوات الذكاء الاصطناعي وواجهة سطر الأوامر"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "يحتوي هذا الأمر على أحرف مخفية قد تجعله يبدو مختلفًا عمّا يُنفَّذ فعلًا. تظهر هنا بصيغة ⟨U+…⟩."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "هذا التعليق على الخاصية بأكملها"

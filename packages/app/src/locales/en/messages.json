@@ -427,6 +427,9 @@
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
+    "4r6p_B": [
+      "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+    ],
     "4sE6E9": ["Couldn't check which tools are connected."],
     "4sKwf6": ["File already exists"],
     "4sUdTJ": ["themed preview"],

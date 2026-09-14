@@ -14375,6 +14375,10 @@ msgstr "This branch is checked out in:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "This can be configured in Settings > AI tools & CLI"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "This comment is on the whole property"
