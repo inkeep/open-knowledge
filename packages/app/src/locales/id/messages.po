@@ -9583,6 +9583,7 @@ msgid "Open {displayName} Desktop"
 msgstr "Buka {displayName} Desktop"
 
 #: src/components/acp/AgentMarkdown.tsx
+#: src/components/acp/ThreadView.tsx
 msgid "Open {docName}"
 msgstr "Buka {docName}"
 

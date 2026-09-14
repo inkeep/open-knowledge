@@ -9587,6 +9587,7 @@ msgid "Open {displayName} Desktop"
 msgstr "開啟 {displayName} Desktop"
 
 #: src/components/acp/AgentMarkdown.tsx
+#: src/components/acp/ThreadView.tsx
 msgid "Open {docName}"
 msgstr "開啟 {docName}"
 

@@ -104,8 +104,9 @@ export function pushHashWithoutNavigation(hash: string): void {
 }
 
 export function filePathToDocName(filePath: string): string {
-  if (filePath.endsWith('.mdx')) return filePath.slice(0, -4);
-  if (filePath.endsWith('.md')) return filePath.slice(0, -3);
+  const lower = filePath.toLowerCase();
+  if (lower.endsWith('.mdx')) return filePath.slice(0, -4);
+  if (lower.endsWith('.md')) return filePath.slice(0, -3);
   return filePath;
 }
 

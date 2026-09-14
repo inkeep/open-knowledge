@@ -146,7 +146,7 @@ import {
 } from '@/lib/acp/thread-event-model';
 import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
 import { toolFailureHint } from '@/lib/acp/tool-failure-hint';
-import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
+import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
@@ -2476,7 +2476,9 @@ function UserMessageAttachments({
 }: {
   attachments: readonly AttachmentPart[];
 }): ReactNode {
+  const { t } = useLingui();
   const openPreview = use(ImagePreviewContext);
+  const pages = useOptionalPageList()?.pages ?? null;
   return (
     <div
       className="mt-1.5 flex flex-wrap justify-end gap-1.5"
@@ -2519,6 +2521,21 @@ function UserMessageAttachments({
             </span>
           );
         }
+        const label = `@${attachment.name || attachment.path}`;
+        const docName = attachment.kind === 'file' ? filePathToDocName(attachment.path) : null;
+        if (docName !== null && docName !== attachment.path && pages?.has(docName) === true) {
+          return (
+            <a
+              key={key}
+              href={hashFromDocName(docName)}
+              className="composer-mention-chip text-primary! underline decoration-primary/40 underline-offset-2 hover:decoration-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={t`Open ${docName}`}
+              data-attachment-kind={attachment.kind}
+            >
+              <span className="composer-mention-label">{label}</span>
+            </a>
+          );
+        }
         return (
           <span
             key={key}
@@ -2526,7 +2543,7 @@ function UserMessageAttachments({
             title={attachment.path}
             data-attachment-kind={attachment.kind}
           >
-            <span className="composer-mention-label">@{attachment.name || attachment.path}</span>
+            <span className="composer-mention-label">{label}</span>
           </span>
         );
       })}
