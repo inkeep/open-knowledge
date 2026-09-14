@@ -1971,6 +1971,14 @@ msgstr "另外還有 {remaining} 個"
 msgid "and more"
 msgstr "以及更多"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "另一個程式正在這裡使用 Git——等它完成後再同步一次（它佔用著 .git/index.lock）"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "另一個程式正在這裡使用 Git——等它完成後再同步一次（它佔用著 <0>.git/index.lock</0>）"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "另一個同步作業正在進行中。請稍候再試。"
@@ -14540,6 +14548,14 @@ msgstr "這不是支援的 Slidev 版本。"
 msgid "this item"
 msgstr "這個項目"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "這份清單可能不是最新的——上次讀取：{staleRelative}。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "這份清單可能不是最新的。"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "這看起來像是磁碟機根目錄（例如 C:\\）。在這裡建立專案骨架會掃描整個磁碟機。"
@@ -14685,6 +14701,10 @@ msgstr "這會從你的 Mac 以及你在下面選的專案中移除 OpenKnowledg
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "這份回報已經在傳送途中，結果會顯示在錯誤回報記錄裡。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "這個儲存庫還沒有任何提交——重新開啟專案即可建立第一個提交，之後就能推送了"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

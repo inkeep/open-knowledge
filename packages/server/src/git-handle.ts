@@ -26,6 +26,7 @@ interface GitHandleOptions {
   gitIndexFile?: string;
   ghToken?: RelayGhToken;
   timeoutMs?: number;
+  abortSignal?: AbortSignal;
 }
 
 export interface GitHandle {
@@ -69,6 +70,7 @@ export function buildGitEnv(ghToken?: RelayGhToken): Record<string, string> {
     LC_ALL: 'C',
     GIT_TERMINAL_PROMPT: '0',
     GIT_MERGE_AUTOEDIT: 'no',
+    GIT_OPTIONAL_LOCKS: '0',
   };
   const path = process.env.PATH ?? process.env.Path;
   env.PATH = augmentGitSpawnPath(path, {
@@ -101,7 +103,7 @@ export function applyGitEnv(
 }
 
 export function createGitInstance(projectDir: string, options: GitHandleOptions): GitHandle {
-  const { credentialConfig, gitIndexFile, ghToken, timeoutMs } = options;
+  const { credentialConfig, gitIndexFile, ghToken, timeoutMs, abortSignal } = options;
 
   const env: Record<string, string | undefined> = buildGitEnv(ghToken);
   if (gitIndexFile) {
@@ -120,6 +122,7 @@ export function createGitInstance(projectDir: string, options: GitHandleOptions)
     config: gitConfig,
     unsafe: { allowUnsafeCredentialHelper: true },
     ...(timeoutMs === undefined ? {} : { timeout: { block: timeoutMs } }),
+    ...(abortSignal === undefined ? {} : { abort: abortSignal }),
   };
 
   const git = simpleGit(gitOptions as Partial<SimpleGitOptions>).env(env as Record<string, string>);

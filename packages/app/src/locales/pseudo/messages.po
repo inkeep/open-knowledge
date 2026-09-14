@@ -1967,6 +1967,14 @@ msgstr ""
 msgid "and more"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr ""
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr ""
@@ -14536,6 +14544,14 @@ msgstr ""
 msgid "this item"
 msgstr ""
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr ""
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr ""
@@ -14680,6 +14696,10 @@ msgstr ""
 
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
+msgstr ""
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx

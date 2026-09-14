@@ -35,6 +35,9 @@
     "-WeuHF": ["Remover a mensagem da fila"],
     "-X1eoK": ["Integrações do OpenKnowledge verificadas."],
     "-YV1Uo": ["Padrão ", ["patternNumber"]],
+    "-ZVU5v": [
+      "Este repositório ainda não tem commits — abra o projeto de novo para criar o primeiro commit e então o Push vai funcionar"
+    ],
     "-bFGPF": ["Próxima alteração"],
     "-dNlfM": ["A última edição em ", ["docName"], " foi desfeita"],
     "-g6KIS": ["Link não reconhecido"],
@@ -2568,6 +2571,9 @@
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
+    "Qca--K": [
+      "Outro programa está usando o Git aqui — espere ele terminar e sincronize de novo (ele está segurando o <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Ir para ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -3498,6 +3504,7 @@
     "_IX_7x": ["Outro"],
     "_IfSZn": ["Um tema salvo já usa este nome."],
     "_JOGC0": ["Enviar comentários…"],
+    "_LK4d6": ["Esta lista pode estar desatualizada."],
     "_LczaQ": ["Negado — ", ["optionName"]],
     "_NWEid": ["Busque arquivos de esquema por caminho"],
     "_O7dJS": ["Versão diferente aqui — clique para comparar e resolver"],
@@ -3946,6 +3953,7 @@
     "dw_dUJ": ["Falha ao duplicar o caminho"],
     "dx-TwN": ["Rodando a auditoria do projeto"],
     "dyfMJN": ["Código copiado"],
+    "e-pP6g": ["Esta lista pode estar desatualizada — última leitura ", ["staleRelative"], "."],
     "e0NrBM": ["Projeto"],
     "e1Rn_k": ["Abrir a pasta que o contém"],
     "e1hptq": ["Incorpora um vídeo com os controles nativos do player."],
@@ -5446,6 +5454,9 @@
     "sKHiNR": [["count"], " atrás"],
     "sNeKjP": ["Falha ao guardar o token — tente de novo"],
     "sOafXU": ["Editar e enviar de novo"],
+    "sOcMdy": [
+      "Outro programa está usando o Git aqui — espere ele terminar e sincronize de novo (ele está segurando o .git/index.lock)"
+    ],
     "sOxZaS": ["Falha ao carregar o grafo"],
     "sQoLn0": ["Sair"],
     "sR0I-f": ["Recolher todos os arquivos"],

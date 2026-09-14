@@ -1971,6 +1971,14 @@ msgstr "و{remaining} أخرى"
 msgid "and more"
 msgstr "والمزيد"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "برنامج آخر يستخدم Git هنا — انتظر حتى ينتهي، ثم أعد المزامنة (يحتجز .git/index.lock)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "برنامج آخر يستخدم Git هنا — انتظر حتى ينتهي، ثم أعد المزامنة (يحتجز <0>.git/index.lock</0>)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "توجد عملية مزامنة أخرى قيد التنفيذ. أعد المحاولة بعد قليل."
@@ -14540,6 +14548,14 @@ msgstr "هذا ليس إصدارًا مدعومًا من Slidev."
 msgid "this item"
 msgstr "هذا العنصر"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "قد تكون هذه القائمة قديمة — آخر قراءة {staleRelative}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "قد تكون هذه القائمة قديمة."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "يبدو هذا جذر قرص (مثل C:\\). سيفحص البناء هنا قرصًا كاملًا."
@@ -14685,6 +14701,10 @@ msgstr "يزيل هذا إعدادات OpenKnowledge وتكاملاته من ج�
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "هذا التقرير في طريقه بالفعل. ستظهر نتيجته في سجل تقارير العلل."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "لا يحتوي هذا المستودع على أي إيداعات بعد — أعد فتح المشروع لإنشاء أول إيداع، وعندها سيعمل الدفع"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

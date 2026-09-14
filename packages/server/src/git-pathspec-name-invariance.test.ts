@@ -61,6 +61,7 @@ beforeEach(async () => {
   projectDir = join(tmpDir, 'project');
   okDir = join(projectDir, '.ok', LOCAL_DIR);
   mkdirSync(okDir, { recursive: true });
+  writeFileSync(join(projectDir, '.ok', '.gitignore'), `${LOCAL_DIR}/\n`, 'utf-8');
 });
 
 afterEach(async () => {

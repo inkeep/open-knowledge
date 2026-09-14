@@ -1971,6 +1971,14 @@ msgstr "et {remaining} de plus"
 msgid "and more"
 msgstr "et plus encore"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "Un autre programme utilise Git ici — attendez qu'il termine, puis relancez la synchronisation (il retient .git/index.lock)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "Un autre programme utilise Git ici — attendez qu'il termine, puis relancez la synchronisation (il retient <0>.git/index.lock</0>)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "Une autre opération de synchronisation est en cours. Réessayez dans un instant."
@@ -14540,6 +14548,14 @@ msgstr "Cette version de Slidev n'est pas prise en charge."
 msgid "this item"
 msgstr "cet élément"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "Cette liste n'est peut-être pas à jour — dernière lecture {staleRelative}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "Cette liste n'est peut-être pas à jour."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "Cela ressemble à la racine d'un disque (par ex. C:\\). Créer un projet ici analysera tout le disque."
@@ -14685,6 +14701,10 @@ msgstr "Ceci retire les paramètres et les intégrations d'OpenKnowledge de votr
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "Ce rapport est déjà en route. Son résultat apparaîtra dans l'historique des rapports de bug."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "Ce dépôt ne contient encore aucun commit — rouvrez le projet pour créer le premier commit, puis Pousser fonctionnera"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

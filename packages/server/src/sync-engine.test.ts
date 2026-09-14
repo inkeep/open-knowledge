@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import {
+  appendFileSync,
   chmodSync,
   existsSync,
   mkdirSync,
@@ -455,6 +456,67 @@ describe('SyncEngine state persistence round-trip', () => {
     }
   });
 
+  test('names an unrecognized persisted pause reason before dropping it', async () => {
+    writeFileSync(
+      statePath(),
+      JSON.stringify({
+        version: 1,
+        lastSyncUtc: null,
+        lastFetchUtc: null,
+        lastPushedSha: null,
+        consecutiveFailures: 0,
+        pausedReason: 'reason-from-a-newer-build',
+        inflightConflicts: [],
+      }),
+      'utf-8',
+    );
+
+    const logs = captureSyncLogs();
+    const engine = makeEngine({ syncEnabled: false });
+    try {
+      await engine.start();
+      expect(engine.getStatus().pausedReason).toBeUndefined();
+
+      const dropped = logs.entries.filter(
+        (e) => e.level === 'warn' && e.data.event === 'paused-reason-unrecognized',
+      );
+      expect(dropped).toHaveLength(1);
+      expect(dropped[0]?.data).toMatchObject({ pausedReason: 'reason-from-a-newer-build' });
+    } finally {
+      logs.restore();
+      await engine.destroy();
+    }
+  });
+
+  test('a recognized persisted pause reason is restored without a diagnostic', async () => {
+    writeFileSync(
+      statePath(),
+      JSON.stringify({
+        version: 1,
+        lastSyncUtc: null,
+        lastFetchUtc: null,
+        lastPushedSha: null,
+        consecutiveFailures: 0,
+        pausedReason: 'detached-head',
+        inflightConflicts: [],
+      }),
+      'utf-8',
+    );
+
+    const logs = captureSyncLogs();
+    const engine = makeEngine({ syncEnabled: false });
+    try {
+      await engine.start();
+      expect(engine.getStatus().pausedReason).toBe('detached-head');
+      expect(
+        logs.entries.filter((e) => e.data.event === 'paused-reason-unrecognized'),
+      ).toHaveLength(0);
+    } finally {
+      logs.restore();
+      await engine.destroy();
+    }
+  });
+
   test('ignores state files with unknown version', async () => {
     const persisted = { version: 99, consecutiveFailures: 9999, inflightConflicts: [] };
     writeFileSync(statePath(), JSON.stringify(persisted), 'utf-8');
@@ -666,6 +728,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     rmSync(projectDir, { recursive: true, force: true });
     await simpleGit(tmpDir).clone(bareDir, projectDir);
     mkdirSync(okDir, { recursive: true });
+    appendFileSync(join(projectDir, '.git', 'info', 'exclude'), '\n.ok/\n', 'utf-8');
 
     writeFileSync(join(sisterDir, '.mcp.json'), `${v2}\n`, 'utf-8');
     await sister.add('.mcp.json');
@@ -3213,12 +3276,12 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
 
       const engine = makeShareableEngine('off');
       const internal = engine as unknown as {
-        commitDirtyContentFilesToHead: (handle: unknown) => Promise<void>;
+        commitDirtyContentFilesToHead: (handle: unknown, op: 'push' | 'pull') => Promise<void>;
       };
       const commitDirty = internal.commitDirtyContentFilesToHead.bind(engine);
-      internal.commitDirtyContentFilesToHead = async (handle) => {
+      internal.commitDirtyContentFilesToHead = async (handle, op) => {
         chmodSync(join(projectDir, '.ok', 'schemas'), 0o311);
-        await commitDirty(handle);
+        await commitDirty(handle, op);
       };
 
       try {
@@ -3258,12 +3321,12 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
       writeFileSync(join(projectDir, 'local.md'), '# Local\n');
       const engine = makeShareableEngine();
       const internal = engine as unknown as {
-        commitDirtyContentFilesToHead: (handle: unknown) => Promise<void>;
+        commitDirtyContentFilesToHead: (handle: unknown, op: 'push' | 'pull') => Promise<void>;
       };
       const commitDirty = internal.commitDirtyContentFilesToHead.bind(engine);
-      internal.commitDirtyContentFilesToHead = async (handle) => {
+      internal.commitDirtyContentFilesToHead = async (handle, op) => {
         chmodSync(join(projectDir, '.ok', 'schemas'), 0o311);
-        await commitDirty(handle);
+        await commitDirty(handle, op);
       };
 
       try {
@@ -6970,7 +7033,8 @@ describe('SyncEngine exclusive merge ownership', () => {
     pullError?: string;
     pushError?: string;
     gitHandle(): GitHandle;
-    commitDirtyContentFilesToHead(handle: GitHandle): Promise<string | null>;
+    saveStateNow(): void;
+    commitDirtyContentFilesToHead(handle: GitHandle, op: 'push' | 'pull'): Promise<string | null>;
     doPushCycle(retriesLeft?: number): Promise<void>;
     doPullCycle(invocation: 'explicit' | 'sync'): Promise<'up-to-date'>;
     runPullCycle(): Promise<void>;
@@ -7022,13 +7086,13 @@ describe('SyncEngine exclusive merge ownership', () => {
       const releaseRetry = Promise.withResolvers<void>();
       const commitDirty = internals.commitDirtyContentFilesToHead.bind(engine);
       let first = true;
-      internals.commitDirtyContentFilesToHead = async (handle) => {
+      internals.commitDirtyContentFilesToHead = async (handle, op) => {
         if (first) {
           first = false;
           enteredRetry.resolve();
           await releaseRetry.promise;
         }
-        return commitDirty(handle);
+        return commitDirty(handle, op);
       };
       const push = engine.pushOnce();
       try {
@@ -7138,7 +7202,7 @@ describe('SyncEngine exclusive merge ownership', () => {
           await internals.doPushCycle();
         } else {
           await expect(
-            internals.commitDirtyContentFilesToHead(internals.gitHandle()),
+            internals.commitDirtyContentFilesToHead(internals.gitHandle(), 'pull'),
           ).rejects.toThrow('Git operation');
         }
         expect(await git.revparse('HEAD')).toBe(head);
@@ -7163,7 +7227,7 @@ describe('SyncEngine exclusive merge ownership', () => {
       try {
         await internals.doPushCycle();
         await expect(
-          internals.commitDirtyContentFilesToHead(internals.gitHandle()),
+          internals.commitDirtyContentFilesToHead(internals.gitHandle(), 'pull'),
         ).rejects.toThrow('Git operation');
         expect(await git.revparse('HEAD')).toBe(head);
         expect(await git.raw(['ls-files', '--stage'])).toBe(stages);
@@ -7310,6 +7374,51 @@ describe('SyncEngine exclusive merge ownership', () => {
       }
     },
   );
+
+  test('the operation pause is neither written to the state file nor restored from it', async () => {
+    const { engine, internals, git } = await setup('off');
+    const markerPath = join(projectDir, '.git', 'CHERRY_PICK_HEAD');
+    const statePath = join(okDir, 'sync-state.json');
+    writeFileSync(markerPath, await git.revparse('HEAD'));
+    try {
+      await engine.pushOnce();
+      expect(engine.getStatus().pausedReason).toBe('git-operation-in-progress');
+
+      internals.saveStateNow();
+      const persisted = JSON.parse(readFileSync(statePath, 'utf-8')) as { pausedReason?: string };
+      expect(persisted.pausedReason).toBeUndefined();
+    } finally {
+      await engine.destroy();
+    }
+
+    rmSync(markerPath);
+    writeFileSync(
+      statePath,
+      JSON.stringify({
+        version: 1,
+        lastSyncUtc: null,
+        lastFetchUtc: null,
+        lastPushedSha: null,
+        consecutiveFailures: 0,
+        pausedReason: 'git-operation-in-progress',
+        inflightConflicts: [],
+      }),
+      'utf-8',
+    );
+
+    const restarted = new SyncEngine({
+      projectDir,
+      contentDir: projectDir,
+      contentFilter: stubContentFilter,
+      mode: 'off',
+    });
+    try {
+      await restarted.start();
+      expect(restarted.getStatus().pausedReason).toBeUndefined();
+    } finally {
+      await restarted.destroy();
+    }
+  });
 
   test('a successful safety probe preserves an unrelated pause reason', async () => {
     const { engine, internals } = await setup();

@@ -1888,6 +1888,7 @@ export {
   type SkillsShSkillLinks,
   skillsShSkillLinks,
 } from './skills-catalog/source-fields.ts';
+export { SYNC_PAUSED_REASONS, type SyncPausedReason } from './sync-paused-reason.ts';
 export {
   composeTemplateFile,
   instantiateDoc,

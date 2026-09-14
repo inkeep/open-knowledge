@@ -1971,6 +1971,14 @@ msgstr "另外还有 {remaining} 个"
 msgid "and more"
 msgstr "以及更多"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "另一个程序正在这里使用 Git——等它完成后再同步一次（它占用着 .git/index.lock）"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "另一个程序正在这里使用 Git——等它完成后再同步一次（它占用着 <0>.git/index.lock</0>）"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "另一个同步操作正在进行中。请稍后再试。"
@@ -14540,6 +14548,14 @@ msgstr "这不是受支持的 Slidev 版本。"
 msgid "this item"
 msgstr "这个项目"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "此列表可能不是最新的——上次读取：{staleRelative}。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "此列表可能不是最新的。"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "这看起来像是驱动器根目录（例如 C:\\）。在这里搭建项目会扫描整个驱动器。"
@@ -14685,6 +14701,10 @@ msgstr "这会从你的 Mac 以及你在下方选择的项目中移除 OpenKnowl
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "该报告已经在发送途中，结果会显示在错误报告历史里。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "此仓库还没有任何提交——重新打开项目即可创建第一个提交，之后就能推送了"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

@@ -35,6 +35,9 @@
     "-WeuHF": ["Quitar el mensaje en cola"],
     "-X1eoK": ["Se comprobaron las integraciones de OpenKnowledge."],
     "-YV1Uo": ["Patrón ", ["patternNumber"]],
+    "-ZVU5v": [
+      "Este repositorio aún no tiene commits: vuelve a abrir el proyecto para crear el primer commit y entonces Push funcionará"
+    ],
     "-bFGPF": ["Cambio siguiente"],
     "-dNlfM": ["Se deshizo la última edición en ", ["docName"]],
     "-g6KIS": ["Enlace no reconocido"],
@@ -2599,6 +2602,9 @@
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Puedes cambiarlo más adelante en <0>Ajustes → Sincronización</0>."],
     "QYfQdv": ["CLI de ", ["displayName"]],
+    "Qca--K": [
+      "Otro programa está usando Git aquí: espera a que termine y vuelve a sincronizar (está reteniendo <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Ir a ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -3560,6 +3566,7 @@
     "_IX_7x": ["Otro"],
     "_IfSZn": ["Ya existe un tema guardado con este nombre."],
     "_JOGC0": ["Enviar comentarios…"],
+    "_LK4d6": ["Puede que esta lista esté desactualizada."],
     "_LczaQ": ["Denegado — ", ["optionName"]],
     "_NWEid": ["Busca archivos de esquema por ruta"],
     "_O7dJS": ["Aquí hay otra versión: haz clic para compararla y resolverla"],
@@ -4024,6 +4031,11 @@
     "dw_dUJ": ["No se pudo duplicar la ruta"],
     "dx-TwN": ["Ejecutando la auditoría del proyecto"],
     "dyfMJN": ["Código copiado"],
+    "e-pP6g": [
+      "Puede que esta lista esté desactualizada; última lectura: ",
+      ["staleRelative"],
+      "."
+    ],
     "e0NrBM": ["Proyecto"],
     "e1Rn_k": ["Abrir la carpeta contenedora"],
     "e1hptq": ["Incrusta un vídeo con los controles nativos del reproductor."],
@@ -5546,6 +5558,9 @@
     "sKHiNR": [["count"], " por detrás"],
     "sNeKjP": ["No se pudo guardar el token: inténtalo de nuevo"],
     "sOafXU": ["Editar y enviar de nuevo"],
+    "sOcMdy": [
+      "Otro programa está usando Git aquí: espera a que termine y vuelve a sincronizar (está reteniendo .git/index.lock)"
+    ],
     "sOxZaS": ["No se pudo cargar el grafo"],
     "sQoLn0": ["Salir"],
     "sR0I-f": ["Contraer todos los archivos"],

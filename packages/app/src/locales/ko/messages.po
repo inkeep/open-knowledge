@@ -1971,6 +1971,14 @@ msgstr "및 {remaining}개 더"
 msgid "and more"
 msgstr "그리고 더"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "다른 프로그램이 여기서 Git을 사용 중입니다. 끝날 때까지 기다린 후 다시 동기화하세요(.git/index.lock을 잡고 있습니다)."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "다른 프로그램이 여기서 Git을 사용 중입니다. 끝날 때까지 기다린 후 다시 동기화하세요(<0>.git/index.lock</0>을 잡고 있습니다)."
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "다른 동기화 작업이 진행 중입니다. 잠시 후 다시 시도하세요."
@@ -14540,6 +14548,14 @@ msgstr "지원되는 Slidev 버전이 아닙니다."
 msgid "this item"
 msgstr "이 항목"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "이 목록은 최신 상태가 아닐 수 있습니다. 마지막으로 읽은 시각: {staleRelative}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "이 목록은 최신 상태가 아닐 수 있습니다."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "드라이브 루트처럼 보입니다(예: Windows 드라이브 루트). 여기서 뼈대를 만들면 드라이브 전체를 검사합니다."
@@ -14685,6 +14701,10 @@ msgstr "이 작업은 Mac과 아래에서 선택한 프로젝트에서 OpenKnowl
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "이 보고서는 이미 전송 중입니다. 결과는 버그 신고 기록에 표시됩니다."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "이 저장소에는 아직 커밋이 없습니다. 프로젝트를 다시 열면 첫 커밋이 만들어지고, 그때부터 푸시가 동작합니다."
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

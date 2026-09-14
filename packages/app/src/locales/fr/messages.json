@@ -35,6 +35,9 @@
     "-WeuHF": ["Retirer le message en file d'attente"],
     "-X1eoK": ["Intégrations OpenKnowledge vérifiées."],
     "-YV1Uo": ["Motif ", ["patternNumber"]],
+    "-ZVU5v": [
+      "Ce dépôt ne contient encore aucun commit — rouvrez le projet pour créer le premier commit, puis Pousser fonctionnera"
+    ],
     "-bFGPF": ["Modification suivante"],
     "-dNlfM": ["Dernière modification annulée sur ", ["docName"]],
     "-g6KIS": ["Lien non reconnu"],
@@ -2638,6 +2641,9 @@
     "QWdKwH": ["Déplacer"],
     "QYTOaN": ["Vous pourrez changer cela plus tard dans <0>Paramètres → Synchronisation</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "Qca--K": [
+      "Un autre programme utilise Git ici — attendez qu'il termine, puis relancez la synchronisation (il retient <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Aller à ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -3607,6 +3613,7 @@
     "_IX_7x": ["Autre"],
     "_IfSZn": ["Un thème enregistré utilise déjà ce nom."],
     "_JOGC0": ["Envoyer un retour…"],
+    "_LK4d6": ["Cette liste n'est peut-être pas à jour."],
     "_LczaQ": ["Refusé — ", ["optionName"]],
     "_NWEid": ["Rechercher des fichiers de schéma par chemin"],
     "_O7dJS": ["Version différente ici — cliquez pour comparer et résoudre"],
@@ -4073,6 +4080,11 @@
     "dw_dUJ": ["Échec de la duplication du chemin"],
     "dx-TwN": ["Audit du projet en cours"],
     "dyfMJN": ["Code copié"],
+    "e-pP6g": [
+      "Cette liste n'est peut-être pas à jour — dernière lecture ",
+      ["staleRelative"],
+      "."
+    ],
     "e0NrBM": ["Projet"],
     "e1Rn_k": ["Ouvrir le dossier contenant"],
     "e1hptq": ["Intègre une vidéo avec les contrôles natifs du lecteur."],
@@ -5613,6 +5625,9 @@
     "sKHiNR": [["count"], " en retard"],
     "sNeKjP": ["Échec de l'enregistrement du jeton — réessayez"],
     "sOafXU": ["Modifier et renvoyer"],
+    "sOcMdy": [
+      "Un autre programme utilise Git ici — attendez qu'il termine, puis relancez la synchronisation (il retient .git/index.lock)"
+    ],
     "sOxZaS": ["Échec du chargement du graphe"],
     "sQoLn0": ["Quitter"],
     "sR0I-f": ["Réduire tous les fichiers"],

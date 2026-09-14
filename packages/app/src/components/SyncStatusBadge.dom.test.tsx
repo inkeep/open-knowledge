@@ -75,8 +75,18 @@ let worktree: {
   readable?: boolean;
 } | null = null;
 
+let worktreeUnreadable = false;
+let worktreeStale = false;
+let worktreeLastReadAt: number | null = null;
+
 vi.doMock('@/hooks/use-git-worktree-status', () => ({
-  useGitWorktreeStatus: () => ({ status: worktree, loading: worktree === null }),
+  useGitWorktreeStatus: () => ({
+    status: worktree,
+    loading: worktree === null && !worktreeUnreadable,
+    unreadable: worktreeUnreadable,
+    stale: worktreeStale,
+    lastReadAt: worktreeLastReadAt,
+  }),
 }));
 
 const triggered: string[] = [];
@@ -422,11 +432,70 @@ describe('SyncStatusBadge helper behavior', () => {
     );
   });
 
+  async function loadPausedReasonCopy() {
+    const mod = await import('./SyncStatusBadge');
+    const translate = renderLinguiTemplate as unknown as Parameters<
+      typeof mod.formatPausedReason
+    >[0];
+    return {
+      PausedReasonNotice: mod.PausedReasonNotice,
+      format: (reason: string) => mod.formatPausedReason(translate, reason),
+    };
+  }
+
   test('formatPausedReason explains a pull-only divergence in plain language', async () => {
-    const { formatPausedReason } = await import('./SyncStatusBadge');
-    expect(formatPausedReason('diverged-local-commits')).toBe(
+    const { format } = await loadPausedReasonCopy();
+    expect(format('diverged-local-commits')).toBe(
       'Local commits are keeping this copy from updating',
     );
+  });
+
+  test('the notice renders the same copy the plain-string formatter returns', async () => {
+    const { PausedReasonNotice, format } = await loadPausedReasonCopy();
+    render(<PausedReasonNotice reason="diverged-local-commits" />);
+
+    expect(document.body.textContent).toBe(format('diverged-local-commits'));
+    cleanup();
+  });
+
+  test('a held index lock names the lock file and says it clears itself', async () => {
+    const { PausedReasonNotice } = await import('./SyncStatusBadge');
+    render(<PausedReasonNotice reason="git-index-locked" />);
+
+    const line = document.body.textContent ?? '';
+    expect(line).toContain('.git/index.lock');
+    expect(line).toMatch(/another program/i);
+    expect(line).not.toBe('git-index-locked');
+    cleanup();
+  });
+
+  test('the index-lock reason also has flat copy for callers that cannot render a node', async () => {
+    const { format } = await loadPausedReasonCopy();
+    const line = format('git-index-locked');
+
+    expect(line).toContain('.git/index.lock');
+    expect(line).toMatch(/another program/i);
+    expect(line).not.toBe('git-index-locked');
+  });
+
+  test('an unborn HEAD points at the remedy the product actually offers', async () => {
+    const { format } = await loadPausedReasonCopy();
+    const line = format('no-commits-yet');
+
+    expect(line).toMatch(/no commits yet/i);
+    expect(line).toMatch(/reopen the project/i);
+    expect(line).not.toMatch(/make the first commit/i);
+    expect(line).not.toBe('no-commits-yet');
+  });
+
+  test('a reason this build does not know still renders as its raw token', async () => {
+    const { PausedReasonNotice, format } = await loadPausedReasonCopy();
+
+    expect(format('some-future-reason')).toBe('some-future-reason');
+
+    render(<PausedReasonNotice reason="some-future-reason" />);
+    expect(document.body.textContent).toBe('some-future-reason');
+    cleanup();
   });
 });
 
@@ -439,6 +508,9 @@ describe('SyncStatusBadge runtime behavior', () => {
     projectLocalSynced = true;
     patches.length = 0;
     worktree = emptyWorktree;
+    worktreeUnreadable = false;
+    worktreeStale = false;
+    worktreeLastReadAt = null;
     triggered.length = 0;
     triggerRejection = null;
   });
@@ -508,7 +580,7 @@ describe('SyncStatusBadge runtime behavior', () => {
       const copy =
         'Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync.';
       expect(screen.getByText(copy)).toBeTruthy();
-      expect(screen.getByRole('status').textContent).toBe('');
+      expect(screen.getByTestId('sync-popover-status').textContent).toBe('');
       expect(screen.getByTestId('sync-popover-pull').hasAttribute('disabled')).toBe(false);
       act(() => {
         status &&= { ...status, pausedReason: undefined };
@@ -910,7 +982,7 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(screen.getByText(/signed out — sign in to resume syncing/)).toBeTruthy();
     const signIn = screen.getByRole('button', { name: 'Sign in' });
     expect(signIn).toBeTruthy();
-    expect(within(screen.getByRole('status')).queryByRole('button')).toBeNull();
+    expect(within(screen.getByTestId('sync-popover-status')).queryByRole('button')).toBeNull();
   });
 
   test('a signed-out denial outranks the paused-reason line when the engine is parked', async () => {
@@ -926,7 +998,7 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(screen.getByText(/signed out — sign in to resume syncing/)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sync status: Reconnect required' })).toBeTruthy();
     expect(screen.queryByText('Reconnect required')).toBeNull();
-    expect(within(screen.getByRole('status')).queryByRole('button')).toBeNull();
+    expect(within(screen.getByTestId('sync-popover-status')).queryByRole('button')).toBeNull();
   });
 
   test('a probe-401 renders the sign-in-again line and its button', async () => {
@@ -980,7 +1052,7 @@ describe('SyncStatusBadge runtime behavior', () => {
     expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
     expect(screen.queryByText('Reconnect required')).toBeNull();
     expect(screen.getByRole('button', { name: 'Sync status: Repository not found' })).toBeTruthy();
-    expect(screen.getByRole('status')).toBeTruthy();
+    expect(screen.getByTestId('sync-popover-status').getAttribute('role')).toBe('status');
   });
 
   test('a parked not-found error still names the account when a denied verdict is in hand', async () => {
@@ -1128,6 +1200,9 @@ describe('SyncStatusBadge working-tree listing', () => {
     projectLocalSynced = true;
     patches.length = 0;
     worktree = emptyWorktree;
+    worktreeUnreadable = false;
+    worktreeStale = false;
+    worktreeLastReadAt = null;
     triggered.length = 0;
     triggerRejection = null;
   });
@@ -1354,7 +1429,8 @@ describe('SyncStatusBadge working-tree listing', () => {
   test('a tree that could not be read never claims to be clean', async () => {
     status = { ...baseStatus, state: 'idle' };
     projectLocalConfig = { autoSync: { mode: 'off' } };
-    worktree = { ...emptyWorktree, readable: false };
+    worktree = emptyWorktree;
+    worktreeUnreadable = true;
     await renderBadge();
     await openPopover();
 
@@ -1664,5 +1740,272 @@ describe('SyncStatusBadge freshness line', () => {
 
     expect(screen.queryByTestId('sync-popover-last-sync')).toBeNull();
     expect(screen.queryByTestId('sync-popover-settings')).not.toBeNull();
+  });
+});
+
+describe('SyncStatusBadge panel-read truthfulness', () => {
+  afterEach(() => {
+    cleanup();
+    status = null;
+    projectLocalConfig = { autoSync: { enabled: false } };
+    worktree = emptyWorktree;
+    worktreeUnreadable = false;
+    worktreeStale = false;
+    worktreeLastReadAt = null;
+  });
+
+  function badgeIsAmber(): boolean {
+    return (
+      screen.getByRole('button', { name: /Sync status:/ }).querySelector('.text-amber-500') !== null
+    );
+  }
+
+  test('a held index lock pauses in amber and names the lock in the popover', async () => {
+    status = {
+      ...baseStatus,
+      state: 'disabled',
+      syncEnabled: false,
+      syncMode: 'off',
+      pausedReason: 'git-index-locked',
+    } as GitSyncStatus;
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    await renderBadge();
+
+    expect(screen.getByRole('button', { name: 'Sync status: Sync paused' })).toBeTruthy();
+    expect(badgeIsAmber()).toBe(true);
+
+    await openPopover();
+    expect(screen.getByText(/\.git\/index\.lock/)).toBeTruthy();
+  });
+
+  test('a repository with no commits pauses in amber and says so in the popover', async () => {
+    status = {
+      ...baseStatus,
+      state: 'disabled',
+      syncEnabled: false,
+      syncMode: 'off',
+      pausedReason: 'no-commits-yet',
+    } as GitSyncStatus;
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    await renderBadge();
+
+    expect(screen.getByRole('button', { name: 'Sync status: Sync paused' })).toBeTruthy();
+    expect(badgeIsAmber()).toBe(true);
+
+    await openPopover();
+    expect(screen.getByText(/no commits yet/i)).toBeTruthy();
+  });
+
+  test('a held index lock outside Manual reports in the popover and leaves the badge neutral', async () => {
+    status = {
+      ...baseStatus,
+      state: 'idle',
+      syncEnabled: true,
+      syncMode: 'full',
+      pausedReason: 'git-index-locked',
+    } as GitSyncStatus;
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+    await renderBadge();
+
+    expect(badgeIsAmber()).toBe(false);
+
+    await openPopover();
+    expect(screen.getByText(/\.git\/index\.lock/)).toBeTruthy();
+  });
+
+  test('a repository with no commits outside Manual reports in the popover and leaves the badge neutral', async () => {
+    status = {
+      ...baseStatus,
+      state: 'idle',
+      syncEnabled: true,
+      syncMode: 'full',
+      pausedReason: 'no-commits-yet',
+    } as GitSyncStatus;
+    projectLocalConfig = { autoSync: { mode: 'full' } };
+    await renderBadge();
+
+    expect(badgeIsAmber()).toBe(false);
+
+    await openPopover();
+    expect(screen.getByText(/no commits yet/i)).toBeTruthy();
+  });
+
+  test('the lock path is isolated from its sentence so an RTL locale cannot reorder it', async () => {
+    status = {
+      ...baseStatus,
+      state: 'disabled',
+      syncEnabled: false,
+      syncMode: 'off',
+      pausedReason: 'git-index-locked',
+    } as GitSyncStatus;
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByText('.git/index.lock').getAttribute('dir')).toBe('ltr');
+  });
+
+  test('the branch header goes away with the tree it describes', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = { ...emptyWorktree };
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByTestId('worktree-branch').textContent).toContain('main → origin/main');
+
+    worktreeUnreadable = true;
+    await advanceStatus({ ...baseStatus, state: 'idle' });
+
+    expect(screen.getByTestId('worktree-unreadable')).toBeTruthy();
+    expect(screen.queryByTestId('worktree-branch')).toBeNull();
+  });
+
+  test('an unreadable working tree is reported without alarming the badge', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktreeUnreadable = true;
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByTestId('worktree-unreadable')).toBeTruthy();
+    expect(badgeIsAmber()).toBe(false);
+    expect(screen.queryByRole('button', { name: /Sync paused/ })).toBeNull();
+  });
+
+  test('a first read that comes back unreadable says so instead of claiming it is still reading', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = null;
+    worktreeUnreadable = true;
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByTestId('worktree-unreadable')).toBeTruthy();
+    expect(screen.queryByText(/Reading working tree/)).toBeNull();
+  });
+
+  test('the reading copy shows only while no verdict has arrived at all', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = null;
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByText(/Reading working tree/)).toBeTruthy();
+    expect(screen.queryByTestId('worktree-unreadable')).toBeNull();
+    expect(screen.queryByTestId('worktree-stale')).toBeNull();
+  });
+
+  test('a failed read keeps the last good list and says when it was last read', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = {
+      ...emptyWorktree,
+      notStaged: [{ path: 'docs/sync.mdx', code: 'M', syncScoped: true }],
+    };
+    worktreeStale = true;
+    worktreeLastReadAt = Date.now() - 2 * 60_000;
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByTestId('worktree-listing')).toBeTruthy();
+    expect(screen.getByTestId('worktree-stale').textContent).toMatch(/2m ago/);
+    expect(badgeIsAmber()).toBe(false);
+  });
+
+  test('an unreadable tree reaches a live region that was already mounted', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    await renderBadge();
+    await openPopover();
+
+    const announcer = screen.getByTestId('worktree-announcer');
+    expect(announcer.getAttribute('aria-live')).toBe('polite');
+    expect(announcer.textContent).toBe('');
+
+    worktreeUnreadable = true;
+    await advanceStatus({ ...baseStatus, state: 'idle' });
+
+    expect(screen.getByTestId('worktree-announcer').textContent).toMatch(
+      /Couldn't read the working tree/,
+    );
+  });
+
+  test('the announced staleness sentence carries no time, so a tick cannot repeat it', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktree = {
+      ...emptyWorktree,
+      notStaged: [{ path: 'docs/sync.mdx', code: 'M', syncScoped: true }],
+    };
+    worktreeStale = true;
+    worktreeLastReadAt = Date.now() - 2 * 60_000;
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByTestId('worktree-stale').textContent).toMatch(/2m ago/);
+    const announced = screen.getByTestId('worktree-announcer').textContent ?? '';
+    expect(announced).toMatch(/out of date/);
+    expect(announced).not.toMatch(/ago|just now/);
+  });
+
+  test('the staleness line ages while the popover stays open', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      status = { ...baseStatus, state: 'idle' };
+      projectLocalConfig = { autoSync: { mode: 'off' } };
+      worktree = {
+        ...emptyWorktree,
+        notStaged: [{ path: 'docs/sync.mdx', code: 'M', syncScoped: true }],
+      };
+      worktreeStale = true;
+      worktreeLastReadAt = Date.now();
+      await renderBadge();
+      await openPopover();
+
+      expect(screen.getByTestId('worktree-stale').textContent).toMatch(/just now/);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(3 * 60_000);
+      });
+
+      expect(screen.getByTestId('worktree-stale').textContent).toMatch(/3m ago/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a read that never succeeded does not claim a last-read time', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktreeStale = true;
+    worktreeLastReadAt = null;
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.queryByTestId('worktree-stale')).toBeNull();
+  });
+
+  test('the next successful read clears both the staleness line and the unreadable copy', async () => {
+    status = { ...baseStatus, state: 'idle' };
+    projectLocalConfig = { autoSync: { mode: 'off' } };
+    worktreeStale = true;
+    worktreeUnreadable = true;
+    worktreeLastReadAt = Date.now() - 2 * 60_000;
+    await renderBadge();
+    await openPopover();
+
+    expect(screen.getByTestId('worktree-unreadable')).toBeTruthy();
+    expect(screen.queryByTestId('worktree-stale')).toBeNull();
+
+    worktreeStale = false;
+    worktreeUnreadable = false;
+    worktreeLastReadAt = Date.now();
+    await advanceStatus({ ...baseStatus, state: 'idle' });
+
+    expect(screen.queryByTestId('worktree-unreadable')).toBeNull();
+    expect(screen.queryByTestId('worktree-stale')).toBeNull();
+    expect(screen.getByText(/working tree clean/)).toBeTruthy();
   });
 });

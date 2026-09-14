@@ -25,6 +25,9 @@
     "-WeuHF": ["Remove queued message"],
     "-X1eoK": ["OpenKnowledge integrations checked."],
     "-YV1Uo": ["Pattern ", ["patternNumber"]],
+    "-ZVU5v": [
+      "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+    ],
     "-bFGPF": ["Next change"],
     "-dNlfM": ["Undid the last edit on ", ["docName"]],
     "-g6KIS": ["Unrecognized link"],
@@ -2252,6 +2255,9 @@
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
+    "Qca--K": [
+      "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Navigate to ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -3067,6 +3073,7 @@
     "_IX_7x": ["Other"],
     "_IfSZn": ["A saved theme already uses this name."],
     "_JOGC0": ["Send feedback…"],
+    "_LK4d6": ["This list may be out of date."],
     "_LczaQ": ["Denied — ", ["optionName"]],
     "_NWEid": ["Search schema files by path"],
     "_O7dJS": ["Different version here — click to compare and resolve"],
@@ -3463,6 +3470,7 @@
     "dw_dUJ": ["Failed to duplicate path"],
     "dx-TwN": ["Running project audit"],
     "dyfMJN": ["Code copied"],
+    "e-pP6g": ["This list may be out of date — last read ", ["staleRelative"], "."],
     "e0NrBM": ["Project"],
     "e1Rn_k": ["Open containing folder"],
     "e1hptq": ["Embed a video with native player controls."],
@@ -4810,6 +4818,9 @@
     "sKHiNR": [["count"], " behind"],
     "sNeKjP": ["Failed to store the token — try again"],
     "sOafXU": ["Edit and send again"],
+    "sOcMdy": [
+      "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+    ],
     "sOxZaS": ["Failed to load graph"],
     "sQoLn0": ["Quit"],
     "sR0I-f": ["Collapse all files"],

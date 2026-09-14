@@ -1971,6 +1971,14 @@ msgstr "اور {remaining} مزید"
 msgid "and more"
 msgstr "اور مزید"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "کوئی دوسرا پروگرام یہاں Git استعمال کر رہا ہے — اس کے مکمل ہونے کا انتظار کریں، پھر دوبارہ مطابقت پذیری کریں (وہ .git/index.lock روکے ہوئے ہے)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "کوئی دوسرا پروگرام یہاں Git استعمال کر رہا ہے — اس کے مکمل ہونے کا انتظار کریں، پھر دوبارہ مطابقت پذیری کریں (وہ <0>.git/index.lock</0> روکے ہوئے ہے)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "ایک اور مطابقت پذیری جاری ہے۔ تھوڑی دیر بعد دوبارہ کوشش کریں۔"
@@ -14540,6 +14548,14 @@ msgstr "یہ Slidev کا معاون ورژن نہیں ہے۔"
 msgid "this item"
 msgstr "یہ آئٹم"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "یہ فہرست پرانی ہو سکتی ہے — آخری بار پڑھا گیا {staleRelative}۔"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "یہ فہرست پرانی ہو سکتی ہے۔"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "یہ کسی ڈرائیو کی جڑ لگتی ہے (مثلاً C:\\)۔ یہاں ڈھانچہ بنانا پوری ڈرائیو اسکین کرے گا۔"
@@ -14685,6 +14701,10 @@ msgstr "یہ OpenKnowledge کی ترتیبات اور انضمامات کو آپ
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "یہ رپورٹ پہلے ہی راستے میں ہے۔ اس کا نتیجہ بگ رپورٹ کی تاریخ میں نظر آئے گا۔"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "اس ریپازٹری میں ابھی کوئی کمٹ نہیں ہے — پہلا کمٹ بنانے کے لیے پروجیکٹ دوبارہ کھولیں، پھر پُش کام کرے گا"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

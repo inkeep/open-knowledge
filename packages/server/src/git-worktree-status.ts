@@ -6,12 +6,19 @@ import type {
 import { GIT_STATUS_CODES } from '@inkeep/open-knowledge-core';
 import type { SimpleGit } from 'simple-git';
 import { createGitInstance } from './git-handle.ts';
-import { listNameStatus, listPorcelainEntries, type PorcelainEntry } from './git-paths.ts';
+import {
+  listNameStatus,
+  listPorcelainEntries,
+  PORCELAIN_STATUS_ARGS,
+  type PorcelainEntry,
+} from './git-paths.ts';
 import { getLogger } from './logger.ts';
 
 const log = getLogger('git-worktree-status');
 
 export const WORKTREE_STATUS_LIST_CAP = 100;
+
+const WORKTREE_STATUS_TIMEOUT_MS = 10_000;
 
 export interface WorktreeStatus {
   readable: boolean;
@@ -67,19 +74,46 @@ export function partitionPorcelainEntries(
     notStaged.length > WORKTREE_STATUS_LIST_CAP ||
     untracked.length > WORKTREE_STATUS_LIST_CAP;
 
+  const syncScopedFirst = (bucket: GitWorktreeEntry[]): GitWorktreeEntry[] =>
+    [...bucket.filter((e) => e.syncScoped), ...bucket.filter((e) => !e.syncScoped)].slice(
+      0,
+      WORKTREE_STATUS_LIST_CAP,
+    );
+
   return {
-    staged: staged.slice(0, WORKTREE_STATUS_LIST_CAP),
-    notStaged: notStaged.slice(0, WORKTREE_STATUS_LIST_CAP),
-    untracked: untracked.slice(0, WORKTREE_STATUS_LIST_CAP),
+    staged: syncScopedFirst(staged),
+    notStaged: syncScopedFirst(notStaged),
+    untracked: syncScopedFirst(untracked),
     truncated,
   };
 }
 
-export async function readIncomingEntries(git: SimpleGit): Promise<GitWorktreeEntry[]> {
+const EXPECTED_GIT_ABSENCE_MESSAGES = [
+  'unknown revision or path not in the working tree',
+  'no upstream configured for branch',
+  'does not point to a branch',
+  'no such branch',
+] as const;
+
+export function isExpectedGitAbsence(err: unknown): boolean {
+  const message = err instanceof Error ? err.message : String(err ?? '');
+  return EXPECTED_GIT_ABSENCE_MESSAGES.some((known) => message.includes(known));
+}
+
+export async function readIncomingEntries(
+  git: SimpleGit,
+  abortSignal?: AbortSignal,
+): Promise<GitWorktreeEntry[]> {
   let rows: Awaited<ReturnType<typeof listNameStatus>>;
   try {
     rows = await listNameStatus(git, ['diff', '--name-status', 'HEAD...@{upstream}']);
-  } catch {
+  } catch (err) {
+    if (!abortSignal?.aborted && !isExpectedGitAbsence(err)) {
+      log.warn(
+        { event: 'worktree-incoming-read-failed', err },
+        '[sync] incoming-change read failed — panel shows nothing incoming',
+      );
+    }
     return [];
   }
   return rows.map((row) => ({
@@ -90,6 +124,11 @@ export async function readIncomingEntries(git: SimpleGit): Promise<GitWorktreeEn
   }));
 }
 
+export interface ReadWorktreeStatusOptions {
+  timeoutMs?: number;
+  abortSignal?: AbortSignal;
+}
+
 /**
  * It is threaded in rather than recomputed here so the answer comes from the sync engine's own
  * admission predicate — the same one the staging walk consults (precedent #55).
@@ -98,6 +137,7 @@ export async function readWorktreeStatus(
   projectDir: string,
   isSyncScoped: (projectRelPath: string) => boolean,
   toOpenTarget?: (projectRelPath: string) => GitWorktreeOpenTarget | undefined,
+  options: ReadWorktreeStatusOptions = {},
 ): Promise<WorktreeStatus> {
   const empty: WorktreeStatus = {
     readable: true,
@@ -111,23 +151,64 @@ export async function readWorktreeStatus(
     truncated: false,
   };
 
-  const { git } = createGitInstance(projectDir, { credentialConfig: [] });
+  const { git } = createGitInstance(projectDir, {
+    credentialConfig: [],
+    timeoutMs: options.timeoutMs ?? WORKTREE_STATUS_TIMEOUT_MS,
+    ...(options.abortSignal === undefined ? {} : { abortSignal: options.abortSignal }),
+  });
 
+  const startedAt = Date.now();
   const [entriesResult, branchResult, upstreamResult, incomingResult] = await Promise.allSettled([
-    listPorcelainEntries(git),
+    listPorcelainEntries(git, PORCELAIN_STATUS_ARGS),
     git.raw(['rev-parse', '--symbolic-full-name', '--abbrev-ref', 'HEAD']),
     git.raw(['rev-parse', '--symbolic-full-name', '--abbrev-ref', '@{upstream}']),
-    readIncomingEntries(git),
+    readIncomingEntries(git, options.abortSignal),
   ]);
-
-  if (entriesResult.status === 'rejected') {
-    log.warn({ err: entriesResult.reason }, '[git-status] porcelain read failed');
-    return { ...empty, readable: false };
-  }
 
   const headRef = branchResult.status === 'fulfilled' ? branchResult.value.trim() : '';
   const detached = headRef === 'HEAD';
   const branch = detached || headRef === '' ? null : headRef;
+  const cancelled = options.abortSignal?.aborted === true;
+  const repoUnreadable = entriesResult.status === 'rejected';
+
+  const reportDefaultedLeg = (
+    result: PromiseSettledResult<unknown>,
+    event: string,
+    msg: string,
+  ): void => {
+    if (result.status !== 'rejected') return;
+    if (cancelled || repoUnreadable || isExpectedGitAbsence(result.reason)) return;
+    log.warn(
+      { event, err: result.reason, elapsedMs: Date.now() - startedAt, branch },
+      `[sync] ${msg}`,
+    );
+  };
+
+  reportDefaultedLeg(
+    branchResult,
+    'worktree-branch-read-failed',
+    'branch read failed — panel shows no branch',
+  );
+  reportDefaultedLeg(
+    upstreamResult,
+    'worktree-upstream-read-failed',
+    'upstream read failed — panel shows no upstream',
+  );
+
+  if (entriesResult.status === 'rejected') {
+    if (!cancelled) {
+      log.error(
+        {
+          event: 'worktree-read-failed',
+          err: entriesResult.reason,
+          elapsedMs: Date.now() - startedAt,
+          branch,
+        },
+        '[sync] worktree status read failed — panel listing marked unreadable',
+      );
+    }
+    return { ...empty, readable: false };
+  }
   const upstream =
     upstreamResult.status === 'fulfilled' ? upstreamResult.value.trim() || null : null;
 

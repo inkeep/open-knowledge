@@ -1967,6 +1967,14 @@ msgstr "और {remaining} अन्य"
 msgid "and more"
 msgstr "और अन्य"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "कोई दूसरा प्रोग्राम यहाँ Git का उपयोग कर रहा है — उसके पूरा होने की प्रतीक्षा करें, फिर दोबारा सिंक करें (वह .git/index.lock रोके हुए है)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "कोई दूसरा प्रोग्राम यहाँ Git का उपयोग कर रहा है — उसके पूरा होने की प्रतीक्षा करें, फिर दोबारा सिंक करें (वह <0>.git/index.lock</0> रोके हुए है)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "एक और सिंक कार्रवाई चल रही है। कुछ देर बाद फिर कोशिश करें।"
@@ -14536,6 +14544,14 @@ msgstr "यह Slidev का समर्थित संस्करण नह�
 msgid "this item"
 msgstr "यह आइटम"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "यह सूची पुरानी हो सकती है — पिछली बार पढ़ा गया {staleRelative}।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "यह सूची पुरानी हो सकती है।"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "यह किसी ड्राइव का रूट लगता है (जैसे C:\\)। यहाँ ढाँचा बनाने पर पूरी ड्राइव स्कैन होगी।"
@@ -14681,6 +14697,10 @@ msgstr "यह आपके Mac से और नीचे चुने गए �
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "यह रिपोर्ट पहले ही रास्ते में है। इसका नतीजा बग रिपोर्ट इतिहास में दिखेगा।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "इस रिपॉज़िटरी में अभी कोई कमिट नहीं है — पहला कमिट बनाने के लिए प्रोजेक्ट दोबारा खोलें, फिर भेजें काम करेगा"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

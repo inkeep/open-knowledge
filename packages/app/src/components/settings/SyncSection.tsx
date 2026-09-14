@@ -15,10 +15,10 @@ import { EnableSyncConfirmDialog } from '@/components/EnableSyncConfirmDialog';
 import { PublishToGitHubDialog } from '@/components/PublishToGitHubDialog';
 import {
   formatDeniedIdentitySentences,
-  formatPausedReason,
   formatSyncFailureCode,
   hasNotFoundAsIdentityError,
   isParkedOnNotFoundAsIdentity,
+  PausedReasonNotice,
   shouldOfferReconnect,
   shouldOfferSignInAgain,
 } from '@/components/SyncStatusBadge';
@@ -145,13 +145,11 @@ export function SyncSection() {
     status?.pushPermission?.checkStatus === 'denied' &&
     status.pushPermission.deniedReason === 'not-authenticated';
   const parkedOnNotFound = isParkedOnNotFoundAsIdentity(status);
-  const pausedNotice = !status?.pausedReason
-    ? null
-    : parkedOnNotFound
-      ? formatSyncFailureCode('auth-not-found-as-identity')
-      : isPushDenied
-        ? null
-        : formatPausedReason(status.pausedReason);
+  const pausedNotice = !status?.pausedReason ? null : parkedOnNotFound ? (
+    formatSyncFailureCode('auth-not-found-as-identity')
+  ) : isPushDenied ? null : (
+    <PausedReasonNotice reason={status.pausedReason} />
+  );
 
   function onModeChange(next: string) {
     if (!isSyncMode(next)) return;

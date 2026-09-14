@@ -1971,6 +1971,14 @@ msgstr "and {remaining} more"
 msgid "and more"
 msgstr "and more"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "Another sync operation is in progress. Try again in a moment."
@@ -14540,6 +14548,14 @@ msgstr "This isn't a supported version of Slidev."
 msgid "this item"
 msgstr "this item"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "This list may be out of date — last read {staleRelative}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "This list may be out of date."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
@@ -14685,6 +14701,10 @@ msgstr "This removes OpenKnowledge’s settings and integrations from your Mac a
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "This report is already on its way. Its result will appear in your bug report history."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

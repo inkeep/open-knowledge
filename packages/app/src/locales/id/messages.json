@@ -19,6 +19,9 @@
     "-WeuHF": ["Hapus pesan dari antrean"],
     "-X1eoK": ["Integrasi OpenKnowledge telah diperiksa."],
     "-YV1Uo": ["Pola ", ["patternNumber"]],
+    "-ZVU5v": [
+      "Repositori ini belum punya commit — buka lagi proyeknya untuk membuat commit pertama, lalu Push akan berfungsi"
+    ],
     "-bFGPF": ["Perubahan berikutnya"],
     "-dNlfM": ["Suntingan terakhir pada ", ["docName"], " dibatalkan"],
     "-g6KIS": ["Tautan tidak dikenali"],
@@ -2270,6 +2273,9 @@
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "Qca--K": [
+      "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu sinkronkan lagi (program itu menahan <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Pergi ke ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -3088,6 +3094,7 @@
     "_IX_7x": ["Lainnya"],
     "_IfSZn": ["Tema tersimpan lain sudah menggunakan nama ini."],
     "_JOGC0": ["Kirim masukan…"],
+    "_LK4d6": ["Daftar ini mungkin tidak mutakhir."],
     "_LczaQ": ["Ditolak — ", ["optionName"]],
     "_NWEid": ["Cari berkas skema berdasarkan jalur"],
     "_O7dJS": ["Versi berbeda di sini — klik untuk membandingkan dan menyelesaikannya"],
@@ -3478,6 +3485,7 @@
     "dw_dUJ": ["Gagal menggandakan jalur"],
     "dx-TwN": ["Menjalankan audit proyek"],
     "dyfMJN": ["Kode disalin"],
+    "e-pP6g": ["Daftar ini mungkin tidak mutakhir — terakhir dibaca ", ["staleRelative"], "."],
     "e0NrBM": ["Proyek"],
     "e1Rn_k": ["Buka folder induknya"],
     "e1hptq": ["Menyematkan video dengan kendali pemutar bawaan."],
@@ -4832,6 +4840,9 @@
     "sKHiNR": [["count"], " di belakang"],
     "sNeKjP": ["Gagal menyimpan token — coba lagi"],
     "sOafXU": ["Sunting dan kirim lagi"],
+    "sOcMdy": [
+      "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu sinkronkan lagi (program itu menahan .git/index.lock)"
+    ],
     "sOxZaS": ["Gagal memuat graf"],
     "sQoLn0": ["Keluar"],
     "sR0I-f": ["Ciutkan semua berkas"],

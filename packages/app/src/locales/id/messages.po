@@ -1967,6 +1967,14 @@ msgstr "dan {remaining} lagi"
 msgid "and more"
 msgstr "dan lainnya"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu sinkronkan lagi (program itu menahan .git/index.lock)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu sinkronkan lagi (program itu menahan <0>.git/index.lock</0>)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "Operasi sinkronisasi lain sedang berjalan. Coba lagi sebentar."
@@ -14536,6 +14544,14 @@ msgstr "Ini bukan versi Slidev yang didukung."
 msgid "this item"
 msgstr "item ini"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "Daftar ini mungkin tidak mutakhir — terakhir dibaca {staleRelative}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "Daftar ini mungkin tidak mutakhir."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "Ini tampak seperti akar sebuah drive (mis. C:\\). Menyusun proyek di sini akan memindai seluruh drive."
@@ -14681,6 +14697,10 @@ msgstr "Ini menghapus pengaturan dan integrasi OpenKnowledge dari Mac Anda serta
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "Laporan ini sudah dalam perjalanan. Hasilnya akan muncul di riwayat laporan bug."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "Repositori ini belum punya commit — buka lagi proyeknya untuk membuat commit pertama, lalu Push akan berfungsi"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."

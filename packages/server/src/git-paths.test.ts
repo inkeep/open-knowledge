@@ -1,5 +1,5 @@
 import { execSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
@@ -7,8 +7,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   listNameStatus,
   listNames,
+  listPorcelainEntries,
   listPorcelainPaths,
   listTreeLongEntries,
+  PORCELAIN_STATUS_ARGS,
   parseNameStatusZ,
   parsePorcelainEntries,
   parsePorcelainPaths,
@@ -190,6 +192,16 @@ describe('path-listing wrappers (real git)', () => {
     ]);
 
     expect(paths).toEqual([NON_ASCII]);
+  });
+
+  test('the shared porcelain args list every file of an untracked directory', async () => {
+    mkdirSync(join(projectDir, 'nested'), { recursive: true });
+    writeFileSync(join(projectDir, 'nested', 'a.md'), 'a\n');
+    writeFileSync(join(projectDir, 'nested', 'b.md'), 'b\n');
+
+    const entries = await listPorcelainEntries(simpleGit(projectDir), PORCELAIN_STATUS_ARGS);
+
+    expect(entries.map((e) => e.path).sort()).toEqual(['nested/a.md', 'nested/b.md']);
   });
 
   test('listTreeLongEntries returns the real UTF-8 path and blob size', async () => {
