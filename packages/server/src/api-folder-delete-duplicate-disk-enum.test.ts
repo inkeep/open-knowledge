@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { Readable } from 'node:stream';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createApiExtension } from './api-extension.test-helper.ts';
+import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import { _resetDocExtensionsForTests } from './doc-extensions.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
 
@@ -13,6 +14,12 @@ type Options = Parameters<typeof createApiExtension>[0];
 interface CapturedResponse {
   status: number;
   body: string;
+}
+
+function conflictAuthorityFor(contentDir: string, file: string) {
+  const authority = createTestConflictAuthority(contentDir);
+  authority.raise({ kind: 'merge-native', file });
+  return authority;
 }
 
 function makeReq(url: string, body: unknown): IncomingMessage {
@@ -154,9 +161,7 @@ describe('folder delete enumerates descendant docs from disk', () => {
       } as unknown as Options['sessionManager'],
       contentDir,
       getFileIndex: () => new Map(),
-      getSyncEngine: (() => ({
-        getConflicts: () => [{ file: 'del-folder/page.mdx' }],
-      })) as unknown as Options['getSyncEngine'],
+      conflicts: conflictAuthorityFor(contentDir, 'del-folder/page.mdx'),
     });
 
     const { status, structured } = await post(ext, '/api/delete-path', {
@@ -196,9 +201,7 @@ describe('folder duplicate conflict gate enumerates from disk', () => {
       } as unknown as Options['sessionManager'],
       contentDir,
       getFileIndex: () => new Map(),
-      getSyncEngine: (() => ({
-        getConflicts: () => [{ file: 'dup-folder/child.md' }],
-      })) as unknown as Options['getSyncEngine'],
+      conflicts: conflictAuthorityFor(contentDir, 'dup-folder/child.md'),
     });
 
     const { status, structured } = await post(ext, '/api/duplicate-path', {
@@ -235,9 +238,7 @@ describe('folder duplicate conflict gate enumerates from disk', () => {
       } as unknown as Options['sessionManager'],
       contentDir,
       getFileIndex: () => new Map(),
-      getSyncEngine: (() => ({
-        getConflicts: () => [{ file: 'dup-mdx/page.mdx' }],
-      })) as unknown as Options['getSyncEngine'],
+      conflicts: conflictAuthorityFor(contentDir, 'dup-mdx/page.mdx'),
     });
 
     const { status, structured } = await post(ext, '/api/duplicate-path', {

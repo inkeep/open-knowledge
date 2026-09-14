@@ -1219,6 +1219,10 @@ msgstr "<{componentName}> n'est pas un composant connu. Copiez la source pour l'
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "Le rendu de <{descriptorLabel}> a échoué (probablement une propriété incorrecte). Copiez la source pour voir ce qui ne va pas, ou supprimez le bloc."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> ne peut pas être fusionné ici. Choisissez la version à garder."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>Miroir — choisissez une source.</0> Définissez <1>src</1> + <2>anchor</2> dans le panneau des propriétés pour pointer vers un <3><MirrorSource></3> ailleurs."
@@ -3908,10 +3912,6 @@ msgstr "Impossible de modifier la vérification orthographique. Réessayez."
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "Impossible de modifier les langues de la correction orthographique. Réessayez."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "Impossible de vérifier si {filePath} est toujours en conflit — nouvelle tentative."
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4788,6 +4788,10 @@ msgstr "Supprimer le tableau sélectionné"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "Supprimer le tableau"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "Supprimer le fichier"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9021,6 +9025,10 @@ msgstr "Pas encore de commentaires. Sélectionnez du texte dans le document pour
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "Aucun ancêtre commun : les deux branches ont ajouté ce fichier (conflit add/add)."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "Aucun conflit n’est suivi pour ce chemin."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "Aucune modification de contenu dans cette version."
@@ -11475,10 +11483,6 @@ msgstr "Rendu"
 msgid "Reopen"
 msgstr "Rouvrir"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "Rouvrez {filePath} pour continuer à modifier."
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr "Rouvrir un chat précédent"
@@ -13109,6 +13113,10 @@ msgstr "Certains thèmes enregistrés ne sont pas affichés car le dossier des t
 msgid "Some skills were deleted with a warning"
 msgstr "Certaines compétences ont été supprimées avec un avertissement"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "Quelqu'un a peut-être déjà résolu {filePath} — vérifiez le contenu actuel du document avant de refaire votre modification."
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Quelque chose s'est cassé"
@@ -14389,10 +14397,6 @@ msgstr "Ce commentaire porte sur toute la propriété"
 msgid "This composer doesn't accept attachments."
 msgstr "Impossible de joindre des fichiers ici."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "Ce conflit est résolu."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr "La configuration a échoué, car l'entrée de serveur MCP nécessaire n'a pas été écrite."
@@ -15491,6 +15495,10 @@ msgstr "Utilisez uniquement des lettres minuscules, des chiffres et <0>-</0>."
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Utilisez uniquement des lettres minuscules, des chiffres et des traits d'union"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "Utiliser leur version"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"

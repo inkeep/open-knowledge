@@ -157,7 +157,7 @@ describe('template watcher capabilities — content pipeline parity (FR4)', () =
   );
 
   test(
-    'conflict markers written to a template file classify the open doc into the conflict lifecycle',
+    'conflict markers written to a template file raise a reconcile conflict for the open doc',
     async () => {
       const name = `tpl-${randomUUID().slice(0, 8)}`;
       const docName = `.ok/templates/${name}`;
@@ -177,9 +177,11 @@ describe('template watcher capabilities — content pipeline parity (FR4)', () =
         '---\ntitle: T\ndescription: initial\n---\n\n# Template\n\n<<<<<<< HEAD\nours.\n=======\ntheirs.\n>>>>>>> branch\n';
       writeFileSync(tplFile, conflicted, 'utf-8');
 
-      await pollUntil(() => lifecycleStatus(rig, docName) === 'conflict', 15000);
-      expect(lifecycleStatus(rig, docName)).toBe('conflict');
-      expect(serverDoc(rig, docName)?.getMap('lifecycle').get('reason')).toBe('conflict-markers');
+      await pollUntil(() => rig.instance.conflicts.has(docName), 15000);
+      expect(rig.instance.conflicts.findByDocName(docName)).toMatchObject({
+        kind: 'reconcile',
+        reason: 'disk-markers',
+      });
       expect(client.ytext.toString()).not.toContain('<<<<<<<');
 
       await client.cleanup();

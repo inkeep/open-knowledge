@@ -115,6 +115,11 @@
       ") em ",
       ["targetLabel"]
     ],
+    "0bV3uj": [
+      "Talvez alguém já tenha resolvido ",
+      ["filePath"],
+      " — confira o conteúdo atual do documento antes de refazer sua edição."
+    ],
     "0cGsQh": ["O que está incluído"],
     "0cspe_": ["Excluir linha"],
     "0dslv8": [
@@ -398,6 +403,7 @@
     "3aeN7X": ["Todos os arquivos"],
     "3cOo2C": ["Cria uma pasta a partir do documento ou da pasta atual."],
     "3ePd3I": ["Novidades"],
+    "3fOsvq": ["Usar a versão deles"],
     "3h5zMp": ["Algo deu errado ao carregar o painel de configurações."],
     "3iyGWF": ["Abrir um projeto recente"],
     "3jod3l": ["Conectar GitHub"],
@@ -2630,6 +2636,7 @@
     "RB_g_C": [
       "No índice raiz, okf_version é escrito como uma string entre aspas, como \"0.2\". Sem aspas, YAML lê-o como um número e 0.10 silenciosamente se torna 0.1."
     ],
+    "RCMt3v": ["Nenhum conflito está sendo rastreado para este caminho."],
     "RD6H9q": [
       "Open Knowledge reescreve esses arquivos index.md conforme os documentos são alterados, portanto, as edições manuais neles são substituídas."
     ],
@@ -2685,6 +2692,11 @@
     "Rah7yq": ["O que a IA deve fazer? (opcional)"],
     "Rb1zMa": ["Sem trecho"],
     "RcrskJ": ["A formatação parecia errada"],
+    "RduDYw": [
+      "<0>",
+      ["filePath"],
+      "</0> não pode ser mesclado aqui. Escolha a versão que quer manter."
+    ],
     "RfHNf8": ["Abrir o painel de atividade de ", ["tooltipName"]],
     "RfaEio": ["Comentar ou descomentar no código"],
     "RfilGt": ["Nenhuma regra corresponde aos seus filtros."],
@@ -2765,6 +2777,7 @@
     "SXCSQd": ["Caminho copiado"],
     "SXEdCq": ["Mover para ", ["0"], "?"],
     "SYfHmN": ["Desafixar a aba"],
+    "S_RRZB": ["Excluir o arquivo"],
     "Sad2tK": ["Enviando…"],
     "Sbb90e": [
       [
@@ -3286,7 +3299,6 @@
     "XwZiq2": [
       "O arquivo foi restaurado para uma versão mais antiga. Atual é a versão que o OpenKnowledge protegeu. Recebido é a versão restaurada. Escolha qual versão manter e aplique suas alterações."
     ],
-    "XzL7x7": ["Reabra ", ["filePath"], " para continuar editando."],
     "Xzy0s0": ["Remover ", ["fullLabel"], " do contexto"],
     "Y-Urt2": ["Equação matemática em bloco renderizada com KaTeX a partir de código LaTeX."],
     "Y1QMlM": ["Comece agora"],
@@ -4349,7 +4361,6 @@
       "Mantenha um registro escrito de como seu produto é construído. Um lugar para propor ideias, registrar decisões, escrever especificações e anotar o que você aprendeu depois que algo quebrou."
     ],
     "hCattk": ["OpenKnowledge importou ", ["source"]],
-    "hCghAK": ["Este conflito foi resolvido."],
     "hDEaQu": ["Conecte o OpenKnowledge às outras ferramentas que você usa."],
     "hDKtoF": ["há ", ["diffHrs"], " h"],
     "hDoLrm": ["Remover ", ["projectName"], " dos projetos recentes"],
@@ -4584,11 +4595,6 @@
       "Incorpora uma página externa em um iframe embutido (documentação, demos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Ativar Automático (somente Pull)"],
-    "jTdrn1": [
-      "Não foi possível verificar se ",
-      ["filePath"],
-      " ainda está em conflito — tentando novamente."
-    ],
     "jWwQo6": ["lote"],
     "jWzDfC": ["Verificando quais ferramentas de IA você tem"],
     "jZ_E5M": ["Falha ao buscar — veja os logs do servidor para os detalhes."],

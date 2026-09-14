@@ -116,6 +116,12 @@ interface RaceResult {
 
 async function resolveLeftoverConflict(port: number, docName: string): Promise<void> {
   const file = docName.endsWith('.md') ? docName : `${docName}.md`;
+  const listRes = await fetch(`http://localhost:${port}/api/sync/conflicts`).catch(() => null);
+  if (!listRes?.ok) return;
+  const list = (await listRes.json().catch(() => ({ conflicts: [] }))) as {
+    conflicts?: Array<{ file: string }>;
+  };
+  if (!list.conflicts?.some((entry) => entry.file === file)) return;
   const res = await fetch(`http://localhost:${port}/api/sync/resolve-conflict`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

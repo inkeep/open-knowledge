@@ -55,17 +55,14 @@ import {
 import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from '../bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from '../bridge-loss-detector.ts';
 import { isConfigDoc, isSystemDoc, SYSTEM_DOC_NAME } from '../cc1-broadcast.ts';
-import { DocInConflictError, isDocInConflict, respondDocInConflict } from '../conflict-errors.ts';
+import type { ConflictAuthority } from '../conflict-authority.ts';
+import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
 import {
   evaluateContentDivergence,
   toContentDivergenceWarning,
 } from '../content-divergence-gate.ts';
 import { recordContributor } from '../contributor-tracker.ts';
-import {
-  canonicalDocName,
-  docNameToRelativePath,
-  registerDocExtension,
-} from '../doc-extensions.ts';
+import { canonicalDocName, registerDocExtension, stripDocExtension } from '../doc-extensions.ts';
 import type { DocumentDurabilityState, StoreFailure } from '../document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
@@ -134,6 +131,7 @@ function agentPatchFmTouchCounter(): ReturnType<ReturnType<typeof getMeter>['cre
 }
 
 export interface AgentWriteRouteDeps {
+  conflicts: ConflictAuthority;
   getLinkAdvisoryPolicy: () => LinkAdvisoryPolicy;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
   requireNonEmptyDocName: (
@@ -226,6 +224,7 @@ export interface AgentWriteRouteDeps {
 
 export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup {
   const {
+    conflicts,
     getLinkAdvisoryPolicy,
     respondStaleExternalWrite,
     requireNonEmptyDocName,
@@ -330,6 +329,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           contentDir,
           options.resolveEmbed,
           getBridgeLossReporter?.(),
+          conflicts,
         );
         const writeMdEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
@@ -489,7 +489,12 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         );
       } catch (e) {
         if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-write-md');
+          respondDocInConflict(
+            res,
+            e,
+            'agent-write-md',
+            conflicts.findByDocName(stripDocExtension(e.file)),
+          );
           return;
         }
         if (e instanceof FrontmatterMalformedError) {
@@ -553,6 +558,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           contentDir,
           options.resolveEmbed,
           getBridgeLossReporter?.(),
+          conflicts,
         );
         const fmPatchPrecomputed = await prepareFrontmatterPatchParse(session.dc.document, patch);
         const timestamp = new Date().toISOString();
@@ -800,6 +806,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           contentDir,
           options.resolveEmbed,
           getBridgeLossReporter?.(),
+          conflicts,
         );
         const patchEmbedResolver = options.resolveEmbed
           ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
@@ -1060,7 +1067,12 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         );
       } catch (e) {
         if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-patch');
+          respondDocInConflict(
+            res,
+            e,
+            'agent-patch',
+            conflicts.findByDocName(stripDocExtension(e.file)),
+          );
           return;
         }
         if (e instanceof FrontmatterMalformedError) {
@@ -1192,7 +1204,12 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         );
       } catch (e) {
         if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-undo');
+          respondDocInConflict(
+            res,
+            e,
+            'agent-undo',
+            conflicts.findByDocName(stripDocExtension(e.file)),
+          );
           return;
         }
         log.error({ err: e, requestId: getRequestId(_req) }, '[agent-undo] handler failed');
@@ -1438,12 +1455,13 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         return;
       }
       // The check fires post-identity (precedent #24) and pre-mutation.
-      const targetDoc = hocuspocus.documents.get(body.docName);
-      if (targetDoc && isDocInConflict(targetDoc)) {
+      const rollbackConflict = conflicts.findByDocName(body.docName);
+      if (rollbackConflict !== undefined) {
         respondDocInConflict(
           res,
-          new DocInConflictError({ file: docNameToRelativePath(body.docName) }),
+          new DocInConflictError({ file: rollbackConflict.file }),
           'rollback',
+          rollbackConflict,
         );
         return;
       }

@@ -16,7 +16,7 @@ import { promisify } from 'node:util';
 import { LOCAL_DIR, type SyncMode, SyncStatusSchema } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { ConflictStore } from './conflict-storage.ts';
+import { type Conflict, ConflictAuthority } from './conflict-authority.ts';
 import { createContentFilter } from './content-filter.ts';
 import { classifyGitError } from './error-classification.ts';
 import type { GitHandle } from './git-handle.ts';
@@ -44,9 +44,9 @@ interface CapturedLog {
   msg: string;
   level: 'info' | 'warn';
 }
-function captureSyncLogs(): { entries: CapturedLog[]; restore: () => void } {
+function captureSyncLogs(name = 'sync-engine'): { entries: CapturedLog[]; restore: () => void } {
   const entries: CapturedLog[] = [];
-  const logger = getLogger('sync-engine');
+  const logger = getLogger(name);
   const record =
     (level: CapturedLog['level']) =>
     (data: unknown, msg?: string): void => {
@@ -81,10 +81,33 @@ afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 });
 
+let authority: ConflictAuthority;
+
+function newAuthority(): ConflictAuthority {
+  authority = new ConflictAuthority({
+    projectDir,
+    contentDir: projectDir,
+    io: {
+      gitRaw: (args) => simpleGit(projectDir).raw(args),
+      writeProjectFileUntracked: (absPath, bytes) => writeFileSync(absPath, bytes, 'utf-8'),
+      unlinkProjectFile: (absPath) => rmSync(absPath, { force: true }),
+      applyResolvedContent: async (_docName, absPath, bytes) => {
+        writeFileSync(absPath, bytes, 'utf-8');
+      },
+    },
+  });
+  return authority;
+}
+
+function workingTreeConflicts(): Array<Extract<Conflict, { kind: 'working-tree' }>> {
+  return authority.list().filter((c) => c.kind === 'working-tree');
+}
+
 function makeEngine(
   opts: { syncEnabled?: boolean; mode?: SyncMode; onStateChange?: (s: SyncState) => void } = {},
 ) {
   return new SyncEngine({
+    conflicts: newAuthority(),
     projectDir,
     contentDir,
     contentFilter: stubContentFilter,
@@ -138,6 +161,7 @@ function makeProbeEngine(opts: {
   cc1Broadcaster?: ConstructorParameters<typeof SyncEngine>[0]['cc1Broadcaster'];
 }) {
   return new SyncEngine({
+    conflicts: newAuthority(),
     projectDir,
     contentDir,
     contentFilter: stubContentFilter,
@@ -245,7 +269,7 @@ describe('SyncEngine state persistence round-trip', () => {
     expect(engine.getStatus().syncEnabled).toBe(false);
   });
 
-  test('restores inflightConflicts into conflictCount', async () => {
+  test('a legacy inflightConflicts array does not resurrect cleared conflicts', async () => {
     const persisted = {
       version: 1,
       lastSyncUtc: null,
@@ -258,6 +282,43 @@ describe('SyncEngine state persistence round-trip', () => {
 
     const engine = makeEngine({ syncEnabled: false });
     await engine.start();
+    expect(engine.getStatus().conflictCount).toBe(0);
+    expect(authority.count()).toBe(0);
+  });
+
+  test('the persisted sync state no longer carries a conflict list', async () => {
+    const engine = makeEngine({ syncEnabled: false });
+    await engine.start();
+    authority.raise({ kind: 'merge-native', file: 'docs/a.md' });
+    await engine.destroy();
+
+    const written = JSON.parse(readFileSync(statePath(), 'utf-8')) as Record<string, unknown>;
+    expect(written.inflightConflicts).toBeUndefined();
+  });
+
+  test('only conflicts with markers on disk count as sync conflicts and hold the push', async () => {
+    const engine = makeEngine({ syncEnabled: false });
+    await engine.start();
+    authority.raise({
+      kind: 'reconcile',
+      file: 'docs/a.md',
+      reason: 'merged-with-markers',
+      stages: { base: 'B', ours: 'O', theirs: 'T' },
+    });
+
+    expect(authority.count()).toBe(1);
+    expect(engine.getStatus().conflictCount).toBe(0);
+    expect(engine.getStatus().state).not.toBe('conflict');
+
+    authority.raise({
+      kind: 'reconcile',
+      file: 'docs/c.md',
+      reason: 'disk-markers',
+      stages: { base: 'B', ours: 'O', theirs: '<<<<<<< a\nT\n=======\nU\n>>>>>>> b\n' },
+    });
+    expect(engine.getStatus().conflictCount).toBe(1);
+
+    authority.raise({ kind: 'working-tree', file: 'docs/b.md', theirsSha: 'sha' });
     expect(engine.getStatus().conflictCount).toBe(2);
   });
 
@@ -409,7 +470,7 @@ describe('SyncEngine state persistence round-trip', () => {
       const status = engine.getStatus();
       expect(status.conflictCount).toBe(1);
       expect(status.state).toBe('conflict');
-      const conflicts = engine.getConflicts().map((c) => c.file);
+      const conflicts = authority.list().map((c) => c.file);
       expect(conflicts).toEqual(['docs/b.md']);
     } finally {
       await engine.destroy();
@@ -447,7 +508,7 @@ describe('SyncEngine state persistence round-trip', () => {
       await engine.start();
       expect(engine.getStatus().state).toBe('conflict');
 
-      await engine.resolveConflict(conflictedFile, 'mine');
+      await authority.resolve(conflictedFile, 'mine');
       const after = engine.getStatus();
       expect(after.conflictCount).toBe(0);
       expect(after.state).not.toBe('conflict');
@@ -586,6 +647,7 @@ describe('SyncEngine ConflictStore admission (content-only)', () => {
 
   function makeEngineForConflict() {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -738,6 +800,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     writeFileSync(join(projectDir, '.mcp.json'), `${v2}\n`, 'utf-8');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: {
@@ -799,6 +862,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     writeFileSync(join(projectDir, '.mcp.json'), config('# ok-mcp-v99', 'base'), 'utf8');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: {
@@ -846,6 +910,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     writeFileSync(join(projectDir, '.mcp.json'), config('# ok-mcp-v99'), 'utf8');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -926,6 +991,7 @@ describe('SyncEngine tracked MCP overlap preparation', () => {
     writeFileSync(join(projectDir, '.mcp.json'), config('# ok-mcp-v99'), 'utf8');
     writeFileSync(join(projectDir, 'local.md'), 'local content\n', 'utf8');
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: {
@@ -1033,16 +1099,23 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
   }
 
   function makeProjectRootEngine(
-    opts: { onContentConflictsDetected?: (files: string[]) => void | Promise<void> } = {},
+    opts: { onContentConflictsDetected?: (files: string[]) => void } = {},
   ) {
+    const conflicts = newAuthority();
+    const detected = opts.onContentConflictsDetected;
+    if (detected !== undefined) {
+      conflicts.subscribe((change) => {
+        if (change.type === 'raised') detected([change.conflict.file]);
+      });
+    }
     return new SyncEngine({
+      conflicts,
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
       syncEnabled: true,
       pullIntervalSeconds: 99999,
       pushIntervalSeconds: 99999,
-      onContentConflictsDetected: opts.onContentConflictsDetected,
     });
   }
 
@@ -1058,7 +1131,7 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
       expect(status.state).toBe('conflict');
       expect(status.conflictCount).toBe(1);
       expect(status.pausedReason).toBeUndefined();
-      expect(engine.getConflicts().map((c) => c.file)).toEqual(['foo.md']);
+      expect(authority.list().map((c) => c.file)).toEqual(['foo.md']);
       expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(true);
 
       const project = simpleGit(projectDir);
@@ -1088,7 +1161,7 @@ describe('SyncEngine delete/modify dirty content conflicts', () => {
       const status = engine.getStatus();
       expect(status.state).toBe('conflict');
       expect(status.conflictCount).toBe(1);
-      expect(engine.getConflicts().map((c) => c.file)).toEqual(['foo.md']);
+      expect(authority.list().map((c) => c.file)).toEqual(['foo.md']);
       expect(notified).toEqual([['foo.md']]);
 
       const project = simpleGit(projectDir);
@@ -1142,6 +1215,7 @@ describe('SyncEngine non-ASCII filename conflicts', () => {
     await setupRemoteModifyLocalDeleteNonAscii();
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -1157,7 +1231,7 @@ describe('SyncEngine non-ASCII filename conflicts', () => {
       expect(status.state).toBe('conflict');
       expect(status.conflictCount).toBe(1);
       expect(status.pausedReason).toBeUndefined();
-      expect(engine.getConflicts().map((c) => c.file)).toEqual([fileName]);
+      expect(authority.list().map((c) => c.file)).toEqual([fileName]);
       expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(true);
     } finally {
       await engine.destroy();
@@ -1378,6 +1452,7 @@ describe('SyncEngine unified pull — B1 in every mode', () => {
 
   function makeRootContentEngine(mode: SyncMode) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -1895,6 +1970,7 @@ describe('SyncEngine pull-only cadence (auth-conditional)', () => {
     tokenStore?: ProbeTokenStore | null;
   }) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -1964,6 +2040,7 @@ describe('SyncEngine pull-only cadence (auth-conditional)', () => {
 describe('SyncEngine lastRunUtc survives a restart', () => {
   test('a restored engine reports the run stamp its legs restored', async () => {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -1986,6 +2063,7 @@ describe('SyncEngine lastRunUtc survives a restart', () => {
     }
 
     const restored = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2022,6 +2100,7 @@ describe('SyncEngine unborn-HEAD guard', () => {
 
   function makeEngine() {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2064,6 +2143,7 @@ describe('SyncEngine one-shot push guards', () => {
 
   function makeOneShotEngine(mode: SyncMode = 'follow') {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2091,9 +2171,9 @@ describe('SyncEngine one-shot push guards', () => {
   });
 
   test('refuses while conflicts hold the tree', async () => {
-    const { engine, internals, cycles } = makeOneShotEngine();
+    const { engine, cycles } = makeOneShotEngine();
     try {
-      internals.conflictCount = 1;
+      authority.raise({ kind: 'merge-native', file: 'a.md' });
       await engine.pushOnce();
       expect(cycles).toEqual([]);
     } finally {
@@ -2132,7 +2212,10 @@ describe('SyncEngine push chain survives a B1 conflict', () => {
   };
 
   test('a push tick with ledger conflicts re-arms the chain instead of ending it', async () => {
+    const conflicts = newAuthority();
+    conflicts.raise({ kind: 'merge-native', file: 'a.md' });
     const engine = new SyncEngine({
+      conflicts,
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2147,7 +2230,6 @@ describe('SyncEngine push chain survives a B1 conflict', () => {
       rearms.push(d);
     };
     (internals as unknown as { state: string }).state = 'idle';
-    internals.conflictCount = 1;
 
     await internals.runPushCycle();
 
@@ -2155,7 +2237,10 @@ describe('SyncEngine push chain survives a B1 conflict', () => {
   });
 
   test('an emptied ledger restarts both legs even though B1 left the state idle', async () => {
+    const conflicts = newAuthority();
+    conflicts.raise({ kind: 'merge-native', file: 'a.md' });
     const engine = new SyncEngine({
+      conflicts,
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2165,13 +2250,8 @@ describe('SyncEngine push chain survives a B1 conflict', () => {
     });
     const internals = engine as unknown as ChainInternals & {
       state: string;
-      conflictStore: {
-        list(): Array<{ file: string; variant: string }>;
-        removeConflict(file: string): void;
-        count(): number;
-      };
+      subscribeToConflicts(): void;
       schedulePull(overrideDelayMs?: number): void;
-      reconcileConflictsFromGit(): Promise<void>;
     };
     const pushRearms: Array<number | undefined> = [];
     const pullRearms: Array<number | undefined> = [];
@@ -2181,15 +2261,10 @@ describe('SyncEngine push chain survives a B1 conflict', () => {
     internals.schedulePull = (d?: number) => {
       pullRearms.push(d);
     };
-    internals.state = 'idle';
-    internals.conflictCount = 2;
-    internals.conflictStore = {
-      list: () => [{ file: 'a.md', variant: 'merge' }],
-      removeConflict: () => {},
-      count: () => 0,
-    };
+    internals.subscribeToConflicts();
+    internals.state = 'conflict';
 
-    await internals.reconcileConflictsFromGit();
+    await conflicts.pruneMergeNativeAgainstGit();
 
     expect(pushRearms).toHaveLength(1);
     expect(pullRearms).toHaveLength(1);
@@ -2206,6 +2281,7 @@ describe('SyncEngine enable schedules both legs immediately', () => {
 
   test('enabling full sync schedules the push at 0, not a full interval out', async () => {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2249,6 +2325,7 @@ describe('SyncEngine setIntervals()', () => {
 
   function makeIntervalEngine(mode: SyncMode) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2315,6 +2392,7 @@ describe('SyncEngine setIntervals()', () => {
 
   test('the anonymous floor still outranks a shorter configured pull interval', async () => {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2334,6 +2412,7 @@ describe('SyncEngine setIntervals()', () => {
 
   test('a longer configured interval is honored for an anonymous follower', async () => {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2355,6 +2434,7 @@ describe('SyncEngine setIntervals()', () => {
 describe('SyncEngine contention warn threshold', () => {
   test('escalates to warn only once the run reaches the threshold', async () => {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2397,6 +2477,7 @@ describe('SyncEngine runPushCycle ownership guard', () => {
 
   function makeGuardEngine() {
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2449,6 +2530,7 @@ describe('SyncEngine push-streak cause tracking', () => {
 
   function makeEngineForCause() {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2558,6 +2640,7 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
 
   function makePushEngine(pushIntervalSeconds: number) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -2799,6 +2882,7 @@ describe('SyncEngine push cycle with non-ASCII filenames', () => {
     rmSync(join(projectDir, fileName));
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -2846,6 +2930,7 @@ describe('SyncEngine push cycle vs gitignored content (precedent #55 at the stag
 
   function makePushEngine() {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -2936,6 +3021,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
 
   function makeShareableEngine(mode?: SyncMode) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: createContentFilter({ projectDir, contentDir: projectDir }),
@@ -3000,6 +3086,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
     writeFileSync(join(projectDir, 'assets', 'diagram.png'), 'attachment-v1');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: createContentFilter({
@@ -3037,6 +3124,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
     writeFileSync(join(projectDir, 'assets', 'diagram.png'), 'attachment-doc-less');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: createContentFilter({
@@ -3074,6 +3162,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
       attachmentFolderPath: 'assets',
     });
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter,
@@ -3108,6 +3197,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
     writeFileSync(join(projectDir, 'assets', 'shared.png'), 'attachment');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: createContentFilter({
@@ -3528,12 +3618,13 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
       expect(status.state).toBe('idle');
       expect(status.pausedReason).toBeUndefined();
       expect(status.conflictCount).toBe(2);
-      const conflicts = engine.getConflicts();
+      const conflicts = authority.list();
       expect(conflicts.map((conflict) => conflict.file).sort()).toEqual([
         '.ok/templates/project.md',
         'docs/.ok/templates/folder.md',
       ]);
-      expect(conflicts.every((c) => c.theirsSha)).toBe(true);
+      expect(workingTreeConflicts()).toHaveLength(conflicts.length);
+      expect(workingTreeConflicts().every((c) => c.theirsSha.length > 0)).toBe(true);
       expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(false);
 
       expect(readFileSync(join(projectDir, '.ok', 'config.yml'), 'utf-8')).toBe('shared: local\n');
@@ -3561,6 +3652,7 @@ describe('SyncEngine push cycle stages shareable .ok artifacts (sync scope)', ()
     function makeSubfolderEngine(attachmentFolderPath?: string) {
       const contentDir = join(projectDir, 'content');
       return new SyncEngine({
+        conflicts: newAuthority(),
         projectDir,
         contentDir,
         contentFilter: createContentFilter({
@@ -4582,6 +4674,7 @@ describe('SyncEngine auth-error recovery', () => {
     await git.push(['--set-upstream', 'origin', 'main']);
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -4610,6 +4703,7 @@ describe('SyncEngine auth-error recovery', () => {
     let urlmatchCalls = 0;
     const probe = fakeProbe({ kind: 'allowed' });
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -4691,6 +4785,7 @@ describe('SyncEngine gh-token credential relay', () => {
 
     const detect = recordDetectGh({ available: true, token: 'gho_relayed' });
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -4712,6 +4807,7 @@ describe('SyncEngine gh-token credential relay', () => {
     await initGitWithOrigin('https://ghes.acme.test/inkeep/open-knowledge.git');
     const detect = recordDetectGh({ available: true, token: 'gho_relayed' });
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -4730,6 +4826,7 @@ describe('SyncEngine gh-token credential relay', () => {
   test('caches the gh token across handles, then re-resolves after an auth error', () => {
     const detect = recordDetectGh({ available: true, token: 'gho_relayed' });
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -4776,6 +4873,7 @@ describe('SyncEngine declared-account resolution', () => {
     detectGhAccounts?: DetectGhAccountsFn,
   ) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir,
       contentFilter: stubContentFilter,
@@ -5079,6 +5177,7 @@ describe('SyncEngine pull-only mode', () => {
     const originTip = (await sister.revparse(['HEAD'])).trim();
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -5119,6 +5218,7 @@ describe('SyncEngine pull-only mode', () => {
     expect(localHead).not.toBe(originBefore);
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -5218,17 +5318,23 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
 
   function makePullEngine(
     opts: {
-      onContentConflictsResolved?: (files: string[]) => void | Promise<void>;
-      onContentConflictsDetected?: (files: string[]) => void | Promise<void>;
+      onContentConflictsResolved?: (files: string[]) => void;
+      onContentConflictsDetected?: (files: string[]) => void;
     } = {},
   ) {
+    const conflicts = newAuthority();
+    const detected = opts.onContentConflictsDetected;
+    const resolved = opts.onContentConflictsResolved;
+    conflicts.subscribe((change) => {
+      if (change.type === 'raised') detected?.([change.conflict.file]);
+      else resolved?.([change.file]);
+    });
     return new SyncEngine({
+      conflicts,
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
       mode: 'follow',
-      onContentConflictsResolved: opts.onContentConflictsResolved,
-      onContentConflictsDetected: opts.onContentConflictsDetected,
     });
   }
 
@@ -5359,7 +5465,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
       expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('C1\nC2\n');
       expect(readFileSync(join(projectDir, 'keep.md'), 'utf-8')).toBe('K1\nK2\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       await assertNoGitResidue();
     } finally {
       await engine.destroy();
@@ -5382,7 +5488,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
       expect(existsSync(join(projectDir, 'cfg.json'))).toBe(false);
       expect(readFileSync(join(projectDir, 'keep.md'), 'utf-8')).toBe('K1\nK2\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       await assertNoGitResidue();
     } finally {
       await engine.destroy();
@@ -5421,6 +5527,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
 
     const seen: Array<{ paths: number; bytesAtCheckpoint: string }> = [];
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -5454,6 +5561,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
 
     let calls = 0;
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -5482,6 +5590,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     writeFileSync(join(projectDir, 'a.md'), 'LOCAL1\nline2\n', 'utf-8');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -5585,7 +5694,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       const project = simpleGit(projectDir);
       expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
       expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nL2\nORIGIN3\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect(engine.getStatus().state).toBe('idle');
       await assertNoGitResidue();
     } finally {
@@ -5610,10 +5719,10 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
       await assertNoGitResidue();
 
-      const conflicts = engine.getConflicts();
+      const conflicts = workingTreeConflicts();
+      expect(authority.list()).toHaveLength(1);
       expect(conflicts).toHaveLength(1);
       expect(conflicts[0]?.file).toBe('a.md');
-      expect(conflicts[0]?.variant).toBe('working-tree');
       expect(conflicts[0]?.theirsSha).toMatch(/^[0-9a-f]{40}$/);
       expect(conflicts[0]?.baseSha).toMatch(/^[0-9a-f]{40}$/);
       expect(engine.getStatus().state).toBe('idle');
@@ -5637,7 +5746,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       const project = simpleGit(projectDir);
       expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
       expect(readFileSync(join(projectDir, 'config.json'), 'utf-8')).toBe('{"a":3}\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       await assertNoGitResidue();
     } finally {
       await engine.destroy();
@@ -5659,7 +5768,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       const project = simpleGit(projectDir);
       expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
       expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('C1\nC2\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect(engine.getStatus().state).toBe('idle');
       await assertNoGitResidue();
     } finally {
@@ -5691,13 +5800,13 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     try {
       await engine.start();
       await engine.trigger('pull');
-      const firstPin = engine.getConflicts()[0]?.theirsSha;
+      const firstPin = workingTreeConflicts()[0]?.theirsSha;
       expect(firstPin).toMatch(/^[0-9a-f]{40}$/);
 
       const tip2 = await advanceOriginFrom({ 'a.md': 'ORIGIN1b\nline2\n' });
       await engine.trigger('pull');
 
-      const conflicts = engine.getConflicts();
+      const conflicts = workingTreeConflicts();
       expect(conflicts).toHaveLength(1);
       expect(conflicts[0]?.theirsSha).not.toBe(firstPin);
       expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip2);
@@ -5719,12 +5828,12 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     try {
       await engine.start();
       await engine.trigger('pull');
-      expect(engine.getConflicts()).toHaveLength(1);
+      expect(authority.list()).toHaveLength(1);
 
       const tip2 = await advanceOriginFrom({ 'a.md': 'LOCAL1\nline2\n' });
       await engine.trigger('pull');
 
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip2);
       expect(await listNames(simpleGit(projectDir), ['diff-index', '--name-only', 'HEAD'])).toEqual(
         [],
@@ -5751,12 +5860,12 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     try {
       await engine.start();
       await engine.trigger('pull');
-      expect(engine.getConflicts()).toHaveLength(1);
+      expect(authority.list()).toHaveLength(1);
 
       await advanceOriginFrom({ 'a.md': 'LOCAL1\nline2\n' });
       await engine.trigger('pull');
 
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect(resolved).toEqual([['a.md']]);
       await assertNoGitResidue();
     } finally {
@@ -5808,12 +5917,12 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       await engine.start();
       await engine.trigger('pull');
       const tip = (await simpleGit(projectDir).revparse(['HEAD'])).trim();
-      expect(engine.getConflicts()).toHaveLength(1);
+      expect(authority.list()).toHaveLength(1);
 
-      await engine.resolveConflict('a.md', 'theirs');
+      await authority.resolve('a.md', 'theirs');
 
       expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('ORIGIN1\nline2\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip);
       await assertNoGitResidue();
     } finally {
@@ -5837,12 +5946,12 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     try {
       await engine.start();
       await engine.trigger('pull');
-      expect(engine.getConflicts()).toHaveLength(1);
+      expect(authority.list()).toHaveLength(1);
 
-      await engine.resolveConflict('a.md', 'content', 'MERGED\nline2\n');
+      await authority.resolve('a.md', 'content', 'MERGED\nline2\n');
 
       expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('MERGED\nline2\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect(resolved).toEqual([['a.md']]);
     } finally {
       await engine.destroy();
@@ -5862,23 +5971,25 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     await git.commit('local edit');
 
     const resolved: string[][] = [];
+    const conflicts = newAuthority();
+    conflicts.subscribe((change) => {
+      if (change.type === 'cleared') resolved.push([change.file]);
+    });
     const engine = new SyncEngine({
+      conflicts,
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
       mode: 'auto',
-      onContentConflictsResolved: (files) => {
-        resolved.push([...files]);
-      },
     });
     try {
       await engine.start();
       await engine.trigger('sync');
-      expect(engine.getConflicts()).toHaveLength(1);
+      expect(authority.list()).toHaveLength(1);
 
-      await engine.resolveConflict('a.md', 'content', 'MERGED\nline2\n');
+      await authority.resolve('a.md', 'content', 'MERGED\nline2\n');
 
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect(resolved).toEqual([['a.md']]);
     } finally {
       await engine.destroy();
@@ -5898,10 +6009,10 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       await engine.trigger('pull');
       const tip = (await simpleGit(projectDir).revparse(['HEAD'])).trim();
 
-      await engine.resolveConflict('a.md', 'mine');
+      await authority.resolve('a.md', 'mine');
 
       expect(readFileSync(join(projectDir, 'a.md'), 'utf-8')).toBe('LOCAL1\nline2\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       expect((await simpleGit(projectDir).revparse(['HEAD'])).trim()).toBe(tip);
       await assertNoGitResidue();
     } finally {
@@ -5924,7 +6035,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
       const project = simpleGit(projectDir);
       expect((await project.revparse(['HEAD'])).trim()).toBe(originTip);
       expect(readFileSync(join(projectDir, '.mcp.json'), 'utf-8')).toBe('{"v":3}\n');
-      expect(engine.getConflicts()).toEqual([]);
+      expect(authority.list()).toEqual([]);
       await assertNoGitResidue();
     } finally {
       await engine.destroy();
@@ -5942,10 +6053,10 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     try {
       await engine.start();
       await engine.trigger('pull');
-      expect(engine.getConflicts()).toHaveLength(1);
+      expect(authority.list()).toHaveLength(1);
 
-      await engine.reconcileConflictsFromGit();
-      expect(engine.getConflicts()).toHaveLength(1);
+      await authority.pruneMergeNativeAgainstGit();
+      expect(authority.list()).toHaveLength(1);
     } finally {
       await engine.destroy();
     }
@@ -5978,7 +6089,7 @@ describe('SyncEngine pull-only B1 fast-forward cycle', () => {
     const engine = makePullEngine();
     try {
       await engine.start();
-      expect(engine.getConflicts().map((c) => c.file)).toEqual(['a.md']);
+      expect(authority.list().map((c) => c.file)).toEqual(['a.md']);
       expect(engine.getStatus().state).toBe('idle');
     } finally {
       await engine.destroy();
@@ -6052,6 +6163,7 @@ describe('SyncEngine pull-only mode transitions', () => {
     checkpoint?: (ctx: { branch: string; ahead: number }) => void | Promise<void>,
   ) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -6346,6 +6458,7 @@ describe("SyncEngine one-shot pull (op 'pull')", () => {
 
   function makeEngineFor(mode: SyncMode) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -6553,6 +6666,7 @@ describe('SyncEngine telemetry', () => {
 
   function makeEngineFor(mode: SyncMode) {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -6656,17 +6770,15 @@ describe('SyncEngine telemetry', () => {
     });
     writeFileSync(join(projectDir, 'doc.md'), 'LOCAL1\nline2\n', 'utf-8');
     const engine = makeEngineFor('follow');
-    const cap = captureSyncLogs();
+    const cap = captureSyncLogs('conflict-authority');
     try {
       await engine.start();
       await engine.pullOnce();
       expect(engine.getStatus().conflictCount).toBe(1);
-      await engine.resolveConflict('doc.md', 'theirs');
-      const entry = cap.entries.find(
-        (e) => e.msg === '[sync] pull-only: conflict resolved by choice',
-      );
+      await authority.resolve('doc.md', 'theirs');
+      const entry = cap.entries.find((e) => e.msg === '[conflicts] conflict resolved by choice');
       expect(entry).toBeDefined();
-      expect(entry?.data).toMatchObject({ choice: 'theirs' });
+      expect(entry?.data).toMatchObject({ choice: 'theirs', kind: 'working-tree' });
     } finally {
       cap.restore();
       await engine.destroy();
@@ -6718,6 +6830,7 @@ describe('SyncEngine blocking-change resolution', () => {
 
   function makeOverlapEngine(mode: SyncMode = 'full') {
     return new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: markdownOnlyFilter,
@@ -6920,6 +7033,7 @@ describe('SyncEngine split-leg backoff, end to end', () => {
     writeFileSync(join(projectDir, 'note.md'), 'local\n', 'utf-8');
 
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -6947,6 +7061,7 @@ describe('SyncEngine split-leg backoff, end to end', () => {
 
     let raced = false;
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -6991,6 +7106,7 @@ describe('SyncEngine split-leg backoff, end to end', () => {
 
     let raced = false;
     const engine = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -7051,17 +7167,19 @@ describe('SyncEngine exclusive merge ownership', () => {
     const git = await initGitWithOrigin(bareDir);
     writeFileSync(join(projectDir, '.git', 'info', 'exclude'), '.ok/\n');
     await git.push(['--set-upstream', 'origin', 'main']);
+    const conflicts = newAuthority();
     const engine = new SyncEngine({
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
       mode,
       cc1Broadcaster: { signal },
+      conflicts,
     });
     const internals = engine as unknown as CycleInternals;
     internals.hasRemote = true;
     internals.state = mode === 'off' ? 'disabled' : 'idle';
-    return { engine, internals, git, bareDir };
+    return { engine, internals, git, bareDir, conflicts };
   }
 
   async function diverge(bareDir: string) {
@@ -7080,7 +7198,7 @@ describe('SyncEngine exclusive merge ownership', () => {
   test.each(['mine', 'theirs'] as const)(
     'a scheduled pull cannot enter a rejected push retry and %s resolves actual side bytes',
     async (strategy) => {
-      const { engine, internals, git, bareDir } = await setup();
+      const { engine, internals, git, bareDir, conflicts } = await setup();
       await diverge(bareDir);
       const enteredRetry = Promise.withResolvers<void>();
       const releaseRetry = Promise.withResolvers<void>();
@@ -7109,7 +7227,7 @@ describe('SyncEngine exclusive merge ownership', () => {
         expect(existsSync(join(projectDir, '.git', 'MERGE_HEAD'))).toBe(true);
         expect(engine.getStatus().state).toBe('conflict');
 
-        await new ConflictStore(projectDir).resolveConflict('README.md', strategy);
+        await conflicts.resolve('README.md', strategy);
         expect(readFileSync(join(projectDir, 'README.md'), 'utf8')).toBe(
           strategy === 'mine' ? 'ours\n' : 'theirs\n',
         );
@@ -7407,6 +7525,7 @@ describe('SyncEngine exclusive merge ownership', () => {
     );
 
     const restarted = new SyncEngine({
+      conflicts: newAuthority(),
       projectDir,
       contentDir: projectDir,
       contentFilter: stubContentFilter,
@@ -7432,9 +7551,9 @@ describe('SyncEngine exclusive merge ownership', () => {
   });
 
   test('an operation refusal preserves tracked-conflict guidance', async () => {
-    const { engine, internals, git } = await setup();
+    const { engine, internals, git, conflicts } = await setup();
     internals.state = 'conflict';
-    internals.conflictCount = 1;
+    conflicts.raise({ kind: 'merge-native', file: 'README.md' });
     internals.pullError = 'existing conflict guidance';
     internals.pausedReason = 'non-content-merge-failure';
     writeFileSync(join(projectDir, '.git', 'CHERRY_PICK_HEAD'), await git.revparse('HEAD'));
@@ -7453,9 +7572,9 @@ describe('SyncEngine exclusive merge ownership', () => {
   });
 
   test('a dirty-tree error preserves the conflict state and does not schedule autosave', async () => {
-    const { engine, internals } = await setup();
+    const { engine, internals, conflicts } = await setup();
     internals.state = 'conflict';
-    internals.conflictCount = 1;
+    conflicts.raise({ kind: 'merge-native', file: 'README.md' });
     try {
       internals.handleError(
         classifyGitError(

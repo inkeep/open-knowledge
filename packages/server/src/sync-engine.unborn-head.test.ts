@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR, type SyncMode } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import { getLogger } from './logger.ts';
 import { SyncEngine } from './sync-engine.ts';
 
@@ -80,6 +81,7 @@ async function emptyProjectWithBareOrigin() {
 
 function makeEngine(opts: { mode?: SyncMode } = {}) {
   return new SyncEngine({
+    conflicts: createTestConflictAuthority(projectDir),
     projectDir,
     contentDir: projectDir,
     contentFilter: stubContentFilter,

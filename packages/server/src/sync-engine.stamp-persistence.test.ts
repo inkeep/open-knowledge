@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR, type SyncMode } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import { getLogger } from './logger.ts';
 import { SyncEngine } from './sync-engine.ts';
 
@@ -69,6 +70,7 @@ async function projectWithBareOrigin() {
 
 function makeEngine(opts: { mode?: SyncMode } = {}) {
   return new SyncEngine({
+    conflicts: createTestConflictAuthority(projectDir),
     projectDir,
     contentDir: projectDir,
     contentFilter: stubContentFilter,
@@ -106,7 +108,7 @@ describe('SyncEngine sync stamp persistence', () => {
     }
   });
 
-  test('the persisted file keeps version 1 and its existing fields', async () => {
+  test('the persisted file keeps version 1 without duplicating conflict state', async () => {
     await projectWithBareOrigin();
 
     const engine = makeEngine();
@@ -121,7 +123,7 @@ describe('SyncEngine sync stamp persistence', () => {
       expect(persisted).toHaveProperty('lastFetchUtc');
       expect(persisted).toHaveProperty('lastPushedSha');
       expect(persisted).toHaveProperty('consecutiveFailures');
-      expect(persisted).toHaveProperty('inflightConflicts');
+      expect(persisted).not.toHaveProperty('inflightConflicts');
     } finally {
       await engine.destroy();
     }

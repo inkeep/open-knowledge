@@ -26,7 +26,9 @@ import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { resolveGitDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import type { CC1Broadcaster } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
-import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
+import type { ConflictAuthority, RaiseInput } from './conflict-authority.ts';
+import type { Conflict } from './conflict-kinds.ts';
+import { holdsMarkersOnDisk } from './conflict-kinds.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isShareableOkArtifact } from './content-filter.ts';
 import { isSupportedDocFile } from './doc-extensions.ts';
@@ -298,7 +300,6 @@ interface PersistedSyncState {
   pushStreakIsConnectivity?: boolean;
   pausedReason?: string;
   pausedSinceUtc?: string;
-  inflightConflicts: string[];
 }
 
 interface SyncEngineOptions {
@@ -312,9 +313,8 @@ interface SyncEngineOptions {
   syncEnabled?: boolean;
   credentialConfig?: string[];
   cc1Broadcaster?: Pick<CC1Broadcaster, 'signal'> | null;
+  conflicts: ConflictAuthority;
   onStateChange?: (state: SyncState) => void;
-  onContentConflictsDetected?: (files: string[]) => void | Promise<void>;
-  onContentConflictsResolved?: (files: string[]) => void | Promise<void>;
   setBatchInProgress?: (value: boolean) => void;
   onAutoDisable?: (reason: 'protected-branch') => void | Promise<void>;
   checkpointBeforeStrandedConversion?: (context: {
@@ -393,8 +393,6 @@ export class SyncEngine {
   private credentialConfig: string[];
   private cc1Broadcaster: Pick<CC1Broadcaster, 'signal'> | null;
   private onStateChange: ((state: SyncState) => void) | undefined;
-  private onContentConflictsDetected: ((files: string[]) => void | Promise<void>) | undefined;
-  private onContentConflictsResolved: ((files: string[]) => void | Promise<void>) | undefined;
   private setBatchInProgress: ((value: boolean) => void) | undefined;
   private onAutoDisable: ((reason: 'protected-branch') => void | Promise<void>) | undefined;
   private checkpointBeforeStrandedConversion:
@@ -441,7 +439,13 @@ export class SyncEngine {
   private consecutiveContentions = 0;
   private ahead = 0;
   private behind = 0;
-  private conflictCount = 0;
+  private get conflictCount(): number {
+    let total = 0;
+    for (const entry of this.conflicts.list()) {
+      if (holdsMarkersOnDisk(entry)) total++;
+    }
+    return total;
+  }
   private pushError: string | undefined;
   private pushErrorCode: UserFacingErrorCode | undefined;
   private pullError: string | undefined;
@@ -460,7 +464,8 @@ export class SyncEngine {
   private identityUnresolved = false;
 
   private statePath: string;
-  private conflictStore: ConflictStore;
+  private readonly conflicts: ConflictAuthority;
+  private unsubscribeConflicts: (() => void) | null = null;
 
   constructor(options: SyncEngineOptions) {
     this.projectDir = options.projectDir;
@@ -476,8 +481,6 @@ export class SyncEngine {
     this.credentialConfig = options.credentialConfig ?? [];
     this.cc1Broadcaster = options.cc1Broadcaster ?? null;
     this.onStateChange = options.onStateChange;
-    this.onContentConflictsDetected = options.onContentConflictsDetected;
-    this.onContentConflictsResolved = options.onContentConflictsResolved;
     this.setBatchInProgress = options.setBatchInProgress;
     this.onAutoDisable = options.onAutoDisable;
     this.checkpointBeforeStrandedConversion = options.checkpointBeforeStrandedConversion;
@@ -493,7 +496,7 @@ export class SyncEngine {
     this.tokenStore = options.tokenStore;
     this.checkPushPermissionFn = options.checkPushPermissionFn ?? defaultCheckPushPermission;
     this.statePath = resolve(getLocalDir(this.projectDir), 'sync-state.json');
-    this.conflictStore = new ConflictStore(this.projectDir, this.currentBranch);
+    this.conflicts = options.conflicts;
   }
 
   private syncGhTarget(): { account: GitHubAccount; host: string } {
@@ -586,7 +589,7 @@ export class SyncEngine {
         const b = (await handle.git.raw('rev-parse', '--abbrev-ref', 'HEAD')).trim();
         if (b && b !== 'HEAD') {
           this.currentBranch = b;
-          this.conflictStore.setBranch(b);
+          this.conflicts.setBranch(b);
         }
       } catch {}
     } catch (e) {
@@ -614,42 +617,11 @@ export class SyncEngine {
     const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
     const mergeInProgress = mergeHeadPath !== null && existsSync(mergeHeadPath);
 
-    this.conflictCount = this.conflictStore.count();
-    const mergeNativeEntries = () =>
-      this.conflictStore.list().filter((e) => e.variant !== 'working-tree');
+    await this.conflicts.pruneMergeNativeAgainstGit();
+    const hasMergeNative = (): boolean =>
+      this.conflicts.list().some((e) => e.kind === 'merge-native');
 
-    if (mergeNativeEntries().length > 0 && !mergeInProgress) {
-      log.warn(
-        { count: mergeNativeEntries().length },
-        '[sync] persisted merge conflicts but no MERGE_HEAD — clearing stale state',
-      );
-      for (const entry of mergeNativeEntries()) this.conflictStore.removeConflict(entry.file);
-      this.conflictCount = this.conflictStore.count();
-    } else if (mergeNativeEntries().length > 0 && mergeInProgress) {
-      try {
-        const handle = this.gitHandle();
-        const stillUnmerged = new Set(
-          await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']),
-        );
-        const before = this.conflictCount;
-        for (const entry of mergeNativeEntries()) {
-          if (!stillUnmerged.has(entry.file)) {
-            this.conflictStore.removeConflict(entry.file);
-          }
-        }
-        this.conflictCount = this.conflictStore.count();
-        if (this.conflictCount < before) {
-          log.info(
-            { cleared: before - this.conflictCount, remaining: this.conflictCount },
-            '[sync] reconciled conflicts.json against git unmerged index',
-          );
-        }
-      } catch (e) {
-        log.warn({ err: e }, '[sync] failed to reconcile conflicts with git index');
-      }
-    }
-
-    if (mergeInProgress && mergeNativeEntries().length === 0) {
+    if (mergeInProgress && !hasMergeNative()) {
       log.warn({}, '[sync] stale MERGE_HEAD detected with no tracked conflicts — aborting merge');
       try {
         const handle = this.gitHandle();
@@ -659,22 +631,15 @@ export class SyncEngine {
       }
     }
 
-    if (mergeNativeEntries().length > 0) {
-      await this.notifyContentConflictsDetected(
-        this.conflictStore.list().map((entry) => entry.file),
-      );
+    this.subscribeToConflicts();
+
+    if (hasMergeNative()) {
       this.transitionTo('conflict');
       log.warn(
         { count: this.conflictCount },
         '[sync] restarted with active conflicts — sync paused',
       );
       return;
-    }
-    const workingTreeEntries = this.conflictStore
-      .list()
-      .filter((e) => e.variant === 'working-tree');
-    if (workingTreeEntries.length > 0) {
-      await this.notifyContentConflictsDetected(workingTreeEntries.map((entry) => entry.file));
     }
 
     if (this.mode === 'follow') await this.refreshAuthTier();
@@ -693,6 +658,8 @@ export class SyncEngine {
   }
 
   stop(): void {
+    this.unsubscribeConflicts?.();
+    this.unsubscribeConflicts = null;
     if (this.pullTimer !== null) {
       clearTimeout(this.pullTimer);
       this.pullTimer = null;
@@ -1353,94 +1320,23 @@ export class SyncEngine {
     }
   }
 
-  getConflicts(): import('./conflict-storage.ts').ConflictEntry[] {
-    return this.conflictStore.list();
-  }
-
-  async reconcileConflictsFromGit(): Promise<void> {
-    const mergeNative = this.conflictStore.list().filter((e) => e.variant !== 'working-tree');
-    if (mergeNative.length === 0) return;
-    const before = this.conflictCount;
-    const gitDir = resolveGitDir(this.projectDir);
-    const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
-    const mergeInProgress = mergeHeadPath !== null && existsSync(mergeHeadPath);
-
-    if (!mergeInProgress) {
-      log.info(
-        { cleared: mergeNative.length },
-        '[sync] external resolve detected (no MERGE_HEAD) — clearing merge-native conflicts',
-      );
-      for (const entry of mergeNative) this.conflictStore.removeConflict(entry.file);
-      this.conflictCount = this.conflictStore.count();
-    } else {
-      try {
-        const handle = this.gitHandle();
-        const stillUnmerged = new Set(
-          await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']),
-        );
-        for (const entry of mergeNative) {
-          if (!stillUnmerged.has(entry.file)) {
-            this.conflictStore.removeConflict(entry.file);
-          }
-        }
-        this.conflictCount = this.conflictStore.count();
-        if (this.conflictCount < before) {
-          log.info(
-            { cleared: before - this.conflictCount, remaining: this.conflictCount },
-            '[sync] external resolve detected (mid-merge) — pruned resolved entries',
-          );
-        }
-      } catch (err) {
-        log.warn({ err }, '[sync] reconcileConflictsFromGit: git probe failed');
+  private subscribeToConflicts(): void {
+    if (this.unsubscribeConflicts !== null) return;
+    this.unsubscribeConflicts = this.conflicts.subscribe(() => {
+      const blocking = this.conflicts.list().some((e) => e.kind === 'merge-native');
+      if (blocking && this.state !== 'conflict') {
+        this.transitionTo('conflict');
+        this.scheduleSaveState();
         return;
       }
-    }
-
-    if (this.conflictCount === before) return;
-    if (this.conflictCount === 0) {
-      this.transitionTo('idle');
-      this.pausedReason = undefined;
-      this.schedulePull();
-      this.schedulePush(0);
-    } else {
-      this.cc1Broadcaster?.signal('sync-status');
-    }
-    this.scheduleSaveState();
-  }
-
-  async resolveConflict(
-    file: string,
-    strategy: import('./conflict-storage.ts').ResolveStrategy,
-    content?: string,
-  ): Promise<void> {
-    const wasWorkingTree =
-      this.conflictStore.list().find((c) => c.file === file)?.variant === 'working-tree';
-    this.setBatchInProgress?.(true);
-    try {
-      try {
-        await this.conflictStore.resolveConflict(file, strategy, content);
-      } catch (e) {
-        this.conflictCount = this.conflictStore.count();
-        this.scheduleSaveState();
-        throw e;
-      }
-      if (wasWorkingTree) {
-        log.info({ choice: strategy }, '[sync] pull-only: conflict resolved by choice');
-      }
-      await this.notifyContentConflictsResolved([file]);
-      this.conflictCount = this.conflictStore.count();
-      if (this.conflictCount === 0) {
+      if (!blocking && this.state === 'conflict') {
         this.transitionTo('idle');
         this.pausedReason = undefined;
         this.schedulePull();
-        this.schedulePush(0);
-      } else {
-        this.cc1Broadcaster?.signal('sync-status');
+        this.schedulePush();
+        this.scheduleSaveState();
       }
-      this.scheduleSaveState();
-    } finally {
-      this.setBatchInProgress?.(false);
-    }
+    });
   }
 
   updateCurrentBranch(branch: string | null): void {
@@ -1452,7 +1348,7 @@ export class SyncEngine {
       }
     } else if (this.currentBranch !== branch) {
       this.currentBranch = branch;
-      this.conflictStore.setBranch(branch);
+      this.conflicts.setBranch(branch);
       if (this.state === 'disabled' && this.pausedReason === 'detached-head') {
         this.pausedReason = undefined;
         this.transitionTo('idle');
@@ -1718,9 +1614,9 @@ export class SyncEngine {
       return 'error';
     }
 
-    const existing = new Map<string, ConflictEntry>();
-    for (const e of this.conflictStore.list()) {
-      if (e.variant === 'working-tree') existing.set(e.file, e);
+    const existing = new Map<string, Extract<Conflict, { kind: 'working-tree' }>>();
+    for (const e of this.conflicts.list()) {
+      if (e.kind === 'working-tree') existing.set(e.file, e);
     }
 
     let plan: Awaited<ReturnType<typeof this.planOverlapReconciliation>>;
@@ -1798,24 +1694,11 @@ export class SyncEngine {
         this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'pull');
         return 'error';
       }
-      let conflictsPersisted = true;
       for (const entry of plan.upserts) {
-        conflictsPersisted = this.conflictStore.addConflict(entry) && conflictsPersisted;
+        this.conflicts.raise(entry);
       }
       for (const file of plan.dissolved) {
-        conflictsPersisted = this.conflictStore.removeConflict(file) && conflictsPersisted;
-      }
-      this.conflictCount = this.conflictStore.count();
-      if (!conflictsPersisted) {
-        log.error(
-          {},
-          '[sync] pull-only: failed to persist conflict state after fast-forward — surfacing as error',
-        );
-        this.handleError(
-          classifyGitError(new Error('failed to persist conflict state after fast-forward')),
-          'pull',
-        );
-        return 'error';
+        this.conflicts.dissolveWorkingTree(file);
       }
 
       this.lastSyncUtc = new Date().toISOString();
@@ -1824,16 +1707,6 @@ export class SyncEngine {
       this.pausedReason = undefined;
       this.blockingPaths = [];
       this.transitionTo('idle');
-
-      if (plan.newConflicts.length > 0) {
-        await this.notifyContentConflictsDetected(plan.newConflicts);
-      }
-      if (plan.dissolved.length > 0) {
-        await this.notifyContentConflictsResolved(plan.dissolved);
-      }
-      if (plan.newConflicts.length > 0 || plan.dissolved.length > 0) {
-        this.cc1Broadcaster?.signal('sync-status');
-      }
 
       const overlayStock = await this.countStandingOverlay(handle);
       log.info(
@@ -1899,12 +1772,12 @@ export class SyncEngine {
     branch: string,
     oldHead: string,
     overlapping: string[],
-    existing: Map<string, ConflictEntry>,
+    existing: Map<string, Extract<Conflict, { kind: 'working-tree' }>>,
   ): Promise<{
     writes: Array<{ path: string; bytes: Buffer }>;
     mineRestore: Array<{ path: string; bytes: Buffer }>;
     deletions: string[];
-    upserts: ConflictEntry[];
+    upserts: Array<Extract<RaiseInput, { kind: 'working-tree' }>>;
     dissolved: string[];
     newConflicts: string[];
     autoCombined: string[];
@@ -1913,7 +1786,7 @@ export class SyncEngine {
     const writes: Array<{ path: string; bytes: Buffer }> = [];
     const mineRestore: Array<{ path: string; bytes: Buffer }> = [];
     const deletions: string[] = [];
-    const upserts: ConflictEntry[] = [];
+    const upserts: Array<Extract<RaiseInput, { kind: 'working-tree' }>> = [];
     const dissolved: string[] = [];
     const newConflicts: string[] = [];
     const autoCombined: string[] = [];
@@ -2039,11 +1912,10 @@ export class SyncEngine {
         continue;
       }
       upserts.push({
+        kind: 'working-tree',
         file: p,
-        detectedAt: priorEntry?.detectedAt ?? new Date().toISOString(),
-        variant: 'working-tree',
         theirsSha,
-        baseSha,
+        ...(baseSha === undefined ? {} : { baseSha }),
       });
       if (!hadEntry) newConflicts.push(p);
     }
@@ -3292,10 +3164,8 @@ export class SyncEngine {
 
     if (contentConflicts.length > 0) {
       for (const file of contentConflicts) {
-        this.conflictStore.addConflict({ file, detectedAt: new Date().toISOString() });
+        this.conflicts.raise({ kind: 'merge-native', file });
       }
-      this.conflictCount = this.conflictStore.count();
-      await this.notifyContentConflictsDetected(contentConflicts);
 
       if (this.pullTimer !== null) {
         clearTimeout(this.pullTimer);
@@ -3339,24 +3209,6 @@ export class SyncEngine {
           '[sync] could not finalize merge after auto-resolving conflicts — merge aborted',
         );
       }
-    }
-  }
-
-  private async notifyContentConflictsDetected(files: string[]): Promise<void> {
-    if (files.length === 0) return;
-    try {
-      await this.onContentConflictsDetected?.(files);
-    } catch (err) {
-      log.warn({ err, files }, '[sync] content conflict callback failed');
-    }
-  }
-
-  private async notifyContentConflictsResolved(files: string[]): Promise<void> {
-    if (files.length === 0) return;
-    try {
-      await this.onContentConflictsResolved?.(files);
-    } catch (err) {
-      log.warn({ err, files }, '[sync] content conflict resolved callback failed');
     }
   }
 
@@ -3550,7 +3402,6 @@ export class SyncEngine {
         pushStreakIsConnectivity: this.pushStreakIsConnectivity,
         pausedReason: persistedReason,
         pausedSinceUtc: persistedReason ? new Date().toISOString() : undefined,
-        inflightConflicts: this.conflictStore.list().map((c) => c.file),
       };
       const tmpStatePath = `${this.statePath}.tmp`;
       tracedWriteFileSync(tmpStatePath, JSON.stringify(data, null, 2), 'utf-8');
@@ -3584,16 +3435,6 @@ export class SyncEngine {
         );
       }
       this.pausedReason = NON_RESTORED_PAUSES.has(storedReason) ? undefined : storedReason;
-
-      const inflightFiles = data.inflightConflicts ?? [];
-      if (inflightFiles.length > 0) {
-        for (const file of inflightFiles) {
-          if (!this.conflictStore.list().some((c) => c.file === file)) {
-            this.conflictStore.addConflict({ file, detectedAt: new Date().toISOString() });
-          }
-        }
-        this.conflictCount = this.conflictStore.count();
-      }
     } catch (e) {
       log.warn({ err: e }, '[sync] failed to load sync state');
     }

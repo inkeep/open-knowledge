@@ -1219,6 +1219,10 @@ msgstr "<{componentName}> ليس مكوّنًا معروفًا. انسخ الم�
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "تعذّر عرض <{descriptorLabel}> (على الأرجح خاصية غير صالحة). انسخ المصدر لمعرفة الخطأ، أو احذف الكتلة."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "تعذّر دمج <0>{filePath}</0> هنا. اختر النسخة التي تريد الاحتفاظ بها."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>مرآة — اختر مصدرًا.</0> اضبط <1>src</1> + <2>anchor</2> من لوحة الخصائص للإشارة إلى <3><MirrorSource></3> في مكان آخر."
@@ -3908,10 +3912,6 @@ msgstr "تعذّر تغيير التدقيق الإملائي. حاول مرة �
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "تعذّر تغيير لغات التدقيق الإملائي. حاول مرة أخرى."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "تعذر التحقق مما إذا كان {filePath} لا يزال متعارضًا — تجري إعادة المحاولة."
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4788,6 +4788,10 @@ msgstr "حذف الجدول المحدد"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "حذف الجدول"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "حذف الملف"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9021,6 +9025,10 @@ msgstr "لا توجد تعليقات بعد. حدد نصًا في المستند
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "لا يوجد سلف مشترك — أضاف كلا الفرعين هذا الملف (تعارض إضافة/إضافة)."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "لا يتم تتبّع أي تعارض لهذا المسار."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "لا تغييرات في المحتوى في هذه النسخة."
@@ -11475,10 +11483,6 @@ msgstr "معروض"
 msgid "Reopen"
 msgstr "إعادة فتح"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "أعد فتح {filePath} لمواصلة التحرير."
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr "إعادة فتح محادثة سابقة"
@@ -13109,6 +13113,10 @@ msgstr "لا تظهر بعض السمات المحفوظة لأن مجلد ال�
 msgid "Some skills were deleted with a warning"
 msgstr "تم حذف بعض المهارات مع تحذير"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "ربما يكون شخص ما قد حلّ التعارض في {filePath} بالفعل — تحقّق من المحتوى الحالي للمستند قبل إعادة تنفيذ تعديلك."
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "حدث عطل"
@@ -14389,10 +14397,6 @@ msgstr "هذا التعليق على الخاصية بأكملها"
 msgid "This composer doesn't accept attachments."
 msgstr "لا يمكن إرفاق الملفات هنا."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "تم حل هذا التعارض."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr "تعذّر إعداد هذا لأن إدخال خادم MCP الذي يحتاجه لم تتم كتابته."
@@ -15491,6 +15495,10 @@ msgstr "استخدم الحروف الصغيرة والأرقام و<0>-</0> ف�
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "استخدم الحروف الصغيرة والأرقام والشرطات فقط"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "استخدام نسختهم"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"

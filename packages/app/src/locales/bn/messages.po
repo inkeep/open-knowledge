@@ -1215,6 +1215,10 @@ msgstr "<{componentName}> একটি পরিচিত কম্পোনে�
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> রেন্ডার করা যায়নি (সম্ভবত একটি ভুল প্রপ)। কী ভুল হয়েছে দেখতে সোর্স কপি করুন, নয়তো ব্লকটি মুছে দিন।"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> এখানে মার্জ করা যাবে না। কোন সংস্করণটি রাখবেন বেছে নিন।"
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>মিরর — একটি উৎস বাছুন।</0> অন্য কোথাও থাকা কোনো <3><MirrorSource></3>-এর দিকে নির্দেশ করতে প্রপার্টি প্যানেল থেকে <1>src</1> + <2>anchor</2> নির্ধারণ করুন।"
@@ -3904,10 +3908,6 @@ msgstr "বানান পরীক্ষা পরিবর্তন করা
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "বানান পরীক্ষার ভাষা পরিবর্তন করা যায়নি। আবার চেষ্টা করুন।"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "{filePath}-এ এখনও কনফ্লিক্ট আছে কি না যাচাই করা যায়নি — আবার চেষ্টা করা হচ্ছে।"
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4784,6 +4784,10 @@ msgstr "নির্বাচিত টেবিল মুছুন"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "টেবিল মুছুন"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "ফাইলটি মুছে ফেলুন"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9017,6 +9021,10 @@ msgstr "এখনও কোনো মন্তব্য নেই। একট�
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "কোনও সাধারণ পূর্বসূরি নেই — উভয় ব্রাঞ্চ এই ফাইলটি যোগ করেছে (add/add দ্বন্দ্ব)।"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "এই পাথের জন্য কোনো দ্বন্দ্ব ট্র্যাক করা হচ্ছে না।"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "এই সংস্করণে বিষয়বস্তুর কোনো পরিবর্তন নেই।"
@@ -11471,10 +11479,6 @@ msgstr "রেন্ডার করা"
 msgid "Reopen"
 msgstr "আবার খুলুন"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "সম্পাদনা চালিয়ে যেতে {filePath} আবার খুলুন।"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr "আগের চ্যাট আবার খুলুন"
@@ -13105,6 +13109,10 @@ msgstr "থিম ফোল্ডারটি স্ক্যানের সী
 msgid "Some skills were deleted with a warning"
 msgstr "কিছু স্কিল সতর্কবার্তাসহ মুছে ফেলা হয়েছে"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "হয়তো কেউ ইতিমধ্যেই {filePath}-এর দ্বন্দ্ব সমাধান করে ফেলেছেন — আপনার সম্পাদনা আবার করার আগে নথির বর্তমান বিষয়বস্তু দেখে নিন।"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "কিছু ভেঙে গেছে"
@@ -14385,10 +14393,6 @@ msgstr "এই মন্তব্যটি পুরো প্রপার্ট
 msgid "This composer doesn't accept attachments."
 msgstr "এখানে ফাইল যুক্ত করা যায় না।"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "এই দ্বন্দ্বটি সমাধান হয়েছে।"
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr "এটি সেট আপ করা যায়নি কারণ এর প্রয়োজনীয় MCP সার্ভার এন্ট্রি লেখা হয়নি।"
@@ -15487,6 +15491,10 @@ msgstr "কেবল ছোট হাতের অক্ষর, অঙ্ক ও
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "কেবল ছোট হাতের অক্ষর, সংখ্যা ও হাইফেন ব্যবহার করুন"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "তাদের সংস্করণ ব্যবহার করুন"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"

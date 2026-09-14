@@ -101,6 +101,11 @@
       ") di ",
       ["targetLabel"]
     ],
+    "0bV3uj": [
+      "Mungkin seseorang sudah menyelesaikan ",
+      ["filePath"],
+      " — periksa isi dokumen saat ini sebelum mengulangi suntingan Anda."
+    ],
     "0cGsQh": ["Yang disertakan"],
     "0cspe_": ["Hapus baris"],
     "0dslv8": [
@@ -342,6 +347,7 @@
     "3aeN7X": ["Semua berkas"],
     "3cOo2C": ["Membuat folder dari konteks dokumen atau folder saat ini."],
     "3ePd3I": ["Yang baru"],
+    "3fOsvq": ["Pakai versi mereka"],
     "3h5zMp": ["Ada yang tidak beres saat memuat panel pengaturan."],
     "3iyGWF": ["Buka proyek terbaru"],
     "3jod3l": ["Hubungkan GitHub"],
@@ -2320,6 +2326,7 @@
     "RB_g_C": [
       "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
     ],
+    "RCMt3v": ["Tidak ada konflik yang dilacak untuk jalur ini."],
     "RD6H9q": [
       "Open Knowledge menulis ulang file index.md ini seiring perubahan dokumen, sehingga pengeditan manual pada file tersebut diganti."
     ],
@@ -2375,6 +2382,11 @@
     "Rah7yq": ["Apa yang harus dilakukan AI? (opsional)"],
     "Rb1zMa": ["Tanpa cuplikan"],
     "RcrskJ": ["Format terlihat salah"],
+    "RduDYw": [
+      "<0>",
+      ["filePath"],
+      "</0> tidak bisa digabungkan di sini. Pilih versi yang ingin disimpan."
+    ],
     "RfHNf8": ["Buka panel aktivitas untuk ", ["tooltipName"]],
     "RfaEio": ["Komentari atau batalkan komentar di sumber"],
     "RfilGt": ["Tidak ada aturan yang cocok dengan filter Anda."],
@@ -2443,6 +2455,7 @@
     "SXCSQd": ["Jalur disalin"],
     "SXEdCq": ["Pindahkan ke ", ["0"], "?"],
     "SYfHmN": ["Lepas sematan tab"],
+    "S_RRZB": ["Hapus berkas"],
     "Sad2tK": ["Mengirim…"],
     "Sbb90e": [
       [
@@ -2888,7 +2901,6 @@
     "XwZiq2": [
       "Berkas dipulihkan ke versi yang lebih lama. Yang sekarang adalah versi yang dilindungi OpenKnowledge. Yang masuk adalah versi yang dipulihkan. Pilih versi yang ingin dipertahankan, lalu terapkan perubahan Anda."
     ],
-    "XzL7x7": ["Buka kembali ", ["filePath"], " untuk melanjutkan penyuntingan."],
     "Xzy0s0": ["Hapus ", ["fullLabel"], " dari konteks"],
     "Y-Urt2": ["Persamaan matematika blok yang dirender dengan KaTeX dari sumber LaTeX."],
     "Y1QMlM": ["Mulai siapkan"],
@@ -3827,7 +3839,6 @@
       "Simpan catatan tertulis tentang bagaimana produk Anda dibangun. Rumah untuk mengusulkan ide, mencatat keputusan, menulis spesifikasi, dan merekam apa yang Anda pelajari setelah sesuatu rusak."
     ],
     "hCattk": ["OpenKnowledge mengimpor ", ["source"]],
-    "hCghAK": ["Konflik ini sudah diselesaikan."],
     "hDEaQu": ["Hubungkan OpenKnowledge dengan alat lain yang Anda pakai."],
     "hDKtoF": [["diffHrs"], " j lalu"],
     "hDoLrm": ["Hapus ", ["projectName"], " dari proyek terbaru"],
@@ -4059,7 +4070,6 @@
       "Menyematkan halaman eksternal dalam iframe sebaris (dokumentasi, demo, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Aktifkan Otomatis (hanya Pull)"],
-    "jTdrn1": ["Tidak dapat memeriksa apakah ", ["filePath"], " masih berkonflik — mencoba lagi."],
     "jWwQo6": ["batch"],
     "jWzDfC": ["Memeriksa alat AI yang Anda miliki"],
     "jZ_E5M": ["Fetch gagal — periksa log server untuk detailnya."],

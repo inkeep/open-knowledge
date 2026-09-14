@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import type { GitHandle } from './git-handle.ts';
 import {
   type CheckPushPermissionOptions,
@@ -118,6 +119,7 @@ async function runAgreementScenario(opts: {
   };
 
   const engine = new SyncEngine({
+    conflicts: createTestConflictAuthority(projectDir, contentDir),
     projectDir,
     contentDir,
     contentFilter: stubContentFilter,

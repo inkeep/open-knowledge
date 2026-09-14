@@ -1215,6 +1215,10 @@ msgstr ""
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr ""
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr ""
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr ""
@@ -3904,10 +3908,6 @@ msgstr ""
 msgid "Couldn't change the spelling languages. Try again."
 msgstr ""
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr ""
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4783,6 +4783,10 @@ msgstr ""
 
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
+msgstr ""
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
 msgstr ""
 
 #: src/components/acp/ThreadHistoryMenu.tsx
@@ -9017,6 +9021,10 @@ msgstr ""
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr ""
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr ""
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr ""
@@ -11471,10 +11479,6 @@ msgstr ""
 msgid "Reopen"
 msgstr ""
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr ""
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr ""
@@ -13105,6 +13109,10 @@ msgstr ""
 msgid "Some skills were deleted with a warning"
 msgstr ""
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr ""
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr ""
@@ -14385,10 +14393,6 @@ msgstr ""
 msgid "This composer doesn't accept attachments."
 msgstr ""
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr ""
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr ""
@@ -15486,6 +15490,10 @@ msgstr ""
 
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
+msgstr ""
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
 msgstr ""
 
 #: src/components/CreateProjectDialog.tsx

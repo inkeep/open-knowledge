@@ -40,7 +40,6 @@ import {
   resolveLocalAutoSyncMode,
   type SyncMode,
   type SyncModeChangeSource,
-  stripFrontmatter,
   toEffectiveBase,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -72,7 +71,6 @@ import {
   parseHocuspocusAuthToken,
 } from './auth-token-schema.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
-import type { PrecomputedParse } from './bridge-intake.ts';
 import {
   type BridgeDeriveLossReporter,
   createBridgeDeriveLossReporter,
@@ -92,13 +90,7 @@ import {
   startMultiPathConfigFileWatcher,
 } from './config-file-watcher.ts';
 import { applyExternalConfigChange, isConfigEcho } from './config-persistence.ts';
-import { isDocInConflict } from './conflict-errors.ts';
-import {
-  createConflictLifecycleSeedExtension,
-  entryMatchesDocName,
-} from './conflict-lifecycle-seed.ts';
-import { requireConflictResolutionContent } from './conflict-resolution-input.ts';
-import type { ResolveStrategy } from './conflict-storage.ts';
+import { bindConflictAuthority, ConflictAuthority } from './conflict-authority.ts';
 import { type GeneratedArtifactEnv, writeGeneratedArtifact } from './content/generated-artifact.ts';
 import {
   type GeneratedIndexGitAttributesStatus,
@@ -116,11 +108,7 @@ import {
   planDirectoryIndexRegenerations,
   ROOT_INDEX_DOC_NAME,
 } from './content/regenerate-index.ts';
-import {
-  type ContentFilter,
-  createContentFilter,
-  isShareableOkArtifact,
-} from './content-filter.ts';
+import { type ContentFilter, createContentFilter } from './content-filter.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { dropPendingDocs, recordContributor } from './contributor-tracker.ts';
 import {
@@ -133,7 +121,6 @@ import {
   docNameToRelativePath,
   getDocExtension,
   isRegisteredMarkdownDocName,
-  stripDocExtension,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
@@ -165,8 +152,14 @@ import {
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
-import { normalizeFsPath, tracedAtomicFs, tracedMkdirSync, tracedUnlinkSync } from './fs-traced.ts';
-import { buildSyncCredentialConfig } from './git-handle.ts';
+import {
+  normalizeFsPath,
+  tracedAtomicFs,
+  tracedMkdirSync,
+  tracedUnlinkSync,
+  tracedWriteFileSync,
+} from './fs-traced.ts';
+import { buildSyncCredentialConfig, createGitInstance } from './git-handle.ts';
 import type {
   CheckPushPermissionOptions,
   DetectGhAccountsFn,
@@ -273,7 +266,6 @@ import {
 import { readOriginGitHubRepo, shouldResetAmbientCredentials } from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
-import { assertRealpathWithinDir } from './symlink-guard.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extension.ts';
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
@@ -367,6 +359,7 @@ export interface ServerInstance {
   readonly degraded: readonly string[];
   readonly lockDir: string;
   readonly syncEngine: SyncEngine | null;
+  readonly conflicts: ConflictAuthority;
   readonly getLinkPreviewsEnabled: () => boolean;
   readonly resolveEmbed: (basename: string, sourcePath: string) => string | null;
   readonly acpRegistry: AcpRegistry;
@@ -489,10 +482,14 @@ export function createServer(options: ServerOptions): ServerInstance {
   } = options;
 
   const log = getLogger('server');
-  const lockDir = getLocalDir(projectDir);
-  const durabilityState = new DocumentDurabilityState('main', {
-    persistencePath: join(lockDir, 'stale-external-writes.json'),
-    onStaleExternalWriteChange: () => signalChannel('sync-status'),
+  let cc1Broadcaster: CC1Broadcaster | null = null;
+  const initialBranch = readProjectHeadState(projectDir).branch ?? 'main';
+  const durabilityState = new DocumentDurabilityState(initialBranch, {
+    persistencePath: join(getLocalDir(projectDir), 'stale-external-writes.json'),
+    onStaleExternalWriteChange: () => {
+      cc1Broadcaster?.signal('sync-status');
+      hydrateStaleExternalWrites();
+    },
     fileForDocName: (docName) =>
       relative(projectDir, safeContentPath(docName, contentDir)).replaceAll('\\', '/'),
     hasResolvedExtension: isRegisteredMarkdownDocName,
@@ -505,7 +502,81 @@ export function createServer(options: ServerOptions): ServerInstance {
   const switchReconciledBaseScope = (branch: string) =>
     durabilityState.switchReconciledBaseScope(branch);
   const setBatchInProgress = (value: boolean) => durabilityState.setBatchInProgress(value);
+  const setBatchInProgressAndDrain = (value: boolean) => {
+    setBatchInProgress(value);
+    if (!value) {
+      void persistence.flushDeferredStores('within-branch').catch((err) => {
+        log.error({ err }, '[persistence] deferred store drain failed after batch');
+      });
+    }
+  };
   const isBatchInProgress = () => durabilityState.isBatchInProgress();
+
+  const conflicts = new ConflictAuthority({
+    projectDir,
+    contentDir,
+    branch: initialBranch,
+    signal: { signal: (channel) => cc1Broadcaster?.signal(channel) },
+    io: {
+      gitRaw: async (args) =>
+        createGitInstance(projectDir, { credentialConfig: [], timeoutMs: 30_000 }).git.raw(args),
+      writeProjectFileUntracked: (absPath, bytes) => tracedWriteFileSync(absPath, bytes, 'utf-8'),
+      unlinkProjectFile: (absPath) => tracedUnlinkSync(absPath),
+      applyResolvedContent: async (docName, absPath, bytes) => {
+        registerWrite(absPath, contentHash(bytes));
+        await atomicWriteFile(absPath, bytes, { fs: tracedAtomicFs });
+        if (hocuspocus.documents.get(docName)) applyToDoc(docName, bytes);
+        setReconciledBase(docName, bytes);
+        await derivedDocumentIndex.recordDiskUpsert(docName, bytes);
+      },
+      readLiveContent: (docName) => serializeDoc(docName),
+      finalizeReconcileResolution: async (entry, strategy, docName) => {
+        if (entry.reason === 'stale-external-write') {
+          if (strategy === 'mine' || strategy === 'content') {
+            durabilityState.recordDisplacedVersion(docName, entry.stages.theirs);
+          } else {
+            durabilityState.clearDisplacedVersions(docName);
+          }
+          durabilityState.clearStaleExternalWrite(docName);
+        }
+        const document = hocuspocus.documents.get(docName);
+        const lifecycle = document?.getMap('lifecycle');
+        if (strategy === 'delete') {
+          deleteReconciledBase(docName);
+          await derivedDocumentIndex.recordDiskDelete(docName);
+          lifecycle?.set('status', 'deleted-upstream');
+          lifecycle?.delete('reason');
+          lifecycle?.delete('detectedAt');
+          if (document) hocuspocus.closeConnections(docName);
+          onUpstreamDelete(docName);
+          scheduleIndexRegenerationAfterRemoval(docName);
+        } else if (lifecycle?.get('reason') === entry.reason) {
+          lifecycle.delete('status');
+          lifecycle.delete('reason');
+          lifecycle.delete('detectedAt');
+        }
+        signalChannel('files');
+      },
+    },
+  });
+
+  function hydrateStaleExternalWrites(): void {
+    for (const stale of durabilityState.listStaleExternalWrites()) {
+      const base = getReconciledBase(stale.docName) ?? stale.diskContent;
+      conflicts.raise({
+        kind: 'reconcile',
+        file: stale.file,
+        reason: 'stale-external-write',
+        detectedAt: stale.detectedAt,
+        stages: {
+          base,
+          ours: stale.retainedContent ?? base,
+          theirs: stale.diskContent,
+        },
+      });
+    }
+  }
+  hydrateStaleExternalWrites();
 
   function readProjectAttachmentFolderPath(options?: { requireValid?: boolean }): string {
     const project = readConfigSafely({
@@ -759,6 +830,8 @@ export function createServer(options: ServerOptions): ServerInstance {
 
   const serverInstanceId = randomUUID();
 
+  const lockDir = getLocalDir(projectDir);
+
   const acpRegistry = new AcpRegistry({
     localDir: lockDir,
     log: getLogger('acp-registry'),
@@ -820,7 +893,6 @@ export function createServer(options: ServerOptions): ServerInstance {
   let nativeApi: NativeApiHandle;
   let localApi: LocalApiDispatch;
   let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
-  let cc1Broadcaster: CC1Broadcaster | null = null;
   let inPlaceRescanTimer: ReturnType<typeof setTimeout> | null = null;
   let shadowWarmupTimer: ReturnType<typeof setTimeout> | null = null;
   const IN_PLACE_RESCAN_DEBOUNCE_MS = 500;
@@ -904,7 +976,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       | 'tags'
       | 'comments'
       | 'lint-config'
-      | 'sync-status'
       | 'local-targets',
   ): void {
     cc1Broadcaster?.signal(channel);
@@ -1193,10 +1264,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   const generatedArtifactEnv: GeneratedArtifactEnv = {
     origin: GENERATED_ARTIFACT_ORIGIN,
     writer: OK_GENERATOR_WRITER,
-    isConflict: (docName) =>
-      syncEngine
-        ?.getConflicts()
-        .some((entry) => entryMatchesDocName(entry, docName, projectDir, contentDir)) === true,
+    isConflict: (docName) => conflicts.has(docName),
     getDocument: (docName) => hocuspocus.documents.get(docName),
     writeDisk: async (absPath, markdown) => {
       tracedMkdirSync(dirname(absPath), { recursive: true });
@@ -1598,6 +1666,8 @@ export function createServer(options: ServerOptions): ServerInstance {
     const persistenceOpts: PersistenceOptions = {
       contentDir,
       projectDir,
+      conflicts,
+      lifecycleOf: (document, docName) => conflicts.lifecycleOf(document, docName),
       gitEnabled,
       commitDebounceMs,
       wipRef,
@@ -1681,6 +1751,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     if (!ephemeral) {
       stalenessWatchdog = createPersistenceStalenessWatchdog({
         getLoadedDocuments: () => hp.documents,
+        lifecycleOf: (document, documentName) => conflicts.lifecycleOf(document, documentName),
         forceStore: (document, documentName) => persistence.forceStore(document, documentName),
         getBase: (documentName) => durabilityState.getReconciledBase(documentName),
         isBatchActive: () => durabilityState.isBatchInProgress(),
@@ -1981,6 +2052,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       agentPresenceBroadcaster,
       onAgentWrite: options.onAgentWrite,
       getSyncEngine: () => syncEngine,
+      conflicts,
+      setBatchInProgress: setBatchInProgressAndDrain,
       localOpCliArgs,
       authStreamHeartbeatMs,
       projectDir,
@@ -1992,84 +2065,9 @@ export function createServer(options: ServerOptions): ServerInstance {
       loadAcpCustomAgents: () => loadCustomAgents(lockDir, getLogger('acp-registry')),
       homeDirOverride: configHomedirOverride,
       forceUnloadDocument,
-      resetDocumentDurability: deleteReconciledBase,
       ready,
       recentlyRemovedDocs,
       serializeDoc,
-      resolveStaleExternalWrite: async (
-        file: string,
-        strategy: ResolveStrategy,
-        content?: string,
-      ) => {
-        const requestedFile = file.replaceAll('\\', '/');
-        const staleConflict = durabilityState
-          .listStaleExternalWrites()
-          .find((entry) => entry.file === requestedFile);
-        if (!staleConflict) return false;
-        const { docName } = staleConflict;
-        const absolute = resolve(projectDir, staleConflict.file);
-        if (!isWithinContentDir(absolute, contentDir)) return false;
-        const target = assertRealpathWithinDir(absolute, contentDir, {
-          allowShareableOkArtifact: isShareableOkArtifact,
-        });
-        const document = hocuspocus.documents.get(docName);
-        const lifecycle = document?.getMap('lifecycle');
-
-        if (strategy === 'delete') {
-          if (existsSync(target)) tracedUnlinkSync(target);
-          await derivedDocumentIndex.recordDiskDelete(docName);
-          scheduleIndexRegenerationAfterRemoval(docName);
-          deleteReconciledBase(docName);
-          lifecycle?.set('status', 'deleted-upstream');
-        } else {
-          let resolved: string | null | undefined;
-          switch (strategy) {
-            case 'mine':
-              resolved =
-                serializeDoc(docName) ??
-                staleConflict.retainedContent ??
-                getReconciledBase(docName);
-              break;
-            case 'theirs':
-              resolved = staleConflict.diskContent;
-              break;
-            case 'content':
-              resolved = requireConflictResolutionContent(file, content);
-              break;
-            default: {
-              const exhaustive: never = strategy;
-              throw new Error(`[conflicts] unknown resolve strategy: ${exhaustive}`);
-            }
-          }
-          if (resolved === null || resolved === undefined) {
-            throw new Error(`Unable to resolve stale external write for ${file}`);
-          }
-          const parsedJson = mdManager.parseWithFallback(stripFrontmatter(resolved).body, {
-            resolveEmbed,
-            resolveSize,
-            sourcePath: docName,
-          });
-          schema.nodeFromJSON(parsedJson);
-          const precomputed = { rawContent: resolved, parsedJson };
-          await atomicWriteFile(target, resolved, { fs: tracedAtomicFs });
-          registerWrite(target, contentHash(resolved));
-          if (document) applyToDoc(docName, resolved, precomputed);
-          else setReconciledBase(docName, resolved);
-          await derivedDocumentIndex.recordDiskUpsert(docName, resolved);
-        }
-        if (strategy === 'mine' || strategy === 'content') {
-          durabilityState.recordDisplacedVersion(docName, staleConflict.diskContent);
-        } else {
-          durabilityState.clearDisplacedVersions(docName);
-        }
-        durabilityState.clearStaleExternalWrite(docName);
-        if (strategy !== 'delete') lifecycle?.delete('status');
-        lifecycle?.delete('reason');
-        lifecycle?.delete('detectedAt');
-        signalChannel('sync-status');
-        signalChannel('files');
-        return true;
-      },
       evictManagedArtifactLkg: (docName: string) => {
         persistence.managedArtifactCtx.lkgCache.delete(docName);
       },
@@ -2136,13 +2134,11 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     hocuspocus.configuration.extensions.push(createSyncHandshakeSpanExtension());
 
-    hocuspocus.configuration.extensions.push(
-      createConflictLifecycleSeedExtension({
-        getSyncEngine: () => syncEngine,
-        projectDir,
-        contentDir,
-      }),
-    );
+    hocuspocus.configuration.extensions.push({
+      async afterLoadDocument({ document }) {
+        bindConflictAuthority(document, conflicts);
+      },
+    });
   } catch (err) {
     for (const unregister of unregisterWorkloadProviders.splice(0)) {
       unregister();
@@ -2178,7 +2174,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     return serializeYDocSource(document);
   }
 
-  function applyToDoc(docName: string, content: string, precomputed?: PrecomputedParse): void {
+  const applyToDoc = (docName: string, content: string): void =>
     applyExternalChange(
       durabilityState,
       hocuspocus,
@@ -2187,23 +2183,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       resolveEmbed,
       resolveSize,
       bridgeLossReporter,
-      precomputed,
     );
-  }
-
-  function clearLifecycleConflict(document: Document): void {
-    if (!isDocInConflict(document)) return;
-    if (
-      syncEngine
-        ?.getConflicts()
-        .some((entry) => entryMatchesDocName(entry, document.name, projectDir, contentDir))
-    ) {
-      return;
-    }
-    const lifecycleMap = document.getMap('lifecycle');
-    lifecycleMap.delete('status');
-    lifecycleMap.delete('reason');
-  }
 
   const rerenderDocsReferencingAssetBasename = (assetBasename: string): void => {
     if (!assetBasename) return;
@@ -2298,6 +2278,11 @@ export function createServer(options: ServerOptions): ServerInstance {
     return isDirty;
   };
 
+  function dissolveNonGitConflicts(docName: string): void {
+    conflicts.dissolveReconcile(docName);
+    conflicts.dissolveWorkingTree(conflicts.fileOf(docName));
+  }
+
   async function handleDiskEvent(event: DiskEvent): Promise<void> {
     try {
       switch (event.kind) {
@@ -2315,21 +2300,30 @@ export function createServer(options: ServerOptions): ServerInstance {
           if (indexedMetadataChanged(event.previousIndexedFields, theirs, docName)) {
             scheduleIndexRegeneration(docName);
           }
+          if (conflicts.findByDocName(docName)?.kind === 'merge-native') {
+            try {
+              await conflicts.pruneMergeNativeAgainstGit();
+            } catch (err) {
+              log.warn({ err, docName }, '[reconcile] conflict prune against git failed');
+            }
+          }
+
           const document = hocuspocus.documents.get(docName);
           if (!document) {
-            if (refuseStaleExternalWrite(durabilityState, undefined, docName, theirs)) {
-              return;
-            }
+            refuseStaleExternalWrite(durabilityState, undefined, docName, theirs, conflicts);
             await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
             return;
           }
 
-          if (refuseStaleExternalWrite(durabilityState, document, docName, theirs)) {
-            break;
-          }
-
           const base = getReconciledBase(docName) ?? '';
           const ours = serializeDoc(docName) ?? base;
+
+          if (
+            refuseStaleExternalWrite(durabilityState, document, docName, theirs, conflicts, ours)
+          ) {
+            await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+            return;
+          }
 
           const result = reconcile({ docName, base, ours, theirs });
 
@@ -2343,7 +2337,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           switch (result.kind) {
             case 'noop':
-              clearLifecycleConflict(document);
+              conflicts.dissolveReconcile(docName);
               await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
               break;
 
@@ -2354,7 +2348,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                   applyToDoc(docName, result.newContent);
                   setReconciledBase(docName, result.newContent);
                   incrementReconcile();
-                  clearLifecycleConflict(document);
+                  conflicts.dissolveReconcile(docName);
                   applied = true;
                 } catch (e) {
                   log.error(
@@ -2362,7 +2356,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                     `[reconcile] failed to apply clean content to Y.Doc for ${docName}`,
                   );
                   setReconciledBase(docName, theirs);
-                  clearLifecycleConflict(document);
+                  conflicts.dissolveReconcile(docName);
                 }
                 if (applied) {
                   await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
@@ -2377,7 +2371,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                   applyToDoc(docName, result.newContent);
                   setReconciledBase(docName, theirs);
                   incrementReconcile();
-                  clearLifecycleConflict(document);
+                  conflicts.dissolveReconcile(docName);
                   applied = true;
                 } catch (e) {
                   log.error(
@@ -2385,7 +2379,7 @@ export function createServer(options: ServerOptions): ServerInstance {
                     `[reconcile] failed to apply merged content to Y.Doc for ${docName}`,
                   );
                   setReconciledBase(docName, theirs);
-                  clearLifecycleConflict(document);
+                  conflicts.dissolveReconcile(docName);
                 }
                 if (applied) {
                   await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
@@ -2408,11 +2402,12 @@ export function createServer(options: ServerOptions): ServerInstance {
                 );
                 setReconciledBase(docName, theirs);
               }
-              {
-                const lifecycleMap = document.getMap('lifecycle');
-                lifecycleMap.set('status', 'conflict');
-                lifecycleMap.set('reason', 'merged-with-markers');
-              }
+              conflicts.raise({
+                kind: 'reconcile',
+                file: conflicts.fileOf(docName),
+                reason: 'merged-with-markers',
+                stages: { base, ours, theirs },
+              });
               if (applied) {
                 await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
               }
@@ -2421,9 +2416,13 @@ export function createServer(options: ServerOptions): ServerInstance {
 
             case 'refused': {
               incrementConflict();
-              const lifecycleMap = document.getMap('lifecycle');
-              lifecycleMap.set('status', 'conflict');
-              lifecycleMap.set('reason', result.reason);
+              conflicts.raise({
+                kind: 'reconcile',
+                file: conflicts.fileOf(docName),
+                reason:
+                  result.reason === 'too-large' ? 'refused-too-large' : 'refused-conflict-markers',
+                stages: { base, ours, theirs },
+              });
               break;
             }
           }
@@ -2432,6 +2431,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
         case 'delete': {
           const { docName } = event;
+          dissolveNonGitConflicts(docName);
           const document = hocuspocus.documents.get(docName);
           if (!document) {
             deleteReconciledBase(docName);
@@ -2481,6 +2481,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
         case 'rename': {
           const { oldDocName, newDocName, content } = event;
+          dissolveNonGitConflicts(oldDocName);
           const freezeAsRenamed = (doc: Document): void => {
             const lifecycleMap = doc.getMap('lifecycle');
             lifecycleMap.set('status', 'renamed');
@@ -2565,6 +2566,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           const document = hocuspocus.documents.get(docName);
           if (!document) return;
 
+          const priorBase = getReconciledBase(docName) ?? '';
           const ours = serializeDoc(docName);
           if (ours !== null) {
             setReconciledBase(docName, ours);
@@ -2575,9 +2577,12 @@ export function createServer(options: ServerOptions): ServerInstance {
             );
           }
 
-          const lifecycleMap = document.getMap('lifecycle');
-          lifecycleMap.set('status', 'conflict');
-          lifecycleMap.set('reason', 'conflict-markers');
+          conflicts.raise({
+            kind: 'reconcile',
+            file: conflicts.fileOf(docName),
+            reason: 'disk-markers',
+            stages: { base: priorBase, ours: ours ?? priorBase, theirs: event.content },
+          });
           log.info({ docName }, `[reconcile] conflict markers detected: ${docName}`);
           break;
         }
@@ -3728,12 +3733,10 @@ export function createServer(options: ServerOptions): ServerInstance {
               }
             }
             await persistence.flushDeferredStores('within-branch');
-            if (syncEngine !== null) {
-              try {
-                await syncEngine.reconcileConflictsFromGit();
-              } catch (err) {
-                log.warn({ err }, '[head-watcher] sync engine conflict reconcile failed');
-              }
+            try {
+              await conflicts.pruneMergeNativeAgainstGit();
+            } catch (err) {
+              log.warn({ err }, '[head-watcher] conflict prune against git failed');
             }
           } else {
             incrementBranchSwitch();
@@ -3742,6 +3745,8 @@ export function createServer(options: ServerOptions): ServerInstance {
             let branchTransition: DerivedDocumentIndexBranchTransition | undefined;
             try {
               switchReconciledBaseScope(newBranch);
+              conflicts.setBranch(newBranch);
+              hydrateStaleExternalWrites();
               branchTransition = await derivedDocumentIndex.beginBranchSwitch(newBranch);
 
               contentFilter.rebuildDirCount();
@@ -3852,14 +3857,16 @@ export function createServer(options: ServerOptions): ServerInstance {
                         setReconciledBase(docName, outcome.newContent);
                         incrementConflict();
                         restoredCount++;
-                        {
-                          const restoredDoc = hocuspocus.documents.get(docName);
-                          if (restoredDoc) {
-                            const lifecycleMap = restoredDoc.getMap('lifecycle');
-                            lifecycleMap.set('status', 'conflict');
-                            lifecycleMap.set('reason', 'merged-with-markers');
-                          }
-                        }
+                        conflicts.raise({
+                          kind: 'reconcile',
+                          file: conflicts.fileOf(docName),
+                          reason: 'merged-with-markers',
+                          stages: {
+                            base: parked.diskSnapshot,
+                            ours: parked.markdown,
+                            theirs: currentDisk,
+                          },
+                        });
                         break;
                       }
                       case 'noop':
@@ -3952,48 +3959,27 @@ export function createServer(options: ServerOptions): ServerInstance {
       degraded.push('head-watcher');
     }
 
-    function markLoadedContentConflicts(files: string[]): void {
-      for (const file of files) {
-        try {
-          const absPath = join(projectDir, file);
-          const contentRelPath = toPosix(relative(contentDir, absPath));
-          if (contentRelPath.startsWith('..')) continue;
-          const docName = stripDocExtension(contentRelPath);
-          const document = hocuspocus.documents.get(docName);
-          if (!document) continue;
-
-          const ours = serializeDoc(docName);
-          if (ours !== null) {
-            setReconciledBase(docName, ours);
-          } else {
-            log.warn(
-              { docName, file },
-              '[sync] content conflict: serializeDoc returned null; reconciledBase snapshot skipped',
-            );
-          }
-
-          const lifecycleMap = document.getMap('lifecycle');
-          lifecycleMap.set('status', 'conflict');
-          lifecycleMap.set('reason', 'sync-merge-conflict');
-          log.info({ docName, file }, '[sync] marked loaded content conflict');
-        } catch (err) {
-          log.warn({ err, file }, '[sync] failed to mark loaded content conflict');
-        }
+    conflicts.subscribe((change) => {
+      if (change.type !== 'raised') return;
+      if (change.conflict.kind === 'reconcile') return;
+      const docName = change.docName;
+      if (docName === null) return;
+      if (!hocuspocus.documents.get(docName)) return;
+      const ours = serializeDoc(docName);
+      if (ours !== null) {
+        setReconciledBase(docName, ours);
+      } else {
+        log.warn(
+          { docName, file: change.conflict.file },
+          '[sync] content conflict: serializeDoc returned null; reconciledBase snapshot skipped',
+        );
       }
-    }
+    });
 
-    function clearLoadedContentConflicts(files: string[]): void {
-      for (const file of files) {
-        try {
-          const absPath = join(projectDir, file);
-          const contentRelPath = toPosix(relative(contentDir, absPath));
-          if (contentRelPath.startsWith('..')) continue;
-          const document = hocuspocus.documents.get(stripDocExtension(contentRelPath));
-          if (document) clearLifecycleConflict(document);
-        } catch (err) {
-          log.warn({ err, file }, '[sync] failed to clear resolved content conflict');
-        }
-      }
+    try {
+      await conflicts.pruneMergeNativeAgainstGit();
+    } catch (err) {
+      log.warn({ err }, '[conflicts] boot prune of merge-native entries failed');
     }
 
     const resetAmbientCredentials = shouldResetAmbientCredentials(projectDir);
@@ -4026,23 +4012,15 @@ export function createServer(options: ServerOptions): ServerInstance {
           options.pushIntervalSeconds ?? bootAutoSyncIntervals.pushIntervalSeconds,
         credentialConfig: syncCredentialConfig,
         cc1Broadcaster,
+        conflicts,
         detectGh: options.detectGh,
         detectGhAccounts: options.detectGhAccounts,
         tokenStore: options.tokenStore,
         checkPushPermissionFn: options.checkPushPermissionFn,
-        setBatchInProgress: (value) => {
-          setBatchInProgress(value);
-          if (!value) {
-            void persistence.flushDeferredStores('within-branch').catch((err) => {
-              log.error({ err }, '[persistence] deferred store drain failed after sync batch');
-            });
-          }
-        },
+        setBatchInProgress: setBatchInProgressAndDrain,
         onStateChange: (state) => {
           log.info({ state }, `[sync] state → ${state}`);
         },
-        onContentConflictsDetected: markLoadedContentConflicts,
-        onContentConflictsResolved: clearLoadedContentConflicts,
         checkpointBeforeStrandedConversion: async ({ branch, ahead }) => {
           const shadow = shadowRef.current;
           if (!shadow) return;
@@ -4136,6 +4114,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     get syncEngine() {
       return syncEngine;
     },
+    conflicts,
     getLinkPreviewsEnabled: readLinkPreviewsEnabled,
     resolveEmbed,
     acpRegistry,

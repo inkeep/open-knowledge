@@ -4,9 +4,13 @@ import { join } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
-import { isDocInConflict } from './conflict-errors.ts';
+import { ConflictAuthority } from './conflict-authority.ts';
 import { DISPLACED_VERSION_TTL_MS, DocumentDurabilityState } from './document-durability-state.ts';
-import { reconcileDiskBeforeAgentWrite, refuseStaleExternalWrite } from './external-change.ts';
+import {
+  reconcileDiskBeforeAgentWrite,
+  refuseStaleExternalWrite,
+  serializeYDocSource,
+} from './external-change.ts';
 import { getMetrics } from './metrics.ts';
 import { createPersistenceExtension } from './persistence.ts';
 
@@ -96,8 +100,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     );
 
     expect(result.reconciled).toBe(false);
-    expect(isDocInConflict(document as never)).toBe(true);
-    expect(document.getMap('lifecycle').get('reason')).toBe('stale-external-write');
+    expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
     expect(document.getText('source').toString()).toBe(ACKNOWLEDGED_CONTENT);
     expect(durabilityState.getReconciledBase(docName)).toBe(ACKNOWLEDGED_CONTENT);
     refuseStaleExternalWrite(durabilityState, document, docName, STALE_CONTENT);
@@ -106,6 +109,58 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     expect(after.conflictCount).toBe(before.conflictCount);
     expect(after.persistenceDivergenceRealign).toBe(before.persistenceDivergenceRealign);
     expect(after.bridgeMergeContentLoss).toBe(before.bridgeMergeContentLoss);
+  });
+
+  test('captures live document bytes before stale-write hydration raises the conflict', () => {
+    const liveContent = `${ACKNOWLEDGED_CONTENT}\nnext live edit\n`;
+    let authority: ConflictAuthority;
+    durabilityState = new DocumentDurabilityState('main', {
+      onStaleExternalWriteChange: () => {
+        for (const stale of durabilityState.listStaleExternalWrites()) {
+          const base = durabilityState.getReconciledBase(stale.docName) ?? stale.diskContent;
+          authority.raise({
+            kind: 'reconcile',
+            file: stale.file,
+            reason: 'stale-external-write',
+            detectedAt: stale.detectedAt,
+            stages: {
+              base,
+              ours: stale.retainedContent ?? base,
+              theirs: stale.diskContent,
+            },
+          });
+        }
+      },
+    });
+    authority = new ConflictAuthority({
+      projectDir: tmpDir,
+      contentDir: tmpDir,
+      io: {
+        gitRaw: async () => '',
+        writeProjectFileUntracked: () => undefined,
+        unlinkProjectFile: () => undefined,
+        applyResolvedContent: async () => undefined,
+      },
+    });
+    durabilityState.setReconciledBase(docName, ACKNOWLEDGED_CONTENT);
+    durabilityState.recordDisplacedVersion(docName, STALE_CONTENT);
+    replaceDocParagraphs(document, ['alpha', 'beta gamma', 'next live edit']);
+
+    expect(
+      refuseStaleExternalWrite(
+        durabilityState,
+        document,
+        docName,
+        STALE_CONTENT,
+        authority,
+        serializeYDocSource(document),
+      ),
+    ).toBe(true);
+
+    const conflict = authority.findByDocName(docName);
+    expect(conflict?.kind).toBe('reconcile');
+    if (conflict?.kind !== 'reconcile') throw new Error('expected a reconcile conflict');
+    expect(conflict.stages.ours).toBe(liveContent);
   });
 
   test('refuses to load rejected bytes when the acknowledged base is missing', async () => {
@@ -139,7 +194,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     );
 
     expect(result.reconciled).toBe(true);
-    expect(isDocInConflict(document as never)).toBe(false);
+    expect(document.getMap('lifecycle').get('status')).toBeUndefined();
     expect(document.getText('source').toString()).toContain('delta');
   });
 
@@ -155,7 +210,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     );
 
     expect(result.reconciled).toBe(true);
-    expect(isDocInConflict(document as never)).toBe(false);
+    expect(document.getMap('lifecycle').get('status')).toBeUndefined();
     expect(document.getText('source').toString()).toBe(STALE_CONTENT);
   });
 
@@ -185,7 +240,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     expect(refuseStaleExternalWrite(durabilityState, document, docName, ACKNOWLEDGED_CONTENT)).toBe(
       false,
     );
-    expect(isDocInConflict(document as never)).toBe(false);
+    expect(document.getMap('lifecycle').get('status')).toBeUndefined();
     expect(durabilityState.listStaleExternalWrites()).toEqual([]);
   });
 
@@ -201,7 +256,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       tmpDir,
     );
 
-    expect(isDocInConflict(document as never)).toBe(false);
+    expect(document.getMap('lifecycle').get('status')).toBeUndefined();
     expect(durabilityState.listStaleExternalWrites()).toEqual([]);
   });
 
@@ -211,7 +266,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
 
     const externalEdit = `${ACKNOWLEDGED_CONTENT}\ndelta\n`;
     expect(refuseStaleExternalWrite(durabilityState, document, docName, externalEdit)).toBe(false);
-    expect(isDocInConflict(document as never)).toBe(false);
+    expect(document.getMap('lifecycle').get('status')).toBeUndefined();
     expect(durabilityState.listStaleExternalWrites()).toEqual([]);
   });
 
@@ -235,7 +290,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     } as never);
 
     expect(document.getText('source').toString()).toBe(ACKNOWLEDGED_CONTENT);
-    expect(document.getMap('lifecycle').get('reason')).toBe('stale-external-write');
+    expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
     expect(durabilityState.getReconciledBase(docName)).toBe(ACKNOWLEDGED_CONTENT);
   });
 
@@ -261,7 +316,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     } as never);
 
     expect(document.getText('source').toString()).toBe(ACKNOWLEDGED_CONTENT);
-    expect(document.getMap('lifecycle').get('reason')).toBe('stale-external-write');
+    expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
   });
 
   test('the final persistence disk read refuses a stale version that arrives after preflight', async () => {
@@ -287,7 +342,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     } as never);
 
     expect(document.getText('source').toString()).toContain('next agent edit');
-    expect(document.getMap('lifecycle').get('reason')).toBe('stale-external-write');
+    expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
     expect(durabilityState.getReconciledBase(docName)).toBe(ACKNOWLEDGED_CONTENT);
     expect(durabilityState.takeStaleExternalWriteFreeze(docName)).toBe(true);
     expect(durabilityState.takeStoreDivergence(docName)).toBe(false);
@@ -313,7 +368,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
     } as never);
     expect(document.getText('source').toString()).toBe(retained);
     expect(restoredState.getReconciledBase(docName)).toBe(ACKNOWLEDGED_CONTENT);
-    expect(document.getMap('lifecycle').get('status')).toBe('conflict');
+    expect(restoredState.getStaleExternalWrite(docName)).toBeDefined();
   });
 
   test('normalized-equal displaced bytes remain a conflict until exact acknowledged bytes return', async () => {
@@ -328,7 +383,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       docName,
       tmpDir,
     );
-    expect(document.getMap('lifecycle').get('status')).toBe('conflict');
+    expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
     expect(document.getText('source').toString()).toBe(ACKNOWLEDGED_CONTENT);
     writeFileSync(join(tmpDir, `${docName}.md`), ACKNOWLEDGED_CONTENT, 'utf-8');
     reconcileDiskBeforeAgentWrite(
@@ -337,7 +392,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       docName,
       tmpDir,
     );
-    expect(document.getMap('lifecycle').get('status')).toBeUndefined();
+    expect(durabilityState.getStaleExternalWrite(docName)).toBeUndefined();
   });
 
   test.each([ACKNOWLEDGED_CONTENT, 'genuinely new external content\n'])(
@@ -351,8 +406,6 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       durabilityState.recordStaleExternalWrite(docName, STALE_CONTENT, retained);
       const beforeReplacement = getMetrics();
       replaceDocParagraphs(document, ['alpha', 'beta gamma', 'next retained edit']);
-      document.getMap('lifecycle').set('status', 'conflict');
-      document.getMap('lifecycle').set('reason', 'stale-external-write');
       writeFileSync(join(tmpDir, `${docName}.md`), diskContent, 'utf-8');
       reconcileDiskBeforeAgentWrite(
         durabilityState,
@@ -360,7 +413,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
         docName,
         tmpDir,
       );
-      expect(document.getMap('lifecycle').get('status')).toBe('conflict');
+      expect(durabilityState.getStaleExternalWrite(docName)).toBeDefined();
       expect(refuseStaleExternalWrite(durabilityState, undefined, docName, diskContent)).toBe(true);
       expect(getMetrics().staleExternalWriteRefused).toBe(
         beforeReplacement.staleExternalWriteRefused + 1,
@@ -381,7 +434,7 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
         context: {},
       } as never);
       expect(document.getText('source').toString()).toBe(retained);
-      expect(document.getMap('lifecycle').get('status')).toBe('conflict');
+      expect(restored.getStaleExternalWrite(docName)).toBeDefined();
       expect(restored.getStaleExternalWrite(docName)?.diskContent).toBe(diskContent);
       expect(getMetrics().staleExternalWriteRefused).toBe(
         beforeReplacement.staleExternalWriteRefused + 1,

@@ -139,7 +139,11 @@ Click the badged tab or any row in the Conflicts section to focus the conflict.
 
 You can't edit a page with conflicts until they're resolved; the same applies to agents writing over MCP.
 
-Conflicts can also happen with GitHub sync off: another app may save an older copy over an edit OpenKnowledge already saved. The diff view explains this stale-save conflict. **Current** is the protected OpenKnowledge version; **Incoming** is the older external save. Choose which to keep, then apply the resolution. Restoring an exact older version intentionally can trigger the same confirmation. Both versions remain recoverable after restarting the app.
+### Conflicts that don't come from GitHub
+
+A conflict doesn't need a remote. When a file changes on disk while OpenKnowledge has it open, OpenKnowledge merges the two versions itself, and raises a conflict if it can't merge them cleanly.
+
+Another app can also save an exact older copy over an edit OpenKnowledge already acknowledged. In the diff view, **Current** is the protected OpenKnowledge version and **Incoming** is the rejected external save. Choose which to keep. An intentional exact revert can trigger the same confirmation. Both versions stay recoverable after a restart, and keeping current protects against repeated saves from the stale editor. That protection expires after 30 minutes, so update or close the other app rather than relying on that protection.
 
 ## Work on multiple branches
 

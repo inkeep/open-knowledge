@@ -119,7 +119,7 @@ export function SystemDocSubscriber() {
       void handlersRef.current.refreshServerInfo();
     });
     provider.on('synced', () => {
-      emitDocumentsChanged(['files', 'backlinks', 'graph', 'local-targets']);
+      emitDocumentsChanged(['files', 'backlinks', 'graph', 'local-targets', 'sync-status']);
       onReconnectSynced();
     });
 

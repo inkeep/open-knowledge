@@ -4075,8 +4075,11 @@ describe('createServer() — generated index wiring', () => {
         branch: 'main',
         conflicts: [
           {
+            kind: 'reconcile',
             file: 'content/concepts/index.md',
             detectedAt: '2026-08-07T00:00:00.000Z',
+            reason: 'disk-markers',
+            stages: { base: '', ours: '', theirs: conflicted },
           },
         ],
       }),
@@ -4087,8 +4090,8 @@ describe('createServer() — generated index wiring', () => {
     const logCapture = captureAllLoggers();
     await bootServer();
     expect(server?.hocuspocus.documents.has('concepts/index')).toBe(false);
-    expect(server?.syncEngine?.getConflicts()).toEqual([
-      expect.objectContaining({ file: 'content/concepts/index.md' }),
+    expect(server?.conflicts.list()).toEqual([
+      expect.objectContaining({ kind: 'reconcile', file: 'content/concepts/index.md' }),
     ]);
 
     writeFileSync(
@@ -4110,8 +4113,8 @@ describe('createServer() — generated index wiring', () => {
     expect(readIndexAt('concepts')).toBe(conflicted);
     expect(statSync(indexPathAt('concepts')).mtimeMs).toBe(conflictedMtime);
 
-    await server?.syncEngine?.reconcileConflictsFromGit();
-    expect(server?.syncEngine?.getConflicts()).toEqual([]);
+    server?.conflicts.dissolveReconcile('concepts/index');
+    expect(server?.conflicts.list()).toEqual([]);
     writeDoc('concepts/second.md', 'Second', 'concept');
     await waitForIndexAt(
       'concepts',
@@ -4145,8 +4148,10 @@ describe('createServer() — generated index wiring', () => {
 
     await vi.waitFor(
       () => {
-        expect(document?.getMap('lifecycle').get('status')).toBe('conflict');
-        expect(document?.getMap('lifecycle').get('reason')).toBe('conflict-markers');
+        expect(server?.conflicts.findByDocName('concepts/index')).toMatchObject({
+          kind: 'reconcile',
+          reason: 'disk-markers',
+        });
       },
       { timeout: 20_000, interval: 50 },
     );
@@ -4187,14 +4192,15 @@ describe('createServer() — generated index wiring', () => {
 
     expect(readIndexAt('concepts')).toBe(conflicted);
     expect(document?.getText('source').toString()).toBe(canonical);
-    expect(document?.getMap('lifecycle').get('status')).toBe('conflict');
-    expect(document?.getMap('lifecycle').get('reason')).toBe('conflict-markers');
+    expect(server?.conflicts.findByDocName('concepts/index')).toMatchObject({
+      kind: 'reconcile',
+      reason: 'disk-markers',
+    });
 
     writeFileSync(indexPathAt('concepts'), canonical, 'utf-8');
     await vi.waitFor(
       () => {
-        expect(document?.getMap('lifecycle').get('status')).toBeUndefined();
-        expect(document?.getMap('lifecycle').get('reason')).toBeUndefined();
+        expect(server?.conflicts.findByDocName('concepts/index')).toBeUndefined();
       },
       { timeout: 20_000, interval: 50 },
     );

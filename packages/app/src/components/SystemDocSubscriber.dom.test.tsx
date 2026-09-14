@@ -80,5 +80,11 @@ test('first system sync recovers local-target invalidations emitted during conne
 
   act(() => provider?.emitSynced());
 
-  expect(emittedChannels).toContainEqual(['files', 'backlinks', 'graph', 'local-targets']);
+  expect(emittedChannels).toContainEqual([
+    'files',
+    'backlinks',
+    'graph',
+    'local-targets',
+    'sync-status',
+  ]);
 });

@@ -1215,6 +1215,10 @@ msgstr "<{componentName}> bukan komponen yang dikenal. Salin sumbernya untuk dip
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> gagal dirender (kemungkinan prop yang salah). Salin sumbernya untuk melihat apa yang salah, atau hapus bloknya."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> tidak bisa digabungkan di sini. Pilih versi yang ingin disimpan."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>Cermin — pilih sebuah sumber.</0> Atur <1>src</1> + <2>anchor</2> lewat panel properti agar mengarah ke <3><MirrorSource></3> di tempat lain."
@@ -3904,10 +3908,6 @@ msgstr "Tidak dapat mengubah pemeriksaan ejaan. Coba lagi."
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "Tidak dapat mengubah bahasa pemeriksaan ejaan. Coba lagi."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "Tidak dapat memeriksa apakah {filePath} masih berkonflik — mencoba lagi."
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4784,6 +4784,10 @@ msgstr "Hapus tabel terpilih"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "Hapus tabel"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "Hapus berkas"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9017,6 +9021,10 @@ msgstr "Belum ada komentar. Pilih teks di dokumen untuk menambahkan satu."
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "Tidak ada leluhur bersama — kedua cabang menambahkan berkas ini (konflik add/add)."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "Tidak ada konflik yang dilacak untuk jalur ini."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "Tidak ada perubahan isi pada versi ini."
@@ -11471,10 +11479,6 @@ msgstr "Dirender"
 msgid "Reopen"
 msgstr "Buka lagi"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "Buka kembali {filePath} untuk melanjutkan penyuntingan."
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr "Buka kembali obrolan sebelumnya"
@@ -13105,6 +13109,10 @@ msgstr "Beberapa tema tersimpan tidak ditampilkan karena folder tema melewati ba
 msgid "Some skills were deleted with a warning"
 msgstr "Beberapa keterampilan dihapus dengan peringatan"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "Mungkin seseorang sudah menyelesaikan {filePath} — periksa isi dokumen saat ini sebelum mengulangi suntingan Anda."
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Ada yang rusak"
@@ -14385,10 +14393,6 @@ msgstr "Komentar ini berlaku untuk seluruh properti"
 msgid "This composer doesn't accept attachments."
 msgstr "Berkas tidak bisa dilampirkan di sini."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "Konflik ini sudah diselesaikan."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr "Ini tidak dapat disiapkan karena entri server MCP yang diperlukan tidak ditulis."
@@ -15487,6 +15491,10 @@ msgstr "Pakai hanya huruf kecil, angka, dan <0>-</0>."
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Pakai hanya huruf kecil, angka, dan tanda hubung"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "Pakai versi mereka"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"

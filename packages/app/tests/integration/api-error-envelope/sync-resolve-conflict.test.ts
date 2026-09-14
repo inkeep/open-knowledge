@@ -60,11 +60,7 @@ describe('sync-resolve-conflict envelope (RFC 9457)', () => {
   });
 
   function trackConflict(file: string): void {
-    const engine = server.instance.syncEngine;
-    if (!engine) throw new Error('expected a SyncEngine on the test harness');
-    const store = (engine as unknown as { conflictStore: { addConflict: (e: unknown) => boolean } })
-      .conflictStore;
-    store.addConflict({ file, detectedAt: new Date().toISOString() });
+    server.instance.conflicts.raise({ kind: 'merge-native', file });
   }
 
   test('content still carrying a conflict block is a typed 422, not a 500', async () => {

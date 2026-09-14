@@ -1219,6 +1219,10 @@ msgstr "<{componentName}> 不是已知的组件。复制源码以便在别处使
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 渲染失败（很可能是属性有误）。复制源码看看哪里出了问题，或删除这个块。"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> 无法在这里合并。请选择要保留的版本。"
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>镜像——请选择一个来源。</0>在属性面板中设置 <1>src</1> + <2>anchor</2>，指向别处的 <3><MirrorSource></3>。"
@@ -3908,10 +3912,6 @@ msgstr "无法更改拼写检查。请重试。"
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "无法更改拼写检查语言。请重试。"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "无法确认 {filePath} 是否仍有冲突 — 正在重试。"
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4788,6 +4788,10 @@ msgstr "删除选中的表格"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "删除表格"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "删除文件"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9021,6 +9025,10 @@ msgstr "还没有评论。在文档中选中文本即可添加。"
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "没有共同祖先 — 两个分支都新增了此文件（add/add 冲突）。"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "此路径没有正在跟踪的冲突。"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "这个版本没有内容改动。"
@@ -11475,10 +11483,6 @@ msgstr "已渲染"
 msgid "Reopen"
 msgstr "重新打开"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "重新打开 {filePath} 以继续编辑。"
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr "重新打开之前的对话"
@@ -13109,6 +13113,10 @@ msgstr "因为主题文件夹超出扫描限制，部分已保存的主题未显
 msgid "Some skills were deleted with a warning"
 msgstr "部分技能删除时带有警告"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "可能已有人解决了 {filePath} 的冲突 — 请先查看文档的当前内容，再重做你的编辑。"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "有东西坏了"
@@ -14389,10 +14397,6 @@ msgstr "这条评论针对的是整个属性"
 msgid "This composer doesn't accept attachments."
 msgstr "此处无法添加附件。"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "此冲突已解决。"
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr "无法完成设置，因为它所需的 MCP 服务器条目未写入。"
@@ -15491,6 +15495,10 @@ msgstr "只能使用小写字母、数字和 <0>-</0>。"
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "只能使用小写字母、数字和连字符"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "使用对方的版本"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"

@@ -101,11 +101,13 @@ async function unloadDocument(target: TestServer, docName: string): Promise<void
   }
 }
 
-function lifecycleOf(target: TestServer, docName: string): { status?: unknown; reason?: unknown } {
+function lifecycleOf(
+  target: TestServer,
+  docName: string,
+): { status?: unknown; kind?: unknown; reason?: unknown } {
   const document = target.instance.hocuspocus.documents.get(docName);
   if (!document) throw new Error(`document ${docName} not loaded`);
-  const lifecycle = document.getMap('lifecycle');
-  return { status: lifecycle.get('status'), reason: lifecycle.get('reason') };
+  return target.instance.conflicts.lifecycleOf(document, docName) ?? {};
 }
 
 describe('stale external write does not roll back an acknowledged agent write', () => {
@@ -411,11 +413,13 @@ describe('stale external write does not roll back an acknowledged agent write', 
         conflictKind?: 'git' | 'stale-external-write';
       }>;
     };
-    expect(conflicts.conflicts).toContainEqual({
-      file: `${docName}.md`,
-      detectedAt: expect.any(String),
-      conflictKind: 'stale-external-write',
-    });
+    expect(conflicts.conflicts).toContainEqual(
+      expect.objectContaining({
+        file: `${docName}.md`,
+        detectedAt: expect.any(String),
+        conflictKind: 'stale-external-write',
+      }),
+    );
 
     const contentResponse = await fetch(
       `http://127.0.0.1:${port}/api/sync/conflict-content?file=${docName}.md&source=ytext`,
@@ -451,27 +455,16 @@ describe('stale external write does not roll back an acknowledged agent write', 
       expect(getServerState(server, docName)?.ytext.toString()).toContain(ACK_MARKER);
     }
 
-    const markerResolution = await fetch(`http://127.0.0.1:${port}/api/sync/resolve-conflict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        file: `${docName}.md`,
-        strategy: 'content',
-        content: '<<<<<<< current\ndraft\n=======\nstill unresolved\n>>>>>>> incoming\n',
-      }),
-    });
+    const markerResolution = await resolveConflict(
+      server,
+      `${docName}.md`,
+      'content',
+      '<<<<<<< current\ndraft\n=======\nstill unresolved\n>>>>>>> incoming\n',
+    );
     expect(markerResolution.status).toBe(422);
     expect(lifecycleOf(server, docName).status).toBe('conflict');
 
-    const resolution = await fetch(`http://127.0.0.1:${port}/api/sync/resolve-conflict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        file: `${docName}.md`,
-        strategy: 'content',
-        content: sides.ours,
-      }),
-    });
+    const resolution = await resolveConflict(server, `${docName}.md`, 'content', sides.ours);
     expect(resolution.status).toBe(200);
     expect(readTestDoc(contentDir, docName)).toContain(ACK_MARKER);
     expect(lifecycleOf(server, docName).status).toBeUndefined();
@@ -484,14 +477,7 @@ describe('stale external write does not roll back an acknowledged agent write', 
       'repeated stale-write lifecycle conflict',
     );
 
-    const repeatedResolution = await fetch(`http://127.0.0.1:${port}/api/sync/resolve-conflict`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        file: `${docName}.md`,
-        strategy: 'mine',
-      }),
-    });
+    const repeatedResolution = await resolveConflict(server, `${docName}.md`, 'mine');
     expect(repeatedResolution.status).toBe(200);
 
     await agentWriteMd(port, 'retry-after-resolution\n', { docName, position: 'append' });
@@ -574,8 +560,9 @@ describe('stale external write does not roll back an acknowledged agent write', 
     const client = await createTestClient(server.port, docName);
     try {
       expect(client.ytext.toString()).toContain(ACK_MARKER);
-      expect(lifecycleOf(server, docName)).toEqual({
+      expect(lifecycleOf(server, docName)).toMatchObject({
         status: 'conflict',
+        kind: 'reconcile',
         reason: 'stale-external-write',
       });
     } finally {

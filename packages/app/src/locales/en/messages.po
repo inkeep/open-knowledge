@@ -1219,6 +1219,10 @@ msgstr "<{componentName}> isn't a known component. Copy the source to use it els
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
@@ -3908,10 +3912,6 @@ msgstr "Couldn't change spell checking. Try again."
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "Couldn't change the spelling languages. Try again."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "Couldn't check whether {filePath} is still conflicted — retrying."
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4788,6 +4788,10 @@ msgstr "Delete selected table"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "Delete table"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "Delete the file"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9021,6 +9025,10 @@ msgstr "No comments yet. Select text in the document to add one."
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "No common ancestor — both branches added this file (add/add conflict)."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "No conflict is tracked for this path."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "No content changes at this version."
@@ -11475,10 +11483,6 @@ msgstr "Rendered"
 msgid "Reopen"
 msgstr "Reopen"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "Reopen {filePath} to keep editing."
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr "Reopen a past chat"
@@ -13109,6 +13113,10 @@ msgstr "Some saved themes aren’t shown because the theme folder exceeds the sc
 msgid "Some skills were deleted with a warning"
 msgstr "Some skills were deleted with a warning"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Something broke"
@@ -14389,10 +14397,6 @@ msgstr "This comment is on the whole property"
 msgid "This composer doesn't accept attachments."
 msgstr "This composer doesn't accept attachments."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "This conflict is resolved."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr "This could not be set up because the MCP server entry it needs was not written."
@@ -15491,6 +15495,10 @@ msgstr "Use lowercase letters, digits, and <0>-</0> only."
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Use lowercase letters, numbers, and hyphens only"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "Use their version"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"

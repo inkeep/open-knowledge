@@ -37,7 +37,7 @@ import {
 } from '@/editor/scroll-restore-coordination';
 import { TiptapEditor } from '@/editor/TiptapEditor';
 import type { EditorModeValue } from '@/editor/use-editor-mode';
-import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
+import { useDocConflict } from '@/hooks/use-conflicts';
 import { parseProjectSkillContentDocName } from '@/lib/managed-artifact-doc-name';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { mark, ProfilerBoundary } from '@/lib/perf';
@@ -741,16 +741,11 @@ function ActivityEntry({
 }: ActivityEntryProps) {
   const recoveryView = getServerRestartRecoveryView(entry.docName, serverRestartRecovery);
 
-  /**
-   * A conflicted doc swaps the editor children for the diff view inside the same
-   * DocumentBoundary, preserving precedent #18(b)'s hybrid render tree.
-   */
-  const lifecycleStatus = useLifecycleStatus(entry.docName);
-  const isConflict = lifecycleStatus === 'conflict';
+  const conflict = useDocConflict(entry.docName);
   const isMermaid = isMermaidDocFile(entry.docName);
   const isExcalidraw = isExcalidrawDocFile(entry.docName);
   const isTextDoc = !isMermaid && !isExcalidraw && isEditableTextDocFile(entry.docName);
-  const isDualEditor = !isConflict && isMarkdownDocFile(entry.docName);
+  const isDualEditor = conflict === null && isMarkdownDocFile(entry.docName);
   const [portalTarget] = useState<HTMLDivElement>(() => {
     const target = document.createElement('div');
     target.setAttribute('data-ok-editor-portal', entry.docName);
@@ -857,7 +852,7 @@ function ActivityEntry({
         mode={effectiveIsSourceMode ? 'source' : 'wysiwyg'}
         initialScrollTop={warmSnapshot?.scrollTop}
         bodyAnchorRef={bodyAnchorRef}
-        hasToolbar={!isConflict}
+        hasToolbar={conflict === null}
       >
         {recoveryView ? (
           <ServerRestartRecoveryPanel view={recoveryView} />
@@ -881,14 +876,9 @@ function ActivityEntry({
                 }
               >
                 <DocumentBoundary docName={entry.docName} provider={entry.provider}>
-                  {isConflict ? (
-                    /*
-                     * The outer DocumentBoundary's syncPromise gate + the Suspense/error scopes
-                     * above stay intact (precedent #18(b) hybrid render tree preserved — we swap
-                     * children, not boundaries).
-                     */
+                  {conflict !== null ? (
                     <Suspense fallback={<EditorSkeleton />}>
-                      <LazyDiffViewBoundary docName={entry.docName} provider={entry.provider} />
+                      <LazyDiffViewBoundary docName={entry.docName} conflict={conflict} />
                     </Suspense>
                   ) : isMermaid ? (
                     /*

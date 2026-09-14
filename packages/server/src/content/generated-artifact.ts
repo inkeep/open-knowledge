@@ -39,9 +39,6 @@ export async function writeGeneratedArtifact(
 
   const document = env.getDocument(docName);
   if (document) {
-    if (document.getMap('lifecycle').get('status') === 'conflict') {
-      return 'blocked-conflict';
-    }
     if (document.getText('source').toString() === markdown) return 'unchanged';
     document.transact(() => {
       replaceRawBody(document, markdown);

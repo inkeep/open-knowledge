@@ -27,7 +27,8 @@ import {
 } from './bridge-loss-detector.ts';
 import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
-import { DocInConflictError, isDocInConflict } from './conflict-errors.ts';
+import { isDocInConflict } from './conflict-authority.ts';
+import { DocInConflictError } from './conflict-errors.ts';
 import {
   type AgentWriteContentDivergence,
   evaluateContentDivergence,

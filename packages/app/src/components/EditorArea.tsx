@@ -57,8 +57,8 @@ import {
   partitionFrontmatterProblems,
   useFrontmatterDiagnostics,
 } from '@/editor/useFrontmatterDiagnostics';
+import { useDocConflict } from '@/hooks/use-conflicts';
 import { useDocumentStats } from '@/hooks/use-document-stats';
-import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
 import { useSelectionStats } from '@/hooks/use-selection-stats';
 import { closeAgentDiff, useAgentDiffView } from '@/lib/agent-diff-store';
 import {
@@ -182,8 +182,8 @@ function PaneDocumentToolbar({
       frontmatterLintConfig?.effective ?? null,
     ),
   );
-  const lifecycleStatus = useLifecycleStatus(docName);
-  if (lifecycleStatus === 'conflict') return null;
+  const conflict = useDocConflict(docName);
+  if (conflict !== null) return null;
 
   return (
     <EditorToolbar

@@ -101,6 +101,11 @@
       ") in ",
       ["targetLabel"]
     ],
+    "0bV3uj": [
+      "Someone may have already resolved ",
+      ["filePath"],
+      " — check the document's current content before redoing your edit."
+    ],
     "0cGsQh": ["What's included"],
     "0cspe_": ["Delete row"],
     "0dslv8": [
@@ -345,6 +350,7 @@
     "3aeN7X": ["All files"],
     "3cOo2C": ["Create a folder from the current document or folder context."],
     "3ePd3I": ["What's new"],
+    "3fOsvq": ["Use their version"],
     "3h5zMp": ["Something went wrong loading the settings panel."],
     "3iyGWF": ["Open recent project"],
     "3jod3l": ["Connect GitHub"],
@@ -2309,6 +2315,7 @@
     "RB_g_C": [
       "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
     ],
+    "RCMt3v": ["No conflict is tracked for this path."],
     "RD6H9q": [
       "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
     ],
@@ -2364,6 +2371,7 @@
     "Rah7yq": ["What should the AI do? (optional)"],
     "Rb1zMa": ["No excerpt"],
     "RcrskJ": ["Formatting looked wrong"],
+    "RduDYw": ["<0>", ["filePath"], "</0> can't be merged here. Pick the version to keep."],
     "RfHNf8": ["Open activity panel for ", ["tooltipName"]],
     "RfaEio": ["Toggle source comment"],
     "RfilGt": ["No rules match your filters."],
@@ -2437,6 +2445,7 @@
     "SXCSQd": ["Copied path"],
     "SXEdCq": ["Move to ", ["0"], "?"],
     "SYfHmN": ["Unpin tab"],
+    "S_RRZB": ["Delete the file"],
     "Sad2tK": ["Sending…"],
     "Sbb90e": [
       [
@@ -2862,7 +2871,6 @@
     "XwZiq2": [
       "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
     ],
-    "XzL7x7": ["Reopen ", ["filePath"], " to keep editing."],
     "Xzy0s0": ["Remove ", ["fullLabel"], " from context"],
     "Y-Urt2": ["Block math equation rendered with KaTeX from a LaTeX source string."],
     "Y1QMlM": ["Get set up"],
@@ -3806,7 +3814,6 @@
       "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
     ],
     "hCattk": ["OpenKnowledge imported ", ["source"]],
-    "hCghAK": ["This conflict is resolved."],
     "hDEaQu": ["Connect OpenKnowledge to other tools you use."],
     "hDKtoF": [["diffHrs"], "h ago"],
     "hDoLrm": ["Remove ", ["projectName"], " from recent projects"],
@@ -4023,7 +4030,6 @@
     "jSg1tA": ["More actions (", ["syncAttentionLabel"], ")"],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
     "jTUxaN": ["Enable Auto (Pull only)"],
-    "jTdrn1": ["Couldn't check whether ", ["filePath"], " is still conflicted — retrying."],
     "jWwQo6": ["batch"],
     "jWzDfC": ["Checking which AI tools you have"],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],

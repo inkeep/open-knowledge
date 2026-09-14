@@ -2,19 +2,30 @@ import { execFile } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
-import {
-  bootServer,
-  ConfigSchema,
-  getLocalDir,
-  getLogger,
-  restoreLifecycleFromConflictsJson,
-} from '@inkeep/open-knowledge-server';
+import { bootServer, ConfigSchema, getLocalDir } from '@inkeep/open-knowledge-server';
 import { describe, expect, test } from 'vitest';
 import { createTestClient, createTestServer, pollUntil, type TestServer } from './test-harness';
 
 const execFileAsync = promisify(execFile);
 
 const BASE_CONTENT = '# Base\n\nBase paragraph.\n';
+const MARKED_CONTENT =
+  '<<<<<<< ours\n# Base\n\nBase paragraph.\n=======\n# Theirs\n>>>>>>> theirs\n';
+
+async function listConflicts(port: number): Promise<Array<Record<string, unknown>>> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/sync/conflicts`).catch(() => null);
+  if (!res?.ok) return [];
+  const data = (await res.json()) as { conflicts?: Array<Record<string, unknown>> };
+  return data.conflicts ?? [];
+}
+
+async function agentWrite(port: number, docName: string, markdown: string): Promise<Response> {
+  return fetch(`http://127.0.0.1:${port}/api/agent-write-md`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ docName, markdown, position: 'replace', agentId: 'a', agentName: 'A' }),
+  });
+}
 
 async function setupServerWithDoc(
   docName: string,
@@ -33,7 +44,7 @@ async function setupServerWithDoc(
     if (!res?.ok) return false;
     const data = (await res.json()) as { documents?: Array<{ docName: string }> };
     return data.documents?.some((d) => d.docName === docName) ?? false;
-  });
+  }, 30_000);
   return server;
 }
 
@@ -107,7 +118,7 @@ async function seedRealMergeConflict(projectDir: string, files: string[]): Promi
   }
 }
 
-describe('FR1 + FR2: lifecycle swap-in / swap-out (server-observable contract)', () => {
+describe('FR1 + FR2: conflict-gate swap-in / swap-out (server-observable contract)', () => {
   test('swap-in sets gate (mutations refuse); swap-out clears gate (mutations succeed); Y.Text bytes preserved', async () => {
     const cleanups: Array<() => Promise<void> | void> = [];
     try {
@@ -124,63 +135,32 @@ describe('FR1 + FR2: lifecycle swap-in / swap-out (server-observable contract)',
       const ytextBefore = serverDoc.getText('source').toString();
       expect(ytextBefore).toContain('Base paragraph');
 
-      const lifecycleMap = serverDoc.getMap('lifecycle');
+      const authority = server.instance.conflicts;
 
-      expect(lifecycleMap.get('status')).toBeUndefined();
-      const preGateRes = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          docName,
-          markdown: BASE_CONTENT,
-          position: 'replace',
-          agentId: 'a',
-          agentName: 'A',
-        }),
-      });
+      expect(authority.has(docName)).toBe(false);
+      const preGateRes = await agentWrite(server.port, docName, BASE_CONTENT);
       expect(preGateRes.ok).toBe(true);
 
-      lifecycleMap.set('status', 'conflict');
-      lifecycleMap.set('reason', 'conflict-markers');
-
-      expect(lifecycleMap.get('status')).toBe('conflict');
-      expect(lifecycleMap.get('reason')).toBe('conflict-markers');
-
-      const inConflictRes = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          docName,
-          markdown: '# Replacement\n',
-          position: 'replace',
-          agentId: 'a',
-          agentName: 'A',
-        }),
+      authority.raise({
+        kind: 'reconcile',
+        file: `${docName}.md`,
+        reason: 'disk-markers',
+        stages: { base: BASE_CONTENT, ours: ytextBefore, theirs: BASE_CONTENT },
       });
+      expect(authority.has(docName)).toBe(true);
+
+      const inConflictRes = await agentWrite(server.port, docName, '# Replacement\n');
       expect(inConflictRes.status).toBe(409);
       expect(inConflictRes.headers.get('content-type')).toContain('application/problem+json');
       const body = (await inConflictRes.json()) as Record<string, unknown>;
       expect(body.type).toBe('urn:ok:error:doc-in-conflict');
 
-      lifecycleMap.delete('status');
-      lifecycleMap.delete('reason');
-
-      expect(lifecycleMap.get('status')).toBeUndefined();
-      expect(lifecycleMap.get('reason')).toBeUndefined();
+      authority.dissolveReconcile(docName);
+      expect(authority.has(docName)).toBe(false);
 
       expect(serverDoc.getText('source').toString()).toBe(ytextBefore);
 
-      const postGateRes = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          docName,
-          markdown: BASE_CONTENT,
-          position: 'replace',
-          agentId: 'a',
-          agentName: 'A',
-        }),
-      });
+      const postGateRes = await agentWrite(server.port, docName, BASE_CONTENT);
       expect(postGateRes.ok).toBe(true);
     } finally {
       while (cleanups.length > 0) await cleanups.pop()?.();
@@ -188,8 +168,8 @@ describe('FR1 + FR2: lifecycle swap-in / swap-out (server-observable contract)',
   }, 30_000);
 });
 
-describe('FR11: reconciliation conflict path sets lifecycle.status and fires the FR9 gate', () => {
-  test('reconcile case "conflicts" sets lifecycle.status="conflict" + mutating handler returns 409', async () => {
+describe('FR11: the reconciliation conflict path raises an entry and fires the FR9 gate', () => {
+  test('reconcile case "conflicts" raises a reconcile entry + mutating handler returns 409', async () => {
     const cleanups: Array<() => Promise<void> | void> = [];
     try {
       const docName = `fr11-${crypto.randomUUID()}`;
@@ -202,13 +182,11 @@ describe('FR11: reconciliation conflict path sets lifecycle.status and fires the
         if (!res?.ok) return false;
         const data = (await res.json()) as { documents?: Array<{ docName: string }> };
         return data.documents?.some((d) => d.docName === docName) ?? false;
-      });
+      }, 30_000);
 
       const client = await createTestClient(server.port, docName);
       cleanups.push(() => client.cleanup());
-      await pollUntil(() => client.ytext.toString().includes('First paragraph'));
-
-      const lifecycle = client.doc.getMap('lifecycle');
+      await pollUntil(() => client.ytext.toString().includes('First paragraph'), 30_000);
 
       const baseOffset = client.ytext.toString().indexOf('First paragraph.');
       const baseLen = 'First paragraph.'.length;
@@ -224,21 +202,16 @@ describe('FR11: reconciliation conflict path sets lifecycle.status and fires the
       const theirsContent = '# Heading\n\nTheir version of first paragraph.\n\nSecond paragraph.\n';
       writeFileSync(join(server.contentDir, `${docName}.md`), theirsContent, 'utf-8');
 
-      await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
-      expect(lifecycle.get('status')).toBe('conflict');
-      expect(lifecycle.get('reason')).toBe('merged-with-markers');
+      await pollUntil(
+        async () => (await listConflicts(server.port)).some((c) => c.file === `${docName}.md`),
+        10_000,
+      );
+      const entry = (await listConflicts(server.port)).find((c) => c.file === `${docName}.md`);
+      expect(entry?.conflict).toBe('reconcile');
+      expect(entry?.reason).toBe('merged-with-markers');
+      expect(entry?.docName).toBe(docName);
 
-      const res = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          docName,
-          markdown: '# Replacement\n',
-          position: 'replace',
-          agentId: 'a',
-          agentName: 'A',
-        }),
-      });
+      const res = await agentWrite(server.port, docName, '# Replacement\n');
       expect(res.status).toBe(409);
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.type).toBe('urn:ok:error:doc-in-conflict');
@@ -290,11 +263,7 @@ describe('FR12: /api/sync/conflicts + /api/sync/status count parity', () => {
       const resolveRes = await fetch(`http://127.0.0.1:${server.port}/api/sync/resolve-conflict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file: fileA,
-          strategy: 'content',
-          content: '# A resolved\n',
-        }),
+        body: JSON.stringify({ file: fileA, strategy: 'content', content: '# A resolved\n' }),
       });
       expect(resolveRes.ok).toBe(true);
 
@@ -314,108 +283,57 @@ describe('FR12: /api/sync/conflicts + /api/sync/status count parity', () => {
   }, 45_000);
 });
 
-describe('FR14: lifecycle restore function (in-process; CI-runnable)', () => {
-  test('restoreLifecycleFromConflictsJson sets lifecycle.status on each tracked doc', async () => {
+describe('FR14: a conflicts.json present at construction gates writes (in-process)', () => {
+  test('a seeded ledger entry is listed and refuses the write on a doc never loaded before', async () => {
     const cleanups: Array<() => Promise<void> | void> = [];
     try {
+      const { mkdtempSync, realpathSync } = await import('node:fs');
+      const { tmpdir } = await import('node:os');
+      const tmpDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-fr14-fn-')));
+      cleanups.push(() => rmSync(tmpDir, { recursive: true, force: true }));
+
+      mkdirSync(join(tmpDir, '.ok'), { recursive: true });
+      writeFileSync(join(tmpDir, '.ok', 'config.yml'), '', 'utf-8');
+      await execFileAsync('git', ['init', '--initial-branch=main', tmpDir]);
+
       const docName = `fr14-fn-${crypto.randomUUID()}`;
-      const server = await setupServerWithDoc(docName, BASE_CONTENT, cleanups);
-      await seedRealMergeConflict(server.contentDir, [`${docName}.md`]);
-      seedConflictsJson(server.contentDir, [{ file: `${docName}.md` }]);
+      await seedRealMergeConflict(tmpDir, [`${docName}.md`]);
+      seedConflictsJson(tmpDir, [{ file: `${docName}.md` }]);
 
-      const warnLines: string[] = [];
-      const originalWarn = console.warn;
-      console.warn = (msg: unknown, ...rest: unknown[]) => {
-        warnLines.push(typeof msg === 'string' ? msg : String(msg));
-        originalWarn.call(console, msg, ...rest);
-      };
-      cleanups.push(() => {
-        console.warn = originalWarn;
-      });
+      const server = await createTestServer({ contentDir: tmpDir, keepContentDir: true });
+      cleanups.push(() => server.cleanup());
 
-      await restoreLifecycleFromConflictsJson({
-        hocuspocus: server.instance.hocuspocus,
-        projectDir: server.contentDir,
-        log: getLogger('fr14-fn-test'),
-      });
+      const entry = (await listConflicts(server.port)).find((c) => c.file === `${docName}.md`);
+      expect(entry?.conflict).toBe('merge-native');
+      expect(entry?.docName).toBe(docName);
 
-      const dc = await server.instance.hocuspocus.openDirectConnection(docName);
-      try {
-        const lifecycleMap = dc.document?.getMap('lifecycle');
-        expect(lifecycleMap?.get('status')).toBe('conflict');
-        expect(lifecycleMap?.get('reason')).toBe('conflict-markers');
-      } finally {
-        await dc.disconnect();
-      }
-
-      const restoredEvent = warnLines.find((l) => {
-        try {
-          const parsed = JSON.parse(l) as { event?: string; 'doc.name'?: string };
-          return (
-            parsed.event === 'lifecycle-restored-from-conflicts-json' &&
-            parsed['doc.name'] === docName
-          );
-        } catch (e) {
-          if (e instanceof SyntaxError) return false;
-          throw e;
-        }
-      });
-      expect(restoredEvent).toBeDefined();
-
-      const res = await fetch(`http://127.0.0.1:${server.port}/api/agent-write-md`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          docName,
-          markdown: '# replacement\n',
-          position: 'replace',
-          agentId: 'a',
-          agentName: 'A',
-        }),
-      });
+      const res = await agentWrite(server.port, docName, '# replacement\n');
       expect(res.status).toBe(409);
     } finally {
       while (cleanups.length > 0) await cleanups.pop()?.();
     }
   }, 30_000);
 
-  test('restoreLifecycleFromConflictsJson is a no-op when conflicts.json is missing', async () => {
+  test('with no conflicts.json the ledger is empty and writes are admitted', async () => {
     const cleanups: Array<() => Promise<void> | void> = [];
     try {
       const docName = `fr14-fn-empty-${crypto.randomUUID()}`;
       const server = await setupServerWithDoc(docName, BASE_CONTENT, cleanups);
-      await restoreLifecycleFromConflictsJson({
-        hocuspocus: server.instance.hocuspocus,
-        projectDir: server.contentDir,
-        log: getLogger('fr14-fn-test'),
-      });
 
-      const dc = await server.instance.hocuspocus.openDirectConnection(docName);
-      try {
-        const lifecycleMap = dc.document?.getMap('lifecycle');
-        expect(lifecycleMap?.get('status')).toBeUndefined();
-      } finally {
-        await dc.disconnect();
-      }
+      expect(await listConflicts(server.port)).toEqual([]);
+      expect(server.instance.conflicts.has(docName)).toBe(false);
+
+      const res = await agentWrite(server.port, docName, '# replacement\n');
+      expect(res.ok).toBe(true);
     } finally {
       while (cleanups.length > 0) await cleanups.pop()?.();
     }
   }, 30_000);
 });
 
-describe('on-load lifecycle seed from ConflictStore (runtime race fix)', () => {
+describe('a conflict raised while the doc was unloaded still gates its first load', () => {
   async function runOnLoadSeedTest(extension: '.md' | '.mdx') {
     const cleanups: Array<() => Promise<void> | void> = [];
-
-    const warnLines: string[] = [];
-    const originalWarn = console.warn;
-    console.warn = (msg: unknown, ...rest: unknown[]) => {
-      warnLines.push(typeof msg === 'string' ? msg : String(msg));
-      originalWarn.call(console, msg, ...rest);
-    };
-    cleanups.push(() => {
-      console.warn = originalWarn;
-    });
 
     try {
       const { mkdtempSync, realpathSync, rmSync } = await import('node:fs');
@@ -447,49 +365,38 @@ describe('on-load lifecycle seed from ConflictStore (runtime race fix)', () => {
         if (!res?.ok) return false;
         const data = (await res.json()) as { documents?: Array<{ docName: string }> };
         return data.documents?.some((d) => d.docName === docName) ?? false;
-      }, 5_000);
+      }, 30_000);
 
       const client = await createTestClient(server.port, docName, {
         skipInvariantWatcher: true,
       });
       cleanups.push(() => client.cleanup());
 
-      const lifecycle = client.doc.getMap('lifecycle');
-      await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
-      expect(lifecycle.get('status')).toBe('conflict');
-      expect(lifecycle.get('reason')).toBe('conflict-markers');
+      const entry = (await listConflicts(server.port)).find((c) => c.file === fileName);
+      expect(entry?.conflict).toBe('merge-native');
+      expect(entry?.docName).toBe(docName);
+      expect(server.instance.conflicts.has(docName)).toBe(true);
 
-      const seededEvent = warnLines.find((l) => {
-        try {
-          const parsed = JSON.parse(l) as { event?: string; 'doc.name'?: string };
-          return (
-            parsed.event === 'lifecycle-seeded-on-load-from-conflict-store' &&
-            parsed['doc.name'] === docName
-          );
-        } catch (e) {
-          if (e instanceof SyntaxError) return false;
-          throw e;
-        }
-      });
-      expect(seededEvent).toBeDefined();
+      const res = await agentWrite(server.port, docName, '# replacement\n');
+      expect(res.status).toBe(409);
     } finally {
       while (cleanups.length > 0) await cleanups.pop()?.();
     }
   }
 
-  test('.md  — first client connect seeds lifecycle.status="conflict" from ConflictStore', async () => {
+  test('.md  — a doc tracked before its first load is gated on load', async () => {
     await runOnLoadSeedTest('.md');
   }, 30_000);
 
-  test('.mdx — first client connect seeds lifecycle.status="conflict" from ConflictStore', async () => {
+  test('.mdx — a doc tracked before its first load is gated on load', async () => {
     await runOnLoadSeedTest('.mdx');
   }, 30_000);
 });
 
 const describeBoot = process.env.CI ? describe.skip : describe;
 
-describeBoot('FR14: boot-time lifecycle restoration from conflicts.json', () => {
-  test('conflicts.json with entry X → lifecycle.status="conflict" set + immediate POST returns 409', async () => {
+describeBoot('FR14: boot-time conflict admission from conflicts.json', () => {
+  test('conflicts.json with entry X → the entry is listed + an immediate POST returns 409', async () => {
     const cleanups: Array<() => Promise<void> | void> = [];
     try {
       const { mkdtempSync, realpathSync, rmSync } = await import('node:fs');
@@ -505,16 +412,6 @@ describeBoot('FR14: boot-time lifecycle restoration from conflicts.json', () => 
       await seedRealMergeConflict(tmpDir, [fileName]);
       seedConflictsJson(tmpDir, [{ file: fileName }]);
 
-      const warnLines: string[] = [];
-      const originalWarn = console.warn;
-      console.warn = (msg: unknown, ...rest: unknown[]) => {
-        warnLines.push(typeof msg === 'string' ? msg : String(msg));
-        originalWarn.call(console, msg, ...rest);
-      };
-      cleanups.push(() => {
-        console.warn = originalWarn;
-      });
-
       const booted = await bootServer({
         config: ConfigSchema.parse({}),
         contentDir: tmpDir,
@@ -526,40 +423,11 @@ describeBoot('FR14: boot-time lifecycle restoration from conflicts.json', () => 
       cleanups.push(() => booted.destroy());
 
       const docName = fileName.replace(/\.md$/, '');
-      const dc = await booted.serverInstance.hocuspocus.openDirectConnection(docName);
-      try {
-        const lifecycleMap = dc.document?.getMap('lifecycle');
-        expect(lifecycleMap?.get('status')).toBe('conflict');
-        expect(lifecycleMap?.get('reason')).toBe('conflict-markers');
-      } finally {
-        await dc.disconnect();
-      }
+      const entry = (await listConflicts(booted.port)).find((c) => c.file === fileName);
+      expect(entry?.conflict).toBe('merge-native');
+      expect(entry?.docName).toBe(docName);
 
-      const restoredEvent = warnLines.find((l) => {
-        try {
-          const parsed = JSON.parse(l) as { event?: string; 'doc.name'?: string };
-          return (
-            parsed.event === 'lifecycle-restored-from-conflicts-json' &&
-            parsed['doc.name'] === docName
-          );
-        } catch (e) {
-          if (e instanceof SyntaxError) return false;
-          throw e;
-        }
-      });
-      expect(restoredEvent).toBeDefined();
-
-      const res = await fetch(`http://127.0.0.1:${booted.port}/api/agent-write-md`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          docName,
-          markdown: '# Replacement\n',
-          position: 'replace',
-          agentId: 'a',
-          agentName: 'A',
-        }),
-      });
+      const res = await agentWrite(booted.port, docName, '# Replacement\n');
       expect(res.status).toBe(409);
       const body = (await res.json()) as Record<string, unknown>;
       expect(body.type).toBe('urn:ok:error:doc-in-conflict');
@@ -595,11 +463,11 @@ describe('FR16: "Keep mine" dispatched as strategy="content" writes the bytes th
         if (!res?.ok) return false;
         const data = (await res.json()) as { documents?: Array<{ docName: string }> };
         return data.documents?.some((d) => d.docName === docName) ?? false;
-      });
+      }, 30_000);
 
       const client = await createTestClient(server.port, docName);
       cleanups.push(() => client.cleanup());
-      await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
+      await pollUntil(() => client.ytext.toString().includes('Base paragraph'), 30_000);
 
       const editMarker = '\n\nUSER EDIT typed mid-session.\n';
       client.doc.transact(() => {
@@ -614,28 +482,22 @@ describe('FR16: "Keep mine" dispatched as strategy="content" writes the bytes th
       expect(diskBefore).toBe(BASE_CONTENT);
       expect(diskBefore).not.toContain('USER EDIT');
 
-      const serverDoc = server.instance.hocuspocus.documents.get(docName);
-      if (!serverDoc) throw new Error(`serverDoc not found for ${docName}`);
-      const lifecycleMap = serverDoc.getMap('lifecycle');
-      lifecycleMap.set('status', 'conflict');
-      lifecycleMap.set('reason', 'conflict-markers');
-      expect(lifecycleMap.get('status')).toBe('conflict');
-      expect(lifecycleMap.get('reason')).toBe('conflict-markers');
-
-      const { ConflictStore } = await import('../../../server/src/conflict-storage.ts');
       const otherFile = `fr16-other-${crypto.randomUUID()}.md`;
       writeFileSync(join(server.contentDir, otherFile), '# Other\n', 'utf-8');
       await execFileAsync('git', ['-C', server.contentDir, 'add', otherFile]);
       await execFileAsync('git', ['-C', server.contentDir, 'commit', '-m', 'other base']);
-      const store = new ConflictStore(server.contentDir, 'main');
-      store.addConflict({ file: fileName, detectedAt: '2026-05-19T00:00:00.000Z' });
-      store.addConflict({ file: otherFile, detectedAt: '2026-05-19T00:00:00.000Z' });
+
+      const authority = server.instance.conflicts;
+      authority.raise({ kind: 'merge-native', file: fileName });
+      authority.raise({ kind: 'merge-native', file: otherFile });
+      expect(authority.has(docName)).toBe(true);
 
       const ourBytes = client.ytext.toString();
       expect(ourBytes).toContain('Base paragraph');
       expect(ourBytes).toContain('USER EDIT');
 
-      await store.resolveConflict(fileName, 'content', ourBytes);
+      expect(authority.findByFile(fileName)).toBeDefined();
+      await authority.resolve(fileName, 'content', ourBytes);
 
       const diskAfter = readFileSync(join(server.contentDir, fileName), 'utf-8');
       expect(diskAfter).toBe(ourBytes);
@@ -685,11 +547,7 @@ describe('FR17: Conflicts list HTTP shape (data feed the sidebar section consume
       const resolveRes = await fetch(`http://127.0.0.1:${server.port}/api/sync/resolve-conflict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          file: fileA,
-          strategy: 'content',
-          content: '# A resolved\n',
-        }),
+        body: JSON.stringify({ file: fileA, strategy: 'content', content: '# A resolved\n' }),
       });
       expect(resolveRes.ok).toBe(true);
 
@@ -717,6 +575,132 @@ describe('FR17: Conflicts list HTTP shape (data feed the sidebar section consume
       };
       expect(stored.conflicts).toHaveLength(1);
       expect(stored.conflicts[0]?.file).toBe(fileB);
+    } finally {
+      while (cleanups.length > 0) await cleanups.pop()?.();
+    }
+  }, 45_000);
+});
+
+describe('a conflicted doc under a content.dir subdirectory reports its ledger file', () => {
+  interface ConflictEnvelope {
+    file?: string;
+    conflict?: { kind?: string; reason?: string };
+    resolutionOptions?: string[];
+  }
+
+  async function bootSubdirProject(cleanups: Array<() => Promise<void> | void>) {
+    const { mkdtempSync, realpathSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-subdir-conflict-')));
+    cleanups.push(() => rmSync(projectDir, { recursive: true, force: true }));
+
+    await execFileAsync('git', ['init', '--initial-branch=main', projectDir]);
+    mkdirSync(join(projectDir, '.ok'), { recursive: true });
+    writeFileSync(join(projectDir, '.ok', 'config.yml'), '', 'utf-8');
+    writeFileSync(join(projectDir, '.ok', '.gitignore'), '', 'utf-8');
+
+    const contentDir = join(projectDir, 'docs');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(join(contentDir, 'note.md'), MARKED_CONTENT, 'utf-8');
+
+    const localDir = getLocalDir(projectDir);
+    mkdirSync(localDir, { recursive: true });
+    writeFileSync(
+      join(localDir, 'conflicts.json'),
+      JSON.stringify({
+        version: 1,
+        branch: 'main',
+        conflicts: [
+          {
+            kind: 'reconcile',
+            file: 'docs/note.md',
+            detectedAt: '2026-05-19T00:00:00.000Z',
+            reason: 'disk-markers',
+            stages: { base: BASE_CONTENT, ours: BASE_CONTENT, theirs: '# Theirs\n' },
+          },
+        ],
+      }),
+      'utf-8',
+    );
+
+    const booted = await bootServer({
+      config: ConfigSchema.parse({}),
+      projectDir,
+      contentDir,
+      port: 0,
+      quiet: true,
+      gitEnabled: false,
+      idleShutdownMs: null,
+    });
+    cleanups.push(() => booted.destroy());
+    return booted;
+  }
+
+  test('rename and duplicate return the ledger file plus the per-kind resolution options', async () => {
+    const cleanups: Array<() => Promise<void> | void> = [];
+    try {
+      const booted = await bootSubdirProject(cleanups);
+
+      const listed = await listConflicts(booted.port);
+      expect(listed.map((c) => c.file)).toEqual(['docs/note.md']);
+      expect(listed[0]?.docName).toBe('note');
+
+      const renameRes = await fetch(`http://127.0.0.1:${booted.port}/api/rename-path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'file', fromPath: 'note.md', toPath: 'renamed.md' }),
+      });
+      expect(renameRes.status).toBe(409);
+      const renameBody = (await renameRes.json()) as ConflictEnvelope;
+      expect(renameBody.file).toBe('docs/note.md');
+      expect(renameBody.conflict).toEqual({ kind: 'reconcile', reason: 'disk-markers' });
+      expect(renameBody.resolutionOptions).toEqual(['mine', 'content', 'delete']);
+
+      const dupRes = await fetch(`http://127.0.0.1:${booted.port}/api/duplicate-path`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'file', path: 'note.md' }),
+      });
+      expect(dupRes.status).toBe(409);
+      const dupBody = (await dupRes.json()) as ConflictEnvelope;
+      expect(dupBody.file).toBe('docs/note.md');
+      expect(dupBody.resolutionOptions).toEqual(['mine', 'content', 'delete']);
+    } finally {
+      while (cleanups.length > 0) await cleanups.pop()?.();
+    }
+  }, 45_000);
+
+  test('the batch handler 409 entry carries the same conflict envelope without theirs', async () => {
+    const cleanups: Array<() => Promise<void> | void> = [];
+    try {
+      const booted = await bootSubdirProject(cleanups);
+
+      const res = await fetch(`http://127.0.0.1:${booted.port}/api/agent-write-batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          agentId: 'a',
+          agentName: 'A',
+          docs: [{ docName: 'note', markdown: '# Replacement\n', position: 'replace' }],
+        }),
+      });
+      const body = (await res.json()) as {
+        results?: Array<{
+          status: string;
+          error?: {
+            type?: string;
+            detail?: string;
+            conflict?: { kind?: string; reason?: string };
+            resolutionOptions?: string[];
+          };
+        }>;
+      };
+      const entry = body.results?.[0];
+      expect(entry?.status).toBe('error');
+      expect(entry?.error?.type).toBe('urn:ok:error:doc-in-conflict');
+      expect(entry?.error?.conflict).toEqual({ kind: 'reconcile', reason: 'disk-markers' });
+      expect(entry?.error?.resolutionOptions).toEqual(['mine', 'content', 'delete']);
+      expect(entry?.error?.resolutionOptions).not.toContain('theirs');
     } finally {
       while (cleanups.length > 0) await cleanups.pop()?.();
     }

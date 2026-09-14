@@ -577,7 +577,12 @@ describe('lint fix live-write preservation', () => {
         clientName: 'codex',
       },
     );
-    session.dc.document.getMap('lifecycle').set('status', 'conflict');
+    server.instance.conflicts.raise({
+      kind: 'reconcile',
+      file: `${docName}.md`,
+      reason: 'disk-markers',
+      stages: { base: TABBED_BODY, ours: TABBED_BODY, theirs: TABBED_BODY },
+    });
     __resetContributorsForTests();
 
     const response = await postFix({
@@ -588,7 +593,11 @@ describe('lint fix live-write preservation', () => {
       summary: 'Must not land',
     });
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ type: 'urn:ok:error:doc-in-conflict' });
+    expect(await response.json()).toMatchObject({
+      type: 'urn:ok:error:doc-in-conflict',
+      conflict: { kind: 'reconcile', reason: 'disk-markers' },
+      resolutionOptions: ['mine', 'content', 'delete'],
+    });
     expect(session.dc.document.getText('source').toString()).toBe(TABBED_BODY);
     expect(readFileSync(file, 'utf-8')).toBe(TABBED_BODY);
     expect(contributors()).toEqual([]);

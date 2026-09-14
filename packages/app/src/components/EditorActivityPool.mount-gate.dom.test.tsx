@@ -23,7 +23,15 @@ vi.doMock('@/editor/DocumentContext', () => ({
 vi.doMock('./PageListContext', () => ({
   usePageList: () => ({ pages: new Map(), loading: false }),
 }));
-vi.doMock('@/hooks/use-lifecycle-status', () => ({ useLifecycleStatus: () => 'ready' }));
+vi.doMock('@/hooks/use-conflicts', () => ({
+  useDocConflict: () => null,
+  useConflicts: () => ({
+    conflicts: [],
+    loading: false,
+    error: null,
+    refresh: () => {},
+  }),
+}));
 vi.doMock('@/editor/TiptapEditor', () => ({
   TiptapEditor: () => <div data-testid="tiptap-editor" />,
 }));

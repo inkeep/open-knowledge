@@ -13,6 +13,7 @@ import {
   type DeriveLossObservation,
   detectPairedIntakeLoss,
 } from './bridge-loss-detector.ts';
+import { RECONCILE_TEST_CONFLICTS } from './conflict-authority.test-helper.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { reconcileDiskBeforeAgentWrite } from './external-change.ts';
 import { mdManager } from './md-manager.ts';
@@ -85,6 +86,7 @@ describe('reconcileDiskBeforeAgentWrite paired-intake instrumentation', () => {
         contentDir,
         undefined,
         reporter,
+        RECONCILE_TEST_CONFLICTS,
       );
 
       expect(result.reconciled).toBe(true);
@@ -129,6 +131,7 @@ describe('reconcileDiskBeforeAgentWrite paired-intake instrumentation', () => {
         contentDir,
         undefined,
         (name, obs, writerId, site) => trips.push({ docName: name, obs, writerId, site }),
+        RECONCILE_TEST_CONFLICTS,
       );
 
       expect(result.reconciled).toBe(true);

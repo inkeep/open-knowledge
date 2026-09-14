@@ -35,8 +35,8 @@ To point an MCP client at this server, locally or over a tunnel from another mac
 | `import` | Acquire a skill from a full skills.sh skill-page URL (`https://www.skills.sh/<owner>/<repo>/<skill>`, or `https://www.skills.sh/site/<hostname>/<skill>` for a website catalog), `owner/repo[/subpath]`, a git URL, or a local / `file://` path into the vendor-neutral `.agents/skills/<name>/` hub as versioned content — live immediately, with cross-harness projection via `install`. Pass the required `add` array with at least one install location (an editor id, `agents`, or a custom root path). Use `skill` to choose one skill from a multi-skill source or a `skills({ query })` result. Records provenance in `.ok/skills-lock.json`; a name collision lands under `<name>-imported`; scripts are imported as content and never executed |
 | `checkpoint` | Save a project-wide version snapshot — a single restore point. Returns its `version` |
 | `restore_version` | Restore one `document` or `skill` to a historical `version` (the SHA from `history` or `checkpoint`) |
-| `conflicts` | Read tracked conflicts (`conflictKind: "git"` or `"stale-external-write"`). `kind: "list"` enumerates them, including `variant: "working-tree"` for Git working-tree overlays; `kind: "content"` returns one file's base / ours / theirs versions |
-| `resolve_conflict` | Apply a chosen resolution (`mine` / `theirs` / `content` / `delete`). Git-index resolution stages files and commits after the final tracked conflict clears; local stale-save and working-tree overlay resolutions create no resolution commit |
+| `conflicts` | Read tracked conflicts. `kind: "list"` enumerates them (`{ file, detectedAt, conflict, reason?, conflictKind?, docName }`); `kind: "content"` returns one file's stages and metadata (`{ file, base, ours, theirs, shape, conflict, reason?, conflictKind?, resolutionOptions }`). `conflictKind: "stale-external-write"` identifies a protected stale save; Git working-tree overlays use `conflict.kind: "working-tree"` |
+| `resolve_conflict` | Write a chosen resolution (`mine` / `theirs` / `content` / `delete`, narrowed by that conflict's `resolutionOptions`). Only `merge-native` creates a resolution commit |
 
 ## Output shape mirrors the input
 
@@ -66,24 +66,41 @@ Cap is 80 characters. Avoid secrets and PII; summaries persist to git history.
 
 ## Conflict-aware writes
 
-Every mutating tool (`write`, `edit`, `delete`, `move`, `restore_version`, and agent undo) refuses to mutate a doc whose lifecycle status is `conflict`, returning `urn:ok:error:doc-in-conflict` (409). This includes local stale-external-write conflicts with GitHub sync disabled.
+A doc can land in conflict through a Git merge, a pull that collides with a local overlay, or OpenKnowledge's own reconciliation of the editor against disk. Reconciliation covers `stale-external-write`, which protects an acknowledged edit when another app restores the exact older file version, even with GitHub sync disabled. Every mutating tool (`write`, `edit`, `delete`, `move`, `restore_version`, and agent undo) refuses a conflicted doc with an RFC 9457 problem response (409) that names the kind and the strategies that apply to it:
 
-To recover, call `conflicts({ kind: "list" })` to identify the `conflictKind` and any `variant: "working-tree"`, then `conflicts({ kind: "content", file })` to inspect both versions. The content response's `conflictKind: "git"` covers both Git-index conflicts and working-tree overlays; inspect the list entry to distinguish them. Call `resolve_conflict` with one of:
+```json
+{
+  "type": "urn:ok:error:doc-in-conflict",
+  "title": "Document is in conflict.",
+  "status": 409,
+  "detail": "The document is in a conflict state. Call conflicts({ kind: \"content\" }) + resolve_conflict before retrying.",
+  "file": "notes/sso.md",
+  "conflict": { "kind": "reconcile", "reason": "disk-markers" },
+  "resolutionOptions": ["mine", "content", "delete"]
+}
+```
 
-- `mine`: for Git-index conflicts, restore your committed version (stage 2); for working-tree overlays, keep the working-tree file; for stale external writes, keep the protected collaborative version, recovered from the local snapshot when needed.
-- `theirs`: for Git-index conflicts, restore their committed version (stage 3); for working-tree overlays, restore the pinned incoming blob; for stale external writes, accept the recorded older file version, including an intentional revert.
-- `content`: write the exact bytes you supply (for example, a merged result you composed by reading both stages). An explicit empty string keeps an empty file; omitting `content` is invalid. Use `delete` only to remove the file.
-- `delete`: remove the document (`git rm` for Git-index conflicts).
+A write that first detects the stale file during its final disk flush returns a different 409, `urn:ok:error:stale-external-write`. The edit reached collaborative state and the recovery snapshot, but the disk write did not happen. Resolve and re-read before retrying, so you don't duplicate an append that already reached `ours`.
 
-Git-index resolution stages the file and creates a merge commit after the final tracked conflict clears. Local stale-save and working-tree overlay resolutions create no resolution commit. A failed resolution remains tracked for retry; the disk, collaborative state, and index update are not one atomic transaction.
+`conflict.kind` says where the conflict came from, and the kind decides what a resolve does. `merge-native` is a git merge that left unmerged stages in the index. Resolving one stages your choice with git and commits the merge once no `merge-native` conflict is left. `working-tree` is a pull-only overlay collision, pinned to the origin blob it hit. `reconcile` is OpenKnowledge's own three-way merge of the editor against disk, including protected stale saves; no git object holds those stages, so OpenKnowledge snapshots them when it detects the conflict. Resolving a `working-tree` or `reconcile` conflict commits nothing.
 
-A write that detects a stale file during its final disk flush returns the distinct `urn:ok:error:stale-external-write` (409): the edit reached collaborative state and the recovery snapshot, but the disk write was skipped. Resolve and re-read before retrying to avoid duplicating an already-applied append.
+A `reconcile` conflict also carries a `reason`: `merged-with-markers`, `refused-conflict-markers`, `refused-too-large`, `disk-markers`, or `stale-external-write`. On that last reason the compatibility field `conflictKind` is `stale-external-write`. Every other row uses `conflictKind: "git"`.
 
 A write to a document whose file has been deleted returns `urn:ok:error:doc-removed` (409): the edit reached collaborative state, but the disk write was refused rather than recreating the removed file. This is not retryable — the document is gone. Re-create it with `write` if you still want the content.
 
 A write whose document path cannot be resolved inside the content directory returns `urn:ok:error:path-escape` (400): the edit reached collaborative state, but the disk write was refused. This covers a symlink cycle at the document's own path and a link resolving outside the content directory. It is not retryable — repair the path on disk before writing this content again.
 
-To detect conflict state proactively without waiting for a 409, call `conflicts({ kind: "list" })`; each entry is `{ file, detectedAt, conflictKind, … }`. `conflicts({ kind: "content" })` adds the doc's `lifecycleStatus` alongside its versions.
+### Resolving a conflict
+
+1. `conflicts({ kind: "list" })` returns every tracked conflict as `{ file, detectedAt, conflict, reason?, conflictKind?, docName }`. Call it to detect conflicts without waiting for a 409.
+2. `conflicts({ kind: "content", file })` returns `{ content: { file, base, ours, theirs, shape, conflict, reason?, conflictKind?, resolutionOptions } }`. `ours` is the live Y.Text when the doc is loaded and marker-free; otherwise it falls back to the stage pinned at detection. For a stale external write, `ours` is the protected content and `theirs` is the rejected older save.
+3. `resolve_conflict({ file, strategy, content? })` writes the chosen bytes. Send a strategy from that conflict's `resolutionOptions`, not the full set. A `reconcile` conflict whose `theirs` side is raw marker text does not offer `theirs`, and sending it anyway returns a 422 with `refusal: "strategy-not-offered"`. The same 422 shape carries `refusal: "markers-in-content"` when the bytes you sent still contain markers, and that field is what tells the two apart. A 404 (`urn:ok:error:no-conflict-tracked`) means nothing is tracked for that path. Re-read the list; it does not mean your resolution was saved.
+
+What `mine` and `theirs` mean depends on the kind. On `merge-native` they are `git checkout --ours` and `git checkout --theirs` (the committed stages 2 and 3), and `delete` is `git rm`. On `working-tree`, `mine` keeps your overlay verbatim and `theirs` restores the pinned origin blob. On `reconcile`, `mine` uses the latest marker-free live Y.Text, falling back to the captured editor stage when the document is unloaded or contains markers; `theirs` uses the disk bytes captured at detection. `content` always writes the bytes you supply, and `delete` always removes the file.
+
+`file` is a `.md` or `.mdx` path relative to the project directory, extension included. It mirrors the on-disk shape, not the extension-less `document` path the other tools take.
+
+For how a conflict appears and resolves in the app, see [Resolving a conflict](../features/github-sync.mdx#resolving-a-conflict). The `conflicts` and `resolve_conflict` tool descriptions repeat the per-kind rules at the call site.
 
 ## Preview links
 

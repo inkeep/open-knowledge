@@ -11,10 +11,12 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { CONFIG_VALIDATION_REVERT_ORIGIN } from '../config-edit-origin.ts';
+import type { ConflictAuthority } from '../conflict-authority.ts';
 import type { ContentFilter } from '../content-filter.ts';
 import { safeContentPath } from '../content-path.ts';
 import type { DerivedDocumentIndexApiPort } from '../derived-document-index.ts';
 import { canonicalDocName } from '../doc-extensions.ts';
+import type { DocumentDurabilityState } from '../document-durability-state.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { getRequestId } from './request-id.ts';
@@ -22,7 +24,8 @@ import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
 export interface TestRouteDeps {
-  resetDocumentDurability: ((docName: string) => void) | undefined;
+  conflicts: ConflictAuthority;
+  durabilityState: DocumentDurabilityState;
   resolveAlias: (docName: string) => string;
   contentDir: string;
   log: import('../logger.ts').PinoLogger;
@@ -39,7 +42,8 @@ export interface TestRouteDeps {
 
 export function createTestRoutes(deps: TestRouteDeps): ApiRouteGroup {
   const {
-    resetDocumentDurability,
+    conflicts,
+    durabilityState,
     resolveAlias,
     contentDir,
     log,
@@ -80,7 +84,8 @@ export function createTestRoutes(deps: TestRouteDeps): ApiRouteGroup {
         }
         const doc = hocuspocus.documents.get(docName);
         if (doc) await (forceUnloadDocument ?? hocuspocus.unloadDocument.bind(hocuspocus))(doc);
-        resetDocumentDurability?.(docName);
+        durabilityState.deleteReconciledBase(docName);
+        conflicts.dissolveReconcile(docName);
         writeFileSync(filePath, '', 'utf-8');
         await derivedDocumentIndex?.testOnly?.resetDocumentForTest(docName);
         const resetOkignoreParam = url.searchParams.get('reset-okignore');

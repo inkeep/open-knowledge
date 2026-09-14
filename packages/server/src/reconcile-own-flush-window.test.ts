@@ -5,7 +5,8 @@ import type { Hocuspocus } from '@hocuspocus/server';
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
-import { isDocInConflict } from './conflict-errors.ts';
+import { RECONCILE_TEST_CONFLICTS } from './conflict-authority.test-helper.ts';
+import { isDocInConflict } from './conflict-authority.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
@@ -117,6 +118,9 @@ async function drivePhantomDivergence(
         fakeHocuspocusWith(docName, document),
         docName,
         tmpDir,
+        undefined,
+        undefined,
+        RECONCILE_TEST_CONFLICTS,
       );
       probe.conflictAfterGuard = isDocInConflict(document as never);
     },
@@ -181,6 +185,9 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
+      undefined,
+      undefined,
+      RECONCILE_TEST_CONFLICTS,
     );
     expect(laterGuard.reconciled).toBe(false);
 

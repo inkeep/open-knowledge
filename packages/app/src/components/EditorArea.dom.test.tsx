@@ -255,8 +255,14 @@ vi.doMock('@/hooks/use-document-stats', () => ({
   useDocumentStats: () => null,
 }));
 
-vi.doMock('@/hooks/use-lifecycle-status', () => ({
-  useLifecycleStatus: () => 'ready',
+vi.doMock('@/hooks/use-conflicts', () => ({
+  useDocConflict: () => null,
+  useConflicts: () => ({
+    conflicts: [],
+    loading: false,
+    error: null,
+    refresh: () => {},
+  }),
 }));
 
 vi.doMock('@/presence/use-sync-status', () => ({

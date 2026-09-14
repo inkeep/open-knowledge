@@ -42,7 +42,8 @@ import {
   isSystemDoc,
 } from './cc1-broadcast.ts';
 import { type ConfigPersistenceCtx, loadConfigDoc, storeConfigDoc } from './config-persistence.ts';
-import { frozenDocLifecycleStatus } from './conflict-errors.ts';
+import type { ConflictAuthority } from './conflict-authority.ts';
+import type { FreezingLifecycleStatus, LifecycleView } from './conflict-kinds.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import type { ContributorEntry } from './contributor-tracker.ts';
 import {
@@ -247,6 +248,7 @@ export interface PersistenceOptions {
   contentDir: string;
   projectDir: string;
   durabilityState?: DocumentDurabilityState;
+  conflicts?: Pick<ConflictAuthority, 'dissolveReconcile' | 'fileOf' | 'raise'>;
   gitEnabled?: boolean;
   commitDebounceMs?: number;
   wipRef?: string;
@@ -280,6 +282,7 @@ export interface PersistenceOptions {
   mdManager?: MarkdownManager;
   getLossRing?: () => Pick<LossCaptureRing, 'record'> | undefined;
   isRecentlyRemoved?: (docName: string) => boolean;
+  lifecycleOf?: (document: Y.Doc, docName: string) => LifecycleView | null;
   ephemeral?: boolean;
 }
 
@@ -389,6 +392,17 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
   const onManagedSkillPersisted = options?.onManagedSkillPersisted;
   const mgr = options?.mdManager ?? mdManager;
   const ephemeral = options?.ephemeral ?? false;
+  const frozenStatusOf = (
+    document: Y.Doc,
+    documentName: string,
+  ): FreezingLifecycleStatus | null => {
+    const view = options?.lifecycleOf?.(document, documentName);
+    if (view === undefined) {
+      const status = document.getMap('lifecycle').get('status');
+      return status === 'deleted-upstream' || status === 'renamed' ? status : null;
+    }
+    return view === null ? null : view.status;
+  };
 
   const configLkgCache = new Map<string, string>();
   const configPersistenceCtx: ConfigPersistenceCtx = {
@@ -1234,7 +1248,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
       'persistence.onStoreDocument',
       { attributes: { 'doc.name': documentName } },
       async () => {
-        const lifecycleStatus = frozenDocLifecycleStatus(document);
+        const lifecycleStatus = frozenStatusOf(document, documentName);
         if (lifecycleStatus !== null) {
           log.info(
             { documentName, lifecycleStatus },
@@ -1605,6 +1619,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 document,
                 documentName,
                 diskContent,
+                options?.conflicts,
                 markdown,
               )
             ) {
@@ -1940,6 +1955,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             document,
             documentName,
             raw,
+            options?.conflicts,
           );
           let contentToLoad = raw;
           if (staleExternalWrite) {

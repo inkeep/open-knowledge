@@ -1,18 +1,13 @@
-import { SyncResolveConflictRequestSchema } from '@inkeep/open-knowledge-core';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ConflictEntryWire } from '@inkeep/open-knowledge-core';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import * as Y from 'yjs';
 
 vi.doMock('sonner', () => ({
-  toast: { error: () => {}, success: () => {}, info: () => {} },
+  toast: { error: () => {}, success: () => {}, info: () => {}, warning: () => {} },
 }));
 
 vi.doMock('next-themes', () => ({
   useTheme: () => ({ resolvedTheme: 'light' }),
-}));
-
-vi.doMock('@/lib/documents-events', () => ({
-  subscribeToDocumentsChanged: () => () => {},
 }));
 
 const { DiffViewBoundary } = await import('./DiffViewBoundary');
@@ -24,54 +19,78 @@ interface CapturedFetch {
 
 const fetchCalls: CapturedFetch[] = [];
 
-function makeProvider(initialBody: string) {
-  const doc = new Y.Doc();
-  doc.getText('source').insert(0, initialBody);
-  return { document: doc } as unknown as Parameters<typeof DiffViewBoundary>[0]['provider'];
+function entry(file: string, overrides: Partial<ConflictEntryWire> = {}): ConflictEntryWire {
+  return {
+    file,
+    detectedAt: '2026-05-20T00:00:00.000Z',
+    conflict: 'merge-native',
+    docName: file.replace(/\.mdx?$/, ''),
+    ...overrides,
+  } as ConflictEntryWire;
 }
 
-type ConflictKind = 'both-modified' | 'delete-modify' | 'modify-delete';
+type ConflictShape = 'both-modified' | 'delete-modify' | 'modify-delete';
 
-function strategyFetch(kind: ConflictKind, resolvePending?: Promise<unknown>) {
-  return (input: RequestInfo | URL, init?: RequestInit) => {
+function contentResponse(
+  file: string,
+  shape: ConflictShape,
+  overrides: Record<string, unknown> = {},
+): Response {
+  return new Response(
+    JSON.stringify({
+      file,
+      base: 'base content\n',
+      ours: shape === 'delete-modify' ? '' : 'our modification\n',
+      theirs: shape === 'modify-delete' ? '' : 'their modification\n',
+      kind: shape,
+      conflict: 'merge-native',
+      resolutionOptions: ['mine', 'theirs', 'content', 'delete'],
+      ...overrides,
+    }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
+}
+
+function stubFetch(
+  handler: (url: string, init?: RequestInit) => Response | Promise<Response>,
+): void {
+  globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString();
     fetchCalls.push({ url, init });
-    if (url === '/api/sync/conflicts') {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z' }],
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
-      );
-    }
+    return Promise.resolve(handler(url, init));
+  }) as typeof fetch;
+}
+
+function strategyFetch(
+  file: string,
+  shape: ConflictShape,
+  options: { resolvePending?: Promise<unknown>; resolutionOptions?: string[] } = {},
+) {
+  stubFetch((url) => {
     if (url.startsWith('/api/sync/conflict-content')) {
-      return Promise.resolve(
-        new Response(
-          JSON.stringify({
-            file: 'foo.md',
-            base: 'base content\n',
-            ours: kind === 'delete-modify' ? '' : 'our modification\n',
-            theirs: kind === 'modify-delete' ? '' : 'their modification\n',
-            kind,
-            lifecycleStatus: 'conflict',
-          }),
-          { status: 200, headers: { 'Content-Type': 'application/json' } },
-        ),
+      return contentResponse(
+        file,
+        shape,
+        options.resolutionOptions === undefined
+          ? {}
+          : { resolutionOptions: options.resolutionOptions },
       );
     }
     if (url === '/api/sync/resolve-conflict') {
       const ok = new Response('{}', { status: 200 });
-      return resolvePending ? resolvePending.then(() => ok) : Promise.resolve(ok);
+      return options.resolvePending ? options.resolvePending.then(() => ok) : ok;
     }
-    return Promise.resolve(new Response('not found', { status: 404 }));
-  };
+    return new Response('not found', { status: 404 });
+  });
 }
 
 function lastResolveBody(): { file?: string; strategy?: string } {
   const call = fetchCalls.find((c) => c.url === '/api/sync/resolve-conflict');
-  return SyncResolveConflictRequestSchema.parse(JSON.parse(String(call?.init?.body ?? '{}')));
+  return JSON.parse(String(call?.init?.body ?? '{}'));
+}
+
+function contentFetches(): CapturedFetch[] {
+  return fetchCalls.filter((c) => c.url.startsWith('/api/sync/conflict-content'));
 }
 
 describe('DiffViewBoundary (Tier-3 mount)', () => {
@@ -79,41 +98,24 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
 
   beforeEach(() => {
     fetchCalls.length = 0;
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              conflicts: [
-                { file: 'docs/notes.md', detectedAt: '2026-05-20T00:00:00.000Z' },
-                { file: 'logs/entry.md', detectedAt: '2026-05-20T00:00:00.000Z' },
-              ],
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
+    stubFetch((url) => {
       if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              file: 'docs/notes.md',
-              base: '# Base\nbase paragraph\n',
-              ours: '# Server-ours\nfrom-git-index\n',
-              theirs: '# Theirs\nteam paragraph\n',
-              lifecycleStatus: 'conflict',
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
+        return new Response(
+          JSON.stringify({
+            file: 'docs/notes.md',
+            base: '# Base\nbase paragraph\n',
+            ours: '# Server-ours\nfrom-git-index\n',
+            theirs: '# Theirs\nteam paragraph\n',
+            kind: 'both-modified',
+            conflict: 'merge-native',
+            resolutionOptions: ['mine', 'theirs', 'content', 'delete'],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
         );
       }
-      if (url === '/api/sync/resolve-conflict') {
-        return Promise.resolve(new Response('{}', { status: 200 }));
-      }
-      return Promise.resolve(new Response('not found', { status: 404 }));
-    };
+      if (url === '/api/sync/resolve-conflict') return new Response('{}', { status: 200 });
+      return new Response('not found', { status: 404 });
+    });
     consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -122,278 +124,64 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     consoleWarnSpy.mockRestore();
   });
 
-  test('fetches conflict-content with ?source=ytext and renders the diff', async () => {
-    const provider = makeProvider('# My Y.Text bytes\nclient-side\n');
-    render(<DiffViewBoundary docName="docs/notes" provider={provider} />);
+  test('issues the stage fetch on the first effect when the entry is present at mount', async () => {
+    render(<DiffViewBoundary docName="docs/notes" conflict={entry('docs/notes.md')} />);
 
     await waitFor(() => {
-      const fetched = fetchCalls.find((c) => c.url.startsWith('/api/sync/conflict-content'));
-      expect(fetched).toBeTruthy();
-      expect(fetched?.url).toContain('source=ytext');
-      expect(fetched?.url).toContain('file=docs%2Fnotes.md');
+      expect(contentFetches().length).toBe(1);
     });
-
+    const fetched = contentFetches()[0];
+    expect(fetched?.url).toContain('source=ytext');
+    expect(fetched?.url).toContain('file=docs%2Fnotes.md');
+    expect(fetchCalls.some((c) => c.url === '/api/sync/conflicts')).toBe(false);
     expect(screen.queryByText(/Couldn't load conflict content/i)).toBeNull();
   });
 
-  test('carries the stale-save kind from conflict content into the diff view', async () => {
-    globalThis.fetch = (input: RequestInfo | URL) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      const body =
-        url === '/api/sync/conflicts'
-          ? { conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z' }] }
-          : {
-              file: 'foo.md',
-              base: '',
-              ours: 'Protected current version.\n',
-              theirs: 'Blocked older save.\n',
-              kind: 'both-modified',
-              conflictKind: 'stale-external-write',
-              lifecycleStatus: 'conflict',
-            };
-      return Promise.resolve(Response.json(body));
-    };
-    render(
-      <DiffViewBoundary docName="foo" provider={makeProvider('Protected current version.\n')} />,
-    );
+  test('bounds the conflict-content fetch with an abort signal', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout');
 
-    const alert = await screen.findByRole('status');
-    expect(alert.textContent).toContain('Current is the version OpenKnowledge protected.');
-    expect(alert.textContent).toContain('Incoming is the restored version.');
-    expect(screen.queryByText(/No common ancestor/)).toBeNull();
+    render(<DiffViewBoundary docName="docs/notes" conflict={entry('docs/notes.md')} />);
+
+    await waitFor(() => {
+      expect(contentFetches().length).toBe(1);
+    });
+    const fetched = contentFetches()[0];
+    expect(fetched?.init?.signal).toBeInstanceOf(AbortSignal);
+    expect(fetched?.init?.signal?.aborted).toBe(false);
+    expect(timeout).toHaveBeenCalledWith(20_000);
   });
 
-  test.each([undefined, 'git', 'future-conflict'])(
-    'diagnoses only an unrecognized conflict discriminator: %j',
-    async (conflictKind) => {
-      globalThis.fetch = (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input.toString();
-        return Promise.resolve(
-          Response.json(
-            url === '/api/sync/conflicts'
-              ? { conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z' }] }
-              : {
-                  file: 'foo.md',
-                  base: 'Original content.\n',
-                  ours: 'Current content.\n',
-                  theirs: 'Incoming content.\n',
-                  kind: 'both-modified',
-                  conflictKind,
-                  lifecycleStatus: 'conflict',
-                },
-          ),
-        );
-      };
-      render(<DiffViewBoundary docName="foo" provider={makeProvider('Current content.\n')} />);
-      expect(await screen.findByRole('button', { name: /^Accept current/ })).toBeTruthy();
-      const diagnostics = consoleWarnSpy.mock.calls
-        .map(([message]) => JSON.parse(String(message)))
-        .filter((event) => event.event === 'conflict-discriminator-unrecognized');
-      expect(diagnostics).toEqual(
-        conflictKind === 'future-conflict'
-          ? [
-              {
-                event: 'conflict-discriminator-unrecognized',
-                file: 'foo.md',
-                receivedConflictKind: conflictKind,
-              },
-            ]
-          : [],
-      );
-    },
-  );
+  test('refetches the stages when the file or its detection time changes', async () => {
+    const raised = entry('docs/notes.md');
+    const { rerender } = render(<DiffViewBoundary docName="docs/notes" conflict={raised} />);
+    await waitFor(() => {
+      expect(contentFetches().length).toBe(1);
+    });
 
-  test.each([
-    {
-      conflictKind: 'stale-external-write',
-      ours: '',
-      theirs: 'Older content.\n',
-      choice: 'current',
-      strategy: 'content',
-      content: '',
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: 'Current content.\n',
-      theirs: '',
-      choice: 'incoming',
-      strategy: 'theirs',
-      content: undefined,
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: 'Current content.\n',
-      theirs: 'Older content.\n',
-      choice: 'current',
-      strategy: 'content',
-      content: 'Current content.\n',
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: 'Current content.\n',
-      theirs: 'Older content.\n',
-      choice: 'incoming',
-      strategy: 'theirs',
-      content: undefined,
-    },
-    {
-      conflictKind: 'git',
-      ours: '',
-      theirs: 'Older content.\n',
-      choice: 'current',
-      strategy: 'content',
-      content: '',
-    },
-    {
-      conflictKind: 'git',
-      ours: 'Current content.\n',
-      theirs: '',
-      choice: 'incoming',
-      strategy: 'content',
-      content: '',
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: '',
-      theirs: '',
-      choice: 'current',
-      strategy: 'content',
-      content: '',
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: '',
-      theirs: '',
-      choice: 'incoming',
-      strategy: 'theirs',
-      content: undefined,
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: 'Same content.\n',
-      theirs: 'Same content.\n',
-      choice: 'incoming',
-      strategy: 'theirs',
-      content: undefined,
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: 'Same content.\n',
-      theirs: 'Same content.\n',
-      choice: 'current',
-      strategy: 'content',
-      content: 'Same content.\n',
-    },
-    {
-      conflictKind: 'stale-external-write',
-      ours: 'Current content.\n',
-      theirs: 'Older content.\n',
-      choice: 'both',
-      strategy: 'content',
-      content: 'Current content.\nOlder content.\n',
-    },
-  ])(
-    'resolves $conflictKind $choice via $strategy without changing selected bytes',
-    async ({ conflictKind, ours, theirs, choice, strategy, content }) => {
-      globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = typeof input === 'string' ? input : input.toString();
-        fetchCalls.push({ url, init });
-        if (url === '/api/sync/conflicts') {
-          return Promise.resolve(
-            Response.json({
-              conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z', conflictKind }],
-            }),
-          );
-        }
-        if (url.startsWith('/api/sync/conflict-content')) {
-          return Promise.resolve(
-            Response.json({
-              file: 'foo.md',
-              base: conflictKind === 'stale-external-write' ? theirs : 'Original content.\n',
-              ours,
-              theirs,
-              kind: 'both-modified',
-              conflictKind,
-              lifecycleStatus: 'conflict',
-            }),
-          );
-        }
-        return Promise.resolve(Response.json({}));
-      };
-      render(<DiffViewBoundary docName="foo" provider={makeProvider(ours)} />);
+    rerender(<DiffViewBoundary docName="docs/notes" conflict={raised} />);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(contentFetches().length).toBe(1);
 
-      const choiceButton = await screen.findByRole('button', {
-        name: new RegExp(`^Accept ${choice}`),
-      });
-      expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
-      fireEvent.click(choiceButton);
-      fireEvent.click(await screen.findByRole('button', { name: 'Apply changes' }));
+    rerender(
+      <DiffViewBoundary
+        docName="docs/notes"
+        conflict={entry('docs/notes.md', { detectedAt: '2026-05-20T00:05:00.000Z' })}
+      />,
+    );
+    await waitFor(() => {
+      expect(contentFetches().length).toBe(2);
+    });
 
-      await waitFor(() => {
-        expect(lastResolveBody()).toEqual({
-          file: 'foo.md',
-          strategy,
-          ...(content === undefined ? {} : { content }),
-        });
-      });
-    },
-  );
-
-  test.each(['current', 'incoming'] as const)(
-    'accepts identical stale-write %s when activated as soon as it becomes observable',
-    async (choice) => {
-      globalThis.fetch = (input: RequestInfo | URL) => {
-        const url = typeof input === 'string' ? input : input.toString();
-        return Promise.resolve(
-          Response.json(
-            url === '/api/sync/conflicts'
-              ? {
-                  conflicts: [
-                    {
-                      file: 'foo.md',
-                      detectedAt: '2026-05-20T00:00:00.000Z',
-                      conflictKind: 'stale-external-write',
-                    },
-                  ],
-                }
-              : {
-                  file: 'foo.md',
-                  base: 'Same content.\n',
-                  ours: 'Same content.\n',
-                  theirs: 'Same content.\n',
-                  kind: 'both-modified',
-                  conflictKind: 'stale-external-write',
-                  lifecycleStatus: 'conflict',
-                },
-          ),
-        );
-      };
-
-      let activated = false;
-      const observer = new MutationObserver(() => {
-        if (activated) return;
-        const choiceButton = screen.queryByRole('button', {
-          name: new RegExp(`^Accept ${choice}`),
-        });
-        if (!choiceButton) return;
-        activated = true;
-        fireEvent.click(choiceButton);
-      });
-      observer.observe(document.body, { childList: true, subtree: true });
-
-      try {
-        render(<DiffViewBoundary docName="foo" provider={makeProvider('Same content.\n')} />);
-        expect(await screen.findByRole('button', { name: 'Apply changes' })).toBeTruthy();
-        expect(activated).toBe(true);
-      } finally {
-        observer.disconnect();
-      }
-    },
-  );
+    rerender(<DiffViewBoundary docName="docs/other" conflict={entry('docs/other.md')} />);
+    await waitFor(() => {
+      expect(contentFetches().length).toBe(3);
+    });
+  });
 
   test('emits editor-area-swap-to-diffview on mount and -from on unmount', async () => {
-    const provider = makeProvider('seed\n');
-    const { unmount } = render(<DiffViewBoundary docName="logs/entry" provider={provider} />);
+    const { unmount } = render(
+      <DiffViewBoundary docName="logs/entry" conflict={entry('logs/entry.md')} />,
+    );
 
     await waitFor(() => {
       const events = consoleWarnSpy.mock.calls.map((c) => c[0]);
@@ -414,71 +202,19 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     ).toBe(true);
   });
 
-  test('threads .mdx extension from useConflicts when the doc is .mdx', async () => {
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              conflicts: [{ file: 'docs/note.mdx', detectedAt: '2026-05-20T00:00:00.000Z' }],
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              file: 'docs/note.mdx',
-              base: '',
-              ours: '',
-              theirs: '',
-              lifecycleStatus: 'conflict',
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url === '/api/sync/resolve-conflict') {
-        return Promise.resolve(new Response('{}', { status: 200 }));
-      }
-      return Promise.resolve(new Response('not found', { status: 404 }));
-    };
-
-    const provider = makeProvider('mdx body\n');
-    render(<DiffViewBoundary docName="docs/note" provider={provider} />);
+  test('uses the entry file path verbatim, including a .mdx extension', async () => {
+    strategyFetch('docs/note.mdx', 'both-modified');
+    render(<DiffViewBoundary docName="docs/note" conflict={entry('docs/note.mdx')} />);
 
     await waitFor(() => {
-      const fetched = fetchCalls.find((c) => c.url.startsWith('/api/sync/conflict-content'));
-      expect(fetched?.url).toContain('file=docs%2Fnote.mdx');
+      expect(contentFetches()[0]?.url).toContain('file=docs%2Fnote.mdx');
     });
   });
 
   test('renders error fallback and hides actions when conflict-content fetch fails', async () => {
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              conflicts: [{ file: 'docs/missing.md', detectedAt: '2026-05-20T00:00:00.000Z' }],
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(new Response('not found', { status: 404 }));
-      }
-      return Promise.resolve(new Response('', { status: 404 }));
-    };
+    stubFetch(() => new Response('not found', { status: 404 }));
 
-    const provider = makeProvider('# Anything\n');
-    render(<DiffViewBoundary docName="docs/missing" provider={provider} />);
+    render(<DiffViewBoundary docName="docs/missing" conflict={entry('docs/missing.md')} />);
 
     await screen.findByText(/Couldn't load conflict content for docs\/missing\.md/i);
     const failureLog = consoleWarnSpy.mock.calls
@@ -487,172 +223,41 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     expect(failureLog).toBeTruthy();
   });
 
-  test('defers conflict-content fetch when conflicts list is empty (race window)', async () => {
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
-        return Promise.resolve(
-          new Response(JSON.stringify({ conflicts: [] }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        );
-      }
-      if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ file: '', base: '', ours: '', theirs: '' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        );
-      }
-      return Promise.resolve(new Response('', { status: 404 }));
-    };
+  test('delete-modify (DU) renders Keep deletion + Restore affordances, not unified DiffView', async () => {
+    strategyFetch('foo.md', 'delete-modify');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
 
-    const provider = makeProvider('# Anything\n');
-    render(<DiffViewBoundary docName="docs/note" provider={provider} />);
-
-    await waitFor(() => {
-      const conflictsFetch = fetchCalls.find((c) => c.url === '/api/sync/conflicts');
-      expect(conflictsFetch).toBeTruthy();
-    });
-    expect(screen.queryByText(/Loading conflict for/i)).not.toBeNull();
-    const contentFetch = fetchCalls.find((c) => c.url.startsWith('/api/sync/conflict-content'));
-    expect(contentFetch).toBeUndefined();
+    expect(await screen.findByRole('button', { name: /keep file deleted/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /restore/i })).toBeTruthy();
   });
 
-  test('delete-modify (DU) renders Keep deletion + Restore affordances, not unified DiffView', async () => {
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z' }],
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              file: 'foo.md',
-              base: 'base content\n',
-              ours: '',
-              theirs: 'their modification\n',
-              lifecycleStatus: 'conflict',
-              kind: 'delete-modify',
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url === '/api/sync/resolve-conflict') {
-        return Promise.resolve(new Response('{}', { status: 200 }));
-      }
-      return Promise.resolve(new Response('not found', { status: 404 }));
-    };
+  test('delete-modify withholds the theirs affordance when resolutionOptions omits it', async () => {
+    strategyFetch('foo.md', 'delete-modify', { resolutionOptions: ['mine', 'content', 'delete'] });
+    render(
+      <DiffViewBoundary
+        docName="foo"
+        conflict={entry('foo.md', { conflict: 'reconcile', reason: 'disk-markers' })}
+      />,
+    );
 
-    const provider = makeProvider('# Anything\n');
-    render(<DiffViewBoundary docName="foo" provider={provider} />);
-
-    const keepDeletion = await screen.findByRole('button', { name: /keep file deleted/i });
-    expect(keepDeletion).toBeTruthy();
-
-    const restore = await screen.findByRole('button', { name: /restore/i });
-    expect(restore).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /keep file deleted/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /restore with remote changes/i })).toBeNull();
   });
 
   test('modify-delete (UD) renders Keep my version + Accept their deletion affordances', async () => {
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              conflicts: [{ file: 'foo.md', detectedAt: '2026-05-20T00:00:00.000Z' }],
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              file: 'foo.md',
-              base: 'base content\n',
-              ours: 'our modification\n',
-              theirs: '',
-              lifecycleStatus: 'conflict',
-              kind: 'modify-delete',
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url === '/api/sync/resolve-conflict') {
-        return Promise.resolve(new Response('{}', { status: 200 }));
-      }
-      return Promise.resolve(new Response('not found', { status: 404 }));
-    };
+    strategyFetch('foo.md', 'modify-delete');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
 
-    const provider = makeProvider('# Our version\n');
-    render(<DiffViewBoundary docName="foo" provider={provider} />);
-
-    const keepMine = await screen.findByRole('button', { name: /keep my version/i });
-    expect(keepMine).toBeTruthy();
-
-    const acceptDeletion = await screen.findByRole('button', { name: /accept their deletion/i });
-    expect(acceptDeletion).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /keep my version/i })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /accept their deletion/i })).toBeTruthy();
   });
 
   test('both-modified (regression) still renders the unified DiffView, NOT delete-prompt affordances', async () => {
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-      const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              conflicts: [{ file: 'docs/notes.md', detectedAt: '2026-05-20T00:00:00.000Z' }],
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(
-          new Response(
-            JSON.stringify({
-              file: 'docs/notes.md',
-              base: 'base content\n',
-              ours: 'our version\n',
-              theirs: 'their version\n',
-              lifecycleStatus: 'conflict',
-              kind: 'both-modified',
-            }),
-            { status: 200, headers: { 'Content-Type': 'application/json' } },
-          ),
-        );
-      }
-      if (url === '/api/sync/resolve-conflict') {
-        return Promise.resolve(new Response('{}', { status: 200 }));
-      }
-      return Promise.resolve(new Response('not found', { status: 404 }));
-    };
-
-    const provider = makeProvider('# Our version\n');
-    render(<DiffViewBoundary docName="docs/notes" provider={provider} />);
+    strategyFetch('docs/notes.md', 'both-modified');
+    render(<DiffViewBoundary docName="docs/notes" conflict={entry('docs/notes.md')} />);
 
     await waitFor(() => {
-      const fetched = fetchCalls.find((c) => c.url.startsWith('/api/sync/conflict-content'));
-      expect(fetched).toBeTruthy();
+      expect(contentFetches().length).toBe(1);
     });
 
     expect(screen.queryByRole('button', { name: /keep file deleted/i })).toBeNull();
@@ -660,8 +265,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('delete-modify publishes --conflict-footer-height while mounted, removes on unmount', async () => {
-    globalThis.fetch = strategyFetch('delete-modify') as typeof fetch;
-    const { unmount } = render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'delete-modify');
+    const { unmount } = render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
 
     await screen.findByRole('button', { name: /keep file deleted/i });
     await waitFor(() => {
@@ -675,8 +280,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('modify-delete publishes --conflict-footer-height while mounted, removes on unmount', async () => {
-    globalThis.fetch = strategyFetch('modify-delete') as typeof fetch;
-    const { unmount } = render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'modify-delete');
+    const { unmount } = render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
 
     await screen.findByRole('button', { name: /accept their deletion/i });
     await waitFor(() => {
@@ -690,8 +295,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('delete-modify: "Keep deletion" dispatches strategy: delete', async () => {
-    globalThis.fetch = strategyFetch('delete-modify') as typeof fetch;
-    render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'delete-modify');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
     fireEvent.click(await screen.findByRole('button', { name: /keep file deleted/i }));
     await waitFor(() =>
       expect(fetchCalls.some((c) => c.url === '/api/sync/resolve-conflict')).toBe(true),
@@ -700,8 +305,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('delete-modify: "Restore with remote changes" dispatches strategy: theirs', async () => {
-    globalThis.fetch = strategyFetch('delete-modify') as typeof fetch;
-    render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'delete-modify');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
     fireEvent.click(await screen.findByRole('button', { name: /restore with remote changes/i }));
     await waitFor(() =>
       expect(fetchCalls.some((c) => c.url === '/api/sync/resolve-conflict')).toBe(true),
@@ -710,8 +315,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('modify-delete: "Keep my version" dispatches strategy: mine (never delete)', async () => {
-    globalThis.fetch = strategyFetch('modify-delete') as typeof fetch;
-    render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'modify-delete');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
     fireEvent.click(await screen.findByRole('button', { name: /keep my version/i }));
     await waitFor(() =>
       expect(fetchCalls.some((c) => c.url === '/api/sync/resolve-conflict')).toBe(true),
@@ -720,8 +325,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('modify-delete: "Accept their deletion" dispatches strategy: delete', async () => {
-    globalThis.fetch = strategyFetch('modify-delete') as typeof fetch;
-    render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'modify-delete');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
     fireEvent.click(await screen.findByRole('button', { name: /accept their deletion/i }));
     await waitFor(() =>
       expect(fetchCalls.some((c) => c.url === '/api/sync/resolve-conflict')).toBe(true),
@@ -734,8 +339,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     const pending = new Promise<void>((resolve) => {
       release = resolve;
     });
-    globalThis.fetch = strategyFetch('delete-modify', pending) as typeof fetch;
-    render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'delete-modify', { resolvePending: pending });
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
 
     const keep = (await screen.findByRole('button', {
       name: /keep file deleted/i,
@@ -754,8 +359,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('delete-modify (DU) renders header / content / footer with no collapsible-preview chrome', async () => {
-    globalThis.fetch = strategyFetch('delete-modify') as typeof fetch;
-    render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'delete-modify');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
     expect(await screen.findByText(/you deleted/i, { exact: false, selector: 'p' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /keep file deleted/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /restore with remote changes/i })).toBeTruthy();
@@ -764,8 +369,8 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
   });
 
   test('modify-delete (UD) renders header / content / footer with no collapsible-preview chrome', async () => {
-    globalThis.fetch = strategyFetch('modify-delete') as typeof fetch;
-    render(<DiffViewBoundary docName="foo" provider={makeProvider('x\n')} />);
+    strategyFetch('foo.md', 'modify-delete');
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
     expect(await screen.findByText(/you modified/i, { exact: false, selector: 'p' })).toBeTruthy();
     expect(screen.getByRole('button', { name: /keep my version/i })).toBeTruthy();
     expect(screen.getByRole('button', { name: /accept their deletion/i })).toBeTruthy();
@@ -773,45 +378,161 @@ describe('DiffViewBoundary (Tier-3 mount)', () => {
     expect(screen.queryByTestId('conflict-preview-trigger')).toBeNull();
   });
 
-  test('defers conflict-content fetch when other conflicts loaded but this docs entry missing', async () => {
-    globalThis.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+  test('a both-modified conflict that withholds content offers the wholesale choice instead', async () => {
+    strategyFetch('big.md', 'both-modified', { resolutionOptions: ['mine', 'theirs', 'delete'] });
+    render(
+      <DiffViewBoundary
+        docName="big"
+        conflict={entry('big.md', { conflict: 'reconcile', reason: 'refused-too-large' })}
+      />,
+    );
+
+    expect(await screen.findByRole('button', { name: /keep my version/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /use their version/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /delete the file/i })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Accept current/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Apply changes' })).toBeNull();
+  });
+
+  test('the wholesale choice dispatches the strategy the server offered', async () => {
+    strategyFetch('big.md', 'both-modified', { resolutionOptions: ['mine', 'theirs', 'delete'] });
+    render(
+      <DiffViewBoundary
+        docName="big"
+        conflict={entry('big.md', { conflict: 'reconcile', reason: 'refused-too-large' })}
+      />,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: /use their version/i }));
+    await waitFor(() =>
+      expect(fetchCalls.some((c) => c.url === '/api/sync/resolve-conflict')).toBe(true),
+    );
+    expect(lastResolveBody()).toMatchObject({ file: 'big.md', strategy: 'theirs' });
+  });
+
+  test('a stage body with no resolutionOptions offers nothing rather than guessing', async () => {
+    stubFetch((url) => {
+      if (url.startsWith('/api/sync/conflict-content')) {
+        return new Response(
+          JSON.stringify({
+            file: 'docs/skew.md',
+            base: 'base\n',
+            ours: 'ours\n',
+            theirs: 'theirs\n',
+            kind: 'delete-modify',
+            conflict: 'reconcile',
+            reason: 'disk-markers',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    render(<DiffViewBoundary docName="docs/skew" conflict={entry('docs/skew.md')} />);
+
+    await screen.findByText(/Couldn't load conflict content for docs\/skew\.md/i);
+    expect(screen.queryByRole('button', { name: /restore with remote changes/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /keep file deleted/i })).toBeNull();
+    expect(fetchCalls.some((c) => c.url === '/api/sync/resolve-conflict')).toBe(false);
+  });
+
+  test('a stage body whose resolutionOptions are malformed offers nothing', async () => {
+    stubFetch((url) => {
+      if (url.startsWith('/api/sync/conflict-content')) {
+        return new Response(
+          JSON.stringify({
+            file: 'docs/skew.md',
+            base: 'base\n',
+            ours: 'ours\n',
+            theirs: 'theirs\n',
+            kind: 'delete-modify',
+            conflict: 'reconcile',
+            reason: 'disk-markers',
+            resolutionOptions: 'mine',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('{}', { status: 200 });
+    });
+
+    render(<DiffViewBoundary docName="docs/skew" conflict={entry('docs/skew.md')} />);
+
+    await screen.findByText(/Couldn't load conflict content for docs\/skew\.md/i);
+    expect(screen.queryByRole('button', { name: /restore with remote changes/i })).toBeNull();
+  });
+
+  test('resolve buttons come back after a dispatch that succeeds without unmounting', async () => {
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    strategyFetch('foo.md', 'delete-modify', { resolvePending: pending });
+    render(<DiffViewBoundary docName="foo" conflict={entry('foo.md')} />);
+
+    const keep = (await screen.findByRole('button', {
+      name: /keep file deleted/i,
+    })) as HTMLButtonElement;
+    const restore = screen.getByRole('button', {
+      name: /restore with remote changes/i,
+    }) as HTMLButtonElement;
+
+    fireEvent.click(keep);
+    await waitFor(() => expect(keep.disabled).toBe(true));
+
+    release?.();
+
+    await waitFor(() => expect(keep.disabled).toBe(false));
+    expect(restore.disabled).toBe(false);
+  });
+
+  test('Apply reaches the endpoint once, through the real boundary wiring', async () => {
+    const resolvePosts: string[] = [];
+    let releaseResolve: (() => void) | null = null;
+    globalThis.fetch = ((input: RequestInfo | URL) => {
       const url = typeof input === 'string' ? input : input.toString();
-      fetchCalls.push({ url, init });
-      if (url === '/api/sync/conflicts') {
+      if (url.startsWith('/api/sync/resolve-conflict')) {
+        resolvePosts.push(url);
+        return new Promise<Response>((resolveFetch) => {
+          releaseResolve = () => resolveFetch(new Response('{}', { status: 200 }));
+        });
+      }
+      if (url.startsWith('/api/sync/conflict-content')) {
         return Promise.resolve(
           new Response(
             JSON.stringify({
-              conflicts: [
-                {
-                  file: 'other/doc.md',
-                  detectedAt: '2026-05-19T00:00:00Z',
-                },
-              ],
+              file: 'notes/roadmap.md',
+              kind: 'both-modified',
+              conflict: 'merge-native',
+              resolutionOptions: ['mine', 'theirs', 'content', 'delete'],
+              base: '# Roadmap\n\n- Ship date: October 14\n',
+              ours: '# Roadmap\n\n- Ship date: October 21\n',
+              theirs: '# Roadmap\n\n- Ship date: Q4\n',
             }),
             { status: 200, headers: { 'Content-Type': 'application/json' } },
           ),
         );
       }
-      if (url.startsWith('/api/sync/conflict-content')) {
-        return Promise.resolve(
-          new Response(JSON.stringify({ file: '', base: '', ours: '', theirs: '' }), {
-            status: 200,
-            headers: { 'Content-Type': 'application/json' },
-          }),
-        );
-      }
-      return Promise.resolve(new Response('', { status: 404 }));
-    };
+      return Promise.resolve(new Response('{}', { status: 200 }));
+    }) as typeof fetch;
 
-    const provider = makeProvider('# Anything\n');
-    render(<DiffViewBoundary docName="docs/mdx-note" provider={provider} />);
+    render(<DiffViewBoundary docName="notes/roadmap" conflict={entry('notes/roadmap.md')} />);
 
     await waitFor(() => {
-      const conflictsFetch = fetchCalls.find((c) => c.url === '/api/sync/conflicts');
-      expect(conflictsFetch).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: /^Accept current/ }).length).toBeGreaterThan(0);
     });
-    expect(screen.queryByText(/Loading conflict for/i)).not.toBeNull();
-    const contentFetch = fetchCalls.find((c) => c.url.startsWith('/api/sync/conflict-content'));
-    expect(contentFetch).toBeUndefined();
+    screen.getAllByRole('button', { name: /^Accept current/ })[0].click();
+
+    const apply = await screen.findByRole('button', { name: 'Apply changes' });
+    apply.click();
+    await act(async () => {});
+    apply.click();
+    await act(async () => {});
+
+    expect(resolvePosts).toHaveLength(1);
+
+    releaseResolve?.();
+    await act(async () => {});
   });
 });

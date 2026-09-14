@@ -16,6 +16,7 @@ import {
   PAIRED_INTAKE_DETECTION,
   type PairedIntakeDetectionMode,
 } from './bridge-loss-suppression.ts';
+import { RECONCILE_TEST_CONFLICTS } from './conflict-authority.test-helper.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { reconcileDiskBeforeAgentWrite } from './external-change.ts';
 import { mdManager } from './md-manager.ts';
@@ -182,6 +183,7 @@ describe('paired-intake detection follows the registry at every wired site', () 
         contentDir,
         undefined,
         on.reporter,
+        RECONCILE_TEST_CONFLICTS,
       );
       expect(on.trips.length).toBeGreaterThan(0);
 
@@ -195,6 +197,7 @@ describe('paired-intake detection follows the registry at every wired site', () 
           contentDir,
           undefined,
           off.reporter,
+          RECONCILE_TEST_CONFLICTS,
         );
       });
       expect(off.trips).toEqual([]);

@@ -7,7 +7,7 @@ import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { renameTrackedPathInGit } from './api-extension.ts';
-import { ConflictStore } from './conflict-storage.ts';
+import { ConflictAuthority } from './conflict-authority.ts';
 import { readProjectGitLog } from './content/project-log.ts';
 import { readShadowLog } from './content/shadow-log.ts';
 import { TRACKED_MCP_CONFIG_TARGETS } from './mcp-config-reconciler.ts';
@@ -25,6 +25,22 @@ import { computeShareTargetStatus } from './share/target-status.ts';
 import { restoreSkillVersion } from './skill-restore.ts';
 import { SyncEngine } from './sync-engine.ts';
 import { getDocumentHistory } from './timeline-query.ts';
+
+function conflictAuthorityFor(projectDir: string): ConflictAuthority {
+  return new ConflictAuthority({
+    projectDir,
+    contentDir: projectDir,
+    branch: 'main',
+    io: {
+      gitRaw: (args) => simpleGit(projectDir).raw(args),
+      writeProjectFileUntracked: (absPath, bytes) => writeFileSync(absPath, bytes, 'utf-8'),
+      unlinkProjectFile: (absPath) => rmSync(absPath, { force: true }),
+      applyResolvedContent: async (_docName, absPath, bytes) => {
+        writeFileSync(absPath, bytes, 'utf-8');
+      },
+    },
+  });
+}
 
 const MAGIC_PREFIX_DOC = ':colon.md';
 const EXCLUDE_MAGIC_DOC = ':!bang.md';
@@ -101,6 +117,7 @@ async function initProjectWithBareRemote(): Promise<string> {
 function makePushEngine(): SyncEngine {
   return new SyncEngine({
     projectDir,
+    conflicts: conflictAuthorityFor(projectDir),
     contentDir: projectDir,
     contentFilter: stubContentFilter,
     syncEnabled: true,
@@ -241,13 +258,13 @@ describe('pathspec name invariance — conflict resolution (site 8)', () => {
     } catch {}
     expect(git(projectDir, ['ls-files', '-u'])).not.toBe('');
 
-    const store = new ConflictStore(projectDir, 'main');
-    store.addConflict({ file: MAGIC_PREFIX_DOC, detectedAt: new Date().toISOString() });
+    const conflicts = conflictAuthorityFor(projectDir);
+    conflicts.raise({ kind: 'merge-native', file: MAGIC_PREFIX_DOC });
 
-    await expect(store.resolveConflict(MAGIC_PREFIX_DOC, 'theirs')).resolves.toBeUndefined();
+    await expect(conflicts.resolve(MAGIC_PREFIX_DOC, 'theirs')).resolves.toBeUndefined();
 
     expect(git(projectDir, ['ls-files', '-u'])).toBe('');
-    expect(store.count()).toBe(0);
+    expect(conflicts.count()).toBe(0);
   });
 });
 
@@ -298,6 +315,7 @@ describe('pathspec name invariance — commitBlockingPaths (site 3)', () => {
     await setupColonNamedOverlap();
     const engine = new SyncEngine({
       projectDir,
+      conflicts: conflictAuthorityFor(projectDir),
       contentDir: projectDir,
       contentFilter: markdownOnlyFilter,
       mode: 'full',
@@ -444,6 +462,7 @@ describe('pathspec name invariance — non-content merge auto-resolve (site 5)',
 
     const engine = new SyncEngine({
       projectDir,
+      conflicts: conflictAuthorityFor(projectDir),
       contentDir: projectDir,
       contentFilter: stubContentFilter,
       syncEnabled: true,
@@ -507,6 +526,7 @@ describe('pathspec name invariance — pull-only overlay restore (site 6)', () =
 
     const engine = new SyncEngine({
       projectDir: cloneDir,
+      conflicts: conflictAuthorityFor(projectDir),
       contentDir: cloneDir,
       contentFilter: stubContentFilter,
       syncEnabled: true,

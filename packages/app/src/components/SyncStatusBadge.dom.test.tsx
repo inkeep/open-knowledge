@@ -53,7 +53,12 @@ vi.doMock('@/hooks/use-git-sync-status', () => ({
 }));
 
 vi.doMock('@/hooks/use-conflicts', () => ({
-  useConflicts: () => ({ conflicts: [{ file: 'docs/conflicted.md' }] }),
+  useConflicts: () => ({
+    conflicts: [{ file: 'docs/conflicted.md', docName: 'docs/conflicted' }],
+    loading: false,
+    error: null,
+    refresh: () => {},
+  }),
 }));
 
 type WorktreeTestEntry = {

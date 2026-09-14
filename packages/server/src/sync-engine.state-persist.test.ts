@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import { SyncEngine } from './sync-engine.ts';
 
 const writeCalls = vi.hoisted(() => [] as string[]);
@@ -61,6 +62,7 @@ function statePath(): string {
 
 function makeEngine() {
   return new SyncEngine({
+    conflicts: createTestConflictAuthority(projectDir),
     projectDir,
     contentDir: projectDir,
     contentFilter: stubContentFilter,

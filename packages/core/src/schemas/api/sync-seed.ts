@@ -138,13 +138,32 @@ export const SyncTriggerSuccessSchema = z
   .loose() satisfies StandardSchemaV1;
 export type SyncTriggerSuccess = z.infer<typeof SyncTriggerSuccessSchema>;
 
+export const CONFLICT_KINDS = ['merge-native', 'working-tree', 'reconcile'] as const;
+export const ConflictKindSchema = z.enum(CONFLICT_KINDS) satisfies StandardSchemaV1;
+export type ConflictKindWire = z.infer<typeof ConflictKindSchema>;
+
+export const RECONCILE_REASONS = [
+  'merged-with-markers',
+  'refused-conflict-markers',
+  'refused-too-large',
+  'disk-markers',
+  'stale-external-write',
+] as const;
+export const ReconcileReasonSchema = z.enum(RECONCILE_REASONS) satisfies StandardSchemaV1;
+export type ReconcileReasonWire = z.infer<typeof ReconcileReasonSchema>;
+
+export const RESOLVE_STRATEGIES = ['mine', 'theirs', 'content', 'delete'] as const;
+export const ResolveStrategySchema = z.enum(RESOLVE_STRATEGIES) satisfies StandardSchemaV1;
+export type ResolveStrategyWire = z.infer<typeof ResolveStrategySchema>;
+
 export const ConflictEntrySchema = z
   .object({
     file: z.string().min(1),
     detectedAt: z.string().min(1),
-    conflictKind: z.enum(['git', 'stale-external-write']).optional().catch(undefined),
-    variant: z.literal('working-tree').optional().catch(undefined),
-    oursSha: z.string().optional(),
+    conflict: ConflictKindSchema,
+    reason: ReconcileReasonSchema.optional(),
+    conflictKind: z.enum(['git', 'stale-external-write']).optional(),
+    docName: z.string().nullable(),
     theirsSha: z.string().optional(),
     baseSha: z.string().optional(),
   })
@@ -182,8 +201,10 @@ export const SyncConflictContentSuccessSchema = z
     ours: z.string(),
     theirs: z.string(),
     kind: z.enum(['both-modified', 'delete-modify', 'modify-delete']),
-    lifecycleStatus: z.string().nullable(),
+    conflict: ConflictKindSchema,
+    reason: ReconcileReasonSchema.optional(),
     conflictKind: z.enum(['git', 'stale-external-write']).optional(),
+    resolutionOptions: z.array(ResolveStrategySchema),
   })
   .loose() satisfies StandardSchemaV1;
 export type SyncConflictContentSuccess = z.infer<typeof SyncConflictContentSuccessSchema>;

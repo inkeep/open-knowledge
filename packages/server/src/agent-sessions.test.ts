@@ -11,6 +11,7 @@ import {
   applyAgentMarkdownWrite,
   applyAgentUndo,
 } from './agent-sessions.ts';
+import { bindConflictAuthority } from './conflict-authority.ts';
 import { DocInConflictError } from './conflict-errors.ts';
 import { _resetDocExtensionsForTests, registerDocExtension } from './doc-extensions.ts';
 
@@ -663,9 +664,9 @@ describe('empty / whitespace content writes (PRD-6835)', () => {
 });
 
 describe('conflict-aware write gate (FR9 a, d)', () => {
-  test('applyAgentMarkdownWrite throws DocInConflictError when lifecycle.status="conflict"', async () => {
+  test('applyAgentMarkdownWrite throws DocInConflictError when the doc is tracked as conflicted', async () => {
     const session = await manager.getSession('conflicted-doc', 'agent-gate');
-    session.dc.document.getMap('lifecycle').set('status', 'conflict');
+    bindConflictAuthority(session.dc.document, { has: () => true });
 
     let caught: unknown;
     try {
@@ -687,7 +688,7 @@ describe('conflict-aware write gate (FR9 a, d)', () => {
     session.dc.document.transact(() => {
       session.dc.document.getText('source').insert(0, theirsBytes);
     });
-    session.dc.document.getMap('lifecycle').set('status', 'conflict');
+    bindConflictAuthority(session.dc.document, { has: () => true });
 
     let caught: unknown;
     try {
@@ -698,7 +699,7 @@ describe('conflict-aware write gate (FR9 a, d)', () => {
     expect(caught instanceof DocInConflictError).toBe(true);
   });
 
-  test('applyAgentUndo throws DocInConflictError when lifecycle.status="conflict"', async () => {
+  test('applyAgentUndo throws DocInConflictError when the doc is tracked as conflicted', async () => {
     const session = await manager.getSession('conflicted-undo', 'agent-undo-gate');
     session.dc.document.transact(() => {
       applyAgentMarkdownWrite(session.dc.document, '# Pre-conflict\n', 'replace');
@@ -706,7 +707,7 @@ describe('conflict-aware write gate (FR9 a, d)', () => {
     session.um.stopCapturing();
     expect(session.um.undoStack.length).toBeGreaterThan(0);
 
-    session.dc.document.getMap('lifecycle').set('status', 'conflict');
+    bindConflictAuthority(session.dc.document, { has: () => true });
 
     let caught: unknown;
     try {
@@ -721,7 +722,7 @@ describe('conflict-aware write gate (FR9 a, d)', () => {
     expect(session.um.undoStack.length).toBeGreaterThan(0);
   });
 
-  test('applyAgentMarkdownWrite passes through when lifecycle.status is undefined', async () => {
+  test('applyAgentMarkdownWrite passes through when the doc is not tracked as conflicted', async () => {
     const session = await manager.getSession('clean-doc', 'agent-clean');
     expect(() =>
       applyAgentMarkdownWrite(session.dc.document, '# Hello\n', 'replace'),
@@ -734,7 +735,7 @@ describe('conflict-aware write gate (FR9 a, d)', () => {
     registerDocExtension('mdx-doc', '.mdx');
 
     const session = await manager.getSession('mdx-doc', 'agent-mdx');
-    session.dc.document.getMap('lifecycle').set('status', 'conflict');
+    bindConflictAuthority(session.dc.document, { has: () => true });
 
     let caught: unknown;
     try {

@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createContentFilter } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
+import { createTestConflictAuthority } from '../../../server/src/conflict-authority.test-helper.ts';
 import { SyncEngine } from '../../../server/src/sync-engine.ts';
 
 const tmpRoots: string[] = [];
@@ -49,6 +50,7 @@ describe('sync-engine dot-dir filter symmetry', () => {
     const skillPath = '.cursor/skills/open-knowledge/SKILL.md';
 
     const engine = new SyncEngine({
+      conflicts: createTestConflictAuthority(projectDir, projectDir),
       projectDir,
       contentDir: projectDir,
       contentFilter: createContentFilter({ projectDir, contentDir: projectDir }),

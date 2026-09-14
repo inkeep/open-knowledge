@@ -1219,6 +1219,10 @@ msgstr "<{componentName}>는 알려진 컴포넌트가 아닙니다. 다른 곳�
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 컴포넌트를 렌더링하지 못했습니다. 잘못된 속성 때문일 수 있습니다. 문제를 확인하려면 소스를 복사하거나 블록을 삭제하세요."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0>은 여기에서 병합할 수 없습니다. 유지할 버전을 고르세요."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>미러, 소스를 선택하세요.</0> 속성 패널에서 <1>src</1>와 <2>anchor</2>를 설정해 다른 곳의 <3><MirrorSource></3>를 가리키세요."
@@ -3908,10 +3912,6 @@ msgstr "맞춤법 검사를 변경할 수 없습니다. 다시 시도하세요."
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "맞춤법 검사 언어를 변경하지 못했습니다. 다시 시도하세요."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "{filePath}에 아직 충돌이 있는지 확인하지 못했습니다 — 다시 시도합니다."
-
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
 msgid "Couldn't check which tools are connected."
@@ -4788,6 +4788,10 @@ msgstr "선택한 표 삭제"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "표 삭제"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "파일 삭제"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9021,6 +9025,10 @@ msgstr "아직 댓글 없음. 문서에서 텍스트 선택 후 댓글 추가"
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "공통 조상이 없습니다 — 두 브랜치가 이 파일을 각각 추가했습니다 (add/add 충돌)."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "이 경로에 대해 추적 중인 충돌이 없습니다."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "이 버전에서 내용 변경 없음."
@@ -11475,10 +11483,6 @@ msgstr "렌더링됨"
 msgid "Reopen"
 msgstr "다시 열기"
 
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "계속 편집하려면 {filePath}을(를) 다시 여세요."
-
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
 msgstr "이전 채팅 다시 열기"
@@ -13109,6 +13113,10 @@ msgstr "테마 폴더가 스캔 한도를 초과해 일부 저장된 테마가 �
 msgid "Some skills were deleted with a warning"
 msgstr "일부 스킬이 경고와 함께 삭제되었습니다"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "누군가 이미 {filePath}의 충돌을 해결했을 수 있습니다 — 편집을 다시 하기 전에 문서의 현재 내용을 확인하세요."
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "문제가 발생했습니다"
@@ -14389,10 +14397,6 @@ msgstr "이 댓글, 속성 전체에 적용됨"
 msgid "This composer doesn't accept attachments."
 msgstr "여기에는 파일을 첨부할 수 없습니다."
 
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "이 충돌은 해결되었습니다."
-
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
 msgstr "필요한 MCP 서버 항목이 기록되지 않아 설정할 수 없었습니다."
@@ -15491,6 +15495,10 @@ msgstr "소문자, 숫자, <0>-</0>만 사용하세요."
 #: src/components/NewSkillDialog.tsx
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "소문자, 숫자, 하이픈만 사용하세요"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "상대 버전 사용"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"

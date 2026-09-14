@@ -26,8 +26,10 @@ import {
 } from '../agent-sessions.ts';
 import type { NormalizedSummary, SummaryResponse } from '../agent-write-summary.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
+import type { ConflictAuthority } from '../conflict-authority.ts';
 import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
 import { recordContributor } from '../contributor-tracker.ts';
+import { stripDocExtension } from '../doc-extensions.ts';
 import type { StoreFailure } from '../document-durability-state.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
 import {
@@ -57,6 +59,7 @@ import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
 export interface LintWriteRouteDeps {
+  conflicts: Pick<ConflictAuthority, 'findByDocName'>;
   contentDir: string;
   projectDir: string | undefined;
   signalLintConfigChanged: () => void;
@@ -108,6 +111,7 @@ export interface LintWriteRouteDeps {
 
 export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
   const {
+    conflicts,
     contentDir,
     projectDir,
     signalLintConfigChanged,
@@ -477,7 +481,12 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
           return;
         }
         if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'lint-fix');
+          respondDocInConflict(
+            res,
+            e,
+            'lint-fix',
+            conflicts.findByDocName(stripDocExtension(e.file)),
+          );
           return;
         }
         if (e instanceof FrontmatterMalformedError) {

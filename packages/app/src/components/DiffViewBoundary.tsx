@@ -1,47 +1,49 @@
-/**
- * Sibling to (NOT a replacement of) the editor `DocumentBoundary` mount; the hybrid render tree per
- * precedent #18(b) stays intact.
- */
-import type { HocuspocusProvider } from '@hocuspocus/provider';
-import type { SyncConflictContentSuccess } from '@inkeep/open-knowledge-core';
+import {
+  type ConflictEntryWire,
+  type ResolveStrategyWire,
+  type SyncConflictContentSuccess,
+  SyncConflictContentSuccessSchema,
+} from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import type { MergeConflictResolution } from '@pierre/diffs';
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { useConflictFooterHeightVar } from '@/hooks/use-conflict-footer-height';
 import { useConflicts } from '@/hooks/use-conflicts';
-import { filePathToDocName } from '@/lib/doc-hash';
 import { ConflictFilePreview } from './ConflictFilePreview';
 import { ConflictView } from './ConflictView';
 import {
+  type ResolveConflictResult,
   resolveConflictContent,
   resolveConflictDelete,
   resolveConflictMine,
   resolveConflictTheirs,
 } from './resolve-conflict-dispatch';
 
-const CONFLICT_ENTRY_GRACE_MS = 2_000;
-
 interface DiffViewBoundaryProps {
   docName: string;
-  provider: HocuspocusProvider;
+  conflict: ConflictEntryWire;
 }
 
-type ConflictKind = SyncConflictContentSuccess['kind'];
+type ConflictShape = 'both-modified' | 'delete-modify' | 'modify-delete';
 
 interface ConflictSides {
+  file: string;
   base: string;
   ours: string;
   theirs: string;
-  kind: ConflictKind;
+  kind: ConflictShape;
+  resolutionOptions: readonly ResolveStrategyWire[];
   conflictKind: SyncConflictContentSuccess['conflictKind'];
 }
+
+const CONFLICT_CONTENT_REQUEST_TIMEOUT_MS = 20_000;
 
 async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
   try {
     const res = await fetch(
       `/api/sync/conflict-content?file=${encodeURIComponent(file)}&source=ytext`,
+      { signal: AbortSignal.timeout(CONFLICT_CONTENT_REQUEST_TIMEOUT_MS) },
     );
     if (!res.ok) {
       let detail: string | undefined;
@@ -60,43 +62,27 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
       );
       return null;
     }
-    const data = (await res.json()) as Partial<Omit<ConflictSides, 'conflictKind'>> & {
-      conflictKind?: unknown;
-    };
-    const kind: ConflictKind =
-      data.kind === 'delete-modify' ||
-      data.kind === 'modify-delete' ||
-      data.kind === 'both-modified'
-        ? data.kind
-        : 'both-modified';
-    if (data.kind !== kind) {
+    const body = await res.json().catch(() => null);
+    const parsed = SyncConflictContentSuccessSchema.safeParse(body);
+    if (!parsed.success) {
       console.warn(
         JSON.stringify({
-          event: 'conflict-kind-missing-fallback',
+          event: 'conflict-content-fetch-failed',
           file,
-          receivedKind: data.kind ?? null,
+          status: res.status,
+          detail: 'schema-drift',
         }),
       );
-    }
-    if (
-      data.conflictKind !== undefined &&
-      data.conflictKind !== 'git' &&
-      data.conflictKind !== 'stale-external-write'
-    ) {
-      console.warn(
-        JSON.stringify({
-          event: 'conflict-discriminator-unrecognized',
-          file,
-          receivedConflictKind: data.conflictKind,
-        }),
-      );
+      return null;
     }
     return {
-      base: data.base ?? '',
-      ours: data.ours ?? '',
-      theirs: data.theirs ?? '',
-      kind,
-      conflictKind: data.conflictKind === 'stale-external-write' ? 'stale-external-write' : 'git',
+      file: parsed.data.file,
+      base: parsed.data.base,
+      ours: parsed.data.ours,
+      theirs: parsed.data.theirs,
+      kind: parsed.data.kind,
+      resolutionOptions: parsed.data.resolutionOptions,
+      conflictKind: parsed.data.conflictKind,
     };
   } catch (err) {
     console.warn(
@@ -104,6 +90,7 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
         event: 'conflict-content-fetch-failed',
         file,
         status: null,
+        errorName: err instanceof Error ? err.name : 'non-error-throw',
         detail: err instanceof Error ? err.message : String(err),
       }),
     );
@@ -111,26 +98,24 @@ async function fetchConflictSides(file: string): Promise<ConflictSides | null> {
   }
 }
 
-export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
+export function DiffViewBoundary({ docName, conflict }: DiffViewBoundaryProps) {
   const { t } = useLingui();
-  const { conflicts, loading: conflictsLoading, error: conflictsError } = useConflicts();
-  const conflictEntry = conflicts.find((entry) => filePathToDocName(entry.file) === docName);
-  const filePath = conflictEntry?.file ?? `${docName}.md`;
-  const [sides, setSides] = useState<ConflictSides | null>(null);
-  const [fetchFailed, setFetchFailed] = useState(false);
-  const [waitedForEntry, setWaitedForEntry] = useState(false);
-  useEffect(() => {
-    if (conflictEntry !== undefined || conflictsLoading || conflictsError !== null) {
-      setWaitedForEntry(false);
-      return;
-    }
-    const timer = setTimeout(() => setWaitedForEntry(true), CONFLICT_ENTRY_GRACE_MS);
-    return () => clearTimeout(timer);
-  }, [conflictEntry, conflictsLoading, conflictsError]);
-  const [isResolving, setIsResolving] = useState(false);
-  const duUdFooterRef = useConflictFooterHeightVar(
-    sides?.kind === 'delete-modify' || sides?.kind === 'modify-delete',
+  const { refresh } = useConflicts();
+  const filePath = conflict.file;
+  const detectedAt = conflict.detectedAt;
+  const [loadedSides, setLoadedSides] = useState<(ConflictSides & { detectedAt: string }) | null>(
+    null,
   );
+  const sides =
+    loadedSides?.file === filePath && loadedSides.detectedAt === detectedAt ? loadedSides : null;
+  const [fetchFailed, setFetchFailed] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
+  const hasStrategyFooter =
+    sides !== null &&
+    (sides.kind === 'delete-modify' ||
+      sides.kind === 'modify-delete' ||
+      !sides.resolutionOptions.includes('content'));
+  const strategyFooterRef = useConflictFooterHeightVar(hasStrategyFooter);
 
   useEffect(() => {
     console.warn(JSON.stringify({ event: 'editor-area-swap-to-diffview', 'doc.name': docName }));
@@ -141,88 +126,64 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     };
   }, [docName]);
 
-  const conflictSignature =
-    conflictEntry === undefined
-      ? null
-      : [
-          conflictEntry.detectedAt,
-          conflictEntry.conflictKind ?? 'git',
-          conflictEntry.baseSha ?? '',
-          conflictEntry.oursSha ?? '',
-          conflictEntry.theirsSha ?? '',
-        ].join('|');
-
-  const deferFetch = conflictsLoading || conflictEntry === undefined;
   useEffect(() => {
-    if (deferFetch || conflictSignature === null) return;
     let cancelled = false;
-    setSides(null);
+    setLoadedSides(null);
     setFetchFailed(false);
     void fetchConflictSides(filePath).then((result) => {
       if (cancelled) return;
-      if (result === null) {
+      if (result === null || result.file !== filePath) {
         setFetchFailed(true);
       } else {
-        setSides(result);
+        setLoadedSides({ ...result, detectedAt });
       }
     });
     return () => {
       cancelled = true;
     };
-  }, [filePath, deferFetch, conflictSignature]);
+  }, [filePath, detectedAt]);
 
-  async function handleResolve(content: string, selection?: MergeConflictResolution) {
-    const result = await (sides?.conflictKind === 'stale-external-write' && selection === 'incoming'
-      ? resolveConflictTheirs(filePath)
-      : resolveConflictContent(filePath, content));
-    if (!result.ok) {
-      toast.error(t`Couldn't save the resolution for ${filePath}.`, { description: result.detail });
+  function handleResolveResult(
+    result: ResolveConflictResult,
+    failureMessage: string,
+    missingConflictDescription: string = filePath,
+    missingConflictSeverity: 'info' | 'warning' = 'info',
+  ) {
+    if (result.ok) return;
+    if (result.reason === 'no-conflict-tracked') {
+      refresh();
+      const notify = missingConflictSeverity === 'warning' ? toast.warning : toast.info;
+      notify(t`No conflict is tracked for this path.`, {
+        description: missingConflictDescription,
+      });
+      return;
     }
+    toast.error(failureMessage, { description: result.detail });
   }
 
-  async function handleResolveStrategy(
-    dispatch: (file: string) => Promise<{ ok: boolean; detail?: string }>,
-  ) {
+  async function handleResolve(content: string) {
+    if (sides === null) return;
+    const result = await resolveConflictContent(sides.file, content);
+    handleResolveResult(
+      result,
+      t`Couldn't save the resolution for ${filePath}.`,
+      t`Someone may have already resolved ${filePath} — check the document's current content before redoing your edit.`,
+      'warning',
+    );
+  }
+
+  async function handleResolveStrategy(dispatch: (file: string) => Promise<ResolveConflictResult>) {
+    if (sides === null) return;
     setIsResolving(true);
-    const result = await dispatch(filePath);
-    if (!result.ok) {
-      setIsResolving(false);
-      toast.error(t`Couldn't resolve the conflict for ${filePath}.`, {
-        description: result.detail,
-      });
-    }
+    const result = await dispatch(sides.file);
+    setIsResolving(false);
+    handleResolveResult(result, t`Couldn't resolve the conflict for ${filePath}.`);
   }
 
   if (fetchFailed) {
     return (
       <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
         <Trans>Couldn't load conflict content for {filePath}. Try reloading the page.</Trans>
-      </div>
-    );
-  }
-
-  if (conflictsError !== null && conflictEntry === undefined) {
-    return (
-      <div className="flex h-full items-center justify-center p-6 text-sm text-muted-foreground">
-        <Trans>Couldn't check whether {filePath} is still conflicted — retrying.</Trans>
-      </div>
-    );
-  }
-
-  if (
-    waitedForEntry &&
-    !conflictsLoading &&
-    conflictsError === null &&
-    conflictEntry === undefined
-  ) {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-1 p-6 text-sm text-muted-foreground">
-        <p>
-          <Trans>This conflict is resolved.</Trans>
-        </p>
-        <p className="text-xs">
-          <Trans>Reopen {filePath} to keep editing.</Trans>
-        </p>
       </div>
     );
   }
@@ -235,6 +196,8 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
     );
   }
 
+  const offersTheirs = sides.resolutionOptions.includes('theirs');
+
   if (sides.kind === 'delete-modify') {
     return (
       <div className="flex h-full flex-col bg-background">
@@ -242,7 +205,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
           <ConflictFilePreview filename={filePath} content={sides.theirs} />
         </div>
         <div
-          ref={duUdFooterRef}
+          ref={strategyFooterRef}
           className="flex flex-shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t px-6 py-4"
         >
           <p className="text-sm text-muted-foreground">
@@ -261,14 +224,16 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
               {}
               <Trans>Keep file deleted</Trans>
             </Button>
-            <Button
-              type="button"
-              variant="default"
-              disabled={isResolving}
-              onClick={() => void handleResolveStrategy(resolveConflictTheirs)}
-            >
-              <Trans>Restore with remote changes</Trans>
-            </Button>
+            {offersTheirs && (
+              <Button
+                type="button"
+                variant="default"
+                disabled={isResolving}
+                onClick={() => void handleResolveStrategy(resolveConflictTheirs)}
+              >
+                <Trans>Restore with remote changes</Trans>
+              </Button>
+            )}
           </div>
         </div>
       </div>
@@ -282,7 +247,7 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
           <ConflictFilePreview filename={filePath} content={sides.ours} />
         </div>
         <div
-          ref={duUdFooterRef}
+          ref={strategyFooterRef}
           className="flex flex-shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t px-6 py-4"
         >
           <p className="text-sm text-muted-foreground">
@@ -308,6 +273,59 @@ export function DiffViewBoundary({ docName }: DiffViewBoundaryProps) {
             >
               <Trans>Accept their deletion</Trans>
             </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!sides.resolutionOptions.includes('content')) {
+    return (
+      <div className="flex h-full flex-col bg-background">
+        <div className="min-h-0 flex-1">
+          <ConflictFilePreview filename={filePath} content={sides.ours} />
+        </div>
+        <div
+          ref={strategyFooterRef}
+          className="flex flex-shrink-0 flex-wrap items-center justify-between gap-x-6 gap-y-3 border-t px-6 py-4"
+        >
+          <p className="text-sm text-muted-foreground">
+            <Trans>
+              <span className="font-medium text-foreground">{filePath}</span> can't be merged here.
+              Pick the version to keep.
+            </Trans>
+          </p>
+          <div className="flex shrink-0 gap-3">
+            {sides.resolutionOptions.includes('mine') && (
+              <Button
+                type="button"
+                variant="default"
+                disabled={isResolving}
+                onClick={() => void handleResolveStrategy(resolveConflictMine)}
+              >
+                <Trans>Keep my version</Trans>
+              </Button>
+            )}
+            {offersTheirs && (
+              <Button
+                type="button"
+                variant="default"
+                disabled={isResolving}
+                onClick={() => void handleResolveStrategy(resolveConflictTheirs)}
+              >
+                <Trans>Use their version</Trans>
+              </Button>
+            )}
+            {sides.resolutionOptions.includes('delete') && (
+              <Button
+                type="button"
+                variant="destructive"
+                disabled={isResolving}
+                onClick={() => void handleResolveStrategy(resolveConflictDelete)}
+              >
+                <Trans>Delete the file</Trans>
+              </Button>
+            )}
           </div>
         </div>
       </div>

@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join, resolve } from 'node:path';
 import type { Hocuspocus } from '@hocuspocus/server';
-import type { ConflictEntryWire, Principal } from '@inkeep/open-knowledge-core';
+import type { Principal } from '@inkeep/open-knowledge-core';
 import {
+  type ConflictEntryWire,
   SyncConflictContentSuccessSchema,
   SyncConflictsSuccessSchema,
   SyncResolveBlockingRequestSchema,
@@ -15,14 +16,17 @@ import {
   SyncTriggerSuccessSchema,
 } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
+import type { ConflictAuthority } from '../conflict-authority.ts';
 import {
   ConflictMarkersInContentError,
   NoConflictTrackedError,
   RESOLUTION_OPTIONS,
 } from '../conflict-errors.ts';
-import type { ResolveStrategy } from '../conflict-storage.ts';
+import type { Conflict, ResolveStrategy } from '../conflict-kinds.ts';
+import { strategiesFor } from '../conflict-kinds.ts';
+import { selectReconcileOurs } from '../conflict-resolution.ts';
 import { isShareableOkArtifact } from '../content-filter.ts';
-import type { DocumentDurabilityState } from '../document-durability-state.ts';
+import { stripDocExtension } from '../doc-extensions.ts';
 import { claimExternalChange, releaseExternalChangeClaim } from '../external-change-attribution.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
 import { pathToDocName } from '../file-watcher.ts';
@@ -45,7 +49,6 @@ export interface SyncRouteDeps {
   /** Server-side principal resolver — the only trusted actor source (precedent #24). */
   getPrincipal: (() => Principal | null) | undefined;
   hocuspocus: Hocuspocus;
-  durabilityState: DocumentDurabilityState;
   log: PinoLogger;
   checkLocalOpSecurity: (
     req: IncomingMessage,
@@ -53,12 +56,9 @@ export interface SyncRouteDeps {
     opts: { handler: string },
   ) => boolean;
   getSyncEngine: (() => SyncEngine | null) | undefined;
+  conflicts: ConflictAuthority;
   serializeDoc: ((docName: string) => string | null) | undefined;
-  resolveStaleExternalWrite?: (
-    file: string,
-    strategy: ResolveStrategy,
-    content?: string,
-  ) => Promise<boolean>;
+  setBatchInProgress: ((value: boolean) => void) | undefined;
 }
 
 export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
@@ -67,13 +67,42 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
     contentDir,
     getPrincipal,
     hocuspocus,
-    durabilityState,
     log,
     checkLocalOpSecurity,
     getSyncEngine,
+    conflicts,
     serializeDoc,
-    resolveStaleExternalWrite,
+    setBatchInProgress,
   } = deps;
+
+  function wireEntry(entry: Conflict): ConflictEntryWire {
+    const base = {
+      file: entry.file,
+      detectedAt: entry.detectedAt,
+      conflict: entry.kind,
+      docName: conflicts.docNameOf(entry),
+      conflictKind:
+        entry.kind === 'reconcile' && entry.reason === 'stale-external-write'
+          ? ('stale-external-write' as const)
+          : ('git' as const),
+    };
+    switch (entry.kind) {
+      case 'merge-native':
+        return base;
+      case 'working-tree':
+        return {
+          ...base,
+          theirsSha: entry.theirsSha,
+          ...(entry.baseSha === undefined ? {} : { baseSha: entry.baseSha }),
+        };
+      case 'reconcile':
+        return { ...base, reason: entry.reason };
+      default: {
+        const _exhaustive: never = entry;
+        return base;
+      }
+    }
+  }
 
   async function handleSyncStatus(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (!checkLocalOpSecurity(req, res, { handler: 'sync-status' })) return;
@@ -214,24 +243,11 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
       return;
     }
     try {
-      const engine = getSyncEngine?.();
-      const conflicts: ConflictEntryWire[] = engine
-        ? engine.getConflicts().map((entry) => ({ ...entry, conflictKind: 'git' as const }))
-        : [];
-      const knownFiles = new Set(conflicts.map((entry) => entry.file));
-      for (const conflict of durabilityState.listStaleExternalWrites()) {
-        if (knownFiles.has(conflict.file)) continue;
-        conflicts.push({
-          file: conflict.file,
-          detectedAt: conflict.detectedAt,
-          conflictKind: 'stale-external-write',
-        });
-      }
       successResponse(
         res,
         200,
         SyncConflictsSuccessSchema,
-        { conflicts },
+        { conflicts: conflicts.list().map(wireEntry) },
         {
           handler: 'sync-conflicts',
         },
@@ -267,33 +283,9 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
           RESOLVE_ATTRIBUTION_WINDOW_MS,
         );
       }
+      setBatchInProgress?.(true);
       try {
-        const engine = getSyncEngine?.();
-        const gitConflict = engine?.getConflicts().some((entry) => entry.file === file) === true;
-        if (
-          !gitConflict &&
-          (await resolveStaleExternalWrite?.(file, strategy as ResolveStrategy, content))
-        ) {
-          if (claimedDocName) releaseExternalChangeClaim(claimedDocName);
-          successResponse(
-            res,
-            200,
-            SyncResolveConflictSuccessSchema,
-            {},
-            {
-              handler: 'sync-resolve-conflict',
-            },
-          );
-          return;
-        }
-        if (!engine) {
-          if (claimedDocName) releaseExternalChangeClaim(claimedDocName);
-          errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-            handler: 'sync-resolve-conflict',
-          });
-          return;
-        }
-        await engine.resolveConflict(file, strategy as ResolveStrategy, content);
+        await conflicts.resolve(file, strategy as ResolveStrategy, content);
         successResponse(
           res,
           200,
@@ -327,16 +319,28 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
           return;
         }
         if (e instanceof ConflictMarkersInContentError) {
+          const tracked = conflicts.findByFile(e.file);
+          const resolutionOptions =
+            tracked === undefined
+              ? RESOLUTION_OPTIONS
+              : strategiesFor(
+                  tracked.kind,
+                  tracked.kind === 'reconcile' ? tracked.reason : undefined,
+                );
+          const strategyNotOffered = e.refusal === 'strategy-not-offered';
           errorResponse(
             res,
             422,
             'urn:ok:error:unresolved-conflict-markers',
-            'Resolution still contains conflict markers.',
+            strategyNotOffered
+              ? 'Strategy not offered for this conflict.'
+              : 'Resolution still contains conflict markers.',
             {
               handler: 'sync-resolve-conflict',
-              detail:
-                'The submitted content still contains a `<<<<<<< … >>>>>>>` block. Resolve every region, or use strategy "mine" / "theirs" to take one side wholesale.',
-              extensions: { file: e.file, resolutionOptions: RESOLUTION_OPTIONS },
+              detail: strategyNotOffered
+                ? `Strategy "${strategy}" is not offered for this conflict. Pick one of the strategies listed in resolutionOptions.`
+                : 'The submitted content still contains a `<<<<<<< … >>>>>>>` block. Resolve every region, or take one side wholesale with a strategy listed in resolutionOptions.',
+              extensions: { file: e.file, refusal: e.refusal, resolutionOptions },
             },
           );
           return;
@@ -353,22 +357,15 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
             detail,
           },
         );
+      } finally {
+        setBatchInProgress?.(false);
       }
     },
     {
       handler: 'sync-resolve-conflict',
       method: 'POST',
-      preBodyGate: (req, res) => {
-        if (!checkLocalOpSecurity(req, res, { handler: 'sync-resolve-conflict' })) return false;
-        const engine = getSyncEngine?.();
-        if (!engine && !resolveStaleExternalWrite) {
-          errorResponse(res, 503, 'urn:ok:error:sync-not-active', 'Sync engine not active.', {
-            handler: 'sync-resolve-conflict',
-          });
-          return false;
-        }
-        return true;
-      },
+      preBodyGate: (req, res) =>
+        checkLocalOpSecurity(req, res, { handler: 'sync-resolve-conflict' }),
     },
   );
 
@@ -414,14 +411,8 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
       });
       return;
     }
-    const absoluteFile = resolve(projectDir, file);
-    const trackedDocName = pathToDocName(absoluteFile, contentDir);
-    const loadedDoc = hocuspocus.documents.get(trackedDocName);
-    const isConflictedByLifecycle = loadedDoc?.getMap('lifecycle').get('status') === 'conflict';
-    const staleConflict = durabilityState.getStaleExternalWrite(trackedDocName);
-    const engine = getSyncEngine?.();
-    const isTrackedByStore = engine ? engine.getConflicts().some((c) => c.file === file) : false;
-    if (!isConflictedByLifecycle && !isTrackedByStore && staleConflict?.file !== file) {
+    const entry = conflicts.findByFile(file);
+    if (entry === undefined) {
       errorResponse(
         res,
         404,
@@ -434,96 +425,60 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
       );
       return;
     }
+    const reason = entry.kind === 'reconcile' ? entry.reason : undefined;
+    const resolutionOptions = [...strategiesFor(entry.kind, reason)];
+    const docName = conflicts.docNameOf(entry) ?? stripDocExtension(file);
+    const loaded = hocuspocus.documents.get(docName);
+    const respond = (payload: {
+      base: string;
+      ours: string;
+      theirs: string;
+      kind: 'both-modified' | 'delete-modify' | 'modify-delete';
+    }): void => {
+      successResponse(
+        res,
+        200,
+        SyncConflictContentSuccessSchema,
+        {
+          file,
+          ...payload,
+          conflict: entry.kind,
+          conflictKind:
+            reason === 'stale-external-write'
+              ? ('stale-external-write' as const)
+              : ('git' as const),
+          ...(reason === undefined ? {} : { reason }),
+          resolutionOptions,
+        },
+        { handler: 'sync-conflict-content' },
+      );
+    };
+
     const source = url.searchParams.get('source');
-    const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
 
-    if (staleConflict?.file === file && !isTrackedByStore) {
-      try {
-        assertRealpathWithinDir(absoluteFile, contentDir, {
-          allowShareableOkArtifact: isShareableOkArtifact,
+    switch (entry.kind) {
+      case 'reconcile': {
+        const liveOurs = source === 'ytext' && serializeDoc ? serializeDoc(docName) : null;
+        respond({
+          base: entry.stages.base,
+          ours: selectReconcileOurs(entry, liveOurs),
+          theirs: entry.stages.theirs,
+          kind: 'both-modified',
         });
-        const theirs = staleConflict.diskContent;
-        const ours =
-          serializeDoc?.(trackedDocName) ??
-          staleConflict.retainedContent ??
-          durabilityState.getReconciledBase(trackedDocName) ??
-          '';
-        successResponse(
-          res,
-          200,
-          SyncConflictContentSuccessSchema,
-          {
-            file,
-            base: theirs,
-            ours,
-            theirs,
-            kind: 'both-modified',
-            lifecycleStatus: 'conflict',
-            conflictKind: 'stale-external-write',
-          },
-          { handler: 'sync-conflict-content' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read conflict content.',
-          { handler: 'sync-conflict-content', cause: e },
-        );
+        return;
       }
-      return;
-    }
 
-    const wtEntry = engine
-      ?.getConflicts()
-      .find((c) => c.file === file && c.variant === 'working-tree');
-    if (wtEntry) {
-      try {
-        const readBlob = async (sha: string | undefined): Promise<string> => {
-          if (!sha) return '';
-          try {
-            return await pg.raw(['cat-file', 'blob', sha]);
-          } catch (err) {
-            console.warn(
-              JSON.stringify({
-                event: 'conflict-content-readblob-failed',
-                file,
-                detail: err instanceof Error ? err.message : String(err),
-                handler: 'sync-conflict-content',
-              }),
-            );
-            throw err;
-          }
-        };
-        const theirs = await readBlob(wtEntry.theirsSha);
-        const base = await readBlob(wtEntry.baseSha);
-        const docName = trackedDocName;
-        const loaded = hocuspocus.documents.get(docName);
-        let ours = '';
-        let oursPresent = false;
-        let lifecycleStatus: string | null = null;
-        if (loaded) {
-          const rawStatus = loaded.getMap('lifecycle').get('status');
-          lifecycleStatus =
-            typeof rawStatus === 'string' && rawStatus.length > 0 ? rawStatus : null;
-          const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
-          if (ytextOurs !== null) {
-            ours = ytextOurs;
-            oursPresent = true;
-          }
-        } else {
-          assertRealpathWithinDir(join(projectDir, file), projectDir, {
-            allowShareableOkArtifact: isShareableOkArtifact,
-          });
-          try {
-            ours = readFileSync(join(projectDir, file), 'utf-8');
-            oursPresent = true;
-          } catch (err) {
-            if (errnoCode(err) !== 'ENOENT') {
+      case 'working-tree': {
+        const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
+        try {
+          const readBlob = async (sha: string | undefined): Promise<string> => {
+            if (!sha) return '';
+            try {
+              return await pg.raw(['cat-file', 'blob', sha]);
+            } catch (err) {
               console.warn(
                 JSON.stringify({
-                  event: 'conflict-content-ours-read-failed',
+                  event: 'conflict-content-readblob-failed',
                   file,
                   detail: err instanceof Error ? err.message : String(err),
                   handler: 'sync-conflict-content',
@@ -531,84 +486,106 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
               );
               throw err;
             }
-            oursPresent = false;
+          };
+          const theirs = await readBlob(entry.theirsSha);
+          const base = await readBlob(entry.baseSha);
+          let ours = '';
+          let oursPresent = false;
+          if (loaded) {
+            const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
+            if (ytextOurs !== null) {
+              ours = ytextOurs;
+              oursPresent = true;
+            }
+          } else {
+            assertRealpathWithinDir(join(projectDir, file), projectDir, {
+              allowShareableOkArtifact: isShareableOkArtifact,
+            });
+            try {
+              ours = readFileSync(join(projectDir, file), 'utf-8');
+              oursPresent = true;
+            } catch (err) {
+              if (errnoCode(err) !== 'ENOENT') {
+                console.warn(
+                  JSON.stringify({
+                    event: 'conflict-content-ours-read-failed',
+                    file,
+                    detail: err instanceof Error ? err.message : String(err),
+                    handler: 'sync-conflict-content',
+                  }),
+                );
+                throw err;
+              }
+              oursPresent = false;
+            }
           }
+          respond({
+            base,
+            ours,
+            theirs,
+            kind: !oursPresent
+              ? 'delete-modify'
+              : theirs.length === 0
+                ? 'modify-delete'
+                : 'both-modified',
+          });
+        } catch (e) {
+          errorResponse(
+            res,
+            500,
+            'urn:ok:error:internal-server-error',
+            'Failed to read conflict content.',
+            { handler: 'sync-conflict-content', cause: e },
+          );
         }
-        const kind: 'both-modified' | 'delete-modify' | 'modify-delete' = !oursPresent
-          ? 'delete-modify'
-          : theirs.length === 0
-            ? 'modify-delete'
-            : 'both-modified';
-        successResponse(
-          res,
-          200,
-          SyncConflictContentSuccessSchema,
-          { file, base, ours, theirs, kind, lifecycleStatus, conflictKind: 'git' },
-          { handler: 'sync-conflict-content' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to read conflict content.',
-          { handler: 'sync-conflict-content', cause: e },
-        );
+        return;
       }
-      return;
-    }
 
-    type StageResult = { present: false } | { present: true; content: string };
-    async function showStage(stage: 1 | 2 | 3): Promise<StageResult> {
-      try {
-        return { present: true, content: await pg.raw(['show', `:${stage}:${file}`]) };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        const isAbsent =
-          /pathspec|did not match|exists on disk, but not in|is in the index, but not at stage/i.test(
-            msg,
-          );
-        if (!isAbsent) {
-          console.warn(
-            JSON.stringify({
-              event: 'showstage-unexpected-error',
-              stage,
-              file,
-              detail: msg,
-              handler: 'sync-conflict-content',
-            }),
-          );
-          throw err;
-        }
-        return { present: false };
-      }
-    }
-    try {
-      const [baseResult, oursResult, theirsResult] = await Promise.all([
-        showStage(1),
-        showStage(2),
-        showStage(3),
-      ]);
-      const base = baseResult.present ? baseResult.content : '';
-      const theirs = theirsResult.present ? theirsResult.content : '';
-      const kind: 'both-modified' | 'delete-modify' | 'modify-delete' =
-        oursResult.present && theirsResult.present
-          ? 'both-modified'
-          : !oursResult.present && theirsResult.present
-            ? 'delete-modify'
-            : oursResult.present && !theirsResult.present
-              ? 'modify-delete'
-              : 'both-modified';
-      let ours = oursResult.present ? oursResult.content : '';
-      let lifecycleStatus: string | null = null;
-      if (source === 'ytext') {
-        const docName = trackedDocName;
-        const loaded = hocuspocus.documents.get(docName);
-        if (loaded) {
-          const rawStatus = loaded.getMap('lifecycle').get('status');
-          lifecycleStatus =
-            typeof rawStatus === 'string' && rawStatus.length > 0 ? rawStatus : null;
-          if (kind !== 'delete-modify') {
+      case 'merge-native': {
+        const pg = simpleGit({ baseDir: projectDir, timeout: { block: 15_000 } });
+        type StageResult = { present: false } | { present: true; content: string };
+        const showStage = async (stage: 1 | 2 | 3): Promise<StageResult> => {
+          try {
+            return { present: true, content: await pg.raw(['show', `:${stage}:${file}`]) };
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            const isAbsent =
+              /pathspec|did not match|exists on disk, but not in|is in the index, but not at stage/i.test(
+                msg,
+              );
+            if (!isAbsent) {
+              console.warn(
+                JSON.stringify({
+                  event: 'showstage-unexpected-error',
+                  stage,
+                  file,
+                  detail: msg,
+                  handler: 'sync-conflict-content',
+                }),
+              );
+              throw err;
+            }
+            return { present: false };
+          }
+        };
+        try {
+          const [baseResult, oursResult, theirsResult] = await Promise.all([
+            showStage(1),
+            showStage(2),
+            showStage(3),
+          ]);
+          const base = baseResult.present ? baseResult.content : '';
+          const theirs = theirsResult.present ? theirsResult.content : '';
+          const stageKind: 'both-modified' | 'delete-modify' | 'modify-delete' =
+            oursResult.present && theirsResult.present
+              ? 'both-modified'
+              : !oursResult.present && theirsResult.present
+                ? 'delete-modify'
+                : oursResult.present && !theirsResult.present
+                  ? 'modify-delete'
+                  : 'both-modified';
+          let ours = oursResult.present ? oursResult.content : '';
+          if (source === 'ytext' && loaded !== undefined && stageKind !== 'delete-modify') {
             const ytextOurs = serializeDoc ? serializeDoc(docName) : null;
             if (ytextOurs !== null && !containsUnresolvedConflictBlock(ytextOurs)) {
               ours = ytextOurs;
@@ -622,31 +599,36 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
               );
             }
           }
-        } else {
-          log.warn(
-            { docName },
-            `[conflict-content] doc ${docName} not loaded; lifecycleStatus unavailable`,
+          respond({ base, ours, theirs, kind: stageKind });
+        } catch (e) {
+          errorResponse(
+            res,
+            500,
+            'urn:ok:error:internal-server-error',
+            'Failed to read conflict content.',
+            {
+              handler: 'sync-conflict-content',
+              cause: e,
+            },
           );
         }
+        return;
       }
-      successResponse(
-        res,
-        200,
-        SyncConflictContentSuccessSchema,
-        { file, base, ours, theirs, kind, lifecycleStatus, conflictKind: 'git' },
-        { handler: 'sync-conflict-content' },
-      );
-    } catch (e) {
-      errorResponse(
-        res,
-        500,
-        'urn:ok:error:internal-server-error',
-        'Failed to read conflict content.',
-        {
-          handler: 'sync-conflict-content',
-          cause: e,
-        },
-      );
+
+      default: {
+        const _exhaustive: never = entry;
+        errorResponse(
+          res,
+          500,
+          'urn:ok:error:internal-server-error',
+          'Failed to read conflict content.',
+          {
+            handler: 'sync-conflict-content',
+            cause: new Error(`unknown conflict kind: ${JSON.stringify(_exhaustive)}`),
+          },
+        );
+        return;
+      }
     }
   }
 

@@ -96,9 +96,10 @@ import { resolveBundledSkillDir } from './build-skill-zip.ts';
 import { CommentIndex } from './comments/comment-index.ts';
 import { CommentService } from './comments/comment-service.ts';
 import { CommentThreadStore } from './comments/thread-store.ts';
+import type { ConflictAuthority } from './conflict-authority.ts';
 import {
   DocInConflictError,
-  isDocInConflict,
+  docInConflictEnvelope,
   RESOLUTION_OPTIONS,
   respondDocInConflict,
 } from './conflict-errors.ts';
@@ -178,7 +179,6 @@ import {
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
-import type { ResolveStrategy } from './conflict-storage.ts';
 import {
   isReservedProjectStatePath,
   listManagedDocNamesUnderFolder,
@@ -1264,6 +1264,8 @@ export interface ApiExtensionOptions {
   agentPresenceBroadcaster?: AgentPresenceBroadcaster;
   onAgentWrite?: () => void;
   getSyncEngine?: () => SyncEngine | null;
+  conflicts: ConflictAuthority;
+  setBatchInProgress?: (value: boolean) => void;
   localOpCliArgs?: string[];
   authStreamHeartbeatMs?: number;
   projectDir?: string;
@@ -1282,15 +1284,9 @@ export interface ApiExtensionOptions {
   contentFilter?: ContentFilter;
   installedAgentsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
   forceUnloadDocument?: (document: Document) => Promise<void>;
-  resetDocumentDurability?: (docName: string) => void;
   ready?: Promise<void>;
   recentlyRemovedDocs?: RecentlyRemovedDocs;
   serializeDoc?: (docName: string) => string | null;
-  resolveStaleExternalWrite?: (
-    file: string,
-    strategy: ResolveStrategy,
-    content?: string,
-  ) => Promise<boolean>;
   evictManagedArtifactLkg?: (docName: string) => void;
   semanticSearch?: SemanticSearchService;
   getSemanticSimilarityFloor?: () => number | undefined;
@@ -1386,6 +1382,8 @@ export function createApiExtension(
     agentPresenceBroadcaster,
     onAgentWrite,
     getSyncEngine,
+    conflicts,
+    setBatchInProgress,
     localOpCliArgs = ['open-knowledge'],
     authStreamHeartbeatMs,
     projectDir,
@@ -1400,11 +1398,9 @@ export function createApiExtension(
     contentFilter,
     installedAgentsProbe,
     forceUnloadDocument,
-    resetDocumentDurability,
     ready,
     recentlyRemovedDocs,
     serializeDoc,
-    resolveStaleExternalWrite,
     evictManagedArtifactLkg,
     semanticSearch,
     getSemanticSimilarityFloor,
@@ -1431,6 +1427,7 @@ export function createApiExtension(
 
   const documentRoutes = createDocumentRoutes({
     hocuspocus,
+    conflicts,
     contentDir,
     isSafeDocName,
     resolveAlias,
@@ -2302,17 +2299,10 @@ export function createApiExtension(
   }
 
   function assertRewriteTargetsNotConflicted(docNames: Iterable<string>): void {
-    const renameEngine = getSyncEngine?.();
-    const renameTrackedFiles = new Set(
-      renameEngine ? renameEngine.getConflicts().map((c) => c.file) : [],
-    );
     for (const docName of docNames) {
-      const doc = hocuspocus.documents.get(docName);
-      const filePath = docNameToRelativePath(docName);
-      const conflictedByLifecycle = doc !== undefined && isDocInConflict(doc);
-      const conflictedByStore = renameTrackedFiles.has(filePath);
-      if (conflictedByLifecycle || conflictedByStore) {
-        throw new DocInConflictError({ file: filePath });
+      const entry = conflicts.findByDocName(docName);
+      if (entry !== undefined) {
+        throw new DocInConflictError({ file: entry.file });
       }
     }
   }
@@ -2531,16 +2521,9 @@ export function createApiExtension(
             );
           }
 
-          const renameEngine = getSyncEngine?.();
-          const trackedFiles = new Set(
-            renameEngine ? renameEngine.getConflicts().map((c) => c.file) : [],
-          );
-          const sourceDoc = hocuspocus.documents.get(sourceDocName);
-          if (
-            (sourceDoc !== undefined && isDocInConflict(sourceDoc)) ||
-            trackedFiles.has(fromPath)
-          ) {
-            throw new DocInConflictError({ file: fromPath });
+          const sourceConflict = conflicts.findByDocName(sourceDocName);
+          if (sourceConflict !== undefined) {
+            throw new DocInConflictError({ file: sourceConflict.file });
           }
 
           const renamedAssets = [{ fromPath, toPath }];
@@ -2557,6 +2540,7 @@ export function createApiExtension(
             contentDir,
             undefined,
             getBridgeLossReporter?.(),
+            conflicts,
           );
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
             recentlyRemovedDocs.setDeleted(sourceDocName);
@@ -2759,6 +2743,7 @@ export function createApiExtension(
               contentDir,
               undefined,
               getBridgeLossReporter?.(),
+              conflicts,
             );
             const content = readCurrentDocumentContent(docName);
             if (typeof content === 'string') {
@@ -3290,6 +3275,7 @@ export function createApiExtension(
           contentDir,
           options.resolveEmbed,
           getBridgeLossReporter?.(),
+          conflicts,
         );
 
         const timestamp = new Date().toISOString();
@@ -3388,7 +3374,12 @@ export function createApiExtension(
         );
       } catch (e) {
         if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-write');
+          respondDocInConflict(
+            res,
+            e,
+            'agent-write',
+            conflicts.findByDocName(stripDocExtension(e.file)),
+          );
           return;
         }
         if (e instanceof FrontmatterMalformedError) {
@@ -3458,12 +3449,17 @@ export function createApiExtension(
                 'doc.name': docName,
               }),
             );
-            return entryError(
+            const { detail, ...envelope } = docInConflictEnvelope(conflicts.findByDocName(docName));
+            return {
+              status: 'error',
               docName,
-              'urn:ok:error:doc-in-conflict',
-              'Document is in conflict.',
-              'The document is in a merge-conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
-            );
+              error: {
+                type: 'urn:ok:error:doc-in-conflict',
+                title: 'Document is in conflict.',
+                detail,
+                ...envelope,
+              },
+            };
           }
           if (e instanceof FrontmatterMalformedError) {
             logFrontmatterRefusal(e, 'agent-write-batch');
@@ -3552,6 +3548,7 @@ export function createApiExtension(
                 contentDir,
                 options.resolveEmbed,
                 getBridgeLossReporter?.(),
+                conflicts,
               );
 
               const entryEmbedResolver = options.resolveEmbed
@@ -3763,16 +3760,7 @@ export function createApiExtension(
     listAffectedDocNames: (index, kind, path) =>
       listAffectedDocNames(index as Map<string, FileIndexEntry>, kind, path),
     getFileIndex,
-    getConflictedFiles: () =>
-      new Set(
-        getSyncEngine?.()
-          ?.getConflicts()
-          .map((c) => c.file) ?? [],
-      ),
-    isDocNameInLifecycleConflict: (docName) => {
-      const doc = hocuspocus.documents.get(docName);
-      return doc !== undefined && isDocInConflict(doc);
-    },
+    conflictFileForDocName: (docName) => conflicts.findByDocName(docName)?.file ?? null,
     captureAndCloseDocuments,
     markRecentlyRemoved: recentlyRemovedDocs
       ? (docName) => recentlyRemovedDocs.setDeleted(docName)
@@ -3907,9 +3895,9 @@ export function createApiExtension(
     handler: string,
     res: ServerResponse,
   ): boolean {
-    const doc = hocuspocus.documents.get(docName);
-    if (doc && isDocInConflict(doc)) {
-      respondDocInConflict(res, new DocInConflictError({ file: `${docName}.md` }), handler);
+    const entry = conflicts.findByDocName(docName);
+    if (entry !== undefined) {
+      respondDocInConflict(res, new DocInConflictError({ file: entry.file }), handler, entry);
       return true;
     }
     return false;
@@ -4722,6 +4710,7 @@ export function createApiExtension(
     readAuditGeneration,
   });
   const lintWriteRoutes = createLintWriteRoutes({
+    conflicts,
     contentDir,
     projectDir,
     signalLintConfigChanged,
@@ -4899,12 +4888,12 @@ export function createApiExtension(
     contentDir,
     getPrincipal,
     hocuspocus,
-    durabilityState,
     log,
     checkLocalOpSecurity,
     getSyncEngine,
+    conflicts,
     serializeDoc,
-    resolveStaleExternalWrite,
+    setBatchInProgress,
   });
   const shareRoutes = createShareRoutes({
     projectDir,
@@ -4946,8 +4935,7 @@ export function createApiExtension(
     getPrincipal,
     contentFilter,
     signalChannel,
-    hocuspocus,
-    getSyncEngine,
+    conflicts,
     flushContributors,
     fileOpsService,
     assetService,
@@ -4986,7 +4974,7 @@ export function createApiExtension(
     sessionManager,
     getPrincipal,
     signalChannel,
-    getSyncEngine,
+    conflicts,
     recentlyRemovedDocs,
     isSafeDocName,
     resolveAlias,
@@ -5075,6 +5063,7 @@ export function createApiExtension(
     signalChannel,
   });
   const agentWriteRoutes = createAgentWriteRoutes({
+    conflicts,
     getLinkAdvisoryPolicy,
     respondStaleExternalWrite,
     requireNonEmptyDocName,
@@ -5118,7 +5107,8 @@ export function createApiExtension(
     renameAttributionCounter,
   });
   const testRoutes = createTestRoutes({
-    resetDocumentDurability,
+    conflicts,
+    durabilityState,
     resolveAlias,
     contentDir,
     log,

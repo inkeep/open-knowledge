@@ -5,9 +5,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { AgentSessionManager } from '../agent-sessions.ts';
 import { makeCaptureRes } from '../composition-rig.test-helper.ts';
+import { createTestConflictAuthority } from '../conflict-authority.test-helper.ts';
+import { DocInConflictError } from '../conflict-errors.ts';
 import { loggerFactory } from '../logger.ts';
 import { createLintWriteRoutes } from './lint-write-routes.ts';
 
@@ -28,6 +30,7 @@ function buildGroup(overrides: Partial<Deps> = {}) {
   roots.push(contentDir);
   const hocuspocus = new Hocuspocus({ quiet: true });
   const deps = {
+    conflicts: createTestConflictAuthority(contentDir),
     contentDir,
     projectDir: undefined,
     signalLintConfigChanged: notDispatched,
@@ -149,7 +152,39 @@ describe('createLintWriteRoutes config handlers', () => {
   });
 });
 
-describe('createLintWriteRoutes lint-fix capacity response', () => {
+describe('createLintWriteRoutes lint-fix refusal responses', () => {
+  test('returns authority metadata and allowed resolutions for a conflict', async () => {
+    const { contentDir, group, sessionManager } = buildGroup({
+      requireNonEmptyDocName: (docName) => docName ?? null,
+      resolveDocFilePath: () => 'note.md',
+      conflicts: {
+        findByDocName: () => ({
+          kind: 'reconcile',
+          file: 'note.md',
+          detectedAt: '2026-09-14T00:00:00.000Z',
+          reason: 'disk-markers',
+          stages: { base: 'base', ours: 'ours', theirs: 'theirs' },
+        }),
+      },
+    });
+    const getSession = vi
+      .spyOn(sessionManager, 'getSession')
+      .mockRejectedValue(new DocInConflictError({ file: 'note.md' }));
+    try {
+      writeFileSync(join(contentDir, 'note.md'), '# Heading\n');
+      const response = await dispatch(group, '/api/lint/fix', { docName: 'note' });
+      expect(response.status).toBe(409);
+      expect(JSON.parse(response.body)).toMatchObject({
+        file: 'note.md',
+        conflict: { kind: 'reconcile', reason: 'disk-markers' },
+        resolutionOptions: ['mine', 'content', 'delete'],
+      });
+    } finally {
+      getSession.mockRestore();
+      await sessionManager.closeAll();
+    }
+  });
+
   test('returns the retryable problem when the session limit is full', async () => {
     const hocuspocus = new Hocuspocus({ quiet: true });
     const sessionManager = new AgentSessionManager(hocuspocus, {

@@ -35,7 +35,7 @@ vi.doMock('@/editor/DocumentContext', () => ({
 }));
 vi.doMock('@/hooks/use-document-stats', () => ({ useDocumentStats: () => null }));
 vi.doMock('@/hooks/use-selection-stats', () => ({ useSelectionStats: () => null }));
-vi.doMock('@/hooks/use-lifecycle-status', () => ({ useLifecycleStatus: () => 'ready' }));
+vi.doMock('@/hooks/use-conflicts', () => ({ useDocConflict: () => null }));
 vi.doMock('@/presence/use-sync-status', () => ({ useSyncStatus: () => 'synced' }));
 vi.doMock('@/lib/use-settings-route', () => ({
   useSettingsRoute: () => ({ open: false, close: () => {} }),

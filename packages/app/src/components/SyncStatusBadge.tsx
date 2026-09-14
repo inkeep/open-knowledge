@@ -36,7 +36,7 @@ import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import type { GitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useGitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useConfigContext } from '@/lib/config-provider';
-import { filePathToDocName, hashFromAssetPath, hashFromDocName, isSameHash } from '@/lib/doc-hash';
+import { hashFromAssetPath, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { triggerSync } from '@/lib/trigger-sync';
 import { openSyncSettings } from '@/lib/use-settings-route';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
@@ -1027,8 +1027,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   const blockingPaths = status.blockingPaths ?? [];
 
   const { conflicts } = useConflicts();
-  const firstConflict = conflicts[0] ?? null;
-  const showConflictButton = state === 'conflict' && firstConflict !== null;
+  const firstConflictDocName = conflicts.find((entry) => entry.docName !== null)?.docName ?? null;
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -1250,12 +1249,12 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
             {}
             <Trans>A document has a conflict — resolve it to keep it up to date.</Trans>
           </p>
-          {showConflictButton && firstConflict && (
+          {firstConflictDocName !== null && (
             <Button
               variant="outline"
               size="xs"
               className="self-start"
-              onClick={() => navigateToHash(hashFromDocName(filePathToDocName(firstConflict.file)))}
+              onClick={() => navigateToHash(hashFromDocName(firstConflictDocName))}
             >
               <Trans>Review</Trans>
             </Button>

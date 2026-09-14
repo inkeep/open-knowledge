@@ -42,7 +42,10 @@ vi.doMock('@/hooks/use-selection-stats', () => ({
     return null;
   },
 }));
-vi.doMock('@/hooks/use-lifecycle-status', () => ({ useLifecycleStatus: () => 'ready' }));
+vi.doMock('@/hooks/use-conflicts', () => ({
+  useDocConflict: () => null,
+  useConflicts: () => ({ conflicts: [], loading: false, error: null, refresh: () => {} }),
+}));
 vi.doMock('@/presence/use-sync-status', () => ({ useSyncStatus: () => 'synced' }));
 vi.doMock('@/lib/use-settings-route', () => ({
   useSettingsRoute: () => ({ open: false, close: () => {} }),
