@@ -2726,6 +2726,10 @@ msgctxt "settings search keyword"
 msgid "characters"
 msgstr "caracteres"
 
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Chat name"
+msgstr "Nome do chat"
+
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
 msgstr "Buscar atualizações"
@@ -11414,6 +11418,8 @@ msgid "Rename"
 msgstr "Renomear"
 
 #. placeholder {0}: session.label
+#. placeholder {0}: thread.title
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "Renomear {0}"
@@ -11973,6 +11979,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "HTML incorporado em modo isolado — escreva HTML e veja a pré-visualização renderizada ao vivo."
 
 #: src/comments/ThreadCard.tsx
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
