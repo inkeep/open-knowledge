@@ -2,13 +2,9 @@ import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Node, Project, SyntaxKind } from 'ts-morph';
 import { describe, expect, it } from 'vitest';
+import { listAgentWriteSpineFiles } from './agent-write-spine-files.test-helper.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const SPINE_FILES = [
-  join(here, 'api-extension.ts'),
-  join(here, 'http', 'agent-write-routes.ts'),
-  join(here, 'acp', 'thread-manager.ts'),
-];
 
 const FULL_BODY_OVERWRITE = new Set(['replace', 'patch']);
 
@@ -65,9 +61,11 @@ function handlerScope(call: Node): Node | undefined {
 describe('agent-write pre-drain coverage', () => {
   it('every pre-drainable applyAgentMarkdownWrite spine call is preceded by agentWritePreDrain', () => {
     const project = newProject();
-    const spineCalls = SPINE_FILES.flatMap((path) =>
+    const spineFiles = listAgentWriteSpineFiles(here);
+    expect(spineFiles.length).toBeGreaterThan(0);
+    const spineCalls = spineFiles.flatMap((path) =>
       project
-        .addSourceFileAtPath(path)
+        .addSourceFileAtPath(join(here, path))
         .getDescendantsOfKind(SyntaxKind.CallExpression)
         .filter((c) => calleeName(c) === 'applyAgentMarkdownWrite'),
     );

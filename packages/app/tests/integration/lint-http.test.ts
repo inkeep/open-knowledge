@@ -294,6 +294,27 @@ describe('POST /api/lint/markdownlint-config', () => {
     }
   });
 
+  test('removing the last rule deletes its file and repeating the removal is an accepted no-op', async () => {
+    const nativeFile = join(server.contentDir, '.markdownlint.json');
+    writeFileSync(nativeFile, JSON.stringify({ MD012: false }), 'utf-8');
+    try {
+      const removed = await postRule('MD012', null);
+      expect(removed.status).toBe(200);
+      const removedBody = LintConfigResponseSchema.parse(await removed.json());
+      expect(removedBody.configFile).toBeNull();
+      expect(removedBody.effective.plugins.markdownlint.rules.MD012).not.toBe(false);
+      expect(existsSync(nativeFile)).toBe(false);
+
+      const noop = await postRule('MD012', null);
+      expect(noop.status).toBe(200);
+      const noopBody = LintConfigResponseSchema.parse(await noop.json());
+      expect(noopBody.configFile).toBeNull();
+      expect(existsSync(nativeFile)).toBe(false);
+    } finally {
+      rmSync(nativeFile, { force: true });
+    }
+  });
+
   test('an executable native config declines the write with a 409', async () => {
     const cjsFile = join(server.contentDir, '.markdownlint.cjs');
     writeFileSync(cjsFile, 'module.exports = { MD010: false };\n', 'utf-8');

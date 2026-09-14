@@ -18,8 +18,20 @@ import {
 
 let server: TestServer;
 
+const SEED_CONFIG = [
+  'contentRules:',
+  '  markdownlint:',
+  '    enabled: true',
+  '  frontmatter:',
+  '    enabled: true',
+  '    schemas:',
+  '      - appliesTo: "audit-epoch/**"',
+  '        file: ".ok/schemas/audit-epoch.schema.json"',
+  '',
+].join('\n');
+
 beforeAll(async () => {
-  server = await createTestServer({ markdownlintEnabled: true });
+  server = await createTestServer({ seedProjectConfigYml: SEED_CONFIG });
 }, HARNESS_BOOT_TIMEOUT_MS);
 
 afterAll(async () => {
@@ -49,8 +61,8 @@ function seedTabbedCorpus(folder: string): void {
   }
 }
 
-async function auditScope(): Promise<Response> {
-  return fetch(api(`/api/audit?path=${SCOPE}`));
+async function auditScope(scope = SCOPE): Promise<Response> {
+  return fetch(api(`/api/audit?path=${scope}`));
 }
 
 function md010Count(body: unknown): number {
@@ -182,6 +194,119 @@ describe('GET /api/audit across a lint-config change', () => {
         provider.destroy();
         ydoc.destroy();
         rmSync(folder, { recursive: true, force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'an in-flight audit is superseded when a frontmatter schema write changes its results',
+    async () => {
+      const scope = `${SCOPE}/frontmatter`;
+      const folder = join(server.contentDir, scope);
+      const schemaPath = join(server.contentDir, '.ok', 'schemas', 'audit-epoch.schema.json');
+      seedTabbedCorpus(folder);
+      mkdirSync(join(server.contentDir, '.ok', 'schemas'), { recursive: true });
+      writeFileSync(schemaPath, JSON.stringify({ type: 'object', properties: {} }), 'utf-8');
+      try {
+        let firstSettled = false;
+        const first = auditScope(scope).then((res) => {
+          firstSettled = true;
+          return res;
+        });
+        const write = await fetch(api('/api/lint/frontmatter-schema'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            file: '.ok/schemas/audit-epoch.schema.json',
+            field: 'owner',
+            constraint: { type: 'string', required: true },
+          }),
+        });
+        expect(write.status).toBe(200);
+        expect(firstSettled).toBe(false);
+
+        const firstRes = await first;
+        expect(firstRes.status).toBe(409);
+        const problem = (await firstRes.json()) as { type?: string };
+        expect(problem.type).toBe('urn:ok:error:audit-superseded');
+
+        const after = await auditScope(scope);
+        expect(after.status).toBe(200);
+        const afterBody = ValidationAuditResponseSchema.parse(await after.json());
+        expect(
+          afterBody.files
+            .flatMap((file) => file.diagnostics)
+            .some(
+              (diagnostic) =>
+                diagnostic.source === 'frontmatter' &&
+                diagnostic.code === 'required' &&
+                diagnostic.message.includes('owner'),
+            ),
+        ).toBe(true);
+      } finally {
+        rmSync(folder, { recursive: true, force: true });
+        rmSync(schemaPath, { force: true });
+      }
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  test(
+    'refused and failed config writes do not supersede an in-flight audit',
+    async () => {
+      const scope = `${SCOPE}/rejected`;
+      const folder = join(server.contentDir, scope);
+      const executableConfig = join(server.contentDir, '.markdownlint.cjs');
+      const brokenConfig = join(server.contentDir, '.markdownlint.json');
+      const blockedSchemaParent = join(server.contentDir, 'blocked-schema-parent');
+      seedTabbedCorpus(folder);
+      try {
+        let firstSettled = false;
+        const first = auditScope(scope).then((res) => {
+          firstSettled = true;
+          return res;
+        });
+        writeFileSync(executableConfig, 'module.exports = { MD012: false };\n', 'utf-8');
+        const declined = await fetch(api('/api/lint/markdownlint-config'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ruleId: 'MD012', value: false }),
+        });
+        expect(declined.status).toBe(409);
+
+        const refused = await fetch(api('/api/lint/frontmatter-schema'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: '../escape.schema.json' }),
+        });
+        expect(refused.status).toBe(409);
+
+        rmSync(executableConfig, { force: true });
+        mkdirSync(brokenConfig);
+        const failedMarkdown = await fetch(api('/api/lint/markdownlint-config'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ruleId: 'MD012', value: false }),
+        });
+        expect(failedMarkdown.status).toBe(500);
+
+        writeFileSync(blockedSchemaParent, 'not a directory', 'utf-8');
+        const failedFrontmatter = await fetch(api('/api/lint/frontmatter-schema'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ file: 'blocked-schema-parent/failure.schema.json' }),
+        });
+        expect(failedFrontmatter.status).toBe(500);
+        expect(firstSettled).toBe(false);
+
+        const firstRes = await first;
+        expect(firstRes.status).toBe(200);
+      } finally {
+        rmSync(folder, { recursive: true, force: true });
+        rmSync(executableConfig, { force: true });
+        rmSync(brokenConfig, { recursive: true, force: true });
+        rmSync(blockedSchemaParent, { force: true });
       }
     },
     TEST_TIMEOUT_MS,

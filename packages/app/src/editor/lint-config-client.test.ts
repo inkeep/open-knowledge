@@ -1,5 +1,16 @@
+import { DEFAULT_LINTER_CONFIG } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fixLintDoc, LINT_FIX_TIMEOUT_MS } from './lint-config-client.ts';
+import {
+  createEmptyFrontmatterSchema,
+  deleteFrontmatterSchema,
+  fixLintDoc,
+  LINT_FIX_TIMEOUT_MS,
+  removeFrontmatterSchemaField,
+  renameFrontmatterSchemaField,
+  subscribeToLintConfigChanged,
+  writeFrontmatterSchemaField,
+  writeMarkdownlintRule,
+} from './lint-config-client.ts';
 
 type FetchFn = typeof globalThis.fetch;
 
@@ -14,6 +25,181 @@ beforeEach(() => {
 });
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  vi.unstubAllGlobals();
+});
+
+const CONFIG_RESPONSE = {
+  effective: DEFAULT_LINTER_CONFIG,
+  configFile: null,
+  configProblems: [],
+};
+
+describe('writeMarkdownlintRule', () => {
+  it('posts the rule update and returns the schema-parsed configuration', async () => {
+    const calls: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
+    stubFetch(async (input, init) => {
+      calls.push({ input, init });
+      return new Response(JSON.stringify(CONFIG_RESPONSE), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    const outcome = await writeMarkdownlintRule('MD012', { maximum: 3 });
+
+    expect(outcome).toEqual({ ok: true, response: CONFIG_RESPONSE });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.input).toBe('/api/lint/markdownlint-config');
+    expect(calls[0]?.init).toMatchObject({
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ruleId: 'MD012', value: { maximum: 3 } }),
+    });
+  });
+
+  it.each([
+    ['malformed JSON', new Response('{', { status: 200 })],
+    ['a schema-invalid body', new Response(JSON.stringify({ unexpected: true }), { status: 200 })],
+  ])('rejects a successful response with %s', async (_label, response) => {
+    stubFetch(async () => response.clone());
+    await expect(writeMarkdownlintRule('MD012', false)).resolves.toEqual({
+      ok: false,
+      errorDetail: null,
+    });
+  });
+
+  it('preserves a problem title from a rejected write', async () => {
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ title: 'Config cannot be rewritten.' }), { status: 409 }),
+    );
+    await expect(writeMarkdownlintRule('MD012', false)).resolves.toEqual({
+      ok: false,
+      errorDetail: 'Config cannot be rewritten.',
+    });
+  });
+
+  it('returns a title-less failure when the request does not reach the server', async () => {
+    stubFetch(async () => {
+      throw new TypeError('fetch failed');
+    });
+    await expect(writeMarkdownlintRule('MD012', false)).resolves.toEqual({
+      ok: false,
+      errorDetail: null,
+    });
+  });
+});
+
+describe('frontmatter schema writes', () => {
+  it('serializes every operation and emits the local event only for successful create and delete', async () => {
+    const calls: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
+    stubFetch(async (input, init) => {
+      calls.push({ input, init });
+      return new Response(JSON.stringify(CONFIG_RESPONSE), { status: 200 });
+    });
+    vi.stubGlobal('window', new EventTarget());
+    let eventCount = 0;
+    const unsubscribe = subscribeToLintConfigChanged(() => {
+      eventCount += 1;
+    });
+    try {
+      await expect(createEmptyFrontmatterSchema('.ok/schemas/doc.schema.json')).resolves.toEqual({
+        ok: true,
+        response: CONFIG_RESPONSE,
+      });
+      await expect(
+        writeFrontmatterSchemaField(
+          '.ok/schemas/doc.schema.json',
+          'name',
+          { type: 'string', required: true },
+          ['items', { items: true }],
+        ),
+      ).resolves.toEqual({ ok: true, response: CONFIG_RESPONSE });
+      await expect(
+        removeFrontmatterSchemaField('.ok/schemas/doc.schema.json', 'name', ['items']),
+      ).resolves.toEqual({ ok: true, response: CONFIG_RESPONSE });
+      await expect(
+        renameFrontmatterSchemaField('.ok/schemas/doc.schema.json', 'name', 'title'),
+      ).resolves.toEqual({ ok: true, response: CONFIG_RESPONSE });
+      await expect(deleteFrontmatterSchema('.ok/schemas/doc.schema.json')).resolves.toEqual({
+        ok: true,
+        response: CONFIG_RESPONSE,
+      });
+
+      expect(eventCount).toBe(2);
+      expect(calls.map((call) => call.input)).toEqual(
+        Array.from({ length: 5 }, () => '/api/lint/frontmatter-schema'),
+      );
+      expect(calls.map((call) => call.init?.method)).toEqual(
+        Array.from({ length: 5 }, () => 'POST'),
+      );
+      expect(calls.map((call) => JSON.parse(String(call.init?.body)))).toEqual([
+        { file: '.ok/schemas/doc.schema.json' },
+        {
+          file: '.ok/schemas/doc.schema.json',
+          field: 'name',
+          constraint: { type: 'string', required: true },
+          parentPath: ['items', { items: true }],
+        },
+        {
+          file: '.ok/schemas/doc.schema.json',
+          field: 'name',
+          removeField: true,
+          parentPath: ['items'],
+        },
+        { file: '.ok/schemas/doc.schema.json', field: 'name', renameTo: 'title' },
+        { file: '.ok/schemas/doc.schema.json', delete: true },
+      ]);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it('does not emit a local event when create or delete fails', async () => {
+    stubFetch(
+      async () =>
+        new Response(JSON.stringify({ title: 'Schema cannot be rewritten.' }), { status: 409 }),
+    );
+    vi.stubGlobal('window', new EventTarget());
+    let eventCount = 0;
+    const unsubscribe = subscribeToLintConfigChanged(() => {
+      eventCount += 1;
+    });
+    try {
+      await expect(createEmptyFrontmatterSchema('.ok/schemas/doc.schema.json')).resolves.toEqual({
+        ok: false,
+        errorDetail: 'Schema cannot be rewritten.',
+      });
+      await expect(deleteFrontmatterSchema('.ok/schemas/doc.schema.json')).resolves.toEqual({
+        ok: false,
+        errorDetail: 'Schema cannot be rewritten.',
+      });
+      expect(eventCount).toBe(0);
+    } finally {
+      unsubscribe();
+    }
+  });
+
+  it.each([
+    ['malformed JSON', new Response('{', { status: 200 })],
+    ['a schema-invalid body', new Response(JSON.stringify({ unexpected: true }), { status: 200 })],
+  ])('rejects a successful response with %s', async (_label, response) => {
+    stubFetch(async () => response.clone());
+    await expect(createEmptyFrontmatterSchema('.ok/schemas/doc.schema.json')).resolves.toEqual({
+      ok: false,
+      errorDetail: null,
+    });
+  });
+
+  it('returns a title-less failure when the request does not reach the server', async () => {
+    stubFetch(async () => {
+      throw new TypeError('fetch failed');
+    });
+    await expect(createEmptyFrontmatterSchema('.ok/schemas/doc.schema.json')).resolves.toEqual({
+      ok: false,
+      errorDetail: null,
+    });
+  });
 });
 
 describe('fixLintDoc', () => {
@@ -137,5 +323,59 @@ describe('fixLintDoc', () => {
       ok: true,
       result: { file: 'doc-a', fixedCount: 2, diagnostics: [], errorCount: 0, warningCount: 0 },
     });
+  });
+
+  it('preserves degraded success fields, nested fixes, and request serialization', async () => {
+    const calls: Array<{ input: string | URL | Request; init?: RequestInit }> = [];
+    const result = {
+      file: 'doc-a.md',
+      fixedCount: 0,
+      diagnostics: [
+        {
+          range: {
+            start: { line: 2, character: 0 },
+            end: { line: 2, character: 1 },
+          },
+          severity: 'warning',
+          source: 'markdownlint',
+          code: 'MD010',
+          message: 'Hard tabs',
+          fixes: [
+            {
+              range: {
+                start: { line: 2, character: 0 },
+                end: { line: 2, character: 1 },
+              },
+              newText: ' ',
+            },
+          ],
+        },
+      ],
+      errorCount: 0,
+      warningCount: 1,
+      ran: ['markdownlint', 'frontmatter'],
+      warnings: ['frontmatter config warning'],
+      diagnosticsArePreFix: true,
+      reLintFailure: {
+        reason: 'source-went-blind',
+        message: 'markdownlint became unavailable',
+      },
+    };
+    stubFetch(async (input, init) => {
+      calls.push({ input, init });
+      return Response.json(result);
+    });
+
+    const outcome = await fixLintDoc('doc-a');
+
+    expect(outcome).toEqual({ ok: true, result });
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.input).toBe('/api/lint/fix');
+    expect(calls[0]?.init).toMatchObject({
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ docName: 'doc-a' }),
+    });
+    expect(calls[0]?.init?.signal).toBeInstanceOf(AbortSignal);
   });
 });

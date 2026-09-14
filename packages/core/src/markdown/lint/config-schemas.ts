@@ -68,6 +68,15 @@ export const LintConfigResponseSchema = z.object({
 
 const MarkdownlintRuleWriteValueSchema = z.union([z.boolean(), z.record(z.string(), z.unknown())]);
 
+const RESERVED_SCHEMA_PROPERTY_KEYS = new Set(['__proto__']);
+const SchemaPropertyKeyStringSchema = z
+  .string()
+  .min(1)
+  .max(256)
+  .refine((key) => !RESERVED_SCHEMA_PROPERTY_KEYS.has(key), {
+    message: 'schema property name cannot be __proto__',
+  });
+
 export const MarkdownlintRuleWriteRequestSchema = z.object({
   ruleId: z
     .string()
@@ -81,13 +90,15 @@ export const FrontmatterSchemaWriteRequestSchema = z
   .object({
     file: z.string().min(1).max(512),
     delete: z.literal(true).optional(),
-    field: z.string().min(1).max(256).optional(),
+    field: SchemaPropertyKeyStringSchema.optional(),
     parentPath: z
-      .array(z.union([z.string().min(1).max(256), z.object({ items: z.literal(true) }).strict()]))
+      .array(
+        z.union([SchemaPropertyKeyStringSchema, z.object({ items: z.literal(true) }).strict()]),
+      )
       .max(8)
       .optional(),
     removeField: z.literal(true).optional(),
-    renameTo: z.string().min(1).max(256).optional(),
+    renameTo: SchemaPropertyKeyStringSchema.optional(),
     constraint: z
       .object({
         type: z.enum(['string', 'number', 'boolean', 'array', 'object']).nullable().optional(),

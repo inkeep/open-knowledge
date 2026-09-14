@@ -1,4 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   FrontmatterSchemasListSuccessSchema,
@@ -407,6 +416,39 @@ describe('POST /api/lint/frontmatter-schema — write surface over HTTP', () => 
       constraint: { type: 'string' },
     });
     expect(res.status).toBe(400);
+  });
+
+  test('schema writes resolve from projectDir when contentDir is nested', async () => {
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-fm-project-root-')));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir);
+    const distinctServer = await createTestServer({ contentDir, projectDir });
+    const file = '.ok/schemas/project-root.schema.json';
+    try {
+      const res = await fetch(
+        `http://127.0.0.1:${distinctServer.port}/api/lint/frontmatter-schema`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ file }),
+        },
+      );
+      expect(res.status).toBe(200);
+      LintConfigResponseSchema.parse(await res.json());
+      expect(existsSync(join(projectDir, file))).toBe(true);
+      expect(existsSync(join(contentDir, file))).toBe(false);
+
+      const listed = await fetch(
+        `http://127.0.0.1:${distinctServer.port}/api/lint/frontmatter-schemas`,
+      );
+      expect(listed.status).toBe(200);
+      expect(FrontmatterSchemasListSuccessSchema.parse(await listed.json()).schemas).toContain(
+        file,
+      );
+    } finally {
+      await distinctServer.cleanup();
+      rmSync(projectDir, { recursive: true, force: true });
+    }
   });
 });
 
