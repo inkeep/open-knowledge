@@ -1,7 +1,8 @@
 import type { ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type {
   ThreadEvent,
   ThreadInfo,
@@ -16,9 +17,21 @@ import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
+import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
+import {
+  installNodeFixture,
+  npmCli,
+  registryPackage,
+  writeExecutable,
+} from './package-acquisition.test-helper.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
-import { ACP_ENVIRONMENT_NOTE, AcpThreadManager, MAX_QUEUED_PROMPTS } from './thread-manager.ts';
+import {
+  ACP_ENVIRONMENT_NOTE,
+  AcpThreadManager,
+  type AcpThreadManagerOptions,
+  MAX_QUEUED_PROMPTS,
+} from './thread-manager.ts';
 
 const log = getLogger('acp-thread-test');
 
@@ -52,6 +65,8 @@ function makeManager(
   contentDir: string,
   localDir: string,
   extra?: {
+    probePiAcpBridge?: AcpThreadManagerOptions['probePiAcpBridge'];
+    ensurePiAcpBridge?: AcpThreadManagerOptions['ensurePiAcpBridge'];
     steerStallMs?: number;
     authenticateTimeoutMs?: number;
     unwatchedTurnCancelMs?: number;
@@ -114,6 +129,264 @@ function internals(manager: AcpThreadManager): {
     sessionId: (threadId) => m.threads.get(threadId)?.sessionId,
   };
 }
+
+describe('package acquisition failure projection', () => {
+  test.each(['npx', 'uvx'] as const)(
+    '%s start and retry retain actionable native refusal and clean up',
+    async (runtime) => {
+      await withLocalAcquisitionRegistry(async (home) => {
+        process.env.npm_config_before = '1970-01-01';
+        process.env.UV_EXCLUDE_NEWER = '1970-01-01';
+        const localDir = tmp();
+        const agent = registryPackage(
+          runtime === 'npx' ? 'is-number@7.0.0' : 'ruff@0.16.7',
+          runtime,
+        );
+        const registry = new AcpRegistry({
+          localDir,
+          log,
+          fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+        });
+        const manager = makeManager(home, localDir, { registry });
+        const events: ThreadEvent[] = [];
+        const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+        await manager.subscribe(info.threadId, 0, (frame) => {
+          if (frame.op === 'event') events.push(frame.event);
+          else if (frame.op === 'events') events.push(...frame.events);
+        });
+        try {
+          for (const attempt of ['start', 'retry']) {
+            if (attempt === 'retry') {
+              const previous = events.filter(
+                (event) => event.kind === 'status' && event.status === 'error',
+              ).length;
+              await manager.retryThread(info.threadId).catch(() => {});
+              await expect
+                .poll(
+                  () =>
+                    events.filter((event) => event.kind === 'status' && event.status === 'error')
+                      .length,
+                  { timeout: 5000 },
+                )
+                .toBeGreaterThan(previous);
+            }
+            await expect
+              .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 20_000 })
+              .toBe('error');
+            await expect
+              .poll(() => internals(manager).child(info.threadId), { timeout: 5000 })
+              .toBeNull();
+            await expect
+              .poll(
+                () => events.some((event) => event.kind === 'status' && event.status === 'error'),
+                { timeout: 5000 },
+              )
+              .toBe(true);
+            const failure = events
+              .filter((event) => event.kind === 'status' && event.status === 'error')
+              .at(-1);
+            expect.soft(failure, attempt).toMatchObject({
+              failure: {
+                reason: 'connect',
+                agentMessage: expect.stringMatching(/release|policy|allowed|available/i),
+                machineDetail: expect.stringMatching(
+                  runtime === 'npx' ? /ETARGET|ENOVERSIONS/ : /exclude-newer|No solution found/,
+                ),
+              },
+            });
+            expect.soft(internals(manager).pendingPermissionCount(info.threadId)).toBe(0);
+            if (failure?.kind === 'status')
+              expect.soft(failure.failure?.machineDetail?.length ?? 0).toBeLessThan(20_000);
+            if (failure?.kind === 'status')
+              expect
+                .soft(failure.failure?.machineDetail)
+                .toContain(
+                  runtime === 'npx' ? 'A complete log of this run' : 'to override the cutoff',
+                );
+          }
+        } finally {
+          await manager.destroy();
+        }
+      });
+    },
+    90_000,
+  );
+
+  test.each(['npx', 'uvx'] as const)(
+    '%s resume exposes typed install-failed after real native acquisition refusal',
+    async (runtime) => {
+      await withLocalAcquisitionRegistry(async (home) => {
+        const realNpx = npmCli('npx');
+        const realNpm = npmCli('npm');
+        const localDir = tmp();
+        writeResumableAgentEntry(localDir, 'resume-bootstrap', { FAKE_CAPS: 'resume,load' });
+        const bin = join(home, 'bin');
+        mkdirSync(bin);
+        installNodeFixture(bin);
+        const npx = join(bin, 'npx');
+        writeExecutable(
+          npx,
+          `if(process.argv.includes('--version')) process.stdout.write('11.17.0\\n');
+        else import(${JSON.stringify(pathToFileURL(join(localDir, 'resume-bootstrap.mjs')).href)});`,
+        );
+        writeExecutable(
+          join(bin, 'npm'),
+          `const r=require('node:child_process').spawnSync(${JSON.stringify(process.execPath)}, [${JSON.stringify(realNpm)}, ...process.argv.slice(2)], {stdio:'inherit',env:process.env}); process.exit(r.status ?? 1);`,
+        );
+        const env = {
+          PATH: [bin, process.env.PATH ?? ''].join(delimiter),
+          FAKE_CAPS: 'resume,load',
+        };
+        let agent = registryPackage('fixture-bootstrap', 'npx', env);
+        agent.distribution.npx = { package: 'fixture-bootstrap', env };
+        const registry = new AcpRegistry({
+          localDir,
+          log,
+          ttlMs: 0,
+          fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+        });
+        const manager = makeManager(home, localDir, { registry });
+        await manager.init();
+        try {
+          const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+          await expect
+            .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 15_000 })
+            .toBe('ready');
+          manager.sendPrompt(info.threadId, 'retain this fixture session');
+          await expect
+            .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 15_000 })
+            .toBe('ready');
+          await manager.closeThread(info.threadId);
+          agent = registryPackage(
+            runtime === 'npx' ? 'is-number@7.0.0' : 'ruff@0.16.7',
+            runtime,
+            env,
+          );
+          process.env.npm_config_before = '1970-01-01';
+          process.env.UV_EXCLUDE_NEWER = '1970-01-01';
+          writeExecutable(
+            npx,
+            `const r=require('node:child_process').spawnSync(${JSON.stringify(process.execPath)}, [${JSON.stringify(realNpx)}, ...process.argv.slice(2)], {stdio:'inherit',env:process.env}); process.exit(r.status ?? 1);`,
+          );
+          await expect(manager.resumeThread(info.threadId)).rejects.toMatchObject({
+            code: 'install-failed',
+            message: expect.stringMatching(/release-date policy/),
+          });
+          expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+          expect(internals(manager).child(info.threadId)).toBeNull();
+          const replay: ThreadEvent[] = [];
+          await manager.subscribe(info.threadId, 0, (frame) => {
+            if (frame.op === 'event') replay.push(frame.event);
+            else if (frame.op === 'events') replay.push(...frame.events);
+          });
+          expect(replay.filter((event) => event.kind === 'status').at(-1)).toMatchObject({
+            status: 'exited',
+            failure: {
+              reason: 'connect',
+              agentMessage: expect.stringMatching(/release-date policy/),
+              machineDetail: expect.stringMatching(
+                runtime === 'npx' ? /ETARGET|ENOVERSIONS/ : /exclude-newer|No solution found/,
+              ),
+            },
+          });
+        } finally {
+          await manager.destroy();
+        }
+      });
+    },
+    90_000,
+  );
+
+  test('a ceiling-sized acquisition primary preserves its headline and a distinct stderr tail', async () => {
+    await withLocalAcquisitionRegistry(async (home) => {
+      const localDir = tmp();
+      const bin = join(home, 'bin');
+      mkdirSync(bin);
+      installNodeFixture(bin);
+      const originalPath = process.env.PATH;
+      writeExecutable(
+        join(bin, 'uvx'),
+        `
+        const args = process.argv.slice(2);
+        const result = require('node:child_process').spawnSync('uvx', args, {
+          encoding: 'utf8', env: { ...process.env, PATH: ${JSON.stringify(originalPath)} },
+        });
+        if (args.length === 1 && args[0] === '--version') {
+          process.stdout.write(result.stdout);
+        } else {
+          const headline = 'PRIMARY-HEAD ' + result.stderr.replace(/\\n/g, ' ');
+          process.stderr.write('TAIL-ONLY: registry endpoint\\n' + headline.padEnd(15999, 'x') + '\\n');
+        }
+        process.exit(result.status ?? 1);
+      `,
+      );
+      const env = {
+        PATH: [bin, originalPath ?? ''].join(delimiter),
+        UV_EXCLUDE_NEWER: '1970-01-01',
+      };
+      const agent = registryPackage('ruff@0.16.7', 'uvx', env);
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const manager = makeManager(home, localDir, { registry });
+      const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+      const statuses: StatusEvent[] = [];
+      await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+      await waitUntil(
+        () => statuses.some((event) => event.failure?.reason === 'connect'),
+        15_000,
+        'acquisition failure',
+      );
+      const detail = statuses.find((event) => event.failure?.reason === 'connect')?.failure
+        ?.machineDetail;
+      expect(detail).toMatch(/^PRIMARY-HEAD /);
+      expect(detail).toContain('No solution found');
+      expect(detail).toContain('TAIL-ONLY: registry endpoint');
+      expect(detail?.length).toBeLessThanOrEqual(16_000);
+    });
+  }, 30_000);
+
+  test('compatibility control: ordinary ACP closure is not described as a package policy refusal', async () => {
+    const localDir = tmp();
+    const command = join(localDir, 'ordinary-close.cjs');
+    writeFileSync(
+      command,
+      "process.stderr.write('ordinary ACP fixture closure https://alice:fixture-secret@registry.example.test/pkg Authorization: Bearer fixture-token');process.exit(1);",
+    );
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'ordinary', name: 'Ordinary', command: process.execPath, args: [command] },
+      ]),
+    );
+    const manager = makeManager(tmp(), localDir);
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'ordinary' } });
+    await manager.subscribe(info.threadId, 0, (frame) => {
+      if (frame.op === 'event') events.push(frame.event);
+      else if (frame.op === 'events') events.push(...frame.events);
+    });
+    await expect
+      .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 10_000 })
+      .toBe('error');
+    await expect
+      .poll(() => events.some((event) => event.kind === 'status' && event.status === 'error'), {
+        timeout: 5000,
+      })
+      .toBe(true);
+    const failure = events
+      .filter((event) => event.kind === 'status' && event.status === 'error')
+      .at(-1);
+    expect(failure).toMatchObject({
+      failure: { reason: 'connect', agentMessage: expect.stringContaining('initialize failed') },
+    });
+    expect(JSON.stringify(failure)).not.toMatch(
+      /release-date policy|cooldown|fixture-secret|fixture-token/,
+    );
+  });
+});
 
 function writeExampleAgentEntry(localDir: string): void {
   writeFileSync(
@@ -2704,6 +2977,52 @@ process.stdin.on('data', (chunk) => {
 }
 
 describe('AcpThreadManager retry', () => {
+  test('retry settles an outstanding permission from a failed prompt in replayed history', async () => {
+    const localDir = tmp();
+    writeRequestingAgentEntry(
+      localDir,
+      'permission-failure',
+      `
+      void request('session/request_permission', {
+        toolCall: { toolCallId: 'pending-edit', title: 'Edit a file', kind: 'edit' },
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+      });
+      write({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'prompt failed' } });
+    `,
+    );
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'permission-failure' },
+    });
+    const events: ThreadEvent[] = [];
+    await manager.subscribe(info.threadId, 0, (frame) => {
+      if (frame.op === 'event') events.push(frame.event);
+      if (frame.op === 'events') events.push(...frame.events);
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'edit');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      5000,
+      'prompt failure',
+    );
+    await waitUntil(
+      () => events.some((event) => event.kind === 'permission_request'),
+      5000,
+      'permission event delivery',
+    );
+    expect(events.some((event) => event.kind === 'permission_request')).toBe(true);
+    writeRequestingAgentEntry(localDir, 'permission-failure', 'finish();');
+    expect((await manager.retryThread(info.threadId)).status).toBe('ready');
+    const replay: ThreadEvent[] = [];
+    await manager.subscribe(info.threadId, 0, (frame) => {
+      if (frame.op === 'event') replay.push(frame.event);
+      if (frame.op === 'events') replay.push(...frame.events);
+    });
+    expect(replay.some((event) => event.kind === 'permission_resolved')).toBe(true);
+    expect(internals(manager).pendingPermissionCount(info.threadId)).toBe(0);
+  }, 30_000);
+
   test('a failed start retries in place and succeeds once the cause is fixed', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -3203,17 +3522,17 @@ process.stdin.on('data', (chunk) => {
   );
 }
 
-describe('AcpThreadManager auth classification', () => {
-  type StatusEvent = Extract<ThreadEvent, { kind: 'status' }>;
+type StatusEvent = Extract<ThreadEvent, { kind: 'status' }>;
 
-  const collectStatuses = (into: StatusEvent[]) => (frame: ThreadServerFrame) => {
-    const push = (event: ThreadEvent): void => {
-      if (event.kind === 'status') into.push(event);
-    };
-    if (frame.op === 'event') push(frame.event);
-    if (frame.op === 'events') for (const event of frame.events) push(event);
+const collectStatuses = (into: StatusEvent[]) => (frame: ThreadServerFrame) => {
+  const push = (event: ThreadEvent): void => {
+    if (event.kind === 'status') into.push(event);
   };
+  if (frame.op === 'event') push(frame.event);
+  if (frame.op === 'events') for (const event of frame.events) push(event);
+};
 
+describe('AcpThreadManager auth classification', () => {
   const withStatus = (statuses: StatusEvent[], status: string): StatusEvent | undefined =>
     statuses.find((e) => e.status === status);
 
@@ -3315,6 +3634,67 @@ describe('AcpThreadManager auth classification', () => {
 
     await manager.closeThread(info.threadId);
   }, 30_000);
+
+  test.each([
+    'short',
+    'cut-through-credentials',
+    'colon-free',
+    'long-stderr',
+    'large-tail',
+  ] as const)(
+    'a %s session/new error payload is redacted before it reaches the failure detail',
+    async (shape) => {
+      const contentDir = tmp();
+      const localDir = tmp();
+      writeSessionFailingAgentEntry(
+        localDir,
+        'leaky-data-agent',
+        {
+          code: -32603,
+          message: 'Failed to initialize session services',
+          data: {
+            cause: 'services',
+            padding: shape === 'short' ? '' : 'x'.repeat(220),
+            registry:
+              shape === 'colon-free'
+                ? 'https://0123456789abcdef@pypi.company.com/simple'
+                : `https://alice:fixture-secret${'z'.repeat(80)}@registry.example.test/pkg`,
+            header: 'Authorization: Bearer fixture-token',
+          },
+        },
+        shape === 'large-tail'
+          ? [...Array.from({ length: 39 }, () => 'x'.repeat(480)), 'boot: loading services'].join(
+              '\n',
+            )
+          : shape === 'colon-free'
+            ? 'boot: loading services https://fedcba9876543210@pypi.company.com/simple'
+            : `boot: loading services https://bob:fixture-tail-secret${shape === 'long-stderr' ? 'z'.repeat(600) : ''}@registry.example.test/pkg`,
+      );
+      const manager = makeManager(contentDir, localDir);
+      const statuses: StatusEvent[] = [];
+      const info = await manager.createThread({
+        agent: { source: 'custom', id: 'leaky-data-agent' },
+      });
+      await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+      await waitUntil(
+        () => withStatus(statuses, 'error') !== undefined,
+        15_000,
+        `error; got ${JSON.stringify(statuses.map((e) => e.status))}`,
+      );
+      const event = withStatus(statuses, 'error');
+      expect(event?.failure?.reason).toBe('session-setup');
+      const detail = event?.failure?.machineDetail ?? '';
+      expect(detail).toContain('"cause":"services"');
+      expect(detail).toContain('boot: loading services');
+      expect(detail).not.toMatch(
+        /fixture-secret|fixture-token|fixture-tail-secret|0123456789abcdef|fedcba9876543210/,
+      );
+      expect(detail.length).toBeLessThanOrEqual(16_000);
+
+      await manager.closeThread(info.threadId);
+    },
+    30_000,
+  );
 
   test('closing a failed thread archives it instead of erasing its evidence', async () => {
     const contentDir = tmp();
@@ -3952,23 +4332,27 @@ function writeCrashingAgentEntry(localDir: string, id: string, stderrLine: strin
 function writeExitAfterReadyAgentEntry(
   localDir: string,
   id: string,
-  stderrLine: string,
+  stderr: { text: string; terminated: boolean },
   dieFile: string,
-): void {
+): { preExitStderr: string } {
+  const payload = stderr.terminated ? `${stderr.text}\n` : stderr.text;
+  const preExitStderr = payload.slice(0, -1);
+  const finalStderr = payload.slice(-1);
   const agentPath = join(localDir, `${id}.mjs`);
   writeFileSync(
     agentPath,
     `
 import { existsSync } from 'node:fs';
 const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
-// Dies only when the test says so, and with no request in flight. A timed
-// exit raced session setup: landing first, it failed the pending session/new,
-// which puts the thread in 'error' — a status whose exit is a known echo and
-// is deliberately not logged again.
+let stderrWritten = false;
 setInterval(() => {
-  if (!existsSync(${JSON.stringify(dieFile)})) return;
-  process.stderr.write(${JSON.stringify(stderrLine)} + '\\n');
-  process.exit(7);
+  if (!stderrWritten && existsSync(${JSON.stringify(`${dieFile}.stderr`)})) {
+    stderrWritten = true;
+    process.stderr.write(${JSON.stringify(preExitStderr)});
+  }
+  if (existsSync(${JSON.stringify(dieFile)})) {
+    process.stderr.write(${JSON.stringify(finalStderr)}, () => process.exit(7));
+  }
 }, 20);
 let buffer = '';
 process.stdin.setEncoding('utf8');
@@ -3996,6 +4380,7 @@ process.stdin.on('data', (chunk) => {
     join(localDir, 'acp-agents.json'),
     JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
   );
+  return { preExitStderr };
 }
 
 function capturingLog(sink: { obj: Record<string, unknown>; msg: string }[]): PinoLogger {
@@ -4014,6 +4399,644 @@ function capturingLog(sink: { obj: Record<string, unknown>; msg: string }[]): Pi
   };
   return self as unknown as PinoLogger;
 }
+
+function writeHeldStdioAgentEntry(
+  localDir: string,
+  id: string,
+  mode: 'ready' | 'auth' | 'session-setup' | 'prompt' | 'resume',
+  dieFile: string,
+  releaseFile: string,
+): { diagnostic: string } {
+  const diagnostic = 'Fatal: held final diagnostic';
+  const stderr = `${diagnostic} https://alice:held-secret@registry.example.test/pkg`;
+  const keeper = `
+    const { existsSync } = require('node:fs');
+    const deadline = Date.now() + 15_000;
+    setInterval(() => {
+      if (existsSync(${JSON.stringify(releaseFile)}) || Date.now() > deadline) process.exit(0);
+    }, 10);
+  `;
+  const entry = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    entry,
+    `
+    import { existsSync, writeFileSync } from 'node:fs';
+    import { spawn } from 'node:child_process';
+    const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+    setInterval(() => {
+      if (!existsSync(${JSON.stringify(dieFile)})) return;
+      spawn(process.execPath, ['-e', ${JSON.stringify(keeper)}], {
+        detached: true, stdio: ['ignore', 'inherit', 'inherit'],
+      }).unref();
+      process.stderr.write(${JSON.stringify(stderr)}, () => process.exit(7));
+    }, 10);
+    let buffer = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => {
+      buffer += chunk;
+      let end;
+      while ((end = buffer.indexOf('\\n')) !== -1) {
+        const msg = JSON.parse(buffer.slice(0, end));
+        buffer = buffer.slice(end + 1);
+        if (msg.method === 'initialize') {
+          write({ jsonrpc: '2.0', id: msg.id, result: {
+            protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } },
+            authMethods: [{ id: 'login', name: 'Login' }],
+          } });
+        } else if (msg.method === 'session/new') {
+          if (${JSON.stringify(mode)} === 'session-setup') {
+            writeFileSync(${JSON.stringify(`${dieFile}.request`)}, 'session');
+          } else if (${JSON.stringify(mode)} === 'auth') {
+            write({ jsonrpc: '2.0', id: msg.id, error: { code: -32000, message: 'sign in' } });
+          } else {
+            write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'held-session' } });
+          }
+        } else if (msg.method === 'session/resume' && ${JSON.stringify(mode)} !== 'resume') {
+          write({ jsonrpc: '2.0', id: msg.id, result: {} });
+        } else if (msg.method === 'session/prompt' || msg.method === 'session/resume') {
+          writeFileSync(${JSON.stringify(`${dieFile}.request`)}, 'prompt');
+        }
+      }
+    });
+  `,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [entry] }]),
+  );
+  return { diagnostic };
+}
+
+describe('diagnostic stream lifetime', () => {
+  test.each([
+    ['npx', 'live'],
+    ['npx', 'eof'],
+    ['uvx', 'live'],
+    ['uvx', 'eof'],
+  ] as const)(
+    '%s initialize handles %s before process exit',
+    async (runtime, mode) => {
+      const localDir = tmp();
+      const binDir = tmp();
+      const rejectFile = join(localDir, 'reject');
+      const releaseFile = join(localDir, 'release');
+      const requestFile = join(localDir, 'request');
+      const diagnostic =
+        runtime === 'npx'
+          ? 'npm ERR! code ETARGET No matching version with a date before 1970-01-01'
+          : 'No solution found when resolving tool dependencies: filtered by `exclude-newer`';
+      installNodeFixture(binDir);
+      writeExecutable(
+        join(binDir, runtime),
+        `
+          const { existsSync, writeFileSync } = require('node:fs');
+          if (process.argv.includes('--version')) { process.stdout.write('1.0.0\\n'); process.exit(0); }
+          let request;
+          let buffer = '';
+          process.stdin.setEncoding('utf8');
+          process.stdin.on('data', (chunk) => {
+            buffer += chunk;
+            const end = buffer.indexOf('\\n');
+            if (end === -1) return;
+            request = JSON.parse(buffer.slice(0, end));
+            writeFileSync(${JSON.stringify(requestFile)}, 'initialize');
+          });
+          let rejected = false;
+          setInterval(() => {
+            if (!request || rejected || !existsSync(${JSON.stringify(rejectFile)})) return;
+            rejected = true;
+            if (${JSON.stringify(mode)} === 'live') {
+              process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: request.id,
+                error: { code: -32603, message: 'initialize rejected while alive' } }) + '\\n');
+            } else {
+              process.stdout.end();
+            }
+          }, 10);
+          setInterval(() => {
+            if (existsSync(${JSON.stringify(releaseFile)})) {
+              process.stderr.write(${JSON.stringify(diagnostic)}, () => process.exit(7));
+            }
+          }, 10);
+        `,
+      );
+      const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+      const manager = makeManager(tmp(), localDir, {
+        log: capturingLog(lines),
+        registry: new AcpRegistry({
+          localDir,
+          log,
+          fetchImpl: async () =>
+            new Response(
+              JSON.stringify({
+                agents: [
+                  {
+                    id: 'initialize-order',
+                    name: 'Initialize order',
+                    version: '1.0.0',
+                    distribution: {
+                      [runtime]: { package: 'initialize-order', env: { PATH: binDir } },
+                    },
+                  },
+                ],
+              }),
+            ),
+        }),
+      });
+      const info = await manager.createThread({
+        agent: { source: 'registry', id: 'initialize-order' },
+      });
+      await waitUntil(() => existsSync(requestFile), 5000, 'initialize received');
+      const child = internals(manager).child(info.threadId);
+      if (child?.stdout == null) throw new Error('child stdout missing');
+      const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+      let rejectedAt = 0;
+      let exitObserved = false;
+      let eofBeforeExit = false;
+      child.once('exit', () => {
+        exitObserved = true;
+      });
+      child.stdout.once('end', () => {
+        eofBeforeExit = !exitObserved;
+      });
+      child.stdout.on('data', (chunk: Buffer) => {
+        if (chunk.toString().includes('initialize rejected while alive')) {
+          rejectedAt = performance.now();
+          aliveAtRejection = child.exitCode === null && child.signalCode === null;
+        }
+      });
+      let reportedAt = 0;
+      let aliveAtRejection = false;
+      const statuses: StatusEvent[] = [];
+      await manager.subscribe(info.threadId, 0, (frame) => {
+        collectStatuses(statuses)(frame);
+        if (statuses.some((event) => event.failure?.reason === 'connect') && reportedAt === 0) {
+          reportedAt = performance.now();
+        }
+      });
+      try {
+        writeFileSync(rejectFile, 'reject');
+        await waitUntil(
+          () => lines.some((line) => line.msg === '[acp-threads] initialize failed'),
+          5000,
+          'initialize failure',
+        );
+        if (mode === 'eof') writeFileSync(releaseFile, 'release');
+        await waitUntil(
+          () => statuses.some((event) => event.failure?.reason === 'connect'),
+          5000,
+          'connect failure',
+        );
+        const failure = statuses.find((event) => event.failure?.reason === 'connect')?.failure;
+        if (mode === 'live') {
+          expect(rejectedAt).toBeGreaterThan(0);
+          expect(reportedAt - rejectedAt).toBeLessThan(700);
+          expect(aliveAtRejection).toBe(true);
+          expect(failure?.agentMessage).toContain('initialize rejected while alive');
+        } else {
+          expect(eofBeforeExit).toBe(true);
+          expect(failure?.agentMessage).toContain('release-date policy');
+          expect(failure?.machineDetail).toContain(diagnostic);
+        }
+      } finally {
+        writeFileSync(releaseFile, 'release');
+        await closed;
+      }
+    },
+    30_000,
+  );
+
+  test.each(['exit', 'retry'] as const)(
+    '%s retires an outstanding sign-in consent',
+    async (action) => {
+      const localDir = tmp();
+      const binDir = tmp();
+      writeAuthenticatingAgentEntry(localDir, 'consent-agent');
+      const agentPath = join(localDir, 'consent-agent.mjs');
+      installNodeFixture(binDir);
+      writeExecutable(
+        join(binDir, 'npx'),
+        `
+        if (process.argv.includes('--version')) process.stdout.write('1.0.0\\n');
+        else void import(${JSON.stringify(pathToFileURL(agentPath).href)});
+      `,
+      );
+      let bridgeLoadable = true;
+      const manager = makeManager(tmp(), localDir, {
+        registry: new AcpRegistry({
+          localDir,
+          log,
+          fetchImpl: async () =>
+            new Response(
+              JSON.stringify({
+                agents: [
+                  {
+                    id: 'pi-acp',
+                    name: 'Pi',
+                    version: '1.0.0',
+                    distribution: { npx: { package: '@fake/pi', env: { PATH: binDir } } },
+                  },
+                ],
+              }),
+            ),
+        }),
+        probePiAcpBridge: (cwd) => ({
+          project: 'ready',
+          cwd,
+          canonicalCwd: cwd,
+          bridgePath: join(cwd, 'bridge.ts'),
+          trustPath: join(cwd, 'trust.json'),
+          bridge: 'absent',
+          trust: 'untrusted',
+          bridgeLoadable,
+          otherExtensions: [],
+        }),
+        ensurePiAcpBridge: () => {
+          throw new Error('retired consent must not provision');
+        },
+      });
+      const info = await manager.createThread({ agent: { source: 'registry', id: 'pi-acp' } });
+      const events: ThreadEvent[] = [];
+      const collect = (frame: ThreadServerFrame) => {
+        if (frame.op === 'event') events.push(frame.event);
+        if (frame.op === 'events') events.push(...frame.events);
+      };
+      await manager.subscribe(info.threadId, 0, collect);
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'auth_required',
+        15_000,
+        'sign-in',
+      );
+      bridgeLoadable = false;
+      let settled = false;
+      const authentication = manager
+        .authenticateThread(info.threadId, 'test_login')
+        .finally(() => {
+          settled = true;
+        })
+        .catch(() => undefined);
+      await waitUntil(
+        () => events.some((event) => event.kind === 'pi_bridge_consent_request'),
+        5000,
+        'consent',
+      );
+      const request = events.find((event) => event.kind === 'pi_bridge_consent_request');
+      if (request?.kind !== 'pi_bridge_consent_request') throw new Error('consent missing');
+      bridgeLoadable = true;
+      if (action === 'exit') {
+        const child = internals(manager).child(info.threadId);
+        if (child == null) throw new Error('child missing');
+        const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+        child.kill('SIGKILL');
+        await exited;
+      } else {
+        writeRequestingAgentEntry(localDir, 'consent-agent', 'finish();');
+        await manager.retryThread(info.threadId);
+      }
+      await waitUntil(() => settled, 1000, 'authentication settlement');
+      await authentication;
+      manager.respondPiBridgeConsent(info.threadId, request.requestId, { kind: 'granted' });
+      const replay: ThreadEvent[] = [];
+      await manager.subscribe(info.threadId, 0, (frame) => {
+        if (frame.op === 'event') replay.push(frame.event);
+        if (frame.op === 'events') replay.push(...frame.events);
+      });
+      expect(
+        replay.some(
+          (event) =>
+            event.kind === 'pi_bridge_consent_resolved' &&
+            event.requestId === request.requestId &&
+            event.decision === 'granted',
+        ),
+      ).toBe(false);
+    },
+    30_000,
+  );
+
+  test('a live agent prompt rejection reports without waiting for process closure', async () => {
+    const localDir = tmp();
+    writeRequestingAgentEntry(
+      localDir,
+      'live-rejection',
+      `
+      write({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'invalid prompt' } });
+    `,
+    );
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'live-rejection' } });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    const child = internals(manager).child(info.threadId);
+    if (child == null) throw new Error('child missing');
+    const statuses: StatusEvent[] = [];
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    let rejectedAt = 0;
+    child.stdout?.on('data', (chunk: Buffer) => {
+      if (chunk.toString().includes('invalid prompt')) rejectedAt = performance.now();
+    });
+    let reportedAt = 0;
+    await manager.subscribe(info.threadId, 0, (frame) => {
+      const batch =
+        frame.op === 'events' ? frame.events : frame.op === 'event' ? [frame.event] : [];
+      if (batch.some((event) => event.kind === 'status' && event.failure?.reason === 'prompt'))
+        reportedAt = performance.now();
+    });
+    manager.sendPrompt(info.threadId, 'reject');
+    await waitUntil(
+      () => statuses.some((event) => event.failure?.reason === 'prompt'),
+      5000,
+      'prompt rejection',
+    );
+    expect(rejectedAt).toBeGreaterThan(0);
+    expect(reportedAt - rejectedAt).toBeLessThan(700);
+    expect(child.exitCode).toBeNull();
+    expect(child.signalCode).toBeNull();
+    expect(
+      statuses.find((event) => event.failure?.reason === 'prompt')?.failure?.agentMessage,
+    ).toBe('invalid prompt');
+  }, 30_000);
+
+  test.each(['session-setup', 'prompt'] as const)(
+    '%s failure waits for held unterminated stderr',
+    async (mode) => {
+      const localDir = tmp();
+      const id = 'held-agent';
+      const dieFile = join(localDir, 'die');
+      const releaseFile = join(localDir, 'release-stdio');
+      const fixture = writeHeldStdioAgentEntry(localDir, id, mode, dieFile, releaseFile);
+      const manager = makeManager(tmp(), localDir);
+      const info = await manager.createThread({ agent: { source: 'custom', id } });
+      const statuses: StatusEvent[] = [];
+      await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+      if (mode === 'prompt') {
+        await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 5000, 'ready');
+        manager.sendPrompt(info.threadId, 'crash');
+      }
+      await waitUntil(() => existsSync(`${dieFile}.request`), 5000, 'request received');
+      const child = internals(manager).child(info.threadId);
+      if (child?.stderr == null || child.stdout == null) throw new Error('stdio missing');
+      const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+      try {
+        child.stderr.pause();
+        const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+        writeFileSync(dieFile, 'exit');
+        await exited;
+        child.stdout.destroy();
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        child.stderr.resume();
+        writeFileSync(releaseFile, 'release');
+        await closed;
+        await waitUntil(
+          () => statuses.some((event) => event.failure?.reason === mode),
+          5000,
+          'typed failure',
+        );
+        const detail = statuses.find((event) => event.failure?.reason === mode)?.failure
+          ?.machineDetail;
+        expect(detail).toContain(fixture.diagnostic);
+        expect(detail).not.toContain('held-secret');
+      } finally {
+        child.stderr.resume();
+        writeFileSync(releaseFile, 'release');
+        await closed;
+      }
+    },
+    20_000,
+  );
+
+  test('a resume that spawns after close terminates its rejected agent', async () => {
+    const localDir = tmp();
+    const id = 'resume-after-close';
+    const pidFile = join(localDir, 'resumed-pid');
+    writeResumableAgentEntry(localDir, id, { FAKE_CAPS: 'resume' });
+    const release = Promise.withResolvers<string | null>();
+    const entered = Promise.withResolvers<void>();
+    let hold = false;
+    const manager = makeManager(tmp(), localDir, {
+      resolveLoginShellPath: async () => {
+        if (!hold) return null;
+        entered.resolve();
+        return release.promise;
+      },
+    });
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id } });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 5000, 'ready');
+    manager.sendPrompt(info.threadId, 'retain history');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 5000, 'prompt');
+    await manager.closeThread(info.threadId);
+    writeFileSync(
+      join(localDir, `${id}.mjs`),
+      `
+      import { writeFileSync } from 'node:fs';
+      writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
+      setInterval(() => {}, 1000);
+      process.stdin.once('data', (chunk) => {
+        const msg = JSON.parse(chunk.toString());
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id,
+          error: { code: -32603, message: 'resume initialization refused' } }) + '\\n');
+      });
+      `,
+    );
+    hold = true;
+    const resumed = manager.resumeThread(info.threadId).catch((error: unknown) => error);
+    await entered.promise;
+    await manager.closeThread(info.threadId);
+    expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+    release.resolve(null);
+    try {
+      expect(await resumed).toMatchObject({ code: 'spawn-failed' });
+      const pid = Number(readFileSync(pidFile, 'utf8'));
+      await expect
+        .poll(
+          () => {
+            try {
+              process.kill(pid, 0);
+              return true;
+            } catch {
+              return false;
+            }
+          },
+          { timeout: 3000 },
+        )
+        .toBe(false);
+      const replay: ThreadEvent[] = [];
+      await manager.subscribe(info.threadId, 0, (frame) => {
+        if (frame.op === 'event') replay.push(frame.event);
+        if (frame.op === 'events') replay.push(...frame.events);
+      });
+      expect(replay.at(-1)).toMatchObject({ kind: 'status', detail: 'thread closed' });
+    } finally {
+      if (existsSync(pidFile)) {
+        try {
+          process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL');
+        } catch {}
+      }
+    }
+  }, 15_000);
+
+  test.each(['prompt', 'resume'] as const)(
+    'closing during %s diagnostics keeps thread closed last in replayed history',
+    async (mode) => {
+      const localDir = tmp();
+      const id = 'close-during-drain';
+      const dieFile = join(localDir, 'die');
+      const releaseFile = join(localDir, 'release-stdio');
+      writeResumableAgentEntry(localDir, id, { FAKE_CAPS: 'resume' });
+      const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+      const manager = makeManager(tmp(), localDir, { log: capturingLog(lines) });
+      await manager.init();
+      const info = await manager.createThread({ agent: { source: 'custom', id } });
+      await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 5000, 'ready');
+      manager.sendPrompt(info.threadId, 'retain history');
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        5000,
+        'prompt complete',
+      );
+      await manager.closeThread(info.threadId);
+      const fixture = writeHeldStdioAgentEntry(localDir, id, mode, dieFile, releaseFile);
+      const resumed = manager.resumeThread(info.threadId).catch((error: unknown) => error);
+      if (mode === 'prompt') {
+        await resumed;
+        manager.sendPrompt(info.threadId, 'crash');
+      }
+      await waitUntil(() => existsSync(`${dieFile}.request`), 5000, 'prompt received');
+      const child = internals(manager).child(info.threadId);
+      if (child?.stdout == null) throw new Error('child stdout missing');
+      const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+      const events: ThreadEvent[] = [];
+      await manager.subscribe(
+        info.threadId,
+        manager.getInfo(info.threadId)?.lastSeq ?? 0,
+        (frame) => {
+          if (frame.op === 'event') events.push(frame.event);
+          if (frame.op === 'events') events.push(...frame.events);
+        },
+      );
+      try {
+        const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+        writeFileSync(dieFile, 'exit');
+        await exited;
+        child.stdout.destroy();
+        if (mode === 'prompt') {
+          await waitUntil(
+            () => events.some((event) => event.kind === 'turn_ended'),
+            5000,
+            'prompt rejected',
+          );
+        } else {
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        await manager.closeThread(info.threadId);
+        expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+        writeFileSync(releaseFile, 'release');
+        await closed;
+        await resumed;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        const replay: StatusEvent[] = [];
+        await manager.subscribe(info.threadId, 0, collectStatuses(replay));
+        expect(replay.some((event) => event.detail === 'thread closed')).toBe(true);
+        expect(replay.at(-1)?.detail).toBe('thread closed');
+        expect(manager.getInfo(info.threadId)?.status).toBe('exited');
+        const suppressed = lines.find(
+          (line) =>
+            line.obj.suppressed === true &&
+            line.obj.reason === (mode === 'prompt' ? 'prompt' : 'connect'),
+        );
+        expect(suppressed?.obj.threadId).toBe(info.threadId);
+        expect(suppressed?.obj.machineDetail).toContain(fixture.diagnostic);
+        expect(JSON.stringify(suppressed)).not.toContain('held-secret');
+      } finally {
+        writeFileSync(releaseFile, 'release');
+        await closed;
+      }
+    },
+    20_000,
+  );
+
+  test('an exited agent reports within the drain bound while a descendant holds stdio', async () => {
+    const localDir = tmp();
+    const id = 'held-agent';
+    const dieFile = join(localDir, 'die');
+    const releaseFile = join(localDir, 'release-stdio');
+    writeHeldStdioAgentEntry(localDir, id, 'ready', dieFile, releaseFile);
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id } });
+    const statuses: StatusEvent[] = [];
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 5000, 'ready');
+    const child = internals(manager).child(info.threadId);
+    if (child == null) throw new Error('child missing');
+    let didClose = false;
+    const closed = new Promise<void>((resolve) =>
+      child.once('close', () => {
+        didClose = true;
+        resolve();
+      }),
+    );
+    try {
+      writeFileSync(dieFile, 'exit');
+      await waitUntil(
+        () => statuses.some((event) => event.detail === 'agent exited (7)'),
+        3000,
+        'bounded exit',
+      );
+      expect(didClose).toBe(false);
+      expect(internals(manager).child(info.threadId)).toBeNull();
+    } finally {
+      writeFileSync(releaseFile, 'release');
+      await closed;
+    }
+  }, 20_000);
+
+  test('a drained old exit cannot replace the ready status or handle of a retried agent', async () => {
+    const localDir = tmp();
+    const id = 'held-agent';
+    const dieFile = join(localDir, 'die');
+    const releaseFile = join(localDir, 'release-stdio');
+    writeHeldStdioAgentEntry(localDir, id, 'auth', dieFile, releaseFile);
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id } });
+    const statuses: StatusEvent[] = [];
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      5000,
+      'sign in',
+    );
+    const original = internals(manager).child(info.threadId);
+    if (original == null) throw new Error('child missing');
+    const closed = new Promise<void>((resolve) => original.once('close', () => resolve()));
+    try {
+      const exited = new Promise<void>((resolve) => original.once('exit', () => resolve()));
+      writeFileSync(dieFile, 'exit');
+      await exited;
+      await expect(manager.authenticateThread(info.threadId, 'login')).rejects.toThrow(
+        'is no longer running',
+      );
+      writeRequestingAgentEntry(localDir, id, 'finish();');
+      expect((await manager.retryThread(info.threadId)).status).toBe('ready');
+      const replacement = internals(manager).child(info.threadId);
+      expect(replacement).toBeTruthy();
+      expect(replacement).not.toBe(original);
+      const retryHistory: StatusEvent[] = [];
+      await manager.subscribe(info.threadId, 0, collectStatuses(retryHistory));
+      const afterRetry = retryHistory.length;
+      writeFileSync(releaseFile, 'release');
+      await closed;
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(manager.getInfo(info.threadId)?.status).toBe('ready');
+      expect(internals(manager).child(info.threadId)).toBe(replacement);
+      const drainedHistory: StatusEvent[] = [];
+      await manager.subscribe(info.threadId, 0, collectStatuses(drainedHistory));
+      expect(drainedHistory.slice(afterRetry).some((event) => event.status === 'exited')).toBe(
+        false,
+      );
+    } finally {
+      writeFileSync(releaseFile, 'release');
+      await closed;
+    }
+  }, 20_000);
+});
 
 describe('agent failures reach the server log', () => {
   test('an agent that dies before the handshake logs its last words', async () => {
@@ -4040,32 +5063,79 @@ describe('agent failures reach the server log', () => {
     expect(String(failureLine?.obj.machineDetail)).toContain('libicui18n.74.dylib');
   }, 30_000);
 
-  test('an agent that dies after going ready logs the unexpected exit', async () => {
-    const contentDir = tmp();
-    const localDir = tmp();
-    const lines: { obj: Record<string, unknown>; msg: string }[] = [];
-    const dieFile = join(localDir, 'die-now');
-    writeExitAfterReadyAgentEntry(localDir, 'quitter', 'agent ran out of memory', dieFile);
+  test.each(['terminated', 'unterminated'] as const)(
+    'an agent that dies after going ready emits bounded redacted exit detail from %s stderr and logs it',
+    async (shape) => {
+      const contentDir = tmp();
+      const localDir = tmp();
+      const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+      const dieFile = join(localDir, 'die-now');
+      const stderr = [
+        ...Array.from({ length: 39 }, () => 'x'.repeat(480)),
+        'agent ran out of memory https://alice:fixture-exit-secret@registry.example.test/pkg',
+      ].join('\n');
+      const { preExitStderr } = writeExitAfterReadyAgentEntry(
+        localDir,
+        'quitter',
+        { text: stderr, terminated: shape === 'terminated' },
+        dieFile,
+      );
 
-    const manager = makeManager(contentDir, localDir, { log: capturingLog(lines) });
-    const info = await manager.createThread({ agent: { source: 'custom', id: 'quitter' } });
-    await waitUntil(
-      () => manager.getInfo(info.threadId)?.status === 'ready',
-      15_000,
-      'the agent to go ready',
-    );
-    writeFileSync(dieFile, 'now');
-    await waitUntil(
-      () => lines.some((line) => line.msg.includes('agent exited unexpectedly')),
-      15_000,
-      'the agent process exit to be logged',
-    );
+      const manager = makeManager(contentDir, localDir, { log: capturingLog(lines) });
+      const info = await manager.createThread({ agent: { source: 'custom', id: 'quitter' } });
+      const statuses: StatusEvent[] = [];
+      await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        15_000,
+        'the agent to go ready',
+      );
+      const child = internals(manager).child(info.threadId);
+      if (child?.stderr == null) throw new Error('agent stderr is unavailable');
+      let observedStderr = '';
+      child.stderr.on('data', (chunk: string) => {
+        observedStderr += chunk;
+      });
+      writeFileSync(`${dieFile}.stderr`, 'write');
+      await waitUntil(
+        () => observedStderr.includes(preExitStderr),
+        5000,
+        'parent receives crash stderr',
+      );
+      child.stderr.pause();
+      const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+      writeFileSync(dieFile, 'now');
+      await exited;
+      expect(internals(manager).child(info.threadId)).toBeNull();
+      child.stderr.resume();
+      await waitUntil(
+        () => lines.some((line) => line.msg.includes('agent exited unexpectedly')),
+        15_000,
+        'the agent process exit to be logged',
+      );
 
-    const exitLine = lines.find((l) => l.msg.includes('agent exited unexpectedly'));
-    expect(exitLine).toBeDefined();
-    expect(exitLine?.obj.code).toBe(7);
-    expect(String(exitLine?.obj.machineDetail)).toContain('ran out of memory');
-  }, 30_000);
+      await waitUntil(
+        () =>
+          statuses.some(
+            (event) => event.status === 'exited' && event.detail?.startsWith('agent exited (7)'),
+          ),
+        5000,
+        'the process exit status detail',
+      );
+      const detail = statuses.find(
+        (event) => event.status === 'exited' && event.detail?.startsWith('agent exited (7)'),
+      )?.detail;
+      expect(detail).toContain('ran out of memory');
+      expect(detail).not.toContain('fixture-exit-secret');
+      expect(detail?.length).toBeLessThanOrEqual(16_000);
+      const exitLine = lines.find((l) => l.msg.includes('agent exited unexpectedly'));
+      expect(exitLine).toBeDefined();
+      expect(exitLine?.obj.code).toBe(7);
+      expect(String(exitLine?.obj.machineDetail)).toContain('ran out of memory');
+      expect(String(exitLine?.obj.machineDetail)).not.toContain('fixture-exit-secret');
+    },
+    30_000,
+  );
 });
 
 const CODEX_WARNING_TEXT = codexFixture.candidates.find((c) => c.name === 'warning-skills-budget')

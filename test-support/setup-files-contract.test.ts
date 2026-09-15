@@ -25,6 +25,7 @@ const KNOWN_TEST_PROJECTS = [
   'packages/md-conformance/md-audit/vitest.config.ts',
   'packages/md-conformance/vitest.config.ts',
   'packages/server/vitest.config.ts',
+  'packages/server/vitest.network.config.ts',
   'test-support/fixtures/no-net-connect/vitest.no-net-connect-fixture.config.ts',
   'vitest.config.ts',
   'vitest.scripts.config.ts',

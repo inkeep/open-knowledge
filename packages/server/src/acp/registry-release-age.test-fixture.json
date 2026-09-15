@@ -1,0 +1,334 @@
+[
+  {
+    "id": "agoragentic-acp",
+    "version": "1.3.0",
+    "distribution": {
+      "npx": {
+        "package": "agoragentic-mcp@1.3.0",
+        "args": ["--acp"]
+      }
+    },
+    "name": "agoragentic-acp"
+  },
+  {
+    "id": "auggie",
+    "version": "0.36.0",
+    "distribution": {
+      "npx": {
+        "package": "@augmentcode/auggie@0.36.0",
+        "args": ["--acp"],
+        "env": {
+          "AUGMENT_DISABLE_AUTO_UPDATE": "1"
+        }
+      }
+    },
+    "name": "auggie"
+  },
+  {
+    "id": "autohand",
+    "version": "0.2.1",
+    "distribution": {
+      "npx": {
+        "package": "@autohandai/autohand-acp@0.2.1"
+      }
+    },
+    "name": "autohand"
+  },
+  {
+    "id": "claude-acp",
+    "version": "0.77.0",
+    "distribution": {
+      "npx": {
+        "package": "@agentclientprotocol/claude-agent-acp@0.77.0"
+      }
+    },
+    "name": "claude-acp"
+  },
+  {
+    "id": "cline",
+    "version": "3.0.61",
+    "distribution": {
+      "npx": {
+        "package": "cline@3.0.61",
+        "args": ["--acp"]
+      }
+    },
+    "name": "cline"
+  },
+  {
+    "id": "codebuddy-code",
+    "version": "2.150.0",
+    "distribution": {
+      "npx": {
+        "package": "@tencent-ai/codebuddy-code@2.150.0",
+        "args": ["--acp"]
+      }
+    },
+    "name": "codebuddy-code"
+  },
+  {
+    "id": "codex-acp",
+    "version": "1.11.0",
+    "distribution": {
+      "npx": {
+        "package": "@agentclientprotocol/codex-acp@1.11.0"
+      }
+    },
+    "name": "codex-acp"
+  },
+  {
+    "id": "deepagents",
+    "version": "0.1.7",
+    "distribution": {
+      "npx": {
+        "package": "deepagents-acp@0.1.7",
+        "args": []
+      }
+    },
+    "name": "deepagents"
+  },
+  {
+    "id": "dimcode",
+    "version": "0.5.2",
+    "distribution": {
+      "npx": {
+        "package": "dimcode@0.5.2",
+        "args": ["acp"]
+      }
+    },
+    "name": "dimcode"
+  },
+  {
+    "id": "dirac",
+    "version": "0.5.12",
+    "distribution": {
+      "npx": {
+        "package": "dirac-cli@0.5.12",
+        "args": ["--acp"]
+      }
+    },
+    "name": "dirac"
+  },
+  {
+    "id": "factory-droid",
+    "version": "0.218.1",
+    "distribution": {
+      "npx": {
+        "package": "droid@0.218.1",
+        "args": ["exec", "--output-format", "acp-daemon"],
+        "env": {
+          "DROID_DISABLE_AUTO_UPDATE": "true",
+          "FACTORY_DROID_AUTO_UPDATE_ENABLED": "false"
+        }
+      }
+    },
+    "name": "factory-droid"
+  },
+  {
+    "id": "fast-agent",
+    "version": "0.10.1",
+    "distribution": {
+      "uvx": {
+        "package": "fast-agent-acp==0.10.1",
+        "args": ["-x"],
+        "env": {
+          "FAST_AGENT_MODEL": "codexplan"
+        }
+      }
+    },
+    "name": "fast-agent"
+  },
+  {
+    "id": "gemini",
+    "version": "0.59.0",
+    "distribution": {
+      "npx": {
+        "package": "@google/gemini-cli@0.59.0",
+        "args": ["--acp"]
+      }
+    },
+    "name": "gemini"
+  },
+  {
+    "id": "github-copilot-cli",
+    "version": "1.0.83",
+    "distribution": {
+      "npx": {
+        "package": "@github/copilot@1.0.83",
+        "args": ["--acp"]
+      }
+    },
+    "name": "github-copilot-cli"
+  },
+  {
+    "id": "glm-acp-agent",
+    "version": "1.8.0",
+    "distribution": {
+      "npx": {
+        "package": "glm-acp-agent@1.8.0"
+      }
+    },
+    "name": "glm-acp-agent"
+  },
+  {
+    "id": "grok-build",
+    "version": "1.0.30",
+    "distribution": {
+      "npx": {
+        "package": "@xai-official/grok@1.0.30",
+        "args": ["agent", "stdio"]
+      }
+    },
+    "name": "grok-build"
+  },
+  {
+    "id": "kilo",
+    "version": "7.6.2",
+    "distribution": {
+      "binary": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.6.2/kilo-darwin-arm64.zip",
+          "cmd": "./kilo",
+          "args": ["acp"],
+          "sha256": "516b8b975beec61ac6c2a3dcf9ea1377bc0959d6f4fd695564de7dcb3a350a9a"
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.6.2/kilo-darwin-x64.zip",
+          "cmd": "./kilo",
+          "args": ["acp"],
+          "sha256": "001c6d21a38984ec3a8ea4d2b217efb4870f48c527349871bc553a78bcba989f"
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.6.2/kilo-linux-arm64.tar.gz",
+          "cmd": "./kilo",
+          "args": ["acp"],
+          "sha256": "b7e532d3b17693cc69883dc030ae2aa5787ec86510b75ffd09892d5b25998f5e"
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.6.2/kilo-linux-x64.tar.gz",
+          "cmd": "./kilo",
+          "args": ["acp"],
+          "sha256": "74cba87e7b4b0ae53cd40c76e464432e6ae75f810a753ff88436f666a08d3858"
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/Kilo-Org/kilocode/releases/download/v7.6.2/kilo-windows-x64.zip",
+          "cmd": "./kilo.exe",
+          "args": ["acp"],
+          "sha256": "bfc2daae05ef7e44584928aab87b53d5cedd9e19d32af4a01903e08d36900dcf"
+        }
+      },
+      "npx": {
+        "package": "@kilocode/cli@7.6.2",
+        "args": ["acp"]
+      }
+    },
+    "name": "kilo"
+  },
+  {
+    "id": "minimax-code",
+    "version": "0.2.7",
+    "distribution": {
+      "npx": {
+        "package": "@minimax-ai/code@0.2.7",
+        "args": ["acp"]
+      }
+    },
+    "name": "minimax-code"
+  },
+  {
+    "id": "minion-code",
+    "version": "0.1.44",
+    "distribution": {
+      "uvx": {
+        "package": "minion-code@0.1.44",
+        "args": ["acp"]
+      }
+    },
+    "name": "minion-code"
+  },
+  {
+    "id": "nova",
+    "version": "1.1.38",
+    "distribution": {
+      "npx": {
+        "package": "@compass-ai/nova@1.1.38",
+        "args": ["acp"]
+      }
+    },
+    "name": "nova"
+  },
+  {
+    "id": "pi-acp",
+    "version": "0.0.33",
+    "distribution": {
+      "npx": {
+        "package": "pi-acp@0.0.33"
+      }
+    },
+    "name": "pi-acp"
+  },
+  {
+    "id": "qoder",
+    "version": "0.2.14",
+    "distribution": {
+      "npx": {
+        "package": "@qoder-ai/qodercli@0.2.14",
+        "args": ["--acp"]
+      }
+    },
+    "name": "qoder"
+  },
+  {
+    "id": "qwen-code",
+    "version": "0.23.3",
+    "distribution": {
+      "npx": {
+        "package": "@qwen-code/qwen-code@0.23.3",
+        "args": ["--acp", "--experimental-skills"]
+      }
+    },
+    "name": "qwen-code"
+  },
+  {
+    "id": "sigit",
+    "version": "1.5.8",
+    "distribution": {
+      "binary": {
+        "darwin-aarch64": {
+          "archive": "https://github.com/getsigit/sigit/releases/download/v1.5.8/sigit-macos-arm64.tar.gz",
+          "cmd": "./sigit",
+          "sha256": "a5c07e6588eb9c24cb92fe9dbbb5abe661056a5e0addc17f030b8b4f057a465a"
+        },
+        "darwin-x86_64": {
+          "archive": "https://github.com/getsigit/sigit/releases/download/v1.5.8/sigit-macos-amd64.tar.gz",
+          "cmd": "./sigit",
+          "sha256": "863deaff2f02e823ec18581e326d50b643f9e8b26d4b87e75e934be877824590"
+        },
+        "linux-aarch64": {
+          "archive": "https://github.com/getsigit/sigit/releases/download/v1.5.8/sigit-linux-arm64",
+          "cmd": "./sigit-linux-arm64",
+          "sha256": "4ed2f21664a2aafe693649fd2bfb45951b9e1ecd6de3121facc3c6ff9b7f62a8"
+        },
+        "linux-x86_64": {
+          "archive": "https://github.com/getsigit/sigit/releases/download/v1.5.8/sigit-linux-amd64",
+          "cmd": "./sigit-linux-amd64",
+          "sha256": "fa8cc4bc960a7814f5d2fdec55674a2c8719b3f48d1464d8266edf00a8c6e19b"
+        },
+        "windows-aarch64": {
+          "archive": "https://github.com/getsigit/sigit/releases/download/v1.5.8/sigit-win-arm64.exe",
+          "cmd": "./sigit-win-arm64.exe",
+          "sha256": "835aa6beebfb304f66d1ac0cc8406fa74dee34484824a161bd394de6f34855bf"
+        },
+        "windows-x86_64": {
+          "archive": "https://github.com/getsigit/sigit/releases/download/v1.5.8/sigit-win-amd64.exe",
+          "cmd": "./sigit-win-amd64.exe",
+          "sha256": "9db1d50d2234f6c57778e69acb8dcd94cf39e8b28aa179ed2cdad55e4361d307"
+        }
+      },
+      "npx": {
+        "package": "@smbcloud/sigit@1.5.8"
+      }
+    },
+    "name": "sigit"
+  }
+]

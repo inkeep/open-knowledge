@@ -26,6 +26,7 @@ export default {
     '@typescript/native',
   ],
   ignoreBinaries: [
+    'uv',
     'printf',
     'ps', // process listing — diagnose.ts, process-scan.ts
     'lsof', // open-file listing — diagnose.ts, process-scan.ts

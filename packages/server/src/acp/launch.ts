@@ -2,8 +2,9 @@ import { type ChildProcess, spawn } from 'node:child_process';
 import { constants, existsSync, statSync } from 'node:fs';
 import { access, chmod, readFile, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
+import { basename, delimiter, dirname, isAbsolute, join, resolve } from 'node:path';
 import { augmentAgentSpawnPath, OK_DIR, OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
+import { z } from 'zod';
 import {
   tracedMkdir,
   tracedMkdirSync,
@@ -13,31 +14,44 @@ import {
 } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { downloadToFileWithSha, extractArchive, isWithin, sanitizeSegment } from './archive.ts';
+import {
+  ACQUISITION_DETAIL_MAX_CHARS,
+  createDiagnosticStderrCapture,
+  redactDiagnostic,
+} from './diagnostics.ts';
 import { mergeLoginShellPath, preferLoginShellPath } from './login-shell-path.ts';
 import type { ManagedRuntime } from './managed-runtime.ts';
 import type { CustomAgentEntry, RegistryAgent, RegistryBinaryTarget } from './registry.ts';
 import { STALE_INSTALL_ARTIFACT_AGE_MS, stagedInstall } from './staged-install.ts';
 
-export interface ResolvedLaunch {
+export type ResolvedLaunch = {
   cmd: string;
   args: string[];
   env: Record<string, string>;
-  kind: 'npx' | 'uvx' | 'binary' | 'custom';
   pathFromOverlay: boolean;
-}
+} & ({ kind: 'npx' } | { kind: 'uvx' } | { kind: 'binary' } | { kind: 'custom' });
 
 export const MINIMUM_NPX_NODE_MAJOR = 22;
 
 export class AgentLaunchError extends Error {
+  readonly machineDetail?: string;
   readonly code:
     | 'unsupported-platform'
     | 'no-distribution'
     | 'install-failed'
     | 'command-not-found';
-  constructor(code: AgentLaunchError['code'], message: string, options?: ErrorOptions) {
+  constructor(
+    code: AgentLaunchError['code'],
+    message: string,
+    options?: ErrorOptions & { machineDetail?: string },
+  ) {
     super(message, options);
     this.name = 'AgentLaunchError';
     this.code = code;
+    this.machineDetail =
+      options?.machineDetail === undefined
+        ? undefined
+        : redactDiagnostic(options.machineDetail).slice(-ACQUISITION_DETAIL_MAX_CHARS);
   }
 }
 
@@ -81,30 +95,70 @@ export function withHostedAgentMarker(env: Record<string, string>): Record<strin
   return { ...env, [OK_HOSTED_AGENT_ENV]: '1' };
 }
 
+type PrepareRegistryLaunch = (launch: ResolvedLaunch) => Promise<ResolvedLaunch | null>;
+
+export function resolveRegistryLaunch(
+  agent: RegistryAgent,
+  platformKey: string | null,
+  log: PinoLogger,
+  binaryCacheDir?: string,
+): Promise<ResolvedLaunch>;
+export function resolveRegistryLaunch(
+  agent: RegistryAgent,
+  platformKey: string | null,
+  log: PinoLogger,
+  binaryCacheDir: string | undefined,
+  prepare: PrepareRegistryLaunch,
+): Promise<ResolvedLaunch | null>;
 export async function resolveRegistryLaunch(
   agent: RegistryAgent,
   platformKey: string | null,
   log: PinoLogger,
   binaryCacheDir: string = defaultBinaryCacheDir(),
-): Promise<ResolvedLaunch> {
+  prepare?: PrepareRegistryLaunch,
+): Promise<ResolvedLaunch | null> {
   const dist = agent.distribution;
   if (dist.npx !== undefined) {
-    return {
+    const raw: ResolvedLaunch = {
       cmd: 'npx',
       args: ['-y', dist.npx.package, ...(dist.npx.args ?? [])],
       env: mergedEnv(dist.npx.env),
       kind: 'npx',
       pathFromOverlay: overlaySetsPath(dist.npx.env),
     };
+    const launch = prepare === undefined ? raw : await prepare(raw);
+    if (launch === null) return null;
+    const pin =
+      /^(?<name>(?:@[a-z0-9._-]+\/)?[a-z0-9._-]+)@(?<version>(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$/.exec(
+        dist.npx.package,
+      );
+    if (pin?.groups === undefined) return launch;
+    const selected = await acquireNpmPackage(launch, pin.groups.name, pin.groups.version, log);
+    return { ...launch, args: ['-y', selected, ...(dist.npx.args ?? [])] };
   }
   if (dist.uvx !== undefined) {
-    return {
+    const pin = /^(?<name>[A-Za-z0-9][A-Za-z0-9._-]*)(?:==|@)(?<version>\d+\.\d+\.\d+)$/.exec(
+      dist.uvx.package,
+    );
+    const args =
+      pin?.groups === undefined
+        ? [dist.uvx.package]
+        : [
+            '--from',
+            `${pin.groups.name}<=${pin.groups.version}`,
+            '--isolated',
+            '--upgrade-package',
+            pin.groups.name,
+            pin.groups.name,
+          ];
+    const launch: ResolvedLaunch = {
       cmd: 'uvx',
-      args: [dist.uvx.package, ...(dist.uvx.args ?? [])],
+      args: [...args, ...(dist.uvx.args ?? [])],
       env: mergedEnv(dist.uvx.env),
       kind: 'uvx',
       pathFromOverlay: overlaySetsPath(dist.uvx.env),
     };
+    return prepare === undefined ? launch : prepare(launch);
   }
   if (dist.binary !== undefined) {
     if (platformKey === null || dist.binary[platformKey] === undefined) {
@@ -122,15 +176,190 @@ export async function resolveRegistryLaunch(
         `${agent.name} manifest cmd escapes its archive`,
       );
     }
-    return {
+    const launch: ResolvedLaunch = {
       cmd,
       args: [...(target.args ?? [])],
       env: mergedEnv(target.env),
       kind: 'binary',
       pathFromOverlay: overlaySetsPath(target.env),
     };
+    return prepare === undefined ? launch : prepare(launch);
   }
   throw new AgentLaunchError('no-distribution', `${agent.name} has no supported distribution`);
+}
+
+const npmPackedPackage = z.object({
+  name: z.string(),
+  version: z.string().regex(/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/),
+});
+export const npmPackResult = z
+  .union([
+    z.array(npmPackedPackage),
+    z.record(z.string(), npmPackedPackage).transform((packages) => Object.values(packages)),
+  ])
+  .pipe(z.tuple([npmPackedPackage]));
+
+function stableVersionAtMost(version: string, ceiling: string): boolean {
+  const upper = ceiling.split('.').map(BigInt);
+  for (const [i, part] of version.split('.').map(BigInt).entries()) {
+    if (part !== upper[i]) return part < upper[i];
+  }
+  return true;
+}
+
+function datedNpmRefusal(detail: string): boolean {
+  return /\bETARGET\b/.test(detail) && /with a date before/.test(detail);
+}
+
+export function packageAcquisitionFailure(
+  launch: ResolvedLaunch,
+  detail: string,
+  cause?: unknown,
+): AgentLaunchError | null {
+  const npmRefusal = launch.kind === 'npx' && datedNpmRefusal(detail);
+  const uvRefusal =
+    launch.kind === 'uvx' &&
+    /No solution found when resolving tool dependencies/.test(detail) &&
+    /filtered by `exclude-newer`/.test(detail);
+  if (!npmRefusal && !uvRefusal) return null;
+  return new AgentLaunchError(
+    'install-failed',
+    "No allowed release is available under your package manager's release-date policy. Try again after an allowed release becomes available.",
+    { cause, machineDetail: detail },
+  );
+}
+
+async function npmCommand(launch: ResolvedLaunch): Promise<string | null> {
+  let npx = launch.cmd;
+  if (!isPathQualified(npx)) {
+    if (process.platform === 'win32') npx = resolveWindowsCommand(npx, envPath(launch.env));
+    else {
+      for (const dir of (envPath(launch.env) ?? '').split(delimiter)) {
+        if (dir !== '' && (await isExecutableFile(join(dir, npx)))) {
+          npx = join(dir, npx);
+          break;
+        }
+      }
+    }
+  }
+  if (!isPathQualified(npx))
+    throw new AgentLaunchError(
+      'install-failed',
+      'Could not locate npm for the selected agent runtime.',
+    );
+  const npm = join(dirname(npx), basename(npx).replace(/^npx/i, 'npm'));
+  return (await isExecutableFile(npm)) ? npm : null;
+}
+
+async function probeNpmPackage(
+  launch: ResolvedLaunch,
+  descriptor: string,
+  cmd: string,
+): Promise<{ code: number | null; stdout: string; detail: string }> {
+  const child = spawnAcpAgent({
+    ...launch,
+    kind: 'npx',
+    cmd,
+    args: ['pack', descriptor, '--dry-run', '--ignore-scripts', '--json'],
+  });
+  let stdout = '';
+  let stderr = '';
+  let size = 0;
+  let failure: string | undefined;
+  const stop = (message: string): void => {
+    if (failure !== undefined) return;
+    failure = message;
+    void terminateAgentTree(child, { graceMs: 100 });
+  };
+  const timer = setTimeout(() => stop('npm package acquisition timed out.'), 30_000);
+  timer.unref();
+  child.stdout?.setEncoding('utf8');
+  child.stderr?.setEncoding('utf8');
+  child.stdout?.on('data', (chunk: string) => {
+    size += Buffer.byteLength(chunk);
+    if (size > 16 * 1024 * 1024) stop('npm package acquisition output exceeded its limit.');
+    else stdout += chunk;
+  });
+  const stderrCapture = createDiagnosticStderrCapture((line) => {
+    stderr = `${stderr}${line}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
+  });
+  child.stderr?.on('end', stderrCapture.end);
+  child.stderr?.on('data', (chunk: string) => {
+    size += Buffer.byteLength(chunk);
+    stderrCapture.write(chunk);
+    if (size > 16 * 1024 * 1024) stop('npm package acquisition output exceeded its limit.');
+  });
+  child.once('error', (err) => {
+    failure = err.message;
+  });
+  try {
+    const code = await new Promise<number | null>((resolvePromise) =>
+      child.once('close', resolvePromise),
+    );
+    const detail = `${stdout}\n${stderr}`.trim();
+    if (failure !== undefined)
+      throw new AgentLaunchError('install-failed', failure, { machineDetail: detail });
+    return { code, stdout, detail };
+  } finally {
+    clearTimeout(timer);
+    await terminateAgentTree(child, { graceMs: 100 });
+  }
+}
+
+async function acquireNpmPackage(
+  launch: ResolvedLaunch,
+  name: string,
+  ceiling: string,
+  log: PinoLogger,
+): Promise<string> {
+  let descriptor = `${name}@${ceiling}`;
+  const npm = await npmCommand(launch);
+  if (npm === null) {
+    log.warn(
+      { package: descriptor },
+      '[acp-launch] package acquisition probe skipped: no executable npm sibling; forwarding the catalog pin to npx',
+    );
+    return descriptor;
+  }
+  let result = await probeNpmPackage(launch, descriptor, npm);
+  let bounded = false;
+  if (result.code !== 0 && datedNpmRefusal(result.detail)) {
+    bounded = true;
+    descriptor = `${name}@0.0.0 - ${ceiling}`;
+    result = await probeNpmPackage(launch, descriptor, npm);
+  }
+  if (result.code !== 0) {
+    const policy = bounded && /\b(?:ETARGET|ENOVERSIONS)\b/.test(result.detail);
+    throw new AgentLaunchError(
+      'install-failed',
+      policy
+        ? `No release of ${name} at or below ${ceiling} is available under your package manager's release-date policy. Try again after an allowed release becomes available.`
+        : `Could not acquire ${descriptor}.`,
+      { machineDetail: result.detail },
+    );
+  }
+  let selected: z.infer<typeof npmPackedPackage>;
+  try {
+    [selected] = npmPackResult.parse(JSON.parse(result.stdout));
+  } catch (cause) {
+    throw new AgentLaunchError(
+      'install-failed',
+      'npm returned invalid package acquisition metadata.',
+      { cause, machineDetail: result.detail },
+    );
+  }
+  if (
+    selected.name !== name ||
+    !stableVersionAtMost(selected.version, ceiling) ||
+    (!bounded && selected.version !== ceiling)
+  ) {
+    throw new AgentLaunchError(
+      'install-failed',
+      `npm returned ${selected.name}@${selected.version} outside the requested constraint ${descriptor}.`,
+      { machineDetail: result.detail },
+    );
+  }
+  return `${name}@${selected.version}`;
 }
 
 export function resolveCustomLaunch(entry: CustomAgentEntry): ResolvedLaunch {
@@ -666,19 +895,27 @@ function acpNpxIsolatedCwd(): string {
   return dir;
 }
 
-export function spawnAcpAgent(launch: ResolvedLaunch, cwd: string): ChildProcess {
-  if (!isAbsolute(cwd)) {
-    throw new Error(`spawnAcpAgent requires an absolute cwd, got: ${cwd}`);
+export function spawnAcpAgent(launch: ResolvedLaunch & { kind: 'npx' }): ChildProcess;
+export function spawnAcpAgent(
+  launch: Exclude<ResolvedLaunch, { kind: 'npx' }>,
+  projectCwd: string,
+): ChildProcess;
+export function spawnAcpAgent(launch: ResolvedLaunch, projectCwd?: string): ChildProcess {
+  if (launch.kind === 'npx' && projectCwd !== undefined) {
+    throw new Error('spawnAcpAgent does not accept a project cwd for npx launches.');
   }
+  if (projectCwd === undefined ? launch.kind !== 'npx' : !isAbsolute(projectCwd)) {
+    throw new Error(`spawnAcpAgent requires an absolute cwd, got: ${projectCwd}`);
+  }
+  const cwd = launch.kind === 'npx' ? acpNpxIsolatedCwd() : projectCwd;
   const win = process.platform === 'win32';
   const resolved = win ? resolveWindowsCommand(launch.cmd, envPath(launch.env)) : launch.cmd;
   const wrap = win && /\.(cmd|bat)$/i.test(resolved);
   const { cmd, args } = wrap
     ? windowsCmdWrap(resolved, launch.args)
     : { cmd: resolved, args: launch.args };
-  const spawnCwd = launch.kind === 'npx' ? acpNpxIsolatedCwd() : cwd;
   return spawn(cmd, args, {
-    cwd: spawnCwd,
+    cwd,
     env: withHostedAgentMarker(launch.env),
     stdio: ['pipe', 'pipe', 'pipe'],
     shell: false,
