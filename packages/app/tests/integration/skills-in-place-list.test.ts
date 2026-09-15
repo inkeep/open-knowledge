@@ -788,9 +788,19 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     cpSync(join(contentDir, '.claude/skills/fanout'), codex, { recursive: true });
     expect(lstatSync(codex).isSymbolicLink()).toBe(false);
 
-    const list = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
+    const listRes = await fetch(`${base()}/api/skills?scope=project`);
+    expect(
+      listRes.status,
+      `expected 200 from GET /api/skills?scope=project after rewrite, got HTTP ${listRes.status}`,
+    ).toBe(200);
+    const list = (await listRes.json()) as {
       skills: Array<{ name: string; driftPaths?: string[] }>;
     };
+    const listKeys = Object.keys(list).join(', ');
+    expect(
+      Array.isArray(list.skills),
+      `expected a skills array from GET /api/skills?scope=project, got body keys [${listKeys}]`,
+    ).toBe(true);
     const entry = list.skills.find((s) => s.name === 'fanout');
     expect(entry?.driftPaths).toEqual(['.codex/skills/fanout']);
     expect(lstatSync(codex).isSymbolicLink()).toBe(false);
@@ -807,9 +817,19 @@ describe('in-place skill install fan-out (R13 inversion)', () => {
     });
     expect(reflip.status).toBe(200);
     expect(lstatSync(codex).isSymbolicLink()).toBe(true);
-    const list2 = (await (await fetch(`${base()}/api/skills?scope=project`)).json()) as {
+    const list2Res = await fetch(`${base()}/api/skills?scope=project`);
+    expect(
+      list2Res.status,
+      `expected 200 from GET /api/skills?scope=project after re-flip, got HTTP ${list2Res.status}`,
+    ).toBe(200);
+    const list2 = (await list2Res.json()) as {
       skills: Array<{ name: string; driftPaths?: string[] }>;
     };
+    const list2Keys = Object.keys(list2).join(', ');
+    expect(
+      Array.isArray(list2.skills),
+      `expected a skills array from GET /api/skills?scope=project, got body keys [${list2Keys}]`,
+    ).toBe(true);
     expect(list2.skills.find((s) => s.name === 'fanout')?.driftPaths).toBeUndefined();
   });
 

@@ -1,5 +1,5 @@
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import {
   AGENTS_SKILLS_ROOT,
   EmptyRequestSchema,
@@ -456,7 +456,9 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
                 ? withFiles
                 : { ...withFiles, canonicalPath };
             const openedPath = canonicalPath ?? entry.path;
-            return entry.scope === 'project' && contentFilter?.isPathIgnored(openedPath) === true
+            return entry.scope === 'project' &&
+              !isAbsolute(openedPath) &&
+              contentFilter?.isPathIgnored(openedPath) === true
               ? { ...withCanonical, ignored: true }
               : withCanonical;
           }),
@@ -474,7 +476,8 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
               skills: enriched.skills.map((entry) => {
                 if (entry.scope !== 'project') return entry;
                 const opened = (entry as { canonicalPath?: string }).canonicalPath ?? entry.path;
-                const nowIgnored = contentFilter?.isPathIgnored(opened) === true;
+                const nowIgnored =
+                  !isAbsolute(opened) && contentFilter?.isPathIgnored(opened) === true;
                 const wasIgnored = (entry as { ignored?: boolean }).ignored === true;
                 if (nowIgnored === wasIgnored) return entry;
                 if (nowIgnored) return { ...entry, ignored: true };
