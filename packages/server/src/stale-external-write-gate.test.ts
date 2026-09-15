@@ -491,8 +491,6 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
-      undefined,
-      undefined,
       authority,
     );
 

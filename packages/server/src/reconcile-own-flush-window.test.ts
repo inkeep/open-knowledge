@@ -106,8 +106,6 @@ async function drivePhantomDivergence(
         fakeHocuspocusWith(docName, document),
         docName,
         tmpDir,
-        undefined,
-        undefined,
         RECONCILE_TEST_CONFLICTS,
       );
       probe.conflictAfterGuard = isDocInConflict(document as never);
@@ -173,8 +171,6 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
-      undefined,
-      undefined,
       RECONCILE_TEST_CONFLICTS,
     );
     expect(laterGuard.reconciled).toBe(false);
