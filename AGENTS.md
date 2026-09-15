@@ -26,6 +26,8 @@ pnpm run typecheck
 pnpm run test
 ```
 
+For routine local Turbo runs, use an absolute `TURBO_CACHE_DIR` inside this worktree; use `TURBO_FORCE=true` only for a deliberate fresh run.
+
 Run local apps:
 
 ```bash
@@ -92,7 +94,7 @@ Cadence: merging a PR with a changeset triggers a beta publish within minutes vi
 
 ## Before Finishing
 
-Run the smallest relevant check while iterating, then run:
+While iterating, run the tests for what you changed with `pnpm --dir packages/<pkg> run test`, plus `pnpm run lint` and `pnpm run typecheck`, widening to affected consumers for shared inputs. A red remains a blocker: diagnose it against the changed inputs, repair only an in-scope cause, and record an unrelated environment blocker with its log and owner. Then run:
 
 ```bash
 pnpm run check

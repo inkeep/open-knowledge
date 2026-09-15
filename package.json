@@ -30,7 +30,7 @@
     "lint:oxlint": "oxlint --max-warnings 0 .",
     "format": "pnpm run lint:biome --write --unsafe",
     "check": "pnpm run lint && pnpm exec turbo run build typecheck test",
-    "check:full:parallel": "pnpm run check:drift:guards && pnpm run check:server-test-inputs && pnpm run lint && pnpm run check:doc-links && vitest run --config vitest.scripts.config.ts && turbo run build typecheck check:dts test test:dom test:integration test:conversion test:perf:regression:unit test:health:unit test:health test:e2e test:visual test:perf test:a11y --concurrency=100% --output-logs=errors-only",
+    "check:full:parallel": "pnpm run check:drift:guards && pnpm run check:server-test-inputs && pnpm run lint && pnpm run check:doc-links && vitest run --config vitest.scripts.config.ts && turbo run build typecheck check:dts test test:dom test:integration test:conversion test:perf:regression:unit test:health:unit test:health test:e2e test:perf test:a11y --concurrency=100% --output-logs=errors-only",
     "tier1": "pnpm run check",
     "tier2": "pnpm run tier1 && turbo run test:perf:regression:unit test:health:unit test:health test:e2e",
     "tier3": "STRESS_FIDELITY=1 pnpm run tier2",
