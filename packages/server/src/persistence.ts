@@ -718,10 +718,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     if (commitInFlight) await commitInFlight;
   }
 
-  /**
-   * Under the Y.Text-is-truth contract (precedent #38) Y.Text holds the user's intended source-form
-   * bytes; fragment must catch up so future edits start from a consistent base.
-   */
   function canonicalizeForEphemeralBaseline(rawBytes: string, documentName: string): string | null {
     try {
       const { frontmatter, body } = stripFrontmatter(rawBytes);

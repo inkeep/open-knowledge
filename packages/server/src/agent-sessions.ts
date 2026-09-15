@@ -37,11 +37,6 @@ export interface AgentDirectConnection extends DirectConnection {
   document: Document;
 }
 
-/**
- * Agent write origin — typed `PairedWriteOrigin` per precedent #1 extension; the typed marker
- * carries the `paired: true` field that `isPairedWriteOrigin` reads to gate paired-write
- * transactions.
- */
 export const AGENT_WRITE_ORIGIN = {
   source: 'local',
   skipStoreHooks: false,
@@ -320,7 +315,6 @@ function createSessionOrigin(
 }
 
 function createUndoOrigin(sessionId: string, agentType?: string): PairedWriteOrigin {
-  // precedent #1: typed transaction origin; paired: true so observers short-circuit.
   const context: Record<string, unknown> & { origin: string; paired: true } = {
     origin: 'agent-undo',
     paired: true as const,

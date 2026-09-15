@@ -1,9 +1,3 @@
-/**
- * Architecture (Precedent #28 — direct PM dispatch, NOT y-codemirror.next): CM keystroke →
- * forwardUpdate → PM transaction → y-prosemirror → CRDT PM change → NodeView.update(node) →
- * computeChange → CM transaction Single `updating` boolean prevents feedback loops.
- */
-
 import { Compartment } from '@codemirror/state';
 import { EditorView as CMEditorView, keymap } from '@codemirror/view';
 import { useLingui } from '@lingui/react/macro';
