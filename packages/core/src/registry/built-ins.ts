@@ -695,16 +695,26 @@ function escapeHtmlText(value: string): string {
 
 function serializeWikiEmbed(node: { attrs: { props?: unknown } }): MdastNodes {
   const p = node.attrs.props as
-    | { target?: string; alias?: string | null; anchor?: string | null }
+    | {
+        target?: string;
+        alias?: string | null;
+        anchor?: string | null;
+        sourceTarget?: string | null;
+        sourceAnchor?: string | null;
+        sourceAlias?: string | null;
+      }
     | undefined;
   const target = p?.target ?? '';
   const alias = typeof p?.alias === 'string' && p.alias.length > 0 ? p.alias : null;
   const anchor = typeof p?.anchor === 'string' && p.anchor.length > 0 ? p.anchor : null;
+  const sourceTarget = typeof p?.sourceTarget === 'string' ? p.sourceTarget : null;
+  const sourceAnchor = typeof p?.sourceAnchor === 'string' ? p.sourceAnchor : null;
+  const sourceAlias = typeof p?.sourceAlias === 'string' ? p.sourceAlias : null;
   const label = alias ?? (anchor ? `${target}#${anchor}` : target);
   return {
     type: 'wikiLinkEmbed' as const,
     value: label,
-    data: { target, anchor, alias },
+    data: { target, anchor, alias, sourceTarget, sourceAnchor, sourceAlias },
     children: [{ type: 'text' as const, value: label }],
   } as unknown as MdastNodes;
 }

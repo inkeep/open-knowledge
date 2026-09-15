@@ -4,6 +4,8 @@
  * (precedent #56) exists to prevent.
  */
 
+import { normalizeWikiSeparatorEscapes } from '@inkeep/open-knowledge-core';
+
 const WIKI_BODY_SOURCE = String.raw`\[\[([^\n#[\]|]+)(?:#([^\n[\]|]+))?(?:\|([^\n[\]]+))?\]\]`;
 
 const DEST_AND_TITLE_SOURCE = String.raw`\((<[^>\n]+>|[^)\s\n]+)((?:\s+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?)\)`;
@@ -46,17 +48,24 @@ export interface MarkdownLinkMatch {
 
 function toWikiLinkMatch(match: RegExpExecArray, start: number): WikiLinkMatch | null {
   const targetRaw = match[2] ?? '';
-  const target = targetRaw.trim();
-  if (!target) return null;
   const anchorRaw = match[3] ?? null;
   const aliasRaw = match[4] ?? null;
+  const { target, anchor, alias } = normalizeWikiSeparatorEscapes(
+    {
+      target: targetRaw.trim(),
+      anchor: anchorRaw?.trim() || null,
+      alias: aliasRaw?.trim() || null,
+    },
+    { separatorCrossed: aliasRaw !== null },
+  );
+  if (!target) return null;
   return {
     embed: match[1] === '!',
     target,
     targetRaw,
-    anchor: anchorRaw?.trim() || null,
+    anchor,
     anchorRaw,
-    alias: aliasRaw?.trim() || null,
+    alias,
     aliasRaw,
     start,
     end: start + match[0].length,

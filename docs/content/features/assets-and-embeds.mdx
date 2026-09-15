@@ -18,7 +18,7 @@ AI agents add assets through the MCP [`write`](/docs/reference/mcp) tool's `asse
 - **Video and audio render native players.** The video block also takes YouTube, Vimeo, and Loom URLs and renders each host's own player.
 - **PDFs and other documents** (`.docx`, `.zip`, `.csv`, …) insert a file attachment row — icon, name, size — linking to the file. To render pages in the doc, use the **PDF** block instead: a multi-page viewer with thumbnails, page navigation, and zoom; set `page=3` in its `anchor` setting to open at that page.
 
-In the markdown source, dropped media serializes as `<img>` / `<video>` / `<audio>` and file attachments as wiki-style embeds (`![[report.pdf]]`). You can author the wiki form directly: `![[diagram.png]]` on its own line follows the type rules above, inside a sentence it stays a link, and a fragment (`![[report.pdf#page=3]]`) is preserved on the rendered link. Standard `![alt](./chart.png)` image syntax works too.
+In the markdown source, dropped media serializes as `<img>` / `<video>` / `<audio>` and file attachments as wiki-style embeds (`![[report.pdf]]`). You can author the wiki form directly: `![[diagram.png]]` on its own line follows the type rules above, inside a sentence it stays a link, a fragment (`![[report.pdf#page=3]]`) is preserved on the rendered link, and an alias on an image embed sets its alt text (`![[diagram.png|Diagram]]`). Standard `![alt](./chart.png)` image syntax works too. Inside a table cell, escape the alias separator: `![[diagram.png\|Diagram]]` resolves identically to the unescaped form. Byte-for-byte preservation has narrow exceptions, none of them reached by authoring the escape — see [Tables](/docs/features/editor#tables) for what they are.
 
 ## Embedding web pages
 

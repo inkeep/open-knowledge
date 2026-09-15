@@ -8,6 +8,7 @@ import { widenFenceLength } from './code-fence.ts';
 import type { RawMdxFallbackMdast } from './mdast-augmentation.ts';
 import { TO_MARKDOWN_EXT } from './remark-mdx-agnostic.ts';
 import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';
+import { escapeDecodedTableCellPipes } from './wiki-escape.ts';
 
 declare module 'mdast-util-to-markdown' {
   interface ConstructNameMap {
@@ -351,7 +352,7 @@ export const toMarkdownHandlers = {
     }
 
     const span = `${fence}${value}${fence}`;
-    return state.stack.includes('tableCell') ? span.replace(/\|/g, '\\$&') : span;
+    return state.stack.includes('tableCell') ? escapeDecodedTableCellPipes(span) : span;
   },
 
   inlineMath: inlineMathHandler,

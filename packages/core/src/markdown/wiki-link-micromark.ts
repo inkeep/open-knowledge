@@ -3,6 +3,12 @@ import type { Handle as ToMarkdownHandle } from 'mdast-util-to-markdown';
 import type { Construct, Extension, State, Token, Tokenizer } from 'micromark-util-types';
 import type { Processor } from 'unified';
 import type { WikiLinkEmbedMdast, WikiLinkMdast } from './mdast-augmentation.ts';
+import {
+  escapeTableCellPipes,
+  normalizeWikiSeparatorEscapes,
+  rawSegmentOr,
+  separatorEscapeLeavesEmpty,
+} from './wiki-escape.ts';
 
 declare module 'micromark-util-types' {
   interface TokenTypeMap {
@@ -22,11 +28,19 @@ const CODE_LBRACKET = 91;
 const CODE_RBRACKET = 93;
 const CODE_PIPE = 124;
 const CODE_HASH = 35;
+const CODE_VIRTUAL_SPACE = -1;
+const CODE_HORIZONTAL_TAB = -2;
+
+function characterForCode(code: number): string {
+  if (code === CODE_HORIZONTAL_TAB) return '\t';
+  if (code === CODE_VIRTUAL_SPACE) return ' ';
+  return String.fromCharCode(code);
+}
 
 const tokenizeWikiLink: Tokenizer = (effects, ok, nok) => {
-  let targetSize = 0;
   let anchorSize = 0;
   let aliasSize = 0;
+  let targetRaw = '';
 
   return start;
 
@@ -50,12 +64,12 @@ const tokenizeWikiLink: Tokenizer = (effects, ok, nok) => {
     if (code === null || code === -5 || code === -4 || code === -3) return nok(code);
     if (code === CODE_LBRACKET) return nok(code);
     if (code === CODE_RBRACKET) {
-      if (targetSize === 0) return nok(code);
+      if (targetRaw.trim() === '') return nok(code);
       effects.exit('wikiLinkTarget');
       return close1(code);
     }
     if (code === CODE_HASH) {
-      if (targetSize === 0) return nok(code);
+      if (targetRaw.trim() === '') return nok(code);
       effects.exit('wikiLinkTarget');
       effects.enter('wikiLinkSeparator');
       effects.consume(code);
@@ -64,7 +78,7 @@ const tokenizeWikiLink: Tokenizer = (effects, ok, nok) => {
       return anchor as State;
     }
     if (code === CODE_PIPE) {
-      if (targetSize === 0) return nok(code);
+      if (separatorEscapeLeavesEmpty(targetRaw)) return nok(code);
       effects.exit('wikiLinkTarget');
       effects.enter('wikiLinkSeparator');
       effects.consume(code);
@@ -73,7 +87,7 @@ const tokenizeWikiLink: Tokenizer = (effects, ok, nok) => {
       return alias as State;
     }
     effects.consume(code);
-    targetSize++;
+    targetRaw += characterForCode(code);
     return target as State;
   }
 
@@ -134,9 +148,9 @@ const wikiLinkConstruct: Construct = {
 };
 
 const tokenizeWikiLinkEmbed: Tokenizer = (effects, ok, nok) => {
-  let targetSize = 0;
   let anchorSize = 0;
   let aliasSize = 0;
+  let targetRaw = '';
 
   return start;
 
@@ -168,12 +182,12 @@ const tokenizeWikiLinkEmbed: Tokenizer = (effects, ok, nok) => {
     if (code === null || code === -5 || code === -4 || code === -3) return nok(code);
     if (code === CODE_LBRACKET) return nok(code);
     if (code === CODE_RBRACKET) {
-      if (targetSize === 0) return nok(code);
+      if (targetRaw.trim() === '') return nok(code);
       effects.exit('wikiLinkTarget');
       return close1(code);
     }
     if (code === CODE_HASH) {
-      if (targetSize === 0) return nok(code);
+      if (targetRaw.trim() === '') return nok(code);
       effects.exit('wikiLinkTarget');
       effects.enter('wikiLinkSeparator');
       effects.consume(code);
@@ -182,7 +196,7 @@ const tokenizeWikiLinkEmbed: Tokenizer = (effects, ok, nok) => {
       return anchor as State;
     }
     if (code === CODE_PIPE) {
-      if (targetSize === 0) return nok(code);
+      if (separatorEscapeLeavesEmpty(targetRaw)) return nok(code);
       effects.exit('wikiLinkTarget');
       effects.enter('wikiLinkSeparator');
       effects.consume(code);
@@ -191,7 +205,7 @@ const tokenizeWikiLinkEmbed: Tokenizer = (effects, ok, nok) => {
       return alias as State;
     }
     effects.consume(code);
-    targetSize++;
+    targetRaw += characterForCode(code);
     return target as State;
   }
 
@@ -312,12 +326,37 @@ function exitAlias(this: CompileContext, token: Token) {
   const raw = this.sliceSerialize(token);
   const trimmed = raw.trim();
   node.data.alias = trimmed.length ? trimmed : null;
-  if (node.data.alias !== null && raw !== trimmed) {
+  if (raw !== trimmed) {
     node.data.sourceAlias = raw;
   }
 }
 
+function normalizeSeparatorEscapes(node: WikiLinkMdast | WikiLinkEmbedMdast): void {
+  const before = {
+    target: node.data.target,
+    anchor: node.data.anchor ?? null,
+    alias: node.data.alias ?? null,
+  };
+  const after = normalizeWikiSeparatorEscapes(before, {
+    separatorCrossed: before.alias !== null || node.data.sourceAlias != null,
+  });
+
+  if (after.target !== before.target) {
+    node.data.sourceTarget ??= before.target;
+    node.data.target = after.target;
+  }
+  if (after.anchor !== before.anchor) {
+    node.data.sourceAnchor ??= before.anchor;
+    node.data.anchor = after.anchor;
+  }
+  if (after.alias !== before.alias) {
+    node.data.sourceAlias ??= before.alias;
+    node.data.alias = after.alias;
+  }
+}
+
 function finalizeLabel(node: WikiLinkMdast | WikiLinkEmbedMdast): void {
+  normalizeSeparatorEscapes(node);
   const { target, anchor, alias } = node.data;
   const label = alias ? alias : anchor ? `${target}#${anchor}` : target;
   node.value = label;
@@ -348,31 +387,35 @@ export const wikiLinkFromMarkdown: FromMarkdownExtension = {
   },
 };
 
-function rawSegmentOr(raw: string | null | undefined, current: string): string {
-  return typeof raw === 'string' && raw.trim() === current ? raw : current;
+function wikiLinkToMarkdownHandler(opener: string): ToMarkdownHandle {
+  return (node: WikiLinkMdast | WikiLinkEmbedMdast, _parent, state, _info) => {
+    const data = node.data;
+    const inTableCell = state.stack.includes('tableCell');
+    const safe = (bytes: string): string => (inTableCell ? escapeTableCellPipes(bytes) : bytes);
+    const target = data?.target ?? '';
+    const anchor = data?.anchor;
+    const alias = data?.alias;
+    let out = `${opener}${safe(rawSegmentOr(data?.sourceTarget, target, 'separatorAdjacent'))}`;
+    if (anchor) {
+      out += `#${safe(rawSegmentOr(data?.sourceAnchor, anchor, 'separatorAdjacent'))}`;
+    } else {
+      const emptyAnchorRaw = safe(rawSegmentOr(data?.sourceAnchor, '', 'separatorAdjacent'));
+      if (emptyAnchorRaw.length > 0) out += `#${emptyAnchorRaw}`;
+    }
+    const aliasSegment = alias
+      ? rawSegmentOr(data?.sourceAlias, alias, 'alias')
+      : rawSegmentOr(data?.sourceAlias, '', 'alias');
+    if (aliasSegment.length > 0) {
+      const separator = inTableCell && !out.endsWith('\\') ? '\\|' : '|';
+      out += `${separator}${safe(aliasSegment)}`;
+    }
+    return `${out}]]`;
+  };
 }
 
-const wikiLinkHandler: ToMarkdownHandle = (node) => {
-  const wiki = node as unknown as WikiLinkMdast;
-  const target = wiki.data?.target ?? '';
-  const anchor = wiki.data?.anchor;
-  const alias = wiki.data?.alias;
-  let out = `[[${rawSegmentOr(wiki.data?.sourceTarget, target)}`;
-  if (anchor) out += `#${rawSegmentOr(wiki.data?.sourceAnchor, anchor)}`;
-  if (alias) out += `|${rawSegmentOr(wiki.data?.sourceAlias, alias)}`;
-  return `${out}]]`;
-};
+const wikiLinkHandler: ToMarkdownHandle = wikiLinkToMarkdownHandler('[[');
 
-const wikiLinkEmbedHandler: ToMarkdownHandle = (node) => {
-  const embed = node as unknown as WikiLinkEmbedMdast;
-  const target = embed.data?.target ?? '';
-  const anchor = embed.data?.anchor;
-  const alias = embed.data?.alias;
-  let out = `![[${target}`;
-  if (anchor) out += `#${anchor}`;
-  if (alias) out += `|${alias}`;
-  return `${out}]]`;
-};
+const wikiLinkEmbedHandler: ToMarkdownHandle = wikiLinkToMarkdownHandler('![[');
 
 export const wikiLinkToMarkdown: {
   handlers: Record<string, ToMarkdownHandle>;

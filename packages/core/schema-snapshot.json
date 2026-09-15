@@ -793,7 +793,19 @@
           "hasDefault": true,
           "default": "noopener noreferrer"
         },
+        "sourceAlias": {
+          "hasDefault": true,
+          "default": null
+        },
+        "sourceAnchor": {
+          "hasDefault": true,
+          "default": null
+        },
         "sourceForm": {
+          "hasDefault": true,
+          "default": null
+        },
+        "sourceTarget": {
           "hasDefault": true,
           "default": null
         },

@@ -1035,6 +1035,12 @@ export {
   TAG_IN_TEXT_PATTERN_SOURCE,
 } from './markdown/tag-promotion.ts';
 export {
+  type CleanWikiSegments,
+  normalizeWikiSeparatorEscapes,
+  rawSegmentOr,
+  type WikiSegmentKind,
+} from './markdown/wiki-escape.ts';
+export {
   getParseHealth,
   incrementBlockFallback,
   incrementBlockGripClickSelectFailed,

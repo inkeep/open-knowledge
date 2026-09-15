@@ -1,5 +1,6 @@
 import type { Html, List, Nodes, PhrasingContent, Root, TableCell } from 'mdast';
 import { visit } from 'unist-util-visit';
+import { escapeDecodedTableCellPipes } from './wiki-escape.ts';
 
 const CELL_PHRASING_TYPES: ReadonlySet<string> = new Set([
   'break',
@@ -37,7 +38,7 @@ function normalizeCellValueNodes(node: { children?: Nodes[] }): void {
         child.value = child.value.replace(/[ \t]*\n[ \t]*/g, ' ');
       }
       if (child.type === 'html' && child.value.includes('|')) {
-        child.value = child.value.replace(/\|/g, '\\|');
+        child.value = escapeDecodedTableCellPipes(child.value);
       }
     }
     normalizeCellValueNodes(child as { children?: Nodes[] });
