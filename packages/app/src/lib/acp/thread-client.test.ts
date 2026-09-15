@@ -24,6 +24,166 @@ describe('AgentThreadClient store snapshots', () => {
   });
 });
 
+describe('initial roster attribution (agents-panel reload absorb)', () => {
+  const info = (threadId: string): ThreadInfo => ({
+    threadId,
+    agent: { id: 'a', name: 'A', source: 'custom' },
+    title: threadId,
+    status: 'ready',
+    createdAt: 1,
+    lastActivityAt: 1,
+    modes: null,
+    configOptions: null,
+    lastSeq: -1,
+  });
+
+  function makeClient(): { client: AgentThreadClient; frame: (f: ThreadServerFrame) => void } {
+    const client = new AgentThreadClient();
+    const internals = client as unknown as { handleFrame: (f: ThreadServerFrame) => void };
+    return { client, frame: (f) => internals.handleFrame.call(client, f) };
+  }
+
+  class FakeSocket {
+    static OPEN = 1;
+    readyState = 0;
+    onopen: (() => void) | null = null;
+    onmessage: ((event: { data: unknown }) => void) | null = null;
+    onclose: (() => void) | null = null;
+    onerror: (() => void) | null = null;
+    send(_raw: string): void {}
+    close(): void {}
+    open(): void {
+      this.readyState = FakeSocket.OPEN;
+      this.onopen?.();
+    }
+  }
+
+  test('a fresh client has recorded no roster', () => {
+    expect(makeClient().client.getInitialRosterThreadIds()).toBeNull();
+  });
+
+  test('the first threads frame records its thread ids once', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'threads', threads: [info('t1'), info('t2')] });
+
+    const roster = client.getInitialRosterThreadIds();
+    expect(roster).not.toBeNull();
+    expect([...(roster as ReadonlySet<string>)].sort()).toEqual(['t1', 't2']);
+  });
+
+  test('a later threads frame does not re-record the roster', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'threads', threads: [info('t1')] });
+    const roster = client.getInitialRosterThreadIds();
+
+    frame({ op: 'threads', threads: [info('t1'), info('t9')] });
+
+    expect(client.getInitialRosterThreadIds()).toBe(roster);
+    expect(client.getInitialRosterThreadIds()?.has('t9')).toBe(false);
+  });
+
+  test('a second threads frame after an empty first roster does not re-record', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'threads', threads: [] });
+    const roster = client.getInitialRosterThreadIds();
+
+    frame({ op: 'threads', threads: [info('t1')] });
+
+    expect(client.getInitialRosterThreadIds()).toBe(roster);
+    expect(client.getInitialRosterThreadIds()?.size).toBe(0);
+  });
+
+  test('created and resumed pushes never record a roster', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'created', reqId: 'r1', info: info('t1') });
+    expect(client.getInitialRosterThreadIds()).toBeNull();
+
+    frame({ op: 'resumed', reqId: 'r2', info: info('t1') });
+    expect(client.getInitialRosterThreadIds()).toBeNull();
+  });
+
+  test('an empty first roster records an empty set, not null', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'threads', threads: [] });
+
+    const roster = client.getInitialRosterThreadIds();
+    expect(roster).not.toBeNull();
+    expect(roster?.size).toBe(0);
+  });
+
+  test('retargeting setUrl resets the roster so the next session records its own', () => {
+    vi.stubGlobal('WebSocket', FakeSocket);
+    try {
+      const client = new AgentThreadClient();
+      const internals = client as unknown as { handleFrame: (f: ThreadServerFrame) => void };
+      const frame = (f: ThreadServerFrame) => internals.handleFrame.call(client, f);
+
+      client.setUrl('ws://session-a');
+      frame({ op: 'threads', threads: [info('a1'), info('a2')] });
+      expect(client.getInitialRosterThreadIds()).not.toBeNull();
+
+      client.setUrl('ws://session-b');
+      frame({ op: 'threads', threads: [info('b1')] });
+
+      const roster = client.getInitialRosterThreadIds();
+      expect([...(roster ?? [])]).toEqual(['b1']);
+      expect(['b1'].every((id) => roster?.has(id) === true)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('a same-session reconnect keeps the roster — the drop is not a retarget', async () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('WebSocket', FakeSocket);
+    try {
+      const client = new AgentThreadClient();
+      const internals = client as unknown as {
+        handleFrame: (f: ThreadServerFrame) => void;
+        ws: FakeSocket | null;
+      };
+      const frame = (f: ThreadServerFrame) => internals.handleFrame.call(client, f);
+
+      client.setUrl('ws://session-a');
+      internals.ws?.open();
+      frame({ op: 'threads', threads: [info('t1'), info('t2')] });
+      const roster = client.getInitialRosterThreadIds();
+      expect(roster).not.toBeNull();
+
+      internals.ws?.onclose?.();
+      await vi.runAllTimersAsync();
+      internals.ws?.open();
+      frame({ op: 'threads', threads: [info('t1'), info('t2')] });
+
+      expect(client.getInitialRosterThreadIds()).toBe(roster);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('the first roster capture notifies subscribers even when the roster is empty', () => {
+    const { client, frame } = makeClient();
+    let notifications = 0;
+    client.subscribe(() => {
+      notifications += 1;
+    });
+
+    frame({ op: 'threads', threads: [] });
+
+    expect(notifications).toBe(1);
+    expect(client.getInitialRosterThreadIds()?.size).toBe(0);
+  });
+
+  test('the roster records the live population only, excluding archived ids', () => {
+    const { client, frame } = makeClient();
+    frame({ op: 'threads', threads: [info('t1'), { ...info('t2'), archived: true }] });
+
+    const roster = client.getInitialRosterThreadIds();
+    expect([...(roster ?? [])]).toEqual(['t1']);
+  });
+});
+
 describe('batched event delivery', () => {
   const info: ThreadInfo = {
     threadId: 't1',

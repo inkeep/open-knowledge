@@ -145,6 +145,7 @@ export type ConflictKindWire = z.infer<typeof ConflictKindSchema>;
 export const RECONCILE_REASONS = [
   'merged-with-markers',
   'refused-conflict-markers',
+  'refused-no-base',
   'refused-too-large',
   'disk-markers',
   'stale-external-write',
@@ -161,7 +162,7 @@ export const ConflictEntrySchema = z
     file: z.string().min(1),
     detectedAt: z.string().min(1),
     conflict: ConflictKindSchema,
-    reason: ReconcileReasonSchema.optional(),
+    reason: ReconcileReasonSchema.optional().catch(undefined),
     conflictKind: z.enum(['git', 'stale-external-write']).optional(),
     docName: z.string().nullable(),
     theirsSha: z.string().optional(),
@@ -202,7 +203,7 @@ export const SyncConflictContentSuccessSchema = z
     theirs: z.string(),
     kind: z.enum(['both-modified', 'delete-modify', 'modify-delete']),
     conflict: ConflictKindSchema,
-    reason: ReconcileReasonSchema.optional(),
+    reason: ReconcileReasonSchema.optional().catch(undefined),
     conflictKind: z.enum(['git', 'stale-external-write']).optional(),
     resolutionOptions: z.array(ResolveStrategySchema),
   })

@@ -1,3 +1,5 @@
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { homedir } from 'node:os';
@@ -15,9 +17,21 @@ import {
   okProbeSpawnEnv,
   probeEnvVerdict,
   probeSpawnArgs,
+  probeSpawnDetached,
   realProbeSpawn,
   realProbeTimers,
 } from './probe-spawn.ts';
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawn: vi.fn(actual.spawn) };
+});
+
+const spawnMock = vi.mocked(spawn);
+
+function spawnCallOptions(call = 0): SpawnOptions | undefined {
+  return spawnMock.mock.calls[call]?.[2] as SpawnOptions | undefined;
+}
 
 vi.mock('node:os', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:os')>();
@@ -130,6 +144,206 @@ describe('probeSpawnArgs', () => {
   );
 });
 
+describe('probeSpawnDetached', () => {
+  test('detaches the probe child on POSIX and leaves win32 spawn placement unchanged', () => {
+    expect(
+      probeSpawnDetached('linux'),
+      'the production probe adapter must spawn detached on POSIX: the release note guarantees an interactive shell probe can no longer stop the app from a background process group of a controlling terminal, and an undetached interactive shell acquires that session terminal',
+    ).toBe(true);
+    expect(
+      probeSpawnDetached('darwin'),
+      'the production probe adapter must spawn detached on every POSIX platform, not only Linux',
+    ).toBe(true);
+    expect(
+      probeSpawnDetached('win32'),
+      'Windows has no POSIX session or controlling-terminal job control to detach from, so the spawn placement stays unchanged there',
+    ).toBe(false);
+  });
+});
+
+describe.skipIf(process.platform === 'win32')('realProbeSpawn site pin', () => {
+  test('passes the pinned placement options to spawn at the spawn site (the runtime pins above cover the guard behavior; this pin covers the spawn site itself)', () => {
+    spawnMock.mockClear();
+    const child = realProbeSpawn('/bin/sh', ['--version']);
+    try {
+      expect(
+        spawnMock.mock.calls.length,
+        'the site pin must observe the adapter real spawn call; zero calls means the passthrough record broke',
+      ).toBe(1);
+      const options = spawnCallOptions();
+      expect(
+        options?.detached,
+        'the probe adapter spawn site must pass detached from the pinned guard: the release note guarantees CLI-presence probes can no longer stop the app or seize the controlling terminal on POSIX, and only the options this site actually passes reach that guarantee, so deleting or falsifying the option here ships every other pin green',
+      ).toBe(true);
+      expect(
+        options?.stdio,
+        'the probe child reads nothing, so its stdio stays off every pipe and terminal',
+      ).toBe('ignore');
+      expect(
+        options?.shell,
+        'the probe argv is composed upstream, so the site must not layer a shell over it',
+      ).toBe(false);
+      expect(
+        options?.windowsHide,
+        'a console-less parent must not flash a terminal window for the probe child',
+      ).toBe(true);
+    } finally {
+      child.kill();
+    }
+  });
+});
+
+function onlySpawnedProbe(): { spawned: ChildProcess; pid: number } {
+  const results = spawnMock.mock.results;
+  if (results.length !== 1) {
+    throw new Error(
+      'the probe kill pins bind to the single spawn the caller just made, so the caller must clear ' +
+        `the spawn mock immediately before it; saw ${results.length} recorded spawns`,
+    );
+  }
+  const spawned: ChildProcess | undefined = results.at(-1)?.value;
+  const pid = spawned?.pid;
+  if (!spawned || pid === undefined) throw new Error('probe child did not spawn with a pid');
+  return { spawned, pid };
+}
+
+describe.skipIf(process.platform === 'win32')('realProbeSpawn detached group kill', () => {
+  test('signals the detached probe process group with SIGKILL while the probe is still alive', async () => {
+    const groupKill = vi.spyOn(process, 'kill');
+    spawnMock.mockClear();
+    probeLog.warn.mockClear();
+    const child = realProbeSpawn('/bin/sh', ['-c', 'sleep 5']);
+    try {
+      const { pid } = onlySpawnedProbe();
+      const exited = new Promise<void>((resolve) => child.onExit(() => resolve()));
+      child.kill();
+      await exited;
+      expect(groupKill).toHaveBeenCalledTimes(1);
+      expect(
+        groupKill,
+        'the detached probe must be terminated through its process group: the leader alone can exec past the pid that spawned it, so a bare-pid kill strands the group the app promised not to leak',
+      ).toHaveBeenCalledWith(-pid, 'SIGKILL');
+      expect(probeLog.warn).not.toHaveBeenCalled();
+    } finally {
+      groupKill.mockRestore();
+      child.kill();
+    }
+  });
+
+  test('treats an already-exited probe group as a benign ESRCH no-op without a failure record or a bare-pid retry', async () => {
+    spawnMock.mockClear();
+    probeLog.warn.mockClear();
+    const child = realProbeSpawn('/bin/sh', ['-c', 'exit 0']);
+    try {
+      const { spawned, pid } = onlySpawnedProbe();
+      const childKill = vi.spyOn(spawned, 'kill');
+      await new Promise<void>((resolve) => child.onExit(() => resolve()));
+      let groupGone = false;
+      try {
+        process.kill(-pid, 'SIGKILL');
+      } catch (err) {
+        groupGone = (err as NodeJS.ErrnoException).code === 'ESRCH';
+      }
+      expect(groupGone, 'precondition: the probe group is really gone before the pin runs').toBe(
+        true,
+      );
+      child.kill();
+      expect(probeLog.warn).not.toHaveBeenCalled();
+      expect(childKill).not.toHaveBeenCalled();
+    } finally {
+      child.kill();
+    }
+  });
+
+  test('records a non-ESRCH group-kill failure without retrying the bare pid', () => {
+    const eperm = new Error('kill EPERM') as NodeJS.ErrnoException;
+    eperm.code = 'EPERM';
+    const groupKill = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw eperm;
+    });
+    spawnMock.mockClear();
+    probeLog.warn.mockClear();
+    const child = realProbeSpawn('/bin/sh', ['-c', 'exit 0']);
+    try {
+      const { spawned, pid } = onlySpawnedProbe();
+      const childKill = vi.spyOn(spawned, 'kill');
+      child.kill();
+      expect(groupKill).toHaveBeenCalledWith(-pid, 'SIGKILL');
+      expect(childKill).not.toHaveBeenCalled();
+      expect(probeLog.warn).toHaveBeenCalledTimes(1);
+      expect(probeLog.warn.mock.calls[0]?.[0]).toMatchObject({
+        event: 'probe-group-kill-failed',
+        err: eperm,
+        code: 'EPERM',
+        probePid: pid,
+        signal: 'SIGKILL',
+      });
+      expect(probeLog.warn.mock.calls[0]?.[0]).not.toHaveProperty('pid');
+    } finally {
+      groupKill.mockRestore();
+      child.kill();
+    }
+  });
+});
+
+describe('realProbeSpawn win32 spawn-site placement', () => {
+  function withPlatform<T>(platform: NodeJS.Platform, run: () => T): T {
+    const original = process.platform;
+    Object.defineProperty(process, 'platform', { configurable: true, value: platform });
+    try {
+      return run();
+    } finally {
+      Object.defineProperty(process, 'platform', { configurable: true, value: original });
+    }
+  }
+
+  test('keeps the spawn site itself un-detached when the stubbed platform is win32', () => {
+    withPlatform('win32', () => {
+      spawnMock.mockClear();
+      const child = realProbeSpawn('/bin/sh', ['--version']);
+      child.onError(() => {});
+      try {
+        expect(
+          spawnMock.mock.calls.length,
+          'the win32 site pin must observe the adapter real spawn call; zero calls means the passthrough record broke',
+        ).toBe(1);
+        const options = spawnCallOptions();
+        expect(
+          options?.detached,
+          'the win32 half of the release note is pinned at the spawn site, not only on the predicate: replacing the site with a literal detached: true would keep the predicate pins green while detaching every Windows probe child',
+        ).toBe(false);
+        expect(
+          options?.windowsHide,
+          'the win32 spawn placement stays unchanged apart from detach, so the site still passes the console-less no-terminal-flash option',
+        ).toBe(true);
+      } finally {
+        child.kill();
+      }
+    });
+  });
+
+  test('keeps the kill on the child itself and off any process group when the stubbed platform is win32', () => {
+    withPlatform('win32', () => {
+      const groupKill = vi.spyOn(process, 'kill');
+      spawnMock.mockClear();
+      const child = realProbeSpawn('/bin/sh', ['-c', 'sleep 5']);
+      try {
+        const { spawned } = onlySpawnedProbe();
+        const childKill = vi.spyOn(spawned, 'kill');
+        child.kill();
+        expect(
+          childKill,
+          'the win32 probe has no POSIX job control to detach from, so its termination stays on the child handle the spawn returned',
+        ).toHaveBeenCalledWith('SIGKILL');
+        expect(groupKill).not.toHaveBeenCalled();
+      } finally {
+        groupKill.mockRestore();
+        child.kill();
+      }
+    });
+  });
+});
+
 describe.skipIf(process.platform === 'win32')('the production CLI-presence probe adapter', () => {
   let scratchHome: string;
   let shell: string;
@@ -190,6 +404,25 @@ describe.skipIf(process.platform === 'win32')('the production CLI-presence probe
 
   test('resolves a ~/.ok/bin CLI that the bare app environment cannot reach', async () => {
     expect(await probeThroughProductionAdapter(FIXTURE_ONLY_BIN)).toBe(0);
+  });
+
+  test('terminates a hung probe through the production kill when the probe timer fires', async () => {
+    spawnMock.mockClear();
+    const groupKill = vi.spyOn(process, 'kill');
+    try {
+      const outcome = await runLoginShellProbe(realProbeSpawn, shell, realProbeTimers, 100, [
+        '-c',
+        'sleep 5',
+      ]);
+      expect(outcome).toBe(null);
+      const { pid } = onlySpawnedProbe();
+      expect(
+        groupKill,
+        'the probe timeout is the only production caller that kills a live probe, so its termination must reach the process group, not just the leader pid',
+      ).toHaveBeenCalledWith(-pid, 'SIGKILL');
+    } finally {
+      groupKill.mockRestore();
+    }
   });
 });
 

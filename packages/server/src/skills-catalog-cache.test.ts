@@ -132,3 +132,14 @@ test('plugin content refreshes only on identity change or its independent thirty
   const changedIdentity = c.pluginSkillsByName('project-b');
   expect(changedIdentity.get('alpha')?.contentHash).not.toBe(expired.get('alpha')?.contentHash);
 });
+
+test('plugin indexing does not extend an installed catalog cache hit', () => {
+  installPlugin('before');
+  const c = cache();
+  const clock = vi.spyOn(Date, 'now').mockReturnValue(100_000);
+  const catalog = c.enumerateInstalledSkillsCached({ home, projectDir: home });
+  clock.mockReturnValue(104_999);
+  expect(c.pluginSkillsByName(home).get('alpha')).toBeDefined();
+  clock.mockReturnValue(105_000);
+  expect(c.enumerateInstalledSkillsCached({ home, projectDir: home })).not.toBe(catalog);
+});

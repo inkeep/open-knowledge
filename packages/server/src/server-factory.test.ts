@@ -1,8 +1,10 @@
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   renameSync,
   rmSync,
@@ -11,7 +13,7 @@ import {
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
@@ -22,6 +24,7 @@ import {
   REMOVED_KEYS,
 } from '@inkeep/open-knowledge-core';
 import { readConfigSafely, resolveConfigPath } from '@inkeep/open-knowledge-core/server';
+import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
@@ -41,17 +44,24 @@ import type {
   PushPermission,
 } from './github-permissions.ts';
 import { buildIngressPolicy } from './ingress-policy.ts';
-import { loggerFactory, type PinoLogger } from './logger.ts';
+import { getLogger, loggerFactory, type PinoLogger } from './logger.ts';
 import {
   createManagedRenameRecoveryJournal,
   managedRenameJournalPath,
   writeManagedRenameJournal,
 } from './managed-rename-journal.ts';
+import { getMetrics, resetMetrics } from './metrics.ts';
 import { ensureProjectGit } from './project-git.ts';
+import { MAX_LCS_CELLS } from './reconciliation.ts';
 import { saveRemovedDocsJournal } from './removed-docs-journal.ts';
 import { createServer, type ServerInstance } from './server-factory.ts';
 import { releaseServerLock } from './server-lock.ts';
-import { initShadowRepo, shadowGit } from './shadow-repo.ts';
+import {
+  initShadowRepo,
+  listRescueCheckpoints,
+  type ShadowHandle,
+  shadowGit,
+} from './shadow-repo.ts';
 import { TagIndex } from './tag-index.ts';
 import { contentHash } from './version-hash.ts';
 
@@ -422,6 +432,16 @@ describe('createServer() — derived-index branch lifecycle', () => {
   }, 20_000);
 });
 
+async function executePendingStore(server: ServerInstance, docName: string): Promise<void> {
+  const debounceId = `onStoreDocument-${docName}`;
+  await vi.waitFor(() => expect(server.hocuspocus.debouncer.isDebounced(debounceId)).toBe(true), {
+    timeout: 15_000,
+    interval: 25,
+  });
+  const pending = server.hocuspocus.debouncer.executeNow(debounceId);
+  if (pending) await pending.catch(() => undefined);
+}
+
 describe('createServer().destroy() — graceful shutdown flush', () => {
   let tmpDir: string;
   let logCapture: ReturnType<typeof captureAllLoggers>;
@@ -613,6 +633,659 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     expect(rescueLogs.length).toBeGreaterThanOrEqual(1);
     expect(rescueLogs[0].payload.docName).toBe('pathological-doc');
   });
+
+  test('destroy() deliberately rescues and unloads a refused-store doc instead of stranding it to the timeout', async () => {
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    await ensureProjectGit(projectDir);
+    const shadowHandle = await initShadowRepo(projectDir);
+
+    const docName = 'refused-store-doc';
+    const initial = '# Refused store doc\n\nPersisted paragraph.\n';
+    const docPath = join(contentDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+    writeFileSync(join(projectDir, '.okignore'), `content/${docName}.md\n`, 'utf-8');
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      destroyTimeoutMs: 1500,
+      shadowRepo: shadowHandle,
+    });
+    await server.ready;
+
+    try {
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      chmodSync(docPath, 0o000);
+      server.durabilityState.deleteReconciledBase(docName);
+
+      const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph stranded at shutdown.\n');
+      });
+      await executePendingStore(server, docName);
+      await vi.waitFor(
+        () =>
+          expect(serverDoc.getText('source').toString()).toContain(
+            'Unflushed paragraph stranded at shutdown.',
+          ),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      serverDoc.removeDirectConnection();
+      const startedAt = Date.now();
+      await server.destroy();
+      const elapsed = Date.now() - startedAt;
+
+      expect(elapsed).toBeLessThan(1_450);
+      expect(getMetrics().persistenceDuplicationBaselineRefusals).toBeGreaterThanOrEqual(
+        refusalsBefore + 1,
+      );
+      const flushPhaseErrors = logCapture
+        .getCalls('warn', 'shutdown flushed')
+        .flatMap((entry) => (entry.payload.phaseErrors as Array<{ phase: string }>) ?? []);
+      expect(flushPhaseErrors.some((p) => p.phase === 'flush-all-stores')).toBe(false);
+      expect(
+        logCapture.getCalls('info', 'refused-store doc rescued and unloaded').length,
+      ).toBeGreaterThanOrEqual(1);
+
+      const rescuePath = join(shadowHandle.gitDir, 'rescue', `${docName}.md`);
+      expect(existsSync(rescuePath)).toBe(true);
+      expect(readFileSync(rescuePath, 'utf-8')).toContain(
+        'Unflushed paragraph stranded at shutdown.',
+      );
+    } finally {
+      chmodSync(docPath, 0o644);
+      await server.destroy();
+    }
+  });
+
+  test('destroy() rescues a doc refused before shutdown that the unload loop would otherwise destroy', async () => {
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    await ensureProjectGit(projectDir);
+    const shadowHandle = await initShadowRepo(projectDir);
+
+    const docName = 'runtime-refused-doc';
+    const initial = '# Runtime refused doc\n\nPersisted paragraph.\n';
+    const docPath = join(contentDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+    writeFileSync(join(projectDir, '.okignore'), `content/${docName}.md\n`, 'utf-8');
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      destroyTimeoutMs: 1500,
+      shadowRepo: shadowHandle,
+    });
+    await server.ready;
+
+    try {
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      chmodSync(docPath, 0o000);
+      server.durabilityState.deleteReconciledBase(docName);
+
+      const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph refused at runtime.\n');
+      });
+      await executePendingStore(server, docName);
+      await vi.waitFor(
+        () =>
+          expect(serverDoc.getText('source').toString()).toContain(
+            'Unflushed paragraph refused at runtime.',
+          ),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      await vi.waitFor(
+        () =>
+          expect(getMetrics().persistenceDuplicationBaselineRefusals).toBeGreaterThanOrEqual(
+            refusalsBefore + 1,
+          ),
+        { timeout: 10_000, interval: 25 },
+      );
+
+      const markTimeRescuePath = join(shadowHandle.gitDir, 'rescue', `${docName}.md`);
+      expect(existsSync(markTimeRescuePath)).toBe(true);
+      expect(readFileSync(markTimeRescuePath, 'utf-8')).toContain(
+        'Unflushed paragraph refused at runtime.',
+      );
+
+      const doc2Name = 'runtime-refused-neighbor';
+      const doc2Path = join(contentDir, `${doc2Name}.md`);
+      writeFileSync(doc2Path, '# Runtime refused neighbor\n\nSecond doc.\n', 'utf-8');
+      const conn2 = await server.hocuspocus.openDirectConnection(doc2Name);
+      const serverDoc2 = server.hocuspocus.documents.get(doc2Name);
+      expect(serverDoc2).toBeDefined();
+      if (!serverDoc2) return;
+      await vi.waitFor(
+        () =>
+          expect(server.durabilityState.getReconciledBase(doc2Name)).toBe(
+            '# Runtime refused neighbor\n\nSecond doc.\n',
+          ),
+        { timeout: 5_000, interval: 25 },
+      );
+      await conn2.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nNeighbor pending store paragraph.\n');
+      });
+      serverDoc2.removeDirectConnection();
+
+      serverDoc.removeDirectConnection();
+      const startedAt = Date.now();
+      await server.destroy();
+      const elapsed = Date.now() - startedAt;
+
+      expect(elapsed).toBeLessThan(1_450);
+      expect(getMetrics().persistenceDuplicationBaselineRefusals).toBeGreaterThanOrEqual(
+        refusalsBefore + 1,
+      );
+      const flushPhaseErrors = logCapture
+        .getCalls('warn', 'shutdown flushed')
+        .flatMap((entry) => (entry.payload.phaseErrors as Array<{ phase: string }>) ?? []);
+      expect(flushPhaseErrors.some((p) => p.phase === 'flush-all-stores')).toBe(false);
+      expect(
+        logCapture.getCalls('info', 'refused-store doc rescued and unloaded').length,
+      ).toBeGreaterThanOrEqual(1);
+
+      const rescuePath = join(shadowHandle.gitDir, 'rescue', `${docName}.md`);
+      expect(existsSync(rescuePath)).toBe(true);
+      expect(readFileSync(rescuePath, 'utf-8')).toContain(
+        'Unflushed paragraph refused at runtime.',
+      );
+    } finally {
+      chmodSync(docPath, 0o644);
+      await server.destroy();
+    }
+  });
+
+  test('a later refused store refreshes the runtime rescue buffer with the newest content', async () => {
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    await ensureProjectGit(projectDir);
+    const shadowHandle = await initShadowRepo(projectDir);
+
+    const docName = 'runtime-refused-refresh';
+    const initial = '# Runtime refused refresh\n\nPersisted paragraph.\n';
+    const docPath = join(contentDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+    writeFileSync(join(projectDir, '.okignore'), `content/${docName}.md\n`, 'utf-8');
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      destroyTimeoutMs: 1500,
+      shadowRepo: shadowHandle,
+    });
+    await server.ready;
+
+    try {
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      chmodSync(docPath, 0o000);
+      server.durabilityState.deleteReconciledBase(docName);
+
+      const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nFirst refused edit.\n');
+      });
+      await executePendingStore(server, docName);
+      await vi.waitFor(
+        () =>
+          expect(getMetrics().persistenceDuplicationBaselineRefusals).toBeGreaterThanOrEqual(
+            refusalsBefore + 1,
+          ),
+        { timeout: 20_000, interval: 25 },
+      );
+
+      const rescuePath = join(shadowHandle.gitDir, 'rescue', `${docName}.md`);
+      expect(readFileSync(rescuePath, 'utf-8')).toContain('First refused edit.');
+
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nSecond refused edit.\n');
+      });
+      await executePendingStore(server, docName);
+      await vi.waitFor(
+        () =>
+          expect(getMetrics().persistenceDuplicationBaselineRefusals).toBeGreaterThanOrEqual(
+            refusalsBefore + 2,
+          ),
+        { timeout: 20_000, interval: 25 },
+      );
+
+      expect(readFileSync(rescuePath, 'utf-8')).toContain('Second refused edit.');
+    } finally {
+      chmodSync(docPath, 0o644);
+      await server.destroy();
+    }
+  });
+
+  test('destroy() leaves a refused-store doc loaded when its shutdown rescue cannot write and reports it lost', async () => {
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    await ensureProjectGit(projectDir);
+    const shadowHandle = await initShadowRepo(projectDir);
+
+    const docName = 'refused-rescue-lost-doc';
+    const initial = '# Refused rescue lost doc\n\nPersisted paragraph.\n';
+    const docPath = join(contentDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+    writeFileSync(join(projectDir, '.okignore'), `content/${docName}.md\n`, 'utf-8');
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      destroyTimeoutMs: 1500,
+      shadowRepo: shadowHandle,
+    });
+    await server.ready;
+
+    const chmodEntries: Array<{ path: string; mode: number }> = [];
+    try {
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      const shadowGitDir = shadowHandle.gitDir;
+      const walk = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const entryPath = join(dir, entry.name);
+          chmodEntries.push({ path: entryPath, mode: statSync(entryPath).mode & 0o777 });
+          if (entry.isDirectory()) walk(entryPath);
+        }
+      };
+      chmodEntries.push({ path: shadowGitDir, mode: statSync(shadowGitDir).mode & 0o777 });
+      walk(shadowGitDir);
+      for (const entry of chmodEntries) chmodSync(entry.path, 0o500);
+
+      chmodSync(docPath, 0o000);
+      server.durabilityState.deleteReconciledBase(docName);
+
+      const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
+      const rescueBufferWriteFailuresBefore = getMetrics().rescueBufferWriteFailures;
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph the rescue cannot hold.\n');
+      });
+      await executePendingStore(server, docName);
+      await vi.waitFor(
+        () =>
+          expect(getMetrics().persistenceDuplicationBaselineRefusals).toBeGreaterThanOrEqual(
+            refusalsBefore + 1,
+          ),
+        { timeout: 20_000, interval: 25 },
+      );
+
+      const rescuePath = join(shadowHandle.gitDir, 'rescue', `${docName}.md`);
+      expect(existsSync(rescuePath)).toBe(false);
+
+      serverDoc.removeDirectConnection();
+      await server.destroy();
+
+      expect(
+        logCapture
+          .getCalls('warn', 'refused-store doc rescue failed')
+          .some((entry) => entry.payload.docName === docName),
+      ).toBe(true);
+      expect(getMetrics().rescueBufferWriteFailures).toBeGreaterThanOrEqual(
+        rescueBufferWriteFailuresBefore + 2,
+      );
+      expect(
+        logCapture
+          .getCalls('info', 'refused-store doc rescued and unloaded')
+          .some((entry) => entry.payload.docName === docName),
+      ).toBe(false);
+      expect(existsSync(rescuePath)).toBe(false);
+
+      const flushPhaseErrors = logCapture
+        .getCalls('warn', 'shutdown flushed')
+        .flatMap(
+          (entry) => (entry.payload.phaseErrors as Array<{ phase: string; error: string }>) ?? [],
+        );
+      const flushErr = flushPhaseErrors.find((e) => e.phase === 'flush-all-stores');
+      expect(flushErr?.error).toContain(`lost [${docName}]`);
+    } finally {
+      for (const entry of chmodEntries) {
+        if (!existsSync(entry.path)) continue;
+        chmodSync(entry.path, entry.mode);
+      }
+      chmodSync(docPath, 0o644);
+      await server.destroy();
+    }
+  });
+
+  test('destroy() leaves a refused-store doc to the flush timeout when its unload hangs past the deadline and reports the late completion', async () => {
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    await ensureProjectGit(projectDir);
+    const shadowHandle = await initShadowRepo(projectDir);
+
+    const docName = 'refused-unload-hangs-doc';
+    const initial = '# Refused unload hangs doc\n\nPersisted paragraph.\n';
+    const docPath = join(contentDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+    writeFileSync(join(projectDir, '.okignore'), `content/${docName}.md\n`, 'utf-8');
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      destroyTimeoutMs: 1500,
+      shadowRepo: shadowHandle,
+    });
+    await server.ready;
+
+    try {
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      chmodSync(docPath, 0o000);
+      server.durabilityState.deleteReconciledBase(docName);
+
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph behind a hanging unload.\n');
+      });
+      await executePendingStore(server, docName);
+
+      server.hocuspocus.configuration.extensions.push({
+        async beforeUnloadDocument(payload: { documentName: string }) {
+          if (payload.documentName !== docName) return;
+          await new Promise((resolve) => setTimeout(resolve, 2_500));
+        },
+      });
+
+      const rescuePath = join(shadowHandle.gitDir, 'rescue', `${docName}.md`);
+      const rescueContentBeforeDestroy = readFileSync(rescuePath, 'utf-8');
+      expect(rescueContentBeforeDestroy).toContain('Unflushed paragraph behind a hanging unload.');
+
+      serverDoc.removeDirectConnection();
+      const startedAt = Date.now();
+      await server.destroy();
+      const elapsed = Date.now() - startedAt;
+
+      expect(elapsed).toBeLessThan(10_000);
+      expect(
+        logCapture
+          .getCalls('warn', 'did not finish before the flush deadline')
+          .some((entry) => entry.payload.docName === docName),
+      ).toBe(true);
+      expect(existsSync(rescuePath)).toBe(true);
+      expect(readFileSync(rescuePath, 'utf-8')).toContain(
+        'Unflushed paragraph behind a hanging unload.',
+      );
+
+      const flushPhaseErrors = logCapture
+        .getCalls('warn', 'shutdown flushed')
+        .flatMap(
+          (entry) => (entry.payload.phaseErrors as Array<{ phase: string; error: string }>) ?? [],
+        );
+      const flushErr = flushPhaseErrors.find((e) => e.phase === 'flush-all-stores');
+      expect(flushErr?.error).toContain(`rescued [${docName}]`);
+
+      await vi.waitFor(
+        () =>
+          expect(
+            logCapture
+              .getCalls('info', 'completed after the flush deadline')
+              .some((entry) => entry.payload.docName === docName),
+          ).toBe(true),
+        { timeout: 10_000, interval: 25 },
+      );
+    } finally {
+      chmodSync(docPath, 0o644);
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('destroy() does not hand a second refused-store doc a budget the first one already spent', async () => {
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    await ensureProjectGit(projectDir);
+    const shadowHandle = await initShadowRepo(projectDir);
+
+    const firstDoc = 'refused-budget-hog-doc';
+    const secondDoc = 'refused-budget-starved-doc';
+    const docNames = [firstDoc, secondDoc];
+    const initialOf = (docName: string) => `# ${docName}\n\nPersisted paragraph.\n`;
+    const pathOf = (docName: string) => join(contentDir, `${docName}.md`);
+    for (const docName of docNames) {
+      writeFileSync(pathOf(docName), initialOf(docName), 'utf-8');
+    }
+    writeFileSync(
+      join(projectDir, '.okignore'),
+      docNames.map((docName) => `content/${docName}.md\n`).join(''),
+      'utf-8',
+    );
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      destroyTimeoutMs: 1500,
+      shadowRepo: shadowHandle,
+    });
+    await server.ready;
+
+    try {
+      for (const docName of docNames) {
+        const conn = await server.hocuspocus.openDirectConnection(docName);
+        const serverDoc = server.hocuspocus.documents.get(docName);
+        expect(serverDoc).toBeDefined();
+        if (!serverDoc) return;
+        await vi.waitFor(
+          () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initialOf(docName)),
+          { timeout: 5_000, interval: 25 },
+        );
+
+        chmodSync(pathOf(docName), 0o000);
+        server.durabilityState.deleteReconciledBase(docName);
+
+        await conn.transact((doc) => {
+          const source = doc.getText('source');
+          source.insert(source.length, `\nUnflushed paragraph for ${docName}.\n`);
+        });
+        await executePendingStore(server, docName);
+        await vi.waitFor(() => expect(server.durabilityState.isStoreRefused(docName)).toBe(true), {
+          timeout: 20_000,
+          interval: 25,
+        });
+        serverDoc.removeDirectConnection();
+      }
+
+      expect(server.durabilityState.getRefusedStoreDocNames()).toEqual(docNames);
+
+      server.hocuspocus.configuration.extensions.push({
+        async beforeUnloadDocument(payload: { documentName: string }) {
+          if (payload.documentName === firstDoc) {
+            await new Promise((resolve) => setTimeout(resolve, 2_500));
+          } else if (payload.documentName === secondDoc) {
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          }
+        },
+      });
+
+      await server.destroy();
+
+      const starvedWarns = logCapture.getCalls('warn', 'did not finish before the flush deadline');
+      expect(
+        starvedWarns.map((entry) => ({
+          docName: entry.payload.docName,
+          unloadDeadline: entry.payload.unloadDeadline,
+        })),
+      ).not.toContainEqual(expect.objectContaining({ unloadDeadline: 0 }));
+      expect(starvedWarns.some((entry) => entry.payload.docName === secondDoc)).toBe(false);
+    } finally {
+      for (const docName of docNames) chmodSync(pathOf(docName), 0o644);
+      await server.destroy();
+    }
+  }, 40_000);
+
+  test('a shadowless server logs and counts the rescue losses the flush timeout and skipped mints declare', async () => {
+    const projectDir = tmpDir;
+    const contentDir = join(tmpDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    await ensureProjectGit(projectDir);
+    const shadowGitDir = join(projectDir, '.git');
+    chmodSync(shadowGitDir, 0o500);
+    writeFileSync(join(projectDir, '.okignore'), 'content/shadowless-flush-doc.md\n', 'utf-8');
+
+    const mintDocName = 'shadowless-mint-doc';
+    const mintInitial = '# Shadowless mint doc\n\nPersisted paragraph.\n';
+    const mintDocPath = join(contentDir, `${mintDocName}.md`);
+    writeFileSync(mintDocPath, mintInitial, 'utf-8');
+
+    const server = createServer({
+      contentDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      destroyTimeoutMs: 1500,
+      gitEnabled: false,
+    });
+    await server.ready;
+
+    try {
+      const conn = await server.hocuspocus.openDirectConnection(mintDocName);
+      const serverDoc = server.hocuspocus.documents.get(mintDocName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(mintDocName)).toBe(mintInitial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      const failuresBefore = getMetrics().rescueBufferWriteFailures;
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph the shadowless server cannot mint.\n');
+      });
+      chmodSync(mintDocPath, 0o000);
+      unlinkSync(mintDocPath);
+
+      await vi.waitFor(
+        () =>
+          expect(
+            logCapture
+              .getCalls('warn', 'rescue checkpoint not minted')
+              .some(
+                (entry) =>
+                  entry.payload.docName === mintDocName &&
+                  entry.msg.includes('the delete that follows destroys the document content'),
+              ),
+          ).toBe(true),
+        { timeout: 15_000, interval: 25 },
+      );
+
+      const flushDocName = 'shadowless-flush-doc';
+      const flushDocPath = join(contentDir, `${flushDocName}.md`);
+      writeFileSync(flushDocPath, '# Shadowless flush doc\n\nSecond doc.\n', 'utf-8');
+      const _conn2 = await server.hocuspocus.openDirectConnection(flushDocName);
+      const serverDoc2 = server.hocuspocus.documents.get(flushDocName);
+      expect(serverDoc2).toBeDefined();
+      if (!serverDoc2) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(flushDocName)).toBeDefined(),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      const originalShouldUnload = server.hocuspocus.shouldUnloadDocument.bind(server.hocuspocus);
+      server.hocuspocus.shouldUnloadDocument = (document) => {
+        if (document.name === '__system__') return false;
+        return originalShouldUnload(document);
+      };
+      server.hocuspocus.configuration.extensions.push({
+        async beforeUnloadDocument(payload: { documentName: string }) {
+          if (payload.documentName !== flushDocName) return;
+          await new Promise(() => {});
+        },
+      });
+
+      serverDoc.removeDirectConnection();
+      serverDoc2.removeDirectConnection();
+      await server.destroy();
+
+      expect(
+        logCapture.getCalls('warn', 'shadow repo unavailable at flush timeout').length,
+      ).toBeGreaterThanOrEqual(1);
+      const flushPhaseErrors = logCapture
+        .getCalls('warn', 'shutdown flushed')
+        .flatMap(
+          (entry) => (entry.payload.phaseErrors as Array<{ phase: string; error: string }>) ?? [],
+        );
+      const flushErr = flushPhaseErrors.find((e) => e.phase === 'flush-all-stores');
+      expect(flushErr?.error).toContain(`lost [${flushDocName}]`);
+      const lostList = flushErr?.error.match(/lost \[[^\]]*\]/)?.[0];
+      expect(lostList).toBe(`lost [${flushDocName}]`);
+      expect(getMetrics().rescueBufferWriteFailures).toBeGreaterThanOrEqual(failuresBefore + 2);
+    } finally {
+      chmodSync(shadowGitDir, 0o755);
+      if (existsSync(mintDocPath)) chmodSync(mintDocPath, 0o644);
+      await server.destroy();
+    }
+  }, 30_000);
 
   test('destroy() is idempotent under concurrent calls', async () => {
     const server = createServer({
@@ -4648,4 +5321,698 @@ describe('createServer() — generated index wiring', () => {
     expect(readIndex()).toBe(bytesBeforeBoot);
     expect(statSync(indexPath()).mtimeMs).toBe(mtimeBeforeBoot);
   });
+});
+
+interface ReconcileRig {
+  tmpDir: string;
+  shadow: ShadowHandle;
+  cleanup: () => void;
+}
+
+async function setupReconcileRig(prefix: string): Promise<ReconcileRig> {
+  const tmpDir = await realpath(mkdtempSync(join(tmpdir(), prefix)));
+  const git = simpleGit({ baseDir: tmpDir });
+  await git.init();
+  await git.raw('symbolic-ref', 'HEAD', 'refs/heads/main');
+  await git.addConfig('user.name', 'Test User');
+  await git.addConfig('user.email', 'test@example.com');
+  const shadow = await initShadowRepo(tmpDir);
+  return {
+    tmpDir,
+    shadow,
+    cleanup: () => rmSync(tmpDir, { recursive: true, force: true }),
+  };
+}
+
+function createReconcileServer(rig: ReconcileRig): ServerInstance {
+  return createServer({
+    contentDir: rig.tmpDir,
+    projectDir: rig.tmpDir,
+    quiet: true,
+    debounce: 100,
+    maxDebounce: 500,
+    gitEnabled: false,
+    shadowRepo: rig.shadow,
+  });
+}
+
+async function expectAbsentDuring(
+  read: () => Promise<string[]>,
+  absent: string,
+  durationMs = 1_000,
+): Promise<void> {
+  const deadline = Date.now() + durationMs;
+  while (Date.now() < deadline) {
+    const names = await read();
+    expect(names).not.toContain(absent);
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+
+describe('createServer() — disk-event reconcile with an absent reconciled base', () => {
+  let rig: ReconcileRig;
+
+  beforeEach(() => {
+    resetMetrics();
+  });
+
+  afterEach(() => {
+    rig?.cleanup();
+  });
+
+  test('an external disk update on a loaded doc with an absent base adopts disk content instead of concatenating it', async () => {
+    rig = await setupReconcileRig('ok-reconcile-absent-base-');
+    const docName = 'absent-base-target';
+    const initial = '# Absent base target\n\nParagraph that only the editor doc holds.\n';
+    const theirs = '# Absent base target\n\nDisk-authoritative replacement paragraph.\n';
+    const docPath = join(rig.tmpDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.deleteReconciledBase(docName);
+      expect(server.durabilityState.getReconciledBase(docName)).toBeUndefined();
+
+      writeFileSync(docPath, theirs, 'utf-8');
+
+      await vi.waitFor(() => expect(serverDoc.getText('source').toString()).toBe(theirs), {
+        timeout: 8_000,
+        interval: 25,
+      });
+      expect(serverDoc.getText('source').toString()).not.toContain(
+        'Paragraph that only the editor doc holds.',
+      );
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(theirs);
+      expect(readFileSync(docPath, 'utf-8')).toBe(theirs);
+
+      await vi.waitFor(
+        async () => {
+          const rescues = await listRescueCheckpoints(rig.shadow, 'main');
+          expect(rescues.map((r) => r.docName)).toContain(docName);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('delete-path teardown with an absent base still rescues a non-empty doc and spares an empty doc', async () => {
+    rig = await setupReconcileRig('ok-reconcile-rescue-guard-');
+    const fullDoc = 'rescue-guard-full';
+    const emptyDoc = 'rescue-guard-empty';
+    const fullContent = '# Rescue guard full\n\nLive body that exists only in the editor doc.\n';
+    writeFileSync(join(rig.tmpDir, `${fullDoc}.md`), fullContent, 'utf-8');
+    writeFileSync(join(rig.tmpDir, `${emptyDoc}.md`), '', 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      await server.hocuspocus.openDirectConnection(fullDoc);
+      await server.hocuspocus.openDirectConnection(emptyDoc);
+      await vi.waitFor(
+        () => {
+          expect(server.durabilityState.getReconciledBase(fullDoc)).toBe(fullContent);
+          expect(server.durabilityState.getReconciledBase(emptyDoc)).toBe('');
+        },
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.deleteReconciledBase(fullDoc);
+      server.durabilityState.deleteReconciledBase(emptyDoc);
+
+      unlinkSync(join(rig.tmpDir, `${fullDoc}.md`));
+      unlinkSync(join(rig.tmpDir, `${emptyDoc}.md`));
+
+      await vi.waitFor(
+        async () => {
+          const rescues = await listRescueCheckpoints(rig.shadow, 'main');
+          expect(rescues.map((r) => r.docName)).toContain(fullDoc);
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+
+      await expectAbsentDuring(
+        async () => (await listRescueCheckpoints(rig.shadow, 'main')).map((r) => r.docName),
+        emptyDoc,
+      );
+      const rescues = await listRescueCheckpoints(rig.shadow, 'main');
+      expect(rescues).toHaveLength(1);
+      const rescue = rescues[0];
+      expect(rescue?.docName).toBe(fullDoc);
+      expect(rescue?.label).toContain('External change recovered');
+      expect(rescue?.incomingDiskSha).toBe('');
+      const deleteRescueBody = (
+        await shadowGit(rig.shadow).raw('log', '-1', '--format=%B', rescue?.sha ?? '')
+      ).trim();
+      expect(parseCheckpoint(deleteRescueBody)?.kind).toBe('external-change-rescue');
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('rename-path teardown rescues a dirty doc under the same checkpoint kind as the other teardown sites', async () => {
+    rig = await setupReconcileRig('ok-reconcile-rename-rescue-');
+    const docName = 'rename-rescue-source';
+    const newDocName = 'rename-rescue-destination';
+    const diskContent = '# Rename rescue source\n\nOn-disk body.\n';
+    writeFileSync(join(rig.tmpDir, `${docName}.md`), diskContent, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph only in the editor doc.\n');
+      });
+      await vi.waitFor(
+        () =>
+          expect(server.hocuspocus.documents.get(docName)?.getText('source').toString()).toContain(
+            'Unflushed paragraph only in the editor doc.',
+          ),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      renameSync(join(rig.tmpDir, `${docName}.md`), join(rig.tmpDir, `${newDocName}.md`));
+
+      let rescueSha = '';
+      await vi.waitFor(
+        async () => {
+          const rescues = await listRescueCheckpoints(rig.shadow, 'main');
+          const rescue = rescues.find((r) => r.docName === docName);
+          expect(rescue).toBeDefined();
+          rescueSha = rescue?.sha ?? '';
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      const renameRescueBody = (
+        await shadowGit(rig.shadow).raw('log', '-1', '--format=%B', rescueSha)
+      ).trim();
+      expect(parseCheckpoint(renameRescueBody)?.kind).toBe('external-change-rescue');
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a branch-switch round trip keeps an absent-base doc on disk content instead of resurrecting parked WIP', async () => {
+    const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-park-')));
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@example.com');
+    const docName = 'park-roundtrip-target';
+    const mainContent = '# Park roundtrip target\n\nMain branch body.\n';
+    const featureContent = '# Park roundtrip target\n\nFeature branch body.\n';
+    writeFileSync(join(projectDir, `${docName}.md`), mainContent, 'utf-8');
+    await git.add('.');
+    await git.commit('main content');
+    await git.checkoutLocalBranch('feature');
+    writeFileSync(join(projectDir, `${docName}.md`), featureContent, 'utf-8');
+    await git.add(['-A']);
+    await git.commit('feature content');
+    await git.checkout('main');
+
+    const shadow = await initShadowRepo(projectDir);
+    rig = {
+      tmpDir: projectDir,
+      shadow,
+      cleanup: () => rmSync(projectDir, { recursive: true, force: true }),
+    };
+    const server = createServer({
+      contentDir: projectDir,
+      projectDir,
+      quiet: true,
+      debounce: 100,
+      maxDebounce: 500,
+      gitEnabled: false,
+      shadowRepo: shadow,
+    });
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(mainContent),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.deleteReconciledBase(docName);
+
+      await git.checkout('feature');
+      await vi.waitFor(() => expect(serverDoc.getText('source').toString()).toBe(featureContent), {
+        timeout: 15_000,
+        interval: 25,
+      });
+      expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
+
+      await git.checkout('main');
+      await vi.waitFor(() => expect(serverDoc.getText('source').toString()).toBe(mainContent), {
+        timeout: 15_000,
+        interval: 25,
+      });
+      expect(serverDoc.getText('source').toString()).not.toContain('Feature branch body.');
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(mainContent);
+      expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
+
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 60_000);
+
+  test('a branch-switch reset rescues unflushed WIP on an absent-base doc before overwriting with disk content', async () => {
+    const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-bs-rescue-')));
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@example.com');
+    const docName = 'branch-switch-rescue-target';
+    const diskContent = '# Branch switch rescue target\n\nSame body on both branches.\n';
+    writeFileSync(join(projectDir, `${docName}.md`), diskContent, 'utf-8');
+    await git.add('.');
+    await git.commit('main content');
+    await git.checkoutLocalBranch('feature');
+    await git.checkout('main');
+
+    const shadow = await initShadowRepo(projectDir);
+    rig = {
+      tmpDir: projectDir,
+      shadow,
+      cleanup: () => rmSync(projectDir, { recursive: true, force: true }),
+    };
+    const server = createServer({
+      contentDir: projectDir,
+      projectDir,
+      quiet: true,
+      debounce: 60_000,
+      maxDebounce: 60_000,
+      gitEnabled: false,
+      shadowRepo: shadow,
+    });
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.deleteReconciledBase(docName);
+
+      await conn.transact((doc) => {
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed WIP paragraph only in the editor.\n');
+      });
+      await vi.waitFor(
+        () =>
+          expect(serverDoc.getText('source').toString()).toContain(
+            'Unflushed WIP paragraph only in the editor.',
+          ),
+        { timeout: 5_000, interval: 25 },
+      );
+      const wipText = serverDoc.getText('source').toString();
+      expect(wipText).not.toBe(diskContent);
+
+      const warnSpy = vi.spyOn(getLogger('server'), 'warn');
+      try {
+        await git.checkout('feature');
+
+        await vi.waitFor(
+          () =>
+            expect(serverDoc.getText('source').toString()).not.toContain('Unflushed WIP paragraph'),
+          { timeout: 15_000, interval: 25 },
+        );
+        expect(serverDoc.getText('source').toString()).toBe(diskContent);
+        expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent);
+        expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
+
+        await vi.waitFor(
+          async () => {
+            const rescues = await listRescueCheckpoints(rig.shadow, 'feature');
+            const rescue = rescues.find((r) => r.docName === docName);
+            expect(rescue).toBeDefined();
+            expect(rescue?.incomingDiskSha).toBe('');
+            expect(rescue?.size).toBe(wipText.length);
+          },
+          { timeout: 10_000, interval: 50 },
+        );
+
+        const branchSwitchRescue = (await listRescueCheckpoints(rig.shadow, 'feature')).find(
+          (r) => r.docName === docName,
+        );
+        const branchSwitchBody = (
+          await shadowGit(rig.shadow).raw('log', '-1', '--format=%B', branchSwitchRescue?.sha ?? '')
+        ).trim();
+        expect(parseCheckpoint(branchSwitchBody)?.kind).toBe('external-change-rescue');
+
+        const warnTexts = warnSpy.mock.calls.map((call) => String(call[1] ?? ''));
+        expect(warnTexts.some((s) => s.includes('skipped parking'))).toBe(true);
+      } finally {
+        warnSpy.mockRestore();
+      }
+
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 60_000);
+
+  test('a first-visit branch switch mints no rescue for a settled doc whose content already matches the destination disk', async () => {
+    const projectDir = await realpath(mkdtempSync(join(tmpdir(), 'ok-reconcile-firstvisit-')));
+    const git = simpleGit(projectDir);
+    await git.init(['--initial-branch=main']);
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@example.com');
+    const docName = 'first-visit-settled';
+    const settledContent = '# First visit settled\n\nSame body on both branches.\n';
+    writeFileSync(join(projectDir, `${docName}.md`), settledContent, 'utf-8');
+    await git.add('.');
+    await git.commit('main content');
+
+    const shadow = await initShadowRepo(projectDir);
+    rig = {
+      tmpDir: projectDir,
+      shadow,
+      cleanup: () => rmSync(projectDir, { recursive: true, force: true }),
+    };
+    const server = createServer({
+      contentDir: projectDir,
+      projectDir,
+      quiet: true,
+      debounce: 60_000,
+      maxDebounce: 60_000,
+      gitEnabled: false,
+      shadowRepo: shadow,
+    });
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(settledContent),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      await git.checkoutLocalBranch('feature');
+
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(settledContent),
+        { timeout: 15_000, interval: 25 },
+      );
+      expect(serverDoc.getText('source').toString()).toBe(settledContent);
+      expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
+
+      await expectAbsentDuring(
+        async () => (await listRescueCheckpoints(rig.shadow, 'feature')).map((r) => r.docName),
+        docName,
+      );
+
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 60_000);
+
+  test('a blockless acknowledged base refuses the merge and adopts disk content with a rescue', async () => {
+    rig = await setupReconcileRig('ok-reconcile-refused-no-base-');
+    const docName = 'refused-no-base-target';
+    const initial = '# Refused no-base target\n\nParagraph that only the editor doc holds.\n';
+    const theirs = '# Refused no-base target\n\nDisk-authoritative replacement paragraph.\n';
+    const docPath = join(rig.tmpDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.setReconciledBase(docName, '');
+      expect(server.durabilityState.getReconciledBase(docName)).toBe('');
+
+      const ingestsBefore = getMetrics().diskAuthoritativeIngestCount;
+      writeFileSync(docPath, theirs, 'utf-8');
+
+      await vi.waitFor(() => expect(serverDoc.getText('source').toString()).toBe(theirs), {
+        timeout: 8_000,
+        interval: 25,
+      });
+      expect(serverDoc.getText('source').toString()).not.toContain(
+        'Paragraph that only the editor doc holds.',
+      );
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(theirs);
+      expect(readFileSync(docPath, 'utf-8')).toBe(theirs);
+      expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
+      expect(getMetrics().diskAuthoritativeIngestCount).toBe(ingestsBefore + 1);
+
+      await vi.waitFor(
+        async () => {
+          const rescues = await listRescueCheckpoints(rig.shadow, 'main');
+          const rescue = rescues.find((r) => r.docName === docName);
+          expect(rescue).toBeDefined();
+          expect(rescue?.incomingDiskSha).toBe(contentHash(theirs).slice(0, 6));
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('the disk-authoritative ingest durably buffers live-only content before it adopts disk bytes', async () => {
+    rig = await setupReconcileRig('ok-reconcile-ingest-rescue-order-');
+    const docName = 'ingest-rescue-order-target';
+    const initial =
+      '# Ingest rescue order target\n\nLive paragraph that exists only in the editor.\n';
+    const theirs = '# Ingest rescue order target\n\nDisk-authoritative replacement paragraph.\n';
+    const docPath = join(rig.tmpDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    const infoSpy = vi.spyOn(getLogger('server'), 'info');
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.deleteReconciledBase(docName);
+
+      const rescuePath = join(rig.shadow.gitDir, 'rescue', `${docName}.md`);
+      expect(existsSync(rescuePath)).toBe(false);
+      const unrescuedBefore = getMetrics().diskAuthoritativeIngestUnrescuedCount;
+
+      writeFileSync(docPath, theirs, 'utf-8');
+
+      await vi.waitFor(() => expect(serverDoc.getText('source').toString()).toBe(theirs), {
+        timeout: 8_000,
+        interval: 25,
+      });
+
+      expect(existsSync(rescuePath)).toBe(true);
+      expect(readFileSync(rescuePath, 'utf-8')).toBe(initial);
+      expect(getMetrics().diskAuthoritativeIngestUnrescuedCount).toBe(unrescuedBefore);
+
+      const ingestLog = infoSpy.mock.calls.find(
+        (call) => (call[0] as { reason?: string } | undefined)?.reason === 'no-base',
+      );
+      expect(ingestLog?.[0]).toMatchObject({ docName, result: 'clean', rescue: 'rescued' });
+
+      conn.disconnect();
+    } finally {
+      infoSpy.mockRestore();
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('an ingest whose rescue writes all fail is not reported as a clean ingest', async () => {
+    rig = await setupReconcileRig('ok-reconcile-rescue-write-failure-');
+    const docName = 'rescue-write-failure-target';
+    const initial =
+      '# Rescue write failure target\n\nLive paragraph that exists only in the editor.\n';
+    const theirs = '# Rescue write failure target\n\nDisk-authoritative replacement paragraph.\n';
+    const docPath = join(rig.tmpDir, `${docName}.md`);
+    writeFileSync(docPath, initial, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    const chmodEntries: Array<{ path: string; mode: number }> = [];
+    const warnSpy = vi.spyOn(getLogger('server'), 'warn');
+    const errorSpy = vi.spyOn(getLogger('server'), 'error');
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.deleteReconciledBase(docName);
+
+      const shadowGitDir = rig.shadow.gitDir;
+      const walk = (dir: string): void => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const entryPath = join(dir, entry.name);
+          chmodEntries.push({ path: entryPath, mode: statSync(entryPath).mode & 0o777 });
+          if (entry.isDirectory()) walk(entryPath);
+        }
+      };
+      chmodEntries.push({ path: shadowGitDir, mode: statSync(shadowGitDir).mode & 0o777 });
+      walk(shadowGitDir);
+      for (const entry of chmodEntries) chmodSync(entry.path, 0o500);
+
+      const failuresBefore = getMetrics().rescueCheckpointWriteFailures;
+      const bufferFailuresBefore = getMetrics().rescueBufferWriteFailures;
+      const unrescuedBefore = getMetrics().diskAuthoritativeIngestUnrescuedCount;
+      const ingestsBefore = getMetrics().diskAuthoritativeIngestCount;
+      try {
+        writeFileSync(docPath, theirs, 'utf-8');
+
+        await vi.waitFor(() => expect(serverDoc.getText('source').toString()).toBe(theirs), {
+          timeout: 8_000,
+          interval: 25,
+        });
+        expect(server.durabilityState.getReconciledBase(docName)).toBe(theirs);
+        await vi.waitFor(
+          () => expect(getMetrics().rescueCheckpointWriteFailures).toBeGreaterThan(failuresBefore),
+          { timeout: 10_000, interval: 25 },
+        );
+        expect(getMetrics().diskAuthoritativeIngestCount).toBe(ingestsBefore + 1);
+        expect(getMetrics().rescueBufferWriteFailures).toBeGreaterThan(bufferFailuresBefore);
+        expect(getMetrics().diskAuthoritativeIngestUnrescuedCount).toBe(unrescuedBefore + 1);
+      } finally {
+        for (const entry of chmodEntries) {
+          if (!existsSync(entry.path)) continue;
+          chmodSync(entry.path, entry.mode);
+        }
+      }
+
+      const rescues = await listRescueCheckpoints(rig.shadow, 'main');
+      expect(rescues.filter((r) => r.docName === docName)).toHaveLength(0);
+      expect(existsSync(join(rig.shadow.gitDir, 'rescue', `${docName}.md`))).toBe(false);
+
+      const ingestLog = warnSpy.mock.calls.find(
+        (call) => (call[0] as { reason?: string } | undefined)?.reason === 'no-base',
+      );
+      expect(ingestLog?.[0]).toMatchObject({ docName, result: 'clean-unrescued', rescue: 'lost' });
+
+      const rescueFailure = errorSpy.mock.calls.find((call) =>
+        String(call[1]).startsWith('[rescue] failed to write rescue buffer'),
+      );
+      expect(rescueFailure?.[0]).toMatchObject({ docName, context: 'disk-authoritative-ingest' });
+
+      conn.disconnect();
+    } finally {
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+      await server.destroy();
+    }
+  }, 45_000);
+});
+
+describe('createServer() — disk-event reconcile insert-group dedup reporting', () => {
+  let rig: ReconcileRig;
+
+  beforeEach(() => {
+    resetMetrics();
+  });
+
+  afterEach(() => {
+    rig?.cleanup();
+  });
+
+  test('a conflicting reconcile that also skipped insert dedup past the LCS cap still counts the skip', async () => {
+    rig = await setupReconcileRig('ok-reconcile-conflict-dedup-');
+    const docName = 'conflict-dedup-target';
+    const perSide = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 10;
+    const shared = Array.from({ length: 10 }, (_, i) => `Shared ${i}.`);
+    const base = 'Anchor.\n';
+    const ourBlocks = [
+      'Anchor edited by us.',
+      ...shared,
+      ...Array.from({ length: perSide }, (_, i) => `Ours ${i}.`),
+    ];
+    const theirBlocks = [
+      'Anchor edited by them.',
+      ...shared,
+      ...Array.from({ length: perSide }, (_, i) => `Theirs ${i}.`),
+    ];
+    const ours = `${ourBlocks.join('\n\n')}\n`;
+    const theirs = `${theirBlocks.join('\n\n')}\n`;
+    const docPath = join(rig.tmpDir, `${docName}.md`);
+    writeFileSync(docPath, ours, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      const serverDoc = server.hocuspocus.documents.get(docName);
+      expect(serverDoc).toBeDefined();
+      if (!serverDoc) return;
+      await vi.waitFor(() => expect(server.durabilityState.getReconciledBase(docName)).toBe(ours), {
+        timeout: 20_000,
+        interval: 50,
+      });
+
+      server.durabilityState.setReconciledBase(docName, base);
+      const conflictsBefore = getMetrics().conflictCount;
+      const dedupSkippedBefore = getMetrics().reconcileInsertDedupSkipped;
+
+      writeFileSync(docPath, theirs, 'utf-8');
+
+      await vi.waitFor(() => expect(getMetrics().conflictCount).toBe(conflictsBefore + 1), {
+        timeout: 20_000,
+        interval: 50,
+      });
+      const merged = serverDoc.getText('source').toString();
+      expect(merged).toContain('Ours 0.');
+      expect(merged).toContain(`Theirs ${perSide - 1}.`);
+      expect(getMetrics().reconcileInsertDedupSkipped).toBe(dedupSkippedBefore + 1);
+
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 90_000);
 });

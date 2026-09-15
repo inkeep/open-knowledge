@@ -1,13 +1,6 @@
 import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import {
-  existsSync,
-  mkdirSync,
-  readFileSync,
-  realpathSync,
-  statSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { Document, Extension } from '@hocuspocus/server';
@@ -50,6 +43,7 @@ import {
   writeConfigPatch,
 } from '@inkeep/open-knowledge-core/server';
 import {
+  type CheckpointKind,
   formatReconcileSubject,
   gitAuthorWriterId,
   resolveGitDir,
@@ -134,6 +128,7 @@ import {
   applyExternalChange,
   refuseStaleExternalWrite,
   serializeYDocSource,
+  wireReasonForRefusal,
 } from './external-change.ts';
 import {
   assertNeverDiskEvent,
@@ -199,10 +194,16 @@ import {
   incrementBatch,
   incrementBranchSwitch,
   incrementConflict,
+  incrementDiskAuthoritativeIngest,
+  incrementDiskAuthoritativeIngestApplyFailures,
+  incrementDiskAuthoritativeIngestUnrescued,
   incrementPark,
   incrementRecentlyRemovedDocsEviction,
   incrementReconcile,
+  incrementReconcileInsertDedupSkipped,
   incrementRescueBuffer,
+  incrementRescueBufferWriteFailures,
+  incrementRescueCheckpointWriteFailures,
   incrementUpstreamImport,
   setRecentlyRemovedDocsSize,
 } from './metrics.ts';
@@ -215,7 +216,7 @@ import {
 } from './persistence-staleness-watchdog.ts';
 import { loadPrincipal } from './principal.ts';
 import { RecentlyRemovedDocs } from './recently-removed-docs.ts';
-import { reconcile } from './reconciliation.ts';
+import { type ReconcileOutcome, reconcile } from './reconciliation.ts';
 import { reconcileRecoveredFileTarget } from './recovered-file-target.ts';
 import { runRemovalRedirectGuard } from './removal-redirect-guard.ts';
 import { loadRemovedDocsJournal, saveRemovedDocsJournal } from './removed-docs-journal.ts';
@@ -480,6 +481,14 @@ export function createServer(options: ServerOptions): ServerInstance {
     onStaleExternalWriteChange: () => {
       cc1Broadcaster?.signal('sync-status');
       hydrateStaleExternalWrites();
+    },
+    onStoreRefused: (docName) => {
+      if (rescueDocToShadowBuffer(docName, 'refused-store-mark') === 'lost') {
+        log.warn(
+          { docName },
+          `[rescue] refused-store content for ${docName} was not durably buffered at refusal time`,
+        );
+      }
     },
     fileForDocName: (docName) =>
       relative(projectDir, safeContentPath(docName, contentDir)).replaceAll('\\', '/'),
@@ -919,6 +928,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   let shutdownAllowsUnload = false;
   const unregisterWorkloadProviders: Array<() => void> = [];
   let forceUnloadDocument!: (document: Document) => Promise<void>;
+  let defaultShouldUnloadDocument!: (document: Document) => boolean;
 
   let resolveReady!: () => void;
   let rejectReady!: (err: unknown) => void;
@@ -1783,10 +1793,17 @@ export function createServer(options: ServerOptions): ServerInstance {
       });
     }
 
-    const defaultShouldUnloadDocument = hocuspocus.shouldUnloadDocument.bind(hocuspocus);
+    defaultShouldUnloadDocument = hocuspocus.shouldUnloadDocument.bind(hocuspocus);
     hocuspocus.shouldUnloadDocument = (document) => {
       if (forceUnloadSet.has(document)) {
         return true;
+      }
+      if (
+        shutdownAllowsUnload &&
+        !isReservedForUserTree(document.name) &&
+        durabilityState.isStoreRefused(document.name)
+      ) {
+        return false;
       }
       if (shutdownAllowsUnload && defaultShouldUnloadDocument(document)) {
         return true;
@@ -2159,33 +2176,81 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
   }
 
-  const rescueUnflushedEditsBeforeTeardown = (
+  const CHECKPOINT_KIND_BY_MINT_SITE = {
+    delete: 'external-change-rescue',
+    rename: 'external-change-rescue',
+    'branch-switch': 'external-change-rescue',
+    'disk-update': 'external-change-rescue-disk-update',
+  } as const satisfies Record<
+    'delete' | 'rename' | 'branch-switch' | 'disk-update',
+    CheckpointKind
+  >;
+
+  /* WARN: mint-site → checkpoint-kind → GC bucket coupling; the per-kind retention budgets and
+   * the external-change-rescue split are recorded in packages/core/src/bridge/README.md
+   * (external-change-rescue exception paragraph). */
+  const mintExternalChangeRescue = (
     docName: string,
+    ours: string,
     branch: string,
-    site: 'delete' | 'rename' | 'branch-switch',
+    site: keyof typeof CHECKPOINT_KIND_BY_MINT_SITE,
+    incomingDiskSha = '',
+    followedByContentLoss = false,
   ): boolean => {
-    const base = getReconciledBase(docName) ?? '';
-    const ours = serializeDoc(docName) ?? '';
-    const isDirty = ours !== base;
-    if (!isDirty || !shadowRef.current) return isDirty;
+    if (!shadowRef.current) {
+      const consequence = !followedByContentLoss
+        ? ''
+        : site === 'delete'
+          ? ' — the delete that follows destroys the document content'
+          : ' — the overwrite that follows replaces the document content';
+      log.warn(
+        { docName, site },
+        `[reconcile] rescue checkpoint not minted for ${docName} (${site}) — shadow repo unavailable${consequence}`,
+      );
+      incrementRescueBufferWriteFailures();
+      return false;
+    }
     const shadowForCheckpoint = shadowRef.current;
     queueMicrotask(() => {
       saveInMemoryCheckpoint(shadowForCheckpoint, contentRoot ?? '', {
-        kind: 'external-change-rescue',
+        kind: CHECKPOINT_KIND_BY_MINT_SITE[site],
         docName,
         contents: ours,
         label: `External change recovered @ ${new Date().toISOString()}`,
         branch,
-        metadata: { incomingDiskSha: '' },
+        metadata: { incomingDiskSha },
       })
         .then(() => {
           incrementRescueBuffer();
           log.info({ docName, site }, `[reconcile] rescue checkpoint saved (${site}): ${docName}`);
         })
         .catch((e: unknown) => {
-          log.error({ docName, err: e }, `[reconcile] rescue checkpoint write failed: ${docName}`);
+          incrementRescueCheckpointWriteFailures();
+          const consequence = !followedByContentLoss
+            ? ''
+            : site === 'delete'
+              ? ' — the delete that follows destroys the document content'
+              : ' — the overwrite that follows replaces the document content';
+          log.error(
+            { docName, site, err: e },
+            `[reconcile] rescue checkpoint write failed (${site}): ${docName}${consequence}`,
+          );
         });
     });
+    return true;
+  };
+
+  const rescueUnflushedEditsBeforeTeardown = (
+    docName: string,
+    branch: string,
+    site: 'delete' | 'rename' | 'branch-switch',
+    followedByContentLoss = false,
+  ): boolean => {
+    const reconciledBase = getReconciledBase(docName);
+    const ours = serializeDoc(docName) ?? '';
+    const isDirty = reconciledBase === undefined ? ours !== '' : ours !== reconciledBase;
+    if (!isDirty) return isDirty;
+    mintExternalChangeRescue(docName, ours, branch, site, '', followedByContentLoss);
     return isDirty;
   };
 
@@ -2193,6 +2258,104 @@ export function createServer(options: ServerOptions): ServerInstance {
     conflicts.dissolveReconcile(docName);
     conflicts.dissolveWorkingTree(conflicts.fileOf(docName));
   }
+
+  const reportInsertDedupSkipped = (
+    docName: string,
+    outcome: ReconcileOutcome,
+    ours: string,
+    theirs: string,
+  ): void => {
+    if (outcome.kind !== 'merged' && outcome.kind !== 'conflicts') return;
+    if (!outcome.dedupSkipped) return;
+    incrementReconcileInsertDedupSkipped();
+    log.warn(
+      {
+        docName,
+        oursLen: ours.length,
+        theirsLen: theirs.length,
+        newLen: outcome.newContent.length,
+      },
+      `[reconcile] ${docName} insert-group dedup skipped (LCS cell cap); union emitted with possible same-block duplication`,
+    );
+  };
+
+  const applyDiskAuthoritativeIngest = async (
+    docName: string,
+    theirs: string,
+    baseAbsent: boolean,
+  ): Promise<void> => {
+    incrementDiskAuthoritativeIngest();
+    const ours = serializeDoc(docName) ?? '';
+    const branch = headWatcher?.getLastKnownBranch() ?? 'main';
+    const theirsH = contentHash(theirs).slice(0, 6);
+    const liveOnlyContentAtRisk = ours !== '' && ours !== theirs;
+    const rescue: 'not-needed' | 'rescued' | 'lost' = !liveOnlyContentAtRisk
+      ? 'not-needed'
+      : rescueDocToShadowBuffer(docName, 'disk-authoritative-ingest');
+    if (liveOnlyContentAtRisk) {
+      mintExternalChangeRescue(docName, ours, branch, 'disk-update', theirsH, true);
+    }
+    const oursH = contentHash(ours).slice(0, 6);
+    const baseToken = baseAbsent ? 'absent' : 'blockless';
+    let ingested = false;
+    try {
+      applyToDoc(docName, theirs);
+      dissolveNonGitConflicts(docName);
+      ingested = true;
+    } catch (e) {
+      incrementDiskAuthoritativeIngestApplyFailures();
+      log.error(
+        { err: e, docName },
+        `[reconcile] failed to apply disk-authoritative ingest to Y.Doc for ${docName}`,
+      );
+      setReconciledBase(docName, theirs);
+      mintExternalChangeRescue(docName, theirs, branch, 'disk-update', theirsH, true);
+      dissolveNonGitConflicts(docName);
+      let surviving: string | undefined;
+      try {
+        surviving = serializeDoc(docName) ?? undefined;
+      } catch (readError) {
+        log.error(
+          { err: readError, docName },
+          `[reconcile] unable to read ${docName} back after a failed disk-authoritative ingest; treating the live content as lost`,
+        );
+      }
+      if (rescue === 'lost' && surviving !== ours) {
+        incrementDiskAuthoritativeIngestUnrescued();
+        log.warn(
+          {
+            docName,
+            baseAbsent,
+            reason: 'no-base',
+            ours: oursH,
+            theirs: theirsH,
+            result: 'clean-unrescued',
+            rescue,
+            applyFailed: true,
+          },
+          `[reconcile] ${docName} base=${baseToken} reason=no-base result=clean-unrescued ours=${oursH} theirs=${theirsH} rescue=${rescue} applyFailed=true`,
+        );
+      }
+    }
+    if (ingested) {
+      const result = rescue === 'lost' ? 'clean-unrescued' : 'clean';
+      if (rescue === 'lost') incrementDiskAuthoritativeIngestUnrescued();
+      const emit = rescue === 'lost' ? log.warn.bind(log) : log.info.bind(log);
+      emit(
+        {
+          docName,
+          baseAbsent,
+          reason: 'no-base',
+          ours: oursH,
+          theirs: theirsH,
+          result,
+          rescue,
+        },
+        `[reconcile] ${docName} base=${baseToken} reason=no-base result=${result} ours=${oursH} theirs=${theirsH} rescue=${rescue}`,
+      );
+      await derivedDocumentIndex.recordDiskUpsert(docName, theirs);
+    }
+  };
 
   async function handleDiskEvent(event: DiskEvent): Promise<void> {
     try {
@@ -2226,8 +2389,8 @@ export function createServer(options: ServerOptions): ServerInstance {
             return;
           }
 
-          const base = getReconciledBase(docName) ?? '';
-          const ours = serializeDoc(docName) ?? base;
+          const base = getReconciledBase(docName);
+          const ours = serializeDoc(docName) ?? base ?? '';
 
           if (
             refuseStaleExternalWrite(durabilityState, document, docName, theirs, conflicts, ours)
@@ -2236,15 +2399,39 @@ export function createServer(options: ServerOptions): ServerInstance {
             return;
           }
 
+          if (base === undefined) {
+            await applyDiskAuthoritativeIngest(docName, theirs, true);
+            break;
+          }
+
           const result = reconcile({ docName, base, ours, theirs });
 
           const baseH = contentHash(base).slice(0, 6);
           const oursH = contentHash(ours).slice(0, 6);
           const theirsH = contentHash(theirs).slice(0, 6);
+          const oursLen = ours.length;
+          const theirsLen = theirs.length;
+          const newLen =
+            result.kind === 'clean' || result.kind === 'merged' || result.kind === 'conflicts'
+              ? result.newContent.length
+              : undefined;
+          const delta = newLen === undefined ? undefined : newLen - Math.max(oursLen, theirsLen);
+          const sizeSuffix = newLen === undefined ? '' : ` newLen=${newLen} delta=${delta}`;
           log.info(
-            { docName, base: baseH, ours: oursH, theirs: theirsH, result: result.kind },
-            `[reconcile] ${docName} base=${baseH} ours=${oursH} theirs=${theirsH} result=${result.kind}`,
+            {
+              docName,
+              base: baseH,
+              ours: oursH,
+              theirs: theirsH,
+              result: result.kind,
+              oursLen,
+              theirsLen,
+              ...(newLen === undefined ? {} : { newLen, delta }),
+            },
+            `[reconcile] ${docName} base=${baseH} ours=${oursH} theirs=${theirsH} result=${result.kind} oursLen=${oursLen} theirsLen=${theirsLen}${sizeSuffix}`,
           );
+
+          reportInsertDedupSkipped(docName, result, ours, theirs);
 
           switch (result.kind) {
             case 'noop':
@@ -2326,12 +2513,15 @@ export function createServer(options: ServerOptions): ServerInstance {
             }
 
             case 'refused': {
+              if (result.reason === 'no-base') {
+                await applyDiskAuthoritativeIngest(docName, theirs, false);
+                break;
+              }
               incrementConflict();
               conflicts.raise({
                 kind: 'reconcile',
                 file: conflicts.fileOf(docName),
-                reason:
-                  result.reason === 'too-large' ? 'refused-too-large' : 'refused-conflict-markers',
+                reason: wireReasonForRefusal(result.reason),
                 stages: { base, ours, theirs },
               });
               break;
@@ -2365,6 +2555,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             docName,
             headWatcher?.getLastKnownBranch() ?? 'main',
             'delete',
+            true,
           );
 
           const lifecycleMap = document.getMap('lifecycle');
@@ -2561,6 +2752,57 @@ export function createServer(options: ServerOptions): ServerInstance {
   let syncEngine: SyncEngine | null = null;
   let inflightDestroy: Promise<void> | null = null;
 
+  const rescueDocToShadowBuffer = (
+    docName: string,
+    context:
+      | 'refused-store-shutdown'
+      | 'refused-store-mark'
+      | 'flush-timeout'
+      | 'disk-authoritative-ingest',
+  ): 'rescued' | 'lost' => {
+    const shadow = shadowRef.current;
+    if (!shadow) {
+      log.warn(
+        { docName, context },
+        `[rescue] shadow repo unavailable — cannot buffer ${docName} (${context})`,
+      );
+      incrementRescueBufferWriteFailures();
+      return 'lost';
+    }
+    try {
+      const ours = serializeDoc(docName);
+      if (ours === null) {
+        log.warn(
+          { docName, context },
+          `[rescue] skipping ${docName} — document dropped from map mid-rescue (${context})`,
+        );
+        incrementRescueBufferWriteFailures();
+        return 'lost';
+      }
+      const rescuePath = safeRescuePath(shadow.gitDir, docName);
+      if (!rescuePath) {
+        log.warn(
+          { docName, gitDir: shadow.gitDir, context },
+          `[rescue] path-traversal guard rejected docName: ${docName} (${context})`,
+        );
+        incrementRescueBufferWriteFailures();
+        return 'lost';
+      }
+      tracedMkdirSync(dirname(rescuePath), { recursive: true });
+      tracedWriteFileSync(rescuePath, ours, 'utf-8');
+      incrementRescueBuffer();
+      log.info({ docName, context }, `[rescue] rescue buffer saved (${context}): ${docName}`);
+      return 'rescued';
+    } catch (e) {
+      log.error(
+        { err: e, docName, context },
+        `[rescue] failed to write rescue buffer for ${docName} (${context})`,
+      );
+      incrementRescueBufferWriteFailures();
+      return 'lost';
+    }
+  };
+
   async function flushAllStoresAndWait(timeoutMs: number): Promise<void> {
     if (hocuspocus.documents.size === 0) return;
 
@@ -2595,70 +2837,126 @@ export function createServer(options: ServerOptions): ServerInstance {
       }
     }
 
+    const flushDeadline = Date.now() + timeoutMs;
+    const raceFloorMs = 250;
+    while (Date.now() < flushDeadline - raceFloorMs) {
+      const unsettled = Array.from(hocuspocus.documents.values()).some(
+        (doc) => doc.getConnectionsCount() === 0 && !defaultShouldUnloadDocument(doc),
+      );
+      if (!unsettled) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+
+    const perDocUnloadFloorMs = 50;
+    for (const docName of durabilityState.getRefusedStoreDocNames()) {
+      if (isReservedForUserTree(docName)) continue;
+      const doc = hocuspocus.documents.get(docName);
+      if (!doc) continue;
+      if (!defaultShouldUnloadDocument(doc)) continue;
+      if (flushDeadline - Date.now() < perDocUnloadFloorMs) {
+        log.warn(
+          { docName },
+          `[rescue] refused-store pass out of budget before ${docName}; leaving it and any remaining refused docs to the flush timeout path`,
+        );
+        break;
+      }
+      if (rescueDocToShadowBuffer(docName, 'refused-store-shutdown') !== 'rescued') {
+        log.warn(
+          { docName },
+          `[rescue] refused-store doc rescue failed; leaving ${docName} to the flush timeout path`,
+        );
+        continue;
+      }
+      let unloadSettled = false;
+      let unloadFailed = false;
+      const unload = forceUnloadDocument(doc)
+        .then(() => {
+          unloadSettled = true;
+        })
+        .catch((err: unknown) => {
+          unloadFailed = true;
+          unloadSettled = true;
+          log.warn(
+            { docName, err },
+            `[rescue] refused-store doc unload failed at shutdown: ${docName}`,
+          );
+        });
+      const unloadDeadline = Math.max(flushDeadline - Date.now(), perDocUnloadFloorMs);
+      await new Promise<void>((resolve) => {
+        const timer = setTimeout(resolve, unloadDeadline);
+        void unload.then(() => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+      if (!unloadSettled) {
+        log.warn(
+          { docName, unloadDeadline },
+          `[rescue] refused-store doc unload did not finish before the flush deadline; leaving ${docName} to the flush timeout path`,
+        );
+        void unload.then(() => {
+          if (!unloadFailed) {
+            log.info(
+              { docName },
+              `[rescue] refused-store doc unload completed after the flush deadline: ${docName}`,
+            );
+          }
+        });
+        continue;
+      }
+      if (!unloadFailed) {
+        log.info(
+          { docName },
+          `[rescue] refused-store doc rescued and unloaded at shutdown: ${docName}`,
+        );
+      }
+    }
+
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<void>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        resolved = true;
-        const stillLoaded = Array.from(hocuspocus.documents.keys());
+      timeoutId = setTimeout(
+        () => {
+          resolved = true;
+          const stillLoaded = Array.from(hocuspocus.documents.keys());
 
-        const rescued: string[] = [];
-        const rescueFailed: string[] = [];
-        if (shadowRef.current) {
-          for (const docName of stillLoaded) {
-            if (isReservedForUserTree(docName)) continue;
-            try {
-              const ours = serializeDoc(docName);
-              if (ours === null) {
-                log.warn(
-                  { docName },
-                  `[rescue] skipping ${docName} — document dropped from map mid-rescue`,
-                );
+          const rescued: string[] = [];
+          const rescueFailed: string[] = [];
+          if (shadowRef.current) {
+            for (const docName of stillLoaded) {
+              if (isReservedForUserTree(docName)) continue;
+              if (rescueDocToShadowBuffer(docName, 'flush-timeout') === 'rescued') {
+                rescued.push(docName);
+              } else {
                 rescueFailed.push(docName);
-                continue;
               }
-              const rescuePath = safeRescuePath(shadowRef.current.gitDir, docName);
-              if (!rescuePath) {
-                log.warn(
-                  { docName, gitDir: shadowRef.current.gitDir },
-                  `[rescue] path-traversal guard rejected docName: ${docName}`,
-                );
-                rescueFailed.push(docName);
-                continue;
-              }
-              mkdirSync(dirname(rescuePath), { recursive: true });
-              writeFileSync(rescuePath, ours, 'utf-8');
-              incrementRescueBuffer();
-              rescued.push(docName);
-              log.info({ docName }, `[rescue] rescue buffer saved on flush timeout: ${docName}`);
-            } catch (e) {
+            }
+          } else {
+            log.warn(
+              { stillLoadedCount: stillLoaded.length },
+              `[rescue] shadow repo unavailable at flush timeout — ${stillLoaded.length} doc(s) will be lost: [${stillLoaded.join(', ')}]`,
+            );
+            for (const docName of stillLoaded) {
+              if (isReservedForUserTree(docName)) continue;
               rescueFailed.push(docName);
-              log.error(
-                { err: e, docName },
-                `[rescue] failed to write rescue buffer for ${docName}`,
-              );
+              incrementRescueBufferWriteFailures();
             }
           }
-        } else {
-          log.warn(
-            { stillLoadedCount: stillLoaded.length },
-            `[rescue] shadow repo unavailable at flush timeout — ${stillLoaded.length} doc(s) will be lost: [${stillLoaded.join(', ')}]`,
+
+          const rescueSummary =
+            rescued.length > 0 || rescueFailed.length > 0
+              ? ` — rescued [${rescued.join(', ')}]${
+                  rescueFailed.length > 0 ? `, lost [${rescueFailed.join(', ')}]` : ''
+                }`
+              : '';
+
+          reject(
+            new Error(
+              `flushAllStoresAndWait timeout after ${timeoutMs}ms — ${stillLoaded.length}/${pendingDocNames.length} docs did not unload: [${stillLoaded.join(', ')}]${rescueSummary}`,
+            ),
           );
-          rescueFailed.push(...stillLoaded);
-        }
-
-        const rescueSummary =
-          rescued.length > 0 || rescueFailed.length > 0
-            ? ` — rescued [${rescued.join(', ')}]${
-                rescueFailed.length > 0 ? `, lost [${rescueFailed.join(', ')}]` : ''
-              }`
-            : '';
-
-        reject(
-          new Error(
-            `flushAllStoresAndWait timeout after ${timeoutMs}ms — ${stillLoaded.length}/${pendingDocNames.length} docs did not unload: [${stillLoaded.join(', ')}]${rescueSummary}`,
-          ),
-        );
-      }, timeoutMs);
+        },
+        Math.max(flushDeadline - Date.now(), raceFloorMs),
+      );
     });
 
     try {
@@ -3560,6 +3858,7 @@ export function createServer(options: ServerOptions): ServerInstance {
             const currentBranch = getActiveBranch();
             const newBranch = readProjectHeadState(projectDir).branch ?? currentBranch;
             const docs: ParkableDoc[] = [];
+            let absentBaseParkSkips = 0;
             for (const [docName, document] of hocuspocus.documents) {
               if (isReservedForUserTree(docName)) continue;
               let markdown: string | null = null;
@@ -3567,8 +3866,18 @@ export function createServer(options: ServerOptions): ServerInstance {
                 markdown = serializeDoc(docName);
               }, PARK_SNAPSHOT_ORIGIN);
               if (markdown === null) continue;
-              const diskSnapshot = getReconciledBase(docName) ?? markdown;
+              const diskSnapshot = getReconciledBase(docName);
+              if (diskSnapshot === undefined) {
+                absentBaseParkSkips++;
+                continue;
+              }
               docs.push({ docName, markdown, diskSnapshot });
+            }
+            if (absentBaseParkSkips > 0) {
+              log.warn(
+                { count: absentBaseParkSkips, branch: currentBranch },
+                `[history] skipped parking ${absentBaseParkSkips} doc(s) with no reconciled base; their content was not parked to the shadow history`,
+              );
             }
             if (docs.length > 0) {
               try {
@@ -3698,6 +4007,12 @@ export function createServer(options: ServerOptions): ServerInstance {
                   }
 
                   const diskContent = readFileSync(filePath, 'utf-8');
+                  if (getReconciledBase(docName) === undefined) {
+                    const ours = serializeDoc(docName) ?? '';
+                    if (ours !== '' && ours !== diskContent) {
+                      rescueUnflushedEditsBeforeTeardown(docName, newBranch, 'branch-switch', true);
+                    }
+                  }
                   applyToDoc(docName, diskContent);
                   setReconciledBase(docName, diskContent);
                   log.info({ docName }, `[branch-switch] reset: ${docName}`);
@@ -3744,6 +4059,8 @@ export function createServer(options: ServerOptions): ServerInstance {
                       theirs: currentDisk,
                     });
 
+                    reportInsertDedupSkipped(docName, outcome, parked.markdown, currentDisk);
+
                     switch (outcome.kind) {
                       case 'merged':
                       case 'clean':
@@ -3769,7 +4086,26 @@ export function createServer(options: ServerOptions): ServerInstance {
                         break;
                       }
                       case 'noop':
+                        break;
                       case 'refused':
+                        switch (outcome.reason) {
+                          case 'conflict-markers':
+                          case 'no-base':
+                          case 'too-large':
+                            log.warn(
+                              { docName, reason: outcome.reason, branch: newBranch },
+                              `[branch-switch] parked WIP not restored for ${docName} (reconcile refused: ${outcome.reason})`,
+                            );
+                            break;
+                          default: {
+                            const unhandled: never = outcome.reason;
+                            log.warn(
+                              { docName, reason: String(unhandled), branch: newBranch },
+                              `[branch-switch] parked WIP not restored for ${docName} (reconcile refused: ${String(unhandled)})`,
+                            );
+                            break;
+                          }
+                        }
                         break;
                     }
                   } catch (e) {

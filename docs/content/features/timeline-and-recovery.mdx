@@ -17,8 +17,11 @@ Timeline entries include:
 - **Agent and human edits** with contributor attribution and change summaries
 - **Upstream sync** entries from Git
 - **File system** changes made outside of OpenKnowledge
+- **Recovered content** entries OpenKnowledge saves itself when it cannot merge changes into the document, such as an external file change with no acknowledged base
 
 Project-wide checkpoints saved by agents via the [`checkpoint` MCP tool](/docs/reference/mcp#tools) do not appear on the timeline; agents find and restore them with the `history` and `restore_version` tools.
+
+OpenKnowledge also saves recovery entries itself. When it detects an external file change on its own and has no acknowledged base to merge the change against, the disk version replaces the document and the pre-change version is preserved as a **Recovered content** entry, which you can restore like any other timeline entry. When an agent write collides with an unmergeable external change instead, the write is refused as a conflict: your current content is kept, the disk change is not applied, and no entry is saved.
 
 The timeline is not the editor's undo history. Each timeline entry is a snapshot of the whole document, while undo steps back through your own recent edits, in either view. Agent edits, human edits, and file-system changes are batched into an entry once activity settles. Upstream syncs get their own entry when the sync lands. For when your undo history starts fresh, see [Editor → Undo](/docs/features/editor#undo).
 

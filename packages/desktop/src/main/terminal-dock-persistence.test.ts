@@ -24,6 +24,7 @@ describe('commitTerminalDockState', () => {
     expect(getTerminalDockState(outcome.state, '/project')).toEqual({
       terminalVisible: false,
       terminalSnapshot: { tabs: [], activeOrdinal: null },
+      agentPanelVisible: false,
     });
   });
 
@@ -47,6 +48,7 @@ describe('commitTerminalDockState', () => {
     const current = setTerminalDockState(emptyState(), '/project', {
       terminalVisible: true,
       terminalSnapshot,
+      agentPanelVisible: false,
     });
     const save = vi.fn(() => true);
 

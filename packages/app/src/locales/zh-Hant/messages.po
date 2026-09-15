@@ -9647,6 +9647,10 @@ msgstr "開啟 {tooltipName} 的活動面板，它正在編輯 {realCurrentDoc}"
 msgid "Open agents panel"
 msgstr "開啟代理面板"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
+msgstr "開啟代理面板 — {liveThreadCount, plural, other {# 個進行中的代理執行緒}}"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "從磁碟開啟一個既有的專案資料夾。"

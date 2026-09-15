@@ -1,4 +1,9 @@
-import { resolveAssetProjectPath, resolveInternalHref } from '@inkeep/open-knowledge-core';
+import {
+  MarkdownManager,
+  resolveAssetProjectPath,
+  resolveInternalHref,
+  sharedExtensions,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   rewriteAssetReferencesForRename,
@@ -7,6 +12,7 @@ import {
   rewriteOutboundMarkdownLinksForSourceMove,
   rewriteWikiLinksForDocumentRename,
 } from './managed-rename-rewrite.ts';
+import { findWikiLinkAttrs, type PmJson } from './wiki-pm-json.test-helper.ts';
 
 describe('rewriteWikiLinksForDocumentRename', () => {
   test('rewrites matching wiki-links while preserving alias and anchor', () => {
@@ -18,6 +24,15 @@ describe('rewriteWikiLinksForDocumentRename', () => {
       ),
     ).toEqual({
       markdown: 'See [[new#install|Install Guide]] and [[other]].\n',
+      rewrites: 1,
+    });
+  });
+
+  test('preserves padded alias bytes on rename', () => {
+    expect(
+      rewriteWikiLinksForDocumentRename('See [[old| Install Guide ]] here.\n', 'old', 'new'),
+    ).toEqual({
+      markdown: 'See [[new| Install Guide ]] here.\n',
       rewrites: 1,
     });
   });
@@ -957,5 +972,187 @@ describe('rewritten hrefs round-trip back through the canonical resolvers', () =
     expect(resolveAssetProjectPath('./final/my%23file.png', 'docs/guide', { literal: false })).toBe(
       'docs/final/my#file.png',
     );
+  });
+});
+
+describe('rewriteWikiLinksForDocumentRename — escaped alias separators inside GFM tables', () => {
+  const mdManager = new MarkdownManager({ extensions: sharedExtensions });
+
+  function dataRowCellCount(markdown: string): number {
+    let count = -1;
+    const walk = (node: PmJson): void => {
+      if (
+        node.type === 'tableRow' &&
+        (node.content ?? []).some((child) => child.type === 'tableCell')
+      ) {
+        count = (node.content ?? []).length;
+      }
+      for (const child of node.content ?? []) walk(child);
+    };
+    walk(mdManager.parse(markdown) as unknown as PmJson);
+    return count;
+  }
+
+  test('no-anchor rename keeps the escape and the cell whole', () => {
+    const row = '| Link |\n| --- |\n| [[Page\\|Friendly label]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'Page', 'NewPage');
+    expect(result).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewPage\\|Friendly label]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      alias: 'Friendly label',
+    });
+  });
+
+  test('anchor rename keeps the escape and the cell whole', () => {
+    const row = '| Link |\n| --- |\n| [[Page#sec\\|Alias]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'Page', 'NewPage');
+    expect(result).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewPage#sec\\|Alias]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      anchor: 'sec',
+      alias: 'Alias',
+    });
+  });
+
+  test('empty-anchor rename keeps the authored separator replay', () => {
+    const row = '| Link |\n| --- |\n| [[Page#\\|Alias]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'Page', 'NewPage');
+    expect(result).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewPage#\\|Alias]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      anchor: null,
+      alias: 'Alias',
+    });
+  });
+
+  test('folded-pipe alias rename keeps every escape and the cell whole', () => {
+    const row = '| Link |\n| --- |\n| [[a\\|b\\|c]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'a', 'NewA');
+    expect(result).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewA\\|b\\|c]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewA',
+      alias: 'b|c',
+    });
+  });
+
+  test('escape-then-whitespace target rename keeps the escape and the cell whole', () => {
+    const row = '| Link |\n| --- |\n| [[Page\\ |Alias]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'Page', 'NewPage');
+    expect(result).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewPage\\|Alias]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      alias: 'Alias',
+    });
+  });
+
+  test('whitespace-only anchor rename matches the serializer canonical form', () => {
+    const result = rewriteWikiLinksForDocumentRename(
+      'See [[Page# |Alias]] here.\n',
+      'Page',
+      'NewPage',
+    );
+    expect(result).toEqual({
+      markdown: 'See [[NewPage|Alias]] here.\n',
+      rewrites: 1,
+    });
+    expect(mdManager.serialize(mdManager.parse(result.markdown)).trim()).toBe(
+      result.markdown.trim(),
+    );
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      anchor: null,
+      alias: 'Alias',
+    });
+  });
+
+  test('whitespace-only alias rename is a serializer fixed point', () => {
+    const row = '| Link |\n| --- |\n| [[Page\\| ]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'Page', 'NewPage');
+    expect(result).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewPage\\| ]] |',
+      rewrites: 1,
+    });
+    expect(mdManager.serialize(mdManager.parse(result.markdown)).trim()).toBe(result.markdown);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      alias: null,
+    });
+  });
+
+  test('whitespace-only alias behind an anchor rename is a serializer fixed point', () => {
+    const row = '| L |\n| --- |\n| [[Page#sec\\| ]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'Page', 'NewPage');
+    expect(result).toEqual({
+      markdown: '| L |\n| --- |\n| [[NewPage#sec\\| ]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
+    expect(mdManager.serialize(mdManager.parse(result.markdown)).trim()).toBe(result.markdown);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      anchor: 'sec',
+      alias: null,
+    });
+  });
+
+  test('escaped-target rename with a whitespace anchor repairs the table cell', () => {
+    const row = '| Link |\n| --- |\n| [[Page\\# |Alias]] |';
+    const result = rewriteWikiLinksForDocumentRename(row, 'Page', 'NewPage');
+    expect(result).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewPage\\|Alias]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
+    expect(mdManager.serialize(mdManager.parse(result.markdown)).trim()).toBe(result.markdown);
+    expect(findWikiLinkAttrs(mdManager.parse(result.markdown) as unknown as PmJson)).toMatchObject({
+      target: 'NewPage',
+      anchor: null,
+      alias: 'Alias',
+    });
+  });
+
+  test('an unescaped separator stays unescaped on rename', () => {
+    expect(
+      rewriteWikiLinksForDocumentRename('| Link |\n| --- |\n| [[Page|Alias]] |', 'Page', 'NewPage'),
+    ).toEqual({
+      markdown: '| Link |\n| --- |\n| [[NewPage|Alias]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount('| Link |\n| --- |\n| [[NewPage|Alias]] |')).toBe(2);
+  });
+
+  test('embed asset rename inside a table keeps the escape and the cell whole', () => {
+    const row = '| pic |\n| --- |\n| ![[Attach/pic.png\\|alt]] |';
+    const result = rewriteAssetReferencesForRename(
+      row,
+      'doc.md',
+      'Attach/pic.png',
+      'Attach/new.png',
+    );
+    expect(result).toEqual({
+      markdown: '| pic |\n| --- |\n| ![[Attach/new.png\\|alt]] |',
+      rewrites: 1,
+    });
+    expect(dataRowCellCount(result.markdown)).toBe(1);
   });
 });

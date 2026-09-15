@@ -29,6 +29,7 @@ export function assertNeverStorePublishOutcome(outcome: never): never {
 
 export const OK_DOC_REMOVED = 'OK_DOC_REMOVED';
 export const OK_PATH_UNRESOLVABLE = 'OK_PATH_UNRESOLVABLE';
+export const OK_STORE_REFUSED = 'OK_STORE_REFUSED';
 
 const IN_FLIGHT_FLUSH_TTL_MS = 60_000;
 
@@ -141,6 +142,7 @@ export interface DocumentDurabilityStateOptions {
   persistencePath?: string;
   fileForDocName?: (docName: string) => string;
   onStaleExternalWriteChange?: () => void;
+  onStoreRefused?: (docName: string) => void;
   hasResolvedExtension?: (docName: string) => boolean;
 }
 
@@ -251,12 +253,14 @@ export class DocumentDurabilityState {
   private readonly publishedStoreGenerations = new Map<string, number>();
   private readonly documentsWithPublishInFlight = new Set<string>();
   private readonly agentWriteStores = new Set<string>();
+  private readonly refusedStoreDocNames = new Set<string>();
   private readonly storeFailures = new Map<string, StoreFailure>();
   private readonly storeDivergences = new Set<string>();
   private readonly staleExternalWriteFreezes = new Set<string>();
   private readonly persistencePath: string | undefined;
   private readonly fileForDocName: (docName: string) => string;
   private readonly onStaleExternalWriteChange: (() => void) | undefined;
+  private readonly onStoreRefused: ((docName: string) => void) | undefined;
   private readonly hasResolvedExtension: ((docName: string) => boolean) | undefined;
   private cachedDocumentsByBranch = new Map<string, Map<string, CachedDurabilityDocument>>();
   private lastPersistedParts = snapshotParts(new Map());
@@ -269,6 +273,7 @@ export class DocumentDurabilityState {
     this.persistencePath = options.persistencePath;
     this.fileForDocName = options.fileForDocName ?? ((docName) => `${docName}.md`);
     this.onStaleExternalWriteChange = options.onStaleExternalWriteChange;
+    this.onStoreRefused = options.onStoreRefused;
     this.hasResolvedExtension = options.hasResolvedExtension;
     this.reconciledBaseByBranch.set(initialBranch, new Map());
     this.restore();
@@ -342,6 +347,8 @@ export class DocumentDurabilityState {
    * reads that same base and returns early without it.
    */
   deleteReconciledBase(docName: string): void {
+    this.refusedStoreDocNames.delete(docName);
+    this.storeFailures.delete(docName);
     const persist = this.isPersistedDocument(docName);
     if (!persist) {
       this.reconciledBaseByBranch.get(this.activeBranch)?.delete(docName);
@@ -790,6 +797,23 @@ export class DocumentDurabilityState {
 
   consumeAgentWriteStore(docName: string): boolean {
     return this.agentWriteStores.delete(docName);
+  }
+
+  markStoreRefused(docName: string): void {
+    this.refusedStoreDocNames.add(docName);
+    this.onStoreRefused?.(docName);
+  }
+
+  clearStoreRefused(docName: string): void {
+    this.refusedStoreDocNames.delete(docName);
+  }
+
+  isStoreRefused(docName: string): boolean {
+    return this.refusedStoreDocNames.has(docName);
+  }
+
+  getRefusedStoreDocNames(): string[] {
+    return [...this.refusedStoreDocNames];
   }
 
   recordStoreFailure(docName: string, failure: StoreFailure): void {

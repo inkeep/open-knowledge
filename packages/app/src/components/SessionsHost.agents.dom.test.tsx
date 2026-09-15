@@ -17,12 +17,23 @@ import { requestPreferredSession } from './handoff/preferred-session-events';
 import { requestActiveTerminalInput } from './handoff/terminal-input-events';
 import { subscribeToTerminalLaunchRequests } from './handoff/terminal-launch-events';
 import { _resetReusableSession, getReusableSession } from './reusable-session-store';
+import {
+  dispatchReorderChord,
+  dispatchTabChord,
+  focusFirstTab,
+  tabTitles,
+} from './sessions-host-tabs.test-helper';
 
 let openThreads: ThreadInfo[] = [];
 const storeListeners = new Set<() => void>();
 let archivedThreads: ThreadInfo[] = [];
+let initialRosterIds: ReadonlySet<string> | null = null;
 function notifyStore() {
   for (const l of storeListeners) l();
+}
+function setInitialRosterIds(next: ReadonlySet<string> | null) {
+  initialRosterIds = next;
+  notifyStore();
 }
 function setOpenThreads(next: ThreadInfo[]) {
   openThreads = next;
@@ -60,6 +71,12 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       () => openThreads,
       () => openThreads,
     ),
+  useInitialRosterThreadIds: () =>
+    useSyncExternalStore(
+      subscribeStore,
+      () => initialRosterIds,
+      () => initialRosterIds,
+    ),
   useArchivedAgentThreads: () =>
     useSyncExternalStore(
       subscribeStore,
@@ -83,12 +100,16 @@ vi.doMock('@/lib/acp/thread-client', () => ({
   ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
 }));
 
+let threadViewHeld = false;
 vi.doMock('@/components/acp/ThreadView', () => ({
-  ThreadView: ({ info }: { info: ThreadInfo }) => (
-    <div data-testid="thread-view" data-thread-id={info.threadId}>
-      <textarea data-testid="agent-thread-composer" />
-    </div>
-  ),
+  ThreadView: ({ info }: { info: ThreadInfo }) =>
+    threadViewHeld ? (
+      <div data-testid="thread-view-pending" data-thread-id={info.threadId} />
+    ) : (
+      <div data-testid="thread-view" data-thread-id={info.threadId}>
+        <textarea data-testid="agent-thread-composer" />
+      </div>
+    ),
 }));
 
 type MockAgent = {
@@ -164,6 +185,12 @@ function makeThread(overrides: Partial<ThreadInfo> & { threadId: string }): Thre
   };
 }
 
+function agentsDockWrites(setDockState: ReturnType<typeof vi.fn>) {
+  return setDockState.mock.calls.filter(
+    (call) => (call[0] as { surface?: string }).surface === 'agents',
+  );
+}
+
 function makeTerminalBridge(): OkDesktopBridge {
   return {
     terminal: {
@@ -179,6 +206,8 @@ function makeTerminalBridge(): OkDesktopBridge {
 type HarnessControl = {
   setVisible: (v: boolean) => void;
   setThreadLaunch: (t: ThreadLaunchIntent | null) => void;
+  setRestoreSettled: (v: boolean) => void;
+  setBridge: (b: OkDesktopBridge | null) => void;
   rerender: () => void;
 };
 
@@ -187,25 +216,37 @@ function makeControl(): { current: HarnessControl | null } {
 }
 
 function Harness({
-  bridge = null,
+  bridge: initialBridge = null,
   initialVisible = true,
   onVisibleChange,
   threadLaunch: initialThreadLaunch = null,
   control,
+  initiallyRestoreSettled = true,
+  onRequestEditorFocus,
 }: {
   bridge?: OkDesktopBridge | null;
   initialVisible?: boolean;
   onVisibleChange?: (v: boolean) => void;
   threadLaunch?: ThreadLaunchIntent | null;
   control?: { current: HarnessControl | null };
+  initiallyRestoreSettled?: boolean;
+  onRequestEditorFocus?: () => void;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(initialVisible);
   const [threadLaunch, setThreadLaunch] = useState(initialThreadLaunch);
+  const [restoreSettled, setRestoreSettled] = useState(initiallyRestoreSettled);
+  const [bridge, setBridge] = useState(initialBridge);
   const [, setTick] = useState(0);
   useEffect(() => {
     if (control != null)
-      control.current = { setVisible, setThreadLaunch, rerender: () => setTick((n) => n + 1) };
+      control.current = {
+        setVisible,
+        setThreadLaunch,
+        setRestoreSettled,
+        setBridge,
+        rerender: () => setTick((n) => n + 1),
+      };
   }, [control]);
   return (
     <TooltipProvider>
@@ -215,6 +256,7 @@ function Harness({
         bridge={bridge}
         terminalCapable={bridge != null}
         visible={visible}
+        agentsVisibilityRestoreSettled={restoreSettled}
         threadLaunch={threadLaunch}
         onVisibleChange={(v) => {
           onVisibleChange?.(v);
@@ -223,17 +265,540 @@ function Harness({
         installedClis={{}}
         container={container}
         isShowing={visible && container != null}
-        onRequestEditorFocus={() => {}}
+        onRequestEditorFocus={onRequestEditorFocus ?? (() => {})}
       />
     </TooltipProvider>
   );
 }
+
+describe('SessionsHost — agents desktop order-restore gate', () => {
+  beforeEach(() => {
+    openThreads = [];
+    initialRosterIds = null;
+    localStorage.clear();
+  });
+
+  test('a hung order restore settles at the deadline: persistence stays suppressed, the warn fires, and a late read does not clobber placement', async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let resolveDockState: (state: unknown) => void = () => {};
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      terminal: {
+        getDockState: () =>
+          new Promise((resolve) => {
+            resolveDockState = resolve;
+          }),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    try {
+      render(<Harness bridge={bridge} initialVisible={false} />);
+
+      expect(setDockState).not.toHaveBeenCalled();
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('dock order restore exceeded its 5000ms bound'),
+        ),
+      ).toBe(true);
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('the saved tab set is left untouched'),
+        ),
+      ).toBe(true);
+
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't1', title: 'One' }),
+          makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+        ]);
+      });
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('[agents] dock persistence withheld'),
+        ),
+      ).toBe(true);
+
+      await act(async () => {
+        resolveDockState({
+          terminalVisible: false,
+          agentPanelVisible: false,
+          agents: { order: ['t2', 't1'], activeKey: null },
+        });
+      });
+
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 't1', title: 'One' })]);
+      });
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't1', title: 'One' }),
+          makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+        ]);
+      });
+
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+      expect(screen.getByRole('tab', { name: /One/ })).toBeDefined();
+      const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      expect(tabs.indexOf('Two')).toBeGreaterThan(tabs.indexOf('One'));
+    } finally {
+      vi.useRealTimers();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a REJECTING dock-state read suppresses agents persistence so the saved order survives', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      terminal: {
+        getDockState: () => Promise.reject(new Error('ipc torn down mid-reload')),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    try {
+      render(<Harness bridge={bridge} initialVisible={false} />);
+      await act(async () => {});
+
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't1', title: 'One' }),
+          makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+        ]);
+      });
+
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('[agents] dock persistence withheld'),
+        ),
+      ).toBe(true);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a completed order restore persists a genuine change with the restored placement', async () => {
+    let resolveDockState: (state: unknown) => void = () => {};
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      terminal: {
+        getDockState: () =>
+          new Promise((resolve) => {
+            resolveDockState = resolve;
+          }),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    render(<Harness bridge={bridge} initialVisible={false} />);
+
+    await act(async () => {
+      resolveDockState({
+        terminalVisible: false,
+        agentPanelVisible: false,
+        agents: { order: ['t2', 't1'], activeKey: 't2' },
+      });
+    });
+
+    act(() => {
+      setOpenThreads([
+        makeThread({ threadId: 't1', title: 'One' }),
+        makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+      ]);
+    });
+
+    const writes = agentsDockWrites(setDockState);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.at(-1)?.[0]).toMatchObject({ surface: 'agents', order: ['t2', 't1'] });
+  });
+
+  test('a completed order restore does not persist the empty settle beat before the roster lands', async () => {
+    let resolveDockState: (state: unknown) => void = () => {};
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      terminal: {
+        getDockState: () =>
+          new Promise((resolve) => {
+            resolveDockState = resolve;
+          }),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    render(<Harness bridge={bridge} initialVisible={false} />);
+
+    await act(async () => {
+      resolveDockState({
+        terminalVisible: false,
+        agentPanelVisible: false,
+        agents: { order: ['t2', 't1'], activeKey: 't2' },
+      });
+    });
+    await act(async () => {});
+
+    expect(agentsDockWrites(setDockState)).toEqual([]);
+
+    act(() => {
+      setOpenThreads([
+        makeThread({ threadId: 't1', title: 'One' }),
+        makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+      ]);
+    });
+
+    const writes = agentsDockWrites(setDockState);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.at(-1)?.[0]).toMatchObject({ surface: 'agents', order: ['t2', 't1'] });
+  });
+
+  test('a thread going live before the visibility restore settles reveals the dock once the gate opens', async () => {
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    const control = makeControl();
+    render(
+      <Harness
+        initialVisible={false}
+        onVisibleChange={onVisibleChange}
+        control={control}
+        initiallyRestoreSettled={false}
+      />,
+    );
+    await act(async () => {});
+    expect(onVisibleChange).not.toHaveBeenCalled();
+
+    act(() => {
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Window arrival' })]);
+    });
+    expect(onVisibleChange).not.toHaveBeenCalled();
+
+    act(() => {
+      control.current?.setRestoreSettled(true);
+    });
+
+    await waitFor(() => expect(onVisibleChange).toHaveBeenCalledWith(true));
+  });
+
+  test('a hung agents order restore settles without starting a thread', () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+    launchAgentThread.mockClear();
+    const bridge = {
+      terminal: {
+        getDockState: () => new Promise(() => {}),
+        setDockState: vi.fn(() => ({ ok: true as const })),
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    try {
+      render(<Harness bridge={bridge} initialVisible />);
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('dock order restore exceeded its 5000ms bound'),
+        ),
+      ).toBe(true);
+      expect(launchAgentThread).not.toHaveBeenCalled();
+    } finally {
+      mockRegisteredAgent = null;
+      vi.useRealTimers();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a first roster frame that arrives EMPTY still delivers the empty agents order once settled', async () => {
+    let resolveDockState: (state: unknown) => void = () => {};
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      terminal: {
+        getDockState: () =>
+          new Promise((resolve) => {
+            resolveDockState = resolve;
+          }),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    render(<Harness bridge={bridge} initialVisible={false} />);
+
+    await act(async () => {
+      resolveDockState({ terminalVisible: false, agentPanelVisible: false });
+    });
+    await act(async () => {});
+
+    expect(agentsDockWrites(setDockState)).toEqual([]);
+
+    act(() => {
+      setInitialRosterIds(new Set());
+    });
+
+    const writes = agentsDockWrites(setDockState);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.at(-1)?.[0]).toMatchObject({ surface: 'agents', order: [], activeKey: null });
+  });
+
+  test('after a REJECTED read, the user reordering the tabs releases suppression and persists the arrangement', async () => {
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      platform: 'darwin',
+      terminal: {
+        getDockState: () => Promise.reject(new Error('ipc torn down mid-reload')),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    render(<Harness bridge={bridge} initialVisible />);
+    await act(async () => {});
+
+    act(() => {
+      setOpenThreads([
+        makeThread({ threadId: 't1', title: 'One' }),
+        makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+      ]);
+    });
+    expect(agentsDockWrites(setDockState)).toHaveLength(0);
+
+    focusFirstTab();
+    expect(dispatchReorderChord('ArrowRight').defaultPrevented).toBe(true);
+
+    expect(tabTitles()).toEqual(['Two', 'One']);
+    const writes = agentsDockWrites(setDockState);
+    expect(writes).toHaveLength(2);
+    expect(writes[0]?.[0]).toMatchObject({
+      surface: 'agents',
+      order: ['t1', 't2'],
+      activeKey: 't1',
+    });
+    expect(writes[1]?.[0]).toMatchObject({ surface: 'agents', order: ['t2', 't1'] });
+  });
+
+  test('after an ABANDONED read, the user reordering the tabs releases suppression and persists the arrangement', async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      platform: 'darwin',
+      terminal: {
+        getDockState: () => new Promise(() => {}),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    try {
+      render(<Harness bridge={bridge} initialVisible />);
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('dock order restore exceeded its 5000ms bound'),
+        ),
+      ).toBe(true);
+
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't1', title: 'One' }),
+          makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+        ]);
+      });
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+
+      focusFirstTab();
+      expect(dispatchReorderChord('ArrowRight').defaultPrevented).toBe(true);
+
+      expect(tabTitles()).toEqual(['Two', 'One']);
+      const writes = agentsDockWrites(setDockState);
+      expect(writes).toHaveLength(2);
+      expect(writes[0]?.[0]).toMatchObject({
+        surface: 'agents',
+        order: ['t1', 't2'],
+        activeKey: 't1',
+      });
+      expect(writes[1]?.[0]).toMatchObject({ surface: 'agents', order: ['t2', 't1'] });
+    } finally {
+      vi.useRealTimers();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('after a REJECTED read, a roster arrival withholds but activating a tab releases, and both records reach the log', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      platform: 'darwin',
+      terminal: {
+        getDockState: () => Promise.reject(new Error('ipc torn down mid-reload')),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    try {
+      render(<Harness bridge={bridge} initialVisible />);
+      await act(async () => {});
+
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 't1', title: 'One' })]);
+      });
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't1', title: 'One' }),
+          makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+        ]);
+      });
+      expect(tabTitles()).toEqual(['One', 'Two']);
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+      expect(
+        warnSpy.mock.calls.filter((call) =>
+          String(call[0]).includes('[agents] dock persistence withheld'),
+        ),
+      ).toHaveLength(1);
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('[agents] dock persistence resumed'),
+        ),
+      ).toBe(false);
+
+      act(() => {
+        screen.getByTestId('terminal-new-chat').focus();
+      });
+      await act(async () => {});
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+
+      expect(dispatchTabChord('1').defaultPrevented).toBe(true);
+      await act(async () => {});
+
+      const writes = agentsDockWrites(setDockState);
+      expect(writes.length).toBeGreaterThan(0);
+      expect(writes.at(-1)?.[0]).toMatchObject({
+        surface: 'agents',
+        order: ['t1', 't2'],
+        activeKey: 't1',
+      });
+      expect(
+        warnSpy.mock.calls.filter((call) =>
+          String(call[0]).includes(
+            '[agents] dock persistence resumed: a user arrangement established the tab set the restore did not',
+          ),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('re-activating the tab already active does not release suppression', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      platform: 'darwin',
+      terminal: {
+        getDockState: () => Promise.reject(new Error('ipc torn down mid-reload')),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    try {
+      render(<Harness bridge={bridge} initialVisible />);
+      await act(async () => {});
+
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 't1', title: 'One' })]);
+      });
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't1', title: 'One' }),
+          makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+        ]);
+      });
+      expect(tabTitles()).toEqual(['One', 'Two']);
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+
+      act(() => {
+        screen.getByTestId('terminal-new-chat').focus();
+      });
+      await act(async () => {});
+
+      expect(dispatchTabChord('2').defaultPrevented).toBe(true);
+      await act(async () => {});
+
+      expect(agentsDockWrites(setDockState)).toHaveLength(0);
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('[agents] dock persistence resumed'),
+        ),
+      ).toBe(false);
+
+      expect(dispatchTabChord('1').defaultPrevented).toBe(true);
+      await act(async () => {});
+      expect(agentsDockWrites(setDockState).length).toBeGreaterThan(0);
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('roster churn alone never releases suppression: only a user gesture does', async () => {
+    const setDockState = vi.fn(() => ({ ok: true as const }));
+    const bridge = {
+      platform: 'darwin',
+      terminal: {
+        getDockState: () => Promise.reject(new Error('ipc torn down mid-reload')),
+        setDockState,
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+
+    render(<Harness bridge={bridge} initialVisible />);
+    await act(async () => {});
+
+    act(() => {
+      setOpenThreads([makeThread({ threadId: 't1', title: 'One' })]);
+    });
+    expect(agentsDockWrites(setDockState)).toHaveLength(0);
+
+    act(() => {
+      setOpenThreads([
+        makeThread({ threadId: 't1', title: 'One' }),
+        makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+      ]);
+    });
+    expect(agentsDockWrites(setDockState)).toHaveLength(0);
+
+    act(() => {
+      setOpenThreads([
+        makeThread({ threadId: 't2', title: 'Two', createdAt: 2, lastActivityAt: 2 }),
+      ]);
+    });
+    expect(agentsDockWrites(setDockState)).toHaveLength(0);
+  });
+});
 
 describe('SessionsHost — agents panel (web / no bridge)', () => {
   beforeEach(() => {
     openThreads = [];
     archivedThreads = [];
     connectionStatus = 'open';
+    threadViewHeld = false;
     closeThread.mockClear();
     renameThread.mockClear();
     openArchivedThread.mockClear();
@@ -246,6 +811,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     catalogData = undefined;
     mockRegisteredAgent = null;
     mockPersistedDefaultAgent = null;
+    initialRosterIds = null;
     localStorage.clear();
     reloadEnabledAgentsFromStorage();
   });
@@ -393,6 +959,216 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     expect(onVisibleChange).not.toHaveBeenCalled();
   });
 
+  test('revealing the dock focuses the active session', async () => {
+    const control = makeControl();
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await screen.findByTestId('thread-view');
+    act(() => {
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    });
+    expect(document.activeElement).not.toBe(screen.getByTestId('agent-thread-composer'));
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+
+    expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer'));
+  });
+
+  test('collapsing the dock hands focus back to the editor', async () => {
+    const user = userEvent.setup();
+    const onVisibleChange = vi.fn((_v: boolean) => {});
+    const onRequestEditorFocus = vi.fn(() => {});
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(
+      <Harness onVisibleChange={onVisibleChange} onRequestEditorFocus={onRequestEditorFocus} />,
+    );
+    await screen.findByTestId('thread-view');
+
+    await user.click(screen.getByRole('button', { name: 'Collapse agent panel' }));
+
+    expect(onVisibleChange).toHaveBeenCalledWith(false);
+    expect(onRequestEditorFocus).toHaveBeenCalled();
+  });
+
+  test('revealing the dock before the thread view loads focuses the session when it arrives', async () => {
+    const control = makeControl();
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await act(async () => {});
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+    expect(screen.queryByTestId('agent-thread-composer')).toBeNull();
+
+    threadViewHeld = false;
+    act(() => {
+      control.current?.rerender();
+    });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer')),
+    );
+  });
+
+  test('a late-arriving thread view does not steal focus from elsewhere', async () => {
+    const control = makeControl();
+    threadViewHeld = true;
+    const focusCalls: string[] = [];
+    const origFocus = HTMLElement.prototype.focus;
+    Object.defineProperty(HTMLElement.prototype, 'focus', {
+      value: function focusProbe(this: HTMLElement) {
+        focusCalls.push(`${this.tagName}:${this.getAttribute('data-testid') ?? ''}`);
+        return origFocus.call(this);
+      },
+      configurable: true,
+      writable: true,
+    });
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await act(async () => {});
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+    const outside = document.createElement('input');
+    document.body.appendChild(outside);
+    outside.focus();
+    expect(document.activeElement).toBe(outside);
+
+    threadViewHeld = false;
+    act(() => {
+      control.current?.rerender();
+    });
+    await screen.findByTestId('thread-view');
+
+    try {
+      expect(document.activeElement).toBe(outside);
+    } catch (error) {
+      throw new Error(
+        `focus calls were: [${focusCalls.join(' | ')}]; underlying: ${String(error)}`,
+      );
+    } finally {
+      Object.defineProperty(HTMLElement.prototype, 'focus', {
+        value: origFocus,
+        configurable: true,
+        writable: true,
+      });
+      outside.remove();
+    }
+  });
+
+  test('a late-arriving thread view lands focus on the next mutation after the user defocuses', async () => {
+    const control = makeControl();
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await act(async () => {});
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+    const outside = document.createElement('input');
+    document.body.appendChild(outside);
+    outside.focus();
+
+    threadViewHeld = false;
+    act(() => {
+      control.current?.rerender();
+    });
+    await screen.findByTestId('thread-view');
+    expect(document.activeElement).toBe(outside);
+
+    outside.blur();
+    threadViewHeld = true;
+    act(() => {
+      control.current?.rerender();
+    });
+    threadViewHeld = false;
+    act(() => {
+      control.current?.rerender();
+    });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer')),
+    );
+    outside.remove();
+  });
+
+  test('a reveal focus that never lands retires at the deadline with a warn', async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const control = makeControl();
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await act(async () => {});
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('reveal focus did not land within its 5000ms bound'),
+        ),
+      ).toBe(true);
+
+      threadViewHeld = false;
+      await act(async () => {
+        control.current?.rerender();
+      });
+      expect(screen.getByTestId('thread-view')).toBeDefined();
+      expect(document.activeElement).not.toBe(screen.getByTestId('agent-thread-composer'));
+    } finally {
+      vi.useRealTimers();
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a reveal focus that lands and is then released to body before the deadline does not warn', async () => {
+    vi.useFakeTimers();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const control = makeControl();
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await act(async () => {});
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      threadViewHeld = false;
+      act(() => {
+        control.current?.rerender();
+      });
+      await act(async () => {});
+      const composer = screen.getByTestId('agent-thread-composer');
+      expect(document.activeElement).toBe(composer);
+
+      composer.blur();
+      expect(document.activeElement).toBe(document.body);
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      expect(
+        warnSpy.mock.calls.some((call) =>
+          String(call[0]).includes('reveal focus did not land within its 5000ms bound'),
+        ),
+      ).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      warnSpy.mockRestore();
+    }
+  });
   test('the history menu reopens an archived conversation as a tab', async () => {
     const user = userEvent.setup();
     render(<Harness />);
@@ -891,6 +1667,36 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       act(() => control.current?.setVisible(true));
       expect(launchAgentThread).not.toHaveBeenCalled();
       expect(window.location.hash).toBe('');
+
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      act(() => control.current?.rerender());
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+    });
+
+    test('re-subscribing the agents order restore keeps a reveal seed another effect owes', async () => {
+      window.location.hash = '';
+      mockRegisteredAgent = null;
+      const control = makeControl();
+      const makeDockBridge = () =>
+        ({
+          terminal: {
+            getDockState: async () => ({ terminalVisible: false, agentPanelVisible: false }),
+            setDockState: vi.fn(() => ({ ok: true as const })),
+          },
+          editor: { notifyViewMenuStateChanged: vi.fn() },
+        }) as unknown as OkDesktopBridge;
+
+      render(<Harness bridge={makeDockBridge()} initialVisible={false} control={control} />);
+      await act(async () => {});
+
+      act(() => control.current?.setVisible(true));
+      expect(launchAgentThread).not.toHaveBeenCalled();
+
+      await act(async () => {
+        control.current?.setBridge(makeDockBridge());
+      });
 
       mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
       act(() => control.current?.rerender());

@@ -4,6 +4,7 @@ import {
   encodeHrefPathSegment,
   isExternalHref,
   type JsxSrcRefTagSpec,
+  rawSegmentOr,
   resolveAssetProjectPath,
   resolveInternalHref,
 } from '@inkeep/open-knowledge-core';
@@ -12,7 +13,7 @@ import {
   readJsxSrcRefTagAt,
   resolveJsxSrcRefTarget,
 } from './jsx-src-ref-tags.ts';
-import { readMarkdownLinkAt, readWikiLinkAt } from './link-syntax.ts';
+import { readMarkdownLinkAt, readWikiLinkAt, type WikiLinkMatch } from './link-syntax.ts';
 
 interface FenceState {
   char: '`' | '~';
@@ -68,21 +69,35 @@ function readInlineCode(line: string, start: number): { nextIndex: number } | nu
 function readWikiLink(
   line: string,
   start: number,
-): { target: string; alias: string | null; anchor: string | null; nextIndex: number } | null {
+): {
+  target: string;
+  targetRaw: string;
+  alias: string | null;
+  aliasRaw: string | null;
+  anchor: string | null;
+  anchorRaw: string | null;
+  nextIndex: number;
+} | null {
   const match = readWikiLinkAt(line, start);
   if (!match) return null;
   return {
     target: match.target,
+    targetRaw: match.targetRaw,
     alias: match.alias,
+    aliasRaw: match.aliasRaw,
     anchor: match.anchor,
+    anchorRaw: match.anchorRaw,
     nextIndex: match.end,
   };
 }
 
 interface WikiLinkOrEmbed {
   target: string;
+  targetRaw: string;
   alias: string | null;
+  aliasRaw: string | null;
   anchor: string | null;
+  anchorRaw: string | null;
   nextIndex: number;
   embed: boolean;
 }
@@ -92,8 +107,11 @@ function readWikiLinkOrEmbed(line: string, start: number): WikiLinkOrEmbed | nul
   if (!match) return null;
   return {
     target: match.target,
+    targetRaw: match.targetRaw,
     alias: match.alias,
+    aliasRaw: match.aliasRaw,
     anchor: match.anchor,
+    anchorRaw: match.anchorRaw,
     nextIndex: match.end,
     embed: match.embed,
   };
@@ -155,6 +173,31 @@ function splitLines(markdown: string): Array<{ line: string; ending: string }> {
   return lines;
 }
 
+type WikiLinkRenameSegments = Pick<
+  WikiLinkMatch,
+  'targetRaw' | 'anchor' | 'anchorRaw' | 'alias' | 'aliasRaw'
+>;
+
+function renderWikiLinkSegments(segments: WikiLinkRenameSegments, nextTarget: string): string {
+  let out = `[[${nextTarget}`;
+  const anchorRaw = segments.anchorRaw;
+  const anchorSegmentSurvived = anchorRaw !== null && anchorRaw.trim() !== '';
+  if (segments.anchor) {
+    out += `#${rawSegmentOr(anchorRaw, segments.anchor, 'separatorAdjacent')}`;
+  } else if (anchorSegmentSurvived) {
+    const emptyAnchorRaw = rawSegmentOr(anchorRaw, '', 'separatorAdjacent');
+    if (emptyAnchorRaw.length > 0) out += `#${emptyAnchorRaw}`;
+  }
+  const alias = segments.alias
+    ? rawSegmentOr(segments.aliasRaw, segments.alias, 'alias')
+    : rawSegmentOr(segments.aliasRaw, '', 'alias');
+  if (alias.length > 0) {
+    if (!anchorSegmentSurvived && segments.targetRaw.trim().endsWith('\\')) out += '\\';
+    out += `|${alias}`;
+  }
+  return `${out}]]`;
+}
+
 function rewriteWikiLinksInLine(
   line: string,
   oldDocName: string,
@@ -190,7 +233,7 @@ function rewriteWikiLinksInLine(
       const wikiLink = readWikiLink(line, idx);
       if (wikiLink) {
         if (wikiLink.target === oldDocName) {
-          rewritten += `[[${newDocName}${wikiLink.anchor ? `#${wikiLink.anchor}` : ''}${wikiLink.alias ? `|${wikiLink.alias}` : ''}]]`;
+          rewritten += renderWikiLinkSegments(wikiLink, newDocName);
           rewrites++;
         } else {
           rewritten += line.slice(idx, wikiLink.nextIndex);
@@ -420,7 +463,7 @@ function rewriteMarkdownLinksInLine(
 }
 
 function renderWikiLinkOrEmbed(link: WikiLinkOrEmbed, target: string): string {
-  return `${link.embed ? '!' : ''}[[${target}${link.anchor ? `#${link.anchor}` : ''}${link.alias ? `|${link.alias}` : ''}]]`;
+  return `${link.embed ? '!' : ''}${renderWikiLinkSegments(link, target)}`;
 }
 
 const HTML_ASSET_ATTR_RE =

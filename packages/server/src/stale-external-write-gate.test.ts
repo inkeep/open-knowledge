@@ -11,8 +11,10 @@ import {
   refuseStaleExternalWrite,
   serializeYDocSource,
 } from './external-change.ts';
+import { getLogger } from './logger.ts';
 import { getMetrics } from './metrics.ts';
 import { createPersistenceExtension } from './persistence.ts';
+import { MAX_LCS_CELLS } from './reconciliation.ts';
 
 const BROWSER_ORIGIN = {
   source: 'connection',
@@ -454,4 +456,88 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
 
     expect(durabilityState.isDisplacedVersion(docName, crlfStale)).toBe(true);
   });
+
+  test('a blockless acknowledged base conflicts the pre-write reconcile and preserves the live doc', async () => {
+    writeFileSync(join(tmpDir, `${docName}.md`), STALE_CONTENT, 'utf-8');
+    const persistence = createPersistenceExtension({
+      contentDir: tmpDir,
+      projectDir: tmpDir,
+      gitEnabled: false,
+      durabilityState,
+    });
+    await persistence.extension.onLoadDocument?.({
+      document,
+      documentName: docName,
+      context: {},
+    } as never);
+    expect(durabilityState.getReconciledBase(docName)).toBe(STALE_CONTENT);
+
+    durabilityState.setReconciledBase(docName, '');
+    replaceDocParagraphs(document, ['alpha', 'beta gamma']);
+
+    const authority = new ConflictAuthority({
+      projectDir: tmpDir,
+      contentDir: tmpDir,
+      io: {
+        gitRaw: async () => '',
+        writeProjectFileUntracked: () => undefined,
+        unlinkProjectFile: () => undefined,
+        applyResolvedContent: async () => undefined,
+      },
+    });
+
+    const result = reconcileDiskBeforeAgentWrite(
+      durabilityState,
+      fakeHocuspocusWith(docName, document),
+      docName,
+      tmpDir,
+      undefined,
+      undefined,
+      authority,
+    );
+
+    expect(result.reconciled).toBe(false);
+    const conflict = authority.findByDocName(docName);
+    expect(conflict?.kind).toBe('reconcile');
+    if (conflict?.kind !== 'reconcile') throw new Error('expected a reconcile conflict');
+    expect(conflict.reason).toBe('refused-no-base');
+    expect(document.getText('source').toString()).toBe(ACKNOWLEDGED_CONTENT);
+    expect(durabilityState.getReconciledBase(docName)).toBe('');
+  });
+
+  test('an insert-group merge past the LCS cap bumps the dedup-skipped counter on the pre-write path', async () => {
+    await settleWrite();
+    const before = getMetrics();
+    const perSide = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 10;
+    const shared = Array.from({ length: 10 }, (_, i) => `shared ${i}.`);
+    const ourOnly = Array.from({ length: perSide }, (_, i) => `ours ${i}.`);
+    const theirOnly = Array.from({ length: perSide }, (_, i) => `theirs ${i}.`);
+    const baseBody = ACKNOWLEDGED_CONTENT.replace(/\n$/, '');
+    const theirsText = `${[baseBody, ...shared, ...theirOnly].join('\n\n')}\n`;
+    replaceDocParagraphs(document, ['alpha', 'beta gamma', ...shared, ...ourOnly]);
+    writeFileSync(join(tmpDir, `${docName}.md`), theirsText, 'utf-8');
+
+    const warnSpy = vi.spyOn(getLogger('reconcile'), 'warn');
+    try {
+      const result = reconcileDiskBeforeAgentWrite(
+        durabilityState,
+        fakeHocuspocusWith(docName, document),
+        docName,
+        tmpDir,
+      );
+
+      expect(result.reconciled).toBe(true);
+      expect(result.mergeOutcome).toBe('merged');
+      expect(getMetrics().reconcileInsertDedupSkipped).toBe(before.reconcileInsertDedupSkipped + 1);
+      expect(
+        warnSpy.mock.calls.some((call) => String(call[1] ?? '').includes('dedup skipped')),
+      ).toBe(true);
+      const mergedText = document.getText('source').toString();
+      expect(mergedText).toContain('shared 0.');
+      expect(mergedText).toContain('ours 0.');
+      expect(mergedText).toContain('theirs 0.');
+    } finally {
+      warnSpy.mockRestore();
+    }
+  }, 60_000);
 });

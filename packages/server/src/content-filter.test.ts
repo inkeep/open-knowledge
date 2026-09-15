@@ -1822,6 +1822,42 @@ describe('ContentFilter', () => {
       expect(filter.isPathIgnored('a/b/node_modules/c/img.png')).toBe(true);
     });
 
+    function assertAbsolutePathNonAdmission(filter: ContentFilter): void {
+      const admits = (relativePath: string): boolean => {
+        try {
+          return filter.isPathIgnored(relativePath) === false;
+        } catch {
+          return false;
+        }
+      };
+      const secretBearing = join(projectDir, 'deploy/secrets/.env');
+      const distSegment = join(projectDir, 'packages/server/dist/assets/skills/project/SKILL.md');
+      const noStructuralAnswer = join(projectDir, 'packages/server/assets/skills/project/SKILL.md');
+
+      expect(
+        filter.isPathIgnored(secretBearing),
+        `absolute secret-bearing basename ${secretBearing}: isSecretBearingFile answers before the matcher is consulted`,
+      ).toBe(true);
+      expect(
+        filter.isPathIgnored(distSegment),
+        `absolute dist-segment path ${distSegment}: the BUILTIN_SKIP_DIRS scan answers before the matcher is consulted`,
+      ).toBe(true);
+      expect(
+        admits(noStructuralAnswer),
+        `absolute path with no structural answer ${noStructuralAnswer}: the shared closure must not admit input it cannot classify, so consult sites must gate before consulting`,
+      ).toBe(false);
+    }
+
+    test('does not admit absolute paths it cannot classify, and keeps the structural answers that precede the matcher', () => {
+      assertAbsolutePathNonAdmission(createContentFilter({ projectDir, contentDir: projectDir }));
+    });
+
+    test('async factory (createContentFilterAsync) mirrors absolute-path non-admission', async () => {
+      assertAbsolutePathNonAdmission(
+        await createContentFilterAsync({ projectDir, contentDir: projectDir }),
+      );
+    });
+
     test('rejects paths matched by .gitignore patterns', () => {
       writeFileSync(join(projectDir, '.gitignore'), 'tmp/\n*.bak.png\n');
 

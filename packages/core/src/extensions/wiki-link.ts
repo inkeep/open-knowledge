@@ -1,4 +1,8 @@
 import { Node } from '@tiptap/core';
+import {
+  escapeDecodedTableCellPipes,
+  normalizeWikiSeparatorEscapes,
+} from '../markdown/wiki-escape.ts';
 import { renderInlineObjectText } from './input-rule-text.ts';
 
 export interface WikiLinkAttrs {
@@ -26,15 +30,22 @@ export function parseWikiLink(src: string): {
   const match = src.match(WIKI_LINK_PATTERN);
   if (!match) return null;
 
-  const target = match[1]?.trim() ?? '';
+  const { target, anchor, alias } = normalizeWikiSeparatorEscapes(
+    {
+      target: match[1]?.trim() ?? '',
+      anchor: normalizeNullableString(match[2]),
+      alias: normalizeNullableString(match[3]),
+    },
+    { separatorCrossed: match[3] !== undefined },
+  );
   if (!target) return null;
 
   return {
     type: 'wikilink',
     raw: match[0],
     target,
-    anchor: normalizeNullableString(match[2]),
-    alias: normalizeNullableString(match[3]),
+    anchor,
+    alias,
   };
 }
 
@@ -51,7 +62,9 @@ export function renderWikiLink(attrs: Pick<WikiLinkAttrs, 'target' | 'alias' | '
   }
 
   if (attrs.alias) {
-    rendered += `|${attrs.alias}`;
+    rendered += attrs.alias.includes('|')
+      ? `\\|${escapeDecodedTableCellPipes(attrs.alias)}`
+      : `|${attrs.alias}`;
   }
 
   return `${rendered}]]`;

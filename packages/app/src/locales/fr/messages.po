@@ -9647,6 +9647,10 @@ msgstr "Ouvrir le panneau d'activité de {tooltipName}, qui modifie {realCurrent
 msgid "Open agents panel"
 msgstr "Ouvrir le panneau des agents"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
+msgstr "Ouvrir le panneau des agents — {liveThreadCount, plural, one {# fil d'agent actif} many {# fils d'agents actifs} other {# fils d'agents actifs}}"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "Ouvrez un dossier de projet existant depuis le disque."

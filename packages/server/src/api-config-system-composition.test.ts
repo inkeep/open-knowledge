@@ -1,8 +1,17 @@
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  realpathSync,
+  statSync,
+  symlinkSync,
+  utimesSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { BootedServer } from './boot.ts';
 import {
   bootCompositionRig,
@@ -16,6 +25,26 @@ import {
 import { checkLocalOpSecurity } from './local-op-security.ts';
 import type { PinoLogger } from './logger.ts';
 
+const statSyncFaults = vi.hoisted(() => new Map<string, NodeJS.ErrnoException>());
+const statSyncOverrides = vi.hoisted(() => new Map<string, unknown>());
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  const statSync = ((path: Parameters<typeof fs.statSync>[0], options?: unknown) => {
+    const fault = statSyncFaults.get(String(path));
+    if (fault) throw fault;
+    const override = statSyncOverrides.get(String(path));
+    if (override !== undefined) return override;
+    return (fs.statSync as (p: unknown, o?: unknown) => unknown)(path, options);
+  }) as typeof fs.statSync;
+  return { ...fs, statSync };
+});
+
+afterEach(() => {
+  statSyncFaults.clear();
+  statSyncOverrides.clear();
+});
+
 const noopLog = {
   warn() {},
   error() {},
@@ -24,6 +53,21 @@ const noopLog = {
   trace() {},
   fatal() {},
 } as unknown as PinoLogger;
+
+function capturingLog(): { log: PinoLogger; warns: string[] } {
+  const warns: string[] = [];
+  const log = {
+    warn: (_fields: unknown, message?: string) => {
+      if (typeof message === 'string') warns.push(message);
+    },
+    error() {},
+    debug() {},
+    info() {},
+    trace() {},
+    fatal() {},
+  } as unknown as PinoLogger;
+  return { log, warns };
+}
 
 function buildConfigSystemRoutes(overrides: Partial<ConfigSystemRouteDeps> = {}) {
   return createConfigSystemRoutes({
@@ -224,5 +268,200 @@ describe('config-system inline gates — observable only at the handler layer', 
   test('HEAD reaches the config handler through direct dispatch (statusCode fallback surfaces 200)', async () => {
     const out = await dispatch(buildConfigSystemRoutes(), '/api/config', { method: 'HEAD' });
     expect(out.status).toBe(200);
+  });
+});
+
+describe('flat rescue-buffer listing — nested documents', () => {
+  let rescueRoot: string;
+
+  function buildRescueGroup(
+    gitDir: string,
+    workTree: string,
+    overrides: Partial<ConfigSystemRouteDeps> = {},
+  ) {
+    return buildConfigSystemRoutes({
+      shadowRef: { current: { gitDir, workTree } },
+      ...overrides,
+    });
+  }
+
+  async function listRescue(
+    group: ReturnType<typeof createConfigSystemRoutes>,
+  ): Promise<Array<{ docName: string; size: number; source: string }>> {
+    const resolved = group.table.resolve('/api/rescue');
+    if (!resolved?.dispatch) throw new Error('no dispatch for /api/rescue');
+    const req = makeSyntheticReq({ url: '/api/rescue' });
+    const { res, captured } = makeCaptureRes();
+    await resolved.dispatch(req, res);
+    expect(captured.status).toBe(200);
+    return JSON.parse(captured.body ?? '[]') as Array<{
+      docName: string;
+      size: number;
+      source: string;
+    }>;
+  }
+
+  function seedShadow(): { gitDir: string; workTree: string; rescueDir: string } {
+    const gitDir = mkdtempSync(resolve(rescueRoot, 'git-'));
+    const workTree = mkdtempSync(resolve(rescueRoot, 'work-'));
+    const rescueDir = resolve(gitDir, 'rescue');
+    mkdirSync(rescueDir, { recursive: true });
+    return { gitDir, workTree, rescueDir };
+  }
+
+  beforeAll(() => {
+    rescueRoot = mkdtempSync(resolve(tmpdir(), 'ok-rescue-nested-'));
+  });
+
+  afterAll(async () => {
+    await rm(rescueRoot, { recursive: true, force: true });
+  });
+
+  test('a rescue buffer written for a nested docName is returned by the listing', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    mkdirSync(resolve(rescueDir, 'folder', 'sub'), { recursive: true });
+    writeFileSync(resolve(rescueDir, 'folder', 'sub', 'doc.md'), '# Nested\n', 'utf-8');
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree));
+
+    expect(entries.map((e) => e.docName)).toContain('folder/sub/doc');
+  });
+
+  test('top-level rescue buffers keep their existing entry shape', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    writeFileSync(resolve(rescueDir, 'alpha.md'), '# Alpha\n', 'utf-8');
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree));
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.docName).toBe('alpha');
+    expect(entries[0]?.source).toBe('flat');
+    expect(entries[0]?.size).toBe(8);
+  });
+
+  test('a stale nested rescue buffer is unlinked by the expiry sweep', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    const stalePath = resolve(rescueDir, 'folder', 'sub', 'stale.md');
+    mkdirSync(resolve(rescueDir, 'folder', 'sub'), { recursive: true });
+    writeFileSync(stalePath, '# Stale\n', 'utf-8');
+    const ancient = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(stalePath, ancient, ancient);
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree));
+
+    expect(entries.map((e) => e.docName)).not.toContain('folder/sub/stale');
+    expect(existsSync(stalePath)).toBe(false);
+  });
+
+  test('the expiry sweep prunes the directories a stale nested buffer leaves empty', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    mkdirSync(resolve(rescueDir, 'folder', 'sub'), { recursive: true });
+    const stalePath = resolve(rescueDir, 'folder', 'sub', 'stale.md');
+    writeFileSync(stalePath, '# Stale\n', 'utf-8');
+    const ancient = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(stalePath, ancient, ancient);
+
+    await listRescue(buildRescueGroup(gitDir, workTree));
+
+    expect(existsSync(resolve(rescueDir, 'folder'))).toBe(false);
+    expect(existsSync(rescueDir)).toBe(true);
+  });
+
+  test('a live sibling keeps its directory when a stale nested buffer expires', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    mkdirSync(resolve(rescueDir, 'folder', 'sub'), { recursive: true });
+    const stalePath = resolve(rescueDir, 'folder', 'sub', 'stale.md');
+    writeFileSync(stalePath, '# Stale\n', 'utf-8');
+    const ancient = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(stalePath, ancient, ancient);
+    writeFileSync(resolve(rescueDir, 'folder', 'live.md'), '# Live\n', 'utf-8');
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree));
+
+    expect(entries.map((e) => e.docName)).toEqual(['folder/live']);
+    expect(existsSync(resolve(rescueDir, 'folder', 'sub'))).toBe(false);
+    expect(existsSync(resolve(rescueDir, 'folder'))).toBe(true);
+  });
+
+  test('directory entries are never reported as rescue buffers', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    mkdirSync(resolve(rescueDir, 'looks-like-a-doc.md'), { recursive: true });
+    writeFileSync(resolve(rescueDir, 'looks-like-a-doc.md', 'inner.md'), '# Inner\n', 'utf-8');
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree));
+
+    expect(entries.map((e) => e.docName)).toEqual(['looks-like-a-doc.md/inner']);
+  });
+
+  test('the expiry sweep does not delete what a symlinked subdirectory points outside the rescue dir', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    const outside = mkdtempSync(resolve(rescueRoot, 'outside-'));
+    mkdirSync(resolve(outside, 'deep'), { recursive: true });
+    const victim = resolve(outside, 'deep', 'victim.md');
+    writeFileSync(victim, '# Victim\n', 'utf-8');
+    const ancient = new Date(Date.now() - 48 * 60 * 60 * 1000);
+    utimesSync(victim, ancient, ancient);
+    symlinkSync(outside, resolve(rescueDir, 'linked'), 'dir');
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree));
+
+    expect(entries.map((e) => e.docName)).not.toContain('linked/deep/victim');
+    expect(existsSync(victim)).toBe(true);
+    expect(existsSync(resolve(outside, 'deep'))).toBe(true);
+  });
+
+  test('an unresolvable rescue entry is skipped without dropping the rest of the walk', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    const { log, warns } = capturingLog();
+    symlinkSync(resolve(rescueDir, 'never-written.md'), resolve(rescueDir, 'dangling.md'), 'file');
+    mkdirSync(resolve(rescueDir, 'folder'), { recursive: true });
+    writeFileSync(resolve(rescueDir, 'folder', 'live.md'), '# Live\n', 'utf-8');
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree, { log }));
+
+    expect(entries.map((e) => e.docName)).toEqual(['folder/live']);
+    expect(warns).toContain('[rescue] skipping unresolvable rescue entry');
+  });
+
+  test.each(['ENOENT', 'EACCES', 'ELOOP', 'EIO'])(
+    'a rescue entry failing to stat with %s is skipped without dropping the rest of the walk',
+    async (code) => {
+      const { gitDir, workTree, rescueDir } = seedShadow();
+      const { log, warns } = capturingLog();
+      const doomed = resolve(rescueDir, 'doomed.md');
+      writeFileSync(doomed, '# Doomed\n', 'utf-8');
+      mkdirSync(resolve(rescueDir, 'folder'), { recursive: true });
+      writeFileSync(resolve(rescueDir, 'folder', 'live.md'), '# Live\n', 'utf-8');
+      const fault: NodeJS.ErrnoException = new Error(`${code}: injected stat failure`);
+      fault.code = code;
+      statSyncFaults.set(realpathSync(doomed), fault);
+
+      const entries = await listRescue(buildRescueGroup(gitDir, workTree, { log }));
+
+      expect(entries.map((e) => e.docName)).toEqual(['folder/live']);
+      expect(warns).toContain('[rescue] skipping uninspectable rescue entry');
+    },
+  );
+
+  test('a rescue entry whose mtime cannot be serialized is skipped without dropping the rest of the walk', async () => {
+    const { gitDir, workTree, rescueDir } = seedShadow();
+    const { log, warns } = capturingLog();
+    const doomed = resolve(rescueDir, 'doomed.md');
+    writeFileSync(doomed, '# Doomed\n', 'utf-8');
+    mkdirSync(resolve(rescueDir, 'folder'), { recursive: true });
+    writeFileSync(resolve(rescueDir, 'folder', 'live.md'), '# Live\n', 'utf-8');
+    const real = realpathSync(doomed);
+    const actual = statSync(real);
+    statSyncOverrides.set(real, {
+      isFile: () => true,
+      mtimeMs: actual.mtimeMs,
+      mtime: new Date(Number.NaN),
+      size: actual.size,
+    });
+
+    const entries = await listRescue(buildRescueGroup(gitDir, workTree, { log }));
+
+    expect(entries.map((e) => e.docName)).toEqual(['folder/live']);
+    expect(warns).toContain('[rescue] skipping uninspectable rescue entry');
   });
 });

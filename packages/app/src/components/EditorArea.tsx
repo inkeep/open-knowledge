@@ -388,12 +388,20 @@ function EditorAreaInner({
 
   const agentsColumnPresent = !noteWindow && agentsVisible;
   const terminalColumnPresent = !noteWindow && terminalVisible && terminalPlacement === 'right';
+  const [agentsColumnCollapsed, setAgentsColumnCollapsed] = useState(false);
+  const [terminalColumnCollapsed, setTerminalColumnCollapsed] = useState(false);
+  const [agentsShowingHold, setAgentsShowingHold] = useState(false);
+  const [terminalShowingHold, setTerminalShowingHold] = useState(false);
   const resizableRailColumnPresent = terminalColumnPresent || agentsColumnPresent;
   const rightRevealTabPresent = !noteWindow && !agentsVisible && onRevealAgents != null;
   const terminalContainer =
     terminalPlacement === 'right' ? rightTerminalContainer : bottomTerminalContainer;
-  const terminalShowing = terminalVisible && terminalContainer != null;
-  const agentsShowing = agentsColumnPresent && agentsContainer != null;
+  const terminalShowing =
+    terminalVisible &&
+    terminalContainer != null &&
+    (terminalPlacement !== 'right' || !terminalColumnCollapsed || terminalShowingHold);
+  const agentsShowing =
+    agentsColumnPresent && (!agentsColumnCollapsed || agentsShowingHold) && agentsContainer != null;
   useEffect(() => {
     onSessionPlacements?.({
       terminal: { container: terminalContainer, isShowing: terminalShowing },
@@ -408,6 +416,10 @@ function EditorAreaInner({
     agentsShowing,
     terminalEditorRegion,
   ]);
+  useEffect(() => {
+    if (!agentsColumnPresent) setAgentsShowingHold(false);
+    if (!terminalColumnPresent) setTerminalShowingHold(false);
+  }, [agentsColumnPresent, terminalColumnPresent]);
 
   useEffect(() => {
     isCollapsedRef.current = isCollapsed;
@@ -745,6 +757,7 @@ function EditorAreaInner({
     setDragging: (dragging: boolean) => void,
     draggingRef: { current: boolean },
     onCommit?: () => void,
+    onDragEnd?: () => void,
   ) {
     endHandleDragRef.current?.();
     setDragging(true);
@@ -755,6 +768,7 @@ function EditorAreaInner({
       endHandleDragRef.current = null;
       setDragging(false);
       draggingRef.current = false;
+      onDragEnd?.();
     }
     function onPointerUp(event: PointerEvent) {
       if (event.pointerId !== pointerId) return;
@@ -1386,6 +1400,9 @@ function EditorAreaInner({
                 onTerminalVisibleChange?.(false);
               }
             },
+            () => {
+              if (!terminalColumnPanelRef.current?.isCollapsed()) setTerminalShowingHold(false);
+            },
           );
         }}
       />
@@ -1402,6 +1419,12 @@ function EditorAreaInner({
             terminalWidthPxRef.current = size.inPixels;
             debouncedWriteTerminalWidth(size.inPixels);
           }
+          setTerminalColumnCollapsed(size.inPixels === 0);
+          if (size.inPixels === 0 && isDraggingTerminalHandleRef.current) {
+            setTerminalShowingHold(true);
+          } else if (size.inPixels > 0 && !isDraggingTerminalHandleRef.current) {
+            setTerminalShowingHold(false);
+          }
           reclaimHiddenRailColumn(TERMINAL_COLUMN_ID, terminalColumnPresent, size.inPixels);
         }}
         className="flex flex-col"
@@ -1409,6 +1432,7 @@ function EditorAreaInner({
         <div
           ref={setRightTerminalContainer}
           data-terminal-panel-mount=""
+          inert={!terminalColumnPresent || (terminalColumnCollapsed && !terminalShowingHold)}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
         />
       </ResizablePanel>
@@ -1431,6 +1455,9 @@ function EditorAreaInner({
                 onAgentsVisibleChange?.(false);
               }
             },
+            () => {
+              if (!agentsColumnPanelRef.current?.isCollapsed()) setAgentsShowingHold(false);
+            },
           );
         }}
       />
@@ -1447,6 +1474,12 @@ function EditorAreaInner({
             agentsWidthPxRef.current = size.inPixels;
             debouncedWriteAgentsWidth(size.inPixels);
           }
+          setAgentsColumnCollapsed(size.inPixels === 0);
+          if (size.inPixels === 0 && isDraggingAgentsHandleRef.current) {
+            setAgentsShowingHold(true);
+          } else if (size.inPixels > 0 && !isDraggingAgentsHandleRef.current) {
+            setAgentsShowingHold(false);
+          }
           reclaimHiddenRailColumn(AGENTS_COLUMN_ID, agentsColumnPresent, size.inPixels);
         }}
         className="flex flex-col"
@@ -1455,6 +1488,7 @@ function EditorAreaInner({
         <div
           ref={setAgentsContainer}
           data-agents-panel-mount=""
+          inert={!agentsColumnPresent || (agentsColumnCollapsed && !agentsShowingHold)}
           className="flex min-h-0 flex-1 flex-col overflow-hidden"
         />
       </ResizablePanel>

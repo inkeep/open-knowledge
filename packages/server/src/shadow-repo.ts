@@ -760,6 +760,14 @@ export type InMemoryCheckpointParams = (
       metadata: { incomingDiskSha: string };
     }
   | {
+      kind: 'external-change-rescue-disk-update';
+      docName: string;
+      contents: string;
+      label: string;
+      branch?: string;
+      metadata: { incomingDiskSha: string };
+    }
+  | {
       kind: 'defer-exhaustion-loss';
       docName: string;
       contents: string;
@@ -881,6 +889,14 @@ async function saveInMemoryCheckpointInner(
     case 'external-change-rescue':
       parsed = {
         kind: 'external-change-rescue',
+        docName: params.docName,
+        size,
+        metadata: params.metadata,
+      };
+      break;
+    case 'external-change-rescue-disk-update':
+      parsed = {
+        kind: 'external-change-rescue-disk-update',
         docName: params.docName,
         size,
         metadata: params.metadata,
@@ -1042,7 +1058,11 @@ export async function listRescueCheckpoints(
     if (!trimmed) continue;
     const [sha = '', timestamp = '', subject = '', body = ''] = trimmed.split('\x00');
     const parsed = parseCheckpoint(body);
-    if (parsed?.kind !== 'external-change-rescue') continue;
+    if (
+      parsed?.kind !== 'external-change-rescue' &&
+      parsed?.kind !== 'external-change-rescue-disk-update'
+    )
+      continue;
 
     let docName = parsed.docName ?? '';
     let size = parsed.size ?? 0;
@@ -1078,6 +1098,7 @@ export interface CheckpointRetentionPolicy {
   maxProducerGuardLoss: number;
   maxObserverADuplication: number;
   maxExternalChangeRescue: number;
+  maxExternalChangeRescueDiskUpdate: number;
   maxDeferExhaustionLoss: number;
   maxBridgeDeriveLoss: number;
   maxObserverAApplyLoss: number;
@@ -1095,6 +1116,7 @@ export const DEFAULT_CHECKPOINT_RETENTION: CheckpointRetentionPolicy = {
   maxProducerGuardLoss: 50,
   maxObserverADuplication: 50,
   maxExternalChangeRescue: 50,
+  maxExternalChangeRescueDiskUpdate: 50,
   maxDeferExhaustionLoss: 50,
   maxBridgeDeriveLoss: 50,
   maxObserverAApplyLoss: 50,
@@ -1113,6 +1135,7 @@ export interface CheckpointGcResult {
   deletedProducerGuardLoss: number;
   deletedObserverADuplication: number;
   deletedExternalChangeRescue: number;
+  deletedExternalChangeRescueDiskUpdate: number;
   deletedDeferExhaustionLoss: number;
   deletedBridgeDeriveLoss: number;
   deletedObserverAApplyLoss: number;
@@ -1152,6 +1175,11 @@ export const GC_BUCKET_POLICY = {
   'external-change-rescue': {
     limit: (p) => p.maxExternalChangeRescue,
     counter: 'deletedExternalChangeRescue',
+    applyTtl: true,
+  },
+  'external-change-rescue-disk-update': {
+    limit: (p) => p.maxExternalChangeRescueDiskUpdate,
+    counter: 'deletedExternalChangeRescueDiskUpdate',
     applyTtl: true,
   },
   'defer-exhaustion-loss': {
@@ -1220,6 +1248,7 @@ async function gcCheckpointRefsInner(
     deletedProducerGuardLoss: 0,
     deletedObserverADuplication: 0,
     deletedExternalChangeRescue: 0,
+    deletedExternalChangeRescueDiskUpdate: 0,
     deletedDeferExhaustionLoss: 0,
     deletedBridgeDeriveLoss: 0,
     deletedObserverAApplyLoss: 0,

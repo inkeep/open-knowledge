@@ -3891,6 +3891,14 @@
     "i04BJx": ["Lives outside this project — read-only here."],
     "i09An-": ["Restored an earlier version (", ["0"], ")"],
     "i1flq_": ["Wiki link suggestions"],
+    "i25FHa": [
+      "Open agents panel — ",
+      [
+        "liveThreadCount",
+        "plural",
+        { "one": ["#", " live agent thread"], "other": ["#", " live agent threads"] }
+      ]
+    ],
     "i3f2kh": ["No matching commands."],
     "i6o7XB": ["Search languages"],
     "i92eAT": ["We'll create a repository and start syncing — no terminal needed."],

@@ -4540,6 +4540,18 @@
     "i04BJx": ["Vive fuera de este proyecto — aquí es de solo lectura."],
     "i09An-": ["Se restauró una versión anterior (", ["0"], ")"],
     "i1flq_": ["Sugerencias de enlaces wiki"],
+    "i25FHa": [
+      "Abrir el panel de agentes — ",
+      [
+        "liveThreadCount",
+        "plural",
+        {
+          "one": ["#", " hilo de agente activo"],
+          "many": ["#", " hilos de agente activos"],
+          "other": ["#", " hilos de agente activos"]
+        }
+      ]
+    ],
     "i3f2kh": ["Ningún comando coincide."],
     "i6o7XB": ["Buscar idiomas"],
     "i92eAT": ["Crearemos un repositorio y empezaremos a sincronizar; no hace falta terminal."],

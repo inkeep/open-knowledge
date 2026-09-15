@@ -84,11 +84,13 @@ A write that first detects the stale file during its final disk flush returns a 
 
 `conflict.kind` says where the conflict came from, and the kind decides what a resolve does. `merge-native` is a git merge that left unmerged stages in the index. Resolving one stages your choice with git and commits the merge once no `merge-native` conflict is left. `working-tree` is a pull-only overlay collision, pinned to the origin blob it hit. `reconcile` is OpenKnowledge's own three-way merge of the editor against disk, including protected stale saves; no git object holds those stages, so OpenKnowledge snapshots them when it detects the conflict. Resolving a `working-tree` or `reconcile` conflict commits nothing.
 
-A `reconcile` conflict also carries a `reason`: `merged-with-markers`, `refused-conflict-markers`, `refused-too-large`, `disk-markers`, or `stale-external-write`. On that last reason the compatibility field `conflictKind` is `stale-external-write`. Every other row uses `conflictKind: "git"`.
+A `reconcile` conflict also carries a `reason`: `merged-with-markers`, `refused-conflict-markers`, `refused-no-base`, `refused-too-large`, `disk-markers`, or `stale-external-write`. On that last reason the compatibility field `conflictKind` is `stale-external-write`. Every other row uses `conflictKind: "git"`.
 
 A write to a document whose file has been deleted returns `urn:ok:error:doc-removed` (409): the edit reached collaborative state, but the disk write was refused rather than recreating the removed file. This is not retryable — the document is gone. Re-create it with `write` if you still want the content.
 
 A write whose document path cannot be resolved inside the content directory returns `urn:ok:error:path-escape` (400): the edit reached collaborative state, but the disk write was refused. This covers a symlink cycle at the document's own path and a link resolving outside the content directory. It is not retryable — repair the path on disk before writing this content again.
+
+A write refused because the document's duplication baseline could not be read at the final disk flush returns `urn:ok:error:store-refused` (503): the edit reached collaborative state, but the disk write was refused rather than risk persisting duplicated content. The document file was not updated; the server preserves the edited document, with a copy in its recovery buffer unless that buffer is unavailable or unwritable. Retry only after the filesystem fault is repaired.
 
 ### Resolving a conflict
 

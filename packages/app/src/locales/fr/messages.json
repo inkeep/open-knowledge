@@ -4575,6 +4575,18 @@
     "i04BJx": ["Vit hors de ce projet — lecture seule ici."],
     "i09An-": ["Version antérieure restaurée (", ["0"], ")"],
     "i1flq_": ["Suggestions de liens wiki"],
+    "i25FHa": [
+      "Ouvrir le panneau des agents — ",
+      [
+        "liveThreadCount",
+        "plural",
+        {
+          "one": ["#", " fil d'agent actif"],
+          "many": ["#", " fils d'agents actifs"],
+          "other": ["#", " fils d'agents actifs"]
+        }
+      ]
+    ],
     "i3f2kh": ["Aucune commande correspondante."],
     "i6o7XB": ["Rechercher des langues"],
     "i92eAT": [

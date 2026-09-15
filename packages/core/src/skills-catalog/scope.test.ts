@@ -63,6 +63,22 @@ describe('isDetectedSkillInProject', () => {
       isDetectedSkillInProject(prov({ scope: 'project', projectPath: '/Users/me/other' }), MAIN),
     ).toBe(false);
   });
+
+  it('matches Windows drive-letter and separator variants without folding path segments', () => {
+    const owner = 'C:\\Users\\me\\project\\';
+    expect(
+      isDetectedSkillInProject(
+        prov({ scope: 'project', projectPath: owner }),
+        'c:/Users/me/project',
+      ),
+    ).toBe(true);
+    expect(
+      isDetectedSkillInProject(
+        prov({ scope: 'project', projectPath: owner }),
+        'c:/Users/me/Project',
+      ),
+    ).toBe(false);
+  });
 });
 
 describe('isSkillOutsideOpenProject', () => {

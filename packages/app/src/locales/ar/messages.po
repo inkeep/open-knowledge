@@ -9647,6 +9647,10 @@ msgstr "فتح لوحة النشاط لـ {tooltipName}، يحرّر {realCurren
 msgid "Open agents panel"
 msgstr "فتح لوحة الوكلاء"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
+msgstr "فتح لوحة الوكلاء — {liveThreadCount, plural, zero {# خيوط وكلاء نشطة} one {خيط وكيل نشط واحد} two {خيطا وكيل نشطَين} few {# خيوط وكلاء نشطة} many {# خيط وكيل نشطا} other {# خيط وكيل نشط}}"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "افتح مجلد مشروع موجودًا من القرص."

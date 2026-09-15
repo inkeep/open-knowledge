@@ -18,6 +18,7 @@ import {
   isSystemDoc,
 } from './cc1-broadcast.ts';
 import { type ConflictAuthority, isDocInConflict } from './conflict-authority.ts';
+import type { ReconcileReason } from './conflict-kinds.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
@@ -28,9 +29,10 @@ import { getLogger } from './logger.ts';
 import {
   incrementExternalChangeHandlerErrors,
   incrementReconcileInFlightFallthroughs,
+  incrementReconcileInsertDedupSkipped,
   incrementReconcileOwnFlushSkips,
 } from './metrics.ts';
-import { reconcile } from './reconciliation.ts';
+import { type ReconcileRefusalReason, reconcile } from './reconciliation.ts';
 import { FILE_SYSTEM_WRITER } from './shadow-repo.ts';
 
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
@@ -147,6 +149,21 @@ function clearStaleExternalWriteConflict(
   lifecycleMap.delete('status');
   lifecycleMap.delete('reason');
   lifecycleMap.delete('detectedAt');
+}
+
+export function wireReasonForRefusal(reason: ReconcileRefusalReason): ReconcileReason {
+  switch (reason) {
+    case 'conflict-markers':
+      return 'refused-conflict-markers';
+    case 'no-base':
+      return 'refused-no-base';
+    case 'too-large':
+      return 'refused-too-large';
+    default: {
+      const unhandled: never = reason;
+      throw new Error(`unhandled reconcile refusal reason: ${String(unhandled)}`);
+    }
+  }
 }
 
 export function refuseStaleExternalWrite(
@@ -334,9 +351,7 @@ export function reconcileDiskBeforeAgentWrite(
         reason:
           outcome.kind === 'conflicts'
             ? 'merged-with-markers'
-            : outcome.reason === 'too-large'
-              ? 'refused-too-large'
-              : 'refused-conflict-markers',
+            : wireReasonForRefusal(outcome.reason),
         stages: { base, ours, theirs: diskContent },
       });
       return NOT_RECONCILED;
@@ -345,6 +360,13 @@ export function reconcileDiskBeforeAgentWrite(
     case 'clean':
     case 'merged': {
       const ingest = outcome.kind === 'clean' ? diskContent : outcome.newContent;
+      if (outcome.kind === 'merged' && outcome.dedupSkipped) {
+        incrementReconcileInsertDedupSkipped();
+        getLogger('reconcile').warn(
+          { docName },
+          `[reconcile] ${docName} insert-group dedup skipped (LCS cell cap); union emitted with possible same-block duplication`,
+        );
+      }
       applyExternalChange(durabilityState, hocuspocus, docName, ingest);
       if (outcome.kind === 'merged') {
         durabilityState.setReconciledBase(docName, diskContent);

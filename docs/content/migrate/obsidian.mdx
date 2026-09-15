@@ -30,7 +30,7 @@ Most of what you write in Obsidian renders and round-trips in OpenKnowledge unch
 
 | Obsidian syntax | Example | In OpenKnowledge |
 | --- | --- | --- |
-| Wiki links | `[[Page]]`, `[[Page\|alias]]`, `[[Page#Heading]]` | Resolved to the target doc; feed backlinks and the graph. Preserved as written. |
+| Wiki links | `[[Page]]`, `[[Page\|alias]]`, `[[Page#Heading]]` | Resolved to the target doc; feed backlinks and the graph. Preserved as written. Inside a table cell, escape the alias separator (see below). |
 | Markdown links | `[text](./page.md)` | Fully supported and the [recommended form](/docs/reference/core-concepts#links-and-backlinks) for new links. Wiki links keep working as a superset. |
 | YAML frontmatter | `---` block at the top | Open-shape — any keys. `aliases`, `tags`, `cssclasses`, dates, and lists are preserved. Edit them in the [Properties panel](/docs/features/editor#properties). |
 | Tags | `#tag`, or `tags:` in frontmatter | Both forms are indexed and searchable. |
@@ -41,6 +41,8 @@ Most of what you write in Obsidian renders and round-trips in OpenKnowledge unch
 | Mermaid | ` ```mermaid ` fenced blocks | Rendered as diagrams. |
 | Footnotes | `[^1]` with `[^1]: …` | Supported, including named footnotes. |
 | Asset embeds | `![[image.png]]`, `![[file.pdf#page=3]]` | Images and PDFs render inline. See [Assets and embeds](/docs/features/assets-and-embeds). |
+
+Inside a table cell, an aliased wiki link or embed has to escape its separator as `\|`, because a bare `|` ends the cell: the cell form is `[[Page\|alias]]`, or `![[image.png\|alt]]` for embeds. Each literal `|` inside the alias carries its own backslash too, so an alias like `Some | Alias` is written `[[Page\|Some \| Alias]]` in a cell, or `![[image.png\|Some \| Alias]]` as an embed. The escaped form resolves identically to the unescaped one, and the escape you author stays in the file. A target that is only whitespace or only the escape (`[[ ]]`, `[[\|alias]]`) is not a link. Byte-for-byte preservation has narrow exceptions, none of them reached by authoring the escape — see [Tables](/docs/features/editor#tables) for what they are.
 
 ## Where the two differ
 

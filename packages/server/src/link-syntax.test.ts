@@ -419,3 +419,117 @@ describe('cross-consumer divergence ledger', () => {
     expect(readMarkdownLinkAt('[doc](./t.md "ti)tle")', 0)).toMatchObject({ href: './t.md' });
   });
 });
+
+describe('escaped alias separator', () => {
+  const ANCHOR_ROW = String.raw`[[targets/existing-page#details\|Wiki alias to details]]`;
+  const EXTERNAL_ROW = String.raw`[[https://inkeep.com\|External wiki link]]`;
+
+  test('escaped separator after an anchor leaves the anchor clean', () => {
+    expect(readWikiLinkAt(ANCHOR_ROW, 0)).toMatchObject({
+      embed: false,
+      target: 'targets/existing-page',
+      anchor: 'details',
+      alias: 'Wiki alias to details',
+    });
+  });
+
+  test('escaped separator with no anchor leaves the target clean', () => {
+    expect(readWikiLinkAt(EXTERNAL_ROW, 0)).toMatchObject({
+      embed: false,
+      target: 'https://inkeep.com',
+      anchor: null,
+      alias: 'External wiki link',
+    });
+  });
+
+  test('embed form with an escaped separator leaves the target clean', () => {
+    expect(readWikiLinkAt(String.raw`![[Attachments/pic.png\|Alt text]]`, 0)).toMatchObject({
+      embed: true,
+      target: 'Attachments/pic.png',
+      anchor: null,
+      alias: 'Alt text',
+    });
+    expect(readWikiLinkAt(String.raw`![[file.pdf#page=3\|Page 3]]`, 0)).toMatchObject({
+      embed: true,
+      target: 'file.pdf',
+      anchor: 'page=3',
+      alias: 'Page 3',
+    });
+  });
+
+  test('scanning a whole table row resolves both escaped shapes clean', () => {
+    const row = `| a | ${ANCHOR_ROW} | ${EXTERNAL_ROW} |`;
+    expect(matchWikiLinks(row)).toEqual([
+      expect.objectContaining({
+        embed: false,
+        target: 'targets/existing-page',
+        anchor: 'details',
+        alias: 'Wiki alias to details',
+      }),
+      expect.objectContaining({
+        embed: false,
+        target: 'https://inkeep.com',
+        anchor: null,
+        alias: 'External wiki link',
+      }),
+    ]);
+  });
+
+  test('raw captures keep describing the authored bytes across an escaped separator', () => {
+    const line = `| x | ${ANCHOR_ROW} |`;
+    const match = matchWikiLinks(line)[0];
+    expect(line.slice(match.start, match.end)).toBe(ANCHOR_ROW);
+    expect(match.targetRaw).toBe('targets/existing-page');
+    expect(match.anchorRaw).toBe('details\\');
+    expect(match.aliasRaw).toBe('Wiki alias to details');
+  });
+
+  test('escaped pipes folded into the alias unescape', () => {
+    expect(
+      matchWikiLinks(String.raw`[[a\|b\|c]]`).map((m) => ({ target: m.target, alias: m.alias })),
+    ).toEqual([{ target: 'a', alias: 'b|c' }]);
+  });
+
+  test('an escaped separator after an anchor with an empty anchor drops the anchor', () => {
+    expect(readWikiLinkAt(String.raw`[[Page#\|Alias]]`, 0)).toMatchObject({
+      target: 'Page',
+      anchor: null,
+      alias: 'Alias',
+    });
+  });
+
+  test('a target that is only the separator escape rejects', () => {
+    expect(readWikiLinkAt(String.raw`[[\|alias]]`, 0)).toBeNull();
+    expect(readWikiLinkAt(String.raw`[[ \|alias]]`, 0)).toBeNull();
+  });
+
+  test('a backslash not at the separator boundary stays literal', () => {
+    expect(readWikiLinkAt(String.raw`[[a\b|Alias]]`, 0)).toMatchObject({
+      target: String.raw`a\b`,
+      alias: 'Alias',
+    });
+  });
+
+  test('a trailing backslash with no alias stays literal', () => {
+    expect(readWikiLinkAt(String.raw`[[a\]]`, 0)).toMatchObject({
+      target: 'a\\',
+      anchor: null,
+      alias: null,
+    });
+  });
+
+  test('unescaped separators keep matching as before', () => {
+    expect(
+      readWikiLinkAt('[[targets/existing-page#details|Wiki alias to details]]', 0),
+    ).toMatchObject({
+      target: 'targets/existing-page',
+      anchor: 'details',
+      alias: 'Wiki alias to details',
+    });
+    expect(readWikiLinkAt('[[https://inkeep.com|External wiki link]]', 0)).toMatchObject({
+      target: 'https://inkeep.com',
+      anchor: null,
+      alias: 'External wiki link',
+    });
+  });
+});

@@ -272,6 +272,7 @@ describe('state-store (terminal full-restart state)', () => {
     expect(getTerminalDockState(parsed ?? emptyState(), '/tmp/project')).toEqual({
       terminalVisible: false,
       terminalSnapshot: { tabs: [], activeOrdinal: null },
+      agentPanelVisible: false,
     });
   });
 
@@ -285,6 +286,7 @@ describe('state-store (terminal full-restart state)', () => {
         ],
         activeOrdinal: 1,
       },
+      agentPanelVisible: false,
     });
     const parsed = parseAppState(JSON.parse(JSON.stringify(state)));
     expect(getTerminalDockState(parsed ?? emptyState(), '/tmp/project')).toEqual(
@@ -317,6 +319,7 @@ describe('state-store (terminal full-restart state)', () => {
         tabs: [{ ordinal: 2, customLabel: 'Build' }],
         activeOrdinal: null,
       },
+      agentPanelVisible: false,
     });
   });
 
@@ -325,6 +328,7 @@ describe('state-store (terminal full-restart state)', () => {
     state = setTerminalDockState(state, '/tmp/project', {
       terminalVisible: true,
       terminalSnapshot: { tabs: [{ ordinal: 1, customLabel: null }], activeOrdinal: 1 },
+      agentPanelVisible: false,
     });
     expect(removeRecentProject(state, '/tmp/project').terminalDockStates).toEqual({});
   });

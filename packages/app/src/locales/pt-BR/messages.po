@@ -9643,6 +9643,10 @@ msgstr "Abrir o painel de atividade de {tooltipName}, que está editando {realCu
 msgid "Open agents panel"
 msgstr "Abrir o painel de agentes"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
+msgstr "Abrir o painel de agentes — {liveThreadCount, plural, one {# conversa de agente ativa} many {# conversas de agente ativas} other {# conversas de agente ativas}}"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "Abre do disco uma pasta de projeto existente."

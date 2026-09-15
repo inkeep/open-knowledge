@@ -7,6 +7,10 @@ export interface DockSessionOrder {
   readonly activeKey: string | null;
 }
 
+export interface WebAgentsDockSessionOrder extends DockSessionOrder {
+  readonly agentPanelVisible?: boolean;
+}
+
 export interface DockRestoreState {
   readonly sessionOrder: DockSessionOrder | null;
   readonly terminalSnapshot: OkTerminalRestartSnapshot | undefined;
@@ -18,30 +22,104 @@ const WEB_STORAGE_KEYS: Record<DockSurface, string> = {
   agents: 'ok-agent-session-order-v1',
 };
 
-function coerceOrder(raw: { order?: unknown; activeKey?: unknown }): DockSessionOrder {
+function coerceOrder(raw: {
+  order?: unknown;
+  activeKey?: unknown;
+  agentPanelVisible?: unknown;
+}): WebAgentsDockSessionOrder {
   const order = Array.isArray(raw.order)
     ? raw.order.filter((k): k is string => typeof k === 'string')
     : [];
   const activeKey = typeof raw.activeKey === 'string' ? raw.activeKey : null;
-  return { order, activeKey };
+  const agentPanelVisible =
+    typeof raw.agentPanelVisible === 'boolean' ? raw.agentPanelVisible : undefined;
+  return agentPanelVisible === undefined
+    ? { order, activeKey }
+    : { order, activeKey, agentPanelVisible };
 }
 
-export function readWebDockSessionOrder(surface: DockSurface): DockSessionOrder | null {
-  if (typeof window === 'undefined') return null;
+type WebRecordRead =
+  | { readonly status: 'absent' }
+  | { readonly status: 'parsed'; readonly record: WebAgentsDockSessionOrder }
+  | { readonly status: 'corrupt' }
+  | { readonly status: 'blocked' };
+
+function readWebRecord(surface: DockSurface): WebRecordRead {
+  if (typeof window === 'undefined') return { status: 'absent' };
+  let raw: string | null;
   try {
-    const raw = window.localStorage.getItem(WEB_STORAGE_KEYS[surface]);
-    if (raw === null) return null;
-    return coerceOrder(JSON.parse(raw) as { order?: unknown; activeKey?: unknown });
-  } catch {
-    return null;
+    raw = window.localStorage.getItem(WEB_STORAGE_KEYS[surface]);
+  } catch (err) {
+    console.warn(
+      `[dock-session-persistence] reading ${WEB_STORAGE_KEYS[surface]} failed: ${String(err)}`,
+    );
+    return { status: 'blocked' };
+  }
+  if (raw === null) return { status: 'absent' };
+  try {
+    return {
+      status: 'parsed',
+      record: coerceOrder(
+        JSON.parse(raw) as { order?: unknown; activeKey?: unknown; agentPanelVisible?: unknown },
+      ),
+    };
+  } catch (err) {
+    console.warn(
+      `[dock-session-persistence] stored ${WEB_STORAGE_KEYS[surface]} record was not valid JSON; ignoring it: ${String(err)}`,
+    );
+    return { status: 'corrupt' };
   }
 }
 
-function writeWeb(surface: DockSurface, state: DockSessionOrder): void {
+function mergeAgentsWebRecord(fields: {
+  readonly order?: readonly string[];
+  readonly activeKey?: string | null;
+  readonly agentPanelVisible?: boolean;
+}): WebAgentsDockSessionOrder | null {
+  const read = readWebRecord('agents');
+  if (read.status === 'blocked') {
+    console.warn(
+      `[dock-session-persistence] ${WEB_STORAGE_KEYS.agents} could not be read; withholding this write rather than overwriting the unread record`,
+    );
+    return null;
+  }
+  const current = read.status === 'parsed' ? read.record : null;
+  const order = [...(fields.order ?? current?.order ?? [])];
+  const activeKey =
+    fields.activeKey !== undefined ? fields.activeKey : (current?.activeKey ?? null);
+  const agentPanelVisible = fields.agentPanelVisible ?? current?.agentPanelVisible;
+  return agentPanelVisible === undefined
+    ? { order, activeKey }
+    : { order, activeKey, agentPanelVisible };
+}
+
+export function readWebDockSessionOrder(surface: 'terminal'): DockSessionOrder | null;
+export function readWebDockSessionOrder(surface: 'agents'): WebAgentsDockSessionOrder | null;
+export function readWebDockSessionOrder(surface: DockSurface): DockSessionOrder | null;
+export function readWebDockSessionOrder(surface: DockSurface): DockSessionOrder | null {
+  const read = readWebRecord(surface);
+  return read.status === 'parsed' ? read.record : null;
+}
+
+function writeWeb(surface: DockSurface, state: WebAgentsDockSessionOrder): void {
   if (typeof window === 'undefined') return;
   try {
     window.localStorage.setItem(WEB_STORAGE_KEYS[surface], JSON.stringify(state));
-  } catch {}
+  } catch (err) {
+    console.warn(
+      `[dock-session-persistence] writing ${WEB_STORAGE_KEYS[surface]} failed: ${String(err)}`,
+    );
+  }
+}
+
+export function writeAgentsPanelLevel(
+  bridge: OkDesktopBridge | null | undefined,
+  level: boolean,
+): void {
+  if (bridge?.terminal != null) return;
+  const merged = mergeAgentsWebRecord({ agentPanelVisible: level });
+  if (merged === null) return;
+  writeWeb('agents', merged);
 }
 
 export async function readDockRestoreState(
@@ -71,13 +149,18 @@ export async function readDockRestoreState(
   };
 }
 
-export function readDockSessionOrder(
+export function writeDockSessionOrder(
   bridge: OkDesktopBridge | null | undefined,
-  surface: DockSurface,
-): Promise<DockSessionOrder | null> {
-  return readDockRestoreState(bridge, surface).then((state) => state.sessionOrder);
-}
-
+  surface: 'terminal',
+  state: DockSessionOrder,
+  terminalSnapshot?: OkTerminalRestartSnapshot,
+): void;
+export function writeDockSessionOrder(
+  bridge: OkDesktopBridge | null | undefined,
+  surface: 'agents',
+  state: DockSessionOrder & { readonly agentPanelVisible?: never },
+  terminalSnapshot?: OkTerminalRestartSnapshot,
+): void;
 export function writeDockSessionOrder(
   bridge: OkDesktopBridge | null | undefined,
   surface: DockSurface,
@@ -111,5 +194,11 @@ export function writeDockSessionOrder(
     return;
   }
   if (bridge?.terminal != null) return;
+  if (surface === 'agents') {
+    const merged = mergeAgentsWebRecord({ order: state.order, activeKey: state.activeKey });
+    if (merged === null) return;
+    writeWeb('agents', merged);
+    return;
+  }
   writeWeb(surface, state);
 }

@@ -1071,6 +1071,9 @@ function buildMdastToPmHandlers(
       const target = node.data?.target ?? '';
       const alias = node.data?.alias ?? null;
       const anchor = node.data?.anchor ?? null;
+      const sourceTarget = node.data?.sourceTarget ?? null;
+      const sourceAnchor = node.data?.sourceAnchor ?? null;
+      const sourceAlias = node.data?.sourceAlias ?? null;
       const ext = extensionOf(target);
       const { resolveEmbed, sourcePath } = parseCtx.current;
       const resolved =
@@ -1095,7 +1098,16 @@ function buildMdastToPmHandlers(
           attributes: [],
           sourceRaw: '',
           sourceDirty: false,
-          props: { src: srcOrTarget, alt: alias ?? target, target, anchor, alias },
+          props: {
+            src: srcOrTarget,
+            alt: alias ?? target,
+            target,
+            anchor,
+            alias,
+            sourceTarget,
+            sourceAnchor,
+            sourceAlias,
+          },
         });
       }
       if (
@@ -1110,7 +1122,16 @@ function buildMdastToPmHandlers(
           attributes: [],
           sourceRaw: '',
           sourceDirty: false,
-          props: { src: srcOrTarget, title: alias ?? target, target, anchor, alias },
+          props: {
+            src: srcOrTarget,
+            title: alias ?? target,
+            target,
+            anchor,
+            alias,
+            sourceTarget,
+            sourceAnchor,
+            sourceAlias,
+          },
         });
       }
       if (
@@ -1125,7 +1146,16 @@ function buildMdastToPmHandlers(
           attributes: [],
           sourceRaw: '',
           sourceDirty: false,
-          props: { src: srcOrTarget, title: alias ?? target, target, anchor, alias },
+          props: {
+            src: srcOrTarget,
+            title: alias ?? target,
+            target,
+            anchor,
+            alias,
+            sourceTarget,
+            sourceAnchor,
+            sourceAlias,
+          },
         });
       }
       if (
@@ -1144,7 +1174,16 @@ function buildMdastToPmHandlers(
           attributes: [],
           sourceRaw: '',
           sourceDirty: false,
-          props: { src: srcOrTarget, target, anchor, alias, size },
+          props: {
+            src: srcOrTarget,
+            target,
+            anchor,
+            alias,
+            size,
+            sourceTarget,
+            sourceAnchor,
+            sourceAlias,
+          },
         });
       }
 
@@ -1159,6 +1198,9 @@ function buildMdastToPmHandlers(
           target,
           anchor,
           alias,
+          sourceTarget,
+          sourceAnchor,
+          sourceAlias,
         });
         return schema.text(label, [linkMark]);
       }
@@ -1769,6 +1811,12 @@ function buildPmToMdastHandlers(
           typeof mark.attrs.alias === 'string' && mark.attrs.alias.length > 0
             ? mark.attrs.alias
             : null;
+        const sourceTarget: string | null =
+          typeof mark.attrs.sourceTarget === 'string' ? mark.attrs.sourceTarget : null;
+        const sourceAnchor: string | null =
+          typeof mark.attrs.sourceAnchor === 'string' ? mark.attrs.sourceAnchor : null;
+        const sourceAlias: string | null =
+          typeof mark.attrs.sourceAlias === 'string' ? mark.attrs.sourceAlias : null;
         let label = alias ? alias : anchor ? `${target}#${anchor}` : target;
         const visibleText = children
           .map((child) => ('value' in child && typeof child.value === 'string' ? child.value : ''))
@@ -1780,7 +1828,7 @@ function buildPmToMdastHandlers(
         return {
           type: 'wikiLinkEmbed' as const,
           value: label,
-          data: { target, anchor, alias },
+          data: { target, anchor, alias, sourceTarget, sourceAnchor, sourceAlias },
           children: [{ type: 'text' as const, value: label }],
         } as unknown as MdastNodes;
       }

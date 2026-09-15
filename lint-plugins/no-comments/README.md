@@ -66,8 +66,19 @@ a path no unit claims exits 0 with an `out-of-scope:` line rather than a silent 
 config alone decides membership and the glob cannot drift from it. That block is this repository's;
 the public tree's own root block carries no such route. Every staged path reaches the
 sweep; one no unit claims prints `out-of-scope: <path> (no unit claims it; nothing was read)` and
-exits 0. That is how shell gets judged at commit, since the oxc language server hosts no shell
-grammar — and it puts a suppression-blind second read on the JS families too.
+exits 0. An in-scope operand the tree no longer has prints
+`not-on-disk: <path> (absent from the tree; nothing to scan)` and exits 0 the same way. A deleted path
+reaching the sweep as an operand is what first crashed it, and both in-repo producers now filter
+their own lists — the round gate builds its operands from `existsSync` and lint-staged passes an
+`ACMR`-filtered list — so the tolerance stands as the CLI's own contract for any caller, in this
+repository or outside it, that names a path between its own listing and this read. The
+tolerance keys on stat's `ENOENT` alone, and only on the paths the invocation named: an existence
+probe cannot tell a missing file from an unreadable one, so any other stat failure refuses the run
+as a 2 rather than reporting a corpus it did not read. Discovery-sourced paths get no tolerance at
+all — `discoverInScopeFiles` already refuses a tree whose in-scope entries it could not read, and
+a path the config declares that the tree lacks is reported on its own `declared-absent:` line.
+That is how shell gets judged at commit, since the oxc language server hosts no shell grammar —
+and it puts a suppression-blind second read on the JS families too.
 
 `--help` prints the accepted grammar and exits 0; any other token the parser does not claim is
 refused rather than dropped. The three exit codes are the same contract the codemod's are, so one
@@ -75,9 +86,9 @@ caller can branch on both:
 
 | code | meaning |
 | --- | --- |
-| 0 | the sweep ran and found no violation. In `--file` mode a path no unit claims lands here too, named on an `out-of-scope:` line |
+| 0 | the sweep ran and found no violation. In `--file` mode a path no unit claims lands here too, named on an `out-of-scope:` line; an in-scope path the invocation names that the tree lacks lands here on a `not-on-disk:` line |
 | 1 | the corpus is dirty: a violation was reported, or a declared unit that the config requires to be non-empty discovered no file. `--all` lists every violation rather than the first 25 |
-| 2 | the invocation was refused before any work: an unrecognized or repeated argument, a value-taking flag with no path, a `--file` outside `--root`, a scope config that does not load, or a precedent registry that does not load, printed as `precedent-registry: UNREADABLE` with the manifest key or the PRECEDENTS.md numbering problem behind it. Same meaning as the codemod's 2 |
+| 2 | the invocation was refused before any work, or the run could not complete: an unrecognized or repeated argument, a value-taking flag with no path, a `--file` outside `--root`, a scope config that does not load, or a precedent registry that does not load, printed as `precedent-registry: UNREADABLE` with the manifest key or the PRECEDENTS.md numbering problem behind it. A failure while reading the corpus lands here too, printed as `::error::no-comments-sweep aborted<at>: <detail>` with the stack after it — nothing was judged, so the run is not evidence of a clean corpus. A failure that carries a path names it, repo-relative like every other path this tool prints (`aborted at <path>: <errno message>`) — that is every stat or read the scan loop propagates, `ENOENT` included, since the only `ENOENT` tolerance is the `--file` stat, whose misses leave by the `not-on-disk:` line under 0. A whole-tree run discovery refuses has no one path to blame and carries discovery's own aggregate instead: `aborted: discovery could not read <n> in-scope entry: <path> (<reason>). <remedy>`, where the noun tracks `<n>` (`entries` past one), the skip list previews the first five and marks the rest with a trailing `, …`, and `<remedy>` is a fixed sentence naming `discoverInScopeFilesWithSkips` that always follows the list. Same meaning as the codemod's 2 |
 
 `scripts/no-comments-sweep.mjs` is upstream-only: `scripts/` is enumerated in the mirror manifest
 rather than globbed, and the sweep is not one of the entries, so it does not ship to the public

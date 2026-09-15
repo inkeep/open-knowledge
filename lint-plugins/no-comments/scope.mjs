@@ -359,8 +359,8 @@ function requireWalker({ readdirSync, statSync, lstatSync }) {
 
 export function discoverInScopeFilesWithSkips(repoRoot, options) {
   requireWalker(options);
-  const { readdirSync, statSync, lstatSync } = options;
-  const scope = scopeForRoot(repoRoot);
+  const { readdirSync, statSync, lstatSync, scope: providedScope } = options;
+  const scope = providedScope ?? scopeForRoot(repoRoot);
   const { isInScope: inScope, pruneDirectories } = scope;
   const found = new Set();
   const skips = [];

@@ -966,14 +966,16 @@ describe('EditorPane session-panel wiring', () => {
     expect(agents.getAttribute('data-thread-launch-image-parts')).toBe('1');
   });
 
-  test('desktop: a rejecting getDockState still settles the gate so the view-menu push converges', async () => {
+  test('desktop: a rejecting getDockState still settles the gate (placement push lands; visibility stays silent)', async () => {
     const desk = makeOkDesktopStub(async () => {
       throw new Error('ipc boom');
     });
     (window as { okDesktop?: unknown }).okDesktop = desk.stub;
     await renderEditorPane();
 
-    expect(desk.viewMenuPushes).toContainEqual({ terminalVisible: false });
+    expect(desk.viewMenuPushes).toContainEqual({ terminalPlacement: 'bottom' });
+    expect(desk.viewMenuPushes).not.toContainEqual({ terminalVisible: false });
+    expect(desk.viewMenuPushes).not.toContainEqual({ agentPanelVisible: false });
     expect(screen.getByTestId('terminal-dock').getAttribute('data-visible')).toBe('false');
   });
 

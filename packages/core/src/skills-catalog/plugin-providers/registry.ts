@@ -45,10 +45,11 @@ export function enumeratePluginProvider(
   provider: PluginProviderId,
   home: string,
   harness: string = provider,
+  projectDir?: string,
 ): SkillBundle[] {
   const adapter = providerById(provider);
   if (!adapter) throw new Error(`unknown plugin provider: ${provider}`);
-  return adapter.enumerate(home, harness).map((bundle) => ({
+  return adapter.enumerate(home, harness, projectDir).map((bundle) => ({
     ...bundle,
     skills: bundle.skills.map((skill) => ({
       ...skill,

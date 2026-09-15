@@ -1,4 +1,4 @@
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
   chmodSync,
@@ -31,7 +31,7 @@ import {
   runLoginShellProbe,
 } from '../../src/main/claude-readiness.ts';
 import { handleSlidesStatus } from '../../src/main/ipc/slides.ts';
-import { realProbeSpawn, realProbeTimers } from '../../src/main/probe-spawn.ts';
+import { killProbeGroup, realProbeSpawn, realProbeTimers } from '../../src/main/probe-spawn.ts';
 import {
   buildSlidevInvocation,
   composeSlidevSpawnEnv,
@@ -40,6 +40,10 @@ import {
   type SlidevProcess,
 } from '../../src/main/slidev-server.ts';
 import { buildShellEnv } from '../../src/utility/pty-host.ts';
+import {
+  spawnDetachedInteractiveChild,
+  spawnInteractiveShellSync,
+} from '../support/detached-interactive-spawn.test-helper.ts';
 import {
   createRecordDir,
   createScratchHomeWithOkBin,
@@ -70,7 +74,7 @@ const probeTimers: ProbeTimers = {
 
 function bareEnvProbeSpawn(): ProbeSpawn {
   return (file, args) => {
-    const child = spawn(file, [...args], { stdio: 'ignore', shell: false, windowsHide: true });
+    const child = spawnDetachedInteractiveChild(file, args);
     return {
       onExit: (cb) => {
         child.on('exit', (code) => cb(code));
@@ -79,7 +83,7 @@ function bareEnvProbeSpawn(): ProbeSpawn {
         child.on('error', (err) => cb(err));
       },
       kill: () => {
-        child.kill('SIGKILL');
+        killProbeGroup(child);
       },
     };
   };
@@ -294,11 +298,7 @@ function spawnDeck(
   args: readonly string[],
   env?: NodeJS.ProcessEnv,
 ) {
-  const child = spawn(shell, [...args.slice(0, -1), command], {
-    stdio: 'ignore',
-    detached: true,
-    ...(env ? { env } : {}),
-  });
+  const child = spawnDetachedInteractiveChild(shell, [...args.slice(0, -1), command], env);
   const shellPid = child.pid ?? 0;
   const descendants = () =>
     spawnSync('/bin/ps', ['-eo', 'pid,ppid,pgid'], { encoding: 'utf8' })
@@ -522,11 +522,16 @@ describe.skipIf(!existsSync('/bin/bash'))('Slidev bashrc function detect-and-lau
         'linux',
         [],
       );
-      const child = spawnSync(invocation.file, [...invocation.args], {
-        env: { ...process.env, HOME: home, PATH: MINIMAL_PARENT_PATH },
-        encoding: 'utf8',
-        timeout: 5_000,
-      });
+      const child = spawnInteractiveShellSync(
+        invocation.file,
+        [...invocation.args],
+        {
+          ...process.env,
+          HOME: home,
+          PATH: MINIMAL_PARENT_PATH,
+        },
+        5_000,
+      );
       expect(child.error).toBeUndefined();
       expect(child.status, child.stderr).toBe(SENTINEL_EXIT_CODE);
     } finally {

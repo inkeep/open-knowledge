@@ -9647,6 +9647,10 @@ msgstr "{tooltipName} کے لیے سرگرمی کا پینل کھولیں، {rea
 msgid "Open agents panel"
 msgstr "ایجنٹس کا پینل کھولیں"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
+msgstr "ایجنٹس کا پینل کھولیں — {liveThreadCount, plural, one {# فعال ایجنٹ تھریڈ} other {# فعال ایجنٹ تھریڈ}}"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "ڈسک سے موجودہ پروجیکٹ کا فولڈر کھولیں۔"

@@ -62,28 +62,79 @@ test.describe('§6.2 Strikethrough', () => {
   });
 });
 
+const MARKER_ALIGNMENT_TOLERANCE_PX = 1;
+const HANGING_INDENT_PARAGRAPH = 'plain paragraph';
+
+interface FirstCharacterXs {
+  marker: number | null;
+  paragraph: number | null;
+}
+
+async function readFirstCharacterXs(page: Page, paragraphText: string): Promise<FirstCharacterXs> {
+  return page.evaluate((text) => {
+    const firstCharacterX = (line: Element | undefined): number | null => {
+      if (!line) return null;
+      const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        if (!node.nodeValue?.length) continue;
+        const range = document.createRange();
+        range.setStart(node, 0);
+        range.setEnd(node, 1);
+        return range.getBoundingClientRect().left;
+      }
+      return null;
+    };
+
+    const lines = Array.from(document.querySelectorAll('.cm-line'));
+    return {
+      marker: firstCharacterX(lines.find((line) => line.classList.contains('cm-list-item'))),
+      paragraph: firstCharacterX(lines.find((line) => line.textContent === text)),
+    };
+  }, paragraphText);
+}
+
 test.describe('§6.3 List hanging-indent', () => {
   test('wrapped bullet list line left edge aligns with plain paragraph (marker not pushed off-screen)', async ({
     page,
     api,
   }) => {
     const longText = 'A'.repeat(200);
-    await seedMarkdown(api, testDocName, `- ${longText}\n\nplain paragraph`);
+    await seedMarkdown(api, testDocName, `- ${longText}\n\n${HANGING_INDENT_PARAGRAPH}`);
     await switchToSource(page);
 
     await page.setViewportSize({ width: 400, height: 600 });
 
-    const listLine = page.locator('.cm-line.cm-list-item').first();
-    await expect(listLine).toBeVisible();
+    let previous: FirstCharacterXs = { marker: null, paragraph: null };
+    await expect
+      .poll(
+        async () => {
+          const current = await readFirstCharacterXs(page, HANGING_INDENT_PARAGRAPH);
+          const settled =
+            current.marker !== null &&
+            current.paragraph !== null &&
+            current.marker === previous.marker &&
+            current.paragraph === previous.paragraph;
+          previous = current;
+          return settled;
+        },
+        { timeout: 10_000, intervals: [100, 150, 250] },
+      )
+      .toBe(true);
 
-    const listLineBox = await listLine.boundingBox();
-    expect(listLineBox).toBeTruthy();
+    const { marker, paragraph } = await readFirstCharacterXs(page, HANGING_INDENT_PARAGRAPH);
+    if (marker === null || paragraph === null) {
+      throw new Error(
+        `expected a measurable first character on both the wrapped list line and the ${JSON.stringify(
+          HANGING_INDENT_PARAGRAPH,
+        )} line, got ${JSON.stringify({ marker, paragraph })}`,
+      );
+    }
 
-    const plainLine = page.locator('.cm-line:not(.cm-list-item)').first();
-    const plainBox = await plainLine.boundingBox();
-    expect(plainBox).toBeTruthy();
-
-    expect(Math.abs(listLineBox?.x - plainBox?.x)).toBeLessThan(50);
+    expect(
+      Math.abs(marker - paragraph),
+      `the list marker renders ${(marker - paragraph).toFixed(2)}px from the plain paragraph's first character; ` +
+        `a hanging indent must pull the marker back to the paragraph's left edge rather than pushing it right`,
+    ).toBeLessThanOrEqual(MARKER_ALIGNMENT_TOLERANCE_PX);
   });
 });
 

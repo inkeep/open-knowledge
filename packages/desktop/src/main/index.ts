@@ -468,7 +468,11 @@ import {
   isTerminalConsentedWithGrace,
   readTerminalShellSetting,
 } from './terminal-consent.ts';
-import { commitTerminalDockState } from './terminal-dock-persistence.ts';
+import {
+  applyAgentPanelVisibilityUpdate,
+  commitTerminalDockState,
+  resolveRestoredAgentPanelVisible,
+} from './terminal-dock-persistence.ts';
 import { observeTerminalLaunch } from './terminal-gate-observation.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
 import {
@@ -991,6 +995,7 @@ function persistTerminalDockForWindow(
   update: Partial<{
     terminalVisible: boolean;
     terminalSnapshot: OkTerminalRestartSnapshot;
+    agentPanelVisible: boolean;
   }>,
 ): OkTerminalDockStateWriteResult {
   const stateKey = terminalStateKey(win);
@@ -3964,7 +3969,10 @@ function registerIpcHandlers() {
     const orders = dockOrderForWindow.get(win.id);
     return {
       terminalVisible: dockVisibleForWindow.get(win.id) ?? persisted?.terminalVisible ?? false,
-      agentPanelVisible: agentPanelVisibleForWindow.get(win.id) ?? false,
+      agentPanelVisible: resolveRestoredAgentPanelVisible({
+        inMemory: agentPanelVisibleForWindow.get(win.id),
+        persisted,
+      }),
       terminal: orders?.terminal,
       terminalSnapshot: terminalSnapshotForWindow.get(win.id) ?? persisted?.terminalSnapshot,
       agents: orders?.agents,
@@ -4328,8 +4336,21 @@ function registerIpcHandlers() {
             );
           }
         }
-        if (state.agentPanelVisible !== undefined)
-          agentPanelVisibleForWindow.set(win.id, state.agentPanelVisible);
+        if (state.agentPanelVisible !== undefined) {
+          applyAgentPanelVisibilityUpdate(
+            {
+              rememberForWindow: (visible) => agentPanelVisibleForWindow.set(win.id, visible),
+              persist: (visible) =>
+                persistTerminalDockForWindow(win, { agentPanelVisible: visible }),
+              warnPersistFailed: (reason) =>
+                getLogger('terminal').warn(
+                  { reason },
+                  'agents panel visibility persistence failed',
+                ),
+            },
+            state.agentPanelVisible,
+          );
+        }
       }
     }
     refreshApplicationMenu();

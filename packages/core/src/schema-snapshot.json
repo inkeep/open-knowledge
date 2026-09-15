@@ -622,6 +622,15 @@
         },
         "sourceTitleMarker": {
           "hasDefault": true
+        },
+        "sourceTarget": {
+          "hasDefault": true
+        },
+        "sourceAnchor": {
+          "hasDefault": true
+        },
+        "sourceAlias": {
+          "hasDefault": true
         }
       },
       "excludes": "link",
