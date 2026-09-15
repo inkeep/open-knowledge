@@ -5,7 +5,7 @@ import {
   remarkProseMirror,
 } from '@handlewithcare/remark-prosemirror';
 import type { Node as PmNode, Schema } from '@tiptap/pm/model';
-import type { Root as MdastRoot } from 'mdast';
+import type { Nodes as MdastNode, Root as MdastRoot } from 'mdast';
 import remarkFrontmatter from 'remark-frontmatter';
 import remarkGfm from 'remark-gfm';
 import remarkGithubAlerts from 'remark-github-alerts';
@@ -16,8 +16,8 @@ import { type Processor, unified } from 'unified';
 import { VFile } from 'vfile';
 
 import './mdast-augmentation.ts';
-import { protectFromMdx, restoreFromMdx } from './autolink-void-html-guard.ts';
-import { encodeBackslashEscapes, restoreBackslashEscapesPlugin } from './backslash-escape-guard.ts';
+import { restoreFromMdx } from './autolink-void-html-guard.ts';
+import { restoreBackslashEscapesPlugin } from './backslash-escape-guard.ts';
 import { calloutTransformerPlugin, REMARK_GITHUB_ALERTS_OPTIONS } from './callout-transformer.ts';
 import { commentPromoterPlugin } from './comment-promoter.ts';
 import { dedentBlockJsxClose } from './dedent-block-jsx-close.ts';
@@ -25,17 +25,24 @@ import { detailsAccordionPromoterPlugin } from './details-accordion-promoter.ts'
 import { divAlignPromoterPlugin } from './div-align-promoter.ts';
 import { materializeDocEdgeBlankRuns } from './doc-edge-blank-runs.ts';
 import { emptyTaskItemUnmintPlugin, mintEmptyTaskItemContent } from './empty-task-item.ts';
-import { encodeEntityRefs, restoreEntityRefsPlugin } from './entity-ref-guard.ts';
+import { restoreEntityRefsPlugin } from './entity-ref-guard.ts';
+import { escapeProvenancePlugin } from './escape-provenance.ts';
 import { highlightPromoterPlugin } from './highlight-promoter.ts';
 import { imagePromoterPlugin } from './image-promoter.ts';
 import { indentedCodePromoterPlugin } from './indented-code-promoter.ts';
 import { insertInteriorBlankRunParagraphs } from './interior-blank-runs.ts';
 import { linkReferenceDestinationPlugin } from './link-reference-destination.ts';
 import { mathPromoterPlugin } from './math-promoter.ts';
-import type { SourceDocBoundary } from './mdast-augmentation.ts';
+import {
+  type EntityReferenceSpan,
+  type EscapeProvenanceEntry,
+  hasEscapeProvenance,
+  type SourceDocBoundary,
+} from './mdast-augmentation.ts';
 import { mergedPostParseWalkerPlugin } from './merged-walker.ts';
 import { mermaidPromoterPlugin } from './mermaid-promoter.ts';
 import { nonRenderingContextDemotePlugin } from './non-rendering-context-demote.ts';
+import { protectParserSource } from './parser-reservations.ts';
 import { positionAwareBlankLineJoin } from './position-aware-join.ts';
 import { remarkMdxAgnostic } from './remark-mdx-agnostic.ts';
 import { singleDollarMathPromoterPlugin } from './single-dollar-math-promoter.ts';
@@ -74,6 +81,7 @@ function ensureNonEmptyDoc(tree: MdastRoot): MdastRoot {
 
 export const ACTIVE_MDAST_PLUGINS = [
   { name: 'remark-parse', plugin: remarkParse },
+  { name: 'escape-provenance', plugin: escapeProvenancePlugin },
   { name: 'remark-mdx-agnostic', plugin: remarkMdxAgnostic },
   { name: 'remark-gfm', plugin: remarkGfm },
   { name: 'remark-math', plugin: remarkMath, options: { singleDollarTextMath: false } },
@@ -211,9 +219,7 @@ function readDocBoundary(value: unknown): SourceDocBoundary | undefined {
 export function parseMd(rawSource: string, processor: Processor): PmNode {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
   const source = dedentBlockJsxClose(rawAfterBom);
-  const protectedFr14 = encodeBackslashEscapes(source);
-  const protectedR23 = protectFromMdx(protectedFr14);
-  const protected_ = encodeEntityRefs(protectedR23);
+  const protected_ = protectParserSource(source);
 
   const file = new VFile(protected_);
   const tree = processor.parse(file);
@@ -242,7 +248,7 @@ function parseToMdast(
 ): MdastRoot {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
   const source = dedentBlockJsxClose(rawAfterBom);
-  const protected_ = encodeEntityRefs(protectFromMdx(encodeBackslashEscapes(source)));
+  const protected_ = protectParserSource(source);
   const file = new VFile(protected_);
   const tree = processor.parse(file);
   file.value = source;
@@ -260,6 +266,8 @@ export function serializeMd(doc: PmNode, processor: Processor, opts: SerializeMd
     markHandlers: opts.pmMarkHandlers,
   });
 
+  coalesceEscapedTextRuns(mdast);
+
   mintEmptyTaskItemContent(mdast);
 
   stripTrailingEdge(mdast);
@@ -275,4 +283,47 @@ export function serializeMd(doc: PmNode, processor: Processor, opts: SerializeMd
   }
   if (boundary?.bom) out = `\uFEFF${out}`;
   return out;
+}
+
+function coalesceEscapedTextRuns(node: MdastNode): void {
+  if (!('children' in node) || !Array.isArray(node.children)) return;
+  for (const child of node.children) coalesceEscapedTextRuns(child as MdastNode);
+  for (let index = 0; index + 1 < node.children.length; ) {
+    const left = node.children[index];
+    const right = node.children[index + 1];
+    const leftData = left?.data;
+    const rightData = right?.data;
+    const leftEscapedChars = hasEscapeProvenance(leftData) ? leftData.escapedChars : null;
+    const rightEscapedChars = hasEscapeProvenance(rightData) ? rightData.escapedChars : null;
+    if (
+      left?.type !== 'text' ||
+      right?.type !== 'text' ||
+      typeof left.data?.sourceRaw === 'string' ||
+      typeof right.data?.sourceRaw === 'string' ||
+      (leftEscapedChars === null && rightEscapedChars === null)
+    ) {
+      index += 1;
+      continue;
+    }
+    const leftLength = left.value.length;
+    left.value += right.value;
+    left.data ??= {};
+    left.data.escapedChars = [
+      ...(leftEscapedChars ?? []),
+      ...(rightEscapedChars ?? []).map((entry: EscapeProvenanceEntry) => ({
+        ...entry,
+        offset: entry.offset + leftLength,
+      })),
+    ];
+    if (right.data?.entityRefSpans?.length) {
+      left.data.entityRefSpans = [
+        ...(left.data.entityRefSpans ?? []),
+        ...right.data.entityRefSpans.map((span: EntityReferenceSpan) => ({
+          ...span,
+          offset: span.offset + leftLength,
+        })),
+      ];
+    }
+    node.children.splice(index + 1, 1);
+  }
 }

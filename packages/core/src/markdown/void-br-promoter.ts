@@ -1,7 +1,7 @@
 import type { Break, Parent, Root, Text } from 'mdast';
 import { SKIP, visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
-import { deriveFragmentPosition } from './promoter-position.ts';
+import { deriveFragmentPosition, sliceTextWithProvenance } from './promoter-position.ts';
 
 const VOID_BR_IN_TEXT_RE = /(?<!\uE102)<br[ \t]*\/?>/g;
 
@@ -29,10 +29,7 @@ function promoteVoidBrInParent(parent: Parent, source: string): void {
       const matchStart = match.index;
 
       if (matchStart > lastIndex) {
-        const lead: Text = { type: 'text', value: text.slice(lastIndex, matchStart) };
-        const pos = deriveFragmentPosition(source, child as Text, lastIndex, matchStart);
-        if (pos) lead.position = pos;
-        segments.push(lead);
+        segments.push(sliceTextWithProvenance(source, child as Text, lastIndex, matchStart));
       }
 
       const brNode: Break = {
@@ -56,10 +53,7 @@ function promoteVoidBrInParent(parent: Parent, source: string): void {
       newChildren.push(child);
     } else {
       if (lastIndex < text.length) {
-        const tail: Text = { type: 'text', value: text.slice(lastIndex) };
-        const pos = deriveFragmentPosition(source, child as Text, lastIndex, text.length);
-        if (pos) tail.position = pos;
-        segments.push(tail);
+        segments.push(sliceTextWithProvenance(source, child as Text, lastIndex, text.length));
       }
       newChildren.push(...segments);
     }

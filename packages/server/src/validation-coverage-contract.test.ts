@@ -1,6 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { LINT_PLUGIN_IDS, VALIDATION_SOURCES } from '@inkeep/open-knowledge-core';
+import {
+  isMutatingParserReservation,
+  LINT_PLUGIN_IDS,
+  VALIDATION_SOURCES,
+} from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import { formatValidatorDegradationWarning } from './lint/validation-audit.ts';
 import { DESCRIPTION as AUDIT_DESCRIPTION, AUDIT_WARNINGS_DESCRIPTION } from './mcp/tools/audit.ts';
@@ -18,6 +22,30 @@ const MCP_REFERENCE = readFileSync(
   join(import.meta.dir, '../../../docs/content/reference/mcp.mdx'),
   'utf8',
 );
+const OKF_PLUGIN = readFileSync(
+  join(import.meta.dir, '../../../docs/content/plugins/okf.mdx'),
+  'utf8',
+);
+
+function formatCodepoint(codepoint: number): string {
+  return `U+${codepoint.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+function documentedParserReservations(): string[] {
+  const clause = /Parser-reserved Private Use Area code points (.+?) are also replaced/.exec(
+    OKF_PLUGIN,
+  )?.[1];
+  if (clause === undefined) throw new Error('OKF parser-reservation disclosure is missing');
+  return [...clause.matchAll(/U\+([0-9A-F]{4,6})(?:–U\+([0-9A-F]{4,6}))?/g)].flatMap(
+    ([, startHex, endHex]) => {
+      const start = Number.parseInt(startHex ?? '', 16);
+      const end = Number.parseInt(endHex ?? startHex ?? '', 16);
+      return Array.from({ length: end - start + 1 }, (_, offset) =>
+        formatCodepoint(start + offset),
+      );
+    },
+  );
+}
 
 function mcpReferenceRow(tool: string): string {
   const row = MCP_REFERENCE.split('\n').find((line) => line.startsWith(`| \`${tool}\` |`));
@@ -26,6 +54,13 @@ function mcpReferenceRow(tool: string): string {
 }
 
 describe('validation coverage source contract', () => {
+  test('OKF documents every parser reservation neutralized by generated indexes', () => {
+    const executable = Array.from({ length: 0xf8ff - 0xe000 + 1 }, (_, offset) => 0xe000 + offset)
+      .filter((codepoint) => isMutatingParserReservation(String.fromCodePoint(codepoint)))
+      .map(formatCodepoint);
+    expect(documentedParserReservations()).toEqual(executable);
+  });
+
   test('tool descriptions name every source family they can select', () => {
     for (const source of LINT_PLUGIN_IDS) expect(LINT_DESCRIPTION).toContain(`\`${source}\``);
     for (const source of VALIDATION_SOURCES) expect(AUDIT_DESCRIPTION).toContain(`\`${source}\``);

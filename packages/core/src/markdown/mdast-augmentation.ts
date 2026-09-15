@@ -1,5 +1,48 @@
 import type { Position } from 'unist';
 
+export interface EscapeProvenanceEntry {
+  offset: number;
+  char: string;
+}
+
+export interface EntityReferenceSpan {
+  offset: number;
+  length: number;
+  raw: string;
+}
+
+export interface EscapeProvenanceTextData {
+  escapedChars: EscapeProvenanceEntry[];
+}
+
+export type EscapeProvenanceValidation =
+  | { kind: 'absent' }
+  | { kind: 'malformed' }
+  | { kind: 'valid'; data: EscapeProvenanceTextData };
+
+export function validateEscapeProvenance(data: unknown): EscapeProvenanceValidation {
+  if (typeof data !== 'object' || data === null || !Object.hasOwn(data, 'escapedChars')) {
+    return { kind: 'absent' };
+  }
+  const escapedChars = (data as { escapedChars?: unknown }).escapedChars;
+  if (!Array.isArray(escapedChars)) return { kind: 'malformed' };
+  const valid = escapedChars.every((entry) => {
+    if (typeof entry !== 'object' || entry === null) return false;
+    const offset = (entry as { offset?: unknown }).offset;
+    return (
+      typeof offset === 'number' &&
+      Number.isInteger(offset) &&
+      offset >= 0 &&
+      typeof (entry as { char?: unknown }).char === 'string'
+    );
+  });
+  return valid ? { kind: 'valid', data: { escapedChars } } : { kind: 'malformed' };
+}
+
+export function hasEscapeProvenance<T>(data: T): data is T & EscapeProvenanceTextData {
+  return validateEscapeProvenance(data).kind === 'valid';
+}
+
 export const PROMOTED_MDAST_TYPES = [
   'wikiLink',
   'wikiLinkEmbed',
@@ -121,9 +164,9 @@ declare module 'mdast' {
     sourceDocBoundary?: SourceDocBoundary;
   }
   interface TextData {
-    escapedChars?: Array<{ offset: number; char: string }>;
+    escapedChars?: EscapeProvenanceEntry[];
     sourceRaw?: string;
-    entityRefSpans?: Array<{ offset: number; length: number; raw: string }>;
+    entityRefSpans?: EntityReferenceSpan[];
   }
   interface EmphasisData {
     sourceDelimiter?: '*' | '_';

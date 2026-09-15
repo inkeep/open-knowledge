@@ -7,6 +7,7 @@ import {
   deriveFragmentPosition,
   escapedValueOffsets,
   isEscapeDerivedRun,
+  sliceTextWithProvenance,
 } from './promoter-position.ts';
 
 const HIGHLIGHT_RE = /(?<!=)==(?=\S)([^\n]*?[^\s=])==(?!=)/g;
@@ -45,35 +46,13 @@ function getLastChar(node: PhrasingContent): string | null {
   return null;
 }
 
-interface EntityRefSpan {
-  offset: number;
-  length: number;
-  raw: string;
-}
-
-function sliceTextNode(source: Text, from: number, to: number, rawSource?: string): Text {
-  const out: Text = { type: 'text', value: source.value.slice(from, to) };
-  if (rawSource !== undefined) {
-    const pos = deriveFragmentPosition(rawSource, source, from, to);
-    if (pos) out.position = pos;
-  }
-  const spans = (source.data as { entityRefSpans?: EntityRefSpan[] } | undefined)?.entityRefSpans;
-  if (spans?.length) {
-    const inside = spans
-      .filter((s) => s.offset >= from && s.offset + s.length <= to)
-      .map((s) => ({ ...s, offset: s.offset - from }));
-    if (inside.length > 0) out.data = { entityRefSpans: inside } as Text['data'];
-  }
-  return out;
-}
-
 function promoteCrossChildren(parent: Parent, source: string): void {
   const children = parent.children as PhrasingContent[];
   const escapeSets = new Map<Text, ReadonlySet<number> | null>();
   const escapesOf = (node: Text): ReadonlySet<number> | null => {
     const cached = escapeSets.get(node);
     if (cached !== undefined) return cached;
-    const set = escapedValueOffsets(source, node);
+    const set = escapedValueOffsets(node);
     escapeSets.set(node, set);
     return set;
   };
@@ -184,10 +163,12 @@ function promoteCrossChildren(parent: Parent, source: string): void {
 
     const bodyChildren: PhrasingContent[] = [];
     if (openTrailing.length > 0) {
-      bodyChildren.push(sliceTextNode(openChild, openPos + 2, openValue.length, source));
+      bodyChildren.push(sliceTextWithProvenance(source, openChild, openPos + 2, openValue.length));
     }
     for (let k = outerI + 1; k < closeChildIdx; k++) bodyChildren.push(children[k]);
-    if (closeLeading.length > 0) bodyChildren.push(sliceTextNode(closeChild, 0, closePos, source));
+    if (closeLeading.length > 0) {
+      bodyChildren.push(sliceTextWithProvenance(source, closeChild, 0, closePos));
+    }
 
     if (!bodyCrossesInline) {
       outerI++;
@@ -200,10 +181,14 @@ function promoteCrossChildren(parent: Parent, source: string): void {
     };
 
     const replacement: PhrasingContent[] = [];
-    if (leadValue.length > 0) replacement.push(sliceTextNode(openChild, 0, openPos, source));
+    if (leadValue.length > 0) {
+      replacement.push(sliceTextWithProvenance(source, openChild, 0, openPos));
+    }
     replacement.push(markNode as unknown as PhrasingContent);
     if (tailValue.length > 0) {
-      replacement.push(sliceTextNode(closeChild, closePos + 2, closeChild.value.length, source));
+      replacement.push(
+        sliceTextWithProvenance(source, closeChild, closePos + 2, closeChild.value.length),
+      );
     }
 
     children.splice(outerI, closeChildIdx - outerI + 1, ...replacement);
@@ -229,7 +214,7 @@ export function highlightPromoterPlugin() {
       const value = node.value;
       if (value.indexOf('==') === -1) return;
 
-      const escaped = escapedValueOffsets(source, node);
+      const escaped = escapedValueOffsets(node);
       HIGHLIGHT_RE.lastIndex = 0;
       const matches: RegExpExecArray[] = [];
       let m: RegExpExecArray | null;
@@ -251,14 +236,9 @@ export function highlightPromoterPlugin() {
         const start = match.index;
         const end = start + match[0].length;
         if (start > cursor) {
-          const lead = sliceTextNode(node, cursor, start);
-          const pos = deriveFragmentPosition(source, node, cursor, start);
-          if (pos) lead.position = pos;
-          replacements.push(lead);
+          replacements.push(sliceTextWithProvenance(source, node, cursor, start));
         }
-        const innerText = sliceTextNode(node, start + 2, end - 2);
-        const innerPos = deriveFragmentPosition(source, node, start + 2, end - 2);
-        if (innerPos) innerText.position = innerPos;
+        const innerText = sliceTextWithProvenance(source, node, start + 2, end - 2);
         const markNode: MarkMdast = {
           type: 'mark',
           children: [innerText],
@@ -269,10 +249,7 @@ export function highlightPromoterPlugin() {
         cursor = end;
       }
       if (cursor < value.length) {
-        const tail = sliceTextNode(node, cursor, value.length);
-        const pos = deriveFragmentPosition(source, node, cursor, value.length);
-        if (pos) tail.position = pos;
-        replacements.push(tail);
+        replacements.push(sliceTextWithProvenance(source, node, cursor, value.length));
       }
 
       const arr = (parent as { children: PhrasingContent[] }).children;

@@ -6,6 +6,7 @@ import {
   deriveFragmentPosition,
   escapedValueOffsets,
   isEscapeDerivedRun,
+  sliceTextWithProvenance,
 } from './promoter-position.ts';
 
 const SINGLE_DOLLAR_MATH_RE = /(?<!\\)\$(?=\S)([^$\n]*?[^\s$])\$(?!\d)/g;
@@ -19,7 +20,7 @@ export function singleDollarMathPromoterPlugin() {
       const value = node.value;
       if (value.indexOf('$') === -1) return;
 
-      const escaped = escapedValueOffsets(source, node);
+      const escaped = escapedValueOffsets(node);
       SINGLE_DOLLAR_MATH_RE.lastIndex = 0;
       const matches: RegExpExecArray[] = [];
       let m: RegExpExecArray | null;
@@ -41,10 +42,7 @@ export function singleDollarMathPromoterPlugin() {
         const start = match.index;
         const end = start + match[0].length;
         if (start > cursor) {
-          const lead: Text = { type: 'text', value: value.slice(cursor, start) };
-          const pos = deriveFragmentPosition(source, node, cursor, start);
-          if (pos) lead.position = pos;
-          replacements.push(lead);
+          replacements.push(sliceTextWithProvenance(source, node, cursor, start));
         }
         const mathNode: InlineMath = { type: 'inlineMath', value: match[1] };
         const fullPos = deriveFragmentPosition(source, node, start, end);
@@ -53,10 +51,7 @@ export function singleDollarMathPromoterPlugin() {
         cursor = end;
       }
       if (cursor < value.length) {
-        const tail: Text = { type: 'text', value: value.slice(cursor) };
-        const pos = deriveFragmentPosition(source, node, cursor, value.length);
-        if (pos) tail.position = pos;
-        replacements.push(tail);
+        replacements.push(sliceTextWithProvenance(source, node, cursor, value.length));
       }
 
       const arr = (parent as { children: PhrasingContent[] }).children;

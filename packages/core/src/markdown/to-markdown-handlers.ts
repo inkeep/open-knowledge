@@ -5,7 +5,7 @@ import { classifyCharacter } from 'micromark-util-classify-character';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
 import { scanBraceSpans } from './autolink-void-html-guard.ts';
 import { widenFenceLength } from './code-fence.ts';
-import type { RawMdxFallbackMdast } from './mdast-augmentation.ts';
+import { type RawMdxFallbackMdast, validateEscapeProvenance } from './mdast-augmentation.ts';
 import { TO_MARKDOWN_EXT } from './remark-mdx-agnostic.ts';
 import { isInlineWhitespaceNumericCharRef } from './whitespace-char-ref.ts';
 import { escapeDecodedTableCellPipes } from './wiki-escape.ts';
@@ -76,27 +76,57 @@ export const toMarkdownHandlers = {
       }
     }
 
-    if (node.data?.escapedChars?.length) {
+    const escapeProvenance = validateEscapeProvenance(node.data);
+    if (
+      escapeProvenance.kind === 'malformed' &&
+      typeof process !== 'undefined' &&
+      process.env?.OK_DEBUG_POSITION_SLICE === '1'
+    ) {
+      console.warn(
+        '[escape-provenance] malformed escapedChars metadata: CommonMark-safe serialization applies',
+      );
+    }
+
+    if (escapeProvenance.kind === 'valid' && escapeProvenance.data.escapedChars.length > 0) {
       const value: string = node.value ?? '';
-      const escaped: Array<{ offset: number; char: string }> = node.data.escapedChars;
+      const escaped = escapeProvenance.data.escapedChars;
       let result = '';
       let lastIdx = 0;
-      for (const { offset, char } of escaped) {
-        if (offset > lastIdx) {
-          result += safeText(state, value.slice(lastIdx, offset), {
+      let previousEscapedChar: string | undefined;
+      const appendPlain = (segment: string, after: string): void => {
+        if (!segment) return;
+        const escapedAngleEnd = previousEscapedChar === '<' ? segment.indexOf('>') : -1;
+        if (escapedAngleEnd >= 0) {
+          result += safeText(
+            state,
+            segment.slice(0, escapedAngleEnd + 1),
+            {
+              ...info,
+              before: info.before + result,
+              after: segment.slice(escapedAngleEnd + 1, escapedAngleEnd + 2) || after,
+            },
+            true,
+          );
+          segment = segment.slice(escapedAngleEnd + 1);
+        }
+        if (segment) {
+          result += safeText(state, segment, {
             ...info,
             before: info.before + result,
-            after: '\\',
+            after,
           });
+        }
+      };
+      for (const { offset, char } of escaped) {
+        if (offset > lastIdx) {
+          appendPlain(value.slice(lastIdx, offset), '\\');
         }
         result += `\\${char}`;
         lastIdx = offset + 1;
+        previousEscapedChar = char;
       }
       if (lastIdx < value.length) {
-        result += safeText(state, value.slice(lastIdx), {
-          ...info,
-          before: info.before + result,
-        });
+        appendPlain(value.slice(lastIdx), info.after);
       }
       return result;
     }
@@ -874,7 +904,7 @@ function isWhitespaceNumericCharRef(body: string): boolean {
   );
 }
 
-const TYPED_WS_REF_PUA = '';
+export const TYPED_WS_REF_PUA = '';
 
 const NUMERIC_CHAR_REF_TOKEN_RE = /&#(?:x[0-9A-Fa-f]+|X[0-9A-Fa-f]+|[0-9]+);/g;
 
@@ -888,20 +918,32 @@ function emitsAtLineStart(emittedPrefix: string): boolean {
   return /[\r\n][\t ]*$/.test(emittedPrefix);
 }
 
-function safeText(state: State, value: string, info: Info): string {
+function safeText(
+  state: State,
+  value: string,
+  info: Info,
+  suppressGfmAutolinkLiteral: boolean = false,
+): string {
   const { matched } = scanBraceSpans(value, { escapeAware: false });
-  if (matched.length === 0) return safeTextSegment(state, value, info);
+  if (matched.length === 0) {
+    return safeTextSegment(state, value, info, suppressGfmAutolinkLiteral);
+  }
 
   let result = '';
   let pending = 0;
 
   const flushNormal = (end: number): void => {
     if (end > pending) {
-      result += safeTextSegment(state, value.slice(pending, end), {
-        ...info,
-        before: info.before + result,
-        after: value.slice(end, end + 1) || info.after,
-      });
+      result += safeTextSegment(
+        state,
+        value.slice(pending, end),
+        {
+          ...info,
+          before: info.before + result,
+          after: value.slice(end, end + 1) || info.after,
+        },
+        suppressGfmAutolinkLiteral,
+      );
     }
     pending = end;
   };
@@ -916,7 +958,12 @@ function safeText(state: State, value: string, info: Info): string {
   return result;
 }
 
-function safeTextSegment(state: State, value: string, info: Info): string {
+function safeTextSegment(
+  state: State,
+  value: string,
+  info: Info,
+  suppressGfmAutolinkLiteral: boolean = false,
+): string {
   const originalUnsafe = state.unsafe;
   state.unsafe = originalUnsafe.filter((u) => {
     if (u.character === '&' && u.after === '[#A-Za-z]') return false;
@@ -925,6 +972,14 @@ function safeTextSegment(state: State, value: string, info: Info): string {
     if (u.character === '(') return false;
     if (u.character === '!' && u.after === '\\[' && u.inConstruct === 'phrasing') return false;
     if (u.character === '@' && u.before === '[+\\-.\\w]') return false;
+    if (
+      suppressGfmAutolinkLiteral &&
+      u.character === ':' &&
+      u.before === '[ps]' &&
+      u.after === '\\/'
+    ) {
+      return false;
+    }
     if (u.character === '{' && Array.isArray(u.inConstruct) && u.inConstruct.includes('phrasing')) {
       return false;
     }

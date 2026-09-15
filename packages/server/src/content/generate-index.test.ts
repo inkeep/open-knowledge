@@ -14,7 +14,7 @@ describe('buildIndexMarkdown', () => {
         entry({ path: 'notes/b.md', title: 'Beta', type: 'note' }),
         entry({ path: 'concepts/c.md', title: 'Gamma', type: 'concept' }),
       ],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
 
     expect(out).toBe(
@@ -45,7 +45,7 @@ describe('buildIndexMarkdown', () => {
       ],
     ]) {
       for (const isRoot of [true, false]) {
-        const out = buildIndexMarkdown(entries, { isRoot });
+        const out = buildIndexMarkdown(entries, { warningScope: false, isRoot });
         expect(out.match(/^# .+$/gm), `isRoot=${isRoot}, ${entries.length} entries`).toEqual([
           '# Index',
         ]);
@@ -55,6 +55,7 @@ describe('buildIndexMarkdown', () => {
 
   test('a document with no type lands in Other', () => {
     const out = buildIndexMarkdown([entry({ path: 'scratch.md', title: 'Scratch' })], {
+      warningScope: false,
       isRoot: false,
     });
     expect(out).toContain('## Other');
@@ -66,7 +67,7 @@ describe('buildIndexMarkdown', () => {
         entry({ path: 'a.md', title: 'A', type: '   ' }),
         entry({ path: 'b.md', title: 'B', type: '' }),
       ],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
     expect(out.match(/^## .+$/gm)).toEqual(['## Other']);
   });
@@ -78,7 +79,7 @@ describe('buildIndexMarkdown', () => {
         entry({ path: 'a.md', title: 'Apple', type: 'note' }),
         entry({ path: 'm.md', title: 'mango', type: 'concept' }),
       ],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
 
     const headings = out.match(/^## .+$/gm);
@@ -92,7 +93,7 @@ describe('buildIndexMarkdown', () => {
         entry({ path: 'a.md', title: 'A', type: 'note', description: 'has one' }),
         entry({ path: 'b.md', title: 'B', type: 'note' }),
       ],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
 
     expect(out).toContain('* [A](./a.md) - has one');
@@ -100,10 +101,20 @@ describe('buildIndexMarkdown', () => {
     expect(out).not.toContain('* [B](./b.md) -');
   });
 
+  test('the description suffix is omitted entirely when the description is blank', () => {
+    const out = buildIndexMarkdown(
+      [entry({ path: 'a.md', title: 'A', type: 'note', description: ' \n ' })],
+      { warningScope: false, isRoot: false },
+    );
+
+    expect(out).toContain('* [A](./a.md)\n');
+    expect(out).not.toContain('* [A](./a.md) -');
+  });
+
   test('a multi-line description collapses to one line so it cannot break the list item', () => {
     const out = buildIndexMarkdown(
       [entry({ path: 'a.md', title: 'A', type: 'note', description: 'first\nsecond   third' })],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
 
     expect(out).toContain('* [A](./a.md) - first second third');
@@ -113,17 +124,17 @@ describe('buildIndexMarkdown', () => {
   test('the root index carries a quoted okf_version and a non-root index carries no frontmatter', () => {
     const entries = [entry({ path: 'a.md', title: 'A', type: 'note' })];
 
-    const root = buildIndexMarkdown(entries, { isRoot: true });
+    const root = buildIndexMarkdown(entries, { warningScope: false, isRoot: true });
     expect(root.startsWith('---\nokf_version: "0.2"\n---\n\n')).toBe(true);
 
-    const nested = buildIndexMarkdown(entries, { isRoot: false });
+    const nested = buildIndexMarkdown(entries, { warningScope: false, isRoot: false });
     expect(nested.startsWith('---')).toBe(false);
   });
 
   test('links are relative with the extension retained, never a bare folder', () => {
     const out = buildIndexMarkdown(
       [entry({ path: 'concepts/nested/deep.md', title: 'Deep', type: 'concept' })],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
 
     expect(out).toContain('](./concepts/nested/deep.md)');
@@ -131,13 +142,13 @@ describe('buildIndexMarkdown', () => {
   });
 
   test('an empty project yields the title alone rather than an invented section', () => {
-    expect(buildIndexMarkdown([], { isRoot: true })).toBe(
+    expect(buildIndexMarkdown([], { warningScope: false, isRoot: true })).toBe(
       '---\nokf_version: "0.2"\n---\n\n# Index\n',
     );
-    expect(buildIndexMarkdown([], { isRoot: false })).toBe('# Index\n');
+    expect(buildIndexMarkdown([], { warningScope: false, isRoot: false })).toBe('# Index\n');
   });
 
-  test('a bucket whose members spell the heading differently renders the same either way', () => {
+  test('literal headings and normalized equivalents render the same in any input order', () => {
     const mixed = [
       entry({ path: 'a.md', title: 'Alpha', type: 'Flow' }),
       entry({ path: 'b.md', title: 'Beta', type: 'Flow #' }),
@@ -146,29 +157,39 @@ describe('buildIndexMarkdown', () => {
     ];
 
     for (const isRoot of [true, false]) {
-      const forward = buildIndexMarkdown(mixed, { isRoot });
-      const reversed = buildIndexMarkdown(mixed.toReversed(), { isRoot });
+      const forward = buildIndexMarkdown(mixed, { warningScope: false, isRoot });
+      const reversed = buildIndexMarkdown(mixed.toReversed(), { warningScope: false, isRoot });
 
       expect(reversed, `isRoot=${isRoot}`).toBe(forward);
+      expect(headingContents(forward).map((heading) => heading.normalize('NFC'))).toEqual([
+        'Index',
+        'Café',
+        'Flow',
+        'Flow \\#',
+      ]);
       for (const href of ['](./a.md)', '](./b.md)', '](./c.md)', '](./d.md)']) {
         expect(forward, `isRoot=${isRoot} ${href}`).toContain(href);
       }
     }
   });
 
-  test('a generator-owned heading keeps its own spelling against a colliding type', () => {
+  test('a generator-owned heading remains distinct from a punctuation-shaped literal type', () => {
     const out = buildIndexMarkdown(
       [entry({ path: 'a.md', title: 'Alpha', type: 'Subdirectories #' })],
-      { isRoot: false, subdirectories: [{ path: 'nested/index.md', title: 'nested' }] },
+      {
+        warningScope: false,
+        isRoot: false,
+        subdirectories: [{ directory: 'nested', title: 'nested' }],
+      },
     );
 
     expect(out).toContain('## Subdirectories\n');
-    expect(out).not.toContain('## Subdirectories #');
+    expect(out).toContain('## Subdirectories \\#\n');
     expect(out).toContain('](./a.md)');
     expect(out).toContain('](./nested/index.md)');
   });
 
-  test('every heading the generator owns keeps its own spelling against a colliding type', () => {
+  test('every heading the generator owns remains distinct from HTML-shaped literal types', () => {
     const out = buildIndexMarkdown(
       [
         entry({ path: 'untyped.md', title: 'Untyped' }),
@@ -176,13 +197,19 @@ describe('buildIndexMarkdown', () => {
         entry({ path: 'b.md', title: 'Beta', type: '<b></b>Subdirectories' }),
         entry({ path: 'c.md', title: 'Gamma', type: '<b></b>Index' }),
       ],
-      { isRoot: false, subdirectories: [{ path: 'nested/index.md', title: 'nested' }] },
+      {
+        warningScope: false,
+        isRoot: false,
+        subdirectories: [{ directory: 'nested', title: 'nested' }],
+      },
     );
 
     expect(out).toContain('# Index\n');
     expect(out).toContain('## Other\n');
     expect(out).toContain('## Subdirectories\n');
-    expect(out).not.toContain('<b>');
+    expect(out).toContain('## \\<b\\>\\<\\/b\\>Other\n');
+    expect(out).toContain('## \\<b\\>\\<\\/b\\>Subdirectories\n');
+    expect(out).toContain('## \\<b\\>\\<\\/b\\>Index\n');
 
     for (const href of ['](./untyped.md)', '](./a.md)', '](./b.md)', '](./c.md)']) {
       expect(out, href).toContain(href);
@@ -190,7 +217,7 @@ describe('buildIndexMarkdown', () => {
   });
 
   test.each([...GENERATOR_OWNED_HEADINGS])(
-    'a colliding type cannot rename the generator-owned heading %j, reached from the entry loop alone',
+    'an HTML-shaped literal type remains distinct from generator-owned heading %j',
     (owned) => {
       for (const order of [
         [
@@ -203,10 +230,10 @@ describe('buildIndexMarkdown', () => {
         ],
       ]) {
         const label = `${owned} order=${order.map((e) => e.type).join(',')}`;
-        const out = buildIndexMarkdown(order, { isRoot: false });
+        const out = buildIndexMarkdown(order, { warningScope: false, isRoot: false });
 
         expect(headingContents(out), label).toContain(owned);
-        expect(out, label).not.toContain('<b>');
+        expect(headingContents(out), label).toContain(`\\<b\\>\\<\\/b\\>${owned}`);
         expect(out, label).toContain('](./a.md)');
         expect(out, label).toContain('](./b.md)');
       }
@@ -219,7 +246,7 @@ describe('buildIndexMarkdown', () => {
         entry({ path: 'readme.md', title: 'Overview', type: 'Index' }),
         entry({ path: 'login-flow.md', title: 'Login flow', type: 'Flow' }),
       ],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
 
     expect(out).toBe(
@@ -234,8 +261,11 @@ describe('buildIndexMarkdown', () => {
       entry({ path: 'c.md', title: 'Gamma', type: 'note' }),
     ];
 
-    const forward = buildIndexMarkdown(entries, { isRoot: true });
-    const reversed = buildIndexMarkdown([...entries].reverse(), { isRoot: true });
+    const forward = buildIndexMarkdown(entries, { warningScope: false, isRoot: true });
+    const reversed = buildIndexMarkdown([...entries].reverse(), {
+      warningScope: false,
+      isRoot: true,
+    });
     expect(reversed).toBe(forward);
   });
 
@@ -248,7 +278,7 @@ describe('buildIndexMarkdown', () => {
           type: 'note',
         }),
       ],
-      { isRoot: false },
+      { warningScope: false, isRoot: false },
     );
 
     expect(out).toContain(
@@ -262,8 +292,11 @@ describe('buildIndexMarkdown', () => {
       entry({ path: 'alpha.md', title: 'same', type: 'note' }),
     ];
 
-    const forward = buildIndexMarkdown(entries, { isRoot: false });
-    const reversed = buildIndexMarkdown([...entries].reverse(), { isRoot: false });
+    const forward = buildIndexMarkdown(entries, { warningScope: false, isRoot: false });
+    const reversed = buildIndexMarkdown([...entries].reverse(), {
+      warningScope: false,
+      isRoot: false,
+    });
 
     expect(reversed).toBe(forward);
     expect(forward.indexOf('./alpha.md')).toBeLessThan(forward.indexOf('./zeta.md'));
@@ -271,6 +304,7 @@ describe('buildIndexMarkdown', () => {
 
   test('collapses multiline section names into one heading', () => {
     const out = buildIndexMarkdown([entry({ path: 'a.md', title: 'A', type: 'project\n  plan' })], {
+      warningScope: false,
       isRoot: false,
     });
 
@@ -284,9 +318,10 @@ describe('buildIndexMarkdown', () => {
         entry({ path: 'concepts/aggregate.md', title: 'Aggregate', type: 'concept' }),
       ],
       {
+        warningScope: false,
         isRoot: false,
         directory: 'concepts',
-        subdirectories: [{ path: 'concepts/nested/index.md', title: 'nested' }],
+        subdirectories: [{ directory: 'concepts/nested', title: 'nested' }],
       },
     );
 
@@ -317,9 +352,10 @@ describe('buildIndexMarkdown', () => {
         }),
       ],
       {
+        warningScope: false,
         isRoot: false,
         directory: 'concepts',
-        subdirectories: [{ path: 'concepts/nested/index.md', title: 'nested' }],
+        subdirectories: [{ directory: 'concepts/nested', title: 'nested' }],
       },
     );
 
@@ -339,9 +375,10 @@ describe('buildIndexMarkdown', () => {
 
   test('a container directory with markdown only below it lists subdirectories and no type section', () => {
     const out = buildIndexMarkdown([], {
+      warningScope: false,
       isRoot: false,
       directory: 'concepts',
-      subdirectories: [{ path: 'concepts/nested/index.md', title: 'nested' }],
+      subdirectories: [{ directory: 'concepts/nested', title: 'nested' }],
     });
 
     expect(out).toBe(
@@ -360,11 +397,12 @@ describe('buildIndexMarkdown', () => {
           entry({ path: 'concepts/c.md', title: 'C' }),
         ],
         {
+          warningScope: false,
           isRoot,
           directory: 'concepts',
           subdirectories: [
-            { path: 'concepts/x/index.md', title: 'x' },
-            { path: 'concepts/y/index.md', title: 'y' },
+            { directory: 'concepts/x', title: 'x' },
+            { directory: 'concepts/y', title: 'y' },
           ],
         },
       );
@@ -380,16 +418,18 @@ describe('buildIndexMarkdown', () => {
       entry({ path: 'concepts/a.md', title: 'Alpha', type: 'concept' }),
     ];
     const subdirectories = [
-      { path: 'concepts/zeta/index.md', title: 'zeta' },
-      { path: 'concepts/alpha/index.md', title: 'alpha' },
+      { directory: 'concepts/zeta', title: 'zeta' },
+      { directory: 'concepts/alpha', title: 'alpha' },
     ];
 
     const forward = buildIndexMarkdown(entries, {
+      warningScope: false,
       isRoot: false,
       directory: 'concepts',
       subdirectories,
     });
     const reversed = buildIndexMarkdown([...entries].reverse(), {
+      warningScope: false,
       isRoot: false,
       directory: 'concepts',
       subdirectories: [...subdirectories].reverse(),
@@ -408,18 +448,20 @@ describe('buildIndexMarkdown', () => {
       entry({ path: 'concepts/aggregate.md', title: 'Aggregate', type: 'concept' }),
     ];
     const subdirectories = [
-      { path: 'concepts/zeta/index.md', title: 'zeta' },
-      { path: 'concepts/alpha/index.md', title: 'alpha' },
+      { directory: 'concepts/zeta', title: 'zeta' },
+      { directory: 'concepts/alpha', title: 'alpha' },
     ];
 
     for (const isRoot of [true, false]) {
       const label = `isRoot=${isRoot}`;
       const forward = buildIndexMarkdown(entries, {
+        warningScope: false,
         isRoot,
         directory: 'concepts',
         subdirectories,
       });
       const reversed = buildIndexMarkdown([...entries].reverse(), {
+        warningScope: false,
         isRoot,
         directory: 'concepts',
         subdirectories: [...subdirectories].reverse(),
@@ -450,7 +492,7 @@ describe('buildIndexMarkdown', () => {
     ];
     const out = buildIndexMarkdown(
       names.map((name) => entry({ path: `blogs/drafts/${name}.md`, title: name, type: 'note' })),
-      { isRoot: false, directory: 'blogs/drafts' },
+      { warningScope: false, isRoot: false, directory: 'blogs/drafts' },
     );
 
     const hrefs = [...out.matchAll(/\]\(([^)]+)\)/g)].map((match) => match[1] ?? '');
@@ -474,7 +516,11 @@ describe('buildIndexMarkdown', () => {
             entry({ path: 'readme.md', title: 'Readme', type }),
             entry({ path: 'login-flow.md', title: 'Login flow', type: 'Flow' }),
           ],
-          { isRoot, subdirectories: [{ path: 'nested/index.md', title: 'nested' }] },
+          {
+            warningScope: false,
+            isRoot,
+            subdirectories: [{ directory: 'nested', title: 'nested' }],
+          },
         );
 
         expect(out, label).toContain('](./readme.md)');
@@ -495,11 +541,12 @@ function headingContents(markdown: string): string[] {
 
 function generatorOwnedHeadings(): string[] {
   const probes = [false, true].flatMap((isRoot) => [
-    buildIndexMarkdown([], { isRoot }),
-    buildIndexMarkdown([entry({ path: 'a.md', title: 'A' })], { isRoot }),
+    buildIndexMarkdown([], { warningScope: false, isRoot }),
+    buildIndexMarkdown([entry({ path: 'a.md', title: 'A' })], { warningScope: false, isRoot }),
     buildIndexMarkdown([], {
+      warningScope: false,
       isRoot,
-      subdirectories: [{ path: 'nested/index.md', title: 'nested' }],
+      subdirectories: [{ directory: 'nested', title: 'nested' }],
     }),
   ]);
 
