@@ -21,7 +21,7 @@ let newTabIds: string[] = [];
 let pinnedTabIds: string[] = [];
 let previewTabId: string | null = null;
 let pageMeta: Map<string, { docExt?: string }> = new Map();
-let lifecycleStatuses: Map<string, string> = new Map();
+let conflictedDocs: Set<string> = new Set();
 let focusedPaneId = 'pane-a';
 let skillsState: unknown = { status: 'idle' };
 let renderRealTabTargetMenuItems = false;
@@ -371,8 +371,17 @@ vi.doMock('@/components/PageListContext', () => ({
   }),
 }));
 
-vi.doMock('@/hooks/use-lifecycle-status', () => ({
-  useLifecycleStatus: (docName: string) => lifecycleStatuses.get(docName) ?? null,
+vi.doMock('@/hooks/use-conflicts', () => ({
+  useDocConflict: (docName: string | null) => {
+    return docName !== null && conflictedDocs.has(docName)
+      ? {
+          file: `${docName}.md`,
+          detectedAt: 't0',
+          conflict: 'merge-native',
+          docName,
+        }
+      : null;
+  },
 }));
 
 vi.doMock('@/hooks/use-skills', () => ({
@@ -409,7 +418,7 @@ function resetState() {
     ['docs/team/spec', { docExt: '.mdx' }],
     ['docs/team/readme', { docExt: '.txt' }],
   ]);
-  lifecycleStatuses = new Map();
+  conflictedDocs = new Set();
   focusedPaneId = 'pane-a';
   skillsState = { status: 'idle' };
   renderRealTabTargetMenuItems = false;
@@ -1478,7 +1487,7 @@ describe('EditorTabs runtime behavior', () => {
   });
 
   test('tab context menus and active tab styling are visible behavior, not source-shape details', async () => {
-    lifecycleStatuses.set('docs/team/notes', 'conflict');
+    conflictedDocs.add('docs/team/notes');
     await renderEditorTabs();
 
     const conflictedTabButton = screen.getByRole('button', {

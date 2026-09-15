@@ -4,12 +4,13 @@ export const SELECT_ALL_SETTLE_TIMEOUT_MS = process.env.CI ? 15_000 : 5_000;
 
 type ViewSelectionState = 'covers-document' | 'partial' | 'empty' | 'unreadable';
 
-interface SelectAllProbe {
+export interface SelectAllProbe {
   matches: number;
   focusOwnedOnEntry: boolean;
   focusOwnedByEditor: boolean;
   activeElement: string;
   viewSelection: ViewSelectionState;
+  docEnd: number | null;
 }
 
 export function repairFocusAndReadProbe(sel: string): SelectAllProbe {
@@ -30,20 +31,26 @@ export function repairFocusAndReadProbe(sel: string): SelectAllProbe {
       focusOwnedByEditor: false,
       activeElement: describe(document.activeElement),
       viewSelection: 'unreadable',
+      docEnd: null,
     };
   }
   const ownsFocus = (): boolean => document.activeElement === editor;
   const focusOwnedOnEntry = ownsFocus();
   if (!focusOwnedOnEntry && editor instanceof HTMLElement) editor.focus({ preventScroll: true });
 
-  const classify = (from: unknown, to: unknown, docEnd: unknown): ViewSelectionState => {
-    if (!Number.isInteger(from) || !Number.isInteger(to) || !Number.isInteger(docEnd)) {
+  const classify = (from: unknown, to: unknown, end: unknown): ViewSelectionState => {
+    if (!Number.isInteger(from) || !Number.isInteger(to) || !Number.isInteger(end)) {
       return 'unreadable';
     }
-    if (from === 0 && to === docEnd) return 'covers-document';
-    return from === to ? 'empty' : 'partial';
+    if (from === to) return 'empty';
+    return from === 0 && to === end ? 'covers-document' : 'partial';
   };
   let viewSelection: ViewSelectionState = 'unreadable';
+  let docEnd: number | null = null;
+  const read = (from: unknown, to: unknown, end: unknown): void => {
+    viewSelection = classify(from, to, end);
+    docEnd = viewSelection === 'unreadable' ? null : (end as number);
+  };
   const prosemirror = (
     window.__activeEditor as unknown as {
       editorView?: {
@@ -56,7 +63,7 @@ export function repairFocusAndReadProbe(sel: string): SelectAllProbe {
     } | null
   )?.editorView;
   if (prosemirror && prosemirror.dom === editor) {
-    viewSelection = classify(
+    read(
       prosemirror.state?.selection?.from,
       prosemirror.state?.selection?.to,
       prosemirror.state?.doc?.content?.size,
@@ -75,7 +82,7 @@ export function repairFocusAndReadProbe(sel: string): SelectAllProbe {
         }
       | undefined;
     if (codemirror) {
-      viewSelection = classify(
+      read(
         codemirror.state?.selection?.main?.from,
         codemirror.state?.selection?.main?.to,
         codemirror.state?.doc?.length,
@@ -89,11 +96,45 @@ export function repairFocusAndReadProbe(sel: string): SelectAllProbe {
     focusOwnedByEditor: ownsFocus(),
     activeElement: describe(document.activeElement),
     viewSelection,
+    docEnd,
   };
 }
 
 function repairFocusAndProbe(page: Page, selector: string): Promise<SelectAllProbe> {
   return page.evaluate(repairFocusAndReadProbe, selector);
+}
+
+const SETTLED_READING = {
+  focus: { focusOwnedByEditor: true },
+  'select-all': { viewSelection: 'covers-document' },
+} as const satisfies { [S in 'focus' | 'select-all']: Partial<SelectAllProbe> };
+
+/* UPSTREAM(@playwright/test@1.59.1): lib/matchers/expect.js pollMatcher returns
+   { continuePolling: false } without ever calling the poll generator once the test that armed the
+   poll is no longer the running test, so the barrier resolves holding whatever reading the previous
+   iteration left — undefined if there was none. Neither the public expect.poll reference nor the
+   upstream test suite states this, so re-verify it on a Playwright bump. */
+export function abandonedPollRefusal(
+  selector: string,
+  stage: 'focus' | 'select-all',
+  settled: SelectAllProbe | undefined,
+): string | null {
+  const approved =
+    settled !== undefined &&
+    (Object.entries(SETTLED_READING[stage]) as [keyof SelectAllProbe, unknown][]).every(
+      ([field, expected]) => settled[field] === expected,
+    );
+  if (approved) return null;
+  return `selectAllAndWaitForSelection: the ${stage} poll for "${selector}" resolved on a reading its own matcher rejects, which Playwright does only once the test that armed this barrier has stopped being the running test — the page is no longer this test's to drive, so every reading taken from here on would describe someone else's run`;
+}
+
+function refusePollIfAbandoned(
+  selector: string,
+  stage: 'focus' | 'select-all',
+  settled: SelectAllProbe | undefined,
+): asserts settled is SelectAllProbe {
+  const refusal = abandonedPollRefusal(selector, stage, settled);
+  if (refusal !== null) throw new Error(refusal);
 }
 
 /* Category C (select-all / focus flush) per precedent #20(a): the double-rAF yield this replaces
@@ -107,22 +148,39 @@ export async function selectAllAndWaitForSelection(
   const focusMs = budgets.focusMs ?? SELECT_ALL_SETTLE_TIMEOUT_MS;
   const selectionMs = budgets.selectionMs ?? SELECT_ALL_SETTLE_TIMEOUT_MS;
   await page.focus(selector);
+  let settled: SelectAllProbe | undefined;
   await expect
-    .poll(() => repairFocusAndProbe(page, selector), {
-      message: `selectAllAndWaitForSelection: "${selector}" never took DOM focus, so ControlOrMeta+A would land outside the editor`,
-      timeout: focusMs,
-    })
+    .poll(
+      async () => {
+        settled = await repairFocusAndProbe(page, selector);
+        return settled;
+      },
+      {
+        message: `selectAllAndWaitForSelection: "${selector}" never took DOM focus, so ControlOrMeta+A would land outside the editor`,
+        timeout: focusMs,
+      },
+    )
     .toMatchObject({
-      focusOwnedByEditor: true,
+      ...SETTLED_READING.focus,
       matches: expect.any(Number),
       activeElement: expect.any(String),
     });
 
+  refusePollIfAbandoned(selector, 'focus', settled);
+
+  if (settled.docEnd === 0) {
+    throw new Error(
+      `selectAllAndWaitForSelection: the view behind "${selector}" holds a zero-length document, so ControlOrMeta+A leaves exactly the 0,0 reading an untouched caret leaves and no select-all is observable — assert the editor has content before taking this barrier`,
+    );
+  }
+
+  let selected: SelectAllProbe | undefined;
   await expect
     .poll(
       async () => {
         await page.keyboard.press('ControlOrMeta+a');
-        return repairFocusAndProbe(page, selector);
+        selected = await repairFocusAndProbe(page, selector);
+        return selected;
       },
       {
         message: `selectAllAndWaitForSelection: ControlOrMeta+A left no full-document selection in the view behind "${selector}"`,
@@ -130,11 +188,13 @@ export async function selectAllAndWaitForSelection(
       },
     )
     .toMatchObject({
-      viewSelection: 'covers-document',
+      ...SETTLED_READING['select-all'],
       focusOwnedOnEntry: expect.any(Boolean),
       matches: expect.any(Number),
       activeElement: expect.any(String),
     });
+
+  refusePollIfAbandoned(selector, 'select-all', selected);
 }
 
 /** Category C (cursor / focus flush) per precedent #20(a). */

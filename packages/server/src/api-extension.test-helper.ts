@@ -6,6 +6,7 @@ import {
 import type { ApiExtensionOptions } from './api-extension.ts';
 import { createApiExtension as createApiExtensionBase } from './api-extension.ts';
 import type { BacklinkIndex } from './backlink-index.ts';
+import { createTestConflictAuthority } from './conflict-authority.test-helper.ts';
 import type {
   DerivedDocumentIndexApiPort,
   DerivedDocumentIndexMutation,
@@ -229,10 +230,12 @@ export function createApiExtension(
     | 'durabilityState'
     | 'derivedDocumentIndex'
     | 'signalChannel'
+    | 'conflicts'
     | 'getProjectConfigEpoch'
     | 'getLinkAdvisoryPolicy'
   > &
     LegacyIndexOptions & {
+      conflicts?: ApiExtensionOptions['conflicts'];
       derivedDocumentIndex?: DerivedDocumentIndexApiPort;
       signalChannel?: LegacySignalChannel;
       getProjectConfigEpoch?: () => number;
@@ -254,6 +257,9 @@ export function createApiExtension(
     ...apiOptions,
     getProjectConfigEpoch,
     getLinkAdvisoryPolicy,
+    conflicts:
+      options.conflicts ??
+      createTestConflictAuthority(options.projectDir ?? options.contentDir, options.contentDir),
     durabilityState: new DocumentDurabilityState(),
     derivedDocumentIndex:
       derivedDocumentIndex ??

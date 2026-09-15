@@ -3,8 +3,34 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from 'n
 import { dirname, join } from 'node:path';
 import { FuseV1Options, FuseVersion, flipFuses } from '@electron/fuses';
 import { ensureNodePtySpawnHelperExecutable } from './ensure-node-pty-exec.mjs';
+import { createFuseFailure } from './packaging-diagnostics.mjs';
 import { resolveElectronBinary } from './resolve-electron-binary.mjs';
 import { targetFuses } from './target-fuses.mjs';
+
+async function flipElectronFuses(electronBinary, electronPlatformName) {
+  console.log(`[afterPack] flipping fuses on ${electronBinary}`);
+  for (const [optIndex, value] of Object.entries(targetFuses)) {
+    const name = FuseV1Options[Number(optIndex)];
+    console.log(`[afterPack]   ${name} = ${value}`);
+  }
+
+  try {
+    await flipFuses(electronBinary, {
+      version: FuseVersion.V1,
+      resetAdHocDarwinSignature: electronPlatformName === 'darwin',
+      ...targetFuses,
+    });
+  } catch (err) {
+    throw createFuseFailure(
+      `[afterPack] fuse flip failed on ${electronBinary}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+      { cause: err },
+    );
+  }
+
+  console.log('[afterPack] fuses flipped successfully; electron-builder will re-sign next');
+}
 
 export default async function afterPack(context) {
   const { appOutDir, packager, electronPlatformName } = context;
@@ -26,28 +52,7 @@ export default async function afterPack(context) {
     );
   }
 
-  console.log(`[afterPack] flipping fuses on ${electronBinary}`);
-  for (const [optIndex, value] of Object.entries(targetFuses)) {
-    const name = FuseV1Options[Number(optIndex)];
-    console.log(`[afterPack]   ${name} = ${value}`);
-  }
-
-  try {
-    await flipFuses(electronBinary, {
-      version: FuseVersion.V1,
-      resetAdHocDarwinSignature: electronPlatformName === 'darwin',
-      ...targetFuses,
-    });
-  } catch (err) {
-    throw new Error(
-      `[afterPack] fuse flip failed on ${electronBinary}: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-      { cause: err },
-    );
-  }
-
-  console.log('[afterPack] fuses flipped successfully; electron-builder will re-sign next');
+  await flipElectronFuses(electronBinary, electronPlatformName);
 
   if (electronPlatformName !== 'darwin') {
     console.log(

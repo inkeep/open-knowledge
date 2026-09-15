@@ -19,6 +19,9 @@
     "-WeuHF": ["Hapus pesan dari antrean"],
     "-X1eoK": ["Integrasi OpenKnowledge telah diperiksa."],
     "-YV1Uo": ["Pola ", ["patternNumber"]],
+    "-ZVU5v": [
+      "Repositori ini belum punya commit — buka lagi proyeknya untuk membuat commit pertama, lalu Push akan berfungsi"
+    ],
     "-bFGPF": ["Perubahan berikutnya"],
     "-dNlfM": ["Suntingan terakhir pada ", ["docName"], " dibatalkan"],
     "-g6KIS": ["Tautan tidak dikenali"],
@@ -98,6 +101,11 @@
       ") di ",
       ["targetLabel"]
     ],
+    "0bV3uj": [
+      "Mungkin seseorang sudah menyelesaikan ",
+      ["filePath"],
+      " — periksa isi dokumen saat ini sebelum mengulangi suntingan Anda."
+    ],
     "0cGsQh": ["Yang disertakan"],
     "0cspe_": ["Hapus baris"],
     "0dslv8": [
@@ -156,6 +164,9 @@
     "10g8I_": ["Matikan Hanya berkas markdown"],
     "110eEb": [
       "Open Knowledge membuat dan memelihara file navigasi bernama index.md di setiap folder yang berisi Markdown."
+    ],
+    "113NNl": [
+      "Server OpenKnowledge terlalu lama merespons, dan perubahan mungkin tetap diterapkan. Minta agen memeriksanya sebelum mencoba lagi."
     ],
     "11ukmX": ["Gagal mengganti nama: ", ["0"]],
     "12F9WL": ["(tanpa id)"],
@@ -339,6 +350,7 @@
     "3aeN7X": ["Semua berkas"],
     "3cOo2C": ["Membuat folder dari konteks dokumen atau folder saat ini."],
     "3ePd3I": ["Yang baru"],
+    "3fOsvq": ["Pakai versi mereka"],
     "3h5zMp": ["Ada yang tidak beres saat memuat panel pengaturan."],
     "3iyGWF": ["Buka proyek terbaru"],
     "3jod3l": ["Hubungkan GitHub"],
@@ -427,6 +439,9 @@
     "4niEzY": ["Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara langsung."],
     "4nj6n8": ["/api/config mengembalikan HTTP ", ["code"]],
     "4pDZ2N": ["\"", ["0"], "\" dihapus dari semua lokasi lain — folder sumbernya tetap dimuat"],
+    "4r6p_B": [
+      "Perintah ini berisi karakter tersembunyi yang dapat membuatnya terlihat berbeda dari yang dijalankan. Karakter tersebut ditampilkan di sini sebagai ⟨U+…⟩."
+    ],
     "4sE6E9": ["Tidak bisa memeriksa alat mana yang terhubung."],
     "4sKwf6": ["Berkas sudah ada"],
     "4sUdTJ": ["pratinjau bertema"],
@@ -815,6 +830,7 @@
     ],
     "99eR72": ["Pilihan tabel penyunting visual"],
     "9Bd18D": ["Gagal memuat halaman pusat"],
+    "9CNRDG": ["Server OpenKnowledge terlalu lama merespons. Minta agen mencoba lagi."],
     "9E_WAi": [["errorText"], " dan ", ["warningText"]],
     "9EykGQ": ["Sisipkan kolom di kanan"],
     "9GbR5F": ["MAKS"],
@@ -2270,6 +2286,9 @@
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "Qca--K": [
+      "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu sinkronkan lagi (program itu menahan <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Pergi ke ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -2311,6 +2330,7 @@
     "RB_g_C": [
       "Pada indeks root, okf_version ditulis sebagai string yang dikutip seperti \"0.2\". Tanpa tanda kutip, YAML membacanya sebagai angka dan 0.10 diam-diam menjadi 0.1."
     ],
+    "RCMt3v": ["Tidak ada konflik yang dilacak untuk jalur ini."],
     "RD6H9q": [
       "Open Knowledge menulis ulang file index.md ini seiring perubahan dokumen, sehingga pengeditan manual pada file tersebut diganti."
     ],
@@ -2366,6 +2386,11 @@
     "Rah7yq": ["Apa yang harus dilakukan AI? (opsional)"],
     "Rb1zMa": ["Tanpa cuplikan"],
     "RcrskJ": ["Format terlihat salah"],
+    "RduDYw": [
+      "<0>",
+      ["filePath"],
+      "</0> tidak bisa digabungkan di sini. Pilih versi yang ingin disimpan."
+    ],
     "RfHNf8": ["Buka panel aktivitas untuk ", ["tooltipName"]],
     "RfaEio": ["Komentari atau batalkan komentar di sumber"],
     "RfilGt": ["Tidak ada aturan yang cocok dengan filter Anda."],
@@ -2434,6 +2459,7 @@
     "SXCSQd": ["Jalur disalin"],
     "SXEdCq": ["Pindahkan ke ", ["0"], "?"],
     "SYfHmN": ["Lepas sematan tab"],
+    "S_RRZB": ["Hapus berkas"],
     "Sad2tK": ["Mengirim…"],
     "Sbb90e": [
       [
@@ -2812,6 +2838,9 @@
     "XPqe3B": ["Buat tag baru #", ["tagValue"]],
     "XRuL0i": ["Buat halaman"],
     "XSb9HS": ["Buang suntingan lokal, pulihkan versi yang terpasang"],
+    "XSy4nN": [
+      "Alat OpenKnowledge milik agen tidak bisa menjangkau server. Minta agen untuk mencoba lagi, dan jika terus gagal, mulai obrolan baru."
+    ],
     "XT-L4j": ["Nyalakan sebuah agen untuk membuat dengan AI"],
     "XU5AOg": ["Masukan"],
     "XV5sC0": ["Buka worktree"],
@@ -2879,7 +2908,6 @@
     "XwZiq2": [
       "Berkas dipulihkan ke versi yang lebih lama. Yang sekarang adalah versi yang dilindungi OpenKnowledge. Yang masuk adalah versi yang dipulihkan. Pilih versi yang ingin dipertahankan, lalu terapkan perubahan Anda."
     ],
-    "XzL7x7": ["Buka kembali ", ["filePath"], " untuk melanjutkan penyuntingan."],
     "Xzy0s0": ["Hapus ", ["fullLabel"], " dari konteks"],
     "Y-Urt2": ["Persamaan matematika blok yang dirender dengan KaTeX dari sumber LaTeX."],
     "Y1QMlM": ["Mulai siapkan"],
@@ -3088,6 +3116,7 @@
     "_IX_7x": ["Lainnya"],
     "_IfSZn": ["Tema tersimpan lain sudah menggunakan nama ini."],
     "_JOGC0": ["Kirim masukan…"],
+    "_LK4d6": ["Daftar ini mungkin tidak mutakhir."],
     "_LczaQ": ["Ditolak — ", ["optionName"]],
     "_NWEid": ["Cari berkas skema berdasarkan jalur"],
     "_O7dJS": ["Versi berbeda di sini — klik untuk membandingkan dan menyelesaikannya"],
@@ -3127,6 +3156,7 @@
     "_rP3HI": [["minutes"], " mnt lalu"],
     "_tekeB": ["properti folder diperbarui"],
     "_tjopj": ["Tempel gandaan"],
+    "_uOJBO": ["Anda menolak ini. Agar bisa berjalan, minta agen untuk mencoba lagi lalu setujui."],
     "_uxBz5": ["Tambahkan MCP & keterampilan untuk ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " berhenti dengan galat."],
     "_yB-24": ["semua yang ada di folder ", ["0"], "/ mana pun"],
@@ -3478,6 +3508,7 @@
     "dw_dUJ": ["Gagal menggandakan jalur"],
     "dx-TwN": ["Menjalankan audit proyek"],
     "dyfMJN": ["Kode disalin"],
+    "e-pP6g": ["Daftar ini mungkin tidak mutakhir — terakhir dibaca ", ["staleRelative"], "."],
     "e0NrBM": ["Proyek"],
     "e1Rn_k": ["Buka folder induknya"],
     "e1hptq": ["Menyematkan video dengan kendali pemutar bawaan."],
@@ -3816,7 +3847,6 @@
       "Simpan catatan tertulis tentang bagaimana produk Anda dibangun. Rumah untuk mengusulkan ide, mencatat keputusan, menulis spesifikasi, dan merekam apa yang Anda pelajari setelah sesuatu rusak."
     ],
     "hCattk": ["OpenKnowledge mengimpor ", ["source"]],
-    "hCghAK": ["Konflik ini sudah diselesaikan."],
     "hDEaQu": ["Hubungkan OpenKnowledge dengan alat lain yang Anda pakai."],
     "hDKtoF": [["diffHrs"], " j lalu"],
     "hDoLrm": ["Hapus ", ["projectName"], " dari proyek terbaru"],
@@ -4048,7 +4078,6 @@
       "Menyematkan halaman eksternal dalam iframe sebaris (dokumentasi, demo, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Aktifkan Otomatis (hanya Pull)"],
-    "jTdrn1": ["Tidak dapat memeriksa apakah ", ["filePath"], " masih berkonflik — mencoba lagi."],
     "jWwQo6": ["batch"],
     "jWzDfC": ["Memeriksa alat AI yang Anda miliki"],
     "jZ_E5M": ["Fetch gagal — periksa log server untuk detailnya."],
@@ -4283,6 +4312,7 @@
     "lwCV5v": [["0"], " tidak bisa dibuka untuk disunting: ", ["1"]],
     "lyWa43": ["Halaman terputus di tingkat proyek"],
     "lzmtKp": ["Gagal memuat properti folder: ", ["message"]],
+    "lzsa2d": ["Salin galat"],
     "lzwo7p": ["Halaman masuk GitHub tidak dapat dibuka. Silakan coba lagi."],
     "m-1Z7o": ["Pakai paket awal ini"],
     "m0eHej": [
@@ -4832,6 +4862,9 @@
     "sKHiNR": [["count"], " di belakang"],
     "sNeKjP": ["Gagal menyimpan token — coba lagi"],
     "sOafXU": ["Sunting dan kirim lagi"],
+    "sOcMdy": [
+      "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu sinkronkan lagi (program itu menahan .git/index.lock)"
+    ],
     "sOxZaS": ["Gagal memuat graf"],
     "sQoLn0": ["Keluar"],
     "sR0I-f": ["Ciutkan semua berkas"],
@@ -4915,6 +4948,7 @@
       "OpenKnowledge tidak mengenali entri ini, dan tidak dapat menggantinya dengan aman dalam format file ini."
     ],
     "tCyvAw": ["Lampirkan berkas"],
+    "tDlhkF": ["Nama obrolan"],
     "tHKQ6j": ["Mengganti nama"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge menulis sebuah dokumen"],

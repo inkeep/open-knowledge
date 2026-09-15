@@ -11,16 +11,29 @@ import {
 } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { isProcessAlive } from '@inkeep/open-knowledge-server';
+import {
+  isProcessAlive,
+  type LockProcessScan,
+  scanLockProcesses,
+} from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import { buildDeinitPlan, buildUninstallPlan, runRemoval } from './removal-plan.ts';
+import {
+  buildDeinitPlan,
+  buildUninstallPlan,
+  type RunRemovalDeps,
+  runRemoval,
+} from './removal-plan.ts';
 import { runUninstall } from './uninstall.ts';
 
 describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an isolated home', () => {
   let root: string;
   const children: ChildProcess[] = [];
+  let observedScan:
+    | { candidates: LockProcessScan['candidates']; livePidsAtScanTime: number[] }
+    | undefined;
   beforeEach(() => {
     root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-uninstall-recovery-')));
+    observedScan = undefined;
   });
   afterEach(async () => {
     for (const child of children.splice(0)) {
@@ -35,6 +48,16 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
   function write(path: string, bytes: string) {
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, bytes);
+  }
+  async function scanCandidatesWithoutHostUncertainty(): Promise<LockProcessScan> {
+    const { candidates } = await scanLockProcesses();
+    observedScan = {
+      candidates,
+      livePidsAtScanTime: children.flatMap((child) =>
+        child.pid !== undefined && isProcessAlive(child.pid) ? [child.pid] : [],
+      ),
+    };
+    return { candidates, unavailable: [] };
   }
   async function childServer(project: string) {
     const child = spawn(
@@ -111,6 +134,7 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
           runRemovalDeps: {
             clearToken: async () => ({ touched: [] }),
             clearEmbeddingsKey: async () => ({ touched: [] }),
+            scanProcesses: scanCandidatesWithoutHostUncertainty,
           },
         },
       });
@@ -154,6 +178,23 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
     expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# Keep');
   });
 
+  test('refuses a dep set that supplies both stopServer and scanProcesses', async () => {
+    const project = join(root, 'project');
+    const lockPath = join(project, '.ok', 'local', 'server.lock');
+    write(lockPath, 'not json');
+    write(join(project, 'notes.md'), '# Keep');
+    const contradictory = {
+      stopServer: async () => ({ stopped: 0, failed: [] }),
+      scanProcesses: scanCandidatesWithoutHostUncertainty,
+    } as unknown as RunRemovalDeps;
+    await expect(
+      runRemoval(buildDeinitPlan(project, join(root, 'home')), contradictory),
+    ).rejects.toThrow(/scanProcesses only parameterizes the default stopServer/);
+    expect(observedScan).toBeUndefined();
+    expect(readFileSync(lockPath, 'utf8')).toBe('not json');
+    expect(readFileSync(join(project, 'notes.md'), 'utf8')).toBe('# Keep');
+  });
+
   test.each(
     (
       [
@@ -192,6 +233,7 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
     const outcome = await runRemoval(plan, {
       clearToken: async () => ({ touched: [] }),
       clearEmbeddingsKey: async () => ({ touched: [] }),
+      scanProcesses: scanCandidatesWithoutHostUncertainty,
     });
     if (scope.startsWith('global')) {
       expect(outcome.failed).toEqual([]);
@@ -243,7 +285,19 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
       const outcome = await runRemoval(plan, {
         clearToken: async () => ({ touched: [] }),
         clearEmbeddingsKey: async () => ({ touched: [] }),
+        scanProcesses: scanCandidatesWithoutHostUncertainty,
       });
+      const scanned = observedScan;
+      if (scanned === undefined)
+        throw new Error('The injected process scan never ran, so lock discovery went unverified');
+      expect(
+        scanned.livePidsAtScanTime,
+        'no fixture server was alive at scan time, so discovery is unverifiable',
+      ).not.toHaveLength(0);
+      expect(
+        scanned.candidates.map((candidate) => candidate.pid),
+        'process discovery missed the live fixture server',
+      ).toEqual(expect.arrayContaining(scanned.livePidsAtScanTime));
       if (associated) {
         expect(outcome.failed.some((r) => r.detail?.includes('live process candidates'))).toBe(
           true,

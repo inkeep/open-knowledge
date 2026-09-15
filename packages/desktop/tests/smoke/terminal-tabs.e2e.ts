@@ -13,9 +13,15 @@ import {
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 import {
+  buildInputReadyProbe,
+  readWindowsShellProfileFailure,
   seedTerminalShellProfiles,
   terminalSmokeEnvironment,
   terminalSmokeShellCommands,
+  WINDOWS_PSREADLINE_PREDICTION_UNSUPPORTED,
+  type WindowsPSReadLineStateField,
+  windowsPSReadLineStateCommand,
+  windowsPSReadLineStateField,
 } from './_helpers/terminal-smoke-shell';
 import {
   expectTerminalTabOrder,
@@ -31,6 +37,7 @@ const TARGET = resolveDesktopTarget();
 
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
+const WINDOWS = process.platform === 'win32';
 const SHELL_COMMANDS = terminalSmokeShellCommands();
 
 interface Seed {
@@ -46,7 +53,7 @@ function seed(prefix: string): Seed {
   writeFileSync(join(projectDir, '.ok', 'config.yml'), "content:\n  dir: '.'\n");
   writeFileSync(join(projectDir, '.ok', 'local', 'config.yml'), 'terminal:\n  enabled: true\n');
   writeFileSync(join(projectDir, 'start.md'), '# Start\n\nSeed document.\n');
-  seedTerminalShellProfiles(tmpHome, { restrictPath: true });
+  seedTerminalShellProfiles(tmpHome, { posixRestrictPath: true });
 
   const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });
@@ -329,8 +336,11 @@ test.describe('Terminal tabs — live Electron', () => {
       .click();
     await expectTerminalTabOrder(page, [survivingTabId]);
     await waitActiveRunning(page);
-    await typeInActive(page, `${SHELL_COMMANDS.output('SURVIVOR_CCC')}\r`);
-    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('SURVIVOR_CCC');
+    const afterSurvivor = buildInputReadyProbe();
+    await typeInActive(page, `${afterSurvivor.command}\r`);
+    await expect
+      .poll(() => readActiveText(page), { timeout: 15_000 })
+      .toContain(afterSurvivor.marker);
   });
 
   test('a manual rename pins over the program’s OSC title', async ({ captureStderrFor }) => {
@@ -340,16 +350,75 @@ test.describe('Terminal tabs — live Electron', () => {
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 
+    await typeInActive(page, `${SHELL_COMMANDS.oscTitle('PROGRAM_TITLE_ZZZ', 'OSC_FED_QQQ')}\r`);
+    const afterProgramTitle = buildInputReadyProbe();
+    await typeInActive(page, `${afterProgramTitle.command}\r`);
+    await expect
+      .poll(() => readActiveText(page), { timeout: 15_000 })
+      .toContain(afterProgramTitle.marker);
+    await expect(page.getByRole('tab', { name: 'PROGRAM_TITLE_ZZZ' })).toHaveCount(1, {
+      timeout: 5_000,
+    });
+
     await terminalTabs(page).first().dblclick();
     const input = page.getByRole('textbox', { name: /^Rename/ });
     await input.fill('my build');
     await input.press('Enter');
     await expect(page.getByRole('tab', { name: 'my build' })).toBeVisible({ timeout: 5_000 });
 
-    await typeInActive(page, `${SHELL_COMMANDS.oscTitle('PROGRAM_TITLE_ZZZ', 'OSC_FED_QQQ')}\r`);
-    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('OSC_FED_QQQ');
+    await typeInActive(page, `${SHELL_COMMANDS.oscTitle('LATER_TITLE_XXX', 'OSC_LATER_PPP')}\r`);
+    const afterOscTitle = buildInputReadyProbe();
+    await typeInActive(page, `${afterOscTitle.command}\r`);
+    await expect
+      .poll(() => readActiveText(page), { timeout: 15_000 })
+      .toContain(afterOscTitle.marker);
     await expect(terminalTabs(page)).toHaveText(['my build']);
-    await expect(page.getByRole('tab', { name: 'PROGRAM_TITLE_ZZZ' })).toHaveCount(0);
+
+    await terminalTabs(page).first().dblclick();
+    const clearLabel = page.getByRole('textbox', { name: /^Rename/ });
+    await clearLabel.fill('');
+    await clearLabel.press('Enter');
+    await expect(terminalTabs(page)).toHaveText(['LATER_TITLE_XXX'], { timeout: 5_000 });
+  });
+
+  test('the seeded profile pins the shell’s PSReadLine state inside the run home', async ({
+    captureStderrFor,
+  }) => {
+    test.skip(!WINDOWS, 'PSReadLine state only exists on the Windows shell rungs.');
+    const s = seed('psreadline-state');
+    const app = await launchApp(s);
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
+    const page = await findEditorWindow(app);
+    await openTerminal(app, page);
+
+    expect(
+      readWindowsShellProfileFailure(s.tmpHome),
+      'kind "record" is the seeded profile reporting its own failure; kind "unreadable" is a runner fault reading the harness log, not evidence about the profile',
+    ).toEqual({ kind: 'absent' });
+
+    const marker = `PSRL_STATE_${Date.now().toString(36)}`;
+    const stateField = async (field: WindowsPSReadLineStateField): Promise<string | null> =>
+      windowsPSReadLineStateField(marker, await readActiveText(page), field);
+    await typeInActive(page, `${windowsPSReadLineStateCommand(marker, s.tmpHome)}\r`);
+
+    await expect
+      .poll(() => stateField('version'), {
+        message: 'the shell reported no loaded PSReadLine for the profile to configure',
+        timeout: 15_000,
+      })
+      .toMatch(/^\d+\.\d+/);
+    await expect
+      .poll(() => stateField('history'), {
+        message: 'the PSReadLine history file resolved outside the run home',
+        timeout: 5_000,
+      })
+      .toBe('True');
+    await expect
+      .poll(() => stateField('prediction'), {
+        message: 'inline prediction stayed on, so other tests can bleed into the scraped buffer',
+        timeout: 5_000,
+      })
+      .toMatch(new RegExp(`^(None|${WINDOWS_PSREADLINE_PREDICTION_UNSUPPORTED})$`));
   });
 
   test('keyboard reorder changes order, keeps sticky numbers, and preserves the live shell', async ({
@@ -362,10 +431,14 @@ test.describe('Terminal tabs — live Electron', () => {
     await openTerminal(app, page);
 
     await typeInActive(page, `${SHELL_COMMANDS.setEnvironment('OK_TABMARK', 'SURVIVED_888')}\r`);
-    await typeInActive(page, `${SHELL_COMMANDS.output('BEFORE_REORDER_DDD')}\r`);
+    if (!WINDOWS) {
+      await typeInActive(page, `${SHELL_COMMANDS.output('BEFORE_REORDER_DDD')}\r`);
+    }
+    const beforeReorder = buildInputReadyProbe();
+    await typeInActive(page, `${beforeReorder.command}\r`);
     await expect
       .poll(() => readActiveText(page), { timeout: 15_000 })
-      .toContain('BEFORE_REORDER_DDD');
+      .toContain(beforeReorder.marker);
 
     const [firstTabId] = await terminalTabIds(page);
     if (firstTabId === undefined) throw new Error('first terminal tab was not created');
@@ -384,7 +457,7 @@ test.describe('Terminal tabs — live Electron', () => {
     }
 
     await expect(terminalTabById(page, firstTabId)).toHaveAttribute('aria-selected', 'true');
-    if (process.platform !== 'win32') {
+    if (!WINDOWS) {
       await expect
         .poll(() => readActiveText(page), { timeout: 15_000 })
         .toContain('BEFORE_REORDER_DDD');
@@ -408,8 +481,12 @@ test.describe('Terminal tabs — live Electron', () => {
       page,
       `${SHELL_COMMANDS.setEnvironment('OK_DRAGMARK', 'DRAG_SURVIVED_444')}\r`,
     );
-    await typeInActive(page, `${SHELL_COMMANDS.output('BEFORE_DRAG_EEE')}\r`);
-    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain('BEFORE_DRAG_EEE');
+    if (!WINDOWS) {
+      await typeInActive(page, `${SHELL_COMMANDS.output('BEFORE_DRAG_EEE')}\r`);
+    }
+    const beforeDrag = buildInputReadyProbe();
+    await typeInActive(page, `${beforeDrag.command}\r`);
+    await expect.poll(() => readActiveText(page), { timeout: 15_000 }).toContain(beforeDrag.marker);
 
     const [firstTabId] = await terminalTabIds(page);
     if (firstTabId === undefined) throw new Error('first terminal tab was not created');
@@ -426,7 +503,7 @@ test.describe('Terminal tabs — live Electron', () => {
 
     await activateTab(terminalTabById(page, firstTabId));
     await visibleSection(page).locator('.xterm').click();
-    if (process.platform !== 'win32') {
+    if (!WINDOWS) {
       expect(await readActiveText(page)).toContain('BEFORE_DRAG_EEE');
     }
     await typeInActive(page, `${SHELL_COMMANDS.readEnvironment('OK_DRAGMARK', 'dm')}\r`);

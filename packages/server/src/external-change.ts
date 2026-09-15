@@ -17,7 +17,7 @@ import {
   isMermaidDoc,
   isSystemDoc,
 } from './cc1-broadcast.ts';
-import { isDocInConflict } from './conflict-errors.ts';
+import { type ConflictAuthority, isDocInConflict } from './conflict-authority.ts';
 import { isWithinContentDir, safeContentPath } from './content-path.ts';
 import { recordContributor } from './contributor-tracker.ts';
 import { applyDiskContentToDoc, FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
@@ -136,10 +136,12 @@ function clearStaleExternalWriteConflict(
   durabilityState: DocumentDurabilityState,
   document: Y.Doc | undefined,
   docName: string,
+  conflicts?: Pick<ConflictAuthority, 'dissolveReconcile'>,
 ): void {
   const retained = durabilityState.getStaleExternalWrite(docName)?.retainedContent;
   if (retained !== undefined && retained !== durabilityState.getReconciledBase(docName)) return;
   durabilityState.clearStaleExternalWrite(docName);
+  conflicts?.dissolveReconcile(docName, STALE_EXTERNAL_WRITE_REASON);
   const lifecycleMap = document?.getMap('lifecycle');
   if (lifecycleMap?.get('reason') !== STALE_EXTERNAL_WRITE_REASON) return;
   lifecycleMap.delete('status');
@@ -152,40 +154,45 @@ export function refuseStaleExternalWrite(
   document: Y.Doc | undefined,
   docName: string,
   diskContent: string,
+  conflicts?: Pick<ConflictAuthority, 'dissolveReconcile' | 'fileOf' | 'raise'>,
   retainedContent?: string,
 ): boolean {
   const currentBase = durabilityState.getReconciledBase(docName);
-  const lifecycleMap = document?.getMap('lifecycle');
   const pending = durabilityState.getStaleExternalWrite(docName);
+  const raise = (disk: string, retained: string | undefined): void => {
+    const conflict = durabilityState.recordStaleExternalWrite(docName, disk, retained);
+    if (conflicts) {
+      conflicts.raise({
+        kind: 'reconcile',
+        file: conflicts.fileOf(docName),
+        reason: STALE_EXTERNAL_WRITE_REASON,
+        detectedAt: conflict.detectedAt,
+        stages: {
+          base: currentBase ?? disk,
+          ours:
+            conflict.retainedContent ??
+            (document === undefined ? (currentBase ?? disk) : serializeYDocSource(document)),
+          theirs: conflict.diskContent,
+        },
+      });
+    }
+  };
   if (pending?.retainedContent !== undefined && pending.retainedContent !== currentBase) {
-    const conflict = durabilityState.recordStaleExternalWrite(
-      docName,
-      diskContent,
-      retainedContent ?? pending.retainedContent,
-    );
-    lifecycleMap?.set('status', 'conflict');
-    lifecycleMap?.set('reason', STALE_EXTERNAL_WRITE_REASON);
-    lifecycleMap?.set('detectedAt', conflict.detectedAt);
+    raise(diskContent, retainedContent ?? pending.retainedContent);
     return true;
   }
   if (currentBase === diskContent) {
-    clearStaleExternalWriteConflict(durabilityState, document, docName);
+    clearStaleExternalWriteConflict(durabilityState, document, docName, conflicts);
     return false;
   }
 
   if (durabilityState.staleExternalWriteMatches(docName, diskContent)) {
-    const conflict =
-      retainedContent === undefined
-        ? durabilityState.getStaleExternalWrite(docName)
-        : durabilityState.recordStaleExternalWrite(docName, diskContent, retainedContent);
-    lifecycleMap?.set('status', 'conflict');
-    lifecycleMap?.set('reason', STALE_EXTERNAL_WRITE_REASON);
-    if (conflict) lifecycleMap?.set('detectedAt', conflict.detectedAt);
+    raise(diskContent, retainedContent ?? pending?.retainedContent);
     return true;
   }
 
   if (!durabilityState.isDisplacedVersion(docName, diskContent)) {
-    clearStaleExternalWriteConflict(durabilityState, document, docName);
+    clearStaleExternalWriteConflict(durabilityState, document, docName, conflicts);
     return false;
   }
 
@@ -193,10 +200,7 @@ export function refuseStaleExternalWrite(
     { docName, diskBytes: diskContent.length },
     `[reconcile] refused stale external write for ${docName}; disk restores a version this server already displaced`,
   );
-  const conflict = durabilityState.recordStaleExternalWrite(docName, diskContent, retainedContent);
-  lifecycleMap?.set('status', 'conflict');
-  lifecycleMap?.set('reason', STALE_EXTERNAL_WRITE_REASON);
-  lifecycleMap?.set('detectedAt', conflict.detectedAt);
+  raise(diskContent, retainedContent);
   return true;
 }
 
@@ -226,6 +230,7 @@ export function reconcileDiskBeforeAgentWrite(
   hocuspocus: Hocuspocus,
   docName: string,
   contentDir: string,
+  conflicts: Pick<ConflictAuthority, 'dissolveReconcile' | 'fileOf' | 'raise'>,
 ): ReconcileBeforeWriteResult {
   if (
     isSystemDoc(docName) ||
@@ -281,7 +286,7 @@ export function reconcileDiskBeforeAgentWrite(
 
   const normalizedDisk = normalizeBridge(diskContent);
   if (diskContent === base) {
-    clearStaleExternalWriteConflict(durabilityState, document, docName);
+    clearStaleExternalWriteConflict(durabilityState, document, docName, conflicts);
     return NOT_RECONCILED;
   }
 
@@ -304,7 +309,7 @@ export function reconcileDiskBeforeAgentWrite(
 
   if (!document) return NOT_RECONCILED;
 
-  if (refuseStaleExternalWrite(durabilityState, document, docName, diskContent)) {
+  if (refuseStaleExternalWrite(durabilityState, document, docName, diskContent, conflicts)) {
     return NOT_RECONCILED;
   }
   if (normalizedDisk === normalizeBridge(base)) return NOT_RECONCILED;
@@ -323,12 +328,17 @@ export function reconcileDiskBeforeAgentWrite(
 
     case 'conflicts':
     case 'refused': {
-      const lifecycleMap = document.getMap('lifecycle');
-      lifecycleMap.set('status', 'conflict');
-      lifecycleMap.set(
-        'reason',
-        outcome.kind === 'refused' ? outcome.reason : 'reconcile-conflicts',
-      );
+      conflicts.raise({
+        kind: 'reconcile',
+        file: conflicts.fileOf(docName),
+        reason:
+          outcome.kind === 'conflicts'
+            ? 'merged-with-markers'
+            : outcome.reason === 'too-large'
+              ? 'refused-too-large'
+              : 'refused-conflict-markers',
+        stages: { base, ours, theirs: diskContent },
+      });
       return NOT_RECONCILED;
     }
 

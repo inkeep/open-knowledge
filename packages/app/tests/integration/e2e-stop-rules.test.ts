@@ -6,6 +6,14 @@
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  type CallExpression,
+  type Diagnostic,
+  type Node,
+  type ObjectLiteralExpression,
+  Project,
+  SyntaxKind,
+} from 'ts-morph';
 import { describe, expect, test } from 'vitest';
 import { DEV_GATED_WINDOW_WRITERS } from './dev-gate-allowlist';
 
@@ -21,6 +29,7 @@ const APP_SRC_DIR = join(__dirname, '..', '..', 'src');
 interface FileLines {
   path: string;
   absPath: string;
+  source: string;
   lines: string[];
 }
 
@@ -46,7 +55,12 @@ function listE2eTsFiles(): FileLines[] {
       if (!entry.isFile()) continue;
       if (!entry.name.endsWith('.ts')) continue;
       const source = readFileSync(abs, 'utf-8');
-      out.push({ path: relative(REPO_ROOT, abs), absPath: abs, lines: source.split('\n') });
+      out.push({
+        path: relative(REPO_ROOT, abs),
+        absPath: abs,
+        source,
+        lines: source.split('\n'),
+      });
     }
   }
   for (const dir of E2E_DIRS) walk(dir);
@@ -67,32 +81,396 @@ function listAppSrcTsFiles(): FileLines[] {
       if (name.name.endsWith('.test.ts') || name.name.endsWith('.test.tsx')) continue;
       if (name.name.endsWith('.spec.ts') || name.name.endsWith('.spec.tsx')) continue;
       const source = readFileSync(abs, 'utf-8');
-      out.push({ path: relative(REPO_ROOT, abs), absPath: abs, lines: source.split('\n') });
+      out.push({
+        path: relative(REPO_ROOT, abs),
+        absPath: abs,
+        source,
+        lines: source.split('\n'),
+      });
     }
   }
   walk(APP_SRC_DIR);
   return out;
 }
 
-const SPAWN_BUN_PATTERN = /spawn\(\s*['"]bun['"]/;
 const SPAWN_REQUIRED_ENV_KEYS = ['OK_TEST_VITE_CACHE_DIR', 'OK_TEST_SKIP_I18N_COMPILE'] as const;
+type RequiredSpawnEnvKey = (typeof SPAWN_REQUIRED_ENV_KEYS)[number];
+const SPAWN_CALLEE_NAMES = new Set(['spawn', 'spawnSync']);
+const DEV_SERVER_ARGV_TOKEN = 'dev';
+const PARENT_ENV_SPREAD = 'process.env';
+const CHILD_PROCESS_CALL_PATTERN =
+  /(?<![\w$])(?:spawnSync|spawn|execFileSync|execFile|execSync|fork)\s*\(|(?<![.\w$])exec\s*\(/;
+const MIRROR_EXCLUDED_INFIX = '.private.';
+const DEV_SERVER_SPAWN_SITES = [
+  'packages/app/tests/stress/_helpers/fixtures.ts',
+  'packages/app/tests/stress/_helpers/global-warm-cache.ts',
+] as const;
+const NON_DEV_SERVER_SPAWN_SITES = [
+  'packages/app/tests/stress/_helpers/i18n-catalog-freshness.ts',
+  'packages/app/tests/stress/okf-generated-index-settings.e2e.ts',
+] as const;
+const PINNED_SPAWN_SITES = [...DEV_SERVER_SPAWN_SITES, ...NON_DEV_SERVER_SPAWN_SITES].sort();
 
-function findSpawnIsolationViolations(
-  lines: string[],
-): Array<{ line: number; missingKey: string }> {
-  const spawnLines: number[] = [];
-  for (let i = 0; i < lines.length; i++) {
-    if (SPAWN_BUN_PATTERN.test(lines[i] ?? '')) spawnLines.push(i + 1);
+function isMirrorExcluded(path: string): boolean {
+  return path.includes(MIRROR_EXCLUDED_INFIX);
+}
+
+function mirroredFilesWithChildProcessCalls(files: FileLines[]): string[] {
+  const out = new Set<string>();
+  for (const file of files) {
+    if (isMirrorExcluded(file.path)) continue;
+    if (file.lines.some((line) => CHILD_PROCESS_CALL_PATTERN.test(line))) out.add(file.path);
   }
-  if (spawnLines.length === 0) return [];
-  const source = lines.join('\n');
-  const violations: Array<{ line: number; missingKey: string }> = [];
-  for (const key of SPAWN_REQUIRED_ENV_KEYS) {
-    if (!source.includes(key)) {
-      violations.push({ line: spawnLines[0] ?? 1, missingKey: key });
+  return [...out].sort();
+}
+
+type SpawnIsolationViolation =
+  | { line: number; reason: 'missing-key'; missingKey: RequiredSpawnEnvKey }
+  | {
+      line: number;
+      reason: 'unconfirmed-key';
+      unconfirmedKey: RequiredSpawnEnvKey;
+      detail: string;
+    }
+  | { line: number; reason: 'cleared-key'; clearedKey: RequiredSpawnEnvKey }
+  | { line: number; reason: 'undeterminable'; detail: string };
+
+interface SpawnIsolationScan {
+  devServerSpawnLines: number[];
+  violations: SpawnIsolationViolation[];
+}
+
+type EnvKeyVerdict =
+  | { kind: 'declared' }
+  | { kind: 'shadowed'; spread: string }
+  | { kind: 'cleared' };
+
+type SpawnEnvResolution =
+  | {
+      kind: 'keys';
+      keys: ReadonlyMap<string, EnvKeyVerdict>;
+      unreadableSpread: string | null;
+    }
+  | { kind: 'undeterminable'; detail: string };
+
+const spawnScanProject = new Project({
+  useInMemoryFileSystem: true,
+  skipFileDependencyResolution: true,
+  skipLoadingLibFiles: true,
+  skipAddingFilesFromTsConfig: true,
+  compilerOptions: { noLib: true, allowJs: false },
+});
+
+function excerpt(node: Node): string {
+  const text = node.getText().replace(/\s+/g, ' ');
+  return text.length > 80 ? `${text.slice(0, 80)}...` : text;
+}
+
+function diagnosticText(diagnostic: Diagnostic): string {
+  const message = diagnostic.getMessageText();
+  return typeof message === 'string' ? message : message.getMessageText();
+}
+
+function stringLiteralValue(node: Node): string | null {
+  if (node.isKind(SyntaxKind.StringLiteral)) return node.getLiteralValue();
+  if (node.isKind(SyntaxKind.NoSubstitutionTemplateLiteral)) return node.getLiteralValue();
+  return null;
+}
+
+function propertyKey(nameNode: Node): string | null {
+  const literal = stringLiteralValue(nameNode);
+  if (literal !== null) return literal;
+  if (nameNode.isKind(SyntaxKind.Identifier)) return nameNode.getText();
+  if (nameNode.isKind(SyntaxKind.NumericLiteral)) return nameNode.getText();
+  if (nameNode.isKind(SyntaxKind.ComputedPropertyName)) {
+    return stringLiteralValue(nameNode.getExpression());
+  }
+  return null;
+}
+
+function isDevServerArgvToken(node: Node): boolean {
+  return stringLiteralValue(node) === DEV_SERVER_ARGV_TOKEN;
+}
+
+function isDevServerSpawnCall(call: CallExpression): boolean {
+  const callee = call.getExpression();
+  const name = callee.isKind(SyntaxKind.PropertyAccessExpression)
+    ? callee.getName()
+    : callee.getText();
+  if (!SPAWN_CALLEE_NAMES.has(name)) return false;
+  for (const arg of call.getArguments()) {
+    if (arg.isKind(SyntaxKind.ObjectLiteralExpression)) break;
+    if (isDevServerArgvToken(arg)) return true;
+    if (
+      arg.isKind(SyntaxKind.ArrayLiteralExpression) &&
+      arg.getElements().some(isDevServerArgvToken)
+    ) {
+      return true;
     }
   }
-  return violations;
+  return false;
+}
+
+function resolvesToUndefined(node: Node | undefined): boolean {
+  if (node === undefined) return false;
+  if (node.isKind(SyntaxKind.VoidExpression)) return true;
+  return node.isKind(SyntaxKind.Identifier) && node.getText() === 'undefined';
+}
+
+function envKeysFromLiteral(env: ObjectLiteralExpression): SpawnEnvResolution {
+  const keys = new Map<string, EnvKeyVerdict>();
+  let unreadableSpread: string | null = null;
+  for (const prop of env.getProperties()) {
+    if (prop.isKind(SyntaxKind.SpreadAssignment)) {
+      const spread = prop.getExpression();
+      const spreadText = excerpt(spread);
+      if (spread.getText() !== PARENT_ENV_SPREAD) unreadableSpread ??= spreadText;
+      for (const key of keys.keys()) keys.set(key, { kind: 'shadowed', spread: spreadText });
+      continue;
+    }
+    if (prop.isKind(SyntaxKind.ShorthandPropertyAssignment)) {
+      keys.set(prop.getName(), { kind: 'declared' });
+      continue;
+    }
+    if (!prop.isKind(SyntaxKind.PropertyAssignment)) continue;
+    const key = propertyKey(prop.getNameNode());
+    if (key === null) {
+      return {
+        kind: 'undeterminable',
+        detail: `its \`env\` object has the computed key \`${excerpt(prop.getNameNode())}\`, which may or may not be an isolation key`,
+      };
+    }
+    keys.set(
+      key,
+      resolvesToUndefined(prop.getInitializer()) ? { kind: 'cleared' } : { kind: 'declared' },
+    );
+  }
+  return { kind: 'keys', keys, unreadableSpread };
+}
+
+function envKeysFromOptions(options: ObjectLiteralExpression): SpawnEnvResolution {
+  const props = options.getProperties();
+  let env: ObjectLiteralExpression | null = null;
+  let envIndex = -1;
+  for (const [index, prop] of props.entries()) {
+    if (prop.isKind(SyntaxKind.ShorthandPropertyAssignment)) {
+      if (prop.getName() !== 'env') continue;
+      return {
+        kind: 'undeterminable',
+        detail:
+          'its options object passes `env` by shorthand (`{ env }`), so the env object is built elsewhere and is not readable at this call',
+      };
+    }
+    if (!prop.isKind(SyntaxKind.PropertyAssignment)) continue;
+    const key = propertyKey(prop.getNameNode());
+    if (key === null) {
+      return {
+        kind: 'undeterminable',
+        detail: `its options object has the computed key \`${excerpt(prop.getNameNode())}\`, which may or may not be \`env\``,
+      };
+    }
+    if (key !== 'env') continue;
+    const initializer = prop.getInitializer();
+    if (initializer === undefined || !initializer.isKind(SyntaxKind.ObjectLiteralExpression)) {
+      return {
+        kind: 'undeterminable',
+        detail: `its \`env\` is \`${excerpt(initializer ?? prop)}\`, not an object literal, so the keys it carries are not readable at this call`,
+      };
+    }
+    env = initializer;
+    envIndex = index;
+  }
+  if (env === null) {
+    if (props.some((prop) => prop.isKind(SyntaxKind.SpreadAssignment))) {
+      return {
+        kind: 'undeterminable',
+        detail:
+          'its options object declares no own `env` and spreads another object, which may carry one',
+      };
+    }
+    return { kind: 'keys', keys: new Map(), unreadableSpread: null };
+  }
+  if (props.slice(envIndex + 1).some((prop) => prop.isKind(SyntaxKind.SpreadAssignment))) {
+    return {
+      kind: 'undeterminable',
+      detail:
+        'its options object spreads another object after `env`, which may replace the env read here',
+    };
+  }
+  return envKeysFromLiteral(env);
+}
+
+function resolveSpawnEnv(call: CallExpression): SpawnEnvResolution {
+  const lastArg = call.getArguments().at(-1);
+  if (lastArg === undefined) return { kind: 'keys', keys: new Map(), unreadableSpread: null };
+  if (lastArg.isKind(SyntaxKind.ObjectLiteralExpression)) return envKeysFromOptions(lastArg);
+  if (stringLiteralValue(lastArg) !== null || lastArg.isKind(SyntaxKind.ArrayLiteralExpression)) {
+    return { kind: 'keys', keys: new Map(), unreadableSpread: null };
+  }
+  return {
+    kind: 'undeterminable',
+    detail: `its last argument is \`${excerpt(lastArg)}\` (${lastArg.getKindName()}), so the guard cannot tell whether it is an argv list or an options object carrying an env`,
+  };
+}
+
+function assertNeverEnvKeyVerdict(verdict: never): never {
+  throw new Error(`Unhandled EnvKeyVerdict kind: ${JSON.stringify(verdict)}`);
+}
+
+function scanSpawnIsolation(name: string, source: string): SpawnIsolationScan {
+  const sourceFile = spawnScanProject.createSourceFile(`/${name}`, source, { overwrite: true });
+  const syntaxError = spawnScanProject.getProgram().getSyntacticDiagnostics(sourceFile)[0];
+  if (syntaxError !== undefined) {
+    return {
+      devServerSpawnLines: [],
+      violations: [
+        {
+          line: syntaxError.getLineNumber() ?? 1,
+          reason: 'undeterminable',
+          detail: `the file does not parse (${diagnosticText(syntaxError)}), so no spawn call in it can be read`,
+        },
+      ],
+    };
+  }
+
+  const devServerSpawnLines: number[] = [];
+  const violations: SpawnIsolationViolation[] = [];
+  for (const call of sourceFile.getDescendantsOfKind(SyntaxKind.CallExpression)) {
+    if (!isDevServerSpawnCall(call)) continue;
+    const line = call.getStartLineNumber();
+    devServerSpawnLines.push(line);
+    const env = resolveSpawnEnv(call);
+    if (env.kind === 'undeterminable') {
+      violations.push({ line, reason: 'undeterminable', detail: env.detail });
+      continue;
+    }
+    for (const key of SPAWN_REQUIRED_ENV_KEYS) {
+      const verdict = env.keys.get(key);
+      if (verdict === undefined) {
+        if (env.unreadableSpread === null) {
+          violations.push({ line, reason: 'missing-key', missingKey: key });
+          continue;
+        }
+        violations.push({
+          line,
+          reason: 'unconfirmed-key',
+          unconfirmedKey: key,
+          detail: `the \`env\` object spreads \`${env.unreadableSpread}\`, which may carry it`,
+        });
+        continue;
+      }
+      switch (verdict.kind) {
+        case 'declared':
+          continue;
+        case 'shadowed':
+          violations.push({
+            line,
+            reason: 'unconfirmed-key',
+            unconfirmedKey: key,
+            detail: `the \`env\` object declares it and then spreads \`${verdict.spread}\`, which may replace it`,
+          });
+          continue;
+        case 'cleared':
+          violations.push({ line, reason: 'cleared-key', clearedKey: key });
+          continue;
+        default:
+          assertNeverEnvKeyVerdict(verdict);
+      }
+    }
+  }
+  return { devServerSpawnLines, violations };
+}
+
+const spawnScanCache = new Map<string, SpawnIsolationScan>();
+
+function scanFileSpawnIsolation(file: FileLines): SpawnIsolationScan {
+  const cached = spawnScanCache.get(file.path);
+  if (cached !== undefined) return cached;
+  const scan = scanSpawnIsolation(file.path, file.source);
+  spawnScanCache.set(file.path, scan);
+  return scan;
+}
+
+let plantedSpawnScanSeq = 0;
+
+function scanPlantedSpawnIsolation(lines: string[]): SpawnIsolationScan {
+  plantedSpawnScanSeq += 1;
+  return scanSpawnIsolation(`planted-${plantedSpawnScanSeq}.ts`, lines.join('\n'));
+}
+
+function assertNeverSpawnViolation(violation: never): never {
+  throw new Error(`Unhandled SpawnIsolationViolation reason: ${JSON.stringify(violation)}`);
+}
+
+function describeSpawnViolation(violation: SpawnIsolationViolation): string {
+  switch (violation.reason) {
+    case 'missing-key':
+      return `no ${violation.missingKey} in this spawn's own env option`;
+    case 'unconfirmed-key':
+      return `the guard could not establish that ${violation.unconfirmedKey} reaches the child process: ${violation.detail}, so it is unconfirmed rather than known-absent`;
+    case 'cleared-key':
+      return `this spawn's env option declares ${violation.clearedKey} as \`undefined\`, and Node ignores undefined values in \`env\`, so the key does not reach the child`;
+    case 'undeterminable':
+      return `this spawn's env could not be determined, so the isolation keys are unconfirmed rather than known-absent: ${violation.detail}`;
+    default:
+      return assertNeverSpawnViolation(violation);
+  }
+}
+
+function missingKeysOf(scan: SpawnIsolationScan): RequiredSpawnEnvKey[] {
+  return scan.violations
+    .filter((violation) => violation.reason === 'missing-key')
+    .map((violation) => violation.missingKey)
+    .sort();
+}
+
+function unconfirmedKeysOf(scan: SpawnIsolationScan): RequiredSpawnEnvKey[] {
+  return scan.violations
+    .filter((violation) => violation.reason === 'unconfirmed-key')
+    .map((violation) => violation.unconfirmedKey)
+    .sort();
+}
+
+function clearedKeysOf(scan: SpawnIsolationScan): RequiredSpawnEnvKey[] {
+  return scan.violations
+    .filter((violation) => violation.reason === 'cleared-key')
+    .map((violation) => violation.clearedKey)
+    .sort();
+}
+
+function undeterminableDetails(scan: SpawnIsolationScan): string[] {
+  return scan.violations
+    .filter((violation) => violation.reason === 'undeterminable')
+    .map((violation) => violation.detail);
+}
+
+function mirroredFilesWithDevServerSpawns(files: FileLines[]): string[] {
+  return files
+    .filter((file) => !isMirrorExcluded(file.path))
+    .filter((file) => scanFileSpawnIsolation(file).devServerSpawnLines.length > 0)
+    .map((file) => file.path)
+    .sort();
+}
+
+function requirePinnedSpawnFile(files: FileLines[], path: string): FileLines {
+  const file = files.find((candidate) => candidate.path === path);
+  if (file === undefined) {
+    throw new Error(
+      `${path} is pinned in DEV_SERVER_SPAWN_SITES but is not under the scanned e2e directories — it moved or was renamed, so its dev-server spawn stopped being checked. Point the path literal in DEV_SERVER_SPAWN_SITES at where the file lives now, and add its new parent to E2E_DIRS if the move left the scanned tree.`,
+    );
+  }
+  return file;
+}
+
+function devServerSpawnCallHead(files: FileLines[], path: string): string {
+  const file = requirePinnedSpawnFile(files, path);
+  const line = scanFileSpawnIsolation(file).devServerSpawnLines[0];
+  if (line === undefined) {
+    throw new Error(
+      `${path} is in the scanned corpus but the guard resolves no dev-server spawn call in it, so there is no real call head to harvest the fixture below from. Either the spawn moved — point DEV_SERVER_SPAWN_SITES at its new home — or the call-shape recogniser rotted: it selects a \`spawn\`/\`spawnSync\` call whose command or argv array carries the literal '${DEV_SERVER_ARGV_TOKEN}', so re-anchor SPAWN_CALLEE_NAMES and DEV_SERVER_ARGV_TOKEN on the shape this site now has.`,
+    );
+  }
+  return file.lines[line - 1] ?? '';
 }
 
 function isRemoteImageHost(line: string): boolean {
@@ -333,58 +711,446 @@ describe('E2E STOP rule — zero allowlist', () => {
 
   test('e2e files that spawn a dev server must isolate shared mutable state (vite cache + i18n compile)', () => {
     const violations: string[] = [];
-    for (const file of e2eFiles) {
-      for (const v of findSpawnIsolationViolations(file.lines)) {
+    for (const file of e2eTsFiles) {
+      for (const violation of scanFileSpawnIsolation(file).violations) {
         violations.push(
-          `  ${file.path}:${v.line}    spawn('bun', …) without ${v.missingKey} anywhere in the file`,
+          `  ${file.path}:${violation.line}    ${describeSpawnViolation(violation)}: ${(file.lines[violation.line - 1] ?? '').trim()}`,
         );
       }
     }
     if (violations.length > 0) {
       throw new Error(
-        `dev-server spawn without shared-state isolation — pass OK_TEST_VITE_CACHE_DIR (via prepareViteCacheDir from ./_helpers, removeAllDuringTeardown in teardown) and OK_TEST_SKIP_I18N_COMPILE: '1' in the spawn env:\n${violations.join('\n')}`,
+        `dev-server spawn without shared-state isolation — pass OK_TEST_VITE_CACHE_DIR (via prepareViteCacheDir from ./_helpers, removeAllDuringTeardown in teardown) and OK_TEST_SKIP_I18N_COMPILE: '1' in the spawn env. A line reported as unconfirmed rather than missing is one this guard could not settle: either it cannot read the spawn's env at all, so inline the env object at the call, or the key is absent from the env object's own properties while a spread may carry it, so declare the key at the call instead of leaving it to the spread, or the key is declared but a spread that follows it may replace it, so move the declaration after the last spread:\n${violations.join('\n')}`,
       );
     }
   });
 
+  test('the spawn-isolation rule resolves a dev-server spawn in exactly the pinned sites', () => {
+    expect(
+      mirroredFilesWithDevServerSpawns(e2eTsFiles),
+      'the files in which the guard resolves a dev-server spawn are no longer exactly the pinned dev-server spawn sites. Four causes, four different edits. (1) A pinned file moved or was renamed: update its path literal in DEV_SERVER_SPAWN_SITES, and add its new parent to E2E_DIRS if the move left the scanned tree — editing the call-shape recogniser will not bring it back. (2) The recogniser rotted against a call the corpus really has: it selects a `spawn`/`spawnSync` CallExpression whose command or argv array carries the literal argv token, so re-anchor SPAWN_CALLEE_NAMES and DEV_SERVER_ARGV_TOKEN on that shape. (3) A file listed in NON_DEV_SERVER_SPAWN_SITES now boots a dev server: move it to DEV_SERVER_SPAWN_SITES and give its spawn both isolation env keys. (4) A pinned file stopped parsing under the ts-morph program this guard runs, which is separate from the repo compiler: a file it cannot parse resolves no spawn call at all, and the isolation rule above reports that syntax error for the same file on the same run, so fix the syntax rather than either list. A site that drops out of this set carries no enforced isolation contract however its spawn env changes',
+    ).toEqual([...DEV_SERVER_SPAWN_SITES].sort());
+  });
+
+  test('every child-process call site under the e2e directories is pinned', () => {
+    expect(
+      mirroredFilesWithChildProcessCalls(e2eTsFiles),
+      'the set of files spawning a child process no longer matches the pinned sites — one was added, renamed, or moved, and the isolation checks above stopped covering it. Add it to DEV_SERVER_SPAWN_SITES and give its spawn both isolation env keys, or, if it does not boot a dev server, add it to NON_DEV_SERVER_SPAWN_SITES. The two lists must stay disjoint: a file in NON_DEV_SERVER_SPAWN_SITES that boots a dev server reds the selection assertion above. Files carrying the mirror-excluded infix are outside this pin because they do not exist on the public mirror; the corpus-wide isolation rule above still scans them',
+    ).toEqual(PINNED_SPAWN_SITES);
+  });
+
+  test('the child-process completeness pin sees namespaced calls and not RegExp.prototype.exec', () => {
+    expect(CHILD_PROCESS_CALL_PATTERN.test("const proc = cp.spawn('pnpm', argv);")).toBe(true);
+    expect(
+      CHILD_PROCESS_CALL_PATTERN.test("childProcess.execFileSync('git', ['init', '-q']);"),
+    ).toBe(true);
+    expect(CHILD_PROCESS_CALL_PATTERN.test('const child = node.fork(workerPath);')).toBe(true);
+    expect(CHILD_PROCESS_CALL_PATTERN.test("execFileSync('git', ['init', '-q']);")).toBe(true);
+    expect(CHILD_PROCESS_CALL_PATTERN.test("exec('ls');")).toBe(true);
+
+    expect(CHILD_PROCESS_CALL_PATTERN.test('const match = re.exec(line);')).toBe(false);
+    expect(CHILD_PROCESS_CALL_PATTERN.test('const match = /a(b)/.exec(line);')).toBe(false);
+    expect(CHILD_PROCESS_CALL_PATTERN.test("const label = 'respawn(';")).toBe(false);
+    expect(CHILD_PROCESS_CALL_PATTERN.test('await page.waitForSelector(sel);')).toBe(false);
+  });
+
   test('spawn-isolation rule fires on a planted violation and not on adjacent negatives', () => {
-    const planted = [
-      "const proc = spawn('bun', ['run', '--silent', 'dev'], {",
-      '  env: { ...process.env, VITE_PORT: String(port) },',
-      '});',
-    ];
-    const fired = findSpawnIsolationViolations(planted);
-    expect(fired.length).toBe(2);
-    expect(fired[0]?.line).toBe(1);
+    const spawnCallHead = devServerSpawnCallHead(e2eTsFiles, DEV_SERVER_SPAWN_SITES[0]);
+
+    const planted = [spawnCallHead, '  env: { ...process.env, VITE_PORT: String(port) },', '});'];
+    const fired = scanPlantedSpawnIsolation(planted);
+    expect(
+      missingKeysOf(fired),
+      `the rule did not report one violation per missing isolation key on ${DEV_SERVER_SPAWN_SITES[0]}'s own spawn call with both keys stripped`,
+    ).toEqual([...SPAWN_REQUIRED_ENV_KEYS].sort());
+    expect(fired.violations[0]?.line).toBe(1);
 
     const compliant = [
-      "const proc = spawn('bun', ['run', '--silent', 'dev'], {",
+      spawnCallHead,
       "  env: { OK_TEST_VITE_CACHE_DIR: dir, OK_TEST_SKIP_I18N_COMPILE: '1' },",
       '});',
     ];
-    expect(findSpawnIsolationViolations(compliant).length).toBe(0);
+    expect(scanPlantedSpawnIsolation(compliant).violations).toEqual([]);
 
     const otherSpawn = ["const proc = spawn('node', ['script.js'], { env: {} });"];
-    expect(findSpawnIsolationViolations(otherSpawn).length).toBe(0);
+    const otherSpawnScan = scanPlantedSpawnIsolation(otherSpawn);
+    expect(otherSpawnScan.devServerSpawnLines).toEqual([]);
+    expect(otherSpawnScan.violations).toEqual([]);
 
-    const halfCompliant = [
-      "const proc = spawn('bun', ['run', '--silent', 'dev'], {",
-      '  env: { OK_TEST_VITE_CACHE_DIR: dir },',
-      '});',
-    ];
-    const halfFired = findSpawnIsolationViolations(halfCompliant);
-    expect(halfFired.length).toBe(1);
-    expect(halfFired[0]?.missingKey).toBe('OK_TEST_SKIP_I18N_COMPILE');
+    const notASpawn = ["const cmd = 'pnpm run dev --host 127.0.0.1';"];
+    expect(scanPlantedSpawnIsolation(notASpawn).devServerSpawnLines).toEqual([]);
 
-    const multiSpawn = [
-      "const p1 = spawn('bun', ['run', '--silent', 'dev'], {",
+    const halfCompliant = [spawnCallHead, '  env: { OK_TEST_VITE_CACHE_DIR: dir },', '});'];
+    expect(missingKeysOf(scanPlantedSpawnIsolation(halfCompliant))).toEqual([
+      'OK_TEST_SKIP_I18N_COMPILE',
+    ]);
+
+    const compliantSibling = [
+      spawnCallHead,
       "  env: { OK_TEST_VITE_CACHE_DIR: d, OK_TEST_SKIP_I18N_COMPILE: '1' },",
       '});',
-      "const p2 = spawn('bun', ['run', '--silent', 'dev'], {",
+    ];
+    const secondSpawnUnisolated = [
+      ...compliantSibling,
+      spawnCallHead.replace('const proc', 'const second'),
       '  env: { VITE_PORT: String(port) },',
       '});',
     ];
-    expect(findSpawnIsolationViolations(multiSpawn).length).toBe(0);
+    const secondFired = scanPlantedSpawnIsolation(secondSpawnUnisolated);
+    expect(
+      secondFired.violations.map((violation) => violation.line),
+      'an un-isolated second dev-server spawn is immunised by a compliant sibling in the same file, so the contract is enforced per file rather than per spawn',
+    ).toEqual([4, 4]);
+    expect(missingKeysOf(secondFired)).toEqual([...SPAWN_REQUIRED_ENV_KEYS].sort());
+
+    const twoCompliant = [
+      ...compliantSibling,
+      compliantSibling[0]?.replace('const proc', 'const second') ?? '',
+      ...compliantSibling.slice(1),
+    ];
+    expect(scanPlantedSpawnIsolation(twoCompliant).violations).toEqual([]);
+  });
+
+  test("spawn-isolation rule counts only the keys a spawn's own env object declares", () => {
+    const spawnCallHead = devServerSpawnCallHead(e2eTsFiles, DEV_SERVER_SPAWN_SITES[0]);
+    const bothKeysMissing = [...SPAWN_REQUIRED_ENV_KEYS].sort();
+
+    const keysOnlyInComment = [
+      spawnCallHead,
+      `  // ${SPAWN_REQUIRED_ENV_KEYS.join(' and ')} belong here`,
+      `  // ${SPAWN_REQUIRED_ENV_KEYS[1]}: pending`,
+      '  env: { VITE_PORT: String(port) },',
+      '});',
+    ];
+    expect(
+      missingKeysOf(scanPlantedSpawnIsolation(keysOnlyInComment)),
+      'a comment naming the isolation keys satisfied the contract, so the rule asked whether the source spells the key rather than whether the spawn declares it',
+    ).toEqual(bothKeysMissing);
+
+    const keysOnlyInString = [
+      spawnCallHead,
+      `  env: { BANNER: '${SPAWN_REQUIRED_ENV_KEYS[0]}: unset', VITE_PORT: String(port) },`,
+      '});',
+    ];
+    expect(
+      missingKeysOf(scanPlantedSpawnIsolation(keysOnlyInString)),
+      'a string literal naming an isolation key satisfied the contract, so the rule asked whether the source spells the key rather than whether the spawn declares it',
+    ).toEqual(bothKeysMissing);
+
+    const keysOutsideEnv = [
+      spawnCallHead,
+      `  ${SPAWN_REQUIRED_ENV_KEYS[0]}: viteCacheDir,`,
+      `  ${SPAWN_REQUIRED_ENV_KEYS[1]}: '1',`,
+      '  env: { ...process.env },',
+      '});',
+    ];
+    expect(
+      missingKeysOf(scanPlantedSpawnIsolation(keysOutsideEnv)),
+      'an isolation key spelled as a sibling of `env` rather than inside it satisfied the contract, so the spawn passes the guard while the child process never receives the variable',
+    ).toEqual(bothKeysMissing);
+
+    const inheritedEnvOnly = [spawnCallHead, '  env: { ...process.env },', '});'];
+    expect(
+      missingKeysOf(scanPlantedSpawnIsolation(inheritedEnvOnly)),
+      'a bare `...process.env` spread satisfied the contract, but a spread declares no named key and the parent env is exactly the shared state this contract isolates against',
+    ).toEqual(bothKeysMissing);
+
+    const noOptionsArgument = ["const proc = spawn('pnpm', ['run', 'dev', '--host', '::1']);"];
+    expect(
+      missingKeysOf(scanPlantedSpawnIsolation(noOptionsArgument)),
+      'a dev-server spawn with no options argument at all declares no env, so both keys are definitively absent rather than unreadable',
+    ).toEqual(bothKeysMissing);
+
+    const shorthandEntries = [
+      spawnCallHead,
+      `  env: { ...process.env, ${SPAWN_REQUIRED_ENV_KEYS[0]}, ${SPAWN_REQUIRED_ENV_KEYS[1]} },`,
+      '});',
+    ];
+    expect(
+      scanPlantedSpawnIsolation(shorthandEntries).violations,
+      'shorthand env entries declare the keys just as a property assignment does, so reporting them missing would push authors off a legal form',
+    ).toEqual([]);
+
+    const quotedKeyNames = [
+      spawnCallHead,
+      `  env: { '${SPAWN_REQUIRED_ENV_KEYS[0]}': dir, '${SPAWN_REQUIRED_ENV_KEYS[1]}': '1' },`,
+      '});',
+    ];
+    expect(
+      scanPlantedSpawnIsolation(quotedKeyNames).violations,
+      'string-literal property names declare the keys just as bare identifiers do',
+    ).toEqual([]);
+  });
+
+  test('spawn-isolation rule reports an env it cannot read as unconfirmed, not as a missing key', () => {
+    const spawnCallHead = devServerSpawnCallHead(e2eTsFiles, DEV_SERVER_SPAWN_SITES[0]);
+
+    const cases: Array<{ label: string; lines: string[]; detailIncludes: string }> = [
+      {
+        label: 'env built by a call expression',
+        lines: [spawnCallHead, '  env: buildWorkerEnv(port, viteCacheDir),', '});'],
+        detailIncludes: 'buildWorkerEnv(port, viteCacheDir)',
+      },
+      {
+        label: 'env passed by shorthand',
+        lines: [spawnCallHead, '  env,', '});'],
+        detailIncludes: 'shorthand',
+      },
+      {
+        label: 'options spread with no own env',
+        lines: [spawnCallHead, '  ...baseSpawnOptions,', '  cwd: APP_PACKAGE_ROOT,', '});'],
+        detailIncludes: 'declares no own `env`',
+      },
+      {
+        label: 'options spread after env',
+        lines: [
+          spawnCallHead,
+          "  env: { OK_TEST_VITE_CACHE_DIR: d, OK_TEST_SKIP_I18N_COMPILE: '1' },",
+          '  ...overrides,',
+          '});',
+        ],
+        detailIncludes: 'after `env`',
+      },
+      {
+        label: 'computed env key',
+        lines: [
+          spawnCallHead,
+          "  env: { [CACHE_DIR_VAR]: d, OK_TEST_SKIP_I18N_COMPILE: '1' },",
+          '});',
+        ],
+        detailIncludes: 'computed key',
+      },
+      {
+        label: 'call extent never closes',
+        lines: [
+          spawnCallHead,
+          "  env: { OK_TEST_VITE_CACHE_DIR: d, OK_TEST_SKIP_I18N_COMPILE: '1',",
+        ],
+        detailIncludes: 'does not parse',
+      },
+    ];
+
+    for (const { label, lines, detailIncludes } of cases) {
+      const scan = scanPlantedSpawnIsolation(lines);
+      expect(
+        missingKeysOf(scan),
+        `${label}: reported as a missing isolation key, so the failure sends a reader looking for a key that is not the problem — the guard could not read this spawn's env at all`,
+      ).toEqual([]);
+      const details = undeterminableDetails(scan);
+      expect(
+        details.length,
+        `${label}: the guard read an env it has no way to read, so a spawn whose isolation cannot be established passes as compliant`,
+      ).toBe(1);
+      expect(details[0]).toContain(detailIncludes);
+    }
+
+    const unparseable = scanPlantedSpawnIsolation([
+      spawnCallHead,
+      "  env: { OK_TEST_VITE_CACHE_DIR: d, OK_TEST_SKIP_I18N_COMPILE: '1',",
+    ]);
+    expect(
+      unparseable.devServerSpawnLines,
+      'a file the guard cannot parse still resolved a dev-server spawn, so the gate-population anchor below would not drop such a file and the parse cause it names could never arise',
+    ).toEqual([]);
+  });
+
+  test('spawn-isolation rule reports a key a foreign env spread may carry as unconfirmed', () => {
+    const spawnCallHead = devServerSpawnCallHead(e2eTsFiles, DEV_SERVER_SPAWN_SITES[0]);
+
+    const foreignSpread = [
+      spawnCallHead,
+      `  env: { ...process.env, ...workerServerEnv, ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir },`,
+      '});',
+    ];
+    const scan = scanPlantedSpawnIsolation(foreignSpread);
+    expect(
+      missingKeysOf(scan),
+      "a key absent from an env object's own properties was reported known-absent while the object spreads another one that may carry it, so the failure sends a reader after a key the guard never looked for",
+    ).toEqual([]);
+    expect(
+      unconfirmedKeysOf(scan),
+      'the key a foreign spread may carry was not reported at all, so a spawn whose isolation cannot be established passes as compliant',
+    ).toEqual([SPAWN_REQUIRED_ENV_KEYS[1]]);
+    expect(
+      scan.violations.map(describeSpawnViolation).join('\n'),
+      'the unconfirmed verdict does not name the spread that hid the key, so a reader cannot tell why the guard could not see it',
+    ).toContain('workerServerEnv');
+
+    const declaredBesideForeignSpread = [
+      spawnCallHead,
+      `  env: { ...process.env, ...workerServerEnv, ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: '1' },`,
+      '});',
+    ];
+    expect(
+      scanPlantedSpawnIsolation(declaredBesideForeignSpread).violations,
+      'a foreign spread made a spawn that declares both isolation keys outright report as un-isolated, which is the shape the real worker fixture spawns with',
+    ).toEqual([]);
+
+    const trailingForeignSpread = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: '1', ...workerServerEnv },`,
+      '});',
+    ];
+    const trailingScan = scanPlantedSpawnIsolation(trailingForeignSpread);
+    expect(
+      missingKeysOf(trailingScan),
+      'a key the env object declares outright was reported known-absent, so the failure sends a reader after a key that is spelled at the call',
+    ).toEqual([]);
+    expect(
+      unconfirmedKeysOf(trailingScan),
+      'a foreign spread placed after both declared keys cleared the spawn, but a later spread overrides same-name properties and may hand the child an undefined the runtime then drops from its env, so the isolation this guard exists to establish is not established',
+    ).toEqual([...SPAWN_REQUIRED_ENV_KEYS].sort());
+    expect(
+      trailingScan.violations.map(describeSpawnViolation).join('\n'),
+      'the unconfirmed verdict does not name the trailing spread or say that it may replace the declared key, so a reader is told the key is absent when the real problem is that the declaration is positioned before the spread',
+    ).toContain('workerServerEnv');
+    expect(
+      trailingScan.violations.map(describeSpawnViolation).join('\n'),
+      'the unconfirmed verdict does not put the trailing spread on the replace axis, so the remedy a reader reaches for is to declare a key that is already declared',
+    ).toContain('may replace it');
+
+    const trailingParentEnvSpread = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: '1', ...${PARENT_ENV_SPREAD} },`,
+      '});',
+    ];
+    const trailingParentScan = scanPlantedSpawnIsolation(trailingParentEnvSpread);
+    expect(
+      missingKeysOf(trailingParentScan),
+      'a key the env object declares outright was reported known-absent when the trailing spread is the parent env',
+    ).toEqual([]);
+    expect(
+      unconfirmedKeysOf(trailingParentScan),
+      'a trailing `...process.env` cleared the spawn: the carve-out that lets a parent-env spread stand where no key is declared is about whether the parent can SUPPLY a key, and it does not extend to a parent env spread that REPLACES a declared key with exactly the shared value this contract isolates against',
+    ).toEqual([...SPAWN_REQUIRED_ENV_KEYS].sort());
+
+    const spreadBetweenDeclaredKeys = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ...overrides, ${SPAWN_REQUIRED_ENV_KEYS[1]}: '1' },`,
+      '});',
+    ];
+    const betweenScan = scanPlantedSpawnIsolation(spreadBetweenDeclaredKeys);
+    expect(
+      missingKeysOf(betweenScan),
+      'a key declared on either side of a spread was reported known-absent',
+    ).toEqual([]);
+    expect(
+      unconfirmedKeysOf(betweenScan),
+      'the verdict is not positional: only the key declared BEFORE the spread can be replaced by it, so reporting the key declared after it too makes any spread poison the whole env object and the guard stops discriminating between the two positions',
+    ).toEqual([SPAWN_REQUIRED_ENV_KEYS[0]]);
+
+    const redeclaredAfterSpread = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ...overrides, ${SPAWN_REQUIRED_ENV_KEYS[0]}: fallbackDir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: '1' },`,
+      '});',
+    ];
+    expect(
+      scanPlantedSpawnIsolation(redeclaredAfterSpread).violations,
+      're-declaring a key after the last spread is the escape hatch out of the shadowed verdict — the spread cannot replace what follows it — and closing it leaves an author who took the remedy the failure message prescribes with no way to green the guard',
+    ).toEqual([]);
+  });
+
+  test('spawn-isolation rule reports a key whose declared value is `undefined` as cleared', () => {
+    const spawnCallHead = devServerSpawnCallHead(e2eTsFiles, DEV_SERVER_SPAWN_SITES[0]);
+
+    const oneKeyCleared = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: undefined },`,
+      '});',
+    ];
+    const clearedScan = scanPlantedSpawnIsolation(oneKeyCleared);
+    expect(
+      clearedKeysOf(clearedScan),
+      'a key spelled in the env object with the value `undefined` counted as declared, but Node drops undefined values out of `env` before the child starts, so the child runs against the shared vite cache and the shared i18n compile exactly as if the key had never been written',
+    ).toEqual([SPAWN_REQUIRED_ENV_KEYS[1]]);
+    expect(
+      clearedScan.violations.length,
+      'a key cleared to `undefined` produced a verdict per required key rather than one for the key that is cleared, so the failure names a compliant key too',
+    ).toBe(1);
+    expect(
+      missingKeysOf(clearedScan),
+      'a key the env object spells outright was reported known-absent, so the failure sends a reader looking for a key that is written at the call and points away from the value that drops it',
+    ).toEqual([]);
+    expect(
+      clearedScan.violations.map(describeSpawnViolation).join('\n'),
+      'the cleared verdict does not say that the value is `undefined` and that Node drops it, so a reader who can see the key at the call has no way to tell what the guard objects to',
+    ).toContain('undefined');
+
+    const bothKeysCleared = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: undefined, ${SPAWN_REQUIRED_ENV_KEYS[1]}: undefined },`,
+      '});',
+    ];
+    expect(
+      clearedKeysOf(scanPlantedSpawnIsolation(bothKeysCleared)),
+      'an env object that clears both isolation keys reported fewer than one verdict per cleared key, so an author who fixes the one that is named is told the spawn is compliant while the other key still never reaches the child',
+    ).toEqual([...SPAWN_REQUIRED_ENV_KEYS].sort());
+
+    const voidOperatorValue = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: void 0 },`,
+      '});',
+    ];
+    expect(
+      clearedKeysOf(scanPlantedSpawnIsolation(voidOperatorValue)),
+      'a key written `void 0` counted as declared, but `void` evaluates to `undefined` whatever operand follows it, so Node drops the key out of `env` exactly as it drops a bare `undefined` and the child runs against the shared vite cache and the shared i18n compile',
+    ).toEqual([SPAWN_REQUIRED_ENV_KEYS[1]]);
+
+    const voidCallValue = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: void resolveFlag() },`,
+      '});',
+    ];
+    expect(
+      clearedKeysOf(scanPlantedSpawnIsolation(voidCallValue)),
+      'a `void` whose operand is a call counted as declared, but the operand is discarded and only its side effects run, so the key reaches the child no more than `void 0` does and no reading of the operand could produce another verdict',
+    ).toEqual([SPAWN_REQUIRED_ENV_KEYS[1]]);
+
+    const clearedThenRedeclared = [
+      spawnCallHead,
+      `  env: { ${SPAWN_REQUIRED_ENV_KEYS[1]}: undefined, ${SPAWN_REQUIRED_ENV_KEYS[0]}: dir, ${SPAWN_REQUIRED_ENV_KEYS[1]}: '1' },`,
+      '});',
+    ];
+    expect(
+      scanPlantedSpawnIsolation(clearedThenRedeclared).violations,
+      'a key cleared to `undefined` and then re-declared with a real value reported as cleared, but object literals are last-wins, so the child does receive the key and the guard reds a spawn that is isolated',
+    ).toEqual([]);
+  });
+
+  test('spawn-isolation rule clears compliant spawns whose env values carry operators or span lines', () => {
+    const spawnCallHead = devServerSpawnCallHead(e2eTsFiles, DEV_SERVER_SPAWN_SITES[0]);
+
+    const divisionInEnvValue = [
+      spawnCallHead,
+      '  env: {',
+      '    ...process.env,',
+      '    OK_TEST_VITE_CACHE_DIR: viteCacheDir,',
+      "    OK_TEST_SKIP_I18N_COMPILE: '1',",
+      '    OK_TEST_BOOT_BUDGET_MS: String(budgetMs(workerCount) / 2),',
+      '  },',
+      '});',
+    ];
+    expect(
+      scanPlantedSpawnIsolation(divisionInEnvValue).violations,
+      'a division operator in an env value made a fully compliant spawn report as un-isolated, so ordinary arithmetic in a spawn env reds this guard',
+    ).toEqual([]);
+
+    const multiLineTemplateEnvValue = [
+      spawnCallHead,
+      '  env: {',
+      '    ...process.env,',
+      '    OK_TEST_VITE_CACHE_DIR: viteCacheDir,',
+      "    OK_TEST_SKIP_I18N_COMPILE: '1',",
+      '    OK_TEST_BANNER: `worker boot',
+      `      port \${port}`,
+      `      cache \${viteCacheDir}\`,`,
+      '  },',
+      '});',
+    ];
+    expect(
+      scanPlantedSpawnIsolation(multiLineTemplateEnvValue).violations,
+      'an env value spelled as a multi-line template literal made a fully compliant spawn report as un-isolated',
+    ).toEqual([]);
   });
 
   test('dev-harness import rule fires on a static import and not on the sanctioned shapes', () => {
@@ -538,7 +1304,7 @@ describe('E2E STOP rule — zero allowlist', () => {
           'scripts/i18n-compile-unless-skipped.sh (the OK_TEST_SKIP_I18N_COMPILE guard).',
       );
     }
-    if (/\b(?:bun run i18n:compile|lingui compile)\b/.test(predev)) {
+    if (/i18n:compile|\blingui compile\b/.test(predev)) {
       errors.push(
         'packages/app/package.json "predev" invokes the i18n compile directly, bypassing the ' +
           'OK_TEST_SKIP_I18N_COMPILE guard — every concurrent e2e dev-server boot then rewrites ' +

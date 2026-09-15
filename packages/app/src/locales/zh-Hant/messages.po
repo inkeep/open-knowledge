@@ -1219,6 +1219,10 @@ msgstr "<{componentName}> 不是已知的元件。複製原始碼以便在別處
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 顯示失敗（很可能是屬性有誤）。複製原始碼看看哪裡出了問題，或刪除這個區塊。"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> 無法在這裡合併。請選擇要保留的版本。"
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>鏡像——請挑一個來源。</0>在屬性面板中設定 <1>src</1> + <2>anchor</2>，指向別處的 <3><MirrorSource></3>。"
@@ -1971,6 +1975,14 @@ msgstr "另外還有 {remaining} 個"
 msgid "and more"
 msgstr "以及更多"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "另一個程式正在這裡使用 Git——等它完成後再同步一次（它佔用著 .git/index.lock）"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "另一個程式正在這裡使用 Git——等它完成後再同步一次（它佔用著 <0>.git/index.lock</0>）"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "另一個同步作業正在進行中。請稍候再試。"
@@ -2717,6 +2729,10 @@ msgstr "每次索引請求的字元預算"
 msgctxt "settings search keyword"
 msgid "characters"
 msgstr "字元"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Chat name"
+msgstr "對話名稱"
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -3670,6 +3686,10 @@ msgstr "複製驗證碼 {userCode}"
 msgid "Copy command"
 msgstr "複製指令"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "複製錯誤"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -3899,10 +3919,6 @@ msgstr "無法變更拼字檢查。請重試。"
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "無法變更拼字檢查語言。請重試。"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "無法確認 {filePath} 是否仍有衝突 — 正在重試。"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
@@ -4780,6 +4796,10 @@ msgstr "刪除選取的表格"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "刪除表格"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "刪除檔案"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9013,6 +9033,10 @@ msgstr "還沒有註解。在文件中選取文字就能加上一則。"
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "沒有共同祖先 — 兩個分支都新增了此檔案（add/add 衝突）。"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "此路徑沒有正在追蹤的衝突。"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "這個版本沒有內容變更。"
@@ -9567,6 +9591,7 @@ msgid "Open {displayName} Desktop"
 msgstr "開啟 {displayName} Desktop"
 
 #: src/components/acp/AgentMarkdown.tsx
+#: src/components/acp/ThreadView.tsx
 msgid "Open {docName}"
 msgstr "開啟 {docName}"
 
@@ -11397,6 +11422,8 @@ msgid "Rename"
 msgstr "重新命名"
 
 #. placeholder {0}: session.label
+#. placeholder {0}: thread.title
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "重新命名 {0}"
@@ -11466,10 +11493,6 @@ msgstr "已顯示"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "重新開啟"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "重新開啟 {filePath} 以繼續編輯。"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
@@ -11960,6 +11983,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "沙箱化的 HTML 嵌入——寫下 HTML，即時看到顯示結果。"
 
 #: src/comments/ThreadCard.tsx
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -13101,6 +13125,10 @@ msgstr "因為主題資料夾超出掃描限制，部分已儲存的主題未顯
 msgid "Some skills were deleted with a warning"
 msgstr "部分技能刪除時帶有警告"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "可能已有人解決了 {filePath} 的衝突 — 請先查看文件的目前內容，再重做你的編輯。"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "有東西壞了"
@@ -13895,6 +13923,10 @@ msgstr "代理正在工作"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "智慧代理沒有停止。強制停止將關閉此對話並結束智慧代理。"
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "智慧代理的 OpenKnowledge 工具無法連接到伺服器。請讓智慧代理再試一次；如果一直失敗，請開始新的對話。"
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "代理的人設、價值觀和語氣。"
@@ -14011,6 +14043,14 @@ msgstr "你的端點提供的模型 id。它的向量維度會自動偵測——
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "已開啟的代理"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "OpenKnowledge 伺服器回應逾時，變更可能已經生效。請讓代理先確認，然後再重試。"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "OpenKnowledge 伺服器回應逾時。請讓代理重試。"
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -14367,6 +14407,10 @@ msgstr "這個分支已在以下位置簽出："
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "這可以在「設定 > AI 工具與 CLI」中設定"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "此指令包含隱藏字元，可能使其看起來與實際執行的內容不同。這些字元在此顯示為 ⟨U+…⟩。"
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "這則註解是針對整個屬性的"
@@ -14376,10 +14420,6 @@ msgstr "這則註解是針對整個屬性的"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "此處無法附加檔案。"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "此衝突已解決。"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
@@ -14540,6 +14580,14 @@ msgstr "這不是支援的 Slidev 版本。"
 msgid "this item"
 msgstr "這個項目"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "這份清單可能不是最新的——上次讀取：{staleRelative}。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "這份清單可能不是最新的。"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "這看起來像是磁碟機根目錄（例如 C:\\）。在這裡建立專案骨架會掃描整個磁碟機。"
@@ -14685,6 +14733,10 @@ msgstr "這會從你的 Mac 以及你在下面選的專案中移除 OpenKnowledg
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "這份回報已經在傳送途中，結果會顯示在錯誤回報記錄裡。"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "這個儲存庫還沒有任何提交——重新開啟專案即可建立第一個提交，之後就能推送了"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
@@ -15468,6 +15520,10 @@ msgstr "只能用小寫字母、數字和 <0>-</0>。"
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "只能用小寫字母、數字和連字號"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "使用對方的版本"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"
 msgstr "使用此入門套件"
@@ -15950,6 +16006,10 @@ msgstr "你取消了「{docName}」的載入。"
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "你在本機刪除了 <0>{filePath}</0>，但它在上游被修改過。"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "你拒絕了這個操作。若要執行，請讓智慧代理再試一次並核准。"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."

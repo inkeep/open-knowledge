@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createContentFilter } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
+import { createTestConflictAuthority } from '../../../server/src/conflict-authority.test-helper.ts';
 import { SyncEngine } from '../../../server/src/sync-engine.ts';
 import { createTestServer, type TestServer } from './test-harness';
 
@@ -54,6 +55,7 @@ describe('walker symmetry', () => {
 
     const contentFilter = createContentFilter({ projectDir: contentDir, contentDir });
     const engine = new SyncEngine({
+      conflicts: createTestConflictAuthority(contentDir),
       projectDir: contentDir,
       contentDir,
       contentFilter,
@@ -113,6 +115,7 @@ describe('walker symmetry', () => {
 
     const contentFilter = createContentFilter({ projectDir, contentDir: nestedContentDir });
     const engine = new SyncEngine({
+      conflicts: createTestConflictAuthority(projectDir, nestedContentDir),
       projectDir,
       contentDir: nestedContentDir,
       contentFilter,

@@ -14,6 +14,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { collectReferencedAssets } from '../asset-references.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
+import type { ConflictAuthority } from '../conflict-authority.ts';
 import type { ContentFilter } from '../content-filter.ts';
 import { canonicalDocName, getDocExtension } from '../doc-extensions.ts';
 import type { FileIndexEntry, FolderIndexEntry } from '../file-watcher.ts';
@@ -43,6 +44,7 @@ interface InflightShowAllWalk {
 
 export interface DocumentRouteDeps {
   hocuspocus: Hocuspocus;
+  conflicts: ConflictAuthority;
   contentDir: string;
   isSafeDocName: (docName: string) => boolean;
   resolveAlias: (docName: string) => string;
@@ -90,6 +92,7 @@ export interface DocumentRoutes {
 export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
   const {
     hocuspocus,
+    conflicts,
     contentDir,
     isSafeDocName,
     resolveAlias,
@@ -134,11 +137,10 @@ export function createDocumentRoutes(deps: DocumentRouteDeps): DocumentRoutes {
   onReferencedAssetsCacheInvalidator?.(invalidateReferencedAssetsCache);
 
   function readLifecycleStatus(document: Document): LifecycleStatus | null {
-    const lifecycleMap = document.getMap('lifecycle');
-    const status = lifecycleMap.get('status');
-    if (typeof status !== 'string' || status.length === 0) return null;
-    const reason = lifecycleMap.get('reason');
-    return { status, reason: typeof reason === 'string' ? reason : '' };
+    const view = conflicts.lifecycleOf(document, document.name);
+    if (view === null) return null;
+    if (view.status === 'conflict') return { status: view.status, reason: view.reason };
+    return { status: view.status, reason: '' };
   }
 
   const handleDocumentRead = withValidation(

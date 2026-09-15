@@ -1,8 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { Readable } from 'node:stream';
-import type { Hocuspocus } from '@hocuspocus/server';
 import { describe, expect, test } from 'vitest';
 import { SymlinkEscapeError } from '../apply-managed-rename.ts';
+import { createTestConflictAuthorityInTmpDir } from '../conflict-authority.test-helper.ts';
 import { DocInConflictError } from '../conflict-errors.ts';
 import { ContentRootUnavailableError } from '../fs-safety.ts';
 import { loggerFactory } from '../logger.ts';
@@ -20,9 +20,8 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     getPrincipal: undefined,
     contentFilter: undefined,
     signalChannel: undefined,
-    getSyncEngine: undefined,
+    conflicts: createTestConflictAuthorityInTmpDir('file-ops-routes-authority-'),
     flushContributors: undefined,
-    hocuspocus: {} as Hocuspocus,
     fileOpsService: {} as FileOpsService,
     assetService: {} as AssetService,
     extractAgentIdentity: () => {
@@ -100,7 +99,6 @@ describe('createFileOpsRoutes table', () => {
 describe('rename-path conflict envelope', () => {
   test('maps a DocInConflictError from the rewrite spine to a 409 doc-in-conflict', async () => {
     const group = buildGroup({
-      hocuspocus: { documents: new Map() } as unknown as Hocuspocus,
       docNameForFileOperationPath: () => 'a',
       isValidRelativeContentPath: () => true,
       _performManagedRenameForDocs: () =>

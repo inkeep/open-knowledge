@@ -48,6 +48,8 @@ export interface SkillsInstallRouteDeps {
   skillsHome: string;
   shippedBundleSkillMd: (name: string, scope?: 'project' | 'global') => string | null;
   respondStaleExternalWrite: (res: ServerResponse, handler: string, docName: string) => void;
+  respondPersistenceFailure: (res: ServerResponse, failure: StoreFailure, handler: string) => void;
+  respondDiskDivergence: (res: ServerResponse, handler: string) => void;
   flushDiskAndDetectOutcome: (
     docName: string,
   ) => Promise<
@@ -77,6 +79,8 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
     shippedBundleSkillMd,
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
+    respondPersistenceFailure,
+    respondDiskDivergence,
     skillInstallOps,
     skillPlacementOps,
     signalChannel,
@@ -133,6 +137,14 @@ export function createSkillsInstallRoutes(deps: SkillsInstallRouteDeps): ApiRout
             ? `${relative(inPlaceScanBase, skillDir).split(sep).join('/')}/SKILL`
             : skillLiveDocName(body.scope, body.name);
         const liveSkillFlush = await flushDiskAndDetectOutcome(liveSkillDoc);
+        if (liveSkillFlush?.kind === 'failure') {
+          respondPersistenceFailure(res, liveSkillFlush.failure, 'skill-install');
+          return;
+        }
+        if (liveSkillFlush?.kind === 'divergence') {
+          respondDiskDivergence(res, 'skill-install');
+          return;
+        }
         if (liveSkillFlush?.kind === 'stale-external-write') {
           respondStaleExternalWrite(res, 'skill-install', liveSkillDoc);
           return;

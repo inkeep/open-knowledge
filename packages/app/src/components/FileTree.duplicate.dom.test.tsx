@@ -252,6 +252,8 @@ function expectMenuOrder(labels: readonly RegExp[]) {
   }
 }
 
+let conflictsPayload: Array<Record<string, unknown>> = [];
+
 function makeFetchMock() {
   return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -267,6 +269,9 @@ function makeFetchMock() {
     }
     if (url === '/api/delete-path') {
       return jsonResponse({ deletedDocNames: [] });
+    }
+    if (url === '/api/sync/conflicts') {
+      return jsonResponse({ conflicts: conflictsPayload });
     }
     if (url === '/api/duplicate-path') {
       if (duplicateGate) await duplicateGate;
@@ -438,12 +443,21 @@ vi.doMock('@pierre/trees/react', () => ({
 }));
 
 const { FileTree } = await import('./FileTree');
+const { ConflictsProvider } = await import('@/hooks/use-conflicts');
 const { emitFileTreeMenuActionDelete, emitFileTreeMenuActionDuplicate } = await import(
   '@/lib/file-tree-menu-action-events'
 );
 
 function renderFileTree() {
   return render(<FileTree />);
+}
+
+function renderFileTreeWithConflicts() {
+  return render(
+    <ConflictsProvider>
+      <FileTree />
+    </ConflictsProvider>,
+  );
 }
 
 describe('FileTree duplicate action runtime behavior', () => {
@@ -467,6 +481,7 @@ describe('FileTree duplicate action runtime behavior', () => {
     projectLocalBindingMock = null;
     mergedConfigMock = null;
     deleteConfirmationProps = null;
+    conflictsPayload = [];
     globalThis.fetch = makeFetchMock() as unknown as typeof fetch;
     toastSuccessMock.mockClear();
     toastErrorMock.mockClear();
@@ -1143,6 +1158,64 @@ describe('FileTree duplicate action runtime behavior', () => {
       kind: 'folder',
       path: 'notes',
     });
+  });
+
+  test('a conflicted doc is refused by the delete guard before any delete-path call', async () => {
+    conflictsPayload = [
+      {
+        file: 'notes/source.mdx',
+        detectedAt: '2026-05-20T00:00:00.000Z',
+        conflict: 'merge-native',
+        docName: 'notes/source',
+      },
+    ];
+    renderFileTreeWithConflicts();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+    await waitFor(() =>
+      expect(fetchCalls.some((call) => call.url === '/api/sync/conflicts')).toBe(true),
+    );
+    fetchCalls = [];
+    toastErrorMock.mockClear();
+
+    act(() => {
+      emitFileTreeMenuActionDelete({
+        kind: 'doc',
+        target: 'notes/source',
+        docName: 'notes/source',
+      } satisfies ResolvedNavigationTarget);
+    });
+
+    await screen.findByTestId('delete-confirmation-dialog');
+    await act(async () => {
+      await deleteConfirmationProps?.onDelete?.();
+    });
+
+    expect(deletePathCalls()).toHaveLength(0);
+    expect(toastErrorMock).toHaveBeenCalled();
+  });
+
+  test('an unconflicted doc still reaches delete-path with the provider mounted', async () => {
+    renderFileTreeWithConflicts();
+    await screen.findByRole('menuitem', { name: /duplicate/i });
+    await waitFor(() =>
+      expect(fetchCalls.some((call) => call.url === '/api/sync/conflicts')).toBe(true),
+    );
+    fetchCalls = [];
+
+    act(() => {
+      emitFileTreeMenuActionDelete({
+        kind: 'doc',
+        target: 'notes/source',
+        docName: 'notes/source',
+      } satisfies ResolvedNavigationTarget);
+    });
+
+    await screen.findByTestId('delete-confirmation-dialog');
+    await act(async () => {
+      await deleteConfirmationProps?.onDelete?.();
+    });
+
+    await waitFor(() => expect(deletePathCalls()).toHaveLength(1));
   });
 
   test('delete event bus drops .ok targets before opening confirmation', async () => {

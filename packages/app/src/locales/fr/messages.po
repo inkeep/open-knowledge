@@ -1219,6 +1219,10 @@ msgstr "<{componentName}> n'est pas un composant connu. Copiez la source pour l'
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "Le rendu de <{descriptorLabel}> a échoué (probablement une propriété incorrecte). Copiez la source pour voir ce qui ne va pas, ou supprimez le bloc."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> ne peut pas être fusionné ici. Choisissez la version à garder."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>Miroir — choisissez une source.</0> Définissez <1>src</1> + <2>anchor</2> dans le panneau des propriétés pour pointer vers un <3><MirrorSource></3> ailleurs."
@@ -1971,6 +1975,14 @@ msgstr "et {remaining} de plus"
 msgid "and more"
 msgstr "et plus encore"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "Un autre programme utilise Git ici — attendez qu'il termine, puis relancez la synchronisation (il retient .git/index.lock)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "Un autre programme utilise Git ici — attendez qu'il termine, puis relancez la synchronisation (il retient <0>.git/index.lock</0>)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "Une autre opération de synchronisation est en cours. Réessayez dans un instant."
@@ -2717,6 +2729,10 @@ msgstr "Budget de caractères par requête d'indexation"
 msgctxt "settings search keyword"
 msgid "characters"
 msgstr "caractères"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Chat name"
+msgstr "Nom du chat"
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -3670,6 +3686,10 @@ msgstr "Copier le code {userCode}"
 msgid "Copy command"
 msgstr "Copier la commande"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "Copier l'erreur"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -3899,10 +3919,6 @@ msgstr "Impossible de modifier la vérification orthographique. Réessayez."
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "Impossible de modifier les langues de la correction orthographique. Réessayez."
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "Impossible de vérifier si {filePath} est toujours en conflit — nouvelle tentative."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
@@ -4780,6 +4796,10 @@ msgstr "Supprimer le tableau sélectionné"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "Supprimer le tableau"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "Supprimer le fichier"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9013,6 +9033,10 @@ msgstr "Pas encore de commentaires. Sélectionnez du texte dans le document pour
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "Aucun ancêtre commun : les deux branches ont ajouté ce fichier (conflit add/add)."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "Aucun conflit n’est suivi pour ce chemin."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "Aucune modification de contenu dans cette version."
@@ -9567,6 +9591,7 @@ msgid "Open {displayName} Desktop"
 msgstr "Ouvrir {displayName} Desktop"
 
 #: src/components/acp/AgentMarkdown.tsx
+#: src/components/acp/ThreadView.tsx
 msgid "Open {docName}"
 msgstr "Ouvrir {docName}"
 
@@ -11397,6 +11422,8 @@ msgid "Rename"
 msgstr "Renommer"
 
 #. placeholder {0}: session.label
+#. placeholder {0}: thread.title
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "Renommer {0}"
@@ -11466,10 +11493,6 @@ msgstr "Rendu"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "Rouvrir"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "Rouvrez {filePath} pour continuer à modifier."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
@@ -11960,6 +11983,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "Intégration HTML en bac à sable — écrivez du HTML, voyez l'aperçu se rendre en direct."
 
 #: src/comments/ThreadCard.tsx
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -13101,6 +13125,10 @@ msgstr "Certains thèmes enregistrés ne sont pas affichés car le dossier des t
 msgid "Some skills were deleted with a warning"
 msgstr "Certaines compétences ont été supprimées avec un avertissement"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "Quelqu'un a peut-être déjà résolu {filePath} — vérifiez le contenu actuel du document avant de refaire votre modification."
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "Quelque chose s'est cassé"
@@ -13895,6 +13923,10 @@ msgstr "L'agent travaille"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "L'agent ne s'arrête pas. L'arrêt forcé ferme ce chat et quitte l'agent."
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "Les outils OpenKnowledge de l'agent n'ont pas pu joindre le serveur. Demandez à l'agent de réessayer et, si l'échec persiste, démarrez un nouveau chat."
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "La personnalité, les valeurs et le ton de l'agent."
@@ -14011,6 +14043,14 @@ msgstr "L'id du modèle servi par votre point de terminaison. La taille de ses v
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "l'agent ouvert"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "Le serveur OpenKnowledge a mis trop de temps a repondre et la modification a peut-etre quand meme ete appliquee. Demandez a l'agent de verifier avant de reessayer."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "Le serveur OpenKnowledge a mis trop de temps a repondre. Demandez a l'agent de reessayer."
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -14367,6 +14407,10 @@ msgstr "Cette branche est extraite dans :"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Cela se configure dans Paramètres > Outils IA et CLI"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "Cette commande contient des caractères masqués qui peuvent la faire paraître différente de ce qui s’exécute. Ils sont affichés ici sous la forme ⟨U+…⟩."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "Ce commentaire porte sur toute la propriété"
@@ -14376,10 +14420,6 @@ msgstr "Ce commentaire porte sur toute la propriété"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "Impossible de joindre des fichiers ici."
-
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "Ce conflit est résolu."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
@@ -14540,6 +14580,14 @@ msgstr "Cette version de Slidev n'est pas prise en charge."
 msgid "this item"
 msgstr "cet élément"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "Cette liste n'est peut-être pas à jour — dernière lecture {staleRelative}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "Cette liste n'est peut-être pas à jour."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "Cela ressemble à la racine d'un disque (par ex. C:\\). Créer un projet ici analysera tout le disque."
@@ -14685,6 +14733,10 @@ msgstr "Ceci retire les paramètres et les intégrations d'OpenKnowledge de votr
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "Ce rapport est déjà en route. Son résultat apparaîtra dans l'historique des rapports de bug."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "Ce dépôt ne contient encore aucun commit — rouvrez le projet pour créer le premier commit, puis Pousser fonctionnera"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
@@ -15468,6 +15520,10 @@ msgstr "Utilisez uniquement des lettres minuscules, des chiffres et <0>-</0>."
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "Utilisez uniquement des lettres minuscules, des chiffres et des traits d'union"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "Utiliser leur version"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"
 msgstr "Utiliser ce pack de démarrage"
@@ -15950,6 +16006,10 @@ msgstr "Vous avez annulé le chargement de « {docName} »."
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "Vous avez supprimé <0>{filePath}</0> en local, mais il a été modifié en amont."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "Vous l'avez refusé. Pour qu'il s'exécute, demandez à l'agent de réessayer et approuvez-le."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."

@@ -25,6 +25,9 @@
     "-WeuHF": ["Remove queued message"],
     "-X1eoK": ["OpenKnowledge integrations checked."],
     "-YV1Uo": ["Pattern ", ["patternNumber"]],
+    "-ZVU5v": [
+      "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+    ],
     "-bFGPF": ["Next change"],
     "-dNlfM": ["Undid the last edit on ", ["docName"]],
     "-g6KIS": ["Unrecognized link"],
@@ -98,6 +101,11 @@
       ") in ",
       ["targetLabel"]
     ],
+    "0bV3uj": [
+      "Someone may have already resolved ",
+      ["filePath"],
+      " — check the document's current content before redoing your edit."
+    ],
     "0cGsQh": ["What's included"],
     "0cspe_": ["Delete row"],
     "0dslv8": [
@@ -158,6 +166,9 @@
     "10g8I_": ["Turn off Only markdown files"],
     "110eEb": [
       "Open Knowledge creates and maintains a navigation file named index.md in every folder that contains Markdown."
+    ],
+    "113NNl": [
+      "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
     ],
     "11ukmX": ["Rename failed: ", ["0"]],
     "12F9WL": ["(no id)"],
@@ -342,6 +353,7 @@
     "3aeN7X": ["All files"],
     "3cOo2C": ["Create a folder from the current document or folder context."],
     "3ePd3I": ["What's new"],
+    "3fOsvq": ["Use their version"],
     "3h5zMp": ["Something went wrong loading the settings panel."],
     "3iyGWF": ["Open recent project"],
     "3jod3l": ["Connect GitHub"],
@@ -424,6 +436,9 @@
     "4niEzY": ["Sandboxed HTML embed — write HTML, see the rendered preview live."],
     "4nj6n8": ["/api/config returned HTTP ", ["code"]],
     "4pDZ2N": ["Removed \"", ["0"], "\" from every other location — its source folder still loads"],
+    "4r6p_B": [
+      "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+    ],
     "4sE6E9": ["Couldn't check which tools are connected."],
     "4sKwf6": ["File already exists"],
     "4sUdTJ": ["themed preview"],
@@ -796,6 +811,7 @@
     ],
     "99eR72": ["Visual editor table selection"],
     "9Bd18D": ["Failed to load hub pages"],
+    "9CNRDG": ["The OpenKnowledge server took too long to answer. Ask the agent to try again."],
     "9E_WAi": [["errorText"], " and ", ["warningText"]],
     "9EykGQ": ["Insert column right"],
     "9GbR5F": ["HI"],
@@ -2252,6 +2268,9 @@
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
+    "Qca--K": [
+      "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Navigate to ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -2300,6 +2319,7 @@
     "RB_g_C": [
       "On the root index, okf_version is written as a quoted string like \"0.2\". Unquoted, YAML reads it as a number and 0.10 silently becomes 0.1."
     ],
+    "RCMt3v": ["No conflict is tracked for this path."],
     "RD6H9q": [
       "Open Knowledge rewrites these index.md files as documents change, so manual edits to them are replaced."
     ],
@@ -2355,6 +2375,7 @@
     "Rah7yq": ["What should the AI do? (optional)"],
     "Rb1zMa": ["No excerpt"],
     "RcrskJ": ["Formatting looked wrong"],
+    "RduDYw": ["<0>", ["filePath"], "</0> can't be merged here. Pick the version to keep."],
     "RfHNf8": ["Open activity panel for ", ["tooltipName"]],
     "RfaEio": ["Toggle source comment"],
     "RfilGt": ["No rules match your filters."],
@@ -2428,6 +2449,7 @@
     "SXCSQd": ["Copied path"],
     "SXEdCq": ["Move to ", ["0"], "?"],
     "SYfHmN": ["Unpin tab"],
+    "S_RRZB": ["Delete the file"],
     "Sad2tK": ["Sending…"],
     "Sbb90e": [
       [
@@ -2782,6 +2804,9 @@
     "XPqe3B": ["Create new tag #", ["tagValue"]],
     "XRuL0i": ["Create page"],
     "XSb9HS": ["Discard local edits, restore the installed version"],
+    "XSy4nN": [
+      "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+    ],
     "XT-L4j": ["Turn on an agent to create with AI"],
     "XU5AOg": ["Input"],
     "XV5sC0": ["Open worktree"],
@@ -2853,7 +2878,6 @@
     "XwZiq2": [
       "The file was restored to an older version. Current is the version OpenKnowledge protected. Incoming is the restored version. Choose which version to keep, then apply your changes."
     ],
-    "XzL7x7": ["Reopen ", ["filePath"], " to keep editing."],
     "Xzy0s0": ["Remove ", ["fullLabel"], " from context"],
     "Y-Urt2": ["Block math equation rendered with KaTeX from a LaTeX source string."],
     "Y1QMlM": ["Get set up"],
@@ -3067,6 +3091,7 @@
     "_IX_7x": ["Other"],
     "_IfSZn": ["A saved theme already uses this name."],
     "_JOGC0": ["Send feedback…"],
+    "_LK4d6": ["This list may be out of date."],
     "_LczaQ": ["Denied — ", ["optionName"]],
     "_NWEid": ["Search schema files by path"],
     "_O7dJS": ["Different version here — click to compare and resolve"],
@@ -3106,6 +3131,7 @@
     "_rP3HI": [["minutes"], "m ago"],
     "_tekeB": ["updated folder properties"],
     "_tjopj": ["Paste duplicate"],
+    "_uOJBO": ["You denied this. To let it run, ask the agent to try again and approve it."],
     "_uxBz5": ["Add MCP & skill for ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " stopped with an error."],
     "_yB-24": ["everything under any ", ["0"], "/ folder"],
@@ -3463,6 +3489,7 @@
     "dw_dUJ": ["Failed to duplicate path"],
     "dx-TwN": ["Running project audit"],
     "dyfMJN": ["Code copied"],
+    "e-pP6g": ["This list may be out of date — last read ", ["staleRelative"], "."],
     "e0NrBM": ["Project"],
     "e1Rn_k": ["Open containing folder"],
     "e1hptq": ["Embed a video with native player controls."],
@@ -3795,7 +3822,6 @@
       "Keep a written record of how your product gets built. A home for proposing ideas, recording decisions, writing specs, and capturing what you learned after something broke."
     ],
     "hCattk": ["OpenKnowledge imported ", ["source"]],
-    "hCghAK": ["This conflict is resolved."],
     "hDEaQu": ["Connect OpenKnowledge to other tools you use."],
     "hDKtoF": [["diffHrs"], "h ago"],
     "hDoLrm": ["Remove ", ["projectName"], " from recent projects"],
@@ -4012,7 +4038,6 @@
     "jSg1tA": ["More actions (", ["syncAttentionLabel"], ")"],
     "jTLWxh": ["Embed an external page in an inline iframe (docs, demos, Figma, CodeSandbox)."],
     "jTUxaN": ["Enable Auto (Pull only)"],
-    "jTdrn1": ["Couldn't check whether ", ["filePath"], " is still conflicted — retrying."],
     "jWwQo6": ["batch"],
     "jWzDfC": ["Checking which AI tools you have"],
     "jZ_E5M": ["Fetch failed — check the server logs for details."],
@@ -4247,6 +4272,7 @@
     "lwCV5v": ["Couldn't open ", ["0"], " for editing: ", ["1"]],
     "lyWa43": ["Project-level disconnected pages"],
     "lzmtKp": ["Failed to load folder properties: ", ["message"]],
+    "lzsa2d": ["Copy error"],
     "lzwo7p": ["Could not open GitHub sign-in. Please try again."],
     "m-1Z7o": ["Use this starter pack"],
     "m0eHej": [
@@ -4810,6 +4836,9 @@
     "sKHiNR": [["count"], " behind"],
     "sNeKjP": ["Failed to store the token — try again"],
     "sOafXU": ["Edit and send again"],
+    "sOcMdy": [
+      "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+    ],
     "sOxZaS": ["Failed to load graph"],
     "sQoLn0": ["Quit"],
     "sR0I-f": ["Collapse all files"],
@@ -4890,6 +4919,7 @@
       "OpenKnowledge does not recognize this entry, and cannot safely replace it in this file's format."
     ],
     "tCyvAw": ["Attach a file"],
+    "tDlhkF": ["Chat name"],
     "tHKQ6j": ["Renaming"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge wrote a document"],

@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { RenderedItem, ThreadRenderModel } from '@/lib/acp/thread-event-model';
+import type { Workspace } from '@/lib/workspace-paths';
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
 const render = (ui: Parameters<typeof rtlRender>[0]) => rtlRender(ui, { wrapper: TooltipProvider });
@@ -96,8 +97,16 @@ vi.doMock('@/editor/DocumentContext', () => ({
   useDocumentContext: () => ({ systemProvider: null }),
 }));
 
+let workspace: Workspace | null = null;
+let pageList: { pages: ReadonlySet<string>; loading: boolean } | null = null;
+
 vi.doMock('@/lib/use-workspace', () => ({
-  useWorkspace: () => null,
+  useWorkspace: () => workspace,
+}));
+
+vi.doMock('@/components/PageListContext', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/components/PageListContext')>()),
+  useOptionalPageList: () => pageList,
 }));
 
 vi.doMock('@/components/acp/AgentMarkdown', () => ({
@@ -174,6 +183,8 @@ afterEach(() => {
   resumeThread.mockClear();
   createThread.mockClear();
   model = null;
+  workspace = null;
+  pageList = null;
 });
 
 describe('sent-message actions', () => {
@@ -565,5 +576,96 @@ describe('discoverability of the newest turn', () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]?.className).toContain('opacity-0');
     expect(rows[1]?.className).not.toContain('opacity-0');
+  });
+});
+
+describe('a sent attachment chip', () => {
+  const projectWorkspace: Workspace = { contentDir: '/Users/me/docs', pathSeparator: '/' };
+
+  function attachmentRow(): HTMLElement {
+    return screen.getByTestId('agent-thread-user-message-attachments');
+  }
+
+  test('a chip for a doc in the project opens that doc', () => {
+    workspace = projectWorkspace;
+    pageList = { pages: new Set(['guides/setup']), loading: false };
+    mountWith([
+      userMessage({ attachments: [{ kind: 'file', path: 'guides/setup.md', name: 'Setup' }] }),
+    ]);
+    expect(screen.getByRole('link', { name: '@Setup' }).getAttribute('href')).toBe(
+      '#/guides/setup',
+    );
+  });
+
+  test('a chip opens its doc before the workspace location is known', () => {
+    pageList = { pages: new Set(['guides/setup']), loading: false };
+    mountWith([
+      userMessage({ attachments: [{ kind: 'file', path: 'guides/setup.md', name: 'Setup' }] }),
+    ]);
+    expect(screen.getByRole('link', { name: '@Setup' }).getAttribute('href')).toBe(
+      '#/guides/setup',
+    );
+  });
+
+  test('a chip opens the doc that was picked, not a same-named doc at the project root', () => {
+    workspace = projectWorkspace;
+    pageList = { pages: new Set(['intro', 'docs/intro']), loading: false };
+    mountWith([
+      userMessage({ attachments: [{ kind: 'file', path: 'docs/intro.md', name: 'Intro' }] }),
+    ]);
+    expect(screen.getByRole('link', { name: '@Intro' }).getAttribute('href')).toBe('#/docs/intro');
+  });
+
+  test('a dropped .mdx file opens its doc', () => {
+    workspace = projectWorkspace;
+    pageList = { pages: new Set(['guides/intro']), loading: false };
+    mountWith([
+      userMessage({
+        attachments: [{ kind: 'file', path: 'guides/intro.mdx', name: 'intro.mdx' }],
+      }),
+    ]);
+    expect(screen.getByRole('link', { name: '@intro.mdx' }).getAttribute('href')).toBe(
+      '#/guides/intro',
+    );
+  });
+
+  test('a chip whose doc is gone is not a link, even when another folder has a doc of that name', () => {
+    workspace = projectWorkspace;
+    pageList = { pages: new Set(['archive/notes']), loading: false };
+    mountWith([
+      userMessage({ attachments: [{ kind: 'file', path: 'notes.md', name: 'notes.md' }] }),
+    ]);
+    expect(within(attachmentRow()).getByText('@notes.md')).toBeDefined();
+    expect(within(attachmentRow()).queryByRole('link')).toBeNull();
+  });
+
+  test('a chip for a file that is not a doc is not a link, even beside a doc of the same name', () => {
+    workspace = projectWorkspace;
+    pageList = { pages: new Set(['images/diagram']), loading: false };
+    mountWith([
+      userMessage({
+        attachments: [{ kind: 'file', path: 'images/diagram.png', name: 'diagram.png' }],
+      }),
+    ]);
+    expect(within(attachmentRow()).getByText('@diagram.png')).toBeDefined();
+    expect(within(attachmentRow()).queryByRole('link')).toBeNull();
+  });
+
+  test('a folder chip is not a link', () => {
+    workspace = projectWorkspace;
+    pageList = { pages: new Set(['guides/setup']), loading: false };
+    mountWith([userMessage({ attachments: [{ kind: 'folder', path: 'guides', name: 'guides' }] })]);
+    expect(within(attachmentRow()).getByText('@guides')).toBeDefined();
+    expect(within(attachmentRow()).queryByRole('link')).toBeNull();
+  });
+
+  test('no chip is a link before the page list has loaded', () => {
+    workspace = projectWorkspace;
+    pageList = { pages: new Set(), loading: true };
+    mountWith([
+      userMessage({ attachments: [{ kind: 'file', path: 'guides/setup.md', name: 'Setup' }] }),
+    ]);
+    expect(within(attachmentRow()).getByText('@Setup')).toBeDefined();
+    expect(within(attachmentRow()).queryByRole('link')).toBeNull();
   });
 });

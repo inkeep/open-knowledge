@@ -1,7 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { pathspecArgs, SYSTEM_WRITER_DISPLAY_NAMES } from '@inkeep/open-knowledge-core';
+import {
+  OK_DIR,
+  OK_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_FILES,
+  pathspecArgs,
+  SYSTEM_WRITER_DISPLAY_NAMES,
+} from '@inkeep/open-knowledge-core';
+import { ATOMIC_TEMP_GLOB } from '@inkeep/open-knowledge-core/server';
 import {
   type AutoConsolidationTrigger,
   CHECKPOINT_KIND_REGISTRY,
@@ -24,8 +31,13 @@ import simpleGit from 'simple-git';
 import { resolveCheckpointChainAnchors } from './checkpoint-chain.ts';
 import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-traced.ts';
 import { listTreeLongEntries } from './git-paths.ts';
+import { assertNotSymlink, ensureGitignoreEntries, SymlinkRefusedError } from './init-project.ts';
 import { getLogger } from './logger.ts';
-import { incrementShadowMigrationLegacyRefsDeleted } from './metrics.ts';
+import {
+  incrementShadowExcludeIndexEntriesDropped,
+  incrementShadowExcludeIndexSweepFailures,
+  incrementShadowMigrationLegacyRefsDeleted,
+} from './metrics.ts';
 import { acquireLock, releaseLock } from './shadow-lock.ts';
 import { releaseShadowOpGate, shadowOpGateFor } from './shadow-op-gate.ts';
 import { withSpan } from './telemetry.ts';
@@ -69,6 +81,126 @@ const CORPUS_STAGE_GIT_TIMEOUT_MS = (() => {
 })();
 
 const SHADOW_GC_AUTO = 512;
+
+const MACHINE_LOCAL_DIRS = OK_MACHINE_LOCAL_ROOT_DIRS.map((name) => `${OK_DIR}/${name}/`);
+
+const MACHINE_LOCAL_FILES = OK_MACHINE_LOCAL_ROOT_FILES.map((name) => `${OK_DIR}/${name}`);
+
+const SHADOW_EXCLUDE_PATTERNS: readonly string[] = [
+  ...MACHINE_LOCAL_DIRS.map((dir) => `**/${dir}`),
+  ...MACHINE_LOCAL_FILES.map((file) => `**/${file}`),
+  ATOMIC_TEMP_GLOB,
+];
+
+const SHADOW_EXCLUDE_CONTENT = `# OpenKnowledge machine-local state and in-flight atomic writes: never part of a version, never staged.
+${SHADOW_EXCLUDE_PATTERNS.join('\n')}
+`;
+
+const EXCLUDE_PATTERN_ARGS = SHADOW_EXCLUDE_PATTERNS.flatMap((pattern) => ['-x', pattern]);
+
+const UPDATE_INDEX_ARGV_BUDGET_BYTES = 8000;
+
+const shadowExcludesWritten = new Map<string, boolean>();
+
+export function isShadowExcludesDegraded(shadow: ShadowHandle): boolean {
+  return shadowExcludesWritten.get(shadow.gitDir) === false;
+}
+
+function chunkByArgvBudget(paths: readonly string[], budgetBytes: number): string[][] {
+  const chunks: string[][] = [];
+  let current: string[] = [];
+  let used = 0;
+  for (const path of paths) {
+    const cost = Buffer.byteLength(path, 'utf-8') + 1;
+    if (current.length > 0 && used + cost > budgetBytes) {
+      chunks.push(current);
+      current = [];
+      used = 0;
+    }
+    current.push(path);
+    used += cost;
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
+interface IndexSweepResult {
+  failed: boolean;
+}
+
+async function dropExcludedIndexEntries(
+  sg: ReturnType<typeof shadowGit>,
+  shadow: ShadowHandle,
+  indexFile: string,
+): Promise<IndexSweepResult> {
+  const env = { GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: indexFile };
+  let dropped = 0;
+  let listedCount: number | undefined;
+  try {
+    const listed = await sg.env(env).raw('ls-files', '-z', '-i', '-c', ...EXCLUDE_PATTERN_ARGS);
+    const stale = listed.split('\0').filter((p) => p.length > 0);
+    listedCount = stale.length;
+    for (const chunk of chunkByArgvBudget(stale, UPDATE_INDEX_ARGV_BUDGET_BYTES)) {
+      await sg.env(env).raw('update-index', '--force-remove', '--', ...chunk);
+      dropped += chunk.length;
+    }
+    if (dropped > 0) {
+      incrementShadowExcludeIndexEntriesDropped(dropped);
+      log.info(
+        { count: dropped },
+        '[shadow-repo] dropped machine-local entries a previous build had staged',
+      );
+    }
+    return { failed: false };
+  } catch (e) {
+    const leftStaged = listedCount === undefined ? undefined : listedCount - dropped;
+    incrementShadowExcludeIndexSweepFailures();
+    log.warn(
+      { err: e, dropped, leftStaged: leftStaged ?? 'unknown' },
+      leftStaged === undefined
+        ? '[shadow-repo] could not read the index to clear machine-local entries — none were dropped and an unknown number are still staged (non-fatal)'
+        : `[shadow-repo] could not finish clearing machine-local entries from the index — dropped ${dropped}, left ${leftStaged} still staged (non-fatal)`,
+    );
+    return { failed: true };
+  }
+}
+
+async function ensureShadowExcludes(shadow: ShadowHandle): Promise<void> {
+  const infoDir = resolve(shadow.gitDir, 'info');
+  const excludeFile = resolve(infoDir, 'exclude');
+  try {
+    assertNotSymlink(infoDir, 'shadow info/');
+    tracedMkdirSync(infoDir, { recursive: true });
+    const outcome = ensureGitignoreEntries(
+      excludeFile,
+      SHADOW_EXCLUDE_CONTENT,
+      'shadow info/exclude',
+    );
+    shadowExcludesWritten.set(shadow.gitDir, true);
+    log.info({ outcome, excludeFile }, `[shadow-repo] shadow exclude file ${outcome}`);
+  } catch (e) {
+    shadowExcludesWritten.set(shadow.gitDir, false);
+    if (e instanceof SymlinkRefusedError) {
+      log.error(
+        { err: e, excludeFile },
+        '[shadow-repo] refused to write the shadow exclude file: a symlink is planted on a component of the shadow info/exclude path',
+      );
+    } else {
+      log.warn(
+        { err: e, excludeFile },
+        '[shadow-repo] could not write the shadow exclude file — machine-local state stays out of versions only through the index sweep',
+      );
+    }
+  }
+  const fanoutIndex = resolve(shadow.gitDir, FANOUT_INDEX_NAME);
+  if (!existsSync(fanoutIndex)) return;
+  const sweep = await dropExcludedIndexEntries(
+    shadowGit(shadow, { timeoutMs: CORPUS_STAGE_GIT_TIMEOUT_MS }),
+    shadow,
+    fanoutIndex,
+  );
+  if (sweep.failed) shadowExcludesWritten.set(shadow.gitDir, false);
+}
 
 export function shadowGit(shadow: ShadowHandle, opts?: { timeoutMs?: number }) {
   return simpleGit({
@@ -168,6 +300,8 @@ export async function initShadowRepo(
   }
 
   const handle: ShadowHandle = { gitDir: shadowDir, workTree: projectRoot };
+
+  await ensureShadowExcludes(handle);
 
   if (!opts?.deferGcConfig) {
     try {
@@ -317,6 +451,7 @@ async function commitWipInner(
         GIT_INDEX_FILE: tmpIndex,
       })
       .raw('add', ...pathspecArgs([gitPathspec]));
+    await dropExcludedIndexEntries(sg, shadow, tmpIndex);
     const treeSha = (
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: tmpIndex }).raw('write-tree')
     ).trim();
@@ -394,6 +529,7 @@ async function buildWipTreeWithIndex(
       GIT_INDEX_FILE: indexFile,
     })
     .raw('add', ...pathspecArgs([gitPathspec]));
+  await dropExcludedIndexEntries(sg, shadow, indexFile);
   return (
     await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: indexFile }).raw('write-tree')
   ).trim();
@@ -1445,6 +1581,13 @@ async function saveVersionInner(
         GIT_INDEX_FILE: shadowTmpIndex,
       })
       .raw('add', ...pathspecArgs([gitPathspec]));
+    await dropExcludedIndexEntries(
+      shadowGit(shadow, {
+        timeoutMs: Math.max(options?.timeoutMs ?? 0, CORPUS_STAGE_GIT_TIMEOUT_MS),
+      }),
+      shadow,
+      shadowTmpIndex,
+    );
     const shadowTreeSha = (
       await sg.env({ GIT_DIR: shadow.gitDir, GIT_INDEX_FILE: shadowTmpIndex }).raw('write-tree')
     ).trim();

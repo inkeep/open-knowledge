@@ -3,7 +3,11 @@ import { basename, join, relative, resolve, sep } from 'node:path';
 import { PROJECT_SKILL_PROJECTION_PATHS } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import { resolveLockDir, scanLockProcesses } from '@inkeep/open-knowledge-server';
+import {
+  type LockProcessScan,
+  resolveLockDir,
+  scanLockProcesses,
+} from '@inkeep/open-knowledge-server';
 import { clearAllEmbeddingsKeys } from '../auth/embeddings-key-store.ts';
 import { clearTokenFromAllBackends } from '../auth/token-store.ts';
 import {
@@ -366,23 +370,37 @@ export function applicationDataOps(
   return ops;
 }
 
-export interface RunRemovalDeps {
+interface RunRemovalSharedDeps {
   env?: NodeJS.ProcessEnv;
   clearToken?: (
     host: string,
   ) => Promise<{ touched: Array<'keychain' | 'file'>; keychainError?: string }>;
   clearEmbeddingsKey?: () => Promise<{ touched: Array<'file'> }>;
-  stopServer?: (lockDir: string) => Promise<{
-    stopped: number;
-    failed: Array<{ pid: number; error: string }>;
-    skipped?: string;
-  }>;
 }
+
+type RemovalStopServer = (lockDir: string) => Promise<{
+  stopped: number;
+  failed: Array<{ pid: number; error: string }>;
+  skipped?: string;
+}>;
+
+export type RunRemovalDeps = RunRemovalSharedDeps &
+  (
+    | { stopServer?: RemovalStopServer; scanProcesses?: never }
+    | { stopServer?: never; scanProcesses?: () => Promise<LockProcessScan> }
+  );
 
 export async function runRemoval(
   plan: RemovalPlan,
   deps: RunRemovalDeps = {},
 ): Promise<RemovalOutcome> {
+  if (deps.stopServer !== undefined && deps.scanProcesses !== undefined) {
+    throw new Error(
+      'runRemoval received both stopServer and scanProcesses. scanProcesses only parameterizes the ' +
+        'default stopServer, so a supplied stopServer never reads it and the scan would never run. ' +
+        'Supply stopServer to replace shutdown entirely, or scanProcesses to parameterize the default one.',
+    );
+  }
   const clearToken = deps.clearToken ?? clearTokenFromAllBackends;
   const clearEmbeddingsKey = deps.clearEmbeddingsKey ?? clearAllEmbeddingsKeys;
   const deinitLockDirs = new Set(
@@ -390,13 +408,14 @@ export async function runRemoval(
       op.kind === 'stop-server' && !op.preserveProjectState ? [resolve(op.lockDir)] : [],
     ),
   );
-  let processScan: ReturnType<typeof scanLockProcesses> | undefined;
+  const scan = deps.scanProcesses ?? scanLockProcesses;
+  let processScan: Promise<LockProcessScan> | undefined;
   const stopServer =
     deps.stopServer ??
     ((lockDir: string) =>
       stopServerForRemoval(lockDir, {
         preserveProjectState: plan.scope === 'uninstall' && !deinitLockDirs.has(resolve(lockDir)),
-        scanProcesses: () => (processScan ??= scanLockProcesses()),
+        scanProcesses: () => (processScan ??= scan()),
       }));
 
   const resolvedDeps = { clearToken, clearEmbeddingsKey, stopServer, env: deps.env ?? {} };
@@ -479,7 +498,7 @@ export async function describeAttachedClients(
   return lines;
 }
 
-type ResolvedDeps = Required<RunRemovalDeps>;
+type ResolvedDeps = Required<Omit<RunRemovalDeps, 'scanProcesses'>>;
 
 async function executeOp(op: RemovalOp, deps: ResolvedDeps): Promise<RemovalOpResult> {
   switch (op.kind) {

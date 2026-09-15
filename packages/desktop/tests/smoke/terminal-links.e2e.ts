@@ -42,7 +42,7 @@ function seed(prefix: string): Seed {
 
   const binDir = join(tmpHome, 'fakebin');
   writeFakeClaudeShim(binDir, 'version');
-  seedTerminalShellProfiles(tmpHome, { pathPrefix: binDir });
+  seedTerminalShellProfiles(tmpHome, { posixPathPrefix: binDir });
 
   const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });

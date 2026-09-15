@@ -1,9 +1,9 @@
 import { summarizeLintPluginFailures } from '@inkeep/open-knowledge-core';
-import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 import { z } from 'zod';
 
 import { type Config, ConfigSchema } from '../../config/schema.ts';
-import type { LocalApiDispatch } from '../../http/local-api-dispatch.ts';
+import { createLocalApiDispatch, type LocalApiDispatch } from '../../http/local-api-dispatch.ts';
 import {
   formatValidatorDegradationWarning,
   formatValidatorFailureWarning,
@@ -504,6 +504,53 @@ describe('httpPost', () => {
     const result = await httpPost(baseUrl, '/not-json-5xx');
     expect(result.ok).toBe(false);
     expect(result.error).toContain('HTTP 500');
+  });
+});
+
+describe('a request that runs out of time', () => {
+  const timedOutWriting =
+    'Server timed out: The operation was aborted due to timeout. The server may still have applied the request, so check before retrying.';
+  const timedOutReading = 'Server timed out: The operation was aborted due to timeout.';
+  const timeout = () =>
+    new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+
+  test('over HTTP it reads as a timeout, not as an unreachable server', async () => {
+    vi.stubGlobal('fetch', () => Promise.reject(timeout()));
+    try {
+      expect((await httpGet('http://localhost:1', '/anything')).error).toBe(timedOutReading);
+      expect((await httpPost('http://localhost:1', '/anything', { data: 1 })).error).toBe(
+        timedOutWriting,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('a response whose body runs out of time reads the same way', async () => {
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response(new ReadableStream({ start: (controller) => controller.error(timeout()) }), {
+          status: 200,
+        }),
+    );
+    try {
+      expect((await httpGet('http://localhost:1', '/anything')).error).toBe(timedOutReading);
+      expect((await httpPost('http://localhost:1', '/anything', { data: 1 })).error).toBe(
+        timedOutWriting,
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('in process it reads the same way', async () => {
+    const neverAnswers = createLocalApiDispatch({ resolve: () => () => {}, timeoutMs: 5 });
+    const result = await httpPost(
+      { url: 'http://localhost:1', local: neverAnswers },
+      '/api/anything',
+    );
+    expect(result.error).toBe(timedOutWriting);
   });
 });
 

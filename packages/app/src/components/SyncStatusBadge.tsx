@@ -7,8 +7,10 @@ import {
   isSyncMode,
   type PushPermissionWire,
   type SyncErrorCode,
+  type SyncPausedReason,
 } from '@inkeep/open-knowledge-core';
-import { plural, t } from '@lingui/core/macro';
+import type { MessageDescriptor } from '@lingui/core';
+import { msg, plural, t } from '@lingui/core/macro';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
   AlertTriangle,
@@ -34,7 +36,7 @@ import { useGitSyncStatusDetailed } from '@/hooks/use-git-sync-status';
 import type { GitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useGitWorktreeStatus } from '@/hooks/use-git-worktree-status';
 import { useConfigContext } from '@/lib/config-provider';
-import { filePathToDocName, hashFromAssetPath, hashFromDocName, isSameHash } from '@/lib/doc-hash';
+import { hashFromAssetPath, hashFromDocName, isSameHash } from '@/lib/doc-hash';
 import { triggerSync } from '@/lib/trigger-sync';
 import { openSyncSettings } from '@/lib/use-settings-route';
 import { EnableSyncConfirmDialog } from './EnableSyncConfirmDialog';
@@ -74,18 +76,35 @@ function hashForOpenTarget(target: GitWorktreeOpenTarget): string {
   return target.kind === 'doc' ? hashFromDocName(target.docName) : hashFromAssetPath(target.path);
 }
 
-function formatRelativeCompact(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  if (diff < 60_000) return t`just now`;
+const STALENESS_TICK_MS = 30_000;
+
+type ReactiveTranslate = ReturnType<typeof useLingui>['t'];
+
+function formatRelativeSince(translate: ReactiveTranslate, at: number, now: number): string {
+  const diff = now - at;
+  if (diff < 60_000) return translate(msg`just now`);
   if (diff < 3_600_000) {
     const minutes = Math.floor(diff / 60_000);
-    return t`${minutes}m ago`;
+    return translate(msg`${minutes}m ago`);
   }
   if (diff < 86_400_000) {
     const hours = Math.floor(diff / 3_600_000);
-    return t`${hours}h ago`;
+    return translate(msg`${hours}h ago`);
   }
-  return new Date(iso).toLocaleDateString();
+  return new Date(at).toLocaleDateString();
+}
+
+function formatRelativeCompact(translate: ReactiveTranslate, iso: string): string {
+  return formatRelativeSince(translate, new Date(iso).getTime(), Date.now());
+}
+
+function useNowTick(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), STALENESS_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+  return now;
 }
 
 function isFollowingMode(status: GitSyncStatus): boolean {
@@ -194,29 +213,65 @@ function stateLabel(status: GitSyncStatus): string {
   }
 }
 
-export function formatPausedReason(reason: string): string {
+const NODE_RENDERED_PAUSED_REASONS = [
+  'git-index-locked',
+] as const satisfies readonly SyncPausedReason[];
+
+type NodeRenderedPausedReason = (typeof NODE_RENDERED_PAUSED_REASONS)[number];
+
+const PAUSED_REASON_MESSAGES: Record<SyncPausedReason, MessageDescriptor> = {
+  'git-index-locked': msg`Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)`,
+  'git-operation-in-progress': msg`Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync.`,
+  'external-changes-pending': msg`Local changes overlap with incoming sync`,
+  'dirty-tree': msg`Local changes blocked the merge`,
+  'non-content-merge-failure': msg`Resolve conflict in your terminal`,
+  'detached-head': msg`Detached HEAD — checkout a branch to resume`,
+  'diverged-local-commits': msg`Local commits are keeping this copy from updating`,
+  'auth-error': msg`Reconnect required`,
+  'protected-branch': msg`Protected branch — cannot push`,
+  'no-push-permission': msg`You don't have permission to push to this repo.`,
+  'no-commits-yet': msg`This repository has no commits yet — reopen the project to create the first commit, then Push will work`,
+};
+
+function isKnownPausedReason(reason: string): reason is SyncPausedReason {
+  return Object.hasOwn(PAUSED_REASON_MESSAGES, reason);
+}
+
+export function formatPausedReason(translate: ReactiveTranslate, reason: string): string {
+  return isKnownPausedReason(reason) ? translate(PAUSED_REASON_MESSAGES[reason]) : reason;
+}
+
+function isNodeRenderedPausedReason(reason: string): reason is NodeRenderedPausedReason {
+  return (NODE_RENDERED_PAUSED_REASONS as readonly string[]).includes(reason);
+}
+
+function assertNeverPausedReasonNode(reason: never): never {
+  throw new Error(`Unhandled node-rendered paused reason: ${String(reason)}`);
+}
+
+function PausedReasonNode({ reason }: { reason: NodeRenderedPausedReason }) {
   switch (reason) {
-    case 'git-operation-in-progress':
-      return t`Git syncing is paused because a Git operation or unresolved conflicts need attention. Your edits still save locally. Finish the operation or resolve the conflicts in your terminal, then retry sync.`;
-    case 'external-changes-pending':
-      return t`Local changes overlap with incoming sync`;
-    case 'dirty-tree':
-      return t`Local changes blocked the merge`;
-    case 'non-content-merge-failure':
-      return t`Resolve conflict in your terminal`;
-    case 'detached-head':
-      return t`Detached HEAD — checkout a branch to resume`;
-    case 'diverged-local-commits':
-      return t`Local commits are keeping this copy from updating`;
-    case 'auth-error':
-      return t`Reconnect required`;
-    case 'protected-branch':
-      return t`Protected branch — cannot push`;
-    case 'no-push-permission':
-      return t`You don't have permission to push to this repo.`;
+    case 'git-index-locked':
+      return (
+        <Trans>
+          Another program is using Git here — wait for it to finish, then sync again (it holds{' '}
+          <span dir="ltr" className="font-mono">
+            .git/index.lock
+          </span>
+          )
+        </Trans>
+      );
     default:
-      return reason;
+      return assertNeverPausedReasonNode(reason);
   }
+}
+
+export function PausedReasonNotice({ reason }: { reason: string }) {
+  const { t } = useLingui();
+  if (isNodeRenderedPausedReason(reason)) {
+    return <PausedReasonNode reason={reason} />;
+  }
+  return <>{formatPausedReason(t, reason)}</>;
 }
 
 type PushPermissionDeniedIdentity = Pick<
@@ -744,31 +799,60 @@ function partitionByPushScope(worktree: GitWorktreeStatus): {
   return { willPush, wontPush };
 }
 
+function WorktreeStaleLine({ lastReadAt }: { lastReadAt: number }) {
+  const { t } = useLingui();
+  const now = useNowTick();
+  const staleRelative = formatRelativeSince(t, lastReadAt, now);
+  return (
+    <p className="text-2xs text-muted-foreground" data-testid="worktree-stale">
+      <Trans>This list may be out of date — last read {staleRelative}.</Trans>
+    </p>
+  );
+}
+
 function WorktreeStatusSection({
   status,
   worktree,
   loading,
+  unreadable,
+  stale,
+  lastReadAt,
 }: {
   status: GitSyncStatus;
   worktree: GitWorktreeStatus | null;
   loading: boolean;
+  unreadable: boolean;
+  stale: boolean;
+  lastReadAt: number | null;
 }) {
   const { willPush, wontPush } = worktree
     ? partitionByPushScope(worktree)
     : { willPush: [], wontPush: [] };
   const incoming = worktree?.incoming ?? [];
-  const unreadable = worktree !== null && worktree.readable === false;
+  const { t } = useLingui();
+  const showStale = stale && !unreadable && worktree !== null && lastReadAt !== null;
   const clean =
     worktree !== null && willPush.length === 0 && wontPush.length === 0 && incoming.length === 0;
+  const announcement = unreadable
+    ? t`Couldn't read the working tree. Check the server logs.`
+    : showStale
+      ? t`This list may be out of date.`
+      : '';
 
   return (
     <div className="flex flex-col gap-2.5 border-t pt-3">
+      <div className="sr-only" role="status" aria-live="polite" data-testid="worktree-announcer">
+        {announcement}
+      </div>
       <div className="flex items-baseline justify-between gap-2">
         <SectionLabel id="worktree-status-label">
           <Trans>Status</Trans>
         </SectionLabel>
-        {worktree && (worktree.branch || worktree.detached) && (
-          <span className="min-w-0 truncate font-mono text-2xs text-muted-foreground">
+        {!unreadable && worktree && (worktree.branch || worktree.detached) && (
+          <span
+            className="min-w-0 truncate font-mono text-2xs text-muted-foreground"
+            data-testid="worktree-branch"
+          >
             {worktree.detached ? (
               <Trans>detached HEAD</Trans>
             ) : worktree.upstream ? (
@@ -787,13 +871,13 @@ function WorktreeStatusSection({
         </div>
       )}
 
-      {loading ? (
-        <p className="text-xs text-muted-foreground">
-          <Trans>Reading working tree</Trans>
-        </p>
-      ) : unreadable ? (
+      {unreadable ? (
         <p className="text-xs text-muted-foreground" data-testid="worktree-unreadable">
           <Trans>Couldn't read the working tree. Check the server logs.</Trans>
+        </p>
+      ) : loading ? (
+        <p className="text-xs text-muted-foreground">
+          <Trans>Reading working tree</Trans>
         </p>
       ) : clean ? (
         <p className="text-xs text-muted-foreground">
@@ -825,6 +909,8 @@ function WorktreeStatusSection({
           </section>
         )
       )}
+
+      {showStale && lastReadAt !== null && <WorktreeStaleLine lastReadAt={lastReadAt} />}
     </div>
   );
 }
@@ -839,9 +925,9 @@ function UpdatedLine({
   combinedAt: string | null;
 }) {
   const { t } = useLingui();
-  const pulled = pulledAt === null ? null : formatRelativeCompact(pulledAt);
-  const pushed = pushedAt === null ? null : formatRelativeCompact(pushedAt);
-  const updatedRelative = combinedAt === null ? null : formatRelativeCompact(combinedAt);
+  const pulled = pulledAt === null ? null : formatRelativeCompact(t, pulledAt);
+  const pushed = pushedAt === null ? null : formatRelativeCompact(t, pushedAt);
+  const updatedRelative = combinedAt === null ? null : formatRelativeCompact(t, combinedAt);
   const label =
     pulled !== null && pushed !== null
       ? t`Pulled ${pulled} · pushed ${pushed}`
@@ -900,7 +986,13 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
     onModeSelect,
     onConfirm,
   } = useBadgeSyncControls(autoSync, status.ahead);
-  const { status: worktree, loading: worktreeLoading } = useGitWorktreeStatus(true);
+  const {
+    status: worktree,
+    loading: worktreeLoading,
+    unreadable: worktreeUnreadable,
+    stale: worktreeStale,
+    lastReadAt: worktreeLastReadAt,
+  } = useGitWorktreeStatus(true);
 
   const following = mode === 'follow';
   const state = displayState(status);
@@ -935,8 +1027,7 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
   const blockingPaths = status.blockingPaths ?? [];
 
   const { conflicts } = useConflicts();
-  const firstConflict = conflicts[0] ?? null;
-  const showConflictButton = state === 'conflict' && firstConflict !== null;
+  const firstConflictDocName = conflicts.find((entry) => entry.docName !== null)?.docName ?? null;
 
   return (
     <div className="flex flex-col gap-3.5">
@@ -1072,7 +1163,12 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
 
       {}
       {}
-      <div role="status" aria-live="polite" className="flex flex-col gap-3.5 empty:sr-only">
+      <div
+        role="status"
+        aria-live="polite"
+        className="flex flex-col gap-3.5 empty:sr-only"
+        data-testid="sync-popover-status"
+      >
         {computeSyncErrorLines(status).map((line) => (
           <p key={line.key} className="text-xs text-destructive">
             {line.direction === 'push' ? (
@@ -1123,7 +1219,9 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
       ) : blockingPaths.length > 0 ? (
         <SyncBlockingChanges paths={blockingPaths} />
       ) : isParkedOnNotFoundAsIdentity(status) ? null : status.pausedReason ? (
-        <p className="text-xs text-muted-foreground">{formatPausedReason(status.pausedReason)}</p>
+        <p className="text-xs text-muted-foreground">
+          <PausedReasonNotice reason={status.pausedReason} />
+        </p>
       ) : !following && genuineReadOnly && status.pushPermission?.checkStatus === 'denied' ? (
         formatPushPermissionDenied(status.pushPermission.deniedReason, status.pushPermission).map(
           (sentence) => (
@@ -1151,12 +1249,12 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
             {}
             <Trans>A document has a conflict — resolve it to keep it up to date.</Trans>
           </p>
-          {showConflictButton && firstConflict && (
+          {firstConflictDocName !== null && (
             <Button
               variant="outline"
               size="xs"
               className="self-start"
-              onClick={() => navigateToHash(hashFromDocName(filePathToDocName(firstConflict.file)))}
+              onClick={() => navigateToHash(hashFromDocName(firstConflictDocName))}
             >
               <Trans>Review</Trans>
             </Button>
@@ -1182,7 +1280,14 @@ function PopoverBody({ status, onSignIn, onSetIdentity }: PopoverBodyProps) {
       )}
 
       {}
-      <WorktreeStatusSection status={status} worktree={worktree} loading={worktreeLoading} />
+      <WorktreeStatusSection
+        status={status}
+        worktree={worktree}
+        loading={worktreeLoading}
+        unreadable={worktreeUnreadable}
+        stale={worktreeStale}
+        lastReadAt={worktreeLastReadAt}
+      />
 
       {}
       <div className="flex items-center justify-between gap-2">

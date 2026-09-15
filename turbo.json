@@ -12,7 +12,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**", ".next/**"]
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "!.next/dev/**"]
     },
     "build:desktop": {
       "dependsOn": ["^build", "@inkeep/open-knowledge#build"],
@@ -62,7 +62,7 @@
     },
     "@inkeep/open-knowledge-docs#build": {
       "dependsOn": ["^build", "typecheck"],
-      "outputs": ["dist/**", ".next/**"],
+      "outputs": ["dist/**", ".next/**", "!.next/cache/**", "!.next/dev/**"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!src/**/*.test.ts",
@@ -370,6 +370,10 @@
       "dependsOn": ["^build"],
       "cache": false
     },
+    "@inkeep/open-knowledge-app#test:visual": {
+      "dependsOn": ["^build", "build"],
+      "cache": false
+    },
     "test:perf": {
       "dependsOn": [],
       "cache": true,
@@ -387,6 +391,10 @@
     },
     "test:a11y": {
       "dependsOn": ["^build"],
+      "cache": false
+    },
+    "@inkeep/open-knowledge-app#test:a11y": {
+      "dependsOn": ["^build", "build"],
       "cache": false
     },
     "test:perf:bench": {

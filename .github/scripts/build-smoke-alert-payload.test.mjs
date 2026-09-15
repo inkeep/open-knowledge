@@ -9,12 +9,14 @@ import {
   parseArgs,
   recoveryCommand,
 } from './build-smoke-alert-payload.mjs';
+import { STOP_OUTCOMES } from './retry-transient.mjs';
 
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const desktopRelease = readFileSync(
   join(REPO_ROOT, '.github', 'workflows', 'desktop-release.yml'),
   'utf8',
 );
+const SHELL_DOLLAR = '$';
 
 const alertStep = (source = desktopRelease) => {
   const start = source.indexOf('- name: Alert on a blocked release');
@@ -62,10 +64,23 @@ describe('alert content', () => {
     expect(recoveryCommand('v9.9.9', 'acme/fork')).toContain('repos/acme/fork/dispatches');
   });
 
-  test('recovery points at the cause instead of promising a repair-free retry', () => {
+  test('recovery maps every packaging outcome to an operator action', () => {
     const body = buildSlackPayload(base).blocks[1].text.text;
     expect(body).toContain('*Recovery');
-    expect(body).toContain('fix the cause');
+    expect(body).toContain("Inspect the failed packaging job's final `outcome=`");
+    for (const outcome of STOP_OUTCOMES) {
+      expect(body).toContain(`\`${outcome}\``);
+    }
+    expect(body).toContain('no newer stable release');
+    expect(body).toContain('`transient-exhausted`, `deadline`, or `signal` can re-fire');
+    expect(body).toContain('`unknown-exhausted` requires manual log review');
+    expect(body).toContain('`terminal` requires fixing the cause in `reason=`');
+    expect(body).toContain('`reason=rule:download-integrity` is the terminal exception');
+    expect(body).toContain('stop and investigate upstream');
+    expect(body).toContain('`cleanup-failure` reports its runner/tooling cause in `cleanup=`');
+    expect(body).toContain('Confirm the runner/tooling failure is absent before re-firing');
+    expect(body).toContain('Never re-fire a tag once a newer stable release has shipped');
+    expect(body).not.toContain('re-firing alone repairs nothing');
     expect(body).not.toContain('no manual repair needed');
   });
 });
@@ -252,16 +267,18 @@ describe('workflow wiring', () => {
 
   test('an unset webhook is a notice-level skip, and a failed POST is a warning', () => {
     const step = alertStep();
-    expect(step).toContain('::notice::${label} webhook not set');
+    expect(step).toContain(`::notice::${SHELL_DOLLAR}{label} webhook not set`);
     expect(step).toMatch(/if \[\[ -z "\$webhook" \]\]; then[\s\S]{0,200}?return 0/);
-    expect(step).toContain('::warning::${label} smoke alert failed to POST');
-    expect(step).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
+    expect(step).toContain(`::warning::${SHELL_DOLLAR}{label} smoke alert failed to POST`);
+    expect(step).toContain(
+      `post "${SHELL_DOLLAR}{SLACK_RELEASES_WEBHOOK_URL:-${SHELL_DOLLAR}{SLACK_WEBHOOK_URL:-}}" Slack`,
+    );
   });
 
   test('a passing smoke verdict is not coerced into an error', () => {
     const step = alertStep();
     expect(step).not.toMatch(/if \[\[ "\$VERDICT" != "fail" \]\]/);
-    expect(step).toContain('VERDICT="${SMOKE_VERDICT:-error}"');
+    expect(step).toContain(`VERDICT="${SHELL_DOLLAR}{SMOKE_VERDICT:-error}"`);
     expect(step).toMatch(/skipped.*\]\]; then\s*\n\s*VERDICT="error"/);
   });
 
@@ -302,7 +319,9 @@ describe('workflow wiring', () => {
 
   test('the annotation is emitted in addition to the page, not instead of it', () => {
     const step = alertStep();
-    const slackAt = step.indexOf('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
+    const slackAt = step.indexOf(
+      `post "${SHELL_DOLLAR}{SLACK_RELEASES_WEBHOOK_URL:-${SHELL_DOLLAR}{SLACK_WEBHOOK_URL:-}}" Slack`,
+    );
     const annotationAt = step.indexOf('::error::RELEASE BLOCKED');
     expect(slackAt).toBeGreaterThan(-1);
     expect(annotationAt).toBeGreaterThan(slackAt);

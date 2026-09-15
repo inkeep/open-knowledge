@@ -1,5 +1,7 @@
 import type { SimpleGit } from 'simple-git';
 
+export const PORCELAIN_STATUS_ARGS = ['status', '--porcelain', '-uall'];
+
 export function splitNulSeparatedPaths(out: string): string[] {
   return out.split('\0').filter((path) => path.length > 0);
 }
@@ -108,14 +110,14 @@ export async function listNames(git: SimpleGit, args: string[]): Promise<string[
 
 export async function listPorcelainPaths(
   git: SimpleGit,
-  args: string[] = ['status', '--porcelain'],
+  args: string[] = PORCELAIN_STATUS_ARGS,
 ): Promise<string[]> {
   return parsePorcelainPaths(await rawZ(git, args));
 }
 
 export async function listPorcelainEntries(
   git: SimpleGit,
-  args: string[] = ['status', '--porcelain'],
+  args: string[] = PORCELAIN_STATUS_ARGS,
 ): Promise<PorcelainEntry[]> {
   return parsePorcelainEntries(await rawZ(git, args));
 }

@@ -169,9 +169,9 @@ describe('sync-wired harness (S2 substrate)', () => {
         await revParse(server.contentDir, 'origin/main'),
       );
       expect(readFileSync(join(server.contentDir, 'guide.md'), 'utf-8')).toContain('LOCAL intro');
-      const conflicts = engine.getConflicts();
+      const conflicts = server.instance.conflicts.list();
       expect(conflicts).toHaveLength(1);
-      expect(conflicts[0]?.variant).toBe('working-tree');
+      expect(conflicts[0]?.kind).toBe('working-tree');
 
       const base = `http://127.0.0.1:${server.port}/api/sync/conflict-content`;
       const diskRes = await fetch(`${base}?file=guide.md`);
@@ -193,10 +193,9 @@ describe('sync-wired harness (S2 substrate)', () => {
       clients.push(client);
       await pollUntil(() => client.ytext.toString().includes('LOCAL intro'));
       const ytextRes = await fetch(`${base}?file=guide.md&source=ytext`);
-      const ytextBody = (await ytextRes.json()) as { ours: string; lifecycleStatus: string | null };
+      const ytextBody = (await ytextRes.json()) as { ours: string; conflict: string };
       expect(ytextBody.ours).toContain('LOCAL intro');
-      expect(ytextBody.lifecycleStatus).toBe('conflict');
-      await pollUntil(() => client.doc.getMap('lifecycle').get('status') === 'conflict');
+      expect(ytextBody.conflict).toBe('working-tree');
 
       const resolveRes = await fetch(`http://127.0.0.1:${server.port}/api/sync/resolve-conflict`, {
         method: 'POST',
@@ -204,9 +203,9 @@ describe('sync-wired harness (S2 substrate)', () => {
         body: JSON.stringify({ file: 'guide.md', strategy: 'mine' }),
       });
       expect(resolveRes.status).toBe(200);
-      expect(engine.getConflicts()).toEqual([]);
+      expect(server.instance.conflicts.list()).toEqual([]);
+      expect(server.instance.conflicts.has('guide')).toBe(false);
       expect(readFileSync(join(server.contentDir, 'guide.md'), 'utf-8')).toContain('LOCAL intro');
-      await pollUntil(() => client.doc.getMap('lifecycle').get('status') === undefined);
       expect(existsSync(join(server.contentDir, '.git', 'MERGE_HEAD'))).toBe(false);
     },
     HARNESS_BOOT_TIMEOUT_MS,

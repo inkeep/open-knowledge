@@ -1,6 +1,7 @@
 import { pathspecArgs, type ShareFreshness } from '@inkeep/open-knowledge-core';
 import { truncateError } from '../error-format.ts';
 import { createGitInstance } from '../git-handle.ts';
+import { PORCELAIN_STATUS_ARGS } from '../git-paths.ts';
 import { getLogger } from '../logger.ts';
 
 const FRESHNESS_PROBE_TIMEOUT_MS = 5_000;
@@ -28,7 +29,7 @@ export async function computeShareFreshness(
         .then(() => true)
         .catch(() => false),
       git.raw(['diff', '--name-only', ref, ...scope]),
-      git.raw(['status', '--porcelain', '--untracked-files=all', ...scope]),
+      git.raw([...PORCELAIN_STATUS_ARGS, ...scope]),
     ]);
 
     if (!present) {

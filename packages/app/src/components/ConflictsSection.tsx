@@ -4,10 +4,9 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useConflicts } from '@/hooks/use-conflicts';
-import { filePathToDocName, hashFromDocName, isSameHash } from '@/lib/doc-hash';
+import { hashFromDocName, isSameHash } from '@/lib/doc-hash';
 
-function navigateToConflictedDoc(filePath: string) {
-  const docName = filePathToDocName(filePath);
+function navigateToConflictedDoc(docName: string) {
   const nextHash = hashFromDocName(docName);
   if (typeof window === 'undefined') return;
   if (!isSameHash(window.location.hash, nextHash)) {
@@ -60,33 +59,40 @@ export function ConflictsSection() {
         </span>
       </header>
       <ul className="flex flex-col gap-px">
-        {conflicts.map((entry) => (
-          <li key={entry.file}>
-            <Button
-              variant="ghost"
-              size="sm"
-              data-testid="conflicts-section-row"
-              data-file={entry.file}
-              data-conflict-kind={entry.conflictKind}
-              title={entry.file}
-              className="h-auto min-h-7 w-full items-start justify-start gap-1.5 px-2 py-1.5 font-normal text-[13px] text-amber-800 hover:bg-amber-100/60 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/30 dark:hover:text-amber-200"
-              onClick={() => navigateToConflictedDoc(entry.file)}
-            >
-              <AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
-              <span className="min-w-0 text-start">
-                <span className="block truncate">{entry.file}</span>
-                {entry.conflictKind === 'stale-external-write' ? (
-                  <span className="block text-pretty text-[11px] leading-4 text-amber-700/80 dark:text-amber-400/80">
-                    <Trans>
-                      The file was restored to an older version. Open it to choose which version to
-                      keep.
-                    </Trans>
-                  </span>
-                ) : null}
-              </span>
-            </Button>
-          </li>
-        ))}
+        {conflicts.map((entry) => {
+          const docName = entry.docName;
+          return (
+            <li key={entry.file}>
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="conflicts-section-row"
+                data-file={entry.file}
+                data-conflict-kind={entry.conflictKind}
+                data-navigable={docName === null ? 'false' : 'true'}
+                disabled={docName === null}
+                title={entry.file}
+                className="h-auto min-h-7 w-full items-start justify-start gap-1.5 px-2 py-1.5 font-normal text-[13px] text-amber-800 hover:bg-amber-100/60 hover:text-amber-900 dark:text-amber-300 dark:hover:bg-amber-900/30 dark:hover:text-amber-200"
+                onClick={() => {
+                  if (docName !== null) navigateToConflictedDoc(docName);
+                }}
+              >
+                <AlertTriangle aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+                <span className="min-w-0 text-start">
+                  <span className="block truncate">{entry.file}</span>
+                  {entry.conflictKind === 'stale-external-write' ? (
+                    <span className="block text-pretty text-[11px] leading-4 text-amber-700/80 dark:text-amber-400/80">
+                      <Trans>
+                        The file was restored to an older version. Open it to choose which version
+                        to keep.
+                      </Trans>
+                    </span>
+                  ) : null}
+                </span>
+              </Button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

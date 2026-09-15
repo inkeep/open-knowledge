@@ -35,6 +35,9 @@
     "-WeuHF": ["Quitar el mensaje en cola"],
     "-X1eoK": ["Se comprobaron las integraciones de OpenKnowledge."],
     "-YV1Uo": ["Patrón ", ["patternNumber"]],
+    "-ZVU5v": [
+      "Este repositorio aún no tiene commits: vuelve a abrir el proyecto para crear el primer commit y entonces Push funcionará"
+    ],
     "-bFGPF": ["Cambio siguiente"],
     "-dNlfM": ["Se deshizo la última edición en ", ["docName"]],
     "-g6KIS": ["Enlace no reconocido"],
@@ -114,6 +117,11 @@
       ") en ",
       ["targetLabel"]
     ],
+    "0bV3uj": [
+      "Puede que alguien ya haya resuelto ",
+      ["filePath"],
+      " — revisa el contenido actual del documento antes de rehacer tu edición."
+    ],
     "0cGsQh": ["Qué se incluye"],
     "0cspe_": ["Eliminar fila"],
     "0dslv8": [
@@ -188,6 +196,9 @@
     "10g8I_": ["Desactivar Solo archivos markdown"],
     "110eEb": [
       "Open Knowledge crea y mantiene un archivo de navegación llamado index.md en cada carpeta que contiene Markdown."
+    ],
+    "113NNl": [
+      "El servidor de OpenKnowledge tardo demasiado en responder y es posible que el cambio se haya aplicado igualmente. Pide al agente que lo compruebe antes de volver a intentarlo."
     ],
     "11ukmX": ["Falló al renombrar: ", ["0"]],
     "12F9WL": ["(sin id)"],
@@ -395,6 +406,7 @@
     "3aeN7X": ["Todos los archivos"],
     "3cOo2C": ["Crea una carpeta a partir del documento o la carpeta actuales."],
     "3ePd3I": ["Novedades"],
+    "3fOsvq": ["Usar su versión"],
     "3h5zMp": ["Algo salió mal al cargar el panel de ajustes."],
     "3iyGWF": ["Abrir un proyecto reciente"],
     "3jod3l": ["Conectar GitHub"],
@@ -502,6 +514,9 @@
       "Se quitó \"",
       ["0"],
       "\" de todas las demás ubicaciones; su carpeta de origen se sigue cargando"
+    ],
+    "4r6p_B": [
+      "Este comando contiene caracteres ocultos que pueden hacer que se vea distinto de lo que se ejecuta. Aquí se muestran como ⟨U+…⟩."
     ],
     "4sE6E9": ["No se pudo comprobar qué herramientas están conectadas."],
     "4sKwf6": ["El archivo ya existe"],
@@ -938,6 +953,9 @@
     ],
     "99eR72": ["Selección de tabla del editor visual"],
     "9Bd18D": ["No se pudieron cargar las páginas índice"],
+    "9CNRDG": [
+      "El servidor de OpenKnowledge tardo demasiado en responder. Pide al agente que vuelva a intentarlo."
+    ],
     "9E_WAi": [["errorText"], " y ", ["warningText"]],
     "9EykGQ": ["Insertar columna a la derecha"],
     "9GbR5F": ["MÁX"],
@@ -2599,6 +2617,9 @@
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Puedes cambiarlo más adelante en <0>Ajustes → Sincronización</0>."],
     "QYfQdv": ["CLI de ", ["displayName"]],
+    "Qca--K": [
+      "Otro programa está usando Git aquí: espera a que termine y vuelve a sincronizar (está reteniendo <0>.git/index.lock</0>)"
+    ],
     "QcpeeE": ["Ir a ", ["docName"]],
     "Qe47G0": [
       ["componentLabel"],
@@ -2652,6 +2673,7 @@
     "RB_g_C": [
       "En el índice raíz, okf_version se escribe como una cadena entrecomillada como \"0.2\". Sin comillas, YAML lo lee como un número y 0.10 silenciosamente se convierte en 0.1."
     ],
+    "RCMt3v": ["No se está siguiendo ningún conflicto para esta ruta."],
     "RD6H9q": [
       "Open Knowledge reescribe estos archivos index.md a medida que cambian los documentos, por lo que se reemplazan las ediciones manuales."
     ],
@@ -2707,6 +2729,11 @@
     "Rah7yq": ["¿Qué debería hacer la IA? (opcional)"],
     "Rb1zMa": ["Sin extracto"],
     "RcrskJ": ["El formato se veía mal"],
+    "RduDYw": [
+      "<0>",
+      ["filePath"],
+      "</0> no se puede combinar aquí. Elige la versión que quieres conservar."
+    ],
     "RfHNf8": ["Abrir el panel de actividad de ", ["tooltipName"]],
     "RfaEio": ["Comentar o descomentar en el código"],
     "RfilGt": ["Ninguna regla coincide con tus filtros."],
@@ -2787,6 +2814,7 @@
     "SXCSQd": ["Ruta copiada"],
     "SXEdCq": ["¿Mover a ", ["0"], "?"],
     "SYfHmN": ["Dejar de fijar la pestaña"],
+    "S_RRZB": ["Eliminar el archivo"],
     "Sad2tK": ["Enviando…"],
     "Sbb90e": [
       [
@@ -3240,6 +3268,9 @@
     "XPqe3B": ["Crear la etiqueta nueva #", ["tagValue"]],
     "XRuL0i": ["Crear página"],
     "XSb9HS": ["Descartar las ediciones locales y restaurar la versión instalada"],
+    "XSy4nN": [
+      "Las herramientas de OpenKnowledge del agente no pudieron conectar con el servidor. Pide al agente que vuelva a intentarlo y, si sigue fallando, empieza un chat nuevo."
+    ],
     "XT-L4j": ["Activa un agente para crear con IA"],
     "XU5AOg": ["Entrada"],
     "XV5sC0": ["Abrir el worktree"],
@@ -3328,7 +3359,6 @@
     "XwZiq2": [
       "El archivo se restauró a una versión anterior. Actual es la versión que OpenKnowledge protegió. Entrante es la versión restaurada. Elige qué versión conservar y luego aplica los cambios."
     ],
-    "XzL7x7": ["Vuelve a abrir ", ["filePath"], " para seguir editando."],
     "Xzy0s0": ["Quitar ", ["fullLabel"], " del contexto"],
     "Y-Urt2": ["Ecuación matemática en bloque renderizada con KaTeX a partir de código LaTeX."],
     "Y1QMlM": ["Ponte en marcha"],
@@ -3560,6 +3590,7 @@
     "_IX_7x": ["Otro"],
     "_IfSZn": ["Ya existe un tema guardado con este nombre."],
     "_JOGC0": ["Enviar comentarios…"],
+    "_LK4d6": ["Puede que esta lista esté desactualizada."],
     "_LczaQ": ["Denegado — ", ["optionName"]],
     "_NWEid": ["Busca archivos de esquema por ruta"],
     "_O7dJS": ["Aquí hay otra versión: haz clic para compararla y resolverla"],
@@ -3605,6 +3636,9 @@
     "_rP3HI": ["hace ", ["minutes"], " min"],
     "_tekeB": ["se actualizaron las propiedades de la carpeta"],
     "_tjopj": ["Pegar duplicado"],
+    "_uOJBO": [
+      "Lo denegaste. Para que se ejecute, pide al agente que vuelva a intentarlo y apruébalo."
+    ],
     "_uxBz5": ["Añadir MCP y habilidad para ", ["rowLabel"]],
     "_xWxLt": [["agentName"], " se detuvo con un error."],
     "_yB-24": ["todo lo que hay en cualquier carpeta ", ["0"], "/"],
@@ -4024,6 +4058,11 @@
     "dw_dUJ": ["No se pudo duplicar la ruta"],
     "dx-TwN": ["Ejecutando la auditoría del proyecto"],
     "dyfMJN": ["Código copiado"],
+    "e-pP6g": [
+      "Puede que esta lista esté desactualizada; última lectura: ",
+      ["staleRelative"],
+      "."
+    ],
     "e0NrBM": ["Proyecto"],
     "e1Rn_k": ["Abrir la carpeta contenedora"],
     "e1hptq": ["Incrusta un vídeo con los controles nativos del reproductor."],
@@ -4424,7 +4463,6 @@
       "Deja constancia escrita de cómo se construye tu producto. Un sitio para proponer ideas, registrar decisiones, escribir especificaciones y anotar lo aprendido cuando algo falla."
     ],
     "hCattk": ["OpenKnowledge importó ", ["source"]],
-    "hCghAK": ["Este conflicto está resuelto."],
     "hDEaQu": ["Conecta OpenKnowledge con las demás herramientas que usas."],
     "hDKtoF": ["hace ", ["diffHrs"], " h"],
     "hDoLrm": ["Quitar ", ["projectName"], " de los proyectos recientes"],
@@ -4661,7 +4699,6 @@
       "Incrusta una página externa en un iframe en línea (documentación, demos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Activar Automático (solo Pull)"],
-    "jTdrn1": ["No se pudo comprobar si ", ["filePath"], " sigue en conflicto: reintentando."],
     "jWwQo6": ["lote"],
     "jWzDfC": ["Comprobando qué herramientas de IA tienes"],
     "jZ_E5M": ["Falló el fetch: consulta los registros del servidor para ver los detalles."],
@@ -4917,6 +4954,7 @@
     "lwCV5v": ["No se pudo abrir ", ["0"], " para editarlo: ", ["1"]],
     "lyWa43": ["Páginas desconectadas de todo el proyecto"],
     "lzmtKp": ["No se pudieron cargar las propiedades de la carpeta: ", ["message"]],
+    "lzsa2d": ["Copiar el error"],
     "lzwo7p": ["No se pudo abrir el inicio de sesión de GitHub. Inténtalo de nuevo."],
     "m-1Z7o": ["Usar este paquete inicial"],
     "m0eHej": [
@@ -5546,6 +5584,9 @@
     "sKHiNR": [["count"], " por detrás"],
     "sNeKjP": ["No se pudo guardar el token: inténtalo de nuevo"],
     "sOafXU": ["Editar y enviar de nuevo"],
+    "sOcMdy": [
+      "Otro programa está usando Git aquí: espera a que termine y vuelve a sincronizar (está reteniendo .git/index.lock)"
+    ],
     "sOxZaS": ["No se pudo cargar el grafo"],
     "sQoLn0": ["Salir"],
     "sR0I-f": ["Contraer todos los archivos"],
@@ -5639,6 +5680,7 @@
       "OpenKnowledge no reconoce esta entrada y no puede sustituirla de forma segura en el formato de este archivo."
     ],
     "tCyvAw": ["Adjuntar un archivo"],
+    "tDlhkF": ["Nombre del chat"],
     "tHKQ6j": ["Renombrando"],
     "tKlWWY": ["Emoji"],
     "tLX6LY": ["OpenKnowledge escribió un documento"],

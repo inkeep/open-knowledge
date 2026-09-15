@@ -9,7 +9,6 @@ import {
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { dirname, extname, resolve, sep } from 'node:path';
 import { pipeline } from 'node:stream/promises';
-import type { Hocuspocus } from '@hocuspocus/server';
 import {
   CreateFolderRequestSchema,
   CreateFolderSuccessSchema,
@@ -35,14 +34,14 @@ import { formatRenameSubject } from '@inkeep/open-knowledge-core/shadow-repo-lay
 import type { SummaryResponse } from '../agent-write-summary.ts';
 import { ManagedRenameCollisionError } from '../apply-managed-rename.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
-import { DocInConflictError, isDocInConflict, respondDocInConflict } from '../conflict-errors.ts';
+import type { ConflictAuthority } from '../conflict-authority.ts';
+import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
 import { isReservedProjectStatePath } from '../content/managed-doc-enum.ts';
 import { applySubstitution, todayIsoUtc } from '../content/substitution.ts';
 import { resolveTemplatesAvailable } from '../content/templates-resolver.ts';
 import type { ContentFilter } from '../content-filter.ts';
 import { recordContributor } from '../contributor-tracker.ts';
 import {
-  docNameToRelativePath,
   getDocExtension,
   isSupportedAssetFile,
   isSupportedDocFile,
@@ -57,7 +56,6 @@ import type { PinoLogger } from '../logger.ts';
 import { createMultipartParser, type MultipartParser } from '../multipart.ts';
 import type { AssetService } from '../services/assets.ts';
 import { DuplicateNameExhaustedError, type FileOpsService } from '../services/file-ops.ts';
-import type { SyncEngine } from '../sync-engine.ts';
 import { type getMeter, withSpan } from '../telemetry.ts';
 import {
   classifyUploadErrno,
@@ -267,8 +265,7 @@ export interface FileOpsRouteDeps {
   getPrincipal: (() => Principal | null) | undefined;
   contentFilter: ContentFilter | undefined;
   signalChannel: ((channel: 'files' | 'lint-config' | 'comments') => void) | undefined;
-  hocuspocus: Hocuspocus;
-  getSyncEngine: (() => SyncEngine | null) | undefined;
+  conflicts: ConflictAuthority;
   flushContributors: (() => Promise<void>) | undefined;
   fileOpsService: FileOpsService;
   assetService: AssetService;
@@ -351,8 +348,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
     getPrincipal,
     contentFilter,
     signalChannel,
-    hocuspocus,
-    getSyncEngine,
+    conflicts,
     flushContributors,
     fileOpsService,
     assetService,
@@ -803,6 +799,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
                 res,
                 new DocInConflictError({ file: outcome.file }),
                 'duplicate-path',
+                conflicts.findByFile(outcome.file),
               );
               return;
             case 'destination-excluded':
@@ -990,7 +987,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
                 : await _performAssetRename(fromPath, toPath);
           } catch (err) {
             if (err instanceof DocInConflictError) {
-              respondDocInConflict(res, err, 'rename-path');
+              respondDocInConflict(res, err, 'rename-path', conflicts.findByFile(err.file));
               return;
             }
             const { status, type, error } = toManagedRenamePublicError(err);
@@ -1068,18 +1065,15 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
             : listManagedDocNamesUnderFolderFromDisk(
                 resolveContentEntryPath(contentDir, 'folder', fromPath),
               );
-        const renameEngine = getSyncEngine?.();
-        const renameTrackedFiles = new Set(
-          renameEngine ? renameEngine.getConflicts().map((c) => c.file) : [],
-        );
-        for (const affected of renameAffectedDocNames) {
-          const affectedDocName = affected;
-          const doc = hocuspocus.documents.get(affectedDocName);
-          const filePath = docNameToRelativePath(affectedDocName);
-          const conflictedByLifecycle = doc !== undefined && isDocInConflict(doc);
-          const conflictedByStore = renameTrackedFiles.has(filePath);
-          if (conflictedByLifecycle || conflictedByStore) {
-            respondDocInConflict(res, new DocInConflictError({ file: filePath }), 'rename-path');
+        for (const affectedDocName of renameAffectedDocNames) {
+          const entry = conflicts.findByDocName(affectedDocName);
+          if (entry !== undefined) {
+            respondDocInConflict(
+              res,
+              new DocInConflictError({ file: entry.file }),
+              'rename-path',
+              entry,
+            );
             return;
           }
         }
@@ -1130,7 +1124,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
           );
         } catch (err) {
           if (err instanceof DocInConflictError) {
-            respondDocInConflict(res, err, 'rename-path');
+            respondDocInConflict(res, err, 'rename-path', conflicts.findByFile(err.file));
             return;
           }
           if (err instanceof ManagedRenameCollisionError) {
@@ -1288,6 +1282,7 @@ export function createFileOpsRoutes(deps: FileOpsRouteDeps): ApiRouteGroup {
               res,
               new DocInConflictError({ file: outcome.file }),
               'delete-path',
+              conflicts.findByFile(outcome.file),
             );
           }
           return;

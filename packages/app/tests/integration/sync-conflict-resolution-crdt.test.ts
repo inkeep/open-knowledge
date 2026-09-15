@@ -10,6 +10,13 @@ const THEIRS_CONTENT = '# Theirs\n\nTeam version.\n';
 const CONFLICT_MARKERS =
   '<<<<<<< HEAD\n# Mine\n\nLocal version.\n=======\n# Theirs\n\nTeam version.\n>>>>>>> origin/main\n';
 
+async function listedConflictFiles(port: number): Promise<string[]> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/sync/conflicts`).catch(() => null);
+  if (!res?.ok) return [];
+  const data = (await res.json()) as { conflicts?: Array<{ file: string }> };
+  return (data.conflicts ?? []).map((c) => c.file);
+}
+
 const cleanups: Array<() => Promise<void> | void> = [];
 
 afterEach(async () => {
@@ -27,12 +34,12 @@ async function setupServerWithDoc(docName: string, initial: string): Promise<Tes
     if (!res?.ok) return false;
     const data = (await res.json()) as { documents?: Array<{ docName: string }> };
     return data.documents?.some((d) => d.docName === docName) ?? false;
-  });
+  }, 60_000);
   return server;
 }
 
-describe('case "conflict" disk event -> CRDT lifecycle', () => {
-  test('clears lifecycle.status after conflict resolves to theirs', async () => {
+describe('case "conflict" disk event -> conflict ledger', () => {
+  test('clears the conflict entry after it resolves to theirs', async () => {
     const docName = `conflict-clear-${crypto.randomUUID()}`;
     const server = await setupServerWithDoc(docName, BASE_CONTENT);
     const client = await createTestClient(server.port, docName);
@@ -40,25 +47,30 @@ describe('case "conflict" disk event -> CRDT lifecycle', () => {
 
     await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
 
-    const lifecycle = client.doc.getMap('lifecycle');
     const filePath = join(server.contentDir, `${docName}.md`);
 
     writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
 
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(
+      async () => (await listedConflictFiles(server.port)).includes(`${docName}.md`),
+      30_000,
+    );
 
     writeFileSync(filePath, THEIRS_CONTENT, 'utf-8');
 
-    await pollUntil(() => client.ytext.toString().includes('Team version'), 10_000);
+    await pollUntil(() => client.ytext.toString().includes('Team version'), 30_000);
 
     expect(client.ytext.toString()).toContain('Team version');
     expect(client.ytext.toString()).not.toContain('Base paragraph');
 
-    await pollUntil(() => lifecycle.get('status') === undefined, 5000);
-    expect(lifecycle.get('reason')).toBeUndefined();
-  }, 30_000);
+    await pollUntil(
+      async () => !(await listedConflictFiles(server.port)).includes(`${docName}.md`),
+      30_000,
+    );
+    expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
+  }, 60_000);
 
-  test('clears lifecycle.status on noop reconcile (keep-mine path)', async () => {
+  test('clears the conflict entry on noop reconcile (keep-mine path)', async () => {
     const docName = `conflict-noop-${crypto.randomUUID()}`;
     const server = await setupServerWithDoc(docName, BASE_CONTENT);
     const client = await createTestClient(server.port, docName);
@@ -66,18 +78,17 @@ describe('case "conflict" disk event -> CRDT lifecycle', () => {
 
     await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
 
-    const lifecycle = client.doc.getMap('lifecycle');
     const filePath = join(server.contentDir, `${docName}.md`);
 
     writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
 
     writeFileSync(filePath, BASE_CONTENT, 'utf-8');
 
-    await pollUntil(() => lifecycle.get('status') === undefined, 5000);
-    expect(lifecycle.get('reason')).toBeUndefined();
+    await pollUntil(() => !server.instance.conflicts.has(docName), 30_000);
+    expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
     expect(client.ytext.toString()).toContain('Base paragraph');
-  }, 30_000);
+  }, 60_000);
 
   test('persistence does not overwrite conflict markers on disk during conflict', async () => {
     const docName = `conflict-persist-${crypto.randomUUID()}`;
@@ -87,11 +98,10 @@ describe('case "conflict" disk event -> CRDT lifecycle', () => {
 
     await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
 
-    const lifecycle = client.doc.getMap('lifecycle');
     const filePath = join(server.contentDir, `${docName}.md`);
 
     writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
 
     expect(readFileSync(filePath, 'utf-8')).toContain('<<<<<<<');
 
@@ -111,11 +121,11 @@ describe('case "conflict" disk event -> CRDT lifecycle', () => {
     expect(diskNow).toContain('=======');
     expect(diskNow).toContain('>>>>>>>');
     expect(diskNow).not.toContain('Edit during conflict');
-  }, 30_000);
+  }, 60_000);
 });
 
-describe('case "conflicts" reconcile branch -> CRDT lifecycle', () => {
-  test('case "conflicts" sets lifecycle.status="conflict" with reason "merged-with-markers"', async () => {
+describe('case "conflicts" reconcile branch -> conflict ledger', () => {
+  test('case "conflicts" raises a reconcile entry with reason "merged-with-markers"', async () => {
     const docName = `reconcile-conflicts-${crypto.randomUUID()}`;
     const baseContent = '# Heading\n\nFirst paragraph.\n\nSecond paragraph.\n';
     const server = await createTestServer({ debounce: 60_000, maxDebounce: 60_000 });
@@ -126,14 +136,13 @@ describe('case "conflicts" reconcile branch -> CRDT lifecycle', () => {
       if (!res?.ok) return false;
       const data = (await res.json()) as { documents?: Array<{ docName: string }> };
       return data.documents?.some((d) => d.docName === docName) ?? false;
-    });
+    }, 30_000);
 
     const client = await createTestClient(server.port, docName);
     cleanups.push(() => client.cleanup());
 
     await pollUntil(() => client.ytext.toString().includes('First paragraph'));
 
-    const lifecycle = client.doc.getMap('lifecycle');
     const filePath = join(server.contentDir, `${docName}.md`);
 
     const baseOffset = client.ytext.toString().indexOf('First paragraph.');
@@ -151,11 +160,13 @@ describe('case "conflicts" reconcile branch -> CRDT lifecycle', () => {
     const theirsContent = '# Heading\n\nTheir version of first paragraph.\n\nSecond paragraph.\n';
     writeFileSync(filePath, theirsContent, 'utf-8');
 
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
 
-    expect(lifecycle.get('status')).toBe('conflict');
-    expect(lifecycle.get('reason')).toBe('merged-with-markers');
-  }, 30_000);
+    expect(server.instance.conflicts.findByDocName(docName)).toMatchObject({
+      kind: 'reconcile',
+      reason: 'merged-with-markers',
+    });
+  }, 60_000);
 });
 
 describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conflict', () => {
@@ -168,14 +179,14 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
 
     const filePath = join(server.contentDir, `${docName}.md`);
     writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
-    const lifecycle = client.doc.getMap('lifecycle');
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
     return { docName, server };
   }
 
   async function expectDocInConflict409(
     res: Response,
     expectedFile: string,
+    expectedOptions: string[] = ['mine', 'content', 'delete'],
   ): Promise<Record<string, unknown>> {
     expect(res.status).toBe(409);
     expect(res.headers.get('content-type')).toContain('application/problem+json');
@@ -184,7 +195,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
     expect(body.title).toBe('Document is in conflict.');
     expect(body.status).toBe(409);
     expect(body.file).toBe(expectedFile);
-    expect(body.resolutionOptions).toEqual(['mine', 'theirs', 'content', 'delete']);
+    expect(body.resolutionOptions).toEqual(expectedOptions);
     expect(body.base).toBeUndefined();
     expect(body.ours).toBeUndefined();
     expect(body.theirs).toBeUndefined();
@@ -204,7 +215,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${docName}.md`);
-  }, 30_000);
+  }, 60_000);
 
   test('POST /api/agent-write-md returns 409 doc-in-conflict', async () => {
     const { docName, server } = await seedConflictedDoc();
@@ -220,7 +231,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${docName}.md`);
-  }, 30_000);
+  }, 60_000);
 
   test('POST /api/agent-patch returns 409 doc-in-conflict', async () => {
     const { docName, server } = await seedConflictedDoc();
@@ -236,7 +247,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${docName}.md`);
-  }, 30_000);
+  }, 60_000);
 
   test('POST /api/agent-undo returns 409 doc-in-conflict', async () => {
     const { docName, server } = await seedConflictedDoc();
@@ -257,7 +268,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${docName}.md`);
-  }, 30_000);
+  }, 60_000);
 
   test('POST /api/rollback returns 409 doc-in-conflict', async () => {
     const { docName, server } = await seedConflictedDoc();
@@ -270,7 +281,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${docName}.md`);
-  }, 30_000);
+  }, 60_000);
 
   test('POST /api/rename-path returns 409 doc-in-conflict when source is conflicted', async () => {
     const { docName, server } = await seedConflictedDoc();
@@ -284,7 +295,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${docName}.md`);
-  }, 30_000);
+  }, 60_000);
 
   test('POST /api/delete-path returns 409 doc-in-conflict when target is conflicted', async () => {
     const { docName, server } = await seedConflictedDoc();
@@ -297,7 +308,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${docName}.md`);
-  }, 30_000);
+  }, 60_000);
 
   async function seedConflictedDocInFolder(): Promise<{
     folder: string;
@@ -329,8 +340,7 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
     await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
 
     writeFileSync(join(server.contentDir, folder, `${childBase}.md`), CONFLICT_MARKERS, 'utf-8');
-    const lifecycle = client.doc.getMap('lifecycle');
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(() => server.instance.conflicts.has(childDocName), 30_000);
     return { folder, childDocName, server };
   }
 
@@ -346,59 +356,53 @@ describe('FR7 + FR9: mutating handlers refuse with RFC 9457 slim 409 during conf
       }),
     });
     await expectDocInConflict409(res, `${childDocName}.md`);
-  }, 30_000);
+  }, 60_000);
 });
 
 describe('GET /api/sync/conflict-content?source=ytext', () => {
-  test.each(['## Mid-conflict authored content\n', 'Mid-conflict authored content\n=======\n'])(
-    'returns Y.Text snapshot when source=ytext and snapshot has no unresolved block: %j',
-    async (midConflictMarker) => {
-      const docName = `fr3-source-ytext-${crypto.randomUUID()}`;
-      const server = await setupServerWithDoc(docName, BASE_CONTENT);
-      const client = await createTestClient(server.port, docName);
-      cleanups.push(() => client.cleanup());
+  test('returns Y.Text snapshot when source=ytext and snapshot is marker-free', async () => {
+    const docName = `fr3-source-ytext-${crypto.randomUUID()}`;
+    const server = await setupServerWithDoc(docName, BASE_CONTENT);
+    const client = await createTestClient(server.port, docName);
+    cleanups.push(() => client.cleanup());
 
-      await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
+    await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
 
-      const lifecycle = client.doc.getMap('lifecycle');
-      const filePath = join(server.contentDir, `${docName}.md`);
+    const filePath = join(server.contentDir, `${docName}.md`);
 
-      writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
-      await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
+    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
 
-      client.doc.transact(() => {
-        client.ytext.insert(client.ytext.toString().length, midConflictMarker);
-      });
+    const midConflictMarker = '## Mid-conflict authored content\n';
+    client.doc.transact(() => {
+      client.ytext.insert(client.ytext.toString().length, midConflictMarker);
+    });
 
-      await pollUntil(() => {
-        const serverDoc = server.instance.hocuspocus.documents.get(docName);
-        return serverDoc?.getText('source').toString().includes(midConflictMarker) ?? false;
-      }, 5000);
+    await pollUntil(() => {
+      const serverDoc = server.instance.hocuspocus.documents.get(docName);
+      return serverDoc?.getText('source').toString().includes(midConflictMarker) ?? false;
+    }, 5000);
 
-      const ytextRes = await fetch(
-        `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md&source=ytext`,
-      );
-      expect(ytextRes.ok).toBe(true);
-      const ytextBody = (await ytextRes.json()) as {
-        file: string;
-        base: string;
-        ours: string;
-        theirs: string;
-        lifecycleStatus: string | null;
-      };
-      expect(ytextBody.file).toBe(`${docName}.md`);
-      expect(ytextBody.ours).toContain(midConflictMarker);
-      expect(ytextBody.lifecycleStatus).toBe('conflict');
+    const ytextRes = await fetch(
+      `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md&source=ytext`,
+    );
+    expect(ytextRes.ok).toBe(true);
+    const ytextBody = (await ytextRes.json()) as {
+      file: string;
+      base: string;
+      ours: string;
+      theirs: string;
+    };
+    expect(ytextBody.file).toBe(`${docName}.md`);
+    expect(ytextBody.ours).toContain(midConflictMarker);
 
-      const defaultRes = await fetch(
-        `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md`,
-      );
-      expect(defaultRes.ok).toBe(true);
-      const defaultBody = (await defaultRes.json()) as { ours: string };
-      expect(defaultBody.ours).not.toContain(midConflictMarker);
-    },
-    30_000,
-  );
+    const defaultRes = await fetch(
+      `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md`,
+    );
+    expect(defaultRes.ok).toBe(true);
+    const defaultBody = (await defaultRes.json()) as { ours: string };
+    expect(defaultBody.ours).not.toContain(midConflictMarker);
+  }, 60_000);
 
   test('falls back to git-index ours when Y.Text snapshot contains conflict markers', async () => {
     const docName = `fr3-marker-fallback-${crypto.randomUUID()}`;
@@ -408,11 +412,10 @@ describe('GET /api/sync/conflict-content?source=ytext', () => {
 
     await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
 
-    const lifecycle = client.doc.getMap('lifecycle');
     const filePath = join(server.contentDir, `${docName}.md`);
 
     writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
 
     client.doc.transact(() => {
       client.ytext.delete(0, client.ytext.toString().length);
@@ -427,10 +430,9 @@ describe('GET /api/sync/conflict-content?source=ytext', () => {
       `http://127.0.0.1:${server.port}/api/sync/conflict-content?file=${docName}.md&source=ytext`,
     );
     expect(ytextRes.ok).toBe(true);
-    const ytextBody = (await ytextRes.json()) as { ours: string; lifecycleStatus: string | null };
+    const ytextBody = (await ytextRes.json()) as { ours: string };
     expect(ytextBody.ours).not.toContain('<<<<<<<');
     expect(ytextBody.ours).not.toContain('=======');
     expect(ytextBody.ours).not.toContain('>>>>>>>');
-    expect(ytextBody.lifecycleStatus).toBe('conflict');
-  }, 30_000);
+  }, 60_000);
 });

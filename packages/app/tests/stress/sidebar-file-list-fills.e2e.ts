@@ -86,6 +86,9 @@ test.describe('sidebar file list fills the body', () => {
           conflicts: Array.from({ length: 25 }, (_, i) => ({
             file: `folder/conflicted-doc-number-${i}.md`,
             detectedAt: '2026-08-05T00:00:00.000Z',
+            conflict: 'merge-native',
+            docName: `folder/conflicted-doc-number-${i}`,
+            revision: `reviewed-revision-${i}`,
           })),
         }),
       });

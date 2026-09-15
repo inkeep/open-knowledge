@@ -2,9 +2,9 @@ import { docsUrl } from '../docs.mjs';
 
 const URL = docsUrl('no-unconverted-git-pathspec');
 
-const MESSAGE = `Hand-written \`'--'\` in a git argv leaves the operands after it as bare paths, and git parses a pathspec position as a pattern language — \`--\` stops option parsing, not pathspec-magic parsing. Build the tail with \`pathspecArgs(paths)\` from @inkeep/open-knowledge-core, which emits the separator and the \`:(literal)\` conversion together. If this verb's \`--\` operands are not pathspecs (as for clone, hash-object, mv and worktree), add the verb to \`NON_PATHSPEC_VERBS\` in this rule rather than suppressing. See ${URL}`;
+const MESSAGE = `Hand-written \`'--'\` in a git argv leaves the operands after it as bare paths, and git parses a pathspec position as a pattern language — \`--\` stops option parsing, not pathspec-magic parsing. Build the tail with \`pathspecArgs(paths)\` from @inkeep/open-knowledge-core, which emits the separator and the \`:(literal)\` conversion together. If this verb's \`--\` operands are not pathspecs (as for clone, hash-object, mv, update-index and worktree), add the verb to \`NON_PATHSPEC_VERBS\` in this rule rather than suppressing. See ${URL}`;
 
-export const NON_PATHSPEC_VERBS = ['clone', 'hash-object', 'mv', 'worktree'];
+export const NON_PATHSPEC_VERBS = ['clone', 'hash-object', 'mv', 'update-index', 'worktree'];
 
 const ALLOWED = new Set(NON_PATHSPEC_VERBS);
 

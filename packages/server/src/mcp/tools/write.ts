@@ -57,6 +57,7 @@ import {
   previewUrlSourceField,
   ROUTED_CWD_DESCRIPTION,
   resolveProjectServerContext,
+  serverRequestFailure,
   summaryArgSchema,
   textPlusStructured,
   textResult,
@@ -476,23 +477,23 @@ async function handleAsset(
   form.append('parentDocName', parentDocName);
   form.append('file', new Blob([new Uint8Array(bytes)]), fileName);
 
-  let resBody: { ok: boolean; status: number; data?: Record<string, unknown>; error?: string };
+  const uploadPath = `/api/upload${qs ? `?${qs}` : ''}`;
+  const localApi = deps.localApi;
+  let localRequest: Parameters<LocalApiDispatch>[2] | null = null;
+  if (localApi) {
+    try {
+      const encoded = new Request('http://localhost/api/upload', { method: 'POST', body: form });
+      const contentType = encoded.headers.get('content-type') ?? 'multipart/form-data';
+      localRequest = { body: new Uint8Array(await encoded.arrayBuffer()), contentType };
+    } catch (err) {
+      return textResult(`Error: upload request failed: ${(err as Error).message}`, true);
+    }
+  }
+  let status: number;
+  let bodyText: string;
   try {
-    const uploadPath = `/api/upload${qs ? `?${qs}` : ''}`;
-    let status: number;
-    let bodyText: string;
-    const localApi = deps.localApi;
-    const local = localApi
-      ? await (async () => {
-          const encoded = new Request('http://localhost/api/upload', {
-            method: 'POST',
-            body: form,
-          });
-          const contentType = encoded.headers.get('content-type') ?? 'multipart/form-data';
-          const bytes = new Uint8Array(await encoded.arrayBuffer());
-          return localApi('POST', uploadPath, { body: bytes, contentType });
-        })()
-      : null;
+    const local =
+      localApi && localRequest ? await localApi('POST', uploadPath, localRequest) : null;
     if (local !== null) {
       status = local.status;
       bodyText = local.bodyText;
@@ -505,20 +506,24 @@ async function handleAsset(
       status = res.status;
       bodyText = await res.text();
     }
-    const ok = status >= 200 && status <= 299;
-    let data: Record<string, unknown> | null;
-    try {
-      data = JSON.parse(bodyText) as Record<string, unknown>;
-    } catch (parseErr) {
-      const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
-      return textResult(
-        ok
-          ? `Error: Server returned 2xx response with non-JSON body: ${detail}`
-          : `Error: Server returned HTTP ${status} with non-JSON body: ${detail}`,
-        true,
-      );
-    }
-    resBody = ok
+  } catch (err) {
+    return textResult(`Error: ${serverRequestFailure(err)}`, true);
+  }
+  const ok = status >= 200 && status <= 299;
+  let data: Record<string, unknown> | null;
+  try {
+    data = JSON.parse(bodyText) as Record<string, unknown>;
+  } catch (parseErr) {
+    const detail = parseErr instanceof Error ? parseErr.message : String(parseErr);
+    return textResult(
+      ok
+        ? `Error: Server returned 2xx response with non-JSON body: ${detail}`
+        : `Error: Server returned HTTP ${status} with non-JSON body: ${detail}`,
+      true,
+    );
+  }
+  const resBody: { ok: boolean; status: number; data?: Record<string, unknown>; error?: string } =
+    ok
       ? { ok: true, status, data: data ?? {} }
       : {
           ok: false,
@@ -527,9 +532,6 @@ async function handleAsset(
             (data && (typeof data.title === 'string' ? data.title : (data.error as string))) ||
             `Upload failed (HTTP ${status}).`,
         };
-  } catch (err) {
-    return textResult(`Error: upload request failed: ${(err as Error).message}`, true);
-  }
   if (!resBody.ok) return textResult(`Error: ${resBody.error}`, true);
 
   const src = typeof resBody.data?.src === 'string' ? resBody.data.src : undefined;

@@ -64,7 +64,7 @@ function navigateToParent(
       continue;
     }
     const properties = schemaProperties(node);
-    const child = properties[segment];
+    const child = Object.hasOwn(properties, segment) ? properties[segment] : undefined;
     if (child === undefined) {
       if (!create) {
         throw new FrontmatterSchemaEditError(
@@ -101,7 +101,8 @@ export function applyFieldConstraint(
   const parent = navigateToParent(schema, parentPath, true);
 
   const properties = schemaProperties(parent);
-  const existing = isRecord(properties[field]) ? properties[field] : {};
+  const existingValue = Object.hasOwn(properties, field) ? properties[field] : undefined;
+  const existing = isRecord(existingValue) ? existingValue : {};
   const property: Record<string, unknown> = { ...existing };
 
   for (const keyword of ['type', 'enum', 'pattern', 'format', 'description'] as const) {
@@ -130,7 +131,7 @@ export function applyFieldConstraint(
 
   if (Object.keys(property).length > 0) {
     parent.properties = { ...properties, [field]: property };
-  } else if (field in properties) {
+  } else if (Object.hasOwn(properties, field)) {
     const { [field]: _removed, ...rest } = properties;
     if (Object.keys(rest).length > 0) parent.properties = rest;
     else delete parent.properties;
@@ -189,7 +190,7 @@ export function removeSchemaField(
   const schema = parseSchemaObject(schemaText);
   const parent = navigateToParent(schema, parentPath, false);
   const properties = schemaProperties(parent);
-  if (field in properties) {
+  if (Object.hasOwn(properties, field)) {
     const { [field]: _removed, ...rest } = properties;
     if (Object.keys(rest).length > 0) parent.properties = rest;
     else delete parent.properties;
@@ -210,16 +211,18 @@ export function renameSchemaField(
   const schema = parseSchemaObject(schemaText);
   const parent = navigateToParent(schema, parentPath, false);
   const properties = schemaProperties(parent);
-  if (!(field in properties)) {
+  if (!Object.hasOwn(properties, field)) {
     throw new FrontmatterSchemaEditError(`field ${JSON.stringify(field)} does not exist`);
   }
-  if (to in properties) {
+  if (Object.hasOwn(properties, to)) {
     throw new FrontmatterSchemaEditError(`field ${JSON.stringify(to)} already exists`);
   }
-  const renamed: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(properties)) {
-    renamed[key === field ? to : key] = value;
-  }
+  const renamed = Object.fromEntries(
+    Object.entries(properties).map(([key, value]): [string, unknown] => [
+      key === field ? to : key,
+      value,
+    ]),
+  );
   parent.properties = renamed;
   setRequired(
     parent,

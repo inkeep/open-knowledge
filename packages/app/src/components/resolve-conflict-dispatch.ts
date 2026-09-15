@@ -1,15 +1,18 @@
+import { ProblemDetailsSchema, type ProblemType } from '@inkeep/open-knowledge-core';
+
 type ResolveStrategy = 'mine' | 'theirs' | 'content' | 'delete';
 
-interface DispatchResult {
-  ok: boolean;
-  detail?: string;
-}
+const NO_CONFLICT_TRACKED = 'urn:ok:error:no-conflict-tracked' satisfies ProblemType;
+
+export type ResolveConflictResult =
+  | { ok: true }
+  | { ok: false; reason: 'no-conflict-tracked' | 'failed'; detail?: string };
 
 async function dispatchResolve(
   file: string,
   strategy: ResolveStrategy,
   content?: string,
-): Promise<DispatchResult> {
+): Promise<ResolveConflictResult> {
   try {
     const body: { file: string; strategy: ResolveStrategy; content?: string } = {
       file,
@@ -22,42 +25,46 @@ async function dispatchResolve(
       body: JSON.stringify(body),
     });
     if (res.ok) return { ok: true };
+    const payload: unknown = await res.json().catch(() => null);
+    const problem = ProblemDetailsSchema.safeParse(payload);
     let detail: string | undefined;
-    try {
-      const payload = (await res.json()) as { detail?: unknown; title?: unknown };
-      if (typeof payload.detail === 'string') detail = payload.detail;
-      else if (typeof payload.title === 'string') detail = payload.title;
-    } catch {}
-    return { ok: false, detail };
+    if (typeof payload === 'object' && payload !== null) {
+      if ('detail' in payload && typeof payload.detail === 'string') detail = payload.detail;
+      else if ('title' in payload && typeof payload.title === 'string') detail = payload.title;
+    }
+    if (problem.success && res.status === 404 && problem.data.type === NO_CONFLICT_TRACKED) {
+      return { ok: false, reason: 'no-conflict-tracked', detail };
+    }
+    return { ok: false, reason: 'failed', detail };
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err);
     console.warn(
       JSON.stringify({
-        event: 'conflict-resolve-dispatch-failed',
+        event: 'resolve-conflict-dispatch-failed',
         file,
         strategy,
         detail,
       }),
     );
-    return { ok: false, detail };
+    return { ok: false, reason: 'failed', detail };
   }
 }
 
 export async function resolveConflictContent(
   file: string,
   content: string,
-): Promise<DispatchResult> {
+): Promise<ResolveConflictResult> {
   return dispatchResolve(file, 'content', content);
 }
 
-export async function resolveConflictMine(file: string): Promise<DispatchResult> {
+export async function resolveConflictMine(file: string): Promise<ResolveConflictResult> {
   return dispatchResolve(file, 'mine');
 }
 
-export async function resolveConflictTheirs(file: string): Promise<DispatchResult> {
+export async function resolveConflictTheirs(file: string): Promise<ResolveConflictResult> {
   return dispatchResolve(file, 'theirs');
 }
 
-export async function resolveConflictDelete(file: string): Promise<DispatchResult> {
+export async function resolveConflictDelete(file: string): Promise<ResolveConflictResult> {
   return dispatchResolve(file, 'delete');
 }

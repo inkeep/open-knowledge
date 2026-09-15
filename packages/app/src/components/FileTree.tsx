@@ -2768,11 +2768,9 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
 
     const blockingConflicts = activeConflicts.filter((c) =>
       deleteTargets.some((t) => {
-        if (t.kind === 'file') {
-          const fileWithExt = `${t.path}${t.docExt ?? '.md'}`;
-          return c.file === fileWithExt;
-        }
-        if (t.kind === 'folder') return c.file.startsWith(`${t.path}/`);
+        if (c.docName === null) return false;
+        if (t.kind === 'file') return c.docName === t.path;
+        if (t.kind === 'folder') return c.docName.startsWith(`${t.path}/`);
         return false;
       }),
     );

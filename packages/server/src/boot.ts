@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { resolve } from 'node:path';
 import {
   ASSET_EXTENSIONS,
   DEFAULT_SERVER_HOST,
@@ -10,16 +10,14 @@ import {
   isLoopbackOnlyBind,
   LOCAL_DIR,
   OK_DIR,
+  OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_FILES,
   requiresExternalConsent,
   resolveServerRuntimeConfig,
   type ServerRuntimeConfig,
 } from '@inkeep/open-knowledge-core';
-import {
-  resolveGitDir,
-  resolveGitDirDetailed,
-} from '@inkeep/open-knowledge-core/shadow-repo-layout';
+import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { context, propagation } from '@opentelemetry/api';
-import { simpleGit } from 'simple-git';
 import sirv from 'sirv';
 import {
   AcpThreadManager,
@@ -30,11 +28,8 @@ import { collectServerHostSnapshot } from './agent-registry-probes.ts';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { bootElapsedMs, recordBootPhase, startBootTimings } from './boot-timings.ts';
 import type { Config } from './config/schema.ts';
-import { ConflictStore } from './conflict-storage.ts';
 import { installCrashCapture } from './crash-capture.ts';
-import { stripDocExtension } from './doc-extensions.ts';
 import { normalizeFsPath } from './fs-traced.ts';
-import { listNames } from './git-paths.ts';
 import {
   assertGitAvailable,
   type GitDetected,
@@ -70,18 +65,6 @@ import {
   teardownToleranceTelemetryWriter,
 } from './tolerance-telemetry-writer.ts';
 
-const LEGACY_RUNTIME_FILENAMES = [
-  'server.lock',
-  'ui.lock',
-  'state.json',
-  'principal.json',
-  'sync-state.json',
-  'conflicts.json',
-  'last-spawn-error.log',
-] as const;
-
-const LEGACY_RUNTIME_DIRNAMES = ['cache', 'tmp'] as const;
-
 export function findLegacyRuntimeFiles(okDir: string): string[] {
   const localDir = resolve(okDir, LOCAL_DIR);
   const localDirEmpty = (() => {
@@ -95,10 +78,10 @@ export function findLegacyRuntimeFiles(okDir: string): string[] {
   if (!localDirEmpty) return [];
 
   const found: string[] = [];
-  for (const name of LEGACY_RUNTIME_FILENAMES) {
+  for (const name of OK_MACHINE_LOCAL_ROOT_FILES) {
     if (existsSync(resolve(okDir, name))) found.push(name);
   }
-  for (const name of LEGACY_RUNTIME_DIRNAMES) {
+  for (const name of OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS) {
     const candidate = resolve(okDir, name);
     try {
       if (existsSync(candidate) && statSync(candidate).isDirectory()) {
@@ -558,12 +541,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     });
   }
 
-  await restoreLifecycleFromConflictsJson({
-    hocuspocus,
-    projectDir: opts.projectDir ?? opts.contentDir,
-    log,
-  });
-
   const listenAddresses = [...new Set(effectiveBindAddresses)];
   const primaryAddress = listenAddresses[0];
   const cleanupAfterListenFailure = async (): Promise<void> => {
@@ -836,113 +813,4 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     runtime: createProjectRuntime(serverInstance, { contentDir: opts.contentDir, projectDir }),
     acpThreadManager,
   };
-}
-
-export async function restoreLifecycleFromConflictsJson(args: {
-  hocuspocus: ServerInstance['hocuspocus'];
-  projectDir: string;
-  log: PinoLogger;
-}): Promise<void> {
-  const { hocuspocus, projectDir, log } = args;
-  let store: ConflictStore;
-  let entries: Array<{ file: string; variant?: 'working-tree' }>;
-  try {
-    store = new ConflictStore(projectDir);
-    entries = store.list();
-  } catch (err) {
-    log.warn(
-      { err, projectDir },
-      '[boot] lifecycle restore: failed to read conflicts.json — skipping',
-    );
-    return;
-  }
-  if (entries.length === 0) return;
-
-  const isWorkingTree = (e: { variant?: string }): boolean => e.variant === 'working-tree';
-  let stillUnmerged: Set<string> | null = null;
-  try {
-    const gitDir = resolveGitDir(projectDir);
-    const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
-    if (!mergeHeadPath || !existsSync(mergeHeadPath)) {
-      const staleMergeNative = entries.filter((e) => !isWorkingTree(e));
-      for (const entry of staleMergeNative) store.removeConflict(entry.file);
-      entries = entries.filter(isWorkingTree);
-      if (staleMergeNative.length > 0) {
-        console.warn(
-          JSON.stringify({
-            event: 'lifecycle-restore-cleared-stale-conflicts',
-            reason: 'no-merge-head',
-            count: staleMergeNative.length,
-          }),
-        );
-      }
-      if (entries.length === 0) return;
-    } else {
-      const pg = simpleGit({ baseDir: projectDir, timeout: { block: 5_000 } });
-      stillUnmerged = new Set(await listNames(pg, ['diff', '--name-only', '--diff-filter=U']));
-    }
-  } catch (err) {
-    log.warn(
-      { err, projectDir },
-      '[boot] lifecycle restore: git unmerged probe failed — restoring all entries',
-    );
-  }
-
-  if (stillUnmerged !== null) {
-    let pruned = 0;
-    for (const entry of entries) {
-      if (!isWorkingTree(entry) && !stillUnmerged.has(entry.file)) {
-        store.removeConflict(entry.file);
-        pruned++;
-      }
-    }
-    if (pruned > 0) {
-      console.warn(
-        JSON.stringify({
-          event: 'lifecycle-restore-pruned-resolved-entries',
-          pruned,
-          remaining: entries.length - pruned,
-        }),
-      );
-    }
-    entries = entries.filter((e) => isWorkingTree(e) || stillUnmerged?.has(e.file));
-    if (entries.length === 0) return;
-  }
-
-  for (const entry of entries) {
-    const docName = stripDocExtension(entry.file);
-    let dc: Awaited<ReturnType<typeof hocuspocus.openDirectConnection>> | null = null;
-    let restored = false;
-    try {
-      dc = await hocuspocus.openDirectConnection(docName);
-      const document = dc.document;
-      if (!document) continue;
-      const lifecycleMap = document.getMap('lifecycle');
-      lifecycleMap.set('status', 'conflict');
-      lifecycleMap.set('reason', 'conflict-markers');
-      restored = true;
-      console.warn(
-        JSON.stringify({
-          event: 'lifecycle-restored-from-conflicts-json',
-          'doc.name': docName,
-        }),
-      );
-    } catch (err) {
-      log.warn(
-        { err, docName },
-        '[boot] lifecycle restore: failed to set lifecycle for doc — skipping',
-      );
-    } finally {
-      if (dc) {
-        try {
-          await dc.disconnect();
-        } catch (err) {
-          log.warn(
-            { err, docName, restored },
-            '[boot] lifecycle restore: disconnect failed after lifecycle write',
-          );
-        }
-      }
-    }
-  }
 }

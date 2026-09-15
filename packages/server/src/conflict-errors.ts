@@ -1,7 +1,6 @@
 import type { ServerResponse } from 'node:http';
-import type { Document } from '@hocuspocus/server';
-import type * as Y from 'yjs';
-import type { ResolveStrategy } from './conflict-storage.ts';
+import type { Conflict, ConflictKind, ReconcileReason, ResolveStrategy } from './conflict-kinds.ts';
+import { strategiesFor } from './conflict-kinds.ts';
 import { stripDocExtension } from './doc-extensions.ts';
 import { errorResponse } from './http/error-response.ts';
 
@@ -21,22 +20,6 @@ type _ExhaustiveResolveStrategy =
       ];
 const _exhaustiveResolveStrategy: _ExhaustiveResolveStrategy = true;
 
-export function isDocInConflict(document: Document): boolean {
-  return frozenDocLifecycleStatus(document) === 'conflict';
-}
-
-export const FROZEN_LIFECYCLE_STATUSES = ['deleted-upstream', 'renamed', 'conflict'] as const;
-export type FrozenLifecycleStatus = (typeof FROZEN_LIFECYCLE_STATUSES)[number];
-
-function isFrozenLifecycleStatus(value: unknown): value is FrozenLifecycleStatus {
-  return (FROZEN_LIFECYCLE_STATUSES as readonly unknown[]).includes(value);
-}
-
-export function frozenDocLifecycleStatus(document: Y.Doc): FrozenLifecycleStatus | null {
-  const status = document.getMap('lifecycle').get('status');
-  return isFrozenLifecycleStatus(status) ? status : null;
-}
-
 export class DocInConflictError extends Error {
   readonly file: string;
   override readonly name = 'DocInConflictError' as const;
@@ -47,10 +30,31 @@ export class DocInConflictError extends Error {
   }
 }
 
+export interface DocInConflictEnvelope {
+  detail: string;
+  conflict?: { kind: ConflictKind; reason?: ReconcileReason };
+  resolutionOptions: readonly ResolveStrategy[];
+}
+
+export function docInConflictEnvelope(conflict?: Conflict): DocInConflictEnvelope {
+  const reason: ReconcileReason | undefined =
+    conflict?.kind === 'reconcile' ? conflict.reason : undefined;
+  return {
+    detail:
+      'The document is in a conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
+    ...(conflict === undefined
+      ? {}
+      : { conflict: { kind: conflict.kind, ...(reason === undefined ? {} : { reason }) } }),
+    resolutionOptions:
+      conflict === undefined ? RESOLUTION_OPTIONS : strategiesFor(conflict.kind, reason),
+  };
+}
+
 export function respondDocInConflict(
   res: ServerResponse,
   err: DocInConflictError,
   handler: string,
+  conflict?: Conflict,
 ): void {
   console.warn(
     JSON.stringify({
@@ -59,24 +63,25 @@ export function respondDocInConflict(
       'doc.name': stripDocExtension(err.file),
     }),
   );
+  const { detail, ...envelope } = docInConflictEnvelope(conflict);
   errorResponse(res, 409, 'urn:ok:error:doc-in-conflict', 'Document is in conflict.', {
     handler,
-    detail:
-      'The document is frozen by a Git or stale external-write conflict. Call conflicts({ kind: "list" }) to identify the kind, then conflicts({ kind: "content" }) + resolve_conflict before retrying.',
-    extensions: {
-      file: err.file,
-      resolutionOptions: RESOLUTION_OPTIONS,
-    },
+    detail,
+    extensions: { file: conflict?.file ?? err.file, ...envelope },
   });
 }
 
+export type ConflictMarkerRefusal = 'strategy-not-offered' | 'markers-in-content';
+
 export class ConflictMarkersInContentError extends Error {
   readonly file: string;
+  readonly refusal: ConflictMarkerRefusal;
   override readonly name = 'ConflictMarkersInContentError' as const;
 
-  constructor(opts: { file: string }) {
+  constructor(opts: { file: string; refusal?: ConflictMarkerRefusal }) {
     super(`Resolution for ${opts.file} still contains conflict markers`);
     this.file = opts.file;
+    this.refusal = opts.refusal ?? 'markers-in-content';
   }
 }
 

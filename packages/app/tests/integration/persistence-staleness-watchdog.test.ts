@@ -105,10 +105,9 @@ describe('persistence staleness watchdog (integration)', () => {
       );
       expect(state.ok).toBe(true);
       const watcherReconciled = (await state.text()).includes('external native edit');
-      const lifecycle = server.instance.hocuspocus.documents.get(docName)?.getMap('lifecycle');
+      const entry = server.instance.conflicts.findByDocName(docName);
       const watcherSurfacedConflict =
-        lifecycle?.get('status') === 'conflict' &&
-        lifecycle.get('reason') === 'merged-with-markers';
+        entry?.kind === 'reconcile' && entry.reason === 'merged-with-markers';
       expect(watcherReconciled || watcherSurfacedConflict).toBe(true);
     }
 

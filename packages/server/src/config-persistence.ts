@@ -15,6 +15,7 @@ import {
   withConfigSpanSync,
 } from '@inkeep/open-knowledge-core';
 import {
+  atomicTempPath,
   FileLockTimeoutError,
   resolveConfigPath,
   withFileLock,
@@ -211,7 +212,7 @@ export function loadConfigDoc(
 
 async function atomicWriteConfig(absPath: string, content: string): Promise<void> {
   await tracedMkdir(dirname(absPath), { recursive: true });
-  const tmpPath = `${absPath}.tmp.${crypto.randomUUID()}`;
+  const tmpPath = atomicTempPath(absPath);
   try {
     await tracedWriteFile(tmpPath, content, 'utf-8');
     await tracedRename(tmpPath, absPath);

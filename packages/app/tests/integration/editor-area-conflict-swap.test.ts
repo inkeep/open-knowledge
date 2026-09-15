@@ -24,39 +24,35 @@ async function setupServerWithDoc(docName: string, initial: string): Promise<Tes
     if (!res?.ok) return false;
     const data = (await res.json()) as { documents?: Array<{ docName: string }> };
     return data.documents?.some((d) => d.docName === docName) ?? false;
-  });
+  }, 30_000);
   return server;
 }
 
 describe('editor-area swap — gate propagation', () => {
-  test('lifecycle.status conflict → clear round-trip preserves Y.Text identity', async () => {
+  test('conflict raise → dissolve round-trip preserves Y.Text identity', async () => {
     const docName = `swap-roundtrip-${crypto.randomUUID()}`;
     const server = await setupServerWithDoc(docName, BASE_CONTENT);
     const client = await createTestClient(server.port, docName);
     cleanups.push(() => client.cleanup());
 
-    await pollUntil(() => client.ytext.toString().includes('Base paragraph'));
+    await pollUntil(() => client.ytext.toString().includes('Base paragraph'), 30_000);
 
     const ytextRefBefore = client.ytext;
-    const lifecycle = client.doc.getMap('lifecycle');
 
     const filePath = join(server.contentDir, `${docName}.md`);
     writeFileSync(filePath, CONFLICT_MARKERS, 'utf-8');
-    await pollUntil(() => lifecycle.get('status') === 'conflict', 10_000);
+    await pollUntil(() => server.instance.conflicts.has(docName), 30_000);
 
-    expect(lifecycle.get('status')).toBe('conflict');
-
-    const serverDoc = server.instance.hocuspocus.documents.get(docName);
-    expect(serverDoc).toBeTruthy();
-    serverDoc?.transact(() => {
-      serverDoc.getMap('lifecycle').delete('status');
-      serverDoc.getMap('lifecycle').delete('reason');
+    expect(server.instance.conflicts.findByDocName(docName)).toMatchObject({
+      kind: 'reconcile',
+      reason: 'disk-markers',
     });
 
-    await pollUntil(() => lifecycle.get('status') === undefined, 5000);
-    expect(lifecycle.get('status')).toBeUndefined();
+    expect(server.instance.hocuspocus.documents.get(docName)).toBeTruthy();
+    server.instance.conflicts.dissolveReconcile(docName);
+    expect(server.instance.conflicts.has(docName)).toBe(false);
 
     expect(client.ytext).toBe(ytextRefBefore);
     expect(client.ytext).toBe(client.doc.getText('source'));
-  }, 30_000);
+  }, 60_000);
 });

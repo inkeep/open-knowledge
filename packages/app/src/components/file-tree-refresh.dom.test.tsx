@@ -140,7 +140,12 @@ vi.doMock('@/lib/config-provider', () => ({
 }));
 
 vi.doMock('@/hooks/use-conflicts', () => ({
-  useConflicts: () => ({ conflicts: [], loading: false, error: null }),
+  useConflicts: () => ({
+    conflicts: [],
+    loading: false,
+    error: null,
+    refresh: () => {},
+  }),
 }));
 
 vi.doMock('./handoff/useInstalledAgents', () => ({

@@ -1,13 +1,25 @@
 import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
-let conflictsState: { conflicts: { file: string; detectedAt: string }[] } = { conflicts: [] };
+let conflictsState: {
+  conflicts: { file: string; detectedAt: string; docName: string }[];
+} = {
+  conflicts: [],
+};
 vi.doMock('@/hooks/use-conflicts', () => ({ useConflicts: () => conflictsState }));
 
 const { useConflictComposerPrefill } = await import('./use-conflict-composer-prefill');
 
-const ENTRY = { file: 'notes/roadmap.md', detectedAt: '2026-08-25T00:00:00.000Z' };
-const DOC2 = { file: 'notes/doc2.md', detectedAt: '2026-08-25T00:00:00.000Z' };
+const ENTRY = {
+  file: 'notes/roadmap.md',
+  detectedAt: '2026-08-25T00:00:00.000Z',
+  docName: 'notes/roadmap',
+};
+const DOC2 = {
+  file: 'notes/doc2.md',
+  detectedAt: '2026-08-25T00:00:00.000Z',
+  docName: 'notes/doc2',
+};
 
 function makeInput(initial = '') {
   let text = initial;

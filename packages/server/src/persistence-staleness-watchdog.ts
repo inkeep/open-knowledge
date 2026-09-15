@@ -2,7 +2,7 @@ import { addsBlankLines, normalizeBridge } from '@inkeep/open-knowledge-core';
 import type * as Y from 'yjs';
 import { getMsSinceLastUserTx } from './bridge-quiescence.ts';
 import { isPersistenceExcludedDoc } from './cc1-broadcast.ts';
-import { frozenDocLifecycleStatus } from './conflict-errors.ts';
+import type { FreezingLifecycleStatus, LifecycleView } from './conflict-kinds.ts';
 import { getLogger } from './logger.ts';
 import {
   incrementPersistenceStalenessDetected,
@@ -29,6 +29,7 @@ export interface StalenessWatchdogOptions {
   getLoadedDocuments: () => Iterable<readonly [string, Y.Doc]>;
   forceStore: (document: Y.Doc, documentName: string) => Promise<void>;
   readDiskBytes: (documentName: string) => string | null;
+  lifecycleOf?: (document: Y.Doc, documentName: string) => LifecycleView | null;
   graceMs?: number;
   sweepIntervalMs?: number;
   now?: () => number;
@@ -75,6 +76,11 @@ export function createPersistenceStalenessWatchdog(
     return base === undefined ? undefined : normalizeBridge(base);
   }
 
+  function frozenStatusOf(document: Y.Doc, documentName: string): FreezingLifecycleStatus | null {
+    const view = options.lifecycleOf?.(document, documentName) ?? null;
+    return view === null ? null : view.status;
+  }
+
   function isDivergent(
     candidate: string,
     normalizedBase: string | undefined,
@@ -101,7 +107,7 @@ export function createPersistenceStalenessWatchdog(
       if (disposed) return;
       seen.add(documentName);
       if (isPersistenceExcludedDoc(documentName)) continue;
-      if (frozenDocLifecycleStatus(document) !== null) {
+      if (frozenStatusOf(document, documentName) !== null) {
         continue;
       }
       if (hasInFlight(documentName)) {

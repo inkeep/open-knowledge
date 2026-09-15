@@ -16,6 +16,7 @@ import {
   type TemplateIdentity,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { validateSubstitution } from './substitution.ts';
 
 type TemplateWriteResult =
@@ -146,7 +147,7 @@ export function applyTemplateWrite(input: WriteTemplateInput): TemplateWriteResu
 
   const created = !existsSync(filePath);
 
-  const tmpPath = `${filePath}.tmp.${process.pid}.${Date.now()}`;
+  const tmpPath = atomicTempPath(filePath);
   try {
     writeFileSync(tmpPath, content, 'utf-8');
     renameSync(tmpPath, filePath);

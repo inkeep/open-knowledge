@@ -1,7 +1,14 @@
-import { randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { CONFIG_SCHEMA_MAJOR_PATH, LOCAL_DIR, OK_DIR } from '@inkeep/open-knowledge-core';
+import {
+  CONFIG_SCHEMA_MAJOR_PATH,
+  LOCAL_DIR,
+  OK_DIR,
+  OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_FILES,
+  WORKTREES_DIRNAME,
+} from '@inkeep/open-knowledge-core';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import {
   tracedMkdirSync,
   tracedRenameSync,
@@ -12,7 +19,18 @@ import { assertNotHomeProjectRoot } from './home-project-root.ts';
 
 export const CONFIG_FILENAME = 'config.yml';
 
-function assertNotSymlink(filePath: string, label: string): void {
+export class SymlinkRefusedError extends Error {
+  constructor(filePath: string, label: string) {
+    super(
+      `Refusing to follow symlink at ${label} (${filePath}). ` +
+        `An untrusted upstream may have committed this symlink to redirect writes outside the project. ` +
+        `Remove the symlink and re-run.`,
+    );
+    this.name = 'SymlinkRefusedError';
+  }
+}
+
+export function assertNotSymlink(filePath: string, label: string): void {
   let lst: ReturnType<typeof lstatSync>;
   try {
     lst = lstatSync(filePath);
@@ -21,11 +39,7 @@ function assertNotSymlink(filePath: string, label: string): void {
     throw err;
   }
   if (lst.isSymbolicLink()) {
-    throw new Error(
-      `Refusing to follow symlink at ${label} (${filePath}). ` +
-        `An untrusted upstream may have committed this symlink to redirect writes outside the project. ` +
-        `Remove the symlink and re-run.`,
-    );
+    throw new SymlinkRefusedError(filePath, label);
   }
 }
 
@@ -120,7 +134,7 @@ function writeIfMissing(filePath: string, content: string, label: string): boole
   return true;
 }
 
-function ensureGitignoreEntries(
+export function ensureGitignoreEntries(
   filePath: string,
   scaffoldContent: string,
   label = '.ok/.gitignore',
@@ -186,7 +200,7 @@ export function removeProjectSkillGitignoreBlock(projectDir: string): 'removed' 
     kept.push(line);
   }
   const next = kept.join('\n');
-  const tmpPath = `${filePath}.tmp.${randomUUID()}`;
+  const tmpPath = atomicTempPath(filePath);
   try {
     tracedWriteFileSync(tmpPath, next, 'utf-8');
     tracedRenameSync(tmpPath, filePath);
@@ -208,17 +222,18 @@ ${LOCAL_DIR}/
 # selector — per-machine checkouts, never committed (WORKTREES_PARENT_DIR in
 # @inkeep/open-knowledge-core). Worktree creation also appends this path to
 # .git/info/exclude so projects whose committed rule predates it stay clean.
-worktrees/
+${WORKTREES_DIRNAME}/
+
+# Machine-local directories left behind by projects that predate .ok/local/.
+# Nothing writes them anymore, but a project that has them keeps them until
+# someone deletes them, so they stay ignored.
+${OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS.map((name) => `${name}/`).join('\n')}
 
 # Per-machine runtime state at the .ok/ root. Contains PII (principal email,
 # UUID), hostnames, and absolute filesystem paths — never commit. The only
 # file at .ok/ root that SHOULD be committed is \`config.yml\` (project
 # configuration), which is explicitly NOT in this ignore list.
-principal.json
-state.json
-server.lock
-sync-state.json
-last-spawn-error.log
+${OK_MACHINE_LOCAL_ROOT_FILES.join('\n')}
 `;
 
 export const OK_OKIGNORE_TEMPLATE = `# .okignore — paths to exclude from the OpenKnowledge document index.

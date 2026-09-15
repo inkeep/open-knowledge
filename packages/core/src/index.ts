@@ -469,6 +469,8 @@ export {
   type OpenKnowledgeMcpTool,
   READ_DOCUMENT_HISTORY_DEPTH,
   resolveIsHostedAgent,
+  SERVER_TIMEOUT_ERROR_PREFIX,
+  SERVER_UNREACHABLE_ERROR_PREFIX,
 } from './constants/mcp.ts';
 export {
   classifyMcpLauncherEntry,
@@ -496,10 +498,17 @@ export {
 } from './constants/native-menu-labels.ts';
 export {
   LOCAL_DIR,
+  OK_ACTIVE_MACHINE_LOCAL_ROOT_DIRS,
   OK_DIR,
+  OK_LEGACY_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_DIRS,
+  OK_MACHINE_LOCAL_ROOT_FILES,
   OK_PROJECT_MARKER,
+  type OkMachineLocalRootDir,
+  type OkMachineLocalRootFile,
   posixOkManagedBinDir,
   SAVED_THEMES_DIRNAME,
+  WORKTREES_DIRNAME,
 } from './constants/ok-dir.ts';
 export {
   PREVIEW_EMBED_STARTERS,
@@ -1189,6 +1198,7 @@ export {
   ClientLogsRequestSchema,
   type ClientLogsSuccess,
   ClientLogsSuccessSchema,
+  CONFLICT_KINDS,
   type CommentCountsSuccess,
   CommentCountsSuccessSchema,
   type CommentTarget,
@@ -1197,6 +1207,8 @@ export {
   CompleteBatchSuccessSchema,
   ConflictEntrySchema,
   type ConflictEntryWire,
+  ConflictKindSchema,
+  type ConflictKindWire,
   type ContentDivergenceCurrentState,
   ContentDivergenceCurrentStateSchema,
   type ContentDivergenceWarning,
@@ -1395,6 +1407,10 @@ export {
   PushPermissionSchema,
   type PushPermissionWire,
   QueueSuccessSchema,
+  RECONCILE_REASONS,
+  RESOLVE_STRATEGIES,
+  ReconcileReasonSchema,
+  type ReconcileReasonWire,
   type RenamedAssetMapping,
   RenamedAssetMappingSchema,
   type RenamedDocMapping,
@@ -1413,6 +1429,8 @@ export {
   RescueEntryTimelineSchema,
   type RescueListSuccess,
   RescueListSuccessSchema,
+  ResolveStrategySchema,
+  type ResolveStrategyWire,
   type RollbackRequest,
   RollbackRequestSchema,
   type RollbackSuccess,
@@ -1900,6 +1918,7 @@ export {
   type SkillsShSkillLinks,
   skillsShSkillLinks,
 } from './skills-catalog/source-fields.ts';
+export { SYNC_PAUSED_REASONS, type SyncPausedReason } from './sync-paused-reason.ts';
 export {
   composeTemplateFile,
   instantiateDoc,

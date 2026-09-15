@@ -30,7 +30,8 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { composeAndWriteRawBody } from '../bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
-import { DocInConflictError, isDocInConflict, respondDocInConflict } from '../conflict-errors.ts';
+import type { ConflictAuthority } from '../conflict-authority.ts';
+import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
 import { enrichDirectory } from '../content/enrichment.ts';
 import {
   applyFolderFrontmatterPatch,
@@ -51,7 +52,6 @@ import { tracedUnlinkSync } from '../fs-traced.ts';
 import type { PinoLogger } from '../logger.ts';
 import { extractPageTitle } from '../page-identity.ts';
 import type { RecentlyRemovedDocs } from '../recently-removed-docs.ts';
-import type { SyncEngine } from '../sync-engine.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { methodRouter } from './method-router.ts';
@@ -67,7 +67,7 @@ export interface FolderTemplateRouteDeps {
   sessionManager: AgentSessionManager;
   getPrincipal: (() => Principal | null) | undefined;
   signalChannel: ((channel: 'files' | 'lint-config' | 'comments') => void) | undefined;
-  getSyncEngine: (() => SyncEngine | null) | undefined;
+  conflicts: ConflictAuthority;
   recentlyRemovedDocs: RecentlyRemovedDocs | undefined;
   isSafeDocName: (docName: string) => boolean;
   resolveAlias: (docName: string) => string;
@@ -144,7 +144,7 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     sessionManager,
     getPrincipal,
     signalChannel,
-    getSyncEngine,
+    conflicts,
     recentlyRemovedDocs,
     isSafeDocName,
     resolveAlias,
@@ -466,9 +466,9 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
     handler: 'template-put' | 'template-delete' | 'template-move' | 'template-import',
     res: ServerResponse,
   ): boolean {
-    const doc = hocuspocus.documents.get(templateDocName);
-    if (doc && isDocInConflict(doc)) {
-      respondDocInConflict(res, new DocInConflictError({ file: `${templateDocName}.md` }), handler);
+    const entry = conflicts.findByDocName(templateDocName);
+    if (entry !== undefined) {
+      respondDocInConflict(res, new DocInConflictError({ file: entry.file }), handler, entry);
       return true;
     }
     return false;
@@ -1131,17 +1131,13 @@ export function createFolderTemplateRoutes(deps: FolderTemplateRouteDeps): ApiRo
 
         const existing = hocuspocus.documents.get(sourceDocName);
         if (body.deleteSource) {
-          const deleteEngine = getSyncEngine?.();
-          const deleteTrackedFiles = new Set(
-            deleteEngine ? deleteEngine.getConflicts().map((c) => c.file) : [],
-          );
-          const conflictedByLifecycle = existing !== undefined && isDocInConflict(existing);
-          const conflictedByStore = deleteTrackedFiles.has(sourcePath);
-          if (conflictedByLifecycle || conflictedByStore) {
+          const sourceConflict = conflicts.findByDocName(sourceDocName);
+          if (sourceConflict !== undefined) {
             respondDocInConflict(
               res,
-              new DocInConflictError({ file: sourcePath }),
+              new DocInConflictError({ file: sourceConflict.file }),
               'template-import',
+              sourceConflict,
             );
             return;
           }

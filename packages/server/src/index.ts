@@ -81,7 +81,6 @@ export {
   type BootedServer,
   type BootServerOptions,
   bootServer,
-  restoreLifecycleFromConflictsJson,
   type ServerExitReason,
 } from './boot.ts';
 export {
@@ -118,6 +117,24 @@ export {
 } from './collaboration-host.ts';
 export { getLocalDir, resolveContentDir, resolveLockDir } from './config/paths.ts';
 export { type Config, ConfigSchema } from './config/schema.ts';
+export {
+  bindConflictAuthority,
+  ConflictAuthority,
+  type ConflictAuthorityOptions,
+  type ConflictChange,
+  type ConflictIo,
+  type ConflictReader,
+  isDocInConflict,
+} from './conflict-authority.ts';
+export {
+  type Conflict,
+  type ConflictKind,
+  type ConflictStages,
+  type LifecycleView,
+  type ReconcileReason,
+  type ResolveStrategy,
+  strategiesFor,
+} from './conflict-kinds.ts';
 export { MCP_SERVER_NAME } from './constants.ts';
 export {
   type ContentFilter,
@@ -142,7 +159,9 @@ export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 export {
   DocumentDurabilityState,
   DocumentDurabilityStateError,
+  type StoreAttemptToken,
   type StoreFailure,
+  type StorePublishOutcome,
 } from './document-durability-state.ts';
 export {
   canonicalProjectKey,

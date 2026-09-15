@@ -82,16 +82,29 @@ export function createGitRoutes(deps: GitRouteDeps): ApiRouteGroup {
       });
       return;
     }
+    const clientGone = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) clientGone.abort();
+    });
     try {
       const engine = getSyncEngine?.();
       const isSyncScoped = engine
         ? (relPath: string) => engine.isSyncScopedPath(relPath)
         : () => false;
-      const status = await readWorktreeStatus(projectDir ?? contentDir, isSyncScoped, toOpenTarget);
+      const status = await readWorktreeStatus(
+        projectDir ?? contentDir,
+        isSyncScoped,
+        toOpenTarget,
+        {
+          abortSignal: clientGone.signal,
+        },
+      );
+      if (res.writableEnded || res.destroyed) return;
       successResponse(res, 200, GitWorktreeStatusSuccessSchema, status, {
         handler: 'git-worktree-status',
       });
     } catch (e) {
+      if (res.writableEnded || res.destroyed) return;
       errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
         handler: 'git-worktree-status',
         cause: e,

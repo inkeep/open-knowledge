@@ -43,6 +43,7 @@ import { performHistoryCommand } from '@/editor/document-undo-keys';
 import { EditorLifecycleFlush } from '@/editor/EditorLifecycleFlush';
 import { parseEditorTabId, tabIdForNavigationTarget } from '@/editor/editor-tabs';
 import { previewOpenDisposition } from '@/editor/preview-open-disposition';
+import { ConflictsProvider } from '@/hooks/use-conflicts';
 import { useFolderConfig } from '@/hooks/use-folder-config';
 import { useInstalledClis } from '@/hooks/use-installed-clis';
 import { useReconcileSkillTabs } from '@/hooks/use-reconcile-skill-tabs';
@@ -544,11 +545,13 @@ export function App() {
     <ProfilerBoundary name="app">
       <DocumentProvider>
         <ConfigProviderHost>
-          <PreviewTabsSettingsBridge>
-            <SingleFileModeProvider>
-              <AppBody />
-            </SingleFileModeProvider>
-          </PreviewTabsSettingsBridge>
+          <ConflictsProvider>
+            <PreviewTabsSettingsBridge>
+              <SingleFileModeProvider>
+                <AppBody />
+              </SingleFileModeProvider>
+            </PreviewTabsSettingsBridge>
+          </ConflictsProvider>
         </ConfigProviderHost>
       </DocumentProvider>
     </ProfilerBoundary>

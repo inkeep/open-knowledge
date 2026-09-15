@@ -80,8 +80,21 @@ beforeAll(async () => {
         return Response.json({
           ok: true,
           conflicts: [
-            { file: 'notes/sso.md', detectedAt: 'now', conflictKind: 'stale-external-write' },
-            { file: 'overlay.md', detectedAt: 'now', conflictKind: 'git', variant: 'working-tree' },
+            {
+              file: 'notes/sso.md',
+              detectedAt: 'now',
+              conflict: 'reconcile',
+              reason: 'stale-external-write',
+              conflictKind: 'stale-external-write',
+              docName: 'notes/sso',
+            },
+            {
+              file: 'overlay.md',
+              detectedAt: 'now',
+              conflict: 'working-tree',
+              conflictKind: 'git',
+              docName: 'overlay',
+            },
           ],
         });
       }
@@ -93,8 +106,10 @@ beforeAll(async () => {
           ours: 'O',
           theirs: 'T',
           kind: 'both-modified',
+          conflict: 'reconcile',
+          reason: 'stale-external-write',
           conflictKind: 'stale-external-write',
-          lifecycleStatus: 'conflict',
+          resolutionOptions: ['mine', 'theirs', 'content', 'delete'],
         });
       }
       return new Response('Not found', { status: 404 });
@@ -108,12 +123,12 @@ describe('conflicts — kind discriminator', () => {
   test('kind:list enumerates tracked conflicts (nested under `list`)', async () => {
     const result = await capture(baseUrl, cwd)({ kind: 'list' });
     expect(result.isError).toBeFalsy();
-    expect(Array.isArray(result.structuredContent?.list)).toBe(true);
     expect(result.structuredContent?.list).toMatchObject([
-      { conflictKind: 'stale-external-write' },
-      { conflictKind: 'git', variant: 'working-tree' },
+      { conflict: 'reconcile', conflictKind: 'stale-external-write' },
+      { conflict: 'working-tree', conflictKind: 'git' },
     ]);
-    expect(result.content[0]?.text).toContain('notes/sso.md');
+    expect(result.content[0]?.text).toContain('notes/sso.md (reconcile / stale-external-write)');
+    expect(result.content[0]?.text).toContain('overlay.md (working-tree)');
   });
 
   test('kind:content nests stages under `content` and remaps route `kind` → `shape` (DD4)', async () => {
@@ -121,9 +136,14 @@ describe('conflicts — kind discriminator', () => {
     expect(result.isError).toBeFalsy();
     const content = result.structuredContent?.content as { shape?: string } | undefined;
     expect(content?.shape).toBe('both-modified');
-    expect(content).toHaveProperty('conflictKind', 'stale-external-write');
+    expect(content).toMatchObject({
+      conflict: 'reconcile',
+      conflictKind: 'stale-external-write',
+      resolutionOptions: ['mine', 'theirs', 'content', 'delete'],
+    });
     expect(content).not.toHaveProperty('kind');
     expect(result.content[0]?.text).toContain('shape: both-modified');
+    expect(result.content[0]?.text).toContain('strategies: mine, theirs, content, delete');
   });
 
   test('kind:content without `file` returns a teaching error', async () => {

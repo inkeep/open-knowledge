@@ -6,6 +6,7 @@ import {
   docNameFromHash,
   encodeShareTargetForHash,
   encodeSkillPreviewSegments,
+  filePathToDocName,
   hashFromAssetPath,
   hashFromDocName,
   hashFromFolderPath,
@@ -671,5 +672,26 @@ describe('skill-preview hash', () => {
       subtitle: 'o/r',
     });
     expect(docNameFromHash(hash)).toBeNull();
+  });
+});
+
+describe('filePathToDocName', () => {
+  test('strips a markdown extension', () => {
+    expect(filePathToDocName('notes.md')).toBe('notes');
+    expect(filePathToDocName('guide.mdx')).toBe('guide');
+    expect(filePathToDocName('docs/nested/intro.md')).toBe('docs/nested/intro');
+  });
+
+  test('strips an uppercase extension and leaves the stem case alone', () => {
+    expect(filePathToDocName('NOTES.MD')).toBe('NOTES');
+    expect(filePathToDocName('docs/Guide.MDX')).toBe('docs/Guide');
+    expect(filePathToDocName('ReadMe.Md')).toBe('ReadMe');
+  });
+
+  test('leaves a path it does not own unchanged', () => {
+    expect(filePathToDocName('diagram.png')).toBe('diagram.png');
+    expect(filePathToDocName('notes.markdown')).toBe('notes.markdown');
+    expect(filePathToDocName('mdx')).toBe('mdx');
+    expect(filePathToDocName('')).toBe('');
   });
 });

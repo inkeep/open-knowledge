@@ -64,6 +64,7 @@ import {
 import { subscribeSendInThread } from '@/comments/open-chat-send';
 import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
+import { CopyButton } from '@/components/CopyButton';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
@@ -125,6 +126,7 @@ import {
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import { isPermissiveMode } from '@/lib/acp/permissive-mode';
+import { formatShellCommand, revealHiddenCharacters } from '@/lib/acp/shell-command-format';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
 import {
@@ -143,9 +145,11 @@ import {
   resolvePermissionOutcome,
 } from '@/lib/acp/thread-event-model';
 import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
-import { docNameFromHash, hashFromDocName } from '@/lib/doc-hash';
+import { toolFailureHint } from '@/lib/acp/tool-failure-hint';
+import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
@@ -2472,7 +2476,9 @@ function UserMessageAttachments({
 }: {
   attachments: readonly AttachmentPart[];
 }): ReactNode {
+  const { t } = useLingui();
   const openPreview = use(ImagePreviewContext);
+  const pages = useOptionalPageList()?.pages ?? null;
   return (
     <div
       className="mt-1.5 flex flex-wrap justify-end gap-1.5"
@@ -2515,6 +2521,21 @@ function UserMessageAttachments({
             </span>
           );
         }
+        const label = `@${attachment.name || attachment.path}`;
+        const docName = attachment.kind === 'file' ? filePathToDocName(attachment.path) : null;
+        if (docName !== null && docName !== attachment.path && pages?.has(docName) === true) {
+          return (
+            <a
+              key={key}
+              href={hashFromDocName(docName)}
+              className="composer-mention-chip text-primary! underline decoration-primary/40 underline-offset-2 hover:decoration-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              title={t`Open ${docName}`}
+              data-attachment-kind={attachment.kind}
+            >
+              <span className="composer-mention-label">{label}</span>
+            </a>
+          );
+        }
         return (
           <span
             key={key}
@@ -2522,7 +2543,7 @@ function UserMessageAttachments({
             title={attachment.path}
             data-attachment-kind={attachment.kind}
           >
-            <span className="composer-mention-label">@{attachment.name || attachment.path}</span>
+            <span className="composer-mention-label">{label}</span>
           </span>
         );
       })}
@@ -2566,6 +2587,7 @@ function ToolCallCard({
   terminals: Record<string, RenderedTerminal>;
   permission?: RenderedPermission;
 }): ReactNode {
+  const { t } = useLingui();
   const [open, setOpen] = useState(call.status === 'failed');
   const userToggledRef = useRef(false);
   const prevStatusRef = useRef(call.status);
@@ -2593,12 +2615,15 @@ function ToolCallCard({
     .map((id) => terminals[id])
     .filter((terminal): terminal is RenderedTerminal => terminal !== undefined);
   const rawInput = formatRawInput(call.rawInput);
+  const failureText = call.status === 'failed' ? call.content.join('\n').trim() : '';
+  const failureHint = toolFailureHint(call, permission);
   const hasBody =
     call.diffs.length > 0 ||
     call.content.length > 0 ||
     call.locations.length > 0 ||
     callTerminals.length > 0 ||
-    rawInput !== null;
+    rawInput !== null ||
+    failureHint !== null;
   const expanded = open && hasBody;
   const row = (
     <>
@@ -2653,6 +2678,20 @@ function ToolCallCard({
               {stripWrappingFence(text)}
             </pre>
           ))}
+          {failureHint !== null || failureText !== '' ? (
+            <div className="flex items-center gap-2" data-testid="agent-thread-tool-failure-help">
+              <span className="flex-1 text-muted-foreground">{failureHint}</span>
+              {failureText !== '' ? (
+                <CopyButton
+                  copyContent={failureText}
+                  clipboardWrite={scheduleClipboardWrite}
+                  size="icon-xs"
+                  ariaLabel={t`Copy error`}
+                  testId="agent-thread-tool-failure-copy"
+                />
+              ) : null}
+            </div>
+          ) : null}
           {rawInput !== null ? <RawInputBlock text={rawInput} /> : null}
           {call.locations.length > 0 ? (
             <div className="flex flex-wrap gap-1 text-muted-foreground">
@@ -2892,6 +2931,42 @@ function RawInputBlock({ text }: { text: string }): ReactNode {
   );
 }
 
+function ShellCommandBlock({ id, command }: { id: string; command: string }): ReactNode {
+  const { t } = useLingui();
+  const lines = formatShellCommand(command).map((line) => ({
+    ...line,
+    shown: revealHiddenCharacters(line.text),
+  }));
+  const concealed = lines.some((line) => line.shown !== line.text);
+  return (
+    <div className="mb-1.5" data-testid="agent-thread-permission-command">
+      <pre
+        id={id}
+        dir="ltr"
+        translate="no"
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: keyboard-focusable scroll container — a long command scrolls inside this bounded box, and Safari leaves overflow:auto elements out of the tab order.
+        tabIndex={0}
+        className="max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 text-start font-mono text-[11px] leading-relaxed"
+      >
+        <code>
+          {lines.map((line, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: shell lines are positional
+            <Fragment key={index}>
+              {index > 0 ? '\n' : null}
+              <span className={line.continuation ? 'ps-4' : undefined}>{line.shown}</span>
+            </Fragment>
+          ))}
+        </code>
+      </pre>
+      {concealed ? (
+        <p className="mt-1 text-amber-700 text-xs dark:text-amber-400">
+          {t`This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩.`}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function PermissionPrompt({
   item,
   threadId,
@@ -2923,6 +2998,10 @@ function PermissionPrompt({
       ? []
       : [primaryReject, ...rejectOptions.filter((option) => option !== primaryReject)];
   const focusRefForDeny = primaryAllow === undefined ? primaryRef : undefined;
+  const titleId = useId();
+  const commandId = useId();
+  const describedBy = item.command !== null ? commandId : undefined;
+  const denyDescribedBy = primaryAllow === undefined ? describedBy : undefined;
 
   useEffect(() => {
     if (!pending || !actionable) return;
@@ -2934,15 +3013,21 @@ function PermissionPrompt({
   const resolvedLabel = outcomeLabel(outcome);
 
   return (
+    // biome-ignore lint/a11y/useSemanticElements: a permission card is a title, a command and decision buttons, not a form-control set, so <fieldset> would impose form-field semantics and chrome.
     <div
       ref={cardRef}
       className={cn(
         'rounded-md border px-2.5 py-2 text-sm',
         pending && actionable ? 'border-border bg-muted/30' : 'border-border/60 bg-muted/20',
       )}
+      role="group"
+      aria-labelledby={titleId}
       data-testid="agent-thread-permission"
     >
-      <div className="mb-1.5 font-medium">{item.title}</div>
+      <div id={titleId} className="mb-1.5 font-medium">
+        {item.title}
+      </div>
+      {item.command !== null ? <ShellCommandBlock id={commandId} command={item.command} /> : null}
       {!pending ? (
         <div
           className="text-muted-foreground text-xs"
@@ -2961,6 +3046,7 @@ function PermissionPrompt({
                 <Button
                   key={option.optionId}
                   ref={isPrimary ? primaryRef : undefined}
+                  aria-describedby={isPrimary ? describedBy : undefined}
                   type="button"
                   size="sm"
                   variant={isPrimary ? 'default' : 'outline'}
@@ -2985,6 +3071,7 @@ function PermissionPrompt({
                 <Button
                   key={option.optionId}
                   ref={index === 0 ? focusRefForDeny : undefined}
+                  aria-describedby={index === 0 ? denyDescribedBy : undefined}
                   type="button"
                   size="sm"
                   variant={index === 0 ? 'outline' : 'ghost'}
@@ -2999,6 +3086,7 @@ function PermissionPrompt({
             ) : (
               <Button
                 ref={focusRefForDeny}
+                aria-describedby={denyDescribedBy}
                 type="button"
                 size="sm"
                 variant="outline"
@@ -3021,6 +3109,7 @@ function PermissionPrompt({
               return (
                 <Button
                   ref={focusRefForDeny}
+                  aria-describedby={denyDescribedBy}
                   type="button"
                   size="sm"
                   variant="outline"
@@ -3037,6 +3126,7 @@ function PermissionPrompt({
           ) : (
             <Button
               ref={focusRefForDeny}
+              aria-describedby={denyDescribedBy}
               type="button"
               size="sm"
               variant="outline"
@@ -3052,6 +3142,7 @@ function PermissionPrompt({
           {primaryAllow !== undefined ? (
             <Button
               ref={primaryRef}
+              aria-describedby={describedBy}
               type="button"
               size="sm"
               className="text-xs normal-case font-sans"

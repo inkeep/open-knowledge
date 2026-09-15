@@ -2,15 +2,17 @@
 // part of the main lint: `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`, and
 // `__fixtures__/oxlint.fixtures.json` re-enables the rules for the test.
 //
-// Pairs 5 positive cases (rule MUST fire) with negative cases (rule must NOT fire). Every positive
-// is a real pre-fix argv from PRD-8638 rather than a synthetic one: the bug supplied them.
+// Pairs 7 positive cases (rule MUST fire) with negative cases (rule must NOT fire). P1-P5 are real
+// pre-fix argv from PRD-8638 rather than synthetic ones: the bug supplied them. P6 and P7 are
+// constructed; the closing paragraph says what they pin.
 //
-// The negatives are the precision boundary, not clean code. Four are the verbs whose `--` operands
-// genuinely are not pathspecs (`hash-object` takes file arguments, `clone` takes a URL and a
-// directory, `worktree add` takes a commit-ish, `mv` takes literal source and destination paths) —
-// these prove the in-rule allowlist works from any position in the argv and through a nested
-// conditional tail. Two are `parse-command.ts`'s string comparisons against the `--` token, which
-// are not argv construction at all and are the shape most likely to draw a widened pattern.
+// The negatives are the precision boundary, not clean code. Six cover the five verbs whose `--`
+// operands genuinely are not pathspecs (`hash-object` takes file arguments, `clone` takes a URL and
+// a directory, `worktree add` takes a commit-ish, `mv` takes literal source and destination paths,
+// `update-index` takes literal file names) — these prove the in-rule allowlist works from any
+// position in the argv and through a nested conditional tail. Two are `parse-command.ts`'s string
+// comparisons against the `--` token, which are not argv construction at all and are the shape most
+// likely to draw a widened pattern.
 //
 // The fixture test asserts the diagnostic count with exact equality (`toBe(7)`) so both a weakened
 // pattern (drops below 7) and a widened pattern that catches a negative (rises above 7) fail the
@@ -60,13 +62,14 @@ async function positives() {
 }
 
 async function negatives() {
-  // N1: `hash-object` takes file arguments, in the varargs form (shadow-repo.ts:1289).
+  // N1: `hash-object` takes file arguments, in the varargs form (shadow-repo.ts#parkBranchInner).
   await git.raw('hash-object', '-w', '--', ...chunk);
-  // N2: `clone` takes a URL and a directory, and is not the first element (fetch.ts:114).
+  // N2: `clone` takes a URL and a directory, and is not the first element (fetch.ts#fetchSource).
   await execFileAsync('git', ['-c', 'core.symlinks=false', 'clone', '-q', '--', url, tmp]);
-  // N3: `worktree add` takes a commit-ish (worktree-service.ts:240).
+  // N3: `worktree add` takes a commit-ish (worktree-service.ts#buildAddArgs).
   const added = ['worktree', 'add', worktreePath, '--', branch];
-  // N4: the same, with the separator in a nested conditional tail (worktree-service.ts:237).
+  // N4: the same, with the separator in a nested conditional tail
+  // (worktree-service.ts#buildAddArgs).
   const created = [
     'worktree',
     'add',
@@ -75,18 +78,23 @@ async function negatives() {
     worktreePath,
     ...(baseBranch ? ['--', baseBranch] : []),
   ];
-  // N5: `git mv` takes literal path arguments, not pathspecs (api-extension.ts:1412). Verified
+  // N5: `git mv` takes literal path arguments, not pathspecs
+  // (api-extension.ts#renameTrackedPathInGit, which carries four calls of this shape). Verified
   // against real git 2.49.0: `git mv -- ':(literal):colon.md' moved.md` reports
   // `fatal: bad source, source=:(literal):colon.md, destination=moved.md`, so converting this
   // operand would break the case-only rename it implements.
   await git.raw('mv', '--', p, rel);
-  // N6: a string comparison against the token, not argv construction (parse-command.ts:55).
+  // N6: `update-index` takes literal file names, in the varargs form
+  // (shadow-repo.ts#dropExcludedIndexEntries).
+  await git.raw('update-index', '--force-remove', '--', ...chunk);
+  // N7: a string comparison against the token, not argv construction
+  // (parse-command.ts#isRecursiveGrepFlag).
   const isFlag = arg.startsWith('--');
-  // N7: an equality test against the token (parse-command.ts:220).
+  // N8: an equality test against the token (parse-command.ts#classifyArgs).
   const isSeparator = value === '--';
-  // N8: the converted shape the fix installs.
+  // N9: the converted shape the fix installs.
   await git.raw(['add', ...pathspecArgs([...batch])]);
-  // N9: flags that merely begin with the separator's characters.
+  // N10: flags that merely begin with the separator's characters.
   const flags = ['diff', '--name-only', '--cached'];
   return { added, created, isFlag, isSeparator, flags };
 }

@@ -89,6 +89,18 @@ describe('resolve_conflict MCP tool', () => {
     expect(tool.config.description).toContain('DESTRUCTIVE');
   });
 
+  test('description names both refusals that share the 422 and the field telling them apart', () => {
+    const { server, registrations } = createCapturingServer();
+    register(server, makeDeps('http://localhost:4321'));
+    const tool = getTool(registrations, 'resolve_conflict');
+
+    expect(tool.config.description).toContain('urn:ok:error:unresolved-conflict-markers');
+    expect(tool.config.description).toContain('`refusal`');
+    expect(tool.config.description).toContain('markers-in-content');
+    expect(tool.config.description).toContain('strategy-not-offered');
+    expect(tool.config.description).toContain('resolutionOptions');
+  });
+
   test('strategy=theirs posts a body without content', async () => {
     const { server, registrations } = createCapturingServer();
     const fetchCalls: Array<{ input: RequestInfo | URL; init?: RequestInit }> = [];

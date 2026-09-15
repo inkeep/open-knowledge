@@ -1,5 +1,5 @@
 import { createGitInstance } from './git-handle.ts';
-import { listNames, listPorcelainPaths } from './git-paths.ts';
+import { listNames, listPorcelainPaths, PORCELAIN_STATUS_ARGS } from './git-paths.ts';
 
 export interface DirtyOverlapResult {
   conflicts: boolean;
@@ -13,7 +13,7 @@ export async function dirtyFilesOverlapWith(
   const { git } = createGitInstance(cwd, { credentialConfig: [] });
 
   const [dirtyResult, changedResult] = await Promise.allSettled([
-    listPorcelainPaths(git),
+    listPorcelainPaths(git, PORCELAIN_STATUS_ARGS),
     listNames(git, ['diff', '--name-only', `HEAD..${targetRef}`]),
   ]);
 

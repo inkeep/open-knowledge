@@ -36,21 +36,15 @@ import {
   type DiskEditReconciledWarning,
   type DocumentListEntry,
   estimateSkillCost,
-  FrontmatterSchemaWriteRequestSchema,
   type HeadingEntry,
   type InlineAssetMediaKind,
   isManagedArtifactDocName,
   LEGACY_SKILL_STORE_ROOT,
-  LintConfigResponseSchema,
   type LinterConfig,
-  LintFixRequestSchema,
-  LintFixResultSchema,
-  type LintPluginFailure,
   type LintViolationWarning,
   LOCAL_DIR,
   lintDocument,
   MANAGED_ARTIFACT_PREFIX_SKILL,
-  MarkdownlintRuleWriteRequestSchema,
   mediaKindForSidebarAssetExtension,
   OK_DIR,
   OPENKNOWLEDGE_SKILLS_REPO,
@@ -58,7 +52,6 @@ import {
   type ProblemType,
   parseFrontmatterRecord,
   pathspecArgs,
-  type ReLintFailure,
   readFmMap,
   SKILL_NAME_REGEX,
   SkillScopeSchema,
@@ -66,7 +59,6 @@ import {
   SkillUninstallSuccessSchema,
   scanHeadingLine,
   stripFrontmatter,
-  summarizeLintPluginFailures,
   type ValidationDiagnostic,
 } from '@inkeep/open-knowledge-core';
 import { formatRenameSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
@@ -101,9 +93,10 @@ import { resolveBundledSkillDir } from './build-skill-zip.ts';
 import { CommentIndex } from './comments/comment-index.ts';
 import { CommentService } from './comments/comment-service.ts';
 import { CommentThreadStore } from './comments/thread-store.ts';
+import type { ConflictAuthority } from './conflict-authority.ts';
 import {
   DocInConflictError,
-  isDocInConflict,
+  docInConflictEnvelope,
   RESOLUTION_OPTIONS,
   respondDocInConflict,
 } from './conflict-errors.ts';
@@ -137,24 +130,10 @@ import { createSkillsRecoveryRoutes } from './http/skills-recovery-routes.ts';
 import { createSkillsTrackingRoutes } from './http/skills-tracking-routes.ts';
 import { findHubCandidates } from './hub-candidates.ts';
 import { recordSkillInstall, removeSkillInstall } from './installed-skills-marker.ts';
-import { collectDocFiles, lintAndFixSource } from './lint/audit.ts';
+import { collectDocFiles } from './lint/audit.ts';
 import { composeAuditGeneration } from './lint/audit-generation.ts';
-import {
-  createEmptyFrontmatterSchemaFile,
-  deleteFrontmatterSchemaFile,
-  removeFrontmatterSchemaField,
-  renameFrontmatterSchemaField,
-  type WriteFrontmatterSchemaResult,
-  writeFrontmatterSchemaField,
-} from './lint/frontmatter-schema-write.ts';
 import { unmatchedAppliesToProblems } from './lint/frontmatter-schemas.ts';
-import { type WriteMarkdownlintResult, writeMarkdownlintRule } from './lint/markdownlint-write.ts';
-import {
-  composeEffectiveLinterConfig,
-  composeFrontmatterSchemasConfig,
-  resolveEffectiveLinterConfig,
-  resolveNativeConfigForDoc,
-} from './lint/resolve-config.ts';
+import { resolveEffectiveLinterConfig } from './lint/resolve-config.ts';
 import { createProjectValidators } from './lint/validation-audit.ts';
 import {
   extractPageTitle,
@@ -196,7 +175,6 @@ import {
 } from './apply-managed-rename.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
-import type { ResolveStrategy } from './conflict-storage.ts';
 import {
   isReservedProjectStatePath,
   listManagedDocNamesUnderFolder,
@@ -218,7 +196,12 @@ import {
   SUPPORTED_DOC_EXTENSIONS,
   stripDocExtension,
 } from './doc-extensions.ts';
-import type { DocumentDurabilityState, StoreFailure } from './document-durability-state.ts';
+import {
+  type DocumentDurabilityState,
+  OK_DOC_REMOVED,
+  OK_PATH_UNRESOLVABLE,
+  type StoreFailure,
+} from './document-durability-state.ts';
 import {
   type ReconcileBeforeWriteResult,
   reconcileDiskBeforeAgentWrite,
@@ -264,6 +247,7 @@ import { createHistoryRoutes } from './http/history-routes.ts';
 import { assertSingleRouterOwnership, type NativeApiHandle } from './http/http-app.ts';
 import { createLinkGraphRoutes } from './http/link-graph-routes.ts';
 import { createLintRoutes } from './http/lint-routes.ts';
+import { createLintWriteRoutes } from './http/lint-write-routes.ts';
 import { createLocalApiDispatch, type LocalApiDispatch } from './http/local-api-dispatch.ts';
 import { createLocalOpRoutes } from './http/local-op-routes.ts';
 import { createMetricsRoutes } from './http/metrics-routes.ts';
@@ -1275,6 +1259,8 @@ export interface ApiExtensionOptions {
   agentPresenceBroadcaster?: AgentPresenceBroadcaster;
   onAgentWrite?: () => void;
   getSyncEngine?: () => SyncEngine | null;
+  conflicts: ConflictAuthority;
+  setBatchInProgress?: (value: boolean) => void;
   localOpCliArgs?: string[];
   authStreamHeartbeatMs?: number;
   projectDir?: string;
@@ -1292,15 +1278,9 @@ export interface ApiExtensionOptions {
   contentFilter?: ContentFilter;
   installedAgentsProbe?: (scheme: InstalledAgentScheme) => Promise<boolean>;
   forceUnloadDocument?: (document: Document) => Promise<void>;
-  resetDocumentDurability?: (docName: string) => void;
   ready?: Promise<void>;
   recentlyRemovedDocs?: RecentlyRemovedDocs;
   serializeDoc?: (docName: string) => string | null;
-  resolveStaleExternalWrite?: (
-    file: string,
-    strategy: ResolveStrategy,
-    content?: string,
-  ) => Promise<boolean>;
   evictManagedArtifactLkg?: (docName: string) => void;
   semanticSearch?: SemanticSearchService;
   getSemanticSimilarityFloor?: () => number | undefined;
@@ -1396,6 +1376,8 @@ export function createApiExtension(
     agentPresenceBroadcaster,
     onAgentWrite,
     getSyncEngine,
+    conflicts,
+    setBatchInProgress,
     localOpCliArgs = ['open-knowledge'],
     authStreamHeartbeatMs,
     projectDir,
@@ -1409,11 +1391,9 @@ export function createApiExtension(
     contentFilter,
     installedAgentsProbe,
     forceUnloadDocument,
-    resetDocumentDurability,
     ready,
     recentlyRemovedDocs,
     serializeDoc,
-    resolveStaleExternalWrite,
     evictManagedArtifactLkg,
     semanticSearch,
     getSemanticSimilarityFloor,
@@ -1440,6 +1420,7 @@ export function createApiExtension(
 
   const documentRoutes = createDocumentRoutes({
     hocuspocus,
+    conflicts,
     contentDir,
     isSafeDocName,
     resolveAlias,
@@ -1732,11 +1713,39 @@ export function createApiExtension(
     return null;
   }
 
+  function removedDocProblem(failure: StoreFailure) {
+    return {
+      type: 'urn:ok:error:doc-removed' as const,
+      title:
+        'Edit applied in memory; disk write refused because the document is no longer on disk.',
+      detail: `${failure.message}. Retrying will not help: re-create the document before writing this content again.`,
+    } satisfies BatchEntryError;
+  }
+
+  function pathFaultProblem(failure: StoreFailure) {
+    return {
+      type: 'urn:ok:error:path-escape' as const,
+      title:
+        'Edit applied in memory; disk write refused because the document path could not be resolved.',
+      detail: `${failure.message}. Retrying will not help: the path has to be repaired on disk before this content can be written.`,
+    } satisfies BatchEntryError;
+  }
+
   function respondPersistenceFailure(
     res: ServerResponse,
     failure: StoreFailure,
     handler: string,
   ): void {
+    if (failure.code === OK_DOC_REMOVED) {
+      const { type, title, detail } = removedDocProblem(failure);
+      errorResponse(res, 409, type, title, { handler, detail });
+      return;
+    }
+    if (failure.code === OK_PATH_UNRESOLVABLE) {
+      const { type, title, detail } = pathFaultProblem(failure);
+      errorResponse(res, 400, type, title, { handler, detail });
+      return;
+    }
     const reason = classifyUploadErrno({ code: failure.code } as NodeJS.ErrnoException);
     errorResponse(
       res,
@@ -2283,17 +2292,10 @@ export function createApiExtension(
   }
 
   function assertRewriteTargetsNotConflicted(docNames: Iterable<string>): void {
-    const renameEngine = getSyncEngine?.();
-    const renameTrackedFiles = new Set(
-      renameEngine ? renameEngine.getConflicts().map((c) => c.file) : [],
-    );
     for (const docName of docNames) {
-      const doc = hocuspocus.documents.get(docName);
-      const filePath = docNameToRelativePath(docName);
-      const conflictedByLifecycle = doc !== undefined && isDocInConflict(doc);
-      const conflictedByStore = renameTrackedFiles.has(filePath);
-      if (conflictedByLifecycle || conflictedByStore) {
-        throw new DocInConflictError({ file: filePath });
+      const entry = conflicts.findByDocName(docName);
+      if (entry !== undefined) {
+        throw new DocInConflictError({ file: entry.file });
       }
     }
   }
@@ -2512,16 +2514,9 @@ export function createApiExtension(
             );
           }
 
-          const renameEngine = getSyncEngine?.();
-          const trackedFiles = new Set(
-            renameEngine ? renameEngine.getConflicts().map((c) => c.file) : [],
-          );
-          const sourceDoc = hocuspocus.documents.get(sourceDocName);
-          if (
-            (sourceDoc !== undefined && isDocInConflict(sourceDoc)) ||
-            trackedFiles.has(fromPath)
-          ) {
-            throw new DocInConflictError({ file: fromPath });
+          const sourceConflict = conflicts.findByDocName(sourceDocName);
+          if (sourceConflict !== undefined) {
+            throw new DocInConflictError({ file: sourceConflict.file });
           }
 
           const renamedAssets = [{ fromPath, toPath }];
@@ -2531,7 +2526,13 @@ export function createApiExtension(
           span.setAttribute('rename.rewrite_candidates', pendingRewrites.length);
           assertRewriteTargetsNotConflicted(pendingRewrites.map((entry) => entry.docName));
 
-          reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, sourceDocName, contentDir);
+          reconcileDiskBeforeAgentWrite(
+            durabilityState,
+            hocuspocus,
+            sourceDocName,
+            contentDir,
+            conflicts,
+          );
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
             recentlyRemovedDocs.setDeleted(sourceDocName);
           }
@@ -2726,7 +2727,13 @@ export function createApiExtension(
               }
             }
 
-            reconcileDiskBeforeAgentWrite(durabilityState, hocuspocus, docName, contentDir);
+            reconcileDiskBeforeAgentWrite(
+              durabilityState,
+              hocuspocus,
+              docName,
+              contentDir,
+              conflicts,
+            );
             const content = readCurrentDocumentContent(docName);
             if (typeof content === 'string') {
               snapshotContents.set(docName, content);
@@ -3255,6 +3262,7 @@ export function createApiExtension(
           hocuspocus,
           docName,
           contentDir,
+          conflicts,
         );
 
         const timestamp = new Date().toISOString();
@@ -3343,7 +3351,12 @@ export function createApiExtension(
         );
       } catch (e) {
         if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'agent-write');
+          respondDocInConflict(
+            res,
+            e,
+            'agent-write',
+            conflicts.findByDocName(stripDocExtension(e.file)),
+          );
           return;
         }
         if (e instanceof FrontmatterMalformedError) {
@@ -3413,12 +3426,17 @@ export function createApiExtension(
                 'doc.name': docName,
               }),
             );
-            return entryError(
+            const { detail, ...envelope } = docInConflictEnvelope(conflicts.findByDocName(docName));
+            return {
+              status: 'error',
               docName,
-              'urn:ok:error:doc-in-conflict',
-              'Document is in conflict.',
-              'The document is in a merge-conflict state. Call conflicts({ kind: "content" }) + resolve_conflict before retrying.',
-            );
+              error: {
+                type: 'urn:ok:error:doc-in-conflict',
+                title: 'Document is in conflict.',
+                detail,
+                ...envelope,
+              },
+            };
           }
           if (e instanceof FrontmatterMalformedError) {
             logFrontmatterRefusal(e, 'agent-write-batch');
@@ -3505,6 +3523,7 @@ export function createApiExtension(
                 hocuspocus,
                 resolvedDocName,
                 contentDir,
+                conflicts,
               );
 
               let writeDivergence: AgentWriteContentDivergence | undefined;
@@ -3577,14 +3596,20 @@ export function createApiExtension(
             if (flushErrors.has(p.docName)) continue;
             const flushOutcome = await flushDiskAndDetectOutcome(p.docName);
             if (flushOutcome?.kind === 'failure') {
-              const reason = classifyUploadErrno({
-                code: flushOutcome.failure.code,
-              } as NodeJS.ErrnoException);
-              flushErrors.set(p.docName, {
-                type: reason,
-                title: 'Write applied in memory but failed to persist to disk.',
-                detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
-              });
+              if (flushOutcome.failure.code === OK_DOC_REMOVED) {
+                flushErrors.set(p.docName, removedDocProblem(flushOutcome.failure));
+              } else if (flushOutcome.failure.code === OK_PATH_UNRESOLVABLE) {
+                flushErrors.set(p.docName, pathFaultProblem(flushOutcome.failure));
+              } else {
+                const reason = classifyUploadErrno({
+                  code: flushOutcome.failure.code,
+                } as NodeJS.ErrnoException);
+                flushErrors.set(p.docName, {
+                  type: reason,
+                  title: 'Write applied in memory but failed to persist to disk.',
+                  detail: `${flushOutcome.failure.code ?? 'unknown error'}: ${flushOutcome.failure.message}. The content was NOT saved and will be lost if the server restarts.`,
+                });
+              }
             } else if (flushOutcome?.kind === 'divergence') {
               flushErrors.set(p.docName, {
                 type: 'urn:ok:error:disk-divergence',
@@ -3696,16 +3721,7 @@ export function createApiExtension(
     listAffectedDocNames: (index, kind, path) =>
       listAffectedDocNames(index as Map<string, FileIndexEntry>, kind, path),
     getFileIndex,
-    getConflictedFiles: () =>
-      new Set(
-        getSyncEngine?.()
-          ?.getConflicts()
-          .map((c) => c.file) ?? [],
-      ),
-    isDocNameInLifecycleConflict: (docName) => {
-      const doc = hocuspocus.documents.get(docName);
-      return doc !== undefined && isDocInConflict(doc);
-    },
+    conflictFileForDocName: (docName) => conflicts.findByDocName(docName)?.file ?? null,
     captureAndCloseDocuments,
     markRecentlyRemoved: recentlyRemovedDocs
       ? (docName) => recentlyRemovedDocs.setDeleted(docName)
@@ -3840,9 +3856,9 @@ export function createApiExtension(
     handler: string,
     res: ServerResponse,
   ): boolean {
-    const doc = hocuspocus.documents.get(docName);
-    if (doc && isDocInConflict(doc)) {
-      respondDocInConflict(res, new DocInConflictError({ file: `${docName}.md` }), handler);
+    const entry = conflicts.findByDocName(docName);
+    if (entry !== undefined) {
+      respondDocInConflict(res, new DocInConflictError({ file: entry.file }), handler, entry);
       return true;
     }
     return false;
@@ -4560,383 +4576,13 @@ export function createApiExtension(
     return unmatchedAppliesToProblems(slice.schemas, docFiles);
   }
 
-  const handleWriteMarkdownlintRule = withValidation(
-    MarkdownlintRuleWriteRequestSchema,
-    async (_req, res, body) => {
-      let writeResult: WriteMarkdownlintResult;
-      try {
-        writeResult = writeMarkdownlintRule(resolve(contentDir), body.ruleId, body.value);
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to write markdownlint config.',
-          { handler: 'markdownlint-config', cause: e },
-        );
-        return;
-      }
-      if (writeResult.action === 'declined-executable') {
-        errorResponse(
-          res,
-          409,
-          'urn:ok:error:config-not-writable',
-          `The native markdownlint config (${writeResult.file}) is an executable module OK will not rewrite — edit it directly or convert it to JSON/JSONC/YAML.`,
-          { handler: 'markdownlint-config' },
-        );
-        return;
-      }
-      signalLintConfigChanged();
-      try {
-        const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const configProblems: string[] = [];
-        const native = resolveNativeConfigForDoc(contentDir, undefined, (problem) =>
-          configProblems.push(problem),
-        );
-        const effective = composeFrontmatterSchemasConfig(
-          projectDir ?? contentDir,
-          composeEffectiveLinterConfig(base, native),
-          (problem) => configProblems.push(problem),
-        );
-        configProblems.push(...unmatchedGlobProblems(effective));
-        successResponse(
-          res,
-          200,
-          LintConfigResponseSchema,
-          { effective, configFile: native?.file ?? null, configProblems },
-          { handler: 'markdownlint-config' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'The markdownlint rule was saved, but the effective config could not be re-read.',
-          { handler: 'markdownlint-config', cause: e },
-        );
-      }
-    },
-    { handler: 'markdownlint-config', method: 'POST' },
-  );
-
-  const handleWriteFrontmatterSchema = withValidation(
-    FrontmatterSchemaWriteRequestSchema,
-    async (_req, res, body) => {
-      let writeResult: WriteFrontmatterSchemaResult;
-      try {
-        const root = resolve(projectDir ?? contentDir);
-        const parentPath = body.parentPath ?? [];
-        writeResult = body.delete
-          ? deleteFrontmatterSchemaFile(root, body.file)
-          : body.field !== undefined && body.removeField
-            ? removeFrontmatterSchemaField(root, body.file, body.field, parentPath)
-            : body.field !== undefined && body.renameTo !== undefined
-              ? renameFrontmatterSchemaField(root, body.file, body.field, body.renameTo, parentPath)
-              : body.field !== undefined && body.constraint !== undefined
-                ? writeFrontmatterSchemaField(
-                    root,
-                    body.file,
-                    body.field,
-                    body.constraint,
-                    parentPath,
-                  )
-                : createEmptyFrontmatterSchemaFile(root, body.file);
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'Failed to write the frontmatter schema.',
-          { handler: 'frontmatter-schema', cause: e },
-        );
-        return;
-      }
-      if (writeResult.action === 'refused') {
-        errorResponse(
-          res,
-          409,
-          'urn:ok:error:config-not-writable',
-          `The frontmatter schema (${writeResult.file}) was not written: ${writeResult.reason}.`,
-          { handler: 'frontmatter-schema' },
-        );
-        return;
-      }
-      if (writeResult.action === 'created' || writeResult.action === 'deleted') {
-        signalChannel?.('files');
-      }
-      signalLintConfigChanged();
-      try {
-        const base = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const configProblems: string[] = [];
-        const native = resolveNativeConfigForDoc(contentDir, undefined, (problem) =>
-          configProblems.push(problem),
-        );
-        const effective = composeFrontmatterSchemasConfig(
-          projectDir ?? contentDir,
-          composeEffectiveLinterConfig(base, native),
-          (problem) => configProblems.push(problem),
-        );
-        configProblems.push(...unmatchedGlobProblems(effective));
-        successResponse(
-          res,
-          200,
-          LintConfigResponseSchema,
-          { effective, configFile: native?.file ?? null, configProblems },
-          { handler: 'frontmatter-schema' },
-        );
-      } catch (e) {
-        errorResponse(
-          res,
-          500,
-          'urn:ok:error:internal-server-error',
-          'The schema was saved, but the effective config could not be re-read.',
-          { handler: 'frontmatter-schema', cause: e },
-        );
-      }
-    },
-    { handler: 'frontmatter-schema', method: 'POST' },
-  );
-
-  const handleLintFix = withValidation(
-    LintFixRequestSchema,
-    async (_req, res, body) => {
-      try {
-        const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'lint-fix');
-        if (effectiveDocName === null) return;
-        const resolvedDocName = resolveAlias(effectiveDocName);
-
-        const actor = extractActorIdentity(
-          body as unknown as Record<string, unknown>,
-          getPrincipal,
-        );
-        if (actor.kind === 'invalid-summary') {
-          errorResponse(res, 400, 'urn:ok:error:invalid-request', 'Summary must be a string.', {
-            handler: 'lint-fix',
-          });
-          return;
-        }
-        const agentId = actor.kind === 'anonymous' ? 'principal-anonymous' : actor.writerId;
-        const agentName = actor.kind === 'anonymous' ? 'Anonymous' : actor.displayName;
-        const colorSeed = actor.kind === 'anonymous' ? agentId : actor.colorSeed;
-        const clientName = actor.kind === 'agent' ? actor.clientName : undefined;
-
-        if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
-          errorResponse(
-            res,
-            400,
-            'urn:ok:error:reserved-doc-name',
-            `'${resolvedDocName}' is a reserved document name.`,
-            { handler: 'lint-fix' },
-          );
-          return;
-        }
-
-        const docRelPath = resolveDocFilePath(contentDir, resolvedDocName);
-        if (docRelPath === null) {
-          errorResponse(res, 404, 'urn:ok:error:doc-not-found', 'Document not found.', {
-            handler: 'lint-fix',
-          });
-          return;
-        }
-        assertNoSymlinkEscape(resolve(contentDir, docRelPath), contentDir);
-
-        const baseConfig = getLinterBaseConfig?.() ?? DEFAULT_LINTER_CONFIG;
-        const { stored: storedSummary } = summaryResponseFields(actor.summary);
-        const session = await sessionManager.getSession(resolvedDocName, agentId, {
-          displayName: agentName,
-          colorSeed,
-          clientName,
-        });
-
-        const source = session.dc.document.getText('source').toString();
-        const configWarnings: string[] = [];
-        const { cfg, before, fixed, ran, failures } = await lintAndFixSource({
-          projectDir: projectDir ?? contentDir,
-          contentDir,
-          baseConfig,
-          docRelPath,
-          source,
-          onConfigProblem: (problem) => configWarnings.push(problem),
-        });
-
-        let after = before;
-        let reLintFailure: ReLintFailure | undefined;
-        const reLintFailures: LintPluginFailure[] = [];
-        if (fixed !== source) {
-          try {
-            const icon = iconFromClientName(clientName);
-            const color = AGENT_ICON_COLORS[icon] ?? colorFromSeed(colorSeed ?? agentId);
-            agentPresenceBroadcaster?.setPresence(agentId, {
-              displayName: agentName,
-              icon,
-              color,
-              currentDoc: resolvedDocName,
-              mode: 'writing',
-              ts: Date.now(),
-            });
-            session.dc.document.transact(() => {
-              applyAgentMarkdownWrite(session.dc.document, fixed, 'patch');
-            }, session.origin);
-
-            if (actor.kind !== 'anonymous') {
-              recordContributor(
-                resolvedDocName,
-                agentId,
-                agentName,
-                colorSeed,
-                undefined,
-                actor.kind === 'agent'
-                  ? buildAgentActor({
-                      clientName: actor.clientName,
-                      clientVersion: actor.clientVersion,
-                      label: actor.label,
-                    })
-                  : actor.actor,
-                storedSummary,
-              );
-            }
-          } finally {
-            agentPresenceBroadcaster?.touchMode(agentId, 'idle');
-          }
-
-          const flushOutcome = await flushDiskAndDetectOutcome(resolvedDocName);
-          if (flushOutcome?.kind === 'failure') {
-            respondPersistenceFailure(res, flushOutcome.failure, 'lint-fix');
-            return;
-          }
-          if (flushOutcome?.kind === 'divergence') {
-            respondDiskDivergence(res, 'lint-fix');
-            return;
-          }
-          if (flushOutcome?.kind === 'stale-external-write') {
-            respondStaleExternalWrite(res, 'lint-fix', resolvedDocName);
-            return;
-          }
-          flushDocToDisk(resolvedDocName, 'lint-fix');
-
-          try {
-            after = await lintDocument(
-              session.dc.document.getText('source').toString(),
-              cfg,
-              docRelPath,
-              (failure) => reLintFailures.push(failure),
-            );
-          } catch (relintErr) {
-            const relintMessage =
-              relintErr instanceof Error ? relintErr.message : String(relintErr);
-            reLintFailure = {
-              reason: 're-lint-threw',
-              message:
-                relintMessage.trim().length > 0
-                  ? relintMessage
-                  : `${relintErr instanceof Error ? relintErr.name : 'non-Error value'} thrown with no message`,
-            };
-            log.warn(
-              { err: relintErr, handler: 'lint-fix', doc: resolvedDocName, agentId },
-              'post-write re-lint failed; reporting pre-fix diagnostics',
-            );
-            after = before;
-          }
-        }
-
-        const blindBeforeFix = new Set(
-          failures.filter((f) => f.phase === 'lint').map((f) => f.source),
-        );
-        const blindOnlyAfterFix = [
-          ...new Set(
-            reLintFailures
-              .filter((f) => f.phase === 'lint' && !blindBeforeFix.has(f.source))
-              .map((f) => f.source),
-          ),
-        ];
-        if (reLintFailure === undefined && blindOnlyAfterFix.length > 0) {
-          reLintFailure = {
-            reason: 'source-went-blind',
-            message: `${blindOnlyAfterFix.join(', ')} linted the pre-fix text and failed on the post-fix text, so the re-lint is short their diagnostics and cannot be compared against the pre-fix run`,
-          };
-          log.warn(
-            { handler: 'lint-fix', doc: resolvedDocName, agentId, sources: blindOnlyAfterFix },
-            'post-write re-lint lost a source that linted before the fix; reporting pre-fix diagnostics',
-          );
-          after = before;
-        }
-
-        const errorCount = after.filter((d) => d.severity === 'error').length;
-        const warningCount = after.length - errorCount;
-        const comparable = (d: (typeof before)[number]) => !blindBeforeFix.has(d.source);
-        const fixedCount = Math.max(
-          0,
-          before.filter(comparable).length - after.filter(comparable).length,
-        );
-        const responseWarnings = [
-          ...configWarnings,
-          ...summarizeLintPluginFailures([...failures, ...reLintFailures]),
-        ];
-
-        successResponse(
-          res,
-          200,
-          LintFixResultSchema,
-          {
-            file: docRelPath,
-            fixedCount,
-            diagnostics: after,
-            errorCount,
-            warningCount,
-            ran,
-            ...(responseWarnings.length > 0 ? { warnings: responseWarnings } : {}),
-            ...(reLintFailure ? { diagnosticsArePreFix: true, reLintFailure } : {}),
-          },
-          { handler: 'lint-fix' },
-        );
-      } catch (e) {
-        if (isContainmentRejection(e)) {
-          errorResponse(res, 400, 'urn:ok:error:path-escape', 'Path escape detected.', {
-            handler: 'lint-fix',
-          });
-          return;
-        }
-        if (e instanceof DocInConflictError) {
-          respondDocInConflict(res, e, 'lint-fix');
-          return;
-        }
-        if (e instanceof FrontmatterMalformedError) {
-          respondFrontmatterMalformed(res, e, 'lint-fix');
-          return;
-        }
-        if (e instanceof AgentSessionCapacityError) {
-          errorResponse(
-            res,
-            503,
-            'urn:ok:error:too-many-agent-sessions',
-            'Too many agent sessions.',
-            { handler: 'lint-fix', cause: e, extraHeaders: { 'Retry-After': '10' } },
-          );
-          return;
-        }
-        log.error({ err: e }, '[lint-fix] handler failed');
-        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to fix document.', {
-          handler: 'lint-fix',
-          cause: e,
-        });
-      }
-    },
-    { handler: 'lint-fix', method: 'POST' },
-  );
-
   const routes: Record<string, (req: IncomingMessage, res: ServerResponse) => Promise<void>> = {
     '/api/skill/uninstall': handleSkillUninstall,
-    '/api/lint/markdownlint-config': handleWriteMarkdownlintRule,
-    '/api/lint/frontmatter-schema': handleWriteFrontmatterSchema,
-    '/api/lint/fix': handleLintFix,
     '/api/agent-write': handleAgentWrite,
     '/api/agent-write-batch': handleAgentWriteBatch,
   };
 
   const MUTATING_ROUTES: ReadonlySet<string> = new Set([
-    '/api/lint/markdownlint-config',
-    '/api/lint/frontmatter-schema',
-    '/api/lint/fix',
     '/api/agent-write',
     '/api/agent-write-batch',
     '/api/test-reset',
@@ -5023,6 +4669,29 @@ export function createApiExtension(
     collectAdmittedDocNames,
     unmatchedGlobProblems,
     readAuditGeneration,
+  });
+  const lintWriteRoutes = createLintWriteRoutes({
+    conflicts,
+    contentDir,
+    projectDir,
+    signalLintConfigChanged,
+    getLinterBaseConfig,
+    unmatchedGlobProblems,
+    signalChannel,
+    requireNonEmptyDocName,
+    resolveAlias,
+    getPrincipal,
+    resolveDocFilePath,
+    summaryResponseFields,
+    sessionManager,
+    agentPresenceBroadcaster,
+    buildAgentActor,
+    flushDiskAndDetectOutcome,
+    respondPersistenceFailure,
+    respondDiskDivergence,
+    respondStaleExternalWrite,
+    flushDocToDisk,
+    log,
   });
   const historyRoutes = createHistoryRoutes({
     contentRoot,
@@ -5179,12 +4848,12 @@ export function createApiExtension(
     contentDir,
     getPrincipal,
     hocuspocus,
-    durabilityState,
     log,
     checkLocalOpSecurity,
     getSyncEngine,
+    conflicts,
     serializeDoc,
-    resolveStaleExternalWrite,
+    setBatchInProgress,
   });
   const shareRoutes = createShareRoutes({
     projectDir,
@@ -5226,8 +4895,7 @@ export function createApiExtension(
     getPrincipal,
     contentFilter,
     signalChannel,
-    hocuspocus,
-    getSyncEngine,
+    conflicts,
     flushContributors,
     fileOpsService,
     assetService,
@@ -5266,7 +4934,7 @@ export function createApiExtension(
     sessionManager,
     getPrincipal,
     signalChannel,
-    getSyncEngine,
+    conflicts,
     recentlyRemovedDocs,
     isSafeDocName,
     resolveAlias,
@@ -5308,6 +4976,8 @@ export function createApiExtension(
     shippedBundleSkillMd,
     flushDiskAndDetectOutcome,
     respondStaleExternalWrite,
+    respondPersistenceFailure,
+    respondDiskDivergence,
     skillInstallOps,
     skillPlacementOps,
     signalChannel,
@@ -5353,6 +5023,7 @@ export function createApiExtension(
     signalChannel,
   });
   const agentWriteRoutes = createAgentWriteRoutes({
+    conflicts,
     getLinkAdvisoryPolicy,
     respondStaleExternalWrite,
     requireNonEmptyDocName,
@@ -5394,7 +5065,8 @@ export function createApiExtension(
     renameAttributionCounter,
   });
   const testRoutes = createTestRoutes({
-    resetDocumentDurability,
+    conflicts,
+    durabilityState,
     resolveAlias,
     contentDir,
     log,
@@ -5424,6 +5096,7 @@ export function createApiExtension(
     documentRoutes,
     configSystemRoutes,
     lintRoutes,
+    lintWriteRoutes,
     historyRoutes,
     skillsDocumentRoutes,
     skillsListRoutes,

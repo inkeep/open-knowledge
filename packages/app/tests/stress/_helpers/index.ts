@@ -49,6 +49,7 @@ export {
   waitForHttpReady,
 } from './server-process.ts';
 export {
+  openColorThemes,
   openProjectPluginsPanel,
   openSettingsSection,
   SETTINGS_PANEL_TIMEOUT_MS,
@@ -72,6 +73,14 @@ export {
 } from './slash-menu.ts';
 export { blockMarker, generateTallDoc } from './tall-doc-fixture.ts';
 export { removeAllDuringTeardown } from './teardown-fs.ts';
+export {
+  type ArmedThemeFade,
+  FADE_DURATION_MS,
+  FADE_REPORT_WINDOW_MS,
+  installThemeFadeProbe,
+  type ThemeFadeProbeWindow,
+  type ThemeFadeReport,
+} from './theme-fade.ts';
 export {
   createMp3Buffer,
   createMp4Buffer,

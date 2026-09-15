@@ -497,11 +497,6 @@ jobs:
     # electron-builder compiles `build/okglass.icon` → `Assets.car` via
     # `actool`, which only ships with Xcode 26+.
     runs-on: macos-26
-    # 75 min budget. A signed build + notary round-trip is ~20-30 min; the
-    # build step retries once on a transient failure (see below), so
-    # the worst case is two full signed builds back-to-back. 75 min covers
-    # that plus cold caches and notary queue spikes. desktop-build.yml has no
-    # retry and stays at 45.
     timeout-minutes: 75
     permissions:
       # Explicit so a future step needing more fails at review, not with a
@@ -514,6 +509,13 @@ jobs:
       smoke_verdict: ${{ steps.dmg_smoke.outputs.verdict }}
       smoke_reason: ${{ steps.dmg_smoke.outputs.reason }}
     steps:
+      - name: Start packaging deadline
+        env:
+          PACKAGING_BUDGET_MINUTES: "65"
+        run: |
+          set -euo pipefail
+          echo "PACKAGING_DEADLINE_EPOCH_MS=$(( $(date +%s) * 1000 + PACKAGING_BUDGET_MINUTES * 60 * 1000 ))" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
@@ -790,6 +792,10 @@ jobs:
         working-directory: packages/desktop
         run: node scripts/stage-parcel-watcher.mjs
 
+      - name: Build desktop main/preload/renderer
+        working-directory: packages/desktop
+        run: pnpm run build:desktop
+
       - name: Build + sign + notarize DMG/ZIP
         # electron-builder signs with the identity in CSC_KEYCHAIN (pushed
         # into $GITHUB_ENV by the "Prepare signing keychain" step). CSC_LINK
@@ -823,6 +829,8 @@ jobs:
           # via client_payload (see the Windows job's twin comment).
           BUILD_VERSION: ${{ steps.channel.outputs.version }}
           BUILD_CHANNEL: ${{ steps.channel.outputs.channel }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}"'
         working-directory: packages/desktop
         run: |
           # extraMetadata.version override: kept as defense-in-depth so the
@@ -836,53 +844,32 @@ jobs:
           # asset's metadata.version; those are baked in at Build time, so
           # the workspace-wide on-disk override step above is what makes
           # them match the tag. See PRD-6650.
-          #
-          # Packaging is retried on TRANSIENT signing/notarize/download failures
-          # only, through the shared wrapper. The macOS-specific classes it
-          # covers, none of which electron-builder will retry itself:
-          #   - codesign's timestamp step calling Apple's TSA (timestamp.apple.com).
-          #     Each `codesign --timestamp` is a single un-retried shell-out, so a
-          #     dropped TSA response aborts the whole build. This is the class that
-          #     stuck v0.30.2 as a draft (run 29445364406).
-          #   - @electron/notarize's notarytool HTTP round-trip to
-          #     appstoreconnect.apple.com timing out (NSURLError -1001 /
-          #     HTTPError(statusCode: nil)), which failed attempt 1 of that same run.
-          #   - a bare EOF fetching the Electron runtime zip during packaging
-          #     (app-builder's DownloadNoRetry path aborts on one dropped connection).
-          # Re-running the whole invocation is the only lever available. The
-          # allowlist that gates the retry — and the guarantee that a real
-          # cert/notary/entitlements/build failure fails LOUD on the first attempt
-          # rather than being masked — lives in the wrapper.
-          set -uo pipefail
-          # The wrapper is CI tooling, not release content, so take it from the
-          # workflow's own SHA when the release checkout predates it — same
-          # reasoning as the smoke harness below. This is not a rare path:
-          # promote-stable tags the stable at the soaked beta's SHA, which is by
-          # definition older than any fix landed since. Best-effort: if it cannot
-          # be obtained, package WITHOUT retry rather than block the release.
-          WRAPPER="${GITHUB_WORKSPACE}/.github/scripts/retry-transient.mjs"
-          if [[ ! -f "$WRAPPER" ]]; then
-            # The fetch/checkout pair sits in an `if` CONDITION deliberately.
-            # Steps run under errexit, and bash exempts only the NON-final
-            # commands of an `&&` list — so a bare failing checkout would exit
-            # the shell before reaching the fallback below, defeating the
-            # best-effort behavior this exists for. A condition is exempt.
-            if git -C "${GITHUB_WORKSPACE}" fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
-               git -C "${GITHUB_WORKSPACE}" checkout "$GITHUB_SHA" -- .github/scripts/retry-transient.mjs 2>/dev/null; then
-              echo "::notice::Retry wrapper taken from ${GITHUB_SHA} rather than the release ref."
+          set -euo pipefail
+          WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
+          WRAPPER_TMP="${WRAPPER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          materialized=false
+          for materialize_attempt in 1 2 3; do
+            if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
+               [[ -s "$WRAPPER_TMP" ]] &&
+               mv "$WRAPPER_TMP" "$WRAPPER"; then
+              materialized=true
+              break
             fi
+            rm -f "$WRAPPER_TMP"
+            if [[ "$materialize_attempt" -lt 3 ]]; then
+              materialize_delay=$((materialize_attempt * 5))
+              echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
+              sleep "$materialize_delay"
+            fi
+          done
+          if [[ "$materialized" != true ]]; then
+            echo "::error::Failed to materialize retry wrapper from workflow SHA ${GITHUB_WORKFLOW_SHA} after 3 attempts."
+            exit 1
           fi
-          # Defined once, single-quoted ON PURPOSE: it is handed to the wrapper as
-          # a literal string and expanded by the inner shell, which inherits this
-          # step's env. Expanding here would bake attempt 1's values into retries.
-          # shellcheck disable=SC2016
-          PKG_CMD='pnpm run build:desktop && pnpm exec electron-builder --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}"'
-          if [[ -f "$WRAPPER" ]]; then
-            node "$WRAPPER" --label "electron-builder (macOS)" --shell -- "$PKG_CMD"
-          else
-            echo "::warning::Retry wrapper absent at this ref; packaging without transient retry."
-            bash -c "$PKG_CMD"
-          fi
+          echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
+          node "$WRAPPER" --label "electron-builder (macOS)" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "30m" --retry-warning "A macOS packaging retry can create a duplicate Apple notarization submission; up to 3 attempts bound this to at most 2 duplicates." --shell -- "$PKG_CMD"
 
       # Placed HERE, not at the end of the job (where desktop-build.yml keeps
       # its twin): release-cascade-shape.test.mjs forbids `if: always()` on any
@@ -1032,6 +1019,13 @@ jobs:
       run:
         shell: bash
     steps:
+      - name: Start packaging deadline
+        env:
+          PACKAGING_BUDGET_MINUTES: "35"
+        run: |
+          set -euo pipefail
+          echo "PACKAGING_DEADLINE_EPOCH_MS=$(( $(date +%s) * 1000 + PACKAGING_BUDGET_MINUTES * 60 * 1000 ))" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
@@ -1134,6 +1128,8 @@ jobs:
           AZURE_SIGNING_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
           BUILD_VERSION: ${{ needs.prepare.outputs.version }}
           BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
         run: |
           set -euo pipefail
           missing=()
@@ -1149,31 +1145,31 @@ jobs:
             exit 1
           fi
           echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."
-          # Signing here is a network round-trip to the Azure Trusted Signing
-          # endpoint, so this invocation carries the same transient exposure the
-          # macOS job does. The wrapper still fails loud on a real signing
-          # rejection or build error — only allowlisted infra flakes retry.
-          # Wrapper sourcing + single-quoting rationale: see the macOS step.
-          WRAPPER="${GITHUB_WORKSPACE}/.github/scripts/retry-transient.mjs"
-          if [[ ! -f "$WRAPPER" ]]; then
-            # The fetch/checkout pair sits in an `if` CONDITION deliberately.
-            # Steps run under errexit, and bash exempts only the NON-final
-            # commands of an `&&` list — so a bare failing checkout would exit
-            # the shell before reaching the fallback below, defeating the
-            # best-effort behavior this exists for. A condition is exempt.
-            if git -C "${GITHUB_WORKSPACE}" fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
-               git -C "${GITHUB_WORKSPACE}" checkout "$GITHUB_SHA" -- .github/scripts/retry-transient.mjs 2>/dev/null; then
-              echo "::notice::Retry wrapper taken from ${GITHUB_SHA} rather than the release ref."
+          WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
+          WRAPPER_TMP="${WRAPPER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          materialized=false
+          for materialize_attempt in 1 2 3; do
+            if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
+               [[ -s "$WRAPPER_TMP" ]] &&
+               mv "$WRAPPER_TMP" "$WRAPPER"; then
+              materialized=true
+              break
             fi
+            rm -f "$WRAPPER_TMP"
+            if [[ "$materialize_attempt" -lt 3 ]]; then
+              materialize_delay=$((materialize_attempt * 5))
+              echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
+              sleep "$materialize_delay"
+            fi
+          done
+          if [[ "$materialized" != true ]]; then
+            echo "::error::Failed to materialize retry wrapper from workflow SHA ${GITHUB_WORKFLOW_SHA} after 3 attempts."
+            exit 1
           fi
-          # shellcheck disable=SC2016
-          PKG_CMD='pnpm exec electron-builder --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
-          if [[ -f "$WRAPPER" ]]; then
-            node "$WRAPPER" --label "electron-builder (Windows)" --shell -- "$PKG_CMD"
-          else
-            echo "::warning::Retry wrapper absent at this ref; packaging without transient retry."
-            bash -c "$PKG_CMD"
-          fi
+          echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
+          node "$WRAPPER" --label "electron-builder (Windows)" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "15m" --shell -- "$PKG_CMD"
 
       # This workflow always executes main's YAML (repository_dispatch), while
       # the checkout above follows `client_payload[ref]` — typically a tag
@@ -1354,6 +1350,13 @@ jobs:
             targets: deb:arm64 rpm:arm64
             unpacked_dir: linux-arm64-unpacked
     steps:
+      - name: Start packaging deadline
+        env:
+          PACKAGING_BUDGET_MINUTES: "35"
+        run: |
+          set -euo pipefail
+          echo "PACKAGING_DEADLINE_EPOCH_MS=$(( $(date +%s) * 1000 + PACKAGING_BUDGET_MINUTES * 60 * 1000 ))" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.client_payload.ref || github.ref }}
@@ -1482,33 +1485,35 @@ jobs:
         working-directory: packages/desktop
         env:
           LINUX_TARGETS: ${{ matrix.targets }}
+          GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --linux ${LINUX_TARGETS} --publish never --config electron-builder.release-linux.yml'
         run: |
-          # electron-builder downloads its fpm packaging backend on first use,
-          # and a dropped connection there aborts the whole build. That is what
-          # blocked the v0.52.2 and v0.52.3 cuts, on a step that had no retry
-          # while the macOS job had carried one for months.
-          set -uo pipefail
-          # Wrapper sourcing + single-quoting rationale: see the macOS step.
-          WRAPPER="${GITHUB_WORKSPACE}/.github/scripts/retry-transient.mjs"
-          if [[ ! -f "$WRAPPER" ]]; then
-            # The fetch/checkout pair sits in an `if` CONDITION deliberately.
-            # Steps run under errexit, and bash exempts only the NON-final
-            # commands of an `&&` list — so a bare failing checkout would exit
-            # the shell before reaching the fallback below, defeating the
-            # best-effort behavior this exists for. A condition is exempt.
-            if git -C "${GITHUB_WORKSPACE}" fetch --depth=1 origin "$GITHUB_SHA" >/dev/null 2>&1 &&
-               git -C "${GITHUB_WORKSPACE}" checkout "$GITHUB_SHA" -- .github/scripts/retry-transient.mjs 2>/dev/null; then
-              echo "::notice::Retry wrapper taken from ${GITHUB_SHA} rather than the release ref."
+          set -euo pipefail
+          WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
+          WRAPPER_TMP="${WRAPPER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          materialized=false
+          for materialize_attempt in 1 2 3; do
+            if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
+               [[ -s "$WRAPPER_TMP" ]] &&
+               mv "$WRAPPER_TMP" "$WRAPPER"; then
+              materialized=true
+              break
             fi
+            rm -f "$WRAPPER_TMP"
+            if [[ "$materialize_attempt" -lt 3 ]]; then
+              materialize_delay=$((materialize_attempt * 5))
+              echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
+              sleep "$materialize_delay"
+            fi
+          done
+          if [[ "$materialized" != true ]]; then
+            echo "::error::Failed to materialize retry wrapper from workflow SHA ${GITHUB_WORKFLOW_SHA} after 3 attempts."
+            exit 1
           fi
-          # shellcheck disable=SC2016
-          PKG_CMD='pnpm exec electron-builder --linux ${LINUX_TARGETS} --publish never --config electron-builder.release-linux.yml'
-          if [[ -f "$WRAPPER" ]]; then
-            node "$WRAPPER" --label "electron-builder (Linux ${LINUX_TARGETS})" --shell -- "$PKG_CMD"
-          else
-            echo "::warning::Retry wrapper absent at this ref; packaging without transient retry."
-            bash -c "$PKG_CMD"
-          fi
+          echo "::notice::Retry wrapper materialized from workflow SHA ${GITHUB_WORKFLOW_SHA}."
+          node "$WRAPPER" --label "electron-builder (Linux ${LINUX_TARGETS})" --max-attempts 3 --deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS" --attempt-timeout "15m" --shell -- "$PKG_CMD"
 
       # Fail before staging an installer that cannot start (see the Windows
       # step for the full rationale). This is the control that would have

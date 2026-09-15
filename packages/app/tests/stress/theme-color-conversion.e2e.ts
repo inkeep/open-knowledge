@@ -1,15 +1,12 @@
 import { PREVIEW_THEME_TOKENS } from '@inkeep/open-knowledge-core';
-import { expect, SETTINGS_PANEL_TIMEOUT_MS, test } from './_helpers';
-
-async function openColorThemes(page: import('@playwright/test').Page) {
-  await page.goto('/#settings');
-  await expect(page.getByTestId('settings-dialog')).toBeVisible({ timeout: 15_000 });
-  await page.getByTestId('settings-search-input').fill('Color theme');
-  await page.getByTestId('settings-search-results').getByText('Color theme').first().click();
-  await expect(page.getByRole('group', { name: 'Dracula' })).toBeVisible({
-    timeout: SETTINGS_PANEL_TIMEOUT_MS,
-  });
-}
+import {
+  expect,
+  FADE_DURATION_MS,
+  installThemeFadeProbe,
+  openColorThemes,
+  type ThemeFadeProbeWindow,
+  test,
+} from './_helpers';
 
 test('painted comment underlines retain their sRGB contrast in both default modes', async ({
   page,
@@ -132,21 +129,60 @@ test('converts CSS Color 4 tokens for live xterm themes without losing alpha cha
     .toBe(0);
 
   const monokai = page.getByRole('button', { name: 'Use Monokai for the active light mode' });
-  await monokai.click();
+  await installThemeFadeProbe(page);
+  const fade = await monokai.evaluate(
+    async (element, { token }) => {
+      if (!(element instanceof HTMLButtonElement)) throw new Error('Expected a palette button');
+      const modulePath = '/src/components/terminal-theme.ts';
+      const { computeLiveXtermTheme } = await import(modulePath);
+      const { armThemeFade } = window as typeof window & ThemeFadeProbeWindow;
+      if (!armThemeFade) {
+        throw new Error(
+          'window.armThemeFade is absent; installThemeFadeProbe(page) must run after the last navigation',
+        );
+      }
+      const armed = armThemeFade({
+        token,
+        read: {
+          selection: (): string => computeLiveXtermTheme('dark').selectionBackground ?? '',
+        },
+      });
+      element.click();
+      return armed.report();
+    },
+    { token: '--selection-soft' },
+  );
 
-  const samples = await page.evaluate(async () => {
-    const modulePath = '/src/components/terminal-theme.ts';
-    const { computeLiveXtermTheme } = await import(modulePath);
-    const values: string[] = [];
-    for (let index = 0; index < 24; index += 1) {
-      values.push(computeLiveXtermTheme('dark').selectionBackground ?? '');
-      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
-    }
-    return values;
-  });
-
-  expect(samples.every((value) => /^#[0-9a-f]{8}$/.test(value))).toBe(true);
-  expect(new Set(samples).size).toBeGreaterThan(2);
-  expect(samples[0]).not.toBe(samples.at(-1));
+  const detail = `\n${fade.token} fade report:\n${JSON.stringify(fade)}\n`;
+  expect(fade.settle, `the fade did not reach transitionend.${detail}`).toBe('end');
+  expect(fade.durationMs, `the :root transition is not the product's fade duration.${detail}`).toBe(
+    FADE_DURATION_MS,
+  );
+  for (const [phase, value] of Object.entries({
+    beforeClick: fade.beforeClick.selection,
+    atFadeStart: fade.atFadeStart.selection,
+    atMidpoint: fade.atMidpoint.selection,
+    afterSettle: fade.afterSettle.selection,
+  })) {
+    expect(value, `the ${phase} xterm selection is not an 8-digit hex.${detail}`).toMatch(
+      /^#[0-9a-f]{8}$/,
+    );
+  }
+  expect(
+    fade.atFadeStart.selection,
+    `seeking to currentTime 0 did not reproduce the pre-click selection.${detail}`,
+  ).toBe(fade.beforeClick.selection);
+  expect(
+    fade.atMidpoint.selection,
+    `the midpoint never left the pre-click selection — the fade did not interpolate.${detail}`,
+  ).not.toBe(fade.beforeClick.selection);
+  expect(
+    fade.atMidpoint.selection,
+    `the midpoint already equals the settled selection — the fade snapped.${detail}`,
+  ).not.toBe(fade.afterSettle.selection);
+  expect(
+    fade.afterSettle.selection,
+    `the settled selection equals the pre-click one — the palette never changed.${detail}`,
+  ).not.toBe(fade.beforeClick.selection);
   await expect.poll(() => page.locator('html').getAttribute('data-color-theme')).toBe('monokai');
 });

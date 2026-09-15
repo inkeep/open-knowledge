@@ -64,6 +64,17 @@ function summaryLine(tag, verdict, blockedBy) {
   return `🚨 ${ALERT_HEADLINE}: ${tag} ${subject} — nothing shipped`;
 }
 
+function recoveryGuidance() {
+  return [
+    "*Recovery guidance:* Inspect the failed packaging job's final `outcome=`.",
+    'With no newer stable release, `transient-exhausted`, `deadline`, or `signal` can re-fire the same tag; investigate a recurring deadline.',
+    '`unknown-exhausted` requires manual log review. `terminal` requires fixing the cause in `reason=`.',
+    '`reason=rule:download-integrity` is the terminal exception: re-fire once on a fresh runner, then stop and investigate upstream if the same artifact fails again.',
+    '`cleanup-failure` reports its runner/tooling cause in `cleanup=`; `spawn-failure`, `attempt-timeout`, and `child-signal` are also runner/tooling failures. Confirm the runner/tooling failure is absent before re-firing.',
+    'Never re-fire a tag once a newer stable release has shipped; cut a new release from `main` instead.',
+  ].join('\n');
+}
+
 function bodyLines({ tag, verdict, reason, runUrl, repo, blockedBy }) {
   const { detail, smokePassed } = describeBlock({ verdict, blockedBy });
   const other = String(blockedBy ?? '').trim();
@@ -76,7 +87,8 @@ function bodyLines({ tag, verdict, reason, runUrl, repo, blockedBy }) {
         : `*Why:* ${other} failed (${reason}).`
       : `*Why:* ${reason}`,
     '*State:* the GitHub Release is still a DRAFT and npm `latest` has NOT moved.',
-    `*Recovery (fix the cause above first — re-firing alone repairs nothing):*\n\`${recoveryCommand(tag, repo)}\``,
+    recoveryGuidance(),
+    `*Recovery command:*\n\`${recoveryCommand(tag, repo)}\``,
     `*Run:* ${runUrl}`,
   ];
 }

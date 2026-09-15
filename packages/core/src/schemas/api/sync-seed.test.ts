@@ -328,6 +328,8 @@ describe('ConflictEntrySchema', () => {
       ConflictEntrySchema.safeParse({
         file: 'docs/foo.md',
         detectedAt: '2026-04-30T10:00:00.000Z',
+        conflict: 'merge-native',
+        docName: 'docs/foo',
       }).success,
     ).toBe(true);
   });
@@ -336,61 +338,41 @@ describe('ConflictEntrySchema', () => {
       ConflictEntrySchema.safeParse({
         file: 'docs/foo.md',
         detectedAt: '2026-04-30T10:00:00.000Z',
-        oursSha: 'abc1234',
+        conflict: 'working-tree',
+        docName: 'docs/foo',
         theirsSha: 'def5678',
         baseSha: '0000000',
       }).success,
     ).toBe(true);
   });
-  test('preserves both recognized conflict origins', () => {
-    for (const conflictKind of ['git', 'stale-external-write']) {
-      const entry = {
+  test('parses an entry outside the content dir with a null docName', () => {
+    expect(
+      ConflictEntrySchema.safeParse({
+        file: 'outside/foo.md',
+        detectedAt: '2026-04-30T10:00:00.000Z',
+        conflict: 'reconcile',
+        reason: 'disk-markers',
+        docName: null,
+      }).success,
+    ).toBe(true);
+  });
+  test('rejects an entry with no conflict', () => {
+    expect(
+      ConflictEntrySchema.safeParse({
         file: 'docs/foo.md',
         detectedAt: '2026-04-30T10:00:00.000Z',
-        conflictKind,
-      };
-      expect(ConflictEntrySchema.parse(entry)).toEqual(entry);
-    }
-  });
-  test.each([
-    { conflictKind: 'unknown', variant: 'working-tree', degradedField: 'conflictKind' },
-    { conflictKind: 'git', variant: 'unknown', degradedField: 'variant' },
-  ])('drops unrecognized $degradedField while preserving the entry', (metadata) => {
-    const entry = {
-      file: 'docs/foo.md',
-      detectedAt: '2026-04-30T10:00:00.000Z',
-      conflictKind: metadata.conflictKind,
-      variant: metadata.variant,
-      oursSha: 'a'.repeat(40),
-      theirsSha: 'b'.repeat(40),
-      baseSha: 'c'.repeat(40),
-    };
-    expect(ConflictEntrySchema.parse(entry)).toEqual({
-      ...entry,
-      [metadata.degradedField]: undefined,
-    });
-  });
-  test('still rejects missing or empty required fields with unrecognized metadata', () => {
-    for (const invalidFields of [
-      { file: '' },
-      { file: undefined },
-      { detectedAt: '' },
-      { detectedAt: undefined },
-    ]) {
-      expect(
-        ConflictEntrySchema.safeParse({
-          file: 'docs/foo.md',
-          detectedAt: '2026-04-30T10:00:00.000Z',
-          conflictKind: 'unknown',
-          variant: 'unknown',
-          ...invalidFields,
-        }).success,
-      ).toBe(false);
-    }
+        docName: 'docs/foo',
+      }).success,
+    ).toBe(false);
   });
   test('rejects empty file', () => {
     expect(
-      ConflictEntrySchema.safeParse({ file: '', detectedAt: '2026-04-30T10:00:00.000Z' }).success,
+      ConflictEntrySchema.safeParse({
+        file: '',
+        detectedAt: '2026-04-30T10:00:00.000Z',
+        conflict: 'merge-native',
+        docName: null,
+      }).success,
     ).toBe(false);
   });
 });
@@ -402,46 +384,29 @@ describe('SyncConflictsSuccessSchema', () => {
   test('parses populated list', () => {
     expect(
       SyncConflictsSuccessSchema.safeParse({
-        conflicts: [{ file: 'a.md', detectedAt: '2026-04-30T10:00:00.000Z' }],
+        conflicts: [
+          {
+            file: 'a.md',
+            detectedAt: '2026-04-30T10:00:00.000Z',
+            conflict: 'merge-native',
+            docName: 'a',
+          },
+        ],
       }).success,
     ).toBe(true);
   });
   test('rejects missing conflicts field', () => {
     expect(SyncConflictsSuccessSchema.safeParse({}).success).toBe(false);
   });
-  test('keeps every conflict when one entry has unrecognized metadata', () => {
-    const known = {
-      file: 'known.md',
-      detectedAt: '2026-04-30T10:00:00.000Z',
-      conflictKind: 'git',
-      variant: 'working-tree',
-      theirsSha: 'a'.repeat(40),
-    };
-    const unknown = {
-      file: 'unknown.md',
-      detectedAt: '2026-04-30T10:01:00.000Z',
-      conflictKind: 'unknown',
-      variant: 'unknown',
-    };
-    expect(SyncConflictsSuccessSchema.parse({ conflicts: [unknown, known] })).toEqual({
-      conflicts: [{ ...unknown, conflictKind: undefined, variant: undefined }, known],
-    });
-  });
 });
 
 describe('SyncResolveConflictRequestSchema', () => {
-  test('accepts explicit empty content but rejects omitted content', () => {
-    expect(
-      SyncResolveConflictRequestSchema.safeParse({ file: 'a.md', strategy: 'content', content: '' })
-        .success,
-    ).toBe(true);
-    expect(
-      SyncResolveConflictRequestSchema.safeParse({ file: 'a.md', strategy: 'content' }).success,
-    ).toBe(false);
-  });
   test('parses {file, strategy:mine}', () => {
     expect(
-      SyncResolveConflictRequestSchema.safeParse({ file: 'a.md', strategy: 'mine' }).success,
+      SyncResolveConflictRequestSchema.safeParse({
+        file: 'a.md',
+        strategy: 'mine',
+      }).success,
     ).toBe(true);
   });
   test('parses {file, strategy:content, content}', () => {
@@ -454,22 +419,32 @@ describe('SyncResolveConflictRequestSchema', () => {
     ).toBe(true);
   });
   test('rejects missing file', () => {
-    expect(SyncResolveConflictRequestSchema.safeParse({ strategy: 'mine' }).success).toBe(false);
+    expect(
+      SyncResolveConflictRequestSchema.safeParse({
+        strategy: 'mine',
+      }).success,
+    ).toBe(false);
   });
   test('rejects empty file', () => {
-    expect(SyncResolveConflictRequestSchema.safeParse({ file: '', strategy: 'mine' }).success).toBe(
-      false,
-    );
+    expect(
+      SyncResolveConflictRequestSchema.safeParse({
+        file: '',
+        strategy: 'mine',
+      }).success,
+    ).toBe(false);
   });
   test('rejects unknown strategy', () => {
     expect(
-      SyncResolveConflictRequestSchema.safeParse({ file: 'a.md', strategy: 'magic' }).success,
+      SyncResolveConflictRequestSchema.safeParse({
+        file: 'a.md',
+        strategy: 'magic',
+      }).success,
     ).toBe(false);
   });
 });
 
 describe('SyncConflictContentSuccessSchema', () => {
-  test('parses populated stages with lifecycleStatus: null (default branch)', () => {
+  test('parses populated stages', () => {
     expect(
       SyncConflictContentSuccessSchema.safeParse({
         file: 'a.md',
@@ -477,7 +452,8 @@ describe('SyncConflictContentSuccessSchema', () => {
         ours: 'mine',
         theirs: 'theirs',
         kind: 'both-modified',
-        lifecycleStatus: null,
+        conflict: 'merge-native',
+        resolutionOptions: ['mine', 'theirs', 'content', 'delete'],
       }).success,
     ).toBe(true);
   });
@@ -489,7 +465,22 @@ describe('SyncConflictContentSuccessSchema', () => {
         ours: '',
         theirs: '',
         kind: 'delete-modify',
-        lifecycleStatus: null,
+        conflict: 'merge-native',
+        resolutionOptions: ['mine', 'theirs', 'content', 'delete'],
+      }).success,
+    ).toBe(true);
+  });
+  test('parses a marker-bearing reconcile payload whose options omit theirs', () => {
+    expect(
+      SyncConflictContentSuccessSchema.safeParse({
+        file: 'a.md',
+        base: 'b',
+        ours: 'o',
+        theirs: 't',
+        kind: 'both-modified',
+        conflict: 'reconcile',
+        reason: 'disk-markers',
+        resolutionOptions: ['mine', 'content', 'delete'],
       }).success,
     ).toBe(true);
   });
@@ -499,21 +490,13 @@ describe('SyncConflictContentSuccessSchema', () => {
         base: '',
         ours: '',
         theirs: '',
-        lifecycleStatus: null,
+        kind: 'both-modified',
+        conflict: 'merge-native',
+        resolutionOptions: [],
       }).success,
     ).toBe(false);
   });
-  test('rejects missing lifecycleStatus (always-present-nullable contract)', () => {
-    expect(
-      SyncConflictContentSuccessSchema.safeParse({
-        file: 'a.md',
-        base: '',
-        ours: '',
-        theirs: '',
-      }).success,
-    ).toBe(false);
-  });
-  test('parses populated stages with lifecycleStatus: "conflict"', () => {
+  test('rejects a payload with no resolutionOptions', () => {
     expect(
       SyncConflictContentSuccessSchema.safeParse({
         file: 'a.md',
@@ -521,33 +504,7 @@ describe('SyncConflictContentSuccessSchema', () => {
         ours: 'o',
         theirs: 't',
         kind: 'both-modified',
-        lifecycleStatus: 'conflict',
-      }).success,
-    ).toBe(true);
-  });
-  test('parses both conflict origins and rejects an unrecognized origin on the content response', () => {
-    for (const conflictKind of ['git', 'stale-external-write']) {
-      expect(
-        SyncConflictContentSuccessSchema.safeParse({
-          file: 'a.md',
-          base: 'b',
-          ours: 'o',
-          theirs: 't',
-          kind: 'both-modified',
-          lifecycleStatus: 'conflict',
-          conflictKind,
-        }).success,
-      ).toBe(true);
-    }
-    expect(
-      SyncConflictContentSuccessSchema.safeParse({
-        file: 'a.md',
-        base: 'b',
-        ours: 'o',
-        theirs: 't',
-        kind: 'both-modified',
-        lifecycleStatus: 'conflict',
-        conflictKind: 'unknown',
+        conflict: 'merge-native',
       }).success,
     ).toBe(false);
   });
@@ -558,7 +515,8 @@ describe('SyncConflictContentSuccessSchema', () => {
         base: 'b',
         ours: 'o',
         theirs: 't',
-        lifecycleStatus: null,
+        conflict: 'merge-native',
+        resolutionOptions: ['mine'],
       }).success,
     ).toBe(false);
   });
@@ -570,7 +528,8 @@ describe('SyncConflictContentSuccessSchema', () => {
         ours: 'o',
         theirs: 't',
         kind: 'made-up-shape',
-        lifecycleStatus: null,
+        conflict: 'merge-native',
+        resolutionOptions: ['mine'],
       }).success,
     ).toBe(false);
   });

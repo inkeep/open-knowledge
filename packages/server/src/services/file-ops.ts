@@ -57,8 +57,7 @@ export interface FileOpsDeps {
     path: string,
   ) => string[];
   getFileIndex: () => ReadonlyMap<string, unknown>;
-  getConflictedFiles: () => ReadonlySet<string>;
-  isDocNameInLifecycleConflict: (docName: string) => boolean;
+  conflictFileForDocName: (docName: string) => string | null;
   captureAndCloseDocuments: (docNames: string[], reason: 'deleted-upstream') => Promise<unknown>;
   markRecentlyRemoved?: (docName: string) => void;
   mutateFileIndexDelete?: (args: { path: string; docName: string }) => void;
@@ -145,12 +144,9 @@ export function createFileOpsService(deps: FileOpsDeps): FileOpsService {
   }
 
   function findConflictedFile(docNames: string[]): string | null {
-    const conflictedFiles = deps.getConflictedFiles();
     for (const docName of docNames) {
-      const filePath = deps.docNameToRelativePath(docName);
-      if (deps.isDocNameInLifecycleConflict(docName) || conflictedFiles.has(filePath)) {
-        return filePath;
-      }
+      const file = deps.conflictFileForDocName(docName);
+      if (file !== null) return file;
     }
     return null;
   }

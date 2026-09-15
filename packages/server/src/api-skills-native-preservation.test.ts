@@ -254,15 +254,17 @@ test('real live skill and reference conflicts refuse edits and rename without ch
   expect(reference.status, reference.body).toBe(200);
   const referenceDocName = `${docName.slice(0, -5)}${file.slice(0, -3)}`;
   for (const current of [docName, referenceDocName]) {
-    const session = await server.serverInstance.sessionManager.getSession(
-      current,
-      'agent-conflict-writer',
-      { displayName: 'Conflict Writer', colorSeed: 'conflict-writer' },
-    );
-    session.dc.document.transact(
-      () => session.dc.document.getMap('lifecycle').set('status', 'conflict'),
-      session.origin,
-    );
+    await server.serverInstance.sessionManager.getSession(current, 'agent-conflict-writer', {
+      displayName: 'Conflict Writer',
+      colorSeed: 'conflict-writer',
+    });
+    const content = readFileSync(join(root, 'normal', `${current}.md`), 'utf8');
+    server.serverInstance.conflicts.raise({
+      kind: 'reconcile',
+      file: server.serverInstance.conflicts.fileOf(current),
+      reason: 'merged-with-markers',
+      stages: { base: content, ours: content, theirs: content },
+    });
   }
   const skillBefore = readFileSync(join(root, 'normal', path), 'utf8');
   const referenceBefore = readFileSync(join(root, 'normal', `${referenceDocName}.md`), 'utf8');

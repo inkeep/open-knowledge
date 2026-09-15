@@ -1,7 +1,6 @@
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useConflicts } from '@/hooks/use-conflicts';
 import { buildResolveDraft } from '@/lib/conflict-resolve-draft';
-import { filePathToDocName } from '@/lib/doc-hash';
 
 interface PrefillTarget {
   getContent: () => { instruction: string; mentions: string[] };
@@ -26,9 +25,7 @@ export function useConflictComposerPrefill(
 ): PrefillState {
   const { conflicts } = useConflicts();
   const conflictFile =
-    docName === null
-      ? undefined
-      : conflicts.find((entry) => filePathToDocName(entry.file) === docName)?.file;
+    docName === null ? undefined : conflicts.find((entry) => entry.docName === docName)?.file;
 
   const conflictFilesKey = conflicts
     .map((entry) => entry.file)

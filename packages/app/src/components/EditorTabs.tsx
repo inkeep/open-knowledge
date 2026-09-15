@@ -56,7 +56,7 @@ import {
   tabIdForNavigationTarget,
   tabParts,
 } from '@/editor/editor-tabs';
-import { useLifecycleStatus } from '@/hooks/use-lifecycle-status';
+import { useDocConflict } from '@/hooks/use-conflicts';
 import { skillFileForDocName } from '@/hooks/use-reconcile-skill-tabs';
 import { useSkills } from '@/hooks/use-skills';
 import { emitFileTreeMenuActionRename } from '@/lib/file-tree-menu-action-events';
@@ -537,8 +537,8 @@ function DocumentTabButton({
   tabId: string;
 }) {
   const { t } = useLingui();
-  const lifecycleStatus = useLifecycleStatus(docName);
-  const hasConflict = lifecycleStatus === 'conflict';
+  const docConflict = useDocConflict(docName);
+  const hasConflict = docConflict !== null;
   const buttonAccessibleLabel = hasConflict ? t`${accessibleLabel} (conflict)` : accessibleLabel;
 
   return (

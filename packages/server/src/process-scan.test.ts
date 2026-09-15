@@ -9,7 +9,7 @@ const lstatSyncMock = vi.fn();
 let scanLockProcesses: typeof import('./process-scan.ts').scanLockProcesses;
 let discoverLockDirs: typeof import('./process-scan.ts').discoverLockDirs;
 let findOkProcessPids: typeof import('./process-scan.ts').findOkProcessPids;
-let pidCwd: typeof import('./process-scan.ts').pidCwd;
+let readPidCwds: typeof import('./process-scan.ts').readPidCwds;
 let realCp: typeof import('node:child_process');
 let realFs: typeof import('node:fs');
 
@@ -23,10 +23,14 @@ beforeAll(async () => {
     readdirSync: readdirSyncMock,
     lstatSync: lstatSyncMock,
   }));
-  ({ scanLockProcesses, discoverLockDirs, findOkProcessPids, pidCwd } = await import(
+  ({ scanLockProcesses, discoverLockDirs, findOkProcessPids, readPidCwds } = await import(
     './process-scan.ts'
   ));
 });
+
+function refuseUnmockedSpawn(command: string, args: readonly string[] = []): never {
+  throw new Error(`unmocked spawnSync escaped to the host: ${command} ${args.join(' ')}`);
+}
 
 function makeSpawnResult(overrides: Partial<SpawnSyncReturns<string>>): SpawnSyncReturns<string> {
   return {
@@ -45,7 +49,7 @@ describe('findOkProcessPids', () => {
   let spawnSyncSpy: typeof spawnSyncMock;
 
   beforeEach(() => {
-    spawnSyncMock.mockReset().mockImplementation(realCp.spawnSync);
+    spawnSyncMock.mockReset().mockImplementation(refuseUnmockedSpawn);
     spawnSyncSpy = spawnSyncMock;
   });
 
@@ -191,11 +195,11 @@ describe('findOkProcessPids', () => {
   });
 });
 
-describe('pidCwd', () => {
+describe('readPidCwds', () => {
   let spawnSyncSpy: typeof spawnSyncMock;
 
   beforeEach(() => {
-    spawnSyncMock.mockReset().mockImplementation(realCp.spawnSync);
+    spawnSyncMock.mockReset().mockImplementation(refuseUnmockedSpawn);
     spawnSyncSpy = spawnSyncMock;
   });
 
@@ -203,7 +207,7 @@ describe('pidCwd', () => {
     spawnSyncMock.mockReset();
   });
 
-  it('returns the CWD from lsof -Fn output', async () => {
+  it('maps each pid to its CWD from lsof -Fn output', async () => {
     spawnSyncSpy.mockReturnValue(
       makeSpawnResult({
         stdout: 'p12345\nfcwd\nn/Users/mike/my-notes\n',
@@ -211,31 +215,82 @@ describe('pidCwd', () => {
       }),
     );
 
-    const cwd = await pidCwd(12345);
-    expect(cwd).toBe('/Users/mike/my-notes');
+    expect(readPidCwds([12345]).get(12345)).toBe('/Users/mike/my-notes');
   });
 
-  it('returns null when lsof is unavailable (ENOENT) — no crash', async () => {
+  it('reports a failed query when lsof is unavailable (ENOENT) — no crash', async () => {
     const enoent = Object.assign(new Error('lsof not found'), { code: 'ENOENT' });
     spawnSyncSpy.mockReturnValue(makeSpawnResult({ error: enoent as NodeJS.ErrnoException }));
 
-    const cwd = await pidCwd(12345);
-    expect(cwd).toBeNull();
+    expect(readPidCwds([12345]).size).toBe(0);
   });
 
-  it('returns null when lsof output has no cwd line', async () => {
+  it('reports no cwd for a pid whose lsof output has no cwd line', async () => {
     spawnSyncSpy.mockReturnValue(makeSpawnResult({ stdout: 'p12345\n', status: 0 }));
 
-    const cwd = await pidCwd(12345);
-    expect(cwd).toBeNull();
+    expect(readPidCwds([12345]).has(12345)).toBe(false);
   });
 
-  it('returns null on timeout (error but not ENOENT)', async () => {
+  it('keeps the answers of the responsive pids when the batched query fails', async () => {
+    const timeoutErr = Object.assign(new Error('ETIMEDOUT'), { code: 'ETIMEDOUT' });
+    spawnSyncSpy
+      .mockReturnValueOnce(makeSpawnResult({ error: timeoutErr as NodeJS.ErrnoException }))
+      .mockReturnValueOnce(makeSpawnResult({ error: timeoutErr as NodeJS.ErrnoException }))
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p22\nfcwd\nn/b\n', status: 0 }))
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p33\nfcwd\nn/c\n', status: 0 }));
+
+    const cwds = readPidCwds([11, 22, 33]);
+    expect(cwds.has(11)).toBe(false);
+    expect(cwds.get(22)).toBe('/b');
+    expect(cwds.get(33)).toBe('/c');
+  });
+
+  it('attributes each cwd to its own pid when a batch answers for only some of them', async () => {
+    spawnSyncSpy.mockReturnValue(
+      makeSpawnResult({ stdout: 'p11\nfcwd\nn/a\np22\np33\nfcwd\nn/c\n', status: 0 }),
+    );
+
+    const cwds = readPidCwds([11, 22, 33]);
+    expect(cwds.get(11)).toBe('/a');
+    expect(cwds.has(22)).toBe(false);
+    expect(cwds.get(33)).toBe('/c');
+  });
+
+  it('issues no second query when the failing batch already covered a single pid', async () => {
     const timeoutErr = Object.assign(new Error('ETIMEDOUT'), { code: 'ETIMEDOUT' });
     spawnSyncSpy.mockReturnValue(makeSpawnResult({ error: timeoutErr as NodeJS.ErrnoException }));
 
-    const cwd = await pidCwd(99999);
-    expect(cwd).toBeNull();
+    expect(readPidCwds([688]).size).toBe(0);
+
+    const cwdQueries = spawnSyncSpy.mock.calls.filter(
+      (call) => call[0] === 'lsof' && (call[1] as string[]).includes('cwd'),
+    );
+    expect(cwdQueries).toHaveLength(1);
+  });
+
+  it('attributes a batch from Linux lsof output, which omits the fcwd line', async () => {
+    spawnSyncSpy.mockReturnValue(
+      makeSpawnResult({ stdout: 'p249\nn/srv/notes\np250\nn/home/mike/second-notes\n', status: 0 }),
+    );
+
+    const cwds = readPidCwds([249, 250]);
+    expect(cwds.get(249)).toBe('/srv/notes');
+    expect(cwds.get(250)).toBe('/home/mike/second-notes');
+  });
+
+  it('keeps the first cwd line for a pid (parity pin: real lsof emits one per pid)', async () => {
+    spawnSyncSpy.mockReturnValue(
+      makeSpawnResult({ stdout: 'p11\nfcwd\nn/first\nn/second\n', status: 0 }),
+    );
+
+    expect(readPidCwds([11]).get(11)).toBe('/first');
+  });
+
+  it('reports a failed query on timeout (error but not ENOENT)', async () => {
+    const timeoutErr = Object.assign(new Error('ETIMEDOUT'), { code: 'ETIMEDOUT' });
+    spawnSyncSpy.mockReturnValue(makeSpawnResult({ error: timeoutErr as NodeJS.ErrnoException }));
+
+    expect(readPidCwds([99999]).size).toBe(0);
   });
 });
 
@@ -246,7 +301,7 @@ describe('discoverLockDirs', () => {
   let lstatSyncSpy: typeof lstatSyncMock;
 
   beforeEach(() => {
-    spawnSyncMock.mockReset().mockImplementation(realCp.spawnSync);
+    spawnSyncMock.mockReset().mockImplementation(refuseUnmockedSpawn);
     existsSyncMock.mockReset().mockImplementation(realFs.existsSync);
     lstatSyncMock.mockReset().mockImplementation(realFs.lstatSync);
     readdirSyncMock
@@ -494,8 +549,12 @@ describe('discoverLockDirs', () => {
           status: 0,
         }),
       )
-      .mockReturnValueOnce(makeSpawnResult({ stdout: `p11\nfcwd\nn${directProject}\n`, status: 0 }))
-      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p22\nfcwd\nn/\n', status: 0 }))
+      .mockReturnValueOnce(
+        makeSpawnResult({
+          stdout: `p11\nfcwd\nn${directProject}\np22\nfcwd\nn/\n`,
+          status: 0,
+        }),
+      )
       .mockReturnValueOnce(makeSpawnResult({ stdout: 'COMMAND PID USER\n', status: 0 }));
     existsSyncSpy.mockImplementation(
       (p: unknown) =>
@@ -521,23 +580,28 @@ describe('discoverLockDirs', () => {
     }
   });
 
-  it('degrades gracefully when lsof is unavailable for pidCwd calls', async () => {
+  it('degrades gracefully when lsof is unavailable for working-directory and listener reads', async () => {
     const enoent = Object.assign(new Error('lsof not found'), { code: 'ENOENT' });
+    const cwdSpy = vi.spyOn(process, 'cwd');
 
     spawnSyncSpy
+      .mockImplementation(() => makeSpawnResult({ error: enoent as NodeJS.ErrnoException }))
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout: '55 /usr/local/bin/ok start\n',
           status: 0,
         }),
-      )
-      .mockReturnValueOnce(makeSpawnResult({ error: enoent as NodeJS.ErrnoException }))
-      .mockReturnValueOnce(makeSpawnResult({ error: enoent as NodeJS.ErrnoException }));
+      );
 
-    existsSyncSpy.mockReturnValue(false);
+    existsSyncSpy.mockImplementation(realFs.existsSync);
 
-    const dirs = await discoverLockDirs();
-    expect(dirs).toHaveLength(0);
+    try {
+      cwdSpy.mockReturnValue('/nonexistent-open-knowledge-test-root');
+      const dirs = await discoverLockDirs();
+      expect(dirs).toHaveLength(0);
+    } finally {
+      cwdSpy.mockRestore();
+    }
   });
 });
 
@@ -586,8 +650,8 @@ describe('lock recovery process evidence', () => {
       .mockReturnValueOnce(
         makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
       )
-      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p123\nfcwd\nn/notes\n' }))
-      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ stdout: `p${process.pid}\nfcwd\nn/notes\n` }));
     expect((await scanLockProcesses()).candidates).toContainEqual({
       lockDir: '/notes/.ok/local',
       pid: process.pid,
@@ -605,13 +669,52 @@ describe('lock recovery process evidence', () => {
       `Could not read the working directory of process ${process.pid}`,
     ]);
   });
+  it('retains a live candidate the batched query could not answer for', async () => {
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p1\nfcwd\nn/other\n', status: 0 }));
+    expect((await scanLockProcesses()).unavailable).toEqual([
+      `Could not read the working directory of process ${process.pid}`,
+    ]);
+  });
+  it('reads every candidate working directory in one lsof query, not one per process', async () => {
+    const pids = [process.pid, process.pid + 1, process.pid + 2, process.pid + 3];
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({
+          stdout: pids.map((pid) => `${pid} open-knowledge-server notes`).join('\n'),
+        }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(
+        makeSpawnResult({
+          stdout: pids.map((pid) => `p${pid}\nfcwd\nn/notes-${pid}`).join('\n'),
+        }),
+      );
+    const scan = await scanLockProcesses();
+    const cwdQueries = spawnSyncMock.mock.calls.filter(
+      (call) => call[0] === 'lsof' && (call[1] as string[]).includes('cwd'),
+    );
+    expect(cwdQueries).toHaveLength(1);
+    expect(cwdQueries[0]?.[1]).toContain(pids.join(','));
+    for (const pid of pids) {
+      expect(scan.candidates).toContainEqual({
+        lockDir: `/notes-${pid}/.ok/local`,
+        pid,
+        source: 'process-cwd',
+      });
+    }
+  });
   it('keeps listener provenance without asserting the process is an OpenKnowledge server', async () => {
     spawnSyncMock
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(
         makeSpawnResult({ stdout: `COMMAND PID USER\nnode ${process.pid} user\n` }),
       )
-      .mockReturnValueOnce(makeSpawnResult({ stdout: 'p123\nfcwd\nn/notes\n' }));
+      .mockReturnValueOnce(makeSpawnResult({ stdout: `p${process.pid}\nfcwd\nn/notes\n` }));
     expect((await scanLockProcesses()).candidates).toContainEqual({
       lockDir: '/notes/.ok/local',
       pid: process.pid,

@@ -126,6 +126,22 @@ test.each([false, true])(
   },
 );
 
+test('a frontmatter schema creation refreshes the skills cache and schedules files before lint', async () => {
+  const signals: string[] = [];
+  const r = rig((channel) => signals.push(channel));
+  vi.spyOn(Date, 'now').mockReturnValue(100_000);
+  expect(await description(r.extension)).toBe('before');
+  writeSkill(r.contentDir, '.ok/skills/alpha', 'after');
+  expect(await description(r.extension)).toBe('before');
+
+  await request(r.extension, '/api/lint/frontmatter-schema', 'POST', {
+    file: '.ok/schemas/cache-refresh.schema.json',
+  });
+
+  expect(await description(r.extension)).toBe('after');
+  expect(signals).toEqual(['files', 'lint-config']);
+});
+
 test('a detected editor fingerprint change refreshes list content before expiry', async () => {
   const r = rig();
   vi.spyOn(Date, 'now').mockReturnValue(100_000);

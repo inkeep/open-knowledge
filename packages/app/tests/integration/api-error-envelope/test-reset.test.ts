@@ -27,6 +27,27 @@ describe('test-reset envelope (RFC 9457)', () => {
     expect((body as Record<string, unknown>).ok).toBeUndefined();
   });
 
+  test('clears stale-write durability and its reconcile conflict', async () => {
+    const docName = `test-reset-stale-${crypto.randomUUID().slice(0, 8)}`;
+    const state = server.instance.durabilityState;
+    state.setReconciledBase(docName, 'current\n');
+    state.recordDisplacedVersion(docName, 'seed\n');
+    state.recordStaleExternalWrite(docName, 'seed\n', 'current\n');
+
+    expect(server.instance.conflicts.findByDocName(docName)?.reason).toBe('stale-external-write');
+
+    const res = await fetch(
+      `http://127.0.0.1:${server.port}/api/test-reset?docName=${encodeURIComponent(docName)}`,
+      { method: 'POST' },
+    );
+
+    expect(res.status).toBe(200);
+    expect(state.getReconciledBase(docName)).toBeUndefined();
+    expect(state.isDisplacedVersion(docName, 'seed\n')).toBe(false);
+    expect(state.getStaleExternalWrite(docName)).toBeUndefined();
+    expect(server.instance.conflicts.findByDocName(docName)).toBeUndefined();
+  });
+
   test('path-traversal docName emits 400 urn:ok:error:invalid-request', async () => {
     const res = await fetch(
       `http://127.0.0.1:${server.port}/api/test-reset?docName=${encodeURIComponent('../escape')}`,

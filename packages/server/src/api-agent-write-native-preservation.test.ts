@@ -19,20 +19,18 @@ const WRITES = [
   '/api/save-version',
   '/api/rollback',
 ];
+const LINT_WRITES = [
+  '/api/lint/markdownlint-config',
+  '/api/lint/frontmatter-schema',
+  '/api/lint/fix',
+];
 const TEST_PATHS = [
   '/api/test-reset',
   '/api/test-flush-git',
   '/api/test-rescan-backlinks',
   '/api/test-rescan-files',
 ];
-const RESIDUAL = [
-  '/api/skill/uninstall',
-  '/api/agent-write',
-  '/api/agent-write-batch',
-  '/api/lint/markdownlint-config',
-  '/api/lint/frontmatter-schema',
-  '/api/lint/fix',
-];
+const RESIDUAL = ['/api/skill/uninstall', '/api/agent-write', '/api/agent-write-batch'];
 const AGENT_INTEGRATIONS_APPLY = '/api/agent-integrations/apply';
 let root: string;
 let enabled: BootedServer;
@@ -59,7 +57,7 @@ afterAll(async () => {
 
 test('native ownership is exclusive and the remaining legacy registry matches its explicit owners', () => {
   for (const server of [enabled, disabled]) {
-    for (const path of [...READS, ...WRITES, '/api/asset', '/api/asset-text'])
+    for (const path of [...READS, ...WRITES, ...LINT_WRITES, '/api/asset', '/api/asset-text'])
       expect(server.serverInstance.nativeApi.paths.filter((entry) => entry === path)).toHaveLength(
         1,
       );
@@ -81,7 +79,14 @@ test('native ownership is exclusive and the remaining legacy registry matches it
 });
 
 test('ingress rejects every migrated route before method or malformed-body admission', async () => {
-  for (const path of [...READS, ...WRITES, ...TEST_PATHS, '/api/asset', '/api/asset-text']) {
+  for (const path of [
+    ...READS,
+    ...WRITES,
+    ...LINT_WRITES,
+    ...TEST_PATHS,
+    '/api/asset',
+    '/api/asset-text',
+  ]) {
     for (const [headers, type] of [
       [{ Host: 'evil.example' }, 'urn:ok:error:host-not-allowed'],
       [{ Origin: 'https://evil.example' }, 'urn:ok:error:invalid-origin'],
@@ -89,33 +94,53 @@ test('ingress rejects every migrated route before method or malformed-body admis
     ] as const) {
       const response = await rawRequest(enabled.port, path, {
         method: 'PATCH',
-        headers,
+        headers: { ...headers, 'X-Request-Id': 'native-admission' },
         body: '{',
       });
       expect(response.status, `${path}: ${response.body}`).toBe(403);
       expect(response.headers.allow).toBeUndefined();
+      expect(response.headers['x-request-id']).toBe(
+        'X-Forwarded-For' in headers ? undefined : 'native-admission',
+      );
+      expect(response.headers['access-control-allow-origin']).toBeUndefined();
       expect(parseProblem(response.body).type).toBe(type);
     }
   }
 });
 
 test('methods, preflight, HEAD and request IDs retain the transport contracts', async () => {
-  for (const path of [...READS, ...WRITES, ...TEST_PATHS]) {
+  for (const path of [...READS, ...WRITES, ...LINT_WRITES, ...TEST_PATHS]) {
     const allowed = READS.includes(path) ? 'GET' : 'POST';
     const wrong = await rawRequest(enabled.port, path, {
       method: 'PATCH',
-      headers: { 'X-Request-Id': 'spine-method' },
+      headers: {
+        Origin: 'http://localhost:5173',
+        'X-Request-Id': 'spine-method',
+      },
       body: '{',
     });
     expect(wrong.status, `${path}: ${wrong.body}`).toBe(405);
     expect(wrong.headers.allow).toBe(allowed);
     expect(wrong.headers['x-request-id']).toBe('spine-method');
+    expect(wrong.headers['access-control-allow-origin']).toBe('http://localhost:5173');
     expect(parseProblem(wrong.body).type).toBe('urn:ok:error:method-not-allowed');
     const head = await rawRequest(enabled.port, path, { method: 'HEAD' });
     expect(head.status, path).toBe(405);
     expect(head.body).toBe('');
-    const preflight = await rawRequest(enabled.port, path, { method: 'OPTIONS' });
+    const preflight = await rawRequest(enabled.port, path, {
+      method: 'OPTIONS',
+      headers: { Host: 'evil.example', Origin: 'http://localhost:5173' },
+    });
     expect(preflight.status, path).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    const disallowedPreflight = await rawRequest(enabled.port, path, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://evil.example', 'X-Request-Id': 'preflight-origin' },
+    });
+    expect(disallowedPreflight.status, path).toBe(403);
+    expect(disallowedPreflight.headers['x-request-id']).toBe('preflight-origin');
+    expect(disallowedPreflight.headers['access-control-allow-origin']).toBeUndefined();
+    expect(parseProblem(disallowedPreflight.body).type).toBe('urn:ok:error:invalid-origin');
   }
 });
 

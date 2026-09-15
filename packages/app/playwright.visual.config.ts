@@ -36,6 +36,7 @@ const isCI = !!process.env.CI;
 
 export default defineConfig({
   testDir: './tests/visual',
+  globalSetup: './tests/stress/_helpers/i18n-catalog-freshness.ts',
   testMatch: /.*\.e2e\.ts$/,
   timeout: 120_000,
   expect: { timeout: EXPECT_TIMEOUT_MS },

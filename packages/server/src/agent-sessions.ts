@@ -14,7 +14,8 @@ export { colorFromSeed } from '@inkeep/open-knowledge-core';
 import * as Y from 'yjs';
 import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
-import { DocInConflictError, isDocInConflict } from './conflict-errors.ts';
+import { isDocInConflict } from './conflict-authority.ts';
+import { DocInConflictError } from './conflict-errors.ts';
 import {
   type AgentWriteContentDivergence,
   evaluateContentDivergence,

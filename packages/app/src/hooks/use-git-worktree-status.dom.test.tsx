@@ -1,4 +1,4 @@
-import { cleanup, renderHook, waitFor } from '@testing-library/react';
+import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const triggered: string[] = [];
@@ -99,7 +99,10 @@ describe('useGitWorktreeStatus single-flight', () => {
     const respond = (index: number, body: unknown) => {
       resolvers[index]?.({ ok: true, json: async () => body });
     };
-    return { fetchMock, resolvers, respond };
+    const respondWithHttpError = (index: number, status: number) => {
+      resolvers[index]?.({ ok: false, status, json: async () => ({}) });
+    };
+    return { fetchMock, resolvers, respond, respondWithHttpError };
   }
 
   test('collapses a burst of signals into one trailing re-run', async () => {
@@ -149,8 +152,9 @@ describe('useGitWorktreeStatus single-flight', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
     respond(1, { staged: [], readable: false });
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.unreadable).toBe(true));
     expect(result.current.status?.staged?.[0]?.path).toBe('real.md');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test('a server predating the readable field is still trusted', async () => {
@@ -162,5 +166,196 @@ describe('useGitWorktreeStatus single-flight', () => {
     respond(0, { staged: [{ path: 'old-server.md', code: 'M' }] });
 
     await waitFor(() => expect(result.current.status?.staged?.[0]?.path).toBe('old-server.md'));
+  });
+});
+
+describe('useGitWorktreeStatus staleness', () => {
+  function deferredFetch() {
+    const resolvers: ((value: unknown) => void)[] = [];
+    const fetchMock = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolvers.push(resolve);
+        }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    const respond = (index: number, body: unknown) => {
+      resolvers[index]?.({ ok: true, json: async () => body });
+    };
+    const respondWithHttpError = (index: number, status: number) => {
+      resolvers[index]?.({ ok: false, status, json: async () => ({}) });
+    };
+    return { fetchMock, respond, respondWithHttpError };
+  }
+
+  test('a request that never settles is abandoned so a later refresh can read again', async () => {
+    vi.useFakeTimers();
+    try {
+      const aborted: unknown[] = [];
+      const fetchMock = vi.fn((_url: string, init: { signal: AbortSignal }) => {
+        return new Promise((_resolve, reject) => {
+          init.signal.addEventListener('abort', () => {
+            aborted.push(init.signal.reason);
+            reject(init.signal.reason);
+          });
+        });
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      const useGitHook = await loadHook();
+      const { result } = renderHook(() => useGitHook(true));
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      signalSyncStatus();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+      expect(aborted).toHaveLength(1);
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.current.unreadable).toBe(true);
+      expect(result.current.loading).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('an http error keeps the last good listing and reports it as possibly out of date', async () => {
+    const { fetchMock, respond, respondWithHttpError } = deferredFetch();
+    const useGitHook = await loadHook();
+    const { result } = renderHook(() => useGitHook(true));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    respond(0, { staged: [{ path: 'real.md', code: 'M' }], readable: true });
+    await waitFor(() => expect(result.current.status?.staged?.[0]?.path).toBe('real.md'));
+    const firstReadAt = result.current.lastReadAt;
+    expect(firstReadAt).toBeTypeOf('number');
+    expect(result.current.stale).toBe(false);
+
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    respondWithHttpError(1, 500);
+
+    await waitFor(() => expect(result.current.stale).toBe(true));
+    expect(result.current.status?.staged?.[0]?.path).toBe('real.md');
+    expect(result.current.lastReadAt).toBe(firstReadAt);
+  });
+
+  test('a network error reports staleness without discarding the listing', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ staged: [], readable: true }) })
+      .mockRejectedValueOnce(new Error('offline'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const useGitHook = await loadHook();
+    const { result } = renderHook(() => useGitHook(true));
+
+    await waitFor(() => expect(result.current.status).not.toBeNull());
+    signalSyncStatus();
+
+    await waitFor(() => expect(result.current.stale).toBe(true));
+    expect(result.current.status).not.toBeNull();
+  });
+
+  test('an unreadable tree is never also reported as a stale listing', async () => {
+    const { fetchMock, respond, respondWithHttpError } = deferredFetch();
+    const useGitHook = await loadHook();
+    const { result } = renderHook(() => useGitHook(true));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    respond(0, { staged: [{ path: 'real.md', code: 'M' }], readable: true });
+    await waitFor(() => expect(result.current.status?.staged?.[0]?.path).toBe('real.md'));
+
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    respond(1, { staged: [], readable: false });
+    await waitFor(() => expect(result.current.unreadable).toBe(true));
+    expect(result.current.stale).toBe(false);
+
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    respondWithHttpError(2, 403);
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    expect(result.current.unreadable).toBe(true);
+    expect(result.current.stale).toBe(false);
+  });
+
+  test('a later readable response clears both the unreadable and the stale signals', async () => {
+    const { fetchMock, respond, respondWithHttpError } = deferredFetch();
+    const useGitHook = await loadHook();
+    const { result } = renderHook(() => useGitHook(true));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    respond(0, { staged: [{ path: 'real.md', code: 'M' }], readable: true });
+    await waitFor(() => expect(result.current.status?.staged?.[0]?.path).toBe('real.md'));
+
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    respondWithHttpError(1, 403);
+    await waitFor(() => expect(result.current.stale).toBe(true));
+
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    respond(2, { staged: [], readable: false });
+    await waitFor(() => expect(result.current.unreadable).toBe(true));
+    expect(result.current.stale).toBe(false);
+
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4));
+    respond(3, { staged: [{ path: 'fresh.md', code: 'M' }], readable: true });
+
+    await waitFor(() => expect(result.current.status?.staged?.[0]?.path).toBe('fresh.md'));
+    expect(result.current.unreadable).toBe(false);
+    expect(result.current.stale).toBe(false);
+    expect(result.current.lastReadAt).toBeTypeOf('number');
+  });
+
+  test('a first read that fails outright stops claiming the tree is still being read', async () => {
+    const { fetchMock, respondWithHttpError } = deferredFetch();
+    const useGitHook = await loadHook();
+    const { result } = renderHook(() => useGitHook(true));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(result.current.loading).toBe(true);
+    respondWithHttpError(0, 500);
+
+    await waitFor(() => expect(result.current.unreadable).toBe(true));
+    expect(result.current.loading).toBe(false);
+    expect(result.current.status).toBeNull();
+    expect(result.current.stale).toBe(false);
+  });
+
+  test('a cold start that fails and then succeeds drops the unreadable verdict', async () => {
+    const { fetchMock, respond, respondWithHttpError } = deferredFetch();
+    const useGitHook = await loadHook();
+    const { result } = renderHook(() => useGitHook(true));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    respondWithHttpError(0, 500);
+    await waitFor(() => expect(result.current.unreadable).toBe(true));
+
+    signalSyncStatus();
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    respond(1, { staged: [{ path: 'fresh.md', code: 'M' }], readable: true });
+
+    await waitFor(() => expect(result.current.status?.staged?.[0]?.path).toBe('fresh.md'));
+    expect(result.current.unreadable).toBe(false);
+    expect(result.current.loading).toBe(false);
+  });
+
+  test('the first read still reports loading until a listing arrives', async () => {
+    const { fetchMock, respond } = deferredFetch();
+    const useGitHook = await loadHook();
+    const { result } = renderHook(() => useGitHook(true));
+
+    expect(result.current.loading).toBe(true);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    respond(0, { staged: [], readable: true });
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
   });
 });

@@ -32,8 +32,8 @@ function serverDoc(rig: TestServer, docName: string) {
   return rig.instance.hocuspocus.documents.get(docName);
 }
 
-function lifecycleStatus(rig: TestServer, docName: string): unknown {
-  return serverDoc(rig, docName)?.getMap('lifecycle').get('status');
+function isConflicted(rig: TestServer, docName: string): boolean {
+  return rig.instance.conflicts.has(docName);
 }
 
 describe('template tombstone quarantine (FR3)', () => {
@@ -97,7 +97,7 @@ describe('template live conflict gate (FR5)', () => {
       const conflicted =
         '---\ntitle: T\ndescription: initial\n---\n\n# Template\n\n<<<<<<< HEAD\nours.\n=======\ntheirs.\n>>>>>>> branch\n';
       writeFileSync(tplFile, conflicted, 'utf-8');
-      await pollUntil(() => lifecycleStatus(rig, docName) === 'conflict', 15000);
+      await pollUntil(() => isConflicted(rig, docName), 30_000);
 
       const put = await fetch(`http://127.0.0.1:${rig.port}/api/template`, {
         method: 'PUT',

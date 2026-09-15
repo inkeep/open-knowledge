@@ -67,6 +67,12 @@ describe('no-unconverted-git-pathspec oxlint rule', () => {
   });
 
   test('exempts every verb whose "--" operands are not pathspecs, and nothing else', () => {
-    expect([...NON_PATHSPEC_VERBS].sort()).toEqual(['clone', 'hash-object', 'mv', 'worktree']);
+    expect([...NON_PATHSPEC_VERBS].sort()).toEqual([
+      'clone',
+      'hash-object',
+      'mv',
+      'update-index',
+      'worktree',
+    ]);
   });
 });

@@ -191,6 +191,106 @@ describe('buildThreadRenderModel', () => {
     expect(perm.mergedIntoToolCall).toBe(false);
   });
 
+  describe('the command a permission asks you to approve', () => {
+    const request = (toolCall: Record<string, unknown>): ThreadEvent =>
+      ev({
+        kind: 'permission_request',
+        requestId: 'p1',
+        toolCall: {
+          toolCallId: 'c1',
+          title: 'Run a diagnostic',
+          kind: 'execute',
+          ...toolCall,
+        } as never,
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+        ts: 1,
+      });
+    const call = (rawInput: unknown): ThreadEvent =>
+      ev({
+        kind: 'session_update',
+        update: {
+          sessionUpdate: 'tool_call',
+          toolCallId: 'c1',
+          title: 'Run a diagnostic',
+          kind: 'execute',
+          status: 'pending',
+          rawInput,
+        } as never,
+        ts: 2,
+      });
+    const update = (rawInput: unknown): ThreadEvent =>
+      ev({
+        kind: 'session_update',
+        update: { sessionUpdate: 'tool_call_update', toolCallId: 'c1', rawInput } as never,
+        ts: 3,
+      });
+    const gate = (events: ThreadEvent[]) => {
+      const model = buildThreadRenderModel(events, null);
+      const permission = model.items.find((item) => item.kind === 'permission');
+      if (permission?.kind !== 'permission') throw new Error('unreachable');
+      return { shown: permission.command, linked: model.permissionsByToolCall.c1?.command };
+    };
+
+    test('a request that arrives before any call carries the command it asks about', () => {
+      expect(gate([request({ rawInput: { command: 'ls -la' } })]).shown).toBe('ls -la');
+    });
+
+    test("the request's own command wins over the call it gates, whichever lands first", () => {
+      const own = request({ rawInput: { command: 'echo from-request' } });
+      const linked = call({ command: 'echo from-call' });
+      for (const events of [
+        [own, linked],
+        [linked, own],
+      ]) {
+        expect(gate(events)).toEqual({ shown: 'echo from-request', linked: 'echo from-request' });
+      }
+    });
+
+    test('a request with no input of its own takes the command from the call it gates', () => {
+      const bare = request({});
+      const linked = call({ command: 'npm test' });
+      for (const events of [
+        [bare, linked],
+        [linked, bare],
+      ]) {
+        expect(gate(events)).toEqual({ shown: 'npm test', linked: 'npm test' });
+      }
+    });
+
+    test('a later update fills in a missing command but never rewrites one the gate shows', () => {
+      expect(gate([call(undefined), request({}), update({ command: 'npm test' })])).toEqual({
+        shown: 'npm test',
+        linked: 'npm test',
+      });
+      expect(
+        gate([call({ command: 'npm test' }), request({}), update({ command: 'rm -rf ~' })]),
+      ).toEqual({ shown: 'npm test', linked: 'npm test' });
+    });
+
+    test('an explicit non-execute kind on the request keeps it off the gate', () => {
+      expect(
+        gate([request({ kind: 'edit', rawInput: { command: 'rename; x' } })]).shown,
+      ).toBeNull();
+    });
+
+    test("a request that omits its kind inherits the linked call's", () => {
+      expect(gate([call({ command: 'npm test' }), request({ kind: undefined })]).shown).toBe(
+        'npm test',
+      );
+      expect(gate([request({ kind: undefined }), call({ command: 'npm test' })]).shown).toBe(
+        'npm test',
+      );
+    });
+
+    test('the command stays on the gate once it is answered', () => {
+      const answered = gate([
+        request({ rawInput: { command: 'npm test' } }),
+        ev({ kind: 'permission_resolved', requestId: 'p1', optionId: 'allow', auto: false, ts: 4 }),
+      ]);
+      expect(answered).toEqual({ shown: 'npm test', linked: 'npm test' });
+    });
+  });
+
   test('keeps the latest plan as a checklist', () => {
     const events: ThreadEvent[] = [
       ev({

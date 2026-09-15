@@ -213,3 +213,54 @@ describe('write({ skill }) with bundle files — the per-file report reaches bot
     expect(result.structuredContent?.text).toBe(result.content[0]?.text);
   });
 });
+
+describe('write — an asset upload whose request to the server fails', () => {
+  type AssetHandler = (args: Record<string, unknown>) => Promise<{
+    isError?: boolean;
+    content: Array<{ type: string; text?: string }>;
+  }>;
+  const asset = { path: 'assets/photo.bin', content: Buffer.from('bytes').toString('base64') };
+  let cwd: string;
+
+  beforeAll(() => {
+    cwd = mkdtempSync(join(tmpdir(), 'ok-write-asset-transport-'));
+    mkdirSync(join(cwd, '.ok'), { recursive: true });
+  });
+
+  afterAll(() => {
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  function writeTool(deps: Omit<Parameters<typeof registerWrite>[1], 'config' | 'resolveCwd'>) {
+    let captured: AssetHandler | null = null;
+    const server = {
+      registerTool(_name: string, _cfg: unknown, toolHandler: AssetHandler) {
+        captured = toolHandler;
+      },
+    } as unknown as ServerInstance;
+    registerWrite(server, { ...deps, config: ConfigSchema.parse({}), resolveCwd: async () => cwd });
+    if (captured === null) throw new Error('write tool did not register');
+    return captured as AssetHandler;
+  }
+
+  it('says the server timed out, and may have applied it, when the upload runs out of time', async () => {
+    const upload = writeTool({
+      serverUrl: 'http://127.0.0.1:1',
+      localApi: async () => {
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
+      },
+    });
+    const result = await upload({ asset });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toBe(
+      'Error: Server timed out: The operation was aborted due to timeout. The server may still have applied the request, so check before retrying.',
+    );
+  });
+
+  it('says the server is unreachable when the upload cannot connect', async () => {
+    const upload = writeTool({ serverUrl: 'http://127.0.0.1:1' });
+    const result = await upload({ asset });
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toBe('Error: Server unreachable: fetch failed');
+  });
+});

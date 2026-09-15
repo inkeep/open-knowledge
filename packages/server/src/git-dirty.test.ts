@@ -100,6 +100,24 @@ describe('dirtyFilesOverlapWith', () => {
     expect(result.files).toEqual(['new-on-feature.md']);
   });
 
+  test('a file inside a wholly untracked directory registers as an overlap', async () => {
+    write('a.md', 'a-on-main\n');
+    commitAll('init');
+    run('git checkout -q -b feature');
+    run('mkdir -p notes');
+    write('notes/plan.md', 'feature-created\n');
+    commitAll('feature adds a file in a new directory');
+    run('git checkout -q main');
+
+    run('mkdir -p notes');
+    write('notes/plan.md', 'untracked-local\n');
+
+    const result = await dirtyFilesOverlapWith(projectDir, 'feature');
+
+    expect(result.conflicts).toBe(true);
+    expect(result.files).toEqual(['notes/plan.md']);
+  });
+
   test('multiple overlapping dirty + untracked files produce sorted deduped list', async () => {
     write('a.md', 'a-on-main\n');
     write('b.md', 'b-on-main\n');

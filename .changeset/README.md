@@ -16,6 +16,8 @@ holds three bits of information:
 
 ---
 
+Follow the [changelog authoring and review policy](../AGENTS.md) when writing release notes.
+
 ## Open Knowledge convention — pre-1.0 bump types
 
 **While Open Knowledge is pre-1.0, NEVER declare a `major` bump in a changeset.** OK uses a modified semver where the bump types map differently:

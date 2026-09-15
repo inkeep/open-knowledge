@@ -1,5 +1,9 @@
 import { describe, expect, test } from 'vitest';
-import { normalizedHandler, orderedComments } from './handler-equivalence.test-helper.ts';
+import {
+  handlerNames,
+  normalizedHandler,
+  orderedComments,
+} from './handler-equivalence.test-helper.ts';
 
 const HANDLER_NAME = 'handleExample';
 const BASELINE = `
@@ -36,5 +40,23 @@ describe('handler equivalence test helper', () => {
     expect(() => normalizedHandler('const other = 1;', HANDLER_NAME)).toThrow(
       'handleExample is absent',
     );
+  });
+
+  test('fails on duplicate declarations and malformed source', () => {
+    expect(() =>
+      normalizedHandler(
+        'const handleExample = () => 1; const handleExample = () => 2;',
+        HANDLER_NAME,
+      ),
+    ).toThrow('duplicate handleExample');
+    expect(() => normalizedHandler('const handleExample = () => {', HANDLER_NAME)).toThrow(
+      'handler.ts must parse',
+    );
+  });
+
+  test('lists handler variable declarations in source order', () => {
+    expect(
+      handlerNames('const handleOne = () => 1; const other = 2; const handleTwo = 3;'),
+    ).toEqual(['handleOne', 'handleTwo']);
   });
 });

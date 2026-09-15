@@ -84,7 +84,7 @@ If you want to set a default sync setting for future collaborators, go to the pr
 
 ### Manual
 
-Nothing runs on a schedule. The sync menu's **Pull**, **Push**, and **Pull and Push** buttons cover everything on demand, and the menu's status section shows what each would do before you click: which files a pull would bring in, which files a push would include, and which changed files sit outside OpenKnowledge's commit scope and would be skipped. When sync is paused because your local edits overlap an incoming update, the same menu grows a **Changed here and on the remote** section listing the blocked files with a **Commit and sync** button — see [Conflicts and pending changes](#conflicts-and-pending-changes).
+Nothing runs on a schedule. The sync menu's **Pull**, **Push**, and **Pull and Push** buttons cover everything on demand, and the menu's status section shows what each would do before you click: which files a pull would bring in, which files a push would include, and which changed files sit outside OpenKnowledge's commit scope and would be skipped. If that list cannot be read the section says so, and if a refresh fails it keeps the last list and marks it as possibly out of date rather than showing you nothing. When sync is paused because your local edits overlap an incoming update, the same menu grows a **Changed here and on the remote** section listing the blocked files with a **Commit and sync** button — see [Conflicts and pending changes](#conflicts-and-pending-changes).
 
 ### Auto (Pull and Push)
 
@@ -129,7 +129,7 @@ The username entries above apply to HTTPS remotes only. SSH projects follow the 
 
 ## Sync status and conflicts
 
-The sync status indicator in the editor opens the sync menu: the mode selector, the manual **Pull** / **Push** / **Pull and Push** buttons, and a live status section showing how far ahead or behind the remote you are, which files a pull would bring in, which files a push would include (and which it would skip), unresolved conflicts, and when a sync last ran. Opening the menu refreshes the remote counts with a read-only fetch — nothing in your copy moves until you press a button. From a terminal, `ok sync` commits, pulls, and pushes in one pass; `ok pull` and `ok push` cover one direction each. All three work whether or not the editor is open (see the [CLI reference](/docs/reference/cli)).
+The sync status indicator in the editor opens the sync menu: the mode selector, the manual **Pull** / **Push** / **Pull and Push** buttons, and a live status section showing how far ahead or behind the remote you are, which files a pull would bring in, which files a push would include (and which it would skip), unresolved conflicts, and when a sync last ran. Opening the menu refreshes the remote counts with a read-only fetch — nothing in your copy moves until you press a button. That status section also says when it cannot see your files: a working tree it cannot read at all renders **Couldn't read the working tree**, and a refresh that fails after a good read keeps the last list you saw and marks it as possibly out of date, counting up from when that read happened. Neither changes the sync status indicator's color, because the problem is with reading the list rather than with sync. From a terminal, `ok sync` commits, pulls, and pushes in one pass; `ok pull` and `ok push` cover one direction each. All three work whether or not the editor is open (see the [CLI reference](/docs/reference/cli)).
 
 ## Resolving a conflict
 
@@ -139,7 +139,11 @@ Click the badged tab or any row in the Conflicts section to focus the conflict.
 
 You can't edit a page with conflicts until they're resolved; the same applies to agents writing over MCP.
 
-Conflicts can also happen with GitHub sync off: another app may save an older copy over an edit OpenKnowledge already saved. The diff view explains this stale-save conflict. **Current** is the protected OpenKnowledge version; **Incoming** is the older external save. Choose which to keep, then apply the resolution. Restoring an exact older version intentionally can trigger the same confirmation. Both versions remain recoverable after restarting the app.
+### Conflicts that don't come from GitHub
+
+A conflict doesn't need a remote. When a file changes on disk while OpenKnowledge has it open, OpenKnowledge merges the two versions itself, and raises a conflict if it can't merge them cleanly.
+
+Another app can also save an exact older copy over an edit OpenKnowledge already acknowledged. In the diff view, **Current** is the protected OpenKnowledge version and **Incoming** is the rejected external save. Choose which to keep. An intentional exact revert can trigger the same confirmation. Both versions stay recoverable after a restart, and keeping current protects against repeated saves from the stale editor. That protection expires after 30 minutes, so update or close the other app rather than relying on that protection.
 
 ## Work on multiple branches
 
@@ -147,7 +151,7 @@ In the desktop app you can open several branches of the same project at once, ea
 
 ## Common failure modes
 
-A few situations stop sync from completing successfully. In each case the sync status indicator changes color and tells you what's wrong. Except where noted, sync stays paused until the underlying issue is fixed, then picks back up on its own.
+A few situations stop sync from completing successfully. Most of them change the sync status indicator's color and tell you what's wrong. Two of the local ones below — another program holding the Git index lock, and a project with no commits yet — change the indicator's color in Manual only; in the automatic modes they are reported in the sync menu and the indicator stays as it is. Except where noted, sync stays paused until the underlying issue is fixed, then picks back up on its own.
 
 ### Conflicts and pending changes
 
@@ -161,6 +165,10 @@ A few situations stop sync from completing successfully. In each case the sync s
 - **The project is parked on a specific commit, not a branch.** This usually means someone checked out an older commit from the terminal to look around. There's no branch to push to, so sync pauses. Switch back to your normal branch (`main`, your working branch, whichever) and sync resumes.
 - **Diverged history.** When the remote has been rewritten (force-push, rebase, branch reset) in a way OpenKnowledge can't reconcile automatically, sync stops and shows the error. This one usually needs a fix from the command line. Ask whoever rewrote the history for help, or restore from the [Timeline](/docs/features/timeline-and-recovery).
 
+### The project has no commits yet
+
+- **The repository has no commits yet.** The project has a remote, but its branch does not exist yet, so there is nothing to send: **Push** stops before it starts and the sync menu says so. Editing a document does not clear this on its own — auto-save writes to OpenKnowledge's own internal ref, never to your branch. Closing and reopening the project (or restarting the app) makes that first commit for you; running `git commit` yourself does the same. Push works from then on.
+
 ### GitHub-side blockers
 
 - **Authentication errors.** Your stored credentials expired, were revoked, or don't have access to this repository anymore. Reconnect from the sync indicator (or from **Settings → Account**) to clear the error.
@@ -170,3 +178,4 @@ A few situations stop sync from completing successfully. In each case the sync s
 ### Temporary problems
 
 - **Network or service hiccups.** Flaky Wi-Fi, a VPN drop, or a brief GitHub outage. OpenKnowledge retries automatically, slowing down progressively as described in [How often sync runs](#how-often-sync-runs). No action needed; a manual trigger from the sync indicator resets the backoff immediately if you want sync to run sooner.
+- **Another program is holding the Git index lock.** Git lets one process at a time write `.git/index`, and it enforces that by creating `.git/index.lock` first. Another tool on your machine — a terminal command, an editor extension, a background indexer — was holding that lock file when sync reached for it. The sync menu names `.git/index.lock` so you know it isn't your work that's wrong. In Auto and Follow modes sync keeps trying and picks up on its own once the other program lets go. In Manual mode nothing runs unattended, so press Sync again after the other program finishes. If the message persists, look for a git command still open in a terminal.

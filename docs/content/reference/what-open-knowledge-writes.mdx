@@ -113,8 +113,9 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | --- | --- | --- |
 | `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server) | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
-| `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
-| `.ok/local/stale-external-writes.json` | Private recovery snapshot containing full acknowledged, rejected, and retained document text for recently displaced writes. Protection expires after 30 minutes, but expired text is removed from disk only on a later state-persistence event, not by a timer or restart; unresolved conflicts remain until resolved | In-project, gitignored |
+| `.ok/local/sync-state.json` | GitHub-sync engine state | In-project, gitignored |
+| `.ok/local/conflicts.json` | Every conflict the app is holding a document for, including conflicts that involve no remote. A row for OpenKnowledge's own merge of the editor against disk embeds up to three full copies of the document body, so **keep this file while any conflict is open**. Deleting it loses those copies. If the app cannot read the file, it renames it to `conflicts.json.corrupt-<timestamp>` and leaves it in place | In-project, gitignored |
+| `.ok/local/stale-external-writes.json` | Recovery snapshot for a rejected stale external save. It can hold the acknowledged, rejected, and retained document text. Protection expires after 30 minutes, but an unresolved snapshot stays until you resolve the conflict | In-project, gitignored |
 | `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the last detached-spawn error log | In-project, gitignored |
 | `.ok/local/last-server-exit.json` | Why the collaboration server the app started last exited — a timestamp, its process id, the exit code, the signal that ended it, and which part of the app was watching. One record, overwritten on each exit; a server the app only attached to, or one you started yourself with `ok start`, leaves none. No document content or paths | In-project, gitignored |
 | `.ok/local/last-server-crash.json` | The collaboration server's own account of a crash it did not survive — a timestamp, the error message and stack, its process id, and how long it had been running. Written by the server itself, so it covers `ok start` too. Holds the most recent crash only | In-project, gitignored |
@@ -126,7 +127,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | `.ok/local/terminal/claude-settings-{mcp,tools,mcp-tools}.json` | Windows-only Claude launch settings written when **Open in Claude** requests MCP or tool preapproval; one of three possible files, overwritten rather than appended on each launch that uses that combination. macOS and Linux pass the same settings inline | In-project, gitignored |
 | `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
 | `.ok/worktrees/<branch>/` | Git worktree checkout created when you open a branch in its own window (project switcher); the path is also added to `.git/info/exclude` | In-project, gitignored |
-| `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs; always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |
+| `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs; always inside a git admin dir, never in your content tree. Its own `info/exclude` file, written when OpenKnowledge opens the repo, keeps machine-local runtime state — `.ok/local/` and `.ok/worktrees/`, plus the pre-`.ok/local/` equivalents that older projects still keep at the `.ok/` root (`.ok/principal.json`, `.ok/server.lock`, `.ok/cache/`, …) — and the `.tmp.<uuid>` files an in-flight atomic write leaves behind out of every saved version, the way `.ok/.gitignore` keeps them out of git | In-project, gitignored (inside `.git/`) |
 
 Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
 
@@ -237,8 +238,9 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 | --- | --- | --- |
 | `.ok/local/server.lock` | Advertise the running server's URL and capabilities (the `ui` capability marks a UI-serving server) | In-project, gitignored |
 | `.ok/local/principal.json` | Your local identity (id, email) for edit attribution | In-project, gitignored |
-| `.ok/local/sync-state.json`, `.ok/local/conflicts.json` | GitHub-sync engine state | In-project, gitignored |
-| `.ok/local/stale-external-writes.json` | Private recovery snapshot containing full acknowledged, rejected, and retained document text for recently displaced writes. Protection expires after 30 minutes, but expired text is removed from disk only on a later state-persistence event, not by a timer or restart; unresolved conflicts remain until resolved | In-project, gitignored |
+| `.ok/local/sync-state.json` | GitHub-sync engine state | In-project, gitignored |
+| `.ok/local/conflicts.json` | Every conflict the app is holding a document for, including conflicts that involve no remote. A row for OpenKnowledge's own merge of the editor against disk embeds up to three full copies of the document body, so **keep this file while any conflict is open**. Deleting it loses those copies. If the app cannot read the file, it renames it to `conflicts.json.corrupt-<timestamp>` and leaves it in place | In-project, gitignored |
+| `.ok/local/stale-external-writes.json` | Recovery snapshot for a rejected stale external save. It can hold the acknowledged, rejected, and retained document text. Protection expires after 30 minutes, but an unresolved snapshot stays until you resolve the conflict | In-project, gitignored |
 | `.ok/local/state.json`, `.ok/local/last-spawn-error.log` | State-schema manifest and the last detached-spawn error log | In-project, gitignored |
 | `.ok/local/last-server-crash.json` | The server's own account of a crash it did not survive — a timestamp, the error message and stack, its process id, and how long it had been running. Holds the most recent crash only | In-project, gitignored |
 | `.ok/local/telemetry/spans-*.jsonl` | Local diagnostic spans, rotated at ~50 MB | In-project, gitignored |
@@ -247,7 +249,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
 | `.ok/local/skill-move-retained.json` | Bookkeeping for a skill move between Project and Global scope that could not finish: which destination copy was kept, why, and what the source looked like at the time. Keyed by scope and skill name, one record each. A record clears when a later move of that skill completes, when the copy at the destination stops matching the one recorded, or when you delete that skill at that scope. No document content | In-project, gitignored |
 | `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
-| `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs (powers the timeline); always inside a git admin dir, never in your content tree | In-project, gitignored (inside `.git/`) |
+| `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs (powers the timeline); always inside a git admin dir, never in your content tree. Its own `info/exclude` file, written when OpenKnowledge opens the repo, keeps machine-local runtime state — `.ok/local/` and `.ok/worktrees/`, plus the pre-`.ok/local/` equivalents that older projects still keep at the `.ok/` root (`.ok/principal.json`, `.ok/server.lock`, `.ok/cache/`, …) — and the `.tmp.<uuid>` files an in-flight atomic write leaves behind out of every saved version, the way `.ok/.gitignore` keeps them out of git | In-project, gitignored (inside `.git/`) |
 
 Diagnostic logs and telemetry are **on by default but local-only** — credential-bearing attributes are redacted (`[REDACTED]`) before anything is written, the files rotate at the size caps above, and nothing leaves the machine until you explicitly run `ok diagnose bundle`. Turn the local sink off with `telemetry.localSink.enabled: false`; see [Configuration](./configuration.mdx).
 
@@ -284,6 +286,12 @@ Disable both with `OK_RECLAIM_DISABLE=1`. `ok start` does not touch skill files;
 </Tab>
 
 </Tabs>
+
+## Versions saved before the shadow exclusions
+
+The shadow repo's `info/exclude` is forward-only. Versions saved by an earlier OpenKnowledge build, and the work-in-progress commits folded into them, still carry the machine-local paths in their trees: the contents of `.ok/local/`, including `principal.json` and `server.lock`, and the caches and logs beside them. A project that predates `.ok/local/` carries the same runtime state at the `.ok/` root instead — `.ok/principal.json`, `.ok/state.json`, `.ok/server.lock`, `.ok/ui.lock`, `.ok/sync-state.json`, `.ok/conflicts.json` and `.ok/last-spawn-error.log`, alongside `.ok/cache/` and `.ok/tmp/`. Opening the project on a current build drops those paths from the shadow repo's staging index and stops adding them to new versions; it does not rewrite the versions already written, and those older commits stay reachable from the versions that folded them.
+
+All of it stays in the shadow git repo inside your own `.git/` directory, which OpenKnowledge never pushes anywhere. A version you saved yourself is kept rather than expired, so this does not age out on its own. `ok deinit` removes the shadow repo along with the rest of a project's OpenKnowledge state.
 
 ## Pi folder trust
 

@@ -9,6 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { isAbsolute, join, resolve, sep } from 'node:path';
+import { atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { checkSymlinkLeaf } from '../fs-safety.ts';
 import { type FrontmatterRecord, mergePatch } from './frontmatter-merge.ts';
@@ -92,7 +93,7 @@ export function applyFolderFrontmatterPatch(
 
     mkdirSync(okDir, { recursive: true });
     const yaml = stringifyYaml(merged);
-    const tmpPath = `${fmPath}.tmp.${process.pid}.${Date.now()}`;
+    const tmpPath = atomicTempPath(fmPath);
     writeFileSync(tmpPath, yaml, 'utf-8');
     renameSync(tmpPath, fmPath);
     return { ok: true, path: relPathOf(contentAbs, fmPath), action: 'written' };

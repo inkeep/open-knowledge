@@ -1,4 +1,4 @@
-import { existsSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { HocuspocusProvider } from '@hocuspocus/provider';
@@ -24,7 +24,10 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-function connectSystemDoc(port: number): {
+function connectSystemDoc(
+  port: number,
+  channels: ReadonlySet<string> = new Set(['files']),
+): {
   provider: HocuspocusProvider;
   signals: CC1DerivedViewPayload[];
   destroy: () => void;
@@ -44,7 +47,7 @@ function connectSystemDoc(port: number): {
         return;
       }
       const result = CC1DerivedViewPayloadSchema.safeParse(raw);
-      if (result.success && result.data.ch === 'files') {
+      if (result.success && channels.has(result.data.ch)) {
         signals.push(result.data);
       }
     },
@@ -83,6 +86,88 @@ describe('CC1 broadcast — L1 integration', () => {
     }
   });
 
+  test('accepted lint config writes advance their intended system channels', async () => {
+    const { provider, signals, destroy } = connectSystemDoc(
+      server.port,
+      new Set(['files', 'lint-config']),
+    );
+    const markdownlintFile = join(server.contentDir, '.markdownlint.json');
+    const schemaFile = `.ok/schemas/cc1-${crypto.randomUUID()}.schema.json`;
+    const schemaPath = join(server.contentDir, schemaFile);
+    try {
+      await waitForSync(provider);
+      const lintBefore = Math.max(
+        0,
+        ...signals.filter((signal) => signal.ch === 'lint-config').map((signal) => signal.seq),
+      );
+      const markdown = await fetch(`http://127.0.0.1:${server.port}/api/lint/markdownlint-config`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ruleId: 'MD012', value: false }),
+      });
+      expect(markdown.status).toBe(200);
+      await pollUntil(
+        () => signals.some((signal) => signal.ch === 'lint-config' && signal.seq > lintBefore),
+        5_000,
+        20,
+      );
+
+      const filesBefore = Math.max(
+        0,
+        ...signals.filter((signal) => signal.ch === 'files').map((signal) => signal.seq),
+      );
+      const nextLintBefore = Math.max(
+        0,
+        ...signals.filter((signal) => signal.ch === 'lint-config').map((signal) => signal.seq),
+      );
+      const frontmatter = await fetch(
+        `http://127.0.0.1:${server.port}/api/lint/frontmatter-schema`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ file: schemaFile }),
+        },
+      );
+      expect(frontmatter.status).toBe(200);
+      await pollUntil(
+        () =>
+          signals.some((signal) => signal.ch === 'files' && signal.seq > filesBefore) &&
+          signals.some((signal) => signal.ch === 'lint-config' && signal.seq > nextLintBefore),
+        5_000,
+        20,
+      );
+      expect(
+        Math.max(...signals.filter((signal) => signal.ch === 'files').map((signal) => signal.seq)),
+      ).toBeGreaterThan(filesBefore);
+      expect(
+        Math.max(
+          ...signals.filter((signal) => signal.ch === 'lint-config').map((signal) => signal.seq),
+        ),
+      ).toBeGreaterThan(nextLintBefore);
+
+      const filesBeforeCleanup = Math.max(
+        0,
+        ...signals.filter((signal) => signal.ch === 'files').map((signal) => signal.seq),
+      );
+      const cleanup = await fetch(`http://127.0.0.1:${server.port}/api/lint/frontmatter-schema`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ file: schemaFile, delete: true }),
+      });
+      expect(cleanup.status).toBe(200);
+      await pollUntil(
+        () => signals.some((signal) => signal.ch === 'files' && signal.seq > filesBeforeCleanup),
+        5_000,
+        20,
+        'the schema-removal files signal before provider teardown',
+      );
+    } finally {
+      rmSync(markdownlintFile, { force: true });
+      rmSync(schemaPath, { force: true });
+      destroy();
+    }
+  });
+
   test('empty disk-created markdown file triggers ch:files and appears in documents', async () => {
     const { provider, signals, destroy } = connectSystemDoc(server.port);
     try {
@@ -90,13 +175,26 @@ describe('CC1 broadcast — L1 integration', () => {
       await wait(100);
 
       const docName = `cc1-empty-${crypto.randomUUID()}`;
+      const filesBefore = Math.max(0, ...signals.map((signal) => signal.seq));
       writeFileSync(join(server.contentDir, `${docName}.md`), '', 'utf-8');
 
-      await pollUntil(() => signals.length > 0, 5000, 50);
+      await pollUntil(
+        () => signals.some((signal) => signal.seq > filesBefore),
+        5000,
+        50,
+        'a files signal caused after the empty-file write',
+      );
 
-      const docsRes = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
-      const docsBody: { documents?: Array<{ docName: string }> } = await docsRes.json();
-      expect(docsBody.documents?.some((doc) => doc.docName === docName)).toBe(true);
+      await pollUntil(
+        async () => {
+          const docsRes = await fetch(`http://127.0.0.1:${server.port}/api/documents`);
+          const docsBody: { documents?: Array<{ docName: string }> } = await docsRes.json();
+          return docsBody.documents?.some((doc) => doc.docName === docName) === true;
+        },
+        5000,
+        50,
+        'the empty file to appear in documents',
+      );
     } finally {
       destroy();
     }

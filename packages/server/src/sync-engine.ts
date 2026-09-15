@@ -15,8 +15,10 @@ import {
   OK_DIR,
   type PullOutcome,
   pathspecArgs,
+  SYNC_PAUSED_REASONS,
   type SyncMode,
   type SyncModeChangeSource,
+  type SyncPausedReason,
   tryLineLevelCombine,
 } from '@inkeep/open-knowledge-core';
 import { inspectGitRepository } from '@inkeep/open-knowledge-core/git-repository';
@@ -24,7 +26,9 @@ import { resolveConfigPath } from '@inkeep/open-knowledge-core/server';
 import { resolveGitDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import type { CC1Broadcaster } from './cc1-broadcast.ts';
 import { getLocalDir } from './config/paths.ts';
-import { type ConflictEntry, ConflictStore } from './conflict-storage.ts';
+import type { ConflictAuthority, RaiseInput } from './conflict-authority.ts';
+import type { Conflict } from './conflict-kinds.ts';
+import { holdsMarkersOnDisk } from './conflict-kinds.ts';
 import type { ContentFilter } from './content-filter.ts';
 import { isShareableOkArtifact } from './content-filter.ts';
 import { isSupportedDocFile } from './doc-extensions.ts';
@@ -33,7 +37,7 @@ import {
   classifyGitError,
   type UserFacingErrorCode,
 } from './error-classification.ts';
-import { tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
+import { tracedRenameSync, tracedUnlinkSync, tracedWriteFileSync } from './fs-traced.ts';
 import { createGhTokenSource, type GhTokenSource } from './gh-token-source.ts';
 import {
   applyGitEnv,
@@ -43,7 +47,13 @@ import {
   withParentLock,
 } from './git-handle.ts';
 import { resolveGitIdentity } from './git-identity.ts';
-import { listNames } from './git-paths.ts';
+import {
+  listNameStatus,
+  listNames,
+  listPorcelainEntries,
+  PORCELAIN_STATUS_ARGS,
+  type PorcelainEntry,
+} from './git-paths.ts';
 import {
   type CheckPushPermissionOptions,
   type DetectGhAccountsFn,
@@ -204,7 +214,7 @@ interface SyncStatus {
   pushErrorCode?: UserFacingErrorCode;
   pullError?: string;
   pullErrorCode?: UserFacingErrorCode;
-  pausedReason?: string;
+  pausedReason?: SyncPausedReason;
   pushPermission?: PushPermissionStatus;
 }
 
@@ -237,11 +247,43 @@ type SyncStagingScope = typeof CONTENT_SYNC_STAGING_SCOPE | typeof PROJECT_SYNC_
 type PullInvocation = 'explicit' | 'sync';
 
 const BLOCKING_PATHS_CAP = 50;
+const LOGGED_PATHS_CAP = 20;
+const PROMISED_PATHS_CAP = 100;
+const INDEX_LOCK_PATH_IN_STDERR = /(^|[/\\])index\.lock\b/i;
+const INDEX_RESET_RETRY_DELAY_SECONDS = 0.05;
 
-const ONE_SHOT_PAUSES: ReadonlySet<string | undefined> = new Set([
+type SyncCycleOp = 'push' | 'pull';
+type IndexResetOp = SyncCycleOp | 'mcp-reconcile';
+
+const SYNC_PAUSED_REASON_VALUES = new Set<string>(SYNC_PAUSED_REASONS);
+
+function isSyncPausedReason(value: string): value is SyncPausedReason {
+  return SYNC_PAUSED_REASON_VALUES.has(value);
+}
+
+const ONE_SHOT_PAUSES: ReadonlySet<SyncPausedReason | undefined> = new Set<SyncPausedReason>([
   'diverged-local-commits',
   'external-changes-pending',
+  'git-index-locked',
   'git-operation-in-progress',
+  'no-commits-yet',
+]);
+
+const NON_PERSISTED_PAUSE_LIST = [
+  'no-push-permission',
+  'auth-error',
+  'git-index-locked',
+  'git-operation-in-progress',
+  'no-commits-yet',
+] as const satisfies readonly SyncPausedReason[];
+
+const NON_PERSISTED_PAUSES: ReadonlySet<SyncPausedReason | undefined> = new Set<SyncPausedReason>(
+  NON_PERSISTED_PAUSE_LIST,
+);
+
+const NON_RESTORED_PAUSES: ReadonlySet<SyncPausedReason | undefined> = new Set<SyncPausedReason>([
+  ...NON_PERSISTED_PAUSE_LIST,
+  'external-changes-pending',
 ]);
 
 const COMMIT_BLOCKING_MESSAGE = 'Commit local changes before syncing';
@@ -258,7 +300,6 @@ interface PersistedSyncState {
   pushStreakIsConnectivity?: boolean;
   pausedReason?: string;
   pausedSinceUtc?: string;
-  inflightConflicts: string[];
 }
 
 interface SyncEngineOptions {
@@ -272,9 +313,8 @@ interface SyncEngineOptions {
   syncEnabled?: boolean;
   credentialConfig?: string[];
   cc1Broadcaster?: Pick<CC1Broadcaster, 'signal'> | null;
+  conflicts: ConflictAuthority;
   onStateChange?: (state: SyncState) => void;
-  onContentConflictsDetected?: (files: string[]) => void | Promise<void>;
-  onContentConflictsResolved?: (files: string[]) => void | Promise<void>;
   setBatchInProgress?: (value: boolean) => void;
   onAutoDisable?: (reason: 'protected-branch') => void | Promise<void>;
   checkpointBeforeStrandedConversion?: (context: {
@@ -289,6 +329,7 @@ interface SyncEngineOptions {
   detectGh?: DetectGhFn;
   detectGhAccounts?: DetectGhAccountsFn;
   _readCredentialUrlMatch?: CredentialUrlMatchReader;
+  _beforeRealIndexResetRetry?: () => void | Promise<void>;
   tokenStore?: ProbeTokenStore | null;
   checkPushPermissionFn?: (opts: CheckPushPermissionOptions) => Promise<PushPermission>;
 }
@@ -297,6 +338,12 @@ function jitteredMs(seconds: number): number {
   const base = seconds * 1000;
   const jitter = base * 0.15 * (2 * Math.random() - 1);
   return Math.round(base + jitter);
+}
+
+function sleepMs(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
 }
 
 function isUnbornHead(projectDir: string): boolean {
@@ -346,8 +393,6 @@ export class SyncEngine {
   private credentialConfig: string[];
   private cc1Broadcaster: Pick<CC1Broadcaster, 'signal'> | null;
   private onStateChange: ((state: SyncState) => void) | undefined;
-  private onContentConflictsDetected: ((files: string[]) => void | Promise<void>) | undefined;
-  private onContentConflictsResolved: ((files: string[]) => void | Promise<void>) | undefined;
   private setBatchInProgress: ((value: boolean) => void) | undefined;
   private onAutoDisable: ((reason: 'protected-branch') => void | Promise<void>) | undefined;
   private checkpointBeforeStrandedConversion:
@@ -356,6 +401,7 @@ export class SyncEngine {
   private checkpointBeforeOverlayRestore:
     | ((context: { branch: string; paths: number }) => void | Promise<void>)
     | undefined;
+  private beforeRealIndexResetRetry: (() => void | Promise<void>) | undefined;
   private mcpTomlEditor: NativeTomlMcpEditor | undefined;
   private detectGh: DetectGhFn | undefined;
 
@@ -393,12 +439,21 @@ export class SyncEngine {
   private consecutiveContentions = 0;
   private ahead = 0;
   private behind = 0;
-  private conflictCount = 0;
+  private get conflictCount(): number {
+    let total = 0;
+    for (const entry of this.conflicts.list()) {
+      if (holdsMarkersOnDisk(entry)) total++;
+    }
+    return total;
+  }
   private pushError: string | undefined;
   private pushErrorCode: UserFacingErrorCode | undefined;
   private pullError: string | undefined;
   private pullErrorCode: UserFacingErrorCode | undefined;
-  private pausedReason: string | undefined;
+  private pausedReason: SyncPausedReason | undefined;
+  private indexLockHitThisCycle = false;
+  private lastLockNoticeKind: 'index-locked' | 'git-lock-held' | undefined;
+  private restingIndexLockPause: SyncPausedReason | undefined;
   private blockingPaths: string[] = [];
   private currentBranch = 'main';
 
@@ -409,7 +464,8 @@ export class SyncEngine {
   private identityUnresolved = false;
 
   private statePath: string;
-  private conflictStore: ConflictStore;
+  private readonly conflicts: ConflictAuthority;
+  private unsubscribeConflicts: (() => void) | null = null;
 
   constructor(options: SyncEngineOptions) {
     this.projectDir = options.projectDir;
@@ -425,12 +481,11 @@ export class SyncEngine {
     this.credentialConfig = options.credentialConfig ?? [];
     this.cc1Broadcaster = options.cc1Broadcaster ?? null;
     this.onStateChange = options.onStateChange;
-    this.onContentConflictsDetected = options.onContentConflictsDetected;
-    this.onContentConflictsResolved = options.onContentConflictsResolved;
     this.setBatchInProgress = options.setBatchInProgress;
     this.onAutoDisable = options.onAutoDisable;
     this.checkpointBeforeStrandedConversion = options.checkpointBeforeStrandedConversion;
     this.checkpointBeforeOverlayRestore = options.checkpointBeforeOverlayRestore;
+    this.beforeRealIndexResetRetry = options._beforeRealIndexResetRetry;
     this.mcpTomlEditor = options.mcpTomlEditor;
     this.detectGh = options.detectGh;
     this.detectGhAccounts = options.detectGhAccounts;
@@ -441,7 +496,7 @@ export class SyncEngine {
     this.tokenStore = options.tokenStore;
     this.checkPushPermissionFn = options.checkPushPermissionFn ?? defaultCheckPushPermission;
     this.statePath = resolve(getLocalDir(this.projectDir), 'sync-state.json');
-    this.conflictStore = new ConflictStore(this.projectDir, this.currentBranch);
+    this.conflicts = options.conflicts;
   }
 
   private syncGhTarget(): { account: GitHubAccount; host: string } {
@@ -534,7 +589,7 @@ export class SyncEngine {
         const b = (await handle.git.raw('rev-parse', '--abbrev-ref', 'HEAD')).trim();
         if (b && b !== 'HEAD') {
           this.currentBranch = b;
-          this.conflictStore.setBranch(b);
+          this.conflicts.setBranch(b);
         }
       } catch {}
     } catch (e) {
@@ -562,42 +617,11 @@ export class SyncEngine {
     const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
     const mergeInProgress = mergeHeadPath !== null && existsSync(mergeHeadPath);
 
-    this.conflictCount = this.conflictStore.count();
-    const mergeNativeEntries = () =>
-      this.conflictStore.list().filter((e) => e.variant !== 'working-tree');
+    await this.conflicts.pruneMergeNativeAgainstGit();
+    const hasMergeNative = (): boolean =>
+      this.conflicts.list().some((e) => e.kind === 'merge-native');
 
-    if (mergeNativeEntries().length > 0 && !mergeInProgress) {
-      log.warn(
-        { count: mergeNativeEntries().length },
-        '[sync] persisted merge conflicts but no MERGE_HEAD — clearing stale state',
-      );
-      for (const entry of mergeNativeEntries()) this.conflictStore.removeConflict(entry.file);
-      this.conflictCount = this.conflictStore.count();
-    } else if (mergeNativeEntries().length > 0 && mergeInProgress) {
-      try {
-        const handle = this.gitHandle();
-        const stillUnmerged = new Set(
-          await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']),
-        );
-        const before = this.conflictCount;
-        for (const entry of mergeNativeEntries()) {
-          if (!stillUnmerged.has(entry.file)) {
-            this.conflictStore.removeConflict(entry.file);
-          }
-        }
-        this.conflictCount = this.conflictStore.count();
-        if (this.conflictCount < before) {
-          log.info(
-            { cleared: before - this.conflictCount, remaining: this.conflictCount },
-            '[sync] reconciled conflicts.json against git unmerged index',
-          );
-        }
-      } catch (e) {
-        log.warn({ err: e }, '[sync] failed to reconcile conflicts with git index');
-      }
-    }
-
-    if (mergeInProgress && mergeNativeEntries().length === 0) {
+    if (mergeInProgress && !hasMergeNative()) {
       log.warn({}, '[sync] stale MERGE_HEAD detected with no tracked conflicts — aborting merge');
       try {
         const handle = this.gitHandle();
@@ -607,22 +631,15 @@ export class SyncEngine {
       }
     }
 
-    if (mergeNativeEntries().length > 0) {
-      await this.notifyContentConflictsDetected(
-        this.conflictStore.list().map((entry) => entry.file),
-      );
+    this.subscribeToConflicts();
+
+    if (hasMergeNative()) {
       this.transitionTo('conflict');
       log.warn(
         { count: this.conflictCount },
         '[sync] restarted with active conflicts — sync paused',
       );
       return;
-    }
-    const workingTreeEntries = this.conflictStore
-      .list()
-      .filter((e) => e.variant === 'working-tree');
-    if (workingTreeEntries.length > 0) {
-      await this.notifyContentConflictsDetected(workingTreeEntries.map((entry) => entry.file));
     }
 
     if (this.mode === 'follow') await this.refreshAuthTier();
@@ -641,6 +658,8 @@ export class SyncEngine {
   }
 
   stop(): void {
+    this.unsubscribeConflicts?.();
+    this.unsubscribeConflicts = null;
     if (this.pullTimer !== null) {
       clearTimeout(this.pullTimer);
       this.pullTimer = null;
@@ -868,7 +887,9 @@ export class SyncEngine {
     if (
       this.pausedReason === 'dirty-tree' ||
       this.pausedReason === 'external-changes-pending' ||
-      this.pausedReason === 'non-content-merge-failure'
+      this.pausedReason === 'non-content-merge-failure' ||
+      this.pausedReason === 'git-index-locked' ||
+      this.pausedReason === 'no-commits-yet'
     ) {
       this.pausedReason = undefined;
       this.clearPullError();
@@ -942,20 +963,24 @@ export class SyncEngine {
       return;
     }
 
-    if (!this.hasRemote || isUnbornHead(this.projectDir)) {
-      log.info(
-        { hasRemote: this.hasRemote },
-        '[sync] one-shot push refused — no remote, or no commits yet',
-      );
+    if (!this.hasRemote) {
+      log.info({ hasRemote: false }, '[sync] one-shot push refused — no remote');
       return;
     }
+    if (isUnbornHead(this.projectDir)) {
+      this.noteUnbornHeadRefusal();
+      return;
+    }
+    this.clearUnbornHeadPause();
 
     const restingState = this.state;
     this.cycleInFlight = 'push';
+    this.beginIndexLockWatch('push');
     try {
       await this.doPushCycle(1);
     } finally {
       this.cycleInFlight = null;
+      this.settleIndexLockPause('push');
       if (this.pushCycleLanded) this.markRun();
       const settled = this.currentState();
       if (settled !== 'conflict' && settled !== 'auth-error') {
@@ -1025,15 +1050,18 @@ export class SyncEngine {
       );
       return this.recordPullOutcome('refused');
     }
+    this.clearUnbornHeadPause();
 
     const restingMode = this.mode;
     const restingState = this.state;
     const restingPausedReason = this.pausedReason;
     this.cycleInFlight = 'pull';
+    this.beginIndexLockWatch('pull');
     try {
       return this.recordPullOutcome(await this.doPullCycle(invocation));
     } finally {
       this.cycleInFlight = null;
+      this.settleIndexLockPause('pull');
       if (restingMode === 'off') {
         if (!ONE_SHOT_PAUSES.has(this.pausedReason)) {
           if (!ONE_SHOT_PAUSES.has(restingPausedReason)) {
@@ -1052,6 +1080,7 @@ export class SyncEngine {
     this.lastPullOutcome = outcome;
     if (outcome === 'succeeded' || outcome === 'up-to-date' || outcome === 'conflict') {
       this.lastPullOkUtc = new Date().toISOString();
+      this.saveStateNow();
     }
     this.cc1Broadcaster?.signal('sync-status');
     return outcome;
@@ -1291,94 +1320,23 @@ export class SyncEngine {
     }
   }
 
-  getConflicts(): import('./conflict-storage.ts').ConflictEntry[] {
-    return this.conflictStore.list();
-  }
-
-  async reconcileConflictsFromGit(): Promise<void> {
-    const mergeNative = this.conflictStore.list().filter((e) => e.variant !== 'working-tree');
-    if (mergeNative.length === 0) return;
-    const before = this.conflictCount;
-    const gitDir = resolveGitDir(this.projectDir);
-    const mergeHeadPath = gitDir ? join(gitDir, 'MERGE_HEAD') : null;
-    const mergeInProgress = mergeHeadPath !== null && existsSync(mergeHeadPath);
-
-    if (!mergeInProgress) {
-      log.info(
-        { cleared: mergeNative.length },
-        '[sync] external resolve detected (no MERGE_HEAD) — clearing merge-native conflicts',
-      );
-      for (const entry of mergeNative) this.conflictStore.removeConflict(entry.file);
-      this.conflictCount = this.conflictStore.count();
-    } else {
-      try {
-        const handle = this.gitHandle();
-        const stillUnmerged = new Set(
-          await listNames(handle.git, ['diff', '--name-only', '--diff-filter=U']),
-        );
-        for (const entry of mergeNative) {
-          if (!stillUnmerged.has(entry.file)) {
-            this.conflictStore.removeConflict(entry.file);
-          }
-        }
-        this.conflictCount = this.conflictStore.count();
-        if (this.conflictCount < before) {
-          log.info(
-            { cleared: before - this.conflictCount, remaining: this.conflictCount },
-            '[sync] external resolve detected (mid-merge) — pruned resolved entries',
-          );
-        }
-      } catch (err) {
-        log.warn({ err }, '[sync] reconcileConflictsFromGit: git probe failed');
+  private subscribeToConflicts(): void {
+    if (this.unsubscribeConflicts !== null) return;
+    this.unsubscribeConflicts = this.conflicts.subscribe(() => {
+      const blocking = this.conflicts.list().some((e) => e.kind === 'merge-native');
+      if (blocking && this.state !== 'conflict') {
+        this.transitionTo('conflict');
+        this.scheduleSaveState();
         return;
       }
-    }
-
-    if (this.conflictCount === before) return;
-    if (this.conflictCount === 0) {
-      this.transitionTo('idle');
-      this.pausedReason = undefined;
-      this.schedulePull();
-      this.schedulePush(0);
-    } else {
-      this.cc1Broadcaster?.signal('sync-status');
-    }
-    this.scheduleSaveState();
-  }
-
-  async resolveConflict(
-    file: string,
-    strategy: import('./conflict-storage.ts').ResolveStrategy,
-    content?: string,
-  ): Promise<void> {
-    const wasWorkingTree =
-      this.conflictStore.list().find((c) => c.file === file)?.variant === 'working-tree';
-    this.setBatchInProgress?.(true);
-    try {
-      try {
-        await this.conflictStore.resolveConflict(file, strategy, content);
-      } catch (e) {
-        this.conflictCount = this.conflictStore.count();
-        this.scheduleSaveState();
-        throw e;
-      }
-      if (wasWorkingTree) {
-        log.info({ choice: strategy }, '[sync] pull-only: conflict resolved by choice');
-      }
-      await this.notifyContentConflictsResolved([file]);
-      this.conflictCount = this.conflictStore.count();
-      if (this.conflictCount === 0) {
+      if (!blocking && this.state === 'conflict') {
         this.transitionTo('idle');
         this.pausedReason = undefined;
         this.schedulePull();
-        this.schedulePush(0);
-      } else {
-        this.cc1Broadcaster?.signal('sync-status');
+        this.schedulePush();
+        this.scheduleSaveState();
       }
-      this.scheduleSaveState();
-    } finally {
-      this.setBatchInProgress?.(false);
-    }
+    });
   }
 
   updateCurrentBranch(branch: string | null): void {
@@ -1390,7 +1348,7 @@ export class SyncEngine {
       }
     } else if (this.currentBranch !== branch) {
       this.currentBranch = branch;
-      this.conflictStore.setBranch(branch);
+      this.conflicts.setBranch(branch);
       if (this.state === 'disabled' && this.pausedReason === 'detached-head') {
         this.pausedReason = undefined;
         this.transitionTo('idle');
@@ -1505,13 +1463,16 @@ export class SyncEngine {
       this.schedulePull();
       return;
     }
+    this.clearUnbornHeadPause();
 
     this.cycleInFlight = 'pull';
+    this.beginIndexLockWatch('pull');
     try {
       if (this.mode === 'follow') await this.refreshAuthTier();
       this.recordPullOutcome(await this.doPullCycle(this.mode === 'full' ? 'sync' : 'explicit'));
     } finally {
       this.cycleInFlight = null;
+      this.settleIndexLockPause('pull');
       this.schedulePull();
     }
   }
@@ -1580,7 +1541,7 @@ export class SyncEngine {
       this.transitionTo('pulling');
       this.setBatchInProgress?.(true);
       try {
-        await this.commitDirtyContentFilesToHead(handle);
+        await this.commitDirtyContentFilesToHead(handle, 'pull');
         const mergePrep = await this.prepareForMerge(handle, branch);
         if (!mergePrep.proceed) return 'refused';
         let stashRestored = true;
@@ -1653,9 +1614,9 @@ export class SyncEngine {
       return 'error';
     }
 
-    const existing = new Map<string, ConflictEntry>();
-    for (const e of this.conflictStore.list()) {
-      if (e.variant === 'working-tree') existing.set(e.file, e);
+    const existing = new Map<string, Extract<Conflict, { kind: 'working-tree' }>>();
+    for (const e of this.conflicts.list()) {
+      if (e.kind === 'working-tree') existing.set(e.file, e);
     }
 
     let plan: Awaited<ReturnType<typeof this.planOverlapReconciliation>>;
@@ -1733,24 +1694,11 @@ export class SyncEngine {
         this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'pull');
         return 'error';
       }
-      let conflictsPersisted = true;
       for (const entry of plan.upserts) {
-        conflictsPersisted = this.conflictStore.addConflict(entry) && conflictsPersisted;
+        this.conflicts.raise(entry);
       }
       for (const file of plan.dissolved) {
-        conflictsPersisted = this.conflictStore.removeConflict(file) && conflictsPersisted;
-      }
-      this.conflictCount = this.conflictStore.count();
-      if (!conflictsPersisted) {
-        log.error(
-          {},
-          '[sync] pull-only: failed to persist conflict state after fast-forward — surfacing as error',
-        );
-        this.handleError(
-          classifyGitError(new Error('failed to persist conflict state after fast-forward')),
-          'pull',
-        );
-        return 'error';
+        this.conflicts.dissolveWorkingTree(file);
       }
 
       this.lastSyncUtc = new Date().toISOString();
@@ -1759,16 +1707,6 @@ export class SyncEngine {
       this.pausedReason = undefined;
       this.blockingPaths = [];
       this.transitionTo('idle');
-
-      if (plan.newConflicts.length > 0) {
-        await this.notifyContentConflictsDetected(plan.newConflicts);
-      }
-      if (plan.dissolved.length > 0) {
-        await this.notifyContentConflictsResolved(plan.dissolved);
-      }
-      if (plan.newConflicts.length > 0 || plan.dissolved.length > 0) {
-        this.cc1Broadcaster?.signal('sync-status');
-      }
 
       const overlayStock = await this.countStandingOverlay(handle);
       log.info(
@@ -1834,12 +1772,12 @@ export class SyncEngine {
     branch: string,
     oldHead: string,
     overlapping: string[],
-    existing: Map<string, ConflictEntry>,
+    existing: Map<string, Extract<Conflict, { kind: 'working-tree' }>>,
   ): Promise<{
     writes: Array<{ path: string; bytes: Buffer }>;
     mineRestore: Array<{ path: string; bytes: Buffer }>;
     deletions: string[];
-    upserts: ConflictEntry[];
+    upserts: Array<Extract<RaiseInput, { kind: 'working-tree' }>>;
     dissolved: string[];
     newConflicts: string[];
     autoCombined: string[];
@@ -1848,7 +1786,7 @@ export class SyncEngine {
     const writes: Array<{ path: string; bytes: Buffer }> = [];
     const mineRestore: Array<{ path: string; bytes: Buffer }> = [];
     const deletions: string[] = [];
-    const upserts: ConflictEntry[] = [];
+    const upserts: Array<Extract<RaiseInput, { kind: 'working-tree' }>> = [];
     const dissolved: string[] = [];
     const newConflicts: string[] = [];
     const autoCombined: string[] = [];
@@ -1974,11 +1912,10 @@ export class SyncEngine {
         continue;
       }
       upserts.push({
+        kind: 'working-tree',
         file: p,
-        detectedAt: priorEntry?.detectedAt ?? new Date().toISOString(),
-        variant: 'working-tree',
         theirsSha,
-        baseSha,
+        ...(baseSha === undefined ? {} : { baseSha }),
       });
       if (!hadEntry) newConflicts.push(p);
     }
@@ -2061,19 +1998,23 @@ export class SyncEngine {
       return;
     }
     if (isUnbornHead(this.projectDir)) {
+      if (this.hasRemote) this.noteUnbornHeadRefusal();
       this.schedulePush();
       return;
     }
+    this.clearUnbornHeadPause();
     if (this.cycleInFlight !== null) {
       if (this.cycleInFlight === 'pull' && this.pushTimer === null) this.schedulePush();
       return;
     }
 
     this.cycleInFlight = 'push';
+    this.beginIndexLockWatch('push');
     try {
       await this.doPushCycle(1);
     } finally {
       this.cycleInFlight = null;
+      this.settleIndexLockPause('push');
       if (this.pushCycleLanded) this.markRun();
       this.schedulePush();
     }
@@ -2086,80 +2027,157 @@ export class SyncEngine {
 
     try {
       const contentFiles = this.gatherContentFilesSync();
+      const promisedPaths = await this.snapshotPromisedPaths();
+      const committedPaths = new Set<string>();
       await withParentLock(async () => {
         await this.assertNoGitOperationInProgress();
         this.transitionTo('pushing');
-        const handle = this.gitHandle(tmpIndexPath);
-
-        if (isUnbornHead(this.projectDir)) {
-          log.info({}, '[sync] repo has no commits yet — skipping push cycle');
-          this.transitionTo('idle');
-          return;
-        }
-        let headSha: string;
         try {
-          headSha = (await handle.git.revparse('HEAD')).trim();
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          const raw = (e as { git?: unknown }).git?.toString() ?? msg;
-          const combined = `${msg}\n${raw}`;
-          if (
-            /unknown revision or path not in the working tree/i.test(combined) ||
-            /ambiguous argument 'HEAD'/i.test(combined) ||
-            /does not have any commits yet/i.test(combined)
-          ) {
+          const handle = this.gitHandle(tmpIndexPath);
+
+          if (isUnbornHead(this.projectDir)) {
             log.info({}, '[sync] repo has no commits yet — skipping push cycle');
             this.transitionTo('idle');
             return;
           }
-          this.handleError(classifyGitError(e instanceof Error ? e : new Error(String(e))), 'push');
-          return;
-        }
-
-        await handle.git.raw(['read-tree', headSha]);
-
-        const headContentSet = await this.listHeadContentPaths(handle, headSha);
-
-        const staged = await this.stageContentFiles(handle, contentFiles);
-
-        const onDiskSet = new Set(staged.map((f) => f.projectRelPath));
-        const deleted = [...headContentSet].filter((f) => !onDiskSet.has(f));
-        await this.removePathsFromIndex(handle, deleted);
-
-        const newTreeSha = (await handle.git.raw(['write-tree'])).trim();
-
-        let headTreeSha = '';
-        try {
-          headTreeSha = (await handle.git.raw(['rev-parse', `${headSha}^{tree}`])).trim();
-        } catch {}
-        if (headTreeSha && headTreeSha === newTreeSha) {
-          let upstreamSha: string | null = null;
+          let headSha: string;
           try {
-            upstreamSha = (
-              await handle.git.raw(['rev-parse', `origin/${this.currentBranch}`])
-            ).trim();
-          } catch {}
-
-          if (upstreamSha === headSha) {
-            log.info(
-              { contentFileCount: contentFiles.length, headSha },
-              '[sync] push cycle: nothing to commit (tree unchanged, origin matches HEAD)',
+            headSha = (await handle.git.revparse('HEAD')).trim();
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            const raw = (e as { git?: unknown }).git?.toString() ?? msg;
+            const combined = `${msg}\n${raw}`;
+            if (
+              /unknown revision or path not in the working tree/i.test(combined) ||
+              /ambiguous argument 'HEAD'/i.test(combined) ||
+              /does not have any commits yet/i.test(combined)
+            ) {
+              log.info({}, '[sync] repo has no commits yet — skipping push cycle');
+              this.transitionTo('idle');
+              return;
+            }
+            this.handleError(
+              classifyGitError(e instanceof Error ? e : new Error(String(e))),
+              'push',
             );
-            this.lastPushedSha = headSha;
-            this.lastSyncUtc = new Date().toISOString();
-            this.pushCycleLanded = true;
-            this.consecutivePushFailures = 0;
-            this.consecutiveContentions = 0;
-            this.pushStreakIsConnectivity = false;
-            this.clearPushError();
+            return;
+          }
+
+          await handle.git.raw(['read-tree', headSha]);
+
+          const headContentSet = await this.listHeadContentPaths(handle, headSha);
+
+          const staged = await this.stageContentFiles(handle, contentFiles);
+
+          const onDiskSet = new Set(staged.map((f) => f.projectRelPath));
+          const deleted = [...headContentSet].filter((f) => !onDiskSet.has(f));
+          await this.removePathsFromIndex(handle, deleted);
+
+          const newTreeSha = (await handle.git.raw(['write-tree'])).trim();
+
+          let headTreeSha = '';
+          try {
+            headTreeSha = (await handle.git.raw(['rev-parse', `${headSha}^{tree}`])).trim();
+          } catch {}
+          if (headTreeSha && headTreeSha === newTreeSha) {
+            let upstreamSha: string | null = null;
+            try {
+              upstreamSha = (
+                await handle.git.raw(['rev-parse', `origin/${this.currentBranch}`])
+              ).trim();
+            } catch {}
+
+            if (upstreamSha === headSha) {
+              log.info(
+                { contentFileCount: contentFiles.length, headSha },
+                '[sync] push cycle: nothing to commit (tree unchanged, origin matches HEAD)',
+              );
+              this.lastPushedSha = headSha;
+              this.lastSyncUtc = new Date().toISOString();
+              this.pushCycleLanded = true;
+              this.consecutivePushFailures = 0;
+              this.consecutiveContentions = 0;
+              this.pushStreakIsConnectivity = false;
+              this.clearPushError();
+              this.transitionTo('idle');
+              return;
+            }
+
+            log.info(
+              { headSha, upstreamSha },
+              '[sync] push cycle: tree unchanged but local ahead of origin — pushing existing commits',
+            );
+
+            let hasUpstream = false;
+            try {
+              await handle.git.raw(['rev-parse', '--abbrev-ref', `${this.currentBranch}@{u}`]);
+              hasUpstream = true;
+            } catch {}
+
+            if (hasUpstream) {
+              await handle.git.raw(['push', 'origin', this.currentBranch]);
+            } else {
+              await handle.git.raw(['push', '--set-upstream', 'origin', this.currentBranch]);
+            }
+
+            commitSha = headSha;
+            return;
+          }
+
+          let changedProjectRelPaths: string[] = [];
+          let changedContentRelPaths: string[] = [];
+          try {
+            const diffPaths = await listNames(handle.git, [
+              'diff-tree',
+              '--name-only',
+              '-r',
+              headSha,
+              newTreeSha,
+            ]);
+            if (diffPaths.length > 0) {
+              const contentFileByProjRel = new Map(
+                contentFiles.map((f) => [f.projectRelPath, f.contentRelPath]),
+              );
+              for (const projRelPath of diffPaths) {
+                changedProjectRelPaths.push(projRelPath);
+                const contentRelPath =
+                  contentFileByProjRel.get(projRelPath) ??
+                  toPosix(relative(this.contentDir, join(this.projectDir, projRelPath)));
+                if (contentRelPath && !contentRelPath.startsWith('..')) {
+                  changedContentRelPaths.push(contentRelPath);
+                }
+              }
+            }
+          } catch {
+            changedProjectRelPaths = contentFiles.map((f) => f.projectRelPath).concat(deleted);
+            changedContentRelPaths = contentFiles.map((f) => f.contentRelPath);
+          }
+          const message = this.buildCommitMessage(changedContentRelPaths);
+
+          await this.applyCommitIdentity(handle);
+
+          const newCommitSha = (
+            await handle.git.raw(['commit-tree', newTreeSha, '-p', headSha, '-m', message])
+          ).trim();
+
+          if (!newCommitSha || !SHA_HEX_40.test(newCommitSha)) {
+            log.warn(
+              { raw: newCommitSha },
+              '[sync] commit-tree returned invalid SHA — aborting push',
+            );
             this.transitionTo('idle');
             return;
           }
 
-          log.info(
-            { headSha, upstreamSha },
-            '[sync] push cycle: tree unchanged but local ahead of origin — pushing existing commits',
-          );
+          await handle.git.raw([
+            'update-ref',
+            `refs/heads/${this.currentBranch}`,
+            newCommitSha,
+            headSha,
+          ]);
+
+          await this.resetRealIndexForPaths(changedProjectRelPaths, 'push');
+          for (const projRelPath of changedProjectRelPaths) committedPaths.add(projRelPath);
 
           let hasUpstream = false;
           try {
@@ -2173,77 +2191,10 @@ export class SyncEngine {
             await handle.git.raw(['push', '--set-upstream', 'origin', this.currentBranch]);
           }
 
-          commitSha = headSha;
-          return;
+          commitSha = newCommitSha;
+        } finally {
+          await this.healStaleRealIndex(promisedPaths, committedPaths);
         }
-
-        let changedProjectRelPaths: string[] = [];
-        let changedContentRelPaths: string[] = [];
-        try {
-          const diffPaths = await listNames(handle.git, [
-            'diff-tree',
-            '--name-only',
-            '-r',
-            headSha,
-            newTreeSha,
-          ]);
-          if (diffPaths.length > 0) {
-            const contentFileByProjRel = new Map(
-              contentFiles.map((f) => [f.projectRelPath, f.contentRelPath]),
-            );
-            for (const projRelPath of diffPaths) {
-              changedProjectRelPaths.push(projRelPath);
-              const contentRelPath =
-                contentFileByProjRel.get(projRelPath) ??
-                toPosix(relative(this.contentDir, join(this.projectDir, projRelPath)));
-              if (contentRelPath && !contentRelPath.startsWith('..')) {
-                changedContentRelPaths.push(contentRelPath);
-              }
-            }
-          }
-        } catch {
-          changedProjectRelPaths = contentFiles.map((f) => f.projectRelPath).concat(deleted);
-          changedContentRelPaths = contentFiles.map((f) => f.contentRelPath);
-        }
-        const message = this.buildCommitMessage(changedContentRelPaths);
-
-        await this.applyCommitIdentity(handle);
-
-        const newCommitSha = (
-          await handle.git.raw(['commit-tree', newTreeSha, '-p', headSha, '-m', message])
-        ).trim();
-
-        if (!newCommitSha || !SHA_HEX_40.test(newCommitSha)) {
-          log.warn(
-            { raw: newCommitSha },
-            '[sync] commit-tree returned invalid SHA — aborting push',
-          );
-          this.transitionTo('idle');
-          return;
-        }
-
-        await handle.git.raw([
-          'update-ref',
-          `refs/heads/${this.currentBranch}`,
-          newCommitSha,
-          headSha,
-        ]);
-
-        await this.resetRealIndexForPaths(changedProjectRelPaths);
-
-        let hasUpstream = false;
-        try {
-          await handle.git.raw(['rev-parse', '--abbrev-ref', `${this.currentBranch}@{u}`]);
-          hasUpstream = true;
-        } catch {}
-
-        if (hasUpstream) {
-          await handle.git.raw(['push', 'origin', this.currentBranch]);
-        } else {
-          await handle.git.raw(['push', '--set-upstream', 'origin', this.currentBranch]);
-        }
-
-        commitSha = newCommitSha;
       });
 
       if (commitSha) {
@@ -2283,7 +2234,7 @@ export class SyncEngine {
           try {
             await retryHandle.git.fetch('origin');
             retryStage = 'push';
-            await this.commitDirtyContentFilesToHead(retryHandle);
+            await this.commitDirtyContentFilesToHead(retryHandle, 'push');
             const mergePrep = await this.prepareForMerge(retryHandle, this.currentBranch);
             if (!mergePrep.proceed) {
               this.setBatchInProgress?.(false);
@@ -2348,7 +2299,10 @@ export class SyncEngine {
     this.scheduleSaveState();
   }
 
-  private async commitDirtyContentFilesToHead(handle: GitHandle): Promise<string | null> {
+  private async commitDirtyContentFilesToHead(
+    handle: GitHandle,
+    op: SyncCycleOp,
+  ): Promise<string | null> {
     await this.assertNoGitOperationInProgress();
     const status = await handle.git.status();
     if (status.files.length === 0) return null;
@@ -2403,7 +2357,7 @@ export class SyncEngine {
         headSha,
       ]);
 
-      await this.resetRealIndexForPaths(changedProjectRelPaths, handle);
+      await this.resetRealIndexForPaths(changedProjectRelPaths, op, handle);
 
       return newCommitSha;
     } finally {
@@ -2636,7 +2590,10 @@ export class SyncEngine {
         this.transitionTo('idle');
       }
     }
-    log.warn({ err: error, op }, '[sync] cycle refused because a Git operation holds the tree');
+    log.error(
+      { event: 'git-operation-refusal', err: error, op, branch: this.currentBranch },
+      '[sync] cycle refused because a Git operation holds the tree — finish or abort it to resume sync',
+    );
     this.cc1Broadcaster?.signal('sync-status');
     this.scheduleSaveState();
   }
@@ -2654,7 +2611,7 @@ export class SyncEngine {
   ): Promise<void> {
     if (reconciled.length === 0) return;
     if (this.hasGitOperationInProgress()) {
-      throw new Error('refusing MCP entry commit while a Git operation is in progress');
+      throw new GitOperationInProgressError();
     }
 
     await withParentLock(async () => {
@@ -2770,7 +2727,10 @@ export class SyncEngine {
             { event: 'mcp-config-reconcile', outcome: 'overlay-replay-failed', err },
             '[sync] MCP overlay replay failed; resetting the affected index entries',
           );
-          await this.resetRealIndexForPaths(replayEntries.map((entry) => entry.path));
+          await this.resetRealIndexForPaths(
+            replayEntries.map((entry) => entry.path),
+            'mcp-reconcile',
+          );
           this.restoreReconciledMcpOverlays(reconciled);
         }
         log.info(
@@ -2948,21 +2908,163 @@ export class SyncEngine {
     }
   }
 
-  private async resetRealIndexForPaths(paths: string[], handle?: GitHandle): Promise<void> {
+  private async snapshotPromisedPaths(): Promise<string[]> {
+    let entries: PorcelainEntry[];
+    let unmerged: ReadonlySet<string>;
+    try {
+      const { git } = this.gitHandle();
+      entries = await listPorcelainEntries(git, PORCELAIN_STATUS_ARGS);
+      unmerged = new Set(await listNames(git, ['diff', '--name-only', '--diff-filter=U']));
+    } catch (e) {
+      log.warn(
+        { event: 'snapshot-read-failed', err: e, branch: this.currentBranch },
+        '[sync] could not read the real index before the push cycle — skipping stale-index self-heal',
+      );
+      return [];
+    }
+
+    const paths: string[] = [];
+    for (const entry of entries) {
+      if (unmerged.has(entry.path)) continue;
+      if (!this.isSyncScopedPath(entry.path)) continue;
+      paths.push(entry.path);
+      if (paths.length === PROMISED_PATHS_CAP) break;
+    }
+    return paths;
+  }
+
+  private async healStaleRealIndex(
+    promisedPaths: string[],
+    committedPaths: ReadonlySet<string>,
+  ): Promise<void> {
+    const promised = new Set(promisedPaths.filter((p) => !committedPaths.has(p)));
+    if (promised.size === 0) return;
+
+    if (this.hasGitOperationInProgress()) {
+      log.warn(
+        {
+          event: 'self-heal-skipped-git-operation',
+          branch: this.currentBranch,
+          pathCount: promised.size,
+          paths: [...promised].slice(0, LOGGED_PATHS_CAP),
+        },
+        '[sync] self-heal skipped — a Git operation now holds the tree, so the promised paths stay listed until it ends',
+      );
+      return;
+    }
+
+    const handle = this.gitHandle();
+    let stagedAgainstHead: string[];
+    let changedInWorktree: string[];
+    try {
+      const rows = await listNameStatus(handle.git, [
+        'diff-index',
+        '--cached',
+        '--name-status',
+        'HEAD',
+      ]);
+      stagedAgainstHead = rows.flatMap((row) =>
+        row.status[0] === 'R' || row.status[0] === 'C' ? [row.from, row.to] : [row.to],
+      );
+      changedInWorktree = await listNames(handle.git, ['diff', '--name-only', 'HEAD']);
+    } catch (e) {
+      log.error(
+        {
+          event: 'self-heal-skipped',
+          branch: this.currentBranch,
+          pathCount: promised.size,
+          paths: [...promised].slice(0, LOGGED_PATHS_CAP),
+          err: e,
+        },
+        '[sync] self-heal could not compare the real index against HEAD — the promised paths stay listed in the real index',
+      );
+      return;
+    }
+
+    const worktreeDiffers = new Set(changedInWorktree);
+    const healable = [
+      ...new Set(stagedAgainstHead.filter((p) => promised.has(p) && !worktreeDiffers.has(p))),
+    ];
+    if (healable.length === 0) return;
+
+    await this.resetRealIndexForPaths(healable, 'push', handle);
+    log.warn(
+      {
+        event: 'self-heal-applied',
+        branch: this.currentBranch,
+        pathCount: healable.length,
+        paths: healable.slice(0, LOGGED_PATHS_CAP),
+      },
+      '[sync] self-heal cleared stale real-index entries left behind by an earlier push cycle',
+    );
+  }
+
+  private async resetRealIndexForPaths(
+    paths: string[],
+    op: IndexResetOp,
+    handle?: GitHandle,
+  ): Promise<void> {
     if (paths.length === 0) return;
     const realIndexHandle = handle ?? this.gitHandle();
     const unique = [...new Set(paths)];
     const BATCH = 100;
     for (let i = 0; i < unique.length; i += BATCH) {
       const batch = unique.slice(i, i + BATCH);
+      await this.resetRealIndexBatch(realIndexHandle, batch, op);
+    }
+  }
+
+  private async resetRealIndexBatch(
+    handle: GitHandle,
+    batch: string[],
+    op: IndexResetOp,
+  ): Promise<void> {
+    let firstError: unknown;
+    try {
+      await handle.git.raw(['reset', 'HEAD', ...pathspecArgs(batch)]);
+      return;
+    } catch (e) {
+      firstError = e;
+    }
+
+    let classified = classifyGitError(firstError);
+    let finalError = firstError;
+    let recovered = false;
+
+    if (classified.class === 'local' && classified.subclass === 'index-lock') {
+      await this.beforeRealIndexResetRetry?.();
+      await sleepMs(jitteredMs(INDEX_RESET_RETRY_DELAY_SECONDS));
       try {
-        await realIndexHandle.git.raw(['reset', 'HEAD', ...pathspecArgs(batch)]);
-      } catch (resetErr: unknown) {
-        log.warn(
-          { resetErr, files: batch.length },
-          '[sync] real-index reset failed; paths may remain staged',
-        );
+        await handle.git.raw(['reset', 'HEAD', ...pathspecArgs(batch)]);
+        recovered = true;
+      } catch (e) {
+        finalError = e;
+        classified = classifyGitError(e);
       }
+    }
+
+    const fields = {
+      event: 'stale-index-reset',
+      outcome: recovered ? 'recovered-on-retry' : 'failed',
+      op,
+      branch: this.currentBranch,
+      pathCount: batch.length,
+      paths: batch.slice(0, LOGGED_PATHS_CAP),
+      errorClass: classified.class,
+      errorSubclass: classified.subclass,
+      err: finalError,
+    };
+    if (recovered) {
+      log.warn(
+        fields,
+        '[sync] stale-index reset needed a second attempt — it succeeded, so the panel listing is current',
+      );
+    } else {
+      log.error(fields, '[sync] stale-index reset failed — the panel listing may stay stale');
+    }
+
+    if (!recovered && classified.class === 'local' && classified.subclass === 'index-lock') {
+      this.noteIndexLockEncountered(op, classified);
     }
   }
 
@@ -3062,10 +3164,8 @@ export class SyncEngine {
 
     if (contentConflicts.length > 0) {
       for (const file of contentConflicts) {
-        this.conflictStore.addConflict({ file, detectedAt: new Date().toISOString() });
+        this.conflicts.raise({ kind: 'merge-native', file });
       }
-      this.conflictCount = this.conflictStore.count();
-      await this.notifyContentConflictsDetected(contentConflicts);
 
       if (this.pullTimer !== null) {
         clearTimeout(this.pullTimer);
@@ -3112,24 +3212,6 @@ export class SyncEngine {
     }
   }
 
-  private async notifyContentConflictsDetected(files: string[]): Promise<void> {
-    if (files.length === 0) return;
-    try {
-      await this.onContentConflictsDetected?.(files);
-    } catch (err) {
-      log.warn({ err, files }, '[sync] content conflict callback failed');
-    }
-  }
-
-  private async notifyContentConflictsResolved(files: string[]): Promise<void> {
-    if (files.length === 0) return;
-    try {
-      await this.onContentConflictsResolved?.(files);
-    } catch (err) {
-      log.warn({ err, files }, '[sync] content conflict resolved callback failed');
-    }
-  }
-
   private clearPushError(): void {
     this.pushError = undefined;
     this.pushErrorCode = undefined;
@@ -3140,7 +3222,7 @@ export class SyncEngine {
     this.pullErrorCode = undefined;
   }
 
-  private handleError(classified: ClassifiedError, op: 'push' | 'pull'): void {
+  private handleError(classified: ClassifiedError, op: SyncCycleOp): void {
     if (classified.userFacingCode !== null) {
       if (op === 'push') {
         this.pushErrorCode = classified.userFacingCode;
@@ -3176,6 +3258,12 @@ export class SyncEngine {
       this.transitionTo('disabled');
       this.pausedReason = 'protected-branch';
       void this.onAutoDisable?.('protected-branch');
+    } else if (classified.class === 'local' && classified.subclass === 'index-lock') {
+      this.bumpFailureCount(op);
+      if (this.state === 'pushing' || this.state === 'pulling' || this.state === 'fetching') {
+        this.transitionTo('idle');
+      }
+      this.noteIndexLockEncountered(op, classified);
     } else if (classified.class === 'local' && classified.subclass === 'dirty-tree') {
       if (this.state === 'conflict' || this.conflictCount > 0) {
         this.transitionTo('conflict');
@@ -3194,12 +3282,85 @@ export class SyncEngine {
     }
   }
 
+  private otherLegInFlight(op: SyncCycleOp): boolean {
+    return this.cycleInFlight !== null && this.cycleInFlight !== op;
+  }
+
+  private beginIndexLockWatch(op: SyncCycleOp): void {
+    if (this.otherLegInFlight(op)) return;
+    const alreadyLocked = this.pausedReason === 'git-index-locked';
+    this.indexLockHitThisCycle = false;
+    if (!alreadyLocked) this.lastLockNoticeKind = undefined;
+    this.restingIndexLockPause = alreadyLocked ? undefined : this.pausedReason;
+  }
+
+  private holdsIndexLock(classified: ClassifiedError): boolean {
+    return INDEX_LOCK_PATH_IN_STDERR.test(`${classified.message}\n${classified.rawStderr ?? ''}`);
+  }
+
+  private noteIndexLockEncountered(op: IndexResetOp, classified: ClassifiedError): void {
+    const isIndexLock = this.holdsIndexLock(classified);
+    const noticeKind = isIndexLock ? 'index-locked' : 'git-lock-held';
+    if (this.lastLockNoticeKind !== noticeKind) {
+      this.lastLockNoticeKind = noticeKind;
+      const fields = {
+        event: noticeKind,
+        op,
+        branch: this.currentBranch,
+        errorClass: classified.class,
+        errorSubclass: classified.subclass,
+      };
+      if (isIndexLock) {
+        log.error(
+          fields,
+          '[sync] index locked — another program is holding .git/index.lock, so sync cannot update it',
+        );
+      } else {
+        log.error(
+          fields,
+          '[sync] a git lock file blocked the operation — the held lock is not .git/index.lock, so the listing is not paused on it',
+        );
+      }
+    }
+    if (!isIndexLock) return;
+    this.indexLockHitThisCycle = true;
+    if (this.pausedReason === 'git-index-locked') return;
+    this.pausedReason = 'git-index-locked';
+    this.cc1Broadcaster?.signal('sync-status');
+  }
+
+  private noteUnbornHeadRefusal(): void {
+    if (this.pausedReason !== 'no-commits-yet') {
+      log.error(
+        { event: 'unborn-head-refusal', branch: this.currentBranch },
+        '[sync] push refused — this repository has no commits yet, so there is nothing to send',
+      );
+    }
+    this.pausedReason = 'no-commits-yet';
+    this.cc1Broadcaster?.signal('sync-status');
+  }
+
+  private clearUnbornHeadPause(): void {
+    if (this.pausedReason !== 'no-commits-yet') return;
+    this.pausedReason = undefined;
+    this.cc1Broadcaster?.signal('sync-status');
+  }
+
+  private settleIndexLockPause(op: SyncCycleOp): void {
+    if (this.otherLegInFlight(op)) return;
+    if (this.indexLockHitThisCycle) return;
+    if (this.pausedReason !== 'git-index-locked') return;
+    this.pausedReason = this.restingIndexLockPause;
+    this.cc1Broadcaster?.signal('sync-status');
+  }
+
   private currentState(): SyncState {
     return this.state;
   }
 
   private markRun(): void {
     this.lastPushOkUtc = new Date().toISOString();
+    this.saveStateNow();
     this.cc1Broadcaster?.signal('sync-status');
   }
 
@@ -3221,11 +3382,14 @@ export class SyncEngine {
   }
 
   private saveStateNow(): void {
+    if (this.stateSaveTimer !== null) {
+      clearTimeout(this.stateSaveTimer);
+      this.stateSaveTimer = null;
+    }
     try {
-      const persistedReason =
-        this.pausedReason === 'no-push-permission' || this.pausedReason === 'auth-error'
-          ? undefined
-          : this.pausedReason;
+      const persistedReason = NON_PERSISTED_PAUSES.has(this.pausedReason)
+        ? undefined
+        : this.pausedReason;
       const data: PersistedSyncState = {
         version: 1,
         lastSyncUtc: this.lastSyncUtc,
@@ -3238,9 +3402,10 @@ export class SyncEngine {
         pushStreakIsConnectivity: this.pushStreakIsConnectivity,
         pausedReason: persistedReason,
         pausedSinceUtc: persistedReason ? new Date().toISOString() : undefined,
-        inflightConflicts: this.conflictStore.list().map((c) => c.file),
       };
-      writeFileSync(this.statePath, JSON.stringify(data, null, 2), 'utf-8');
+      const tmpStatePath = `${this.statePath}.tmp`;
+      tracedWriteFileSync(tmpStatePath, JSON.stringify(data, null, 2), 'utf-8');
+      tracedRenameSync(tmpStatePath, this.statePath);
     } catch (e) {
       log.warn({ err: e }, '[sync] failed to persist sync state');
     }
@@ -3260,22 +3425,16 @@ export class SyncEngine {
       this.consecutivePullFailures = data.consecutiveFailures ?? 0;
       this.consecutivePushFailures = data.consecutivePushFailures ?? 0;
       this.pushStreakIsConnectivity = data.pushStreakIsConnectivity ?? false;
-      this.pausedReason =
-        data.pausedReason === 'no-push-permission' ||
-        data.pausedReason === 'auth-error' ||
-        data.pausedReason === 'external-changes-pending'
-          ? undefined
-          : data.pausedReason;
-
-      const inflightFiles = data.inflightConflicts ?? [];
-      if (inflightFiles.length > 0) {
-        for (const file of inflightFiles) {
-          if (!this.conflictStore.list().some((c) => c.file === file)) {
-            this.conflictStore.addConflict({ file, detectedAt: new Date().toISOString() });
-          }
-        }
-        this.conflictCount = this.conflictStore.count();
+      const rawReason = typeof data.pausedReason === 'string' ? data.pausedReason : undefined;
+      const storedReason =
+        rawReason !== undefined && isSyncPausedReason(rawReason) ? rawReason : undefined;
+      if (rawReason !== undefined && storedReason === undefined && rawReason.length > 0) {
+        log.warn(
+          { event: 'paused-reason-unrecognized', pausedReason: rawReason },
+          '[sync] persisted pause reason is not one this build knows — dropping it and continuing without a pause',
+        );
       }
+      this.pausedReason = NON_RESTORED_PAUSES.has(storedReason) ? undefined : storedReason;
     } catch (e) {
       log.warn({ err: e }, '[sync] failed to load sync state');
     }

@@ -2,7 +2,7 @@ import { normalizeBridge } from '@inkeep/open-knowledge-core';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { isPersistenceExcludedDoc } from './cc1-broadcast.ts';
-import { FROZEN_LIFECYCLE_STATUSES } from './conflict-errors.ts';
+import type { LifecycleView } from './conflict-kinds.ts';
 import { DocumentDurabilityState } from './document-durability-state.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import {
@@ -13,6 +13,15 @@ import {
 } from './persistence-staleness-watchdog.ts';
 
 const GRACE_MS = 1_000;
+
+const MAP_FROZEN_STATUSES = ['deleted-upstream', 'renamed'] as const;
+
+function lifecycleViewOf(document: Y.Doc): LifecycleView | null {
+  const status = document.getMap('lifecycle').get('status');
+  if (status === 'deleted-upstream') return { status: 'deleted-upstream' };
+  if (status === 'renamed') return { status: 'renamed', newPath: '' };
+  return null;
+}
 
 interface Rig {
   watchdog: StalenessWatchdogHandle;
@@ -54,6 +63,7 @@ function makeRig(overrides: Partial<StalenessWatchdogOptions> = {}): Rig {
 
   const watchdog = createPersistenceStalenessWatchdog({
     getLoadedDocuments: () => docs,
+    lifecycleOf: (document) => lifecycleViewOf(document),
     forceStore: async (document, documentName) => {
       forceCalls.push(documentName);
       if (hangDocs.has(documentName)) {
@@ -273,7 +283,7 @@ describe('exclusions', () => {
   });
 
   test('skips docs frozen by lifecycle status', async () => {
-    for (const status of FROZEN_LIFECYCLE_STATUSES) {
+    for (const status of MAP_FROZEN_STATUSES) {
       const doc = seedWedgedDoc(rig, `lifecycle-${status}`);
       doc.getMap('lifecycle').set('status', status);
     }

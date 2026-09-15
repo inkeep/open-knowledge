@@ -1,10 +1,11 @@
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { t as tStatic } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
-import { History, Trash2 } from 'lucide-react';
+import { History, Pencil, Trash2 } from 'lucide-react';
 import { type ReactNode, useEffect, useId, useState } from 'react';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { getAgentThreadClient } from '@/lib/acp/thread-client';
@@ -23,6 +24,8 @@ export function ThreadHistoryMenu({
   const client = getAgentThreadClient();
   const [open, setOpen] = useState(false);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [draftTitle, setDraftTitle] = useState('');
   const [now, setNow] = useState(0);
   const reasonId = useId();
   const openTabReason = t`Close this chat's tab to delete it`;
@@ -32,7 +35,10 @@ export function ThreadHistoryMenu({
       onOpenChange={(next) => {
         setOpen(next);
         if (next) setNow(Date.now());
-        else setConfirmingId(null);
+        else {
+          setConfirmingId(null);
+          setRenamingId(null);
+        }
       }}
     >
       <Tooltip>
@@ -58,6 +64,58 @@ export function ThreadHistoryMenu({
         <div className="max-h-80 overflow-y-auto">
           {archived.map((thread) => {
             const openAsTab = openThreadIds.has(thread.threadId);
+            if (renamingId === thread.threadId) {
+              const commit = (): void => {
+                if (draftTitle.trim() === '') return;
+                client.renameThread(thread.threadId, draftTitle);
+                setRenamingId(null);
+              };
+              return (
+                <div
+                  key={thread.threadId}
+                  className="flex items-center gap-1.5 rounded-md bg-muted/40 px-2 py-1"
+                  data-testid="agent-thread-history-rename"
+                >
+                  <Input
+                    autoFocus
+                    value={draftTitle}
+                    aria-label={t`Chat name`}
+                    className="h-6 min-w-0 flex-1 text-xs"
+                    onChange={(event) => setDraftTitle(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        commit();
+                      }
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        setRenamingId(null);
+                      }
+                    }}
+                    data-testid="agent-thread-history-rename-input"
+                  />
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="h-6 px-2 text-xs"
+                    disabled={draftTitle.trim() === ''}
+                    onClick={commit}
+                    data-testid="agent-thread-history-rename-save"
+                  >
+                    {t`Save`}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                    onClick={() => setRenamingId(null)}
+                  >
+                    {t`Cancel`}
+                  </Button>
+                </div>
+              );
+            }
             if (confirmingId === thread.threadId && !openAsTab) {
               return (
                 <div
@@ -114,6 +172,28 @@ export function ThreadHistoryMenu({
                     {formatRelative(thread.lastActivityAt, now)}
                   </span>
                 </Button>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-xs"
+                      aria-label={t`Rename ${thread.title}`}
+                      className="text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                      onClick={() => {
+                        setConfirmingId(null);
+                        setDraftTitle(thread.title);
+                        setRenamingId(thread.threadId);
+                      }}
+                      data-testid={`agent-thread-history-rename-${thread.threadId}`}
+                    >
+                      <Pencil className="size-3" aria-hidden="true" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" sideOffset={8}>
+                    {t`Rename ${thread.title}`}
+                  </TooltipContent>
+                </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
                     {}

@@ -34,7 +34,7 @@ function seed(prefix: string): Seed {
   writeFileSync(join(projectDir, '.ok', 'config.yml'), "content:\n  dir: '.'\n");
   writeFileSync(join(projectDir, '.ok', 'local', 'config.yml'), 'terminal:\n  enabled: true\n');
   writeFileSync(join(projectDir, 'start.md'), '# Start\n\nSeed document.\n');
-  seedTerminalShellProfiles(tmpHome, { restrictPath: true });
+  seedTerminalShellProfiles(tmpHome, { posixRestrictPath: true });
 
   const userDataDir = userDataDirFor(tmpHome);
   mkdirSync(userDataDir, { recursive: true });

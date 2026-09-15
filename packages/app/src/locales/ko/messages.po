@@ -1219,6 +1219,10 @@ msgstr "<{componentName}>는 알려진 컴포넌트가 아닙니다. 다른 곳�
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> 컴포넌트를 렌더링하지 못했습니다. 잘못된 속성 때문일 수 있습니다. 문제를 확인하려면 소스를 복사하거나 블록을 삭제하세요."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0>은 여기에서 병합할 수 없습니다. 유지할 버전을 고르세요."
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>미러, 소스를 선택하세요.</0> 속성 패널에서 <1>src</1>와 <2>anchor</2>를 설정해 다른 곳의 <3><MirrorSource></3>를 가리키세요."
@@ -1971,6 +1975,14 @@ msgstr "및 {remaining}개 더"
 msgid "and more"
 msgstr "그리고 더"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "다른 프로그램이 여기서 Git을 사용 중입니다. 끝날 때까지 기다린 후 다시 동기화하세요(.git/index.lock을 잡고 있습니다)."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "다른 프로그램이 여기서 Git을 사용 중입니다. 끝날 때까지 기다린 후 다시 동기화하세요(<0>.git/index.lock</0>을 잡고 있습니다)."
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "다른 동기화 작업이 진행 중입니다. 잠시 후 다시 시도하세요."
@@ -2717,6 +2729,10 @@ msgstr "인덱싱 요청당 문자 예산"
 msgctxt "settings search keyword"
 msgid "characters"
 msgstr "문자"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Chat name"
+msgstr "채팅 이름"
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -3670,6 +3686,10 @@ msgstr "코드 {userCode} 복사"
 msgid "Copy command"
 msgstr "명령 복사"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "오류 복사"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -3899,10 +3919,6 @@ msgstr "맞춤법 검사를 변경할 수 없습니다. 다시 시도하세요."
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "맞춤법 검사 언어를 변경하지 못했습니다. 다시 시도하세요."
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "{filePath}에 아직 충돌이 있는지 확인하지 못했습니다 — 다시 시도합니다."
 
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
@@ -4780,6 +4796,10 @@ msgstr "선택한 표 삭제"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "표 삭제"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "파일 삭제"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9013,6 +9033,10 @@ msgstr "아직 댓글 없음. 문서에서 텍스트 선택 후 댓글 추가"
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "공통 조상이 없습니다 — 두 브랜치가 이 파일을 각각 추가했습니다 (add/add 충돌)."
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "이 경로에 대해 추적 중인 충돌이 없습니다."
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "이 버전에서 내용 변경 없음."
@@ -9567,6 +9591,7 @@ msgid "Open {displayName} Desktop"
 msgstr "{displayName} Desktop 열기"
 
 #: src/components/acp/AgentMarkdown.tsx
+#: src/components/acp/ThreadView.tsx
 msgid "Open {docName}"
 msgstr "{docName} 열기"
 
@@ -11397,6 +11422,8 @@ msgid "Rename"
 msgstr "이름 변경"
 
 #. placeholder {0}: session.label
+#. placeholder {0}: thread.title
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "{0} 이름 변경"
@@ -11466,10 +11493,6 @@ msgstr "렌더링됨"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "다시 열기"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "계속 편집하려면 {filePath}을(를) 다시 여세요."
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
@@ -11960,6 +11983,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "샌드박스 처리된 HTML 삽입입니다. HTML을 작성하면 렌더링된 미리보기가 실시간으로 표시됩니다."
 
 #: src/comments/ThreadCard.tsx
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -13101,6 +13125,10 @@ msgstr "테마 폴더가 스캔 한도를 초과해 일부 저장된 테마가 �
 msgid "Some skills were deleted with a warning"
 msgstr "일부 스킬이 경고와 함께 삭제되었습니다"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "누군가 이미 {filePath}의 충돌을 해결했을 수 있습니다 — 편집을 다시 하기 전에 문서의 현재 내용을 확인하세요."
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "문제가 발생했습니다"
@@ -13895,6 +13923,10 @@ msgstr "에이전트 작업 중"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "에이전트 중지 실패. 강제 중지 시 채팅 종료 및 에이전트 종료."
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "에이전트의 OpenKnowledge 도구가 서버에 연결하지 못했습니다. 에이전트에게 다시 시도해 달라고 요청하고, 계속 실패하면 새 채팅을 시작하세요."
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "에이전트의 페르소나, 가치관, 말투입니다."
@@ -14011,6 +14043,14 @@ msgstr "엔드포인트가 제공하는 모델 ID입니다. 벡터 크기는 자
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "열린 에이전트"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "OpenKnowledge 서버의 응답이 너무 오래 걸렸으며 변경 사항이 이미 적용되었을 수 있습니다. 다시 시도하기 전에 에이전트에게 확인해 달라고 요청하세요."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "OpenKnowledge 서버의 응답이 너무 오래 걸렸습니다. 에이전트에게 다시 시도해 달라고 요청하세요."
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -14367,6 +14407,10 @@ msgstr "이 브랜치의 체크아웃 위치:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Settings > AI tools & CLI에서 설정 가능"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "이 명령에는 실제로 실행되는 내용과 다르게 보이게 할 수 있는 숨겨진 문자가 있습니다. 여기서는 ⟨U+…⟩ 형식으로 표시됩니다."
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "이 댓글, 속성 전체에 적용됨"
@@ -14376,10 +14420,6 @@ msgstr "이 댓글, 속성 전체에 적용됨"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "여기에는 파일을 첨부할 수 없습니다."
-
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "이 충돌은 해결되었습니다."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
@@ -14540,6 +14580,14 @@ msgstr "지원되는 Slidev 버전이 아닙니다."
 msgid "this item"
 msgstr "이 항목"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "이 목록은 최신 상태가 아닐 수 있습니다. 마지막으로 읽은 시각: {staleRelative}."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "이 목록은 최신 상태가 아닐 수 있습니다."
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "드라이브 루트처럼 보입니다(예: Windows 드라이브 루트). 여기서 뼈대를 만들면 드라이브 전체를 검사합니다."
@@ -14685,6 +14733,10 @@ msgstr "이 작업은 Mac과 아래에서 선택한 프로젝트에서 OpenKnowl
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "이 보고서는 이미 전송 중입니다. 결과는 버그 신고 기록에 표시됩니다."
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "이 저장소에는 아직 커밋이 없습니다. 프로젝트를 다시 열면 첫 커밋이 만들어지고, 그때부터 푸시가 동작합니다."
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
@@ -15468,6 +15520,10 @@ msgstr "소문자, 숫자, <0>-</0>만 사용하세요."
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "소문자, 숫자, 하이픈만 사용하세요"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "상대 버전 사용"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"
 msgstr "이 스타터 팩 사용"
@@ -15950,6 +16006,10 @@ msgstr "\"{docName}\" 불러오기를 취소했습니다."
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "로컬에서 <0>{filePath}</0>을 삭제했지만, 원격에서 수정되었습니다."
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "이 작업을 거부했습니다. 실행하려면 에이전트에게 다시 시도해 달라고 요청한 뒤 승인하세요."
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."

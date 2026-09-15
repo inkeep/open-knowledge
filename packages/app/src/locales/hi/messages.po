@@ -1215,6 +1215,10 @@ msgstr "<{componentName}> एक ज्ञात कंपोनेंट नह
 msgid "<{descriptorLabel}> failed to render (likely a bad prop). Copy the source to see what went wrong, or delete the block."
 msgstr "<{descriptorLabel}> रेंडर नहीं हो सका (शायद कोई ग़लत प्रॉप)। क्या ग़लत हुआ यह देखने के लिए स्रोत कॉपी करें, या ब्लॉक हटा दें।"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "<0>{filePath}</0> can't be merged here. Pick the version to keep."
+msgstr "<0>{filePath}</0> को यहाँ मर्ज नहीं किया जा सकता। रखने के लिए संस्करण चुनें।"
+
 #: src/editor/components/Mirror.tsx
 msgid "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
 msgstr "<0>मिरर — एक स्रोत चुनें।</0> कहीं और मौजूद किसी <3><MirrorSource></3> की ओर इंगित करने के लिए प्रॉपर्टी पैनल से <1>src</1> + <2>anchor</2> सेट करें।"
@@ -1967,6 +1971,14 @@ msgstr "और {remaining} अन्य"
 msgid "and more"
 msgstr "और अन्य"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds .git/index.lock)"
+msgstr "कोई दूसरा प्रोग्राम यहाँ Git का उपयोग कर रहा है — उसके पूरा होने की प्रतीक्षा करें, फिर दोबारा सिंक करें (वह .git/index.lock रोके हुए है)"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
+msgstr "कोई दूसरा प्रोग्राम यहाँ Git का उपयोग कर रहा है — उसके पूरा होने की प्रतीक्षा करें, फिर दोबारा सिंक करें (वह <0>.git/index.lock</0> रोके हुए है)"
+
 #: src/components/share-receive-miss-content.tsx
 msgid "Another sync operation is in progress. Try again in a moment."
 msgstr "एक और सिंक कार्रवाई चल रही है। कुछ देर बाद फिर कोशिश करें।"
@@ -2713,6 +2725,10 @@ msgstr "प्रति इंडेक्सिंग अनुरोध वर
 msgctxt "settings search keyword"
 msgid "characters"
 msgstr "अक्षर"
+
+#: src/components/acp/ThreadHistoryMenu.tsx
+msgid "Chat name"
+msgstr "चैट का नाम"
 
 #: src/components/command-palette-commands.ts
 msgid "Check for updates"
@@ -3666,6 +3682,10 @@ msgstr "कोड {userCode} कॉपी करें"
 msgid "Copy command"
 msgstr "कमांड कॉपी करें"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Copy error"
+msgstr "त्रुटि कॉपी करें"
+
 #: src/components/command-palette-commands.ts
 #: src/components/FileSidebar.tsx
 msgid "Copy full path"
@@ -3895,10 +3915,6 @@ msgstr "वर्तनी जाँच बदली नहीं जा सक�
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "Couldn't change the spelling languages. Try again."
 msgstr "वर्तनी जाँच की भाषाएँ नहीं बदली जा सकीं। फिर से कोशिश करें।"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Couldn't check whether {filePath} is still conflicted — retrying."
-msgstr "{filePath} में अब भी कॉन्फ़्लिक्ट है या नहीं, जाँचा नहीं जा सका — पुनः प्रयास जारी।"
 
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/TerminalAgentConnectionBanner.tsx
@@ -4776,6 +4792,10 @@ msgstr "चयनित तालिका हटाएँ"
 #: src/editor/table-controls/TableCellHandles.tsx
 msgid "Delete table"
 msgstr "तालिका हटाएँ"
+
+#: src/components/DiffViewBoundary.tsx
+msgid "Delete the file"
+msgstr "फ़ाइल हटाएँ"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Delete this chat?"
@@ -9009,6 +9029,10 @@ msgstr "अभी कोई टिप्पणी नहीं। कोई ज�
 msgid "No common ancestor — both branches added this file (add/add conflict)."
 msgstr "कोई साझा पूर्वज नहीं — दोनों ब्रांच ने यह फ़ाइल जोड़ी (add/add विरोध)।"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "No conflict is tracked for this path."
+msgstr "इस पथ के लिए कोई टकराव ट्रैक नहीं किया जा रहा है।"
+
 #: src/components/AgentDiffPane.tsx
 msgid "No content changes at this version."
 msgstr "इस संस्करण में सामग्री का कोई बदलाव नहीं।"
@@ -9563,6 +9587,7 @@ msgid "Open {displayName} Desktop"
 msgstr "{displayName} Desktop खोलें"
 
 #: src/components/acp/AgentMarkdown.tsx
+#: src/components/acp/ThreadView.tsx
 msgid "Open {docName}"
 msgstr "{docName} खोलें"
 
@@ -11393,6 +11418,8 @@ msgid "Rename"
 msgstr "नाम बदलें"
 
 #. placeholder {0}: session.label
+#. placeholder {0}: thread.title
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "{0} का नाम बदलें"
@@ -11462,10 +11489,6 @@ msgstr "रेंडर किया गया"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "फिर से खोलें"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "Reopen {filePath} to keep editing."
-msgstr "संपादन जारी रखने के लिए {filePath} फिर से खोलें।"
 
 #: src/components/acp/ThreadHistoryMenu.tsx
 msgid "Reopen a past chat"
@@ -11956,6 +11979,7 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "सैंडबॉक्स किया गया HTML एम्बेड — HTML लिखें, रेंडर किया गया पूर्वावलोकन तुरंत देखें।"
 
 #: src/comments/ThreadCard.tsx
+#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -13097,6 +13121,10 @@ msgstr "कुछ सहेजी गई थीम नहीं दिखाई 
 msgid "Some skills were deleted with a warning"
 msgstr "कुछ स्किलें चेतावनी के साथ हटाई गईं"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Someone may have already resolved {filePath} — check the document's current content before redoing your edit."
+msgstr "हो सकता है किसी ने {filePath} का टकराव पहले ही सुलझा दिया हो — अपना संपादन दोबारा करने से पहले दस्तावेज़ की मौजूदा सामग्री देख लें।"
+
 #: src/components/FeedbackForm.tsx
 msgid "Something broke"
 msgstr "कुछ टूट गया"
@@ -13891,6 +13919,10 @@ msgstr "एजेंट काम कर रहा है"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "एजेंट रुक नहीं रहा है। फ़ोर्स स्टॉप इस चैट को बंद कर देगा और एजेंट से बाहर निकल जाएगा।"
 
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
+msgstr "एजेंट के OpenKnowledge टूल सर्वर तक नहीं पहुँच सके। एजेंट से फिर से कोशिश करने को कहें, और अगर यह बार-बार विफल हो, तो नई चैट शुरू करें।"
+
 #: src/components/CreatedItemsList.tsx
 msgid "The agent's persona, values, and voice."
 msgstr "एजेंट का व्यक्तित्व, मूल्य और स्वर।"
@@ -14007,6 +14039,14 @@ msgstr "वह मॉडल id जो आपका एंडपॉइंट द�
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "खुला हुआ एजेंट"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
+msgstr "OpenKnowledge सर्वर ने जवाब देने में बहुत समय लिया, और हो सकता है कि बदलाव फिर भी लागू हो गया हो। दोबारा कोशिश करने से पहले एजेंट से जाँच करने को कहें।"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "The OpenKnowledge server took too long to answer. Ask the agent to try again."
+msgstr "OpenKnowledge सर्वर ने जवाब देने में बहुत समय लिया। एजेंट से दोबारा कोशिश करने को कहें।"
 
 #: src/comments/ThreadCard.tsx
 msgid "The original text was deleted. You can re-place this comment on selected text."
@@ -14363,6 +14403,10 @@ msgstr "यह ब्रांच यहाँ चेक आउट है:"
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "इसे Settings > AI tools & CLI में कॉन्फ़िगर किया जा सकता है"
 
+#: src/components/acp/ThreadView.tsx
+msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
+msgstr "इस कमांड में छिपे हुए वर्ण हैं, जिनके कारण यह जो असल में चलता है उससे अलग दिख सकता है। इन्हें यहाँ ⟨U+…⟩ के रूप में दिखाया गया है।"
+
 #: src/comments/ThreadCard.tsx
 msgid "This comment is on the whole property"
 msgstr "यह टिप्पणी पूरी प्रॉपर्टी पर है"
@@ -14372,10 +14416,6 @@ msgstr "यह टिप्पणी पूरी प्रॉपर्टी �
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "यहाँ फ़ाइलें अटैच नहीं की जा सकतीं।"
-
-#: src/components/DiffViewBoundary.tsx
-msgid "This conflict is resolved."
-msgstr "यह विरोध हल हो गया है।"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."
@@ -14536,6 +14576,14 @@ msgstr "यह Slidev का समर्थित संस्करण नह�
 msgid "this item"
 msgstr "यह आइटम"
 
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date — last read {staleRelative}."
+msgstr "यह सूची पुरानी हो सकती है — पिछली बार पढ़ा गया {staleRelative}।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This list may be out of date."
+msgstr "यह सूची पुरानी हो सकती है।"
+
 #: src/components/ConsentDialogBody.tsx
 msgid "This looks like a drive root (e.g., C:\\). Scaffolding here will scan an entire drive."
 msgstr "यह किसी ड्राइव का रूट लगता है (जैसे C:\\)। यहाँ ढाँचा बनाने पर पूरी ड्राइव स्कैन होगी।"
@@ -14681,6 +14729,10 @@ msgstr "यह आपके Mac से और नीचे चुने गए �
 #: src/components/BugReportSendToast.tsx
 msgid "This report is already on its way. Its result will appear in your bug report history."
 msgstr "यह रिपोर्ट पहले ही रास्ते में है। इसका नतीजा बग रिपोर्ट इतिहास में दिखेगा।"
+
+#: src/components/SyncStatusBadge.tsx
+msgid "This repository has no commits yet — reopen the project to create the first commit, then Push will work"
+msgstr "इस रिपॉज़िटरी में अभी कोई कमिट नहीं है — पहला कमिट बनाने के लिए प्रोजेक्ट दोबारा खोलें, फिर भेजें काम करेगा"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This request is no longer active."
@@ -15464,6 +15516,10 @@ msgstr "केवल छोटे अक्षर, अंक और <0>-</0> उ
 msgid "Use lowercase letters, numbers, and hyphens only"
 msgstr "केवल छोटे अक्षर, अंक और हाइफ़न उपयोग करें"
 
+#: src/components/DiffViewBoundary.tsx
+msgid "Use their version"
+msgstr "उनका संस्करण लें"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Use this starter pack"
 msgstr "यह स्टार्टर पैक उपयोग करें"
@@ -15946,6 +16002,10 @@ msgstr "आपने \"{docName}\" लोड करना रद्द कर �
 #: src/components/DiffViewBoundary.tsx
 msgid "You deleted <0>{filePath}</0> locally, but it was modified upstream."
 msgstr "आपने <0>{filePath}</0> स्थानीय रूप से हटाई, पर उसे अपस्ट्रीम में बदला गया था।"
+
+#: src/lib/acp/tool-failure-hint.ts
+msgid "You denied this. To let it run, ask the agent to try again and approve it."
+msgstr "आपने इसे अस्वीकार किया। इसे चलाने के लिए एजेंट से फिर से कोशिश करने को कहें और स्वीकृति दें।"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "You don't have access to this private repo. Sign in with an account that does."
