@@ -1,8 +1,17 @@
+import type { SpawnSyncOptionsWithStringEncoding } from 'node:child_process';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawnSync: vi.fn(actual.spawnSync) };
+});
+
+const spawnSyncMock = vi.mocked(spawnSync);
+
 import { MCP_SERVER_NAME } from '../constants/mcp.ts';
 import {
   buildClaudeLaunchCommand,
@@ -296,6 +305,43 @@ function findNulMapfileBash(): string {
 
 const NUL_MAPFILE_BASH = findNulMapfileBash();
 
+type DetachedSpawnSyncOptions = SpawnSyncOptionsWithStringEncoding & { detached: true };
+
+const REAL_BASH_PROBE_SPAWN_OPTIONS: DetachedSpawnSyncOptions = {
+  detached: true,
+  stdio: ['ignore', 'pipe', 'pipe'],
+  timeout: 20_000,
+  killSignal: 'SIGKILL',
+  encoding: 'utf8',
+};
+
+describe('real-bash probe spawn isolation', () => {
+  it('spawns the interactive bash detached from the session controlling terminal (undetached, an interactive bash under a tty acquires the ctty from a background process group and stops the whole vitest task group)', () => {
+    expect(
+      REAL_BASH_PROBE_SPAWN_OPTIONS.detached,
+      'the real-bash probe must spawn with detached: true; without it an interactive bash (--login -i) acquires the session controlling terminal from a background process group and stops the entire vitest task group',
+    ).toBe(true);
+  });
+
+  it('keeps stdin off the terminal so the spawned shell never reads the session tty', () => {
+    expect(REAL_BASH_PROBE_SPAWN_OPTIONS.stdio?.[0]).toBe('ignore');
+  });
+
+  it('bounds the probe spawn at 20s (vitest testTimeout cannot preempt a worker blocked inside spawnSync, so the bound must live on the spawn options)', () => {
+    expect(
+      REAL_BASH_PROBE_SPAWN_OPTIONS.timeout,
+      'the real-bash probe must carry a spawn-level timeout; a probe that wedges would otherwise block the worker inside spawnSync with no bound, because vitest testTimeout runs on the blocked worker and cannot preempt the synchronous call',
+    ).toBe(20_000);
+  });
+
+  it('kills the wedged probe rather than signaling it (interactive bash ignores SIGTERM and spawnSync escalates nothing)', () => {
+    expect(
+      REAL_BASH_PROBE_SPAWN_OPTIONS.killSignal,
+      'the timeout bound must terminate the shell: spawnSync sends exactly one killSignal with no escalation and interactive bash ignores SIGTERM, so the default signal lets a wedged interactive bash --login -i outlive the bound and block the worker unbounded',
+    ).toBe('SIGKILL');
+  });
+});
+
 describe('Git Bash structured launch, run by a real Bash', () => {
   it.skipIf(NUL_MAPFILE_BASH === '')(
     'reconstructs every launch token byte-for-byte, empty argument and trailing newline included',
@@ -303,11 +349,14 @@ describe('Git Bash structured launch, run by a real Bash', () => {
       const dir = mkdtempSync(join(tmpdir(), 'ok-git-bash-launch-'));
       try {
         const capturedArgvPath = join(dir, 'argv');
+        const capturedShellStatPath = join(dir, 'shell-stat');
         const capturePath = join(dir, 'capture.cjs');
         writeFileSync(
           capturePath,
-          "const { writeFileSync } = require('node:fs');\n" +
-            "writeFileSync(process.env.OK_CAPTURED_ARGV, [process.argv0, ...process.argv.slice(1)].join('\\0') + '\\0');\n",
+          "const { execFileSync } = require('node:child_process');\n" +
+            "const { writeFileSync } = require('node:fs');\n" +
+            "writeFileSync(process.env.OK_CAPTURED_ARGV, [process.argv0, ...process.argv.slice(1)].join('\\0') + '\\0');\n" +
+            "if (process.platform !== 'win32') writeFileSync(process.env.OK_CAPTURED_SHELL_STAT, execFileSync('ps', ['-o', 'stat=', '-p', String(process.ppid)], { encoding: 'utf8' }));\n",
         );
 
         const launchTokens = [
@@ -326,11 +375,29 @@ describe('Git Bash structured launch, run by a real Bash', () => {
         if (!Array.isArray(composed)) throw new Error('expected Git Bash argv');
 
         const run = spawnSync(NUL_MAPFILE_BASH, composed, {
-          env: { ...process.env, HOME: dir, OK_CAPTURED_ARGV: capturedArgvPath },
-          stdio: ['ignore', 'pipe', 'pipe'],
-          timeout: 20_000,
-          encoding: 'utf8',
+          ...REAL_BASH_PROBE_SPAWN_OPTIONS,
+          env: {
+            ...process.env,
+            HOME: dir,
+            OK_CAPTURED_ARGV: capturedArgvPath,
+            OK_CAPTURED_SHELL_STAT: capturedShellStatPath,
+          },
         });
+        const recordedOptions = spawnSyncMock.mock.calls.find(
+          ([, recordedArgs]) => recordedArgs?.[0] === '--login',
+        )?.[2] as Partial<typeof REAL_BASH_PROBE_SPAWN_OPTIONS> | undefined;
+        expect(
+          recordedOptions,
+          'the behavioral probe must route through the spawnSync recorder; its options are asserted from the recorded call so an inline-args edit at this call site cannot bypass the pins',
+        ).toBeDefined();
+        expect(
+          recordedOptions?.detached,
+          'the recorded behavioral call must spawn detached: true; without it an interactive bash acquires the session controlling terminal from a background process group and stops the whole vitest task group',
+        ).toBe(true);
+        expect(recordedOptions?.stdio?.[0]).toBe('ignore');
+        expect(recordedOptions?.timeout).toBe(20_000);
+        expect(recordedOptions?.killSignal).toBe('SIGKILL');
+        expect(recordedOptions?.encoding).toBe('utf8');
         expect(run.error).toBeUndefined();
         expect(existsSync(capturedArgvPath), `bash stderr: ${run.stderr}`).toBe(true);
 
@@ -338,6 +405,13 @@ describe('Git Bash structured launch, run by a real Bash', () => {
           ...launchTokens,
           '',
         ]);
+
+        if (process.platform !== 'win32') {
+          expect(
+            readFileSync(capturedShellStatPath, 'utf8'),
+            'the spawned shell must be a session leader (detached: true makes libuv setsid the child into a new session); a forked child carries the s stat flag only when detached, so an undetached spawn reacquires the session controlling terminal from a background process group and stops the whole vitest task group',
+          ).toContain('s');
+        }
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }

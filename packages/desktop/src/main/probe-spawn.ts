@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process';
 import { spawn } from 'node:child_process';
 import {
   composeOkChildEnv,
@@ -113,6 +114,25 @@ export function probeSpawnArgs(
   };
 }
 
+export function probeSpawnDetached(platform: NodeJS.Platform): boolean {
+  return platform !== 'win32';
+}
+
+export function killProbeGroup(child: ChildProcess): void {
+  const probePid = child.pid;
+  if (probePid === undefined) return;
+  try {
+    process.kill(-probePid, 'SIGKILL');
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ESRCH') return;
+    getLogger('probe-spawn').warn(
+      { event: 'probe-group-kill-failed', err, code, probePid, signal: 'SIGKILL' },
+      'probe process group kill failed',
+    );
+  }
+}
+
 export function realProbeSpawn(file: string, spawnArgs: readonly string[]): ProbeChild {
   const options = okChildEnvOptionsFromProcess();
   const argv = probeSpawnArgs(file, spawnArgs, options);
@@ -131,6 +151,7 @@ export function realProbeSpawn(file: string, spawnArgs: readonly string[]): Prob
   const child = spawn(file, [...argv.args], {
     stdio: 'ignore',
     shell: false,
+    detached: probeSpawnDetached(options.platform),
     windowsHide: true,
     env: okProbeSpawnEnv(options, argv),
   });
@@ -142,7 +163,12 @@ export function realProbeSpawn(file: string, spawnArgs: readonly string[]): Prob
       child.on('error', (err) => cb(err));
     },
     kill: () => {
-      child.kill('SIGKILL');
+      if (child.pid === undefined) return;
+      if (!probeSpawnDetached(options.platform)) {
+        child.kill('SIGKILL');
+        return;
+      }
+      killProbeGroup(child);
     },
   };
 }
