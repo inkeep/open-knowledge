@@ -57,13 +57,26 @@ describe('full precision', () => {
     expect(full.source).toBe(rebased.source);
   });
 
-  it('parses once for repeated lookups against one source, and again when it changes', () => {
+  it('parses once for repeated lookups against one source, and reparses a window when it changes', () => {
     const resolve = createFullPrecisionResolver(md);
 
     resolve(asBlockPrecision(buildProjection(DOC, md)));
     resolve(asBlockPrecision(buildProjection(DOC, md)));
     expect(resolve.parses()).toBe(1);
+    expect(resolve.windows()).toBe(0);
 
+    const changed = `${DOC}\nSixth paragraph.\n`;
+    const full = resolve(asBlockPrecision(buildProjection(changed, md)));
+    expect(resolve.parses()).toBe(1);
+    expect(resolve.windows()).toBe(1);
+    expect(full.doc.eq(buildProjection(changed, md).doc)).toBe(true);
+    expect(full.map.spans).toEqual(buildProjection(changed, md).map.spans);
+  });
+
+  it('parses the whole document again after a reset', () => {
+    const resolve = createFullPrecisionResolver(md);
+    resolve(asBlockPrecision(buildProjection(DOC, md)));
+    resolve.reset();
     resolve(asBlockPrecision(buildProjection(`${DOC}\nSixth paragraph.\n`, md)));
     expect(resolve.parses()).toBe(2);
   });

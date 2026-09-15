@@ -367,7 +367,7 @@ test('announces a changed nested position even when the selected component ident
   expect(status.textContent).toBe('Selected: Callout, 3 of 3 in Callout');
 });
 
-test.fails.each(['preceding', 'selected'] as const)(
+test.each(['preceding', 'selected'] as const)(
   'keeps the selected component quiet when a peer edits its %s paragraph',
   (target) => {
     const { doc, cursor, settle, status } = setup(adjacentCallouts);

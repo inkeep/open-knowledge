@@ -85,11 +85,11 @@ import { createRemoteCaretsPlugin } from './plugins/remote-carets';
 import { isUserIntentPmTransaction, requestPreviewTabPromotion } from './preview-tab-promotion';
 import {
   createProjectionBinding,
-  liveProjection,
+  fullProjection,
   type ProjectionBinding,
   setProjectionHidden,
 } from './projection-binding';
-import { blockRangeToPmRange, createFullPrecisionResolver } from './projection-coordinates';
+import { blockRangeToPmRange } from './projection-coordinates';
 import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
@@ -864,8 +864,6 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       );
     };
 
-    const resolveFullPrecision = createFullPrecisionResolver(getProjectionMarkdownManager());
-
     const flashEntry = (withinMs: number): void => {
       if (disposed || docName !== activeDocName) return;
       const view = liveView();
@@ -874,10 +872,10 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       if (fresh === null || fresh.key === lastAgentFlashKeyRef.current) return;
       const blocks = fresh.entry.changedBlocks;
       if (blocks === undefined) return;
-      const projection = liveProjection(view.state);
+      const projection = fullProjection(view.state);
       if (projection === null) return;
       const range = blockRangeToPmRange(
-        resolveFullPrecision(projection),
+        projection,
         getProjectionMarkdownManager(),
         blocks.from,
         blocks.to,

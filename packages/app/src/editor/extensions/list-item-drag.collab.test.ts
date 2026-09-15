@@ -199,7 +199,7 @@ describe('list dragging with the production collaboration binding', () => {
     expect(local.view.dragging).toBeNull();
   });
 
-  test.fails('keeps a selected group across a peer edit outside the selection', () => {
+  test('keeps a selected group across a peer edit outside the selection', () => {
     const { local, peer, position, start, drop, expectConverged } = setup(
       '- A\n- B\n- C\n- D\n\nAfter\n',
     );

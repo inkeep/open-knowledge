@@ -277,6 +277,14 @@ export function buildBlockSourceMap(
   return sourceMapOverSpans([...blocks], { length: sourceLength }, docSize, 'block');
 }
 
+export function buildFullSourceMap(
+  spans: readonly PmSourceSpan[],
+  source: string,
+  docSize: number,
+): PmSourceMap {
+  return sourceMapOverSpans([...spans], source, docSize, 'full');
+}
+
 function sourceMapOverSpans(
   spans: PmSourceSpan[],
   source: string | { length: number },

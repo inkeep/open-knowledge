@@ -407,11 +407,12 @@ describe('projection binding — a keystroke does not re-parse the document', ()
     rig.destroy();
   });
 
-  it('pays exactly one parse for an outside write', () => {
+  it('pays a window reparse, not a document parse, for an outside write', () => {
     const rig = createRig(DOC);
     const before = rig.stats.rebuilds;
     rig.ydoc.transact(() => rig.ytext.insert(0, 'Preamble.\n\n'), 'agent');
-    expect(rig.stats.rebuilds).toBe(before + 1);
+    expect(rig.stats.rebuilds).toBe(before);
+    expect(rig.stats.windowReparses).toBe(1);
     rig.destroy();
   });
 });
@@ -419,16 +420,16 @@ describe('projection binding — a keystroke does not re-parse the document', ()
 describe('projection binding — a hidden editor defers re-projection until it is shown', () => {
   it('pays no parse for outside writes while hidden, and exactly one when shown', () => {
     const rig = createRig(DOC);
-    const before = rig.stats.rebuilds;
+    const before = rig.stats.rebuilds + rig.stats.windowReparses;
     setProjectionHidden(rig.editor.state, true);
     for (let i = 0; i < 5; i++) {
       rig.ydoc.transact(() => rig.ytext.insert(0, `Chunk ${i}.\n\n`), 'paste');
     }
-    expect(rig.stats.rebuilds).toBe(before);
+    expect(rig.stats.rebuilds + rig.stats.windowReparses).toBe(before);
     expect(rig.editor.state.doc.child(0).textContent).toBe('Heading');
 
     setProjectionHidden(rig.editor.state, false);
-    expect(rig.stats.rebuilds).toBe(before + 1);
+    expect(rig.stats.rebuilds + rig.stats.windowReparses).toBe(before + 1);
     expect(rig.editor.state.doc.childCount).toBe(9);
     expect(rig.editor.state.doc.child(0).textContent).toBe('Chunk 4.');
     rig.destroy();
@@ -1728,6 +1729,114 @@ describe('projection binding — a silent drop is named on the wire', () => {
     expect(rig.stats.unchangedUpdates).toBe(1);
     expect(names(warn)).toEqual([]);
     expect(names(info)).toEqual([]);
+    rig.destroy();
+  });
+});
+
+describe('projection binding — a peer edit replaces only the blocks it changed', () => {
+  const SOURCE = 'First paragraph.\n\nSecond paragraph.\n\nThird paragraph.\n\nFourth paragraph.\n';
+  const PEER = Symbol('peer');
+
+  function caretIn(rig: Rig, blockIndex: number, offset: number): void {
+    let pos = 1;
+    for (let i = 0; i < blockIndex; i++) pos += rig.editor.state.doc.child(i).nodeSize;
+    rig.editor.view.dispatch(
+      rig.editor.state.tr.setSelection(TextSelection.create(rig.editor.state.doc, pos + offset)),
+    );
+  }
+
+  function caret(rig: Rig): { text: string; offset: number } {
+    const { $head } = rig.editor.state.selection;
+    return { text: $head.parent.textContent, offset: $head.parentOffset };
+  }
+
+  it('keeps every untouched block node by identity and parses no document', () => {
+    const rig = createRig(SOURCE);
+    const untouched = [1, 2, 3].map((i) => rig.editor.state.doc.child(i));
+    const rebuilds = rig.stats.rebuilds;
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Intro. '), PEER);
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Intro. First paragraph.');
+    expect([1, 2, 3].map((i) => rig.editor.state.doc.child(i))).toEqual(untouched);
+    for (const [i, node] of untouched.entries()) {
+      expect(rig.editor.state.doc.child(i + 1)).toBe(node);
+    }
+    expect(rig.stats.rebuilds).toBe(rebuilds);
+    expect(rig.stats.windowReparses).toBe(1);
+    rig.destroy();
+  });
+
+  it('keeps the caret where it was when a peer edits a block above it', () => {
+    const rig = createRig(SOURCE);
+    caretIn(rig, 2, 5);
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Intro. '), PEER);
+    expect(caret(rig)).toEqual({ text: 'Third paragraph.', offset: 5 });
+    rig.destroy();
+  });
+
+  it('keeps the caret where it was when a peer edits a block below it', () => {
+    const rig = createRig(SOURCE);
+    caretIn(rig, 1, 6);
+    rig.ydoc.transact(() => rig.ytext.insert(rig.ytext.length, '\nAppended.\n'), PEER);
+    expect(caret(rig)).toEqual({ text: 'Second paragraph.', offset: 6 });
+    expect(rig.editor.state.doc.lastChild?.textContent).toBe('Appended.');
+    rig.destroy();
+  });
+
+  it('keeps the caret in its block when a peer splits the block above into two', () => {
+    const rig = createRig(SOURCE);
+    caretIn(rig, 2, 3);
+    const at = SOURCE.indexOf(' paragraph.');
+    rig.ydoc.transact(() => rig.ytext.insert(at, '\n\nNew block'), PEER);
+    expect(rig.editor.state.doc.child(1).textContent).toBe('New block paragraph.');
+    expect(caret(rig)).toEqual({ text: 'Third paragraph.', offset: 3 });
+    rig.destroy();
+  });
+
+  it('keeps trailing spaces at the caret across a peer edit elsewhere', () => {
+    const rig = createRig(SOURCE);
+    caretIn(rig, 1, 'Second paragraph.'.length);
+    rig.editor.view.dispatch(rig.editor.state.tr.insertText('  '));
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Intro. '), PEER);
+    expect(caret(rig)).toEqual({ text: 'Second paragraph.  ', offset: 19 });
+    rig.editor.view.dispatch(rig.editor.state.tr.insertText('x'));
+    expect(rig.ytext.toString()).toContain('Second paragraph.  x');
+    expect(rig.ytext.toString()).toContain('Intro. First paragraph.');
+    rig.destroy();
+  });
+
+  it('undoes and redoes only the local edit after a peer edit elsewhere, without a document parse', () => {
+    const rig = createRig(SOURCE);
+    const undoManager = sharedUndoManagerFor(rig.ytext);
+    caretIn(rig, 2, 'Third paragraph.'.length);
+    rig.editor.view.dispatch(rig.editor.state.tr.insertText('!'));
+    rig.ydoc.transact(() => rig.ytext.insert(0, 'Intro. '), PEER);
+    const rebuilds = rig.stats.rebuilds;
+
+    undoManager.undo();
+    expect(rig.ytext.toString()).toBe(`Intro. ${SOURCE}`);
+    expect(rig.editor.state.doc.child(0).textContent).toBe('Intro. First paragraph.');
+    expect(rig.editor.state.doc.child(2).textContent).toBe('Third paragraph.');
+    expect(caret(rig)).toEqual({ text: 'Third paragraph.', offset: 'Third paragraph.'.length });
+
+    undoManager.redo();
+    expect(rig.ytext.toString()).toContain('Third paragraph.!');
+    expect(rig.editor.state.doc.child(2).textContent).toBe('Third paragraph.!');
+    expect(caret(rig)).toEqual({ text: 'Third paragraph.!', offset: 'Third paragraph.!'.length });
+    expect(rig.stats.rebuilds).toBe(rebuilds);
+    rig.destroy();
+  });
+
+  it('keeps typing correct through a run of interleaved peer and local edits', () => {
+    const rig = createRig(SOURCE);
+    for (let i = 0; i < 10; i++) {
+      appendToBlock(rig.editor, 3, String(i));
+      rig.ydoc.transact(() => rig.ytext.insert(0, `${i}`), PEER);
+    }
+    const expected = `9876543210${SOURCE.replace('Fourth paragraph.', 'Fourth paragraph.0123456789')}`;
+    expect(rig.ytext.toString()).toBe(expected);
+    const doc = rig.editor.state.doc;
+    expect(doc.child(0).textContent).toBe('9876543210First paragraph.');
+    expect(doc.child(3).textContent).toBe('Fourth paragraph.0123456789');
     rig.destroy();
   });
 });

@@ -4,6 +4,8 @@ import {
   type MarkdownManager,
   type PmSourceSpan,
   type Projection,
+  type ProjectionUpdate,
+  reprojectChanged,
 } from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 
@@ -16,27 +18,56 @@ export function fullPrecisionProjection(projection: Projection, md: MarkdownMana
   return buildProjection(projection.source, md);
 }
 
+export interface FullPrecisionUpdate {
+  full: Projection;
+  previous: Projection | null;
+  window: ProjectionUpdate | null;
+}
+
 export interface FullPrecisionResolver {
   (projection: Projection): Projection;
   readonly parses: () => number;
+  readonly windows: () => number;
+  readonly update: (source: string) => FullPrecisionUpdate;
+  readonly reset: () => void;
 }
 
-export function createFullPrecisionResolver(md: MarkdownManager): FullPrecisionResolver {
-  let cachedSource: string | null = null;
-  let cached: Projection | null = null;
+/* STOP: the cache is only ever a projection this resolver built from the bytes, never one
+   handed in. A caller's projection may carry the live document, which can hold what the source
+   cannot spell; reparsing a window against that would splice the live document's divergence
+   into a projection that claims to be the source's. */
+export function createFullPrecisionResolver(
+  md: MarkdownManager,
+  seed?: Projection,
+): FullPrecisionResolver {
+  let cached: Projection | null = seed?.map.precision === 'full' ? seed : null;
   let parses = 0;
+  let windows = 0;
+
+  const update = (source: string): FullPrecisionUpdate => {
+    const previous = cached;
+    const window = previous === null ? null : reprojectChanged(previous, source, md);
+    if (window !== null) {
+      if (window.projection !== previous) windows++;
+      cached = window.projection;
+      return { full: window.projection, previous, window };
+    }
+    cached = buildProjection(source, md);
+    parses++;
+    return { full: cached, previous, window: null };
+  };
 
   const resolve = (projection: Projection): Projection => {
     if (projection.map.precision === 'full') return projection;
-    if (cached !== null && cachedSource === projection.source) return cached;
-    const full = buildProjection(projection.source, md);
-    parses++;
-    cachedSource = projection.source;
-    cached = full;
-    return full;
+    if (cached !== null && cached.source === projection.source) return cached;
+    return update(projection.source).full;
   };
 
-  return Object.assign(resolve, { parses: () => parses });
+  const reset = (): void => {
+    cached = null;
+  };
+
+  return Object.assign(resolve, { parses: () => parses, windows: () => windows, update, reset });
 }
 
 export function sourceOffsetToPmPos(projection: Projection, sourceOffset: number): number {

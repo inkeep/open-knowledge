@@ -3,9 +3,8 @@ import { Plugin, PluginKey, TextSelection } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import type { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { liveProjection } from '../projection-binding';
+import { fullProjection } from '../projection-binding';
 import {
-  createFullPrecisionResolver,
   liveCaretPmPosToSourceOffset,
   sourceOffsetToLiveCaretPos,
 } from '../projection-coordinates';
@@ -74,8 +73,7 @@ export interface RemoteCaretsOptions {
 }
 
 export function createRemoteCaretsPlugin(options: RemoteCaretsOptions): Plugin<DecorationSet> {
-  const { ytext, awareness, md } = options;
-  const resolveFullPrecision = createFullPrecisionResolver(md);
+  const { ytext, awareness } = options;
   const isActive = options.isActive ?? ((): boolean => true);
 
   return new Plugin<DecorationSet>({
@@ -104,7 +102,7 @@ export function createRemoteCaretsPlugin(options: RemoteCaretsOptions): Plugin<D
          mid-apply the projection still describes the PREVIOUS document. Both make a rebuild
          there resolve the new document through the old map. */
       const build = (): DecorationSet => {
-        const projection = liveProjection(view.state);
+        const projection = fullProjection(view.state);
         if (projection === null) return DecorationSet.empty;
 
         const remote: Array<[number, Record<string, unknown>]> = [];
@@ -116,7 +114,7 @@ export function createRemoteCaretsPlugin(options: RemoteCaretsOptions): Plugin<D
         }
         if (remote.length === 0) return DecorationSet.empty;
 
-        const full = resolveFullPrecision(projection);
+        const full = projection;
         const size = view.state.doc.content.size;
         const decorations: Decoration[] = [];
 
@@ -183,9 +181,9 @@ export function createRemoteCaretsPlugin(options: RemoteCaretsOptions): Plugin<D
         const local = awareness.getLocalState();
         if (local === null) return;
         if (!isActive() || !view.hasFocus()) return;
-        const projection = liveProjection(view.state);
+        const projection = fullProjection(view.state);
         if (projection === null) return;
-        const full = resolveFullPrecision(projection);
+        const full = projection;
         const { anchor, head } = view.state.selection;
         const anchorOffset = liveCaretPmPosToSourceOffset(full, view.state.doc, anchor);
         const headOffset = liveCaretPmPosToSourceOffset(full, view.state.doc, head);

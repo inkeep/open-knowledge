@@ -252,10 +252,7 @@ function parseMdInternal(
   dedentEdits?: DedentEdit[],
 ): PmNode {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
-  const source = dedentBlockJsxClose(rawAfterBom, dedentEdits);
-  const protectedFr14 = encodeBackslashEscapes(source);
-  const protectedR23 = protectFromMdx(protectedFr14);
-  const protected_ = encodeEntityRefs(protectedR23);
+  const { source, protected_ } = preprocess(rawAfterBom, dedentEdits);
 
   const file = new VFile(protected_);
   const tree = processor.parse(file);
@@ -277,14 +274,26 @@ export function parseMdToEditorMdast(rawSource: string, processor: Processor): M
   return parseToMdast(rawSource, processor, true);
 }
 
+function preprocess(
+  rawAfterBom: string,
+  dedentEdits?: DedentEdit[],
+): { source: string; protected_: string } {
+  const source = dedentBlockJsxClose(rawAfterBom, dedentEdits);
+  const protected_ = encodeEntityRefs(protectFromMdx(encodeBackslashEscapes(source)));
+  return { source, protected_ };
+}
+
+export function preprocessForParse(rawSource: string): string {
+  return preprocess(splitDocumentHeadBom(rawSource).source).protected_;
+}
+
 function parseToMdast(
   rawSource: string,
   processor: Processor,
   materializeBlankRuns: boolean,
 ): MdastRoot {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
-  const source = dedentBlockJsxClose(rawAfterBom);
-  const protected_ = encodeEntityRefs(protectFromMdx(encodeBackslashEscapes(source)));
+  const { source, protected_ } = preprocess(rawAfterBom);
   const file = new VFile(protected_);
   const tree = processor.parse(file);
   file.value = source;

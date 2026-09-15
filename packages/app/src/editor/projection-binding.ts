@@ -7,6 +7,7 @@ import {
   computeBlockSplice,
   type MarkdownManager,
   type Projection,
+  type ProjectionUpdate,
   rebaseProjection,
   type SourceSplice,
 } from '@inkeep/open-knowledge-core';
@@ -28,7 +29,8 @@ import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import { PROJECTION_REMOTE_APPLY_META } from './extensions/autonomous-fragment-edit';
 import {
   caretSourceOffsetToPmPos,
-  fullPrecisionProjection,
+  createFullPrecisionResolver,
+  type FullPrecisionResolver,
   liveCaretPmPosToSourceOffset,
   liveToFullPos,
   pmPosToSourceOffset,
@@ -43,6 +45,8 @@ const REPROJECT_MISMATCH_EVENT = 'ok-projection-reproject-mismatch';
 const ALIGN_DECLINED_EVENT = 'ok-projection-align-declined';
 const DOC_REDERIVED_EVENT = 'ok-projection-doc-rederived';
 const STALE_LOCAL_EDIT_EVENT = 'ok-projection-stale-local-edit';
+const NARROW_REPLACE_MISMATCH_EVENT = 'ok-projection-narrow-replace-mismatch';
+const NARROW_VERIFY_LIMIT = 50_000;
 
 interface ProjectionVisibility {
   hidden: boolean;
@@ -109,6 +113,7 @@ interface ProjectionBindingPluginState {
   binding: ProjectionBindingState;
   visibility: ProjectionVisibility;
   move: DropMove | null;
+  resolveFull: FullPrecisionResolver;
 }
 
 const projectionBindingKey = new PluginKey<ProjectionBindingPluginState>('okProjectionBinding');
@@ -119,6 +124,16 @@ export function projectionUndoManager(state: EditorState): Y.UndoManager | null 
 
 export function liveProjection(state: EditorState): Projection | null {
   return projectionBindingKey.getState(state)?.binding.projection ?? null;
+}
+
+/* STOP: resolve full precision through the binding's own resolver, never a private one. The
+   binding advances it on every re-projection, so a lookup after a peer edit reparses only the
+   caller's own change; a separate cache lags every peer edit and pays a window spanning both
+   edits, or the whole document. */
+export function fullProjection(state: EditorState): Projection | null {
+  const value = projectionBindingKey.getState(state);
+  if (value === undefined) return null;
+  return value.resolveFull(value.binding.projection);
 }
 
 /* STOP: while hidden, liveProjection and the doc lag Y.Text. Nothing may read either for
@@ -338,9 +353,102 @@ function replaceDoc(
   view.dispatch(tr);
 }
 
+function childStart(doc: PmNode, index: number): number {
+  let pos = 0;
+  for (let i = 0; i < index; i++) pos += doc.child(i).nodeSize;
+  return pos;
+}
+
+interface BlockReplacement {
+  from: number;
+  to: number;
+  nodes: PmNode[];
+}
+
+/* STOP: the live document must come out equal to `doc`, exactly as replaceDoc would leave it;
+   only fewer nodes change identity. Outside the reparsed window the live blocks are the
+   source's own, except the caret's textblock, which can hold trailing spaces the bytes cannot
+   spell -- that one is replaced as well, so the caret and trailing-space rules see what a
+   whole-document replace gives them. Any other difference is a divergence, and the whole
+   document is replaced instead. */
+function replaceBlocks(
+  view: EditorView,
+  doc: PmNode,
+  window: ProjectionUpdate,
+  at: CarriedSelection | null,
+  remote: boolean,
+): boolean {
+  const live = view.state.doc;
+  const { before, after } = window;
+  if (live.childCount !== before.to - before.from + (doc.childCount - (after.to - after.from))) {
+    return false;
+  }
+  const incoming: PmNode[] = [];
+  for (let i = after.from; i < after.to; i++) incoming.push(intoEditorSchema(view, doc.child(i)));
+  let from = before.from;
+  let to = before.to;
+  let head = 0;
+  let tail = incoming.length;
+  while (from < to && head < tail && live.child(from).eq(incoming[head] as PmNode)) {
+    from++;
+    head++;
+  }
+  while (to > from && tail > head && live.child(to - 1).eq(incoming[tail - 1] as PmNode)) {
+    to--;
+    tail--;
+  }
+  const replacements: BlockReplacement[] = [];
+  if (from < to || head < tail) {
+    replacements.push({
+      from: childStart(live, from),
+      to: childStart(live, to),
+      nodes: incoming.slice(head, tail),
+    });
+  }
+  const caret = view.state.selection.$head.index(0);
+  if (caret < live.childCount && (caret < before.from || caret >= before.to)) {
+    const target =
+      caret < before.from ? caret : caret + (after.to - after.from) - (before.to - before.from);
+    if (target < 0 || target >= doc.childCount) return false;
+    const replacement = intoEditorSchema(view, doc.child(target));
+    if (!live.child(caret).eq(replacement)) {
+      const start = childStart(live, caret);
+      replacements.push({
+        from: start,
+        to: start + live.child(caret).nodeSize,
+        nodes: [replacement],
+      });
+    }
+  }
+  const tr = view.state.tr;
+  replacements.sort((a, b) => b.from - a.from);
+  for (const replacement of replacements) {
+    tr.replaceWith(replacement.from, replacement.to, replacement.nodes);
+  }
+  if (tr.doc.childCount !== doc.childCount) return false;
+  if (
+    import.meta.env.DEV &&
+    doc.content.size <= NARROW_VERIFY_LIMIT &&
+    !tr.doc.eq(intoEditorSchema(view, doc))
+  ) {
+    emitDiagnosticBreadcrumb(
+      NARROW_REPLACE_MISMATCH_EVENT,
+      { children: doc.childCount, from: before.from, to: before.to },
+      'warn',
+    );
+    return false;
+  }
+  tr.setMeta('addToHistory', false);
+  if (remote) tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
+  if (at !== null) tr.setSelection(restoreSelection(tr.doc, at));
+  view.dispatch(tr);
+  return true;
+}
+
 interface ProjectionBindingState {
   projection: Projection;
   rebuilds: number;
+  windowReparses: number;
   writes: number;
   spliceDeclines: number;
   droppedWrites: number;
@@ -356,6 +464,7 @@ function newBindingState(projection: Projection): ProjectionBindingState {
   return {
     projection,
     rebuilds: 1,
+    windowReparses: 0,
     writes: 0,
     spliceDeclines: 0,
     droppedWrites: 0,
@@ -372,11 +481,18 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
   const { ytext, md, origin } = options;
   const stats: ProjectionBindingState = options.stats ?? newBindingState(options.initial);
   const visibility: ProjectionVisibility = { hidden: false, stale: false, show: null };
+  const resolveFull = createFullPrecisionResolver(md, options.initial);
 
   return new Plugin<ProjectionBindingPluginState>({
     key: projectionBindingKey,
     state: {
-      init: () => ({ undoManager: options.undoManager, binding: stats, visibility, move: null }),
+      init: () => ({
+        undoManager: options.undoManager,
+        binding: stats,
+        visibility,
+        move: null,
+        resolveFull,
+      }),
       apply: (tr, value) => (tr.docChanged ? { ...value, move: dropMove(tr) } : value),
     },
     appendTransaction: collapseLeftBehindSpaces,
@@ -456,8 +572,11 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
       };
 
       const fullPrecision = (): Projection => {
-        const full = fullPrecisionProjection(projection, md);
-        if (full !== projection) stats.rebuilds++;
+        const parses = resolveFull.parses();
+        const windows = resolveFull.windows();
+        const full = resolveFull(projection);
+        stats.rebuilds += resolveFull.parses() - parses;
+        stats.windowReparses += resolveFull.windows() - windows;
         return full;
       };
 
@@ -479,9 +598,17 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         };
       };
 
-      const project = (source: string, carried: CarriedSelection | null, remote: boolean): void => {
-        const next = buildProjection(source, md);
-        stats.rebuilds++;
+      const project = (
+        source: string,
+        carried: CarriedSelection | null,
+        remote: boolean,
+        narrow = false,
+      ): void => {
+        const liveSource = projection.source;
+        const step = resolveFull.update(source);
+        const next = step.full;
+        if (step.window === null) stats.rebuilds++;
+        else if (step.window.projection !== step.previous) stats.windowReparses++;
         const toPm = (offset: number): number =>
           carried?.kind === 'node'
             ? sourceOffsetToPmPos(next, offset)
@@ -492,7 +619,12 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             : { ...carried, anchor: toPm(carried.anchor), head: toPm(carried.head) };
         applyingRemote = true;
         try {
-          replaceDoc(view, next.doc, at, remote);
+          const narrowed =
+            narrow &&
+            step.window !== null &&
+            step.previous?.source === liveSource &&
+            replaceBlocks(view, next.doc, step.window, at, remote);
+          if (!narrowed) replaceDoc(view, next.doc, at, remote);
         } finally {
           applyingRemote = false;
         }
@@ -537,6 +669,7 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
             head: mapOffsetThroughDelta(delta, before.head),
           },
           true,
+          true,
         );
         restoreTrailingBlanks(kept);
       };
@@ -574,7 +707,9 @@ function projectionBindingPlugin(options: ProjectionBindingOptions): Plugin {
         const next = embedSources(buildProjection(source, md).doc);
         if (live.length === next.length && live.every((src, i) => src === next[i])) return;
         const kept = caretTrailingBlanks(view.state);
-        project(source, liveSelection(), true);
+        const carried = liveSelection();
+        resolveFull.reset();
+        project(source, carried, true);
         restoreTrailingBlanks(kept);
       });
 

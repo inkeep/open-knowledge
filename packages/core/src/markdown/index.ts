@@ -405,6 +405,22 @@ export class MarkdownManager {
 
 const registry = createRegistry();
 
+/* STOP: a parsed attribute's position is its offset in the document, so storing it makes the
+   same component a different node whenever anything above it moves. Nothing reads it, and a
+   node that depends on bytes outside its own block cannot be reparsed on its own. */
+function withoutPositions(
+  attributes: Array<MdxJsxAttribute | MdxJsxExpressionAttribute>,
+): Array<MdxJsxAttribute | MdxJsxExpressionAttribute> {
+  return attributes.map((attribute) => {
+    const { position: _position, data: _data, ...rest } = attribute;
+    if (rest.type === 'mdxJsxAttribute' && rest.value !== null && typeof rest.value === 'object') {
+      const { position: _valuePosition, data: _valueData, ...value } = rest.value;
+      return { ...rest, value };
+    }
+    return rest;
+  }) as Array<MdxJsxAttribute | MdxJsxExpressionAttribute>;
+}
+
 function destructureAttrs(
   attributes: Array<MdxJsxAttribute | MdxJsxExpressionAttribute>,
   props: PropDef[],
@@ -980,7 +996,7 @@ function buildMdastToPmHandlers(
         {
           componentName: name,
           kind: 'element',
-          attributes: node.attributes,
+          attributes: withoutPositions(node.attributes),
           sourceRaw: rawFromData(node.data) ?? '',
           sourceDirty: false,
           props: structuredAttrs,
@@ -1020,7 +1036,7 @@ function buildMdastToPmHandlers(
         }
         return n.jsxInline.createAndFill({
           componentName: inlineName,
-          attributes: node.attributes,
+          attributes: withoutPositions(node.attributes),
           sourceRaw: raw,
           sourceDirty: false,
           props: structuredAttrs,

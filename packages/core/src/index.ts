@@ -1079,6 +1079,7 @@ export {
   type SourceSplice,
   serializeBlockRange,
 } from './projection/block-splice.ts';
+export { type ProjectionUpdate, reprojectChanged } from './projection/incremental-projection.ts';
 export { PROTOCOL_VERSION } from './protocol-version.ts';
 export {
   builtInComponents,
