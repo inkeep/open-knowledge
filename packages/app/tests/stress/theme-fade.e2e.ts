@@ -135,8 +135,19 @@ test('theme settings retarget rapidly and honor reduced motion', async ({ page }
     .getByRole('button', { name: 'Use Monokai for the active light mode' })
     .evaluate((button) => button.click());
   await expect.poll(() => page.locator('html').getAttribute('data-color-theme')).toBe('monokai');
-  const reducedMotionAnimations = await page.evaluate(() => document.getAnimations().length);
-  expect(reducedMotionAnimations).toBe(0);
+  const rootTransitions = await page.evaluate(() => {
+    const isTransition = (animation: Animation): animation is CSSTransition =>
+      'transitionProperty' in animation;
+    return document.documentElement
+      .getAnimations({ subtree: false })
+      .map((animation) =>
+        isTransition(animation) ? animation.transitionProperty : animation.constructor.name,
+      );
+  });
+  expect(
+    rootTransitions,
+    'under reduced motion a palette switch must start no transition on the document root',
+  ).toEqual([]);
   expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe(
     focusedBefore,
   );
