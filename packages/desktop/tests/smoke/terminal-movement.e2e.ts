@@ -525,7 +525,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
   test('renderer restart restores the right layout and its live active terminal', async ({
     captureStderrFor,
   }) => {
-    test.setTimeout(290_000);
+    test.setTimeout(300_000);
     const s = seed({ skipRestoreState: true });
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -610,6 +610,15 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await page.evaluate(() => {
       window.okDesktop?.editor.notifyViewMenuStateChanged({ agentPanelVisible: true });
     });
+    await expect
+      .poll(
+        async () =>
+          page.evaluate(() =>
+            window.okDesktop?.terminal?.getDockState()?.then((state) => state.agentPanelVisible),
+          ),
+        { timeout: 10_000 },
+      )
+      .toBe(true);
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.

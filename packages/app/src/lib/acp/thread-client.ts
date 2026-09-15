@@ -87,6 +87,7 @@ export class AgentThreadClient {
   private reqCounter = 0;
   private status: ThreadConnectionStatus = 'idle';
   private version = 0;
+  private initialRosterIds: ReadonlySet<string> | null = null;
 
   markThreadViewed = (threadId: string): void => {
     const state = this.threads.get(threadId);
@@ -110,6 +111,10 @@ export class AgentThreadClient {
   setUrl(url: string | null): void {
     if (url === this.url) return;
     this.url = url;
+    if (this.initialRosterIds !== null) {
+      this.initialRosterIds = null;
+      this.bump();
+    }
     this.teardownSocket();
     if (url !== null) this.connect();
     else this.setStatus('idle');
@@ -159,6 +164,8 @@ export class AgentThreadClient {
   };
 
   getThread = (threadId: string): ThreadState | null => this.threads.get(threadId) ?? null;
+
+  getInitialRosterThreadIds = (): ReadonlySet<string> | null => this.initialRosterIds;
 
   private readonly modelBuilders = new Map<string, ThreadRenderModelBuilder>();
   getThreadModel = (threadId: string): ThreadRenderModel | null => {
@@ -544,6 +551,12 @@ export class AgentThreadClient {
         return;
       }
       case 'threads': {
+        if (this.initialRosterIds === null) {
+          this.initialRosterIds = new Set(
+            frame.threads.filter((info) => info.archived !== true).map((info) => info.threadId),
+          );
+          this.bump();
+        }
         const seen = new Set<string>();
         for (const info of frame.threads) {
           seen.add(info.threadId);
@@ -777,6 +790,14 @@ export function useAgentThreads(): ThreadInfo[] {
 
 export function useOpenAgentThreadTabs(): ThreadInfo[] {
   return useSyncExternalStore(client.subscribe, client.getOpenTabs, client.getOpenTabs);
+}
+
+export function useInitialRosterThreadIds(): ReadonlySet<string> | null {
+  return useSyncExternalStore(
+    client.subscribe,
+    client.getInitialRosterThreadIds,
+    client.getInitialRosterThreadIds,
+  );
 }
 
 export function useArchivedAgentThreads(): ThreadInfo[] {

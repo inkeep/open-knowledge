@@ -4448,6 +4448,18 @@
     "i04BJx": ["Vive fora deste projeto — somente leitura aqui."],
     "i09An-": ["Uma versão anterior foi restaurada (", ["0"], ")"],
     "i1flq_": ["Sugestões de link wiki"],
+    "i25FHa": [
+      "Abrir o painel de agentes — ",
+      [
+        "liveThreadCount",
+        "plural",
+        {
+          "one": ["#", " conversa de agente ativa"],
+          "many": ["#", " conversas de agente ativas"],
+          "other": ["#", " conversas de agente ativas"]
+        }
+      ]
+    ],
     "i3f2kh": ["Nenhum comando corresponde."],
     "i6o7XB": ["Pesquisar idiomas"],
     "i92eAT": ["Vamos criar um repositório e começar a sincronizar — sem precisar de terminal."],

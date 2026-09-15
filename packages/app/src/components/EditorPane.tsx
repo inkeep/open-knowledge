@@ -32,10 +32,12 @@ import { useNoPushPermissionToast } from '@/hooks/use-no-push-permission-toast';
 import { useWorktreeAutoSyncNotice } from '@/hooks/use-worktree-autosync-notice';
 import { authPromptStore } from '@/lib/auth-prompt-store';
 import { useConfigContext } from '@/lib/config-provider';
+import { readWebDockSessionOrder } from '@/lib/dock-session-persistence';
 import { matchesKeyboardShortcut, matchesRendererShortcut } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { isNoteWindow } from '@/lib/note-window-mode';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { RESTORE_SETTLE_TIMEOUT_MS } from '@/lib/restore-settle-timeout';
 import { readTerminalPlacement, writeTerminalPlacement } from '@/lib/terminal-placement-store';
 import { readTerminalRightWidth, writeTerminalRightWidth } from '@/lib/terminal-right-width-store';
 import { recordTerminalOpened } from '@/lib/terminal-telemetry';
@@ -108,6 +110,42 @@ function NoteWindowModeToggle({
   );
 }
 
+interface RestoreVisibilityGate {
+  pendingWithhold: boolean;
+  levelEstablished: boolean;
+  lastLevel: boolean;
+}
+
+const RESTORE_UNESTABLISHED_LEVEL = false;
+
+function makeRestoreVisibilityGate(mountLevel: boolean): RestoreVisibilityGate {
+  return { pendingWithhold: false, levelEstablished: false, lastLevel: mountLevel };
+}
+
+function armRestoreVisibilityGate(gate: { current: RestoreVisibilityGate }): void {
+  gate.current.pendingWithhold = true;
+}
+
+function resetRestoreVisibilityGate(gate: { current: RestoreVisibilityGate }): void {
+  gate.current.pendingWithhold = false;
+  gate.current.levelEstablished = false;
+}
+
+function noteRestoreVisibilityLevel(
+  gate: { current: RestoreVisibilityGate },
+  visible: boolean,
+): void {
+  if (gate.current.lastLevel === visible) return;
+  gate.current.lastLevel = visible;
+  gate.current.levelEstablished = true;
+}
+
+function consumeRestoreVisibilityGate(gate: { current: RestoreVisibilityGate }): boolean {
+  if (!gate.current.pendingWithhold) return true;
+  gate.current.pendingWithhold = false;
+  return gate.current.levelEstablished;
+}
+
 interface EditorPaneProps {
   onOpenSearch?: () => void;
 }
@@ -137,7 +175,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
     desktopBridge != null &&
     desktopBridge.terminal != null &&
     desktopBridge.config.ptyAvailable === true;
-  const [terminalVisible, setTerminalVisible] = useState(false);
+  const [terminalVisible, setTerminalVisible] = useState<boolean>(RESTORE_UNESTABLISHED_LEVEL);
   const [terminalRestoreRevealNonce, setTerminalRestoreRevealNonce] = useState(0);
   const [terminalPlacement, setTerminalPlacement] = useState<TerminalPlacement>(() =>
     readTerminalPlacement(),
@@ -149,10 +187,20 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useEffect(() => {
     writeTerminalRightWidth(terminalRightWidth);
   }, [terminalRightWidth]);
-  const [agentsVisible, setAgentsVisible] = useState(false);
+  const [agentsVisible, setAgentsVisible] = useState<boolean>(() =>
+    desktopBridge == null
+      ? (readWebDockSessionOrder('agents')?.agentPanelVisible ?? false)
+      : RESTORE_UNESTABLISHED_LEVEL,
+  );
   const installedClis = useInstalledClis();
   const [dockRestoreSettled, setDockRestoreSettled] = useState(false);
   const restoreRevealRef = useRef(false);
+  const terminalRestoreGateRef = useRef<RestoreVisibilityGate>(
+    makeRestoreVisibilityGate(terminalVisible),
+  );
+  const agentsRestoreGateRef = useRef<RestoreVisibilityGate>(
+    makeRestoreVisibilityGate(agentsVisible),
+  );
   const [terminalLaunch, setTerminalLaunch] = useState<TerminalLaunchIntent | null>(null);
   const [terminalCommand, setTerminalCommand] = useState<{
     id: TerminalCommandId;
@@ -313,7 +361,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   useEffect(() => {
     if (window.okDesktop == null) return;
+    noteRestoreVisibilityLevel(terminalRestoreGateRef, terminalVisible);
     if (!dockRestoreSettled) return;
+    if (!consumeRestoreVisibilityGate(terminalRestoreGateRef)) return;
     setViewMenuState({ terminalVisible });
     window.okDesktop.editor.notifyViewMenuStateChanged({ terminalVisible });
   }, [terminalVisible, dockRestoreSettled]);
@@ -327,7 +377,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
 
   useEffect(() => {
     if (window.okDesktop == null) return;
+    noteRestoreVisibilityLevel(agentsRestoreGateRef, agentsVisible);
     if (!dockRestoreSettled) return;
+    if (!consumeRestoreVisibilityGate(agentsRestoreGateRef)) return;
     setViewMenuState({ agentPanelVisible: agentsVisible });
     window.okDesktop.editor.notifyViewMenuStateChanged({ agentPanelVisible: agentsVisible });
   }, [agentsVisible, dockRestoreSettled]);
@@ -359,24 +411,47 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       return;
     }
     let cancelled = false;
+    let abandoned = false;
+    const restoreDeadline = window.setTimeout(() => {
+      abandoned = true;
+      armRestoreVisibilityGate(terminalRestoreGateRef);
+      armRestoreVisibilityGate(agentsRestoreGateRef);
+      console.warn(
+        `[dock] dock-state restore exceeded its ${RESTORE_SETTLE_TIMEOUT_MS}ms bound; the agents panel and terminal start closed and only that un-restored level is withheld from the view menu and the dock record, so a later reveal or toggle still publishes`,
+      );
+      setDockRestoreSettled(true);
+    }, RESTORE_SETTLE_TIMEOUT_MS);
     void bridge.terminal
       .getDockState()
       .then((state) => {
-        if (cancelled) return;
-        if (state.agentPanelVisible) setAgentsVisible(true);
+        if (cancelled || abandoned) return;
+        setAgentsVisible((current) => (current ? current : state.agentPanelVisible === true));
         if (!state.terminalVisible) return;
         restoreRevealRef.current = true;
         setTerminalRestoreRevealNonce((nonce) => nonce + 1);
         setTerminalVisible(true);
       })
       .catch((err) => {
-        console.error('[terminal] dock-state restore failed; staying hidden:', err);
+        if (cancelled) return;
+        if (!abandoned) {
+          armRestoreVisibilityGate(terminalRestoreGateRef);
+          armRestoreVisibilityGate(agentsRestoreGateRef);
+        }
+        console.error(
+          '[dock] dock-state restore failed; the agents panel and terminal start closed and only that un-restored level is withheld from the view menu and the dock record, so a later reveal or toggle still publishes:',
+          err,
+        );
       })
       .finally(() => {
+        window.clearTimeout(restoreDeadline);
         if (!cancelled) setDockRestoreSettled(true);
       });
     return () => {
       cancelled = true;
+      abandoned = true;
+      window.clearTimeout(restoreDeadline);
+      resetRestoreVisibilityGate(terminalRestoreGateRef);
+      resetRestoreVisibilityGate(agentsRestoreGateRef);
     };
   }, [noteWindow]);
 
@@ -521,6 +596,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
             terminalCapable={terminalAvailable}
             visible={agentsVisible}
             onVisibleChange={setAgentsVisible}
+            agentsVisibilityRestoreSettled={desktopBridge == null || dockRestoreSettled}
             threadLaunch={threadLaunch}
             installedClis={installedClis}
             container={placements.agents.container}

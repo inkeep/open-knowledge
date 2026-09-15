@@ -13,6 +13,10 @@ let settingsRouteOpen = false;
 let closeSettingsRouteMock = vi.fn(() => {});
 let shellProps: SettingsDialogShellProps[] = [];
 let toastInfoMessages: string[] = [];
+const railPanelOnResizeById = new Map<
+  string,
+  ((size: { asPercentage: number; inPixels: number }) => void) | null
+>();
 
 vi.doMock('sonner', async (importOriginal) => {
   const actual = await importOriginal<typeof import('sonner')>();
@@ -232,16 +236,21 @@ vi.doMock('@/components/ui/resizable', () => ({
     id,
     minSize,
     maxSize,
+    onResize,
   }: {
     children: ReactNode;
     id?: string;
     minSize?: string | number;
     maxSize?: string | number;
-  }) => (
-    <div id={id} data-min-size={minSize} data-max-size={maxSize}>
-      {children}
-    </div>
-  ),
+    onResize?: (size: { asPercentage: number; inPixels: number }) => void;
+  }) => {
+    if (id != null) railPanelOnResizeById.set(id, onResize ?? null);
+    return (
+      <div id={id} data-min-size={minSize} data-max-size={maxSize}>
+        {children}
+      </div>
+    );
+  },
   ResizableHandle: ({ onPointerDown }: { onPointerDown?: (e: unknown) => void }) => (
     <div data-testid="resizable-handle" onPointerDown={onPointerDown} />
   ),
@@ -319,6 +328,7 @@ const { EditorArea } = await import('./EditorArea');
 const { TooltipProvider } = await import('@/components/ui/tooltip');
 const { emitLocalMenuAction } = await import('@/lib/local-menu-action-bus');
 const { requestDocPanelTab } = await import('./doc-panel-events');
+const { AGENTS_COLUMN_ID, TERMINAL_COLUMN_ID } = await import('./editor-area-rail-registry');
 
 function renderEditorArea() {
   return render(
@@ -1504,5 +1514,348 @@ describe('EditorArea doc-panel tab requests', () => {
     view.unmount();
     act(() => requestDocPanelTab('problems', { scope: 'doc' }));
     expect(groupSetLayoutCalls).toHaveLength(1);
+  });
+});
+
+describe('EditorArea rail mount inert', () => {
+  const railProps = {
+    editorMode: 'wysiwyg',
+    onModeChange: () => {},
+    activeTab: 'timeline',
+    onActiveTabChange: () => {},
+    onAgentsVisibleChange: () => {},
+  } as const;
+
+  beforeEach(() => {
+    cleanup();
+    panelIsCollapsed = false;
+    railPanelOnResizeById.clear();
+  });
+
+  const renderArea = (props: Record<string, unknown>) =>
+    render(
+      <TooltipProvider>
+        <EditorArea {...railProps} {...props} />
+      </TooltipProvider>,
+    );
+
+  test('both rail mounts are inert while their columns are absent', () => {
+    const { container } = renderArea({});
+
+    expect(
+      container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+    ).not.toBeNull();
+  });
+
+  test('both rail mounts stay focusable while their columns are open', () => {
+    const { container } = renderArea({
+      agentsVisible: true,
+      terminalBridge: { terminal: {} } as never,
+      terminalVisible: true,
+      terminalPlacement: 'right',
+    });
+
+    expect(container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert')).toBeNull();
+    expect(
+      container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+    ).toBeNull();
+  });
+
+  test('a drag-collapsed rail column stays focusable while the hold bridges the drag and goes inert once pointerup clears its presence', () => {
+    const RailVisibilityHost = () => {
+      const [agentsVisible, setAgentsVisible] = useState(true);
+      const [terminalVisible, setTerminalVisible] = useState(true);
+      return (
+        <TooltipProvider>
+          <EditorArea
+            {...railProps}
+            agentsVisible={agentsVisible}
+            onAgentsVisibleChange={setAgentsVisible}
+            terminalBridge={{ terminal: {} } as never}
+            terminalVisible={terminalVisible}
+            terminalPlacement="right"
+            onTerminalVisibleChange={setTerminalVisible}
+          />
+        </TooltipProvider>
+      );
+    };
+    const { container } = render(<RailVisibilityHost />);
+    const agentsMount = () => container.querySelector('[data-agents-panel-mount]');
+    const terminalMount = () => container.querySelector('[data-terminal-panel-mount]');
+    const railHandle = (position: -1 | -2) => {
+      const handle = screen.getAllByTestId('resizable-handle').at(position);
+      if (handle == null) throw new Error('rail resize handle not found');
+      return handle;
+    };
+    expect(agentsMount()?.getAttribute('inert')).toBeNull();
+    expect(terminalMount()?.getAttribute('inert')).toBeNull();
+
+    act(() => {
+      fireEvent.pointerDown(railHandle(-1), { pointerId: 1 });
+    });
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(agentsMount()?.getAttribute('inert')).toBeNull();
+
+    panelIsCollapsed = true;
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(agentsMount()?.getAttribute('inert')).not.toBeNull();
+
+    act(() => {
+      fireEvent.pointerDown(railHandle(-2), { pointerId: 2 });
+    });
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(terminalMount()?.getAttribute('inert')).toBeNull();
+
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 2 });
+    });
+    expect(terminalMount()?.getAttribute('inert')).not.toBeNull();
+    expect(agentsMount()?.getAttribute('inert')).not.toBeNull();
+  });
+
+  test('a present-but-measured-collapsed rail reports isShowing false so reveal focus waits for expansion', () => {
+    const placements: Array<{
+      agents?: { isShowing?: boolean };
+      terminal?: { isShowing?: boolean };
+    }> = [];
+    const { container } = renderArea({
+      agentsVisible: true,
+      terminalBridge: { terminal: {} } as never,
+      terminalVisible: true,
+      terminalPlacement: 'right',
+      onSessionPlacements: (placement: unknown) =>
+        placements.push(
+          placement as {
+            agents?: { isShowing?: boolean };
+            terminal?: { isShowing?: boolean };
+          },
+        ),
+    });
+    expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(
+      container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert'),
+    ).not.toBeNull();
+    expect(placements.at(-1)?.agents?.isShowing).toBe(false);
+
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(
+      container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+    ).not.toBeNull();
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(false);
+
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 25, inPixels: 300 });
+    });
+    expect(container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert')).toBeNull();
+    expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 25, inPixels: 300 });
+    });
+    expect(
+      container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+    ).toBeNull();
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+  });
+
+  test('a drag that dips a rail to zero and back — repeatedly — never flips its showing signal', () => {
+    const placements: Array<{
+      agents?: { isShowing?: boolean };
+      terminal?: { isShowing?: boolean };
+    }> = [];
+    const { container } = renderArea({
+      agentsVisible: true,
+      terminalBridge: { terminal: {} } as never,
+      terminalVisible: true,
+      terminalPlacement: 'right',
+      onSessionPlacements: (placement: unknown) =>
+        placements.push(
+          placement as {
+            agents?: { isShowing?: boolean };
+            terminal?: { isShowing?: boolean };
+          },
+        ),
+    });
+    expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+
+    const railHandle = (position: -1 | -2) => {
+      const handle = screen.getAllByTestId('resizable-handle').at(position);
+      if (handle == null) throw new Error('rail resize handle not found');
+      return handle;
+    };
+    const dip = (columnId: string) => {
+      act(() => {
+        railPanelOnResizeById.get(columnId)?.({ asPercentage: 0, inPixels: 0 });
+      });
+    };
+    const recover = (columnId: string) => {
+      act(() => {
+        railPanelOnResizeById.get(columnId)?.({ asPercentage: 25, inPixels: 300 });
+      });
+    };
+
+    const agentsDragStart = placements.length;
+    act(() => {
+      fireEvent.pointerDown(railHandle(-1), { pointerId: 1 });
+    });
+    for (let i = 0; i < 2; i += 1) {
+      dip(AGENTS_COLUMN_ID);
+      expect(
+        container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert'),
+      ).toBeNull();
+      expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+      recover(AGENTS_COLUMN_ID);
+      expect(
+        container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert'),
+      ).toBeNull();
+      expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+    }
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+    expect(
+      placements.slice(agentsDragStart).some((placement) => placement.agents?.isShowing === false),
+    ).toBe(false);
+
+    const terminalDragStart = placements.length;
+    act(() => {
+      fireEvent.pointerDown(railHandle(-2), { pointerId: 2 });
+    });
+    for (let i = 0; i < 2; i += 1) {
+      dip(TERMINAL_COLUMN_ID);
+      expect(
+        container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+      ).toBeNull();
+      expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+      recover(TERMINAL_COLUMN_ID);
+      expect(
+        container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+      ).toBeNull();
+      expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+    }
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 2 });
+    });
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+    expect(
+      placements
+        .slice(terminalDragStart)
+        .some((placement) => placement.terminal?.isShowing === false),
+    ).toBe(false);
+
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(placements.at(-1)?.agents?.isShowing).toBe(false);
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(false);
+  });
+
+  test('a pointercancel at measured collapse holds the showing signal until the drag-free expansion lands', () => {
+    const placements: Array<{
+      agents?: { isShowing?: boolean };
+      terminal?: { isShowing?: boolean };
+    }> = [];
+    const { container } = renderArea({
+      agentsVisible: true,
+      terminalBridge: { terminal: {} } as never,
+      terminalVisible: true,
+      terminalPlacement: 'right',
+      onSessionPlacements: (placement: unknown) =>
+        placements.push(
+          placement as {
+            agents?: { isShowing?: boolean };
+            terminal?: { isShowing?: boolean };
+          },
+        ),
+    });
+
+    const railHandle = (position: -1 | -2) => {
+      const handle = screen.getAllByTestId('resizable-handle').at(position);
+      if (handle == null) throw new Error('rail resize handle not found');
+      return handle;
+    };
+
+    const agentsDragStart = placements.length;
+    act(() => {
+      fireEvent.pointerDown(railHandle(-1), { pointerId: 1 });
+    });
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    panelIsCollapsed = true;
+    act(() => {
+      fireEvent.pointerCancel(window, { pointerId: 1 });
+    });
+    expect(container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert')).toBeNull();
+    expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+    expect(
+      placements.slice(agentsDragStart).some((placement) => placement.agents?.isShowing === false),
+    ).toBe(false);
+
+    panelIsCollapsed = false;
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 25, inPixels: 300 });
+    });
+    expect(container.querySelector('[data-agents-panel-mount]')?.getAttribute('inert')).toBeNull();
+    expect(placements.at(-1)?.agents?.isShowing).toBe(true);
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(placements.at(-1)?.agents?.isShowing).toBe(false);
+
+    const terminalDragStart = placements.length;
+    act(() => {
+      fireEvent.pointerDown(railHandle(-2), { pointerId: 2 });
+    });
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    panelIsCollapsed = true;
+    act(() => {
+      fireEvent.pointerCancel(window, { pointerId: 2 });
+    });
+    expect(
+      container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+    ).toBeNull();
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+    expect(
+      placements
+        .slice(terminalDragStart)
+        .some((placement) => placement.terminal?.isShowing === false),
+    ).toBe(false);
+
+    panelIsCollapsed = false;
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 25, inPixels: 300 });
+    });
+    expect(
+      container.querySelector('[data-terminal-panel-mount]')?.getAttribute('inert'),
+    ).toBeNull();
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(true);
+    act(() => {
+      railPanelOnResizeById.get(TERMINAL_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(placements.at(-1)?.terminal?.isShowing).toBe(false);
   });
 });

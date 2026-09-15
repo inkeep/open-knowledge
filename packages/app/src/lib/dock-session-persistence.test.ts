@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import {
   readDockRestoreState,
-  readDockSessionOrder,
   readWebDockSessionOrder,
   writeDockSessionOrder,
 } from './dock-session-persistence';
@@ -106,13 +105,11 @@ describe('desktop backend (bridge)', () => {
       agents: { order: ['thread-a', 'thread-b'], activeKey: 'thread-b' },
     });
 
-    await expect(readDockSessionOrder(bridge, 'terminal')).resolves.toEqual({
-      order: ['pty-1'],
-      activeKey: 'pty-1',
+    await expect(readDockRestoreState(bridge, 'terminal')).resolves.toMatchObject({
+      sessionOrder: { order: ['pty-1'], activeKey: 'pty-1' },
     });
-    await expect(readDockSessionOrder(bridge, 'agents')).resolves.toEqual({
-      order: ['thread-a', 'thread-b'],
-      activeKey: 'thread-b',
+    await expect(readDockRestoreState(bridge, 'agents')).resolves.toMatchObject({
+      sessionOrder: { order: ['thread-a', 'thread-b'], activeKey: 'thread-b' },
     });
   });
 
@@ -180,28 +177,19 @@ describe('desktop backend (bridge)', () => {
 
   test('an absent sub-record reads null (fresh launch → cold start)', async () => {
     const { bridge } = makeDesktopBridge({ terminal: { order: ['pty-1'], activeKey: 'pty-1' } });
-    await expect(readDockSessionOrder(bridge, 'agents')).resolves.toBeNull();
+    await expect(readDockRestoreState(bridge, 'agents')).resolves.toMatchObject({
+      sessionOrder: null,
+    });
   });
 
   test('an empty retained record reads null rather than seeding an empty arrangement', async () => {
     const { bridge } = makeDesktopBridge({ agents: { order: [], activeKey: null } });
-    await expect(readDockSessionOrder(bridge, 'agents')).resolves.toBeNull();
+    await expect(readDockRestoreState(bridge, 'agents')).resolves.toMatchObject({
+      sessionOrder: null,
+    });
   });
 
-  test('a rejecting getDockState reads null so the host cold-starts instead of hanging', async () => {
-    const bridge = {
-      terminal: {
-        getDockState: async () => {
-          throw new Error('ipc torn down mid-reload');
-        },
-        setDockState: () => {},
-      },
-    } as unknown as OkDesktopBridge;
-
-    await expect(readDockSessionOrder(bridge, 'terminal')).resolves.toBeNull();
-  });
-
-  test('a rejecting dock-state read settles the complete restore state', async () => {
+  test('a rejecting dock-state read reads null, reports the failure, and settles the complete restore state', async () => {
     const bridge = {
       terminal: {
         getDockState: async () => {
@@ -254,9 +242,8 @@ describe('desktop backend (bridge)', () => {
     writeDockSessionOrder(sessionOnly, 'terminal', { order: ['pty-1'], activeKey: 'pty-1' });
 
     expect(localStorageStub.getItem('ok-dock-session-order-v1')).not.toBeNull();
-    await expect(readDockSessionOrder(sessionOnly, 'terminal')).resolves.toEqual({
-      order: ['pty-1'],
-      activeKey: 'pty-1',
+    await expect(readDockRestoreState(sessionOnly, 'terminal')).resolves.toMatchObject({
+      sessionOrder: { order: ['pty-1'], activeKey: 'pty-1' },
     });
   });
 });

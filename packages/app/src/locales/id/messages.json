@@ -3924,6 +3924,10 @@
     "i04BJx": ["Berada di luar proyek ini — hanya-baca di sini."],
     "i09An-": ["Versi terdahulu dipulihkan (", ["0"], ")"],
     "i1flq_": ["Saran tautan wiki"],
+    "i25FHa": [
+      "Buka panel agen — ",
+      ["liveThreadCount", "plural", { "other": ["#", " utas agen aktif"] }]
+    ],
     "i3f2kh": ["Tidak ada perintah yang cocok."],
     "i6o7XB": ["Cari bahasa"],
     "i92eAT": [

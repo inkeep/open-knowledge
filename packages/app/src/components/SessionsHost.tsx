@@ -44,6 +44,7 @@ import {
   useAgentThreadConnection,
   useAgentThreadUnread,
   useArchivedAgentThreads,
+  useInitialRosterThreadIds,
   useOpenAgentThreadTabs,
 } from '@/lib/acp/thread-client';
 import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
@@ -52,14 +53,15 @@ import {
   type DockSessionOrder,
   type DockSurface,
   readDockRestoreState,
-  readDockSessionOrder,
   readWebDockSessionOrder,
+  writeAgentsPanelLevel,
   writeDockSessionOrder,
 } from '@/lib/dock-session-persistence';
 import { matchesPrimaryModifier, type ShortcutPlatform } from '@/lib/keyboard-shortcuts';
 import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import type { NewSessionChoice } from '@/lib/new-session-choice';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
+import { RESTORE_SETTLE_TIMEOUT_MS } from '@/lib/restore-settle-timeout';
 import { usePreferBareTerminal, writePreferBareTerminal } from '@/lib/terminal-new-tab-store';
 import {
   parseStickyCliId,
@@ -111,6 +113,24 @@ interface ThreadSessionDescriptor extends BaseSessionDescriptor {
 }
 type SessionDescriptor = TerminalSessionDescriptor | ThreadSessionDescriptor;
 
+type SessionOpenProvenance = 'user' | 'restore-seed';
+
+function applyReorder(
+  current: readonly SessionDescriptor[],
+  newOrderIds: readonly string[],
+): SessionDescriptor[] | null {
+  if (newOrderIds.length !== current.length) return null;
+  const byId = new Map(current.map((session) => [session.id, session]));
+  const next: SessionDescriptor[] = [];
+  for (const id of newOrderIds) {
+    const session = byId.get(id);
+    if (session == null) return null;
+    next.push(session);
+  }
+  if (next.every((session, index) => session === current[index])) return null;
+  return next;
+}
+
 function makeSessionId(counter: number): string {
   return `terminal-session-${counter}`;
 }
@@ -119,22 +139,22 @@ function escapeSelector(id: string): string {
   return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
 }
 
+function terminalSessionFocusSelector(id: string): string {
+  return `[data-terminal-session="${escapeSelector(id)}"] .xterm-helper-textarea`;
+}
+
+function threadSessionFocusSelector(id: string): string {
+  return `[data-session-id="${escapeSelector(id)}"] [data-testid="agent-thread-composer"]`;
+}
+
 function focusTerminalSession(id: string) {
   if (id === '') return;
-  document
-    .querySelector<HTMLElement>(
-      `[data-terminal-session="${escapeSelector(id)}"] .xterm-helper-textarea`,
-    )
-    ?.focus();
+  document.querySelector<HTMLElement>(terminalSessionFocusSelector(id))?.focus();
 }
 
 function focusThreadSession(id: string) {
   if (id === '') return;
-  document
-    .querySelector<HTMLElement>(
-      `[data-session-id="${escapeSelector(id)}"] [data-testid="agent-thread-composer"]`,
-    )
-    ?.focus();
+  document.querySelector<HTMLElement>(threadSessionFocusSelector(id))?.focus();
 }
 
 function focusSession(session: SessionDescriptor) {
@@ -228,10 +248,9 @@ function ThreadTabIcon({
   );
 }
 
-interface SessionsHostProps {
+interface SessionsHostSharedProps {
   readonly bridge: OkDesktopBridge | null;
   readonly terminalCapable?: boolean;
-  readonly surface: SessionSurface;
   readonly terminalPlacement?: TerminalPlacement;
   readonly onTerminalPlacementChange?: (placement: TerminalPlacement) => void;
   readonly reserveRightRevealTabGutter?: boolean;
@@ -247,7 +266,19 @@ interface SessionsHostProps {
   readonly onRequestEditorFocus: () => void;
 }
 
-const TERMINAL_RESTORE_TIMEOUT_MS = 5_000;
+type SessionsHostProps = SessionsHostSharedProps &
+  (
+    | {
+        readonly surface: Extract<SessionSurface, 'agents-panel'>;
+        readonly agentsVisibilityRestoreSettled: boolean;
+      }
+    | {
+        readonly surface: Extract<SessionSurface, 'terminal-dock' | 'terminal-window'>;
+        readonly agentsVisibilityRestoreSettled?: never;
+      }
+  );
+
+const REVEAL_FOCUS_LANDING_TIMEOUT_MS = 5_000;
 
 const TERMINAL_DOCK_KINDS: Record<Exclude<LauncherSelection['kind'], 'thread' | 'none'>, true> = {
   cli: true,
@@ -265,6 +296,7 @@ export function SessionsHost({
   terminalRestoreRevealNonce = 0,
   visible,
   onVisibleChange,
+  agentsVisibilityRestoreSettled,
   launch = null,
   commandLaunch = null,
   threadLaunch = null,
@@ -281,6 +313,7 @@ export function SessionsHost({
   const terminalAvailable = hostTerminals && terminalCapable && bridge?.terminal != null;
   const edge: SessionPanelEdge = hostThreads ? 'right' : terminalPlacement;
   const persistSurface: DockSurface = hostThreads ? 'agents' : 'terminal';
+  const persistedPanelLevel = hostThreads && visible;
   const persistsOrder = !isWindow;
   const shortcutPlatform: ShortcutPlatform | undefined =
     bridge?.platform === 'darwin'
@@ -302,6 +335,8 @@ export function SessionsHost({
   }, [hostEl, container]);
 
   const canRehydrate = hostTerminals && typeof bridge?.terminal?.list === 'function';
+  const restoresDesktopDockOrder =
+    hostThreads && typeof bridge?.terminal?.getDockState === 'function';
 
   const coldSeedTerminal = !canRehydrate && terminalAvailable && visible;
 
@@ -332,7 +367,9 @@ export function SessionsHost({
   const [activeSessionId, setActiveSessionId] = useState(() =>
     coldSeedTerminal ? makeSessionId(1) : '',
   );
-  const [rehydrationSettled, setRehydrationSettled] = useState(!canRehydrate);
+  const [rehydrationSettled, setRehydrationSettled] = useState(
+    !canRehydrate && !restoresDesktopDockOrder,
+  );
   const rehydratedRef = useRef(false);
   const activeSessionIdRef = useRef(activeSessionId);
   const sessionsRef = useRef(sessions);
@@ -345,6 +382,8 @@ export function SessionsHost({
   const seedOwedRef = useRef(false);
   const restoreAbandonedRef = useRef(false);
   const restoreUnreadRef = useRef(false);
+  const userArrangedRef = useRef(false);
+  const rosterPopulatedRef = useRef(false);
   const persistDeclineLoggedRef = useRef(false);
   const persistSuppressedRef = useRef<() => boolean>(() => false);
   const lastHandledCommandNonceRef = useRef<number | null>(null);
@@ -377,12 +416,12 @@ export function SessionsHost({
 
   function dockPersistSuppressed(): boolean {
     if (!persistsOrder) return true;
-    if (canRehydrate && !rehydrationSettled) return true;
-    if (restoreUnreadRef.current) {
+    if (!rehydrationSettled) return true;
+    if (restoreUnreadRef.current && !userArrangedRef.current) {
       if (!persistDeclineLoggedRef.current) {
         persistDeclineLoggedRef.current = true;
         console.warn(
-          '[terminal] dock persistence suppressed for this window: the restore did not complete, so the saved tab set is left untouched',
+          `[${hostThreads ? 'agents' : 'terminal'}] dock persistence withheld: the restore did not complete, so the saved tab set is left untouched`,
         );
       }
       return true;
@@ -397,15 +436,14 @@ export function SessionsHost({
       .map((session) => computePersistKey(session, ptyMap))
       .filter((key): key is string => key != null);
     const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
-    writeDockSessionOrder(
-      bridge,
-      persistSurface,
-      {
-        order,
-        activeKey: active != null ? computePersistKey(active, ptyMap) : null,
-      },
-      buildTerminalRestartSnapshot(sessionsRef.current, activeSessionIdRef.current),
-    );
+    const activeKey = active != null ? computePersistKey(active, ptyMap) : null;
+    const snapshot = buildTerminalRestartSnapshot(sessionsRef.current, activeSessionIdRef.current);
+    if (hostThreads) {
+      writeDockSessionOrder(bridge, 'agents', { order, activeKey }, snapshot);
+      writeAgentsPanelLevel(bridge, visible);
+    } else {
+      writeDockSessionOrder(bridge, 'terminal', { order, activeKey }, snapshot);
+    }
   }
 
   function setSessionPtyId(id: string, ptyId: string | null) {
@@ -429,7 +467,9 @@ export function SessionsHost({
   function openSession(
     launchForSession: TerminalLaunchIntent | null,
     commandForSession: TerminalCommandId | null = null,
+    provenance: SessionOpenProvenance,
   ) {
+    if (provenance === 'user') noteUserArrangement();
     pendingActiveKeyRef.current = null;
     sessionCounterRef.current += 1;
     const id = makeSessionId(sessionCounterRef.current);
@@ -476,14 +516,14 @@ export function SessionsHost({
           ? { kind: 'terminal' }
           : { kind: 'agent', agent: null };
 
-  function openNewChatSession(cli: TerminalCli) {
+  function openNewChatSession(cli: TerminalCli, provenance: SessionOpenProvenance) {
     stripLaunchNonceRef.current += 1;
-    openSession({ prompt: null, cli, nonce: stripLaunchNonceRef.current });
+    openSession({ prompt: null, cli, nonce: stripLaunchNonceRef.current }, null, provenance);
   }
 
   function launchSelectedNewTab() {
-    if (newSessionChoice.kind === 'terminal') openSession(null);
-    else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
+    if (newSessionChoice.kind === 'terminal') openSession(null, null, 'user');
+    else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli, 'user');
     else if (newSessionChoice.kind === 'agent' && newSessionChoice.agent != null)
       void launchAgentThread(
         { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
@@ -505,8 +545,9 @@ export function SessionsHost({
       );
       return true;
     }
-    if (newSessionChoice.kind === 'terminal') openSession(null);
-    else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli);
+    if (newSessionChoice.kind === 'terminal') openSession(null, null, 'restore-seed');
+    else if (newSessionChoice.kind === 'cli')
+      openNewChatSession(newSessionChoice.cli, 'restore-seed');
     return true;
   }
 
@@ -633,12 +674,12 @@ export function SessionsHost({
   function pickNewChatCli(cli: TerminalCli) {
     writePreferBareTerminal(false);
     saveStickyAgent(terminalCliId(cli));
-    openNewChatSession(cli);
+    openNewChatSession(cli, 'user');
   }
 
   function pickNewChatTerminal() {
     writePreferBareTerminal(true);
-    openSession(null);
+    openSession(null, null, 'user');
   }
 
   function pickNewChatAgent(agent: RegisteredAgent) {
@@ -693,19 +734,19 @@ export function SessionsHost({
   const announcerRef = useRef<HTMLSpanElement>(null);
   const announceTimerRef = useRef<number | null>(null);
 
+  function noteUserArrangement() {
+    if (persistDeclineLoggedRef.current) {
+      console.warn(
+        `[${hostThreads ? 'agents' : 'terminal'}] dock persistence resumed: a user arrangement established the tab set the restore did not`,
+      );
+    }
+    userArrangedRef.current = true;
+    persistDeclineLoggedRef.current = false;
+  }
+
   function reorderSessions(newOrderIds: readonly string[]) {
-    setSessions((prev) => {
-      if (newOrderIds.length !== prev.length) return prev;
-      const byId = new Map(prev.map((session) => [session.id, session]));
-      const next: SessionDescriptor[] = [];
-      for (const id of newOrderIds) {
-        const session = byId.get(id);
-        if (session == null) return prev;
-        next.push(session);
-      }
-      if (next.every((session, index) => session === prev[index])) return prev;
-      return next;
-    });
+    if (applyReorder(sessionsRef.current, newOrderIds) != null) noteUserArrangement();
+    setSessions((prev) => applyReorder(prev, newOrderIds) ?? prev);
     const orderedPtyIds = newOrderIds
       .map((id) => ptyIdBySessionRef.current.get(id))
       .filter((ptyId): ptyId is string => ptyId != null);
@@ -732,6 +773,7 @@ export function SessionsHost({
     launchSelectedNewTab();
   }
 
+  const noteUserArrangementRef = useRef(noteUserArrangement);
   const moveActiveSessionRef = useRef(moveActiveSession);
   const openSessionRef = useRef(openSession);
   const seedOnRevealRef = useRef(seedOnReveal);
@@ -743,6 +785,7 @@ export function SessionsHost({
     const current = sessionsRef.current;
     const index = current.findIndex((session) => session.id === id);
     if (index === -1) return;
+    noteUserArrangement();
     const session = current[index];
     const isLast = current.length === 1;
     pendingActiveKeyRef.current = null;
@@ -771,9 +814,11 @@ export function SessionsHost({
     dispatchAskAiRef.current = dispatchAskAi;
     revealForReuseRef.current = revealForReuse;
     launchPreferredSessionRef.current = launchPreferredSession;
+    noteUserArrangementRef.current = noteUserArrangement;
     moveActiveSessionRef.current = moveActiveSession;
     activeSessionIdRef.current = activeSessionId;
     sessionsRef.current = sessions;
+    if (sessions.length > 0) rosterPopulatedRef.current = true;
     closeActiveRef.current = () => {
       const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
       if (active?.kind === 'terminal') {
@@ -785,25 +830,44 @@ export function SessionsHost({
     };
   });
 
+  const initialRosterThreadIds = useInitialRosterThreadIds();
+
   useEffect(() => {
     if (!persistsOrder) return;
     if (!rehydrationSettled) return;
     if (persistSuppressedRef.current()) return;
+    if (
+      hostThreads &&
+      sessions.length === 0 &&
+      !rosterPopulatedRef.current &&
+      (initialRosterThreadIds === null || initialRosterThreadIds.size > 0)
+    ) {
+      writeAgentsPanelLevel(bridge, persistedPanelLevel);
+      return;
+    }
     const ptyMap = ptyIdBySessionRef.current;
     const order = sessions
       .map((session) => computePersistKey(session, ptyMap))
       .filter((key): key is string => key != null);
     const active = sessions.find((s) => s.id === activeSessionId);
-    writeDockSessionOrder(
-      bridge,
-      persistSurface,
-      {
-        order,
-        activeKey: active != null ? computePersistKey(active, ptyMap) : null,
-      },
-      buildTerminalRestartSnapshot(sessions, activeSessionId),
-    );
-  }, [sessions, activeSessionId, persistsOrder, persistSurface, bridge, rehydrationSettled]);
+    const activeKey = active != null ? computePersistKey(active, ptyMap) : null;
+    const snapshot = buildTerminalRestartSnapshot(sessions, activeSessionId);
+    if (hostThreads) {
+      writeDockSessionOrder(bridge, 'agents', { order, activeKey }, snapshot);
+      writeAgentsPanelLevel(bridge, persistedPanelLevel);
+    } else {
+      writeDockSessionOrder(bridge, 'terminal', { order, activeKey }, snapshot);
+    }
+  }, [
+    sessions,
+    activeSessionId,
+    persistsOrder,
+    bridge,
+    rehydrationSettled,
+    persistedPanelLevel,
+    hostThreads,
+    initialRosterThreadIds,
+  ]);
 
   useEffect(() => {
     if (!hostThreads) return;
@@ -862,13 +926,27 @@ export function SessionsHost({
     }
   }, [openThreadTabs, hostThreads]);
 
-  const prevLiveThreadCountRef = useRef(liveThreadCount);
+  const liveThreadIds = openThreadTabs
+    .filter((info) => info.archived !== true)
+    .map((info) => info.threadId);
+  const prevLiveThreadIdsRef = useRef<readonly string[]>(liveThreadIds);
   useEffect(() => {
     if (!hostThreads) return;
-    const previous = prevLiveThreadCountRef.current;
-    prevLiveThreadCountRef.current = liveThreadCount;
-    if (liveThreadCount > previous && !visible) onVisibleChange(true);
-  }, [liveThreadCount, visible, hostThreads, onVisibleChange]);
+    if (!agentsVisibilityRestoreSettled) return;
+    const previous = prevLiveThreadIdsRef.current;
+    prevLiveThreadIdsRef.current = liveThreadIds;
+    const added = liveThreadIds.filter((id) => !previous.includes(id));
+    if (added.length === 0 || visible) return;
+    const absorbsReloadSnapshot = added.every((id) => initialRosterThreadIds?.has(id) === true);
+    if (!absorbsReloadSnapshot) onVisibleChange(true);
+  }, [
+    liveThreadIds,
+    hostThreads,
+    agentsVisibilityRestoreSettled,
+    visible,
+    initialRosterThreadIds,
+    onVisibleChange,
+  ]);
 
   useEffect(() => {
     const pending = pendingActiveKeyRef.current;
@@ -897,12 +975,12 @@ export function SessionsHost({
 
     if (launch != null && launch.nonce !== lastHandledLaunchNonceRef.current) {
       lastHandledLaunchNonceRef.current = launch.nonce;
-      openSessionRef.current(launch);
+      openSessionRef.current(launch, null, 'user');
       return;
     }
     if (commandLaunch != null && commandLaunch.nonce !== lastHandledCommandNonceRef.current) {
       lastHandledCommandNonceRef.current = commandLaunch.nonce;
-      openSessionRef.current(null, commandLaunch.id);
+      openSessionRef.current(null, commandLaunch.id, 'user');
       return;
     }
     const threadLaunchPending =
@@ -988,13 +1066,13 @@ export function SessionsHost({
     const restoreDeadline = window.setTimeout(() => {
       abandoned = true;
       console.warn(
-        `[terminal] dock restore exceeded its ${TERMINAL_RESTORE_TIMEOUT_MS}ms bound; cold-starting instead of waiting`,
+        `[terminal] dock restore exceeded its ${RESTORE_SETTLE_TIMEOUT_MS}ms bound; cold-starting instead of waiting`,
       );
       restoreAbandonedRef.current = true;
       restoreUnreadRef.current = true;
       seedOwedRef.current = true;
       settle();
-    }, TERMINAL_RESTORE_TIMEOUT_MS);
+    }, RESTORE_SETTLE_TIMEOUT_MS);
     const finish = () => {
       window.clearTimeout(restoreDeadline);
       if (!abandoned) settle();
@@ -1114,6 +1192,7 @@ export function SessionsHost({
       rehydratedRef.current = false;
       restoreAbandonedRef.current = false;
       restoreUnreadRef.current = false;
+      userArrangedRef.current = false;
       seedOwedRef.current = false;
       persistDeclineLoggedRef.current = false;
     };
@@ -1123,14 +1202,38 @@ export function SessionsHost({
     if (canRehydrate || !persistsOrder) return;
     if (typeof bridge?.terminal?.getDockState !== 'function') return;
     let cancelled = false;
-    void readDockSessionOrder(bridge, persistSurface).then((persisted) => {
-      if (cancelled || persisted == null) return;
-      reloadOrderRef.current = persisted.order;
-      const activationTookOver = pendingActiveKeyRef.current !== null;
-      if (!activationTookOver) pendingActiveKeyRef.current = persisted.activeKey;
-    });
+    let abandoned = false;
+    const settle = () => {
+      if (!cancelled) setRehydrationSettled(true);
+    };
+    const restoreDeadline = window.setTimeout(() => {
+      abandoned = true;
+      console.warn(
+        `[agents] dock order restore exceeded its ${RESTORE_SETTLE_TIMEOUT_MS}ms bound; the saved tab set is left untouched`,
+      );
+      restoreUnreadRef.current = true;
+      settle();
+    }, RESTORE_SETTLE_TIMEOUT_MS);
+    void readDockRestoreState(bridge, persistSurface)
+      .then(({ sessionOrder: persisted, failed: restoreReadFailed }) => {
+        if (cancelled || abandoned) return;
+        if (restoreReadFailed) restoreUnreadRef.current = true;
+        if (persisted != null) {
+          reloadOrderRef.current = persisted.order;
+          const activationTookOver = pendingActiveKeyRef.current !== null;
+          if (!activationTookOver) pendingActiveKeyRef.current = persisted.activeKey;
+        }
+      })
+      .finally(() => {
+        window.clearTimeout(restoreDeadline);
+        settle();
+      });
     return () => {
       cancelled = true;
+      window.clearTimeout(restoreDeadline);
+      restoreUnreadRef.current = false;
+      userArrangedRef.current = false;
+      persistDeclineLoggedRef.current = false;
     };
   }, [bridge, canRehydrate, persistsOrder, persistSurface]);
 
@@ -1167,7 +1270,7 @@ export function SessionsHost({
     if (!hostTerminals) return;
     return subscribeLocalMenuAction((action) => {
       if (action === 'new-terminal') {
-        if (terminalAvailable) openSessionRef.current(null);
+        if (terminalAvailable) openSessionRef.current(null, null, 'user');
       } else if (action === 'kill-terminal') closeActiveRef.current();
       else if (action === 'close-active-tab-or-window' && isWindow) closeActiveRef.current();
     });
@@ -1184,6 +1287,7 @@ export function SessionsHost({
       if (target == null) return;
       event.preventDefault();
       event.stopPropagation();
+      if (target.id !== activeSessionIdRef.current) noteUserArrangementRef.current();
       setActiveSessionId(target.id);
       queueMicrotask(() => focusSession(target));
     }
@@ -1234,17 +1338,61 @@ export function SessionsHost({
     bridge?.editor.notifyViewMenuStateChanged({ terminalLive });
   }, [bridge, sessions, hostTerminals]);
 
+  const focusInsideHostRef = useRef(false);
+  useEffect(() => {
+    if (hostEl == null) return;
+    const syncFocusSnapshot = () => {
+      focusInsideHostRef.current = focusInsideHost(hostEl);
+    };
+    document.addEventListener('focusin', syncFocusSnapshot, true);
+    syncFocusSnapshot();
+    return () => document.removeEventListener('focusin', syncFocusSnapshot, true);
+  }, [hostEl]);
   useLayoutEffect(() => {
     if (isShowing || visible) return;
-    if (!focusInsideHost(hostEl)) return;
+    if (!focusInsideHostRef.current) return;
+    focusInsideHostRef.current = false;
     onRequestEditorFocus();
-  }, [isShowing, visible, hostEl, onRequestEditorFocus]);
+  }, [isShowing, visible, onRequestEditorFocus]);
 
   useEffect(() => {
     if (!isShowing) return;
     const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
-    if (active != null) focusSession(active);
-  }, [isShowing]);
+    if (active == null) return;
+    focusSession(active);
+    if (hostEl == null || focusInsideHost(hostEl)) return;
+    let landed = false;
+    const recordLanding = (event: FocusEvent) => {
+      if (hostEl.contains(event.target as Node | null)) landed = true;
+    };
+    document.addEventListener('focusin', recordLanding, true);
+    const observer = new MutationObserver(() => {
+      if (focusInsideHost(hostEl)) {
+        landed = true;
+        observer.disconnect();
+        return;
+      }
+      if (document.activeElement == null || document.activeElement === document.body) {
+        focusSession(active);
+      }
+    });
+    observer.observe(hostEl, { subtree: true, childList: true });
+    const deadline = window.setTimeout(() => {
+      observer.disconnect();
+      const focusNowhere =
+        document.activeElement == null || document.activeElement === document.body;
+      if (!landed && focusNowhere) {
+        console.warn(
+          `[${hostThreads ? 'agents' : 'terminal'}] reveal focus did not land within its ${REVEAL_FOCUS_LANDING_TIMEOUT_MS}ms bound`,
+        );
+      }
+    }, REVEAL_FOCUS_LANDING_TIMEOUT_MS);
+    return () => {
+      document.removeEventListener('focusin', recordLanding, true);
+      observer.disconnect();
+      window.clearTimeout(deadline);
+    };
+  }, [isShowing, hostEl, hostThreads]);
 
   const activeThreadIdForView = (() => {
     const active = sessions.find((s) => s.id === activeSessionId);
@@ -1306,6 +1454,7 @@ export function SessionsHost({
       sessionKind={hostThreads ? 'agent' : 'terminal'}
       activeSessionId={activeSessionId}
       onSelect={(id) => {
+        if (id !== activeSessionIdRef.current) noteUserArrangement();
         pendingActiveKeyRef.current = null;
         setActiveSessionId(id);
       }}
@@ -1324,7 +1473,14 @@ export function SessionsHost({
       edge={edge}
       onPlacementChange={surface === 'terminal-dock' ? onTerminalPlacementChange : undefined}
       reserveRightRevealTabGutter={reserveRightRevealTabGutter}
-      onCollapse={isWindow ? undefined : () => onVisibleChange(false)}
+      onCollapse={
+        isWindow
+          ? undefined
+          : () => {
+              onVisibleChange(false);
+              onRequestEditorFocus();
+            }
+      }
       draggable={isWindow}
       className="h-full"
     >

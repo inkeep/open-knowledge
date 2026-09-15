@@ -9643,6 +9643,10 @@ msgstr "{tooltipName}-এর জন্য কার্যকলাপ প্য�
 msgid "Open agents panel"
 msgstr "এজেন্ট প্যানেল খুলুন"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
+msgstr "এজেন্ট প্যানেল খুলুন — {liveThreadCount, plural, one {# সক্রিয় এজেন্ট থ্রেড} other {# সক্রিয় এজেন্ট থ্রেড}}"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "ডিস্ক থেকে একটি বিদ্যমান প্রকল্প ফোল্ডার খুলুন।"

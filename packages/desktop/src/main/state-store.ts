@@ -64,6 +64,7 @@ export interface ProjectSessionState {
 export interface PersistedTerminalDockState {
   terminalVisible: boolean;
   terminalSnapshot: OkTerminalRestartSnapshot;
+  agentPanelVisible: boolean;
 }
 
 export type UpdateChannel = 'latest' | 'beta';
@@ -438,6 +439,7 @@ function emptyTerminalDockState(): PersistedTerminalDockState {
   return {
     terminalVisible: false,
     terminalSnapshot: { tabs: [], activeOrdinal: null },
+    agentPanelVisible: false,
   };
 }
 
@@ -485,6 +487,7 @@ function parsePersistedTerminalDockState(raw: unknown): PersistedTerminalDockSta
   return {
     terminalVisible: obj.terminalVisible === true,
     terminalSnapshot: normalizeTerminalRestartSnapshot(obj.terminalSnapshot),
+    agentPanelVisible: obj.agentPanelVisible === true,
   };
 }
 

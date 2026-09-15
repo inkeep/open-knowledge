@@ -9647,6 +9647,10 @@ msgstr "{tooltipName} 활동 패널 열기, {realCurrentDoc} 편집 중"
 msgid "Open agents panel"
 msgstr "에이전트 패널 열기"
 
+#: src/components/TerminalRevealTab.tsx
+msgid "Open agents panel — {liveThreadCount, plural, one {# live agent thread} other {# live agent threads}}"
+msgstr "에이전트 패널 열기 — {liveThreadCount, plural, other {# 실행 중인 에이전트 대화}}"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open an existing project folder from disk."
 msgstr "디스크에서 기존 프로젝트 폴더를 엽니다."

@@ -4,9 +4,17 @@ import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
+import {
+  dispatchReorderChord,
+  dispatchTabChord,
+  focusFirstTab,
+  tabTitles,
+} from './sessions-host-tabs.test-helper';
 
 vi.doMock('@/lib/acp/thread-client', () => ({
   useOpenAgentThreadTabs: () => [],
+  useInitialRosterThreadIds: () => null,
   useArchivedAgentThreads: () => [],
   useAgentThreadConnection: () => 'open',
   useAgentThreadUnread: () => false,
@@ -321,5 +329,177 @@ describe('SessionsHost — terminal dock rehydration must always settle', () => 
       .map((el) => el.getAttribute('data-adopt'));
     expect(adoptedAfter).toEqual(adoptedBefore);
     expect(adoptedAfter).not.toContain('pty-late');
+  });
+
+  test('after a rejected read, the user reordering the tabs releases suppression and persists the arrangement', async () => {
+    const setDockState = vi.fn(async () => ({ ok: true }));
+    const getDockState = vi.fn(async () => {
+      throw new Error('ipc exploded');
+    });
+    const list = vi.fn(async () => [
+      { ptyId: 'pty-a', customLabel: 'build', ordinal: 1 },
+      { ptyId: 'pty-b', customLabel: 'server', ordinal: 2 },
+    ]);
+    render(
+      <Harness
+        bridge={makeBridge({ getDockState, list, setDockState })}
+        restoreNonce={1}
+        startVisible
+      />,
+    );
+    await revealAndSettle(1_000);
+
+    expect(tabTitles()).toEqual(['build', 'server']);
+    expect(setDockState).not.toHaveBeenCalled();
+
+    focusFirstTab();
+    expect(dispatchReorderChord('ArrowRight').defaultPrevented).toBe(true);
+    await revealAndSettle(0);
+
+    expect(tabTitles()).toEqual(['server', 'build']);
+    const writes = setDockState.mock.calls.filter(
+      (call) => (call[0] as { surface?: string }).surface === 'terminal',
+    );
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.at(-1)?.[0]).toMatchObject({
+      surface: 'terminal',
+      order: ['pty-b', 'pty-a'],
+    });
+  });
+
+  test('after a rejected read, opening a new tab releases suppression and persists the grown tab set', async () => {
+    const setDockState = vi.fn(async () => ({ ok: true }));
+    const getDockState = vi.fn(async () => {
+      throw new Error('ipc exploded');
+    });
+    const list = vi.fn(async () => [
+      { ptyId: 'pty-a', customLabel: 'build', ordinal: 1 },
+      { ptyId: 'pty-b', customLabel: 'server', ordinal: 2 },
+    ]);
+    render(
+      <Harness
+        bridge={makeBridge({ getDockState, list, setDockState })}
+        restoreNonce={1}
+        startVisible
+      />,
+    );
+    await revealAndSettle(1_000);
+
+    expect(tabTitles()).toEqual(['build', 'server']);
+    expect(setDockState).not.toHaveBeenCalled();
+
+    act(() => {
+      emitLocalMenuAction('new-terminal');
+    });
+    await revealAndSettle(0);
+
+    expect(tabTitles()).toHaveLength(3);
+    const writes = setDockState.mock.calls.filter(
+      (call) => (call[0] as { surface?: string }).surface === 'terminal',
+    );
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.at(-1)?.[0]).toMatchObject({
+      surface: 'terminal',
+      order: ['pty-a', 'pty-b', 'pty-fresh'],
+    });
+  });
+
+  test('after a rejected read, the tab chord releases suppression and persists the active key', async () => {
+    const setDockState = vi.fn(async () => ({ ok: true }));
+    const getDockState = vi.fn(async () => {
+      throw new Error('ipc exploded');
+    });
+    const list = vi.fn(async () => [
+      { ptyId: 'pty-a', customLabel: 'build', ordinal: 1 },
+      { ptyId: 'pty-b', customLabel: 'server', ordinal: 2 },
+    ]);
+    render(
+      <Harness
+        bridge={makeBridge({ getDockState, list, setDockState })}
+        restoreNonce={1}
+        startVisible
+      />,
+    );
+    await revealAndSettle(1_000);
+
+    expect(tabTitles()).toEqual(['build', 'server']);
+    expect(setDockState).not.toHaveBeenCalled();
+
+    act(() => {
+      screen.getByTestId('terminal-new-chat').focus();
+    });
+    await revealAndSettle(0);
+    expect(setDockState).not.toHaveBeenCalled();
+
+    expect(dispatchTabChord('1').defaultPrevented).toBe(true);
+    await revealAndSettle(0);
+
+    expect(tabTitles()).toEqual(['build', 'server']);
+    const writes = setDockState.mock.calls.filter(
+      (call) => (call[0] as { surface?: string }).surface === 'terminal',
+    );
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.at(-1)?.[0]).toMatchObject({
+      surface: 'terminal',
+      order: ['pty-a', 'pty-b'],
+      activeKey: 'pty-a',
+    });
+  });
+
+  test('after a rejected read, selecting a tab in the strip releases suppression on its own', async () => {
+    const setDockState = vi.fn(async () => ({ ok: true }));
+    const getDockState = vi.fn(async () => {
+      throw new Error('ipc exploded');
+    });
+    const list = vi.fn(async () => [
+      { ptyId: 'pty-a', customLabel: 'build', ordinal: 1 },
+      { ptyId: 'pty-b', customLabel: 'server', ordinal: 2 },
+    ]);
+    render(
+      <Harness
+        bridge={makeBridge({ getDockState, list, setDockState })}
+        restoreNonce={1}
+        startVisible
+      />,
+    );
+    await revealAndSettle(1_000);
+
+    expect(tabTitles()).toEqual(['build', 'server']);
+    expect(setDockState).not.toHaveBeenCalled();
+
+    focusFirstTab();
+    await revealAndSettle(0);
+
+    const writes = setDockState.mock.calls.filter(
+      (call) => (call[0] as { surface?: string }).surface === 'terminal',
+    );
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.at(-1)?.[0]).toMatchObject({
+      surface: 'terminal',
+      order: ['pty-a', 'pty-b'],
+      activeKey: 'pty-a',
+    });
+  });
+
+  test('after a rejected read, adopting PTYs alone never releases suppression', async () => {
+    const setDockState = vi.fn(async () => ({ ok: true }));
+    const getDockState = vi.fn(async () => {
+      throw new Error('ipc exploded');
+    });
+    const list = vi.fn(async () => [
+      { ptyId: 'pty-a', customLabel: 'build', ordinal: 1 },
+      { ptyId: 'pty-b', customLabel: 'server', ordinal: 2 },
+    ]);
+    render(
+      <Harness
+        bridge={makeBridge({ getDockState, list, setDockState })}
+        restoreNonce={1}
+        startVisible
+      />,
+    );
+    await revealAndSettle(10_000);
+
+    expect(tabTitles()).toEqual(['build', 'server']);
+    expect(setDockState).not.toHaveBeenCalled();
   });
 });
