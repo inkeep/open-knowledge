@@ -83,7 +83,7 @@ describe('scope membership', () => {
     'packages/core/src/markdown/fixtures/index.ts',
     'test-support/vitest.base.ts',
     'test-support/strip-comments.test-helper.mjs',
-    'plugins/ok/skills/bug-triage/scripts/linear-issue.mjs',
+    'plugins/ok/skills/bug-triage/scripts/bundle-forensics.mjs',
     'packages/app/src/lib/a.mjs',
     'packages/app/tests/fidelity/invariant-i17.test.ts',
     'packages/desktop/tests/lume-qa/scenarios/ok-e2e-claude.ts',

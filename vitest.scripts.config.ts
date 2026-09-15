@@ -13,5 +13,6 @@ export default defineConfig({
       'test-support/**/*.test.ts',
       'test-support/**/*.test.mjs',
     ],
+    exclude: [...okVitestBase.test.exclude, 'plugins/**/scripts/*.test.mjs'],
   },
 });
