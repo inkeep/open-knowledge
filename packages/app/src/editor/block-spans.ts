@@ -1,4 +1,8 @@
-import { computeSourceBlocks, type MarkdownManager } from '@inkeep/open-knowledge-core';
+import {
+  computeSourceBlocks,
+  type MarkdownManager,
+  type Projection,
+} from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 
 export {
@@ -76,4 +80,23 @@ export function offsetToLine(offsets: number[], offset: number): number {
     }
   }
   return line;
+}
+
+/* STOP: computeSourceBlockSpans reports no blocks for a source whose strict parse fails, and its
+   callers treat that as "decline this pass". A projection over such a source still has blocks,
+   from the fallback recovery; answering from them would decorate what the parse refuses, so
+   null sends the caller back to the parse. */
+export function projectionBlockSpans(projection: Projection): SourceBlockSpans | null {
+  const { source, bodyOffset, doc } = projection;
+  for (let i = 0; i < doc.childCount; i++) {
+    if (doc.child(i).type.name === 'rawMdxFallback') return null;
+  }
+  const frontmatter = source.slice(0, bodyOffset);
+  const fmLineCount = frontmatter === '' ? 0 : frontmatter.split('\n').length - 1;
+  const offsets = lineStartOffsets(source);
+  const spans = projection.map.blocks.map((block) => ({
+    start: offsetToLine(offsets, bodyOffset + block.sourceStart),
+    end: offsetToLine(offsets, bodyOffset + block.sourceEnd),
+  }));
+  return { spans, fmLineCount };
 }
