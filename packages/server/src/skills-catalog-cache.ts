@@ -26,9 +26,11 @@ export function createSkillsCatalogCache({
   function bumpSkillsCatalogGen(): void {
     skillsCatalogGen += 1;
   }
-  function enumerateInstalledSkillsCached(
-    opts: Parameters<typeof enumerateInstalledSkills>[0],
-  ): ReturnType<typeof enumerateInstalledSkills> {
+  function lookupInstalledSkillsCached(opts: Parameters<typeof enumerateInstalledSkills>[0]): {
+    freshBuild: boolean;
+    key: string;
+    value: ReturnType<typeof enumerateInstalledSkills>;
+  } {
     const key = `${opts?.projectDir ?? ''}|${opts && 'home' in opts ? opts.home : ''}`;
     const now = Date.now();
     if (
@@ -37,11 +39,17 @@ export function createSkillsCatalogCache({
       installedCatalogCache.key === key &&
       now - installedCatalogCache.at < 5_000
     ) {
-      return installedCatalogCache.value;
+      return { freshBuild: false, key, value: installedCatalogCache.value };
     }
     const value = enumerateInstalledSkills(opts);
-    installedCatalogCache = { at: now, gen: skillsCatalogGen, key, value };
-    return value;
+    installedCatalogCache = { at: Date.now(), gen: skillsCatalogGen, key, value };
+    return { freshBuild: true, key, value };
+  }
+
+  function enumerateInstalledSkillsCached(
+    opts: Parameters<typeof enumerateInstalledSkills>[0],
+  ): ReturnType<typeof enumerateInstalledSkills> {
+    return lookupInstalledSkillsCached(opts).value;
   }
 
   function readList(inPlaceFp: string): { readonly body: unknown } | null {
@@ -81,17 +89,30 @@ export function createSkillsCatalogCache({
     )
       return pluginIndex.byName;
     let byName = new Map<string, PluginUpstream>();
+    let catalogLookup: ReturnType<typeof lookupInstalledSkillsCached> | null = null;
     try {
+      catalogLookup = lookupInstalledSkillsCached(
+        homeDirOverride !== undefined
+          ? { home: homeDirOverride, projectDir: identity }
+          : { projectDir: identity },
+      );
       byName = pluginUpstreamsByName(
-        enumerateInstalledSkillsCached(
-          homeDirOverride !== undefined ? { home: homeDirOverride } : {},
-        ).skills,
+        catalogLookup.value.skills,
         (home) => parseSkillDir(home)?.contentHash,
       );
     } catch (err) {
       log.warn({ err }, 'plugin upstream index failed; origins will be omitted');
     }
-    pluginIndex = { at: now, identity, byName };
+    const completedAt = Date.now();
+    if (
+      catalogLookup?.freshBuild === true &&
+      installedCatalogCache?.gen === skillsCatalogGen &&
+      installedCatalogCache.key === catalogLookup.key &&
+      installedCatalogCache.value === catalogLookup.value
+    ) {
+      installedCatalogCache.at = completedAt;
+    }
+    pluginIndex = { at: completedAt, identity, byName };
     return byName;
   }
 

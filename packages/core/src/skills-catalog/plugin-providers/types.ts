@@ -36,7 +36,7 @@ export interface PluginBundleInspection {
 export interface PluginProviderAdapter {
   readonly id: PluginProviderId;
   homes(home: string): readonly PluginProviderHome[];
-  enumerate(home: string, harness: string): SkillBundle[];
+  enumerate(home: string, harness: string, projectDir?: string): SkillBundle[];
   inspectSource(source: string): Omit<PluginSourceInspection, 'provider' | 'repositoryUrl'> | null;
   repositoryUrl(source: string): string | null;
   resolveUpdateSource(source: string): string;

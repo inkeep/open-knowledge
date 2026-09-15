@@ -13,6 +13,17 @@ export function catalogRawScopeToOkScope(rawScope: string | undefined): SkillSco
 }
 
 function samePath(a: string, b: string): boolean {
+  const isWindowsDrivePath = (path: string): boolean => /^[A-Za-z]:[\\/]/.test(path);
+  const aIsWindowsDrivePath = isWindowsDrivePath(a);
+  const bIsWindowsDrivePath = isWindowsDrivePath(b);
+  if (aIsWindowsDrivePath || bIsWindowsDrivePath) {
+    if (!aIsWindowsDrivePath || !bIsWindowsDrivePath) return false;
+    const normalizeWindowsDrivePath = (path: string): string => {
+      const normalized = path.replace(/[\\/]+/g, '/').replace(/\/+$/, '');
+      return `${normalized.slice(0, 1).toLowerCase()}${normalized.slice(1)}`;
+    };
+    return normalizeWindowsDrivePath(a) === normalizeWindowsDrivePath(b);
+  }
   const norm = (p: string) => p.replace(/\/+$/, '');
   return norm(a) === norm(b);
 }

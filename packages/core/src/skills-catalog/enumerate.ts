@@ -125,7 +125,7 @@ export function enumerateInstalledSkills(opts: EnumerateOptions = {}): Installed
     try {
       switch (h.kind) {
         case 'plugin-provider':
-          bundles.push(...enumeratePluginProvider(h.provider, h.dir, h.harness));
+          bundles.push(...enumeratePluginProvider(h.provider, h.dir, h.harness, opts.projectDir));
           break;
         case 'skill-dir':
           bundles.push(...enumerateSkillDir(h.dir, h.harness));

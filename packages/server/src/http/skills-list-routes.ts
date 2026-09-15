@@ -244,7 +244,7 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
         const projectAliasRoots = aliasedSourceRoots(projectAliases, 'project');
         const underRoots = (path: string, roots: ReadonlySet<string>): boolean =>
           [...roots].some((r) => path === r || path.startsWith(`${r}/`));
-        const detectedIdentity = resolveProjectIdentity(projectDir ?? contentDir);
+        const projectIdentity = resolveProjectIdentity(projectDir ?? contentDir);
         const pluginBaselines = openPluginBaselines(contentDir);
         const stdRootsProject = standardSkillRoots('project');
         const stdRootsGlobal = standardSkillRoots('global');
@@ -274,14 +274,14 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
               projectNameSeen.add(s.name);
               const skillAbsDir = resolve(contentDir, s.dir);
               const selfPlugin = tracked
-                ? (pluginSelfIdentity(s.name, detectedIdentity, skillAbsDir) ??
+                ? (pluginSelfIdentity(s.name, projectIdentity, skillAbsDir) ??
                   repoPluginIdentity(skillAbsDir))
                 : null;
               const entry =
                 tracked && selfPlugin === null
                   ? (lock?.skills[s.name] ??
                     synthBuiltinLockEntry(contentDir, s.name, 'project') ??
-                    synthPluginLockEntry(s.name, detectedIdentity, skillAbsDir))
+                    synthPluginLockEntry(s.name, projectIdentity, skillAbsDir))
                   : undefined;
               const origin = entry ? skillOrigin(entry) : undefined;
               const modified =
@@ -289,7 +289,7 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
                   ? s.contentHash !== entry.localHash
                   : (() => {
                       if (!entry || !tracked) return false;
-                      const up = pluginUpstreamHash(s.name, detectedIdentity);
+                      const up = pluginUpstreamHash(s.name, projectIdentity);
                       return (
                         up !== null &&
                         pluginBaselines.isModified('project', s.name, s.contentHash, up)
@@ -391,18 +391,18 @@ export function createSkillsListRoutes(deps: SkillsListRouteDeps): ApiRouteGroup
             ...(() => {
               if (!tracked) return {};
               const globalAbsDir = resolve(skillsHome, s.dir);
-              const selfPluginGlobal = pluginSelfIdentity(s.name, detectedIdentity, globalAbsDir);
+              const selfPluginGlobal = pluginSelfIdentity(s.name, projectIdentity, globalAbsDir);
               if (selfPluginGlobal !== null) return { plugin: selfPluginGlobal };
               const entry =
                 globalLock.skills[s.name] ??
                 synthBuiltinLockEntry(skillsHome, s.name, 'global') ??
-                synthPluginLockEntry(s.name, detectedIdentity, globalAbsDir);
+                synthPluginLockEntry(s.name, projectIdentity, globalAbsDir);
               if (!entry) return {};
               const globallyModified =
                 entry.localHash !== undefined
                   ? s.contentHash !== entry.localHash
                   : (() => {
-                      const up = pluginUpstreamHash(s.name, detectedIdentity);
+                      const up = pluginUpstreamHash(s.name, projectIdentity);
                       return (
                         up !== null &&
                         pluginBaselines.isModified('global', s.name, s.contentHash, up)

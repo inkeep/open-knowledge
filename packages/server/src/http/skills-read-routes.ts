@@ -60,9 +60,10 @@ export function createSkillsReadRoutes(deps: SkillsReadRouteDeps): SkillsReadRou
     EmptyRequestSchema,
     async (_req, res) => {
       try {
-        const identity = resolveProjectIdentity(projectDir ?? contentDir);
+        const projectIdentity = resolveProjectIdentity(projectDir ?? contentDir);
+        const physicalProjectDir = resolve(projectDir ?? contentDir);
         const catalog = enumerateInstalledSkillsCached({
-          projectDir: identity,
+          projectDir: projectIdentity,
           ...(homeDirOverride !== undefined ? { home: homeDirOverride } : {}),
         });
         const inPlaceNames = new Set(scanInPlaceSkills(contentDir).map((s) => s.name));
@@ -72,13 +73,13 @@ export function createSkillsReadRoutes(deps: SkillsReadRouteDeps): SkillsReadRou
           skills: catalog.skills
             .filter(
               (s) =>
-                isDetectedSkillInProject(s.provenance, identity) &&
+                isDetectedSkillInProject(s.provenance, projectIdentity) &&
                 !(s.provenance.scope === 'project'
                   ? inPlaceNames.has(s.name)
                   : globalInPlaceNames.has(s.name)),
             )
             .map((s) =>
-              isSkillOutsideOpenProject(s.provenance, s.home, projectDir ?? contentDir)
+              isSkillOutsideOpenProject(s.provenance, s.home, physicalProjectDir)
                 ? { ...s, outsideProject: true }
                 : s,
             ),

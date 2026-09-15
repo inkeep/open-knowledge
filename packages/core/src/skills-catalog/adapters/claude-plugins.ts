@@ -1,6 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { SkillProvenance } from '../schema.ts';
+import { isDetectedSkillInProject } from '../scope.ts';
 import {
   detectInert,
   type RawSkill,
@@ -45,8 +46,8 @@ function activeEntries(
   return [...bySite.values()];
 }
 
-function readDirectoryMarketplaces(pluginsDir: string): Map<string, Map<string, string>> {
-  const out = new Map<string, Map<string, string>>();
+function readDirectoryMarketplaceLocations(pluginsDir: string): Map<string, string> {
+  const out = new Map<string, string>();
   let registry: Record<
     string,
     { source?: { source?: string; path?: string }; installLocation?: string }
@@ -60,19 +61,141 @@ function readDirectoryMarketplaces(pluginsDir: string): Map<string, Map<string, 
     if (entry?.source?.source !== 'directory') continue;
     const dir = entry.source.path ?? entry.installLocation;
     if (typeof dir !== 'string' || dir.length === 0 || !isAbsolute(dir)) continue;
-    try {
-      const manifest = JSON.parse(
-        readFileSync(join(dir, '.claude-plugin', 'marketplace.json'), 'utf-8'),
-      ) as { plugins?: { name?: string; source?: string }[] };
-      const roots = new Map<string, string>();
-      for (const p of manifest.plugins ?? []) {
-        if (typeof p?.name !== 'string' || typeof p?.source !== 'string') continue;
-        roots.set(p.name, resolve(dir, p.source));
-      }
-      if (roots.size > 0) out.set(name, roots);
-    } catch {}
+    out.set(name, dir);
   }
   return out;
+}
+
+interface DirectoryMarketplace {
+  directory: string;
+  canonicalDirectory: string;
+  pluginRoot?: string;
+  plugins: Array<{ name?: unknown; source?: unknown }>;
+  resolvedRoots: Map<string, string | null>;
+}
+
+function readDirectoryMarketplace(dir: string): DirectoryMarketplace | null {
+  let manifest: { metadata?: { pluginRoot?: unknown }; plugins?: unknown };
+  try {
+    const parsed = JSON.parse(
+      readFileSync(join(dir, '.claude-plugin', 'marketplace.json'), 'utf-8'),
+    );
+    manifest = parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (err) {
+    console.warn('[skills-catalog] failed to read directory marketplace manifest', {
+      marketplaceDir: dir,
+      cause: boundedCause(err),
+    });
+    return null;
+  }
+  const pluginRoot =
+    typeof manifest.metadata?.pluginRoot === 'string' ? manifest.metadata.pluginRoot : undefined;
+  let canonicalDirectory: string;
+  try {
+    canonicalDirectory = realpathSync(dir);
+  } catch (err) {
+    console.warn('[skills-catalog] failed to resolve directory marketplace', {
+      marketplaceDir: dir,
+      cause: boundedCause(err),
+    });
+    return null;
+  }
+  return {
+    directory: dir,
+    canonicalDirectory,
+    ...(pluginRoot === undefined ? {} : { pluginRoot }),
+    plugins: Array.isArray(manifest.plugins) ? manifest.plugins : [],
+    resolvedRoots: new Map(),
+  };
+}
+
+function resolveDirectoryMarketplaceRoot(
+  marketplace: DirectoryMarketplace,
+  plugin: string,
+): string | null {
+  if (marketplace.resolvedRoots.has(plugin)) {
+    return marketplace.resolvedRoots.get(plugin) ?? null;
+  }
+  let selected: { name?: unknown; source?: unknown } | undefined;
+  for (const candidate of marketplace.plugins) {
+    if (candidate?.name === plugin) selected = candidate;
+  }
+  if (typeof selected?.source !== 'string') {
+    return rejectDirectoryMarketplaceSource(marketplace, plugin, 'missing or invalid source');
+  }
+  const source = selected.source;
+  const sourceIsExplicitRelative = source.startsWith('./') && !source.includes('\\');
+  const sourceIsBare =
+    source.length > 0 && source !== '.' && source !== '..' && !/[\\/]/.test(source);
+  if (!sourceIsExplicitRelative && !sourceIsBare) {
+    return rejectDirectoryMarketplaceSource(marketplace, plugin, 'unsupported source form');
+  }
+  let base = marketplace.directory;
+  if (sourceIsBare) {
+    const pluginRoot = marketplace.pluginRoot;
+    if (pluginRoot === undefined) {
+      return rejectDirectoryMarketplaceSource(
+        marketplace,
+        plugin,
+        'metadata.pluginRoot is required for a bare source',
+      );
+    }
+    const resolvedPluginRoot = resolve(marketplace.directory, pluginRoot);
+    const pluginRootFromMarketplace = relative(marketplace.directory, resolvedPluginRoot);
+    if (
+      isAbsolute(pluginRoot) ||
+      pluginRootFromMarketplace === '..' ||
+      pluginRootFromMarketplace.startsWith(`..${sep}`) ||
+      isAbsolute(pluginRootFromMarketplace)
+    ) {
+      return rejectDirectoryMarketplaceSource(
+        marketplace,
+        plugin,
+        'metadata.pluginRoot must be a relative path inside the marketplace',
+      );
+    }
+    base = resolvedPluginRoot;
+  }
+  const root = resolve(base, source);
+  let canonicalRoot: string;
+  try {
+    canonicalRoot = realpathSync(root);
+  } catch (err) {
+    return rejectDirectoryMarketplaceSource(marketplace, plugin, boundedCause(err));
+  }
+  const fromMarketplace = relative(marketplace.canonicalDirectory, canonicalRoot);
+  if (
+    fromMarketplace === '..' ||
+    fromMarketplace.startsWith(`..${sep}`) ||
+    isAbsolute(fromMarketplace)
+  ) {
+    return rejectDirectoryMarketplaceSource(
+      marketplace,
+      plugin,
+      'source resolves outside marketplace',
+    );
+  }
+  marketplace.resolvedRoots.set(plugin, root);
+  return root;
+}
+
+function rejectDirectoryMarketplaceSource(
+  marketplace: DirectoryMarketplace,
+  plugin: string,
+  cause: string,
+): null {
+  console.warn('[skills-catalog] rejected directory marketplace plugin source', {
+    marketplaceDir: marketplace.directory,
+    plugin,
+    cause,
+  });
+  marketplace.resolvedRoots.set(plugin, null);
+  return null;
+}
+
+function boundedCause(err: unknown): string {
+  const cause = err instanceof Error ? err.message : String(err);
+  return cause.slice(0, 500);
 }
 
 function readPluginJson(installPath: string): {
@@ -106,7 +229,11 @@ function readMarketplaceRepos(pluginsDir: string): Map<string, string> {
   return out;
 }
 
-export function enumerateClaudePlugins(pluginsDir: string, harness: string): SkillBundle[] {
+export function enumerateClaudePlugins(
+  pluginsDir: string,
+  harness: string,
+  projectDir?: string,
+): SkillBundle[] {
   const manifestPath = join(pluginsDir, 'installed_plugins.json');
   if (!existsSync(manifestPath)) return [];
   let manifest: { plugins?: Record<string, PluginEntry[]> };
@@ -122,17 +249,35 @@ export function enumerateClaudePlugins(pluginsDir: string, harness: string): Ski
   const plugins = manifest?.plugins;
   if (!plugins || typeof plugins !== 'object') return [];
   const repoByMarketplace = readMarketplaceRepos(pluginsDir);
-  const dirMarketplaces = readDirectoryMarketplaces(pluginsDir);
+  const dirMarketplaceLocations = readDirectoryMarketplaceLocations(pluginsDir);
+  const dirMarketplaces = new Map<string, DirectoryMarketplace | null>();
 
   const bundles: SkillBundle[] = [];
   for (const [key, entries] of Object.entries(plugins)) {
     if (!Array.isArray(entries)) continue;
     const { plugin, marketplace } = splitPluginKey(key);
+    const selectedEntries =
+      projectDir === undefined
+        ? entries
+        : entries.filter((entry) =>
+            isDetectedSkillInProject(
+              { scope: entry.scope, projectPath: entry.projectPath },
+              projectDir,
+            ),
+          );
     const resolveDirInstall = (_entry: PluginEntry): string | null => {
-      const root = marketplace ? (dirMarketplaces.get(marketplace)?.get(plugin) ?? null) : null;
+      if (!marketplace) return null;
+      const location = dirMarketplaceLocations.get(marketplace);
+      if (location === undefined) return null;
+      if (!dirMarketplaces.has(marketplace)) {
+        dirMarketplaces.set(marketplace, readDirectoryMarketplace(location));
+      }
+      const directoryMarketplace = dirMarketplaces.get(marketplace);
+      if (directoryMarketplace == null) return null;
+      const root = resolveDirectoryMarketplaceRoot(directoryMarketplace, plugin);
       return root !== null && existsSync(root) ? root : null;
     };
-    for (const entry of activeEntries(entries, resolveDirInstall)) {
+    for (const entry of activeEntries(selectedEntries, resolveDirInstall)) {
       const installPath = entry.installPath as string;
       const inert = detectInert(installPath);
       const meta = readPluginJson(installPath);
