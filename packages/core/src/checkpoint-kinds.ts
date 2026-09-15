@@ -28,6 +28,12 @@ export type ParsedCheckpoint =
       metadata: { incomingDiskSha: string };
     }
   | {
+      kind: 'external-change-rescue-disk-update';
+      docName: string | null;
+      size: number | null;
+      metadata: { incomingDiskSha: string };
+    }
+  | {
       kind: 'defer-exhaustion-loss';
       docName: string | null;
       size: number | null;
@@ -146,6 +152,18 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
       if (typeof m.incomingDiskSha === 'string') {
         return {
           kind: 'external-change-rescue',
+          docName,
+          size,
+          metadata: { incomingDiskSha: m.incomingDiskSha },
+        };
+      }
+      return null;
+    }
+    if (kind === 'external-change-rescue-disk-update') {
+      const m = metadata as { incomingDiskSha?: unknown };
+      if (typeof m.incomingDiskSha === 'string') {
+        return {
+          kind: 'external-change-rescue-disk-update',
           docName,
           size,
           metadata: { incomingDiskSha: m.incomingDiskSha },
@@ -329,6 +347,12 @@ export const CHECKPOINT_KIND_REGISTRY = {
     bundleExposure: 'metadata',
     chainAnchor: false,
   },
+  'external-change-rescue-disk-update': {
+    visibility: 'surfaced',
+    gcBucket: 'external-change-rescue-disk-update',
+    bundleExposure: 'metadata',
+    chainAnchor: false,
+  },
   'defer-exhaustion-loss': {
     visibility: 'surfaced',
     gcBucket: 'defer-exhaustion-loss',
@@ -408,6 +432,12 @@ export const CHECKPOINT_SAMPLE_BY_KIND = {
   },
   'external-change-rescue': {
     kind: 'external-change-rescue',
+    docName: 'notes',
+    size: 12,
+    metadata: { incomingDiskSha: 'abc123' },
+  },
+  'external-change-rescue-disk-update': {
+    kind: 'external-change-rescue-disk-update',
     docName: 'notes',
     size: 12,
     metadata: { incomingDiskSha: 'abc123' },

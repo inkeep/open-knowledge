@@ -16,12 +16,15 @@ export type MapDrivenSpliceMemoSkipReason =
 export interface ReconciliationMetrics {
   reconcileCount: number;
   conflictCount: number;
+  reconcileInsertDedupSkipped: number;
   staleExternalWriteRefused: number;
   batchCount: number;
   upstreamImportCount: number;
   persistenceStoreRemovedDocCount: number;
   persistenceStoreSupersededCount: number;
   rescueBufferCount: number;
+  rescueCheckpointWriteFailures: number;
+  rescueBufferWriteFailures: number;
   branchSwitchCount: number;
   parkCount: number;
   gitAutoSaveFailureCount: number;
@@ -88,6 +91,8 @@ export interface ReconciliationMetrics {
   persistenceDuplicationResetCheckpointCreated: number;
   persistenceDuplicationResetDeduped: number;
   persistenceDuplicationSpared: number;
+  persistenceDuplicationBaselineMissing: number;
+  persistenceDuplicationBaselineRefusals: number;
   persistenceDivergenceRealign: number;
   persistenceDivergenceRealignCheckpointCreated: number;
   persistenceDivergenceRealignDeduped: number;
@@ -106,6 +111,9 @@ export interface ReconciliationMetrics {
   externalChangeHandlerErrors: number;
   reconcileOwnFlushSkips: number;
   reconcileInFlightFallthroughs: number;
+  diskAuthoritativeIngestCount: number;
+  diskAuthoritativeIngestApplyFailures: number;
+  diskAuthoritativeIngestUnrescuedCount: number;
   inFlightFlushExpired: number;
   persistenceSanityCheckSerializeFailures: number;
   deferredStoreFailures: number;
@@ -122,12 +130,15 @@ export interface ReconciliationMetrics {
 const counters: ReconciliationMetrics = {
   reconcileCount: 0,
   conflictCount: 0,
+  reconcileInsertDedupSkipped: 0,
   staleExternalWriteRefused: 0,
   batchCount: 0,
   upstreamImportCount: 0,
   persistenceStoreRemovedDocCount: 0,
   persistenceStoreSupersededCount: 0,
   rescueBufferCount: 0,
+  rescueCheckpointWriteFailures: 0,
+  rescueBufferWriteFailures: 0,
   branchSwitchCount: 0,
   parkCount: 0,
   gitAutoSaveFailureCount: 0,
@@ -189,6 +200,8 @@ const counters: ReconciliationMetrics = {
   persistenceDuplicationResetCheckpointCreated: 0,
   persistenceDuplicationResetDeduped: 0,
   persistenceDuplicationSpared: 0,
+  persistenceDuplicationBaselineMissing: 0,
+  persistenceDuplicationBaselineRefusals: 0,
   persistenceDivergenceRealign: 0,
   persistenceDivergenceRealignCheckpointCreated: 0,
   persistenceDivergenceRealignDeduped: 0,
@@ -202,6 +215,9 @@ const counters: ReconciliationMetrics = {
   externalChangeHandlerErrors: 0,
   reconcileOwnFlushSkips: 0,
   reconcileInFlightFallthroughs: 0,
+  diskAuthoritativeIngestCount: 0,
+  diskAuthoritativeIngestApplyFailures: 0,
+  diskAuthoritativeIngestUnrescuedCount: 0,
   inFlightFlushExpired: 0,
   persistenceSanityCheckSerializeFailures: 0,
   deferredStoreFailures: 0,
@@ -221,6 +237,10 @@ export function incrementReconcile(): void {
 
 export function incrementConflict(): void {
   counters.conflictCount++;
+}
+
+export function incrementReconcileInsertDedupSkipped(): void {
+  counters.reconcileInsertDedupSkipped++;
 }
 
 export function incrementStaleExternalWriteRefused(): void {
@@ -245,6 +265,14 @@ export function incrementPersistenceStoreSuperseded(): void {
 
 export function incrementRescueBuffer(): void {
   counters.rescueBufferCount++;
+}
+
+export function incrementRescueCheckpointWriteFailures(): void {
+  counters.rescueCheckpointWriteFailures++;
+}
+
+export function incrementRescueBufferWriteFailures(): void {
+  counters.rescueBufferWriteFailures++;
 }
 
 export function incrementBranchSwitch(): void {
@@ -446,6 +474,14 @@ export function incrementPersistenceDuplicationSpared(): void {
   counters.persistenceDuplicationSpared++;
 }
 
+export function incrementPersistenceDuplicationBaselineMissing(): void {
+  counters.persistenceDuplicationBaselineMissing++;
+}
+
+export function incrementPersistenceDuplicationBaselineRefusals(): void {
+  counters.persistenceDuplicationBaselineRefusals++;
+}
+
 export function incrementPersistenceDivergenceRealign(): void {
   counters.persistenceDivergenceRealign++;
 }
@@ -496,6 +532,18 @@ export function incrementReconcileOwnFlushSkips(): void {
 
 export function incrementReconcileInFlightFallthroughs(): void {
   counters.reconcileInFlightFallthroughs++;
+}
+
+export function incrementDiskAuthoritativeIngest(): void {
+  counters.diskAuthoritativeIngestCount++;
+}
+
+export function incrementDiskAuthoritativeIngestApplyFailures(): void {
+  counters.diskAuthoritativeIngestApplyFailures++;
+}
+
+export function incrementDiskAuthoritativeIngestUnrescued(): void {
+  counters.diskAuthoritativeIngestUnrescuedCount++;
 }
 
 export function incrementInFlightFlushExpired(count: number): void {
@@ -604,12 +652,15 @@ export function getMetrics(): ReconciliationMetrics {
 export function resetMetrics(): void {
   counters.reconcileCount = 0;
   counters.conflictCount = 0;
+  counters.reconcileInsertDedupSkipped = 0;
   counters.staleExternalWriteRefused = 0;
   counters.batchCount = 0;
   counters.upstreamImportCount = 0;
   counters.persistenceStoreRemovedDocCount = 0;
   counters.persistenceStoreSupersededCount = 0;
   counters.rescueBufferCount = 0;
+  counters.rescueCheckpointWriteFailures = 0;
+  counters.rescueBufferWriteFailures = 0;
   counters.branchSwitchCount = 0;
   counters.parkCount = 0;
   counters.gitAutoSaveFailureCount = 0;
@@ -671,6 +722,8 @@ export function resetMetrics(): void {
   counters.persistenceDuplicationResetCheckpointCreated = 0;
   counters.persistenceDuplicationResetDeduped = 0;
   counters.persistenceDuplicationSpared = 0;
+  counters.persistenceDuplicationBaselineMissing = 0;
+  counters.persistenceDuplicationBaselineRefusals = 0;
   counters.persistenceDivergenceRealign = 0;
   counters.persistenceDivergenceRealignCheckpointCreated = 0;
   counters.persistenceDivergenceRealignDeduped = 0;
@@ -684,6 +737,9 @@ export function resetMetrics(): void {
   counters.externalChangeHandlerErrors = 0;
   counters.reconcileOwnFlushSkips = 0;
   counters.reconcileInFlightFallthroughs = 0;
+  counters.diskAuthoritativeIngestCount = 0;
+  counters.diskAuthoritativeIngestApplyFailures = 0;
+  counters.diskAuthoritativeIngestUnrescuedCount = 0;
   counters.inFlightFlushExpired = 0;
   counters.persistenceSanityCheckSerializeFailures = 0;
   counters.deferredStoreFailures = 0;

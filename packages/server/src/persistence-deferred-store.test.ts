@@ -12,6 +12,7 @@ import { getMetrics, resetMetrics } from './metrics.ts';
 import {
   classifyDeferredStoreError,
   createPersistenceExtension as createPersistenceExtensionBase,
+  DuplicationBaselineUnavailableError,
   type PersistenceOptions,
 } from './persistence.ts';
 
@@ -796,6 +797,12 @@ describe('FR-9 — classifyDeferredStoreError behavior', () => {
   test('non-instance error with matching name classifies as unknown (instanceof contract)', () => {
     const err = Object.assign(new Error('bridge'), { name: 'BridgeInvariantViolationError' });
     expect(classifyDeferredStoreError(err)).toBe('unknown');
+  });
+
+  test('a duplication-baseline refusal classifies as its own class', () => {
+    expect(classifyDeferredStoreError(new DuplicationBaselineUnavailableError('refused'))).toBe(
+      'duplication-baseline-unavailable',
+    );
   });
 
   test('plain Error classifies as unknown', () => {

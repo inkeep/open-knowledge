@@ -1076,6 +1076,30 @@ describe('saveInMemoryCheckpoint (bridge-correctness SPEC §6 R7a)', () => {
     expect(entries[0]?.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
   });
 
+  test('lists external-change-rescue-disk-update checkpoints and excludes non-rescue kinds', async () => {
+    const diskUpdateSha = await saveInMemoryCheckpoint(shadow, 'content/docs', {
+      kind: 'external-change-rescue-disk-update',
+      docName: 'disk-update.md',
+      contents: '# Disk-update rescued content\n',
+      label: 'External change recovered @ 2026-04-17T08:00:00Z',
+      metadata: { incomingDiskSha: 'abc123' },
+    });
+    await saveInMemoryCheckpoint(shadow, 'content/docs', {
+      kind: 'bridge-merge-loss',
+      docName: 'notes.md',
+      contents: '# Lost content\n',
+      label: 'Before concurrent merge @ 2026-04-17T08:00:00Z',
+      metadata: { lostSubstrings: ['dropped phrase'] },
+    });
+
+    const entries = await listRescueCheckpoints(shadow, 'main');
+    const names = entries.map((entry) => entry.docName);
+
+    expect(names).toContain('disk-update.md');
+    expect(names).not.toContain('notes.md');
+    expect(entries.find((entry) => entry.sha === diskUpdateSha)).toBeDefined();
+  });
+
   test('lists legacy external-change-rescue checkpoints with non-ASCII docNames', async () => {
     const docName = 'hyvää yötä.md';
     const contents = '# Rescued legacy content\n';
@@ -1481,6 +1505,16 @@ describe('gcCheckpointRefs (bridge-correctness SPEC §6 R7 + review iteration 5)
         });
         return;
       case 'external-change-rescue':
+        await saveInMemoryCheckpoint(shadow, 'content/docs', {
+          kind,
+          docName: 'd.md',
+          contents: `d${tag}\n`,
+          label: 'l',
+          date,
+          metadata: { incomingDiskSha: 'sha' },
+        });
+        return;
+      case 'external-change-rescue-disk-update':
         await saveInMemoryCheckpoint(shadow, 'content/docs', {
           kind,
           docName: 'd.md',

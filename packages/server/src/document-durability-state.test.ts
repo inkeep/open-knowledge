@@ -1263,4 +1263,42 @@ describe('store publish generation primitives', () => {
     ).toBe('stale');
     expect(publishCalls).toBe(2);
   });
+
+  test('a refused-store mark does not survive an unpersisted teardown', () => {
+    const state = new DocumentDurabilityState();
+    state.markStoreRefused('doc');
+    state.recordStoreFailure('doc', { code: 'ENOSPC', message: 'no space left on device' });
+    expect(state.isStoreRefused('doc')).toBe(true);
+
+    state.deleteReconciledBase('doc');
+
+    expect(state.isStoreRefused('doc')).toBe(false);
+    expect(state.getRefusedStoreDocNames()).toEqual([]);
+    expect(state.takeStoreFailure('doc')).toBeNull();
+  });
+
+  test('a refused-store mark does not survive a persisted teardown', () => {
+    const state = new DocumentDurabilityState();
+    state.recordDisplacedVersion('doc', 'displaced bytes');
+    state.markStoreRefused('doc');
+    state.recordStoreFailure('doc', { code: 'ENOSPC', message: 'no space left on device' });
+    expect(state.isStoreRefused('doc')).toBe(true);
+
+    state.deleteReconciledBase('doc');
+
+    expect(state.isStoreRefused('doc')).toBe(false);
+    expect(state.getRefusedStoreDocNames()).toEqual([]);
+    expect(state.takeStoreFailure('doc')).toBeNull();
+  });
+
+  test('tearing one document down leaves a sibling document refused', () => {
+    const state = new DocumentDurabilityState();
+    state.markStoreRefused('doc');
+    state.markStoreRefused('sibling');
+
+    state.deleteReconciledBase('doc');
+
+    expect(state.isStoreRefused('sibling')).toBe(true);
+    expect(state.getRefusedStoreDocNames()).toEqual(['sibling']);
+  });
 });

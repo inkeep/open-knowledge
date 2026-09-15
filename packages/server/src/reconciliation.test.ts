@@ -26,6 +26,12 @@ describe('splitMarkdownBlocks', () => {
   test('handles single block', () => {
     expect(splitMarkdownBlocks('# Just a heading\n')).toEqual(['# Just a heading']);
   });
+
+  test('drops blank runs instead of emitting an empty block', () => {
+    expect(splitMarkdownBlocks('a\n\n\n\nb')).toEqual(['a', 'b']);
+    expect(splitMarkdownBlocks('A\n\n \n\nB')).toEqual(['A', 'B']);
+    expect(splitMarkdownBlocks('\n\n\na')).toEqual(['a']);
+  });
 });
 
 describe('containsConflictMarkers', () => {
@@ -69,6 +75,16 @@ describe('reconcile', () => {
     const base = '# Hello\n\nWorld.\n';
     const result = reconcile({ docName, base, ours: '# Hello\n\nEdited.\n', theirs: base });
     expect(result.kind).toBe('noop');
+  });
+
+  test('merged: an extra blank line on the disk side does not manufacture a conflict', () => {
+    const result = reconcile({
+      docName,
+      base: 'A\n\nB\n',
+      ours: 'A\n\nC\n',
+      theirs: 'A\n\n\n\nC\n',
+    });
+    expect(result).toEqual({ kind: 'merged', newContent: 'A\n\nC\n', mergedBlocks: 2 });
   });
 
   test('clean: ours equals base (Y.Doc unchanged)', () => {
@@ -228,6 +244,191 @@ describe('reconcile', () => {
       expect(out).toContain('Added by us.');
       expect(out).toContain('Added by them.');
     }
+  });
+
+  describe('empty base', () => {
+    test('refused: identical non-empty sides are not concatenated (no-base)', () => {
+      const content = '# SPEC\n\nSection one.\n\nSection two.\n';
+      const result = reconcile({ docName: 'SPEC', base: '', ours: content, theirs: content });
+      expect(result.kind).not.toBe('merged');
+      expect(result.kind).toBe('refused');
+      if (result.kind === 'refused') {
+        expect(result.reason).toBe('no-base');
+      }
+    });
+
+    test('refused: divergent non-empty sides are not concatenated (no-base)', () => {
+      const ours = '# SPEC\n\nEditor heading.\n\nEditor paragraph.\n';
+      const theirs = '# SPEC\n\nDisk heading.\n\nDisk paragraph.\n';
+      const result = reconcile({ docName, base: '', ours, theirs });
+      expect(result.kind).not.toBe('merged');
+      expect(result.kind).toBe('refused');
+      if (result.kind === 'refused') {
+        expect(result.reason).toBe('no-base');
+      }
+    });
+
+    test('refused: stale disk content against an edited doc is not concatenated (no-base)', () => {
+      const staleDisk = '# SPEC\n\nSection one.\n\nSection two.\n';
+      const edited = '# SPEC\n\nSection one.\n\nSection two edited locally.\n';
+      const result = reconcile({ docName, base: '', ours: edited, theirs: staleDisk });
+      expect(result.kind).not.toBe('merged');
+      expect(result.kind).toBe('refused');
+      if (result.kind === 'refused') {
+        expect(result.reason).toBe('no-base');
+      }
+    });
+
+    test('refused: whitespace-only base with both sides non-empty is not concatenated (no-base)', () => {
+      const ours = '# A\n\nMine.\n';
+      const theirs = '# A\n\nTheirs.\n';
+      const result = reconcile({ docName, base: '\n \n', ours, theirs });
+      expect(result.kind).not.toBe('merged');
+      expect(result.kind).toBe('refused');
+      if (result.kind === 'refused') {
+        expect(result.reason).toBe('no-base');
+      }
+    });
+
+    test('refused: a space-bearing whitespace base emits no content to apply (no-base)', () => {
+      const ours = '# SPEC\n\nEditor one.\n\nEditor two.\n';
+      const theirs = '# SPEC\n\nDisk one.\n\nDisk two.\n';
+      const result = reconcile({ docName, base: '  \n\n  ', ours, theirs });
+
+      expect(result.kind).toBe('refused');
+      if (result.kind === 'refused') {
+        expect(result.reason).toBe('no-base');
+      }
+      const appliedBlocks = 'newContent' in result ? splitMarkdownBlocks(result.newContent) : [];
+      expect(appliedBlocks).toEqual([]);
+    });
+
+    test('clean: empty ours with empty base adopts theirs', () => {
+      const theirs = '# SPEC\n\nDisk content.\n';
+      const result = reconcile({ docName, base: '', ours: '', theirs });
+      expect(result.kind).toBe('clean');
+      if (result.kind === 'clean') {
+        expect(result.newContent).toBe(theirs);
+      }
+    });
+
+    test('noop: empty theirs with empty base keeps ours', () => {
+      const ours = '# SPEC\n\nEditor content.\n';
+      const result = reconcile({ docName, base: '', ours, theirs: '' });
+      expect(result.kind).toBe('noop');
+    });
+  });
+
+  describe('insert convergence with a real base', () => {
+    test('merged: the same block inserted at the same anchor by both sides appears once', () => {
+      const base = '# Title\n\nAnchor.\n\nTail.\n';
+      const ours = '# Title\n\nAnchor.\n\nInserted by both.\n\nTail.\n';
+      const theirs = '# Title\n\nAnchor.\n\nInserted by both.\n\nTail.\n';
+
+      const result = reconcile({ docName, base, ours, theirs });
+      expect(result.kind).toBe('merged');
+      if (result.kind === 'merged') {
+        const blocks = splitMarkdownBlocks(result.newContent);
+        expect(blocks.filter((block) => block === 'Inserted by both.')).toHaveLength(1);
+        expect(blocks).toContain('Anchor.');
+        expect(blocks).toContain('Tail.');
+      }
+    });
+
+    test('merged: the same block appended at the end by both sides appears once', () => {
+      const base = '# Title\n\nTail.\n';
+      const ours = '# Title\n\nTail.\n\nAppended by both.\n';
+      const theirs = '# Title\n\nTail.\n\nAppended by both.\n';
+
+      const result = reconcile({ docName, base, ours, theirs });
+      expect(result.kind).toBe('merged');
+      if (result.kind === 'merged') {
+        const blocks = splitMarkdownBlocks(result.newContent);
+        expect(blocks.filter((block) => block === 'Appended by both.')).toHaveLength(1);
+        expect(blocks).toContain('Tail.');
+      }
+    });
+
+    test("merged: theirs' insert order is preserved and the duplicated block appears once", () => {
+      const base = 'Anchor.\n';
+      const ours = 'Anchor.\n\nA.\n';
+      const theirs = 'Anchor.\n\nB.\n\nA.\n';
+
+      const result = reconcile({ docName, base, ours, theirs });
+      expect(result.kind).toBe('merged');
+      if (result.kind === 'merged') {
+        expect(splitMarkdownBlocks(result.newContent)).toEqual(['Anchor.', 'B.', 'A.']);
+      }
+    });
+
+    test('merged: insert groups past the LCS cap fall back to emitting every block from both sides', () => {
+      const perSide = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 10;
+      const shared = Array.from({ length: 10 }, (_, i) => `shared ${i}.`);
+      const base = 'Anchor.\n';
+      const ourBlocks = [...shared, ...Array.from({ length: perSide }, (_, i) => `ours ${i}.`)];
+      const theirBlocks = [...shared, ...Array.from({ length: perSide }, (_, i) => `theirs ${i}.`)];
+      const ours = `Anchor.\n\n${ourBlocks.join('\n\n')}`;
+      const theirs = `Anchor.\n\n${theirBlocks.join('\n\n')}`;
+
+      const result = reconcile({ docName, base, ours, theirs });
+      expect(result.kind).toBe('merged');
+      if (result.kind === 'merged') {
+        expect(result.dedupSkipped).toBe(true);
+        const blocks = new Set(splitMarkdownBlocks(result.newContent));
+        for (let i = 0; i < perSide; i++) {
+          expect(blocks.has(`ours ${i}.`)).toBe(true);
+          expect(blocks.has(`theirs ${i}.`)).toBe(true);
+        }
+        for (const block of shared) {
+          expect(blocks.has(block)).toBe(true);
+        }
+      }
+    });
+
+    test('conflicts: an outcome that also skipped dedup past the LCS cap reports dedupSkipped', () => {
+      const perSide = Math.ceil(Math.sqrt(MAX_LCS_CELLS)) + 10;
+      const shared = Array.from({ length: 10 }, (_, i) => `shared ${i}.`);
+      const base = 'Anchor.\n';
+      const ourBlocks = [
+        'Anchor edited by us.',
+        ...shared,
+        ...Array.from({ length: perSide }, (_, i) => `ours ${i}.`),
+      ];
+      const theirBlocks = [
+        'Anchor edited by them.',
+        ...shared,
+        ...Array.from({ length: perSide }, (_, i) => `theirs ${i}.`),
+      ];
+      const ours = `${ourBlocks.join('\n\n')}\n`;
+      const theirs = `${theirBlocks.join('\n\n')}\n`;
+
+      const result = reconcile({ docName, base, ours, theirs });
+      expect(result.kind).toBe('conflicts');
+      if (result.kind === 'conflicts') {
+        expect(result.conflicts).toHaveLength(1);
+        expect(result.conflicts[0].ours).toBe('Anchor edited by us.');
+        expect(result.conflicts[0].theirs).toBe('Anchor edited by them.');
+        expect(result.dedupSkipped).toBe(true);
+      }
+    });
+  });
+  test('merged: two common blocks in one insert group keep their interleave position exactly once', () => {
+    const outcome = reconcile({
+      docName: 'SPEC',
+      base: 'Anchor.\n',
+      ours: 'Anchor.\n\nX.\n\nA.\n\nY.\n\nC.\n',
+      theirs: 'Anchor.\n\nA.\n\nB.\n\nC.\n',
+    });
+    expect(outcome).toMatchObject({ kind: 'merged' });
+    if (outcome.kind !== 'merged') return;
+    expect(splitMarkdownBlocks(outcome.newContent)).toEqual([
+      'Anchor.',
+      'X.',
+      'A.',
+      'Y.',
+      'B.',
+      'C.',
+    ]);
   });
 });
 

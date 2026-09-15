@@ -731,6 +731,15 @@ describe('strategiesFor', () => {
   test('a document the merger declined as too large is not offered a hand-merged content resolve', () => {
     expect(strategiesFor('reconcile', 'refused-too-large')).toEqual(['mine', 'theirs', 'delete']);
   });
+
+  test('a document refused for having no base is offered every strategy', () => {
+    expect(strategiesFor('reconcile', 'refused-no-base')).toEqual([
+      'mine',
+      'theirs',
+      'content',
+      'delete',
+    ]);
+  });
 });
 
 describe('ConflictAuthority lifecycleOf', () => {

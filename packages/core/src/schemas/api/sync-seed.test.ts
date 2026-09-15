@@ -398,6 +398,29 @@ describe('SyncConflictsSuccessSchema', () => {
   test('rejects missing conflicts field', () => {
     expect(SyncConflictsSuccessSchema.safeParse({}).success).toBe(false);
   });
+  test('keeps every entry when one carries a reason this client does not know', () => {
+    const parsed = SyncConflictsSuccessSchema.safeParse({
+      conflicts: [
+        {
+          file: 'a.md',
+          detectedAt: '2026-04-30T10:00:00.000Z',
+          conflict: 'reconcile',
+          reason: 'refused-no-base',
+          docName: 'a',
+        },
+        {
+          file: 'b.md',
+          detectedAt: '2026-04-30T10:00:01.000Z',
+          conflict: 'reconcile',
+          reason: 'a-reason-shipped-after-this-client',
+          docName: 'b',
+        },
+      ],
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.conflicts.map((entry) => entry.file)).toEqual(['a.md', 'b.md']);
+    expect(parsed.data?.conflicts[1]?.reason).toBeUndefined();
+  });
 });
 
 describe('SyncResolveConflictRequestSchema', () => {
@@ -483,6 +506,21 @@ describe('SyncConflictContentSuccessSchema', () => {
         resolutionOptions: ['mine', 'content', 'delete'],
       }).success,
     ).toBe(true);
+  });
+  test('keeps the payload when the reason is one this client does not know', () => {
+    const parsed = SyncConflictContentSuccessSchema.safeParse({
+      file: 'a.md',
+      base: 'b',
+      ours: 'o',
+      theirs: 't',
+      kind: 'both-modified',
+      conflict: 'reconcile',
+      reason: 'a-reason-shipped-after-this-client',
+      resolutionOptions: ['mine', 'content', 'delete'],
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data?.reason).toBeUndefined();
+    expect(parsed.data?.resolutionOptions).toEqual(['mine', 'content', 'delete']);
   });
   test('rejects missing file', () => {
     expect(

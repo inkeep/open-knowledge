@@ -20,11 +20,13 @@ export interface BlockConflict {
   theirs: string;
 }
 
+export type ReconcileRefusalReason = 'conflict-markers' | 'no-base' | 'too-large';
+
 export type ReconcileOutcome =
   | { kind: 'clean'; newContent: string }
-  | { kind: 'merged'; newContent: string; mergedBlocks: number }
-  | { kind: 'conflicts'; newContent: string; conflicts: BlockConflict[] }
-  | { kind: 'refused'; reason: string }
+  | { kind: 'merged'; newContent: string; mergedBlocks: number; dedupSkipped?: true }
+  | { kind: 'conflicts'; newContent: string; conflicts: BlockConflict[]; dedupSkipped?: true }
+  | { kind: 'refused'; reason: ReconcileRefusalReason }
   | { kind: 'noop' };
 
 export const MAX_LCS_CELLS = 4_000_000;
@@ -57,9 +59,12 @@ export function splitMarkdownBlocks(md: string): string[] {
       else if (char === fenceChar) fenceChar = null;
     }
     const inFence = fenceChar !== null;
-    if (!inFence && line.trim() === '' && current.length > 0) {
-      blocks.push(current.join('\n').trim());
-      current = [];
+    if (!inFence && line.trim() === '') {
+      if (current.length > 0) {
+        const block = current.join('\n').trim();
+        if (block) blocks.push(block);
+        current = [];
+      }
     } else {
       current.push(line);
     }
@@ -95,6 +100,10 @@ export function reconcile(input: ReconcileInput): ReconcileOutcome {
   }
 
   const baseBlocks = splitMarkdownBlocks(base);
+  if (baseBlocks.every((block) => block.trim() === '')) {
+    return { kind: 'refused', reason: 'no-base' };
+  }
+
   const ourBlocks = splitMarkdownBlocks(ours);
   const theirBlocks = splitMarkdownBlocks(theirs);
 
@@ -118,6 +127,7 @@ function mergeBlocks(
 
   const merged: string[] = [];
   const conflicts: BlockConflict[] = [];
+  let dedupSkipped = false;
 
   for (let i = 0; i < baseBlocks.length; i++) {
     const baseBlock = baseBlocks[i];
@@ -126,7 +136,7 @@ function mergeBlocks(
 
     const ourInserts = ourOp?.insertsBefore ?? [];
     const theirInserts = theirOp?.insertsBefore ?? [];
-    merged.push(...ourInserts, ...theirInserts);
+    if (pushInsertGroupDeduped(merged, ourInserts, theirInserts)) dedupSkipped = true;
 
     const ourAction = ourOp?.action ?? 'keep';
     const theirAction = theirOp?.action ?? 'keep';
@@ -161,16 +171,46 @@ function mergeBlocks(
 
   const lastOurOp = ourOps.get(baseBlocks.length);
   const lastTheirOp = theirOps.get(baseBlocks.length);
-  if (lastOurOp?.insertsBefore) merged.push(...lastOurOp.insertsBefore);
-  if (lastTheirOp?.insertsBefore) merged.push(...lastTheirOp.insertsBefore);
+  if (
+    pushInsertGroupDeduped(merged, lastOurOp?.insertsBefore ?? [], lastTheirOp?.insertsBefore ?? [])
+  )
+    dedupSkipped = true;
 
   const newContent = merged.length > 0 ? `${merged.join('\n\n')}\n` : '';
 
   if (conflicts.length > 0) {
-    return { kind: 'conflicts', newContent, conflicts };
+    return dedupSkipped
+      ? { kind: 'conflicts', newContent, conflicts, dedupSkipped: true }
+      : { kind: 'conflicts', newContent, conflicts };
   }
 
-  return { kind: 'merged', newContent, mergedBlocks: merged.length };
+  return dedupSkipped
+    ? { kind: 'merged', newContent, mergedBlocks: merged.length, dedupSkipped: true }
+    : { kind: 'merged', newContent, mergedBlocks: merged.length };
+}
+
+function pushInsertGroupDeduped(
+  target: string[],
+  ourInserts: string[],
+  theirInserts: string[],
+): boolean {
+  if ((ourInserts.length + 1) * (theirInserts.length + 1) > MAX_LCS_CELLS) {
+    target.push(...ourInserts, ...theirInserts);
+    return true;
+  }
+  const spine = longestCommonSubsequence(ourInserts, theirInserts);
+  let ourCursor = 0;
+  let theirCursor = 0;
+  for (const [ourMatch, theirMatch] of spine) {
+    while (ourCursor < ourMatch) target.push(ourInserts[ourCursor++]);
+    while (theirCursor < theirMatch) target.push(theirInserts[theirCursor++]);
+    target.push(ourInserts[ourMatch]);
+    ourCursor = ourMatch + 1;
+    theirCursor = theirMatch + 1;
+  }
+  while (ourCursor < ourInserts.length) target.push(ourInserts[ourCursor++]);
+  while (theirCursor < theirInserts.length) target.push(theirInserts[theirCursor++]);
+  return false;
 }
 
 interface EditOp {

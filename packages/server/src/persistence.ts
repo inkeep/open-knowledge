@@ -61,6 +61,7 @@ import {
   DocumentDurabilityState,
   OK_DOC_REMOVED,
   OK_PATH_UNRESOLVABLE,
+  OK_STORE_REFUSED,
   type StoreFailure,
 } from './document-durability-state.ts';
 import { refuseStaleExternalWrite } from './external-change.ts';
@@ -99,6 +100,8 @@ import {
   incrementPersistenceDivergenceRealign,
   incrementPersistenceDivergenceRealignCheckpointCreated,
   incrementPersistenceDivergenceRealignDeduped,
+  incrementPersistenceDuplicationBaselineMissing,
+  incrementPersistenceDuplicationBaselineRefusals,
   incrementPersistenceDuplicationReset,
   incrementPersistenceDuplicationResetCheckpointCreated,
   incrementPersistenceDuplicationResetDeduped,
@@ -205,12 +208,20 @@ export function resolveWriterFromOrigin(
   return null;
 }
 
+export class DuplicationBaselineUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'DuplicationBaselineUnavailableError';
+  }
+}
+
 const DEFERRED_STORE_ERROR_CLASSES = [
   'disk-write',
   'serialize',
   'reconcile',
   'parse-fallback',
   'traced-rename',
+  'duplication-baseline-unavailable',
   'unknown',
 ] as const;
 type DeferredStoreErrorClass = (typeof DEFERRED_STORE_ERROR_CLASSES)[number];
@@ -235,6 +246,9 @@ const ERRNO_FS_CODES = new Set([
 
 export function classifyDeferredStoreError(err: unknown): DeferredStoreErrorClass {
   if (err === null || typeof err !== 'object') return 'unknown';
+  if (err instanceof DuplicationBaselineUnavailableError) {
+    return 'duplication-baseline-unavailable';
+  }
   const e = err as { code?: unknown; message?: unknown };
   const message = typeof e.message === 'string' ? e.message : '';
   if (message.startsWith('symlink-escape:')) return 'disk-write';
@@ -897,6 +911,42 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
   const lastDuplicationCheckpointPayload = new WeakMap<Y.Doc, string>();
 
+  type TripwireDiskRead =
+    | { kind: 'ok'; content: string }
+    | { kind: 'missing' }
+    | { kind: 'unavailable'; reason: 'escape' | 'read-failed' };
+
+  function readTripwireDiskContent(documentName: string): TripwireDiskRead {
+    const requestedDiskPath = safeContentPath(documentName, contentDir);
+    if (!existsSync(requestedDiskPath)) return { kind: 'missing' };
+    let canonical: string | null = null;
+    try {
+      canonical = realpathSync(requestedDiskPath);
+    } catch (realpathErr) {
+      log.warn(
+        { err: realpathErr, documentName },
+        `[persistence] Tripwire baseline read failed (realpath) for ${documentName}`,
+      );
+      return { kind: 'unavailable', reason: 'read-failed' };
+    }
+    if (!isWithinContentDir(canonical, contentDir)) {
+      log.warn(
+        { docName: documentName, originalPath: requestedDiskPath, canonical, contentDir },
+        `[persistence] symlink-escape on tripwire reset: ${requestedDiskPath} → ${canonical}, skipping tripwire baseline read`,
+      );
+      return { kind: 'unavailable', reason: 'escape' };
+    }
+    try {
+      return { kind: 'ok', content: readFileSync(canonical, 'utf-8') };
+    } catch (readErr) {
+      log.warn(
+        { err: readErr, documentName, canonical },
+        `[persistence] Tripwire baseline read failed (readFileSync) for ${documentName}`,
+      );
+      return { kind: 'unavailable', reason: 'read-failed' };
+    }
+  }
+
   function checkpointBeforeDuplicationReset(
     document: Y.Doc,
     documentName: string,
@@ -1374,6 +1424,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         }
         if (markdownSemanticallyUnchanged) {
           if (contributorCount() > 0) scheduleGitCommit();
+          durabilityState.clearStoreRefused(documentName);
           persistenceDeferCounts.delete(documentName);
           return;
         }
@@ -1394,8 +1445,51 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
           }
         }
 
-        if (currentBase !== undefined) {
-          const classification = classifyDuplication(markdown, currentBase);
+        let duplicationBaseline: string;
+        if (currentBase === undefined) {
+          const baselineRead = readTripwireDiskContent(documentName);
+          if (baselineRead.kind === 'unavailable') {
+            log.warn(
+              { documentName, reason: baselineRead.reason },
+              `[persistence] Tripwire baseline unavailable for ${documentName}; refusing store (fail-closed)`,
+            );
+            incrementPersistenceDuplicationBaselineRefusals();
+            durabilityState.markStoreRefused(documentName);
+            const refusal = new DuplicationBaselineUnavailableError(
+              `duplication tripwire baseline unavailable for ${documentName}; store refused (fail-closed)`,
+            );
+            switch (baselineRead.reason) {
+              case 'escape':
+                recordPathFault(documentName, refusal, agentTriggeredStore, true);
+                break;
+              case 'read-failed':
+                if (agentTriggeredStore) {
+                  durabilityState.recordStoreFailure(documentName, {
+                    code: OK_STORE_REFUSED,
+                    message: refusal.message,
+                  });
+                }
+                break;
+              default: {
+                const unhandled: never = baselineRead.reason;
+                throw new Error(`unhandled tripwire baseline failure reason: ${String(unhandled)}`);
+              }
+            }
+            throw refusal;
+          }
+          if (baselineRead.kind === 'missing' && documentHadFileOnDisk(documentName, undefined)) {
+            incrementPersistenceDuplicationBaselineMissing();
+            log.warn(
+              { documentName },
+              `[persistence] Tripwire has no baseline for ${documentName}: acknowledged base absent and file missing from disk; duplication check skipped`,
+            );
+          }
+          duplicationBaseline = baselineRead.kind === 'ok' ? baselineRead.content : '';
+        } else {
+          duplicationBaseline = currentBase;
+        }
+        {
+          const classification = classifyDuplication(markdown, duplicationBaseline);
           if (classification.kind === 'block' && docsWithSettledWrite.has(documentName)) {
             incrementPersistenceDuplicationSpared();
             console.warn(
@@ -1403,7 +1497,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 event: 'ok-persistence-duplication-spared',
                 'doc.name': documentName,
                 candidateBytes: markdown.length,
-                baseBytes: currentBase.length,
+                baseBytes: duplicationBaseline.length,
                 fragmentChildren: document.getXmlFragment('default').length,
                 copies: classification.copies,
                 reason: classification.reason,
@@ -1423,51 +1517,19 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 event: 'ok-persistence-duplication-blocked',
                 'doc.name': documentName,
                 candidateBytes: markdown.length,
-                baseBytes: currentBase.length,
+                baseBytes: duplicationBaseline.length,
                 fragmentChildren,
                 copies: classification.copies,
                 reason: classification.reason,
               }),
             );
             try {
-              const requestedDiskPath = safeContentPath(documentName, contentDir);
               let diskContent: string;
-              if (existsSync(requestedDiskPath)) {
-                let canonical: string | null = null;
-                try {
-                  canonical = realpathSync(requestedDiskPath);
-                } catch (realpathErr) {
-                  log.warn(
-                    { err: realpathErr, documentName },
-                    `[persistence] Tripwire reset realpath failed for ${documentName}; using currentBase`,
-                  );
-                }
-                if (canonical && isWithinContentDir(canonical, contentDir)) {
-                  try {
-                    diskContent = readFileSync(canonical, 'utf-8');
-                  } catch (readErr) {
-                    log.warn(
-                      { err: readErr, documentName, canonical },
-                      `[persistence] Tripwire reset readFileSync failed for ${documentName}; using currentBase`,
-                    );
-                    diskContent = currentBase;
-                  }
-                } else {
-                  if (canonical) {
-                    log.warn(
-                      {
-                        docName: documentName,
-                        originalPath: requestedDiskPath,
-                        canonical,
-                        contentDir,
-                      },
-                      `[persistence] symlink-escape on tripwire reset: ${requestedDiskPath} → ${canonical}, using currentBase`,
-                    );
-                  }
-                  diskContent = currentBase;
-                }
+              if (currentBase === undefined) {
+                diskContent = duplicationBaseline;
               } else {
-                diskContent = currentBase;
+                const resetRead = readTripwireDiskContent(documentName);
+                diskContent = resetRead.kind === 'ok' ? resetRead.content : currentBase;
               }
               checkpointBeforeDuplicationReset(
                 document,
@@ -1805,6 +1867,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         docsWithSettledWrite.add(documentName);
         docsWithFileObservedOnDisk.add(documentName);
         tripwireResetFailedDocs.delete(documentName);
+        durabilityState.clearStoreRefused(documentName);
         persistenceDeferCounts.delete(documentName);
 
         try {

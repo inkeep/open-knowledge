@@ -1,6 +1,6 @@
-import { existsSync, readdirSync, realpathSync, statSync, unlinkSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { resolve, sep } from 'node:path';
+import { dirname, resolve, sep } from 'node:path';
 import {
   ApiConfigSuccessSchema,
   type ConfigDiagnosticsReport,
@@ -45,8 +45,10 @@ import {
   type SemanticSearchService,
 } from '../embeddings/index.ts';
 import type { FileIndexEntry } from '../file-watcher.ts';
+import { tracedRmdirSync, tracedUnlinkSync } from '../fs-traced.ts';
 import { type createInstalledAgentsProbe, handleInstalledAgents } from '../handoff-api.ts';
 import type { PinoLogger } from '../logger.ts';
+import { isWithinDir } from '../path-utils.ts';
 import { readServerLock } from '../server-lock.ts';
 import { listRescueCheckpoints, type ShadowRef, type TimelineRescueEntry } from '../shadow-repo.ts';
 import type { ApiRouteTable } from './api-pipeline.ts';
@@ -536,12 +538,28 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
 
   const RESCUE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
+  const pruneEmptyRescueAncestors = (filePath: string, rescueDir: string): void => {
+    let dir = dirname(filePath);
+    while (dir !== rescueDir && dir.startsWith(`${rescueDir}${sep}`)) {
+      try {
+        tracedRmdirSync(dir);
+      } catch (e) {
+        log.debug({ err: e }, '[rescue] empty-directory prune stopped (non-critical)');
+        return;
+      }
+      dir = dirname(dir);
+    }
+  };
+
   const handleRescueList = withValidation(
     EmptyRequestSchema,
     async (_req, res) => {
       try {
         if (!shadowRef?.current) {
-          successResponse(res, 200, RescueListSuccessSchema, [], { handler: 'rescue-list' });
+          successResponse(res, 200, RescueListSuccessSchema, [], {
+            handler: 'rescue-list',
+            extraHeaders: { 'Cache-Control': 'no-store' },
+          });
           return;
         }
 
@@ -551,27 +569,50 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
         const rescueDir = resolve(shadowRef.current.gitDir, 'rescue');
         if (existsSync(rescueDir)) {
           try {
-            const files = readdirSync(rescueDir).filter((f) => isSupportedDocFile(f));
+            const files = readdirSync(rescueDir, { encoding: 'utf-8', recursive: true })
+              .map((entry) => entry.replaceAll(sep, '/'))
+              .filter((f) => isSupportedDocFile(f));
+            const canonicalRescueDir = realpathSync(rescueDir);
             for (const file of files) {
               const filePath = resolve(rescueDir, file);
-              const stat = statSync(filePath);
-              const age = now - stat.mtimeMs;
-
-              if (age > RESCUE_MAX_AGE_MS) {
-                try {
-                  unlinkSync(filePath);
-                } catch (e) {
-                  log.debug({ err: e }, '[rescue] cleanup failed (non-critical)');
-                }
+              let canonical: string;
+              try {
+                canonical = realpathSync(filePath);
+              } catch (e) {
+                log.warn({ file, err: e }, '[rescue] skipping unresolvable rescue entry');
                 continue;
               }
+              if (!isWithinDir(canonical, canonicalRescueDir)) {
+                log.warn(
+                  { file, canonical },
+                  '[rescue] skipping rescue entry resolving outside the rescue directory',
+                );
+                continue;
+              }
+              try {
+                const stat = statSync(canonical);
+                if (!stat.isFile()) continue;
+                const age = now - stat.mtimeMs;
 
-              entries.push({
-                docName: stripDocExtension(file),
-                timestamp: stat.mtime.toISOString(),
-                size: stat.size,
-                source: 'flat',
-              });
+                if (age > RESCUE_MAX_AGE_MS) {
+                  try {
+                    tracedUnlinkSync(canonical);
+                    pruneEmptyRescueAncestors(canonical, canonicalRescueDir);
+                  } catch (e) {
+                    log.debug({ err: e }, '[rescue] cleanup failed (non-critical)');
+                  }
+                  continue;
+                }
+
+                entries.push({
+                  docName: stripDocExtension(file),
+                  timestamp: stat.mtime.toISOString(),
+                  size: stat.size,
+                  source: 'flat',
+                });
+              } catch (e) {
+                log.warn({ file, err: e }, '[rescue] skipping uninspectable rescue entry');
+              }
             }
           } catch (err) {
             log.error({ err }, '[rescue] Failed to list flat-file rescue buffers');
@@ -588,7 +629,10 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
           log.error({ err }, '[rescue] Failed to list timeline-ref rescue checkpoints');
         }
 
-        successResponse(res, 200, RescueListSuccessSchema, entries, { handler: 'rescue-list' });
+        successResponse(res, 200, RescueListSuccessSchema, entries, {
+          handler: 'rescue-list',
+          extraHeaders: { 'Cache-Control': 'no-store' },
+        });
       } catch (e) {
         errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
           handler: 'rescue-list',

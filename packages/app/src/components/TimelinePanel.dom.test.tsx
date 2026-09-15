@@ -88,6 +88,12 @@ const SURFACED_KINDS: ParsedCheckpoint[] = [
     size: 12,
     metadata: { incomingDiskSha: 'abc123' },
   },
+  {
+    kind: 'external-change-rescue-disk-update',
+    docName: 'notes',
+    size: 12,
+    metadata: { incomingDiskSha: 'abc123' },
+  },
   { kind: 'defer-exhaustion-loss', docName: 'notes', size: 12, metadata: { deferCount: 9 } },
   {
     kind: 'bridge-derive-loss',
