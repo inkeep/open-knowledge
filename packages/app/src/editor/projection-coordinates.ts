@@ -18,7 +18,7 @@ export function fullPrecisionProjection(projection: Projection, md: MarkdownMana
   return buildProjection(projection.source, md);
 }
 
-export interface FullPrecisionUpdate {
+interface FullPrecisionUpdate {
   full: Projection;
   previous: Projection | null;
   window: ProjectionUpdate | null;
