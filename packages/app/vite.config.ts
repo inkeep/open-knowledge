@@ -3,6 +3,10 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vite';
 import { injectAppVersionEnv } from './src/build/app-version';
 import { chromeTokensVitePlugin } from './src/build/chrome-tokens-vite-plugin';
+import {
+  ENTITY_DECODER_ID,
+  resolveEntityDecoderNodeBuild,
+} from './src/build/entity-decoder-node-build';
 import { rejectionLoopGuardPlugin } from './src/build/rejection-loop-guard-plugin';
 import { hocuspocusPlugin } from './src/server/hocuspocus-plugin';
 import { RENDERER_DEDUPE } from './vite.dedupe';
@@ -23,6 +27,10 @@ const vitePort = process.env.VITE_PORT ? Number.parseInt(process.env.VITE_PORT, 
 // rewrites chunk hashes mid-flight for any peer worker's browser. Unset
 // everywhere else (production `vite build`, plain `bun run dev`) → Vite default.
 const viteCacheDir = process.env.OK_TEST_VITE_CACHE_DIR;
+
+// Markdown parsing has to run in a worker (the word count), and the entity
+// decoder's browser build needs `document`. See the module's STOP note.
+const entityDecoderNodeBuild = resolveEntityDecoderNodeBuild(import.meta.dirname);
 
 export default defineConfig({
   // Relative asset paths — `./assets/foo.js` in the built index.html.
@@ -65,6 +73,13 @@ export default defineConfig({
   ],
   resolve: {
     tsconfigPaths: true,
+    ...(entityDecoderNodeBuild === null
+      ? {}
+      : {
+          alias: [
+            { find: new RegExp(`^${ENTITY_DECODER_ID}$`), replacement: entityDecoderNodeBuild },
+          ],
+        }),
     // Single source of truth — see `./vite.dedupe.ts` for the full
     // rationale (prosemirror dual-instance, React hook identity, yjs
     // import-guard + dual prosemirror-binding-stack identity-mismatch).
