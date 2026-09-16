@@ -1,5 +1,10 @@
 import type { Text } from 'mdast';
 import type { Point, Position } from 'unist';
+import {
+  type EntityReferenceSpan,
+  type EscapeProvenanceEntry,
+  hasEscapeProvenance,
+} from './mdast-augmentation.ts';
 
 function consumesEscape(source: string, i: number, valueChar: string): boolean {
   return source[i] === '\\' && i + 1 < source.length && source[i + 1] === valueChar;
@@ -14,52 +19,90 @@ function valueOffsetToSourceOffset(
   let srcCursor = parentSourceStart;
   let valCursor = 0;
   while (valCursor < targetValueOffset && srcCursor < source.length) {
+    const continuationEnd =
+      valCursor > 0 && valueText[valCursor - 1] === '\n'
+        ? containerContinuationEnd(source, srcCursor, valueText[valCursor])
+        : null;
+    if (continuationEnd !== null) srcCursor = continuationEnd;
     srcCursor += consumesEscape(source, srcCursor, valueText[valCursor]) ? 2 : 1;
     valCursor += 1;
   }
   return srcCursor;
 }
 
-const NO_ESCAPES: ReadonlySet<number> = new Set();
+function sourceMatchesValueAt(source: string, offset: number, valueChar: string): boolean {
+  return source[offset] === valueChar || consumesEscape(source, offset, valueChar);
+}
 
-export function escapedValueOffsets(source: string, node: Text): ReadonlySet<number> | null {
-  if (!source || !node.position || typeof node.position.start?.offset !== 'number') {
-    return null;
-  }
-  const start = node.position.start.offset;
-  const value = node.value;
-  const spanEnd = Math.min(
-    node.position.end?.offset ?? source.length,
-    start + 2 * value.length,
-    source.length,
-  );
-  let hasBackslash = false;
-  for (let i = start; i < spanEnd; i++) {
-    if (source.charCodeAt(i) === 92) {
-      hasBackslash = true;
-      break;
+function containerContinuationEnd(
+  source: string,
+  sourceOffset: number,
+  valueChar: string,
+): number | null {
+  let cursor = sourceOffset;
+  let consumed = false;
+  for (;;) {
+    const indentStart = cursor;
+    while (cursor < source.length && (source[cursor] === ' ' || source[cursor] === '\t')) {
+      cursor += 1;
     }
+    if (source[cursor] === '>') {
+      cursor += 1;
+      if (source[cursor] === ' ' || source[cursor] === '\t') cursor += 1;
+      consumed = true;
+      continue;
+    }
+    if (cursor > indentStart) consumed = true;
+    break;
   }
-  if (!hasBackslash) {
-    return NO_ESCAPES;
-  }
+  return consumed && sourceMatchesValueAt(source, cursor, valueChar) ? cursor : null;
+}
 
-  let escaped: Set<number> | null = null;
-  let srcCursor = start;
-  let valCursor = 0;
-  while (valCursor < value.length && srcCursor < source.length) {
-    if (consumesEscape(source, srcCursor, value[valCursor])) {
-      if (escaped === null) escaped = new Set();
-      escaped.add(valCursor);
-      srcCursor += 2;
-    } else if (source[srcCursor] === value[valCursor]) {
-      srcCursor += 1;
-    } else {
-      break;
-    }
-    valCursor += 1;
+export function escapedValueOffsets(node: Text): ReadonlySet<number> | null {
+  if (!hasEscapeProvenance(node.data)) return null;
+  return new Set(node.data.escapedChars.map((entry) => entry.offset));
+}
+
+function sliceEscapedChars(
+  entries: readonly EscapeProvenanceEntry[],
+  from: number,
+  to: number,
+): EscapeProvenanceEntry[] {
+  return entries
+    .filter((entry) => entry.offset >= from && entry.offset < to)
+    .map((entry) => ({ ...entry, offset: entry.offset - from }));
+}
+
+function sliceEntityRefSpans(
+  spans: readonly EntityReferenceSpan[],
+  from: number,
+  to: number,
+): EntityReferenceSpan[] {
+  return spans
+    .filter((span) => span.offset >= from && span.offset + span.length <= to)
+    .map((span) => ({ ...span, offset: span.offset - from }));
+}
+
+export function sliceTextWithProvenance(
+  source: string,
+  node: Text,
+  from: number,
+  to: number,
+): Text {
+  const sliced: Text = { type: 'text', value: node.value.slice(from, to) };
+  const position = deriveFragmentPosition(source, node, from, to);
+  if (position) sliced.position = position;
+
+  let data: Text['data'];
+  if (hasEscapeProvenance(node.data)) {
+    data = { escapedChars: sliceEscapedChars(node.data.escapedChars, from, to) };
   }
-  return escaped ?? NO_ESCAPES;
+  if (node.data?.entityRefSpans?.length) {
+    const entityRefSpans = sliceEntityRefSpans(node.data.entityRefSpans, from, to);
+    if (entityRefSpans.length > 0) data = { ...data, entityRefSpans };
+  }
+  if (data) sliced.data = data;
+  return sliced;
 }
 
 export function isEscapeDerivedRun(

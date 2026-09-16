@@ -1,4 +1,5 @@
-import { encodeHrefPath, headingContentIdentity } from '@inkeep/open-knowledge-core';
+import { encodeHrefPath, isMutatingParserReservation } from '@inkeep/open-knowledge-core';
+import { getLogger } from '../logger.ts';
 
 export interface IndexEntry {
   path: string;
@@ -8,7 +9,7 @@ export interface IndexEntry {
 }
 
 export interface SubdirectoryEntry {
-  path: string;
+  directory: string;
   title: string;
 }
 
@@ -16,6 +17,7 @@ export interface BuildIndexOptions {
   isRoot: boolean;
   directory?: string | undefined;
   subdirectories?: readonly SubdirectoryEntry[] | undefined;
+  warningScope: GeneratedIndexWarningScope | false;
 }
 
 const GENERATED_OKF_VERSION = '0.2';
@@ -34,13 +36,135 @@ export const GENERATOR_OWNED_HEADINGS: ReadonlySet<string> = new Set([
 
 interface RenderableLink {
   path: string;
-  title: string;
-  description?: string | undefined;
+  title: LiteralMarkdownText;
+  description?: LiteralMarkdownText | undefined;
 }
 
-function sectionOf(entry: IndexEntry): string {
-  const declared = entry.type === undefined ? '' : toSingleLine(entry.type);
-  return declared ? declared : UNTYPED_SECTION;
+interface LiteralMarkdownText {
+  visible: string;
+  identity: string;
+  source: string;
+}
+
+interface LiteralMetadataSource {
+  path: string;
+  field: 'title' | 'description' | 'type' | 'folder-label';
+}
+
+type LiteralMarkdownTextOrigin =
+  | {
+      kind: 'attributed';
+      source: LiteralMetadataSource;
+      warningScope: GeneratedIndexWarningScope | false;
+    }
+  | { kind: 'generator-owned' };
+
+const SUBSTITUTION_WARNING_MESSAGES = {
+  control: 'generated index metadata contained a Cc control; replaced it with U+FFFD',
+  'parser-reservation':
+    'generated index metadata contained a parser-reserved private-use code point; replaced it with U+FFFD',
+} as const;
+
+type SubstitutionWarningKind = keyof typeof SUBSTITUTION_WARNING_MESSAGES;
+
+function metadataSourceKey(source: LiteralMetadataSource): string {
+  return `${source.path}\0${source.field}`;
+}
+
+export class GeneratedIndexWarningScope {
+  readonly contentDir: string;
+  readonly #warnedEpisodes = new Map<string, string>();
+
+  constructor(contentDir: string) {
+    this.contentDir = contentDir;
+  }
+
+  update(kind: SubstitutionWarningKind, source: LiteralMetadataSource, substituted: boolean): void {
+    const sourceKey = metadataSourceKey(source);
+    const episodeKey = `${kind}\0${sourceKey}`;
+    if (!substituted) {
+      this.#warnedEpisodes.delete(episodeKey);
+      return;
+    }
+    if (this.#warnedEpisodes.has(episodeKey)) return;
+    this.#warnedEpisodes.set(episodeKey, sourceKey);
+    getLogger('generated-index').warn(
+      { contentDir: this.contentDir, ...source, kind },
+      SUBSTITUTION_WARNING_MESSAGES[kind],
+    );
+  }
+
+  retain(activeSources: ReadonlySet<string>): void {
+    for (const [episodeKey, sourceKey] of this.#warnedEpisodes) {
+      if (!activeSources.has(sourceKey)) this.#warnedEpisodes.delete(episodeKey);
+    }
+  }
+}
+
+export function createGeneratedIndexWarningScope(contentDir: string): GeneratedIndexWarningScope {
+  return new GeneratedIndexWarningScope(contentDir);
+}
+
+export function retainGeneratedIndexSubstitutionWarningSources(
+  warningScope: GeneratedIndexWarningScope | false,
+  entries: readonly IndexEntry[],
+  subdirectories: readonly SubdirectoryEntry[],
+): void {
+  if (!warningScope) return;
+  const activeSources = new Set<string>();
+  for (const entry of entries) {
+    activeSources.add(metadataSourceKey({ path: entry.path, field: 'title' }));
+    activeSources.add(metadataSourceKey({ path: entry.path, field: 'type' }));
+    if (entry.description !== undefined) {
+      activeSources.add(metadataSourceKey({ path: entry.path, field: 'description' }));
+    }
+  }
+  for (const subdirectory of subdirectories) {
+    activeSources.add(metadataSourceKey({ path: subdirectory.directory, field: 'folder-label' }));
+  }
+  warningScope.retain(activeSources);
+}
+
+function literalMarkdownText(
+  value: string,
+  origin: LiteralMarkdownTextOrigin,
+): LiteralMarkdownText {
+  let controlSubstituted = false;
+  let parserReservationSubstituted = false;
+  const visible = Array.from(toSingleLine(value), (character) => {
+    if (/\p{Cc}/u.test(character)) {
+      controlSubstituted = true;
+      return '\uFFFD';
+    }
+    if (isMutatingParserReservation(character)) {
+      parserReservationSubstituted = true;
+      return '\uFFFD';
+    }
+    return character;
+  }).join('');
+  if (origin.kind === 'attributed' && origin.warningScope) {
+    origin.warningScope.update('control', origin.source, controlSubstituted);
+    origin.warningScope.update('parser-reservation', origin.source, parserReservationSubstituted);
+  }
+  return {
+    visible,
+    identity: visible.normalize('NFC'),
+    source: visible.replace(/[\u0021-\u002f\u003a-\u0040\u005b-\u0060\u007b-\u007e]/g, '\\$&'),
+  };
+}
+
+function sectionOf(
+  entry: IndexEntry,
+  warningScope: GeneratedIndexWarningScope | false,
+): LiteralMarkdownText {
+  const declared = literalMarkdownText(entry.type ?? '', {
+    kind: 'attributed',
+    source: { path: entry.path, field: 'type' },
+    warningScope,
+  });
+  return declared.visible
+    ? declared
+    : literalMarkdownText(UNTYPED_SECTION, { kind: 'generator-owned' });
 }
 
 function toSingleLine(value: string): string {
@@ -70,7 +194,10 @@ function prefersSpelling(candidate: string, current: string): boolean {
 
 function compareLinks(left: RenderableLink, right: RenderableLink): number {
   return (
-    compareCodePoints(normalizedSortKey(left.title), normalizedSortKey(right.title)) ||
+    compareCodePoints(
+      normalizedSortKey(left.title.visible),
+      normalizedSortKey(right.title.visible),
+    ) ||
     compareCodePoints(
       left.path.replaceAll('\\', '/').normalize('NFC'),
       right.path.replaceAll('\\', '/').normalize('NFC'),
@@ -78,8 +205,30 @@ function compareLinks(left: RenderableLink, right: RenderableLink): number {
   );
 }
 
-function escapeLinkLabel(value: string): string {
-  return toSingleLine(value).replace(/[\\[\]]/g, '\\$&');
+function renderableLink(
+  entry: IndexEntry | SubdirectoryEntry,
+  warningScope: GeneratedIndexWarningScope | false,
+): RenderableLink {
+  const titleSource: LiteralMetadataSource =
+    'directory' in entry
+      ? { path: entry.directory, field: 'folder-label' }
+      : { path: entry.path, field: 'title' };
+  return {
+    path: 'directory' in entry ? `${entry.directory}/index.md` : entry.path,
+    title: literalMarkdownText(entry.title, {
+      kind: 'attributed',
+      source: titleSource,
+      warningScope,
+    }),
+    description:
+      'description' in entry && entry.description !== undefined
+        ? literalMarkdownText(entry.description, {
+            kind: 'attributed',
+            source: { path: entry.path, field: 'description' },
+            warningScope,
+          })
+        : undefined,
+  };
 }
 
 function relativeTo(directory: string, path: string): string {
@@ -100,9 +249,8 @@ function toHref(relativePath: string): string {
 }
 
 function renderLink(link: RenderableLink, directory: string): string {
-  const anchor = `* [${escapeLinkLabel(link.title)}](${toHref(relativeTo(directory, link.path))})`;
-  const description = link.description === undefined ? '' : toSingleLine(link.description);
-  return description ? `${anchor} - ${description}` : anchor;
+  const anchor = `* [${link.title.source}](${toHref(relativeTo(directory, link.path))})`;
+  return link.description?.source ? `${anchor} - ${link.description.source}` : anchor;
 }
 
 function renderBody(links: readonly RenderableLink[], directory: string): string {
@@ -119,19 +267,20 @@ export function buildIndexMarkdown(
 ): string {
   const directory = options.directory ?? '';
   const subdirectories = options.subdirectories ?? [];
+  const warningScope = options.warningScope;
 
   interface Bucket {
-    heading: string;
+    heading: LiteralMarkdownText;
     pinned: boolean;
     links: RenderableLink[];
   }
 
-  const titleKey = headingContentIdentity(INDEX_TITLE);
+  const titleKey = literalMarkdownText(INDEX_TITLE, { kind: 'generator-owned' }).identity;
   const grouped = new Map<string, Bucket>();
 
-  const bucketFor = (heading: string): RenderableLink[] => {
-    const key = headingContentIdentity(heading);
-    const pinned = GENERATOR_OWNED_HEADINGS.has(heading);
+  const bucketFor = (heading: LiteralMarkdownText): RenderableLink[] => {
+    const key = heading.identity;
+    const pinned = GENERATOR_OWNED_HEADINGS.has(heading.visible);
     const existing = grouped.get(key);
     if (!existing) {
       const created: Bucket = { heading, pinned, links: [] };
@@ -141,24 +290,30 @@ export function buildIndexMarkdown(
     if (pinned && !existing.pinned) {
       existing.heading = heading;
       existing.pinned = true;
-    } else if (!pinned && !existing.pinned && prefersSpelling(heading, existing.heading)) {
+    } else if (
+      !pinned &&
+      !existing.pinned &&
+      prefersSpelling(heading.visible, existing.heading.visible)
+    ) {
       existing.heading = heading;
     }
     return existing.links;
   };
 
   for (const entry of entries) {
-    bucketFor(sectionOf(entry)).push(entry);
+    bucketFor(sectionOf(entry, warningScope)).push(renderableLink(entry, warningScope));
   }
 
   if (subdirectories.length > 0) {
-    bucketFor(SUBDIRECTORY_SECTION).push(...subdirectories);
+    bucketFor(literalMarkdownText(SUBDIRECTORY_SECTION, { kind: 'generator-owned' })).push(
+      ...subdirectories.map((entry) => renderableLink(entry, warningScope)),
+    );
   }
 
   const blocks = [...grouped]
     .filter(([key]) => key !== titleKey)
-    .sort(([, left], [, right]) => compareSections(left.heading, right.heading))
-    .map(([, { heading, links }]) => `## ${heading}\n\n${renderBody(links, directory)}`);
+    .sort(([, left], [, right]) => compareSections(left.heading.visible, right.heading.visible))
+    .map(([, { heading, links }]) => `## ${heading.source}\n\n${renderBody(links, directory)}`);
 
   const header = options.isRoot ? `---\nokf_version: "${GENERATED_OKF_VERSION}"\n---\n\n` : '';
 

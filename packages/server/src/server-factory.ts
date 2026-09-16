@@ -81,6 +81,7 @@ import {
 } from './config-file-watcher.ts';
 import { applyExternalConfigChange, isConfigEcho } from './config-persistence.ts';
 import { bindConflictAuthority, ConflictAuthority } from './conflict-authority.ts';
+import { createGeneratedIndexWarningScope } from './content/generate-index.ts';
 import { type GeneratedArtifactEnv, writeGeneratedArtifact } from './content/generated-artifact.ts';
 import {
   type GeneratedIndexGitAttributesStatus,
@@ -474,6 +475,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   } = options;
 
   const log = getLogger('server');
+  const generatedIndexWarningScope = createGeneratedIndexWarningScope(resolve(contentDir));
   let cc1Broadcaster: CC1Broadcaster | null = null;
   const initialBranch = readProjectHeadState(projectDir).branch ?? 'main';
   const durabilityState = new DocumentDurabilityState(initialBranch, {
@@ -1398,6 +1400,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           docs: fileIndex,
           docExtension: getDocExtension,
           currentMarkdownFor: () => null,
+          warningScope: generatedIndexWarningScope,
         });
         const gitAttributes = inspectGeneratedIndexGitAttributes({
           projectDir,

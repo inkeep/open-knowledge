@@ -1,13 +1,9 @@
 import type { Nodes, Root } from 'mdast';
 import { visit } from 'unist-util-visit';
 import type { VFile } from 'vfile';
+import { type EscapeProvenanceEntry, hasEscapeProvenance } from './mdast-augmentation.ts';
 
 const ESCAPABLE_CHARS = new Set('!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~'.split(''));
-
-interface EscapedChar {
-  offset: number;
-  char: string;
-}
 
 export function splitGfmCellSegments(rowSrc: string): string[] {
   const segments: string[] = [];
@@ -66,8 +62,8 @@ export function applyPositionSliceToNode(
     case 'text': {
       const raw = source.slice(startOff, endOff);
       const value: string = node.value ?? '';
-      if (raw.length > value.length && raw.includes('\\')) {
-        const escaped: EscapedChar[] = [];
+      if (!hasEscapeProvenance(node.data) && raw.length > value.length && raw.includes('\\')) {
+        const escaped: EscapeProvenanceEntry[] = [];
         let rawIdx = 0;
         let valIdx = 0;
         while (rawIdx < raw.length && valIdx < value.length) {

@@ -65,6 +65,11 @@ import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { buildPromptBlocks } from './attachment-blocks.ts';
+import {
+  ACQUISITION_DETAIL_MAX_CHARS,
+  createDiagnosticStderrCapture,
+  redactDiagnostic,
+} from './diagnostics.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
 import {
   AgentLaunchError,
@@ -75,6 +80,7 @@ import {
   incompatibleManagedRuntimeHint,
   incompatibleNodeHint,
   isPathQualified,
+  packageAcquisitionFailure,
   preflightLaunch,
   probeInterpreterHealth,
   probeNpxNodeCompatibility,
@@ -219,6 +225,7 @@ interface ThreadRecord {
   piBridgeDeclined: boolean;
   lastPiBridgeStatus: PiBridgeThreadState | null;
   stderrTail: string[];
+  drainStderr: (() => Promise<void>) | null;
   authStderr: string[] | null;
   terminals: AcpTerminalSet | null;
   turnActive: boolean;
@@ -543,6 +550,7 @@ export class AcpThreadManager {
       piBridgeDeclined: false,
       lastPiBridgeStatus: null,
       stderrTail: [],
+      drainStderr: null,
       authStderr: null,
       terminals: null,
       turnActive: false,
@@ -610,20 +618,21 @@ export class AcpThreadManager {
     record: ThreadRecord,
     custom: CustomAgentEntry | null,
   ): Promise<{ conn: ClientConnection; init: InitializeResponse; launch: ResolvedLaunch } | null> {
-    let launch: ResolvedLaunch;
+    let launch: ResolvedLaunch | null;
     if (custom !== null) {
-      launch = resolveCustomLaunch(custom);
+      launch = await this.ensureLaunchable(record, resolveCustomLaunch(custom));
     } else {
       const manifest = await this.opts.registry.getAgent(record.agentRef.id);
       if (manifest === undefined) throw new ThreadOpError('unknown-agent', 'agent vanished');
-      launch = await resolveRegistryLaunch(manifest, registryPlatformKey(), this.opts.log);
+      launch = await resolveRegistryLaunch(
+        manifest,
+        registryPlatformKey(),
+        this.opts.log,
+        undefined,
+        (candidate) => this.ensureLaunchable(record, candidate),
+      );
     }
-    if (record.closed) return null;
-
-    const launchable = await this.ensureLaunchable(record, launch);
-    if (launchable === null) return null;
-    launch = launchable;
-    if (record.closed) return null;
+    if (launch === null || record.closed) return null;
 
     const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
     if (record.closed) return null;
@@ -636,16 +645,49 @@ export class AcpThreadManager {
     });
 
     this.emitStatus(record, 'spawning');
-    const child = spawnAcpAgent(launch, record.cwd);
+    const child = launch.kind === 'npx' ? spawnAcpAgent(launch) : spawnAcpAgent(launch, record.cwd);
     record.child = child;
     record.terminals = terminals;
+    const processClosed = new Promise<void>((resolveClosed) =>
+      child.once('close', () => resolveClosed()),
+    );
+    let stderrDrained: Promise<void> | undefined;
+    const drainStderr = (): Promise<void> => {
+      if (
+        child.exitCode === null &&
+        child.signalCode === null &&
+        child.stdout?.readableEnded !== true &&
+        child.stdout?.destroyed !== true
+      ) {
+        return Promise.resolve();
+      }
+      stderrDrained ??= new Promise<void>((resolveDrain) => {
+        const timer = setTimeout(resolveDrain, 1_000);
+        timer.unref();
+        void processClosed.then(() => {
+          clearTimeout(timer);
+          resolveDrain();
+        });
+      });
+      return stderrDrained;
+    };
+    record.drainStderr = drainStderr;
+    let startupStderr = '';
+    let capturingStartup = true;
+    const diagnosticCapture = createDiagnosticStderrCapture((line) => {
+      if (capturingStartup)
+        startupStderr = `${startupStderr}${line}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
+      if (line.trim() === '') return;
+      record.stderrTail.push(line.slice(0, 500));
+      if (record.stderrTail.length > STDERR_TAIL_LINES) record.stderrTail.shift();
+    });
 
     child.stderr?.setEncoding('utf8');
+    child.stderr?.on('data', diagnosticCapture.write);
+    child.stderr?.on('end', diagnosticCapture.end);
     child.stderr?.on('data', (chunk: string) => {
       for (const line of chunk.split('\n')) {
         if (line.trim() === '') continue;
-        record.stderrTail.push(line.slice(0, 500));
-        if (record.stderrTail.length > STDERR_TAIL_LINES) record.stderrTail.shift();
         if (record.authStderr !== null) {
           record.authStderr.push(line.slice(0, 500));
           if (record.authStderr.length > SIGN_IN_OUTPUT_LINES) record.authStderr.shift();
@@ -661,35 +703,44 @@ export class AcpThreadManager {
       });
     });
     child.on('exit', (code, signal) => {
+      if (record.child !== child) return;
       record.child = null;
+      this.failPendingPermissions(record);
+      this.failPendingConsents(record);
       terminals.disposeAll().catch((err: unknown) => {
         this.opts.log.warn(
           { err, threadId: record.info.threadId },
           '[acp-threads] terminal cleanup on agent exit failed',
         );
       });
-      if (record.closed || record.info.archived === true) return;
-      if (record.info.status === 'error') {
-        this.failPendingPermissions(record);
-        return;
-      }
-      const tail = record.stderrTail.slice(-10).join('\n');
-      this.opts.log.warn(
-        {
-          threadId: record.info.threadId,
-          agentId: record.info.agent.id,
-          code,
-          signal,
-          machineDetail: stderrTailDetail(record),
-        },
-        '[acp-threads] agent exited unexpectedly',
-      );
-      this.emitStatus(
-        record,
-        'exited',
-        `agent exited (${signal ?? code ?? 'unknown'})${tail ? `\n${tail}` : ''}`,
-      );
-      this.failPendingPermissions(record);
+      void stderrTailDetail(record)
+        .then((tail) => {
+          if (record.terminals !== terminals) return;
+          if (isThreadClosed(record)) return;
+          if (record.info.status === 'error') {
+            this.failPendingPermissions(record);
+            return;
+          }
+          const headline = `agent exited (${signal ?? code ?? 'unknown'})`;
+          this.opts.log.warn(
+            {
+              threadId: record.info.threadId,
+              agentId: record.info.agent.id,
+              code,
+              signal,
+              machineDetail: tail,
+            },
+            '[acp-threads] agent exited unexpectedly',
+          );
+          this.emitStatus(record, 'exited', joinMachineDetail({ primary: headline, tail }));
+          this.failPendingPermissions(record);
+        })
+        .catch((err: unknown) => {
+          this.opts.log.error(
+            { err, threadId: record.info.threadId },
+            '[acp-threads] exit diagnostics failed',
+          );
+        });
     });
 
     if (child.stdin === null || child.stdout === null) {
@@ -736,12 +787,7 @@ export class AcpThreadManager {
     record.conn = conn;
     conn.closed.then(
       () => {
-        if (
-          !record.closed &&
-          record.info.archived !== true &&
-          record.info.status !== 'exited' &&
-          record.info.status !== 'error'
-        ) {
+        if (record.info.status !== 'exited' && record.info.status !== 'error') {
           this.emitStatus(record, 'exited', 'agent connection closed');
         }
       },
@@ -750,12 +796,7 @@ export class AcpThreadManager {
           { err, threadId: record.info.threadId },
           '[acp-threads] agent connection closed with error',
         );
-        if (
-          !record.closed &&
-          record.info.archived !== true &&
-          record.info.status !== 'exited' &&
-          record.info.status !== 'error'
-        ) {
+        if (record.info.status !== 'exited' && record.info.status !== 'error') {
           this.emitStatus(
             record,
             'error',
@@ -781,7 +822,15 @@ export class AcpThreadManager {
         { err, threadId: record.info.threadId },
         '[acp-threads] initialize failed',
       );
+      if (launch.kind === 'npx' || launch.kind === 'uvx') {
+        await drainStderr();
+        const acquisitionFailure = packageAcquisitionFailure(launch, startupStderr, err);
+        if (acquisitionFailure !== null) throw acquisitionFailure;
+      }
       throw new ThreadOpError('spawn-failed', `initialize failed: ${agentErrorMessage(err)}`);
+    } finally {
+      capturingStartup = false;
+      startupStderr = '';
     }
     if (record.closed) return null;
     record.lastInit = init;
@@ -1436,14 +1485,9 @@ export class AcpThreadManager {
     try {
       handshake = await this.connectAgent(record, custom);
     } catch (err) {
-      const detail =
-        err instanceof AgentLaunchError || err instanceof ThreadOpError ? err.message : String(err);
-      this.emitStatus(record, 'error', detail, {
-        reason: 'connect',
-        agentMessage: detail,
-        machineDetail: stderrTailDetail(record),
-      });
-      await this.teardownFailedAgent(record);
+      const failure = await connectionFailureDetail(err, record);
+      this.emitStatus(record, 'error', failure.agentMessage, failure);
+      if (!isThreadClosed(record)) await this.teardownFailedAgent(record);
       return;
     }
     if (handshake === null) return;
@@ -1510,24 +1554,28 @@ export class AcpThreadManager {
           authMethods: threadAuthMethods(init.authMethods),
         });
       } else {
+        const tail = await stderrTailDetail(record);
         this.emitStatus(record, 'error', `session setup failed: ${agentErrorMessage(err)}`, {
           reason: 'session-setup',
           agentMessage: agentErrorMessage(err),
-          machineDetail: joinMachineDetail(agentErrorData(err), stderrTailDetail(record)),
+          machineDetail: joinMachineDetail({
+            primary: agentErrorData(err),
+            tail,
+          }),
         });
-        await this.teardownFailedAgent(record);
+        if (!isThreadClosed(record)) await this.teardownFailedAgent(record);
       }
       return false;
     }
-    if (record.closed) return false;
+    if (isThreadClosed(record)) return false;
 
     if (settings?.config !== undefined) {
       await this.applyInitialConfig(record, conn, settings.config);
-      if (record.closed) return false;
+      if (isThreadClosed(record)) return false;
     }
     if (settings?.modeId !== undefined) {
       await this.applyInitialMode(record, conn, settings.modeId);
-      if (record.closed) return false;
+      if (isThreadClosed(record)) return false;
     }
 
     this.emitStatus(record, 'ready');
@@ -1665,7 +1713,7 @@ export class AcpThreadManager {
         }
         return { ...t.info };
       } catch (err) {
-        await this.abortResume(t);
+        await this.abortResume(t, await connectionFailureDetail(err, t));
         if (err instanceof ThreadOpError) throw err;
         if (err instanceof AgentLaunchError) {
           throw new ThreadOpError(
@@ -1838,7 +1886,12 @@ export class AcpThreadManager {
     }
   }
 
-  private async abortResume(t: ThreadRecord): Promise<void> {
+  private async abortResume(t: ThreadRecord, failure: ThreadFailureDetail): Promise<void> {
+    if (isThreadClosed(t)) {
+      await this.teardownFailedAgent(t);
+      this.emitStatus(t, 'exited', 'resume failed', failure);
+      return;
+    }
     t.closed = true;
     t.suppressUpdates = false;
     this.failPendingPermissions(t);
@@ -1857,7 +1910,7 @@ export class AcpThreadManager {
     t.turnActive = false;
     this.opts.agentPresenceBroadcaster?.clearPresence(toBroadcasterKey(t.agentSessionId));
     t.info.archived = true;
-    this.emitStatus(t, 'exited', 'resume failed');
+    this.recordTerminalStatus(t, 'exited', 'resume failed', failure);
     this.flushBroadcast(t);
     this.persistence.queueMetaWrite(t.info.threadId, this.buildMeta(t));
     await this.persistence.whenIdle(t.info.threadId);
@@ -2114,7 +2167,7 @@ export class AcpThreadManager {
     requestPromise
       .then((response) => {
         t.turnActive = false;
-        if (t.closed) return;
+        if (isThreadClosed(t)) return;
         this.appendEvent(t, {
           kind: 'turn_ended',
           stopReason: response.stopReason,
@@ -2134,9 +2187,9 @@ export class AcpThreadManager {
         }
         this.emitStatus(t, 'ready');
       })
-      .catch((err) => {
+      .catch(async (err) => {
         t.turnActive = false;
-        if (t.closed) return;
+        if (isThreadClosed(t)) return;
         this.appendEvent(t, { kind: 'turn_ended', stopReason: 'cancelled', ts: Date.now() });
         if (t.sessionId !== null && t.conn !== null) {
           const steer = this.takeSteer(t);
@@ -2159,11 +2212,21 @@ export class AcpThreadManager {
           });
           return;
         }
+        const tail = await stderrTailDetail(t);
         this.emitStatus(t, 'error', `prompt failed: ${agentErrorMessage(err)}`, {
           reason: 'prompt',
           agentMessage: agentErrorMessage(err),
-          machineDetail: joinMachineDetail(agentErrorData(err), stderrTailDetail(t)),
+          machineDetail: joinMachineDetail({
+            primary: agentErrorData(err),
+            tail,
+          }),
         });
+      })
+      .catch((err: unknown) => {
+        this.opts.log.error(
+          { err, threadId: t.info.threadId },
+          '[acp-threads] prompt diagnostics failed',
+        );
       });
   }
 
@@ -2443,7 +2506,7 @@ export class AcpThreadManager {
       this.appendEvent(t, { kind: 'turn_ended', stopReason: 'cancelled', ts: Date.now() });
     }
     t.info.archived = true;
-    this.emitStatus(t, 'exited', 'thread closed');
+    this.recordTerminalStatus(t, 'exited', 'thread closed');
     this.flushBroadcast(t);
     this.persistence.queueMetaWrite(threadId, this.buildMeta(t));
     await this.persistence.whenIdle(threadId);
@@ -2695,6 +2758,36 @@ export class AcpThreadManager {
     detail?: string,
     failure?: ThreadFailureDetail,
   ): void {
+    if (isThreadClosed(t)) {
+      const log =
+        status === 'error' || status === 'auth_required' ? this.opts.log.warn : this.opts.log.info;
+      log.call(
+        this.opts.log,
+        {
+          threadId: t.info.threadId,
+          agentId: t.info.agent.id,
+          status,
+          suppressed: true,
+          detail: detail === undefined ? undefined : redactDiagnostic(detail),
+          reason: failure?.reason,
+          machineDetail:
+            failure?.machineDetail === undefined
+              ? undefined
+              : redactDiagnostic(failure.machineDetail),
+        },
+        '[acp-threads] status suppressed after thread close',
+      );
+      return;
+    }
+    this.recordTerminalStatus(t, status, detail, failure);
+  }
+
+  private recordTerminalStatus(
+    t: ThreadRecord,
+    status: ThreadStatus,
+    detail?: string,
+    failure?: ThreadFailureDetail,
+  ): void {
     if (status === 'exited' || status === 'error') {
       t.info.queue = undefined;
       this.clearSteer(t);
@@ -2725,6 +2818,8 @@ export class AcpThreadManager {
   }
 
   private async teardownFailedAgent(t: ThreadRecord): Promise<void> {
+    this.failPendingPermissions(t);
+    this.failPendingConsents(t);
     const child = t.child;
     const conn = t.conn;
     const terminals = t.terminals;
@@ -2940,6 +3035,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     piBridgeDeclined: false,
     lastPiBridgeStatus: null,
     stderrTail: [],
+    drainStderr: null,
     authStderr: null,
     terminals: null,
     turnActive: false,
@@ -2998,7 +3094,7 @@ function agentErrorData(err: unknown): string | undefined {
   const data = (err as { data?: unknown }).data;
   if (data === undefined || data === null) return undefined;
   try {
-    return JSON.stringify(data).slice(0, 300);
+    return redactDiagnostic(JSON.stringify(data)).slice(0, 300);
   } catch {
     return undefined;
   }
@@ -3014,19 +3110,53 @@ function lastFailureMessage(t: ThreadRecord): string | undefined {
   return undefined;
 }
 
-function stderrTailDetail(t: ThreadRecord): string | undefined {
-  const tail = t.stderrTail.join('\n');
+async function connectionFailureDetail(
+  err: unknown,
+  record: ThreadRecord,
+): Promise<ThreadFailureDetail> {
+  const detail =
+    err instanceof AgentLaunchError || err instanceof ThreadOpError ? err.message : String(err);
+  return {
+    reason: 'connect',
+    agentMessage: detail,
+    machineDetail: joinMachineDetail({
+      primary: err instanceof AgentLaunchError ? err.machineDetail : undefined,
+      tail: await stderrTailDetail(record),
+    }),
+  };
+}
+
+function isThreadClosed(t: ThreadRecord): boolean {
+  return t.closed || t.info.archived === true;
+}
+
+async function stderrTailDetail(t: ThreadRecord): Promise<string | undefined> {
+  const lines = t.stderrTail;
+  await t.drainStderr?.();
+  const tail = redactDiagnostic(lines.join('\n')).slice(-ACQUISITION_DETAIL_MAX_CHARS);
   return tail === '' ? undefined : tail;
 }
 
-function joinMachineDetail(...parts: Array<string | undefined>): string | undefined {
-  const joined = parts.filter((p): p is string => p !== undefined && p !== '').join('\n');
-  return joined === '' ? undefined : joined;
+function joinMachineDetail({
+  primary,
+  tail,
+}: {
+  primary: string | undefined;
+  tail: string | undefined;
+}): string | undefined {
+  if (!primary) return tail?.slice(-ACQUISITION_DETAIL_MAX_CHARS) || undefined;
+  if (!tail) return primary.slice(0, ACQUISITION_DETAIL_MAX_CHARS);
+  const tailFloor = Math.min(tail.length, 1024);
+  const primaryBudget = ACQUISITION_DETAIL_MAX_CHARS - tailFloor - 1;
+  const headline =
+    primary.length > primaryBudget ? `${primary.slice(0, primaryBudget - 1)}…` : primary;
+  const remaining = ACQUISITION_DETAIL_MAX_CHARS - headline.length - 1;
+  return `${headline}\n${tail.slice(-remaining)}`;
 }
 
 function authMachineDetail(err: unknown, t: ThreadRecord): string | undefined {
   const duringSignIn = t.authStderr === null ? undefined : t.authStderr.join('\n');
-  return joinMachineDetail(agentErrorData(err), duringSignIn);
+  return joinMachineDetail({ primary: agentErrorData(err), tail: duringSignIn });
 }
 
 function resumableFromCapabilities(init: InitializeResponse): boolean {

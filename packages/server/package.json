@@ -1,6 +1,6 @@
 {
   "name": "@inkeep/open-knowledge-server",
-  "version": "0.72.3",
+  "version": "0.74.1",
   "license": "GPL-3.0-or-later",
   "private": true,
   "type": "module",
@@ -66,6 +66,7 @@
     "build:skill-bundles": "tsx scripts/build-skill-bundles.ts",
     "typecheck": "pnpm run typecheck:bash && tsc",
     "test": "vitest run",
+    "test:network": "vitest run --config vitest.network.config.ts",
     "measure:generated-index-sweep": "node --import tsx --conditions=development measure-generated-index-sweep.ts",
     "typecheck:bash": "tsc -p tsconfig.bash.json"
   },

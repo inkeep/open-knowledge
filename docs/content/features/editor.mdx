@@ -132,6 +132,12 @@ The field also takes attachments when an **In app** agent is selected: drop a fi
 
 The composer stays out of the way where it doesn't belong: it's hidden inside an AI editor's embedded view, while the [docked terminal](#terminal) is open (the terminal is its own AI entry point), and when no doc or folder is open (the empty state's create composer offers the same handoff, attachments included). It's also dismissible — an **Ask AI** badge in the status bar brings it back.
 
+### In-app agent release-date policies
+
+Catalog-managed in-app agents use npm or uv to acquire their adapter. OpenKnowledge preserves your package manager's release-date policy, such as npm's `min-release-age` in your user `.npmrc` or uv's `UV_EXCLUDE_NEWER`: an older eligible release at or below the catalog version may run when the pinned release is too new. npm tries the exact stable pin first and considers older releases only after a dated refusal; uv resolves an isolated tool request bounded by the catalog version. Custom agent commands keep their existing behavior.
+
+A startup error ending with "Try again after an allowed release becomes available." means the requested adapter has no eligible release under that policy. Retry after one becomes eligible; OpenKnowledge does not disable your cooldown. Acquisition contacts your configured package registry or Python index; see [network requests](../reference/what-open-knowledge-writes.mdx#what-leaves-your-machine).
+
 ### From a text selection
 
 Select text in the WYSIWYG editor and the selection bubble menu shows a **Comment** button (Sparkles icon) alongside the formatting controls. Clicking it — or pressing `Cmd+Shift+M` — opens a composer on the selection. What you write there is a [comment](/docs/features/comments): it goes into the project's comment queue rather than to an agent, and you hand a batch of comments over as a separate, deliberate step from the **Comments** tab.

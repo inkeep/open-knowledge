@@ -16,6 +16,8 @@ import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import { isValidLockPid } from '../process-alive.ts';
+import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
+import { createDiagnosticStderrCapture } from './diagnostics.ts';
 import {
   AgentLaunchError,
   brokenInterpreterHint,
@@ -26,11 +28,14 @@ import {
   MINIMUM_NPX_NODE_MAJOR,
   mergedEnv,
   overlaySetsPath,
+  packageAcquisitionFailure,
   preflightLaunch,
   probeInterpreterHealth,
   probeNpxNodeCompatibility,
   type ResolvedLaunch,
+  resolveCustomLaunch,
   resolveNpxNodeCommand,
+  resolveRegistryLaunch,
   resolveWindowsCommand,
   spawnAcpAgent,
   terminateAgentTree,
@@ -41,7 +46,139 @@ import {
   withLoginShellPath,
   withPreferredLoginShellPath,
 } from './launch.ts';
+import {
+  registryPackage,
+  spawnNpxWithProjectCwd,
+  withAcquisitionHome,
+} from './package-acquisition.test-helper.ts';
 import type { RegistryBinaryTarget } from './registry.ts';
+
+describe('package acquisition descriptor boundaries', () => {
+  test.each([
+    'is-number',
+    'is-number@latest',
+    'is-number@^7.0.0',
+    'is-number@0.0.0 - 7.0.0',
+    '@scope/agent@1.2.3-beta.1',
+    'alias@npm:is-number@7.0.0',
+    'git+https://github.com/example/agent.git',
+    'https://example.com/agent-1.2.3.tgz',
+    'file:./agent',
+  ])('compatibility control: npm descriptor %s retains its caller contract', async (descriptor) => {
+    await withAcquisitionHome(async () => {
+      const env = {
+        npm_config_registry: 'https://registry.example.test/',
+        npm_config_before: '2020-01-01',
+        'npm_config_//registry.example.test/:_authToken': 'fixture-token',
+        ACP_FIXTURE: 'preserved',
+      };
+      const launch = await resolveRegistryLaunch(
+        registryPackage(descriptor, 'npx', env),
+        null,
+        getLogger('descriptor-test'),
+      );
+      expect(launch.args).toEqual(['-y', descriptor, '--version']);
+      expect(launch.env).toMatchObject(env);
+    });
+  });
+
+  test.each(['@agentclientprotocol/claude-agent-acp@0.75.1'])(
+    'compatibility control: admissible stable %s uses its package version instead of the catalog version',
+    async (descriptor) => {
+      await withLocalAcquisitionRegistry(async () => {
+        const launch = await resolveRegistryLaunch(
+          registryPackage(descriptor),
+          null,
+          getLogger('descriptor-test'),
+        );
+        expect(launch.args).toEqual(['-y', descriptor, '--version']);
+      });
+    },
+    90_000,
+  );
+
+  test.each(['ruff@0.12.0', 'ruff==0.12.0'])(
+    'stable Python descriptor %s emits an isolated bounded native tool request',
+    async (descriptor) => {
+      await withAcquisitionHome(async () => {
+        const env = {
+          UV_EXCLUDE_NEWER: '2025-01-01',
+          UV_INDEX_URL: 'https://python.example.test/simple',
+        };
+        const launch = await resolveRegistryLaunch(
+          registryPackage(descriptor, 'uvx', env),
+          null,
+          getLogger('descriptor-test'),
+        );
+        expect(launch.args).toEqual([
+          '--from',
+          'ruff<=0.12.0',
+          '--isolated',
+          '--upgrade-package',
+          'ruff',
+          'ruff',
+          '--version',
+        ]);
+        expect(launch.env).toMatchObject(env);
+      });
+    },
+  );
+
+  test.each([
+    'ruff',
+    'ruff>=0.12.0',
+    'ruff==0.12.0rc1',
+    'ruff@latest',
+    'git+https://example.com/ruff.git',
+  ])(
+    'compatibility control: non-stable Python descriptor %s passes through',
+    async (descriptor) => {
+      const launch = await resolveRegistryLaunch(
+        registryPackage(descriptor, 'uvx'),
+        null,
+        getLogger('descriptor-test'),
+      );
+      expect(launch.args).toEqual([descriptor, '--version']);
+    },
+  );
+
+  test('compatibility control: binary and custom launch contracts are outside package admission', async () => {
+    expect(
+      resolveCustomLaunch({
+        id: 'custom',
+        name: 'Custom',
+        command: 'node',
+        args: ['script.js'],
+        env: { ACP_FIXTURE: 'custom' },
+      }),
+    ).toMatchObject({
+      kind: 'custom',
+      cmd: 'node',
+      args: ['script.js'],
+      env: { ACP_FIXTURE: 'custom' },
+    });
+    await expect(
+      resolveRegistryLaunch(
+        { id: 'binary', name: 'Binary', version: '1.2.3', distribution: { binary: {} } },
+        null,
+        getLogger('descriptor-test'),
+      ),
+    ).rejects.toMatchObject({ code: 'unsupported-platform' });
+  });
+
+  test.each(['agent@0.0.0 - 1.2.3', '@scope/agent@0.0.0 - 1.2.3', 'agent<=1.2.3'])(
+    'compatibility control: Windows transports %s as one quoted operand',
+    (operand) => {
+      const wrapped = windowsCmdWrap('C:\\Program Files\\nodejs\\npm.cmd', [
+        'pack',
+        operand,
+        '--json',
+      ]);
+      expect(wrapped.args[3]).toContain(`"${operand}"`);
+      expect(wrapped.args.slice(0, 3)).toEqual(['/d', '/s', '/c']);
+    },
+  );
+});
 
 describe('mergedEnv PATH augmentation', () => {
   test('an explicit overlay PATH is used verbatim — augmentation repairs only the inherited base', () => {
@@ -183,7 +320,10 @@ const plainEnv = (overlay: Record<string, string> = {}): Record<string, string> 
   return { ...env, ...overlay };
 };
 
-const launchFor = (script: string, overlay?: Record<string, string>): ResolvedLaunch => ({
+const launchFor = (
+  script: string,
+  overlay?: Record<string, string>,
+): ResolvedLaunch & { kind: 'custom' } => ({
   cmd: 'node',
   args: [script],
   env: plainEnv(overlay),
@@ -718,7 +858,7 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
     return script;
   }
 
-  test('npx-kind spawns run from an OK-owned isolated cwd, not the record cwd', async () => {
+  test('npx-kind spawns use an isolated cwd without accepting a project cwd', async () => {
     const dir = tmp();
     const script = makeEchoCwdScript(dir);
     const launch: ResolvedLaunch = {
@@ -728,7 +868,10 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
       kind: 'npx',
       pathFromOverlay: false,
     };
-    const child = spawnAcpAgent(launch, dir);
+    expect(() => {
+      spawnNpxWithProjectCwd(launch, dir);
+    }).toThrow('spawnAcpAgent does not accept a project cwd for npx launches.');
+    const child = spawnAcpAgent(launch);
     if (child.pid !== undefined) strayPids.push(child.pid);
     await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
     const observed = readFileSync(`${script}.out`, 'utf8');
@@ -738,10 +881,13 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
 
   test('the isolated cwd carries a private marker package.json so arborist walk terminates there', () => {
     const dir =
-      spawnAcpAgent(
-        { cmd: 'node', args: ['-e', ''], env: plainEnv(), kind: 'npx', pathFromOverlay: false },
-        tmp(),
-      ).spawnargs === undefined
+      spawnAcpAgent({
+        cmd: 'node',
+        args: ['-e', ''],
+        env: plainEnv(),
+        kind: 'npx',
+        pathFromOverlay: false,
+      }).spawnargs === undefined
         ? ''
         : '';
     const markerPath = join(process.env.HOME ?? homedir(), '.ok', 'acp-npx-cwd', 'package.json');
@@ -756,7 +902,7 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
     async (kind) => {
       const dir = tmp();
       const script = makeEchoCwdScript(dir);
-      const launch: ResolvedLaunch = {
+      const launch: Exclude<ResolvedLaunch, { kind: 'npx' }> = {
         cmd: 'node',
         args: [script],
         env: plainEnv(),
@@ -1060,13 +1206,13 @@ describe('brokenInterpreterHint', () => {
   });
 
   test('the managed-runtime hints name uv for a uvx runtime', () => {
-    const uvx = {
+    const uvx: ResolvedLaunch = {
       cmd: '/home/u/.ok/runtimes/uv/uvx',
       args: [],
       env: {},
       kind: 'uvx',
       pathFromOverlay: false,
-    } as const;
+    };
     for (const hint of [
       unrepairableManagedRuntimeHint(uvx, 'SIGABRT'),
       undeletableManagedRuntimeHint(uvx, 'SIGABRT'),
@@ -1204,4 +1350,90 @@ describe('terminateAgentTree', () => {
     expect(child.pid !== undefined && isAlive(child.pid)).toBe(false);
     await waitFor(() => !isAlive(kidPid), 2_000, 'grandchild death');
   });
+});
+
+describe('startup package policy classification', () => {
+  const launch: ResolvedLaunch = {
+    cmd: 'npx',
+    args: [],
+    env: {},
+    kind: 'npx',
+    pathFromOverlay: false,
+  };
+  test.each([
+    'npm error code E401',
+    'npm error code EINTEGRITY',
+    'npm error code ECONNREFUSED',
+    'npm error code ETARGET\nnpm error notarget No matching version found',
+  ])('preserves the initialization failure for %s', (stderr) => {
+    expect(packageAcquisitionFailure(launch, stderr)).toBeNull();
+  });
+  test('recognizes only a dated npm target refusal', () => {
+    const detail =
+      'npm error code ETARGET\nnpm error notarget No matching version found with a date before 1970-01-01';
+    const cause = new Error('initialize transport closed');
+    expect(packageAcquisitionFailure(launch, detail, cause)).toMatchObject({
+      code: 'install-failed',
+      cause,
+      machineDetail: detail,
+      message: expect.stringContaining('release-date policy'),
+    });
+  });
+  test('distinguishes uv cutoff refusal from another dependency failure', () => {
+    const uv: ResolvedLaunch = { ...launch, kind: 'uvx' };
+    const generic = 'No solution found when resolving tool dependencies';
+    expect(packageAcquisitionFailure(uv, generic)).toBeNull();
+    expect(
+      packageAcquisitionFailure(uv, `${generic}\nversions were filtered by ` + '`exclude-newer`'),
+    ).toMatchObject({ code: 'install-failed' });
+  });
+});
+
+test.each(['npx', 'uvx'] as const)('%s startup policy diagnostics redact credentials', (kind) => {
+  const signature =
+    kind === 'npx'
+      ? 'ETARGET No matching version found with a date before 1970-01-01'
+      : 'No solution found when resolving tool dependencies; filtered by `exclude-newer`';
+  const detail = `https://alice:fixture-long-secret${'z'.repeat(16_000)}@registry.example.test/pkg\n${signature} https://ci@example.com:fixture-multi-secret@registry.example.test/pkg https://alice:fixture-secret@registry.example.test/pkg https://0123456789abcdef@pypi.company.com/simple https://github_pat_${'a'.repeat(30)}@registry.example.test/pkg Authorization: Bearer fixture-token`;
+  const failure = packageAcquisitionFailure(
+    { cmd: kind, args: [], env: {}, kind, pathFromOverlay: false },
+    detail,
+  );
+  expect(failure?.machineDetail).toContain(signature);
+  expect(failure?.machineDetail).not.toMatch(
+    /fixture-secret|fixture-multi-secret|fixture-long-secret|fixture-token|github_pat_|0123456789abcdef|z{20}/,
+  );
+});
+
+test.each([
+  'https://0123456789abcdef@pypi.company.com/simple Authorization: Bearer fixture-token\n',
+  'https://ci@example.com:fixture-multi-secret@pypi.company.com/simple Authorization: Bearer fixture-token\n',
+])('diagnostic stderr redaction is independent of chunk boundaries: %s', (input) => {
+  for (let split = 0; split <= input.length; split += 1) {
+    const lines: string[] = [];
+    const capture = createDiagnosticStderrCapture((line) => lines.push(line));
+    capture.write(input.slice(0, split));
+    capture.write(input.slice(split));
+    capture.end();
+    expect(lines.join('\n')).toContain('pypi.company.com/simple');
+    expect(lines.join('\n')).not.toMatch(/0123456789abcdef|fixture-token|fixture-multi-secret/);
+  }
+});
+
+test('diagnostic stderr omits oversized lines through their end and resumes safely', () => {
+  const lines: string[] = [];
+  const capture = createDiagnosticStderrCapture((line) => lines.push(line));
+  capture.write(`https://alice:${'x'.repeat(16_000)}`);
+  capture.write('fixture-secret@registry.example.test');
+  capture.write('\nnext diagnostic\n');
+  capture.end();
+  expect(lines).toEqual(['[oversized diagnostic line omitted]', 'next diagnostic']);
+});
+
+test('diagnostic stderr flushes a final line without a newline', () => {
+  const lines: string[] = [];
+  const capture = createDiagnosticStderrCapture((line) => lines.push(line));
+  capture.write('https://0123456789abcdef@pypi.company.com/simple');
+  capture.end();
+  expect(lines).toEqual(['https://***@pypi.company.com/simple']);
 });

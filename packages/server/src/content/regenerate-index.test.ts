@@ -61,7 +61,12 @@ describe('planDirectoryIndexRegenerations', () => {
     docs: Record<string, IndexSourceDoc>,
     currentMarkdownFor: (directory: string) => string | null = () => null,
   ): DirectoryIndexDeps {
-    return { docs: Object.entries(docs), docExtension: () => '.md', currentMarkdownFor };
+    return {
+      docs: Object.entries(docs),
+      docExtension: () => '.md',
+      currentMarkdownFor,
+      warningScope: false,
+    };
   }
 
   const TREE: Record<string, IndexSourceDoc> = {
@@ -168,6 +173,7 @@ describe('planDirectoryIndexRegenerations', () => {
     }
 
     const decisions = planDirectoryIndexRegenerations({
+      warningScope: false,
       docs: once(),
       docExtension: () => '.md',
       currentMarkdownFor: () => null,

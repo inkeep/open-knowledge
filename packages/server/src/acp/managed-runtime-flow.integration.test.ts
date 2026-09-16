@@ -4,22 +4,31 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import type {
   ThreadEvent,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
+import { ZipFile } from 'yazl';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
+import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
 import { MINIMUM_NPX_NODE_MAJOR } from './launch.ts';
 import { describeRuntime, ensureManagedRuntime, findManagedRuntime } from './managed-runtime.ts';
+import {
+  installNodeFixture,
+  npmCli,
+  registryPackage,
+  writeExecutable,
+} from './package-acquisition.test-helper.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
 import { AcpThreadManager } from './thread-manager.ts';
@@ -80,6 +89,9 @@ function fakeNodeFetch(bytes: Buffer, sha: string, agent: unknown = NPX_AGENT): 
     if (u.endsWith('SHASUMS256.txt')) {
       const names = ['darwin-arm64', 'darwin-x64', 'linux-arm64', 'linux-x64'].map(
         (n) => `${sha}  node-${MANAGED_NODE_VERSION}-${n}.tar.gz`,
+      );
+      names.push(
+        ...['win-arm64', 'win-x64'].map((n) => `${sha}  node-${MANAGED_NODE_VERSION}-${n}.zip`),
       );
       return new Response(`${names.join('\n')}\n`, { status: 200 });
     }
@@ -152,6 +164,161 @@ function findConsentRequest(
       e.kind === 'runtime_consent_request',
   );
 }
+
+describe('package admission after runtime preparation', () => {
+  test.each(['system', 'login-shell', 'managed'] as const)(
+    '%s runtime performs real npm admission in its isolated cwd',
+    async (source) => {
+      await withLocalAcquisitionRegistry(async (home) => {
+        const realNpx = npmCli('npx');
+        const realNpm = npmCli('npm');
+        expect(existsSync(realNpm)).toBe(true);
+        const admissionLog = join(home, 'admission.jsonl');
+        const selectedBin = join(home, 'selected', 'node-vTEST', 'bin');
+        mkdirSync(selectedBin, { recursive: true });
+        installNodeFixture(selectedBin);
+        writeExecutable(
+          join(selectedBin, 'npx'),
+          `const r=require('node:child_process').spawnSync(${JSON.stringify(process.execPath)},[${JSON.stringify(realNpx)},...process.argv.slice(2)],{stdio:'inherit',env:process.env});process.exit(r.status ?? 1);`,
+        );
+        const npmScript = writeExecutable(
+          join(selectedBin, 'npm'),
+          `require('node:fs').appendFileSync(${JSON.stringify(admissionLog)},JSON.stringify({args:process.argv.slice(2),cwd:process.cwd(),before:process.env.npm_config_before,executable:process.argv[1]})+'\\n');const r=require('node:child_process').spawnSync(${JSON.stringify(process.execPath)},[${JSON.stringify(realNpm)},...process.argv.slice(2)],{stdio:'inherit',env:process.env});process.exit(r.status ?? 1);`,
+        );
+        const empty = join(home, 'empty');
+        mkdirSync(empty);
+        let bytes: Buffer;
+        if (process.platform === 'win32') {
+          const zip = new ZipFile();
+          for (const entry of readdirSync(selectedBin)) {
+            const path = join(selectedBin, entry);
+            zip.addFile(path, relative(join(home, 'selected'), path).replaceAll('\\', '/'));
+          }
+          zip.end();
+          const chunks: Buffer[] = [];
+          for await (const chunk of zip.outputStream) chunks.push(chunk);
+          bytes = Buffer.concat(chunks);
+        } else {
+          const tarPath = join(home, 'runtime.tar.gz');
+          execFileSync('tar', ['-czf', tarPath, '-C', join(home, 'selected'), 'node-vTEST']);
+          bytes = readFileSync(tarPath);
+        }
+        const sha = createHash('sha256').update(bytes).digest('hex');
+        const agent = {
+          ...registryPackage(
+            'is-number@7.0.0',
+            'npx',
+            source === 'login-shell'
+              ? undefined
+              : { PATH: source === 'system' ? selectedBin : empty },
+          ),
+          id: 'npxagent',
+        };
+        process.env.npm_config_before = '1970-01-01';
+        if (source === 'login-shell') process.env.PATH = empty;
+        const manager = makeManager({
+          contentDir: home,
+          localDir: tmp(),
+          runtimeRoot: tmp(),
+          fetchImpl: fakeNodeFetch(bytes, sha, agent),
+          resolveLoginShellPath: async () => (source === 'login-shell' ? selectedBin : null),
+        });
+        const events: ThreadEvent[] = [];
+        try {
+          const info = await manager.createThread({
+            agent: { source: 'registry', id: 'npxagent' },
+          });
+          await collect(manager, info.threadId, events);
+          if (source === 'managed') {
+            await expect.poll(() => findConsentRequest(events), { timeout: 10_000 }).toBeDefined();
+            expect(existsSync(admissionLog)).toBe(false);
+            const consent = findConsentRequest(events);
+            if (!consent) throw new Error('missing runtime consent');
+            manager.respondRuntimeConsent(info.threadId, consent.requestId, { kind: 'granted' });
+          }
+          await expect
+            .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 25_000 })
+            .toBe('error');
+          expect(
+            existsSync(admissionLog),
+            'selected npm must perform admission before ACP starts',
+          ).toBe(true);
+          const probes = readFileSync(admissionLog, 'utf8')
+            .trim()
+            .split('\n')
+            .map((line) => JSON.parse(line));
+          expect(probes[0]).toMatchObject({
+            args: expect.arrayContaining(['pack', '--dry-run', '--ignore-scripts', '--json']),
+            cwd: join(home, '.ok', 'acp-npx-cwd'),
+            before: '1970-01-01',
+          });
+          if (source !== 'managed') expect(probes[0].executable).toBe(npmScript);
+          else expect(probes[0].executable).not.toBe(npmScript);
+          await expect
+            .poll(
+              () => events.some((event) => event.kind === 'status' && event.status === 'error'),
+              { timeout: 5000 },
+            )
+            .toBe(true);
+          const failure = events
+            .filter((event) => event.kind === 'status' && event.status === 'error')
+            .at(-1);
+          expect(failure).toMatchObject({
+            failure: {
+              reason: 'connect',
+              machineDetail: expect.stringMatching(/ETARGET|ENOVERSIONS/),
+            },
+          });
+        } finally {
+          await manager.destroy();
+        }
+      });
+    },
+    90_000,
+  );
+
+  test.each(['declined', 'closed'] as const)(
+    'compatibility control: %s runtime consent does not acquire a package',
+    async (decision) => {
+      await withLocalAcquisitionRegistry(async (home) => {
+        const empty = join(home, 'empty');
+        mkdirSync(empty);
+        const agent = {
+          ...registryPackage('is-number@7.0.0', 'npx', { PATH: empty }),
+          id: 'npxagent',
+        };
+        const manager = makeManager({
+          contentDir: home,
+          localDir: tmp(),
+          runtimeRoot: tmp(),
+          fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'f'.repeat(64), agent),
+        });
+        const events: ThreadEvent[] = [];
+        try {
+          const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+          await collect(manager, info.threadId, events);
+          await expect.poll(() => findConsentRequest(events), { timeout: 10_000 }).toBeDefined();
+          const request = findConsentRequest(events);
+          if (!request) throw new Error('missing runtime consent');
+          if (decision === 'closed') await manager.closeThread(info.threadId);
+          else {
+            manager.respondRuntimeConsent(info.threadId, request.requestId, { kind: 'declined' });
+            await expect
+              .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 5000 })
+              .toBe('error');
+          }
+          expect(existsSync(join(home, 'npm-cache', '_cacache'))).toBe(false);
+          expect(
+            events.some((event) => event.kind === 'status' && event.status === 'spawning'),
+          ).toBe(false);
+        } finally {
+          await manager.destroy();
+        }
+      });
+    },
+    30_000,
+  );
+});
 
 describe('managed-runtime consent + download flow', () => {
   test('normal launch cleans stale staging after a runtime is installed', async () => {

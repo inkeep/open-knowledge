@@ -4133,6 +4133,21 @@ describe('createServer() — generated index wiring', () => {
     expect(readIndex()).toContain('okf_version: "0.2"');
   });
 
+  test('generated metadata warnings identify the production content directory', async () => {
+    const logs = captureAllLoggers();
+    writeDoc('warning.md', 'Parser\ue102warning', 'note');
+
+    await bootServer();
+
+    expect(logs.getLoggerEntries('generated-index')).toEqual([
+      {
+        level: 'warn',
+        msg: 'generated index metadata contained a parser-reserved private-use code point; replaced it with U+FFFD',
+        payload: { contentDir, path: 'warning.md', field: 'title', kind: 'parser-reservation' },
+      },
+    ]);
+  });
+
   test('server readiness settles before the boot index sweep starts planning', async () => {
     writeDoc('existing.md', 'Existing at boot', 'note');
 
@@ -4560,11 +4575,11 @@ describe('createServer() — generated index wiring', () => {
     await bootServer();
     writeDoc('only.md', 'Only', 'solo-type');
     writeDoc('keep.md', 'Keep', 'note');
-    await waitForIndex((md) => md.includes('## solo-type'));
+    await waitForIndex((md) => md.includes('## solo\\-type'));
 
     unlinkSync(join(contentDir, 'only.md'));
 
-    await waitForIndex((md) => !md.includes('## solo-type'));
+    await waitForIndex((md) => !md.includes('## solo\\-type'));
     expect(readIndex()).toContain('## note');
   });
 

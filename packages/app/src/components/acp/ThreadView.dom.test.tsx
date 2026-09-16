@@ -2862,6 +2862,31 @@ describe('ThreadView failure notices', () => {
     expect(rootCause.textContent).toContain('code EUSAGE');
     expect(rootCause.textContent).not.toContain('complete log of this run');
   });
+
+  test('compatibility control: acquisition explanation and native refusal details coexist', async () => {
+    const explanation =
+      "No release of the adapter is available under your package manager's release-date policy. Try again after an allowed release becomes available.";
+    const detail =
+      'npm error code ETARGET\nnpm error notarget No matching version found with a date before 2026-09-07.\n';
+    model = makeModel({
+      turnActive: false,
+      items: [
+        notice({
+          failure: {
+            reason: 'connect',
+            agentMessage: explanation,
+            machineDetail: detail,
+          },
+        }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'error' })} />);
+    expect(screen.getByTestId('agent-thread-notice').textContent).toContain(explanation);
+    expect(screen.getByTestId('agent-thread-notice-root-cause').textContent).toContain('ETARGET');
+    await userEvent.click(screen.getByTestId('agent-thread-notice-details-toggle'));
+    expect(screen.getByTestId('agent-thread-notice-details').textContent).toContain(detail.trim());
+    expect(screen.getByTestId('agent-thread-notice').textContent).toContain(explanation);
+  });
 });
 
 describe('ThreadView agent notices', () => {

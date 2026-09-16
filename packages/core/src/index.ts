@@ -862,7 +862,6 @@ export {
   MIN_CARRIED_LEADING_EMPTIES,
   MIN_CARRIED_TRAILING_EMPTIES,
 } from './markdown/doc-edge-blank-runs.ts';
-export { headingContentIdentity } from './markdown/heading-content-identity.ts';
 export {
   HTML_MAX_BYTES,
   HtmlPayloadTooLargeError,
@@ -1020,6 +1019,7 @@ export {
   maskNonRenderingContexts,
   skipInlineCode,
 } from './markdown/non-rendering-contexts.ts';
+export { isMutatingParserReservation } from './markdown/parser-reservations.ts';
 export type { PmSourceMap, PmSourceMapPrecision, PmSourceSpan } from './markdown/pm-source-map.ts';
 export { normalizeReferenceLabel } from './markdown/reference-label.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';

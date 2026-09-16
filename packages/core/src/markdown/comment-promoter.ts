@@ -7,6 +7,7 @@ import {
   deriveFragmentPosition,
   escapedValueOffsets,
   isEscapeDerivedRun,
+  sliceTextWithProvenance,
 } from './promoter-position.ts';
 
 const PERCENT_COMMENT_RE = /(?<!%)%%([^\n]*?[^\n%])%%(?!%)/g;
@@ -24,19 +25,27 @@ export function commentPromoterPlugin() {
       const value = node.value;
       if (value.indexOf('%%') === -1 && value.indexOf('<!--') === -1) return;
 
-      const matches = collectInlineCommentMatches(value, escapedValueOffsets(source, node));
+      const matches = collectInlineCommentMatches(value, escapedValueOffsets(node));
       if (matches.length === 0) return;
 
       const replacements: PhrasingContent[] = [];
       let cursor = 0;
       for (const match of matches) {
         if (match.start > cursor) {
-          const lead: Text = { type: 'text', value: value.slice(cursor, match.start) };
-          const pos = deriveFragmentPosition(source, node, cursor, match.start);
-          if (pos) lead.position = pos;
-          replacements.push(lead);
+          replacements.push(sliceTextWithProvenance(source, node, cursor, match.start));
         }
-        const innerText: Text = { type: 'text', value: match.body };
+        const openingLength = match.sourceForm === 'html' ? 4 : 2;
+        const innerStart = match.start + openingLength;
+        const bodyStart =
+          match.sourceForm === 'html'
+            ? innerStart + value.slice(innerStart, match.end - 3).indexOf(match.body)
+            : innerStart;
+        const innerText = sliceTextWithProvenance(
+          source,
+          node,
+          bodyStart,
+          bodyStart + match.body.length,
+        );
         const commentNode: CommentMdast = {
           type: 'comment',
           children: [innerText],
@@ -48,10 +57,7 @@ export function commentPromoterPlugin() {
         cursor = match.end;
       }
       if (cursor < value.length) {
-        const tail: Text = { type: 'text', value: value.slice(cursor) };
-        const pos = deriveFragmentPosition(source, node, cursor, value.length);
-        if (pos) tail.position = pos;
-        replacements.push(tail);
+        replacements.push(sliceTextWithProvenance(source, node, cursor, value.length));
       }
 
       const arr = (parent as { children: PhrasingContent[] }).children;
@@ -147,7 +153,7 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
         let onlyEscapedCache: ReadonlySet<number> | null | undefined;
         const onlyEscapes = (): ReadonlySet<number> | null => {
           if (onlyEscapedCache === undefined) {
-            onlyEscapedCache = escapedValueOffsets(source, onlyText);
+            onlyEscapedCache = escapedValueOffsets(onlyText);
           }
           return onlyEscapedCache;
         };
@@ -199,8 +205,8 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
         }
       }
 
-      const strippedHtml = stripHtmlCommentDelimiters(child);
-      if (strippedHtml !== null && !boundaryDelimitersEscaped(source, child, 4, 3)) {
+      const strippedHtml = stripHtmlCommentDelimiters(child, source);
+      if (strippedHtml !== null && !boundaryDelimitersEscaped(child, 4, 3)) {
         const block: CommentBlockMdast = {
           type: 'commentBlock',
           children: [strippedHtml],
@@ -212,8 +218,8 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
         continue;
       }
 
-      const strippedPercent = stripPercentDelimiters(child);
-      if (strippedPercent !== null && !boundaryDelimitersEscaped(source, child, 2, 2)) {
+      const strippedPercent = stripPercentDelimiters(child, source);
+      if (strippedPercent !== null && !boundaryDelimitersEscaped(child, 2, 2)) {
         const block: CommentBlockMdast = {
           type: 'commentBlock',
           children: [strippedPercent],
@@ -226,11 +232,11 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
       }
     }
 
-    if (child.type === 'paragraph' && isFenceOnlyParagraph(child, source)) {
+    if (child.type === 'paragraph' && isFenceOnlyParagraph(child)) {
       let j = i + 1;
       while (j < children.length) {
         const sibling = children[j];
-        if (sibling.type === 'paragraph' && isFenceOnlyParagraph(sibling, source)) break;
+        if (sibling.type === 'paragraph' && isFenceOnlyParagraph(sibling)) break;
         j += 1;
       }
       if (j < children.length && j > i + 1) {
@@ -252,24 +258,19 @@ function handleBlockCommentsAtRoot(tree: Root, source: string): void {
   }
 }
 
-function runEscaped(source: string, node: Text, valueOffset: number, length: number): boolean {
-  return isEscapeDerivedRun(escapedValueOffsets(source, node), valueOffset, length);
+function runEscaped(node: Text, valueOffset: number, length: number): boolean {
+  return isEscapeDerivedRun(escapedValueOffsets(node), valueOffset, length);
 }
 
-function boundaryDelimitersEscaped(
-  source: string,
-  p: Paragraph,
-  openLength: number,
-  closeLength: number,
-): boolean {
+function boundaryDelimitersEscaped(p: Paragraph, openLength: number, closeLength: number): boolean {
   const first = p.children[0];
   const last = p.children[p.children.length - 1];
   if (first.type !== 'text' || last.type !== 'text') return false;
   const openAt = first.value.length - first.value.trimStart().length;
   const closeAt = last.value.trimEnd().length - closeLength;
-  const firstEscaped = escapedValueOffsets(source, first);
+  const firstEscaped = escapedValueOffsets(first);
   if (isEscapeDerivedRun(firstEscaped, openAt, openLength)) return true;
-  const lastEscaped = last === first ? firstEscaped : escapedValueOffsets(source, last);
+  const lastEscaped = last === first ? firstEscaped : escapedValueOffsets(last);
   return isEscapeDerivedRun(lastEscaped, closeAt, closeLength);
 }
 
@@ -295,7 +296,7 @@ function matchHtmlCommentBlock(value: string): string | null {
   return trimmedBody;
 }
 
-function stripHtmlCommentDelimiters(p: Paragraph): Paragraph | null {
+function stripHtmlCommentDelimiters(p: Paragraph, source: string): Paragraph | null {
   if (p.children.length < 2) return null;
   const first = p.children[0];
   const last = p.children[p.children.length - 1];
@@ -319,20 +320,20 @@ function stripHtmlCommentDelimiters(p: Paragraph): Paragraph | null {
     }
   }
 
-  let strippedFirst = firstTrimmed.slice(4);
-  if (strippedFirst.startsWith(' ')) strippedFirst = strippedFirst.slice(1);
-  let strippedLast = lastTrimmed.slice(0, -3);
-  if (strippedLast.endsWith(' ')) strippedLast = strippedLast.slice(0, -1);
+  let firstFrom = first.value.length - firstTrimmed.length + 4;
+  if (first.value[firstFrom] === ' ') firstFrom += 1;
+  let lastTo = lastTrimmed.length - 3;
+  if (last.value[lastTo - 1] === ' ') lastTo -= 1;
 
   const newChildren: Paragraph['children'] = [];
-  if (strippedFirst.length > 0) {
-    newChildren.push({ ...first, value: strippedFirst } as Text);
+  if (firstFrom < first.value.length) {
+    newChildren.push(sliceTextWithProvenance(source, first, firstFrom, first.value.length));
   }
   for (let i = 1; i < p.children.length - 1; i++) {
     newChildren.push(p.children[i]);
   }
-  if (strippedLast.length > 0) {
-    newChildren.push({ ...last, value: strippedLast } as Text);
+  if (lastTo > 0) {
+    newChildren.push(sliceTextWithProvenance(source, last, 0, lastTo));
   }
   if (newChildren.length === 0) return null;
 
@@ -343,7 +344,7 @@ function stripHtmlCommentDelimiters(p: Paragraph): Paragraph | null {
   };
 }
 
-function stripPercentDelimiters(p: Paragraph): Paragraph | null {
+function stripPercentDelimiters(p: Paragraph, source: string): Paragraph | null {
   if (p.children.length < 2) return null;
   const first = p.children[0];
   const last = p.children[p.children.length - 1];
@@ -354,10 +355,12 @@ function stripPercentDelimiters(p: Paragraph): Paragraph | null {
   const lastTrimmed = last.value.trimEnd();
   if (!lastTrimmed.endsWith('%%') || lastTrimmed.endsWith('%%%')) return null;
 
-  let strippedFirst = firstTrimmed.slice(2);
-  if (strippedFirst.startsWith(' ')) strippedFirst = strippedFirst.slice(1);
-  let strippedLast = lastTrimmed.slice(0, -2);
-  if (strippedLast.endsWith(' ')) strippedLast = strippedLast.slice(0, -1);
+  let firstFrom = first.value.length - firstTrimmed.length + 2;
+  if (first.value[firstFrom] === ' ') firstFrom += 1;
+  let lastTo = lastTrimmed.length - 2;
+  if (last.value[lastTo - 1] === ' ') lastTo -= 1;
+  const strippedFirst = first.value.slice(firstFrom);
+  const strippedLast = last.value.slice(0, lastTo);
 
   if (strippedFirst.indexOf('%%') !== -1) return null;
   if (strippedLast.indexOf('%%') !== -1) return null;
@@ -376,13 +379,13 @@ function stripPercentDelimiters(p: Paragraph): Paragraph | null {
 
   const newChildren: Paragraph['children'] = [];
   if (strippedFirst.length > 0) {
-    newChildren.push({ ...first, value: strippedFirst } as Text);
+    newChildren.push(sliceTextWithProvenance(source, first, firstFrom, first.value.length));
   }
   for (let i = 1; i < p.children.length - 1; i++) {
     newChildren.push(p.children[i]);
   }
   if (strippedLast.length > 0) {
-    newChildren.push({ ...last, value: strippedLast } as Text);
+    newChildren.push(sliceTextWithProvenance(source, last, 0, lastTo));
   }
   if (newChildren.length === 0) return null;
 
@@ -406,11 +409,11 @@ function countOccurrences(haystack: string, needle: string): number {
   return count;
 }
 
-function isFenceOnlyParagraph(p: Paragraph, source: string): boolean {
+function isFenceOnlyParagraph(p: Paragraph): boolean {
   const text = isSingleTextParagraph(p);
   if (text === null) return false;
   if (text.trim() !== '%%') return false;
-  return !runEscaped(source, p.children[0] as Text, text.indexOf('%%'), 2);
+  return !runEscaped(p.children[0] as Text, text.indexOf('%%'), 2);
 }
 
 function promoteSpanningInlineComments(tree: Root, source: string): void {
@@ -494,8 +497,8 @@ function promoteSpanningForm(
 
   if (spanCrossesLineBreak(children, spec, open, close)) return false;
 
-  if (runEscaped(source, openChild, open.offset, spec.open.length)) return false;
-  if (runEscaped(source, closeChild, close.offset, spec.close.length)) return false;
+  if (runEscaped(openChild, open.offset, spec.open.length)) return false;
+  if (runEscaped(closeChild, close.offset, spec.close.length)) return false;
 
   for (let i = open.index + 1; i < close.index; i++) {
     if (containsClaimedComment(children[i])) return false;
@@ -514,7 +517,9 @@ function promoteSpanningForm(
 
   const replacements: PhrasingContent[] = [];
   const lead = openChild.value.slice(0, open.offset);
-  if (lead.length > 0) replacements.push(sliceTextNode(source, openChild, 0, open.offset));
+  if (lead.length > 0) {
+    replacements.push(sliceTextWithProvenance(source, openChild, 0, open.offset));
+  }
 
   const commentNode: CommentMdast = {
     type: 'comment',
@@ -531,7 +536,9 @@ function promoteSpanningForm(
   const tailFrom = close.offset + spec.close.length;
   const tail = closeChild.value.slice(tailFrom);
   if (tail.length > 0) {
-    replacements.push(sliceTextNode(source, closeChild, tailFrom, closeChild.value.length));
+    replacements.push(
+      sliceTextWithProvenance(source, closeChild, tailFrom, closeChild.value.length),
+    );
   }
 
   children.splice(open.index, close.index - open.index + 1, ...replacements);
@@ -560,11 +567,11 @@ function buildSpanningBody(
 
   const body: PhrasingContent[] = [];
   if (headFrom < headTo) {
-    body.push(sliceTextNode(source, openChild, headFrom, headTo));
+    body.push(sliceTextWithProvenance(source, openChild, headFrom, headTo));
   }
   for (let i = open.index + 1; i < close.index; i++) body.push(children[i]);
   if (footFrom < footTo) {
-    body.push(sliceTextNode(source, closeChild, footFrom, footTo));
+    body.push(sliceTextWithProvenance(source, closeChild, footFrom, footTo));
   }
 
   if (body.length === 0) return null;
@@ -607,27 +614,4 @@ function containsClaimedComment(node: unknown): boolean {
   if ((node as { type?: string }).type === 'comment') return true;
   const kids = (node as { children?: unknown }).children;
   return Array.isArray(kids) && kids.some(containsClaimedComment);
-}
-
-interface EntityRefSpan {
-  offset: number;
-  length: number;
-  raw: string;
-}
-
-function sliceTextNode(source: string, node: Text, from: number, to: number): Text {
-  const sliced: Text = { type: 'text', value: node.value.slice(from, to) };
-
-  const pos = deriveFragmentPosition(source, node, from, to);
-  if (pos) sliced.position = pos;
-
-  const spans = (node.data as { entityRefSpans?: EntityRefSpan[] } | undefined)?.entityRefSpans;
-  if (spans?.length) {
-    const inside = spans
-      .filter((span) => span.offset >= from && span.offset + span.length <= to)
-      .map((span) => ({ ...span, offset: span.offset - from }));
-    if (inside.length > 0) sliced.data = { entityRefSpans: inside } as Text['data'];
-  }
-
-  return sliced;
 }

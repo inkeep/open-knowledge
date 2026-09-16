@@ -39,7 +39,7 @@ const ADMITTED = ['index', ...ENTRIES.map((e) => e.path.replace(/\.md$/, ''))];
 
 describe('generated index — OKF conformance', () => {
   test('the generated root index produces zero okf findings', async () => {
-    const markdown = buildIndexMarkdown(ENTRIES, { isRoot: true });
+    const markdown = buildIndexMarkdown(ENTRIES, { warningScope: false, isRoot: true });
 
     const findings = await lintDocument(markdown, OKF_LINT_CONFIG, 'index.md');
     const detail = findings
@@ -50,20 +50,20 @@ describe('generated index — OKF conformance', () => {
   });
 
   test('a generated non-root index produces zero okf findings', async () => {
-    const markdown = buildIndexMarkdown(ENTRIES, { isRoot: false });
+    const markdown = buildIndexMarkdown(ENTRIES, { warningScope: false, isRoot: false });
     const findings = await lintDocument(markdown, OKF_LINT_CONFIG, 'concepts/index.md');
 
     expect(findings.map((f) => f.code)).toEqual([]);
   });
 
   test('an empty bundle still yields a conformant root index', async () => {
-    const markdown = buildIndexMarkdown([], { isRoot: true });
+    const markdown = buildIndexMarkdown([], { warningScope: false, isRoot: true });
     const findings = await lintDocument(markdown, OKF_LINT_CONFIG, 'index.md');
     expect(findings.map((f) => f.code)).toEqual([]);
   });
 
   test('every link in the generated index resolves', () => {
-    const markdown = buildIndexMarkdown(ENTRIES, { isRoot: true });
+    const markdown = buildIndexMarkdown(ENTRIES, { warningScope: false, isRoot: true });
     const broken = computeBrokenOutboundLinks(markdown, 'index', ADMITTED);
 
     expect(
@@ -99,19 +99,27 @@ async function findingCodes(markdown: string, docName: string): Promise<string[]
 
 describe('generated index — default lint profile', () => {
   test('the generated root index is clean under markdownlint defaults', async () => {
-    expect(await findingCodes(buildIndexMarkdown(ENTRIES, { isRoot: true }), 'index.md')).toEqual(
-      [],
-    );
+    expect(
+      await findingCodes(
+        buildIndexMarkdown(ENTRIES, { warningScope: false, isRoot: true }),
+        'index.md',
+      ),
+    ).toEqual([]);
   });
 
   test('a generated non-root index is clean under markdownlint defaults', async () => {
     expect(
-      await findingCodes(buildIndexMarkdown(ENTRIES, { isRoot: false }), 'concepts/index.md'),
+      await findingCodes(
+        buildIndexMarkdown(ENTRIES, { warningScope: false, isRoot: false }),
+        'concepts/index.md',
+      ),
     ).toEqual([]);
   });
 
   test('an empty bundle is clean under markdownlint defaults', async () => {
-    expect(await findingCodes(buildIndexMarkdown([], { isRoot: true }), 'index.md')).toEqual([]);
+    expect(
+      await findingCodes(buildIndexMarkdown([], { warningScope: false, isRoot: true }), 'index.md'),
+    ).toEqual([]);
   });
 
   test('a Subdirectories document type plus a child directory is clean under markdownlint defaults', async () => {
@@ -124,9 +132,10 @@ describe('generated index — default lint profile', () => {
         },
       ],
       {
+        warningScope: false,
         isRoot: false,
         directory: 'concepts',
-        subdirectories: [{ path: 'concepts/nested/index.md', title: 'nested' }],
+        subdirectories: [{ directory: 'concepts/nested', title: 'nested' }],
       },
     );
 
@@ -136,7 +145,7 @@ describe('generated index — default lint profile', () => {
   test('an Index document type is clean under markdownlint defaults', async () => {
     const readmeOnly = buildIndexMarkdown(
       [{ path: 'testing/README.md', title: 'Testing', type: 'Index' }],
-      { isRoot: false, directory: 'testing' },
+      { warningScope: false, isRoot: false, directory: 'testing' },
     );
 
     expect(await findingCodes(readmeOnly, 'testing/index.md')).toEqual([]);
@@ -149,7 +158,7 @@ describe('generated index — default lint profile', () => {
         { path: 'auth/login-flow.md', title: 'Login flow', type: 'Flow' },
         { path: 'auth/sso.md', title: 'SSO', type: 'Feature Doc' },
       ],
-      { isRoot: false, directory: 'auth' },
+      { warningScope: false, isRoot: false, directory: 'auth' },
     );
 
     expect(await findingCodes(multiSection, 'auth/index.md')).toEqual([]);
@@ -161,7 +170,7 @@ describe('generated index — default lint profile', () => {
         { path: 'README.md', title: 'Knowledge base', type: 'Index' },
         { path: 'welcome.md', title: 'Welcome', type: 'note' },
       ],
-      { isRoot: true },
+      { warningScope: false, isRoot: true },
     );
 
     expect(await findingCodes(markdown, 'index.md')).toEqual([]);
@@ -214,48 +223,63 @@ describe('generated index — heading-identity agreement with MD024', () => {
         { path: 'readme.md', title: 'Overview', description: undefined, type },
         { path: 'flow.md', title: 'Login flow', description: undefined, type: 'Flow' },
       ],
-      { isRoot: false, directory: '' },
+      { warningScope: false, isRoot: false, directory: '' },
     );
 
-  test.each([
-    ['Index'],
-    ['Index #'],
-    ['Index   ##'],
-    ['<b></b>Index'],
-    ['Index<!--x-->'],
-    ['Index<!-- a>b -->'],
-    ['Index<a href="x>y">'],
-  ])('a type reducing to the title merges into it: %j', async (type) => {
-    const markdown = withType(type);
+  test('the exact Index type merges into the title', async () => {
+    const markdown = withType('Index');
 
     expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
     expect(markdown, `emitted:\n${markdown}`).toContain('](./readme.md)');
+    expect(markdown).not.toContain('## Index');
   });
 
   test.each([
-    ['index'],
-    ['INDEX'],
-    ['Indexes'],
-    ['Index Notes'],
-    ['Flow'],
-    ['Index <b>#</b>'],
-    ['Index<b> #</b>'],
-  ])('a type distinct from the title keeps its own section: %j', async (type) => {
-    const markdown = withType(type);
+    ['Index #', 'Index \\#'],
+    ['Index   ##', 'Index \\#\\#'],
+    ['<b></b>Index', '\\<b\\>\\<\\/b\\>Index'],
+    ['Index<!--x-->', 'Index\\<\\!\\-\\-x\\-\\-\\>'],
+    ['Index<!-- a>b -->', 'Index\\<\\!\\-\\- a\\>b \\-\\-\\>'],
+    ['Index<a href="x>y">', 'Index\\<a href\\=\\"x\\>y\\"\\>'],
+    ['index', 'index'],
+    ['INDEX', 'INDEX'],
+    ['Indexes', 'Indexes'],
+    ['Index Notes', 'Index Notes'],
+    ['Flow', 'Flow'],
+    ['Index <b>#</b>', 'Index \\<b\\>\\#\\<\\/b\\>'],
+    ['Index<b> #</b>', 'Index\\<b\\> \\#\\<\\/b\\>'],
+  ])(
+    'a literal type distinct from the title keeps its own section: %j',
+    async (type, emittedHeading) => {
+      const markdown = withType(type);
 
-    expect(markdown, `emitted:\n${markdown}`).toContain(`## ${type}`);
-    expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
-  });
+      expect(markdown, `emitted:\n${markdown}`).toContain(`## ${emittedHeading}`);
+      expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
+    },
+  );
 
-  test.each([[['#', '##']], [['#', '<b></b>']], [['<b></b>', '<i></i>']]])(
-    'types whose rendered heading text is empty merge with each other: %j',
-    async (pair) => {
+  test.each([
+    [
+      ['#', '##'],
+      ['\\#', '\\#\\#'],
+    ],
+    [
+      ['#', '<b></b>'],
+      ['\\#', '\\<b\\>\\<\\/b\\>'],
+    ],
+    [
+      ['<b></b>', '<i></i>'],
+      ['\\<b\\>\\<\\/b\\>', '\\<i\\>\\<\\/i\\>'],
+    ],
+  ])(
+    'punctuation and HTML-shaped literal types remain distinct: %j',
+    async (pair, emittedHeadings) => {
       const markdown = buildIndexMarkdown(
         [
           { path: 'a.md', title: 'A', description: undefined, type: pair[0] },
           { path: 'b.md', title: 'B', description: undefined, type: pair[1] },
         ],
-        { isRoot: false, directory: '' },
+        { warningScope: false, isRoot: false, directory: '' },
       );
 
       expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
@@ -263,21 +287,22 @@ describe('generated index — heading-identity agreement with MD024', () => {
       expect(markdown).toContain('](./b.md)');
 
       const sections = (markdown.match(/^## .+$/gm) ?? []).map((line) => line.slice(3));
-      expect(sections, `emitted:\n${markdown}`).toHaveLength(1);
-      expect(pair, `emitted:\n${markdown}`).toContain(sections[0]);
+      expect(sections, `emitted:\n${markdown}`).toEqual(emittedHeadings);
     },
   );
 
-  test('two derived sections reducing to the same content merge with each other', async () => {
+  test('two literal sections remain distinct when Markdown would reduce them to one heading', async () => {
     const markdown = buildIndexMarkdown(
       [
         { path: 'a.md', title: 'A', description: undefined, type: 'Flow' },
         { path: 'b.md', title: 'B', description: undefined, type: 'Flow #' },
       ],
-      { isRoot: false, directory: '' },
+      { warningScope: false, isRoot: false, directory: '' },
     );
 
     expect(mdOnly(await findingCodes(markdown, 'index.md')), `emitted:\n${markdown}`).toEqual([]);
+    expect(markdown).toContain('## Flow\n');
+    expect(markdown).toContain('## Flow \\#\n');
     expect(markdown).toContain('](./a.md)');
     expect(markdown).toContain('](./b.md)');
   });

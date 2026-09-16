@@ -1,5 +1,11 @@
 import { extractPageDescription, extractPageTitle, extractPageType } from '../page-identity.ts';
-import { buildIndexMarkdown, type IndexEntry, type SubdirectoryEntry } from './generate-index.ts';
+import {
+  buildIndexMarkdown,
+  type GeneratedIndexWarningScope,
+  type IndexEntry,
+  retainGeneratedIndexSubstitutionWarningSources,
+  type SubdirectoryEntry,
+} from './generate-index.ts';
 
 export const ROOT_INDEX_DOC_NAME = 'index';
 
@@ -21,6 +27,7 @@ export interface DirectoryIndexDeps {
   docs: Iterable<readonly [string, IndexSourceDoc]>;
   docExtension: (docName: string) => string;
   currentMarkdownFor: (directory: string) => string | null;
+  warningScope: GeneratedIndexWarningScope | false;
 }
 
 export interface DirectoryIndexDecision {
@@ -120,18 +127,32 @@ export function planDirectoryIndexRegenerations(
     else childrenByParent.set(parent, [directory]);
   }
 
+  const renderedEntries: IndexEntry[] = [];
+  const renderedSubdirectories: SubdirectoryEntry[] = [];
   const decisions = [...directories].map((directory): DirectoryIndexDecision => {
     const entries = entriesByDirectory.get(directory) ?? [];
     const subdirectories: SubdirectoryEntry[] = (childrenByParent.get(directory) ?? []).map(
-      (child) => ({ path: `${child}/${ROOT_INDEX_DOC_NAME}.md`, title: basenameOf(child) }),
+      (child) => ({
+        directory: child,
+        title: basenameOf(child),
+      }),
     );
+    renderedEntries.push(...entries);
+    renderedSubdirectories.push(...subdirectories);
     const markdown = buildIndexMarkdown(entries, {
       isRoot: directory === '',
       directory,
       subdirectories,
+      warningScope: deps.warningScope,
     });
     return { directory, changed: deps.currentMarkdownFor(directory) !== markdown, markdown };
   });
+
+  retainGeneratedIndexSubstitutionWarningSources(
+    deps.warningScope,
+    renderedEntries,
+    renderedSubdirectories,
+  );
 
   return decisions.sort(
     (left, right) =>

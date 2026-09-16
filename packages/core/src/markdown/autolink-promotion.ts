@@ -1,5 +1,10 @@
 import type { Link, Parent, Text } from 'mdast';
-import { deriveFragmentPosition } from './promoter-position.ts';
+import {
+  deriveFragmentPosition,
+  escapedValueOffsets,
+  isEscapeDerivedRun,
+  sliceTextWithProvenance,
+} from './promoter-position.ts';
 
 const AUTOLINK_IN_TEXT_RE = /<([a-zA-Z][a-zA-Z0-9+.-]*:[^\s<>]+)>/g;
 
@@ -14,6 +19,7 @@ export function promoteInParent(parent: Parent, source: string = ''): void {
     }
 
     const text = (child as Text).value;
+    const escaped = escapedValueOffsets(child as Text);
     AUTOLINK_IN_TEXT_RE.lastIndex = 0;
 
     const segments: Parent['children'] = [];
@@ -25,22 +31,18 @@ export function promoteInParent(parent: Parent, source: string = ''): void {
       const fullMatch = match[0];
       const uri = match[1];
       const matchStart = match.index;
+      if (isEscapeDerivedRun(escaped, matchStart, 1)) continue;
 
       if (matchStart > lastIndex) {
-        const lead: Text = { type: 'text', value: text.slice(lastIndex, matchStart) };
-        const pos = deriveFragmentPosition(source, child as Text, lastIndex, matchStart);
-        if (pos) lead.position = pos;
-        segments.push(lead);
+        segments.push(sliceTextWithProvenance(source, child as Text, lastIndex, matchStart));
       }
 
-      const innerText: Text = { type: 'text', value: uri };
-      const innerPos = deriveFragmentPosition(
+      const innerText = sliceTextWithProvenance(
         source,
         child as Text,
         matchStart + 1,
         matchStart + 1 + uri.length,
       );
-      if (innerPos) innerText.position = innerPos;
       const linkNode: Link & { data: { sourceStyle: string } } = {
         type: 'link',
         url: uri,
@@ -65,10 +67,7 @@ export function promoteInParent(parent: Parent, source: string = ''): void {
       newChildren.push(child);
     } else {
       if (lastIndex < text.length) {
-        const tail: Text = { type: 'text', value: text.slice(lastIndex) };
-        const pos = deriveFragmentPosition(source, child as Text, lastIndex, text.length);
-        if (pos) tail.position = pos;
-        segments.push(tail);
+        segments.push(sliceTextWithProvenance(source, child as Text, lastIndex, text.length));
       }
       newChildren.push(...segments);
     }

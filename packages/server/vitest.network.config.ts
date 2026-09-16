@@ -5,6 +5,7 @@ export default defineConfig({
   ...okVitestBase,
   test: {
     ...okVitestBase.test,
-    exclude: [...okVitestBase.test.exclude, '**/*.network.test.ts'],
+    include: ['src/acp/*.network.test.ts'],
+    fileParallelism: false,
   },
 });
