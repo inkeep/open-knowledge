@@ -90,7 +90,7 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     await page.goto(`/#/${docName}`);
     await waitForProvider(page);
     await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
-    await page.click('.ProseMirror:not(.composer-prosemirror)');
+    await page.click('.ProseMirror:not(.composer-prosemirror) h1');
   });
 
   test('P9.1: post-reload `![[file.pdf]]` renders as a File row via WikiEmbedFile (no link chip)', async ({

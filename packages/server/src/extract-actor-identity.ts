@@ -48,10 +48,10 @@ export function extractActorIdentity(
   const fields = parseAgentBodyFields(body);
   const principal = getPrincipal?.() ?? null;
 
-  if (fields.rawAgentId !== undefined && fields.writerId !== undefined) {
+  if (fields.rawAgentId !== undefined && fields.suppliedWriterId !== undefined) {
     return {
       kind: 'agent',
-      writerId: fields.writerId,
+      writerId: fields.suppliedWriterId,
       displayName: fields.displayName,
       colorSeed: fields.colorSeed ?? fields.rawAgentId,
       clientName: fields.clientName,

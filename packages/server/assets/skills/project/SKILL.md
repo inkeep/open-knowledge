@@ -91,7 +91,7 @@ Every `.md` / `.mdx` needs YAML frontmatter — `title` + `description` required
 
 ## Conflict-aware writes
 
-A 409 `doc-in-conflict` freezes writes and carries `conflict.kind` + `resolutionOptions`. A flush-time `stale-external-write` 409 means the edit reached collaborative recovery but not disk; resolve and re-read before retrying. Detect with `conflicts`, not `exec`; kinds and full flow in `references/conflict-resolution.md`.
+`doc-in-conflict` freezes writes; `stale-external-write` means recovery missed disk. Detect both with `conflicts`, not `exec`; see `references/conflict-resolution.md`. `concurrent-overwrite-refused` is not conflict state: wait its bound and retry or use `append`/`prepend`/`edit`.
 
 ## Anti-patterns — the top offenders
 

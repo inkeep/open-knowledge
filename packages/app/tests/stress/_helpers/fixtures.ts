@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { ProblemType } from '@inkeep/open-knowledge-core';
 import { test as base } from '@playwright/test';
 import { resetContentToFixtureBaseline } from './content-reset.ts';
 import {
@@ -16,6 +17,34 @@ import {
   waitForHttpReady,
 } from './server-process.ts';
 import { removeAllDuringTeardown } from './teardown-fs.ts';
+
+interface ProblemError extends Error {
+  status?: number;
+  type?: string;
+}
+
+const CONCURRENT_OVERWRITE_REFUSED_TYPE: ProblemType = 'urn:ok:error:concurrent-overwrite-refused';
+
+export function isConcurrentOverwriteRefusal(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const { status, type } = error as ProblemError;
+  return status === 409 && type === CONCURRENT_OVERWRITE_REFUSED_TYPE;
+}
+
+async function problemError(res: Response, message: string): Promise<ProblemError> {
+  let body: { type?: unknown } | null = null;
+  let parseFailure: unknown;
+  try {
+    body = (await res.json()) as { type?: unknown };
+  } catch (error) {
+    parseFailure = error;
+  }
+  const err: ProblemError =
+    parseFailure === undefined ? new Error(message) : new Error(message, { cause: parseFailure });
+  err.status = res.status;
+  if (typeof body?.type === 'string') err.type = body.type;
+  return err;
+}
 
 export interface WorkerServer {
   port: number;
@@ -267,7 +296,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       async replaceDoc(docName: string, markdown: string): Promise<void> {
         const res = await post('/api/agent-write-md', { docName, markdown, position: 'replace' });
         if (!res.ok) {
-          throw new Error(`agent-write-md failed for ${docName}: ${res.status}`);
+          throw await problemError(res, `agent-write-md failed for ${docName}: ${res.status}`);
         }
       },
       async writeAsAgent(docName: string, markdown: string, identity): Promise<void> {
@@ -281,7 +310,8 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           colorSeed: identity.colorSeed,
         });
         if (!res.ok) {
-          throw new Error(
+          throw await problemError(
+            res,
             `writeAsAgent failed for ${docName} / ${identity.agentId}: ${res.status}`,
           );
         }

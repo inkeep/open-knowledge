@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import { CONCURRENT_REPLACE_WINDOW_MS } from '@inkeep/open-knowledge-server';
 import type { CDPSession, Page } from '@playwright/test';
 import type { ApiHelpers } from './_helpers';
-import { expect, test } from './_helpers';
+import { expect, isConcurrentOverwriteRefusal, test } from './_helpers';
 
 interface FallbackNode {
   type: { name: string };
@@ -182,7 +183,20 @@ test('FR-B3 agent write mid-composition: no glyph drop/dup, concurrent survives 
     await beginComposition(cdp);
     expect(await composing(page)).toBe(true);
 
-    await api.replaceDoc(docName, `<CustomWidget>\n\nAAA ${MARKER}\n\n</CustomWidget>\n`);
+    await expect
+      .poll(
+        async () => {
+          try {
+            await api.replaceDoc(docName, `<CustomWidget>\n\nAAA ${MARKER}\n\n</CustomWidget>\n`);
+            return true;
+          } catch (error) {
+            if (isConcurrentOverwriteRefusal(error)) return false;
+            throw error;
+          }
+        },
+        { timeout: CONCURRENT_REPLACE_WINDOW_MS * 2, intervals: [100, 250, 500] },
+      )
+      .toBe(true);
     await page.waitForFunction(
       (m) => window.__activeProvider?.document?.getText('source')?.toString()?.includes(m),
       MARKER,

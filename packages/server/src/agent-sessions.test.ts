@@ -1,19 +1,30 @@
 import type { Document } from '@hocuspocus/server';
 import { sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import { metrics } from '@opentelemetry/api';
+import {
+  AggregationTemporality,
+  InMemoryMetricExporter,
+  MeterProvider,
+  PeriodicExportingMetricReader,
+} from '@opentelemetry/sdk-metrics';
 import { getSchema } from '@tiptap/core';
 import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { sessionWriterId } from './agent-id.ts';
 import {
   type AgentDirectConnection,
   AgentSessionCapacityError,
   AgentSessionManager,
   applyAgentMarkdownWrite,
   applyAgentUndo,
+  CONCURRENT_REPLACE_WINDOW_MS,
 } from './agent-sessions.ts';
+import { ConcurrentOverwriteRefusedError } from './concurrent-overwrite-refused-error.ts';
 import { bindConflictAuthority } from './conflict-authority.ts';
 import { DocInConflictError } from './conflict-errors.ts';
 import { _resetDocExtensionsForTests, registerDocExtension } from './doc-extensions.ts';
+import { __resetFrontmatterTelemetryForTests } from './frontmatter-telemetry.ts';
 
 function createMockHocuspocus() {
   const openedDocs: string[] = [];
@@ -753,6 +764,47 @@ describe('conflict-aware write gate (FR9 a, d)', () => {
 });
 
 describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contract (PRD-6667)', () => {
+  test('starts peer protection after a slow replace finishes', async () => {
+    const first = await manager.getSession('slow-replace.md', 'agent-a');
+    const clock = vi
+      .spyOn(Date, 'now')
+      .mockReturnValueOnce(1_000)
+      .mockReturnValueOnce(4_000)
+      .mockReturnValueOnce(4_000)
+      .mockReturnValue(4_001);
+    try {
+      first.dc.document.transact(() => {
+        applyAgentMarkdownWrite(
+          first.dc.document,
+          '# First replacement\n',
+          'replace',
+          undefined,
+          undefined,
+          undefined,
+          sessionWriterId(first),
+        );
+      }, first.origin);
+      expect(() =>
+        first.dc.document.transact(
+          () => {
+            applyAgentMarkdownWrite(
+              first.dc.document,
+              '# Peer replacement\n',
+              'replace',
+              undefined,
+              undefined,
+              undefined,
+              sessionWriterId({ agentId: 'agent-b' }),
+            );
+          },
+          { agentId: 'agent-b' },
+        ),
+      ).toThrow(ConcurrentOverwriteRefusedError);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test('replace overwrites prior bytes atomically — full delete + full insert, not DMP-incremental merge', async () => {
     const session = await manager.getSession('doc-replace-shape.md', 'agent-shape');
     const ytext = session.dc.document.getText('source');
@@ -942,4 +994,241 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
     expect(undone).toBe(true);
     expect(ytext.toString()).toBe(seed);
   });
+
+  test('refuses a peer replace when a backward clock step future-dates the peer stamp', async () => {
+    const first = await manager.getSession('backward-clock-step.md', 'agent-a');
+    let nowMs = 4_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+    try {
+      first.dc.document.transact(() => {
+        applyAgentMarkdownWrite(
+          first.dc.document,
+          '# First replacement\n',
+          'replace',
+          undefined,
+          undefined,
+          undefined,
+          sessionWriterId(first),
+        );
+      }, first.origin);
+
+      nowMs = 3_999;
+      expect(() =>
+        first.dc.document.transact(
+          () => {
+            applyAgentMarkdownWrite(
+              first.dc.document,
+              '# Peer replacement\n',
+              'replace',
+              undefined,
+              undefined,
+              undefined,
+              sessionWriterId({ agentId: 'agent-b' }),
+            );
+          },
+          { agentId: 'agent-b' },
+        ),
+      ).toThrow(ConcurrentOverwriteRefusedError);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test('admits a peer replace when the backward clock step reaches the guard window', async () => {
+    const first = await manager.getSession('backward-clock-step-beyond-window.md', 'agent-a');
+    let nowMs = 10_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+    try {
+      first.dc.document.transact(() => {
+        applyAgentMarkdownWrite(
+          first.dc.document,
+          '# First replacement\n',
+          'replace',
+          undefined,
+          undefined,
+          undefined,
+          sessionWriterId(first),
+        );
+      }, first.origin);
+
+      nowMs = 10_000 - CONCURRENT_REPLACE_WINDOW_MS;
+      expect(() =>
+        first.dc.document.transact(
+          () => {
+            applyAgentMarkdownWrite(
+              first.dc.document,
+              '# Peer replacement\n',
+              'replace',
+              undefined,
+              undefined,
+              undefined,
+              sessionWriterId({ agentId: 'agent-b' }),
+            );
+          },
+          { agentId: 'agent-b' },
+        ),
+      ).not.toThrow();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  test('a refused frontmatter-carrying replace leaves the edit-surface counter unchanged', async () => {
+    const exporter = new InMemoryMetricExporter(AggregationTemporality.CUMULATIVE);
+    const reader = new PeriodicExportingMetricReader({ exporter, exportIntervalMillis: 60_000 });
+    const meterProvider = new MeterProvider({ readers: [reader] });
+    metrics.disable();
+    metrics.setGlobalMeterProvider(meterProvider);
+    __resetFrontmatterTelemetryForTests();
+
+    const readMcpWriteTotal = async (): Promise<number> => {
+      await reader.forceFlush();
+      return exporter
+        .getMetrics()
+        .flatMap((rm) => rm.scopeMetrics)
+        .flatMap((sm) => sm.metrics)
+        .filter((m) => m.descriptor.name === 'ok.frontmatter.edit_surface_total')
+        .flatMap((m) => m.dataPoints)
+        .filter((dp) => dp.attributes.source === 'mcp-write')
+        .reduce((total, dp) => total + (dp.value as number), 0);
+    };
+
+    const session = await manager.getSession('refused-fm-telemetry.md', 'agent-a');
+    let nowMs = 4_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+    try {
+      session.dc.document.transact(() => {
+        applyAgentMarkdownWrite(
+          session.dc.document,
+          'Body without frontmatter.\n',
+          'replace',
+          undefined,
+          undefined,
+          undefined,
+          sessionWriterId(session),
+        );
+      }, session.origin);
+
+      const peerPayload = '---\ntitle: Peer\n---\nPeer body.\n';
+      nowMs = 4_500;
+      expect(() =>
+        session.dc.document.transact(
+          () => {
+            applyAgentMarkdownWrite(
+              session.dc.document,
+              peerPayload,
+              'replace',
+              undefined,
+              undefined,
+              undefined,
+              sessionWriterId({ agentId: 'agent-b' }),
+            );
+          },
+          { agentId: 'agent-b' },
+        ),
+      ).toThrow(ConcurrentOverwriteRefusedError);
+      expect(await readMcpWriteTotal()).toBe(0);
+
+      exporter.reset();
+      nowMs = 10_000;
+      session.dc.document.transact(
+        () => {
+          applyAgentMarkdownWrite(
+            session.dc.document,
+            peerPayload,
+            'replace',
+            undefined,
+            undefined,
+            undefined,
+            sessionWriterId({ agentId: 'agent-b' }),
+          );
+        },
+        { agentId: 'agent-b' },
+      );
+      expect(await readMcpWriteTotal()).toBe(1);
+    } finally {
+      clock.mockRestore();
+      await meterProvider.shutdown();
+      metrics.disable();
+      __resetFrontmatterTelemetryForTests();
+    }
+  });
+
+  test.each([
+    {
+      position: 'append',
+      payload: 'Peer appended line.\n',
+      expected: '# First replacement\n\nPeer appended line.\n',
+    },
+    {
+      position: 'prepend',
+      payload: 'Peer prepended line.\n',
+      expected: 'Peer prepended line.\n\n# First replacement\n',
+    },
+    {
+      position: 'patch',
+      payload: '# First replacement\n\nPeer patched line.\n',
+      expected: '# First replacement\n\nPeer patched line.\n',
+    },
+  ] as const)(
+    'admits a peer $position in the same window that refuses a peer replace',
+    async ({ position, payload, expected }) => {
+      const first = await manager.getSession(`peer-${position}.md`, 'agent-a');
+      const ytext = first.dc.document.getText('source');
+      let nowMs = 4_000;
+      const clock = vi.spyOn(Date, 'now').mockImplementation(() => nowMs);
+      try {
+        first.dc.document.transact(() => {
+          applyAgentMarkdownWrite(
+            first.dc.document,
+            '# First replacement\n',
+            'replace',
+            undefined,
+            undefined,
+            undefined,
+            sessionWriterId(first),
+          );
+        }, first.origin);
+
+        nowMs = 4_500;
+        expect(() =>
+          first.dc.document.transact(
+            () => {
+              applyAgentMarkdownWrite(
+                first.dc.document,
+                '# Peer replacement\n',
+                'replace',
+                undefined,
+                undefined,
+                undefined,
+                sessionWriterId({ agentId: 'agent-b' }),
+              );
+            },
+            { agentId: 'agent-b' },
+          ),
+        ).toThrow(ConcurrentOverwriteRefusedError);
+        expect(ytext.toString()).toBe('# First replacement\n');
+
+        expect(() =>
+          first.dc.document.transact(
+            () => {
+              applyAgentMarkdownWrite(
+                first.dc.document,
+                payload,
+                position,
+                undefined,
+                undefined,
+                undefined,
+                sessionWriterId({ agentId: 'agent-b' }),
+              );
+            },
+            { agentId: 'agent-b' },
+          ),
+        ).not.toThrow();
+        expect(ytext.toString()).toBe(expected);
+      } finally {
+        clock.mockRestore();
+      }
+    },
+  );
 });

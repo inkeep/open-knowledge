@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { CONCURRENT_REPLACE_WINDOW_MS } from '@inkeep/open-knowledge-server';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   createSyncWiredTestServer,
@@ -165,7 +166,12 @@ async function assertReconcileConflictIsResolvable(
     `the conflict entry for ${file} to clear`,
   );
 
-  expect(await writeProbe(server.port, docName, '# after\n')).toBe(200);
+  await pollUntil(
+    async () => (await writeProbe(server.port, docName, '# after\n')) === 200,
+    CONCURRENT_REPLACE_WINDOW_MS * 2,
+    100,
+    `the post-resolution write for ${file} to clear its overlap window`,
+  );
 }
 
 describe('PRD-7947: a reconcile-born conflict is tracked, inspectable and resolvable', () => {

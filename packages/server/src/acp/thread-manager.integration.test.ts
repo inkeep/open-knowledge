@@ -1719,6 +1719,55 @@ describe('handleFsWrite exclusion gate', () => {
   });
 });
 
+describe('handleFsWrite concurrent replace guard', () => {
+  test('returns one small ACP error and keeps the peer content', async () => {
+    const contentDir = tmp();
+    const docs = new Map<string, Y.Doc>();
+    const sessionManager = {
+      getSession: async (docName: string, agentId: string) => {
+        let document = docs.get(docName);
+        if (document === undefined) {
+          document = new Y.Doc();
+          Object.assign(document, { name: docName });
+          docs.set(docName, document);
+        }
+        return { dc: { document }, origin: { agentId }, agentId, docName };
+      },
+      closeAllForAgent: async () => {},
+    } as unknown as AgentSessionManager;
+    const manager = makeManager(contentDir, tmp(), { sessionManager });
+    const fsWrite = (
+      manager as unknown as {
+        handleFsWrite: (record: unknown, path: string, content: string) => Promise<void>;
+      }
+    ).handleFsWrite.bind(manager);
+    const path = join(contentDir, 'notes', 'shared.md');
+    const record = (agentSessionId: string) => ({
+      agentSessionId,
+      info: { lastActivityAt: 0, agent: { id: 'codex', name: agentSessionId } },
+    });
+
+    await fsWrite(record('agent-a'), path, '# From A\n');
+    const before = docs.get('notes/shared')?.getText('source').toString();
+    const error = await fsWrite(record('agent-b'), path, '# From B\n').then(
+      () => undefined,
+      (reason: unknown) => reason as { code?: number; message?: string; data?: unknown },
+    );
+
+    expect(error?.code).toBe(-32009);
+    expect(error?.message).toBe(
+      'Another writer changed this document recently. Wait a few seconds and retry.',
+    );
+    expect(error?.data).toEqual({
+      type: 'urn:ok:error:concurrent-overwrite-refused',
+      file: 'notes/shared.md',
+      retryable: true,
+      retryAfterSeconds: 3,
+    });
+    expect(docs.get('notes/shared')?.getText('source').toString()).toBe(before);
+  });
+});
+
 function writeRequestingAgentEntry(localDir: string, id: string, promptBody: string): void {
   const agentPath = join(localDir, `${id}.mjs`);
   writeFileSync(

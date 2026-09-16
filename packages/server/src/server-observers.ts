@@ -126,6 +126,11 @@ export const isPairedWriteOrigin = (origin: unknown): origin is PairedWriteOrigi
   return ctx?.paired === true;
 };
 
+const isConnectionOrigin = (origin: unknown): boolean =>
+  origin != null &&
+  typeof origin === 'object' &&
+  (origin as { source?: unknown }).source === 'connection';
+
 export function shouldRethrowBridgeMergeLoss(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.NODE_ENV === 'test' || env.OK_RETHROW_BRIDGE_LOSS === '1';
 }
@@ -279,6 +284,12 @@ const convergedFragmentWitnesses = new WeakMap<Y.Doc, () => string>();
 
 export function getConvergedFragmentWitness(doc: Y.Doc): string | undefined {
   return convergedFragmentWitnesses.get(doc)?.();
+}
+
+const externalEditorRecencies = new WeakMap<Y.Doc, () => number | undefined>();
+
+export function getLastExternalEditorChangeMs(doc: Y.Doc): number | undefined {
+  return externalEditorRecencies.get(doc)?.();
 }
 
 type ShadowAccessor = () => ShadowHandle | undefined;
@@ -782,6 +793,7 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   let xmlDirty = false;
   let textDirty = false;
   let lastExternalYtextChangeMs = 0;
+  let lastExternalEditorChangeMs = 0;
 
   const deferGuardEnabled = opts.deferGuardEnabled !== false;
   let lastConvergedFragmentMd = '';
@@ -1252,6 +1264,8 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       return;
     }
 
+    if (isConnectionOrigin(transaction.origin)) lastExternalEditorChangeMs = Date.now();
+
     xmlDirty = true;
     fragmentMutatedSinceConverge = true;
   };
@@ -1422,6 +1436,8 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
       return;
     }
 
+    if (isConnectionOrigin(transaction.origin)) lastExternalEditorChangeMs = Date.now();
+
     lastExternalYtextChangeMs = Date.now();
     textDirty = true;
   };
@@ -1552,12 +1568,16 @@ export function setupServerObservers(opts: SetupServerObserversOpts): () => void
   };
   preDrainControllers.set(doc, preDrainController);
   convergedFragmentWitnesses.set(doc, () => lastConvergedFragmentMd);
+  externalEditorRecencies.set(doc, () =>
+    lastExternalEditorChangeMs > 0 ? lastExternalEditorChangeMs : undefined,
+  );
 
   return () => {
     unregisterDirtyProbe();
     detachQuiescence();
     preDrainControllers.delete(doc);
     convergedFragmentWitnesses.delete(doc);
+    externalEditorRecencies.delete(doc);
     doc.off('afterAllTransactions', afterAll);
     xmlFragment.unobserveDeep(observerA);
     ytext.unobserve(observerB);

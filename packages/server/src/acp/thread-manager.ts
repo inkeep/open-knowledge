@@ -17,6 +17,7 @@ import {
   ndJsonStream,
   type PermissionOption,
   PROTOCOL_VERSION,
+  RequestError,
   type RequestPermissionResponse,
   type SessionConfigOption,
   type SessionNotification,
@@ -51,7 +52,7 @@ import type {
   ThreadStatus,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { toBroadcasterKey } from '../agent-id.ts';
+import { sessionWriterId, toBroadcasterKey } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import { observeReadiness } from '../agent-registry-gate.ts';
 import {
@@ -61,6 +62,13 @@ import {
   snapshotBlocks,
 } from '../agent-sessions.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
+import {
+  CONCURRENT_OVERWRITE_REFUSED_DETAIL,
+  CONCURRENT_OVERWRITE_REFUSED_TYPE,
+  CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+  ConcurrentOverwriteRefusedError,
+  logConcurrentOverwriteRefusal,
+} from '../concurrent-overwrite-refused-error.ts';
 import { resolveOnPath } from '../git-preflight.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
@@ -146,6 +154,7 @@ const SIGN_IN_OUTPUT_LINES = 6;
 const RESUME_REPLAY_QUIESCENCE_MS = 300;
 const RESUME_REPLAY_MAX_WAIT_MS = 3_000;
 const AUTH_REQUIRED_CODE = -32000;
+const CONCURRENT_OVERWRITE_REFUSED_CODE = -32009;
 
 export const ACP_ENVIRONMENT_NOTE =
   'Note on your environment: you are running inside the OpenKnowledge app, ' +
@@ -2678,27 +2687,46 @@ export class AcpThreadManager {
         this.opts.resolveEmbed !== undefined
           ? { resolveEmbed: this.opts.resolveEmbed, sourcePath: target.rel }
           : undefined;
-      session.dc.document.transact(() => {
-        const beforeBlocks = snapshotBlocks(session.dc.document);
-        applyAgentMarkdownWrite(
-          session.dc.document,
-          content,
-          'replace',
-          embedResolver,
-          undefined,
-          agentWriteLossDetect(session),
-        );
-        const changedBlocks =
-          changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
-        const activityMap = session.dc.document.getMap('agent-flash');
-        activityMap.set(record.agentSessionId, {
-          agentId: record.agentSessionId,
-          timestamp: Date.now(),
-          type: 'insert',
-          description: `Added (${record.info.agent.name}): ${content.slice(0, 50)}`,
-          ...(changedBlocks !== undefined ? { changedBlocks } : {}),
-        });
-      }, session.origin);
+      const suppliedWriterId = sessionWriterId(session);
+      try {
+        session.dc.document.transact(() => {
+          const beforeBlocks = snapshotBlocks(session.dc.document);
+          applyAgentMarkdownWrite(
+            session.dc.document,
+            content,
+            'replace',
+            embedResolver,
+            undefined,
+            agentWriteLossDetect(session),
+            suppliedWriterId,
+          );
+          const changedBlocks =
+            changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
+          const activityMap = session.dc.document.getMap('agent-flash');
+          activityMap.set(record.agentSessionId, {
+            agentId: record.agentSessionId,
+            timestamp: Date.now(),
+            type: 'insert',
+            description: `Added (${record.info.agent.name}): ${content.slice(0, 50)}`,
+            ...(changedBlocks !== undefined ? { changedBlocks } : {}),
+          });
+        }, session.origin);
+      } catch (error) {
+        if (error instanceof ConcurrentOverwriteRefusedError) {
+          logConcurrentOverwriteRefusal(error, 'acp-fs-write');
+          throw new RequestError(
+            CONCURRENT_OVERWRITE_REFUSED_CODE,
+            CONCURRENT_OVERWRITE_REFUSED_DETAIL,
+            {
+              type: CONCURRENT_OVERWRITE_REFUSED_TYPE,
+              file: error.file,
+              retryable: true,
+              retryAfterSeconds: CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+            },
+          );
+        }
+        throw error;
+      }
       this.setPresence(record, target.docName);
     } else {
       if (this.opts.isIgnoredPath(target.rel)) {

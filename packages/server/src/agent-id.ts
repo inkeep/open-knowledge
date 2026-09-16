@@ -1,14 +1,23 @@
 import { sanitizeGitIdentity } from './git-identity-sanitize.ts';
+import { getLogger } from './logger.ts';
 
 export const AGENT_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 export const AGENT_ID_MAX_LEN = 64;
 
+type AgentIdRejection = 'not-a-string' | 'empty' | 'too-long' | 'charset';
+
+function classifyAgentIdRejection(suppliedAgentId: unknown): AgentIdRejection | null {
+  if (typeof suppliedAgentId !== 'string') return 'not-a-string';
+  if (suppliedAgentId.length === 0) return 'empty';
+  if (suppliedAgentId.length > AGENT_ID_MAX_LEN) return 'too-long';
+  if (!AGENT_ID_RE.test(suppliedAgentId)) return 'charset';
+  return null;
+}
+
 export function validateAgentId(rawAgentId: string | undefined | null): string | null {
-  if (typeof rawAgentId !== 'string' || rawAgentId.length === 0) return null;
-  if (rawAgentId.length > AGENT_ID_MAX_LEN) return null;
-  if (!AGENT_ID_RE.test(rawAgentId)) return null;
-  return rawAgentId;
+  if (typeof rawAgentId !== 'string') return null;
+  return classifyAgentIdRejection(rawAgentId) === null ? rawAgentId : null;
 }
 
 export function toBroadcasterKey(rawAgentId: string): string {
@@ -38,9 +47,29 @@ export function resolveAgentType(clientName: string | undefined): string {
 
 export const AGENT_NAME_MAX_LEN = 128;
 
+export const ANONYMOUS_WRITER_ID = 'principal-anonymous';
+
+export const UNIDENTIFIED_WRITER_ID = 'claude-1';
+
+const IDENTITY_ABSENT_WRITER_IDS: ReadonlySet<string> = new Set([
+  ANONYMOUS_WRITER_ID,
+  UNIDENTIFIED_WRITER_ID,
+]);
+
+export type RawWriterId = string & { readonly __brand: 'RawWriterId' };
+
+function brandWriterId(writerId: string): RawWriterId {
+  return writerId as RawWriterId;
+}
+
+export function sessionWriterId(session: { agentId: string }): RawWriterId | undefined {
+  if (IDENTITY_ABSENT_WRITER_IDS.has(session.agentId)) return undefined;
+  return brandWriterId(session.agentId);
+}
+
 interface AgentBodyFields {
   rawAgentId: string | undefined;
-  writerId: string | undefined;
+  suppliedWriterId: RawWriterId | undefined;
   displayName: string;
   clientName: string | undefined;
   clientVersion: string | undefined;
@@ -49,10 +78,25 @@ interface AgentBodyFields {
 }
 
 export function parseAgentBodyFields(body: Record<string, unknown>): AgentBodyFields {
-  const validated = validateAgentId(typeof body.agentId === 'string' ? body.agentId : null);
-  const rawAgentId = validated ?? undefined;
+  const suppliedAgentId = body.agentId;
+  const rejection =
+    suppliedAgentId === undefined ? null : classifyAgentIdRejection(suppliedAgentId);
+  const rawAgentId =
+    rejection === null && typeof suppliedAgentId === 'string' ? suppliedAgentId : undefined;
+  if (rejection !== null) {
+    getLogger('agent-write').warn(
+      {
+        event: 'agent-id-validation-failed',
+        reason: rejection,
+        agentIdType: typeof suppliedAgentId,
+        agentIdMaxLen: AGENT_ID_MAX_LEN,
+      },
+      'request agentId failed validation and was discarded before writer-identity resolution',
+    );
+  }
 
-  const writerId = rawAgentId !== undefined ? toBroadcasterKey(rawAgentId) : undefined;
+  const suppliedWriterId =
+    rawAgentId !== undefined ? brandWriterId(toBroadcasterKey(rawAgentId)) : undefined;
 
   const displayName =
     typeof body.agentName === 'string' ? sanitizeGitIdentity(body.agentName) : 'Claude';
@@ -68,5 +112,13 @@ export function parseAgentBodyFields(body: Record<string, unknown>): AgentBodyFi
       ? body.colorSeed.slice(0, AGENT_NAME_MAX_LEN)
       : undefined;
 
-  return { rawAgentId, writerId, displayName, clientName, clientVersion, label, colorSeed };
+  return {
+    rawAgentId,
+    suppliedWriterId,
+    displayName,
+    clientName,
+    clientVersion,
+    label,
+    colorSeed,
+  };
 }

@@ -3,6 +3,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS,
+  CONCURRENT_OVERWRITE_REFUSED_TITLE,
+  CONCURRENT_OVERWRITE_REFUSED_TYPE,
+  CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+} from '../../concurrent-overwrite-refused-error.ts';
 import { ConfigSchema } from '../../config/schema.ts';
 import { splitPayloadFrontmatter } from '../../payload-frontmatter.ts';
 import { type FetchTestServer, startFetchTestServer } from './fetch-test-server.test-helper.ts';
@@ -214,6 +220,88 @@ describe('write({ skill }) with bundle files — the per-file report reaches bot
   });
 });
 
+describe('write({ document }) relaying a concurrent-overwrite refusal', () => {
+  interface ToolResult {
+    content: Array<{ type: 'text'; text: string }>;
+    structuredContent?: Record<string, unknown>;
+    isError?: true;
+  }
+  type Handler = (args: Record<string, unknown>) => Promise<ToolResult>;
+
+  let testServer: FetchTestServer;
+  let cwd: string;
+  let handler: Handler;
+
+  beforeAll(async () => {
+    testServer = await startFetchTestServer({
+      hostname: '127.0.0.1',
+      fetch(request) {
+        const { pathname } = new URL(request.url);
+        if (pathname === '/api/agent-write-md') {
+          return Response.json(
+            {
+              type: CONCURRENT_OVERWRITE_REFUSED_TYPE,
+              title: CONCURRENT_OVERWRITE_REFUSED_TITLE,
+              status: 409,
+              instance: 'urn:uuid:11111111-2222-4333-8444-555555555555',
+              detail: CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS,
+              file: 'notes/contended.md',
+              retryAfterSeconds: CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+            },
+            {
+              status: 409,
+              headers: { 'Retry-After': String(CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS) },
+            },
+          );
+        }
+        return Response.json({ error: `unexpected route ${pathname}` }, { status: 500 });
+      },
+    });
+    cwd = mkdtempSync(join(tmpdir(), 'ok-write-concurrent-refusal-'));
+    mkdirSync(join(cwd, '.ok'), { recursive: true });
+
+    let captured: Handler | null = null;
+    const server = {
+      registerTool(_name: string, _cfg: unknown, toolHandler: Handler) {
+        captured = toolHandler;
+      },
+    } as unknown as ServerInstance;
+    registerWrite(server, {
+      serverUrl: `http://127.0.0.1:${testServer.port}`,
+      config: ConfigSchema.parse({}),
+      resolveCwd: async () => cwd,
+    });
+    if (captured === null) throw new Error('write tool did not register');
+    handler = captured;
+  });
+
+  afterAll(() => {
+    testServer.stop();
+    rmSync(cwd, { recursive: true, force: true });
+  });
+
+  it('carries the retry bound into the single-doc error text', async () => {
+    const result = await handler({
+      document: { path: 'notes/contended', content: '# From B\n', position: 'replace' },
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toBe(
+      `Error: ${CONCURRENT_OVERWRITE_REFUSED_TITLE} (${CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS}) Retry after ${CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS}s.`,
+    );
+  });
+
+  it('carries the retry bound into the batch per-entry error text', async () => {
+    const result = await handler({
+      documents: [{ path: 'notes/contended', content: '# From B\n', position: 'replace' }],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0]?.text).toContain(
+      `Retry after ${CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS}s.`,
+    );
+  });
+});
 describe('write — an asset upload whose request to the server fails', () => {
   type AssetHandler = (args: Record<string, unknown>) => Promise<{
     isError?: boolean;

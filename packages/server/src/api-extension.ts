@@ -96,6 +96,14 @@ import { resolveBundledSkillDir } from './build-skill-zip.ts';
 import { CommentIndex } from './comments/comment-index.ts';
 import { CommentService } from './comments/comment-service.ts';
 import { CommentThreadStore } from './comments/thread-store.ts';
+import {
+  CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS,
+  CONCURRENT_OVERWRITE_REFUSED_TITLE,
+  CONCURRENT_OVERWRITE_REFUSED_TYPE,
+  CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+  ConcurrentOverwriteRefusedError,
+  logConcurrentOverwriteRefusal,
+} from './concurrent-overwrite-refused-error.ts';
 import type { ConflictAuthority } from './conflict-authority.ts';
 import {
   DocInConflictError,
@@ -163,7 +171,12 @@ import { createSkillsCatalogCache } from './skills-catalog-cache.ts';
 export { extractPageTitle } from './page-identity.ts';
 
 import simpleGit from 'simple-git';
-import { parseAgentBodyFields, resolveAgentType } from './agent-id.ts';
+import {
+  parseAgentBodyFields,
+  type RawWriterId,
+  resolveAgentType,
+  UNIDENTIFIED_WRITER_ID,
+} from './agent-id.ts';
 import {
   applyRenameMap,
   BacklinkIndexRequiredError,
@@ -3029,6 +3042,7 @@ export function createApiExtension(
    */
   function extractAgentIdentity(body: Record<string, unknown>): {
     rawAgentId: string | undefined;
+    suppliedWriterId: RawWriterId | undefined;
     agentId: string;
     agentName: string;
     colorSeed: string;
@@ -3037,9 +3051,10 @@ export function createApiExtension(
     label: string | undefined;
   } {
     const fields = parseAgentBodyFields(body);
-    const agentId = fields.writerId ?? 'claude-1';
+    const agentId = fields.suppliedWriterId ?? UNIDENTIFIED_WRITER_ID;
     return {
       rawAgentId: fields.rawAgentId,
+      suppliedWriterId: fields.suppliedWriterId,
       agentId,
       agentName: fields.displayName,
       colorSeed: fields.colorSeed ?? fields.rawAgentId ?? agentId,
@@ -3261,8 +3276,15 @@ export function createApiExtension(
         const docName = resolveAlias(rawDocName);
 
         // Identity extraction precedes every semantic error emission below (precedent #24).
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
+        const {
+          agentId,
+          suppliedWriterId,
+          agentName,
+          colorSeed,
+          clientName,
+          clientVersion,
+          label,
+        } = extractAgentIdentity(body);
 
         if (isSystemDoc(docName) || isConfigDoc(docName)) {
           errorResponse(
@@ -3329,6 +3351,7 @@ export function createApiExtension(
                 : undefined,
               undefined,
               agentWriteLossDetect(session),
+              suppliedWriterId,
             );
 
             const changedBlocks =
@@ -3425,8 +3448,15 @@ export function createApiExtension(
     async (_req, res, body) => {
       try {
         const linkPolicy = getLinkAdvisoryPolicy();
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
+        const {
+          agentId,
+          suppliedWriterId,
+          agentName,
+          colorSeed,
+          clientName,
+          clientVersion,
+          label,
+        } = extractAgentIdentity(body);
 
         const timestamp = new Date().toISOString();
 
@@ -3448,13 +3478,24 @@ export function createApiExtension(
           type: BatchEntryError['type'],
           title: string,
           detail?: string,
+          extensions?: Record<string, unknown>,
         ): BatchErrorResult => ({
           status: 'error',
           docName,
-          error: { type, title, ...(detail !== undefined ? { detail } : {}) },
+          error: { type, title, ...(detail !== undefined ? { detail } : {}), ...extensions },
         });
 
         const classifyEntryFailure = (docName: string, e: unknown): BatchErrorResult => {
+          if (e instanceof ConcurrentOverwriteRefusedError) {
+            logConcurrentOverwriteRefusal(e, 'agent-write-batch');
+            return entryError(
+              docName,
+              CONCURRENT_OVERWRITE_REFUSED_TYPE,
+              CONCURRENT_OVERWRITE_REFUSED_TITLE,
+              CONCURRENT_OVERWRITE_REFUSED_DETAIL_WITH_POSITIONS,
+              { retryAfterSeconds: CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS },
+            );
+          }
           if (e instanceof DocInConflictError) {
             console.warn(
               JSON.stringify({
@@ -3594,6 +3635,7 @@ export function createApiExtension(
                     entryEmbedResolver,
                     entryPrecomputed,
                     agentWriteLossDetect(session),
+                    suppliedWriterId,
                   );
 
                   const changedBlocks =

@@ -1,4 +1,5 @@
 import { setTimeout as wait } from 'node:timers/promises';
+import { CONCURRENT_REPLACE_WINDOW_MS } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
@@ -200,7 +201,7 @@ describe('doc-edge blank runs on the CRDT path', () => {
     await mergeSeam(1, 'Above.\n\n\n\nBelow.!\n', 'Above.\n\n\n\nBelow.!\n');
   });
 
-  test('an external write that carries a trailing run lands it in every fragment', async () => {
+  test('an external write that carries a trailing run survives an agent replace after the guard window', async () => {
     const clients = await seedDocument('Alpha.\n\nOmega.\n');
     try {
       const a = clients[0];
@@ -210,7 +211,19 @@ describe('doc-edge blank runs on the CRDT path', () => {
       await settle(() => a.ytext.toString() === 'Alpha.\n\nOmega.\n\n\n', 4000);
 
       const expected = 'Alpha edited.\n\nOmega.\n\n\n';
-      await agentWriteMd(server.port, expected, { docName: a.docName, position: 'replace' });
+      await pollUntil(
+        () =>
+          agentWriteMd(server.port, expected, { docName: a.docName, position: 'replace' }).then(
+            () => true,
+            (err: Error & { status?: number }) => {
+              if (err.status === 409) return false;
+              throw err;
+            },
+          ),
+        CONCURRENT_REPLACE_WINDOW_MS * 2,
+        100,
+        `the replace of ${a.docName} to clear the concurrent-overwrite guard window`,
+      );
 
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
       await expectEverywhereExactly(clients, expected, 2, 8000);

@@ -22,6 +22,7 @@ describe('ProblemTypeSchema cluster A URN tokens', () => {
     'urn:ok:error:reserved-doc-name',
     'urn:ok:error:target-not-found',
     'urn:ok:error:stale-target',
+    'urn:ok:error:concurrent-overwrite-refused',
     'urn:ok:error:no-active-session',
   ])('%s parses', (token) => {
     const result = ProblemTypeSchema.safeParse(token);
