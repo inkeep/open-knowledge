@@ -21,6 +21,19 @@ function config(entry: unknown, theme = 'dark'): string {
 }
 
 describe('reconcileTrackedMcpConfig', () => {
+  test('keeps incoming bytes when they already contain the selected launcher and unowned shell', () => {
+    const base = `${JSON.stringify({ mcpServers: { other: { command: 'keep-me' }, 'open-knowledge': v1 } })}\n`;
+    const incoming = `${JSON.stringify({ mcpServers: { other: { command: 'keep-me' }, 'open-knowledge': v2 } })}\n`;
+    const plan = reconcileTrackedMcpConfig({
+      target: '.mcp.json',
+      layers: { base, head: base, index: base, worktree: base, incoming },
+    });
+
+    expect(plan.kind).toBe('resolved');
+    if (plan.kind !== 'resolved') throw new Error('expected resolved configuration');
+    expect(plan.raw).toBe(incoming);
+  });
+
   test('selects a recognized newer entry and preserves the local unowned shell', () => {
     const base = config(v1);
     const local = config(v1, 'light');
