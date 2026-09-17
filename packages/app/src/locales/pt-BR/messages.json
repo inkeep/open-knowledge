@@ -1199,6 +1199,7 @@
     "Ba4D2x": ["Modelo importado"],
     "Bdha5y": ["Publicando..."],
     "BeWTQy": ["Carregando pacotes iniciais"],
+    "BfTQmM": ["Este componente foi removido."],
     "BgV29F": ["Campo de busca do editor visual em foco"],
     "Bgaa_U": ["Falha ao atualizar a configuração de desempenho — ", ["detail"]],
     "BhLPRk": ["\"", ["name"], "\" revertido para a versão instalada"],
@@ -2327,6 +2328,7 @@
     "NSnIUP": ["Duas páginas (pares)"],
     "NUr4kz": ["Um ponto de partida reutilizável para novos documentos nesta pasta."],
     "NVghPF": ["O terminal não pode executar este comando no shell configurado."],
+    "NXNzgx": ["Este componente foi alterado. Tente novamente."],
     "NY0p7s": [
       "A ativação das ferramentas do Open Knowledge foi ignorada. Esta conversa funciona sem elas."
     ],

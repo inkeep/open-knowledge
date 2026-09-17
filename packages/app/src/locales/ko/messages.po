@@ -14446,6 +14446,14 @@ msgstr "이 명령에는 실제로 실행되는 내용과 다르게 보이게 �
 msgid "This comment is on the whole property"
 msgstr "이 댓글, 속성 전체에 적용됨"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "이 컴포넌트가 변경되었습니다. 다시 시도하세요."
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "이 컴포넌트가 삭제되었습니다."
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

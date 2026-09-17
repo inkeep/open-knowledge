@@ -14446,6 +14446,14 @@ msgstr "اس کمانڈ میں پوشیدہ حروف ہیں جن کی وجہ س�
 msgid "This comment is on the whole property"
 msgstr "یہ تبصرہ پوری خصوصیت پر ہے"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "یہ جزو تبدیل ہو گیا ہے۔ دوبارہ کوشش کریں۔"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "یہ جزو ہٹا دیا گیا ہے۔"
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

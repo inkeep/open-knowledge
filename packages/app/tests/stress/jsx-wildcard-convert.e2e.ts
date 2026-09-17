@@ -5,6 +5,8 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import type { ApiHelpers } from './_helpers';
 import { expect, test } from './_helpers';
@@ -82,4 +84,47 @@ test('S20: unregistered <UnknownWidget> auto-converts to rawMdxFallback on mount
   );
   expect(fallbacks).toHaveLength(1);
   expect(residualJsxForUnknown).toHaveLength(0);
+});
+
+test('S23: opening adjacent and nested unknown components preserves the document', async ({
+  page,
+  api,
+  workerServer,
+}) => {
+  const blocks = [
+    '<Badge>\nDefault\n</Badge>',
+    '<Badge variant="accent">\nPreview\n</Badge>',
+    '<Badge variant="success">\nStable\n</Badge>',
+    '<CardGroup cols={2}>\n<Card title="Quick start">\nFirst page.\n</Card>\n<Card title="Components">\nUseful documentation.\n</Card>\n</CardGroup>',
+    '<Icon icon="book-open" size={32} />',
+  ];
+  const source = `# Gallery\n\n${blocks.join('\n\n')}\n\n## After\n\nKeep this paragraph.\n`;
+  const docName = await setupDoc(page, api, source);
+
+  const expectPreserved = async () => {
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const editor = window.__activeEditor;
+          if (!editor) return null;
+          const sources: string[] = [];
+          editor.state.doc.descendants((node) => {
+            if (node.type.name === 'rawMdxFallback') sources.push(node.textContent);
+          });
+          return sources;
+        }),
+      )
+      .toEqual(blocks);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__activeProvider?.document.getText('source').toString()),
+      )
+      .toBe(source);
+    expect(await readFile(join(workerServer.contentDir, `${docName}.md`), 'utf8')).toBe(source);
+    await expect(page.getByRole('heading', { name: 'After', exact: true })).toBeVisible();
+  };
+
+  await expectPreserved();
+  await page.reload();
+  await expectPreserved();
 });

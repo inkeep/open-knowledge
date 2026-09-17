@@ -1213,6 +1213,7 @@
     "Ba4D2x": ["Plantilla importada"],
     "Bdha5y": ["Publicando..."],
     "BeWTQy": ["Cargando paquetes iniciales"],
+    "BfTQmM": ["Este componente se ha eliminado."],
     "BgV29F": ["Campo de búsqueda del editor visual enfocado"],
     "Bgaa_U": ["No se pudo actualizar el ajuste de rendimiento — ", ["detail"]],
     "BhLPRk": ["Se revirtió \"", ["name"], "\" a la versión instalada"],
@@ -2354,6 +2355,7 @@
     "NSnIUP": ["Dos páginas (pares)"],
     "NUr4kz": ["Un punto de partida reutilizable para los documentos nuevos de esta carpeta."],
     "NVghPF": ["La terminal no puede ejecutar este comando en el shell configurado."],
+    "NXNzgx": ["Este componente ha cambiado. Inténtalo de nuevo."],
     "NY0p7s": [
       "Se omitió habilitar las herramientas de Open Knowledge. Este hilo funciona sin ellas."
     ],
