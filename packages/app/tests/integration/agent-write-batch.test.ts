@@ -47,6 +47,12 @@ async function postBatch(
   });
 }
 
+async function readConcurrentOverwriteRefusedCount(port: number): Promise<number> {
+  const res = await fetch(`http://127.0.0.1:${port}/api/metrics/reconciliation`);
+  const body = (await res.json()) as { concurrentOverwriteRefused?: number };
+  return body.concurrentOverwriteRefused ?? -1;
+}
+
 function listWipRefs(contentDir: string): string[] {
   const shadowDir = resolveShadowDir(contentDir);
   const raw = execFileSync('git', ['for-each-ref', '--format=%(refname)', 'refs/wip/'], {
@@ -152,6 +158,47 @@ describe('agent-write-batch', () => {
       '# Also fine',
     );
   }, 30_000);
+
+  test('a concurrent replace fails only its batch entry', async () => {
+    server = await createTestServer();
+    const first = await fetch(`${server.baseUrl}/api/agent-write-md`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        docName: 'batch-race/contended',
+        markdown: '# First writer\n',
+        position: 'replace',
+        agentId: 'agent-a',
+      }),
+    });
+    expect(first.status).toBe(200);
+    const refusalsBefore = await readConcurrentOverwriteRefusedCount(server.port);
+
+    const response = await postBatch(server.port, {
+      agentId: 'agent-b',
+      docs: [
+        {
+          docName: 'batch-race/contended',
+          markdown: '# Second writer\n',
+          position: 'replace',
+        },
+        { docName: 'batch-race/quiet', markdown: '# Quiet\n', position: 'replace' },
+      ],
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as BatchResponseBody;
+    expect(body.written).toBe(1);
+    expect(body.failed).toBe(1);
+    expect(body.results[0].error).toEqual({
+      type: 'urn:ok:error:concurrent-overwrite-refused',
+      title: 'Concurrent overwrite refused.',
+      detail:
+        'Another writer changed this document recently. Wait a few seconds and retry. A write with position append or prepend is not refused.',
+      retryAfterSeconds: 3,
+    });
+    expect(body.results[1].status).toBe('written');
+    expect(await readConcurrentOverwriteRefusedCount(server.port)).toBe(refusalsBefore + 1);
+  });
 
   test('broken-link validation admits sibling batch docs and reports dead links', async () => {
     server = await createTestServer();

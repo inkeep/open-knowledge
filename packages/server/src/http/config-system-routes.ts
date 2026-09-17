@@ -24,6 +24,10 @@ import {
   ACP_AGENT_HARNESS_CLIS,
   type AcpHarnessAvailability,
 } from '../acp/harness-availability.ts';
+import { mergedEnv, withLoginShellPathEnv } from '../acp/launch.ts';
+import { getSharedLoginShellPathProvider } from '../acp/login-shell-path.ts';
+import { codexCandidates } from '../acp/model-discovery/candidates.ts';
+import { probeCodexCatalog } from '../acp/model-discovery/codex-probe.ts';
 import {
   type AcpRegistry,
   type CustomAgentEntry,
@@ -188,6 +192,87 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
     stale: z.boolean(),
     maxThreads: z.number(),
   });
+
+  const AcpModelsSuccessSchema = z.object({
+    agentId: z.string(),
+    reason: z.string().nullable(),
+    candidates: z.array(
+      z.object({
+        value: z.string(),
+        label: z.string(),
+        description: z.string().nullable(),
+        group: z.string().nullable(),
+        contextChoices: z.array(z.number()),
+        context: z.object({ effectiveTokens: z.number(), origin: z.string() }).nullable(),
+        selectability: z.string(),
+        setPhase: z.string(),
+      }),
+    ),
+  });
+
+  const handleAcpModels = withValidation(
+    EmptyRequestSchema,
+    async (req, res) => {
+      const agentId = new URL(req.url ?? '', 'http://localhost').searchParams.get('agent') ?? '';
+      const empty = (reason: string) =>
+        successResponse(res, 200, AcpModelsSuccessSchema, { agentId, candidates: [], reason });
+      if (agentId === '') {
+        errorResponse(res, 400, 'urn:ok:error:invalid-request', 'An agent id is required.', {
+          handler: 'acp-models',
+        });
+        return;
+      }
+      if (agentId !== 'codex-acp') {
+        empty('unsupported');
+        return;
+      }
+      const availability = await acpHarnessAvailability();
+      if (availability.codex?.availability !== 'present') {
+        empty('unavailable');
+        return;
+      }
+      const spawnEnv = mergedEnv();
+      let probe = await probeCodexCatalog('codex', spawnEnv);
+      if (probe.outcome === 'not-found') {
+        const loginShellPath = await getSharedLoginShellPathProvider(log)();
+        if (loginShellPath !== null) {
+          probe = await probeCodexCatalog('codex', withLoginShellPathEnv(spawnEnv, loginShellPath));
+        }
+      }
+      if (probe.outcome !== 'ok') {
+        log.warn({ agentId, outcome: probe.outcome }, '[acp-models] codex catalog probe failed');
+        empty('unavailable');
+        return;
+      }
+      const catalog = probe.models;
+      if (catalog.length === 0) {
+        empty('unavailable');
+        return;
+      }
+      const fingerprint = {
+        harness: 'codex',
+        cliVersion: null,
+        adapterVersion: null,
+        endpoint: null,
+        account: null,
+      };
+      successResponse(res, 200, AcpModelsSuccessSchema, {
+        agentId,
+        reason: null,
+        candidates: codexCandidates(catalog, fingerprint, Date.now()).map((c) => ({
+          value: c.value,
+          label: c.label,
+          description: c.description,
+          group: c.group,
+          contextChoices: [...c.contextChoices],
+          context: c.context,
+          selectability: c.selectability,
+          setPhase: c.setPhase,
+        })),
+      });
+    },
+    { handler: 'acp-models' },
+  );
 
   const handleAcpCatalog = withValidation(
     EmptyRequestSchema,
@@ -651,6 +736,7 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
     '/api/workspace': handleWorkspace,
     '/api/semantic-status': handleSemanticStatus,
     '/api/acp/catalog': handleAcpCatalog,
+    '/api/acp/models': handleAcpModels,
     '/api/installed-agents': handleInstalledAgentsRoute,
     '/api/__embed-detect': handleEmbedDetect,
     '/api/rescue': handleRescueList,

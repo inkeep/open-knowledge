@@ -17,6 +17,7 @@ import {
   ndJsonStream,
   type PermissionOption,
   PROTOCOL_VERSION,
+  RequestError,
   type RequestPermissionResponse,
   type SessionConfigOption,
   type SessionNotification,
@@ -51,7 +52,7 @@ import type {
   ThreadStatus,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { toBroadcasterKey } from '../agent-id.ts';
+import { sessionWriterId, toBroadcasterKey } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import { observeReadiness } from '../agent-registry-gate.ts';
 import {
@@ -60,6 +61,13 @@ import {
   snapshotBlocks,
 } from '../agent-sessions.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
+import {
+  CONCURRENT_OVERWRITE_REFUSED_DETAIL,
+  CONCURRENT_OVERWRITE_REFUSED_TYPE,
+  CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+  ConcurrentOverwriteRefusedError,
+  logConcurrentOverwriteRefusal,
+} from '../concurrent-overwrite-refused-error.ts';
 import { resolveOnPath } from '../git-preflight.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
@@ -110,6 +118,11 @@ import {
   runtimeDownloadSupported,
   runtimeForInterpreter,
 } from './managed-runtime.ts';
+import { contextWindowChangeFor } from './model-discovery/context-window-change.ts';
+import {
+  applyLaunchContextWindow,
+  launchContextMechanism,
+} from './model-discovery/launch-context.ts';
 import type { AcpPermissionStore } from './permissions.ts';
 import {
   ACP_AGENT_EDITOR_IDS,
@@ -145,6 +158,7 @@ const SIGN_IN_OUTPUT_LINES = 6;
 const RESUME_REPLAY_QUIESCENCE_MS = 300;
 const RESUME_REPLAY_MAX_WAIT_MS = 3_000;
 const AUTH_REQUIRED_CODE = -32000;
+const CONCURRENT_OVERWRITE_REFUSED_CODE = -32009;
 
 export const ACP_ENVIRONMENT_NOTE =
   'Note on your environment: you are running inside the OpenKnowledge app, ' +
@@ -199,7 +213,12 @@ interface ThreadRecord {
   info: ThreadInfo;
   docName?: string;
   agentRef: { source: 'registry' | 'custom'; id: string };
-  launchSettings?: { config?: Record<string, string | boolean>; modeId?: string };
+  confirmedContextWindow?: number | null;
+  launchSettings?: {
+    config?: Record<string, string | boolean>;
+    modeId?: string;
+    contextWindow?: number;
+  };
   cwd: string;
   child: ChildProcess | null;
   conn: ClientConnection | null;
@@ -485,7 +504,11 @@ export class AcpThreadManager {
     attachments?: readonly AttachmentPart[];
     docName?: string;
     titleHint?: string;
-    settings?: { config?: Record<string, string | boolean>; modeId?: string };
+    settings?: {
+      config?: Record<string, string | boolean>;
+      modeId?: string;
+      contextWindow?: number;
+    };
   }): Promise<ThreadInfo> {
     if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
     if (this.liveThreadCount() >= this.maxThreads) {
@@ -643,6 +666,12 @@ export class AcpThreadManager {
       log: this.opts.log,
       loginShellPath,
     });
+
+    launch = applyLaunchContextWindow(
+      launch,
+      record.agentRef.id,
+      record.launchSettings?.contextWindow ?? null,
+    );
 
     this.emitStatus(record, 'spawning');
     const child = launch.kind === 'npx' ? spawnAcpAgent(launch) : spawnAcpAgent(launch, record.cwd);
@@ -1476,7 +1505,11 @@ export class AcpThreadManager {
       agent: { source: 'registry' | 'custom'; id: string };
       prompt?: string;
       attachments?: readonly AttachmentPart[];
-      settings?: { config?: Record<string, string | boolean>; modeId?: string };
+      settings?: {
+        config?: Record<string, string | boolean>;
+        modeId?: string;
+        contextWindow?: number;
+      };
     },
     custom: CustomAgentEntry | null,
     consentBudgetMs: number = CONSENT_TIMEOUT_MS,
@@ -1534,6 +1567,8 @@ export class AcpThreadManager {
       });
       record.sessionId = session.sessionId;
       record.info.resumable = resumableFromCapabilities(init);
+      record.confirmedContextWindow = appliedContextWindow(record);
+      record.info.contextWindow = record.confirmedContextWindow;
       record.envNotePending = true;
       this.persistence.queueMetaWrite(record.info.threadId, this.buildMeta(record));
       if (session.modes !== undefined && session.modes !== null) {
@@ -1644,6 +1679,8 @@ export class AcpThreadManager {
         }
         const { conn, init } = handshake;
         t.info.resumable = resumableFromCapabilities(init);
+        t.confirmedContextWindow = appliedContextWindow(t);
+        t.info.contextWindow = t.confirmedContextWindow;
         const { servers: mcpServers } = await this.buildMcpServers(
           t,
           init,
@@ -1728,6 +1765,79 @@ export class AcpThreadManager {
         );
       }
     } finally {
+      t.resumeInFlight = false;
+    }
+  }
+
+  hasStartedWork(threadId: string): boolean {
+    const t = this.threads.get(threadId);
+    if (t === undefined) return false;
+    return t.events.some((event) => event.kind === 'user_message');
+  }
+
+  async setContextWindow(threadId: string, tokens: number): Promise<ThreadInfo> {
+    if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
+    const t = this.mustGet(threadId);
+    if (!Number.isFinite(tokens) || tokens <= 0) {
+      throw new ThreadOpError('not-ready', 'a context window must be a positive number of tokens');
+    }
+    const change = contextWindowChangeFor({
+      agentId: t.agentRef.id,
+      archived: t.info.archived === true,
+      turnActive: t.turnActive,
+      hasStartedWork: this.hasStartedWork(threadId),
+    });
+    if (change.kind === 'unsupported') {
+      throw new ThreadOpError('not-ready', 'this agent takes its context window from the model');
+    }
+    if (change.kind === 'needs-new-chat') {
+      throw new ThreadOpError('not-ready', 'start a new chat to change the context window');
+    }
+    if (t.resumeInFlight) throw new ThreadOpError('not-ready', 'a restart is already in progress');
+
+    const previousWindow = t.launchSettings?.contextWindow;
+    const previousConfirmed = t.confirmedContextWindow ?? null;
+    t.launchSettings = { ...t.launchSettings, contextWindow: Math.floor(tokens) };
+    t.resumeInFlight = true;
+    let applied = false;
+    try {
+      const { custom } = await this.resolveAgentInfo(t.agentRef);
+      await this.teardownFailedAgent(t);
+      t.stderrTail = [];
+      t.cancelRequested = false;
+      t.turnActive = false;
+      this.emitStatus(t, 'spawning');
+      await this.startThread(
+        t,
+        { agent: t.agentRef, settings: t.launchSettings },
+        custom,
+        BLOCKING_CONSENT_TIMEOUT_MS,
+      );
+      if (t.closed) {
+        throw new ThreadOpError('spawn-failed', 'thread closed during the context window change');
+      }
+      const settled = this.getInfo(threadId)?.status;
+      if (settled === 'ready' || settled === 'running') {
+        applied = true;
+        return { ...t.info };
+      }
+      throw new ThreadOpError(
+        'spawn-failed',
+        lastFailureMessage(t) ?? 'the agent failed to start with that context window',
+      );
+    } catch (err) {
+      if (err instanceof ThreadOpError) throw err;
+      const detail = err instanceof Error ? err.message : String(err);
+      this.emitStatus(t, 'error', detail, { reason: 'connect', agentMessage: detail });
+      throw new ThreadOpError('spawn-failed', detail);
+    } finally {
+      if (!applied && this.threads.has(threadId)) {
+        t.launchSettings = { ...t.launchSettings, contextWindow: previousWindow };
+        t.confirmedContextWindow = previousConfirmed;
+        t.info.contextWindow =
+          this.getInfo(threadId)?.status === 'ready' ? previousConfirmed : null;
+        this.emitInfo(t);
+      }
       t.resumeInFlight = false;
     }
   }
@@ -2673,20 +2783,38 @@ export class AcpThreadManager {
           clientName: record.info.agent.id,
         },
       );
-      session.dc.document.transact(() => {
-        const beforeBlocks = snapshotBlocks(session.dc.document);
-        applyAgentMarkdownWrite(session.dc.document, content, 'replace');
-        const changedBlocks =
-          changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
-        const activityMap = session.dc.document.getMap('agent-flash');
-        activityMap.set(record.agentSessionId, {
-          agentId: record.agentSessionId,
-          timestamp: Date.now(),
-          type: 'insert',
-          description: `Added (${record.info.agent.name}): ${content.slice(0, 50)}`,
-          ...(changedBlocks !== undefined ? { changedBlocks } : {}),
-        });
-      }, session.origin);
+      const suppliedWriterId = sessionWriterId(session);
+      try {
+        session.dc.document.transact(() => {
+          const beforeBlocks = snapshotBlocks(session.dc.document);
+          applyAgentMarkdownWrite(session.dc.document, content, 'replace', suppliedWriterId);
+          const changedBlocks =
+            changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
+          const activityMap = session.dc.document.getMap('agent-flash');
+          activityMap.set(record.agentSessionId, {
+            agentId: record.agentSessionId,
+            timestamp: Date.now(),
+            type: 'insert',
+            description: `Added (${record.info.agent.name}): ${content.slice(0, 50)}`,
+            ...(changedBlocks !== undefined ? { changedBlocks } : {}),
+          });
+        }, session.origin);
+      } catch (error) {
+        if (error instanceof ConcurrentOverwriteRefusedError) {
+          logConcurrentOverwriteRefusal(error, 'acp-fs-write');
+          throw new RequestError(
+            CONCURRENT_OVERWRITE_REFUSED_CODE,
+            CONCURRENT_OVERWRITE_REFUSED_DETAIL,
+            {
+              type: CONCURRENT_OVERWRITE_REFUSED_TYPE,
+              file: error.file,
+              retryable: true,
+              retryAfterSeconds: CONCURRENT_OVERWRITE_RETRY_AFTER_SECONDS,
+            },
+          );
+        }
+        throw error;
+      }
       this.setPresence(record, target.docName);
     } else {
       if (this.opts.isIgnoredPath(target.rel)) {
@@ -2828,6 +2956,7 @@ export class AcpThreadManager {
     t.lastInit = null;
     t.terminals = null;
     t.sessionId = null;
+    t.info.contextWindow = null;
     try {
       conn?.close();
     } catch {}
@@ -2872,6 +3001,7 @@ export class AcpThreadManager {
       cwd: t.cwd,
       agentRef: t.agentRef,
       docName: t.docName,
+      contextWindow: t.confirmedContextWindow ?? null,
     };
   }
 
@@ -3002,8 +3132,11 @@ export async function confineToContentDir(
 function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
   const status = meta.info.status === 'error' ? 'error' : 'exited';
   return {
+    confirmedContextWindow: meta.contextWindow ?? null,
+    launchSettings: meta.contextWindow == null ? undefined : { contextWindow: meta.contextWindow },
     info: {
       ...meta.info,
+      contextWindow: null,
       status,
       archived: true,
       resumable: meta.info.resumable === false ? false : meta.sessionId !== null,
@@ -3098,6 +3231,11 @@ function agentErrorData(err: unknown): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function appliedContextWindow(record: ThreadRecord): number | null {
+  if (launchContextMechanism(record.agentRef.id) !== 'codex-config-env') return null;
+  return record.launchSettings?.contextWindow ?? null;
 }
 
 function lastFailureMessage(t: ThreadRecord): string | undefined {

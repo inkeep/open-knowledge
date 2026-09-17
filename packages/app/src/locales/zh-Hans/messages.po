@@ -304,6 +304,16 @@ msgstr "新增 {0} 项，移除 {1} 项"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
+msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgstr "{0} 无法在该上下文窗口下重启。请使用「重试」将其恢复。"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
+msgstr "{0} 未确认上下文窗口的更改。请先查看该对话，再重新选择。"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} 没有可调整的设置"
 
@@ -330,6 +340,11 @@ msgstr "{0} 位于 {destination} 上方。"
 #: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} 尚未安装——正在打开它的下载页面。"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} kept its current context window."
+msgstr "{0} 保留了当前的上下文窗口。"
 
 #. placeholder {0}: modeSurface.currentName
 #. placeholder {1}: info.agent.name
@@ -3564,6 +3579,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr "内容规则尚未加载——请稍后再试"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Context window"
+msgstr "上下文窗口"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "上下文窗口："
 
@@ -4693,6 +4712,10 @@ msgstr "数据"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "日期"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Default"
+msgstr "默认"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8797,6 +8820,10 @@ msgstr "来自远程的新改动会自动出现在你的副本中。"
 #: src/components/acp/ThreadView.tsx
 msgid "New chat with {agentName}"
 msgstr "与 {agentName} 的新对话"
+
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with a different window"
+msgstr "使用其他窗口新建对话"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -14424,6 +14451,10 @@ msgstr "这条评论针对的是整个属性"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "此处无法添加附件。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "This conversation keeps the window it started with. A new chat can use a different one."
+msgstr "本次对话保持开始时的窗口。新对话可以使用其他窗口。"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."

@@ -32,6 +32,7 @@ export {
   type AgentSessionIdentity,
   AgentSessionManager,
   applyAgentMarkdownWrite,
+  CONCURRENT_REPLACE_WINDOW_MS,
   colorFromSeed,
   iconFromClientName,
   MAX_AGENT_SESSIONS,

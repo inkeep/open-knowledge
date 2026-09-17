@@ -131,9 +131,19 @@ async function resolveLeftoverConflict(port: number, docName: string): Promise<v
   if (res.ok || res.status === 404 || res.status === 503) return;
 }
 
+function seedRetryDelayMs(body: string): number {
+  try {
+    const parsed = JSON.parse(body) as { retryAfterSeconds?: unknown };
+    const seconds = Number(parsed.retryAfterSeconds);
+    if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds, 10) * 1000;
+  } catch {}
+  return 3_000;
+}
+
 async function seedProbeDocument(port: number, docName: string, markdown: string): Promise<void> {
   await resolveLeftoverConflict(port, docName);
-  for (let attempt = 0; attempt < 3; attempt++) {
+  const attempts = 5;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     const seedRes = await fetch(`http://localhost:${port}/api/agent-write-md`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -146,12 +156,13 @@ async function seedProbeDocument(port: number, docName: string, markdown: string
       }),
     });
     if (seedRes.ok) return;
-    if (seedRes.status === 409 && attempt < 2) {
+    const body = await seedRes.text();
+    if (seedRes.status === 409 && attempt < attempts - 1) {
       await resolveLeftoverConflict(port, docName);
-      await wait(250);
+      await wait(seedRetryDelayMs(body));
       continue;
     }
-    throw new Error(`Seed write failed: ${seedRes.status} ${await seedRes.text()}`);
+    throw new Error(`Seed write failed: ${seedRes.status} ${body}`);
   }
 }
 

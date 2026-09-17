@@ -18,6 +18,7 @@ export interface ReconciliationMetrics {
   conflictCount: number;
   reconcileInsertDedupSkipped: number;
   staleExternalWriteRefused: number;
+  concurrentOverwriteRefused: number;
   batchCount: number;
   upstreamImportCount: number;
   persistenceStoreRemovedDocCount: number;
@@ -132,6 +133,7 @@ const counters: ReconciliationMetrics = {
   conflictCount: 0,
   reconcileInsertDedupSkipped: 0,
   staleExternalWriteRefused: 0,
+  concurrentOverwriteRefused: 0,
   batchCount: 0,
   upstreamImportCount: 0,
   persistenceStoreRemovedDocCount: 0,
@@ -245,6 +247,10 @@ export function incrementReconcileInsertDedupSkipped(): void {
 
 export function incrementStaleExternalWriteRefused(): void {
   counters.staleExternalWriteRefused++;
+}
+
+export function incrementConcurrentOverwriteRefused(): void {
+  counters.concurrentOverwriteRefused++;
 }
 
 export function incrementBatch(): void {
@@ -544,6 +550,7 @@ export function resetMetrics(): void {
   counters.conflictCount = 0;
   counters.reconcileInsertDedupSkipped = 0;
   counters.staleExternalWriteRefused = 0;
+  counters.concurrentOverwriteRefused = 0;
   counters.batchCount = 0;
   counters.upstreamImportCount = 0;
   counters.persistenceStoreRemovedDocCount = 0;

@@ -16,6 +16,7 @@ import {
   type ReLintFailure,
   summarizeLintPluginFailures,
 } from '@inkeep/open-knowledge-core';
+import { ANONYMOUS_WRITER_ID, sessionWriterId } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import {
   AgentSessionCapacityError,
@@ -285,7 +286,7 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
           });
           return;
         }
-        const agentId = actor.kind === 'anonymous' ? 'principal-anonymous' : actor.writerId;
+        const agentId = actor.kind === 'anonymous' ? ANONYMOUS_WRITER_ID : actor.writerId;
         const agentName = actor.kind === 'anonymous' ? 'Anonymous' : actor.displayName;
         const colorSeed = actor.kind === 'anonymous' ? agentId : actor.colorSeed;
         const clientName = actor.kind === 'agent' ? actor.clientName : undefined;
@@ -344,8 +345,9 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
               mode: 'writing',
               ts: Date.now(),
             });
+            const suppliedWriterId = sessionWriterId(session);
             session.dc.document.transact(() => {
-              applyAgentMarkdownWrite(session.dc.document, fixed, 'patch');
+              applyAgentMarkdownWrite(session.dc.document, fixed, 'patch', suppliedWriterId);
             }, session.origin);
 
             if (actor.kind !== 'anonymous') {

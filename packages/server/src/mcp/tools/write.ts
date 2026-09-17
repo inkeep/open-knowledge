@@ -85,7 +85,7 @@ import {
 const BASE_DESCRIPTION = [
   'Create or replace one thing. Pass EXACTLY ONE of `document`, `folder`, `template`, `skill`, or `asset` (or `documents` for a batch of docs).',
   '',
-  '- `document` — Create or overwrite a doc via the CRDT layer [Requires: Hocuspocus server]. `{ path, content }`, or `{ path, template }` to instantiate from a folder template (mutually exclusive with `content`). Optional `frontmatter` (its own YAML) and `position` (`replace` default for a new doc; required for an existing one) — note supplying `frontmatter` alongside literal `content` forces `position: replace` (the only position that persists a YAML block), overriding an explicit `append`/`prepend`. Example: `{ document: { path: "meetings/standup", content: "# Standup\\n..." } }`.',
+  '- `document` — Create or overwrite a doc via the CRDT layer [Requires: Hocuspocus server]. `{ path, content }`, or `{ path, template }` to instantiate from a folder template (mutually exclusive with `content`). Optional `frontmatter` (its own YAML) and `position` (`replace` default for a new doc; required for an existing one) — note supplying `frontmatter` alongside literal `content` forces `position: replace` (the only position that persists a YAML block), overriding an explicit `append`/`prepend`. A replace is refused when another writer changed the document in the last few seconds: wait and retry, or use `append`, `prepend`, or `edit`, which are never refused. Peers are told apart per MCP connection. Writers sharing one connection are not refused against each other; there is no `agentId` to send. The MCP connection records you as a peer, while your own recent write does not arm the refusal against your follow-up `replace`. A recent change from a connected editor refuses a `replace` too. Example: `{ document: { path: "meetings/standup", content: "# Standup\\n..." } }`.',
   '- `folder` — Create a NEW folder (optionally with its own properties) [Requires: Hocuspocus server]. `{ path, frontmatter? }`. To change an EXISTING folder use `edit`. Example: `{ folder: { path: "ideas" } }`.',
   '- `template` — Create a reusable starting shape for new docs in a folder. `{ path: "<folder>/<name>", content, frontmatter: { title, description?, tags? } }`.',
   '- `skill` — Create or overwrite an agent SKILL: reusable agent guidance you author in OK and `install` into your editors. A NEW skill lands at the project\'s default skill home (e.g. `.agents/skills/<name>/`); an existing one is edited at its real folder. `{ name, description, body, scope? }`. `name` is the identity (lowercase-hyphen); `description` is the trigger (when to use it). Example: `{ skill: { name: "trip-log", description: "Use when logging a fishing trip.", body: "# Steps\\n..." } }`.',
@@ -315,10 +315,14 @@ async function writeOneDoc(
   if (!result.ok) {
     const detail =
       typeof result.detail === 'string' && result.detail.length > 0 ? result.detail : '';
+    const retryAfter =
+      typeof result.retryAfterSeconds === 'number'
+        ? ` Retry after ${result.retryAfterSeconds}s.`
+        : '';
     return {
       docName,
       ok: false,
-      error: detail ? `${String(result.error)} (${detail})` : String(result.error),
+      error: `${detail ? `${String(result.error)} (${detail})` : String(result.error)}${retryAfter}`,
     };
   }
 

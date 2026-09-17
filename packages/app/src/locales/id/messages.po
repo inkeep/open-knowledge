@@ -304,6 +304,16 @@ msgstr "{0} ditambahkan, {1} dihapus"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
+msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgstr "{0} tidak dapat dijalankan ulang pada jendela konteks itu. Gunakan Coba lagi untuk memulihkannya."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
+msgstr "{0} tidak mengonfirmasi perubahan jendela konteks. Periksa percakapan sebelum memilih lagi."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} tidak menawarkan pengaturan untuk disesuaikan"
 
@@ -330,6 +340,11 @@ msgstr "{0} berada di atas {destination}."
 #: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} belum terpasang — membuka halaman unduhannya."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} kept its current context window."
+msgstr "{0} mempertahankan jendela konteksnya saat ini."
 
 #. placeholder {0}: modeSurface.currentName
 #. placeholder {1}: info.agent.name
@@ -3560,6 +3575,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Aturan konten belum dimuat — coba lagi sebentar"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Context window"
+msgstr "Jendela konteks"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "Jendela konteks:"
 
@@ -4689,6 +4708,10 @@ msgstr "Data"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "Tanggal"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Default"
+msgstr "Bawaan"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8793,6 +8816,10 @@ msgstr "Perubahan baru dari remote Anda muncul di salinan Anda secara otomatis."
 #: src/components/acp/ThreadView.tsx
 msgid "New chat with {agentName}"
 msgstr "Obrolan baru dengan {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with a different window"
+msgstr "Percakapan baru dengan jendela lain"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -14420,6 +14447,10 @@ msgstr "Komentar ini berlaku untuk seluruh properti"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "Berkas tidak bisa dilampirkan di sini."
+
+#: src/components/acp/ThreadView.tsx
+msgid "This conversation keeps the window it started with. A new chat can use a different one."
+msgstr "Percakapan ini mempertahankan jendela awalnya. Percakapan baru bisa memakai jendela lain."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."

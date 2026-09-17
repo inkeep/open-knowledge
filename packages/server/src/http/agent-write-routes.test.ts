@@ -2,6 +2,7 @@ import type { IncomingMessage } from 'node:http';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
 import { describe, expect, test } from 'vitest';
+import { sessionWriterId } from '../agent-id.ts';
 import { AgentSessionManager } from '../agent-sessions.ts';
 import { makeCaptureRes } from '../composition-rig.test-helper.ts';
 import type { DocumentDurabilityState } from '../document-durability-state.ts';
@@ -22,6 +23,7 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     resolveAlias: (docName) => docName,
     extractAgentIdentity: () => ({
       rawAgentId: 'writer',
+      suppliedWriterId: sessionWriterId({ agentId: 'agent-writer' }),
       agentId: 'agent-writer',
       agentName: 'Writer',
       colorSeed: 'writer',

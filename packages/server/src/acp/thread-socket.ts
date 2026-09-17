@@ -163,6 +163,11 @@ export function attachAcpThreadSocket(
             manager.setConfigOption(frame.threadId, frame.configId, frame.value);
             return;
           }
+          case 'set_context_window': {
+            const info = await manager.setContextWindow(frame.threadId, frame.tokens);
+            send({ op: 'context_window_set', reqId: frame.reqId, info });
+            return;
+          }
           case 'close': {
             const sink = subscriptions.get(frame.threadId);
             if (sink !== undefined) {

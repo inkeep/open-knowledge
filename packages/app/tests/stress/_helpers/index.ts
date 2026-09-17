@@ -12,6 +12,7 @@ export {
   type AgentIdentity,
   type ApiHelpers,
   expect,
+  isConcurrentOverwriteRefusal,
   REQUIRED_FIXTURE_ENTRY_NAMES,
   test,
   type WorkerServer,

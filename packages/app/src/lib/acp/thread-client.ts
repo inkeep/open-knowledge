@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import {
   agentSettingsKey,
   getRememberedAgentConfig,
+  getRememberedAgentContextWindow,
   getRememberedAgentMode,
 } from './agent-settings-store';
 import { type ThreadRenderModel, ThreadRenderModelBuilder } from './thread-event-model';
@@ -53,6 +54,15 @@ const AUTHENTICATE_TIMEOUT_MS = 5 * 60 * 1000 + 30_000;
 const CHANNEL_WAIT_MS = 8_000;
 const QUEUE_EDIT_TIMEOUT_MS = 10_000;
 
+export class ThreadContextWindowError extends Error {
+  readonly code: ThreadErrorCode | 'timeout';
+  constructor(code: ThreadErrorCode | 'timeout', message: string) {
+    super(message);
+    this.name = 'ThreadContextWindowError';
+    this.code = code;
+  }
+}
+
 export class ThreadResumeError extends Error {
   readonly code: ThreadErrorCode | 'timeout';
   constructor(code: ThreadErrorCode | 'timeout', message: string) {
@@ -79,6 +89,7 @@ export class AgentThreadClient {
   private pendingCreates = new Map<string, PendingCreate>();
   private pendingResumes = new Map<string, PendingCreate>();
   private pendingRetries = new Map<string, PendingCreate>();
+  private pendingContextWindows = new Map<string, PendingCreate>();
   private pendingAuths = new Map<string, PendingCreate>();
   private pendingQueueEdits = new Map<string, PendingQueueEdit>();
   private openedArchived = new Set<string>();
@@ -202,11 +213,13 @@ export class AgentThreadClient {
     const settingsKey = agentSettingsKey(params.agent);
     const config = getRememberedAgentConfig(settingsKey);
     const modeId = getRememberedAgentMode(settingsKey);
+    const contextWindow = getRememberedAgentContextWindow(settingsKey);
     const settings =
-      config !== undefined || modeId !== undefined
+      config !== undefined || modeId !== undefined || contextWindow !== undefined
         ? {
             ...(config !== undefined ? { config } : {}),
             ...(modeId !== undefined ? { modeId } : {}),
+            ...(contextWindow !== undefined ? { contextWindow } : {}),
           }
         : undefined;
     this.send({
@@ -310,6 +323,22 @@ export class AgentThreadClient {
 
   setConfigOption(threadId: string, configId: string, value: string | boolean): void {
     this.send({ op: 'set_config_option', threadId, configId, value });
+  }
+
+  async setContextWindow(threadId: string, tokens: number): Promise<ThreadInfo> {
+    this.connectNow();
+    await this.waitForOpen(CHANNEL_WAIT_MS);
+    this.reqCounter += 1;
+    const reqId = `context-window-${this.reqCounter}`;
+    const promise = new Promise<ThreadInfo>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingContextWindows.delete(reqId);
+        reject(new ThreadContextWindowError('timeout', 'the context window change timed out'));
+      }, RETRY_TIMEOUT_MS);
+      this.pendingContextWindows.set(reqId, { resolve, reject, timer });
+    });
+    this.send({ op: 'set_context_window', threadId, reqId, tokens });
+    return promise;
   }
 
   closeThread(threadId: string): void {
@@ -491,6 +520,11 @@ export class AgentThreadClient {
       pending.reject(new ThreadChannelUnavailableError());
     }
     this.pendingRetries.clear();
+    for (const pending of this.pendingContextWindows.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new ThreadChannelUnavailableError());
+    }
+    this.pendingContextWindows.clear();
     for (const pending of this.pendingAuths.values()) {
       clearTimeout(pending.timer);
       pending.reject(new ThreadChannelUnavailableError());
@@ -600,6 +634,16 @@ export class AgentThreadClient {
         this.upsertInfo(frame.info);
         return;
       }
+      case 'context_window_set': {
+        const pending = this.pendingContextWindows.get(frame.reqId);
+        if (pending !== undefined) {
+          this.pendingContextWindows.delete(frame.reqId);
+          clearTimeout(pending.timer);
+          pending.resolve(frame.info);
+        }
+        this.upsertInfo(frame.info);
+        return;
+      }
       case 'authenticated': {
         const pending = this.pendingAuths.get(frame.reqId);
         if (pending !== undefined) {
@@ -664,6 +708,13 @@ export class AgentThreadClient {
             this.pendingRetries.delete(frame.reqId);
             clearTimeout(pendingRetry.timer);
             pendingRetry.reject(new Error(frame.message));
+            return;
+          }
+          const pendingWindow = this.pendingContextWindows.get(frame.reqId);
+          if (pendingWindow !== undefined) {
+            this.pendingContextWindows.delete(frame.reqId);
+            clearTimeout(pendingWindow.timer);
+            pendingWindow.reject(new ThreadContextWindowError(frame.code, frame.message));
             return;
           }
           const pendingAuth = this.pendingAuths.get(frame.reqId);

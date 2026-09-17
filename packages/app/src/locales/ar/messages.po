@@ -304,6 +304,16 @@ msgstr "تمت إضافة {0}، وإزالة {1}"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
+msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgstr "{0} تعذر إعادة تشغيله بنافذة السياق هذه. استخدم إعادة المحاولة لاستعادته."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
+msgstr "{0} لم يؤكد تغيير نافذة السياق. راجع المحادثة قبل الاختيار مرة أخرى."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} لا يوفر أي إعدادات للضبط"
 
@@ -330,6 +340,11 @@ msgstr "{0} فوق {destination}."
 #: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} غير مثبَّت بعد — يجري فتح صفحة تنزيله."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} kept its current context window."
+msgstr "{0} احتفظ بنافذة السياق الحالية."
 
 #. placeholder {0}: modeSurface.currentName
 #. placeholder {1}: info.agent.name
@@ -3564,6 +3579,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr "لم تُحمَّل قواعد المحتوى بعد — أعد المحاولة بعد قليل"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Context window"
+msgstr "نافذة السياق"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "نافذة السياق:"
 
@@ -4693,6 +4712,10 @@ msgstr "البيانات"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "التاريخ"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Default"
+msgstr "الافتراضي"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8797,6 +8820,10 @@ msgstr "تظهر التغييرات الجديدة من مستودعك البع�
 #: src/components/acp/ThreadView.tsx
 msgid "New chat with {agentName}"
 msgstr "محادثة جديدة مع {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with a different window"
+msgstr "محادثة جديدة بنافذة مختلفة"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -14424,6 +14451,10 @@ msgstr "هذا التعليق على الخاصية بأكملها"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "لا يمكن إرفاق الملفات هنا."
+
+#: src/components/acp/ThreadView.tsx
+msgid "This conversation keeps the window it started with. A new chat can use a different one."
+msgstr "تحتفظ هذه المحادثة بالنافذة التي بدأت بها. يمكن لمحادثة جديدة استخدام نافذة أخرى."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."

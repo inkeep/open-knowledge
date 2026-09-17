@@ -304,6 +304,16 @@ msgstr "{0} añadidos, {1} eliminados"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
+msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgstr "{0} no pudo reiniciarse con esa ventana de contexto. Usa Reintentar para recuperarlo."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
+msgstr "{0} no confirmó el cambio de ventana de contexto. Revisa la conversación antes de elegir otra vez."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} no ofrece ajustes que configurar"
 
@@ -330,6 +340,11 @@ msgstr "{0} está sobre {destination}."
 #: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} todavía no está instalado: abriendo su página de descarga."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} kept its current context window."
+msgstr "{0} mantuvo su ventana de contexto actual."
 
 #. placeholder {0}: modeSurface.currentName
 #. placeholder {1}: info.agent.name
@@ -3564,6 +3579,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Las reglas de contenido aún no se han cargado; inténtalo de nuevo en un momento"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Context window"
+msgstr "Ventana de contexto"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "Ventana de contexto:"
 
@@ -4693,6 +4712,10 @@ msgstr "Datos"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "Fecha"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Default"
+msgstr "Predeterminado"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8797,6 +8820,10 @@ msgstr "Los cambios nuevos de tu remoto aparecen en tu copia automáticamente."
 #: src/components/acp/ThreadView.tsx
 msgid "New chat with {agentName}"
 msgstr "Nuevo chat con {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with a different window"
+msgstr "Nuevo chat con otra ventana"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -14424,6 +14451,10 @@ msgstr "Este comentario es sobre toda la propiedad"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "Aquí no se pueden adjuntar archivos."
+
+#: src/components/acp/ThreadView.tsx
+msgid "This conversation keeps the window it started with. A new chat can use a different one."
+msgstr "Esta conversacion mantiene la ventana con la que empezo. Un chat nuevo puede usar otra."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."

@@ -376,7 +376,7 @@
     },
     "test:perf": {
       "dependsOn": [],
-      "cache": true,
+      "cache": false,
       "inputs": [
         "src/editor/**/*.ts",
         "src/editor/**/*.tsx",
@@ -436,6 +436,7 @@
       "inputs": [
         "src/metrics/parse-health.ts",
         "src/markdown/**/*.ts",
+        "src/extensions/**/*.ts",
         "tests/health/parse-health-gate.ts",
         "tests/health/parse-health-gate.test.ts",
         "vitest.config.ts",
@@ -448,6 +449,7 @@
       "inputs": [
         "src/metrics/parse-health.ts",
         "src/markdown/**/*.ts",
+        "src/extensions/**/*.ts",
         "src/markdown/fixtures/**",
         "tests/health/parse-health-gate.ts",
         "tests/health/baseline.json"

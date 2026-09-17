@@ -44,6 +44,7 @@ const EXEMPT_HANDLERS = new Set([
   'handleDocumentRead',
   'handleDocumentList',
   'handleAcpCatalog',
+  'handleAcpModels',
   'handleAsset',
   'handleAssetText',
   'handleBacklinks',

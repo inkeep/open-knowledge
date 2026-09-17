@@ -304,6 +304,16 @@ msgstr "{0} जोड़े गए, {1} हटाए गए"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
+msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgstr "{0} उस संदर्भ विंडो पर पुनः आरंभ नहीं हो सका। इसे वापस लाने के लिए पुनः प्रयास करें।"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
+msgstr "{0} ने संदर्भ विंडो बदलने की पुष्टि नहीं की। दोबारा चुनने से पहले बातचीत देखें।"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} समायोजित करने के लिए कोई सेटिंग नहीं देता"
 
@@ -330,6 +340,11 @@ msgstr "{0} {destination} के ऊपर है।"
 #: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} अभी इंस्टॉल नहीं है — इसका डाउनलोड पेज खोला जा रहा है।"
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} kept its current context window."
+msgstr "{0} ने अपनी मौजूदा संदर्भ विंडो बनाए रखी।"
 
 #. placeholder {0}: modeSurface.currentName
 #. placeholder {1}: info.agent.name
@@ -3560,6 +3575,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr "सामग्री नियम अभी लोड नहीं हुए — कुछ देर बाद फिर कोशिश करें"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Context window"
+msgstr "संदर्भ विंडो"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "संदर्भ विंडो:"
 
@@ -4689,6 +4708,10 @@ msgstr "डेटा"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "तारीख़"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Default"
+msgstr "डिफ़ॉल्ट"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8793,6 +8816,10 @@ msgstr "आपके रिमोट के नए बदलाव आपकी 
 #: src/components/acp/ThreadView.tsx
 msgid "New chat with {agentName}"
 msgstr "{agentName} के साथ नई चैट"
+
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with a different window"
+msgstr "दूसरी विंडो के साथ नई बातचीत"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -14420,6 +14447,10 @@ msgstr "यह टिप्पणी पूरी प्रॉपर्टी �
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "यहाँ फ़ाइलें अटैच नहीं की जा सकतीं।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "This conversation keeps the window it started with. A new chat can use a different one."
+msgstr "यह बातचीत उसी विंडो के साथ चलती रहेगी जिससे शुरू हुई थी। नई बातचीत में दूसरी विंडो चुनी जा सकती है।"
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."

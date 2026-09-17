@@ -399,6 +399,33 @@ describe('retry and sign-in lifecycle', () => {
     await expect(pending).rejects.toThrow(/harness not installed/);
   });
 
+  test('a refused context window change carries the server code to the caller', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.setContextWindow('t1', 872_000);
+    await flush();
+    const reqId = sent.find((f) => f.op === 'set_context_window')?.reqId as string;
+    expect(reqId).toBeTruthy();
+
+    frame({
+      op: 'error',
+      code: 'spawn-failed',
+      message: 'the agent failed to start',
+      reqId,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toMatchObject({ code: 'spawn-failed' });
+  });
+
+  test('an accepted context window change settles with the thread info', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.setContextWindow('t1', 872_000);
+    await flush();
+    const reqId = sent.find((f) => f.op === 'set_context_window')?.reqId as string;
+
+    frame({ op: 'context_window_set', reqId, info: { ...info, contextWindow: 872_000 } });
+    await expect(pending).resolves.toMatchObject({ contextWindow: 872_000 });
+  });
+
   test('authenticateThread sends the method id and resolves with the signed-in info', async () => {
     const { client, sent, frame } = makeWiredClient();
     const pending = client.authenticateThread('t1', 'test_login');

@@ -12,8 +12,11 @@ import { splitPayloadFrontmatter } from './payload-frontmatter.ts';
 export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
 import * as Y from 'yjs';
+import { type RawWriterId, UNIDENTIFIED_WRITER_ID } from './agent-id.ts';
 import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
+import { getLastExternalEditorChangeMs } from './bridge-quiescence.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
+import { ConcurrentOverwriteRefusedError } from './concurrent-overwrite-refused-error.ts';
 import { isDocInConflict } from './conflict-authority.ts';
 import { DocInConflictError } from './conflict-errors.ts';
 import {
@@ -55,10 +58,63 @@ function docNameToFile(docName: string): string {
  * Y.Text bytes, then route through the sibling primitive matching the caller's intent. The caller
  * must wrap this in `session.dc.document.transact(fn, session.origin)` (precedent #24).
  */
+export const CONCURRENT_REPLACE_WINDOW_MS = 2_000;
+
+class AgentWriteRecency {
+  private readonly writes = new WeakMap<Document, Map<RawWriterId, number>>();
+
+  record(document: Document, agentId: RawWriterId, nowMs: number): void {
+    const byAgent = this.writes.get(document) ?? new Map<RawWriterId, number>();
+    for (const [writerId, writtenAtMs] of byAgent) {
+      if (!isRecent(writtenAtMs, nowMs)) byAgent.delete(writerId);
+    }
+    byAgent.set(agentId, nowMs);
+    this.writes.set(document, byAgent);
+  }
+
+  hasRecentPeer(document: Document, agentId: RawWriterId | undefined, nowMs: number): boolean {
+    const byAgent = this.writes.get(document);
+    if (byAgent === undefined) return false;
+    for (const [writerId, writtenAtMs] of byAgent) {
+      const ageMs = nowMs - writtenAtMs;
+      if (Math.abs(ageMs) >= CONCURRENT_REPLACE_WINDOW_MS) {
+        byAgent.delete(writerId);
+        continue;
+      }
+      if (writerId !== agentId) return true;
+    }
+    return false;
+  }
+}
+
+const agentWriteRecency = new AgentWriteRecency();
+
+function isRecent(timestampMs: number | undefined, nowMs: number): boolean {
+  if (timestampMs === undefined) return false;
+  return Math.abs(nowMs - timestampMs) < CONCURRENT_REPLACE_WINDOW_MS;
+}
+
+function assertConcurrentReplaceAllowed(
+  document: Document,
+  position: 'append' | 'prepend' | 'replace' | 'patch',
+  suppliedWriterId: RawWriterId | undefined,
+  nowMs: number,
+): void {
+  if (position !== 'replace') return;
+  const recentAgentWrite = agentWriteRecency.hasRecentPeer(document, suppliedWriterId, nowMs);
+  const recentEditorWrite = isRecent(
+    getLastExternalEditorChangeMs(document as unknown as Y.Doc),
+    nowMs,
+  );
+  if (!recentAgentWrite && !recentEditorWrite) return;
+  throw new ConcurrentOverwriteRefusedError(docNameToFile(document.name));
+}
+
 export function applyAgentMarkdownWrite(
   document: Document,
   markdown: string,
   position: 'append' | 'prepend' | 'replace' | 'patch',
+  suppliedWriterId?: RawWriterId,
 ): AgentWriteContentDivergence | undefined {
   if (isDocInConflict(document)) {
     throw new DocInConflictError({ file: docNameToFile(document.name) });
@@ -73,7 +129,12 @@ export function applyAgentMarkdownWrite(
       },
     },
     () => {
-      const divergence = applyAgentMarkdownWriteInner(document, markdown, position);
+      const divergence = applyAgentMarkdownWriteInner(
+        document,
+        markdown,
+        position,
+        suppliedWriterId,
+      );
       if (divergence !== undefined) {
         setActiveSpanAttributes({
           'agent.content_divergent': true,
@@ -151,6 +212,7 @@ function applyAgentMarkdownWriteInner(
   document: Document,
   markdown: string,
   position: 'append' | 'prepend' | 'replace' | 'patch',
+  suppliedWriterId?: RawWriterId,
 ): AgentWriteContentDivergence | undefined {
   try {
     const ytext = document.getText('source');
@@ -161,6 +223,7 @@ function applyAgentMarkdownWriteInner(
     }
     const { existingFm, finalFm, newContent } = composed;
 
+    let frontmatterEdited = false;
     if (finalFm !== existingFm) {
       const parsed = parseFrontmatterYaml(unwrapFrontmatterFences(finalFm));
       if (parsed.map === null) {
@@ -169,7 +232,7 @@ function applyAgentMarkdownWriteInner(
           parseError: parsed.parseError ?? 'unknown YAML parse error',
         });
       }
-      recordFrontmatterEditSurface('mcp-write');
+      frontmatterEdited = true;
     } else if (finalFm === '' && stripFrontmatter(newContent).frontmatter !== '') {
       throw new FrontmatterMalformedError({
         file: docNameToFile(document.name),
@@ -180,6 +243,9 @@ function applyAgentMarkdownWriteInner(
       });
     }
 
+    assertConcurrentReplaceAllowed(document, position, suppliedWriterId, Date.now());
+    if (frontmatterEdited) recordFrontmatterEditSurface('mcp-write');
+
     if (position === 'replace') {
       replaceRawBody(document, newContent);
     } else {
@@ -187,6 +253,9 @@ function applyAgentMarkdownWriteInner(
     }
 
     const actualYText = document.getText('source').toString();
+    if (suppliedWriterId !== undefined && actualYText !== currentYText) {
+      agentWriteRecency.record(document, suppliedWriterId, Date.now());
+    }
     const divergence = evaluateContentDivergence(actualYText, newContent, position);
     log.debug(
       {
@@ -199,7 +268,10 @@ function applyAgentMarkdownWriteInner(
     );
     return divergence;
   } catch (err) {
-    if (!(err instanceof FrontmatterMalformedError)) {
+    if (
+      !(err instanceof FrontmatterMalformedError) &&
+      !(err instanceof ConcurrentOverwriteRefusedError)
+    ) {
       log.error(
         { err, docName: document.name, position, markdownLen: markdown.length },
         `[applyAgentMarkdownWrite] failed for '${document.name}'`,
@@ -416,7 +488,7 @@ export class AgentSessionManager {
    */
   async getSession(
     docName: string,
-    agentId = 'claude-1',
+    agentId = UNIDENTIFIED_WRITER_ID,
     identity?: AgentSessionIdentity,
   ): Promise<SessionRecord> {
     if (isSystemDoc(docName) || isConfigDoc(docName)) {
@@ -545,7 +617,7 @@ export class AgentSessionManager {
     return key;
   }
 
-  hasSession(docName: string, agentId = 'claude-1'): boolean {
+  hasSession(docName: string, agentId = UNIDENTIFIED_WRITER_ID): boolean {
     return this.sessions.has(this.sessionKey(docName, agentId));
   }
 
@@ -574,7 +646,7 @@ export class AgentSessionManager {
     }
   }
 
-  async closeSession(docName: string, agentId = 'claude-1'): Promise<void> {
+  async closeSession(docName: string, agentId = UNIDENTIFIED_WRITER_ID): Promise<void> {
     const key = this.sessionKey(docName, agentId);
     const session = this.sessions.get(key);
     if (!session) return;

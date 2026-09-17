@@ -233,6 +233,10 @@
       "Adiciona à busca uma classificação por significado para que páginas relacionadas conceitualmente apareçam mesmo sem palavras-chave em comum."
     ],
     "1NgrlY": ["Outras formas de instalar"],
+    "1Ou_BW": [
+      ["0"],
+      " não confirmou a mudança da janela de contexto. Verifique a conversa antes de escolher de novo."
+    ],
     "1QfxQT": ["Dispensar"],
     "1RluQD": ["Mostrar substituir"],
     "1TA-aJ": ["Baixado ", ["pulled"], " · enviado ", ["pushed"]],
@@ -295,6 +299,7 @@
     "2QoAQ-": ["Ver ", ["publisher"], " no skills.sh"],
     "2RnFoM": ["Não foi possível retomar este chat: ", ["0"]],
     "2Snes1": ["Isto envia o endereço do link para fora do seu computador"],
+    "2UTDg2": [["0"], " manteve a janela de contexto atual."],
     "2VSPan": ["O Terminal foi fechado para abrir espaço para o painel de agentes."],
     "2XQ8Ww": ["Abrir a pré-visualização quando o agente editar"],
     "2YOwme": ["Reiniciado — agora rodando a v", ["appRuntime"], "."],
@@ -1402,6 +1407,10 @@
     "Dut9Ht": ["Descreva a habilidade que você quer criar"],
     "DvGkXq": ["Não foi possível criar ", ["effective"], ": ", ["0"]],
     "Dvr1Sg": ["Copiando"],
+    "Dvvrs8": [
+      ["0"],
+      " não conseguiu reiniciar com essa janela de contexto. Use Tentar novamente para retomá-lo."
+    ],
     "Dvwa0U": ["Criar um worktree a partir deste ramo"],
     "Dz7fsq": ["Aproximar"],
     "E-G19G": [
@@ -2118,6 +2127,7 @@
     "LRLKnQ": ["Ocultar os resolvidos"],
     "LRgZAt": [["owner"], "/", ["name"], " já existe"],
     "LTeJuX": ["Ativar ou desativar a tela cheia"],
+    "LXIm4m": ["Janela de contexto"],
     "LXdWeS": ["Título de seção médio."],
     "LXfNU-": ["Navegação e sugestões"],
     "LYufDw": ["Falha ao ativar a busca semântica — ", ["detail"]],
@@ -2586,6 +2596,7 @@
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
+    "QcTjRP": ["Esta conversa mantem a janela com que comecou. Uma nova conversa pode usar outra."],
     "Qca--K": [
       "Outro programa está usando o Git aqui — espere ele terminar e sincronize de novo (ele está segurando o <0>.git/index.lock</0>)"
     ],
@@ -5022,6 +5033,7 @@
     "nCzR-G": ["Copiar o código ", ["userCode"]],
     "nDT8qt": [["0"], " inicializado, mas não foi possível abri-lo."],
     "nFAvDj": [["plugin"], " inclui ", ["0"], " outras habilidades"],
+    "nHUawj": ["Nova conversa com outra janela"],
     "nJaz5Q": ["Substitui a entrada do OpenKnowledge que cada um já tem."],
     "nMSYz5": [
       "Este caminho está em um volume externo (/Volumes/...). O OpenKnowledge vai perder os arquivos de vista quando a unidade for ejetada."
@@ -5152,6 +5164,7 @@
     "otE4aj": ["Mostrar os nós de URL externa"],
     "ou1hFW": ["Liga ou desliga uma lista ordenada."],
     "outYNy": ["Nome duplicado \"", ["keyName"], "\""],
+    "ovBPCi": ["Padrao"],
     "ovIGrT": [
       "Não foi possível limpar os dados locais de colaboração de \"",
       ["docName"],

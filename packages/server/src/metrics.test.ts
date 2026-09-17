@@ -7,6 +7,7 @@ import {
   incrementBridgeMergeCheckpointCreated,
   incrementBridgeMergeContentLoss,
   incrementCollabSocketFilteredError,
+  incrementConcurrentOverwriteRefused,
   incrementConflict,
   incrementMapDrivenSpliceApplied,
   incrementMapDrivenSpliceFallback,
@@ -79,6 +80,18 @@ describe('reconciliation metrics', () => {
     expect(metrics.persistenceDivergenceRealignCheckpointCreated).toBe(0);
     resetMetrics();
     expect(getMetrics().staleExternalWriteRefused).toBe(0);
+  });
+
+  test('concurrent-overwrite refusal counts on its own axis and resets', () => {
+    resetMetrics();
+    incrementConcurrentOverwriteRefused();
+    incrementConcurrentOverwriteRefused();
+    const metrics = getMetrics();
+    expect(metrics.concurrentOverwriteRefused).toBe(2);
+    expect(metrics.staleExternalWriteRefused).toBe(0);
+    expect(metrics.conflictCount).toBe(0);
+    resetMetrics();
+    expect(getMetrics().concurrentOverwriteRefused).toBe(0);
   });
 
   test('map-driven splice counters: applied increments and fallback is keyed by reason', () => {

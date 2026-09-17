@@ -1719,6 +1719,55 @@ describe('handleFsWrite exclusion gate', () => {
   });
 });
 
+describe('handleFsWrite concurrent replace guard', () => {
+  test('returns one small ACP error and keeps the peer content', async () => {
+    const contentDir = tmp();
+    const docs = new Map<string, Y.Doc>();
+    const sessionManager = {
+      getSession: async (docName: string, agentId: string) => {
+        let document = docs.get(docName);
+        if (document === undefined) {
+          document = new Y.Doc();
+          Object.assign(document, { name: docName });
+          docs.set(docName, document);
+        }
+        return { dc: { document }, origin: { agentId }, agentId, docName };
+      },
+      closeAllForAgent: async () => {},
+    } as unknown as AgentSessionManager;
+    const manager = makeManager(contentDir, tmp(), { sessionManager });
+    const fsWrite = (
+      manager as unknown as {
+        handleFsWrite: (record: unknown, path: string, content: string) => Promise<void>;
+      }
+    ).handleFsWrite.bind(manager);
+    const path = join(contentDir, 'notes', 'shared.md');
+    const record = (agentSessionId: string) => ({
+      agentSessionId,
+      info: { lastActivityAt: 0, agent: { id: 'codex', name: agentSessionId } },
+    });
+
+    await fsWrite(record('agent-a'), path, '# From A\n');
+    const before = docs.get('notes/shared')?.getText('source').toString();
+    const error = await fsWrite(record('agent-b'), path, '# From B\n').then(
+      () => undefined,
+      (reason: unknown) => reason as { code?: number; message?: string; data?: unknown },
+    );
+
+    expect(error?.code).toBe(-32009);
+    expect(error?.message).toBe(
+      'Another writer changed this document recently. Wait a few seconds and retry.',
+    );
+    expect(error?.data).toEqual({
+      type: 'urn:ok:error:concurrent-overwrite-refused',
+      file: 'notes/shared.md',
+      retryable: true,
+      retryAfterSeconds: 3,
+    });
+    expect(docs.get('notes/shared')?.getText('source').toString()).toBe(before);
+  });
+});
+
 function writeRequestingAgentEntry(localDir: string, id: string, promptBody: string): void {
   const agentPath = join(localDir, `${id}.mjs`);
   writeFileSync(
@@ -4279,6 +4328,92 @@ describe('AcpThreadManager agent presence', () => {
     await manager.closeThread(info.threadId);
 
     expect(published).toEqual([]);
+  }, 45_000);
+
+  test('a context window the agent will not start under is refused and leaves the old one in place', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const agentPath = join(localDir, 'codex-acp.mjs');
+    writeFileSync(
+      agentPath,
+      `
+const cfg = process.env.CODEX_CONFIG ?? '';
+if (cfg.includes('model_context_window') && !cfg.includes('272000')) process.exit(3);
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { protocolVersion: 1, agentCapabilities: {} } });
+    } else if (msg.method === 'session/new') {
+      write({ jsonrpc: '2.0', id: msg.id, result: { sessionId: 'sess-1' } });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+    );
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'codex-acp', name: 'Fake codex-acp', command: 'node', args: [agentPath] },
+      ]),
+    );
+    const manager = makeManager(contentDir, localDir, {
+      sessionManager: stubSessionManager(new Map()),
+    });
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 272_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.contextWindow).toBe(272_000);
+
+    await expect(manager.setContextWindow(info.threadId, 872_000)).rejects.toMatchObject({
+      code: 'spawn-failed',
+    });
+    await expect(manager.retryThread(info.threadId)).resolves.toMatchObject({
+      contextWindow: 272_000,
+    });
+
+    await manager.closeThread(info.threadId);
+  }, 45_000);
+
+  test('a picked window survives a restart, so a resumed conversation keeps it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'codex-acp', { FAKE_CAPS: 'resume,load' });
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'codex-acp' },
+      settings: { contextWindow: 872_000 },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.contextWindow).toBe(872_000);
+    manager.sendPrompt(info.threadId, 'hello there');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'turn ended');
+    await manager.closeThread(info.threadId);
+
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    expect(manager2.getInfo(info.threadId)?.contextWindow ?? null).toBeNull();
+
+    await manager2.resumeThread(info.threadId);
+    await waitUntil(() => manager2.getInfo(info.threadId)?.status === 'ready', 15_000, 'resumed');
+    expect(manager2.getInfo(info.threadId)?.contextWindow).toBe(872_000);
+
+    await manager2.closeThread(info.threadId);
   }, 45_000);
 
   test('an ACP fs write publishes presence for that doc, under the agent brand icon', async () => {

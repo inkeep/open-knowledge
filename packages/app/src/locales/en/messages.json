@@ -197,6 +197,10 @@
       "Add meaning-based ranking to search so conceptually-related pages surface even when they share no keywords."
     ],
     "1NgrlY": ["Other ways to install"],
+    "1Ou_BW": [
+      ["0"],
+      " didn't confirm the context window change. Check the conversation before picking again."
+    ],
     "1QfxQT": ["Dismiss"],
     "1RluQD": ["Show replace"],
     "1TA-aJ": ["Pulled ", ["pulled"], " · pushed ", ["pushed"]],
@@ -255,6 +259,7 @@
     "2QoAQ-": ["View ", ["publisher"], " on skills.sh"],
     "2RnFoM": ["Couldn't resume this chat: ", ["0"]],
     "2Snes1": ["This sends the link's address off your machine"],
+    "2UTDg2": [["0"], " kept its current context window."],
     "2VSPan": ["Terminal closed to make room for the agent panel."],
     "2XQ8Ww": ["Open preview when agent edits"],
     "2YOwme": ["Restarted — now running v", ["appRuntime"], "."],
@@ -1203,6 +1208,7 @@
     "Dut9Ht": ["Describe the skill you want to create"],
     "DvGkXq": ["Couldn't create ", ["effective"], ": ", ["0"]],
     "Dvr1Sg": ["Copying"],
+    "Dvvrs8": [["0"], " couldn't restart on that context window. Use Retry to bring it back."],
     "Dvwa0U": ["Create a worktree from this branch"],
     "Dz7fsq": ["Zoom In"],
     "E-G19G": [
@@ -1841,6 +1847,7 @@
     "LRLKnQ": ["Hide resolved"],
     "LRgZAt": [["owner"], "/", ["name"], " already exists"],
     "LTeJuX": ["Toggle Full Screen"],
+    "LXIm4m": ["Context window"],
     "LXdWeS": ["Medium section heading."],
     "LXfNU-": ["Navigation and suggestions"],
     "LYufDw": ["Failed to enable semantic search — ", ["detail"]],
@@ -2268,6 +2275,9 @@
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
+    "QcTjRP": [
+      "This conversation keeps the window it started with. A new chat can use a different one."
+    ],
     "Qca--K": [
       "Another program is using Git here — wait for it to finish, then sync again (it holds <0>.git/index.lock</0>)"
     ],
@@ -4418,6 +4428,7 @@
     "nCzR-G": ["Copy code ", ["userCode"]],
     "nDT8qt": ["Initialized ", ["0"], " but could not open it."],
     "nFAvDj": [["plugin"], " ships ", ["0"], " other skills"],
+    "nHUawj": ["New chat with a different window"],
     "nJaz5Q": ["Replaces the OpenKnowledge entry each of them already has."],
     "nMSYz5": [
       "This path is on an external volume (/Volumes/...). OpenKnowledge will lose track of files when the drive ejects."
@@ -4545,6 +4556,7 @@
     "otE4aj": ["Show external URL nodes"],
     "ou1hFW": ["Toggle an ordered list."],
     "outYNy": ["Duplicate name \"", ["keyName"], "\""],
+    "ovBPCi": ["Default"],
     "ovIGrT": [
       "Local collaboration data for \"",
       ["docName"],

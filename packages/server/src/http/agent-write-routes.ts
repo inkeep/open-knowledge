@@ -32,7 +32,7 @@ import { formatRollbackSubject } from '@inkeep/open-knowledge-core/shadow-repo-l
 import { captureEffect } from '../activity-log.ts';
 import { listAgentActivity, synthesizeVersionDiff } from '../agent-activity.ts';
 import type { AgentFocusBroadcaster } from '../agent-focus.ts';
-import { resolveAgentType, validateAgentId } from '../agent-id.ts';
+import { type RawWriterId, resolveAgentType, validateAgentId } from '../agent-id.ts';
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import {
   AgentSessionCapacityError,
@@ -50,6 +50,10 @@ import {
 } from '../agent-write-summary.ts';
 import { composeAndWriteRawBody, replaceRawBody } from '../bridge-intake.ts';
 import { isConfigDoc, isSystemDoc, SYSTEM_DOC_NAME } from '../cc1-broadcast.ts';
+import {
+  ConcurrentOverwriteRefusedError,
+  respondConcurrentOverwriteRefused,
+} from '../concurrent-overwrite-refused-error.ts';
 import type { ConflictAuthority } from '../conflict-authority.ts';
 import { DocInConflictError, respondDocInConflict } from '../conflict-errors.ts';
 import {
@@ -136,6 +140,7 @@ export interface AgentWriteRouteDeps {
   resolveAlias: (docName: string) => string;
   extractAgentIdentity: (body: Record<string, unknown>) => {
     rawAgentId: string | undefined;
+    suppliedWriterId: RawWriterId | undefined;
     agentId: string;
     agentName: string;
     colorSeed: string;
@@ -284,8 +289,15 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         const effectiveDocName = requireNonEmptyDocName(body.docName, res, 'agent-write-md');
         if (effectiveDocName === null) return;
         const resolvedDocName = canonicalDocName(resolveAlias(effectiveDocName));
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
+        const {
+          agentId,
+          suppliedWriterId,
+          agentName,
+          colorSeed,
+          clientName,
+          clientVersion,
+          label,
+        } = extractAgentIdentity(body);
         if (isSystemDoc(resolvedDocName) || isConfigDoc(resolvedDocName)) {
           errorResponse(
             res,
@@ -340,7 +352,12 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           );
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
-            writeDivergence = applyAgentMarkdownWrite(session.dc.document, body.markdown, position);
+            writeDivergence = applyAgentMarkdownWrite(
+              session.dc.document,
+              body.markdown,
+              position,
+              suppliedWriterId,
+            );
             const changedBlocks =
               changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
             const activityMap = session.dc.document.getMap('agent-flash');
@@ -464,6 +481,10 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             'agent-write-md',
             conflicts.findByDocName(stripDocExtension(e.file)),
           );
+          return;
+        }
+        if (e instanceof ConcurrentOverwriteRefusedError) {
+          respondConcurrentOverwriteRefused(res, e, 'agent-write-md');
           return;
         }
         if (e instanceof FrontmatterMalformedError) {
@@ -741,8 +762,15 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
         const effectivePatchDocName = requireNonEmptyDocName(body.docName, res, 'agent-patch');
         if (effectivePatchDocName === null) return;
         const docName = resolveAlias(effectivePatchDocName);
-        const { agentId, agentName, colorSeed, clientName, clientVersion, label } =
-          extractAgentIdentity(body);
+        const {
+          agentId,
+          suppliedWriterId,
+          agentName,
+          colorSeed,
+          clientName,
+          clientVersion,
+          label,
+        } = extractAgentIdentity(body);
         if (isSystemDoc(docName) || isConfigDoc(docName)) {
           errorResponse(
             res,
@@ -836,7 +864,12 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             }
             const { body: newBody } = stripFrontmatter(newFull);
             const beforeBlocks = snapshotBlocks(session.dc.document);
-            patchDivergence = applyAgentMarkdownWrite(session.dc.document, newBody, 'patch');
+            patchDivergence = applyAgentMarkdownWrite(
+              session.dc.document,
+              newBody,
+              'patch',
+              suppliedWriterId,
+            );
             const changedBlocks =
               changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
             const activityMap = session.dc.document.getMap('agent-flash');

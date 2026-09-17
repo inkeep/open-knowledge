@@ -1,4 +1,10 @@
-import { expect, test, waitForActiveProviderSynced } from './_helpers';
+import { CONCURRENT_REPLACE_WINDOW_MS } from '@inkeep/open-knowledge-server';
+import {
+  expect,
+  isConcurrentOverwriteRefusal,
+  test,
+  waitForActiveProviderSynced,
+} from './_helpers';
 
 function agentId(label: string): string {
   return `${label}-${crypto.randomUUID().slice(0, 8)}`;
@@ -18,18 +24,29 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
 
     const claudeId = agentId('claude');
     const cursorId = agentId('cursor');
-    await Promise.all([
-      api.writeAsAgent(docFoo, '# Claude was here', {
-        agentId: claudeId,
-        agentName: 'Claude',
-        clientName: 'claude-code',
-      }),
-      api.writeAsAgent(docFoo, '# Cursor was here', {
-        agentId: cursorId,
-        agentName: 'Cursor',
-        clientName: 'cursor',
-      }),
-    ]);
+    await api.writeAsAgent(docFoo, '# Claude was here', {
+      agentId: claudeId,
+      agentName: 'Claude',
+      clientName: 'claude-code',
+    });
+    await expect
+      .poll(
+        async () => {
+          try {
+            await api.writeAsAgent(docFoo, '# Cursor was here', {
+              agentId: cursorId,
+              agentName: 'Cursor',
+              clientName: 'cursor',
+            });
+            return true;
+          } catch (error) {
+            if (isConcurrentOverwriteRefusal(error)) return false;
+            throw error;
+          }
+        },
+        { timeout: CONCURRENT_REPLACE_WINDOW_MS * 2, intervals: [100, 250, 500] },
+      )
+      .toBe(true);
 
     const currentSection = bar.locator('[data-presence-section="current"]');
     await expect
@@ -98,6 +115,7 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
   }) => {
     const docFoo = 'doc-mp-nav-foo';
     const docBar = 'doc-mp-nav-bar';
+    const cursorBarId = agentId('cursor-nav-bar');
     await api.seedDocs([
       { name: docFoo, markdown: '# foo' },
       { name: docBar, markdown: '# bar body' },
@@ -112,7 +130,7 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
       clientName: 'claude-code',
     });
     await api.writeAsAgent(docBar, '# Cursor on bar', {
-      agentId: agentId('cursor-nav-bar'),
+      agentId: cursorBarId,
       agentName: 'Cursor',
       clientName: 'cursor',
     });
@@ -123,7 +141,7 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
     );
     await expect(crossDocAvatar.first()).toBeVisible({ timeout: 10_000 });
     await api.writeAsAgent(docBar, '# Cursor on bar', {
-      agentId: agentId('cursor-nav-bar'),
+      agentId: cursorBarId,
       agentName: 'Cursor',
       clientName: 'cursor',
     });
@@ -140,6 +158,7 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
     api,
   }) => {
     const docBar = 'doc-mp-nodoc-bar';
+    const cursorBarId = agentId('cursor-nodoc-bar');
     await api.seedDocs([{ name: docBar, markdown: '# bar body' }]);
 
     await page.goto('/');
@@ -150,7 +169,7 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
     await expect(panel).toBeHidden();
 
     await api.writeAsAgent(docBar, '# Cursor on bar', {
-      agentId: agentId('cursor-nodoc-bar'),
+      agentId: cursorBarId,
       agentName: 'Cursor',
       clientName: 'cursor',
     });
@@ -160,7 +179,7 @@ test.describe('multi-agent presence — sectioned PresenceBar (FR-9)', () => {
     );
     await expect(crossDocAvatar.first()).toBeVisible({ timeout: 10_000 });
     await api.writeAsAgent(docBar, '# Cursor on bar', {
-      agentId: agentId('cursor-nodoc-bar'),
+      agentId: cursorBarId,
       agentName: 'Cursor',
       clientName: 'cursor',
     });

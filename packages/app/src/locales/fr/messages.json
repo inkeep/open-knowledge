@@ -239,6 +239,10 @@
       "Ajoute à la recherche un classement fondé sur le sens, afin que les pages liées par le concept ressortent même sans mots-clés communs."
     ],
     "1NgrlY": ["Autres méthodes d'installation"],
+    "1Ou_BW": [
+      ["0"],
+      " n'a pas confirmé le changement de fenêtre de contexte. Vérifiez la conversation avant de choisir à nouveau."
+    ],
     "1QfxQT": ["Ignorer"],
     "1RluQD": ["Afficher le remplacement"],
     "1TA-aJ": ["Récupéré ", ["pulled"], " · envoyé ", ["pushed"]],
@@ -307,6 +311,7 @@
     "2QoAQ-": ["Voir ", ["publisher"], " sur skills.sh"],
     "2RnFoM": ["Impossible de reprendre ce chat : ", ["0"]],
     "2Snes1": ["Ceci envoie l'adresse du lien hors de votre machine"],
+    "2UTDg2": [["0"], " a conservé sa fenêtre de contexte actuelle."],
     "2VSPan": ["Terminal a été fermé pour faire de la place au panneau des agents."],
     "2XQ8Ww": ["Ouvrir l'aperçu quand l'agent modifie"],
     "2YOwme": ["Redémarré — exécute maintenant la v", ["appRuntime"], "."],
@@ -1455,6 +1460,10 @@
     "Dut9Ht": ["Décrivez la compétence que vous voulez créer"],
     "DvGkXq": ["Impossible de créer ", ["effective"], " : ", ["0"]],
     "Dvr1Sg": ["Copie en cours"],
+    "Dvvrs8": [
+      ["0"],
+      " n'a pas pu redémarrer avec cette fenêtre de contexte. Utilisez Réessayer pour le relancer."
+    ],
     "Dvwa0U": ["Créer un worktree à partir de cette branche"],
     "Dz7fsq": ["Zoom avant"],
     "E-G19G": [
@@ -2188,6 +2197,7 @@
     "LRLKnQ": ["Masquer les éléments résolus"],
     "LRgZAt": [["owner"], "/", ["name"], " existe déjà"],
     "LTeJuX": ["Basculer en plein écran"],
+    "LXIm4m": ["Fenetre de contexte"],
     "LXdWeS": ["Titre de section moyen."],
     "LXfNU-": ["Navigation et suggestions"],
     "LYufDw": ["Échec de l'activation de la recherche sémantique — ", ["detail"]],
@@ -2656,6 +2666,9 @@
     "QWdKwH": ["Déplacer"],
     "QYTOaN": ["Vous pourrez changer cela plus tard dans <0>Paramètres → Synchronisation</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "QcTjRP": [
+      "Cette conversation garde la fenetre avec laquelle elle a commence. Une nouvelle conversation peut en utiliser une autre."
+    ],
     "Qca--K": [
       "Un autre programme utilise Git ici — attendez qu'il termine, puis relancez la synchronisation (il retient <0>.git/index.lock</0>)"
     ],
@@ -5167,6 +5180,7 @@
     "nCzR-G": ["Copier le code ", ["userCode"]],
     "nDT8qt": [["0"], " initialisé mais impossible à ouvrir."],
     "nFAvDj": [["plugin"], " fournit ", ["0"], " autres compétences"],
+    "nHUawj": ["Nouvelle conversation avec une autre fenetre"],
     "nJaz5Q": ["Remplace l'entrée OpenKnowledge que chacun possède déjà."],
     "nMSYz5": [
       "Ce chemin se trouve sur un volume externe (/Volumes/...). OpenKnowledge perdra la trace des fichiers lorsque le disque sera éjecté."
@@ -5299,6 +5313,7 @@
     "otE4aj": ["Afficher les nœuds d'URL externes"],
     "ou1hFW": ["Bascule une liste numérotée."],
     "outYNy": ["Nom en double « ", ["keyName"], " »"],
+    "ovBPCi": ["Par defaut"],
     "ovIGrT": [
       "Les données de collaboration locales de « ",
       ["docName"],
