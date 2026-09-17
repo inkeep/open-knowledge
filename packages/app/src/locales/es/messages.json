@@ -666,7 +666,6 @@
     ],
     "6Aih4U": ["Sin conexión"],
     "6EoD0z": ["Resolver en la terminal"],
-    "6FCixu": ["Reabrir un chat anterior"],
     "6HCOwA": ["No se pudo abrir."],
     "6KCH4m": ["Archivos ocultos"],
     "6KXnz5": ["Puedes restaurar este archivo desde la Papelera."],
@@ -676,6 +675,7 @@
     "6MnZEC": ["No se pudo cargar la terminal"],
     "6Nea1q": ["Usar ", ["0"], " para el modo oscuro activo"],
     "6O626z": ["Ningún encabezado coincide con \"", ["trimmedAnchorQuery"], "\""],
+    "6PsaMr": ["Renombrar chat"],
     "6Pxqwv": [
       "Todavía no hay plantillas de proyecto. Crea una para tenerla disponible en todo el proyecto. Las plantillas de carpeta viven en la página general de cada carpeta."
     ],
@@ -892,6 +892,7 @@
     "8PmoQF": ["Abre el menú de inserción en una posición de texto vacía o activa."],
     "8QLpZe": ["El servidor se detuvo. Reinícialo para volver a conectarte."],
     "8RtNI0": ["No se pudieron cargar los documentos"],
+    "8SVvE7": ["Borrar búsqueda del historial"],
     "8TvlHF": ["Volcado de fallo"],
     "8Uv5e6": ["Agentes"],
     "8VLpRT": [
@@ -1916,6 +1917,7 @@
     "If0crP": ["Abrir con la IA ", ["targetDisplayName"], ", ", ["hint"]],
     "IgN3LY": ["Sobre el texto seleccionado en <0>", ["address"], "</0>"],
     "IgTwLt": ["Abre este documento en el editor y contrae el grafo."],
+    "IgkKDg": ["¿Eliminar chat?"],
     "Ik-gP0": ["Encabezado H", ["level"], ": ", ["text"]],
     "ImTzPZ": ["Este equipo"],
     "IoHQYP": [
@@ -1994,6 +1996,7 @@
     "Jnz9AY": [["0"], " está sobre ", ["destination"], "."],
     "Jqqevv": ["Error del sistema"],
     "JrqL_z": ["Insertar fila encima"],
+    "Jrwm42": ["No se pudieron cargar tus agentes."],
     "JsHvhz": [
       "Por encima de la guía de ",
       ["budgetLabel"],
@@ -2860,6 +2863,7 @@
       "\". Recarga para reintentarlo."
     ],
     "ScwcF2": ["Ya existe un proyecto en esta ubicación. Elige otra carpeta superior."],
+    "Sdv6pQ": ["Historial de chats"],
     "Sg-6Bo": [
       [
         "errorCount",
@@ -2934,7 +2938,6 @@
     "Tofsyo": ["Mover Terminal a la parte inferior"],
     "TpqW74": ["Fijo"],
     "Tq3pcs": ["Conservar el mío"],
-    "Tq9kNX": ["No hay chats abiertos. Reabre uno anterior o inicia uno nuevo con el botón ＋."],
     "TsZmgr": ["El archivo en el disco, y el id que usan los agentes."],
     "TvY_XA": ["Documentación"],
     "TwYboS": ["Recorre los resultados de búsqueda de CodeMirror o cierra el panel de búsqueda."],
@@ -3188,6 +3191,7 @@
     "W9NSe0": ["Comprobando enlaces"],
     "W9_Bub": ["Los cambios locales se solapan con la sincronización entrante"],
     "WBNpt9": ["No se pudo leer este tema (", ["0"], ")"],
+    "WC8Mr6": ["No se pudo iniciar el hilo del agente."],
     "WEYdDv": ["Recomendado"],
     "WFEbV1": [
       "Señala problemas habituales de markdown en el editor. Funciona con <0>markdownlint<1/></0>."
@@ -3401,6 +3405,7 @@
     ],
     "YEP3X2": ["Elimina una tabla cuando la selección de celdas activa cubre la tabla entera."],
     "YEzhIr": ["Pull y Push"],
+    "YFpLoV": ["Eliminar chat"],
     "YGIi_c": ["Reinstalar"],
     "YGNRB5": ["— excepto"],
     "YGt-0e": ["Leyendo…"],
@@ -3643,6 +3648,7 @@
     "_fZSIY": [
       "OpenKnowledge no modificó este archivo porque no pudo analizarlo de forma segura. Corrige el archivo a mano y vuelve a intentarlo."
     ],
+    "_fwE6J": ["Anteriores"],
     "_gO_m8": ["Esperando tu aprobación"],
     "_gkGSK": ["plantilla eliminada"],
     "_oqKcJ": ["Introduce al menos 3 caracteres para buscar por significado."],
@@ -3661,6 +3667,7 @@
     "a3LDKx": ["Seguridad"],
     "a45f2c": ["Patrones glob a los que se aplica este esquema"],
     "a4FRQv": ["¿Deshacer hasta esta edición?"],
+    "a4xYoA": ["Buscar chats"],
     "a5Gha5": ["Los cambios locales impidieron la fusión"],
     "a5W0q0": [
       "¿Seguro que quieres eliminar ",
@@ -3923,6 +3930,7 @@
     "cklVjM": ["Cronología"],
     "clJ3qM": ["Listo."],
     "cnGeoo": ["Eliminar"],
+    "cnR7h2": ["Ningún chat coincide con tu búsqueda"],
     "cqQyPB": ["Nombre de la carpeta"],
     "crqzW5": ["Herramientas de IA"],
     "cs4mps": ["Compartir configuración"],
@@ -4117,6 +4125,7 @@
       ". Se verificó que cada original no cambió, así que elimina esas copias y vuelve a intentar el movimiento."
     ],
     "eJitUk": ["Subir desde el equipo"],
+    "eKGK4A": ["Buscar en el historial de chats"],
     "eKThTQ": ["No se pudo reordenar"],
     "eMWRAs": [
       "Páginas indexadas: ",
@@ -4151,6 +4160,7 @@
     "ebqMh6": [
       "Se comparte con todos los del proyecto. Se guarda en la carpeta del proyecto y viaja con ella mediante git."
     ],
+    "ecUA8p": ["Hoy"],
     "ee15Vl": [
       "Las habilidades enseñan tareas repetibles a tus herramientas de IA. Escribe las tuyas en la barra lateral Habilidades del editor; esta página es donde se activan y se comparten."
     ],
@@ -4449,6 +4459,7 @@
     ],
     "gyHDWC": ["Arreglarlo todo con IA (", ["count"], ")"],
     "gyYvCN": ["Enviar mis ediciones cada"],
+    "gzaLgh": ["Elige qué inicia un chat nuevo"],
     "h-AdvS": ["Las carpetas y las plantillas ya están aquí, así que no hay nada que añadir."],
     "h-RPqa": [
       "Cuánto tiempo espera OpenKnowledge cada solicitud de embeddings durante la indexación. Las solicitudes de búsqueda tienen un tiempo de espera fijo de 8 segundos por intento, que no cambia con este ajuste."
@@ -4484,6 +4495,7 @@
     "hFmYGU": ["No se admiten archivos de tema vinculados"],
     "hGmuTc": ["Documentos etiquetados con #", ["tagDocsName"]],
     "hHMv6l": ["Eliminar el bloque"],
+    "hIQkLb": ["Nuevo chat"],
     "hItdtk": ["Elegir carpeta"],
     "hLKfZe": ["Usar un token en su lugar"],
     "hLod4_": ["Convertir en plantilla"],
@@ -4692,6 +4704,7 @@
     "j9Vqvc": ["heredado"],
     "j9tqwO": ["No está en la barra lateral"],
     "jAMpHn": ["¿Qué es un paquete inicial?"],
+    "jAQCRf": ["No hay agentes activados."],
     "jBVUXo": ["No se pudo abrir la terminal; inténtalo de nuevo."],
     "jC8Bv4": ["Echando un vistazo…"],
     "jC8LSZ": ["Restablecer los filtros de vista"],
@@ -4817,7 +4830,6 @@
       "¿No ves <0>Habilidades</0>? Activa antes <1>Ajustes <2/> Capacidades <3/> Ejecución de código y creación de archivos</1>."
     ],
     "kVS5tE": ["¿Mantener índices generados en cada carpeta?"],
-    "kVgQUA": ["¿Eliminar este chat?"],
     "kVzuTI": ["Habilidad de agente recomendada"],
     "kXNv8P": [
       "Automático (solo Pull) nunca hace push ni confirma tus cambios locales. Se quedan solo en esta máquina."
@@ -5491,6 +5503,7 @@
     "qze9od": ["Esta carpeta también es de ", ["alsoAffects"], "."],
     "r-OJYm": ["Escribe un nombre de rama válido (sin espacios, sin punto inicial, sin \"..\")."],
     "r2eKE3": ["Inicia sesión primero en ", ["agentName"]],
+    "r3iaI0": ["Aún no hay chats."],
     "r4R7AZ": ["Error de red durante la limpieza"],
     "r51jLC": ["Archivo guardado y aplicación Claude Desktop abierta"],
     "r6ncaO": ["Cerrar pestaña"],
@@ -6345,6 +6358,7 @@
         }
       ]
     ],
+    "yxH4Gs": ["CLI de ", ["0"]],
     "yz7wBu": ["Cerrar"],
     "yzF66j": ["Enlace"],
     "yzGPkm": ["Expandir el grafo"],

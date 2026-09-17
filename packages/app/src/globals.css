@@ -3209,6 +3209,9 @@ button:active:not(:disabled) {
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-hover-foreground: var(--sidebar-hover-foreground);
+  --color-sidebar-selected: var(--sidebar-selected);
+  --color-sidebar-selected-foreground: var(--sidebar-selected-foreground);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
@@ -3320,6 +3323,13 @@ button:active:not(:disabled) {
   ); /* based off of azure-900 with lower opacity */
   --sidebar-accent-foreground: var(--color-azure-600);
   --sidebar-hover: oklch(0.97 0 0);
+  --sidebar-hover-foreground: oklch(0.145 0 0);
+  --sidebar-hover-muted-foreground: #707070;
+  --sidebar-hover-destructive-foreground: var(--destructive);
+  --sidebar-selected: color-mix(in oklab, var(--sidebar-hover), #000 2%);
+  --sidebar-selected-foreground: #000;
+  --sidebar-selected-muted-foreground: #6c6c6c;
+  --sidebar-selected-destructive-foreground: var(--destructive);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
 
@@ -3433,6 +3443,13 @@ button:active:not(:disabled) {
   --sidebar-accent: oklch(0.274 0.006 286.033);
   --sidebar-accent-foreground: var(--color-sky-blue);
   --sidebar-hover: oklch(0.269 0 0 / 50%);
+  --sidebar-hover-foreground: oklch(0.985 0 0);
+  --sidebar-hover-muted-foreground: var(--muted-foreground);
+  --sidebar-hover-destructive-foreground: var(--destructive);
+  --sidebar-selected: color-mix(in oklab, var(--sidebar-hover), #fff 4%);
+  --sidebar-selected-foreground: #fff;
+  --sidebar-selected-muted-foreground: var(--muted-foreground);
+  --sidebar-selected-destructive-foreground: var(--destructive);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
 

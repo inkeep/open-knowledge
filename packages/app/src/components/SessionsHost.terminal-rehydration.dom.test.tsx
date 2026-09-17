@@ -13,10 +13,11 @@ import {
 } from './sessions-host-tabs.test-helper';
 
 vi.doMock('@/lib/acp/thread-client', () => ({
+  useAgentThreads: () => [],
   useOpenAgentThreadTabs: () => [],
   useInitialRosterThreadIds: () => null,
-  useArchivedAgentThreads: () => [],
   useAgentThreadConnection: () => 'open',
+  useAgentThreadScope: () => null,
   useAgentThreadUnread: () => false,
   getAgentThreadClient: () => ({
     closeThread: vi.fn(),

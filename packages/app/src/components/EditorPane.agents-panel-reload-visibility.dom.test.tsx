@@ -15,7 +15,6 @@ import {
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
 
 let openThreads: ThreadInfo[] = [];
-let archivedThreads: ThreadInfo[] = [];
 let connectionStatus: 'idle' | 'connecting' | 'open' | 'closed' = 'open';
 let rosterThreadIds: ReadonlySet<string> | null = null;
 const storeListeners = new Set<() => void>();
@@ -46,6 +45,12 @@ function subscribeStore(callback: () => void) {
 }
 
 vi.doMock('@/lib/acp/thread-client', () => ({
+  useAgentThreads: () =>
+    useSyncExternalStore(
+      subscribeStore,
+      () => openThreads,
+      () => openThreads,
+    ),
   useOpenAgentThreadTabs: () =>
     useSyncExternalStore(
       subscribeStore,
@@ -53,18 +58,13 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       () => openThreads,
     ),
   useInitialRosterThreadIds: () => rosterThreadIds,
-  useArchivedAgentThreads: () =>
-    useSyncExternalStore(
-      subscribeStore,
-      () => archivedThreads,
-      () => archivedThreads,
-    ),
   useAgentThreadConnection: () =>
     useSyncExternalStore(
       subscribeStore,
       () => connectionStatus,
       () => connectionStatus,
     ),
+  useAgentThreadScope: () => null,
   useAgentThreadUnread: () => false,
   getAgentThreadClient: () => ({
     closeThread: vi.fn(),
@@ -312,7 +312,6 @@ async function renderPane(expectedStoreSubscribers: number): Promise<void> {
 describe('EditorPane agents-panel reload visibility', () => {
   beforeEach(() => {
     openThreads = [];
-    archivedThreads = [];
     connectionStatus = 'open';
     rosterThreadIds = null;
     localStorage.clear();

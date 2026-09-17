@@ -1,8 +1,9 @@
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { requestSendToOpenChat, subscribeSendInThread } from '@/comments/open-chat-send';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { collectImageParts } from '@/editor/composer-drop.test-helper';
 import {
@@ -27,7 +28,14 @@ import {
 let openThreads: ThreadInfo[] = [];
 const storeListeners = new Set<() => void>();
 let archivedThreads: ThreadInfo[] = [];
+let agentThreads: ThreadInfo[] = [];
 let initialRosterIds: ReadonlySet<string> | null = null;
+let threadScope: string | null = 'ws://project-a/collab/thread';
+function refreshAgentThreads() {
+  const byId = new Map(archivedThreads.map((thread) => [thread.threadId, thread]));
+  for (const thread of openThreads) byId.set(thread.threadId, thread);
+  agentThreads = [...byId.values()];
+}
 function notifyStore() {
   for (const l of storeListeners) l();
 }
@@ -35,15 +43,23 @@ function setInitialRosterIds(next: ReadonlySet<string> | null) {
   initialRosterIds = next;
   notifyStore();
 }
+function setThreadScope(next: string | null) {
+  threadScope = next;
+  notifyStore();
+}
 function setOpenThreads(next: ThreadInfo[]) {
   openThreads = next;
+  refreshAgentThreads();
   notifyStore();
 }
 function setArchivedThreads(next: ThreadInfo[]) {
   archivedThreads = next;
+  refreshAgentThreads();
   notifyStore();
 }
-const closeThread = vi.fn((_id: string) => {});
+const closeThread = vi.fn((id: string) => {
+  setOpenThreads(openThreads.filter((thread) => thread.threadId !== id));
+});
 const renameThread = vi.fn((_id: string, _title: string) => {});
 const openArchivedThread = vi.fn((id: string) => {
   const thread = archivedThreads.find((t) => t.threadId === id);
@@ -52,6 +68,7 @@ const openArchivedThread = vi.fn((id: string) => {
 const deleteThread = vi.fn((id: string) => {
   setArchivedThreads(archivedThreads.filter((t) => t.threadId !== id));
 });
+const markThreadViewed = vi.fn((_id: string) => {});
 
 let connectionStatus: 'idle' | 'connecting' | 'open' | 'closed' = 'open';
 function setConnectionStatus(next: typeof connectionStatus) {
@@ -65,6 +82,12 @@ function subscribeStore(cb: () => void) {
 }
 
 vi.doMock('@/lib/acp/thread-client', () => ({
+  useAgentThreads: () =>
+    useSyncExternalStore(
+      subscribeStore,
+      () => agentThreads,
+      () => agentThreads,
+    ),
   useOpenAgentThreadTabs: () =>
     useSyncExternalStore(
       subscribeStore,
@@ -77,17 +100,17 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       () => initialRosterIds,
       () => initialRosterIds,
     ),
-  useArchivedAgentThreads: () =>
-    useSyncExternalStore(
-      subscribeStore,
-      () => archivedThreads,
-      () => archivedThreads,
-    ),
   useAgentThreadConnection: () =>
     useSyncExternalStore(
       subscribeStore,
       () => connectionStatus,
       () => connectionStatus,
+    ),
+  useAgentThreadScope: () =>
+    useSyncExternalStore(
+      subscribeStore,
+      () => threadScope,
+      () => threadScope,
     ),
   useAgentThreadUnread: () => false,
   getAgentThreadClient: () => ({
@@ -95,21 +118,24 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     renameThread,
     openArchivedThread,
     deleteThread,
-    markThreadViewed: () => {},
+    markThreadViewed,
   }),
   ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
 }));
 
 let threadViewHeld = false;
+let threadComposerDisabled = false;
+const renderThreadView = vi.fn(({ info }: { info: ThreadInfo }) =>
+  threadViewHeld ? (
+    <div data-testid="thread-view-pending" data-thread-id={info.threadId} />
+  ) : (
+    <div data-testid="thread-view" data-thread-id={info.threadId}>
+      <textarea data-testid="agent-thread-composer" disabled={threadComposerDisabled} />
+    </div>
+  ),
+);
 vi.doMock('@/components/acp/ThreadView', () => ({
-  ThreadView: ({ info }: { info: ThreadInfo }) =>
-    threadViewHeld ? (
-      <div data-testid="thread-view-pending" data-thread-id={info.threadId} />
-    ) : (
-      <div data-testid="thread-view" data-thread-id={info.threadId}>
-        <textarea data-testid="agent-thread-composer" />
-      </div>
-    ),
+  ThreadView: renderThreadView,
 }));
 
 type MockAgent = {
@@ -163,8 +189,17 @@ vi.doMock('@/lib/acp/launch-agent-thread', () => ({
 }));
 
 let catalogData: unknown;
+let catalogLoading = false;
+let catalogError: Error | null = null;
+const refetchCatalog = vi.fn(() => Promise.resolve());
 vi.doMock('@tanstack/react-query', () => ({
-  useQuery: () => ({ data: catalogData, isLoading: false, isError: false }),
+  useQuery: () => ({
+    data: catalogData,
+    isLoading: catalogLoading,
+    isError: catalogError !== null,
+    error: catalogError,
+    refetch: refetchCatalog,
+  }),
 }));
 
 const { SessionsHost } = await import('./SessionsHost');
@@ -183,6 +218,14 @@ function makeThread(overrides: Partial<ThreadInfo> & { threadId: string }): Thre
     archived: false,
     ...overrides,
   };
+}
+
+function lastThreadViewActive(threadId: string): boolean | undefined {
+  const calls = renderThreadView.mock.calls.filter(
+    ([props]) => (props as { info: ThreadInfo }).info.threadId === threadId,
+  );
+  const last = calls.at(-1)?.[0] as { active?: boolean } | undefined;
+  return last?.active;
 }
 
 function agentsDockWrites(setDockState: ReturnType<typeof vi.fn>) {
@@ -274,7 +317,10 @@ function Harness({
 describe('SessionsHost — agents desktop order-restore gate', () => {
   beforeEach(() => {
     openThreads = [];
+    archivedThreads = [];
+    agentThreads = [];
     initialRosterIds = null;
+    threadScope = 'ws://project-a/collab/thread';
     localStorage.clear();
   });
 
@@ -421,6 +467,39 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
     const writes = agentsDockWrites(setDockState);
     expect(writes.length).toBeGreaterThan(0);
     expect(writes.at(-1)?.[0]).toMatchObject({ surface: 'agents', order: ['t2', 't1'] });
+  });
+
+  test('a history selection made during restore wins over the late saved selection', async () => {
+    const user = userEvent.setup();
+    let resolveDockState: (state: unknown) => void = () => {};
+    const bridge = {
+      terminal: {
+        getDockState: () =>
+          new Promise((resolve) => {
+            resolveDockState = resolve;
+          }),
+        setDockState: vi.fn(() => ({ ok: true as const })),
+      },
+      editor: { notifyViewMenuStateChanged: vi.fn() },
+    } as unknown as OkDesktopBridge;
+    setOpenThreads([
+      makeThread({ threadId: 'a', title: 'Alpha' }),
+      makeThread({ threadId: 'b', title: 'Beta', createdAt: 2, lastActivityAt: 2 }),
+    ]);
+    render(<Harness bridge={bridge} />);
+    await screen.findByRole('tab', { name: /Alpha/ });
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.click(screen.getByTestId('agent-thread-history-open-a'));
+    await act(async () => {
+      resolveDockState({
+        terminalVisible: false,
+        agentPanelVisible: true,
+        agents: { order: ['a', 'b'], activeKey: 'b' },
+      });
+    });
+
+    expect(screen.getByRole('tab', { name: /Alpha/ }).getAttribute('aria-selected')).toBe('true');
   });
 
   test('a completed order restore does not persist the empty settle beat before the roster lands', async () => {
@@ -797,18 +876,25 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
   beforeEach(() => {
     openThreads = [];
     archivedThreads = [];
+    agentThreads = [];
     connectionStatus = 'open';
     threadViewHeld = false;
+    threadComposerDisabled = false;
+    renderThreadView.mockClear();
     closeThread.mockClear();
     renameThread.mockClear();
     openArchivedThread.mockClear();
     deleteThread.mockClear();
+    markThreadViewed.mockClear();
     launchAgentThread.mockClear();
     mockLaunchOutcome = 'started';
     toastError.mockClear();
     mockInflightLaunch = false;
     registerAgent.mockClear();
     catalogData = undefined;
+    catalogLoading = false;
+    catalogError = null;
+    refetchCatalog.mockClear();
     mockRegisteredAgent = null;
     mockPersistedDefaultAgent = null;
     initialRosterIds = null;
@@ -818,6 +904,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
   afterEach(() => {
     cleanup();
     _resetReusableSession();
+    vi.restoreAllMocks();
   });
 
   test('a thread-launch intent carrying an image attachment forwards it to launchAgentThread', async () => {
@@ -857,6 +944,377 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     expect(await screen.findByRole('tab', { name: /Refactor/ })).toBeDefined();
     expect(await screen.findByTestId('thread-view')).toBeDefined();
+  });
+
+  test('history stays reachable for live chats and reflects the active conversation', async () => {
+    const user = userEvent.setup();
+    setOpenThreads([
+      makeThread({
+        threadId: 'live',
+        title: 'Active work',
+        agent: FIRST_AGENT,
+        status: 'ready',
+      }),
+    ]);
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Active work/ });
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+
+    const row = screen.getByTestId('agent-thread-history-open-live');
+    expect(row.getAttribute('aria-current')).toBe('true');
+    expect(row.textContent).not.toContain('First Agent');
+    expect(row.textContent).not.toContain('Ready');
+  });
+
+  test('covers the full narrow chat pane and restores focus on Escape', async () => {
+    const user = userEvent.setup();
+    setOpenThreads([makeThread({ threadId: 'live', title: 'Live conversation' })]);
+
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Live conversation/ });
+    const historyToggle = screen.getByRole('button', { name: 'Chat history' });
+    await user.click(historyToggle);
+
+    const historyPanel = await screen.findByTestId('agent-thread-history-panel');
+    expect(historyPanel.getAttribute('data-history-mode')).toBe('cover');
+    const sessionSurface = screen.getByTestId('agent-panel-session-surface');
+    const panelLayout = screen.getByTestId('agent-panel-layout');
+    expect(sessionSurface.hasAttribute('inert')).toBe(true);
+    expect(screen.getByTestId('agent-thread-history-surface').parentElement).toBe(panelLayout);
+    expect(screen.getByRole('tab', { name: /Live conversation/ })).toBeDefined();
+
+    await user.keyboard('{Escape}');
+
+    expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull();
+    expect(sessionSurface.hasAttribute('inert')).toBe(false);
+    expect(document.activeElement).toBe(historyToggle);
+  });
+
+  test('docks history in a wide chat pane and keeps it open after selection', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ width: 700, height: 600 }),
+    );
+    const user = userEvent.setup();
+    setOpenThreads([
+      makeThread({ threadId: 'alpha', title: 'Alpha' }),
+      makeThread({ threadId: 'beta', title: 'Beta' }),
+    ]);
+
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Alpha/ });
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+
+    const historyPanel = await screen.findByTestId('agent-thread-history-panel');
+    expect(historyPanel.getAttribute('data-history-mode')).toBe('docked');
+    expect(screen.getByTestId('agent-panel-session-surface').hasAttribute('inert')).toBe(false);
+    const panelLayout = screen.getByTestId('agent-panel-layout');
+    expect(screen.getByTestId('agent-panel-session-surface').parentElement).toBe(panelLayout);
+    expect(screen.getByTestId('agent-thread-history-surface').parentElement).toBe(panelLayout);
+
+    await user.click(screen.getByTestId('agent-thread-history-open-beta'));
+
+    expect(screen.getByTestId('agent-thread-history-panel')).toBe(historyPanel);
+    expect(screen.getByRole('tab', { name: /Beta/ }).getAttribute('aria-selected')).toBe('true');
+  });
+
+  test('keeps history search updates out of mounted chat transcripts', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      DOMRect.fromRect({ width: 700, height: 600 }),
+    );
+    const user = userEvent.setup();
+    setOpenThreads([
+      makeThread({ threadId: 'alpha', title: 'Alpha' }),
+      makeThread({ threadId: 'beta', title: 'Beta' }),
+      makeThread({ threadId: 'gamma', title: 'Gamma' }),
+    ]);
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Alpha/ });
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    renderThreadView.mockClear();
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search chat history' }), 'xyz');
+
+    expect(renderThreadView).not.toHaveBeenCalled();
+  });
+
+  test('closes docked history before shrinking the active chat', async () => {
+    let paneWidth = 700;
+    let notifyResize = () => {};
+    const originalResizeObserver = globalThis.ResizeObserver;
+    class ControlledResizeObserver {
+      readonly callback: ResizeObserverCallback;
+
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      observe(target: Element) {
+        if ((target as HTMLElement).dataset.testid !== 'dock-container') return;
+        notifyResize = () => this.callback([], this as unknown as ResizeObserver);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    globalThis.ResizeObserver = ControlledResizeObserver as unknown as typeof ResizeObserver;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(() =>
+      DOMRect.fromRect({ width: paneWidth, height: 600 }),
+    );
+
+    try {
+      const user = userEvent.setup();
+      setOpenThreads([
+        makeThread({ threadId: 'alpha', title: 'Alpha planning' }),
+        makeThread({ threadId: 'beta', title: 'Beta review' }),
+      ]);
+      render(<Harness />);
+      await screen.findByRole('tab', { name: /Alpha planning/ });
+      await user.click(screen.getByRole('button', { name: 'Chat history' }));
+      await user.type(screen.getByRole('searchbox', { name: 'Search chat history' }), 'Alpha');
+
+      act(() => {
+        paneWidth = 500;
+        notifyResize();
+      });
+
+      await waitFor(() => expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull());
+      expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Chat history' }));
+      expect(screen.getByTestId('agent-panel-session-surface').hasAttribute('inert')).toBe(false);
+      expect(screen.getByRole('tab', { name: /Beta review/ }).getAttribute('aria-selected')).toBe(
+        'true',
+      );
+
+      act(() => {
+        paneWidth = 700;
+        notifyResize();
+      });
+      await user.click(screen.getByRole('button', { name: 'Chat history' }));
+      const betaTab = screen.getByRole('tab', { name: /Beta review/ });
+      act(() => betaTab.focus());
+      expect(document.activeElement).toBe(betaTab);
+
+      act(() => {
+        paneWidth = 500;
+        notifyResize();
+      });
+
+      await waitFor(() => expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull());
+      expect(document.activeElement).toBe(betaTab);
+
+      await user.click(screen.getByRole('button', { name: 'Chat history' }));
+      expect(screen.getByTestId('agent-thread-history-panel').dataset.historyMode).toBe('cover');
+      act(() => {
+        paneWidth = 700;
+        notifyResize();
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId('agent-thread-history-panel').dataset.historyMode).toBe('docked'),
+      );
+      expect(
+        screen.getByRole('searchbox', { name: 'Search chat history' }).getAttribute('value'),
+      ).toBe('Alpha');
+      expect(screen.getByRole('tab', { name: /Beta review/ }).getAttribute('aria-selected')).toBe(
+        'true',
+      );
+    } finally {
+      globalThis.ResizeObserver = originalResizeObserver;
+    }
+  });
+
+  test('does not reopen history when the hidden agents pane is revealed', async () => {
+    const control = makeControl();
+    const user = userEvent.setup();
+    setOpenThreads([makeThread({ threadId: 'alpha', title: 'Alpha planning' })]);
+    render(<Harness control={control} />);
+    await screen.findByRole('tab', { name: /Alpha planning/ });
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    expect(screen.getByTestId('agent-thread-history-panel')).toBeDefined();
+
+    act(() => control.current?.setVisible(false));
+    await waitFor(() => expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull());
+    act(() => control.current?.setVisible(true));
+
+    expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull();
+  });
+
+  test('does not mark covered transcript activity viewed until history closes', async () => {
+    const user = userEvent.setup();
+    setOpenThreads([makeThread({ threadId: 'live', title: 'Live', lastActivityAt: 1 })]);
+
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Live/ });
+    await waitFor(() => expect(markThreadViewed).toHaveBeenCalledWith('live'));
+    markThreadViewed.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    act(() => {
+      setOpenThreads([makeThread({ threadId: 'live', title: 'Live', lastActivityAt: 2 })]);
+    });
+
+    expect(markThreadViewed).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+
+    await waitFor(() => expect(markThreadViewed).toHaveBeenCalledWith('live'));
+  });
+
+  test('launches New chat from history through the existing launcher and dismisses cover', async () => {
+    mockRegisteredAgent = FIRST_AGENT;
+    mockPersistedDefaultAgent = FIRST_AGENT;
+    setOpenThreads([makeThread({ threadId: 'live', title: 'Live' })]);
+    const user = userEvent.setup();
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Live/ });
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    const historyPanel = screen.getByTestId('agent-thread-history-panel');
+    const newChat = within(historyPanel).getByTestId('terminal-new-chat');
+
+    expect(newChat.textContent).toContain('New chat');
+    await user.click(newChat);
+
+    expect(launchAgentThread).toHaveBeenCalledWith(
+      { source: FIRST_AGENT.source, id: FIRST_AGENT.id },
+      null,
+      null,
+      null,
+      null,
+      undefined,
+    );
+    expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull();
+  });
+
+  test('history search survives toggles and clears when the thread project scope changes', async () => {
+    const user = userEvent.setup();
+    setOpenThreads([
+      makeThread({ threadId: 'alpha', title: 'Alpha plan' }),
+      makeThread({ threadId: 'beta', title: 'Beta plan' }),
+    ]);
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Alpha plan/ });
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.type(screen.getByRole('searchbox', { name: 'Search chat history' }), 'Alpha');
+    expect(screen.queryByTestId('agent-thread-history-open-beta')).toBeNull();
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    expect(
+      (screen.getByRole('searchbox', { name: 'Search chat history' }) as HTMLInputElement).value,
+    ).toBe('Alpha');
+
+    act(() => setThreadScope('ws://project-b/collab/thread'));
+
+    expect(
+      (screen.getByRole('searchbox', { name: 'Search chat history' }) as HTMLInputElement).value,
+    ).toBe('');
+    expect(screen.getByTestId('agent-thread-history-open-beta')).toBeDefined();
+  });
+
+  test('empty history remains reachable and explains the empty collection', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+
+    expect(screen.getByRole('heading', { name: 'No chats yet.' })).toBeDefined();
+  });
+
+  test('history and tabs share selection without reordering or lifecycle operations', async () => {
+    const user = userEvent.setup();
+    setOpenThreads([
+      makeThread({ threadId: 'a', title: 'Alpha', agent: FIRST_AGENT }),
+      makeThread({ threadId: 'b', title: 'Beta', agent: SECOND_AGENT }),
+    ]);
+    render(<Harness />);
+    const alphaTab = await screen.findByRole('tab', { name: /Alpha/ });
+    const betaTab = await screen.findByRole('tab', { name: /Beta/ });
+    const initialOrder = tabTitles();
+
+    await user.click(alphaTab);
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    expect(screen.getByTestId('agent-thread-history-open-a').getAttribute('aria-current')).toBe(
+      'true',
+    );
+    await user.click(screen.getByTestId('agent-thread-history-open-b'));
+    expect(betaTab.getAttribute('aria-selected')).toBe('true');
+
+    await user.click(alphaTab);
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    expect(screen.getByTestId('agent-thread-history-open-a').getAttribute('aria-current')).toBe(
+      'true',
+    );
+    expect(tabTitles()).toEqual(initialOrder);
+    expect(openArchivedThread).not.toHaveBeenCalled();
+    expect(closeThread).not.toHaveBeenCalled();
+    expect(deleteThread).not.toHaveBeenCalled();
+  });
+
+  test('history switching preserves the mounted conversation views and draft input', async () => {
+    const user = userEvent.setup();
+    setOpenThreads([
+      makeThread({ threadId: 'a', title: 'Alpha' }),
+      makeThread({ threadId: 'b', title: 'Beta' }),
+    ]);
+    render(<Harness />);
+    const alphaTab = await screen.findByRole('tab', { name: /Alpha/ });
+    await screen.findByRole('tab', { name: /Beta/ });
+    await user.click(alphaTab);
+    const alphaView = document.querySelector<HTMLElement>('[data-thread-id="a"]');
+    const alphaComposer = alphaView?.querySelector<HTMLTextAreaElement>(
+      '[data-testid="agent-thread-composer"]',
+    );
+    expect(alphaView).not.toBeNull();
+    expect(alphaComposer).not.toBeNull();
+    await user.type(alphaComposer as HTMLTextAreaElement, 'unfinished thought');
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.click(screen.getByTestId('agent-thread-history-open-b'));
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.click(screen.getByTestId('agent-thread-history-open-a'));
+
+    expect(document.querySelector('[data-thread-id="a"]')).toBe(alphaView);
+    expect(alphaComposer?.value).toBe('unfinished thought');
+    expect(lastThreadViewActive('a')).toBe(true);
+    expect(lastThreadViewActive('b')).toBe(false);
+  });
+
+  test('Ask AI and queued comments target the conversation selected from history', async () => {
+    const user = userEvent.setup();
+    setOpenThreads([
+      makeThread({ threadId: 'a', title: 'Alpha' }),
+      makeThread({ threadId: 'b', title: 'Beta' }),
+    ]);
+    render(<Harness />);
+    await screen.findByRole('tab', { name: /Alpha/ });
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.click(screen.getByTestId('agent-thread-history-open-b'));
+
+    const staged: string[] = [];
+    const queued: Array<{ threadId: string; threadIds: readonly string[] | undefined }> = [];
+    const stopStaging = subscribeStagedThreadDraft('b', (text) => staged.push(text));
+    const stopQueued = subscribeSendInThread((threadId, threadIds) =>
+      queued.push({ threadId, threadIds }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await act(async () => {
+      requestActiveTerminalInput('Use this selection', { submit: false });
+    });
+    expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull();
+    expect(document.activeElement).toBe(
+      document
+        .querySelector('[data-thread-id="b"]')
+        ?.querySelector('[data-testid="agent-thread-composer"]'),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await act(async () => {
+      requestSendToOpenChat(['comment-1']);
+    });
+    expect(screen.queryByTestId('agent-thread-history-panel')).toBeNull();
+    stopStaging();
+    stopQueued();
+
+    expect(staged).toEqual(['Use this selection']);
+    expect(queued).toEqual([{ threadId: 'b', threadIds: ['comment-1'] }]);
   });
 
   test('without an explicit default the primary reads "Start an agent" and opens Settings', async () => {
@@ -974,6 +1432,20 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     });
 
     expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer'));
+  });
+
+  test('revealing the dock focuses the active tab while its composer is disabled', async () => {
+    const control = makeControl();
+    threadComposerDisabled = true;
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Connecting' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await screen.findByTestId('thread-view');
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+
+    expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Connecting/ }));
   });
 
   test('collapsing the dock hands focus back to the editor', async () => {
@@ -1098,7 +1570,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     outside.remove();
   });
 
-  test('a reveal focus that never lands retires at the deadline with a warn', async () => {
+  test('a reveal that reaches the fallback tab retires without a warning at the deadline', async () => {
     vi.useFakeTimers();
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const control = makeControl();
@@ -1111,6 +1583,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       act(() => {
         control.current?.setVisible(true);
       });
+      expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Pre-existing/ }));
       act(() => {
         vi.advanceTimersByTime(5_000);
       });
@@ -1118,7 +1591,7 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         warnSpy.mock.calls.some((call) =>
           String(call[0]).includes('reveal focus did not land within its 5000ms bound'),
         ),
-      ).toBe(true);
+      ).toBe(false);
 
       threadViewHeld = false;
       await act(async () => {
@@ -1176,11 +1649,16 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setArchivedThreads([makeThread({ threadId: 'arch', title: 'Old chat', archived: true })]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
     await user.click(await screen.findByTestId('agent-thread-history-open-arch'));
 
     expect(openArchivedThread).toHaveBeenCalledWith('arch');
     expect(await screen.findByRole('tab', { name: /Old chat/ })).toBeDefined();
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.click(await screen.findByTestId('agent-thread-history-open-arch'));
+    expect(openArchivedThread).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByRole('tab', { name: /Old chat/ })).toHaveLength(1);
   });
 
   test('the restore and delete controls explain themselves on hover', async () => {
@@ -1190,29 +1668,49 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setArchivedThreads([makeThread({ threadId: 'arch', title: 'Old chat', archived: true })]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    const restore = screen.getByRole('button', { name: 'Reopen a past chat' });
+    const restore = screen.getByRole('button', { name: 'Chat history' });
     await user.hover(restore);
-    expect((await screen.findByRole('tooltip')).textContent).toContain('Reopen a past chat');
+    expect((await screen.findByRole('tooltip')).textContent).toContain('Chat history');
 
     await user.click(restore);
     const deleteButton = await screen.findByRole('button', { name: 'Delete Old chat' });
     await user.hover(deleteButton);
-    expect((await screen.findByRole('tooltip')).textContent).toContain('Delete Old chat');
+    expect((await screen.findByRole('tooltip')).textContent).toContain('Delete chat');
   });
 
-  test('the history menu deletes an archived conversation behind an inline confirm', async () => {
+  test('the history menu deletes an archived conversation after dialog confirmation', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     setOpenThreads([makeThread({ threadId: 'live', title: 'Live' })]);
     setArchivedThreads([makeThread({ threadId: 'arch', title: 'Old chat', archived: true })]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
     await user.click(await screen.findByTestId('agent-thread-history-delete-arch'));
     expect(deleteThread).not.toHaveBeenCalled();
-    await user.click(await screen.findByTestId('agent-thread-history-confirm-delete'));
+    const dialog = await screen.findByRole('alertdialog');
+    expect(dialog.textContent).toContain('This action cannot be undone.');
+    await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
 
     expect(deleteThread).toHaveBeenCalledWith('arch');
+  });
+
+  test('Escape inside the delete confirmation closes the dialog and leaves history open', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 'live', title: 'Live' })]);
+    setArchivedThreads([makeThread({ threadId: 'arch', title: 'Old chat', archived: true })]);
+    await screen.findByRole('tab', { name: /Live/ });
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.click(await screen.findByTestId('agent-thread-history-delete-arch'));
+    expect(await screen.findByRole('alertdialog')).toBeDefined();
+
+    await user.keyboard('{Escape}');
+
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.getByTestId('agent-thread-history-panel')).toBeDefined();
+    expect(deleteThread).not.toHaveBeenCalled();
   });
 
   test('delete is off for an archived conversation that is open as a tab', async () => {
@@ -1226,7 +1724,8 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     ]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    expect(screen.getAllByTestId('agent-thread-history-open-arch')).toHaveLength(1);
     const openTabDelete = await screen.findByTestId('agent-thread-history-delete-arch');
     expect(openTabDelete.getAttribute('aria-disabled')).toBe('true');
     expect(openTabDelete).toHaveProperty('disabled', false);
@@ -1245,11 +1744,16 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     );
 
     await user.click(openTabDelete);
-    expect(screen.queryByTestId('agent-thread-history-confirm')).toBeNull();
-    expect(screen.queryByTestId('agent-thread-history-confirm-delete')).toBeNull();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
     expect(deleteThread).not.toHaveBeenCalled();
 
     expect(screen.getByTestId('agent-thread-history-open-arch')).toHaveProperty('disabled', false);
+
+    await user.keyboard('{Escape}');
+    await user.click(screen.getByRole('button', { name: 'Close Old chat' }));
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    const eligibleDelete = await screen.findByTestId('agent-thread-history-delete-arch');
+    expect(eligibleDelete.getAttribute('aria-disabled')).toBeNull();
   });
 
   test('an archived conversation with no open tab is still deletable', async () => {
@@ -1259,31 +1763,37 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     setArchivedThreads([makeThread({ threadId: 'cold', title: 'Cold chat', archived: true })]);
     await screen.findByRole('tab', { name: /Live/ });
 
-    await user.click(screen.getByRole('button', { name: 'Reopen a past chat' }));
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
     const coldDelete = await screen.findByTestId('agent-thread-history-delete-cold');
     expect(coldDelete.getAttribute('aria-disabled')).toBeNull();
     expect(coldDelete.getAttribute('aria-describedby')).toBeNull();
 
     await user.click(coldDelete);
-    await user.click(await screen.findByTestId('agent-thread-history-confirm-delete'));
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
+    );
     expect(deleteThread).toHaveBeenCalledWith('cold');
   });
 
-  test('an empty dock offers a chooser to reopen a past conversation', async () => {
+  test('an empty dock uses history as its only archived conversation roster', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     setArchivedThreads([makeThread({ threadId: 'arch', title: 'Yesterday', archived: true })]);
 
-    await user.click(await screen.findByTestId('agent-thread-empty-open-arch'));
+    expect(screen.queryByTestId('agent-thread-empty-chooser')).toBeNull();
+    expect(await screen.findByTestId('sessions-dock-empty')).toBeDefined();
+
+    await user.click(screen.getByRole('button', { name: 'Chat history' }));
+    await user.click(await screen.findByTestId('agent-thread-history-open-arch'));
 
     expect(openArchivedThread).toHaveBeenCalledWith('arch');
     expect(await screen.findByRole('tab', { name: /Yesterday/ })).toBeDefined();
   });
 
-  test('the history menu is absent with no archived history', () => {
+  test('the history menu remains available without archived history', () => {
     render(<Harness />);
     setOpenThreads([makeThread({ threadId: 'live', title: 'Live' })]);
-    expect(screen.queryByRole('button', { name: 'Reopen a past chat' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Chat history' })).toBeDefined();
   });
 
   describe('Ask AI honors the preferred AI', () => {
@@ -1309,6 +1819,53 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       expect(launches).toEqual([]);
     });
 
+    test('a deduped Ask AI launch reports that the prompt was not sent', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      mockLaunchOutcome = 'deduped';
+      setInitialRosterIds(new Set());
+      render(<Harness initialVisible={false} />);
+
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit: true, target: 'agents' });
+      });
+
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Couldn't start the agent thread.")).toBeNull();
+      expect(
+        screen.getByText('Already starting a chat with this agent — try again in a moment.'),
+      ).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeDefined();
+      expect(screen.queryByText('Starting the agent…')).toBeNull();
+    });
+
+    test('a deduped launch does not hide the tracked launch failure', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      setInitialRosterIds(new Set());
+      let settleTrackedLaunch: (outcome: 'failed') => void = () => {};
+      launchAgentThread
+        .mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              settleTrackedLaunch = resolve;
+            }),
+        )
+        .mockResolvedValueOnce('deduped');
+      render(<Harness initialVisible />);
+      await waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));
+
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit: true, target: 'agents' });
+      });
+
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('Starting the agent…')).toBeDefined();
+
+      await act(async () => settleTrackedLaunch('failed'));
+
+      expect(await screen.findByText("Couldn't start the agent thread.")).toBeDefined();
+      expect(screen.getByRole('button', { name: 'Try again' })).toBeDefined();
+    });
+
     test('a ⌘J selection send STAGES on a new thread instead of running', async () => {
       mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
       render(<Harness />);
@@ -1322,6 +1879,31 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       const [, prompt, , , stagedDraft] = launchAgentThread.mock.calls[0];
       expect(prompt).toBeNull();
       expect(stagedDraft).toBe('a selected passage');
+    });
+
+    test('a failed Ask AI launch in an empty hidden panel offers a retry', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
+      mockLaunchOutcome = 'failed';
+      setInitialRosterIds(new Set());
+      render(<Harness initialVisible={false} />);
+
+      await act(async () => {
+        requestActiveTerminalInput('fix this lint error', { submit: true, target: 'agents' });
+      });
+
+      expect(await screen.findByText("Couldn't start the agent thread.")).toBeDefined();
+      mockLaunchOutcome = 'started';
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(2);
+      expect(launchAgentThread.mock.calls[1]).toEqual([
+        { source: 'registry', id: 'acme-agent' },
+        'fix this lint error',
+        null,
+        null,
+        null,
+        undefined,
+      ]);
     });
 
     test.each([true, false])('reusing an open thread always stages, submit=%s', async (submit) => {
@@ -1654,6 +2236,8 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
         null,
         null,
         null,
+        null,
+        undefined,
       ]);
       expect(registerAgent).not.toHaveBeenCalled();
     });
@@ -1719,25 +2303,138 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       expect(launchAgentThread).not.toHaveBeenCalled();
     });
 
-    test('the seed keys on the reveal transition, not on being visible', () => {
+    test('an already-visible empty panel waits for the initial roster, then starts a conversation', () => {
       window.location.hash = '';
       mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
       render(<Harness initialVisible />);
 
       expect(launchAgentThread).not.toHaveBeenCalled();
+
+      act(() => setInitialRosterIds(new Set()));
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+      expect(screen.getByText('Starting the agent…')).toBeDefined();
       expect(window.location.hash).toBe('');
     });
 
-    test('revealing an empty panel with no agent available stays empty and never opens the catalog', () => {
-      window.location.hash = '';
-      mockRegisteredAgent = null;
-      const control = makeControl();
-      render(<Harness initialVisible={false} control={control} />);
+    test('an empty panel shows loading while agent discovery settles', () => {
+      setInitialRosterIds(new Set());
+      catalogLoading = true;
 
-      act(() => control.current?.setVisible(true));
+      render(<Harness initialVisible />);
+
+      expect(screen.getByTestId('sessions-dock-loading').textContent).toContain('Loading agents…');
+      expect(screen.queryByText('No agents enabled')).toBeNull();
+    });
+
+    test('archived history does not block an already-visible empty panel from starting a conversation', () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      setArchivedThreads([makeThread({ threadId: 'archived', archived: true })]);
+      setInitialRosterIds(new Set(['archived']));
+
+      render(<Harness initialVisible />);
+
+      expect(launchAgentThread).toHaveBeenCalledTimes(1);
+      expect(launchAgentThread.mock.calls[0][0]).toEqual({ source: 'registry', id: 'claude-acp' });
+    });
+
+    test('an already-visible panel with a restored open conversation does not create another', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      setOpenThreads([makeThread({ threadId: 'existing', title: 'Existing' })]);
+      setInitialRosterIds(new Set(['existing']));
+
+      render(<Harness initialVisible />);
+      await screen.findByTestId('thread-view');
 
       expect(launchAgentThread).not.toHaveBeenCalled();
-      expect(window.location.hash).toBe('');
+    });
+
+    test('an already-visible panel does not replace a restored conversation that later closes', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      setOpenThreads([makeThread({ threadId: 'existing', title: 'Existing' })]);
+      setInitialRosterIds(new Set(['existing']));
+
+      render(<Harness initialVisible />);
+      await screen.findByTestId('thread-view');
+      act(() => setOpenThreads([]));
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(screen.queryByTestId('sessions-dock-loading')).toBeNull();
+      expect(screen.getByTestId('sessions-dock-empty').textContent).toBe('');
+    });
+
+    test('a failed agent catalog read offers a retry instead of reading as "No agents enabled."', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        mockRegisteredAgent = null;
+        catalogError = new Error('agent catalog request failed: HTTP 503');
+        setInitialRosterIds(new Set());
+
+        render(<Harness initialVisible />);
+
+        expect(screen.queryByTestId('sessions-dock-no-agents')).toBeNull();
+        expect(screen.queryByText('No agents enabled.')).toBeNull();
+        expect(screen.getByTestId('sessions-dock-agents-unavailable').textContent).toContain(
+          "Couldn't load your agents.",
+        );
+        expect(consoleError).toHaveBeenCalled();
+
+        await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+        expect(refetchCatalog).toHaveBeenCalledTimes(1);
+        expect(launchAgentThread).not.toHaveBeenCalled();
+      } finally {
+        consoleError.mockRestore();
+      }
+    });
+
+    test('an empty panel with no enabled agent links to Configure agents', async () => {
+      window.location.hash = '';
+      mockRegisteredAgent = null;
+      setInitialRosterIds(new Set());
+      render(<Harness initialVisible />);
+
+      expect(screen.getByText('No agents enabled.')).toBeDefined();
+      await userEvent.click(screen.getByRole('button', { name: 'Configure agents' }));
+
+      expect(launchAgentThread).not.toHaveBeenCalled();
+      expect(window.location.hash).toBe('#settings/agent-connections');
+    });
+
+    test('a failed automatic launch offers a retry', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      mockLaunchOutcome = 'failed';
+      setInitialRosterIds(new Set());
+
+      render(<Harness initialVisible />);
+
+      expect(await screen.findByText("Couldn't start the agent thread.")).toBeDefined();
+      mockLaunchOutcome = 'deduped';
+      await userEvent.click(screen.getByRole('button', { name: 'Try again' }));
+
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("Couldn't start the agent thread.")).toBeNull();
+      expect(screen.queryByText('Starting the agent…')).toBeNull();
+      expect(
+        screen.getByText('Already starting a chat with this agent — try again in a moment.'),
+      ).toBeDefined();
+      const retry = screen.getByRole('button', { name: 'Try again' });
+      await waitFor(() => expect(document.activeElement).toBe(retry));
+    });
+
+    test('a retry that fails again focuses the replacement retry action', async () => {
+      mockRegisteredAgent = { source: 'registry', id: 'claude-acp', name: 'Claude Agent' };
+      mockLaunchOutcome = 'failed';
+      setInitialRosterIds(new Set());
+
+      render(<Harness initialVisible />);
+
+      const retry = await screen.findByRole('button', { name: 'Try again' });
+      await userEvent.click(retry);
+
+      const replacement = await screen.findByRole('button', { name: 'Try again' });
+      await waitFor(() => expect(document.activeElement).toBe(replacement));
     });
 
     test('revealing a panel that already has a conversation does not create another', async () => {

@@ -34,6 +34,7 @@ function renderButton(overrides: Partial<React.ComponentProps<typeof TerminalNew
           onPickCli={onPickCli}
           onPickTerminal={onPickTerminal}
           visibleClis={overrides.visibleClis}
+          presentation={overrides.presentation}
         />
       </TooltipProvider>
     </QueryClientProvider>,
@@ -56,6 +57,48 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     expect(onPickCli).not.toHaveBeenCalled();
   });
 
+  test('the panel presentation reuses the full-width split button without a plus icon', () => {
+    renderButton({ presentation: 'panel', selected: { kind: 'agent', agent: AGENT_A } });
+
+    const primary = screen.getByTestId('terminal-new-chat');
+    const group = primary.closest('[data-slot="button-group"]');
+    expect(group).not.toBeNull();
+    expect(group?.className).toContain('w-full');
+    expect(primary.querySelector('[data-lucide="plus"]')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Choose what a new chat starts' })).toBeDefined();
+  });
+
+  test.each([
+    [{ kind: 'agent', agent: AGENT_A } as NewSessionChoice, 'New chat with Agent A', 'New chat'],
+    [{ kind: 'cli', cli: 'codex' } as NewSessionChoice, 'New Codex chat', 'New Codex chat'],
+    [{ kind: 'terminal' } as NewSessionChoice, 'New terminal', 'New terminal'],
+  ])(
+    'the panel primary names its target and a user can read that name on the control',
+    (selected, accessibleName, visibleName) => {
+      renderButton({ presentation: 'panel', selected });
+
+      const primary = screen.getByRole('button', { name: accessibleName });
+      expect(primary.getAttribute('data-testid')).toBe('terminal-new-chat');
+      expect(primary.textContent).toContain(visibleName);
+    },
+  );
+
+  test('the panel dropdown keeps the bare Terminal row beside the CLI rows', async () => {
+    const user = userEvent.setup();
+    const { onPickTerminal } = renderButton({ presentation: 'panel' });
+
+    await user.click(screen.getByRole('button', { name: 'Choose what a new chat starts' }));
+
+    for (const name of ['Claude CLI', 'Codex CLI', 'OpenCode CLI']) {
+      expect(await screen.findByRole('menuitem', { name })).toBeDefined();
+    }
+    const terminalRow = screen.getByTestId('terminal-new-chat-terminal');
+    expect(terminalRow).toBeDefined();
+
+    await user.click(terminalRow);
+    expect(onPickTerminal).toHaveBeenCalledTimes(1);
+  });
+
   test('when Terminal is the selection the primary opens a bare terminal', async () => {
     const user = userEvent.setup();
     const { onLaunchSelected } = renderButton({ selected: { kind: 'terminal' } });
@@ -65,9 +108,10 @@ describe('TerminalNewChatButton (merged sessions-dock New button)', () => {
     expect(onLaunchSelected).toHaveBeenCalledTimes(1);
   });
 
-  test('when an agent is the selection the primary reads "New <agent> chat"', () => {
+  test('when an agent is selected the visible label stays concise and the accessible name is specific', () => {
     renderButton({ selected: { kind: 'agent', agent: AGENT_A } });
-    expect(screen.getByRole('button', { name: 'New Agent A chat' })).toBeDefined();
+    const primary = screen.getByRole('button', { name: 'New chat with Agent A' });
+    expect(primary.textContent).not.toContain('Agent A');
   });
 
   test('the dropdown lists registered agents, Configure agents, every available CLI, and Terminal', async () => {

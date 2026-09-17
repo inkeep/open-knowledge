@@ -156,7 +156,8 @@ export function attachAcpThreadSocket(
             return;
           }
           case 'rename': {
-            await manager.renameThread(frame.threadId, frame.title);
+            const info = await manager.renameThread(frame.threadId, frame.title);
+            if (!subscriptions.has(frame.threadId)) send({ op: 'info', info });
             return;
           }
           case 'set_config_option': {

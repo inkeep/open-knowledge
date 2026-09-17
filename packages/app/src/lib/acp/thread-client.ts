@@ -121,12 +121,13 @@ export class AgentThreadClient {
 
   setUrl(url: string | null): void {
     if (url === this.url) return;
-    this.url = url;
-    if (this.initialRosterIds !== null) {
-      this.initialRosterIds = null;
-      this.bump();
-    }
     this.teardownSocket();
+    this.url = url;
+    this.initialRosterIds = null;
+    this.threads.clear();
+    this.modelBuilders.clear();
+    this.openedArchived.clear();
+    this.bump();
     if (url !== null) this.connect();
     else this.setStatus('idle');
   }
@@ -161,19 +162,6 @@ export class AgentThreadClient {
     return this.openTabsSnapshot;
   };
 
-  private archivedSnapshot: ThreadInfo[] = [];
-  private archivedSnapshotVersion = -1;
-  getArchivedThreads = (): ThreadInfo[] => {
-    if (this.archivedSnapshotVersion !== this.version) {
-      this.archivedSnapshot = [...this.threads.values()]
-        .map((t) => t.info)
-        .filter((info) => info.archived === true)
-        .sort((a, b) => b.lastActivityAt - a.lastActivityAt);
-      this.archivedSnapshotVersion = this.version;
-    }
-    return this.archivedSnapshot;
-  };
-
   getThread = (threadId: string): ThreadState | null => this.threads.get(threadId) ?? null;
 
   getInitialRosterThreadIds = (): ReadonlySet<string> | null => this.initialRosterIds;
@@ -191,6 +179,8 @@ export class AgentThreadClient {
   };
 
   getConnectionStatus = (): ThreadConnectionStatus => this.status;
+
+  getThreadScope = (): string | null => this.url;
 
   async createThread(params: {
     agent: { source: 'registry' | 'custom'; id: string };
@@ -376,6 +366,7 @@ export class AgentThreadClient {
     this.openedArchived.delete(threadId);
     this.resumingThreads.delete(threadId);
     this.modelBuilders.delete(threadId);
+    this.lastViewedByThread.delete(threadId);
     if (this.threads.delete(threadId)) this.bump();
   }
 
@@ -607,6 +598,7 @@ export class AgentThreadClient {
             this.modelBuilders.delete(threadId);
             this.openedArchived.delete(threadId);
             this.resumingThreads.delete(threadId);
+            this.lastViewedByThread.delete(threadId);
             dropped = true;
           }
         }
@@ -823,7 +815,7 @@ function applyEventToInfo(info: ThreadInfo, event: ThreadEvent): ThreadInfo {
     case 'status':
       return { ...info, status: event.status, lastActivityAt: event.ts };
     case 'title_changed':
-      return { ...info, title: event.title, lastActivityAt: event.ts };
+      return { ...info, title: event.title };
     default:
       return { ...info, lastActivityAt: event.ts };
   }
@@ -851,14 +843,6 @@ export function useInitialRosterThreadIds(): ReadonlySet<string> | null {
   );
 }
 
-export function useArchivedAgentThreads(): ThreadInfo[] {
-  return useSyncExternalStore(
-    client.subscribe,
-    client.getArchivedThreads,
-    client.getArchivedThreads,
-  );
-}
-
 export function useAgentThread(threadId: string): ThreadState | null {
   const getSnapshot = () => client.getThread(threadId);
   return useSyncExternalStore(client.subscribe, getSnapshot, getSnapshot);
@@ -880,6 +864,10 @@ export function useAgentThreadConnection(): ThreadConnectionStatus {
     client.getConnectionStatus,
     client.getConnectionStatus,
   );
+}
+
+export function useAgentThreadScope(): string | null {
+  return useSyncExternalStore(client.subscribe, client.getThreadScope, client.getThreadScope);
 }
 
 export function threadUrlFromCollabUrl(collabUrl: string | null): string | null {

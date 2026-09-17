@@ -1128,7 +1128,7 @@ describe('EditorArea session-panel edge reveal tabs', () => {
       </TooltipProvider>,
     );
 
-  test('the agents tab is up while the panel is hidden, even with no conversations', () => {
+  test('the agents tab is up while the panel is hidden, even with no chats', () => {
     renderArea({ agentsVisible: false });
     const reveal = screen.getByRole('button', { name: 'Open agents panel' });
     const header = document.querySelector('[data-editor-area-header]');

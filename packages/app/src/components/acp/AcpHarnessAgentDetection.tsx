@@ -1,14 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
 import { useEffect } from 'react';
-import { detectedHarnessAgents, fetchAgentCatalog } from '@/lib/acp/catalog';
+import { detectedHarnessAgents, useAgentCatalogQuery } from '@/lib/acp/catalog';
 import { setDetectedRegisteredAgentSuggestions } from '@/lib/acp/registered-agents';
 
 export function AcpHarnessAgentDetection() {
-  const catalog = useQuery({
-    queryKey: ['acp-catalog'],
-    queryFn: ({ signal }) => fetchAgentCatalog(signal),
-    staleTime: 5 * 60 * 1000,
-  });
+  const catalog = useAgentCatalogQuery();
 
   useEffect(() => {
     const suggestions = detectedHarnessAgents(catalog.data?.agents ?? []).map((agent) => ({

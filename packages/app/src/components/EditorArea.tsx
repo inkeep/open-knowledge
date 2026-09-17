@@ -393,7 +393,8 @@ function EditorAreaInner({
   const [agentsShowingHold, setAgentsShowingHold] = useState(false);
   const [terminalShowingHold, setTerminalShowingHold] = useState(false);
   const resizableRailColumnPresent = terminalColumnPresent || agentsColumnPresent;
-  const rightRevealTabPresent = !noteWindow && !agentsVisible && onRevealAgents != null;
+  const rightRevealTabPresent =
+    !noteWindow && (!agentsVisible || agentsColumnCollapsed) && onRevealAgents != null;
   const terminalContainer =
     terminalPlacement === 'right' ? rightTerminalContainer : bottomTerminalContainer;
   const terminalShowing =
@@ -1535,7 +1536,14 @@ function EditorAreaInner({
           {agentsColumn}
         </ResizablePanelGroup>
         {rightRevealTabPresent ? (
-          <TerminalRevealTab edge="right" onReveal={onRevealAgents} className="top-2.5 right-0" />
+          <TerminalRevealTab
+            edge="right"
+            onReveal={() => {
+              if (agentsVisible && agentsColumnCollapsed) agentsColumnPanelRef.current?.expand();
+              else onRevealAgents();
+            }}
+            className="top-2.5 right-0"
+          />
         ) : null}
       </div>
     </div>

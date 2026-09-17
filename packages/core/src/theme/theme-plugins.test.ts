@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { BASE16_SLOTS, base16ToTokens } from './base16.ts';
+import { BASE16_SLOTS, type Base16Palette, base16ToTokens, relativeLuminance } from './base16.ts';
 import {
   colorThemeMode,
   deriveSavedThemeId,
@@ -185,6 +185,76 @@ describe('token mapping + generateColorThemesCss', () => {
     for (const theme of THEME_PLUGINS) {
       if (!theme.scheme || !theme.toTokens) continue;
       expect(theme.toTokens(), theme.id).toEqual(base16ToTokens(theme.scheme));
+    }
+  });
+
+  test('every generated palette theme keeps sidebar row text and actions readable', () => {
+    for (const theme of THEME_PLUGINS) {
+      if (!theme.toTokens) continue;
+      const tokens = theme.toTokens();
+      for (const [backgroundToken, foregroundToken, minimum] of [
+        ['sidebar-hover', 'sidebar-hover-foreground', 4.5],
+        ['sidebar-hover', 'sidebar-hover-muted-foreground', 4.5],
+        ['sidebar-hover', 'sidebar-hover-destructive-foreground', 3],
+        ['sidebar-selected', 'sidebar-selected-foreground', 4.5],
+        ['sidebar-selected', 'sidebar-selected-muted-foreground', 4.5],
+        ['sidebar-selected', 'sidebar-selected-destructive-foreground', 3],
+      ] as const) {
+        const background = relativeLuminance(tokens[backgroundToken] ?? '');
+        const foreground = relativeLuminance(tokens[foregroundToken] ?? '');
+        const ratio =
+          (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05);
+        expect(ratio, `${theme.id} ${foregroundToken}`).toBeGreaterThanOrEqual(minimum);
+      }
+    }
+  });
+
+  test('custom low-contrast palettes receive readable sidebar row foregrounds', () => {
+    const palette: Base16Palette = {
+      base00: '#e0e0e0',
+      base01: '#d9d9d9',
+      base02: '#cccccc',
+      base03: '#f0f0f0',
+      base04: '#e0e0e0',
+      base05: '#d9d9d9',
+      base06: '#cccccc',
+      base07: '#f0f0f0',
+      base08: '#e0e0e0',
+      base09: '#d9d9d9',
+      base0A: '#cccccc',
+      base0B: '#f0f0f0',
+      base0C: '#e0e0e0',
+      base0D: '#d9d9d9',
+      base0E: '#cccccc',
+      base0F: '#f0f0f0',
+    };
+    expect(Object.keys(palette).sort()).toEqual([...BASE16_SLOTS].sort());
+    const tokens = base16ToTokens({
+      name: 'Low contrast',
+      variant: 'light',
+      palette,
+    });
+    for (const [backgroundToken, foregroundToken] of [
+      ['sidebar-hover', 'sidebar-hover-foreground'],
+      ['sidebar-hover', 'sidebar-hover-muted-foreground'],
+      ['sidebar-selected', 'sidebar-selected-foreground'],
+      ['sidebar-selected', 'sidebar-selected-muted-foreground'],
+    ] as const) {
+      const background = relativeLuminance(tokens[backgroundToken] ?? '');
+      const foreground = relativeLuminance(tokens[foregroundToken] ?? '');
+      const ratio =
+        (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05);
+      expect(ratio, foregroundToken).toBeGreaterThanOrEqual(4.5);
+    }
+    for (const [backgroundToken, foregroundToken] of [
+      ['sidebar-hover', 'sidebar-hover-destructive-foreground'],
+      ['sidebar-selected', 'sidebar-selected-destructive-foreground'],
+    ] as const) {
+      const background = relativeLuminance(tokens[backgroundToken] ?? '');
+      const foreground = relativeLuminance(tokens[foregroundToken] ?? '');
+      const ratio =
+        (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05);
+      expect(ratio, foregroundToken).toBeGreaterThanOrEqual(3);
     }
   });
 
