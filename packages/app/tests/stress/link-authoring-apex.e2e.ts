@@ -7,6 +7,10 @@ const EDITOR = '.ProseMirror:not(.composer-prosemirror)';
 const LINK_CHIP = `${EDITOR} span[data-link]`;
 const PALETTE = '[cmdk-root]';
 
+async function pmText(page: Page): Promise<string> {
+  return page.evaluate(() => window.__activeEditor?.state.doc.textContent ?? '');
+}
+
 async function pmHasLink(page: Page): Promise<boolean> {
   return page.evaluate(() =>
     JSON.stringify(window.__activeEditor?.state.doc.toJSON() ?? {}).includes('"type":"link"'),
@@ -31,7 +35,7 @@ async function authoredNothing(page: Page): Promise<boolean> {
 }
 
 test.describe('apex — a receiver never writes a peer’s URL; it renders what the bytes parse to', () => {
-  test('a boundary-less URL typed by a peer stays bare in the bytes and renders as a link on the receiver; only the typist’s own view stays plain until it re-derives', async ({
+  test('a boundary-less URL typed by a peer keeps its escaped colon in the bytes, so the receiver renders the same literal text the typist sees', async ({
     browser,
     api,
     baseURL,
@@ -54,13 +58,13 @@ test.describe('apex — a receiver never writes a peer’s URL; it renders what 
 
       await pageA.locator(EDITOR).click();
       await pageA.keyboard.type('https://a-side.com');
-      await waitForYTextToContain(pageB, 'a-side.com');
+      await waitForYTextToContain(pageB, 'https\\://a-side.com');
 
       expect(await pmHasLink(pageA)).toBe(false);
       await expect(pageA.locator(LINK_CHIP)).toHaveCount(0);
-      await expect(
-        pageB.locator(`${LINK_CHIP}[aria-label="Link: https://a-side.com"]`),
-      ).toHaveCount(1);
+      expect(await pmHasLink(pageB)).toBe(false);
+      await expect(pageB.locator(LINK_CHIP)).toHaveCount(0);
+      await expect.poll(() => pmText(pageB)).toContain('https://a-side.com');
       expect(await authoredNothing(pageB)).toBe(true);
       expect(await authoredNothing(pageA)).toBe(false);
 
@@ -81,7 +85,7 @@ test.describe('apex — a receiver never writes a peer’s URL; it renders what 
       await expect(pageB.locator(`${LINK_CHIP}[aria-label="Link: https://b-own.com"]`)).toHaveCount(
         1,
       );
-      await expect(pageB.locator(LINK_CHIP)).toHaveCount(2);
+      await expect(pageB.locator(LINK_CHIP)).toHaveCount(1);
 
       await waitForYTextToContain(pageA, 'b-own.com');
       await expect(pageA.locator(`${LINK_CHIP}[aria-label="Link: https://b-own.com"]`)).toHaveCount(
@@ -89,8 +93,8 @@ test.describe('apex — a receiver never writes a peer’s URL; it renders what 
       );
       await expect(
         pageA.locator(`${LINK_CHIP}[aria-label="Link: https://a-side.com"]`),
-      ).toHaveCount(1);
-      await expect(pageA.locator(LINK_CHIP)).toHaveCount(2);
+      ).toHaveCount(0);
+      await expect(pageA.locator(LINK_CHIP)).toHaveCount(1);
     } finally {
       await ctxA.close();
       await ctxB.close();
@@ -99,7 +103,7 @@ test.describe('apex — a receiver never writes a peer’s URL; it renders what 
 });
 
 test.describe('apex — a backgrounded editor never writes a peer’s URL', () => {
-  test('a peer’s boundary-less URL reaches a hidden Activity’s editor, stays bare in the bytes, and renders as the link it parses to', async ({
+  test('a peer’s boundary-less URL reaches a hidden Activity’s editor with its escaped colon intact, and renders as literal text', async ({
     browser,
     api,
     baseURL,
@@ -148,11 +152,10 @@ test.describe('apex — a backgrounded editor never writes a peer’s URL', () =
       await pageH.waitForFunction(() => Boolean(window.__activeProvider), null, {
         timeout: 15_000,
       });
-      await waitForYTextToContain(pageH, 'while-hidden.com');
+      await waitForYTextToContain(pageH, 'https\\://while-hidden.com');
 
-      await expect(
-        pageH.locator(`${LINK_CHIP}[aria-label="Link: https://while-hidden.com"]`),
-      ).toHaveCount(1);
+      await expect(pageH.locator(LINK_CHIP)).toHaveCount(0);
+      await expect.poll(() => pmText(pageH)).toContain('https://while-hidden.com');
       expect(await authoredNothing(pageH)).toBe(true);
     } finally {
       await ctxH.close();
