@@ -14446,6 +14446,14 @@ msgstr "Cette commande contient des caractères masqués qui peuvent la faire pa
 msgid "This comment is on the whole property"
 msgstr "Ce commentaire porte sur toute la propriété"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "Ce composant a changé. Réessayez."
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "Ce composant a été supprimé."
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

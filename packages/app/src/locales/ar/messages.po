@@ -14446,6 +14446,14 @@ msgstr "يحتوي هذا الأمر على أحرف مخفية قد تجعله 
 msgid "This comment is on the whole property"
 msgstr "هذا التعليق على الخاصية بأكملها"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "لقد تغيّر هذا المكوّن. حاول مرة أخرى."
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "تمت إزالة هذا المكوّن."
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

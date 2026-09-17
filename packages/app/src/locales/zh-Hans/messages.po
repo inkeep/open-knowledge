@@ -14446,6 +14446,14 @@ msgstr "此命令包含隐藏字符，可能使其看起来与实际运行的内
 msgid "This comment is on the whole property"
 msgstr "这条评论针对的是整个属性"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "此组件已更改。请重试。"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "此组件已被移除。"
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

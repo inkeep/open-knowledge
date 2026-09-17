@@ -14446,6 +14446,14 @@ msgstr "Este comando contiene caracteres ocultos que pueden hacer que se vea dis
 msgid "This comment is on the whole property"
 msgstr "Este comentario es sobre toda la propiedad"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "Este componente ha cambiado. Inténtalo de nuevo."
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "Este componente se ha eliminado."
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

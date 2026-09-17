@@ -14442,6 +14442,14 @@ msgstr "এই কমান্ডে লুকানো অক্ষর আছ�
 msgid "This comment is on the whole property"
 msgstr "এই মন্তব্যটি পুরো প্রপার্টির উপর"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "এই উপাদানটি পরিবর্তিত হয়েছে। আবার চেষ্টা করুন।"
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "এই উপাদানটি সরানো হয়েছে।"
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

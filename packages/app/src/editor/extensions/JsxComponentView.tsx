@@ -6,14 +6,17 @@
 
 import {
   commentLeafText,
+  incrementJsxActionAborted,
   incrementJsxAutoConvertFailed,
   incrementJsxAutoConvertSucceeded,
+  incrementJsxChromeDeleteFailed,
   incrementJsxKeyboardDeleteFailed,
   incrementJsxMoveFailed,
   incrementJsxPopoverCloseRestoreFailed,
   incrementJsxRenderFailure,
   incrementJsxStuckCopyFailed,
   incrementJsxStuckDeleteFailed,
+  type JsxNodeAction,
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
@@ -31,6 +34,7 @@ import {
 import type { ReactNode } from 'react';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorBoundary, type FallbackProps } from 'react-error-boundary';
+import { toast } from 'sonner';
 import { emitStartComment } from '@/comments/store';
 import { Button } from '@/components/ui/button';
 import { useIsEmbedded } from '@/hooks/use-is-embedded';
@@ -73,6 +77,7 @@ import {
   autonomousFragmentEditAllowed,
   markAutonomousFragmentEdit,
 } from './autonomous-fragment-edit.ts';
+import { isSameJsxElement, resolveJsxNodeTarget } from './jsx-node-target.ts';
 
 interface ComponentErrorBoundaryProps {
   children: ReactNode;
@@ -284,9 +289,46 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   }, [boardExpandable]);
   const resetKey = `${descriptor.name}::${stableHash(primitiveProps)}`;
 
-  const insertChildAt = () => {
-    const p = typeof getPos === 'function' ? (getPos() ?? 0) : 0;
-    return p + 1 + node.content.size;
+  const reportAbortedAction = (action: JsxNodeAction, reason: 'changed' | 'removed') => {
+    incrementJsxActionAborted(action);
+    console.warn(
+      JSON.stringify({
+        event: 'jsx-component-action-aborted',
+        action,
+        reason,
+        component: descriptor.name === '*' ? 'wildcard' : descriptor.name,
+        rawComponentName: String(node.attrs.componentName ?? '').slice(0, 200),
+      }),
+    );
+    toast.info(
+      reason === 'removed' ? t`This component was removed.` : t`This component changed. Try again.`,
+    );
+  };
+
+  const resolveActionTarget = (action: JsxNodeAction) => {
+    const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
+    if (target.kind !== 'current') {
+      reportAbortedAction(action, target.kind);
+      return null;
+    }
+    return target;
+  };
+
+  const resolveElementActionTarget = (action: JsxNodeAction) => {
+    const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
+    if (target.kind === 'removed' || !isSameJsxElement(target.node, node)) {
+      reportAbortedAction(action, target.kind === 'removed' ? 'removed' : 'changed');
+      return null;
+    }
+    return target;
+  };
+
+  const insertChild = (childName: string) => {
+    const target = resolveActionTarget('insert-child');
+    if (!target) return;
+    const insertPos = target.pos + 1 + target.node.content.size;
+    editor.chain().focus().insertContentAt(insertPos, createChildNode(childName)).run();
+    focusInsertedComponent(editor, insertPos, getDescriptor(childName));
   };
 
   const needsConversion = descriptor.name === '*' || renderError !== null;
@@ -295,9 +337,6 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
   const [stuck, setStuck] = useState(false);
   useEffect(() => {
     if (!needsConversion || convertedRef.current || stuck) return;
-
-    const p = typeof getPos === 'function' ? getPos() : undefined;
-    if (typeof p !== 'number') return;
 
     const source = reconstructSource(node);
     const reason =
@@ -347,6 +386,9 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
         return;
       }
       try {
+        const target = resolveJsxNodeTarget(view.state.doc, getPos, node);
+        if (target.kind !== 'current') return;
+        const p = target.pos;
         view.dispatch(
           markAutonomousFragmentEdit(view.state.tr.replaceWith(p, p + node.nodeSize, fallbackNode)),
         );
@@ -393,10 +435,10 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
       }
     };
     const deleteNode = () => {
-      const p = typeof getPos === 'function' ? getPos() : undefined;
-      if (typeof p !== 'number') return;
       try {
-        editor.chain().focus().setNodeSelection(p).deleteSelection().run();
+        const target = resolveActionTarget('delete-stuck');
+        if (!target) return;
+        editor.chain().focus().setNodeSelection(target.pos).deleteSelection().run();
       } catch (err) {
         if (!(err instanceof RangeError)) throw err;
         incrementJsxStuckDeleteFailed(descriptor.name);
@@ -468,19 +510,19 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
     if (target.closest('.jsx-component-chrome')) return;
     if (target.closest('.jsx-add-child-pill, .jsx-empty-child-placeholder')) return;
     if (target.closest('a[href]')) return;
-    if (typeof pos !== 'number') return;
-    const curNode = editor.state.doc.nodeAt(pos);
-    if (!curNode) return;
-    const nodeEnd = pos + curNode.nodeSize;
+    const targetNode = resolveJsxNodeTarget(editor.state.doc, getPos, node);
+    if (targetNode.kind !== 'current') return;
+    const p = targetNode.pos;
+    const nodeEnd = p + node.nodeSize;
     const selFrom = editor.state.selection.from;
-    if (selFrom < pos || selFrom >= nodeEnd) return;
-    editor.chain().focus().setNodeSelection(pos).run();
+    if (selFrom < p || selFrom >= nodeEnd) return;
+    editor.chain().focus().setNodeSelection(p).run();
   };
 
   const openPanel = () => {
-    const p = typeof getPos === 'function' ? getPos() : undefined;
-    if (typeof p !== 'number') return;
-    editor.chain().focus().setNodeSelection(p).run();
+    const target = resolveActionTarget('open-properties');
+    if (!target) return;
+    editor.chain().focus().setNodeSelection(target.pos).run();
     setPopoverOpen(true);
   };
 
@@ -497,11 +539,16 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
       if (!isInnermostSelected) return;
       if (!e.currentTarget.contains(target)) return;
       if (target.matches('input, textarea')) return;
-      const p = typeof getPos === 'function' ? getPos() : undefined;
-      if (typeof p !== 'number') return;
       e.preventDefault();
       try {
-        const dispatched = editor.chain().focus().setNodeSelection(p).deleteSelection().run();
+        const targetNode = resolveActionTarget('delete-keyboard');
+        if (!targetNode) return;
+        const dispatched = editor
+          .chain()
+          .focus()
+          .setNodeSelection(targetNode.pos)
+          .deleteSelection()
+          .run();
         if (!dispatched) {
           incrementJsxKeyboardDeleteFailed(descriptor.name);
           console.warn(
@@ -541,11 +588,10 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
     setPopoverOpen(open);
     if (open) return;
     requestAnimationFrame(() => {
-      const p = typeof getPos === 'function' ? getPos() : undefined;
-      if (typeof p !== 'number') return;
       try {
-        const curNode = editor.state.doc.nodeAt(p);
-        if (!curNode) return;
+        const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
+        if (target.kind !== 'current') return;
+        const { pos: p, node: curNode } = target;
         const nodeEnd = p + curNode.nodeSize;
         const selFrom = editor.state.selection.from;
         if (selFrom < p || selFrom >= nodeEnd) return;
@@ -661,17 +707,19 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               aria-label={t`Move up`}
               onClick={() => {
                 try {
-                  if (typeof pos !== 'number') return;
-                  const $p = editor.state.doc.resolve(pos);
+                  const target = resolveActionTarget('move-up');
+                  if (!target) return;
+                  const p = target.pos;
+                  const $p = editor.state.doc.resolve(p);
                   const idx = $p.index($p.depth);
                   if (idx === 0) return;
                   const parent = $p.node($p.depth);
                   const prev = parent.child(idx - 1);
-                  const from = pos - prev.nodeSize;
-                  const to = pos + node.nodeSize;
+                  const from = p - prev.nodeSize;
+                  const to = p + node.nodeSize;
                   const tr = editor.state.tr;
-                  const cur = editor.state.doc.slice(pos, pos + node.nodeSize);
-                  const pre = editor.state.doc.slice(from, pos);
+                  const cur = editor.state.doc.slice(p, p + node.nodeSize);
+                  const pre = editor.state.doc.slice(from, p);
                   tr.replaceWith(from, to, cur.content.append(pre.content));
                   editor.view.dispatch(tr.scrollIntoView());
                 } catch (err) {
@@ -700,17 +748,19 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               aria-label={t`Move down`}
               onClick={() => {
                 try {
-                  if (typeof pos !== 'number') return;
-                  const $p = editor.state.doc.resolve(pos);
+                  const target = resolveActionTarget('move-down');
+                  if (!target) return;
+                  const p = target.pos;
+                  const $p = editor.state.doc.resolve(p);
                   const idx = $p.index($p.depth);
                   const parent = $p.node($p.depth);
                   if (idx >= parent.childCount - 1) return;
                   const next = parent.child(idx + 1);
-                  const from = pos;
-                  const to = pos + node.nodeSize + next.nodeSize;
+                  const from = p;
+                  const to = p + node.nodeSize + next.nodeSize;
                   const tr = editor.state.tr;
-                  const cur = editor.state.doc.slice(pos, pos + node.nodeSize);
-                  const nxt = editor.state.doc.slice(pos + node.nodeSize, to);
+                  const cur = editor.state.doc.slice(p, p + node.nodeSize);
+                  const nxt = editor.state.doc.slice(p + node.nodeSize, to);
                   tr.replaceWith(from, to, nxt.content.append(cur.content));
                   editor.view.dispatch(tr.scrollIntoView());
                 } catch (err) {
@@ -780,7 +830,9 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
               data-testid="jsx-component-ask-ai-btn"
               onClick={() => {
                 try {
-                  editor.commands.setNodeSelection(pos);
+                  const target = resolveActionTarget('comment');
+                  if (!target) return;
+                  editor.commands.setNodeSelection(target.pos);
                 } catch (err) {
                   console.warn(
                     JSON.stringify({
@@ -818,16 +870,17 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             className="jsx-chrome-btn jsx-chrome-btn--delete"
             aria-label={t`Delete ${deleteDescriptorLabel}`}
             onClick={() => {
-              if (typeof pos !== 'number') return;
               try {
+                const target = resolveActionTarget('delete-chrome');
+                if (!target) return;
                 const dispatched = editor
                   .chain()
                   .focus()
-                  .setNodeSelection(pos)
+                  .setNodeSelection(target.pos)
                   .deleteSelection()
                   .run();
                 if (!dispatched) {
-                  incrementJsxKeyboardDeleteFailed(descriptor.name);
+                  incrementJsxChromeDeleteFailed(descriptor.name);
                   console.warn(
                     JSON.stringify({
                       event: 'jsx-component-chrome-delete-failed',
@@ -839,7 +892,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
                 }
               } catch (err) {
                 if (!(err instanceof RangeError)) throw err;
-                incrementJsxKeyboardDeleteFailed(descriptor.name);
+                incrementJsxChromeDeleteFailed(descriptor.name);
                 console.warn(
                   JSON.stringify({
                     event: 'jsx-component-chrome-delete-failed',
@@ -900,16 +953,15 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
                   ? {
                       editor,
                       getPos: () => {
-                        const p = getPos();
-                        return typeof p === 'number' ? p : undefined;
+                        const target = resolveJsxNodeTarget(editor.state.doc, getPos, node);
+                        return target.kind !== 'removed' && isSameJsxElement(target.node, node)
+                          ? target.pos
+                          : undefined;
                       },
                       addChild: descriptor.emptyChildName
                         ? () => {
                             const childName = descriptor.emptyChildName as string;
-                            const childJSON = createChildNode(childName);
-                            const insertPos = insertChildAt();
-                            editor.chain().focus().insertContentAt(insertPos, childJSON).run();
-                            focusInsertedComponent(editor, insertPos, getDescriptor(childName));
+                            insertChild(childName);
                           }
                         : null,
                     }
@@ -953,10 +1005,7 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
                 onMouseDown={(e) => e.stopPropagation()}
                 onClick={() => {
                   const childName = descriptor.emptyChildName as string;
-                  const childJSON = createChildNode(childName);
-                  const insertPos = insertChildAt();
-                  editor.chain().focus().insertContentAt(insertPos, childJSON).run();
-                  focusInsertedComponent(editor, insertPos, getDescriptor(childName));
+                  insertChild(childName);
                 }}
                 {...{ [OPT_OUT_ATTR]: 'true' }}
               >
@@ -1003,10 +1052,9 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             );
           }}
           onSave={(value) => {
-            const livePos = typeof getPos === 'function' ? getPos() : undefined;
-            if (typeof livePos !== 'number') return;
-            const curNode = editor.state.doc.nodeAt(livePos);
-            if (!curNode) return;
+            const target = resolveElementActionTarget('edit-source');
+            if (!target) return;
+            const { pos: livePos, node: curNode } = target;
             const elementAttrs = getElementJsxAttrs(curNode.attrs);
             if (!elementAttrs) return;
             try {
@@ -1053,10 +1101,9 @@ export function JsxComponentView({ node, editor, extension, getPos, selected }: 
             values={primitiveProps}
             onDismiss={() => setPopoverOpen(false)}
             onChange={(propName, value) => {
-              const p = typeof getPos === 'function' ? getPos() : undefined;
-              if (typeof p !== 'number') return;
-              const curNode = editor.state.doc.nodeAt(p);
-              if (!curNode) return;
+              const target = resolveElementActionTarget('edit-properties');
+              if (!target) return;
+              const { pos: p, node: curNode } = target;
               const elementAttrs = getElementJsxAttrs(curNode.attrs);
               if (!elementAttrs) return;
               const currentNodeProps = elementAttrs.props;

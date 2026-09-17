@@ -14442,6 +14442,14 @@ msgstr "Perintah ini berisi karakter tersembunyi yang dapat membuatnya terlihat 
 msgid "This comment is on the whole property"
 msgstr "Komentar ini berlaku untuk seluruh properti"
 
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component changed. Try again."
+msgstr "Komponen ini telah berubah. Coba lagi."
+
+#: src/editor/extensions/JsxComponentView.tsx
+msgid "This component was removed."
+msgstr "Komponen ini telah dihapus."
+
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx

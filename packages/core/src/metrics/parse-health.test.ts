@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   getParseHealth,
   incrementBlockFallback,
+  incrementJsxActionAborted,
   incrementJsxAutoConvertFailed,
+  incrementJsxChromeDeleteFailed,
+  incrementJsxKeyboardDeleteFailed,
   incrementJsxRenderFailure,
   incrementWholeDocFallback,
   incrementYpsMismatchBlock,
@@ -99,6 +102,36 @@ describe('parse-health metrics', () => {
     const snap2 = getParseHealth();
     expect(snap1.jsxRenderFailure.Callout).toBe(1);
     expect(snap2.jsxRenderFailure.Callout).toBe(2);
+  });
+
+  test('action aborts are separate from conversion failures and reset without mutating snapshots', () => {
+    incrementJsxActionAborted('delete-chrome');
+    const snapshot = getParseHealth();
+    incrementJsxActionAborted('delete-chrome');
+    incrementJsxActionAborted('delete-keyboard');
+    expect(getParseHealth().jsxActionAborted).toEqual({
+      'delete-chrome': 2,
+      'delete-keyboard': 1,
+    });
+    expect(getParseHealth().jsxAutoConvertFailed).toEqual({});
+    resetParseHealth();
+    expect(getParseHealth().jsxActionAborted).toEqual({});
+    expect(snapshot.jsxActionAborted).toEqual({ 'delete-chrome': 1 });
+  });
+
+  test('chrome and keyboard delete failures remain separate and reset without mutating snapshots', () => {
+    incrementJsxChromeDeleteFailed('Callout');
+    incrementJsxKeyboardDeleteFailed('Callout');
+    incrementJsxChromeDeleteFailed('Callout');
+    const snapshot = getParseHealth();
+    expect(snapshot.jsxChromeDeleteFailed).toEqual({ Callout: 2 });
+    expect(snapshot.jsxKeyboardDeleteFailed).toEqual({ Callout: 1 });
+
+    resetParseHealth();
+    expect(getParseHealth().jsxChromeDeleteFailed).toEqual({});
+    expect(getParseHealth().jsxKeyboardDeleteFailed).toEqual({});
+    expect(snapshot.jsxChromeDeleteFailed).toEqual({ Callout: 2 });
+    expect(snapshot.jsxKeyboardDeleteFailed).toEqual({ Callout: 1 });
   });
 
   test('ypsMismatch counters are bridged via globalThis (CJS patch ↔ ESM)', () => {

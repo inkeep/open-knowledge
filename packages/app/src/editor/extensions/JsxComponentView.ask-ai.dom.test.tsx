@@ -1,4 +1,6 @@
+import { sharedExtensions } from '@inkeep/open-knowledge-core';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { getSchema } from '@tiptap/core';
 import type { NodeViewProps } from '@tiptap/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -41,6 +43,22 @@ function makeProps({
   noPos = false,
   freshlyInserted = false,
 }: Overrides = {}) {
+  const schema = getSchema(sharedExtensions);
+  const node = schema.nodes.jsxComponent.create(
+    {
+      componentName: 'MermaidFence',
+      kind: 'element',
+      attributes: [{ type: 'mdxJsxAttribute', name: 'chart', value: 'graph TD;' }],
+      props: freshlyInserted ? { chart: '' } : { chart: 'graph TD;' },
+      sourceRaw: freshlyInserted ? '' : '```mermaid\ngraph TD;\n```',
+      sourceDirty: freshlyInserted,
+    },
+    contentSize > 0 ? schema.nodes.paragraph.create(null, schema.text('body')) : [],
+  );
+  const doc = schema.node('doc', null, [
+    schema.nodes.paragraph.create(null, schema.text('abc')),
+    node,
+  ]);
   return {
     editor: {
       isEditable: true,
@@ -53,23 +71,11 @@ function makeProps({
           nodeSelections.push(p);
         },
       },
-      state: { doc: { resolve: () => ({ depth: 0 }) }, selection: { from: 0, to: 0 } },
+      state: { doc, selection: { from: 0, to: 0 } },
       on: () => {},
       off: () => {},
     },
-    node: {
-      type: { name: 'jsxComponent' },
-      attrs: {
-        componentName: 'MermaidFence',
-        kind: 'element',
-        attributes: [{ type: 'mdxJsxAttribute', name: 'chart', value: 'graph TD;' }],
-        props: freshlyInserted ? { chart: '' } : { chart: 'graph TD;' },
-        sourceRaw: freshlyInserted ? '' : '```mermaid\ngraph TD;\n```',
-        sourceDirty: freshlyInserted,
-      },
-      content: { size: contentSize },
-      nodeSize: 2,
-    },
+    node,
     getPos: noPos ? undefined : () => 5,
     selected: true,
     updateAttributes: () => {},

@@ -362,13 +362,19 @@ export function reconcileTrackedMcpConfig(input: {
     candidate.descriptor.revision > best.descriptor.revision ? candidate : best,
   );
 
-  const shellSource = [
+  const shellSources = [
     managed.worktree,
     managed.index,
     managed.head,
     managed.incoming,
     managed.base,
-  ].find((state) => state.shell === shell);
+  ].filter((state) => state.shell === shell);
+  const shellSource =
+    shellSources.find((state) =>
+      shape.managedKeys.every(
+        (key) => JSON.stringify(state.entry[key]) === JSON.stringify(winner.entry[key]),
+      ),
+    ) ?? shellSources[0];
   if (!shellSource) return { kind: 'declined', reason: 'unowned-shell-conflict' };
   const raw = upsertManagedFields(shellSource.raw, shape, winner.entry, input.tomlEditor);
   if (raw === null) {
