@@ -390,6 +390,29 @@ describe('parseThreadClientFrame', () => {
       ),
     ).toBeNull();
   });
+
+  test('set_context_window carries a positive token count and a reqId to answer', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'set_context_window', threadId: 't', reqId: 'cw1', tokens: 872000 }),
+      ),
+    ).toMatchObject({ op: 'set_context_window', threadId: 't', reqId: 'cw1', tokens: 872000 });
+    for (const tokens of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, '872000']) {
+      expect(
+        parseThreadClientFrame(
+          JSON.stringify({ op: 'set_context_window', threadId: 't', reqId: 'cw1', tokens }),
+        ),
+      ).toBeNull();
+    }
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({ op: 'set_context_window', threadId: 't', tokens: 872000 }),
+      ),
+    ).toBeNull();
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'set_context_window', reqId: 'cw1', tokens: 1 })),
+    ).toBeNull();
+  });
 });
 
 describe('parseThreadClientFrame create settings', () => {

@@ -76,6 +76,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -109,6 +110,7 @@ import { agentDisplayName } from '@/lib/acp/agent-display';
 import {
   agentSettingsKey,
   rememberAgentConfigOption,
+  rememberAgentContextWindow,
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
@@ -125,12 +127,14 @@ import {
 } from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
+import { contextChoicesForModel, useModelCandidates } from '@/lib/acp/model-candidates';
 import { isPermissiveMode } from '@/lib/acp/permissive-mode';
 import { formatShellCommand, revealHiddenCharacters } from '@/lib/acp/shell-command-format';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
 import {
   getAgentThreadClient,
+  ThreadContextWindowError,
   ThreadResumeError,
   useAgentThread,
   useAgentThreadModel,
@@ -1182,6 +1186,8 @@ export function ThreadView({
           ) : null}
           <ThreadComposer
             info={info}
+            hasStartedWork={items.some((item) => item.kind === 'message' && item.role === 'user')}
+            onNewChat={startFreshThread}
             composerRef={composerRef}
             onSubmit={submit}
             canPrompt={canPrompt}
@@ -1377,11 +1383,30 @@ function deriveModeSurface(info: ThreadInfo): ModeSurface | null {
   return null;
 }
 
-function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
+function AgentSettingsPopover({
+  info,
+  hasStartedWork,
+  onNewChat,
+}: {
+  info: ThreadInfo;
+  hasStartedWork: boolean;
+  onNewChat: () => void;
+}): ReactNode {
   const { t } = useLingui();
   const reasonId = useId();
   const client = getAgentThreadClient();
   const settingsKey = agentSettingsKey(info.agent);
+  const modelCandidates = useModelCandidates(info.agent.id);
+  const selectedModel =
+    (info.configOptions ?? []).find(
+      (option) => option.type === 'select' && option.category === 'model',
+    )?.currentValue ?? null;
+  const contextChoices = contextChoicesForModel(
+    modelCandidates,
+    typeof selectedModel === 'string' ? selectedModel : null,
+  );
+  const currentContextWindow = info.contextWindow ?? null;
+  const canChangeContextWindow = info.archived !== true && !hasStartedWork;
   const applyConfig = (option: SessionConfigOption, value: string | boolean): void => {
     client.setConfigOption(info.threadId, option.id, value);
     rememberAgentConfigOption(settingsKey, option.id, value);
@@ -1506,6 +1531,33 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
             />
           ),
         )}
+        <ContextWindowSub
+          choices={contextChoices}
+          currentTokens={currentContextWindow}
+          canApply={canChangeContextWindow}
+          onSelect={(tokens) => {
+            void client.setContextWindow(info.threadId, tokens).then(
+              () => rememberAgentContextWindow(settingsKey, tokens),
+              (err: unknown) => {
+                const code = err instanceof ThreadContextWindowError ? err.code : null;
+                if (code === 'spawn-failed') {
+                  toast.error(
+                    t`${info.agent.name} couldn't restart on that context window. Use Retry to bring it back.`,
+                  );
+                  return;
+                }
+                if (code === 'timeout') {
+                  toast.error(
+                    t`${info.agent.name} didn't confirm the context window change. Check the conversation before picking again.`,
+                  );
+                  return;
+                }
+                toast.error(t`${info.agent.name} kept its current context window.`);
+              },
+            );
+          }}
+          onNewChat={onNewChat}
+        />
         {showLegacyModes ? (
           <ConfigSelectSub
             agentId={info.agent.id}
@@ -1526,6 +1578,75 @@ function AgentSettingsPopover({ info }: { info: ThreadInfo }): ReactNode {
       </DropdownMenuContent>
     </DropdownMenu>
   );
+}
+
+function ContextWindowSub({
+  choices,
+  currentTokens,
+  canApply,
+  onSelect,
+  onNewChat,
+}: {
+  choices: readonly number[];
+  currentTokens: number | null;
+  canApply: boolean;
+  onSelect: (tokens: number) => void;
+  onNewChat: () => void;
+}): ReactNode {
+  const { t } = useLingui();
+  if (choices.length < 2) return null;
+  const summary = currentTokens === null ? t`Default` : formatContextTokens(currentTokens);
+  return (
+    <DropdownMenuSub>
+      <DropdownMenuSubTrigger className="gap-2" data-testid="agent-thread-context-window">
+        <span className="min-w-0 flex-1 truncate">{t`Context window`}</span>
+        <span className="max-w-[11rem] truncate text-1sm text-muted-foreground">{summary}</span>
+      </DropdownMenuSubTrigger>
+      <DropdownMenuSubContent className="max-w-72 overscroll-contain">
+        <DropdownMenuLabel>{t`Context window`}</DropdownMenuLabel>
+        {canApply ? (
+          <DropdownMenuRadioGroup
+            value={currentTokens === null ? undefined : String(currentTokens)}
+            onValueChange={(next) => onSelect(Number(next))}
+          >
+            {choices.map((tokens) => (
+              <DropdownMenuRadioItem
+                key={tokens}
+                value={String(tokens)}
+                data-testid={`agent-thread-context-window-${tokens}`}
+              >
+                {formatContextTokens(tokens)}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+        ) : (
+          <>
+            <DropdownMenuLabel
+              className="font-normal text-muted-foreground"
+              data-testid="agent-thread-context-window-locked"
+            >
+              {t`This conversation keeps the window it started with. A new chat can use a different one.`}
+            </DropdownMenuLabel>
+            <DropdownMenuItem
+              onSelect={onNewChat}
+              data-testid="agent-thread-context-window-new-chat"
+            >
+              {t`New chat with a different window`}
+            </DropdownMenuItem>
+          </>
+        )}
+      </DropdownMenuSubContent>
+    </DropdownMenuSub>
+  );
+}
+
+function formatContextTokens(tokens: number): string {
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    return `${Number.isInteger(millions) ? millions : millions.toFixed(1)}M`;
+  }
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
 }
 
 function ConfigSelectSub({
@@ -3497,6 +3618,8 @@ function ContextUsageRing({
 
 function ThreadComposer({
   info,
+  hasStartedWork,
+  onNewChat,
   composerRef,
   onSubmit,
   canPrompt,
@@ -3522,6 +3645,8 @@ function ThreadComposer({
   onRemovePendingAttachment,
 }: {
   info: ThreadInfo;
+  hasStartedWork: boolean;
+  onNewChat: () => void;
   composerRef: RefObject<ComposerMentionInputHandle | null>;
   onSubmit: () => void;
   canPrompt: boolean;
@@ -3656,7 +3781,7 @@ function ThreadComposer({
         />
         {}
         <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
-          <AgentSettingsPopover info={info} />
+          <AgentSettingsPopover info={info} hasStartedWork={hasStartedWork} onNewChat={onNewChat} />
           <AttachFilesButton
             testId="agent-thread-attach-files"
             onFiles={onIngestAllFiles}

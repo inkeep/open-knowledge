@@ -1,7 +1,11 @@
 const STORAGE_KEY = 'ok-acp-agent-settings-v1';
 
 type ConfigValue = string | boolean;
-type StoredAgentSettings = { config?: Record<string, ConfigValue>; modeId?: string };
+type StoredAgentSettings = {
+  config?: Record<string, ConfigValue>;
+  modeId?: string;
+  contextWindow?: number;
+};
 type Store = Record<string, StoredAgentSettings>;
 
 export function agentSettingsKey(agent: { source: 'registry' | 'custom'; id: string }): string {
@@ -61,4 +65,21 @@ export function rememberAgentMode(agentKey: string, modeId: string): void {
 export function getRememberedAgentMode(agentKey: string): string | undefined {
   const modeId = read()[agentKey]?.modeId;
   return typeof modeId === 'string' && modeId !== '' ? modeId : undefined;
+}
+
+export function rememberAgentContextWindow(agentKey: string, tokens: number | null): void {
+  const store = read();
+  const entry = store[agentKey] ?? {};
+  if (tokens === null || !Number.isFinite(tokens) || tokens <= 0) {
+    const { contextWindow: _dropped, ...rest } = entry;
+    store[agentKey] = rest;
+  } else {
+    store[agentKey] = { ...entry, contextWindow: Math.floor(tokens) };
+  }
+  write(store);
+}
+
+export function getRememberedAgentContextWindow(agentKey: string): number | undefined {
+  const stored = read()[agentKey]?.contextWindow;
+  return typeof stored === 'number' && Number.isFinite(stored) && stored > 0 ? stored : undefined;
 }

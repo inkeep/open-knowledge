@@ -304,6 +304,16 @@ msgstr ""
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
+msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgstr ""
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
+msgstr ""
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr ""
 
@@ -329,6 +339,11 @@ msgstr ""
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
+msgstr ""
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} kept its current context window."
 msgstr ""
 
 #. placeholder {0}: modeSurface.currentName
@@ -3560,6 +3575,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
+msgid "Context window"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr ""
 
@@ -4688,6 +4707,10 @@ msgstr ""
 
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Default"
 msgstr ""
 
 #: src/components/settings/AttachmentsSection.tsx
@@ -8792,6 +8815,10 @@ msgstr ""
 #: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
 msgid "New chat with {agentName}"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with a different window"
 msgstr ""
 
 #: src/components/AppMenubar.tsx
@@ -14419,6 +14446,10 @@ msgstr ""
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "This conversation keeps the window it started with. A new chat can use a different one."
 msgstr ""
 
 #: src/components/settings/AgentConnectionDialogs.tsx

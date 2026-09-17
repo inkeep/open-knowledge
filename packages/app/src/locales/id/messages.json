@@ -195,6 +195,10 @@
       "Menambahkan pemeringkatan berbasis makna ke pencarian agar halaman yang berkaitan secara konsep tetap muncul meski tidak berbagi kata kunci."
     ],
     "1NgrlY": ["Cara lain untuk memasang"],
+    "1Ou_BW": [
+      ["0"],
+      " tidak mengonfirmasi perubahan jendela konteks. Periksa percakapan sebelum memilih lagi."
+    ],
     "1QfxQT": ["Tutup"],
     "1RluQD": ["Tampilkan penggantian"],
     "1TA-aJ": ["Ditarik ", ["pulled"], " · dikirim ", ["pushed"]],
@@ -255,6 +259,7 @@
     "2QoAQ-": ["Lihat ", ["publisher"], " di skills.sh"],
     "2RnFoM": ["Tidak dapat melanjutkan obrolan ini: ", ["0"]],
     "2Snes1": ["Ini mengirim alamat tautannya keluar dari komputer Anda"],
+    "2UTDg2": [["0"], " mempertahankan jendela konteksnya saat ini."],
     "2VSPan": ["Terminal ditutup untuk memberi ruang bagi panel agen."],
     "2XQ8Ww": ["Buka pratinjau saat agen menyunting"],
     "2YOwme": ["Dimulai ulang — kini menjalankan v", ["appRuntime"], "."],
@@ -1206,6 +1211,10 @@
     "Dut9Ht": ["Jelaskan keterampilan yang ingin Anda buat"],
     "DvGkXq": ["Tidak dapat membuat ", ["effective"], ": ", ["0"]],
     "Dvr1Sg": ["Menyalin"],
+    "Dvvrs8": [
+      ["0"],
+      " tidak dapat dijalankan ulang pada jendela konteks itu. Gunakan Coba lagi untuk memulihkannya."
+    ],
     "Dvwa0U": ["Buat worktree dari cabang ini"],
     "Dz7fsq": ["Perbesar"],
     "E-G19G": [
@@ -1874,6 +1883,7 @@
     "LRLKnQ": ["Sembunyikan yang sudah selesai"],
     "LRgZAt": [["owner"], "/", ["name"], " sudah ada"],
     "LTeJuX": ["Layar Penuh"],
+    "LXIm4m": ["Jendela konteks"],
     "LXdWeS": ["Judul bagian sedang."],
     "LXfNU-": ["Navigasi dan saran"],
     "LYufDw": ["Gagal mengaktifkan pencarian semantik — ", ["detail"]],
@@ -2286,6 +2296,9 @@
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "QcTjRP": [
+      "Percakapan ini mempertahankan jendela awalnya. Percakapan baru bisa memakai jendela lain."
+    ],
     "Qca--K": [
       "Program lain sedang memakai Git di sini — tunggu sampai selesai, lalu sinkronkan lagi (program itu menahan <0>.git/index.lock</0>)"
     ],
@@ -4450,6 +4463,7 @@
     "nCzR-G": ["Salin kode ", ["userCode"]],
     "nDT8qt": [["0"], " diinisialisasi tetapi tidak dapat dibuka."],
     "nFAvDj": [["plugin"], " menyertakan ", ["0"], " keterampilan lain"],
+    "nHUawj": ["Percakapan baru dengan jendela lain"],
     "nJaz5Q": ["Mengganti entri OpenKnowledge yang sudah dimiliki masing-masing."],
     "nMSYz5": [
       "Jalur ini berada di volume eksternal (/Volumes/...). OpenKnowledge akan kehilangan jejak berkasnya ketika drive itu dicabut."
@@ -4572,6 +4586,7 @@
     "otE4aj": ["Tampilkan simpul URL eksternal"],
     "ou1hFW": ["Menyalakan atau mematikan daftar berurut."],
     "outYNy": ["Nama ganda \"", ["keyName"], "\""],
+    "ovBPCi": ["Bawaan"],
     "ovIGrT": [
       "Data kolaborasi lokal untuk \"",
       ["docName"],

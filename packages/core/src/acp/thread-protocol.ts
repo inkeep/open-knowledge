@@ -122,6 +122,7 @@ export interface ThreadInfo {
   promptCapabilities?: PromptCapabilities | null;
   modes?: SessionModeState | null;
   configOptions?: SessionConfigOption[] | null;
+  contextWindow?: number | null;
   availableCommands?: AvailableCommand[] | null;
   lastSeq: number;
   archived?: boolean;
@@ -308,6 +309,7 @@ export type ThreadClientFrame =
       configId: string;
       value: string | boolean;
     }
+  | { op: 'set_context_window'; threadId: string; reqId: string; tokens: number }
   | { op: 'close'; threadId: string }
   | {
       op: 'rename';
@@ -342,6 +344,7 @@ export type ThreadServerFrame =
   | { op: 'created'; reqId: string; info: ThreadInfo }
   | { op: 'resumed'; reqId: string; info: ThreadInfo }
   | { op: 'retried'; reqId: string; info: ThreadInfo }
+  | { op: 'context_window_set'; reqId: string; info: ThreadInfo }
   | { op: 'authenticated'; reqId: string; info: ThreadInfo }
   | { op: 'subscribed'; threadId: string; fromSeq: number; info: ThreadInfo }
   | { op: 'event'; threadId: string; seq: number; event: ThreadEvent }
@@ -393,6 +396,7 @@ const CLIENT_OPS = new Set([
   'cancel',
   'set_mode',
   'set_config_option',
+  'set_context_window',
   'close',
   'rename',
   'resume',
@@ -537,6 +541,11 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       if (!str('threadId') || !str('configId')) return null;
       if (typeof frame.value !== 'string' && typeof frame.value !== 'boolean') return null;
       if (frame.value === '') return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'set_context_window':
+      if (!str('threadId') || !str('reqId')) return null;
+      if (typeof frame.tokens !== 'number' || !Number.isFinite(frame.tokens)) return null;
+      if (frame.tokens <= 0) return null;
       return frame as unknown as ThreadClientFrame;
     case 'resume':
       if (!str('threadId') || !str('reqId')) return null;

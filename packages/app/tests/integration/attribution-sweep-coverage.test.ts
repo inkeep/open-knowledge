@@ -52,6 +52,7 @@ const EXEMPT_HANDLERS = new Set([
   'handleDocumentRead',
   'handleDocumentList',
   'handleAcpCatalog',
+  'handleAcpModels',
   'handleEmbedDetect',
   'handleAsset',
   'handleAssetText',

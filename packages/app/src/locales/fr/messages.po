@@ -304,6 +304,16 @@ msgstr "{0} ajouté(s), {1} retiré(s)"
 
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
+msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
+msgstr "{0} n'a pas pu redémarrer avec cette fenêtre de contexte. Utilisez Réessayer pour le relancer."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} didn't confirm the context window change. Check the conversation before picking again."
+msgstr "{0} n'a pas confirmé le changement de fenêtre de contexte. Vérifiez la conversation avant de choisir à nouveau."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
 msgid "{0} doesn't offer any settings to adjust"
 msgstr "{0} ne propose aucun paramètre à ajuster"
 
@@ -330,6 +340,11 @@ msgstr "{0} est au-dessus de {destination}."
 #: src/components/FileSidebar.tsx
 msgid "{0} isn't installed yet — opening its download page."
 msgstr "{0} n'est pas encore installé — ouverture de sa page de téléchargement."
+
+#. placeholder {0}: info.agent.name
+#: src/components/acp/ThreadView.tsx
+msgid "{0} kept its current context window."
+msgstr "{0} a conservé sa fenêtre de contexte actuelle."
 
 #. placeholder {0}: modeSurface.currentName
 #. placeholder {1}: info.agent.name
@@ -3564,6 +3579,10 @@ msgid "Content rules not yet loaded — try again in a moment"
 msgstr "Les règles de contenu ne sont pas encore chargées — réessayez dans un instant"
 
 #: src/components/acp/ThreadView.tsx
+msgid "Context window"
+msgstr "Fenetre de contexte"
+
+#: src/components/acp/ThreadView.tsx
 msgid "Context window:"
 msgstr "Fenêtre de contexte :"
 
@@ -4693,6 +4712,10 @@ msgstr "Données"
 #: src/components/PropertyWidgets.tsx
 msgid "Date"
 msgstr "Date"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Default"
+msgstr "Par defaut"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Default location for new attachments"
@@ -8797,6 +8820,10 @@ msgstr "Les nouvelles modifications de votre dépôt distant apparaissent automa
 #: src/components/acp/ThreadView.tsx
 msgid "New chat with {agentName}"
 msgstr "Nouveau chat avec {agentName}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "New chat with a different window"
+msgstr "Nouvelle conversation avec une autre fenetre"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -14424,6 +14451,10 @@ msgstr "Ce commentaire porte sur toute la propriété"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "Impossible de joindre des fichiers ici."
+
+#: src/components/acp/ThreadView.tsx
+msgid "This conversation keeps the window it started with. A new chat can use a different one."
+msgstr "Cette conversation garde la fenetre avec laquelle elle a commence. Une nouvelle conversation peut en utiliser une autre."
 
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "This could not be set up because the MCP server entry it needs was not written."

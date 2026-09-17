@@ -23,6 +23,7 @@ export interface PersistedThreadMeta {
   cwd: string;
   agentRef: { source: 'registry' | 'custom'; id: string };
   docName?: string;
+  contextWindow?: number | null;
 }
 
 export interface ResolvedEventLog {
@@ -192,6 +193,16 @@ export class ThreadPersistenceStore {
           '[acp-persist] thread meta has no usable session id; keeping the transcript as unresumable',
         );
         parsed.sessionId = null;
+      }
+      const window = parsed.contextWindow;
+      if (window !== undefined && window !== null) {
+        if (typeof window !== 'number' || !Number.isFinite(window) || window <= 0) {
+          this.log.warn(
+            { path, invalidContextWindow: window },
+            '[acp-persist] thread meta has an unusable context window; relaunching on the agent default',
+          );
+          parsed.contextWindow = null;
+        }
       }
       const meta = parsed as PersistedThreadMeta;
       const threadId = meta.info.threadId;

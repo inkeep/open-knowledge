@@ -14,6 +14,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
+import type { RemoteModelCandidate } from '@/lib/acp/model-candidates';
 import type {
   RenderedItem,
   RenderedTerminal,
@@ -35,6 +36,8 @@ const setConfigOption = vi.fn(
   (_threadId: string, _configId: string, _value: string | boolean) => {},
 );
 const setMode = vi.fn((_threadId: string, _modeId: string) => {});
+let setContextWindowResult: () => Promise<unknown> = () => Promise.resolve({});
+const setContextWindow = vi.fn((_threadId: string, _tokens: number) => setContextWindowResult());
 const prompt = vi.fn((_threadId: string, _content: string) => {});
 const steer = vi.fn((_threadId: string, _content: string) => {});
 let editQueuedResult: Promise<void> = Promise.resolve();
@@ -67,6 +70,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     removeQueued,
     setMode,
     setConfigOption,
+    setContextWindow,
     closeThread: () => {},
     createThread,
     resumeThread,
@@ -76,6 +80,13 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     subscribe: () => () => {},
   }),
   ThreadResumeError: class ThreadResumeError extends Error {
+    readonly code: string;
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
+  ThreadContextWindowError: class ThreadContextWindowError extends Error {
     readonly code: string;
     constructor(code: string, message: string) {
       super(message);
@@ -107,16 +118,27 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
   ComposerMentionInput: MockComposerMentionInput,
 }));
 
+let modelCandidates: readonly RemoteModelCandidate[] = [];
+vi.doMock('@/lib/acp/model-candidates', async () => {
+  const actual = await vi.importActual<typeof import('@/lib/acp/model-candidates')>(
+    '@/lib/acp/model-candidates',
+  );
+  return { ...actual, useModelCandidates: () => modelCandidates };
+});
+
 const { ThreadView } = await import('./ThreadView');
 const { resetStagedThreadDrafts, subscribeStagedThreadDraft } = await import(
   '@/lib/acp/thread-draft-staging'
 );
 const { launchAgentThread } = await import('@/lib/acp/launch-agent-thread');
-const { ThreadResumeError } = await import('@/lib/acp/thread-client');
+const { ThreadContextWindowError, ThreadResumeError } = await import('@/lib/acp/thread-client');
 const { buildThreadRenderModel } = await import('@/lib/acp/thread-event-model');
-const { agentSettingsKey, getRememberedAgentConfig, getRememberedAgentMode } = await import(
-  '@/lib/acp/agent-settings-store'
-);
+const {
+  agentSettingsKey,
+  getRememberedAgentConfig,
+  getRememberedAgentContextWindow,
+  getRememberedAgentMode,
+} = await import('@/lib/acp/agent-settings-store');
 
 function makeInfo(overrides?: Partial<ThreadInfo>): ThreadInfo {
   return {
@@ -457,6 +479,9 @@ afterEach(() => {
   respondPermission.mockClear();
   setConfigOption.mockClear();
   setMode.mockClear();
+  setContextWindow.mockClear();
+  setContextWindowResult = () => Promise.resolve({});
+  modelCandidates = [];
   prompt.mockClear();
   steer.mockClear();
   editQueued.mockClear();
@@ -4288,5 +4313,219 @@ describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
       fireEvent.dragLeave(root, { dataTransfer });
     });
     expect(screen.queryByTestId('agent-thread-drop-overlay')).toBeNull();
+  });
+});
+
+describe('ThreadView context window', () => {
+  const codex = { id: 'codex-acp', name: 'Codex', source: 'registry' as const };
+  const modelOption = {
+    id: 'model',
+    name: 'Model',
+    category: 'model' as const,
+    type: 'select' as const,
+    currentValue: 'gpt-5.6-sol',
+    options: [
+      { value: 'gpt-5.6-sol', name: '5.6 Sol' },
+      { value: 'gpt-5.5', name: '5.5' },
+    ],
+  };
+
+  const twoWindows: readonly RemoteModelCandidate[] = [
+    {
+      value: 'gpt-5.6-sol',
+      label: '5.6 Sol',
+      contextChoices: [272_000, 872_000],
+      context: { effectiveTokens: 258_400, origin: 'native-cli' },
+    },
+    {
+      value: 'gpt-5.5',
+      label: '5.5',
+      contextChoices: [272_000],
+      context: { effectiveTokens: 258_400, origin: 'native-cli' },
+    },
+  ];
+
+  test('a fresh conversation offers the windows its model supports and remembers the pick', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({ turnActive: false, items: [] });
+    render(
+      <ThreadView
+        info={makeInfo({ agent: codex, status: 'ready', configOptions: [modelOption] })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    const row = screen.getByTestId('agent-thread-context-window');
+    expect(row.textContent).toContain('Context window');
+    expect(row.textContent).toContain('Default');
+
+    await userEvent.click(row);
+    expect(await screen.findByTestId('agent-thread-context-window-272000')).toBeTruthy();
+    await userEvent.click(screen.getByTestId('agent-thread-context-window-872000'));
+
+    expect(setContextWindow).toHaveBeenCalledWith('thread-1', 872_000);
+    await waitFor(() =>
+      expect(getRememberedAgentContextWindow(agentSettingsKey(codex))).toBe(872_000),
+    );
+  });
+
+  test('the row reports the window this thread launched with, not the remembered one', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({ turnActive: false, items: [] });
+    localStorage.setItem(
+      'ok-acp-agent-settings-v1',
+      JSON.stringify({ 'registry:codex-acp': { contextWindow: 872_000 } }),
+    );
+    render(
+      <ThreadView
+        info={makeInfo({
+          agent: codex,
+          status: 'ready',
+          contextWindow: 272_000,
+          configOptions: [modelOption],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    const row = screen.getByTestId('agent-thread-context-window');
+    expect(row.textContent).toContain('272K');
+    expect(row.textContent).not.toContain('872K');
+  });
+
+  test('a thread that launched with no window of its own reads Default', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({ turnActive: false, items: [] });
+    localStorage.setItem(
+      'ok-acp-agent-settings-v1',
+      JSON.stringify({ 'registry:codex-acp': { contextWindow: 872_000 } }),
+    );
+    render(
+      <ThreadView
+        info={makeInfo({ agent: codex, status: 'ready', configOptions: [modelOption] })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    expect(screen.getByTestId('agent-thread-context-window').textContent).toContain('Default');
+  });
+
+  test('a refused pick is not remembered and says so', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({ turnActive: false, items: [] });
+    setContextWindowResult = () => Promise.reject(new Error('start a new chat to change it'));
+    render(
+      <ThreadView
+        info={makeInfo({ agent: codex, status: 'ready', configOptions: [modelOption] })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByTestId('agent-thread-context-window'));
+    await userEvent.click(await screen.findByTestId('agent-thread-context-window-872000'));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(String(toastError.mock.calls[0]?.[0])).toContain('kept its current context window');
+    expect(getRememberedAgentContextWindow(agentSettingsKey(codex))).toBeUndefined();
+  });
+
+  test('a pick whose relaunch died points at the recovery already on screen', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({ turnActive: false, items: [] });
+    setContextWindowResult = () =>
+      Promise.reject(new ThreadContextWindowError('spawn-failed', 'the agent failed to start'));
+    render(
+      <ThreadView
+        info={makeInfo({ agent: codex, status: 'ready', configOptions: [modelOption] })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByTestId('agent-thread-context-window'));
+    await userEvent.click(await screen.findByTestId('agent-thread-context-window-872000'));
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(String(toastError.mock.calls[0]?.[0])).toContain("couldn't restart");
+    expect(getRememberedAgentContextWindow(agentSettingsKey(codex))).toBeUndefined();
+  });
+
+  test('a model with one window shows no choice to make', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({ turnActive: false, items: [] });
+    render(
+      <ThreadView
+        info={makeInfo({
+          agent: codex,
+          status: 'ready',
+          configOptions: [{ ...modelOption, currentValue: 'gpt-5.5' }],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    expect(screen.queryByTestId('agent-thread-context-window')).toBeNull();
+  });
+
+  test('an agent with no discovered windows shows no row either', async () => {
+    modelCandidates = [];
+    model = makeModel({ turnActive: false, items: [] });
+    render(
+      <ThreadView
+        info={makeInfo({ agent: codex, status: 'ready', configOptions: [modelOption] })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    expect(screen.queryByTestId('agent-thread-context-window')).toBeNull();
+  });
+
+  test('a conversation that has already run keeps its window and offers a new chat instead', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({
+      turnActive: false,
+      items: [{ kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' }],
+    });
+    render(
+      <ThreadView
+        info={makeInfo({ agent: codex, status: 'ready', configOptions: [modelOption] })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByTestId('agent-thread-context-window'));
+
+    expect((await screen.findByTestId('agent-thread-context-window-locked')).textContent).toContain(
+      'keeps the window it started with',
+    );
+    expect(screen.queryByTestId('agent-thread-context-window-872000')).toBeNull();
+
+    await userEvent.click(screen.getByTestId('agent-thread-context-window-new-chat'));
+    expect(setContextWindow).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(createThread).toHaveBeenCalledWith(
+        expect.objectContaining({ agent: { source: 'registry', id: 'codex-acp' } }),
+      ),
+    );
+  });
+
+  test('an archived conversation is locked the same way', async () => {
+    modelCandidates = twoWindows;
+    model = makeModel({ turnActive: false, items: [] });
+    render(
+      <ThreadView
+        info={makeInfo({
+          agent: codex,
+          status: 'exited',
+          archived: true,
+          configOptions: [modelOption],
+        })}
+      />,
+    );
+
+    await userEvent.click(screen.getByRole('button', { name: /Agent settings/ }));
+    await userEvent.click(screen.getByTestId('agent-thread-context-window'));
+
+    expect(await screen.findByTestId('agent-thread-context-window-locked')).toBeTruthy();
+    expect(screen.queryByTestId('agent-thread-context-window-872000')).toBeNull();
   });
 });

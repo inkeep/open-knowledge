@@ -297,6 +297,56 @@ describe('/collab/thread socket — history ops', () => {
     socket.close();
   }, 45_000);
 
+  test('a refused set_context_window comes back as an error frame, not an unhandled rejection', async () => {
+    const localDir = tmp();
+    writeFixtureAgent(localDir, '');
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created');
+    const threadId = created.info.threadId;
+    await waitStatus(manager, threadId, 'ready');
+
+    const rejections: unknown[] = [];
+    const onRejection = (err: unknown) => rejections.push(err);
+    process.on('unhandledRejection', onRejection);
+    try {
+      socket.emit(
+        JSON.stringify({ op: 'set_context_window', threadId, reqId: 'cw1', tokens: 872_000 }),
+      );
+      const err = await socket.awaitFrame('error');
+      expect(err.code).toBe('not-ready');
+      expect(err.reqId).toBe('cw1');
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
+    socket.close();
+  }, 45_000);
+
+  test('a thread whose agent takes no launch window reports no context window', async () => {
+    const localDir = tmp();
+    writeFixtureAgent(localDir, '');
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created');
+    const threadId = created.info.threadId;
+    await waitStatus(manager, threadId, 'ready');
+
+    expect(manager.getInfo(threadId)?.contextWindow ?? null).toBeNull();
+    socket.close();
+  }, 45_000);
+
   test('authenticate on a healthy thread answers the reqId with not-ready', async () => {
     const localDir = tmp();
     writeFixtureAgent(localDir, '');
