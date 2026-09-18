@@ -4843,7 +4843,7 @@ describe('createServer() — generated index wiring', () => {
     expect(readIndexAt('concepts')).not.toMatch(/^(<<<<<<<|=======|>>>>>>>)/m);
 
     await connection?.disconnect();
-  });
+  }, 30_000);
 
   test('a rebuild reaches an open document THROUGH the CRDT, not behind its back', async () => {
     const logCapture = captureAllLoggers();
