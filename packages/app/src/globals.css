@@ -2137,22 +2137,27 @@
   text-decoration-style: dotted;
 }
 
-/* External — leaves-the-workspace visual. Find decorations split a single
-   link into adjacent inline fragments; only the final fragment gets the cue. */
-.ProseMirror [data-resolution-state="external"]:has(+ [data-resolution-state="external"])::after {
-  content: none;
-}
-
-.ProseMirror [data-resolution-state="external"]::after {
+/* External — leaves-the-workspace visual. A link mark renders one `[data-link]`
+   element per link and the resolution decoration inside it splits into as many
+   fragments as the widgets sitting in the range (a peer caret) demand, so the
+   cue hangs off the link element and never off a fragment. Standalone carriers
+   — wiki-link chips — are one element each and keep the plain rule. */
+.ProseMirror [data-resolution-state="external"]::after,
+.ProseMirror [data-link]:has([data-resolution-state="external"])::after {
   content: " ↗";
   font-size: 0.85em;
   opacity: 0.6;
 }
 
+.ProseMirror [data-link] [data-resolution-state="external"]::after {
+  content: none;
+}
+
 /* In-doc anchor — no external navigation. Keep base link color; just drop
    the ↗ glyph. Selector intentionally LAST so it overrides `external`'s
    ::after if both flags ever coexist. */
-.ProseMirror [data-resolution-state="anchor"]::after {
+.ProseMirror [data-resolution-state="anchor"]::after,
+.ProseMirror [data-link]:has([data-resolution-state="anchor"])::after {
   content: none;
 }
 
