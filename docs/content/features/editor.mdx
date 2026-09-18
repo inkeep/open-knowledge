@@ -368,7 +368,7 @@ Toggling the menu checkboxes flips the underlying config field, which propagates
 
 ## Real-time collaboration
 
-Everything in the editor (body, frontmatter, sidebar toggles) is backed by a CRDT. You and multiple AI agents writing through MCP can edit the same doc concurrently. Per-user presence is shown in the editor header; the **agent activity** view ([Agent activity](./agent-activity.mdx)) groups every burst of agent edits with per-burst diffs and selective undo.
+Everything in the editor (body, frontmatter, sidebar toggles) is backed by a CRDT. You and multiple AI agents writing through MCP can edit the same doc concurrently. Per-user presence is shown in the editor header, and each collaborator's caret is drawn in the text itself, labelled with their name. The **agent activity** view ([Agent activity](./agent-activity.mdx)) groups every burst of agent edits with per-burst diffs and selective undo.
 
 For recovery + history, see [Timeline and recovery](./timeline-and-recovery.mdx).
 
