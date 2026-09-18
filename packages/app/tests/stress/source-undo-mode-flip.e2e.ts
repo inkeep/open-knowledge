@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { CONCURRENT_REPLACE_WINDOW_MS } from '@inkeep/open-knowledge-server';
 import type { Page } from '@playwright/test';
-import { expect, test, waitForActiveProviderSynced as waitForProvider } from './_helpers';
+import {
+  expect,
+  isConcurrentOverwriteRefusal,
+  test,
+  waitForActiveProviderSynced as waitForProvider,
+} from './_helpers';
 
 const sourceToggle = (page: Page) => page.getByRole('radio', { name: 'Markdown source' });
 const visualToggle = (page: Page) => page.getByRole('radio', { name: 'Visual editor' });
@@ -113,7 +119,21 @@ async function caretAtEndOfParagraph(page: Page, startsWith: string): Promise<vo
 
 async function agentRewritesParagraphOne(page: Page, api: SeedApi, docName: string) {
   const current = await readSource(page);
-  await api.replaceDoc(docName, current.replace(/^[^\n]*\n/, 'Agent rewrote paragraph one.\n'));
+  const rewritten = current.replace(/^[^\n]*\n/, 'Agent rewrote paragraph one.\n');
+  await expect
+    .poll(
+      async () => {
+        try {
+          await api.replaceDoc(docName, rewritten);
+          return true;
+        } catch (error) {
+          if (isConcurrentOverwriteRefusal(error)) return false;
+          throw error;
+        }
+      },
+      { timeout: CONCURRENT_REPLACE_WINDOW_MS * 2, intervals: [100, 250, 500] },
+    )
+    .toBe(true);
   await expect.poll(() => readSource(page), { timeout: 10_000 }).toContain('Agent rewrote');
   await waitForSourceQuiescence(page);
 }
