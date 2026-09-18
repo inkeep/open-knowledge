@@ -227,7 +227,8 @@ export function EditorHeader({
       }}
       className={cn(
         'group/editor-header relative flex h-12 shrink-0 items-center',
-        noteWindow ? 'bg-background' : 'bg-muted/35 shadow-[inset_0_-1px_0_var(--border)]',
+        'bg-background',
+        !noteWindow && 'shadow-[inset_0_-1px_0_var(--border)]',
         isElectronHost && '[-webkit-app-region:drag]',
       )}
     >

@@ -2,6 +2,10 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 import { type TerminalTabDescriptor, TerminalTabStrip } from './TerminalTabStrip';
 
 const SESSIONS: readonly TerminalTabDescriptor[] = [
@@ -75,6 +79,25 @@ function renderStrip(props?: {
 
 describe('TerminalTabStrip', () => {
   afterEach(() => cleanup());
+
+  test('a hovered session tab pairs the hover fill with its own foreground', () => {
+    renderStrip({ activeSessionId: 's2' });
+
+    const tab = screen.getByRole('tab', { name: 'Terminal 1' });
+    fireEvent.mouseEnter(tab);
+
+    expectVisualClassTokens(tab.className, ['bg-sidebar-hover!', 'text-sidebar-hover-foreground!']);
+    expectVisualClassTokensAbsent(tab.className, ['text-foreground!']);
+  });
+
+  test('the active session tab keeps the important-modified selected surface', () => {
+    renderStrip({ activeSessionId: 's2' });
+
+    expectVisualClassTokens(screen.getByRole('tab', { name: 'Terminal 2' }).className, [
+      'bg-sidebar-selected!',
+      'text-sidebar-selected-foreground!',
+    ]);
+  });
 
   test('renders one tab per session inside a labeled tablist', () => {
     renderStrip();

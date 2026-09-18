@@ -33,7 +33,11 @@ import {
   getSortableTabStyle,
   measureTabReorderBounds,
   shouldOpenTabContextMenu,
+  TAB_CLOSE_BUTTON_CLASS,
+  TAB_HOVER_SURFACE_IMPORTANT_CLASS,
   TAB_REORDER_AUTO_SCROLL,
+  TAB_SELECTED_SURFACE_IMPORTANT_CLASS,
+  TAB_TITLE_FADE_CLASS,
   type TabReorderBounds,
   tabRunCollisionDetection,
 } from './editor-tabs-chrome';
@@ -298,7 +302,7 @@ export function TerminalTabStrip({
               <div
                 onWheel={scrollTabStripOnWheel}
                 className={cn(
-                  'grid h-auto w-fit max-w-full min-w-0 grid-flow-col items-center justify-start gap-0.5 overflow-x-auto overflow-y-hidden [grid-auto-columns:max-content] [scrollbar-width:none] scroll-fade-mask-x',
+                  'grid h-auto w-fit max-w-full min-w-0 grid-flow-col items-center justify-start gap-0.5 overflow-x-auto overflow-y-hidden [grid-auto-columns:minmax(8rem,9rem)] [scrollbar-width:none] scroll-fade-mask-x',
                   draggable && '[-webkit-app-region:no-drag]',
                 )}
               >
@@ -310,6 +314,7 @@ export function TerminalTabStrip({
                 >
                   {sessions.map((session, index) => {
                     const isActive = session.id === activeSessionId;
+                    const isHovered = hoveredId === session.id;
                     const isRenaming = renamingId === session.id;
                     return (
                       <SortableTerminalTab
@@ -341,14 +346,23 @@ export function TerminalTabStrip({
                                   }
                                 }}
                                 className={cn(
-                                  'h-7 flex-none gap-1.5 rounded-md py-0 pr-7 pl-2 text-xs transition-colors motion-reduce:transition-none',
-                                  isActive ? 'bg-muted' : 'hover:bg-muted/50',
-                                  isRenaming && 'w-40 opacity-0',
+                                  'h-7 flex-none justify-start gap-1.5 rounded-md py-0 pr-7 pl-2 text-left text-1sm transition-colors motion-reduce:transition-none',
+                                  isActive
+                                    ? TAB_SELECTED_SURFACE_IMPORTANT_CLASS
+                                    : isHovered && TAB_HOVER_SURFACE_IMPORTANT_CLASS,
+                                  isRenaming && 'w-full opacity-0',
                                   draggable && '[-webkit-app-region:no-drag]',
                                 )}
                               >
                                 {session.icon}
-                                <span className="max-w-40 truncate">{session.label}</span>
+                                <span
+                                  className={cn(
+                                    'min-w-0 flex-1',
+                                    isActive || isHovered ? TAB_TITLE_FADE_CLASS : 'truncate',
+                                  )}
+                                >
+                                  {session.label}
+                                </span>
                               </TabsTrigger>
                             </TooltipTrigger>
                             <TooltipContent side="bottom" sideOffset={8}>
@@ -369,7 +383,7 @@ export function TerminalTabStrip({
                           key={session.id}
                           style={{ gridColumn: index + 1, gridRow: 1 }}
                           className={cn(
-                            'z-20 h-7 w-40 rounded-md border-0 bg-transparent dark:bg-transparent',
+                            'z-20 h-7 w-full rounded-md border-0 bg-transparent dark:bg-transparent',
                             draggable && '[-webkit-app-region:no-drag]',
                           )}
                         >
@@ -378,7 +392,7 @@ export function TerminalTabStrip({
                             value={renameValue}
                             aria-label={t`Rename ${session.label}`}
                             data-testid="terminal-tab-rename-input"
-                            className="h-7 px-2 text-xs"
+                            className="h-7 px-2 text-1sm"
                             onChange={(event) => setRenameValue(event.target.value)}
                             onKeyDown={(event) => {
                               if (event.key === 'Enter') {
@@ -405,7 +419,8 @@ export function TerminalTabStrip({
                         tabIndex={isActive ? 0 : -1}
                         style={{ gridColumn: index + 1, gridRow: 1 }}
                         className={cn(
-                          'z-20 mr-0.5 justify-self-end text-muted-foreground opacity-0 transition-opacity hover:text-foreground hover:opacity-100 focus-visible:opacity-100',
+                          TAB_CLOSE_BUTTON_CLASS,
+                          'z-20 mr-0.5 justify-self-end opacity-0 transition-opacity focus-visible:opacity-100',
                           (isActive || hoveredId === session.id) && 'opacity-100',
                           tabReorderBounds != null && 'pointer-events-none opacity-0',
                           draggable && '[-webkit-app-region:no-drag]',

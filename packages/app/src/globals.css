@@ -3210,6 +3210,7 @@ button:active:not(:disabled) {
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-hover-foreground: var(--sidebar-hover-foreground);
+  --color-sidebar-hover-muted-foreground: var(--sidebar-hover-muted-foreground);
   --color-sidebar-selected: var(--sidebar-selected);
   --color-sidebar-selected-foreground: var(--sidebar-selected-foreground);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);

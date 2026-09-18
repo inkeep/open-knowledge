@@ -44,6 +44,7 @@ import {
   isEditorTabDragData,
   isEditorTabDropData,
   TAB_KEYBOARD_DRAG_CODES,
+  TAB_SELECTED_SURFACE_CLASS,
 } from './editor-tabs-chrome';
 import { NoteWindowDeletedState } from './NoteWindowDeletedState';
 
@@ -814,7 +815,10 @@ export function EditorWorkspace({
           <div
             aria-hidden="true"
             data-testid="editor-tab-drag-overlay"
-            className="pointer-events-none flex h-10 w-44 max-w-[calc(100vw-2rem)] cursor-grabbing items-center overflow-hidden rounded-md border border-border bg-background px-3 font-medium text-[13px] text-foreground shadow-lg"
+            className={cn(
+              'pointer-events-none flex h-7 w-44 max-w-[calc(100vw-2rem)] cursor-grabbing items-center overflow-hidden rounded-md px-3 font-medium text-1sm shadow-lg',
+              TAB_SELECTED_SURFACE_CLASS,
+            )}
           >
             <span className="min-w-0 truncate">{drag.label}</span>
           </div>

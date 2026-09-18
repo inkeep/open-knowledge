@@ -508,6 +508,11 @@ describe('EditorWorkspace', () => {
     expect(overlay.textContent).toBe('docs/b');
     expect(overlay.className).toContain('w-44');
     expect(overlay.className).toContain('cursor-grabbing');
+    expectVisualClassTokens(overlay.className, [
+      'bg-sidebar-selected',
+      'text-sidebar-selected-foreground',
+    ]);
+    expectVisualClassTokensAbsent(overlay.className, ['text-foreground']);
     expect(dragOverlayProps.dropAnimation).toBeNull();
     expect(document.body.hasAttribute('data-editor-tab-dragging')).toBe(true);
 
