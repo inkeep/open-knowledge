@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { stringify } from 'yaml';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
   homeEnv,
@@ -11,6 +12,7 @@ import {
   SMOKE_ENABLED,
   userDataDirFor,
 } from './_helpers/platform-gate';
+import { openSettingsDialog } from './_helpers/settings-surface';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -48,7 +50,17 @@ interface SeededThemeHome {
   projectDir: string;
 }
 
-function seedThemeHome(): SeededThemeHome {
+function seedThemeHome(
+  appearance: {
+    theme?: 'system' | 'light' | 'dark';
+    colorThemeLight: string;
+    colorThemeDark: string;
+  } = {
+    theme: 'system',
+    colorThemeLight: 'saved-personal-light',
+    colorThemeDark: 'saved-personal-dark',
+  },
+): SeededThemeHome {
   const tmpHome = mkdtempSync(join(tmpdir(), 'ok-saved-theme-paint-home-'));
   const projectDir = mkdtempSync(join(tmpdir(), 'ok-saved-theme-paint-project-'));
   mkdirSync(join(projectDir, '.ok'), { recursive: true });
@@ -61,16 +73,7 @@ function seedThemeHome(): SeededThemeHome {
   const okDir = join(tmpHome, '.ok');
   const themesDir = join(okDir, 'themes');
   mkdirSync(themesDir, { recursive: true });
-  writeFileSync(
-    join(okDir, 'global.yml'),
-    [
-      'appearance:',
-      '  theme: system',
-      '  colorThemeLight: saved-personal-light',
-      '  colorThemeDark: saved-personal-dark',
-      '',
-    ].join('\n'),
-  );
+  writeFileSync(join(okDir, 'global.yml'), stringify({ appearance }));
   writeFileSync(
     join(themesDir, 'personal-light.yaml'),
     savedThemeYaml('Personal Light', 'light', LIGHT_BACKGROUND),
@@ -184,5 +187,121 @@ test.describe('saved theme paint smoke', () => {
         themeId: 'saved-personal-dark',
         backgroundColor: 'rgb(16, 32, 48)',
       });
+  });
+
+  test('palette assignments preserve the system slot and Default restores system appearance', async ({
+    captureStderrFor,
+  }) => {
+    test.setTimeout(180_000);
+    const { tmpHome, projectDir } = seedThemeHome({
+      colorThemeLight: 'default',
+      colorThemeDark: 'default',
+    });
+    const app = await launchApp(tmpHome);
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
+    const editor = await findEditorWindow(app);
+    await editor.emulateMedia({ colorScheme: null });
+    const systemDark = await app.evaluate(({ nativeTheme }) => nativeTheme.shouldUseDarkColors);
+    const activeSlot = systemDark ? 'dark' : 'light';
+    const inactiveSlot = systemDark ? 'light' : 'dark';
+    const paletteName = systemDark ? 'Catppuccin Latte' : 'Dracula';
+    const paletteId = systemDark ? 'catppuccin-latte' : 'dracula';
+    const inactivePaletteName = systemDark ? 'Dracula' : 'Catppuccin Latte';
+    const inactivePaletteId = systemDark ? 'dracula' : 'catppuccin-latte';
+    const inactivePreference = systemDark ? 'light' : 'dark';
+
+    await openSettingsDialog(editor);
+    await editor.getByTestId('settings-sidebar-item-plugin:theme').click();
+    await editor
+      .getByRole('button', { name: `Use ${paletteName} as the ${activeSlot} theme`, exact: true })
+      .click();
+    await expect
+      .poll(() => editor.locator('html').getAttribute('data-color-theme'))
+      .toBe(paletteId);
+    await expect
+      .poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
+      .toBe('system');
+    await expect
+      .poll(() => editor.evaluate(() => matchMedia('(prefers-color-scheme: dark)').matches))
+      .toBe(systemDark);
+
+    await editor
+      .getByRole('button', {
+        name: `Use ${inactivePaletteName} as the ${inactiveSlot} theme`,
+        exact: true,
+      })
+      .click();
+    await expect
+      .poll(() => editor.locator('html').getAttribute('data-color-theme'))
+      .toBe(paletteId);
+    await expect
+      .poll(() => editor.locator('html').evaluate((root) => root.classList.contains('dark')))
+      .toBe(!systemDark);
+
+    const observations: Array<{ palette: string | null; dark: boolean; source: string }> = [];
+    for (let index = 0; index < 30; index += 1) {
+      observations.push({
+        palette: await editor.locator('html').getAttribute('data-color-theme'),
+        dark: await editor.locator('html').evaluate((root) => root.classList.contains('dark')),
+        source: await app.evaluate(({ nativeTheme }) => nativeTheme.themeSource),
+      });
+      await editor.waitForTimeout(100);
+    }
+    expect(observations).toEqual(
+      Array.from({ length: 30 }, () => ({
+        palette: paletteId,
+        dark: !systemDark,
+        source: 'system',
+      })),
+    );
+
+    await editor.getByTestId('settings-sidebar-item-preferences').click();
+    await editor.getByTestId(`theme-picker-${inactivePreference}`).click();
+    await expect
+      .poll(() => editor.locator('html').getAttribute('data-color-theme'))
+      .toBe(inactivePaletteId);
+    await expect
+      .poll(() => editor.locator('html').evaluate((root) => root.classList.contains('dark')))
+      .toBe(systemDark);
+    await expect
+      .poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
+      .toBe(inactivePreference);
+    await editor.getByTestId('theme-picker-system').click();
+    await expect
+      .poll(() => editor.locator('html').getAttribute('data-color-theme'))
+      .toBe(paletteId);
+    await expect
+      .poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
+      .toBe('system');
+
+    await editor.reload();
+    await expect
+      .poll(() => editor.locator('html').getAttribute('data-color-theme'))
+      .toBe(paletteId);
+    await expect(editor.getByTestId('settings-dialog')).toBeVisible({ timeout: 20_000 });
+    await editor.getByTestId('settings-sidebar-item-plugin:theme').click();
+    await editor
+      .getByRole('button', { name: `Use Default as the ${activeSlot} theme`, exact: true })
+      .click();
+    await expect(editor.locator('html')).not.toHaveAttribute('data-color-theme');
+    await expect
+      .poll(() => editor.locator('html').evaluate((root) => root.classList.contains('dark')))
+      .toBe(systemDark);
+    await expect
+      .poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
+      .toBe('system');
+    await editor
+      .getByRole('button', { name: `Use Default as the ${inactiveSlot} theme`, exact: true })
+      .click();
+    await editor.getByTestId('settings-sidebar-item-preferences').click();
+    for (const preference of ['light', 'dark', 'system'] as const) {
+      await editor.getByTestId(`theme-picker-${preference}`).click();
+      await expect
+        .poll(() => app.evaluate(({ nativeTheme }) => nativeTheme.themeSource))
+        .toBe(preference);
+      await expect
+        .poll(() => editor.locator('html').evaluate((root) => root.classList.contains('dark')))
+        .toBe(preference === 'system' ? systemDark : preference === 'dark');
+    }
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { resolveOkDesktopMode } from './ok-desktop-mode.ts';
+import { resolveOkDesktopMode, resolveOkThemePreference } from './ok-desktop-argv.ts';
 
 describe('resolveOkDesktopMode', () => {
   test('maps the terminal flag to the terminal window mode', () => {
@@ -24,5 +24,16 @@ describe('resolveOkDesktopMode', () => {
 
   test('falls back to editor for an unrecognized flag value', () => {
     expect(resolveOkDesktopMode('totally-unknown')).toBe('editor');
+  });
+});
+
+describe('resolveOkThemePreference', () => {
+  test.each(['light', 'dark', 'system'] as const)('accepts %s', (value) => {
+    expect(resolveOkThemePreference(value)).toBe(value);
+  });
+
+  test('preserves absence and defaults invalid present values to system', () => {
+    expect(resolveOkThemePreference(undefined)).toBeUndefined();
+    expect(resolveOkThemePreference('ultraviolet')).toBe('system');
   });
 });

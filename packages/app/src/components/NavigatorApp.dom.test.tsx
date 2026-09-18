@@ -85,7 +85,7 @@ vi.doMock('@/lib/transports/clone-transport', () => ({
   ipcCloneTransport: () => ({}),
 }));
 
-function createBridge() {
+function createBridge(themePreference?: 'system' | 'light' | 'dark') {
   return {
     appVersion: '0.4.0-beta.1',
     onMenuAction: vi.fn(() => () => {}),
@@ -98,6 +98,7 @@ function createBridge() {
       projectPath: '',
       projectName: 'Project Navigator',
       mode: 'navigator',
+      ...(themePreference === undefined ? {} : { themePreference }),
     },
     integrations: {
       status: async () => ({
@@ -172,6 +173,13 @@ describe('NavigatorApp launcher runtime behavior', () => {
     expect(screen.getByTestId('nav-create-new').getAttribute('data-electron-no-drag')).toBeNull();
     await screen.findByTestId('nav-recent-list');
     expect(document.querySelector('[data-electron-no-drag]')).toBeNull();
+  });
+
+  test('bridges the authored preference rather than the palette-forced renderer mode', async () => {
+    const bridge = createBridge('light');
+    await renderNavigator(bridge);
+
+    expect(themeBridgeCalls.at(-1)).toEqual([bridge, 'light']);
   });
 
   test('routes open, recent, create, and clone-complete actions through the expected entry points', async () => {

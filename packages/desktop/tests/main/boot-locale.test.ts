@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   describeDesktopLanguage,
   readStoredLanguagePreference,
+  readStoredUserPreferences,
   resolveDesktopLocale,
   resolveDesktopLocaleForPushed,
   resolveDesktopLocaleFrom,
@@ -19,6 +20,19 @@ function writeUserConfig(body: string): void {
 
 beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), 'ok-boot-locale-'));
+});
+
+describe('readStoredUserPreferences', () => {
+  test('reads language and theme from one user config snapshot', () => {
+    writeUserConfig('appearance:\n  language: es\n  theme: light\n');
+    expect(readStoredUserPreferences(home)).toEqual({ language: 'es', theme: 'light' });
+  });
+
+  test('defaults missing and invalid themes to system', () => {
+    expect(readStoredUserPreferences(home).theme).toBe('system');
+    writeUserConfig('appearance:\n  theme: ultraviolet\n');
+    expect(readStoredUserPreferences(home).theme).toBe('system');
+  });
 });
 
 afterEach(() => {

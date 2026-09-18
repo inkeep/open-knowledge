@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const invokeMock = vi.fn(() => Promise.resolve({ ok: true }));
 const exposed = new Map<string, Record<string, unknown>>();
@@ -18,6 +18,10 @@ vi.mock('electron', () => ({
 }));
 
 type BridgeProbe = {
+  config: {
+    languagePreference?: string;
+    themePreference?: string;
+  };
   bugReport: {
     send(request: {
       zipPath: string;
@@ -67,6 +71,37 @@ function dispatchedPayload(channel: string): Record<string, unknown> {
 
 beforeEach(() => {
   invokeMock.mockClear();
+});
+
+const originalArgv = process.argv;
+
+afterEach(() => {
+  process.argv = originalArgv;
+});
+
+describe('preload argv config', () => {
+  it('recovers language and theme preferences from their value-carrying flags', async () => {
+    process.argv = [...originalArgv, '--ok-language-preference=es', '--ok-theme-preference=dark'];
+
+    const bridge = await loadBridge();
+
+    expect(bridge.config).toMatchObject({
+      languagePreference: 'es',
+      themePreference: 'dark',
+    });
+  });
+
+  it('leaves both preferences absent when the window receives neither flag', async () => {
+    process.argv = originalArgv.filter(
+      (arg) =>
+        !arg.startsWith('--ok-language-preference=') && !arg.startsWith('--ok-theme-preference='),
+    );
+
+    const bridge = await loadBridge();
+
+    expect(bridge.config).not.toHaveProperty('languagePreference');
+    expect(bridge.config).not.toHaveProperty('themePreference');
+  });
 });
 
 describe('preload editor view-menu state marshalling', () => {

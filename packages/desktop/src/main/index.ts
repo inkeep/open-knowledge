@@ -185,6 +185,7 @@ import { type BootHeartbeatDeps, startBootHeartbeat } from './boot-heartbeat.ts'
 import {
   describeDesktopLanguage,
   readStoredLanguagePreference,
+  readStoredUserPreferences,
   resolveDesktopLocale,
   resolveDesktopLocaleForPushed,
 } from './boot-locale.ts';
@@ -1566,6 +1567,12 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
     return;
   }
   getLogger('navigator').info({}, 'opening window');
+  const userPreferences = readStoredUserPreferences(osHomedir(), (message) =>
+    getLogger('navigator-window').warn(
+      { message },
+      'user config unreadable; launcher falls back to system preferences',
+    ),
+  );
   navigatorWindow = createNavigatorWindow({
     createWindow: (opts) => {
       const win = new BrowserWindow({
@@ -1589,12 +1596,8 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
       : join(__dirname, '../renderer/index.html'),
     rendererDevUrl,
     appVersion: app.getVersion(),
-    languagePreference: readStoredLanguagePreference(osHomedir(), (message) =>
-      getLogger('navigator-window').warn(
-        { message },
-        'user config unreadable; launcher falls back to system',
-      ),
-    ),
+    languagePreference: userPreferences.language,
+    themePreference: userPreferences.theme,
     showGate,
     pendingPayload,
     log: getLogger('navigator'),

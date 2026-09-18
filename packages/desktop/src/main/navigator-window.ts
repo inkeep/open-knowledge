@@ -1,6 +1,11 @@
 import type { LanguagePreference } from '@inkeep/open-knowledge-core';
+import type { OkThemeSource } from '@inkeep/open-knowledge-core/desktop-bridge';
 import { BOOT_HEARTBEAT_EVENTS } from '../shared/boot-narration.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
+import {
+  LANGUAGE_PREFERENCE_ARG_NAME,
+  THEME_PREFERENCE_ARG_NAME,
+} from '../shared/ok-desktop-argv.ts';
 import { type BootHeartbeatDeps, startBootHeartbeat } from './boot-heartbeat.ts';
 import type { DesktopLogger } from './desktop-logger.ts';
 import type { ShowGateRegistry } from './show-gate.ts';
@@ -49,6 +54,7 @@ interface NavigatorDeps extends BootHeartbeatDeps {
   rendererDevUrl?: string | null;
   appVersion: string;
   languagePreference: LanguagePreference;
+  themePreference: OkThemeSource;
   showGate: ShowGateRegistry;
   pendingPayload?: ShareNavigatorPayload;
 }
@@ -62,7 +68,8 @@ export function createNavigatorWindow(deps: NavigatorDeps): BrowserWindowLike {
       '--ok-api-origin=',
       '--ok-project-path=',
       '--ok-project-name=Project Navigator',
-      `--ok-language-preference=${deps.languagePreference}`,
+      `--ok-${LANGUAGE_PREFERENCE_ARG_NAME}=${deps.languagePreference}`,
+      `--ok-${THEME_PREFERENCE_ARG_NAME}=${deps.themePreference}`,
     ],
     title: 'OpenKnowledge',
   });

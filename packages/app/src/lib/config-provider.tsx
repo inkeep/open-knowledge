@@ -273,7 +273,7 @@ function ConfigProviderBody({
   const effectiveMode =
     activePalette === 'custom'
       ? customThemeKind(resolveCustomScheme(customSeed))
-      : (colorThemeMode(activePalette, themes) ?? themeValue);
+      : (colorThemeMode(activePalette, themes) ?? themeValue ?? (merged ? 'system' : undefined));
   useApplyConfigTheme(colorThemeReady ? effectiveMode : undefined);
   useApplyConfigColorTheme({
     selection,
@@ -305,15 +305,9 @@ function ConfigProviderBody({
       : activeRuntimeScheme
         ? JSON.stringify(activeRuntimeScheme)
         : '';
-  const themeBridgeMode =
-    colorThemeBridgeReady && !colorThemeReady && typeof document !== 'undefined'
-      ? document.documentElement.classList.contains('dark')
-        ? 'dark'
-        : 'light'
-      : (effectiveMode ?? 'system');
   useThemeBridge(
     colorThemeBridgeReady && typeof window !== 'undefined' ? window.okDesktop : undefined,
-    colorThemeBridgeReady ? themeBridgeMode : undefined,
+    colorThemeBridgeReady ? (themeValue ?? 'system') : undefined,
     `${activePalette}:${runtimeSchemeKey}`,
   );
 

@@ -133,6 +133,7 @@ export interface OkDesktopConfig {
   readonly startupTraceparent?: string;
   readonly ptyAvailable: boolean;
   readonly languagePreference?: LanguagePreference;
+  readonly themePreference?: OkThemeSource;
 }
 
 export type OkMenuAction =
