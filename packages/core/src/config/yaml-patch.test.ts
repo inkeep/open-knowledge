@@ -74,3 +74,48 @@ describe('applyPatchToDocument — auto-vivification through scalar intermediate
     expect(doc.getIn(['content', 'include', 0])).toBe('**/*.md');
   });
 });
+
+describe('applyPatchToDocument — deleting the last key prunes the emptied parent', () => {
+  test('parent map is removed once its final child is deleted', () => {
+    const doc = parseDocument('bridge:\n  deferGuard:\n    enabled: true\n');
+
+    const applied = applyPatchToDocument(doc, {
+      bridge: { deferGuard: null },
+    } as never);
+
+    expect(applied).toEqual(['bridge.deferGuard']);
+    expect(doc.has('bridge')).toBe(false);
+    expect(doc.toString()).not.toContain('bridge');
+  });
+
+  test('parent map survives while it still holds another key', () => {
+    const doc = parseDocument('bridge:\n  deferGuard:\n    enabled: true\n  keep: 1\n');
+
+    applyPatchToDocument(doc, { bridge: { deferGuard: null } } as never);
+
+    expect(doc.has('bridge')).toBe(true);
+    expect(doc.getIn(['bridge', 'keep'])).toBe(1);
+  });
+
+  test('clearing every retired key leaves no husk behind', () => {
+    const doc = parseDocument(
+      'content:\n  dir: .\nbridge:\n  deferGuard:\n    enabled: true\n  fixedPoint:\n    enabled: true\n  preDrain:\n    enabled: true\n  lossDetector:\n    enabled: true\n',
+    );
+
+    applyPatchToDocument(doc, {
+      bridge: { deferGuard: null, fixedPoint: null, preDrain: null, lossDetector: null },
+    } as never);
+
+    expect(doc.has('bridge')).toBe(false);
+    expect(doc.getIn(['content', 'dir'])).toBe('.');
+  });
+
+  test('nested empties prune upward, stopping at the first populated ancestor', () => {
+    const doc = parseDocument('a:\n  keep: 1\n  b:\n    c:\n      d: true\n');
+
+    applyPatchToDocument(doc, { a: { b: { c: { d: null } } } } as never);
+
+    expect(doc.hasIn(['a', 'b'])).toBe(false);
+    expect(doc.getIn(['a', 'keep'])).toBe(1);
+  });
+});
