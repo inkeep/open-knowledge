@@ -11,7 +11,6 @@ import {
 import { realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -23,7 +22,6 @@ import {
 } from './document-durability-state.ts';
 import { getLogger } from './logger.ts';
 import { lossCaptureCurrentPath, parseLossCaptureLines } from './loss-capture.ts';
-import { mdManager, schema } from './md-manager.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import { createPersistenceExtension } from './persistence.ts';
 import { classifyDuplication } from './persistence-tripwire.ts';
@@ -40,21 +38,6 @@ const BROWSER_ORIGIN = {
   source: 'connection',
   connection: { context: { principalId: 'principal-test-paste' } },
 } as const;
-
-const P = (t: string) => ({ type: 'paragraph', content: [{ type: 'text', text: t }] });
-const EMPTY = { type: 'paragraph' };
-
-const TYPED_CHILDREN = [
-  P('hello'),
-  EMPTY,
-  P(USER_DOC_LINE),
-  EMPTY,
-  P('wkajnd'),
-  EMPTY,
-  P('wk'),
-  EMPTY,
-  P('wwjwj'),
-];
 
 function loadFixture(name: string): string {
   return readFileSync(join(FIXTURE_DIR, name), 'utf-8');
@@ -116,21 +99,12 @@ async function setupRig(prefix: string): Promise<Rig> {
   };
 }
 
-function replaceFragment(doc: Y.Doc, content: unknown[]): void {
-  const xmlFragment = doc.getXmlFragment('default');
+function replaceSource(doc: Y.Doc, markdown: string): void {
+  const ytext = doc.getText('source');
   doc.transact(() => {
-    updateYFragment(doc, xmlFragment, schema.nodeFromJSON({ type: 'doc', content }), {
-      mapping: new Map(),
-      isOMark: new Map(),
-    });
+    ytext.delete(0, ytext.length);
+    ytext.insert(0, markdown);
   }, BROWSER_ORIGIN);
-}
-
-function liveChildren(frag: Y.XmlFragment): unknown[] {
-  const json = yXmlFragmentToProseMirrorRootNode(frag, schema).toJSON() as {
-    content?: unknown[];
-  };
-  return json.content ?? [];
 }
 
 function blockedEvents(warnSpy: { mock: { calls: unknown[][] } }): string[] {
@@ -182,15 +156,13 @@ describe('persistence tripwire vs a whole-document paste', () => {
       const serverDoc = server.hocuspocus.documents.get(docName);
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
-      const frag = serverDoc.getXmlFragment('default');
 
-      replaceFragment(serverDoc, TYPED_CHILDREN);
+      replaceSource(serverDoc, USER_DOC);
       await waitFor(() => readFileSync(docPath, 'utf-8').length > 0);
       const baseline = readFileSync(docPath, 'utf-8');
       expect(baseline).toBe(USER_DOC);
 
-      const kids = liveChildren(frag);
-      replaceFragment(serverDoc, [...kids, ...kids]);
+      replaceSource(serverDoc, `${USER_DOC}\n${USER_DOC}`);
       expect(occurrences(serverDoc.getText('source').toString(), USER_DOC_LINE)).toBe(2);
 
       await waitFor(() => readFileSync(docPath, 'utf-8') !== baseline);
@@ -199,7 +171,6 @@ describe('persistence tripwire vs a whole-document paste', () => {
       expect(persisted.length).toBeGreaterThan(baseline.length);
 
       expect(occurrences(serverDoc.getText('source').toString(), USER_DOC_LINE)).toBe(2);
-      expect(frag.length).toBeGreaterThan(TYPED_CHILDREN.length);
 
       expect(blockedEvents(warnSpy)).toHaveLength(0);
       expect(getMetrics().persistenceDuplicationReset).toBe(0);
@@ -211,15 +182,7 @@ describe('persistence tripwire vs a whole-document paste', () => {
       expect(spared).toHaveLength(1);
       const sparedPayload = JSON.parse(spared[0] ?? '{}') as Record<string, unknown>;
       expect(new Set(Object.keys(sparedPayload))).toEqual(
-        new Set([
-          'event',
-          'doc.name',
-          'candidateBytes',
-          'baseBytes',
-          'fragmentChildren',
-          'copies',
-          'reason',
-        ]),
+        new Set(['event', 'doc.name', 'candidateBytes', 'baseBytes', 'copies', 'reason']),
       );
       expect(sparedPayload['doc.name']).toBe(docName);
       expect(sparedPayload.copies).toBe(2);
@@ -258,18 +221,15 @@ describe('persistence tripwire vs a whole-document paste', () => {
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
 
-      const baseChildren = serverDoc.getXmlFragment('default').length;
-      expect(baseChildren).toBeGreaterThan(0);
+      expect(serverDoc.getText('source').toString()).toBe(baselineBytes);
 
-      const doubledJson = mdManager.parseWithFallback(doubledMarkdown) as { content?: unknown[] };
-      replaceFragment(serverDoc, doubledJson.content ?? []);
-      expect(serverDoc.getXmlFragment('default').length).toBe(baseChildren * 2);
+      replaceSource(serverDoc, doubledMarkdown);
+      expect(serverDoc.getText('source').toString()).toBe(doubledMarkdown);
 
       await waitFor(() => blockedEvents(warnSpy).length > 0);
 
       await expectStable(() => readFileSync(docPath, 'utf-8'));
       expect(readFileSync(docPath, 'utf-8')).toBe(baselineBytes);
-      await waitFor(() => serverDoc.getXmlFragment('default').length === baseChildren);
       await waitFor(() => serverDoc.getText('source').toString() === baselineBytes);
       expect(getMetrics().persistenceDuplicationReset).toBe(1);
 
@@ -297,7 +257,7 @@ describe('persistence tripwire vs a whole-document paste', () => {
       const hist = await getDocumentHistory(rig.shadow, { docName }, '');
       const row = hist.entries.find((e) => e.sha === sha);
       expect(row?.checkpoint?.kind).toBe('persistence-duplication-reset');
-      expect(row?.checkpoint?.metadata).toEqual({ copies: 2, fragmentChildren: baseChildren * 2 });
+      expect(row?.checkpoint?.metadata).toEqual({ copies: 2 });
 
       const ring = parseLossCaptureLines(
         readFileSync(lossCaptureCurrentPath(rig.tmpDir), 'utf-8'),
@@ -354,16 +314,13 @@ describe('persistence tripwire with an absent reconciled base', () => {
       const serverDoc = server.hocuspocus.documents.get(docName);
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
-      const baseChildren = serverDoc.getXmlFragment('default').length;
-      expect(baseChildren).toBeGreaterThan(0);
       await waitFor(() => server.durabilityState.getReconciledBase(docName) === baseMarkdown);
 
       server.durabilityState.deleteReconciledBase(docName);
       expect(server.durabilityState.getReconciledBase(docName)).toBeUndefined();
 
-      const doubledJson = mdManager.parseWithFallback(doubledMarkdown) as { content?: unknown[] };
-      replaceFragment(serverDoc, doubledJson.content ?? []);
-      expect(serverDoc.getXmlFragment('default').length).toBe(baseChildren * 2);
+      replaceSource(serverDoc, doubledMarkdown);
+      expect(serverDoc.getText('source').toString()).toBe(doubledMarkdown);
 
       await vi.waitFor(
         () => expect(getMetrics().persistenceDuplicationReset).toBeGreaterThanOrEqual(1),
@@ -417,8 +374,7 @@ describe('persistence tripwire with an absent reconciled base', () => {
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
 
-      const settledJson = mdManager.parseWithFallback(settledMarkdown) as { content?: unknown[] };
-      replaceFragment(serverDoc, settledJson.content ?? []);
+      replaceSource(serverDoc, settledMarkdown);
       await waitFor(() => readFileSync(docPath, 'utf-8').length > baseMarkdown.length);
       const settledStored = readFileSync(docPath, 'utf-8');
       await waitFor(() => server.durabilityState.getReconciledBase(docName) === settledStored);
@@ -426,8 +382,8 @@ describe('persistence tripwire with an absent reconciled base', () => {
       server.durabilityState.deleteReconciledBase(docName);
       expect(server.durabilityState.getReconciledBase(docName)).toBeUndefined();
 
-      const kids = liveChildren(serverDoc.getXmlFragment('default'));
-      replaceFragment(serverDoc, [...kids, ...kids]);
+      const settledSource = serverDoc.getText('source').toString();
+      replaceSource(serverDoc, `${settledSource.trimEnd()}\n\n${settledSource}`);
       await waitFor(() => occurrences(serverDoc.getText('source').toString(), settledMarker) === 2);
 
       await vi.waitFor(

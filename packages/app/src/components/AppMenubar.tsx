@@ -1,5 +1,6 @@
 import { useLingui } from '@lingui/react/macro';
-import { useState } from 'react';
+import { isMacOS } from '@tiptap/core';
+import { useRef, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import {
   Menubar,
@@ -14,6 +15,7 @@ import {
   MenubarSubTrigger,
   MenubarTrigger,
 } from '@/components/ui/menubar';
+import { performHistoryCommand } from '@/editor/document-undo-keys';
 import type {
   OkDesktopBridge,
   OkMenuRendererSnapshot,
@@ -25,6 +27,8 @@ export function AppMenubar() {
   const { t } = useLingui();
   const bridge = typeof window !== 'undefined' ? (window.okDesktop ?? null) : null;
   const [snapshot, setSnapshot] = useState<OkMenuRendererSnapshot | null>(null);
+  const focusBeforeMenubar = useRef<Element | null>(null);
+  const pendingHistory = useRef<'undo' | 'redo' | null>(null);
 
   if (!shouldShowAppMenubar() || bridge == null || bridge.menu == null) return null;
   const menu: NonNullable<OkDesktopBridge['menu']> = bridge.menu;
@@ -50,6 +54,13 @@ export function AppMenubar() {
       className="h-auto rounded-none border-0 bg-transparent p-0 shadow-none [-webkit-app-region:no-drag]"
       onValueChange={(value) => {
         if (value) refreshSnapshot();
+      }}
+      onFocusCapture={(event) => {
+        const from = event.relatedTarget;
+        if (!(from instanceof Element)) return;
+        if (event.currentTarget.contains(from)) return;
+        if (from.closest('[data-slot="menubar-content"]') !== null) return;
+        focusBeforeMenubar.current = from;
       }}
     >
       <MenubarMenu>
@@ -188,12 +199,31 @@ export function AppMenubar() {
 
       <MenubarMenu>
         <MenubarTrigger className="px-2 py-1 text-xs font-normal">{t`Edit`}</MenubarTrigger>
-        <MenubarContent>
-          <MenubarItem onSelect={() => dispatch({ kind: 'role', role: 'undo' })}>
+        <MenubarContent
+          onCloseAutoFocus={(event) => {
+            const action = pendingHistory.current;
+            if (action === null) return;
+            pendingHistory.current = null;
+            event.preventDefault();
+            const previous = focusBeforeMenubar.current;
+            const target = previous?.isConnected ? previous : null;
+            if (target instanceof HTMLElement) target.focus();
+            performHistoryCommand(action, isMacOS() ? 'mac' : 'windowsLinux', target);
+          }}
+        >
+          <MenubarItem
+            onSelect={() => {
+              pendingHistory.current = 'undo';
+            }}
+          >
             {t`Undo`}
             <MenubarShortcut>Ctrl+Z</MenubarShortcut>
           </MenubarItem>
-          <MenubarItem onSelect={() => dispatch({ kind: 'role', role: 'redo' })}>
+          <MenubarItem
+            onSelect={() => {
+              pendingHistory.current = 'redo';
+            }}
+          >
             {t`Redo`}
             <MenubarShortcut>Ctrl+Y</MenubarShortcut>
           </MenubarItem>

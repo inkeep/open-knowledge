@@ -5,6 +5,7 @@ import {
   type TerminalPlacement,
 } from '@inkeep/open-knowledge-core';
 import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { isMacOS } from '@tiptap/core';
 import {
   lazy,
   Suspense,
@@ -18,11 +19,13 @@ import { getEditorForDoc } from '@/editor/active-editor';
 import { EmojiInsertPopover } from '@/editor/components/EmojiInsertPopover';
 import { TagDialog } from '@/editor/components/TagDialog';
 import { useDocumentContext } from '@/editor/DocumentContext';
+import { documentUndoKeyAction } from '@/editor/document-undo-keys';
 import { RAW_MDX_NAV_EVENT, type RawMdxNavDetail } from '@/editor/extensions/raw-mdx-nav-event';
 import { captureModeSwitchAnchor, requestViewInSource } from '@/editor/mode-switch-landing';
 import { requestPreviewTabPromotion } from '@/editor/preview-tab-promotion';
 import { getSelectionContext, subscribeSelectionContext } from '@/editor/selection-context';
 import { editingSurfaceFor } from '@/editor/selection-stats';
+import { sharedUndoManagerFor } from '@/editor/shared-undo-manager';
 import { rememberPendingSourceNavigation } from '@/editor/source-editor-navigation';
 import { type EditorModeValue, useEditorMode } from '@/editor/use-editor-mode';
 import { VIEW_IN_SOURCE_EVENT, type ViewInSourceDetail } from '@/editor/view-in-source-event';
@@ -230,6 +233,11 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   const { activeDocName, activeProvider } = useDocumentContext();
   const editingSurface = editingSurfaceFor(activeDocName, editorMode);
 
+  const sealUndoStepEvent = useEffectEvent(() => {
+    if (!activeProvider) return;
+    sharedUndoManagerFor(activeProvider.document.getText('source')).stopCapturing();
+  });
+
   const autoSyncOnboardingVariant = resolveAutoSyncOnboarding({
     autoSyncOnboardingDismissed,
     hasRemote: syncStatus?.hasRemote,
@@ -246,6 +254,7 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
       if (detail && activeDocName) {
         rememberPendingSourceNavigation(activeDocName, { kind: 'raw-mdx', detail });
       }
+      sealUndoStepEvent();
       setEditorMode('source');
     }
     window.addEventListener(RAW_MDX_NAV_EVENT, onRawMdxNav);
@@ -476,11 +485,22 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         docName: activeDocName,
         ytext: activeProvider.document.getText('source'),
       });
+      sharedUndoManagerFor(activeProvider.document.getText('source')).stopCapturing();
       requestPreviewTabPromotion(activeDocName);
     }
     setEditorMode(mode);
     setPersistedMode(mode);
   }
+
+  const routeDocumentUndoKeyEvent = useEffectEvent((event: KeyboardEvent) => {
+    if (!activeProvider || isOverlayLayerOpen()) return;
+    const action = documentUndoKeyAction(event, isMacOS() ? 'mac' : 'windowsLinux');
+    if (action === null) return;
+    event.preventDefault();
+    const undoManager = sharedUndoManagerFor(activeProvider.document.getText('source'));
+    if (action === 'undo') undoManager.undo();
+    else undoManager.redo();
+  });
 
   const toggleEditorModeEvent = useEffectEvent(() => {
     handleModeChange(editorMode === 'source' ? 'wysiwyg' : 'source');
@@ -515,7 +535,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
         if (isOverlayLayerOpen()) return;
         event.preventDefault();
         requestViewInSourceEvent();
+        return;
       }
+      routeDocumentUndoKeyEvent(event);
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true });
     return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
@@ -530,7 +552,9 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   useEffect(() => {
     function onViewInSource(e: Event) {
       const detail = (e as CustomEvent<ViewInSourceDetail>).detail;
-      if (detail?.docName === activeDocName) setEditorMode('source');
+      if (detail?.docName !== activeDocName) return;
+      sealUndoStepEvent();
+      setEditorMode('source');
     }
     window.addEventListener(VIEW_IN_SOURCE_EVENT, onViewInSource);
     return () => window.removeEventListener(VIEW_IN_SOURCE_EVENT, onViewInSource);

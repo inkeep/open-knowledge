@@ -14,11 +14,7 @@ const externalizePinoInDts: NonNullable<UserConfig['plugins']> = [
 ];
 
 export default defineConfig({
-  // `parse-worker` must stay its own entry: parse-pool.ts spawns it as a
-  // worker_threads file next to the importing bundle (`./parse-worker.mjs`
-  // sibling probe), so inlining it into index.mjs would leave no file to
-  // spawn in dist-based installs.
-  entry: { index: 'src/index.ts', 'parse-worker': 'src/parse-worker.ts' },
+  entry: { index: 'src/index.ts' },
   unbundle: false,
   format: 'esm',
   dts: { tsconfig: 'tsconfig.build.json' },

@@ -151,6 +151,8 @@ export type OkMenuAction =
   | 'focus-command-palette'
   | 'navigate-back'
   | 'navigate-forward'
+  | 'undo'
+  | 'redo'
   | 'new-from-template'
   | 'duplicate'
   | 'move-to-trash'

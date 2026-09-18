@@ -99,6 +99,8 @@ const PALETTE_COMMAND_LABELS = new Set<string>([
 const APP_RESERVED_LABELS = new Map<string, string>([
   ['Uninstall OpenKnowledge', 'rare + destructive; deliberately not a quick-launch row'],
   ['New Terminal Window', 'opens directly in main with no renderer handler; window management'],
+  ['Undo', 'history on the focused surface, the key it stands for; not a palette row'],
+  ['Redo', 'history on the focused surface, the key it stands for; not a palette row'],
 ]);
 
 function makeFullDeps(): MenuDeps {

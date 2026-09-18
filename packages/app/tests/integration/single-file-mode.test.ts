@@ -11,9 +11,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
+import type * as Y from 'yjs';
 import { fetchWithHostHeader } from './host-header-request.test-helper';
-import { createTestClient, createTestServer, pollUntil, wait } from './test-harness';
+import {
+  appendProjectionParagraph,
+  createTestClient,
+  createTestServer,
+  pollUntil,
+  wait,
+} from './test-harness';
 
 function makeContentDir(files: Record<string, string>): string {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-single-file-content-')));
@@ -35,14 +41,6 @@ function ephemeralContentDir(files: Record<string, string>): string {
 afterEach(() => {
   for (const d of dirsToClean.splice(0)) rmSync(d, { recursive: true, force: true });
 });
-
-function typeParagraph(fragment: Y.XmlFragment, text: string): void {
-  const paragraph = new Y.XmlElement('paragraph');
-  const ytext = new Y.XmlText();
-  ytext.applyDelta([{ insert: text }]);
-  paragraph.insert(0, [ytext]);
-  fragment.push([paragraph]);
-}
 
 function setSource(ytext: Y.Text, value: string): void {
   ytext.delete(0, ytext.length);
@@ -139,7 +137,7 @@ describe('single-file mode — write-back (FR3)', () => {
     });
     const client = await createTestClient(server.port, 'notes');
     try {
-      typeParagraph(client.fragment, 'PERSISTED-EDIT');
+      appendProjectionParagraph(client, 'PERSISTED-EDIT');
       await pollUntil(
         () => readFileSync(join(contentDir, 'notes.md'), 'utf-8').includes('PERSISTED-EDIT'),
         4000,
@@ -345,7 +343,7 @@ describe('single-file mode — zero user-dir artifacts (FR2 / G4)', () => {
       debounce: 100,
     });
     const client = await createTestClient(server.port, 'notes');
-    typeParagraph(client.fragment, 'EDIT');
+    appendProjectionParagraph(client, 'EDIT');
     await pollUntil(
       () => readFileSync(join(contentDir, 'notes.md'), 'utf-8').includes('EDIT'),
       4000,

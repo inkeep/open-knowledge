@@ -1,10 +1,9 @@
 /** Each session creates its own frozen LocalTransactionOrigin at birth (precedent #1). */
 import type { DirectConnection, Document, Hocuspocus } from '@hocuspocus/server';
 import {
-  applyPatchToFm,
-  detectFmRegion,
   parseFrontmatterYaml,
   prependFrontmatter,
+  sourceBlockSnapshot,
   stripFrontmatter,
   unwrapFrontmatterFences,
 } from '@inkeep/open-knowledge-core';
@@ -13,20 +12,9 @@ import { splitPayloadFrontmatter } from './payload-frontmatter.ts';
 export { colorFromSeed } from '@inkeep/open-knowledge-core';
 
 import * as Y from 'yjs';
-import type { YjsStackItemShape } from './agent-activity.ts';
 import { type RawWriterId, UNIDENTIFIED_WRITER_ID } from './agent-id.ts';
-import {
-  composeAndWriteRawBody,
-  deriveFragmentFromYtext,
-  type PrecomputedParse,
-  replaceRawBody,
-} from './bridge-intake.ts';
-import {
-  type BridgeDeriveLossReporter,
-  DERIVE_LOSS_SITE_AGENT_WRITE_INTAKE,
-  type DeriveLossDetectOptions,
-} from './bridge-loss-detector.ts';
-import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
+import { composeAndWriteRawBody, replaceRawBody } from './bridge-intake.ts';
+import { getLastExternalEditorChangeMs } from './bridge-quiescence.ts';
 import { isConfigDoc, isSystemDoc } from './cc1-broadcast.ts';
 import { ConcurrentOverwriteRefusedError } from './concurrent-overwrite-refused-error.ts';
 import { isDocInConflict } from './conflict-authority.ts';
@@ -39,14 +27,10 @@ import { getDocExtension, stripDocExtension } from './doc-extensions.ts';
 import { FrontmatterMalformedError } from './frontmatter-malformed-error.ts';
 import { recordFrontmatterEditSurface } from './frontmatter-telemetry.ts';
 import { getLogger } from './logger.ts';
+import { mdManager } from './md-manager.ts';
 import { incrementAgentSessionEvictions } from './metrics.ts';
-import { precomputeParse } from './parse-pool.ts';
-import {
-  getLastExternalEditorChangeMs,
-  getPreDrainController,
-  type PairedWriteOrigin,
-} from './server-observers.ts';
 import { getMeter, setActiveSpanAttributes, withSpanSync } from './telemetry.ts';
+import type { PairedWriteOrigin } from './write-origins.ts';
 
 export type { AgentWriteContentDivergence };
 
@@ -56,11 +40,6 @@ export interface AgentDirectConnection extends DirectConnection {
   document: Document;
 }
 
-/**
- * Agent write origin — typed `PairedWriteOrigin` per precedent #1 extension; the typed marker
- * carries the `paired: true` field that `isPairedWriteOrigin` reads to gate paired-write
- * transactions.
- */
 export const AGENT_WRITE_ORIGIN = {
   source: 'local',
   skipStoreHooks: false,
@@ -79,38 +58,6 @@ function docNameToFile(docName: string): string {
  * Y.Text bytes, then route through the sibling primitive matching the caller's intent. The caller
  * must wrap this in `session.dc.document.transact(fn, session.origin)` (precedent #24).
  */
-export async function prepareAgentMarkdownParse(
-  document: Document,
-  markdown: string,
-  position: 'append' | 'prepend' | 'replace' | 'patch',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
-): Promise<PrecomputedParse | undefined> {
-  if (isDocInConflict(document)) return undefined;
-  const composed = composeAgentWrite(document.getText('source').toString(), markdown, position);
-  if (composed === undefined) return undefined;
-  return precomputeParse(composed.newContent, embedResolver);
-}
-
-export async function prepareFrontmatterPatchParse(
-  document: Document,
-  patch: Parameters<typeof applyPatchToFm>[1],
-): Promise<PrecomputedParse | undefined> {
-  const snapshot = document.getText('source').toString();
-  const { fenced, body } = detectFmRegion(snapshot);
-  const result = applyPatchToFm(fenced, patch);
-  if (!result.ok || result.nextFenced === fenced) return undefined;
-  const needsFenceSeparator = fenced === '' && body !== '' && !body.startsWith('\n');
-  return precomputeParse(result.nextFenced + (needsFenceSeparator ? '\n' : '') + body);
-}
-
-export interface AgentWriteLossDetect {
-  reporter: BridgeDeriveLossReporter;
-  writerId: string | null;
-}
-
 export const CONCURRENT_REPLACE_WINDOW_MS = 2_000;
 
 class AgentWriteRecency {
@@ -163,38 +110,10 @@ function assertConcurrentReplaceAllowed(
   throw new ConcurrentOverwriteRefusedError(docNameToFile(document.name));
 }
 
-export function agentWriteLossDetect(session: {
-  bridgeLossReporter?: BridgeDeriveLossReporter;
-  agentId: string;
-}): AgentWriteLossDetect | undefined {
-  return session.bridgeLossReporter
-    ? { reporter: session.bridgeLossReporter, writerId: session.agentId }
-    : undefined;
-}
-
-export function agentWritePreDrain(
-  document: Document,
-  markdown: string,
-  position: 'append' | 'prepend' | 'replace' | 'patch',
-): void {
-  const controller = getPreDrainController(document as unknown as Y.Doc);
-  if (!controller) return;
-  if (composeAgentWrite(document.getText('source').toString(), markdown, position) === undefined) {
-    return;
-  }
-  controller.preDrain({ kind: 'agent-write', writeKind: position });
-}
-
 export function applyAgentMarkdownWrite(
   document: Document,
   markdown: string,
   position: 'append' | 'prepend' | 'replace' | 'patch',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
-  precomputed?: PrecomputedParse,
-  lossDetect?: AgentWriteLossDetect,
   suppliedWriterId?: RawWriterId,
 ): AgentWriteContentDivergence | undefined {
   if (isDocInConflict(document)) {
@@ -214,9 +133,6 @@ export function applyAgentMarkdownWrite(
         document,
         markdown,
         position,
-        embedResolver,
-        precomputed,
-        lossDetect,
         suppliedWriterId,
       );
       if (divergence !== undefined) {
@@ -234,10 +150,7 @@ export function applyAgentMarkdownWrite(
 }
 
 export function snapshotBlocks(document: Document): string[] {
-  return document
-    .getXmlFragment('default')
-    .toArray()
-    .map((child) => child.toString());
+  return sourceBlockSnapshot(document.getText('source').toString(), mdManager);
 }
 
 interface ComposedAgentWrite {
@@ -299,12 +212,6 @@ function applyAgentMarkdownWriteInner(
   document: Document,
   markdown: string,
   position: 'append' | 'prepend' | 'replace' | 'patch',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
-  precomputed?: PrecomputedParse,
-  lossDetect?: AgentWriteLossDetect,
   suppliedWriterId?: RawWriterId,
 ): AgentWriteContentDivergence | undefined {
   try {
@@ -315,20 +222,6 @@ function applyAgentMarkdownWriteInner(
       return;
     }
     const { existingFm, finalFm, newContent } = composed;
-
-    const detect: DeriveLossDetectOptions | undefined =
-      lossDetect && shouldRunPairedIntakeDetection(AGENT_WRITE_ORIGIN.context.origin)
-        ? {
-            report: (obs) =>
-              lossDetect.reporter(
-                document.name,
-                obs,
-                lossDetect.writerId,
-                DERIVE_LOSS_SITE_AGENT_WRITE_INTAKE,
-              ),
-            baselineFullMd: currentYText,
-          }
-        : undefined;
 
     let frontmatterEdited = false;
     if (finalFm !== existingFm) {
@@ -354,9 +247,9 @@ function applyAgentMarkdownWriteInner(
     if (frontmatterEdited) recordFrontmatterEditSurface('mcp-write');
 
     if (position === 'replace') {
-      replaceRawBody(document, newContent, embedResolver, precomputed, detect);
+      replaceRawBody(document, newContent);
     } else {
-      composeAndWriteRawBody(document, newContent, 'agent', embedResolver, precomputed, detect);
+      composeAndWriteRawBody(document, newContent, 'agent');
     }
 
     const actualYText = document.getText('source').toString();
@@ -390,16 +283,12 @@ function applyAgentMarkdownWriteInner(
 
 /**
  * Y.Text-is-truth agent undo, the only sanctioned server-side undo write surface: after
- * `session.um.undo()` Y.Text holds the intended post-undo bytes and XmlFragment derives from them
- * (precedent #38). There is no canonicalize-write-back step, which would defeat that contract.
+ * `session.um.undo()` Y.Text holds the intended post-undo bytes (precedent #38). There is no
+ * canonicalize-write-back step, which would defeat that contract.
  */
 export function applyAgentUndo(
   session: SessionRecord,
   scope: 'last' | 'session' | 'count',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
   count?: number,
 ): boolean {
   const undoDoc = session.dc.document;
@@ -415,7 +304,7 @@ export function applyAgentUndo(
       },
     },
     () => {
-      const undone = applyAgentUndoInner(session, scope, embedResolver, count);
+      const undone = applyAgentUndoInner(session, scope, count);
       setActiveSpanAttributes({ 'agent.undo_effective': undone });
       return undone;
     },
@@ -425,10 +314,6 @@ export function applyAgentUndo(
 function applyAgentUndoInner(
   session: SessionRecord,
   scope: 'last' | 'session' | 'count',
-  embedResolver?: {
-    resolveEmbed: (basename: string, sourcePath: string) => string | null;
-    sourcePath: string;
-  },
   count?: number,
 ): boolean {
   const { dc, um, undoOrigin } = session;
@@ -441,28 +326,12 @@ function applyAgentUndoInner(
         ? Math.min(Math.max(0, count ?? 0), um.undoStack.length)
         : um.undoStack.length;
 
-  if (framesToPop === 1 && um.undoStack.length > 0) {
-    getPreDrainController(document as unknown as Y.Doc)?.preDrain({
-      kind: 'agent-undo',
-      stackItem: um.undoStack[um.undoStack.length - 1] as unknown as YjsStackItemShape,
-    });
-  }
-
   let undone = false;
-  const reporter = session.bridgeLossReporter;
-  const detect: DeriveLossDetectOptions | undefined =
-    reporter && shouldRunPairedIntakeDetection(undoOrigin.context.origin)
-      ? {
-          report: (obs) => reporter(session.docName, obs, session.agentId),
-          baselineFullMd: document.getText('source').toString(),
-        }
-      : undefined;
   document.transact(() => {
     for (let i = 0; i < framesToPop && um.undoStack.length > 0; i++) {
       um.undo();
       undone = true;
     }
-    if (undone) deriveFragmentFromYtext(document, embedResolver, detect);
   }, undoOrigin);
 
   log.debug(
@@ -486,7 +355,6 @@ interface SessionRecord {
   um: Y.UndoManager;
   agentId: string;
   docName: string;
-  bridgeLossReporter?: BridgeDeriveLossReporter;
   lastUsedAt: number;
 }
 
@@ -519,7 +387,6 @@ function createSessionOrigin(
 }
 
 function createUndoOrigin(sessionId: string, agentType?: string): PairedWriteOrigin {
-  // precedent #1: typed transaction origin; paired: true so observers short-circuit.
   const context: Record<string, unknown> & { origin: string; paired: true } = {
     origin: 'agent-undo',
     paired: true as const,
@@ -565,7 +432,6 @@ export class AgentSessionManager {
   private hocuspocus: Hocuspocus;
   private readonly maxSessions: number;
   private readonly minEvictableIdleMs: number;
-  private bridgeLossReporter?: BridgeDeriveLossReporter;
   private evictions = 0;
 
   constructor(
@@ -573,17 +439,11 @@ export class AgentSessionManager {
     options: {
       maxSessions?: number;
       minEvictableIdleMs?: number;
-      bridgeLossReporter?: BridgeDeriveLossReporter;
     } = {},
   ) {
     this.hocuspocus = hocuspocus;
     this.maxSessions = options.maxSessions ?? MAX_AGENT_SESSIONS;
     this.minEvictableIdleMs = options.minEvictableIdleMs ?? MIN_EVICTABLE_IDLE_MS;
-    this.bridgeLossReporter = options.bridgeLossReporter;
-  }
-
-  public attachBridgeLossReporter(reporter: BridgeDeriveLossReporter): void {
-    this.bridgeLossReporter = reporter;
   }
 
   public get liveSessionCount(): number {
@@ -731,7 +591,6 @@ export class AgentSessionManager {
       agentId,
       docName,
       lastUsedAt: Date.now(),
-      bridgeLossReporter: this.bridgeLossReporter,
     };
   }
 

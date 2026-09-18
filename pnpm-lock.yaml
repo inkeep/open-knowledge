@@ -1319,15 +1319,6 @@ importers:
       '@opentelemetry/semantic-conventions':
         specifier: ^1.30.0
         version: 1.43.0
-      '@tiptap/core':
-        specifier: 3.22.3
-        version: 3.22.3(@tiptap/pm@3.22.4)
-      '@tiptap/pm':
-        specifier: 3.22.4
-        version: 3.22.4
-      '@tiptap/y-tiptap':
-        specifier: 3.0.3
-        version: 3.0.3(patch_hash=cf143fe8d2092247ec0d3e596841b684f9f84e37d0eff4a1b45eb89f1e791c43)(prosemirror-model@1.25.4)(prosemirror-state@1.4.4)(prosemirror-view@1.41.8)(y-protocols@1.0.7(yjs@13.6.31))(yjs@13.6.31)
       '@types/busboy':
         specifier: ^1.5.4
         version: 1.5.4
@@ -1404,9 +1395,6 @@ importers:
         specifier: ^4.3.6
         version: 4.4.3
     devDependencies:
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
       '@types/node':
         specifier: ^24.7.0
         version: 24.13.3

@@ -80,11 +80,8 @@ import {
   AgentSessionCapacityError,
   type AgentSessionManager,
   type AgentWriteContentDivergence,
-  agentWriteLossDetect,
-  agentWritePreDrain,
   applyAgentMarkdownWrite,
   iconFromClientName,
-  prepareAgentMarkdownParse,
   snapshotBlocks,
 } from './agent-sessions.ts';
 import {
@@ -190,7 +187,6 @@ import {
   ManagedRenameSourceTypeMismatchError,
 } from './apply-managed-rename.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
-import type { BridgeDeriveLossReporter } from './bridge-loss-detector.ts';
 import { isConfigDoc, isLinkIndexExcludedDoc, isSystemDoc } from './cc1-broadcast.ts';
 import {
   isReservedProjectStatePath,
@@ -327,7 +323,6 @@ import {
   getOrLoadRenameLogIndex,
   type RenameLogEntry,
 } from './rename-log.ts';
-import type { PairedWriteOrigin } from './server-observers.ts';
 import { createAssetService } from './services/assets.ts';
 import { createFileOpsService, DuplicateNameExhaustedError } from './services/file-ops.ts';
 import { createSearchService } from './services/search.ts';
@@ -342,6 +337,7 @@ import { readSkillInstallModeRaw } from './skill-placements.ts';
 import type { SyncEngine } from './sync-engine.ts';
 import { getMeter, withSpan, withSpanSync } from './telemetry.ts';
 import { computeWriteAdvisoryLinks } from './write-advisory-links.ts';
+import type { PairedWriteOrigin } from './write-origins.ts';
 
 let _renameAttributionCounter: ReturnType<ReturnType<typeof getMeter>['createCounter']> | null =
   null;
@@ -399,8 +395,7 @@ export function __resetRenameTelemetryForTesting(): void {
 }
 
 /**
- * Exported so the bridge-invariant watcher can enforce by identity (precedent #1) and so server
- * observers can resolve `context.paired` without importing the object transitively.
+ * A typed `PairedWriteOrigin`, compared by identity (precedent #1).
  */
 export const MANAGED_RENAME_ORIGIN = {
   source: 'local' as const,
@@ -1287,7 +1282,6 @@ export interface ApiExtensionOptions {
   getLinkPreviewsEnabled?: () => boolean;
   getConfigDiagnostics?: () => ConfigDiagnosticsReport;
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
-  getBridgeLossReporter?: () => BridgeDeriveLossReporter | undefined;
   getPrincipal?: () => Principal | null;
   homeDirOverride?: string;
   agentIntegrations?: AgentRegistryHostSeam;
@@ -1457,7 +1451,6 @@ export function createApiExtension(
     localOpCliArgs = ['open-knowledge'],
     authStreamHeartbeatMs,
     projectDir,
-    getBridgeLossReporter,
     getPrincipal,
     homeDirOverride,
     agentIntegrations,
@@ -2249,7 +2242,7 @@ export function createApiExtension(
       if (result.rewrites === 0) {
         return;
       }
-      composeAndWriteRawBody(document, result.markdown, 'managed-rename', false);
+      composeAndWriteRawBody(document, result.markdown, 'managed-rename');
     }, MANAGED_RENAME_ORIGIN);
     return result;
   }
@@ -2304,7 +2297,7 @@ export function createApiExtension(
       if (result.rewrites === 0) {
         return;
       }
-      composeAndWriteRawBody(document, result.markdown, 'managed-rename', false);
+      composeAndWriteRawBody(document, result.markdown, 'managed-rename');
     }, MANAGED_RENAME_ORIGIN);
     return result;
   }
@@ -2565,8 +2558,6 @@ export function createApiExtension(
             hocuspocus,
             sourceDocName,
             contentDir,
-            undefined,
-            getBridgeLossReporter?.(),
             conflicts,
           );
           if (recentlyRemovedDocs && !isSystemDoc(sourceDocName) && !isConfigDoc(sourceDocName)) {
@@ -2768,8 +2759,6 @@ export function createApiExtension(
               hocuspocus,
               docName,
               contentDir,
-              undefined,
-              getBridgeLossReporter?.(),
               conflicts,
             );
             const content = readCurrentDocumentContent(docName);
@@ -3309,8 +3298,6 @@ export function createApiExtension(
           hocuspocus,
           docName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
           conflicts,
         );
 
@@ -3339,18 +3326,12 @@ export function createApiExtension(
             colorSeed,
             clientName,
           );
-          agentWritePreDrain(session.dc.document, `${content}\n`, 'append');
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
             applyAgentMarkdownWrite(
               session.dc.document,
               `${content}\n`,
               'append',
-              options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-                : undefined,
-              undefined,
-              agentWriteLossDetect(session),
               suppliedWriterId,
             );
 
@@ -3601,19 +3582,7 @@ export function createApiExtension(
                 hocuspocus,
                 resolvedDocName,
                 contentDir,
-                options.resolveEmbed,
-                getBridgeLossReporter?.(),
                 conflicts,
-              );
-
-              const entryEmbedResolver = options.resolveEmbed
-                ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                : undefined;
-              const entryPrecomputed = await prepareAgentMarkdownParse(
-                session.dc.document,
-                entry.markdown,
-                entry.position ?? 'append',
-                entryEmbedResolver,
               );
 
               let writeDivergence: AgentWriteContentDivergence | undefined;
@@ -3624,7 +3593,6 @@ export function createApiExtension(
                 colorSeed,
                 clientName,
               );
-              agentWritePreDrain(session.dc.document, entry.markdown, entry.position ?? 'append');
               try {
                 session.dc.document.transact(() => {
                   const beforeBlocks = snapshotBlocks(session.dc.document);
@@ -3632,9 +3600,6 @@ export function createApiExtension(
                     session.dc.document,
                     entry.markdown,
                     entry.position ?? 'append',
-                    entryEmbedResolver,
-                    entryPrecomputed,
-                    agentWriteLossDetect(session),
                     suppliedWriterId,
                   );
 
@@ -4781,7 +4746,6 @@ export function createApiExtension(
     resolveDocFilePath,
     summaryResponseFields,
     sessionManager,
-    options,
     agentPresenceBroadcaster,
     buildAgentActor,
     flushDiskAndDetectOutcome,
@@ -5133,8 +5097,6 @@ export function createApiExtension(
     sessionManager,
     durabilityState,
     hocuspocus,
-    options,
-    getBridgeLossReporter,
     agentPresenceBroadcaster,
     recordContentDivergenceGate,
     buildAgentActor,

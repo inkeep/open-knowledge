@@ -26,8 +26,15 @@ import {
   deriveEditorSizeOptions,
 } from '@/editor/utils/editor-visible-region';
 import { cn } from '@/lib/utils';
-import { blockIndexForLine, comparableChildCount, computeSourceBlockSpans } from '../block-spans';
+import {
+  blockIndexForLine,
+  comparableChildCount,
+  computeSourceBlockSpans,
+  projectionBlockSpans,
+  type SourceBlockSpans,
+} from '../block-spans';
 import { fetchEffectiveLintConfig, subscribeToLintConfigChanged } from '../lint-config-client';
+import { fullProjection } from '../projection-binding';
 import { runScrollNavigation } from '../scroll-restore-coordination';
 
 const LINT_CALLOUT_GAP_PX = 6;
@@ -50,10 +57,11 @@ export function mapDiagnosticsToBlocks(
   source: string,
   diagnostics: LintDiagnostic[],
   md: MarkdownManager,
+  blockSpans?: SourceBlockSpans,
 ): Map<number, LintDiagnostic[]> {
   const byBlock = new Map<number, LintDiagnostic[]>();
   if (diagnostics.length === 0) return byBlock;
-  const { spans, fmLineCount } = computeSourceBlockSpans(source, md);
+  const { spans, fmLineCount } = blockSpans ?? computeSourceBlockSpans(source, md);
   for (const diagnostic of diagnostics) {
     if (isFrontmatterAnchorless(diagnostic)) continue;
     const line = diagnostic.range.start.line + 1;
@@ -373,14 +381,23 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
             | { kind: 'stale' }
             | { kind: 'mismatch' };
 
+          function blockSpansFor(source: string): SourceBlockSpans {
+            const projection = fullProjection(view.state);
+            if (projection !== null && projection.source === source) {
+              const spans = projectionBlockSpans(projection);
+              if (spans !== null) return spans;
+            }
+            return computeSourceBlockSpans(source, md);
+          }
+
           async function computeSet(activeConfig: LinterConfig): Promise<ComputeOutcome> {
             const doc = view.state.doc;
             const source = getSource?.() ?? md.serialize(doc.toJSON());
             const diagnostics = await lintDocument(source, activeConfig, docName);
             if (!view.state.doc.eq(doc)) return { kind: 'stale' };
-            const { spans } = computeSourceBlockSpans(source, md);
-            if (spans.length !== comparableChildCount(doc)) return { kind: 'mismatch' };
-            const byBlock = mapDiagnosticsToBlocks(source, diagnostics, md);
+            const blockSpans = blockSpansFor(source);
+            if (blockSpans.spans.length !== comparableChildCount(doc)) return { kind: 'mismatch' };
+            const byBlock = mapDiagnosticsToBlocks(source, diagnostics, md, blockSpans);
             return { kind: 'ok', ...buildDecorationSet(doc, byBlock) };
           }
 
@@ -412,7 +429,7 @@ export const MarkdownLintDecorations = Extension.create<MarkdownLintDecorationsO
             if (!view.dom.isConnected || view.dom.offsetParent === null) return false;
             if (isFrontmatterScoped(detail)) return false;
             const source = getSource?.() ?? md.serialize(view.state.doc.toJSON());
-            const { spans, fmLineCount } = computeSourceBlockSpans(source, md);
+            const { spans, fmLineCount } = blockSpansFor(source);
             if (spans.length !== comparableChildCount(view.state.doc)) return false;
             if (fmLineCount > 0 && detail.line <= fmLineCount) return false;
             const index = blockIndexForLine(spans, detail.line);

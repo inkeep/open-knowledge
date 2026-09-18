@@ -91,7 +91,6 @@ export {
 } from './normalize.ts';
 export {
   type BridgeToleranceSignal,
-  isParseEquivalentBridge,
   PARSE_EQUIVALENCE_TOLERANCE,
 } from './parse-equivalence.ts';
 export {

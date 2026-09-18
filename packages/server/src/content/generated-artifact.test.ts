@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
-import type { PairedWriteOrigin } from '../server-observers.ts';
 import type { WriterIdentity } from '../shadow-repo.ts';
+import type { PairedWriteOrigin } from '../write-origins.ts';
 import { type GeneratedArtifactEnv, writeGeneratedArtifact } from './generated-artifact.ts';
 
 const WRITER: WriterIdentity = {

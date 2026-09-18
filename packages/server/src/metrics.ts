@@ -6,7 +6,7 @@ export type MapDrivenSpliceFallbackReason =
   | 'parse-error'
   | 'missing-position';
 
-export type MapDrivenSpliceMemoSkipReason =
+type MapDrivenSpliceMemoSkipReason =
   | 'narrowed'
   | 'empty-children'
   | 'entry-already-current'
@@ -318,17 +318,8 @@ export function incrementPersistenceDiskWrite(): void {
   counters.persistenceDiskWrites++;
 }
 
-export function incrementServerObserverError(direction: 'a' | 'b'): void {
-  if (direction === 'a') counters.serverObserverErrorsA++;
-  else counters.serverObserverErrorsB++;
-}
-
 export function incrementBridgeMergeContentLoss(): void {
   counters.bridgeMergeContentLoss++;
-}
-
-export function incrementBridgeMergeContentGrowth(): void {
-  counters.bridgeMergeContentGrowth++;
 }
 
 export function incrementAgentWriteCalls(): void {
@@ -349,26 +340,6 @@ export function incrementSummariesTruncated(): void {
 
 export function incrementBridgeMergeCheckpointCreated(): void {
   counters.bridgeMergeCheckpointCreated++;
-}
-
-export function incrementProducerGuardCheckpointCreated(): void {
-  counters.producerGuardCheckpointCreated++;
-}
-
-export function incrementProducerGuardFires(): void {
-  counters.producerGuardFires++;
-}
-
-export function incrementProducerGuardFiresSuppressed(): void {
-  counters.producerGuardFiresSuppressed++;
-}
-
-export function incrementBridgeInvariantViolations(): void {
-  counters.bridgeInvariantViolations++;
-}
-
-export function incrementBridgeInvariantViolationsSuppressed(): void {
-  counters.bridgeInvariantViolationsSuppressed++;
 }
 
 export function incrementPersistenceSkipNonQuiescent(): void {
@@ -395,73 +366,12 @@ export function incrementAgentPatchFindMismatches(): void {
   counters.agentPatchFindMismatches++;
 }
 
-export function incrementBridgeToleranceApplied(toleranceClass: BridgeToleranceSignal): void {
-  counters.bridgeToleranceApplied[toleranceClass] =
-    (counters.bridgeToleranceApplied[toleranceClass] ?? 0) + 1;
-}
-
-export function incrementObserverAPathBFires(): void {
-  counters.observerAPathBFires++;
-}
-
-export function incrementObserverAPathBFiresSuppressed(): void {
-  counters.observerAPathBFiresSuppressed++;
-}
-
 export function incrementMapDrivenSpliceApplied(): void {
   counters.mapDrivenSpliceApplied++;
 }
 
 export function incrementMapDrivenSpliceFallback(reason: MapDrivenSpliceFallbackReason): void {
   counters.mapDrivenSpliceFallback[reason] = (counters.mapDrivenSpliceFallback[reason] ?? 0) + 1;
-}
-
-export function incrementMapDrivenSpliceMemoHit(): void {
-  counters.mapDrivenSpliceMemoHits++;
-}
-
-export function incrementMapDrivenSpliceMemoSkip(reason: MapDrivenSpliceMemoSkipReason): void {
-  counters.mapDrivenSpliceMemoSkips[reason] = (counters.mapDrivenSpliceMemoSkips[reason] ?? 0) + 1;
-}
-
-export function incrementObserverAResidualMergeRuns(): void {
-  counters.observerAResidualMergeRuns++;
-}
-
-export function incrementObserverADuplicationRederives(): void {
-  counters.observerADuplicationRederives++;
-}
-
-export function incrementObserverADuplicationCheckpointCreated(): void {
-  counters.observerADuplicationCheckpointCreated++;
-}
-
-export function incrementObserverAApplyLoss(): void {
-  counters.observerAApplyLoss++;
-}
-
-export function incrementObserverAApplyLossCheckpointCreated(): void {
-  counters.observerAApplyLossCheckpointCreated++;
-}
-
-export function incrementDeriveTimingDeferForceResolved(): void {
-  counters.deriveTimingDeferForceResolved++;
-}
-
-export function incrementPersistenceDeferHold(): void {
-  counters.persistenceDeferHold++;
-}
-
-export function incrementPersistenceReconcileLoss(): void {
-  counters.persistenceReconcileLoss++;
-}
-
-export function incrementPersistenceReconcileLossCheckpointCreated(): void {
-  counters.persistenceReconcileLossCheckpointCreated++;
-}
-
-export function incrementPersistenceReconcileLossDeduped(): void {
-  counters.persistenceReconcileLossDeduped++;
 }
 
 export function incrementPersistenceDuplicationReset(): void {
@@ -512,22 +422,6 @@ export function incrementManagedArtifactReconcileDeduped(): void {
   counters.managedArtifactReconcileDeduped++;
 }
 
-export function incrementReDeriveBackstopTripped(): void {
-  counters.reDeriveBackstopTripped++;
-}
-
-export function incrementBridgeSplitBrainRederives(): void {
-  counters.bridgeSplitBrainRederives++;
-}
-
-export function incrementBridgeSplitBrainRederivesSuppressed(): void {
-  counters.bridgeSplitBrainRederivesSuppressed++;
-}
-
-export function incrementPersistenceReconciliationFailures(): void {
-  counters.persistenceReconciliationFailures++;
-}
-
 export function incrementExternalChangeHandlerErrors(): void {
   counters.externalChangeHandlerErrors++;
 }
@@ -558,10 +452,6 @@ export function incrementInFlightFlushExpired(count: number): void {
 
 export function incrementPersistenceStalenessForceStoreTimeouts(): void {
   counters.persistenceStalenessForceStoreTimeouts++;
-}
-
-export function incrementPersistenceSanityCheckSerializeFailures(): void {
-  counters.persistenceSanityCheckSerializeFailures++;
 }
 
 export function incrementDeferredStoreFailures(): void {

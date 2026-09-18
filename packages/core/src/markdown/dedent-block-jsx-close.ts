@@ -20,17 +20,35 @@ function isPrecededByListItem(source: string, closeLineStart: number): boolean {
   return false;
 }
 
-export function dedentBlockJsxClose(source: string): string {
+export interface DedentEdit {
+  at: number;
+  removed: number;
+}
+
+export function dedentBlockJsxClose(source: string, edits?: DedentEdit[]): string {
   if (!source.includes('</')) return source;
 
   const fences = findFencedRegions(source);
 
   let mutated = false;
-  const result = source.replace(INDENTED_BLOCK_JSX_CLOSE_RE, (match, _lead, tag, trail, offset) => {
-    if (isInsideFence(offset, fences)) return match;
-    if (!isPrecededByListItem(source, offset)) return match;
-    mutated = true;
-    return `${tag}${trail}`;
-  });
+  const result = source.replace(
+    INDENTED_BLOCK_JSX_CLOSE_RE,
+    (match, lead: string, tag: string, trail: string, offset: number) => {
+      if (isInsideFence(offset, fences)) return match;
+      if (!isPrecededByListItem(source, offset)) return match;
+      mutated = true;
+      edits?.push({ at: offset, removed: lead.length });
+      return `${tag}${trail}`;
+    },
+  );
   return mutated ? result : source;
+}
+
+export function undedentOffset(edits: readonly DedentEdit[], dedentedOffset: number): number {
+  let cumulative = 0;
+  for (const edit of edits) {
+    if (edit.at - cumulative > dedentedOffset) break;
+    cumulative += edit.removed;
+  }
+  return dedentedOffset + cumulative;
 }

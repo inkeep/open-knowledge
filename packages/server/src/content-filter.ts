@@ -773,6 +773,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
   }
 
   function isRejectedByConfigurableRules(relativePath: string): boolean {
+    if (relativePath === '') return false;
     for (const segment of relativePath.split('/')) {
       if (BUILTIN_SKIP_DIRS.has(segment)) return true;
     }
@@ -892,6 +893,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
     },
 
     isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean {
+      if (relativePath === '') return true;
       if (isReservedDocName(relativePath)) return true;
       if (isSecretBearingFile(relativePath)) return true;
       if (pathHasSecretBearingDirSegment(relativePath)) return true;
@@ -1335,6 +1337,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     return isReservedForUserTree(docName);
   }
   function isRejectedByConfigurableRules(relativePath: string): boolean {
+    if (relativePath === '') return false;
     for (const segment of relativePath.split('/')) {
       if (BUILTIN_SKIP_DIRS.has(segment)) return true;
     }
@@ -1505,6 +1508,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
     },
 
     isPathIgnored(relativePath: string, opts?: ContentFilterPathReadOpts): boolean {
+      if (relativePath === '') return true;
       if (isReservedDocName(relativePath)) return true;
       if (isSecretBearingFile(relativePath)) return true;
       if (pathHasSecretBearingDirSegment(relativePath)) return true;

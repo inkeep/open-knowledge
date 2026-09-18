@@ -2,7 +2,7 @@ import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import type { Document, Extension } from '@hocuspocus/server';
 import { Hocuspocus, IncomingMessage, MessageType } from '@hocuspocus/server';
 import {
@@ -66,10 +66,6 @@ import {
 } from './auth-token-schema.ts';
 import { bootElapsedMs, recordBootPhase, setBootField } from './boot-timings.ts';
 import {
-  type BridgeDeriveLossReporter,
-  createBridgeDeriveLossReporter,
-} from './bridge-loss-detector.ts';
-import {
   CC1Broadcaster,
   isConfigDoc,
   isManagedArtifactDoc,
@@ -110,7 +106,6 @@ import {
   DerivedDocumentIndex,
   type DerivedDocumentIndexBranchTransition,
 } from './derived-document-index.ts';
-import { applyDiskContentToDoc } from './disk-content-intake.ts';
 import {
   canonicalDocName,
   docNameToRelativePath,
@@ -132,8 +127,6 @@ import {
 } from './embeddings/index.ts';
 import {
   applyExternalChange,
-  FILE_WATCHER_ORIGIN,
-  redactedErrorSummary,
   refuseStaleExternalWrite,
   serializeYDocSource,
   wireReasonForRefusal,
@@ -198,7 +191,6 @@ import {
 import { startManagedArtifactWatcher } from './managed-artifact-watcher.ts';
 import { recoverPendingManagedRename } from './managed-rename-journal.ts';
 import type { NativeTomlMcpEditor } from './mcp-config-reconciler.ts';
-import { mdManager, schema } from './md-manager.ts';
 import {
   incrementBatch,
   incrementBranchSwitch,
@@ -216,7 +208,6 @@ import {
   incrementUpstreamImport,
   setRecentlyRemovedDocsSize,
 } from './metrics.ts';
-import { destroyParsePool } from './parse-pool.ts';
 import { isWithinDir, toPosix } from './path-utils.ts';
 import { createPersistenceExtension, type PersistenceOptions } from './persistence.ts';
 import {
@@ -238,7 +229,6 @@ import {
 } from './rename-log.ts';
 import { acquireServerLock, markServerLockDraining, releaseServerLock } from './server-lock.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
-import type { PairedWriteOrigin } from './server-observers.ts';
 import {
   installServerWorkloadGauges,
   registerAgentSessionCountsProvider,
@@ -273,6 +263,7 @@ import { createSyncHandshakeSpanExtension } from './sync-handshake-span-extensio
 import { initTelemetry, shutdownTelemetry, withSpan } from './telemetry.ts';
 import { trustSystemCertificates } from './trust-system-ca.ts';
 import { cleanupOrphanUploadTempfiles } from './upload-streaming.ts';
+import type { PairedWriteOrigin } from './write-origins.ts';
 
 export interface ServerOptions {
   acpRegistryFetchImpl?: typeof fetch;
@@ -903,7 +894,6 @@ export function createServer(options: ServerOptions): ServerInstance {
   let sessionManager: AgentSessionManager;
   let nativeApi: NativeApiHandle;
   let localApi: LocalApiDispatch;
-  let bridgeLossReporter: BridgeDeriveLossReporter | undefined;
   let inPlaceRescanTimer: ReturnType<typeof setTimeout> | null = null;
   let shadowWarmupTimer: ReturnType<typeof setTimeout> | null = null;
   const IN_PLACE_RESCAN_DEBOUNCE_MS = 500;
@@ -1824,7 +1814,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       const name = document.name;
       if (isReservedForUserTree(name)) return false;
       if (getReconciledBase(name) !== undefined) return false;
-      if (document.getXmlFragment('default').length !== 0) return false;
       if (document.getText('source').length !== 0) return false;
       return defaultShouldUnloadDocument(document);
     };
@@ -2078,7 +2067,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       authStreamHeartbeatMs,
       projectDir,
       resolveEmbed,
-      getBridgeLossReporter: () => bridgeLossReporter,
       getPrincipal: () => loadedPrincipal,
       agentIntegrations: options.agentIntegrations,
       acpRegistry,
@@ -2115,9 +2103,6 @@ export function createServer(options: ServerOptions): ServerInstance {
       warn: (message) =>
         log.warn({ message }, '[config] could not read project config for bridge guards'),
     });
-    const deferGuardEnabled = bridgeGuardConfig.value.bridge.deferGuard.enabled;
-    const fixedPointBackstopEnabled = bridgeGuardConfig.value.bridge.fixedPoint.enabled;
-    const preDrainEnabled = bridgeGuardConfig.value.bridge.preDrain.enabled;
     lossRing = bridgeGuardConfig.value.lossCapture.enabled
       ? new LossCaptureRing({
           projectDir,
@@ -2125,32 +2110,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         })
       : undefined;
 
-    if (bridgeGuardConfig.value.bridge.lossDetector.enabled) {
-      bridgeLossReporter = createBridgeDeriveLossReporter({
-        shadow: () => shadowRef.current,
-        ring: lossRing,
-        getBranch: () => headWatcher?.getLastKnownBranch() ?? 'main',
-        contentRoot: contentRoot ?? '',
-      });
-      sessionManager.attachBridgeLossReporter(bridgeLossReporter);
-    }
-
-    hocuspocus.configuration.extensions.push(
-      createServerObserverExtension({
-        mdManager,
-        schema,
-        shadowRef,
-        contentRoot,
-        getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
-        resolveEmbed,
-        resolveSize,
-        deferGuardEnabled,
-        lossDetectorEnabled: bridgeGuardConfig.value.bridge.lossDetector.enabled,
-        fixedPointBackstopEnabled,
-        preDrainEnabled,
-        lossRing,
-      }),
-    );
+    hocuspocus.configuration.extensions.push(createServerObserverExtension());
 
     hocuspocus.configuration.extensions.push(createSyncHandshakeSpanExtension());
 
@@ -2195,56 +2155,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   const applyToDoc = (docName: string, content: string): void =>
-    applyExternalChange(
-      durabilityState,
-      hocuspocus,
-      docName,
-      content,
-      resolveEmbed,
-      resolveSize,
-      bridgeLossReporter,
-    );
-
-  const rerenderDocsReferencingAssetBasename = (assetBasename: string): void => {
-    if (!assetBasename) return;
-    const needle = `[[${assetBasename}]]`;
-    for (const [docName] of hocuspocus.documents) {
-      if (isReservedForUserTree(docName)) continue;
-      const document = hocuspocus.documents.get(docName);
-      if (!document) continue;
-      const source = document.getText('source').toString();
-      if (!source.includes(needle)) continue;
-      try {
-        document.transact(() => {
-          applyDiskContentToDoc(document, source, resolveEmbed, docName);
-        }, FILE_WATCHER_ORIGIN);
-      } catch (err) {
-        log.error(
-          { originalError: redactedErrorSummary(err), docName, assetBasename },
-          `[asset-event] failed to re-render ${docName} for asset basename ${assetBasename}`,
-        );
-      }
-    }
-  };
-
-  let pendingAssetRerenderBasenames: Set<string> | null = null;
-  const scheduleAssetRerender = (assetBasename: string): void => {
-    if (!assetBasename) return;
-    if (pendingAssetRerenderBasenames === null) {
-      pendingAssetRerenderBasenames = new Set();
-      setImmediate(() => {
-        const toRender = pendingAssetRerenderBasenames;
-        pendingAssetRerenderBasenames = null;
-        if (!toRender) return;
-        try {
-          for (const b of toRender) rerenderDocsReferencingAssetBasename(b);
-        } catch (err) {
-          log.error({ err, basenames: [...toRender] }, '[asset-event] dedup rerender pass crashed');
-        }
-      });
-    }
-    pendingAssetRerenderBasenames.add(assetBasename);
-  };
+    applyExternalChange(durabilityState, hocuspocus, docName, content);
 
   function diskEventLabel(event: DiskEvent): string {
     switch (event.kind) {
@@ -2784,13 +2695,11 @@ export function createServer(options: ServerOptions): ServerInstance {
         case 'asset-create': {
           basenameIndex.add(event.relativePath);
           signalChannel('files');
-          scheduleAssetRerender(basename(event.relativePath));
           break;
         }
         case 'asset-delete': {
           basenameIndex.remove(event.relativePath);
           signalChannel('files');
-          scheduleAssetRerender(basename(event.relativePath));
           break;
         }
         case 'folder-create':
@@ -3208,16 +3117,6 @@ export function createServer(options: ServerOptions): ServerInstance {
               error: err instanceof Error ? err.message : String(err),
             });
             log.error({ err }, '[server] shutdown phase-2 agent session drain failed');
-          }
-
-          try {
-            await destroyParsePool();
-          } catch (err) {
-            phaseErrors.push({
-              phase: 'parse-pool-teardown',
-              error: err instanceof Error ? err.message : String(err),
-            });
-            log.error({ err }, '[server] shutdown phase-2b parse pool teardown failed');
           }
 
           try {

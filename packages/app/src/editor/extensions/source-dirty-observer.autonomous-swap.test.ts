@@ -2,9 +2,9 @@ import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/ope
 import { getSchema } from '@tiptap/core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import { EditorState, type Plugin, TextSelection } from '@tiptap/pm/state';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { describe, expect, test } from 'vitest';
 import { reconstructSource } from '../utils/reconstruct-source.ts';
+import { PROJECTION_REMOTE_APPLY_META } from './autonomous-fragment-edit';
 import { markAutonomousFragmentEdit, markSwapIfByteNeutral } from './autonomous-fragment-edit.ts';
 import { sharedExtensions } from './shared';
 import {
@@ -138,8 +138,7 @@ describe('SourceDirtyObserver — autonomous representation swaps', () => {
     const { pos } = firstStep(initial);
 
     const appended = appendForBatch(plugin, initial, [
-      (state) =>
-        state.tr.insertText('Z', pos + 2).setMeta(ySyncPluginKey, { isChangeOrigin: true }),
+      (state) => state.tr.insertText('Z', pos + 2).setMeta(PROJECTION_REMOTE_APPLY_META, true),
       (state) => state.tr.setSelection(TextSelection.create(state.doc, pos + 2)),
     ]);
 

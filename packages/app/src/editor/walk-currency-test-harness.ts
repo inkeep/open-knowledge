@@ -1,10 +1,4 @@
-import { randomUUID } from 'node:crypto';
-import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { type Editor, Extension } from '@tiptap/core';
-import { Plugin, TextSelection } from '@tiptap/pm/state';
 import { JSDOM } from 'jsdom';
-import { Awareness } from 'y-protocols/awareness';
-import * as Y from 'yjs';
 import type { buildPatternDConstructorOptions } from './TiptapEditor';
 
 export function installDomGlobals(): () => void {
@@ -65,125 +59,9 @@ export const fakeClipboard = {
   copy: () => false,
 } as unknown as ClipboardArg;
 
-export function seedFragmentParagraph(ydoc: Y.Doc, text: string): void {
-  const fragment = ydoc.getXmlFragment('default');
-  const paragraph = new Y.XmlElement('paragraph');
-  paragraph.insert(0, [new Y.XmlText(text)]);
-  fragment.insert(0, [paragraph]);
-}
-
-export function dispatchSelectionOnly(editor: Editor): void {
-  const { state } = editor.view;
-  editor.view.dispatch(state.tr.setSelection(TextSelection.create(state.doc, 1)));
-}
-
-export interface SeededPatternDProvider {
-  docName: string;
-  ydoc: Y.Doc;
-  fragment: Y.XmlFragment;
-  awareness: Awareness;
-  provider: HocuspocusProvider;
-  cleanup: () => void;
-}
-
-export function buildSeededPatternDProvider(
-  docNamePrefix: string,
-  seed: (ydoc: Y.Doc) => void = (ydoc) => seedFragmentParagraph(ydoc, 'hello world'),
-): SeededPatternDProvider {
-  const docName = `${docNamePrefix}-${randomUUID()}`;
-  const ydoc = new Y.Doc();
-  seed(ydoc);
-  const fragment = ydoc.getXmlFragment('default');
-  const awareness = new Awareness(ydoc);
-  const provider = {
-    document: ydoc,
-    configuration: { name: docName },
-    awareness,
-  } as unknown as HocuspocusProvider;
-  const cleanup = () => {
-    awareness.destroy();
-    ydoc.destroy();
-  };
-  return { docName, ydoc, fragment, awareness, provider, cleanup };
-}
-
-const REMOTE_PROVIDER_ORIGIN = Object.freeze({ kind: 'remote-provider-stand-in' });
-
-export function applyRemoteEdit(local: Y.Doc, mutate: (fragment: Y.XmlFragment) => void): void {
-  const remote = new Y.Doc();
-  Y.applyUpdate(remote, Y.encodeStateAsUpdate(local));
-  remote.transact(() => {
-    mutate(remote.getXmlFragment('default'));
-  });
-  const diff = Y.encodeStateAsUpdate(remote, Y.encodeStateVector(local));
-  Y.applyUpdate(local, diff, REMOTE_PROVIDER_ORIGIN);
-  remote.destroy();
-}
-
-export function appendToFirstParagraph(fragment: Y.XmlFragment, text: string): void {
-  const paragraph = fragment.get(0) as Y.XmlElement;
-  const xmlText = paragraph.get(0) as Y.XmlText;
-  xmlText.insert(xmlText.length, text);
-}
-
-export function insertParagraphAt(fragment: Y.XmlFragment, index: number, text: string): void {
-  const paragraph = new Y.XmlElement('paragraph');
-  paragraph.insert(0, [new Y.XmlText(text)]);
-  fragment.insert(index, [paragraph]);
-}
-
 export async function flushMicrotasksAndTimers(): Promise<void> {
   for (let i = 0; i < 5; i += 1) {
     await Promise.resolve();
   }
   await new Promise((resolve) => setTimeout(resolve, 10));
-}
-
-export interface GapOrderingRecorder {
-  recordGapEdit(): void;
-  recordViewCreated(): void;
-  readonly gapEditOrdinal: number | null;
-  readonly viewCreatedOrdinal: number | null;
-}
-
-export function createGapOrderingRecorder(): GapOrderingRecorder {
-  let counter = 0;
-  let gapEditOrdinal: number | null = null;
-  let viewCreatedOrdinal: number | null = null;
-  return {
-    recordGapEdit() {
-      if (gapEditOrdinal === null) {
-        counter += 1;
-        gapEditOrdinal = counter;
-      }
-    },
-    recordViewCreated() {
-      if (viewCreatedOrdinal === null) {
-        counter += 1;
-        viewCreatedOrdinal = counter;
-      }
-    },
-    get gapEditOrdinal() {
-      return gapEditOrdinal;
-    },
-    get viewCreatedOrdinal() {
-      return viewCreatedOrdinal;
-    },
-  };
-}
-
-export function viewCreationSignalExtension(record: GapOrderingRecorder): Extension {
-  return Extension.create({
-    name: 'viewCreationSignal',
-    addProseMirrorPlugins() {
-      return [
-        new Plugin({
-          view: () => {
-            record.recordViewCreated();
-            return {};
-          },
-        }),
-      ];
-    },
-  });
 }

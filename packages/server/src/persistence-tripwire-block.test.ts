@@ -1,11 +1,9 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { updateYFragment } from '@tiptap/y-tiptap';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
-import { mdManager, schema } from './md-manager.ts';
 import { createServer } from './server-factory.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dirname, 'persistence-tripwire.fixtures');
@@ -34,13 +32,12 @@ async function setupFixture(): Promise<Fixture> {
   };
 }
 
-function replaceFragmentFromMarkdown(doc: Y.Doc, markdown: string): void {
-  const json = mdManager.parseWithFallback(markdown);
-  const pmNode = schema.nodeFromJSON(json);
-  const xmlFragment = doc.getXmlFragment('default');
+function replaceSource(doc: Y.Doc, markdown: string): void {
+  const ytext = doc.getText('source');
   doc.transact(
     () => {
-      updateYFragment(doc, xmlFragment, pmNode, { mapping: new Map(), isOMark: new Map() });
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, markdown);
     },
     { source: 'connection', connection: { context: { principalId: 'principal-test-tripwire' } } },
   );
@@ -108,12 +105,10 @@ describe('persistence onStoreDocument tripwire', () => {
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
 
-      const baseChildren = serverDoc.getXmlFragment('default').length;
-      expect(baseChildren).toBeGreaterThan(0);
+      expect(serverDoc.getText('source').toString()).toBe(baselineBytes);
 
-      replaceFragmentFromMarkdown(serverDoc, doubledMarkdown);
-      const doubledChildren = serverDoc.getXmlFragment('default').length;
-      expect(doubledChildren).toBe(baseChildren * 2);
+      replaceSource(serverDoc, doubledMarkdown);
+      expect(serverDoc.getText('source').toString()).toBe(doubledMarkdown);
 
       await waitForCondition(() => {
         return warnSpy.mock.calls.some((call) => {
@@ -125,8 +120,6 @@ describe('persistence onStoreDocument tripwire', () => {
       await expectStable(() => readFileSync(docPath, 'utf-8'));
       expect(readFileSync(docPath, 'utf-8')).toBe(baselineBytes);
 
-      await waitForCondition(() => serverDoc.getXmlFragment('default').length === baseChildren);
-      expect(serverDoc.getXmlFragment('default').length).toBe(baseChildren);
       await waitForCondition(() => serverDoc.getText('source').toString() === baselineBytes);
       expect(serverDoc.getText('source').toString()).toBe(baselineBytes);
 
@@ -141,17 +134,8 @@ describe('persistence onStoreDocument tripwire', () => {
       expect(payload.reason).toBe('structural-duplication');
       expect(typeof payload.candidateBytes).toBe('number');
       expect(typeof payload.baseBytes).toBe('number');
-      expect(typeof payload.fragmentChildren).toBe('number');
       expect(new Set(Object.keys(payload))).toEqual(
-        new Set([
-          'event',
-          'doc.name',
-          'candidateBytes',
-          'baseBytes',
-          'fragmentChildren',
-          'copies',
-          'reason',
-        ]),
+        new Set(['event', 'doc.name', 'candidateBytes', 'baseBytes', 'copies', 'reason']),
       );
 
       conn.disconnect();
@@ -186,7 +170,7 @@ describe('persistence onStoreDocument tripwire', () => {
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
 
-      replaceFragmentFromMarkdown(serverDoc, candidateMarkdown);
+      replaceSource(serverDoc, candidateMarkdown);
 
       const baselineSize = readFileSync(docPath, 'utf-8').length;
       await waitForCondition(() => readFileSync(docPath, 'utf-8').length !== baselineSize);

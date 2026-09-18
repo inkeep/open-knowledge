@@ -1,5 +1,4 @@
 import type { Editor } from '@tiptap/core';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import {
@@ -7,17 +6,14 @@ import {
   firstLinkHref,
   insertLocal,
   linkHrefs,
-  mountCollabEditor,
+  mountAppEditor,
   mountLightEditor,
-  readUndoManager,
+  mountProjectionEditor,
+  type ProjectionEditorRig,
 } from './editor-rig.test-helper';
+import { PROJECTION_REMOTE_APPLY_META } from './extensions/autonomous-fragment-edit';
 import { GfmAutolink, PREVENT_AUTOLINK_META } from './gfm-autolink-plugin';
-import {
-  appendToFirstParagraph,
-  flushMicrotasksAndTimers,
-  installDomGlobals,
-  seedFragmentParagraph,
-} from './walk-currency-test-harness';
+import { flushMicrotasksAndTimers, installDomGlobals } from './walk-currency-test-harness';
 
 let restoreDomGlobals: (() => void) | null = null;
 
@@ -37,8 +33,8 @@ function makeLightEditor(opts: { content?: string; isActiveEditor?: () => boolea
   });
 }
 
-function makeCollabEditor(ydoc: Y.Doc): Editor {
-  return mountCollabEditor(ydoc, [GfmAutolink.configure({ isActiveEditor: () => true })]);
+function makeProjectionEditor(source: string): ProjectionEditorRig {
+  return mountProjectionEditor(source, [GfmAutolink.configure({ isActiveEditor: () => true })]);
 }
 
 describe('typed autolink — conversion', () => {
@@ -120,11 +116,11 @@ describe('typed autolink — conversion', () => {
 });
 
 describe('typed autolink — guards', () => {
-  test('a transaction tagged with ySyncPluginKey meta never converts', async () => {
+  test('a remote re-projection never converts', async () => {
     const editor = makeLightEditor();
     try {
       const tr = editor.state.tr.insertText('https://example.com ', 1, 1);
-      tr.setMeta(ySyncPluginKey, { isChangeOrigin: true });
+      tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
       editor.view.dispatch(tr);
       await flushMicrotasksAndTimers();
 
@@ -264,112 +260,169 @@ describe('typed autolink — deferred dispatch', () => {
   });
 });
 
-describe('typed autolink — undo isolation (real y-undo binding)', () => {
-  test('one undo removes only the link mark, keeping the text and trailing space', async () => {
-    const ydoc = new Y.Doc();
-    seedFragmentParagraph(ydoc, 'seed');
-    const editor = makeCollabEditor(ydoc);
+describe('typed autolink — undo under the projection binding', () => {
+  test('one undo retracts the typed run; the derived mark goes with it', async () => {
+    const rig = makeProjectionEditor('seed\n');
+    const { editor } = rig;
     try {
       await flushMicrotasksAndTimers();
-      readUndoManager(editor)?.stopCapturing();
+      rig.undoManager.stopCapturing();
 
       insertLocal(editor, ' https://example.com ', editor.state.doc.content.size - 1);
       await flushMicrotasksAndTimers();
       expect(firstLinkHref(editor)).toBe('https://example.com');
 
-      editor.commands.undo();
+      rig.undoManager.undo();
+      await flushMicrotasksAndTimers();
       expect(firstLinkAttrs(editor)).toBeNull();
-      expect(editor.state.doc.textContent).toBe('seed https://example.com ');
-
-      editor.commands.undo();
       expect(editor.state.doc.textContent).toBe('seed');
+      expect(rig.ytext.toString()).toBe('seed\n');
     } finally {
-      editor.destroy();
-      ydoc.destroy();
+      rig.destroy();
     }
   });
 
-  test('redo after undoing a conversion re-applies the mark cleanly', async () => {
-    const ydoc = new Y.Doc();
-    seedFragmentParagraph(ydoc, 'seed');
-    const editor = makeCollabEditor(ydoc);
+  test('redo after undoing a typed autolink restores the text and re-derives the mark', async () => {
+    const rig = makeProjectionEditor('seed\n');
+    const { editor } = rig;
     try {
       await flushMicrotasksAndTimers();
-      readUndoManager(editor)?.stopCapturing();
+      rig.undoManager.stopCapturing();
 
       insertLocal(editor, ' https://example.com ', editor.state.doc.content.size - 1);
       await flushMicrotasksAndTimers();
       expect(firstLinkHref(editor)).toBe('https://example.com');
 
-      editor.commands.undo();
+      rig.undoManager.undo();
+      await flushMicrotasksAndTimers();
       expect(firstLinkAttrs(editor)).toBeNull();
 
-      editor.commands.redo();
+      rig.undoManager.redo();
+      await flushMicrotasksAndTimers();
+      expect(editor.state.doc.textContent).toBe('seed https://example.com');
       const attrs = firstLinkAttrs(editor);
       expect(attrs?.href).toBe('https://example.com');
       expect(attrs?.linkStyle).toBe('gfm-autolink');
-      expect(editor.state.doc.textContent).toBe('seed https://example.com ');
     } finally {
-      editor.destroy();
-      ydoc.destroy();
+      rig.destroy();
     }
   });
 
-  test("typing right after a conversion never merges into the mark's undo step", async () => {
-    const ydoc = new Y.Doc();
-    seedFragmentParagraph(ydoc, 'seed');
-    const editor = makeCollabEditor(ydoc);
+  test('an autolink conversion writes no bytes of its own', async () => {
+    const rig = makeProjectionEditor('seed\n');
+    const { editor } = rig;
     try {
       await flushMicrotasksAndTimers();
-      readUndoManager(editor)?.stopCapturing();
+      rig.undoManager.stopCapturing();
 
       insertLocal(editor, ' https://example.com ', editor.state.doc.content.size - 1);
       await flushMicrotasksAndTimers();
       expect(firstLinkHref(editor)).toBe('https://example.com');
-
-      insertLocal(editor, 'abc', editor.state.doc.content.size - 1);
-      await flushMicrotasksAndTimers();
-
-      editor.commands.undo();
-      expect(editor.state.doc.textContent).toBe('seed https://example.com ');
-      expect(firstLinkHref(editor)).toBe('https://example.com');
+      expect(rig.ytext.toString()).toBe('seed https://example.com\n');
     } finally {
-      editor.destroy();
-      ydoc.destroy();
+      rig.destroy();
     }
   });
 });
 
 describe('typed autolink — real CRDT binding', () => {
-  test('a remote y-sync edit is not linkified, but a local edit in the same binding is', async () => {
-    const ydoc = new Y.Doc();
-    seedFragmentParagraph(ydoc, 'seed');
-    const editor = makeCollabEditor(ydoc);
+  test('a URL typed after a remote edit autolinks like any other', async () => {
+    const rig = makeProjectionEditor('seed\n');
+    const { editor } = rig;
 
     try {
       await flushMicrotasksAndTimers();
 
       const remote = new Y.Doc();
-      Y.applyUpdate(remote, Y.encodeStateAsUpdate(ydoc));
+      Y.applyUpdate(remote, Y.encodeStateAsUpdate(rig.ydoc));
       remote.transact(() => {
-        appendToFirstParagraph(remote.getXmlFragment('default'), ' https://remote.example ');
+        const remoteText = remote.getText('source');
+        remoteText.insert(remoteText.toString().indexOf('\n'), ' plain remote words ');
       });
-      Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(ydoc)), remote);
+      const remoteBytes = remote.getText('source').toString();
+      Y.applyUpdate(rig.ydoc, Y.encodeStateAsUpdate(remote, Y.encodeStateVector(rig.ydoc)), remote);
       remote.destroy();
       await flushMicrotasksAndTimers();
 
-      expect(editor.state.doc.textContent).toContain('https://remote.example');
-      expect(linkHrefs(editor)).not.toContain('https://remote.example');
+      expect(editor.state.doc.textContent).toContain('plain remote words');
+      expect(rig.ytext.toString()).toBe(remoteBytes);
 
-      const end = editor.state.doc.content.size - 1;
-      insertLocal(editor, ' https://local.example ', end);
+      insertLocal(editor, ' https://local.example ', editor.state.doc.content.size - 1);
       await flushMicrotasksAndTimers();
 
       expect(linkHrefs(editor)).toContain('https://local.example');
-      expect(linkHrefs(editor)).not.toContain('https://remote.example');
+      expect(rig.ytext.toString()).toContain('https://local.example');
+    } finally {
+      rig.destroy();
+    }
+  });
+
+  test('CHARACTERIZATION: a URL typed onto the end of a link joins that link instead of getting its own', async () => {
+    const rig = makeProjectionEditor('seed https://seeded.example\n');
+    const { editor } = rig;
+
+    try {
+      await flushMicrotasksAndTimers();
+      expect(linkHrefs(editor)).toEqual(['https://seeded.example']);
+
+      insertLocal(editor, ' https://local.example ', editor.state.doc.content.size - 1);
+      await flushMicrotasksAndTimers();
+
+      expect(editor.state.doc.textContent).toContain('https://local.example');
+      expect(linkHrefs(editor)).not.toContain('https://local.example');
+      expect(linkHrefs(editor)).toEqual(['https://seeded.example']);
+      expect(rig.ytext.toString()).toContain('https://local.example');
+    } finally {
+      rig.destroy();
+    }
+  });
+});
+
+describe('typed autolink — the same characterization with no CRDT layer at all', () => {
+  test('CHARACTERIZATION: the link mark is inclusive, so typing at its end extends it', async () => {
+    const editor = mountAppEditor();
+
+    try {
+      expect(editor.state.schema.marks.link?.spec.inclusive).toBe(true);
+
+      insertLocal(editor, 'seed https://first.example ', 1);
+      await flushMicrotasksAndTimers();
+      expect(linkHrefs(editor)).toEqual(['https://first.example']);
+
+      const size = editor.state.doc.content.size;
+      editor.view.dispatch(editor.state.tr.delete(size - 2, size - 1));
+      await flushMicrotasksAndTimers();
+
+      insertLocal(editor, ' https://second.example ', editor.state.doc.content.size - 1);
+      await flushMicrotasksAndTimers();
+
+      expect(editor.state.doc.textContent).toContain('https://second.example');
+      expect(linkHrefs(editor)).toEqual(['https://first.example']);
     } finally {
       editor.destroy();
-      ydoc.destroy();
+    }
+  });
+
+  test('the same keystrokes against a non-inclusive link mark produce two links', async () => {
+    const editor = makeLightEditor();
+
+    try {
+      expect(editor.state.schema.marks.link?.spec.inclusive).toBe(false);
+
+      insertLocal(editor, 'seed https://first.example ', 1);
+      await flushMicrotasksAndTimers();
+      expect(linkHrefs(editor)).toEqual(['https://first.example']);
+
+      const size = editor.state.doc.content.size;
+      editor.view.dispatch(editor.state.tr.delete(size - 2, size - 1));
+      await flushMicrotasksAndTimers();
+
+      insertLocal(editor, ' https://second.example ', editor.state.doc.content.size - 1);
+      await flushMicrotasksAndTimers();
+
+      expect(linkHrefs(editor)).toEqual(['https://first.example', 'https://second.example']);
+    } finally {
+      editor.destroy();
     }
   });
 });

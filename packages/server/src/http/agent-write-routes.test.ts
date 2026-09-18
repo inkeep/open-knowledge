@@ -38,7 +38,6 @@ function buildGroup(overrides: Partial<Deps> = {}) {
     durabilityState: {} as DocumentDurabilityState,
     hocuspocus: {} as Hocuspocus,
     options: {},
-    getBridgeLossReporter: undefined,
     agentPresenceBroadcaster: undefined,
     recordContentDivergenceGate: notDispatched,
     buildAgentActor: notDispatched,

@@ -23,26 +23,10 @@ async function getEditorStructure(page: Page) {
   });
 }
 
-async function getXmlFragmentText(page: Page): Promise<string> {
+async function projectedText(page: Page): Promise<string> {
   return page.evaluate(() => {
-    const provider = window.__activeProvider;
-    if (!provider?.document) return '';
-    const fragment = provider.document.getXmlFragment('default');
-    const texts: string[] = [];
-    const walk = (node: { toArray?: () => unknown[]; toString?: () => string }) => {
-      if (typeof node.toString === 'function' && !node.toArray) {
-        texts.push(node.toString());
-      }
-      if (typeof node.toArray === 'function') {
-        for (const child of node.toArray()) {
-          if (child && typeof child === 'object') {
-            walk(child as { toArray?: () => unknown[]; toString?: () => string });
-          }
-        }
-      }
-    };
-    walk(fragment as unknown as { toArray: () => unknown[] });
-    return texts.join('');
+    const pm = document.querySelector('.ProseMirror:not(.composer-prosemirror)');
+    return pm?.textContent ?? '';
   });
 }
 
@@ -94,26 +78,26 @@ test('mid-type recovery: surrounding structure stable during <Callout> character
     { timeout: 10_000 },
   );
 
-  let lastFragLen = -1;
+  let lastLen = -1;
   let stableTicks = 0;
   await expect
     .poll(
       async () => {
-        const len = (await getXmlFragmentText(page)).length;
-        if (len > 0 && len === lastFragLen) stableTicks += 1;
+        const len = (await projectedText(page)).length;
+        if (len > 0 && len === lastLen) stableTicks += 1;
         else stableTicks = 0;
-        lastFragLen = len;
+        lastLen = len;
         return stableTicks;
       },
       { intervals: [100], timeout: 5_000 },
     )
     .toBeGreaterThanOrEqual(3);
 
-  const fragmentText = await getXmlFragmentText(page);
-  expect(fragmentText).toContain('Top Heading');
-  expect(fragmentText).toContain('Bottom Heading');
-  expect(fragmentText).toContain('Paragraph above');
-  expect(fragmentText).toContain('Paragraph below');
+  const rendered = await projectedText(page);
+  expect(rendered).toContain('Top Heading');
+  expect(rendered).toContain('Bottom Heading');
+  expect(rendered).toContain('Paragraph above');
+  expect(rendered).toContain('Paragraph below');
 
   const finalYText = await getYText(page);
   expect(finalYText).toContain('Hello world');

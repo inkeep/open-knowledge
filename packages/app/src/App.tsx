@@ -1,4 +1,5 @@
 import { mediaKindForSidebarAssetExtension, SHOW_INSTALL_SKILL } from '@inkeep/open-knowledge-core';
+import { isMacOS } from '@tiptap/core';
 import { lazy, type ReactNode, Suspense, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CommentQueueShortcut } from '@/comments/CommentQueueShortcut';
@@ -38,6 +39,7 @@ import {
   useDocumentContext,
   useDocumentTransition,
 } from '@/editor/DocumentContext';
+import { performHistoryCommand } from '@/editor/document-undo-keys';
 import { EditorLifecycleFlush } from '@/editor/EditorLifecycleFlush';
 import { parseEditorTabId, tabIdForNavigationTarget } from '@/editor/editor-tabs';
 import { previewOpenDisposition } from '@/editor/preview-open-disposition';
@@ -164,6 +166,9 @@ function NavigationHandler() {
       subscribeLocalMenuAction((action) => {
         if (action === 'navigate-back') window.history.back();
         if (action === 'navigate-forward') window.history.forward();
+        if (action === 'undo' || action === 'redo') {
+          performHistoryCommand(action, isMacOS() ? 'mac' : 'windowsLinux', document.activeElement);
+        }
       }),
     [],
   );

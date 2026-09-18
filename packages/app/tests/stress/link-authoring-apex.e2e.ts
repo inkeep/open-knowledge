@@ -7,6 +7,10 @@ const EDITOR = '.ProseMirror:not(.composer-prosemirror)';
 const LINK_CHIP = `${EDITOR} span[data-link]`;
 const PALETTE = '[cmdk-root]';
 
+async function pmText(page: Page): Promise<string> {
+  return page.evaluate(() => window.__activeEditor?.state.doc.textContent ?? '');
+}
+
 async function pmHasLink(page: Page): Promise<boolean> {
   return page.evaluate(() =>
     JSON.stringify(window.__activeEditor?.state.doc.toJSON() ?? {}).includes('"type":"link"'),
@@ -22,8 +26,16 @@ async function waitForYTextToContain(page: Page, needle: string): Promise<void> 
   );
 }
 
-test.describe('apex — cross-writer linkification never fires', () => {
-  test('a boundary-less URL typed by a peer stays plain on the receiver; only a client’s own boundary-typed URL converts', async ({
+async function authoredNothing(page: Page): Promise<boolean> {
+  return page.evaluate(() => {
+    const doc = window.__activeProvider?.document;
+    if (!doc) throw new Error('no provider document');
+    return !doc.store.clients.has(doc.clientID);
+  });
+}
+
+test.describe('apex — a receiver never writes a peer’s URL; it renders what the bytes parse to', () => {
+  test('a boundary-less URL typed by a peer keeps its escaped colon in the bytes, so the receiver renders the same literal text the typist sees', async ({
     browser,
     api,
     baseURL,
@@ -46,15 +58,21 @@ test.describe('apex — cross-writer linkification never fires', () => {
 
       await pageA.locator(EDITOR).click();
       await pageA.keyboard.type('https://a-side.com');
-      await waitForYTextToContain(pageB, 'a-side.com');
+      await waitForYTextToContain(pageB, 'https\\://a-side.com');
 
       expect(await pmHasLink(pageA)).toBe(false);
-      expect(await pmHasLink(pageB)).toBe(false);
       await expect(pageA.locator(LINK_CHIP)).toHaveCount(0);
+      expect(await pmHasLink(pageB)).toBe(false);
       await expect(pageB.locator(LINK_CHIP)).toHaveCount(0);
+      await expect.poll(() => pmText(pageB)).toContain('https://a-side.com');
+      expect(await authoredNothing(pageB)).toBe(true);
+      expect(await authoredNothing(pageA)).toBe(false);
 
       await pageB.locator(EDITOR).click();
-      await pageB.evaluate(() => window.__activeEditor?.commands.focus('start'));
+      await pageB.waitForFunction(() => window.__activeEditor?.isFocused === true);
+      await pageB.evaluate(() => window.__activeEditor?.commands.setTextSelection(1));
+      await pageB.keyboard.press('Enter');
+      await pageB.keyboard.press('ArrowUp');
       await pageB.keyboard.type('https://b-own.com ');
 
       await pageB.waitForFunction(
@@ -73,6 +91,9 @@ test.describe('apex — cross-writer linkification never fires', () => {
       await expect(pageA.locator(`${LINK_CHIP}[aria-label="Link: https://b-own.com"]`)).toHaveCount(
         1,
       );
+      await expect(
+        pageA.locator(`${LINK_CHIP}[aria-label="Link: https://a-side.com"]`),
+      ).toHaveCount(0);
       await expect(pageA.locator(LINK_CHIP)).toHaveCount(1);
     } finally {
       await ctxA.close();
@@ -81,8 +102,8 @@ test.describe('apex — cross-writer linkification never fires', () => {
   });
 });
 
-test.describe('apex — backgrounded editor never linkifies', () => {
-  test('a peer’s boundary-less URL reaches a hidden Activity’s editor and stays plain', async ({
+test.describe('apex — a backgrounded editor never writes a peer’s URL', () => {
+  test('a peer’s boundary-less URL reaches a hidden Activity’s editor with its escaped colon intact, and renders as literal text', async ({
     browser,
     api,
     baseURL,
@@ -131,10 +152,11 @@ test.describe('apex — backgrounded editor never linkifies', () => {
       await pageH.waitForFunction(() => Boolean(window.__activeProvider), null, {
         timeout: 15_000,
       });
-      await waitForYTextToContain(pageH, 'while-hidden.com');
+      await waitForYTextToContain(pageH, 'https\\://while-hidden.com');
 
-      expect(await pmHasLink(pageH)).toBe(false);
       await expect(pageH.locator(LINK_CHIP)).toHaveCount(0);
+      await expect.poll(() => pmText(pageH)).toContain('https://while-hidden.com');
+      expect(await authoredNothing(pageH)).toBe(true);
     } finally {
       await ctxH.close();
       await ctxM.close();

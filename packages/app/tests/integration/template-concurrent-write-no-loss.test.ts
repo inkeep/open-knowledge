@@ -99,7 +99,7 @@ describe('template concurrent-write reconcile on the content branch', () => {
       const docName = `.ok/templates/${name}`;
       const tplFile = resolve(server.contentDir, '.ok', 'templates', `${name}.md`);
 
-      const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+      const client = await createTestClient(server.port, docName);
 
       const v1 = `---\ntitle: T\ndescription: d\n---\n\n# Template\n\nv1 body.\n`;
       client.doc.transact(() => client.ytext.insert(0, v1));

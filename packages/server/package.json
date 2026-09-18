@@ -10,12 +10,6 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.mts",
       "default": "./dist/index.mjs"
-    },
-    "./parse-worker": {
-      "@inkeep/source": "./src/parse-worker.ts",
-      "development": "./src/parse-worker.ts",
-      "types": "./dist/parse-worker.d.mts",
-      "default": "./dist/parse-worker.mjs"
     }
   },
   "files": [
@@ -38,9 +32,6 @@
     "@opentelemetry/sdk-metrics": "^2.0.0",
     "@opentelemetry/sdk-trace-base": "^2.0.0",
     "@opentelemetry/semantic-conventions": "^1.30.0",
-    "@tiptap/core": "^3.22.3",
-    "@tiptap/pm": "^3.22.4",
-    "@tiptap/y-tiptap": "3.0.3",
     "@types/busboy": "^1.5.4",
     "busboy": "^1.6.0",
     "chokidar": "^5.0.0",
@@ -77,11 +68,9 @@
     "test": "vitest run",
     "test:network": "vitest run --config vitest.network.config.ts",
     "measure:generated-index-sweep": "node --import tsx --conditions=development measure-generated-index-sweep.ts",
-    "measure:observer-a-drain": "node --import tsx --conditions=development measure-observer-a-drain.ts",
     "typecheck:bash": "tsc -p tsconfig.bash.json"
   },
   "devDependencies": {
-    "@types/mdast": "^4.0.4",
     "@types/node": "^24.7.0",
     "@types/shell-quote": "^1.7.5",
     "@types/ws": "^8.18.1",

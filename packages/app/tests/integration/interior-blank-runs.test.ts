@@ -1,16 +1,19 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { buildProjection } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
   createTestClients,
   createTestServer,
+  editProjectionBlocks,
+  mdManager,
   pollUntil,
+  projectionBlocks,
   readTestDoc,
-  serializeFragment,
+  schema,
   type TestServer,
 } from './test-harness';
 
@@ -24,19 +27,12 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-function countBlankLineNodes(fragment: Y.XmlFragment): number {
-  let count = 0;
-  for (let i = 0; i < fragment.length; i++) {
-    const child = fragment.get(i);
-    if (
-      child instanceof Object &&
-      'toString' in child &&
-      child.toString() === '<paragraph></paragraph>'
-    ) {
-      count += 1;
-    }
-  }
-  return count;
+const blanks = (n: number) => Array.from({ length: n }, () => schema.node('paragraph'));
+
+function countBlankLineNodes(source: string): number {
+  const { doc } = buildProjection(source, mdManager);
+  return projectionBlocks(doc).filter((b) => b.type.name === 'paragraph' && b.content.size === 0)
+    .length;
 }
 
 describe('interior blank runs on the CRDT path', () => {
@@ -46,7 +42,6 @@ describe('interior blank runs on the CRDT path', () => {
     const clients = await createTestClients(server.port, {
       count: 2,
       docName,
-      perClientOptions: { skipInvariantWatcher: true },
     });
     try {
       await agentWriteMd(server.port, raw, { docName, position: 'replace' });
@@ -54,8 +49,8 @@ describe('interior blank runs on the CRDT path', () => {
       await wait(500);
 
       for (const c of clients) {
-        expect(countBlankLineNodes(c.fragment)).toBe(3);
-        expect(serializeFragment(c.fragment)).toBe(raw);
+        expect(countBlankLineNodes(c.ytext.toString())).toBe(3);
+        expect(c.ytext.toString()).toBe(raw);
       }
       expect(clients[0].ytext.toString()).toBe(clients[1].ytext.toString());
     } finally {
@@ -69,7 +64,6 @@ describe('interior blank runs on the CRDT path', () => {
     const clients = await createTestClients(server.port, {
       count: 2,
       docName,
-      perClientOptions: { skipInvariantWatcher: true },
     });
     try {
       await agentWriteMd(server.port, raw, { docName, position: 'replace' });
@@ -77,23 +71,17 @@ describe('interior blank runs on the CRDT path', () => {
       await wait(500);
 
       const a = clients[0];
-      a.doc.transact(() => {
-        const first = a.fragment.get(0);
-        const text = (first as { get(i: number): unknown }).get(0);
-        (text as { insert(i: number, s: string): void }).insert(0, 'Z');
-      });
+      editProjectionBlocks(a, (blocks) => [
+        schema.node('paragraph', null, schema.text(`Z${blocks[0].textContent}`)),
+        ...blocks.slice(1),
+      ]);
       await pollUntil(() => clients.every((c) => c.ytext.toString().includes('ZAlpha')), 5000);
       await wait(500);
-      await pollUntil(
-        () => clients.every((c) => serializeFragment(c.fragment).includes('ZAlpha')),
-        5000,
-      );
 
       const expected = 'ZAlpha.\n\n\n\nOmega.\n';
       for (const c of clients) {
         expect(c.ytext.toString()).toBe(expected);
-        expect(serializeFragment(c.fragment)).toBe(expected);
-        expect(countBlankLineNodes(c.fragment)).toBe(2);
+        expect(countBlankLineNodes(c.ytext.toString())).toBe(2);
       }
     } finally {
       for (const c of clients) await c.cleanup();
@@ -106,7 +94,6 @@ describe('interior blank runs on the CRDT path', () => {
     const clients = await createTestClients(server.port, {
       count: 2,
       docName,
-      perClientOptions: { skipInvariantWatcher: true },
     });
     try {
       await agentWriteMd(server.port, raw, { docName, position: 'replace' });
@@ -114,16 +101,14 @@ describe('interior blank runs on the CRDT path', () => {
       await wait(500);
 
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(1, [new Y.XmlElement('paragraph'), new Y.XmlElement('paragraph')]);
-      });
+      editProjectionBlocks(a, (blocks) => [blocks[0], ...blanks(2), ...blocks.slice(1)]);
 
       const expected = 'Above.\n\n\n\nBelow.\n';
       await pollUntil(() => clients.every((c) => c.ytext.toString() === expected), 5000);
       await wait(500);
       for (const c of clients) {
         expect(c.ytext.toString()).toBe(expected);
-        expect(countBlankLineNodes(c.fragment)).toBe(2);
+        expect(countBlankLineNodes(c.ytext.toString())).toBe(2);
       }
       await pollUntil(() => readTestDoc(server.contentDir, docName) === expected, 10_000);
     } finally {
@@ -137,7 +122,6 @@ describe('interior blank runs on the CRDT path', () => {
     const clients = await createTestClients(server.port, {
       count: 2,
       docName,
-      perClientOptions: { skipInvariantWatcher: true },
     });
     try {
       await agentWriteMd(server.port, raw, { docName, position: 'replace' });
@@ -145,9 +129,7 @@ describe('interior blank runs on the CRDT path', () => {
       await wait(500);
 
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(1, [new Y.XmlElement('paragraph'), new Y.XmlElement('paragraph')]);
-      });
+      editProjectionBlocks(a, (blocks) => [blocks[0], ...blanks(2), ...blocks.slice(1)]);
 
       const expected = 'Above.\n\n\n\nBelow.\n\n\n';
       await pollUntil(() => clients.every((c) => c.ytext.toString() === expected), 5000).catch(
@@ -156,8 +138,7 @@ describe('interior blank runs on the CRDT path', () => {
       await wait(500);
       for (const c of clients) {
         expect(c.ytext.toString()).toBe(expected);
-        expect(serializeFragment(c.fragment)).toBe(expected);
-        expect(countBlankLineNodes(c.fragment)).toBe(4);
+        expect(countBlankLineNodes(c.ytext.toString())).toBe(4);
       }
       await pollUntil(() => readTestDoc(server.contentDir, docName) === expected, 10_000).catch(
         () => {},
@@ -176,13 +157,12 @@ describe('interior blank runs on the CRDT path', () => {
     const clients = await createTestClients(server.port, {
       count: 1,
       docName,
-      perClientOptions: { skipInvariantWatcher: true },
     });
     try {
       await pollUntil(() => clients[0].ytext.toString() === raw, 10_000);
       await wait(500);
-      expect(countBlankLineNodes(clients[0].fragment)).toBe(4);
-      expect(serializeFragment(clients[0].fragment)).toBe(raw);
+      expect(countBlankLineNodes(clients[0].ytext.toString())).toBe(4);
+      expect(clients[0].ytext.toString()).toBe(raw);
       expect(readTestDoc(server.contentDir, docName)).toBe(raw);
     } finally {
       for (const c of clients) await c.cleanup();

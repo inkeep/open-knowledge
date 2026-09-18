@@ -125,6 +125,38 @@ export const REMOVED_KEYS: readonly RemovedKey[] = [
     ].join(' '),
   },
   {
+    path: ['bridge', 'deferGuard'],
+    redirect: [
+      'bridge.deferGuard has been removed along with the markdown bridge.',
+      'Y.Text is the only synced replica, so there is no second replica to defer a re-derive against.',
+      MIGRATE_HINT,
+    ].join(' '),
+  },
+  {
+    path: ['bridge', 'fixedPoint'],
+    redirect: [
+      'bridge.fixedPoint has been removed along with the markdown bridge.',
+      'Each client derives its ProseMirror document locally, so there is no re-derive loop to bound.',
+      MIGRATE_HINT,
+    ].join(' '),
+  },
+  {
+    path: ['bridge', 'preDrain'],
+    redirect: [
+      'bridge.preDrain has been removed along with the markdown bridge.',
+      'A keystroke already lands in the only synced replica, so there is nothing to flush before an agent write.',
+      MIGRATE_HINT,
+    ].join(' '),
+  },
+  {
+    path: ['bridge', 'lossDetector'],
+    redirect: [
+      "bridge.lossDetector has been removed along with the markdown bridge's derive-loss reporter.",
+      'Persistence still checks every reconciliation for dropped content and writes a recovery checkpoint; lossCapture.enabled controls the `ok diagnose` ring.',
+      MIGRATE_HINT,
+    ].join(' '),
+  },
+  {
     path: ['appearance', 'sidebar', 'showAllFiles'],
     redirect: [
       'appearance.sidebar.showAllFiles has been removed.',

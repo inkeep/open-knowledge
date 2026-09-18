@@ -2,7 +2,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import type { TestServer } from './test-harness';
-import { assertBridgeInvariant, createTestClient, createTestServer } from './test-harness';
+import { createTestClient, createTestServer } from './test-harness';
 
 let server: TestServer;
 
@@ -75,8 +75,6 @@ describe('Agent undo — V0-14 per-session', () => {
       expect(finalText).toContain('claude-1 content');
 
       expect(finalText).not.toContain('claude-2 content');
-
-      assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
     }
@@ -122,8 +120,6 @@ describe('Agent undo — V0-14 per-session', () => {
       expect(res2.ok).toBe(true);
       const body2 = (await res2.json()) as { undone?: boolean };
       expect(body2.undone).toBe(false);
-
-      assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
     }
