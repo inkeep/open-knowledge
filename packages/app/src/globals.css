@@ -5612,7 +5612,7 @@ html.electron-mode [data-slot="sidebar-inner"] {
   }
 }
 
-.dark .dark .dark [data-presence-badge="agent"][data-presence-mode="editing"] {
+.dark [data-presence-badge="agent"][data-presence-mode="editing"] {
   animation-name: agent-breathing-dark;
 }
 
