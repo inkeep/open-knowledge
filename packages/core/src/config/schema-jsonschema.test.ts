@@ -366,44 +366,18 @@ describe('loose-mode forgiveness', () => {
     expect(config.bridge.backgroundThrottle.enabled).toBe(false);
   });
 
-  test('bridge.deferGuard defaults to enabled', () => {
-    const config = ConfigSchema.parse({});
-    expect(config.bridge.deferGuard.enabled).toBe(true);
-  });
-
-  test('bridge.deferGuard.enabled=false preserved through parse', () => {
-    const config = ConfigSchema.parse({ bridge: { deferGuard: { enabled: false } } });
-    expect(config.bridge.deferGuard.enabled).toBe(false);
-  });
-
-  test('bridge.lossDetector defaults to enabled', () => {
-    const config = ConfigSchema.parse({});
-    expect(config.bridge.lossDetector.enabled).toBe(true);
-  });
-
-  test('bridge.lossDetector.enabled=false preserved through parse', () => {
-    const config = ConfigSchema.parse({ bridge: { lossDetector: { enabled: false } } });
-    expect(config.bridge.lossDetector.enabled).toBe(false);
-  });
-
-  test('bridge.fixedPoint defaults to enabled', () => {
-    const config = ConfigSchema.parse({});
-    expect(config.bridge.fixedPoint.enabled).toBe(true);
-  });
-
-  test('bridge.fixedPoint.enabled=false preserved through parse', () => {
-    const config = ConfigSchema.parse({ bridge: { fixedPoint: { enabled: false } } });
-    expect(config.bridge.fixedPoint.enabled).toBe(false);
-  });
-
-  test('bridge.preDrain defaults to enabled', () => {
-    const config = ConfigSchema.parse({});
-    expect(config.bridge.preDrain.enabled).toBe(true);
-  });
-
-  test('bridge.preDrain.enabled=false preserved through parse', () => {
-    const config = ConfigSchema.parse({ bridge: { preDrain: { enabled: false } } });
-    expect(config.bridge.preDrain.enabled).toBe(false);
+  test('the four switches the markdown bridge owned are gone, and a config that still sets them validates', () => {
+    const config = ConfigSchema.parse({
+      bridge: {
+        deferGuard: { enabled: false },
+        fixedPoint: { enabled: false },
+        preDrain: { enabled: false },
+        lossDetector: { enabled: false },
+      },
+    });
+    expect(config.bridge.backgroundThrottle.enabled).toBe(true);
+    expect(config.bridge.flushOnHide.enabled).toBe(true);
+    expect('deferGuard' in (config.bridge as Record<string, unknown>)).toBe(true);
   });
 
   test('bridge.flushOnHide defaults to enabled', () => {

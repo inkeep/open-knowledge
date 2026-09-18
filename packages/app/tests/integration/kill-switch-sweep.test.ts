@@ -83,7 +83,7 @@ describe('kill-switch sweep (H12)', () => {
     const live = declared.filter((leaf) => !isDeprecatedLeaf(leaf));
     const registered = KILL_SWITCHES.map((m) => m.leaf).sort();
 
-    expect(declared.length).toBeGreaterThanOrEqual(7);
+    expect(declared.length).toBeGreaterThanOrEqual(3);
     expect(live.length).toBeGreaterThanOrEqual(3);
 
     const unregistered = live.filter((leaf) => !registered.includes(leaf));
@@ -93,20 +93,24 @@ describe('kill-switch sweep (H12)', () => {
     expect(stale).toEqual([]);
   });
 
-  test('a leaf marked deprecated in the schema carries no behavioral pair, and is still accepted', () => {
-    const deprecated = enumerateKillSwitchLeaves().filter(isDeprecatedLeaf);
-    expect(deprecated).toEqual([
+  test('the switches the removed markdown bridge owned are gone from the schema, and a config that still sets them keeps validating', () => {
+    expect(enumerateKillSwitchLeaves().filter(isDeprecatedLeaf)).toEqual([]);
+
+    const leaves = enumerateKillSwitchLeaves();
+    for (const leaf of [
       'bridge.deferGuard.enabled',
       'bridge.fixedPoint.enabled',
       'bridge.lossDetector.enabled',
       'bridge.preDrain.enabled',
-    ]);
+    ]) {
+      expect(leaves).not.toContain(leaf);
+    }
 
-    const registered = KILL_SWITCHES.map((m) => m.leaf);
-    expect(deprecated.filter((leaf) => registered.includes(leaf))).toEqual([]);
-
-    const parsed = ConfigSchema.parse({});
-    for (const leaf of deprecated) expect(readPath(parsed, leaf)).toBe(true);
+    expect(() =>
+      ConfigSchema.parse({
+        bridge: { deferGuard: { enabled: false }, preDrain: { enabled: false } },
+      }),
+    ).not.toThrow();
   });
 
   test.each(KILL_SWITCHES)('$leaf is default-ON and carries an OFF + ON behavioral pair', (m) => {

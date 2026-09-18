@@ -663,66 +663,6 @@ export const ConfigSchema = z.looseObject({
             .default(true),
         })
         .default({ enabled: true }),
-      deferGuard: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                'Deprecated and no longer read. Guarded a re-derive deferral in the markdown bridge, which has been removed — Y.Text is now the only synced replica, so there is no second replica to defer against. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.',
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
-      lossDetector: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                "Deprecated and no longer read. Gated the markdown bridge's derive-loss reporter, whose only caller was the paired agent-undo derive; that path has been removed. Persistence still detects reconciliation loss and writes recovery checkpoints unconditionally — see lossCapture.enabled for the ring. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.",
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
-      fixedPoint: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                'Deprecated and no longer read. Bounded the Y.Text→WYSIWYG re-derive loop in the markdown bridge, which has been removed — each client now derives its ProseMirror document locally, so there is no re-derive loop to bound. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.',
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
-      preDrain: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                'Deprecated and no longer read. Flushed an un-propagated keystroke into Y.Text before an agent write rebuilt the WYSIWYG fragment; the fragment and its rebuild are gone, so a keystroke already lands in the only synced replica. Still accepted so existing .ok/config.yml files keep validating; setting it has no effect.',
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
       flushOnHide: z
         .looseObject({
           enabled: z
@@ -741,10 +681,6 @@ export const ConfigSchema = z.looseObject({
     })
     .default({
       backgroundThrottle: { enabled: true },
-      deferGuard: { enabled: true },
-      lossDetector: { enabled: true },
-      fixedPoint: { enabled: true },
-      preDrain: { enabled: true },
       flushOnHide: { enabled: true },
     }),
   search: z

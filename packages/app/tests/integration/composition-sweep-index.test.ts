@@ -188,12 +188,7 @@ describe('composition sweep index (H13)', () => {
     const root = objectShape(ConfigSchema as unknown as ZodLike) ?? {};
     const all = Object.keys(objectShape(root.bridge) ?? {}).map((k) => `bridge.${k}`);
     const deprecated = all.filter(isDeprecatedKillSwitch).sort();
-    expect(deprecated).toEqual([
-      'bridge.deferGuard',
-      'bridge.fixedPoint',
-      'bridge.lossDetector',
-      'bridge.preDrain',
-    ]);
+    expect(deprecated).toEqual([]);
     expect(deprecated.filter((p) => KILL_SWITCH_MECHANISM[p] !== undefined)).toEqual([]);
   });
 
