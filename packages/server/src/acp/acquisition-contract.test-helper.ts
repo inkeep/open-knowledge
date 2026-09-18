@@ -81,8 +81,10 @@ export function acquisitionFailureContract(factory: AcquisitionFactory): void {
   });
 }
 
+export type AcquisitionRegistryControl = { closeRegistry: () => Promise<void> };
+
 export async function withLocalAcquisitionRegistry(
-  run: (home: string) => Promise<void>,
+  run: (home: string, control: AcquisitionRegistryControl) => Promise<void>,
 ): Promise<void> {
   await withAcquisitionHome(async (home) => {
     const packages = new Map<string, Map<string, { bytes: Buffer; published: string }>>();
@@ -181,11 +183,17 @@ export async function withLocalAcquisitionRegistry(
     process.env.npm_config_registry = `http://127.0.0.1:${address.port}/`;
     process.env.UV_OFFLINE = '0';
     process.env.UV_DEFAULT_INDEX = `http://127.0.0.1:${address.port}/simple`;
-    try {
-      await run(home);
-    } finally {
+    let stopped = false;
+    const closeRegistry = async (): Promise<void> => {
+      if (stopped) return;
+      stopped = true;
       endpoint.closeAllConnections();
       await new Promise<void>((resolve) => endpoint.close(() => resolve()));
+    };
+    try {
+      await run(home, { closeRegistry });
+    } finally {
+      await closeRegistry();
     }
   });
 }

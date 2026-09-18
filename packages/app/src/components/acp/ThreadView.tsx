@@ -186,6 +186,7 @@ import {
 } from './thread-auth-offer';
 import { transcriptItemId } from './transcript-item-id';
 import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
+import { useDelayedInstallStatus } from './use-delayed-install-status';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
 
 const CANCEL_STALL_MS = 10_000;
@@ -436,6 +437,58 @@ export function ThreadView({
   const [resumePending, setResumePending] = useState(false);
   const [newChatPending, setNewChatPending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
+  const displayedStartStatus = useDelayedInstallStatus(status);
+  const wasStarting = useRef(false);
+  const [startOutcome, setStartOutcome] = useState<'ready' | 'failed' | null>(null);
+  useEffect(() => {
+    if (
+      status === 'installing' ||
+      status === 'spawning' ||
+      status === 'auth_required' ||
+      status === 'authenticating'
+    ) {
+      wasStarting.current = true;
+      setStartOutcome(null);
+      return;
+    }
+    if (status === 'ready') {
+      if (!wasStarting.current) return;
+      wasStarting.current = false;
+      setStartOutcome('ready');
+      return;
+    }
+    if (status === 'error' || status === 'exited') {
+      if (!wasStarting.current) {
+        setStartOutcome((announced) => (announced === 'failed' ? announced : null));
+        return;
+      }
+      wasStarting.current = false;
+      setStartOutcome('failed');
+      return;
+    }
+    if (status === 'running' || status === 'awaiting_permission') {
+      wasStarting.current = false;
+      setStartOutcome(null);
+      return;
+    }
+    const exhaustive: never = status;
+    void exhaustive;
+  }, [status]);
+  const startStatusMessage =
+    displayedStartStatus === 'installing'
+      ? t`Installing ${agentName}…`
+      : displayedStartStatus === 'spawning'
+        ? t`Starting ${agentName}…`
+        : startOutcome === 'ready'
+          ? t`${agentName} is ready`
+          : startOutcome === 'failed'
+            ? t`${agentName} couldn't start`
+            : '';
+  const [startRegionMounted, setStartRegionMounted] = useState(false);
+  useEffect(() => {
+    setStartRegionMounted(true);
+  }, []);
+  const announcedStartStatus = startRegionMounted ? startStatusMessage : '';
   const hasRecoverablePromptFailure =
     !archived &&
     status === 'error' &&
@@ -1011,6 +1064,7 @@ export function ThreadView({
               ) : (
                 <ThreadEmptyState
                   status={status}
+                  displayedStartStatus={displayedStartStatus}
                   archived={archived}
                   agent={info.agent}
                   authOffer={authOffer}
@@ -1085,8 +1139,7 @@ export function ThreadView({
                         data-testid="agent-thread-starting"
                       >
                         <Spinner className="size-3.5" aria-hidden="true" />
-                        {}
-                        <span className="shimmer">{t`Starting the agent…`}</span>
+                        <span className="shimmer">{startStatusMessage}</span>
                       </div>
                     ) : null}
                   </MessageScrollerContent>
@@ -1160,6 +1213,15 @@ export function ThreadView({
             data-testid="agent-thread-resume-status"
           >
             {resumeFailureMessage}
+          </span>
+          <span
+            className="sr-only"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            data-testid="agent-thread-start-status"
+          >
+            {announcedStartStatus}
           </span>
           {resumeFailureMessage !== '' ? (
             <div
@@ -1822,6 +1884,7 @@ function ThreadAuthOfferButton({
 
 function ThreadEmptyState({
   status,
+  displayedStartStatus,
   archived,
   agent,
   authOffer,
@@ -1829,6 +1892,7 @@ function ThreadEmptyState({
   runningAuthAction,
 }: {
   status: ThreadInfo['status'];
+  displayedStartStatus: ThreadInfo['status'];
   archived: boolean;
   agent: ThreadInfo['agent'];
   authOffer: ThreadAuthOfferWithoutSignIn;
@@ -1874,9 +1938,9 @@ function ThreadEmptyState({
   }
 
   const loadingMessage =
-    status === 'installing'
+    displayedStartStatus === 'installing'
       ? t`Installing ${agentName}…`
-      : status === 'spawning'
+      : displayedStartStatus === 'spawning'
         ? t`Starting ${agentName}…`
         : status === 'authenticating'
           ? t`Signing in to ${agentName}…`

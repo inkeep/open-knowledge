@@ -16,7 +16,12 @@ import type {
   ThreadEvent,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { afterEach, describe, expect, test } from 'vitest';
+import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+
+const BLOCKING_CONSENT_BUDGET_MS = Math.floor(THREAD_REOPEN_OP_TIMEOUT_MS / 2);
+const OPEN_PATH_CONSENT_BUDGET_MS = 5 * 60 * 1000;
+
 import { ZipFile } from 'yazl';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger } from '../logger.ts';
@@ -239,6 +244,17 @@ describe('package admission after runtime preparation', () => {
           await expect
             .poll(() => manager.getInfo(info.threadId)?.status, { timeout: 25_000 })
             .toBe('error');
+          if (source === 'managed') {
+            const consentAt = events.findIndex((event) => event.kind === 'runtime_consent_request');
+            expect(consentAt).toBeGreaterThanOrEqual(0);
+            const afterConsent = events
+              .slice(consentAt)
+              .flatMap((event) => (event.kind === 'status' ? [event.status] : []));
+            expect(
+              afterConsent,
+              'a managed runtime that really downloads must report installing',
+            ).toContain('installing');
+          }
           expect(
             existsSync(admissionLog),
             'selected npm must perform admission before ACP starts',
@@ -308,8 +324,12 @@ describe('package admission after runtime preparation', () => {
               .toBe('error');
           }
           expect(existsSync(join(home, 'npm-cache', '_cacache'))).toBe(false);
+          const consentAt = events.findIndex((event) => event.kind === 'runtime_consent_request');
+          expect(consentAt).toBeGreaterThanOrEqual(0);
           expect(
-            events.some((event) => event.kind === 'status' && event.status === 'spawning'),
+            events
+              .slice(consentAt)
+              .some((event) => event.kind === 'status' && event.status === 'spawning'),
           ).toBe(false);
         } finally {
           await manager.destroy();
@@ -514,6 +534,60 @@ describe('managed-runtime consent + download flow', () => {
     expect(errEvent?.detail).toContain('Node.js v16.14.2 is incompatible');
     expect(errEvent?.detail).toContain(`Node.js ${MINIMUM_NPX_NODE_MAJOR} or newer is required`);
   }, 20_000);
+
+  test('letting the incompatible-Node offer expire drops the offer it just withdrew', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const runtimeRoot = tmp();
+    const oldBin = tmp();
+    writeFileSync(join(oldBin, 'npx'), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeNodeVersion(oldBin, 'v16.14.2');
+    const manager = makeManager({
+      contentDir,
+      localDir,
+      runtimeRoot,
+      fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'x'.repeat(64), {
+        ...NPX_AGENT,
+        distribution: { npx: { package: '@fake/agent', env: { PATH: oldBin } } },
+      }),
+    });
+
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await collect(manager, info.threadId, events);
+      await waitFor(() => findConsentRequest(events) !== undefined, 10_000, 'consent request');
+      await vi.advanceTimersByTimeAsync(OPEN_PATH_CONSENT_BUDGET_MS + 1_000);
+      await waitFor(
+        () => events.some((e) => e.kind === 'runtime_consent_resolved'),
+        10_000,
+        'the offer to expire on the budget the start is waiting on',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+    const resolved = events.find(
+      (e): e is Extract<ThreadEvent, { kind: 'runtime_consent_resolved' }> =>
+        e.kind === 'runtime_consent_resolved',
+    );
+    expect(resolved?.decision).toBe('timeout');
+    await waitFor(
+      () => events.some((e) => e.kind === 'status' && e.status === 'error'),
+      20_000,
+      'incompatible runtime error',
+    );
+    const expiredEvent = events.find(
+      (e): e is Extract<ThreadEvent, { kind: 'status' }> =>
+        e.kind === 'status' && e.status === 'error',
+    );
+    expect(expiredEvent?.detail).toContain('Node.js v16.14.2 is incompatible');
+    expect(expiredEvent?.detail).toContain('expired before it was answered');
+    expect(
+      expiredEvent?.detail,
+      'offering the download again would contradict the sentence reporting that the offer lapsed',
+    ).not.toContain('let Open Knowledge download a private compatible copy');
+  }, 30_000);
 
   test.skipIf(process.platform === 'win32')(
     'a compatible login-shell Node replaces a stale GUI-inherited Node',
@@ -792,6 +866,55 @@ describe('interpreter health probe', () => {
     expect(errEvent?.detail).not.toContain("isn't installed");
   }, 30_000);
 
+  test('letting the repair offer expire says it lapsed, not that it was declined', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const runtimeRoot = tmp();
+    const stage = tmp();
+    const { bytes, sha } = fakeNodeTarball(stage);
+    const fetchImpl = fakeNodeFetch(bytes, sha);
+    const installed = await ensureManagedRuntime('node', log, { root: runtimeRoot, fetchImpl });
+    const launcher = installed.kind === 'node' ? installed.npxBin : installed.uvxBin;
+    writeFileSync(launcher, '#!/bin/sh\nkill -ABRT $$\n', { mode: 0o755 });
+
+    const manager = makeManager({ contentDir, localDir, runtimeRoot, fetchImpl });
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      await collect(manager, info.threadId, events);
+      await waitFor(() => findConsentRequest(events) !== undefined, 10_000, 'repair offer');
+      await vi.advanceTimersByTimeAsync(OPEN_PATH_CONSENT_BUDGET_MS + 1_000);
+      await waitFor(
+        () => events.some((e) => e.kind === 'runtime_consent_resolved'),
+        10_000,
+        'the offer to expire on the budget the start is waiting on',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+    const resolved = events.find(
+      (e): e is Extract<ThreadEvent, { kind: 'runtime_consent_resolved' }> =>
+        e.kind === 'runtime_consent_resolved',
+    );
+    expect(resolved?.decision).toBe('timeout');
+    await waitFor(
+      () => events.some((e) => e.kind === 'status' && e.status === 'error'),
+      20_000,
+      'error status',
+    );
+
+    const errEvent = events.find(
+      (e): e is Extract<ThreadEvent, { kind: 'status' }> =>
+        e.kind === 'status' && e.status === 'error',
+    );
+    expect(errEvent?.detail).toContain('damaged');
+    expect(errEvent?.detail).toContain('expired before it was answered');
+    expect(errEvent?.detail).not.toContain(
+      'Start the agent again to let OK download a fresh copy.',
+    );
+  }, 30_000);
+
   test('Retry re-probes an interpreter that broke after it was cached healthy', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -829,6 +952,78 @@ describe('interpreter health probe', () => {
       'the retry to notice the interpreter broke',
     );
   }, 30_000);
+
+  test('Retry gives the runtime offer the budget the caller is waiting on', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const runtimeRoot = tmp();
+    const binDir = tmp();
+    const npxPath = join(binDir, 'npx');
+    writeFileSync(npxPath, '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    writeNodeVersion(binDir, 'v24.0.0');
+    const manager = makeManager({
+      contentDir,
+      localDir,
+      runtimeRoot,
+      fetchImpl: fakeNodeFetch(Buffer.from('unused'), 'x'.repeat(64), {
+        ...NPX_AGENT,
+        distribution: { npx: { package: '@fake/agent', env: { PATH: binDir } } },
+      }),
+    });
+
+    const events: ThreadEvent[] = [];
+    const info = await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
+    await collect(manager, info.threadId, events);
+    await waitFor(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      10_000,
+      'the thread to fail',
+    );
+
+    writeFileSync(npxPath, '#!/bin/sh\nkill -ABRT $$\n', { mode: 0o755 });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      void manager.retryThread(info.threadId).catch(() => {});
+      await waitFor(
+        () => findConsentRequest(events) !== undefined,
+        10_000,
+        'the retry to offer the managed runtime',
+      );
+
+      await vi.advanceTimersByTimeAsync(BLOCKING_CONSENT_BUDGET_MS + 1_000);
+      await waitFor(
+        () => events.some((e) => e.kind === 'runtime_consent_resolved'),
+        10_000,
+        'the offer to expire on the budget the client is waiting on',
+      );
+      const resolved = events.find(
+        (e): e is Extract<ThreadEvent, { kind: 'runtime_consent_resolved' }> =>
+          e.kind === 'runtime_consent_resolved',
+      );
+      expect(resolved?.decision).toBe('timeout');
+
+      await waitFor(
+        () => events.filter((e) => e.kind === 'status' && e.status === 'error').length >= 2,
+        10_000,
+        'the retry to surface the expired offer',
+      );
+      const surfaced = events
+        .filter(
+          (e): e is Extract<ThreadEvent, { kind: 'status' }> =>
+            e.kind === 'status' && e.status === 'error',
+        )
+        .at(-1);
+      expect(surfaced?.detail).toContain('expired before it was answered');
+      expect(
+        surfaced?.detail,
+        'the expiry sentence is shared with the incompatible-Node route, so it cannot pin this one',
+      ).toContain('is installed but failed to run');
+      expect(surfaced?.detail).toContain('Reinstall or repair Node.js');
+      expect(surfaced?.detail).not.toContain("isn't installed");
+    } finally {
+      vi.useRealTimers();
+    }
+  }, 60_000);
 
   test('a healthy interpreter is probed once, not once per thread', async () => {
     const contentDir = tmp();

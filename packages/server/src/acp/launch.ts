@@ -97,6 +97,24 @@ export function withHostedAgentMarker(env: Record<string, string>): Record<strin
 
 type PrepareRegistryLaunch = (launch: ResolvedLaunch) => Promise<ResolvedLaunch | null>;
 
+type ProbedNpmOutcome = 'exact' | 'release-age-bounded';
+
+type NpmPackageResolution = {
+  outcome: 'forwarded' | ProbedNpmOutcome;
+  acquired: string;
+  elapsedMs: number;
+};
+
+type ResolvedNpmAcquisition =
+  | { outcome: ProbedNpmOutcome; acquired: string; source: 'memo'; elapsedMs: 0 }
+  | (NpmPackageResolution & { source: 'probe' | 'joined' });
+
+type NpmAcquisitionOptions = {
+  reacquire?: boolean;
+  onProbeStart?: () => void;
+  onResolved?: (resolution: ResolvedNpmAcquisition) => void;
+};
+
 export function resolveRegistryLaunch(
   agent: RegistryAgent,
   platformKey: string | null,
@@ -109,6 +127,7 @@ export function resolveRegistryLaunch(
   log: PinoLogger,
   binaryCacheDir: string | undefined,
   prepare: PrepareRegistryLaunch,
+  acquisition?: NpmAcquisitionOptions,
 ): Promise<ResolvedLaunch | null>;
 export async function resolveRegistryLaunch(
   agent: RegistryAgent,
@@ -116,6 +135,7 @@ export async function resolveRegistryLaunch(
   log: PinoLogger,
   binaryCacheDir: string = defaultBinaryCacheDir(),
   prepare?: PrepareRegistryLaunch,
+  acquisition?: NpmAcquisitionOptions,
 ): Promise<ResolvedLaunch | null> {
   const dist = agent.distribution;
   if (dist.npx !== undefined) {
@@ -133,7 +153,13 @@ export async function resolveRegistryLaunch(
         dist.npx.package,
       );
     if (pin?.groups === undefined) return launch;
-    const selected = await acquireNpmPackage(launch, pin.groups.name, pin.groups.version, log);
+    const selected = await acquireNpmPackage(
+      launch,
+      pin.groups.name,
+      pin.groups.version,
+      log,
+      acquisition,
+    );
     return { ...launch, args: ['-y', selected, ...(dist.npx.args ?? [])] };
   }
   if (dist.uvx !== undefined) {
@@ -306,12 +332,111 @@ async function probeNpmPackage(
   }
 }
 
-async function acquireNpmPackage(
+const ACQUISITION_FRESHNESS_MS = 60 * 60 * 1000;
+
+type HeldNpmPackage = {
+  acquired: string;
+  outcome: ProbedNpmOutcome;
+  probedAt: number;
+};
+
+type AcquiredNpmPackage =
+  | { state: 'probing'; probe: Promise<NpmPackageResolution> }
+  | ({ state: 'held' } & HeldNpmPackage)
+  | ({ state: 'revalidating'; probe: Promise<NpmPackageResolution> } & HeldNpmPackage);
+
+const acquiredNpmPackages = new Map<string, AcquiredNpmPackage>();
+
+export function resetAcquisitionCache(): void {
+  acquiredNpmPackages.clear();
+}
+
+function acquisitionKey(launch: ResolvedLaunch, name: string, ceiling: string): string {
+  const env = Object.entries(launch.env).sort(([left], [right]) =>
+    left < right ? -1 : left > right ? 1 : 0,
+  );
+  return JSON.stringify([launch.cmd, env, name, ceiling]);
+}
+
+function heldNpmPackage(entry: AcquiredNpmPackage | undefined): HeldNpmPackage | null {
+  return entry === undefined || entry.state === 'probing' ? null : entry;
+}
+
+function openNpmProbe(entry: AcquiredNpmPackage | undefined): Promise<NpmPackageResolution> | null {
+  return entry === undefined || entry.state === 'held' ? null : entry.probe;
+}
+
+function heldPackageStillCurrent(held: HeldNpmPackage): boolean {
+  return held.outcome === 'exact' || Date.now() - held.probedAt < ACQUISITION_FRESHNESS_MS;
+}
+
+function acquireNpmPackage(
   launch: ResolvedLaunch,
   name: string,
   ceiling: string,
   log: PinoLogger,
+  acquisition?: NpmAcquisitionOptions,
 ): Promise<string> {
+  const key = acquisitionKey(launch, name, ceiling);
+  const cached = acquiredNpmPackages.get(key);
+  const held = heldNpmPackage(cached);
+  if (acquisition?.reacquire !== true && held !== null && heldPackageStillCurrent(held)) {
+    acquisition?.onResolved?.({
+      acquired: held.acquired,
+      outcome: held.outcome,
+      source: 'memo',
+      elapsedMs: 0,
+    });
+    return Promise.resolve(held.acquired);
+  }
+  const joined = openNpmProbe(cached);
+  const probe = joined ?? beginNpmAcquisition(key, held, launch, name, ceiling, log, acquisition);
+  const source: 'probe' | 'joined' = joined === null ? 'probe' : 'joined';
+  return probe.then((resolved) => {
+    acquisition?.onResolved?.({ ...resolved, source });
+    return resolved.acquired;
+  });
+}
+
+function beginNpmAcquisition(
+  key: string,
+  held: HeldNpmPackage | null,
+  launch: ResolvedLaunch,
+  name: string,
+  ceiling: string,
+  log: PinoLogger,
+  acquisition?: NpmAcquisitionOptions,
+): Promise<NpmPackageResolution> {
+  const probe = acquireNpmPackageUncached(launch, name, ceiling, log, acquisition);
+  const entry: AcquiredNpmPackage =
+    held === null ? { state: 'probing', probe } : { ...held, state: 'revalidating', probe };
+  acquiredNpmPackages.set(key, entry);
+  const replace = (next: AcquiredNpmPackage | null): void => {
+    if (acquiredNpmPackages.get(key) !== entry) return;
+    if (next === null) acquiredNpmPackages.delete(key);
+    else acquiredNpmPackages.set(key, next);
+  };
+  const restore = (): void => replace(held === null ? null : { ...held, state: 'held' });
+  void probe.then((resolved) => {
+    if (resolved.outcome === 'forwarded') restore();
+    else
+      replace({
+        state: 'held',
+        acquired: resolved.acquired,
+        outcome: resolved.outcome,
+        probedAt: Date.now(),
+      });
+  }, restore);
+  return probe;
+}
+
+async function acquireNpmPackageUncached(
+  launch: ResolvedLaunch,
+  name: string,
+  ceiling: string,
+  log: PinoLogger,
+  acquisition?: NpmAcquisitionOptions,
+): Promise<NpmPackageResolution> {
   let descriptor = `${name}@${ceiling}`;
   const npm = await npmCommand(launch);
   if (npm === null) {
@@ -319,8 +444,10 @@ async function acquireNpmPackage(
       { package: descriptor },
       '[acp-launch] package acquisition probe skipped: no executable npm sibling; forwarding the catalog pin to npx',
     );
-    return descriptor;
+    return { outcome: 'forwarded', acquired: descriptor, elapsedMs: 0 };
   }
+  acquisition?.onProbeStart?.();
+  const probeStartedAt = Date.now();
   let result = await probeNpmPackage(launch, descriptor, npm);
   let bounded = false;
   if (result.code !== 0 && datedNpmRefusal(result.detail)) {
@@ -359,7 +486,11 @@ async function acquireNpmPackage(
       { machineDetail: result.detail },
     );
   }
-  return `${name}@${selected.version}`;
+  return {
+    outcome: bounded ? 'release-age-bounded' : 'exact',
+    acquired: `${name}@${selected.version}`,
+    elapsedMs: Date.now() - probeStartedAt,
+  };
 }
 
 export function resolveCustomLaunch(entry: CustomAgentEntry): ResolvedLaunch {
@@ -628,6 +759,16 @@ export function declinedRepairHint(launch: ResolvedLaunch): string {
   return `OK's own copy of ${runtime} is damaged and can't run this agent. Start the agent again to let OK download a fresh copy.`;
 }
 
+export function expiredRepairHint(launch: ResolvedLaunch): string {
+  const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
+  return `OK's own copy of ${runtime} is damaged and can't run this agent. The offer to download a fresh copy expired before it was answered — start the agent again to get it back.`;
+}
+
+export function expiredFallbackHint(launch: ResolvedLaunch, base: string): string {
+  const runtime = launch.kind === 'uvx' ? 'uv' : 'Node.js';
+  return `${base} The offer to download a private copy of ${runtime} expired before it was answered — start the agent again to get it back.`;
+}
+
 const PROBE_OUTPUT_MAX = 2_000;
 const PROBE_DETAIL_MAX = 300;
 
@@ -784,6 +925,10 @@ export function probeNpxNodeCompatibility(
 
 export function incompatibleNodeHint(launch: ResolvedLaunch, detail: string): string {
   return `\`${launch.cmd}\` cannot run this agent with the selected Node.js runtime (${detail}). Upgrade Node.js or let Open Knowledge download a private compatible copy.`;
+}
+
+export function expiredIncompatibleNodeHint(launch: ResolvedLaunch, detail: string): string {
+  return `\`${launch.cmd}\` cannot run this agent with the selected Node.js runtime (${detail}). The offer to download a private compatible copy of Node.js expired before it was answered — upgrade Node.js, or start the agent again to get it back.`;
 }
 
 export function envPath(env: Record<string, string>): string | undefined {

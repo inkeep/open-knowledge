@@ -86,6 +86,9 @@ import {
   brokenInterpreterHint,
   declinedRepairHint,
   envPath,
+  expiredFallbackHint,
+  expiredIncompatibleNodeHint,
+  expiredRepairHint,
   incompatibleManagedRuntimeHint,
   incompatibleNodeHint,
   isPathQualified,
@@ -161,6 +164,8 @@ const RESUME_REPLAY_MAX_WAIT_MS = 3_000;
 const AUTH_REQUIRED_CODE = -32000;
 const CONCURRENT_OVERWRITE_REFUSED_CODE = -32009;
 
+type AcquisitionPolicy = 'reuse' | 'reacquire';
+
 export const ACP_ENVIRONMENT_NOTE =
   'Note on your environment: you are running inside the OpenKnowledge app, ' +
   'connected over ACP (Agent Client Protocol) — not inside your own terminal app. ' +
@@ -182,6 +187,15 @@ export class ThreadOpError extends Error {
     super(message);
     this.name = 'ThreadOpError';
     this.code = code;
+  }
+}
+
+class RuntimeConsentRefusedError extends AgentLaunchError {
+  readonly refusal: 'declined' | 'timeout';
+  constructor(refusal: 'declined' | 'timeout', message: string) {
+    super('command-not-found', message);
+    this.name = 'RuntimeConsentRefusedError';
+    this.refusal = refusal;
   }
 }
 
@@ -538,7 +552,7 @@ export class AcpThreadManager {
         threadId,
         agent: agentInfo,
         title: agentInfo.name,
-        status: 'installing',
+        status: 'spawning',
         createdAt: now,
         lastActivityAt: now,
         promptCapabilities: null,
@@ -591,7 +605,7 @@ export class AcpThreadManager {
       envNotePending: false,
     };
     this.threads.set(threadId, record);
-    this.emitStatus(record, 'installing');
+    this.emitStatus(record, 'spawning');
 
     void this.startThread(record, params, custom).catch((err) => {
       this.opts.log.error({ err, threadId }, '[acp-threads] thread start failed');
@@ -641,10 +655,12 @@ export class AcpThreadManager {
   private async connectAgent(
     record: ThreadRecord,
     custom: CustomAgentEntry | null,
+    acquisition: AcquisitionPolicy = 'reuse',
+    consentBudgetMs: number,
   ): Promise<{ conn: ClientConnection; init: InitializeResponse; launch: ResolvedLaunch } | null> {
     let launch: ResolvedLaunch | null;
     if (custom !== null) {
-      launch = await this.ensureLaunchable(record, resolveCustomLaunch(custom));
+      launch = await this.ensureLaunchable(record, resolveCustomLaunch(custom), consentBudgetMs);
     } else {
       const manifest = await this.opts.registry.getAgent(record.agentRef.id);
       if (manifest === undefined) throw new ThreadOpError('unknown-agent', 'agent vanished');
@@ -653,7 +669,23 @@ export class AcpThreadManager {
         registryPlatformKey(),
         this.opts.log,
         undefined,
-        (candidate) => this.ensureLaunchable(record, candidate),
+        (candidate) => this.ensureLaunchable(record, candidate, consentBudgetMs),
+        {
+          reacquire: acquisition === 'reacquire',
+          onProbeStart: () => this.emitStatus(record, 'installing'),
+          onResolved: ({ acquired, outcome, source, elapsedMs }) =>
+            this.opts.log.info(
+              {
+                threadId: record.info.threadId,
+                agentId: record.info.agent.id,
+                package: acquired,
+                outcome,
+                source,
+                elapsedMs,
+              },
+              '[acp-threads] agent package acquired',
+            ),
+        },
       );
     }
     if (launch === null || record.closed) return null;
@@ -872,6 +904,7 @@ export class AcpThreadManager {
   private async ensureLaunchable(
     record: ThreadRecord,
     launch: ResolvedLaunch,
+    consentBudgetMs: number,
   ): Promise<ResolvedLaunch | null> {
     let candidate: ResolvedLaunch;
     try {
@@ -880,16 +913,18 @@ export class AcpThreadManager {
     } catch (err) {
       if (!(err instanceof AgentLaunchError) || err.code !== 'command-not-found') throw err;
       const viaLoginShell = await this.retryWithLoginShellPath(launch);
-      if (viaLoginShell === null) return this.fallbackToManagedRuntime(record, launch, err);
+      if (viaLoginShell === null)
+        return this.fallbackToManagedRuntime(record, launch, err, undefined, consentBudgetMs);
       candidate = viaLoginShell;
     }
     if (record.closed) return null;
-    return this.ensureInterpreterRuns(record, candidate);
+    return this.ensureInterpreterRuns(record, candidate, consentBudgetMs);
   }
 
   private async ensureInterpreterRuns(
     record: ThreadRecord,
     launch: ResolvedLaunch,
+    consentBudgetMs: number,
   ): Promise<ResolvedLaunch | null> {
     if (launch.kind !== 'npx' && launch.kind !== 'uvx') return launch;
     const failure = await this.probeInterpreterOnce(launch);
@@ -939,20 +974,34 @@ export class AcpThreadManager {
       },
       '[acp-threads] interpreter cannot run this agent — offering the managed runtime',
     );
-    const cause = new AgentLaunchError(
+    const incompatible = failure.kind === 'incompatible';
+    const declined = new AgentLaunchError(
       'command-not-found',
-      failure.kind === 'incompatible'
+      incompatible
         ? incompatibleNodeHint(launch, failure.detail)
         : brokenInterpreterHint(launch, failure.detail),
     );
-    return this.fallbackToManagedRuntime(record, launch, cause, cause);
+    const expired = new AgentLaunchError(
+      'command-not-found',
+      incompatible
+        ? expiredIncompatibleNodeHint(launch, failure.detail)
+        : expiredFallbackHint(launch, declined.message),
+    );
+    return this.fallbackToManagedRuntime(
+      record,
+      launch,
+      declined,
+      { declined, expired },
+      consentBudgetMs,
+    );
   }
 
   private async fallbackToManagedRuntime(
     record: ThreadRecord,
     launch: ResolvedLaunch,
     cause: AgentLaunchError,
-    declineCause?: AgentLaunchError,
+    refusalCauses: { declined: AgentLaunchError; expired: AgentLaunchError } | undefined,
+    consentBudgetMs: number,
   ): Promise<ResolvedLaunch | null> {
     if (launch.kind !== 'npx' && launch.kind !== 'uvx') throw cause;
     const runtimeKind = runtimeForInterpreter(launch.kind);
@@ -960,10 +1009,11 @@ export class AcpThreadManager {
     const runtime = await this.provideManagedRuntime(
       record,
       runtimeKind,
-      declineCause === undefined ? 'missing' : 'broken',
+      refusalCauses === undefined ? 'missing' : 'broken',
+      consentBudgetMs,
     ).catch((err: unknown) => {
-      if (declineCause !== undefined && err instanceof AgentLaunchError) {
-        throw err.code === 'command-not-found' ? declineCause : err;
+      if (refusalCauses !== undefined && err instanceof RuntimeConsentRefusedError) {
+        throw err.refusal === 'timeout' ? refusalCauses.expired : refusalCauses.declined;
       }
       throw err;
     });
@@ -978,7 +1028,13 @@ export class AcpThreadManager {
         incompatibleManagedRuntimeHint(brokenManaged.detail),
       );
     }
-    return this.repairManagedRuntime(record, launch, runtimeKind, brokenManaged.detail);
+    return this.repairManagedRuntime(
+      record,
+      launch,
+      runtimeKind,
+      brokenManaged.detail,
+      consentBudgetMs,
+    );
   }
 
   private async repairManagedRuntime(
@@ -986,6 +1042,7 @@ export class AcpThreadManager {
     launch: ResolvedLaunch,
     runtimeKind: ManagedRuntimeKind,
     detail: string,
+    consentBudgetMs: number,
   ): Promise<ResolvedLaunch | null> {
     const logContext = {
       threadId: record.info.threadId,
@@ -1006,14 +1063,20 @@ export class AcpThreadManager {
       throw new AgentLaunchError('install-failed', undeletableManagedRuntimeHint(launch, detail));
     }
 
-    const fresh = await this.provideManagedRuntime(record, runtimeKind, 'damaged').catch(
-      (err: unknown) => {
-        if (err instanceof AgentLaunchError && err.code === 'command-not-found') {
-          throw new AgentLaunchError('command-not-found', declinedRepairHint(launch));
-        }
-        throw err;
-      },
-    );
+    const fresh = await this.provideManagedRuntime(
+      record,
+      runtimeKind,
+      'damaged',
+      consentBudgetMs,
+    ).catch((err: unknown) => {
+      if (err instanceof RuntimeConsentRefusedError) {
+        throw new AgentLaunchError(
+          'command-not-found',
+          err.refusal === 'timeout' ? expiredRepairHint(launch) : declinedRepairHint(launch),
+        );
+      }
+      throw err;
+    });
     if (fresh === null) return null;
     const rewritten = rewriteLaunchToManagedRuntime(launch, fresh);
     await preflightLaunch(rewritten);
@@ -1088,16 +1151,20 @@ export class AcpThreadManager {
     record: ThreadRecord,
     runtimeKind: ManagedRuntimeKind,
     reason: 'missing' | 'broken' | 'damaged',
+    consentBudgetMs: number,
   ): Promise<ManagedRuntime | null> {
     const root = this.opts.runtimeInstall?.root;
     await cleanupManagedRuntimeStaging(runtimeKind, this.opts.log, root);
     const existing = await findManagedRuntime(runtimeKind, root).catch(() => null);
     if (existing !== null) return existing;
 
-    const decision = await this.requestRuntimeConsent(record, runtimeKind, reason);
+    const decision = await this.requestRuntimeConsent(record, runtimeKind, reason, consentBudgetMs);
     if (decision === 'closed' || record.closed) return null;
     if (decision !== 'granted') {
-      throw new AgentLaunchError('command-not-found', declinedRuntimeHint(runtimeKind));
+      throw new RuntimeConsentRefusedError(
+        decision,
+        decision === 'timeout' ? expiredRuntimeHint(runtimeKind) : declinedRuntimeHint(runtimeKind),
+      );
     }
 
     try {
@@ -1116,6 +1183,7 @@ export class AcpThreadManager {
     record: ThreadRecord,
     runtimeKind: ManagedRuntimeKind,
     reason: 'missing' | 'broken' | 'damaged',
+    consentBudgetMs: number,
   ): Promise<'granted' | 'declined' | 'timeout' | 'closed'> {
     const requestId = crypto.randomUUID();
     const d = describeRuntime(runtimeKind);
@@ -1142,7 +1210,7 @@ export class AcpThreadManager {
           ts: Date.now(),
         });
         resolvePromise('timeout');
-      }, CONSENT_TIMEOUT_MS);
+      }, consentBudgetMs);
       timer.unref?.();
       record.pendingRuntimeConsent.set(requestId, { resolve: resolvePromise, timer });
     });
@@ -1514,10 +1582,11 @@ export class AcpThreadManager {
     },
     custom: CustomAgentEntry | null,
     consentBudgetMs: number = CONSENT_TIMEOUT_MS,
+    acquisition: AcquisitionPolicy = 'reuse',
   ): Promise<void> {
     let handshake: Awaited<ReturnType<AcpThreadManager['connectAgent']>>;
     try {
-      handshake = await this.connectAgent(record, custom);
+      handshake = await this.connectAgent(record, custom, acquisition, consentBudgetMs);
     } catch (err) {
       const failure = await connectionFailureDetail(err, record);
       this.emitStatus(record, 'error', failure.agentMessage, failure);
@@ -1662,7 +1731,7 @@ export class AcpThreadManager {
         this.echoUserMessage(t, prompt ?? '', attachments);
         this.flushBroadcast(t);
       }
-      this.emitStatus(t, 'installing');
+      this.emitStatus(t, 'spawning');
       try {
         if (sessionId === null) {
           this.opts.log.warn(
@@ -1674,7 +1743,7 @@ export class AcpThreadManager {
             'this thread never completed an agent session',
           );
         }
-        const handshake = await this.connectAgent(t, custom);
+        const handshake = await this.connectAgent(t, custom, 'reuse', BLOCKING_CONSENT_TIMEOUT_MS);
         if (handshake === null) {
           throw new ThreadOpError('not-ready', 'thread closed during resume');
         }
@@ -1865,13 +1934,14 @@ export class AcpThreadManager {
       t.stderrTail = [];
       t.cancelRequested = false;
       t.turnActive = false;
-      this.emitStatus(t, 'installing');
+      this.emitStatus(t, 'spawning');
       try {
         await this.startThread(
           t,
           { agent: t.agentRef, settings: t.launchSettings },
           custom,
           BLOCKING_CONSENT_TIMEOUT_MS,
+          'reacquire',
         );
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
@@ -3218,6 +3288,15 @@ function declinedRuntimeHint(runtimeKind: ManagedRuntimeKind): string {
       ? 'https://nodejs.org'
       : 'https://docs.astral.sh/uv/getting-started/installation/';
   return `This agent needs \`${d.provides}\`, which isn't installed. OK can download a private copy of ${d.displayName} for you, or install ${d.displayName} yourself (${installUrl}) and it'll be used automatically.`;
+}
+
+function expiredRuntimeHint(runtimeKind: ManagedRuntimeKind): string {
+  const d = describeRuntime(runtimeKind);
+  const installUrl =
+    runtimeKind === 'node'
+      ? 'https://nodejs.org'
+      : 'https://docs.astral.sh/uv/getting-started/installation/';
+  return `This agent needs \`${d.provides}\`, which isn't installed. The offer to download a private copy of ${d.displayName} expired before it was answered — start the agent again to get it back, or install ${d.displayName} yourself (${installUrl}) and it'll be used automatically.`;
 }
 
 function isAuthRequiredError(err: unknown): boolean {

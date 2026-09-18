@@ -569,6 +569,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} इस चैट को आगे नहीं बढ़ा सकता। ट्रांसक्रिप्ट सुरक्षित है, इसलिए जारी रखने के लिए नई चैट शुरू करें।"
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} शुरू नहीं हो सका"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} बातचीत शुरू नहीं कर सका।"
 
@@ -580,6 +584,10 @@ msgstr "{agentName} शुरू नहीं हो सका।"
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} छवि अनुलग्नक स्वीकार नहीं करता।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} तैयार है"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -13419,7 +13427,6 @@ msgstr "साइन-इन प्रक्रिया शुरू की ज�
 msgid "Starting terminal…"
 msgstr "टर्मिनल शुरू हो रहा है…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "एजेंट शुरू किया जा रहा है…"

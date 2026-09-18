@@ -8,7 +8,8 @@ import type {
   ThreadInfo,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { afterEach, describe, expect, test } from 'vitest';
+import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import codexFixture from '../../../../test-support/fixtures/codex-legacy-warning-envelopes.json' with {
   type: 'json',
@@ -21,8 +22,11 @@ import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper
 import {
   installNodeFixture,
   npmCli,
+  probedDescriptors,
   registryPackage,
+  withAcquisitionHome,
   writeExecutable,
+  writeRecordingNpm,
 } from './package-acquisition.test-helper.ts';
 import { AcpPermissionStore } from './permissions.ts';
 import { AcpRegistry } from './registry.ts';
@@ -34,6 +38,7 @@ import {
 } from './thread-manager.ts';
 
 const log = getLogger('acp-thread-test');
+const BLOCKING_CONSENT_BUDGET_MS = Math.floor(THREAD_REOPEN_OP_TIMEOUT_MS / 2);
 
 const EXAMPLE_AGENT = join(
   dirname(Bun.resolveSync('@agentclientprotocol/sdk', import.meta.dirname)),
@@ -73,6 +78,7 @@ function makeManager(
     unwatchedTurnKillMs?: number;
     isIgnoredPath?: (relPosix: string) => boolean;
     registry?: AcpRegistry;
+    runtimeInstall?: AcpThreadManagerOptions['runtimeInstall'];
     resolveLoginShellPath?: () => Promise<string | null>;
     agentPresenceBroadcaster?: AgentPresenceBroadcaster;
     sessionManager?: AgentSessionManager;
@@ -405,6 +411,15 @@ async function waitUntil(pred: () => boolean, ms: number, what: string): Promise
   }
 }
 
+async function statusesOf(manager: AcpThreadManager, threadId: string): Promise<string[]> {
+  const statuses: string[] = [];
+  await manager.subscribe(threadId, 0, (frame) => {
+    const events = frame.op === 'event' ? [frame.event] : frame.op === 'events' ? frame.events : [];
+    for (const event of events) if (event.kind === 'status') statuses.push(event.status);
+  });
+  return statuses;
+}
+
 describe('AcpThreadManager (real subprocess)', () => {
   test('runs a full turn against the SDK example agent, permission round-trip included', async () => {
     expect(existsSync(EXAMPLE_AGENT)).toBe(true);
@@ -420,7 +435,7 @@ describe('AcpThreadManager (real subprocess)', () => {
 
     const events: Array<{ seq: number; event: ThreadEvent }> = [];
     const info = await manager.createThread({ agent: { source: 'custom', id: 'example' } });
-    expect(['installing', 'spawning']).toContain(info.status);
+    expect(info.status).toBe('spawning');
     await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
       if (frame.op === 'event') events.push({ seq: frame.seq, event: frame.event });
       if (frame.op === 'events') {
@@ -979,12 +994,8 @@ process.stdin.on('data', (chunk) => {
   }, 30_000);
 });
 
-function writeResumableAgentEntry(localDir: string, id: string, env: Record<string, string>): void {
-  const agentPath = join(localDir, `${id}.mjs`);
-  writeFileSync(
-    agentPath,
-    `
-import { appendFileSync } from 'node:fs';
+const RESUMABLE_AGENT_SOURCE = `
+const { appendFileSync } = process.getBuiltinModule('node:fs');
 const caps = (process.env.FAKE_CAPS ?? '').split(',').filter(Boolean);
 const withConfig = process.env.FAKE_CONFIG === '1';
 const withModes = process.env.FAKE_MODES === '1';
@@ -1097,8 +1108,11 @@ process.stdin.on('data', (chunk) => {
     }
   }
 });
-`,
-  );
+`;
+
+function writeResumableAgentEntry(localDir: string, id: string, env: Record<string, string>): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(agentPath, RESUMABLE_AGENT_SOURCE);
   writeFileSync(
     join(localDir, 'acp-agents.json'),
     JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath], env }]),
@@ -5580,4 +5594,460 @@ describe.skipIf(process.platform === 'win32')('a typed session notice mid-turn',
     expect(bothTurns.length).toBe(firstTurn.length * 2);
     expect(thread.manager.getInfo(thread.threadId)?.status).toBe('ready');
   }, 60_000);
+});
+
+describe('status frames for an open that installs nothing', () => {
+  test('a custom agent start never reports installing', async () => {
+    const localDir = tmp();
+    writeExampleAgentEntry(localDir);
+    const manager = makeManager(tmp(), localDir);
+
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'example' } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      'the custom agent to become ready',
+    );
+
+    const statuses = await statusesOf(manager, info.threadId);
+    expect(info.status).toBe('spawning');
+    expect(statuses[0]).toBe('spawning');
+    expect(statuses).not.toContain('installing');
+  }, 30_000);
+
+  test('a custom agent retry never reports installing', async () => {
+    const localDir = tmp();
+    writeRequestingAgentEntry(
+      localDir,
+      'retry-no-install',
+      "write({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'prompt failed' } });",
+    );
+    const manager = makeManager(tmp(), localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'retry-no-install' },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'fail this turn');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      15_000,
+      'the prompt failure',
+    );
+    writeRequestingAgentEntry(localDir, 'retry-no-install', 'finish();');
+    const beforeRetry = (await statusesOf(manager, info.threadId)).length;
+
+    expect((await manager.retryThread(info.threadId)).status).toBe('ready');
+
+    const afterRetry = (await statusesOf(manager, info.threadId)).slice(beforeRetry);
+    expect(afterRetry[0]).toBe('spawning');
+    expect(afterRetry).not.toContain('installing');
+  }, 45_000);
+
+  test('a custom agent resume never reports installing', async () => {
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'resume-no-install', { FAKE_CAPS: 'resume,load' });
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'resume-no-install' },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'retain this session');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'turn ended');
+    await manager.closeThread(info.threadId);
+    const beforeResume = (await statusesOf(manager, info.threadId)).length;
+
+    await manager.resumeThread(info.threadId);
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      'the resumed thread to become ready',
+    );
+
+    const afterResume = (await statusesOf(manager, info.threadId)).slice(beforeResume);
+    expect(afterResume[0]).toBe('spawning');
+    expect(afterResume).not.toContain('installing');
+  }, 45_000);
+});
+
+describe('registry adapter acquisition probe scope across thread opens', () => {
+  const PINNED_ADAPTER = 'probe-scope-manager-fixture';
+  const PINNED_DESCRIPTOR = `${PINNED_ADAPTER}@7.0.0`;
+
+  const acquisitionBin = (home: string, agentSource: string): { bin: string; probeLog: string } => {
+    const bin = join(home, 'bin');
+    mkdirSync(bin);
+    installNodeFixture(bin);
+    const probeLog = join(home, 'probes.log');
+    writeExecutable(
+      join(bin, 'npx'),
+      `if (process.argv.slice(2).join(' ') === '--version') process.exit(0);\n${agentSource}`,
+    );
+    writeRecordingNpm(bin, probeLog);
+    return { bin, probeLog };
+  };
+
+  const recordingAcquisitionBin = (home: string): { bin: string; probeLog: string } =>
+    acquisitionBin(
+      home,
+      `let buffer = '';
+       process.stdin.setEncoding('utf8');
+       process.stdin.on('data', (chunk) => {
+         buffer += chunk;
+         let idx = buffer.indexOf('\\n');
+         while (idx !== -1) {
+           const line = buffer.slice(0, idx);
+           buffer = buffer.slice(idx + 1);
+           idx = buffer.indexOf('\\n');
+           if (line.trim() === '') continue;
+           const reply = { jsonrpc: '2.0', id: JSON.parse(line).id, error: { code: -32603, message: 'fixture adapter declines to initialize' } };
+           process.stdout.write(JSON.stringify(reply) + '\\n');
+         }
+       });`,
+    );
+
+  const resumableAcquisitionBin = (home: string): { bin: string; probeLog: string } =>
+    acquisitionBin(home, RESUMABLE_AGENT_SOURCE);
+
+  const pinnedAdapterManager = (
+    home: string,
+    bin: string,
+    env?: Record<string, string>,
+  ): { agentId: string; manager: AcpThreadManager } => {
+    const localDir = tmp();
+    const agent = registryPackage(PINNED_DESCRIPTOR, 'npx', { PATH: bin, ...env });
+    const registry = new AcpRegistry({
+      localDir,
+      log,
+      fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+    });
+    return { agentId: agent.id, manager: makeManager(home, localDir, { registry }) };
+  };
+
+  test('two thread opens of one pinned registry adapter acquire it once', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(first.threadId)?.status === 'error',
+        20_000,
+        'the first open to settle',
+      );
+      const second = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(second.threadId)?.status === 'error',
+        20_000,
+        'the second open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+    });
+  }, 60_000);
+
+  test('a retry re-acquires the pinned adapter instead of reusing the open probe', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+
+      await manager.retryThread(info.threadId).catch(() => {});
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR, PINNED_DESCRIPTOR]);
+    });
+  }, 60_000);
+
+  test('a resume reuses the acquisition its open made instead of probing again', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = resumableAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin, {
+        FAKE_CAPS: 'resume,load',
+      });
+      await manager.init();
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the open to become ready',
+      );
+      manager.sendPrompt(info.threadId, 'retain this session');
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the turn to end',
+      );
+      await manager.closeThread(info.threadId);
+      const beforeResume = (await statusesOf(manager, info.threadId)).length;
+
+      await manager.resumeThread(info.threadId);
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the resumed thread to become ready',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+      const afterResume = (await statusesOf(manager, info.threadId)).slice(beforeResume);
+      expect(afterResume[0]).toBe('spawning');
+      expect(afterResume).not.toContain('installing');
+    });
+  }, 90_000);
+
+  test('a resume whose runtime offer goes unanswered expires on the budget the resume waits on', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin } = resumableAcquisitionBin(home);
+      const localDir = tmp();
+      const runtimeRoot = tmp();
+      const agent = registryPackage(PINNED_DESCRIPTOR, 'npx', {
+        PATH: bin,
+        FAKE_CAPS: 'resume,load',
+      });
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const manager = makeManager(home, localDir, {
+        registry,
+        runtimeInstall: { root: runtimeRoot },
+      });
+      await manager.init();
+
+      const events: ThreadEvent[] = [];
+      const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+      await manager.subscribe(info.threadId, 0, (frame) => {
+        if (frame.op === 'event') events.push(frame.event);
+        else if (frame.op === 'events') events.push(...frame.events);
+      });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the open to become ready',
+      );
+      manager.sendPrompt(info.threadId, 'retain this session');
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the turn to end',
+      );
+      expect(internals(manager).sessionId(info.threadId)).toBe('sess-fixed');
+      await manager.closeThread(info.threadId);
+      expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+
+      for (const leaf of ['npx', 'npx.cjs', 'npx.cmd']) {
+        rmSync(join(bin, leaf), { force: true });
+      }
+
+      let refusal: unknown;
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const resuming = manager.resumeThread(info.threadId).catch((error: unknown) => error);
+        await waitUntil(
+          () => events.some((event) => event.kind === 'runtime_consent_request'),
+          20_000,
+          'the resume to offer the managed runtime',
+        );
+        await vi.advanceTimersByTimeAsync(BLOCKING_CONSENT_BUDGET_MS + 1_000);
+        await waitUntil(
+          () => events.some((event) => event.kind === 'runtime_consent_resolved'),
+          20_000,
+          'the offer to expire on the budget the resume is waiting on',
+        );
+        refusal = await resuming;
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const resolved = events.find(
+        (event): event is Extract<ThreadEvent, { kind: 'runtime_consent_resolved' }> =>
+          event.kind === 'runtime_consent_resolved',
+      );
+      expect(resolved?.decision).toBe('timeout');
+      expect(refusal).toMatchObject({
+        message: expect.stringContaining('expired before it was answered'),
+      });
+
+      await waitUntil(
+        () => events.some((event) => event.kind === 'status' && event.status === 'exited'),
+        20_000,
+        'the resume to record its terminal status',
+      );
+      const terminal = events
+        .filter(
+          (event): event is Extract<ThreadEvent, { kind: 'status' }> => event.kind === 'status',
+        )
+        .at(-1);
+      expect(terminal?.status).toBe('exited');
+      expect(terminal?.failure?.agentMessage).toContain('expired before it was answered');
+      expect(
+        terminal?.failure?.agentMessage,
+        're-offering the download would tell the user an offer they let expire was never made',
+      ).not.toContain('OK can download a private copy');
+    });
+  }, 120_000);
+
+  test('an open that really probes the registry reports installing while it probes', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+      expect(await statusesOf(manager, info.threadId)).toEqual([
+        'spawning',
+        'installing',
+        'spawning',
+        'error',
+      ]);
+    });
+  }, 60_000);
+
+  test('a second open served from the warm memo never reports installing', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(first.threadId)?.status === 'error',
+        20_000,
+        'the first open to settle',
+      );
+      const second = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(second.threadId)?.status === 'error',
+        20_000,
+        'the second open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+      const statuses = await statusesOf(manager, second.threadId);
+      expect(statuses[0]).toBe('spawning');
+      expect(statuses).not.toContain('installing');
+    });
+  }, 60_000);
+
+  test('an unpinned registry package resolves without reporting installing', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const localDir = tmp();
+      const agent = registryPackage(PINNED_ADAPTER, 'npx', { PATH: bin });
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const manager = makeManager(home, localDir, { registry });
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([]);
+      const statuses = await statusesOf(manager, info.threadId);
+      expect(statuses[0]).toBe('spawning');
+      expect(statuses).not.toContain('installing');
+    });
+  }, 60_000);
+
+  test('a custom agent launched through the same npx never reports installing', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const localDir = tmp();
+      writeFileSync(
+        join(localDir, 'acp-agents.json'),
+        JSON.stringify([
+          {
+            id: 'custom-npx',
+            name: 'Custom npx agent',
+            command: join(bin, 'npx'),
+            args: ['-y', PINNED_DESCRIPTOR],
+          },
+        ]),
+      );
+      const manager = makeManager(home, localDir);
+
+      const info = await manager.createThread({ agent: { source: 'custom', id: 'custom-npx' } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([]);
+      const statuses = await statusesOf(manager, info.threadId);
+      expect(statuses[0]).toBe('spawning');
+      expect(statuses).not.toContain('installing');
+    });
+  }, 60_000);
+
+  test('a retry re-acquires its own adapter and leaves a second adapter memoized', async () => {
+    const BYSTANDER_DESCRIPTOR = 'probe-scope-bystander-fixture@3.0.0';
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const localDir = tmp();
+      const retried = {
+        ...registryPackage(PINNED_DESCRIPTOR, 'npx', { PATH: bin }),
+        id: 'adapter-retried',
+      };
+      const bystander = {
+        ...registryPackage(BYSTANDER_DESCRIPTOR, 'npx', { PATH: bin }),
+        id: 'adapter-bystander',
+      };
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [retried, bystander] })),
+      });
+      const manager = makeManager(home, localDir, { registry });
+      const settle = async (agentId: string): Promise<string> => {
+        const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(info.threadId)?.status === 'error',
+          20_000,
+          `the ${agentId} open to settle`,
+        );
+        return info.threadId;
+      };
+
+      const retriedThread = await settle(retried.id);
+      await settle(bystander.id);
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR, BYSTANDER_DESCRIPTOR]);
+
+      await manager.retryThread(retriedThread).catch(() => {});
+      expect(probedDescriptors(probeLog)).toEqual([
+        PINNED_DESCRIPTOR,
+        BYSTANDER_DESCRIPTOR,
+        PINNED_DESCRIPTOR,
+      ]);
+
+      await settle(bystander.id);
+
+      expect(probedDescriptors(probeLog)).toEqual([
+        PINNED_DESCRIPTOR,
+        BYSTANDER_DESCRIPTOR,
+        PINNED_DESCRIPTOR,
+      ]);
+    });
+  }, 90_000);
 });

@@ -569,6 +569,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} 無法繼續此對話。記錄會保留，請開始新的對話以繼續。"
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} 無法啟動"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} 無法開始對話。"
 
@@ -580,6 +584,10 @@ msgstr "{agentName} 無法啟動。"
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} 不接受圖片附件。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} 已就緒"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -13423,7 +13431,6 @@ msgstr "正在啟動登入流程"
 msgid "Starting terminal…"
 msgstr "正在啟動終端機…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "正在啟動代理…"

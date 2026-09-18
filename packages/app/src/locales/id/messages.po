@@ -569,6 +569,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} tidak dapat melanjutkan obrolan ini. Transkrip tetap tersimpan, jadi mulai obrolan baru untuk melanjutkan."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} tidak dapat dijalankan"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} tidak dapat memulai percakapan."
 
@@ -580,6 +584,10 @@ msgstr "{agentName} tidak dapat dijalankan."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} tidak menerima lampiran gambar."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} siap"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -13419,7 +13427,6 @@ msgstr "Memulai alur masuk"
 msgid "Starting terminal…"
 msgstr "Memulai terminal…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "Memulai agennya…"

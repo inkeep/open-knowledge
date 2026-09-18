@@ -569,6 +569,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} no puede retomar este chat. La transcripción se conserva, así que empieza un chat nuevo para continuar."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} no pudo iniciarse"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} no pudo iniciar una conversación."
 
@@ -580,6 +584,10 @@ msgstr "{agentName} no pudo iniciarse."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} no acepta adjuntos de imagen."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} está listo"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -13423,7 +13431,6 @@ msgstr "Iniciando el flujo de inicio de sesión"
 msgid "Starting terminal…"
 msgstr "Iniciando terminal…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "Iniciando el agente…"

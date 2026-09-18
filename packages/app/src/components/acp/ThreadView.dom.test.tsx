@@ -3965,9 +3965,22 @@ describe('ThreadView auth-required dead ends', () => {
   });
 
   test('a thread genuinely still starting keeps its progress message and offers nothing', () => {
-    for (const status of ['installing', 'spawning'] as const) {
+    vi.useFakeTimers();
+    const progressMessages = ['Installing Claude…', 'Starting Claude…'] as const;
+    for (const [status, message] of [
+      ['installing', 'Installing Claude…'],
+      ['spawning', 'Starting Claude…'],
+    ] as const) {
       const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
       expect(screen.queryByTestId('agent-thread-auth-action')).toBeNull();
+      const surface = screen.getByTestId('agent-thread-transcript');
+      const shown = progressMessages.filter((candidate) =>
+        surface.textContent?.includes(candidate),
+      );
+      expect({ status, shown }).toEqual({ status, shown: [message] });
       view.unmount();
     }
   });
@@ -4161,6 +4174,350 @@ describe('ThreadView auth-required dead ends', () => {
     expect(surface.textContent).toContain('Sign in to Claude to continue.');
     expect(within(surface).getAllByTestId('agent-thread-auth-method')).toHaveLength(1);
     expect(surface.textContent).toContain('Already signed in?');
+  });
+});
+
+describe('ThreadView start progress', () => {
+  function transcriptItem(): RenderedItem {
+    return { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' };
+  }
+
+  test('a thread that already has a transcript still says installing rather than starting', () => {
+    vi.useFakeTimers();
+    const progressMessages = ['Installing Claude…', 'Starting Claude…'] as const;
+    for (const [status, message] of [
+      ['installing', 'Installing Claude…'],
+      ['spawning', 'Starting Claude…'],
+    ] as const) {
+      model = makeModel({ turnActive: false, items: [transcriptItem()] });
+      const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+
+      const starting = screen.getByTestId('agent-thread-starting');
+      const shown = progressMessages.filter((candidate) =>
+        starting.textContent?.includes(candidate),
+      );
+      expect({ status, shown }).toEqual({ status, shown: [message] });
+      view.unmount();
+    }
+  });
+
+  test('a thread that already has a transcript still announces its start status', () => {
+    vi.useFakeTimers();
+    for (const [status, message] of [
+      ['installing', 'Installing Claude…'],
+      ['spawning', 'Starting Claude…'],
+    ] as const) {
+      model = makeModel({ turnActive: false, items: [transcriptItem()] });
+      const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(message);
+      expect(screen.getByTestId('agent-thread-starting').textContent).toContain(message);
+      view.unmount();
+    }
+  });
+
+  test('the start-status live region is mounted before there is a start to announce', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    const region = screen.getByTestId('agent-thread-start-status');
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.getAttribute('aria-atomic')).toBe('true');
+    expect(region.textContent).toBe('');
+  });
+
+  test('the start status is announced on the same region across the install probe', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    const region = screen.getByTestId('agent-thread-start-status');
+    expect(region.textContent).toBe('Starting Claude…');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+    expect(screen.getByTestId('agent-thread-start-status')).toBe(region);
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-start-status')).toBe(region);
+  });
+
+  test('reaching ready announces the end of the wait', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test('a thread that was already ready announces nothing', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+  });
+
+  test('returning to ready after a turn does not re-announce the start', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'running' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+  });
+
+  test('a start that pauses for sign-in still announces when it becomes ready', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'authenticating' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test('a thread that mounts already waiting on sign-in announces when it becomes ready', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />,
+    );
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'authenticating' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test('a sign-in forced mid-conversation announces that the thread is usable again', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'ready' })} />,
+    );
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'running' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'authenticating' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test.each(['error', 'exited'] as const)(
+    'a wait that begins at sign-in and ends in %s announces the failure',
+    (status) => {
+      model = makeModel({ turnActive: false, items: [] });
+      const { rerender } = render(
+        <ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />,
+      );
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status })} />);
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+    },
+  );
+
+  test.each(['error', 'exited'] as const)(
+    'a start that ends in %s announces the failure',
+    (status) => {
+      model = makeModel({ turnActive: false, items: [] });
+      const { rerender } = render(
+        <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+      );
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status })} />);
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+    },
+  );
+
+  test.each([
+    ['error', 'exited'],
+    ['exited', 'error'],
+  ] as const)(
+    'a start that ends in %s and then %s holds the failure announcement',
+    (first, second) => {
+      model = makeModel({ turnActive: false, items: [] });
+      const { rerender } = render(
+        <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+      );
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status: first })} />);
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status: second })} />);
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+    },
+  );
+
+  test('a start that had already succeeded when the agent exited announces no failure', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+  });
+
+  test('a probe that settles inside the show delay never paints the install label', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).not.toContain('Installing');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).not.toContain('Installing');
+  });
+
+  test('the install label paints only after the show delay and in both places at once', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(199);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain('Starting Claude…');
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain(
+      'Installing Claude…',
+    );
+  });
+
+  test('once painted, the install label holds for its minimum visible window', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+    act(() => {
+      vi.advanceTimersByTime(249);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain(
+      'Installing Claude…',
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain('Starting Claude…');
+  });
+
+  test('a brand-new thread commits the start-status region before its first label', async () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const steps: string[] = [];
+    const inRegion = (node: Node | null): boolean => {
+      const el = node instanceof HTMLElement ? node : (node?.parentElement ?? null);
+      return el?.getAttribute('data-testid') === 'agent-thread-start-status';
+    };
+    let regionSeen = false;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (inRegion(record.target)) {
+          steps.push('label');
+          continue;
+        }
+        for (const added of record.addedNodes) {
+          if (
+            !regionSeen &&
+            added instanceof HTMLElement &&
+            added.querySelector('[data-testid="agent-thread-start-status"]') !== null
+          ) {
+            regionSeen = true;
+            steps.push('region');
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    try {
+      render(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+      await waitFor(() => {
+        expect(steps).toEqual(['region', 'label']);
+      });
+    } finally {
+      observer.disconnect();
+    }
   });
 });
 
