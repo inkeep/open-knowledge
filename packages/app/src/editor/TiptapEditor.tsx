@@ -894,7 +894,7 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
 
     /* STOP: the write and its `agent-flash` entry land in one Y transaction, so this observer
        can run before the Y.Text observer has re-projected the document. The rAF hop is what
-       makes `liveProjection` the post-write projection rather than the pre-write one. */
+       makes `fullProjection` the post-write projection rather than the pre-write one. */
     let liveRaf: number | null = null;
     const onActivity = (): void => {
       if (liveRaf !== null) cancelAnimationFrame(liveRaf);

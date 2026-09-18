@@ -122,10 +122,6 @@ export function projectionUndoManager(state: EditorState): Y.UndoManager | null 
   return projectionBindingKey.getState(state)?.undoManager ?? null;
 }
 
-export function liveProjection(state: EditorState): Projection | null {
-  return projectionBindingKey.getState(state)?.binding.projection ?? null;
-}
-
 /* STOP: resolve full precision through the binding's own resolver, never a private one. The
    binding advances it on every re-projection, so a lookup after a peer edit reparses only the
    caller's own change; a separate cache lags every peer edit and pays a window spanning both
@@ -136,7 +132,7 @@ export function fullProjection(state: EditorState): Projection | null {
   return value.resolveFull(value.binding.projection);
 }
 
-/* STOP: while hidden, liveProjection and the doc lag Y.Text. Nothing may read either for
+/* STOP: while hidden, the binding's projection and the doc lag Y.Text. Nothing may read either for
    placement until the editor is shown again, and showing it re-projects synchronously so a
    reader queued behind the switch sees the current document. */
 export function setProjectionHidden(state: EditorState, hidden: boolean): void {
