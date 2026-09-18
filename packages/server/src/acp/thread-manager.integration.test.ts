@@ -1290,13 +1290,16 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(manager.getInfo(threadId)?.title).toBe('Update the roadmap');
 
     await manager.closeThread(threadId);
+    const lastActivityAt = manager.getInfo(threadId)?.lastActivityAt;
     await manager.renameThread(threadId, 'Q3 roadmap thread');
     expect(manager.getInfo(threadId)?.title).toBe('Q3 roadmap thread');
+    expect(manager.getInfo(threadId)?.lastActivityAt).toBe(lastActivityAt);
 
     const manager2 = makeManager(contentDir, localDir);
     await manager2.init();
     const rehydrated = manager2.listThreads().find((t) => t.threadId === threadId);
     expect(rehydrated?.title).toBe('Q3 roadmap thread');
+    expect(rehydrated?.lastActivityAt).toBe(lastActivityAt);
     const replayed: Collected = [];
     await manager2.subscribe(threadId, 0, collector(replayed));
     expect(replayed.map((e) => e.seq)).toEqual(replayed.map((_, i) => i));

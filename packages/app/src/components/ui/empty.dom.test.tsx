@@ -115,6 +115,18 @@ describe('EmptyTitle', () => {
     expect(screen.queryByRole('heading')).toBeNull();
   });
 
+  test('leaves the text colour to the caller, so a consumer heading keeps its own contrast', () => {
+    const { container } = render(<EmptyTitle>Nothing here</EmptyTitle>);
+
+    const tokens = (slot(container, 'empty-title').getAttribute('class') ?? '')
+      .split(/\s+/)
+      .filter((token) => token.length > 0);
+
+    expect(tokens.toSorted()).toEqual(
+      ['font-heading', 'font-medium', 'text-sm', 'tracking-tight'].toSorted(),
+    );
+  });
+
   test('asChild keeps the caller element, so a heading stays a heading', () => {
     const { container } = render(
       <EmptyTitle asChild>

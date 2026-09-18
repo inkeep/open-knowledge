@@ -2,7 +2,6 @@
 
 import { Trans, useLingui } from '@lingui/react/macro';
 import { FileText, Folder, FolderOpenIcon, GitBranch, PlusIcon, XIcon } from 'lucide-react';
-import { useTheme } from 'next-themes';
 import { type ComponentType, lazy, Suspense, useEffect, useState } from 'react';
 import { shouldShowAppMenubar } from '@/components/app-menubar-gate';
 import { Spinner } from '@/components/ui/spinner';
@@ -91,11 +90,10 @@ export function NavigatorApp({ bridge }: { bridge: OkDesktopBridge }) {
   >(null);
   const isElectronHost = typeof window !== 'undefined' && window.okDesktop != null;
   const [authInitialStep, setAuthInitialStep] = useState<'auth' | 'identity'>('auth');
-  const { theme: themeValue } = useTheme();
   const { t } = useLingui();
 
   useThemeColorTransitions(true);
-  useThemeBridge(bridge, themeValue ?? 'system');
+  useThemeBridge(bridge, bridge.config.themePreference ?? 'system');
 
   useApplyConfigLanguage({
     preference:

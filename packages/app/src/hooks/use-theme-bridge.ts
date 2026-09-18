@@ -3,6 +3,7 @@ import { subscribeColorThemeEpoch } from '@/lib/color-theme-epoch';
 import { cssColorToHex } from '@/lib/css-color-to-hex';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { themeColorTransitionsActive } from '@/lib/theme-color-transitions';
+import type { ThemePreference } from '@/lib/use-apply-config-theme';
 
 function resolveTokenHex(token: string): string | null {
   const probe = document.createElement('span');
@@ -32,7 +33,7 @@ function readChromeColors(): { bg: string; symbol: string } | undefined {
 
 export function useThemeBridge(
   bridge: OkDesktopBridge | undefined,
-  themeValue: string | undefined,
+  themeValue: ThemePreference | undefined,
   colorThemeKey?: string,
 ): void {
   // biome-ignore lint/correctness/useExhaustiveDependencies: colorThemeKey requests a fresh settled report for same-mode palette changes

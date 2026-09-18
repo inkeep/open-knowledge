@@ -228,8 +228,25 @@ describe('createNavigatorWindow — pendingPayload dom-ready gate (US-004)', () 
       setInterval: () => undefined,
       clearInterval: () => {},
       languagePreference: 'system' as const,
+      themePreference: 'dark' as const,
     };
   }
+
+  test('passes language and theme preferences through the renderer argv boundary', () => {
+    const win = makeNavWindow();
+    const createWindow = vi.fn(() => win);
+    createNavigatorWindow({
+      ...silentNarration(),
+      createWindow,
+      rendererEntryPath: '/fake/index.html',
+      appVersion: '9.9.9-test',
+      showGate: makeShowGate(),
+    });
+
+    expect(createWindow.mock.calls[0]?.[0].additionalArguments).toEqual(
+      expect.arrayContaining(['--ok-language-preference=system', '--ok-theme-preference=dark']),
+    );
+  });
 
   function makeShowGate(): ShowGateRegistry {
     return {
@@ -357,6 +374,8 @@ describe('navigator boot narration (the phase consent-dialog waits over)', () =>
       createWindow: () => win,
       rendererEntryPath: '/fake/index.html',
       appVersion: '9.9.9-test',
+      languagePreference: 'system' as const,
+      themePreference: 'system' as const,
       showGate: makeShowGate(),
       log: {
         info: (obj: Record<string, unknown>) => {

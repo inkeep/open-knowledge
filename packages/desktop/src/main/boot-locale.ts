@@ -9,6 +9,7 @@ import {
   type SupportedLocale,
   toBcp47Tags,
 } from '@inkeep/open-knowledge-core';
+import type { OkThemeSource } from '@inkeep/open-knowledge-core/desktop-bridge';
 import {
   LOCALE_OVERRIDE_ENV_VAR,
   readConfigSafely,
@@ -22,13 +23,28 @@ export interface DesktopLocaleDeps {
   readonly env: Readonly<Record<string, string | undefined>>;
 }
 
+export interface StoredUserPreferences {
+  readonly language: LanguagePreference;
+  readonly theme: OkThemeSource;
+}
+
+export function readStoredUserPreferences(
+  homedir: string,
+  warn: (message: string) => void = () => {},
+): StoredUserPreferences {
+  const absPath = resolveConfigPath('user', homedir, homedir);
+  const result = readConfigSafely({ absPath, sideline: false, warn });
+  return {
+    language: result.value.appearance?.language ?? 'system',
+    theme: result.value.appearance?.theme ?? 'system',
+  };
+}
+
 export function readStoredLanguagePreference(
   homedir: string,
   warn: (message: string) => void = () => {},
 ): LanguagePreference {
-  const absPath = resolveConfigPath('user', homedir, homedir);
-  const result = readConfigSafely({ absPath, sideline: false, warn });
-  return result.value.appearance?.language ?? 'system';
+  return readStoredUserPreferences(homedir, warn).language;
 }
 
 export function resolveDesktopLocale(deps: DesktopLocaleDeps): SupportedLocale {

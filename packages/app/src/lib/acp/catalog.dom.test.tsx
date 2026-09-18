@@ -2,7 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { AgentCatalog } from './catalog';
-import { useHydrateRegisteredAgentMeta } from './catalog';
+import { useAgentCatalogQuery, useHydrateRegisteredAgentMeta } from './catalog';
 import {
   getDefaultRegisteredAgent,
   registerAgent,
@@ -40,6 +40,11 @@ function Harness() {
   return null;
 }
 
+function CatalogObserver({ enabled }: { enabled: boolean }) {
+  useAgentCatalogQuery(enabled);
+  return null;
+}
+
 beforeEach(() => {
   localStorage.clear();
   reloadRegisteredAgentsFromStorage();
@@ -50,6 +55,33 @@ beforeEach(() => {
 });
 
 afterEach(() => cleanup());
+
+describe('useAgentCatalogQuery', () => {
+  test('a failed catalog read is logged once however many instances observe the shared query', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    globalThis.fetch = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({}),
+    })) as unknown as typeof fetch;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+    render(
+      <QueryClientProvider client={client}>
+        <CatalogObserver enabled />
+        <CatalogObserver enabled={false} />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => expect(consoleError).toHaveBeenCalled());
+    expect(
+      consoleError.mock.calls.filter(
+        ([message]) => message === '[acp-catalog] agent catalog request failed',
+      ),
+    ).toHaveLength(1);
+    consoleError.mockRestore();
+  });
+});
 
 describe('useHydrateRegisteredAgentMeta', () => {
   test('fills a seeded agent brand icon from the catalog on mount', async () => {

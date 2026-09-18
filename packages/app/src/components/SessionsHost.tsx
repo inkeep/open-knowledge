@@ -5,14 +5,21 @@ import {
   type TerminalCli,
   type TerminalPlacement,
 } from '@inkeep/open-knowledge-core';
-import type { ThreadInfo, ThreadStatus } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type {
+  AttachmentPart,
+  ThreadInfo,
+  ThreadStatus,
+} from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { useLingui } from '@lingui/react/macro';
 import { SquareTerminalIcon } from 'lucide-react';
 import {
+  type CSSProperties,
   lazy,
   type ReactNode,
+  type RefObject,
   Suspense,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -20,11 +27,21 @@ import {
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
-import { ArchivedThreadChooser, ThreadHistoryMenu } from '@/components/acp/ThreadHistoryMenu';
+import {
+  ThreadHistoryPanel,
+  ThreadHistorySearchProvider,
+  ThreadHistoryToggle,
+} from '@/components/acp/ThreadHistoryPanel';
 import { publishReusableSession } from '@/components/reusable-session-store';
+import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import { TabsContent } from '@/components/ui/tabs';
+import {
+  HISTORY_PANEL_WIDTH_PX,
+  useHistoryPresentationMode,
+} from '@/hooks/use-history-presentation-mode';
 import { isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
+import { detectedHarnessAgents, useAgentCatalogQuery } from '@/lib/acp/catalog';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
 import { hasInflightThreadLaunch, launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import {
@@ -42,8 +59,9 @@ import {
 import {
   getAgentThreadClient,
   useAgentThreadConnection,
+  useAgentThreadScope,
+  useAgentThreads,
   useAgentThreadUnread,
-  useArchivedAgentThreads,
   useInitialRosterThreadIds,
   useOpenAgentThreadTabs,
 } from '@/lib/acp/thread-client';
@@ -115,6 +133,18 @@ type SessionDescriptor = TerminalSessionDescriptor | ThreadSessionDescriptor;
 
 type SessionOpenProvenance = 'user' | 'restore-seed';
 
+type AgentPaneLaunchRequest = {
+  readonly agent: { source: 'registry' | 'custom'; id: string };
+  readonly docName?: string | null;
+  readonly titleHint?: string | null;
+  readonly attachments?: readonly AttachmentPart[];
+} & (
+  | { readonly prompt?: string | null; readonly stageDraft?: never }
+  | { readonly prompt?: never; readonly stageDraft: string }
+);
+
+type EmptyAgentLaunchState = 'idle' | 'launching' | 'deduped' | 'failed';
+
 function applyReorder(
   current: readonly SessionDescriptor[],
   newOrderIds: readonly string[],
@@ -147,19 +177,34 @@ function threadSessionFocusSelector(id: string): string {
   return `[data-session-id="${escapeSelector(id)}"] [data-testid="agent-thread-composer"]`;
 }
 
-function focusTerminalSession(id: string) {
-  if (id === '') return;
-  document.querySelector<HTMLElement>(terminalSessionFocusSelector(id))?.focus();
+function focusTerminalSession(id: string): boolean {
+  if (id === '') return false;
+  const terminal = document.querySelector<HTMLElement>(terminalSessionFocusSelector(id));
+  terminal?.focus();
+  return terminal != null && document.activeElement === terminal;
 }
 
-function focusThreadSession(id: string) {
-  if (id === '') return;
-  document.querySelector<HTMLElement>(threadSessionFocusSelector(id))?.focus();
+function threadTabFocusElement(id: string): HTMLElement | null {
+  const safeId = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id;
+  return document.querySelector<HTMLElement>(`[role="tab"][data-tab-id="${safeId}"]`);
 }
 
-function focusSession(session: SessionDescriptor) {
-  if (session.kind === 'terminal') focusTerminalSession(session.id);
-  else focusThreadSession(session.id);
+function focusThreadSession(id: string): boolean {
+  if (id === '') return false;
+  const composer = document.querySelector<HTMLElement>(threadSessionFocusSelector(id));
+  composer?.focus();
+  if (composer != null && document.activeElement === composer) return true;
+  threadTabFocusElement(id)?.focus();
+  return false;
+}
+
+function focusSession(session: SessionDescriptor): boolean {
+  if (session.kind === 'terminal') return focusTerminalSession(session.id);
+  return focusThreadSession(session.id);
+}
+
+function fallbackSessionFocusElement(session: SessionDescriptor): HTMLElement | null {
+  return session.kind === 'thread' ? threadTabFocusElement(session.id) : null;
 }
 
 function focusInsideHost(hostEl: HTMLElement | null): boolean {
@@ -286,6 +331,20 @@ const TERMINAL_DOCK_KINDS: Record<Exclude<LauncherSelection['kind'], 'thread' | 
   desktop: true,
 };
 
+function closeHistory(
+  setOpen: (open: boolean) => void,
+  focus: 'always' | 'if-panel-focused' | 'never',
+  panelId: string,
+  toggleRef: RefObject<HTMLButtonElement | null>,
+) {
+  const shouldRestoreFocus =
+    focus === 'always' ||
+    (focus === 'if-panel-focused' &&
+      document.getElementById(panelId)?.contains(document.activeElement) === true);
+  setOpen(false);
+  if (shouldRestoreFocus) queueMicrotask(() => toggleRef.current?.focus());
+}
+
 export function SessionsHost({
   bridge,
   terminalCapable = false,
@@ -334,6 +393,22 @@ export function SessionsHost({
     if (hostEl.parentElement !== container) container.appendChild(hostEl);
   }, [hostEl, container]);
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const { mode: historyMode, remeasure: remeasureHistoryMode } = useHistoryPresentationMode(
+    container,
+    hostThreads,
+  );
+  const historyPanelId = useId();
+  const historyToggleRef = useRef<HTMLButtonElement>(null);
+  const previousHistoryModeRef = useRef(historyMode);
+
+  useLayoutEffect(() => {
+    const previousMode = previousHistoryModeRef.current;
+    previousHistoryModeRef.current = historyMode;
+    if (historyOpen && previousMode === 'docked' && historyMode === 'cover') {
+      closeHistory(setHistoryOpen, 'if-panel-focused', historyPanelId, historyToggleRef);
+    }
+  }, [historyMode, historyOpen, historyPanelId]);
   const canRehydrate = hostTerminals && typeof bridge?.terminal?.list === 'function';
   const restoresDesktopDockOrder =
     hostThreads && typeof bridge?.terminal?.getDockState === 'function';
@@ -380,6 +455,12 @@ export function SessionsHost({
   const lastHandledThreadNonceRef = useRef<number | null>(null);
   const settingsShownForNonceRef = useRef<number | null>(null);
   const seedOwedRef = useRef(false);
+  const initialVisibleSeedAttemptedRef = useRef(false);
+  const [emptyAgentLaunchState, setEmptyAgentLaunchState] = useState<EmptyAgentLaunchState>('idle');
+  const pendingAgentLaunchRequestRef = useRef<AgentPaneLaunchRequest | null>(null);
+  const retryAgentLaunchRequestRef = useRef<AgentPaneLaunchRequest | null>(null);
+  const emptyAgentRetryButtonRef = useRef<HTMLButtonElement>(null);
+  const retryFocusRequestedRef = useRef(false);
   const restoreAbandonedRef = useRef(false);
   const restoreUnreadRef = useRef(false);
   const userArrangedRef = useRef(false);
@@ -393,9 +474,32 @@ export function SessionsHost({
   const stripLaunchNonceRef = useRef(0);
 
   const openThreadTabs = useOpenAgentThreadTabs();
-  const archivedThreads = useArchivedAgentThreads();
+  const agentThreads = useAgentThreads();
+  const threadScope = useAgentThreadScope();
   const threadConnection = useAgentThreadConnection();
+  useEffect(() => {
+    void threadScope;
+    initialVisibleSeedAttemptedRef.current = false;
+    pendingAgentLaunchRequestRef.current = null;
+    retryAgentLaunchRequestRef.current = null;
+    retryFocusRequestedRef.current = false;
+    setEmptyAgentLaunchState('idle');
+  }, [threadScope]);
+  useEffect(() => {
+    if (!retryFocusRequestedRef.current) return;
+    if (emptyAgentLaunchState !== 'failed' && emptyAgentLaunchState !== 'deduped') return;
+    const frame = window.requestAnimationFrame(() => {
+      retryFocusRequestedRef.current = false;
+      emptyAgentRetryButtonRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [emptyAgentLaunchState]);
+  useEffect(() => {
+    if (hostThreads && !visible && historyOpen)
+      closeHistory(setHistoryOpen, 'never', historyPanelId, historyToggleRef);
+  }, [historyOpen, historyPanelId, hostThreads, visible]);
   const threadConnectionDown = threadConnection === 'connecting' || threadConnection === 'closed';
+  const agentCatalog = useAgentCatalogQuery(hostThreads);
   const registeredAgents = useRegisteredAgents();
   const enabledOverrides = useEnabledOverrides();
   const enabledRegisteredAgents = registeredAgents.filter((agent) =>
@@ -406,12 +510,52 @@ export function SessionsHost({
     enabledRegisteredAgents,
     defaultRegisteredAgent,
   );
+  const registeredAgentKeys = new Set(
+    registeredAgents.map((agent) => `${agent.source}:${agent.id}`),
+  );
+  const detectedAgentRegistrationPending = detectedHarnessAgents(
+    agentCatalog.data?.agents ?? [],
+  ).some((agent) => !registeredAgentKeys.has(`${agent.source}:${agent.id}`));
+  const refetchAgentCatalog = () => {
+    void agentCatalog.refetch();
+  };
+  const agentCatalogFailed = agentCatalog.isError;
+  const agentOptionsSettled = !agentCatalog.isLoading && !detectedAgentRegistrationPending;
   const liveThreadCount = openThreadTabs.filter((info) => info.archived !== true).length;
   const threadInfoById = new Map(openThreadTabs.map((info) => [info.threadId, info]));
   const openThreadIds = new Set(threadInfoById.keys());
 
-  function openArchivedThread(threadId: string) {
+  function selectHistoryThread(threadId: string) {
+    noteUserArrangement();
+    pendingActiveKeyRef.current = null;
+    const openSession = sessionsRef.current.find(
+      (session) => session.kind === 'thread' && session.threadId === threadId,
+    );
+    if (openSession != null) {
+      setActiveSessionId(openSession.id);
+      queueMicrotask(() => focusSession(openSession));
+      return;
+    }
     getAgentThreadClient().openArchivedThread(threadId);
+  }
+
+  function dismissHistory(reason: 'explicit' | 'selection') {
+    closeHistory(
+      setHistoryOpen,
+      reason === 'explicit' ? 'always' : 'never',
+      historyPanelId,
+      historyToggleRef,
+    );
+  }
+
+  function setHistoryOpenForPane(open: boolean) {
+    if (open) remeasureHistoryMode();
+    setHistoryOpen(open);
+  }
+
+  function dismissCoveringHistory() {
+    if (hostThreads && historyOpen && historyMode === 'cover')
+      closeHistory(setHistoryOpen, 'never', historyPanelId, historyToggleRef);
   }
 
   function dockPersistSuppressed(): boolean {
@@ -521,28 +665,86 @@ export function SessionsHost({
     openSession({ prompt: null, cli, nonce: stripLaunchNonceRef.current }, null, provenance);
   }
 
+  function launchAgentForPane(request: AgentPaneLaunchRequest) {
+    const {
+      agent,
+      prompt = null,
+      docName = null,
+      titleHint = null,
+      stageDraft = null,
+      attachments,
+    } = request;
+    const tracksEmptyPane = hostThreads && sessionsRef.current.length === 0;
+    const previousPendingRequest = pendingAgentLaunchRequestRef.current;
+    if (tracksEmptyPane) {
+      pendingAgentLaunchRequestRef.current = request;
+      setEmptyAgentLaunchState('launching');
+    }
+    return launchAgentThread(
+      { source: agent.source, id: agent.id },
+      prompt,
+      docName,
+      titleHint,
+      stageDraft,
+      attachments,
+    ).then((outcome) => {
+      if (outcome === 'deduped') {
+        toast.error(t`Already starting a chat with this agent — try again in a moment.`);
+      }
+      if (
+        !tracksEmptyPane ||
+        sessionsRef.current.length > 0 ||
+        pendingAgentLaunchRequestRef.current !== request
+      )
+        return outcome;
+      switch (outcome) {
+        case 'failed':
+          pendingAgentLaunchRequestRef.current = null;
+          retryAgentLaunchRequestRef.current = request;
+          setEmptyAgentLaunchState('failed');
+          return outcome;
+        case 'deduped':
+          if (previousPendingRequest !== null) {
+            pendingAgentLaunchRequestRef.current = previousPendingRequest;
+            setEmptyAgentLaunchState('launching');
+          } else {
+            pendingAgentLaunchRequestRef.current = null;
+            retryAgentLaunchRequestRef.current = request;
+            setEmptyAgentLaunchState('deduped');
+          }
+          return outcome;
+        case 'started':
+          return outcome;
+        default:
+          return assertNeverThreadLaunchOutcome(outcome);
+      }
+    });
+  }
+
+  function retryFailedAgentLaunch() {
+    dismissCoveringHistory();
+    retryFocusRequestedRef.current = true;
+    const request = retryAgentLaunchRequestRef.current;
+    if (request === null) {
+      launchSelectedNewTab();
+      return;
+    }
+    void launchAgentForPane(request);
+  }
+
   function launchSelectedNewTab() {
+    dismissCoveringHistory();
     if (newSessionChoice.kind === 'terminal') openSession(null, null, 'user');
     else if (newSessionChoice.kind === 'cli') openNewChatSession(newSessionChoice.cli, 'user');
     else if (newSessionChoice.kind === 'agent' && newSessionChoice.agent != null)
-      void launchAgentThread(
-        { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
-        null,
-        null,
-        null,
-      );
+      void launchAgentForPane({ agent: newSessionChoice.agent });
     else openAgentSettings();
   }
 
   function seedOnReveal(): boolean {
     if (hostThreads) {
       if (newSessionChoice.kind !== 'agent' || newSessionChoice.agent == null) return false;
-      void launchAgentThread(
-        { source: newSessionChoice.agent.source, id: newSessionChoice.agent.id },
-        null,
-        null,
-        null,
-      );
+      void launchAgentForPane({ agent: newSessionChoice.agent });
       return true;
     }
     if (newSessionChoice.kind === 'terminal') openSession(null, null, 'restore-seed');
@@ -633,6 +835,7 @@ export function SessionsHost({
   }, [activeSessionId, sessions, openThreadTabs]);
 
   function revealForReuse() {
+    dismissCoveringHistory();
     if (!visible) onVisibleChange(true);
   }
 
@@ -642,6 +845,7 @@ export function SessionsHost({
       if (!hostThreads) return;
     } else if (!claimsSessionKind(selection.kind)) return;
     if (!visible) onVisibleChange(true);
+    dismissCoveringHistory();
     const activeId = activeSessionIdRef.current;
     const active = sessionsRef.current.find((s) => s.id === activeId);
     if (!newTab && active != null) {
@@ -662,8 +866,9 @@ export function SessionsHost({
     }
     if (selection.kind === 'thread') {
       const agent = { source: selection.agent.source, id: selection.agent.id };
-      if (submit) void launchAgentThread(agent, text, null, null, null);
-      else void launchAgentThread(agent, null, null, null, text);
+      void (submit
+        ? launchAgentForPane({ agent, prompt: text })
+        : launchAgentForPane({ agent, stageDraft: text }));
     } else if (selection.kind === 'cli') {
       requestTerminalLaunch(text, selection.cli, { stage: !submit });
     } else {
@@ -672,21 +877,24 @@ export function SessionsHost({
   }
 
   function pickNewChatCli(cli: TerminalCli) {
+    dismissCoveringHistory();
     writePreferBareTerminal(false);
     saveStickyAgent(terminalCliId(cli));
     openNewChatSession(cli, 'user');
   }
 
   function pickNewChatTerminal() {
+    dismissCoveringHistory();
     writePreferBareTerminal(true);
     openSession(null, null, 'user');
   }
 
   function pickNewChatAgent(agent: RegisteredAgent) {
+    dismissCoveringHistory();
     registerAgent(agent);
     writePreferBareTerminal(false);
     saveStickyAgent(threadAgentId(agent));
-    void launchAgentThread({ source: agent.source, id: agent.id }, null, null, null);
+    void launchAgentForPane({ agent });
   }
 
   function setSessionTitle(id: string, title: string) {
@@ -777,6 +985,7 @@ export function SessionsHost({
   const moveActiveSessionRef = useRef(moveActiveSession);
   const openSessionRef = useRef(openSession);
   const seedOnRevealRef = useRef(seedOnReveal);
+  const launchAgentForPaneRef = useRef(launchAgentForPane);
   const dispatchAskAiRef = useRef(dispatchAskAi);
   const revealForReuseRef = useRef(revealForReuse);
   const launchPreferredSessionRef = useRef(launchPreferredSession);
@@ -811,6 +1020,7 @@ export function SessionsHost({
     persistSuppressedRef.current = dockPersistSuppressed;
     openSessionRef.current = openSession;
     seedOnRevealRef.current = seedOnReveal;
+    launchAgentForPaneRef.current = launchAgentForPane;
     dispatchAskAiRef.current = dispatchAskAi;
     revealForReuseRef.current = revealForReuse;
     launchPreferredSessionRef.current = launchPreferredSession;
@@ -829,6 +1039,14 @@ export function SessionsHost({
       if (lastTerminal != null) closeSession(lastTerminal.id);
     };
   });
+
+  useEffect(() => {
+    if (sessions.length === 0) return;
+    pendingAgentLaunchRequestRef.current = null;
+    retryAgentLaunchRequestRef.current = null;
+    retryFocusRequestedRef.current = false;
+    setEmptyAgentLaunchState('idle');
+  }, [sessions.length]);
 
   const initialRosterThreadIds = useInitialRosterThreadIds();
 
@@ -1001,6 +1219,24 @@ export function SessionsHost({
       seedOwedRef.current = !seedOnRevealRef.current();
       return;
     }
+    if (
+      hostThreads &&
+      visible &&
+      wasVisible &&
+      !initialVisibleSeedAttemptedRef.current &&
+      initialRosterThreadIds !== null
+    ) {
+      initialVisibleSeedAttemptedRef.current = true;
+      if (
+        openThreadTabs.length === 0 &&
+        sessions.length === 0 &&
+        !threadLaunchPending &&
+        !hasInflightThreadLaunch()
+      ) {
+        seedOwedRef.current = !seedOnRevealRef.current();
+      }
+      return;
+    }
     if (!seedOwedRef.current) return;
     if (!visible || sessions.length > 0 || threadLaunchPending) {
       seedOwedRef.current = false;
@@ -1017,6 +1253,8 @@ export function SessionsHost({
     rehydrationSettled,
     hostThreads,
     effectiveDefaultAgent,
+    initialRosterThreadIds,
+    openThreadTabs.length,
     hostTerminals,
     terminalRestoreRevealNonce,
   ]);
@@ -1039,19 +1277,14 @@ export function SessionsHost({
       return;
     }
     lastHandledThreadNonceRef.current = threadLaunch.nonce;
-    void launchAgentThread(
+    void launchAgentForPaneRef.current({
       agent,
-      threadLaunch.prompt,
-      threadLaunch.docName,
-      threadLaunch.titleHint,
-      null,
-      threadLaunch.attachments ?? undefined,
-    ).then((outcome) => {
-      if (outcome === 'deduped') {
-        toast.error(t`Already starting a chat with this agent — try again in a moment.`);
-      }
+      prompt: threadLaunch.prompt,
+      docName: threadLaunch.docName,
+      titleHint: threadLaunch.titleHint,
+      attachments: threadLaunch.attachments ?? undefined,
     });
-  }, [threadLaunch, hostThreads, effectiveDefaultAgent, t]);
+  }, [threadLaunch, hostThreads, effectiveDefaultAgent]);
 
   useEffect(() => {
     if (!hostTerminals) return;
@@ -1356,32 +1589,49 @@ export function SessionsHost({
   }, [isShowing, visible, onRequestEditorFocus]);
 
   useEffect(() => {
-    if (!isShowing) return;
-    const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
-    if (active == null) return;
-    focusSession(active);
-    if (hostEl == null || focusInsideHost(hostEl)) return;
-    let landed = false;
+    if (!isShowing || hostEl == null) return;
+    const focusOrigin = document.activeElement;
+    const initialActive = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+    if (initialActive != null && focusSession(initialActive)) return;
+    let landed = focusInsideHost(hostEl);
+    let retryFrame: number | null = null;
     const recordLanding = (event: FocusEvent) => {
       if (hostEl.contains(event.target as Node | null)) landed = true;
     };
+    const retryFocus = () => {
+      retryFrame = null;
+      const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+      if (active == null) return;
+      const focused = document.activeElement;
+      const fallback = fallbackSessionFocusElement(active);
+      if (
+        focused != null &&
+        focused !== document.body &&
+        focused !== focusOrigin &&
+        focused !== fallback
+      )
+        return;
+      const preferred = focusSession(active);
+      landed = focusInsideHost(hostEl) || landed;
+      if (preferred) observer.disconnect();
+    };
+    const scheduleRetry = () => {
+      if (retryFrame !== null) return;
+      retryFrame = window.requestAnimationFrame(retryFocus);
+    };
     document.addEventListener('focusin', recordLanding, true);
     const observer = new MutationObserver(() => {
-      if (focusInsideHost(hostEl)) {
-        landed = true;
-        observer.disconnect();
-        return;
-      }
-      if (document.activeElement == null || document.activeElement === document.body) {
-        focusSession(active);
-      }
+      retryFocus();
+      if (!landed) scheduleRetry();
     });
     observer.observe(hostEl, { subtree: true, childList: true });
+    scheduleRetry();
     const deadline = window.setTimeout(() => {
       observer.disconnect();
       const focusNowhere =
         document.activeElement == null || document.activeElement === document.body;
-      if (!landed && focusNowhere) {
+      const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+      if (!landed && focusNowhere && active != null) {
         console.warn(
           `[${hostThreads ? 'agents' : 'terminal'}] reveal focus did not land within its ${REVEAL_FOCUS_LANDING_TIMEOUT_MS}ms bound`,
         );
@@ -1390,6 +1640,7 @@ export function SessionsHost({
     return () => {
       document.removeEventListener('focusin', recordLanding, true);
       observer.disconnect();
+      if (retryFrame != null) window.cancelAnimationFrame(retryFrame);
       window.clearTimeout(deadline);
     };
   }, [isShowing, hostEl, hostThreads]);
@@ -1402,11 +1653,18 @@ export function SessionsHost({
     activeThreadIdForView !== null ? threadInfoById.get(activeThreadIdForView) : undefined;
   const activeThreadActivityAt = activeThreadInfoForView?.lastActivityAt ?? null;
   const activeThreadStatus = activeThreadInfoForView?.status ?? null;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `activeThreadActivityAt` and `activeThreadStatus` are not read inside the effect body — they are dep-only, so an incoming activity tick OR a status transition (running → ready without a fresh activityAt) both re-fire the mark-viewed call. Without the status dep, a ready-flip on an unchanged activityAt would leave the tab pulsing forever.
+  const historyCovering = hostThreads && historyOpen && historyMode === 'cover';
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `activeThreadActivityAt` and `activeThreadStatus` are not read inside the effect body — they are dep-only, so an incoming activity tick OR a status transition (running → ready without a fresh activityAt) both re-fire the mark-viewed call. Without the status dep, a ready-flip on an unchanged activityAt would leave the tab pulsing forever. Neither trigger marks anything while `historyCovering` holds: a transcript the history cover hides has not been read, so the effect returns before the call and re-fires once the cover lifts.
   useEffect(() => {
-    if (!isShowing || activeThreadIdForView === null) return;
+    if (!isShowing || historyCovering || activeThreadIdForView === null) return;
     getAgentThreadClient().markThreadViewed(activeThreadIdForView);
-  }, [activeThreadIdForView, activeThreadActivityAt, activeThreadStatus, isShowing]);
+  }, [
+    activeThreadIdForView,
+    activeThreadActivityAt,
+    activeThreadStatus,
+    historyCovering,
+    isShowing,
+  ]);
 
   const tabDescriptors: TerminalTabDescriptor[] = sessions.map((session) => ({
     id: session.id,
@@ -1437,18 +1695,110 @@ export function SessionsHost({
     />
   );
 
-  const trailingControls =
-    hostThreads && archivedThreads.length > 0 ? (
-      <ThreadHistoryMenu
-        archived={archivedThreads}
-        openThreadIds={openThreadIds}
-        onOpenThread={openArchivedThread}
-      />
-    ) : null;
+  const historyNewButton = hostThreads ? (
+    <TerminalNewChatButton
+      selected={newSessionChoice}
+      onLaunchSelected={launchSelectedNewTab}
+      showAgents
+      registeredAgents={enabledRegisteredAgents}
+      onPickAgent={pickNewChatAgent}
+      onOpenSettings={openAgentSettings}
+      liveThreadCount={liveThreadCount}
+      showClis={terminalAvailable}
+      onPickCli={pickNewChatCli}
+      onPickTerminal={pickNewChatTerminal}
+      visibleClis={enabledTerminalClis(enabledOverrides, installedClis ?? {})}
+      presentation="panel"
+    />
+  ) : null;
+
+  const trailingControls = hostThreads ? (
+    <ThreadHistoryToggle
+      open={historyOpen}
+      panelId={historyPanelId}
+      triggerRef={historyToggleRef}
+      onOpenChange={setHistoryOpenForPane}
+    />
+  ) : null;
 
   const showStrip = sessions.length > 0 || (visible && !isWindow);
+  const emptyAgentStatePreview = readEmptyAgentStatePreview();
+  const emptyAgentState =
+    emptyAgentStatePreview ??
+    (initialRosterThreadIds === null || (effectiveDefaultAgent === null && !agentOptionsSettled)
+      ? 'loading'
+      : effectiveDefaultAgent === null
+        ? agentCatalogFailed
+          ? 'agents-unavailable'
+          : 'no-agents'
+        : emptyAgentStateFromLaunchState(emptyAgentLaunchState));
+  const showEmptyAgentState =
+    hostThreads && (sessions.length === 0 || emptyAgentStatePreview !== null);
 
-  const sessionViews = showStrip ? (
+  const sessionContent = showEmptyAgentState ? (
+    <EmptyAgentSessionsState
+      state={emptyAgentState}
+      onConfigureAgents={openAgentSettings}
+      onRetry={
+        emptyAgentState === 'agents-unavailable' ? refetchAgentCatalog : retryFailedAgentLaunch
+      }
+      retryButtonRef={emptyAgentRetryButtonRef}
+    />
+  ) : sessions.length === 0 ? (
+    terminalAvailable ? null : (
+      <EmptySessionsState />
+    )
+  ) : (
+    panelSessions.map((session) => (
+      <TabsContent
+        key={session.id}
+        value={session.id}
+        forceMount
+        data-session-id={session.id}
+        {...(session.kind === 'terminal' ? { 'data-terminal-session': session.id } : {})}
+        className={cn(
+          'm-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden',
+          isWindow && 'px-[22px] pb-[22px]',
+        )}
+      >
+        {session.kind === 'terminal' ? (
+          bridge != null && terminalAvailable ? (
+            <TerminalGate
+              bridge={bridge}
+              launch={session.launch}
+              commandId={session.commandId}
+              adoptPtyId={session.adoptPtyId}
+              onPtyId={(ptyId) => setSessionPtyId(session.id, ptyId)}
+              onTitleChange={(title) => setSessionTitle(session.id, title)}
+              onClose={() => closeSession(session.id)}
+            />
+          ) : null
+        ) : (
+          <ThreadPanel
+            threadId={session.threadId}
+            info={threadInfoById.get(session.threadId)}
+            showConnectionBanner={threadConnectionDown && session.id === activeSessionId}
+            active={visible && !historyCovering && session.id === activeSessionId}
+          />
+        )}
+      </TabsContent>
+    ))
+  );
+
+  const historyPanel = historyOpen ? (
+    <ThreadHistoryPanel
+      threads={agentThreads}
+      openThreadIds={openThreadIds}
+      activeThreadId={activeThreadIdForView}
+      onSelectThread={selectHistoryThread}
+      mode={historyMode}
+      panelId={historyPanelId}
+      onDismiss={dismissHistory}
+      newChatControl={historyNewButton}
+    />
+  ) : null;
+
+  const sessionStrip = (
     <TerminalTabStrip
       sessions={tabDescriptors}
       sessionKind={hostThreads ? 'agent' : 'terminal'}
@@ -1484,49 +1834,51 @@ export function SessionsHost({
       draggable={isWindow}
       className="h-full"
     >
-      {sessions.length === 0 ? (
-        terminalAvailable ? null : hostThreads && archivedThreads.length > 0 ? (
-          <ArchivedThreadChooser archived={archivedThreads} onOpen={openArchivedThread} />
-        ) : (
-          <EmptySessionsState />
-        )
+      {hostThreads ? (
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">{sessionContent}</div>
       ) : (
-        panelSessions.map((session) => (
-          <TabsContent
-            key={session.id}
-            value={session.id}
-            forceMount
-            data-session-id={session.id}
-            {...(session.kind === 'terminal' ? { 'data-terminal-session': session.id } : {})}
-            className={cn(
-              'm-0 flex min-h-0 flex-1 flex-col overflow-hidden data-[state=inactive]:hidden',
-              isWindow && 'px-[22px] pb-[22px]',
-            )}
-          >
-            {session.kind === 'terminal' ? (
-              bridge != null && terminalAvailable ? (
-                <TerminalGate
-                  bridge={bridge}
-                  launch={session.launch}
-                  commandId={session.commandId}
-                  adoptPtyId={session.adoptPtyId}
-                  onPtyId={(ptyId) => setSessionPtyId(session.id, ptyId)}
-                  onTitleChange={(title) => setSessionTitle(session.id, title)}
-                  onClose={() => closeSession(session.id)}
-                />
-              ) : null
-            ) : (
-              <ThreadPanel
-                threadId={session.threadId}
-                info={threadInfoById.get(session.threadId)}
-                showConnectionBanner={threadConnectionDown && session.id === activeSessionId}
-                active={visible && session.id === activeSessionId}
-              />
-            )}
-          </TabsContent>
-        ))
+        sessionContent
       )}
     </TerminalTabStrip>
+  );
+
+  const sessionViews = showStrip ? (
+    hostThreads ? (
+      <ThreadHistorySearchProvider scope={threadScope}>
+        <div
+          className="relative flex h-full min-h-0 min-w-0 overflow-hidden"
+          data-testid="agent-panel-layout"
+        >
+          <div
+            className="flex min-h-0 min-w-0 flex-1 flex-col"
+            data-testid="agent-panel-session-surface"
+            inert={historyCovering ? true : undefined}
+          >
+            {sessionStrip}
+          </div>
+          {historyOpen ? (
+            <div
+              className={cn(
+                'z-20 h-full max-w-full bg-background',
+                historyMode === 'cover'
+                  ? 'absolute inset-0 w-full shadow-xl'
+                  : 'w-(--history-panel-width) shrink-0 border-s',
+              )}
+              style={
+                {
+                  '--history-panel-width': `${HISTORY_PANEL_WIDTH_PX}px`,
+                } as CSSProperties
+              }
+              data-testid="agent-thread-history-surface"
+            >
+              {historyPanel}
+            </div>
+          ) : null}
+        </div>
+      </ThreadHistorySearchProvider>
+    ) : (
+      sessionStrip
+    )
   ) : null;
 
   return (
@@ -1604,6 +1956,149 @@ function EmptySessionsState() {
       {t`Start a chat with the ＋ button, or launch an agent from a page.`}
     </div>
   );
+}
+
+function EmptyAgentSessionsState({
+  state,
+  onConfigureAgents,
+  onRetry,
+  retryButtonRef,
+}: {
+  state: EmptyAgentState;
+  onConfigureAgents: () => void;
+  onRetry: () => void;
+  retryButtonRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const { t } = useLingui();
+  let content: ReactNode;
+  switch (state) {
+    case 'idle':
+      content = null;
+      break;
+    case 'loading':
+    case 'starting':
+      content = (
+        <div
+          role="status"
+          aria-busy="true"
+          className="flex items-center gap-2"
+          data-testid="sessions-dock-loading"
+        >
+          <span aria-hidden="true">
+            <Spinner className="size-4" />
+          </span>
+          <span>{state === 'loading' ? t`Loading agents…` : t`Starting the agent…`}</span>
+        </div>
+      );
+      break;
+    case 'no-agents':
+      content = (
+        <div className="flex flex-col items-center gap-2" data-testid="sessions-dock-no-agents">
+          <p>{t`No agents enabled.`}</p>
+          <Button type="button" size="sm" onClick={onConfigureAgents}>
+            {t`Configure agents`}
+          </Button>
+        </div>
+      );
+      break;
+    case 'agents-unavailable':
+      content = (
+        <div
+          className="flex flex-col items-center gap-2"
+          data-testid="sessions-dock-agents-unavailable"
+        >
+          <p>{t`Couldn't load your agents.`}</p>
+          <Button type="button" size="sm" onClick={onRetry}>
+            {t`Try again`}
+          </Button>
+        </div>
+      );
+      break;
+    case 'failed':
+      content = (
+        <div className="flex flex-col items-center gap-2" data-testid="sessions-dock-launch-failed">
+          <p>{t`Couldn't start the agent thread.`}</p>
+          <Button ref={retryButtonRef} type="button" size="sm" onClick={onRetry}>
+            {t`Try again`}
+          </Button>
+        </div>
+      );
+      break;
+    case 'deduped':
+      content = (
+        <div
+          className="flex flex-col items-center gap-2"
+          data-testid="sessions-dock-launch-deduped"
+        >
+          <p>{t`Already starting a chat with this agent — try again in a moment.`}</p>
+          <Button ref={retryButtonRef} type="button" size="sm" onClick={onRetry}>
+            {t`Try again`}
+          </Button>
+        </div>
+      );
+      break;
+    default:
+      content = assertNeverEmptyAgentState(state);
+  }
+  return (
+    <div
+      className="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-muted-foreground text-sm"
+      data-testid="sessions-dock-empty"
+    >
+      {content}
+    </div>
+  );
+}
+
+type EmptyAgentState =
+  | 'idle'
+  | 'loading'
+  | 'starting'
+  | 'deduped'
+  | 'no-agents'
+  | 'agents-unavailable'
+  | 'failed';
+
+const EMPTY_AGENT_STATES: readonly EmptyAgentState[] = [
+  'loading',
+  'starting',
+  'deduped',
+  'no-agents',
+  'agents-unavailable',
+  'failed',
+];
+
+function readEmptyAgentStatePreview(): EmptyAgentState | null {
+  if (!import.meta.env.DEV || typeof window === 'undefined') return null;
+  const state = new URLSearchParams(window.location.search).get('preview-agent-empty');
+  return EMPTY_AGENT_STATES.find((candidate) => candidate === state) ?? null;
+}
+
+function assertNeverThreadLaunchOutcome(outcome: never): never {
+  throw new Error(`unhandled thread launch outcome: ${String(outcome)}`);
+}
+
+function assertNeverEmptyAgentState(state: never): never {
+  throw new Error(`unhandled empty agent state: ${String(state)}`);
+}
+
+function emptyAgentStateFromLaunchState(state: EmptyAgentLaunchState): EmptyAgentState {
+  switch (state) {
+    case 'idle':
+      return 'idle';
+    case 'launching':
+      return 'starting';
+    case 'deduped':
+      return 'deduped';
+    case 'failed':
+      return 'failed';
+    default:
+      return assertNeverEmptyAgentLaunchState(state);
+  }
+}
+
+function assertNeverEmptyAgentLaunchState(state: never): never {
+  throw new Error(`unhandled empty agent launch state: ${String(state)}`);
 }
 
 function computePersistKey(

@@ -302,6 +302,11 @@ msgstr "{0} age sem perguntar — o OpenKnowledge não consegue adicionar pedido
 msgid "{0} added, {1} removed"
 msgstr "{0} adicionados, {1} removidos"
 
+#. placeholder {0}: TERMINAL_CLIS[cli].displayName
+#: src/components/TerminalNewChatButton.tsx
+msgid "{0} CLI"
+msgstr "CLI do {0}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
@@ -723,7 +728,7 @@ msgstr "{count} habilidades"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, one {há # dia} many {há # dias} other {há # dias}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "{days}d ago"
 msgstr "há {days} d"
 
@@ -858,7 +863,7 @@ msgstr "{folderCount, plural, one {pasta} many {pastas} other {pastas}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} estrelas no GitHub"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -935,7 +940,7 @@ msgstr "{localizedMessage} na linha {displayLine}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {há # min} many {há # min} other {há # min}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -2339,6 +2344,7 @@ msgstr "Disponível em todos os projetos deste computador. Não é compartilhado
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr "Disponível no app de desktop do OpenKnowledge. Em um terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/NavigationHistoryControls.tsx
@@ -2611,7 +2617,6 @@ msgstr "Não é possível compartilhar este caminho."
 
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -2741,7 +2746,11 @@ msgctxt "settings search keyword"
 msgid "characters"
 msgstr "caracteres"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Chat history"
+msgstr "Histórico de chats"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Chat name"
 msgstr "Nome do chat"
 
@@ -2880,6 +2889,10 @@ msgid "Choose icon"
 msgstr "Escolher ícone"
 
 #: src/components/TerminalNewChatButton.tsx
+msgid "Choose what a new chat starts"
+msgstr "Escolha o que um novo chat inicia"
+
+#: src/components/TerminalNewChatButton.tsx
 msgid "Choose what a new tab starts"
 msgstr "Escolha o que uma nova aba inicia"
 
@@ -2962,6 +2975,10 @@ msgstr "Limpe um campo para restaurar seu valor padrão."
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
 msgstr "Limpar cor"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Clear history search"
+msgstr "Limpar busca do histórico"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -3137,7 +3154,7 @@ msgstr "Fechar aba"
 msgid "Close terminal"
 msgstr "Fechar terminal"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Close this chat's tab to delete it"
 msgstr "Feche a aba deste chat para excluí-lo"
 
@@ -3395,6 +3412,7 @@ msgstr "Avisos de configuração"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -4118,6 +4136,10 @@ msgstr "Não foi possível carregar as habilidades do OpenKnowledge. Tente de no
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "Não foi possível carregar a pré-visualização da versão. Você ainda pode escolher abaixo como resolver."
 
+#: src/components/SessionsHost.tsx
+msgid "Couldn't load your agents."
+msgstr "Não foi possível carregar seus agentes."
+
 #: src/components/BugReportHistory.tsx
 msgid "Couldn't load your bug reports."
 msgstr "Não foi possível carregar seus relatórios de erro."
@@ -4420,6 +4442,10 @@ msgstr "Não foi possível iniciar o Slidev."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
 msgstr "Não deu para iniciar a conversa com o agente — tente de novo."
+
+#: src/components/SessionsHost.tsx
+msgid "Couldn't start the agent thread."
+msgstr "Não deu para iniciar a conversa com o agente."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
@@ -4726,7 +4752,6 @@ msgstr "Propriedades padrão"
 msgid "Default: <0>{0}</0>"
 msgstr "Padrão: <0>{0}</0>"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/FileTargetMenuItems.tsx
 #: src/components/skill-actions.tsx
@@ -4737,7 +4762,7 @@ msgstr "Excluir"
 
 #. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "Excluir {0}"
@@ -4775,6 +4800,14 @@ msgstr "Exclui um chip de link wiki ou de tag que esteja ao lado."
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Delete block"
 msgstr "Excluir o bloco"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat"
+msgstr "Excluir chat"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat?"
+msgstr "Excluir chat?"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Delete code block"
@@ -4819,10 +4852,6 @@ msgstr "Excluir tabela"
 #: src/components/DiffViewBoundary.tsx
 msgid "Delete the file"
 msgstr "Excluir o arquivo"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this chat?"
-msgstr "Excluir este chat?"
 
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
@@ -7730,7 +7759,7 @@ msgstr "Ir para o texto ancorado"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "Ir para o código markdown do bloco onde está o cursor, centralizado e destacado."
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -8032,6 +8061,7 @@ msgstr "Carregando {fileName}"
 msgid "Loading agent activity"
 msgstr "Carregando a atividade do agente"
 
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "Carregando agentes…"
@@ -8791,7 +8821,6 @@ msgid "New"
 msgstr "Novo"
 
 #. placeholder {0}: TERMINAL_CLIS[selected.cli].displayName
-#. placeholder {0}: selected.agent.name
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "Novo chat do {0}"
@@ -8812,8 +8841,13 @@ msgstr "O novo ramo <0>{trimmed}</0> será criado a partir do commit atual, em u
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "As novidades do seu remoto aparecem na sua cópia automaticamente."
 
+#: src/components/TerminalNewChatButton.tsx
+msgid "New chat"
+msgstr "Novo chat"
+
 #: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
+#: src/components/TerminalNewChatButton.tsx
 msgid "New chat with {agentName}"
 msgstr "Novo chat com {agentName}"
 
@@ -8995,6 +9029,10 @@ msgstr "Nenhum agente disponível."
 msgid "No agents enabled"
 msgstr "Nenhum agente ativado"
 
+#: src/components/SessionsHost.tsx
+msgid "No agents enabled."
+msgstr "Nenhum agente ativado."
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "Nenhum agente corresponde à sua busca."
@@ -9039,6 +9077,14 @@ msgstr "Ainda não há relatórios de erro."
 #: src/components/ActivityPanelDiffView.tsx
 msgid "No changes"
 msgstr "Sem alterações"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats match your search"
+msgstr "Nenhum chat corresponde à sua busca"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats yet."
+msgstr "Ainda não há chats."
 
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
@@ -9207,10 +9253,6 @@ msgstr "Nenhum repositório corresponde."
 #: src/components/RecentProjectsMenu.tsx
 msgid "No matching worktrees or branches."
 msgstr "Nenhum worktree ou ramo corresponde."
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
-msgstr "Nenhum chat aberto. Reabra um anterior ou inicie um novo com o botão ＋."
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9535,6 +9577,10 @@ msgstr "Da última vez o OK deixou esta pasta como {0} — algo fora do OK mudou
 #: src/components/settings/LintingSection.tsx
 msgid "OKF agent skill installed"
 msgstr "OKF habilidade do agente instalada"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Older"
+msgstr "Anteriores"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -11450,7 +11496,7 @@ msgstr "Renomear"
 
 #. placeholder {0}: session.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "Renomear {0}"
@@ -11458,6 +11504,10 @@ msgstr "Renomear {0}"
 #: src/components/FrontmatterRow.tsx
 msgid "Rename {keyName}"
 msgstr "Renomear {keyName}"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Rename chat"
+msgstr "Renomear chat"
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileRenameDialog.tsx
@@ -11520,10 +11570,6 @@ msgstr "Renderizado"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "Reabrir"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Reopen a past chat"
-msgstr "Reabrir um chat anterior"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
@@ -12010,7 +12056,6 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "HTML incorporado em modo isolado — escreva HTML e veja a pré-visualização renderizada ao vivo."
 
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -12146,6 +12191,14 @@ msgstr "Buscar ramos..."
 #: src/components/CommandPalette.tsx
 msgid "Search by meaning"
 msgstr "Buscar por significado"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chat history"
+msgstr "Pesquisar no histórico de conversas"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chats"
+msgstr "Pesquisar chats"
 
 #: src/components/emoji-picker.tsx
 msgid "Search emoji"
@@ -13367,6 +13420,7 @@ msgid "Starting terminal…"
 msgstr "Iniciando terminal…"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "Iniciando o agente…"
 
@@ -14889,6 +14943,10 @@ msgstr "A fazer"
 msgid "To do."
 msgstr "A fazer."
 
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Today"
+msgstr "Hoje"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "Liga ou desliga uma lista com marcadores."
@@ -15046,6 +15104,7 @@ msgstr "Experimente um prompt"
 #: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx

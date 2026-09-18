@@ -302,6 +302,11 @@ msgstr "{0} يتصرف دون سؤال — لا يمكن لـ OpenKnowledge إض
 msgid "{0} added, {1} removed"
 msgstr "تمت إضافة {0}، وإزالة {1}"
 
+#. placeholder {0}: TERMINAL_CLIS[cli].displayName
+#: src/components/TerminalNewChatButton.tsx
+msgid "{0} CLI"
+msgstr "واجهة {0} السطرية"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
@@ -723,7 +728,7 @@ msgstr "{count} مهارات"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, zero {قبل # يوم} one {قبل يوم واحد} two {قبل يومين} few {قبل # أيام} many {قبل # يومًا} other {قبل # يوم}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "{days}d ago"
 msgstr "قبل {days} يوم"
 
@@ -858,7 +863,7 @@ msgstr "{folderCount, plural, zero {مجلدات} one {مجلد} two {مجلدا
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} نجمة على GitHub"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -935,7 +940,7 @@ msgstr "{localizedMessage} في السطر {displayLine}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, zero {قبل # دقيقة} one {قبل # دقيقة} two {قبل # دقيقة} few {قبل # دقائق} many {قبل # دقيقة} other {قبل # دقيقة}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -2343,6 +2348,7 @@ msgstr "متاح في كل مشروع على هذا الجهاز. غير مشت�
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr "متاح في تطبيق OpenKnowledge لسطح المكتب. من الطرفية، استخدم<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/NavigationHistoryControls.tsx
@@ -2615,7 +2621,6 @@ msgstr "تعذّرت مشاركة هذا المسار."
 
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -2745,7 +2750,11 @@ msgctxt "settings search keyword"
 msgid "characters"
 msgstr "أحرف"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Chat history"
+msgstr "سجل الدردشة"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Chat name"
 msgstr "اسم المحادثة"
 
@@ -2884,6 +2893,10 @@ msgid "Choose icon"
 msgstr "اختيار أيقونة"
 
 #: src/components/TerminalNewChatButton.tsx
+msgid "Choose what a new chat starts"
+msgstr "اختر ما تبدأ به محادثة جديدة"
+
+#: src/components/TerminalNewChatButton.tsx
 msgid "Choose what a new tab starts"
 msgstr "اختر ما تبدأ به علامة تبويب جديدة"
 
@@ -2966,6 +2979,10 @@ msgstr "أفرغ الحقل لاستعادة قيمته الافتراضية."
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
 msgstr "إزالة اللون"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Clear history search"
+msgstr "مسح البحث في السجل"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -3141,7 +3158,7 @@ msgstr "إغلاق التبويب"
 msgid "Close terminal"
 msgstr "إغلاق الطرفية"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Close this chat's tab to delete it"
 msgstr "أغلق علامة تبويب هذه المحادثة لحذفها"
 
@@ -3399,6 +3416,7 @@ msgstr "تحذيرات الإعداد"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -4122,6 +4140,10 @@ msgstr "تعذّر تحميل مهارات OpenKnowledge. أعد المحاول�
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "تعذّر تحميل معاينة النسخة. لا يزال بإمكانك اختيار طريقة الحل أدناه."
 
+#: src/components/SessionsHost.tsx
+msgid "Couldn't load your agents."
+msgstr "تعذّر تحميل وكلائك."
+
 #: src/components/BugReportHistory.tsx
 msgid "Couldn't load your bug reports."
 msgstr "تعذّر تحميل تقارير العلل الخاصة بك."
@@ -4424,6 +4446,10 @@ msgstr "تعذّر تشغيل Slidev."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
 msgstr "تعذّر بدء سلسلة الوكيل — يرجى المحاولة مرة أخرى."
+
+#: src/components/SessionsHost.tsx
+msgid "Couldn't start the agent thread."
+msgstr "تعذّر بدء سلسلة الوكيل."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
@@ -4730,7 +4756,6 @@ msgstr "الخصائص الافتراضية"
 msgid "Default: <0>{0}</0>"
 msgstr "الافتراضي: <0>{0}</0>"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/FileTargetMenuItems.tsx
 #: src/components/skill-actions.tsx
@@ -4741,7 +4766,7 @@ msgstr "حذف"
 
 #. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "حذف {0}"
@@ -4779,6 +4804,14 @@ msgstr "احذف رقاقة رابط ويكي أو وسم مجاورة."
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Delete block"
 msgstr "حذف الكتلة"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat"
+msgstr "حذف الدردشة"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat?"
+msgstr "حذف الدردشة؟"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Delete code block"
@@ -4823,10 +4856,6 @@ msgstr "حذف الجدول"
 #: src/components/DiffViewBoundary.tsx
 msgid "Delete the file"
 msgstr "حذف الملف"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this chat?"
-msgstr "هل تريد حذف هذه المحادثة؟"
 
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
@@ -7734,7 +7763,7 @@ msgstr "الانتقال إلى النص المرتبط"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "انتقل إلى مصدر Markdown للكتلة عند المؤشر، موسّطًا ومظللًا."
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -8036,6 +8065,7 @@ msgstr "يجري تحميل {fileName}"
 msgid "Loading agent activity"
 msgstr "يجري تحميل نشاط الوكيل"
 
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "يجري تحميل الوكلاء…"
@@ -8795,7 +8825,6 @@ msgid "New"
 msgstr "جديد"
 
 #. placeholder {0}: TERMINAL_CLIS[selected.cli].displayName
-#. placeholder {0}: selected.agent.name
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "محادثة {0} جديدة"
@@ -8816,8 +8845,13 @@ msgstr "سيُنشأ الفرع الجديد <0>{trimmed}</0> من الإيدا�
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "تظهر التغييرات الجديدة من مستودعك البعيد في نسختك تلقائيًا."
 
+#: src/components/TerminalNewChatButton.tsx
+msgid "New chat"
+msgstr "محادثة جديدة"
+
 #: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
+#: src/components/TerminalNewChatButton.tsx
 msgid "New chat with {agentName}"
 msgstr "محادثة جديدة مع {agentName}"
 
@@ -8999,6 +9033,10 @@ msgstr "لا يوجد وكلاء متاحون."
 msgid "No agents enabled"
 msgstr "لا يوجد وكلاء مفعَّلون"
 
+#: src/components/SessionsHost.tsx
+msgid "No agents enabled."
+msgstr "لا يوجد وكلاء مفعَّلون."
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "لا يوجد وكلاء يطابقون بحثك."
@@ -9043,6 +9081,14 @@ msgstr "لا توجد تقارير علل بعد."
 #: src/components/ActivityPanelDiffView.tsx
 msgid "No changes"
 msgstr "لا تغييرات"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats match your search"
+msgstr "لا توجد دردشات تطابق بحثك"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats yet."
+msgstr "لا توجد دردشات بعد."
 
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
@@ -9211,10 +9257,6 @@ msgstr "لا توجد مستودعات مطابقة."
 #: src/components/RecentProjectsMenu.tsx
 msgid "No matching worktrees or branches."
 msgstr "لا توجد أشجار عمل أو فروع مطابقة."
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
-msgstr "لا توجد محادثات مفتوحة. أعد فتح محادثة سابقة، أو ابدأ محادثة جديدة بزر ＋."
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9539,6 +9581,10 @@ msgstr "ضبط OK هذا المجلد آخر مرة على {0} — وقد غيّ
 #: src/components/settings/LintingSection.tsx
 msgid "OKF agent skill installed"
 msgstr "OKF تم تثبيت مهارة الوكيل"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Older"
+msgstr "الأقدم"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -11454,7 +11500,7 @@ msgstr "إعادة تسمية"
 
 #. placeholder {0}: session.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "إعادة تسمية {0}"
@@ -11462,6 +11508,10 @@ msgstr "إعادة تسمية {0}"
 #: src/components/FrontmatterRow.tsx
 msgid "Rename {keyName}"
 msgstr "إعادة تسمية {keyName}"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Rename chat"
+msgstr "إعادة تسمية الدردشة"
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileRenameDialog.tsx
@@ -11524,10 +11574,6 @@ msgstr "معروض"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "إعادة فتح"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Reopen a past chat"
-msgstr "إعادة فتح محادثة سابقة"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
@@ -12014,7 +12060,6 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "تضمين HTML معزول — اكتب HTML وشاهد المعاينة المعروضة مباشرةً."
 
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -12150,6 +12195,14 @@ msgstr "البحث في الفروع..."
 #: src/components/CommandPalette.tsx
 msgid "Search by meaning"
 msgstr "البحث حسب المعنى"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chat history"
+msgstr "البحث في سجل المحادثات"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chats"
+msgstr "البحث عن الدردشات"
 
 #: src/components/emoji-picker.tsx
 msgid "Search emoji"
@@ -13371,6 +13424,7 @@ msgid "Starting terminal…"
 msgstr "جارٍ بدء تشغيل الطرفية…"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "يجري تشغيل الوكيل…"
 
@@ -14893,6 +14947,10 @@ msgstr "للقيام به"
 msgid "To do."
 msgstr "للقيام به."
 
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Today"
+msgstr "اليوم"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "بدّل القائمة النقطية."
@@ -15050,6 +15108,7 @@ msgstr "جرّب موجّهًا"
 #: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx

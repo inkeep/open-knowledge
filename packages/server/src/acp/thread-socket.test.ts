@@ -401,13 +401,19 @@ describe('/collab/thread socket — history ops', () => {
 
     socket.emit(JSON.stringify({ op: 'close', threadId }));
     await waitStatus(manager, threadId, 'exited');
+    const lastActivityAt = manager.getInfo(threadId)?.lastActivityAt;
     socket.emit(JSON.stringify({ op: 'rename', threadId, title: 'Archived and renamed' }));
     const deadline2 = Date.now() + 10_000;
-    while (manager.getInfo(threadId)?.title !== 'Archived and renamed') {
+    while (
+      !socket.frames.some(
+        (frame) => frame.op === 'info' && frame.info.title === 'Archived and renamed',
+      )
+    ) {
       if (Date.now() > deadline2) throw new Error('archived rename never applied');
       await new Promise((r) => setTimeout(r, 25));
     }
     expect(manager.getInfo(threadId)?.archived).toBe(true);
+    expect(manager.getInfo(threadId)?.lastActivityAt).toBe(lastActivityAt);
 
     socket.emit(JSON.stringify({ op: 'rename', threadId: 'nope', title: 'x' }));
     const err = await socket.awaitFrame('error');

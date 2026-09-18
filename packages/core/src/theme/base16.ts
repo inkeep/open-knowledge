@@ -51,6 +51,12 @@ export interface Base16Scheme {
 
 const HEX_RE = /^#[0-9a-fA-F]{6}$/;
 const HAS_NON_WHITESPACE_RE = /\P{White_Space}/u;
+type EndpointSearchContrastFloor = 3 | 4.5;
+
+const MINIMUM_CONTRAST_RATIO = {
+  graphical: 3,
+  text: 4.5,
+} as const satisfies Record<'graphical' | 'text', EndpointSearchContrastFloor>;
 
 export function containsNonWhitespace(value: string): boolean {
   return HAS_NON_WHITESPACE_RE.test(value);
@@ -60,8 +66,45 @@ export function isBase16Hex(value: unknown): value is string {
   return typeof value === 'string' && HEX_RE.test(value);
 }
 
+function contrastRatio(a: string, b: string): number {
+  const aLuminance = relativeLuminance(a);
+  const bLuminance = relativeLuminance(b);
+  return (Math.max(aLuminance, bLuminance) + 0.05) / (Math.min(aLuminance, bLuminance) + 0.05);
+}
+
+function highestContrast(background: string, candidates: readonly string[]): string {
+  return candidates.reduce((best, candidate) =>
+    contrastRatio(background, candidate) > contrastRatio(background, best) ? candidate : best,
+  );
+}
+
+function readableForeground(background: string, paletteCandidates: readonly string[]): string {
+  const paletteForeground = highestContrast(background, paletteCandidates);
+  return contrastRatio(background, paletteForeground) >= MINIMUM_CONTRAST_RATIO.text
+    ? paletteForeground
+    : highestContrast(background, ['#000000', '#ffffff']);
+}
+
+function minimumContrastForeground(
+  background: string,
+  preferred: string,
+  minimum: EndpointSearchContrastFloor,
+): string {
+  if (contrastRatio(background, preferred) >= minimum) return preferred;
+  const endpoint = highestContrast(background, ['#000000', '#ffffff']);
+  for (let step = 1; step <= 255; step += 1) {
+    const candidate = mixHex(preferred, endpoint, step / 255);
+    if (contrastRatio(background, candidate) >= minimum) return candidate;
+  }
+  console.warn(
+    `[base16] No foreground reaches a ${minimum}:1 contrast ratio against ${background}; using the highest-contrast endpoint`,
+  );
+  return endpoint;
+}
+
 export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
   const p = scheme.palette;
+  const sidebarSelected = mixHex(p.base02, scheme.variant === 'dark' ? '#ffffff' : '#000000', 0.04);
   return {
     background: p.base00,
     foreground: p.base05,
@@ -96,6 +139,33 @@ export function base16ToTokens(scheme: Base16Scheme): Record<string, string> {
     'sidebar-accent': p.base02,
     'sidebar-accent-foreground': p.base0D,
     'sidebar-hover': p.base02,
+    'sidebar-hover-foreground': readableForeground(p.base02, [p.base00, p.base05, p.base07]),
+    'sidebar-hover-muted-foreground': minimumContrastForeground(
+      p.base02,
+      p.base04,
+      MINIMUM_CONTRAST_RATIO.text,
+    ),
+    'sidebar-hover-destructive-foreground': minimumContrastForeground(
+      p.base02,
+      p.base08,
+      MINIMUM_CONTRAST_RATIO.graphical,
+    ),
+    'sidebar-selected': sidebarSelected,
+    'sidebar-selected-foreground': readableForeground(sidebarSelected, [
+      p.base00,
+      p.base05,
+      p.base07,
+    ]),
+    'sidebar-selected-muted-foreground': minimumContrastForeground(
+      sidebarSelected,
+      p.base04,
+      MINIMUM_CONTRAST_RATIO.text,
+    ),
+    'sidebar-selected-destructive-foreground': minimumContrastForeground(
+      sidebarSelected,
+      p.base08,
+      MINIMUM_CONTRAST_RATIO.graphical,
+    ),
     'sidebar-border': p.base02,
     'sidebar-ring': p.base0D,
 

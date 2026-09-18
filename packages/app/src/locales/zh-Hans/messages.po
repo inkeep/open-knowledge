@@ -302,6 +302,11 @@ msgstr "{0} 不经询问即执行操作 — OpenKnowledge 无法为其添加权�
 msgid "{0} added, {1} removed"
 msgstr "新增 {0} 项，移除 {1} 项"
 
+#. placeholder {0}: TERMINAL_CLIS[cli].displayName
+#: src/components/TerminalNewChatButton.tsx
+msgid "{0} CLI"
+msgstr "{0} CLI"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
@@ -723,7 +728,7 @@ msgstr "{count} 个技能"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# 天前}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "{days}d ago"
 msgstr "{days} 天前"
 
@@ -858,7 +863,7 @@ msgstr "{folderCount, plural, other {文件夹}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} 个 GitHub star"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -935,7 +940,7 @@ msgstr "第 {displayLine} 行：{localizedMessage}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分钟前}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -2343,6 +2348,7 @@ msgstr "在这台电脑的每个项目中都可用。不通过 git 共享。"
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr "在 OpenKnowledge 桌面应用中可用。在终端里可使用<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>。"
 
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/NavigationHistoryControls.tsx
@@ -2615,7 +2621,6 @@ msgstr "无法共享此路径。"
 
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -2745,7 +2750,11 @@ msgctxt "settings search keyword"
 msgid "characters"
 msgstr "字符"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Chat history"
+msgstr "聊天记录"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Chat name"
 msgstr "对话名称"
 
@@ -2884,6 +2893,10 @@ msgid "Choose icon"
 msgstr "选择图标"
 
 #: src/components/TerminalNewChatButton.tsx
+msgid "Choose what a new chat starts"
+msgstr "选择新建对话启动的内容"
+
+#: src/components/TerminalNewChatButton.tsx
 msgid "Choose what a new tab starts"
 msgstr "选择新标签页启动的内容"
 
@@ -2966,6 +2979,10 @@ msgstr "清空字段可恢复其默认值。"
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
 msgstr "清除颜色"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Clear history search"
+msgstr "清除历史记录搜索"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -3141,7 +3158,7 @@ msgstr "关闭标签页"
 msgid "Close terminal"
 msgstr "关闭终端"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Close this chat's tab to delete it"
 msgstr "关闭此对话的标签页后才能删除"
 
@@ -3399,6 +3416,7 @@ msgstr "配置警告"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -4122,6 +4140,10 @@ msgstr "无法加载 OpenKnowledge 技能。请重试。"
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "无法加载该版本的预览。你仍然可以在下方选择如何解决。"
 
+#: src/components/SessionsHost.tsx
+msgid "Couldn't load your agents."
+msgstr "无法加载你的智能体。"
+
 #: src/components/BugReportHistory.tsx
 msgid "Couldn't load your bug reports."
 msgstr "无法加载你的错误报告。"
@@ -4424,6 +4446,10 @@ msgstr "无法启动 Slidev。"
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
 msgstr "无法启动智能体线程——请重试。"
+
+#: src/components/SessionsHost.tsx
+msgid "Couldn't start the agent thread."
+msgstr "无法启动智能体线程。"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
@@ -4730,7 +4756,6 @@ msgstr "默认属性"
 msgid "Default: <0>{0}</0>"
 msgstr "默认：<0>{0}</0>"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/FileTargetMenuItems.tsx
 #: src/components/skill-actions.tsx
@@ -4741,7 +4766,7 @@ msgstr "删除"
 
 #. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "删除 {0}"
@@ -4779,6 +4804,14 @@ msgstr "删除相邻的维基链接或标签标记块。"
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Delete block"
 msgstr "删除块"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat"
+msgstr "删除聊天"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat?"
+msgstr "删除聊天？"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Delete code block"
@@ -4823,10 +4856,6 @@ msgstr "删除表格"
 #: src/components/DiffViewBoundary.tsx
 msgid "Delete the file"
 msgstr "删除文件"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this chat?"
-msgstr "删除此对话？"
 
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
@@ -7734,7 +7763,7 @@ msgstr "跳到锚定的文本"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "跳到光标所在块的 markdown 源码，居中并高亮显示。"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -8036,6 +8065,7 @@ msgstr "正在加载 {fileName}"
 msgid "Loading agent activity"
 msgstr "正在加载智能体活动"
 
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "正在加载智能体…"
@@ -8795,7 +8825,6 @@ msgid "New"
 msgstr "新建"
 
 #. placeholder {0}: TERMINAL_CLIS[selected.cli].displayName
-#. placeholder {0}: selected.agent.name
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "新建 {0} 对话"
@@ -8816,8 +8845,13 @@ msgstr "新分支 <0>{trimmed}</0> 将基于当前提交创建，位于 <1>.ok/w
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "来自远程的新改动会自动出现在你的副本中。"
 
+#: src/components/TerminalNewChatButton.tsx
+msgid "New chat"
+msgstr "新建对话"
+
 #: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
+#: src/components/TerminalNewChatButton.tsx
 msgid "New chat with {agentName}"
 msgstr "与 {agentName} 的新对话"
 
@@ -8999,6 +9033,10 @@ msgstr "没有可用的智能体。"
 msgid "No agents enabled"
 msgstr "没有启用任何智能体"
 
+#: src/components/SessionsHost.tsx
+msgid "No agents enabled."
+msgstr "没有启用任何智能体。"
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "没有智能体匹配你的搜索。"
@@ -9043,6 +9081,14 @@ msgstr "还没有错误报告。"
 #: src/components/ActivityPanelDiffView.tsx
 msgid "No changes"
 msgstr "没有改动"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats match your search"
+msgstr "没有与搜索匹配的聊天"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats yet."
+msgstr "还没有聊天。"
 
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
@@ -9211,10 +9257,6 @@ msgstr "没有匹配的仓库。"
 #: src/components/RecentProjectsMenu.tsx
 msgid "No matching worktrees or branches."
 msgstr "没有匹配的 worktree 或分支。"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
-msgstr "没有打开的对话。重新打开之前的对话，或使用 ＋ 按钮开始新对话。"
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9539,6 +9581,10 @@ msgstr "OK 上次把这个文件夹设为 {0}——此后 OK 之外的操作改�
 #: src/components/settings/LintingSection.tsx
 msgid "OKF agent skill installed"
 msgstr "OKF 代理技能已安装"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Older"
+msgstr "更早"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -11454,7 +11500,7 @@ msgstr "重命名"
 
 #. placeholder {0}: session.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "重命名 {0}"
@@ -11462,6 +11508,10 @@ msgstr "重命名 {0}"
 #: src/components/FrontmatterRow.tsx
 msgid "Rename {keyName}"
 msgstr "重命名 {keyName}"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Rename chat"
+msgstr "重命名聊天"
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileRenameDialog.tsx
@@ -11524,10 +11574,6 @@ msgstr "已渲染"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "重新打开"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Reopen a past chat"
-msgstr "重新打开之前的对话"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
@@ -12014,7 +12060,6 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "沙箱化的 HTML 嵌入——写下 HTML，实时查看渲染效果。"
 
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -12150,6 +12195,14 @@ msgstr "搜索分支…"
 #: src/components/CommandPalette.tsx
 msgid "Search by meaning"
 msgstr "按语义搜索"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chat history"
+msgstr "搜索聊天记录"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chats"
+msgstr "搜索聊天"
 
 #: src/components/emoji-picker.tsx
 msgid "Search emoji"
@@ -13371,6 +13424,7 @@ msgid "Starting terminal…"
 msgstr "正在启动终端…"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "正在启动智能体…"
 
@@ -14893,6 +14947,10 @@ msgstr "待办"
 msgid "To do."
 msgstr "待办。"
 
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Today"
+msgstr "今天"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "切换无序列表。"
@@ -15050,6 +15108,7 @@ msgstr "试试一段提示词"
 #: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx

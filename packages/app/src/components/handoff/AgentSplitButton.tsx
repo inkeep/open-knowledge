@@ -17,6 +17,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { cn } from '@/lib/utils';
 
 export interface TerminalCliRow {
   readonly cli: TerminalCli;
@@ -32,6 +33,7 @@ export interface ThreadAgentRow {
   readonly name: string;
   readonly iconUrl?: string;
   readonly selected: boolean;
+  readonly disabled?: boolean;
   readonly onSelect: () => void;
 }
 
@@ -61,6 +63,10 @@ export function AgentSplitButton({
   onMenuOpenChange,
   menuAlign = 'end',
   menuAttributes,
+  className,
+  primaryClassName,
+  primaryAriaLabel,
+  threadAgentsFooter,
   triggerAriaLabel,
   testIds,
 }: {
@@ -70,7 +76,14 @@ export function AgentSplitButton({
   enabledTargets: readonly TargetData[];
   selectedTargetId: HandoffTarget | null;
   onSelectTarget: (target: TargetData) => void;
-  terminal?: { selected: boolean; onSelect: () => void };
+  terminal?: {
+    selected: boolean;
+    onSelect: () => void;
+    label?: ReactNode;
+    icon?: ReactNode;
+    ariaLabel?: string;
+    testId?: string;
+  };
   terminals?: readonly TerminalCliRow[];
   threadAgents?: readonly ThreadAgentRow[];
   onOpenSettings: () => void;
@@ -79,6 +92,10 @@ export function AgentSplitButton({
   onMenuOpenChange?: (open: boolean) => void;
   menuAlign?: 'start' | 'end';
   menuAttributes?: Readonly<{ 'data-composer-portal'?: string }>;
+  className?: string;
+  primaryClassName?: string;
+  primaryAriaLabel?: string;
+  threadAgentsFooter?: ReactNode;
   triggerAriaLabel: string;
   testIds: AgentSplitButtonTestIds;
 }) {
@@ -92,12 +109,13 @@ export function AgentSplitButton({
     typeof testIds.terminal === 'function' ? testIds.terminal(cli) : testIds.terminal;
 
   return (
-    <ButtonGroup>
+    <ButtonGroup className={className}>
       <Button
         type="button"
         variant="outline"
-        className="gap-1.5"
+        className={cn('gap-1.5', primaryClassName)}
         disabled={primaryDisabled}
+        aria-label={primaryAriaLabel}
         onClick={onPrimary}
         data-testid={testIds.primary}
       >
@@ -138,7 +156,9 @@ export function AgentSplitButton({
                   <DropdownMenuItem
                     key={row.key}
                     onSelect={row.onSelect}
+                    disabled={row.disabled}
                     data-testid={testIds.threadAgent?.(row.key)}
+                    aria-current={row.selected ? 'true' : undefined}
                   >
                     <RegisteredAgentIcon
                       agentId={row.id}
@@ -151,6 +171,7 @@ export function AgentSplitButton({
                     ) : null}
                   </DropdownMenuItem>
                 ))}
+                {threadAgentsFooter}
               </DropdownMenuGroup>
               {hasOptions ? <DropdownMenuSeparator /> : null}
             </>
@@ -163,40 +184,39 @@ export function AgentSplitButton({
                     <Trans>Terminal</Trans>
                   </DropdownMenuLabel>
                   {}
-                  {cliRows ? (
-                    cliRows.map((row) => (
-                      <DropdownMenuItem
-                        key={row.cli}
-                        onSelect={row.onSelect}
-                        data-testid={terminalTestId(row.cli)}
-                        aria-label={row.ariaLabel}
-                      >
-                        {}
-                        <TargetIcon
-                          id={cliIconTargetId(row.cli)}
-                          className="size-4"
-                          aria-hidden="true"
-                        />
-                        <span className="flex-1">{row.label}</span>
-                        {row.selected ? (
-                          <Check aria-hidden="true" className="size-4 text-muted-foreground" />
-                        ) : null}
-                      </DropdownMenuItem>
-                    ))
-                  ) : terminal ? (
+                  {cliRows?.map((row) => (
                     <DropdownMenuItem
-                      onSelect={terminal.onSelect}
-                      data-testid={terminalTestId('claude')}
-                      aria-label={t`Claude CLI`}
+                      key={row.cli}
+                      onSelect={row.onSelect}
+                      data-testid={terminalTestId(row.cli)}
+                      aria-label={row.ariaLabel}
                     >
+                      {}
                       <TargetIcon
-                        id={cliIconTargetId('claude')}
+                        id={cliIconTargetId(row.cli)}
                         className="size-4"
                         aria-hidden="true"
                       />
-                      <span className="flex-1">
-                        <Trans>Claude</Trans>
-                      </span>
+                      <span className="flex-1">{row.label}</span>
+                      {row.selected ? (
+                        <Check aria-hidden="true" className="size-4 text-muted-foreground" />
+                      ) : null}
+                    </DropdownMenuItem>
+                  ))}
+                  {terminal ? (
+                    <DropdownMenuItem
+                      onSelect={terminal.onSelect}
+                      data-testid={terminal.testId ?? terminalTestId('claude')}
+                      aria-label={terminal.ariaLabel ?? t`Claude CLI`}
+                    >
+                      {terminal.icon ?? (
+                        <TargetIcon
+                          id={cliIconTargetId('claude')}
+                          className="size-4"
+                          aria-hidden="true"
+                        />
+                      )}
+                      <span className="flex-1">{terminal.label ?? <Trans>Claude</Trans>}</span>
                       {terminal.selected ? (
                         <Check aria-hidden="true" className="size-4 text-muted-foreground" />
                       ) : null}

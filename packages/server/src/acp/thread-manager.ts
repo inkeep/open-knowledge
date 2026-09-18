@@ -2196,20 +2196,20 @@ export class AcpThreadManager {
     this.appendEvent(t, event);
   }
 
-  async renameThread(threadId: string, rawTitle: string): Promise<void> {
+  async renameThread(threadId: string, rawTitle: string): Promise<ThreadInfo> {
     const t = this.mustGet(threadId);
     if (t.closed) {
       throw new ThreadOpError('not-ready', 'the thread is closing');
     }
     const title = clampThreadTitle(rawTitle);
-    if (title === '' || title === t.info.title) return;
+    if (title === '' || title === t.info.title) return { ...t.info };
     await this.ensureLogResolved(t);
     t.info.title = title;
-    t.info.lastActivityAt = Date.now();
     this.appendEvent(t, { kind: 'title_changed', title, ts: Date.now() });
     this.flushBroadcast(t);
     this.emitInfo(t);
     await this.persistence.whenIdle(t.info.threadId);
+    return { ...t.info };
   }
 
   private dispatchPrompt(

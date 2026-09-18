@@ -51,7 +51,7 @@ export function LargeFileEditorState({ docName, size, limit, backNav }: LargeFil
       </EmptyMedia>
       <EmptyHeader className="max-w-md gap-1">
         {}
-        <EmptyTitle asChild className="text-2xl font-light outline-none">
+        <EmptyTitle asChild className="text-2xl font-normal outline-none">
           <h2 ref={headingRef} id={titleId} tabIndex={canGoBack ? undefined : -1}>
             <Trans>File too large to open</Trans>
           </h2>

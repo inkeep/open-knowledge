@@ -14,6 +14,8 @@ Every tile carries a sun and a moon: the sun assigns that palette to light mode,
 
 A palette forces its own light or dark variant wherever it sits. Put Dracula in the light slot and switching to light mode shows Dracula's dark colors: the slot decides *when* a palette applies, and the palette decides how it looks. **Default** means no palette: the base stylesheet shows through.
 
+Palette colors never change your Light, Dark, or System preference. That preference controls the light/dark identity used by native window chrome and operating-system integration. The active palette also colors the window background on Windows and Linux, plus the title-bar controls on Windows.
+
 Selections are saved to your user config as `appearance.colorThemeLight` / `appearance.colorThemeDark`. See the [configuration reference](/docs/reference/configuration).
 
 ## Create your own

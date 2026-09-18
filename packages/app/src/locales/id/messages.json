@@ -583,7 +583,6 @@
     ],
     "6Aih4U": ["Luring"],
     "6EoD0z": ["Selesaikan di terminal"],
-    "6FCixu": ["Buka kembali obrolan sebelumnya"],
     "6HCOwA": ["Gagal membuka."],
     "6KCH4m": ["Berkas tersembunyi"],
     "6KXnz5": ["Anda dapat memulihkan berkas ini dari Tempat Sampah."],
@@ -593,6 +592,7 @@
     "6MnZEC": ["Gagal memuat terminal"],
     "6Nea1q": ["Pakai ", ["0"], " untuk mode gelap yang aktif"],
     "6O626z": ["Tidak ada judul yang cocok dengan \"", ["trimmedAnchorQuery"], "\""],
+    "6PsaMr": ["Ganti nama chat"],
     "6Pxqwv": [
       "Belum ada templat proyek. Buat satu agar tersedia di mana pun dalam proyek ini. Templat khusus folder ada di halaman ikhtisar tiap folder."
     ],
@@ -769,6 +769,7 @@
     "8PmoQF": ["Membuka menu sisip pada posisi teks yang kosong atau aktif."],
     "8QLpZe": ["Server berhenti. Mulai ulang untuk menyambung kembali."],
     "8RtNI0": ["Gagal memuat dokumen"],
+    "8SVvE7": ["Hapus pencarian riwayat"],
     "8TvlHF": ["Crash dump"],
     "8Uv5e6": ["Agen"],
     "8VLpRT": [
@@ -1663,6 +1664,7 @@
     "If0crP": ["Buka dengan AI ", ["targetDisplayName"], ", ", ["hint"]],
     "IgN3LY": ["Pada teks terpilih di <0>", ["address"], "</0>"],
     "IgTwLt": ["Membuka dokumen ini di penyunting dan menciutkan graf."],
+    "IgkKDg": ["Hapus chat?"],
     "Ik-gP0": ["Judul H", ["level"], ": ", ["text"]],
     "ImTzPZ": ["Mesin ini"],
     "IoHQYP": ["Validasi tautan tidak tersedia. Menampilkan masalah terakhir yang diketahui."],
@@ -1731,6 +1733,7 @@
     "Jnz9AY": [["0"], " berada di atas ", ["destination"], "."],
     "Jqqevv": ["Galat sistem"],
     "JrqL_z": ["Sisipkan baris di atas"],
+    "Jrwm42": ["Agen Anda tidak bisa dimuat."],
     "JsHvhz": [
       "Melebihi panduan ",
       ["budgetLabel"],
@@ -2494,6 +2497,7 @@
       "\" tidak dapat dibersihkan tepat waktu. Muat ulang untuk mencoba lagi."
     ],
     "ScwcF2": ["Sudah ada proyek di lokasi ini. Pilih folder induk lain."],
+    "Sdv6pQ": ["Riwayat chat"],
     "Sg-6Bo": [["errorCount", "plural", { "other": ["#", " galat"] }]],
     "SgAFuo": ["Berkas tidak bisa dilampirkan di sini."],
     "SgKLfA": ["Tidak terhubung ke GitHub."],
@@ -2556,9 +2560,6 @@
     "Tofsyo": ["Pindahkan Terminal ke bawah"],
     "TpqW74": ["Tetap"],
     "Tq3pcs": ["Pakai punya saya"],
-    "Tq9kNX": [
-      "Tidak ada obrolan terbuka. Buka kembali obrolan sebelumnya, atau mulai yang baru dengan tombol ＋."
-    ],
     "TsZmgr": ["Berkas di disk, dan id yang dipakai agen."],
     "TvY_XA": ["Dokumentasi"],
     "TwYboS": ["Menelusuri hasil pencarian sumber CodeMirror atau menutup panel pencariannya."],
@@ -2758,6 +2759,7 @@
     "W9NSe0": ["Memeriksa tautan"],
     "W9_Bub": ["Perubahan lokal bertumpang tindih dengan sinkronisasi yang masuk"],
     "WBNpt9": ["Tema ini tidak dapat dibaca (", ["0"], ")"],
+    "WC8Mr6": ["Utas agen tidak bisa dimulai."],
     "WEYdDv": ["Direkomendasikan"],
     "WFEbV1": [
       "Menandai masalah markdown yang umum di penyunting. Ditenagai <0>markdownlint<1/></0>."
@@ -2948,6 +2950,7 @@
     ],
     "YEP3X2": ["Menghapus tabel ketika pilihan sel aktif mencakup seluruh tabel."],
     "YEzhIr": ["Pull dan Push"],
+    "YFpLoV": ["Hapus chat"],
     "YGIi_c": ["Pasang ulang"],
     "YGNRB5": ["— kecuali"],
     "YGt-0e": ["Membaca…"],
@@ -3163,6 +3166,7 @@
     "_fZSIY": [
       "OpenKnowledge tidak mengubah file ini karena tidak dapat mengurainya dengan aman. Perbaiki file secara manual, lalu coba lagi."
     ],
+    "_fwE6J": ["Lebih lama"],
     "_gO_m8": ["Menunggu persetujuan Anda"],
     "_gkGSK": ["templat dihapus"],
     "_oqKcJ": ["Masukkan minimal 3 karakter untuk mencari berdasarkan makna."],
@@ -3179,6 +3183,7 @@
     "a3LDKx": ["Keamanan"],
     "a45f2c": ["Pola glob tempat skema ini berlaku"],
     "a4FRQv": ["Batalkan hingga suntingan ini?"],
+    "a4xYoA": ["Cari chat"],
     "a5Gha5": ["Perubahan lokal menghalangi penggabungan"],
     "a5W0q0": [
       "Yakin ingin menghapus ",
@@ -3418,6 +3423,7 @@
     "cklVjM": ["Lini masa"],
     "clJ3qM": ["Selesai."],
     "cnGeoo": ["Hapus"],
+    "cnR7h2": ["Tidak ada chat yang cocok dengan pencarian Anda"],
     "cqQyPB": ["Nama folder"],
     "crqzW5": ["Alat AI"],
     "cs4mps": ["Berbagi konfigurasi"],
@@ -3555,6 +3561,7 @@
       ". Setiap aslinya sudah diverifikasi tidak berubah, jadi hapus salinan itu lalu coba pemindahan lagi."
     ],
     "eJitUk": ["Unggah dari komputer"],
+    "eKGK4A": ["Cari riwayat percakapan"],
     "eKThTQ": ["Gagal menata ulang"],
     "eMWRAs": [
       "Halaman terindeks: ",
@@ -3587,6 +3594,7 @@
     "ebqMh6": [
       "Dibagikan ke semua orang di proyek ini. Disimpan di folder proyek dan ikut berpindah lewat git."
     ],
+    "ecUA8p": ["Hari ini"],
     "ee15Vl": [
       "Keterampilan mengajarkan tugas berulang kepada alat AI Anda. Tulis milik Anda di bilah sisi Keterampilan pada editor; halaman ini tempat keterampilan diaktifkan dan dibagikan."
     ],
@@ -3833,6 +3841,7 @@
     ],
     "gyHDWC": ["Perbaiki semua dengan AI (", ["count"], ")"],
     "gyYvCN": ["Kirim suntingan saya setiap"],
+    "gzaLgh": ["Pilih apa yang dimulai obrolan baru"],
     "h-AdvS": ["Folder dan templatnya sudah ada di sini, jadi tidak ada yang perlu ditambahkan."],
     "h-RPqa": [
       "Berapa lama OpenKnowledge menunggu setiap permintaan embedding saat pengindeksan. Permintaan pencarian memiliki batas waktu tetap 8 detik per percobaan, yang tidak berubah oleh pengaturan ini."
@@ -3868,6 +3877,7 @@
     "hFmYGU": ["Berkas tema tertaut tidak didukung"],
     "hGmuTc": ["Dokumen bertag #", ["tagDocsName"]],
     "hHMv6l": ["Hapus blok"],
+    "hIQkLb": ["Obrolan baru"],
     "hItdtk": ["Pilih folder"],
     "hLKfZe": ["Pakai token saja"],
     "hLod4_": ["Ubah menjadi templat"],
@@ -4063,6 +4073,7 @@
     "j9Vqvc": ["diwarisi"],
     "j9tqwO": ["Tidak ada di bilah sisi"],
     "jAMpHn": ["Apa itu paket awal?"],
+    "jAQCRf": ["Tidak ada agen yang diaktifkan."],
     "jBVUXo": ["Terminal tidak bisa dibuka — silakan coba lagi."],
     "jC8Bv4": ["Melihat-lihat sekitar…"],
     "jC8LSZ": ["Setel ulang filter tampilan"],
@@ -4188,7 +4199,6 @@
       "Tidak melihat <0>Keterampilan</0>? Aktifkan dulu <1>Pengaturan <2/> Kemampuan <3/> Eksekusi kode dan pembuatan berkas</1>."
     ],
     "kVS5tE": ["Pertahankan indeks generated di setiap folder?"],
-    "kVgQUA": ["Hapus obrolan ini?"],
     "kVzuTI": ["Keterampilan agen yang direkomendasikan"],
     "kXNv8P": [
       "Otomatis (hanya Pull) tidak pernah melakukan push atau commit perubahan lokal Anda. Semuanya tetap hanya di mesin ini."
@@ -4765,6 +4775,7 @@
     "qze9od": ["Folder ini juga milik ", ["alsoAffects"], "."],
     "r-OJYm": ["Masukkan nama cabang yang valid (tanpa spasi, tanpa titik di awal, tanpa \"..\")."],
     "r2eKE3": ["Masuk dulu ke ", ["agentName"]],
+    "r3iaI0": ["Belum ada chat."],
     "r4R7AZ": ["Galat jaringan saat pembersihan"],
     "r51jLC": ["Berkas tersimpan & aplikasi Claude Desktop terbuka"],
     "r6ncaO": ["Tutup tab"],
@@ -5504,6 +5515,7 @@
     "yvHDYG": ["Claude Desktop"],
     "yvSAuM": ["Berhenti memperbaiki. Berkas yang sudah diperbaiki tetap terperbaiki."],
     "yxF19Y": [["0", "plural", { "other": ["#", " plugin"] }]],
+    "yxH4Gs": ["CLI ", ["0"]],
     "yz7wBu": ["Tutup"],
     "yzF66j": ["Tautan"],
     "yzGPkm": ["Bentangkan graf"],

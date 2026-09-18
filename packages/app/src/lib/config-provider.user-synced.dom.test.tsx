@@ -39,6 +39,7 @@ let mergedConfig: unknown = {};
 let useThemeBridgeCalls: Array<[unknown, string | undefined, string | undefined]> = [];
 let useLanguageBridgeCalls: Array<[unknown, unknown, boolean]> = [];
 let setThemeCalls: string[] = [];
+let systemTheme: 'light' | 'dark' = 'light';
 const buildAuthTokenCalls: Array<readonly unknown[]> = [];
 const originalFetch = globalThis.fetch;
 
@@ -52,6 +53,7 @@ function resetCaptures() {
   useThemeBridgeCalls = [];
   useLanguageBridgeCalls = [];
   setThemeCalls = [];
+  systemTheme = 'light';
   buildAuthTokenCalls.length = 0;
 }
 
@@ -110,6 +112,7 @@ vi.doMock('@/hooks/use-language-bridge', () => ({
 
 vi.doMock('next-themes', () => ({
   useTheme: () => ({
+    systemTheme,
     setTheme: (theme: string) => {
       setThemeCalls.push(theme);
     },
@@ -429,8 +432,83 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
       expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, 'system']);
     });
 
+    expect(setThemeCalls).toEqual(['system']);
+  });
+
+  test('preserves the renderer theme while collaboration discovery is pending', () => {
+    render(
+      <ConfigProvider collabUrl={null}>
+        <ConfigContextProbe />
+      </ConfigProvider>,
+    );
+
     expect(setThemeCalls).toEqual([]);
   });
+
+  test.each([
+    { preference: 'light', system: 'dark', slot: 'light', paletteMode: 'dark' },
+    { preference: 'dark', system: 'light', slot: 'dark', paletteMode: 'light' },
+    { preference: 'system', system: 'light', slot: 'light', paletteMode: 'dark' },
+    { preference: 'system', system: 'dark', slot: 'dark', paletteMode: 'light' },
+    { preference: undefined, system: 'light', slot: 'light', paletteMode: 'dark' },
+    { preference: undefined, system: 'dark', slot: 'dark', paletteMode: 'light' },
+  ] as const)(
+    'keeps native preference $preference with system $system when the $slot slot paints $paletteMode and returns to Default',
+    async ({ preference, system, slot, paletteMode }) => {
+      systemTheme = system;
+      const bridge = { nativeTheme: {} };
+      Object.defineProperty(window, 'okDesktop', { configurable: true, value: bridge });
+      const palette = Object.fromEntries(
+        Array.from({ length: 16 }, (_, index) => [
+          `base${index.toString(16).toUpperCase().padStart(2, '0')}`,
+          paletteMode === 'dark' ? '#111111' : '#eeeeee',
+        ]),
+      );
+      globalThis.fetch = vi.fn(async () =>
+        Response.json({
+          themes: [
+            {
+              ok: true,
+              id: 'saved-cross-kind',
+              filename: 'cross-kind.yaml',
+              scheme: { name: 'Cross kind', variant: paletteMode, palette },
+            },
+          ],
+          truncated: false,
+        }),
+      );
+      mergedConfig = {
+        appearance: {
+          theme: preference,
+          colorThemeLight: slot === 'light' ? 'saved-cross-kind' : 'default',
+          colorThemeDark: slot === 'dark' ? 'saved-cross-kind' : 'default',
+        },
+      };
+      const view = render(
+        <ConfigProvider collabUrl="ws://test.invalid">
+          <ConfigContextProbe />
+        </ConfigProvider>,
+      );
+      syncAllConfigBindings();
+
+      await waitFor(() => {
+        expect(document.documentElement.getAttribute('data-color-theme')).toBe('saved-cross-kind');
+      });
+      expect(setThemeCalls.at(-1)).toBe(paletteMode);
+      expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, preference ?? 'system']);
+
+      mergedConfig = { appearance: { theme: preference } };
+      view.rerender(
+        <ConfigProvider collabUrl="ws://test.invalid">
+          <ConfigContextProbe />
+        </ConfigProvider>,
+      );
+
+      expect(setThemeCalls.at(-1)).toBe(preference ?? 'system');
+      expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
+      expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, preference ?? 'system']);
+    },
+  );
 
   test('the merged interface language reaches Lingui, and only once the user layer has synced', async () => {
     mergedConfig = { appearance: { language: 'es' } };
@@ -477,7 +555,7 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     });
   });
 
-  test('releases the Electron show gate with the preserved cross-variant prepaint mode after a saved-theme list failure', async () => {
+  test('releases the Electron show gate with the authored preference while preserving cross-variant prepaint after a saved-theme list failure', async () => {
     const bridge = { nativeTheme: {} };
     Object.defineProperty(window, 'okDesktop', {
       configurable: true,
@@ -491,7 +569,6 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
         dark: { id: 'saved-offline', dark: false, css: ':root { --background: #fafafa; }' },
       }),
     );
-    document.documentElement.classList.remove('dark');
     document.documentElement.setAttribute('data-color-theme', 'saved-offline');
     const prepaintStyle = document.createElement('style');
     prepaintStyle.id = SAVED_THEME_STYLE_ID;
@@ -516,10 +593,9 @@ describe('ConfigProvider — userSynced behavioral wiring (Tier-3)', () => {
     syncAllConfigBindings();
 
     await waitFor(() => {
-      expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, 'light']);
+      expect(useThemeBridgeCalls.at(-1)?.slice(0, 2)).toEqual([bridge, 'dark']);
     });
     expect(setThemeCalls).toEqual([]);
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
     expect(document.documentElement.getAttribute('data-color-theme')).toBe('saved-offline');
     expect(document.getElementById(SAVED_THEME_STYLE_ID)?.textContent).toContain('#fafafa');
   });

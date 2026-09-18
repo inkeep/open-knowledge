@@ -74,7 +74,12 @@ import {
   asSpellingLanguagesQueryResult,
   asSpellingLanguagesSetResult,
 } from '../shared/menu-dispatch-results.ts';
-import { resolveOkDesktopMode } from '../shared/ok-desktop-mode.ts';
+import {
+  LANGUAGE_PREFERENCE_ARG_NAME,
+  resolveOkDesktopMode,
+  resolveOkThemePreference,
+  THEME_PREFERENCE_ARG_NAME,
+} from '../shared/ok-desktop-argv.ts';
 import { isUninstallPreload } from '../shared/uninstall-preload-arg.ts';
 import { createSlidesBridge } from './slides-bridge.ts';
 import { createUninstallBridge } from './uninstall.ts';
@@ -213,7 +218,10 @@ function readConfigFromArgv(): OkDesktopConfig {
   const projectName = parseArg('project-name') ?? '';
   const mode = resolveOkDesktopMode(parseArg('mode'));
   const singleFile = parseArg('single-file') === '1';
-  const languagePreference = parseArg('language-preference') as LanguagePreference | undefined;
+  const languagePreference = parseArg(LANGUAGE_PREFERENCE_ARG_NAME) as
+    | LanguagePreference
+    | undefined;
+  const themePreference = resolveOkThemePreference(parseArg(THEME_PREFERENCE_ARG_NAME));
   const initialDoc = parseArg('initial-doc') ?? null;
   const freshlyCreated = parseArg('fresh-create') === '1';
   const e2eSmoke = parseArg('e2e-smoke') === '1';
@@ -232,6 +240,7 @@ function readConfigFromArgv(): OkDesktopConfig {
     ptyAvailable,
     ...(startupTraceparent !== undefined ? { startupTraceparent } : {}),
     ...(languagePreference !== undefined ? { languagePreference } : {}),
+    ...(themePreference === undefined ? {} : { themePreference }),
   });
 }
 

@@ -302,6 +302,11 @@ msgstr "{0} bertindak tanpa bertanya — OpenKnowledge tidak dapat menambahkan p
 msgid "{0} added, {1} removed"
 msgstr "{0} ditambahkan, {1} dihapus"
 
+#. placeholder {0}: TERMINAL_CLIS[cli].displayName
+#: src/components/TerminalNewChatButton.tsx
+msgid "{0} CLI"
+msgstr "CLI {0}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
@@ -723,7 +728,7 @@ msgstr "{count} keterampilan"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# hari lalu}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "{days}d ago"
 msgstr "{days} hr lalu"
 
@@ -858,7 +863,7 @@ msgstr "{folderCount, plural, other {folder}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} bintang GitHub"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -935,7 +940,7 @@ msgstr "{localizedMessage} pada baris {displayLine}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# mnt lalu}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -2339,6 +2344,7 @@ msgstr "Tersedia di setiap proyek pada komputer ini. Tidak dibagikan lewat git."
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/NavigationHistoryControls.tsx
@@ -2611,7 +2617,6 @@ msgstr "Tidak dapat membagikan jalur ini."
 
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -2741,7 +2746,11 @@ msgctxt "settings search keyword"
 msgid "characters"
 msgstr "karakter"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Chat history"
+msgstr "Riwayat chat"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Chat name"
 msgstr "Nama obrolan"
 
@@ -2880,6 +2889,10 @@ msgid "Choose icon"
 msgstr "Pilih ikon"
 
 #: src/components/TerminalNewChatButton.tsx
+msgid "Choose what a new chat starts"
+msgstr "Pilih apa yang dimulai obrolan baru"
+
+#: src/components/TerminalNewChatButton.tsx
 msgid "Choose what a new tab starts"
 msgstr "Pilih apa yang dimulai tab baru"
 
@@ -2962,6 +2975,10 @@ msgstr "Kosongkan kolom untuk mengembalikan nilai defaultnya."
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
 msgstr "Hapus warna"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Clear history search"
+msgstr "Hapus pencarian riwayat"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -3137,7 +3154,7 @@ msgstr "Tutup tab"
 msgid "Close terminal"
 msgstr "Tutup terminal"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Close this chat's tab to delete it"
 msgstr "Tutup tab obrolan ini untuk menghapusnya"
 
@@ -3395,6 +3412,7 @@ msgstr "Peringatan konfigurasi"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -4118,6 +4136,10 @@ msgstr "Keterampilan OpenKnowledge tidak dapat dimuat. Coba lagi."
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "Pratinjau versinya tidak bisa dimuat. Anda tetap bisa memilih cara menyelesaikannya di bawah."
 
+#: src/components/SessionsHost.tsx
+msgid "Couldn't load your agents."
+msgstr "Agen Anda tidak bisa dimuat."
+
 #: src/components/BugReportHistory.tsx
 msgid "Couldn't load your bug reports."
 msgstr "Laporan bug Anda tidak bisa dimuat."
@@ -4420,6 +4442,10 @@ msgstr "Tidak dapat menjalankan Slidev."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
 msgstr "Utas agen tidak bisa dimulai — silakan coba lagi."
+
+#: src/components/SessionsHost.tsx
+msgid "Couldn't start the agent thread."
+msgstr "Utas agen tidak bisa dimulai."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
@@ -4726,7 +4752,6 @@ msgstr "Properti bawaan"
 msgid "Default: <0>{0}</0>"
 msgstr "Bawaan: <0>{0}</0>"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/FileTargetMenuItems.tsx
 #: src/components/skill-actions.tsx
@@ -4737,7 +4762,7 @@ msgstr "Hapus"
 
 #. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "Hapus {0}"
@@ -4775,6 +4800,14 @@ msgstr "Menghapus chip tautan wiki atau tag yang ada di sebelahnya."
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Delete block"
 msgstr "Hapus blok"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat"
+msgstr "Hapus chat"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat?"
+msgstr "Hapus chat?"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Delete code block"
@@ -4819,10 +4852,6 @@ msgstr "Hapus tabel"
 #: src/components/DiffViewBoundary.tsx
 msgid "Delete the file"
 msgstr "Hapus berkas"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this chat?"
-msgstr "Hapus obrolan ini?"
 
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
@@ -7730,7 +7759,7 @@ msgstr "Lompat ke teks berjangkar"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "Lompat ke sumber markdown untuk blok di posisi kursor, terpusat dan tersorot."
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -8032,6 +8061,7 @@ msgstr "Memuat {fileName}"
 msgid "Loading agent activity"
 msgstr "Memuat aktivitas agen"
 
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "Memuat agen…"
@@ -8791,7 +8821,6 @@ msgid "New"
 msgstr "Baru"
 
 #. placeholder {0}: TERMINAL_CLIS[selected.cli].displayName
-#. placeholder {0}: selected.agent.name
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "Obrolan {0} baru"
@@ -8812,8 +8841,13 @@ msgstr "Cabang baru <0>{trimmed}</0> akan dibuat dari commit saat ini, di worktr
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "Perubahan baru dari remote Anda muncul di salinan Anda secara otomatis."
 
+#: src/components/TerminalNewChatButton.tsx
+msgid "New chat"
+msgstr "Obrolan baru"
+
 #: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
+#: src/components/TerminalNewChatButton.tsx
 msgid "New chat with {agentName}"
 msgstr "Obrolan baru dengan {agentName}"
 
@@ -8995,6 +9029,10 @@ msgstr "Tidak ada agen yang tersedia."
 msgid "No agents enabled"
 msgstr "Tidak ada agen yang diaktifkan"
 
+#: src/components/SessionsHost.tsx
+msgid "No agents enabled."
+msgstr "Tidak ada agen yang diaktifkan."
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "Tidak ada agen yang cocok dengan pencarian Anda."
@@ -9039,6 +9077,14 @@ msgstr "Belum ada laporan bug."
 #: src/components/ActivityPanelDiffView.tsx
 msgid "No changes"
 msgstr "Tidak ada perubahan"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats match your search"
+msgstr "Tidak ada chat yang cocok dengan pencarian Anda"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats yet."
+msgstr "Belum ada chat."
 
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
@@ -9207,10 +9253,6 @@ msgstr "Tidak ada repositori yang cocok."
 #: src/components/RecentProjectsMenu.tsx
 msgid "No matching worktrees or branches."
 msgstr "Tidak ada worktree atau cabang yang cocok."
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
-msgstr "Tidak ada obrolan terbuka. Buka kembali obrolan sebelumnya, atau mulai yang baru dengan tombol ＋."
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9535,6 +9577,10 @@ msgstr "Terakhir kali OK menyetel folder ini menjadi {0} — sesuatu di luar OK 
 #: src/components/settings/LintingSection.tsx
 msgid "OKF agent skill installed"
 msgstr "OKF keterampilan agen diinstal"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Older"
+msgstr "Lebih lama"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -11450,7 +11496,7 @@ msgstr "Ganti nama"
 
 #. placeholder {0}: session.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "Ganti nama {0}"
@@ -11458,6 +11504,10 @@ msgstr "Ganti nama {0}"
 #: src/components/FrontmatterRow.tsx
 msgid "Rename {keyName}"
 msgstr "Ganti nama {keyName}"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Rename chat"
+msgstr "Ganti nama chat"
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileRenameDialog.tsx
@@ -11520,10 +11570,6 @@ msgstr "Dirender"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "Buka lagi"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Reopen a past chat"
-msgstr "Buka kembali obrolan sebelumnya"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
@@ -12010,7 +12056,6 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "Sematan HTML tersekat — tulis HTML, lihat pratinjau terendernya secara langsung."
 
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -12146,6 +12191,14 @@ msgstr "Cari cabang..."
 #: src/components/CommandPalette.tsx
 msgid "Search by meaning"
 msgstr "Cari berdasarkan makna"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chat history"
+msgstr "Cari riwayat percakapan"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chats"
+msgstr "Cari chat"
 
 #: src/components/emoji-picker.tsx
 msgid "Search emoji"
@@ -13367,6 +13420,7 @@ msgid "Starting terminal…"
 msgstr "Memulai terminal…"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "Memulai agennya…"
 
@@ -14889,6 +14943,10 @@ msgstr "Akan dikerjakan"
 msgid "To do."
 msgstr "Akan dikerjakan."
 
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Today"
+msgstr "Hari ini"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "Menyalakan atau mematikan daftar berpoin."
@@ -15046,6 +15104,7 @@ msgstr "Coba sebuah prompt"
 #: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx

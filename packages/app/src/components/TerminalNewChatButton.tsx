@@ -1,6 +1,5 @@
 import { TERMINAL_CLIS, type TerminalCli } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
-import { useQuery } from '@tanstack/react-query';
 import {
   Bot,
   CheckIcon,
@@ -11,6 +10,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
+import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
 import { TargetIcon } from '@/components/handoff/OpenInAgentMenuItem';
 import { cliIconTargetId, VISIBLE_CLIS } from '@/components/handoff/terminal-cli-display';
 import { Button } from '@/components/ui/button';
@@ -24,7 +24,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { fetchAgentCatalog } from '@/lib/acp/catalog';
+import { useAgentCatalogQuery } from '@/lib/acp/catalog';
 import type { RegisteredAgent } from '@/lib/acp/registered-agents';
 import type { NewSessionChoice } from '@/lib/new-session-choice';
 import { cn } from '@/lib/utils';
@@ -42,6 +42,7 @@ interface TerminalNewChatButtonProps {
   readonly onPickTerminal: () => void;
   readonly visibleClis?: readonly TerminalCli[];
   readonly className?: string;
+  readonly presentation?: 'toolbar' | 'panel';
 }
 
 export function TerminalNewChatButton({
@@ -57,28 +58,112 @@ export function TerminalNewChatButton({
   onPickTerminal,
   visibleClis = VISIBLE_CLIS,
   className,
+  presentation = 'toolbar',
 }: TerminalNewChatButtonProps) {
   const { t } = useLingui();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  const catalog = useQuery({
-    queryKey: ['acp-catalog'],
-    queryFn: ({ signal }) => fetchAgentCatalog(signal),
-    enabled: menuOpen && showAgents,
-    staleTime: 5 * 60 * 1000,
-  });
+  const catalog = useAgentCatalogQuery(menuOpen && showAgents);
   const maxThreads = catalog.data?.maxThreads ?? 8;
   const atCap = liveThreadCount >= maxThreads;
   const hasMenu = showAgents || showClis;
+  const panel = presentation === 'panel';
+  const agentName = selected.kind === 'agent' ? selected.agent?.name : undefined;
 
   const primaryLabel =
     selected.kind === 'terminal'
       ? t`New terminal`
       : selected.kind === 'cli'
         ? t`New ${TERMINAL_CLIS[selected.cli].displayName} chat`
-        : selected.agent !== null
-          ? t`New ${selected.agent.name} chat`
+        : agentName !== undefined
+          ? t`New chat with ${agentName}`
           : t`Start an agent`;
+  const visiblePrimaryLabel = panel && agentName !== undefined ? t`New chat` : primaryLabel;
+
+  if (panel) {
+    return (
+      <AgentSplitButton
+        className={cn('w-full', className)}
+        primaryClassName="min-w-0 flex-1 justify-start"
+        primary={
+          <>
+            {selected.kind === 'terminal' ? null : (
+              <NewSessionPrimaryIcon selected={selected} className="size-4" />
+            )}
+            <span className="truncate">{visiblePrimaryLabel}</span>
+          </>
+        }
+        primaryAriaLabel={primaryLabel}
+        onPrimary={onLaunchSelected}
+        enabledTargets={[]}
+        selectedTargetId={null}
+        onSelectTarget={() => {}}
+        threadAgents={
+          showAgents
+            ? registeredAgents.map((agent) => ({
+                key: `${agent.source}:${agent.id}`,
+                id: agent.id,
+                name: agent.name,
+                ...(agent.iconUrl !== undefined ? { iconUrl: agent.iconUrl } : {}),
+                selected:
+                  selected.kind === 'agent' &&
+                  selected.agent?.source === agent.source &&
+                  selected.agent?.id === agent.id,
+                disabled: atCap,
+                onSelect: () => onPickAgent(agent),
+              }))
+            : undefined
+        }
+        threadAgentsFooter={
+          atCap ? (
+            <DropdownMenuLabel
+              className="py-1 font-normal text-muted-foreground text-xs"
+              data-testid="terminal-new-chat-cap"
+            >
+              <Trans>Maximum agents already running</Trans>
+            </DropdownMenuLabel>
+          ) : undefined
+        }
+        terminals={
+          showClis
+            ? visibleClis.map((cli) => ({
+                cli,
+                label: TERMINAL_CLIS[cli].displayName,
+                ariaLabel: t`${TERMINAL_CLIS[cli].displayName} CLI`,
+                selected: selected.kind === 'cli' && selected.cli === cli,
+                onSelect: () => onPickCli(cli),
+              }))
+            : undefined
+        }
+        terminal={
+          showClis
+            ? {
+                selected: selected.kind === 'terminal',
+                onSelect: onPickTerminal,
+                label: t`Terminal`,
+                icon: <SquareTerminalIcon aria-hidden="true" className="size-4" />,
+                ariaLabel: t`Terminal`,
+                testId: 'terminal-new-chat-terminal',
+              }
+            : undefined
+        }
+        onOpenSettings={onOpenSettings}
+        onMenuOpenChange={setMenuOpen}
+        menuAlign="start"
+        triggerAriaLabel={t`Choose what a new chat starts`}
+        testIds={{
+          primary: 'terminal-new-chat',
+          trigger: 'terminal-new-chat-menu',
+          menu: 'terminal-new-chat-menu-content',
+          option: (id) => `terminal-new-chat-option-${id}`,
+          terminal: (cli) => `terminal-new-chat-cli-${cli}`,
+          threadAgent: (key) =>
+            `terminal-new-chat-agent-${registeredAgents.find((agent) => `${agent.source}:${agent.id}` === key)?.id ?? key}`,
+          settings: 'terminal-new-chat-settings',
+        }}
+      />
+    );
+  }
 
   return (
     <div className={cn('flex shrink-0 items-center', className)}>
@@ -115,7 +200,7 @@ export function TerminalNewChatButton({
               size="icon-xs"
               aria-label={t`Choose what a new tab starts`}
               data-testid="terminal-new-chat-menu"
-              className="cursor-pointer rounded-l-none text-muted-foreground hover:text-foreground"
+              className="cursor-pointer rounded-s-none text-muted-foreground hover:text-foreground"
             >
               <ChevronDownIcon aria-hidden="true" className="size-3" />
             </Button>

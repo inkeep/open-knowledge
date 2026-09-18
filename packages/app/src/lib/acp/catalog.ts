@@ -60,12 +60,28 @@ export async function fetchAgentCatalog(signal?: AbortSignal): Promise<AgentCata
   };
 }
 
-export function useHydrateRegisteredAgentMeta(): void {
-  const { data } = useQuery({
+const AGENT_CATALOG_STALE_MS = 5 * 60 * 1000;
+
+let lastLoggedCatalogError: unknown = null;
+
+export function useAgentCatalogQuery(enabled = true) {
+  const query = useQuery({
     queryKey: ['acp-catalog'],
     queryFn: ({ signal }) => fetchAgentCatalog(signal),
-    staleTime: 5 * 60 * 1000,
+    staleTime: AGENT_CATALOG_STALE_MS,
+    enabled,
   });
+  const { error } = query;
+  useEffect(() => {
+    if (error == null || error === lastLoggedCatalogError) return;
+    lastLoggedCatalogError = error;
+    console.error('[acp-catalog] agent catalog request failed', error);
+  }, [error]);
+  return query;
+}
+
+export function useHydrateRegisteredAgentMeta(): void {
+  const { data } = useAgentCatalogQuery();
 
   const agents = data?.agents;
   useEffect(() => {

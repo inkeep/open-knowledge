@@ -22,6 +22,116 @@ describe('AgentThreadClient store snapshots', () => {
   test('getConnectionStatus is idle before any URL is set', () => {
     expect(new AgentThreadClient().getConnectionStatus()).toBe('idle');
   });
+
+  test('the thread scope publishes project retargets without treating reconnects as a new scope', () => {
+    class FakeSocket {
+      static OPEN = 1;
+      readyState = 0;
+      close(): void {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    try {
+      const client = new AgentThreadClient();
+      const listener = vi.fn();
+      client.subscribe(listener);
+
+      client.setUrl('ws://project-a/collab/thread');
+      expect(client.getThreadScope()).toBe('ws://project-a/collab/thread');
+      const retargetNotifications = listener.mock.calls.length;
+
+      client.setUrl('ws://project-a/collab/thread');
+      expect(listener).toHaveBeenCalledTimes(retargetNotifications);
+
+      client.setUrl('ws://project-b/collab/thread');
+      expect(client.getThreadScope()).toBe('ws://project-b/collab/thread');
+      expect(listener.mock.calls.length).toBeGreaterThan(retargetNotifications);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('retargeting clears the previous project roster before the next socket opens', () => {
+    class FakeSocket {
+      static OPEN = 1;
+      static instances: FakeSocket[] = [];
+      readyState = 0;
+      sent: string[] = [];
+      constructor() {
+        FakeSocket.instances.push(this);
+      }
+      close(): void {}
+      send(frame: string): void {
+        this.sent.push(frame);
+      }
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    try {
+      const client = new AgentThreadClient();
+      const archived: ThreadInfo = {
+        threadId: 'project-a-archive',
+        agent: { id: 'a', name: 'A', source: 'custom' },
+        title: 'Project A',
+        status: 'exited',
+        createdAt: 1,
+        lastActivityAt: 1,
+        modes: null,
+        configOptions: null,
+        lastSeq: -1,
+        archived: true,
+      };
+      client.setUrl('ws://project-a/collab/thread');
+      client.receiveServerFrame(JSON.stringify({ op: 'threads', threads: [archived] }));
+      expect(client.getThreads()).toEqual([archived]);
+
+      client.setUrl('ws://project-b/collab/thread');
+      expect(client.getThreads()).toEqual([]);
+      expect(client.getOpenTabs()).toEqual([]);
+      const projectBSocket = FakeSocket.instances.at(-1);
+      if (projectBSocket === undefined) throw new Error('project B socket was not created');
+      projectBSocket.readyState = FakeSocket.OPEN;
+      client.openArchivedThread(archived.threadId);
+      expect(projectBSocket.sent).toEqual([]);
+      expect(client.getOpenTabs()).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test('retargeting away and back preserves unread activity', () => {
+    class FakeSocket {
+      static OPEN = 1;
+      readyState = 0;
+      close(): void {}
+    }
+    vi.stubGlobal('WebSocket', FakeSocket);
+    try {
+      const client = new AgentThreadClient();
+      const original: ThreadInfo = {
+        threadId: 'project-a-thread',
+        agent: { id: 'a', name: 'A', source: 'custom' },
+        title: 'Project A',
+        status: 'ready',
+        createdAt: 1,
+        lastActivityAt: 1,
+        modes: null,
+        configOptions: null,
+        lastSeq: -1,
+      };
+      client.setUrl('ws://project-a/collab/thread');
+      client.receiveServerFrame(JSON.stringify({ op: 'threads', threads: [original] }));
+      expect(client.getThreadUnread(original.threadId)).toBe(false);
+
+      client.setUrl('ws://project-b/collab/thread');
+      client.setUrl('ws://project-a/collab/thread');
+      client.receiveServerFrame(
+        JSON.stringify({ op: 'threads', threads: [{ ...original, lastActivityAt: 2 }] }),
+      );
+
+      expect(client.getThreadUnread(original.threadId)).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe('initial roster attribution (agents-panel reload absorb)', () => {
@@ -237,6 +347,20 @@ describe('batched event delivery', () => {
     frame({ op: 'event', threadId: 't1', seq: 0, event: ev(0) });
     expect(client.getThread('t1')?.events).toHaveLength(1);
     expect(client.getThread('t1')?.lastSeq).toBe(0);
+  });
+
+  test('title changes preserve the thread activity timestamp', () => {
+    const { client, frame } = makeClient();
+    frame({
+      op: 'event',
+      threadId: 't1',
+      seq: 0,
+      event: { kind: 'title_changed', title: 'Renamed', ts: 99 },
+    });
+    expect(client.getThread('t1')?.info).toMatchObject({
+      title: 'Renamed',
+      lastActivityAt: 1,
+    });
   });
 });
 
@@ -495,8 +619,8 @@ describe('store hooks return the useSyncExternalStore subscription value (React 
     'useAgentThreads',
     'useAgentThread',
     'useAgentThreadConnection',
+    'useAgentThreadScope',
     'useOpenAgentThreadTabs',
-    'useArchivedAgentThreads',
   ]) {
     test(`${hook} returns useSyncExternalStore(...) rather than discarding it`, () => {
       const body = hookBody(hook);
@@ -556,6 +680,48 @@ describe('unread affordance (PRD-8021)', () => {
     expect(client.getThreadUnread(info.threadId)).toBe(false);
     bump({ ...info, lastActivityAt: 300 });
     expect(client.getThreadUnread(info.threadId)).toBe(true);
+  });
+
+  test('a deleted thread receives a fresh read floor if its id reappears', () => {
+    const { client, bump } = boot();
+    bump({ ...info, lastActivityAt: 200 });
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+
+    client.deleteThread(info.threadId);
+    client.receiveServerFrame(
+      JSON.stringify({ op: 'threads', threads: [{ ...info, lastActivityAt: 300 }] }),
+    );
+
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
+  });
+
+  test('closing a thread preserves its read floor when the archived roster re-emits it', () => {
+    const { client, bump } = boot();
+    bump({ ...info, lastActivityAt: 200 });
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+
+    client.closeThread(info.threadId);
+    client.receiveServerFrame(
+      JSON.stringify({
+        op: 'threads',
+        threads: [{ ...info, lastActivityAt: 200, archived: true }],
+      }),
+    );
+
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+  });
+
+  test('a thread dropped from the roster receives a fresh read floor if its id reappears', () => {
+    const { client, bump } = boot();
+    bump({ ...info, lastActivityAt: 200 });
+    expect(client.getThreadUnread(info.threadId)).toBe(true);
+
+    client.receiveServerFrame(JSON.stringify({ op: 'threads', threads: [] }));
+    client.receiveServerFrame(
+      JSON.stringify({ op: 'threads', threads: [{ ...info, lastActivityAt: 300 }] }),
+    );
+
+    expect(client.getThreadUnread(info.threadId)).toBe(false);
   });
 
   test('only settled `ready` tabs report unread — a running turn already pulses via its status dot', () => {

@@ -85,7 +85,7 @@ function makeConfigContextValue(
   projectBinding: ConfigBinding = makeBinding().binding,
   userBinding: ConfigBinding | null = null,
 ) {
-  const config = ConfigSchema.parse({});
+  const config = userBinding?.current() ?? ConfigSchema.parse({});
   return {
     userBinding,
     userSynced: true,
@@ -929,6 +929,57 @@ describe('SettingsDialogBody color-palette picker — optimistic mode flip', () 
       expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
     });
   });
+
+  test('assigning Default restores System after a cross-variant palette forced dark', async () => {
+    globalThis.fetch = async () => Response.json({ themes: [], truncated: false });
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    renderThemePluginWithTheme(binding);
+
+    await user.click(screen.getByLabelText('Use Dracula as the light theme'));
+    await waitFor(() => {
+      expect(screen.getByTestId('theme-probe').textContent).toBe('dark');
+    });
+
+    await user.click(screen.getByLabelText('Use Default for the active light mode'));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('theme-probe').textContent).toBe('system');
+    });
+    expect(document.documentElement.hasAttribute('data-color-theme')).toBe(false);
+    expect(patches.at(-1)).toEqual({
+      appearance: { colorThemeLight: 'default', colorThemeDark: 'default', colorTheme: null },
+    });
+  });
+
+  test.each(['light', 'dark'] as const)(
+    'assigning Default restores the authored %s appearance',
+    async (theme) => {
+      globalThis.fetch = async () => Response.json({ themes: [], truncated: false });
+      const user = userEvent.setup();
+      const { binding } = makeBinding(ConfigSchema.parse({ appearance: { theme } }));
+      renderThemePluginWithTheme(binding);
+
+      await user.click(
+        screen.getByLabelText(
+          theme === 'light'
+            ? 'Use Dracula as the light theme'
+            : 'Use Catppuccin Latte as the dark theme',
+        ),
+      );
+      await user.click(
+        screen.getByLabelText(
+          theme === 'light'
+            ? 'Use Default for the active light mode'
+            : 'Use Default for the active dark mode',
+        ),
+      );
+
+      await waitFor(() => {
+        expect(screen.getByTestId('theme-probe').textContent).toBe(theme);
+      });
+    },
+  );
 
   test('assigning a palette to the OTHER mode leaves the current appearance alone', async () => {
     const user = userEvent.setup();

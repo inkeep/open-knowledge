@@ -311,8 +311,7 @@ function FieldControlBody({
             customSeed,
             themes,
           });
-          const nextMode = forcedMode(next);
-          if (nextMode) setTheme(nextMode);
+          setTheme(forcedMode(next) ?? modePreference ?? 'system');
           const result = binding.patch({ appearance: colorThemeWritePatch(next) });
           if (result.ok) {
             recordSavedThemeAssignment(next);

@@ -302,6 +302,11 @@ msgstr "{0}이 확인 없이 작업합니다. OpenKnowledge는 이 에이전트�
 msgid "{0} added, {1} removed"
 msgstr "{0}개 추가, {1}개 제거"
 
+#. placeholder {0}: TERMINAL_CLIS[cli].displayName
+#: src/components/TerminalNewChatButton.tsx
+msgid "{0} CLI"
+msgstr "{0} CLI"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} couldn't restart on that context window. Use Retry to bring it back."
@@ -723,7 +728,7 @@ msgstr "스킬 {count}개"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {#일 전}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "{days}d ago"
 msgstr "{days}일 전"
 
@@ -858,7 +863,7 @@ msgstr "{folderCount, plural, other {폴더}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub 스타"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -935,7 +940,7 @@ msgstr "{localizedMessage}, 줄 {displayLine}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {#분 전}}"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
@@ -2343,6 +2348,7 @@ msgstr "이 컴퓨터의 모든 프로젝트에서 사용할 수 있습니다. g
 msgid "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
 msgstr "OpenKnowledge 데스크톱 앱에서 사용할 수 있습니다. 터미널에서 <0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>를 사용합니다."
 
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
 #: src/components/NavigationHistoryControls.tsx
@@ -2615,7 +2621,6 @@ msgstr "이 경로는 공유할 수 없습니다."
 
 #: src/comments/PropertyCommentButton.tsx
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/acp/UserMessageActions.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/AuthModal.tsx
@@ -2745,7 +2750,11 @@ msgctxt "settings search keyword"
 msgid "characters"
 msgstr "문자"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Chat history"
+msgstr "채팅 기록"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Chat name"
 msgstr "채팅 이름"
 
@@ -2884,6 +2893,10 @@ msgid "Choose icon"
 msgstr "아이콘 선택"
 
 #: src/components/TerminalNewChatButton.tsx
+msgid "Choose what a new chat starts"
+msgstr "새 채팅 시작 화면 선택"
+
+#: src/components/TerminalNewChatButton.tsx
 msgid "Choose what a new tab starts"
 msgstr "새 탭 시작 화면 선택"
 
@@ -2966,6 +2979,10 @@ msgstr "필드를 비우면 기본값으로 복원됩니다."
 #: src/editor/components/ColorPickerInput.tsx
 msgid "Clear color"
 msgstr "색상 지우기"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Clear history search"
+msgstr "기록 검색 지우기"
 
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
@@ -3141,7 +3158,7 @@ msgstr "탭 닫기"
 msgid "Close terminal"
 msgstr "터미널 닫기"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 msgid "Close this chat's tab to delete it"
 msgstr "삭제할 채팅 탭 닫기"
 
@@ -3399,6 +3416,7 @@ msgstr "구성 경고"
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 #: src/components/handoff/OpenInAgentMenu.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/TerminalNewChatButton.tsx
 msgid "Configure agents"
@@ -4122,6 +4140,10 @@ msgstr "OpenKnowledge 스킬을 불러오지 못했습니다. 다시 시도하�
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "버전 미리보기를 불러오지 못했습니다. 아래에서 해결 방법을 선택할 수 있습니다."
 
+#: src/components/SessionsHost.tsx
+msgid "Couldn't load your agents."
+msgstr "에이전트를 불러오지 못했습니다."
+
 #: src/components/BugReportHistory.tsx
 msgid "Couldn't load your bug reports."
 msgstr "버그 보고서를 불러오지 못했습니다."
@@ -4424,6 +4446,10 @@ msgstr "Slidev를 시작하지 못했습니다."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "Couldn't start the agent thread — please try again."
 msgstr "에이전트 스레드 시작 실패. 다시 시도하세요."
+
+#: src/components/SessionsHost.tsx
+msgid "Couldn't start the agent thread."
+msgstr "에이전트 스레드를 시작할 수 없습니다."
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Couldn't start the sync. Check your connection, then retry."
@@ -4730,7 +4756,6 @@ msgstr "기본 속성"
 msgid "Default: <0>{0}</0>"
 msgstr "기본값: <0>{0}</0>"
 
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/FileTargetMenuItems.tsx
 #: src/components/skill-actions.tsx
@@ -4741,7 +4766,7 @@ msgstr "삭제"
 
 #. placeholder {0}: theme.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/settings/ColorThemePicker.tsx
 msgid "Delete {0}"
 msgstr "{0} 삭제"
@@ -4779,6 +4804,14 @@ msgstr "인접한 위키 링크 또는 태그 칩을 삭제합니다."
 #: src/editor/extensions/RawMdxFallbackCMView.tsx
 msgid "Delete block"
 msgstr "블록 삭제"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat"
+msgstr "채팅 삭제"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Delete chat?"
+msgstr "채팅을 삭제할까요?"
 
 #: src/editor/extensions/CodeBlockView.tsx
 msgid "Delete code block"
@@ -4823,10 +4856,6 @@ msgstr "표 삭제"
 #: src/components/DiffViewBoundary.tsx
 msgid "Delete the file"
 msgstr "파일 삭제"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Delete this chat?"
-msgstr "채팅 삭제?"
 
 #: src/comments/ThreadCard.tsx
 msgid "Delete this comment"
@@ -7734,7 +7763,7 @@ msgstr "앵커 텍스트로 이동"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "커서가 있는 블록의 Markdown 소스로 이동해 가운데에 표시하고 강조합니다."
 
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
@@ -8036,6 +8065,7 @@ msgstr "{fileName} 불러오는 중"
 msgid "Loading agent activity"
 msgstr "에이전트 활동 불러오는 중"
 
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Loading agents…"
 msgstr "에이전트 불러오는 중…"
@@ -8795,7 +8825,6 @@ msgid "New"
 msgstr "새 항목"
 
 #. placeholder {0}: TERMINAL_CLIS[selected.cli].displayName
-#. placeholder {0}: selected.agent.name
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "새 {0} 채팅"
@@ -8816,8 +8845,13 @@ msgstr "새 브랜치 <0>{trimmed}</0>는 현재 커밋에서 생성되며 <1>.o
 msgid "New changes from your remote appear in your copy automatically."
 msgstr "원격의 새 변경 사항이 사본에 자동으로 표시됩니다."
 
+#: src/components/TerminalNewChatButton.tsx
+msgid "New chat"
+msgstr "새 채팅"
+
 #: src/components/acp/thread-auth-offer.ts
 #: src/components/acp/ThreadView.tsx
+#: src/components/TerminalNewChatButton.tsx
 msgid "New chat with {agentName}"
 msgstr "{agentName}와 새 채팅"
 
@@ -8999,6 +9033,10 @@ msgstr "사용 가능한 에이전트 없음."
 msgid "No agents enabled"
 msgstr "활성화된 에이전트 없음"
 
+#: src/components/SessionsHost.tsx
+msgid "No agents enabled."
+msgstr "활성화된 에이전트가 없습니다."
+
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "No agents match your search."
 msgstr "검색과 일치하는 에이전트 없음."
@@ -9043,6 +9081,14 @@ msgstr "아직 버그 보고서가 없습니다."
 #: src/components/ActivityPanelDiffView.tsx
 msgid "No changes"
 msgstr "변경 없음"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats match your search"
+msgstr "검색과 일치하는 채팅이 없습니다"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "No chats yet."
+msgstr "아직 채팅이 없습니다."
 
 #: src/components/ConnectingBanner.tsx
 msgid "No collab server for this worktree — run <0>ok start</0> here, or reopen the project."
@@ -9211,10 +9257,6 @@ msgstr "일치하는 저장소가 없습니다."
 #: src/components/RecentProjectsMenu.tsx
 msgid "No matching worktrees or branches."
 msgstr "일치하는 워크트리 또는 브랜치 없음."
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "No open chats. Reopen a past one, or start a new one with the ＋ button."
-msgstr "열린 채팅 없음. 이전 채팅을 다시 열거나 ＋ 버튼으로 새 채팅 시작하세요."
 
 #: src/components/GraphPanel.tsx
 msgid "No Outgoing"
@@ -9539,6 +9581,10 @@ msgstr "OK가 마지막으로 이 폴더에 설정한 값은 {0}이지만, 그 �
 #: src/components/settings/LintingSection.tsx
 msgid "OKF agent skill installed"
 msgstr "OKF 에이전트 스킬 설치됨"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Older"
+msgstr "이전"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
@@ -11454,7 +11500,7 @@ msgstr "이름 변경"
 
 #. placeholder {0}: session.label
 #. placeholder {0}: thread.title
-#: src/components/acp/ThreadHistoryMenu.tsx
+#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/TerminalTabStrip.tsx
 msgid "Rename {0}"
 msgstr "{0} 이름 변경"
@@ -11462,6 +11508,10 @@ msgstr "{0} 이름 변경"
 #: src/components/FrontmatterRow.tsx
 msgid "Rename {keyName}"
 msgstr "{keyName} 이름 바꾸기"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Rename chat"
+msgstr "채팅 이름 변경"
 
 #. placeholder {0}: result.error
 #: src/components/SkillFileRenameDialog.tsx
@@ -11524,10 +11574,6 @@ msgstr "렌더링됨"
 #: src/comments/ThreadCard.tsx
 msgid "Reopen"
 msgstr "다시 열기"
-
-#: src/components/acp/ThreadHistoryMenu.tsx
-msgid "Reopen a past chat"
-msgstr "이전 채팅 다시 열기"
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Reopen closed tab"
@@ -12014,7 +12060,6 @@ msgid "Sandboxed HTML embed — write HTML, see the rendered preview live."
 msgstr "샌드박스 처리된 HTML 삽입입니다. HTML을 작성하면 렌더링된 미리보기가 실시간으로 표시됩니다."
 
 #: src/comments/ThreadCard.tsx
-#: src/components/acp/ThreadHistoryMenu.tsx
 #: src/components/AuthModal.tsx
 #: src/components/FileTargetRenameDialog.tsx
 #: src/components/settings/SearchSection.tsx
@@ -12150,6 +12195,14 @@ msgstr "브랜치 검색…"
 #: src/components/CommandPalette.tsx
 msgid "Search by meaning"
 msgstr "의미로 검색"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chat history"
+msgstr "채팅 기록 검색"
+
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Search chats"
+msgstr "채팅 검색"
 
 #: src/components/emoji-picker.tsx
 msgid "Search emoji"
@@ -13371,6 +13424,7 @@ msgid "Starting terminal…"
 msgstr "터미널 시작 중…"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "에이전트 시작 중…"
 
@@ -14893,6 +14947,10 @@ msgstr "할 일"
 msgid "To do."
 msgstr "할 일"
 
+#: src/components/acp/ThreadHistoryPanel.tsx
+msgid "Today"
+msgstr "오늘"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Toggle a bullet list."
 msgstr "글머리 기호 목록을 전환합니다."
@@ -15050,6 +15108,7 @@ msgstr "프롬프트 사용"
 #: src/components/BugReportSendToast.tsx
 #: src/components/DocumentErrorBoundary.tsx
 #: src/components/InstallInClaudeDesktopDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/settings/AccountSection.tsx
 #: src/components/settings/SavedThemesTiles.tsx
 #: src/components/ShareReceiveDialog.tsx

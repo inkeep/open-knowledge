@@ -689,7 +689,6 @@
     ],
     "6Aih4U": ["Hors ligne"],
     "6EoD0z": ["Résoudre dans le terminal"],
-    "6FCixu": ["Rouvrir un chat précédent"],
     "6HCOwA": ["Échec de l'ouverture."],
     "6KCH4m": ["Fichiers masqués"],
     "6KXnz5": ["Vous pouvez restaurer ce fichier depuis la corbeille."],
@@ -699,6 +698,7 @@
     "6MnZEC": ["Échec du chargement du terminal"],
     "6Nea1q": ["Utiliser ", ["0"], " pour le mode sombre actif"],
     "6O626z": ["Aucun titre ne correspond à « ", ["trimmedAnchorQuery"], " »"],
+    "6PsaMr": ["Renommer la discussion"],
     "6Pxqwv": [
       "Pas encore de modèles de projet. Créez-en un pour le rendre disponible partout dans ce projet. Les modèles propres à un dossier se trouvent sur la page de synthèse de chaque dossier."
     ],
@@ -919,6 +919,7 @@
     "8PmoQF": ["Ouvre le menu d'insertion à une position de texte vide ou active."],
     "8QLpZe": ["Le serveur s'est arrêté. Redémarrez-le pour vous reconnecter."],
     "8RtNI0": ["Échec du chargement des documents"],
+    "8SVvE7": ["Effacer la recherche dans l’historique"],
     "8TvlHF": ["Vidage de plantage"],
     "8Uv5e6": ["Agents"],
     "8VLpRT": [
@@ -1946,6 +1947,7 @@
     "If0crP": ["Ouvrir avec l'IA ", ["targetDisplayName"], ", ", ["hint"]],
     "IgN3LY": ["Sur le texte sélectionné dans <0>", ["address"], "</0>"],
     "IgTwLt": ["Ouvre ce document dans l'éditeur et réduit le graphe."],
+    "IgkKDg": ["Supprimer la discussion ?"],
     "Ik-gP0": ["Titre de niveau ", ["level"], " : ", ["text"]],
     "ImTzPZ": ["Cette machine"],
     "IoHQYP": [
@@ -2024,6 +2026,7 @@
     "Jnz9AY": [["0"], " est au-dessus de ", ["destination"], "."],
     "Jqqevv": ["Erreur système"],
     "JrqL_z": ["Insérer une ligne au-dessus"],
+    "Jrwm42": ["Impossible de charger vos agents."],
     "JsHvhz": [
       "Au-dessus du repère de ",
       ["budgetLabel"],
@@ -2900,6 +2903,7 @@
       " » n'ont pas pu être effacées à temps. Rechargez pour réessayer."
     ],
     "ScwcF2": ["Un projet existe déjà à cet emplacement. Choisissez un autre dossier parent."],
+    "Sdv6pQ": ["Historique des discussions"],
     "Sg-6Bo": [
       [
         "errorCount",
@@ -2976,9 +2980,6 @@
     "Tofsyo": ["Déplacer Terminal en bas"],
     "TpqW74": ["Fixe"],
     "Tq3pcs": ["Garder la mienne"],
-    "Tq9kNX": [
-      "Aucun chat ouvert. Rouvrez-en un ancien ou démarrez-en un nouveau avec le bouton ＋."
-    ],
     "TsZmgr": ["Le fichier sur le disque, et l'id qu'utilisent les agents."],
     "TvY_XA": ["Documentation"],
     "TwYboS": [
@@ -3236,6 +3237,7 @@
     "W9NSe0": ["Vérification des liens"],
     "W9_Bub": ["Les modifications locales chevauchent la synchronisation entrante"],
     "WBNpt9": ["Impossible de lire ce thème (", ["0"], ")"],
+    "WC8Mr6": ["Impossible de démarrer le fil de l'agent."],
     "WEYdDv": ["Recommandé"],
     "WFEbV1": [
       "Signale les problèmes markdown courants dans l'éditeur. Propulsé par <0>markdownlint<1/></0>."
@@ -3444,6 +3446,7 @@
       "Supprime un tableau lorsque la sélection de cellules active couvre tout le tableau."
     ],
     "YEzhIr": ["Tirer et Pousser"],
+    "YFpLoV": ["Supprimer la discussion"],
     "YGIi_c": ["Réinstaller"],
     "YGNRB5": ["— sauf"],
     "YGt-0e": ["Lecture…"],
@@ -3690,6 +3693,7 @@
     "_fZSIY": [
       "OpenKnowledge n'a pas touché à ce fichier, car il n'a pas pu l'analyser en toute sécurité. Corrigez le fichier à la main, puis réessayez."
     ],
+    "_fwE6J": ["Plus anciennes"],
     "_gO_m8": ["En attente de votre approbation"],
     "_gkGSK": ["modèle supprimé"],
     "_oqKcJ": ["Saisissez au moins 3 caractères pour rechercher par sens."],
@@ -3708,6 +3712,7 @@
     "a3LDKx": ["Sécurité"],
     "a45f2c": ["Motifs glob auxquels ce schéma s'applique"],
     "a4FRQv": ["Annuler jusqu'à cette modification ?"],
+    "a4xYoA": ["Rechercher des discussions"],
     "a5Gha5": ["Des modifications locales ont bloqué la fusion"],
     "a5W0q0": [
       "Voulez-vous vraiment supprimer ",
@@ -3977,6 +3982,7 @@
     "cklVjM": ["Chronologie"],
     "clJ3qM": ["Terminé."],
     "cnGeoo": ["Supprimer"],
+    "cnR7h2": ["Aucune discussion ne correspond à votre recherche"],
     "cqQyPB": ["Nom du dossier"],
     "crqzW5": ["Outils IA"],
     "cs4mps": ["Partage de la configuration"],
@@ -4166,6 +4172,7 @@
       ". Chaque original a été vérifié comme inchangé : supprimez ces copies, puis réessayez le déplacement."
     ],
     "eJitUk": ["Envoyer depuis l'ordinateur"],
+    "eKGK4A": ["Rechercher dans l’historique des chats"],
     "eKThTQ": ["Échec de la réorganisation"],
     "eMWRAs": ["Pages indexées : ", ["semanticIndexedCount"], " sur ", ["semanticTotalCount"], "."],
     "eNOyTV": [
@@ -4194,6 +4201,7 @@
     "ebqMh6": [
       "Partagé avec tous les membres du projet. Stocké dans le dossier du projet et le suit via git."
     ],
+    "ecUA8p": ["Aujourd’hui"],
     "ee15Vl": [
       "Les compétences apprennent des tâches répétables à vos outils IA. Écrivez les vôtres dans la barre latérale Compétences de l'éditeur ; cette page sert à les activer et à les partager."
     ],
@@ -4484,6 +4492,7 @@
     ],
     "gyHDWC": ["Tout corriger avec l'IA (", ["count"], ")"],
     "gyYvCN": ["Envoyer mes modifications toutes les"],
+    "gzaLgh": ["Choisissez ce qu'ouvre une nouvelle discussion"],
     "h-AdvS": ["Les dossiers et les modèles sont déjà là, il n'y a donc rien à ajouter."],
     "h-RPqa": [
       "Durée pendant laquelle OpenKnowledge attend chaque requête d’embedding lors de l’indexation. Les requêtes de recherche ont un délai fixe de 8 secondes par tentative, que ce réglage ne modifie pas."
@@ -4519,6 +4528,7 @@
     "hFmYGU": ["Les fichiers de thème liés ne sont pas pris en charge"],
     "hGmuTc": ["Documents étiquetés #", ["tagDocsName"]],
     "hHMv6l": ["Supprimer le bloc"],
+    "hIQkLb": ["Nouvelle discussion"],
     "hItdtk": ["Parcourir le dossier"],
     "hLKfZe": ["Utiliser plutôt un jeton"],
     "hLod4_": ["Convertir en modèle"],
@@ -4729,6 +4739,7 @@
     "j9Vqvc": ["hérité"],
     "j9tqwO": ["Pas dans la barre latérale"],
     "jAMpHn": ["Qu'est-ce qu'un pack de démarrage ?"],
+    "jAQCRf": ["Aucun agent activé."],
     "jBVUXo": ["Impossible d'ouvrir le terminal — veuillez réessayer."],
     "jC8Bv4": ["Petit tour d'horizon…"],
     "jC8LSZ": ["Réinitialiser les filtres d'affichage"],
@@ -4856,7 +4867,6 @@
       "Vous ne voyez pas <0>Compétences</0> ? Activez d'abord <1>Paramètres <2/> Fonctionnalités <3/> Exécution de code et création de fichiers</1>."
     ],
     "kVS5tE": ["Conserver les index generated dans chaque dossier ?"],
-    "kVgQUA": ["Supprimer ce chat ?"],
     "kVzuTI": ["Compétence d'agent recommandée"],
     "kXNv8P": [
       "Auto (Tirer seulement) ne pousse ni ne valide jamais vos changements locaux. Ils restent uniquement sur cette machine."
@@ -5552,6 +5562,7 @@
       "Saisissez un nom de branche valide (pas d'espaces, pas de point initial, pas de « .. »)."
     ],
     "r2eKE3": ["Connectez-vous d'abord à ", ["agentName"]],
+    "r3iaI0": ["Aucune discussion pour le moment."],
     "r4R7AZ": ["Erreur réseau pendant le nettoyage"],
     "r51jLC": ["Fichier enregistré et application Claude Desktop ouverte"],
     "r6ncaO": ["Fermer l'onglet"],
@@ -6417,6 +6428,7 @@
         { "one": ["#", " plugin"], "many": ["#", " plugins"], "other": ["#", " plugins"] }
       ]
     ],
+    "yxH4Gs": ["CLI ", ["0"]],
     "yz7wBu": ["Fermer"],
     "yzF66j": ["Lien"],
     "yzGPkm": ["Développer le graphe"],
