@@ -12,6 +12,8 @@ tmp/
 .source/
 .idea/
 *.tsbuildinfo
+__pycache__/
+*.pyc
 .vercel/
 packages/content/
 test-results/
