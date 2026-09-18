@@ -351,12 +351,6 @@ msgstr "{0} এখনও ইনস্টল করা নেই — এর ড�
 msgid "{0} kept its current context window."
 msgstr "{0} তার বর্তমান কনটেক্সট উইন্ডো ধরে রেখেছে।"
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} {1}-কে না জিজ্ঞেস করেই কাজ করতে দেয়"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1586,6 +1580,10 @@ msgstr "নির্বাচিত ট্যাবের সক্রিয় 
 msgid "Activity"
 msgstr "কার্যকলাপ"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "না জিজ্ঞেস করেই কাজ করে"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1861,8 +1859,12 @@ msgid "Agent settings"
 msgstr "এজেন্ট সেটিং"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "এজেন্ট সেটিং: আপনি এই কথোপকথন আবার শুরু করলে পরিবর্তনগুলি প্রযোজ্য হবে"
+msgid "Agent settings — {headerSummary}"
+msgstr "এজেন্ট সেটিং — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "এজেন্ট সেটিং — {headerSummary}: আপনি এই কথোপকথন আবার শুরু করলে পরিবর্তনগুলি প্রযোজ্য হবে"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6276,6 +6278,10 @@ msgstr "সিঙ্ক ব্যবধান আপডেট করা যা�
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "ফাইল আপলোড করতে ব্যর্থ"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "দ্রুত"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

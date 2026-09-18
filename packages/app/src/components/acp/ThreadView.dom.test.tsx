@@ -1,4 +1,5 @@
 import type { ThreadEvent, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { i18n } from '@lingui/core';
 import {
   act,
   cleanup,
@@ -21,6 +22,9 @@ import type {
   ThreadRenderModel,
 } from '@/lib/acp/thread-event-model';
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
+
+i18n.load('en', {});
+i18n.activate('en');
 
 const render = (ui: Parameters<typeof rtlRender>[0]) => rtlRender(ui, { wrapper: TooltipProvider });
 
@@ -474,6 +478,7 @@ async function openToolCall(): Promise<void> {
 
 afterEach(() => {
   cleanup();
+  i18n.activate('en');
   localStorage.clear();
   vi.useRealTimers();
   respondPermission.mockClear();
@@ -542,7 +547,7 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
     const follow = screen.getByRole('button', { name: "Follow the agent's edits" });
     expect(screen.queryByTestId('agent-thread-agent-name')).toBeNull();
     expect(trigger.textContent).toContain('Sonnet');
@@ -588,7 +593,7 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-model'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
 
@@ -652,7 +657,7 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
     expect(trigger.getAttribute('aria-label')).not.toMatch(/pick this conversation back up/);
     await userEvent.click(trigger);
     expect(screen.queryByTestId('agent-thread-settings-archived-hint')).toBeNull();
@@ -692,14 +697,14 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
 
     await userEvent.click(screen.getByTestId('agent-thread-config-model'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
     expect(getRememberedAgentConfig(key)).toEqual({ model: 'opus' });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-permission'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-bypass'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'permission', 'bypass');
@@ -707,8 +712,8 @@ describe('ThreadView agent settings', () => {
   });
 });
 
-describe('ThreadView permissive-mode accent', () => {
-  const modeInfo = (currentValue: string) =>
+describe('ThreadView chat header', () => {
+  const headerInfo = (over?: { effort?: string; fast?: boolean; mode?: string }) =>
     makeInfo({
       status: 'ready',
       configOptions: [
@@ -717,55 +722,276 @@ describe('ThreadView permissive-mode accent', () => {
           name: 'Permission mode',
           category: 'mode',
           type: 'select',
-          currentValue,
+          currentValue: over?.mode ?? 'default',
           options: [
             { value: 'default', name: 'Default' },
+            { value: 'acceptEdits', name: 'Accept Edits' },
             { value: 'bypassPermissions', name: 'Bypass permissions' },
           ],
+        },
+        {
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'opus',
+          options: [{ value: 'opus', name: 'Opus 5' }],
+        },
+        ...(over?.effort === undefined
+          ? []
+          : [
+              {
+                id: 'effort',
+                name: 'Effort',
+                category: 'thought_level' as const,
+                type: 'select' as const,
+                currentValue: over.effort,
+                options: [
+                  { value: 'max', name: 'Max' },
+                  { value: 'low', name: 'Low' },
+                ],
+              },
+            ]),
+        {
+          id: 'fast',
+          name: 'Fast mode',
+          category: 'model_config',
+          type: 'boolean',
+          currentValue: over?.fast ?? false,
         },
       ],
     });
 
-  test('an ordinary mode carries no accent', () => {
-    render(<ThreadView info={modeInfo('default')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+  test('keeps the model, the effort and Fast mode all visible without opening anything', () => {
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.textContent).toContain('Opus 5');
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
+    expect(screen.getByTestId('agent-thread-fast').textContent).toBe('Fast');
   });
 
-  test('a mode that lets the agent act unprompted is marked, and says so', () => {
-    render(<ThreadView info={modeInfo('bypassPermissions')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
-    expect(
-      screen.getByRole('button', {
-        name: /Bypass permissions lets Claude Agent act without asking/,
-      }),
-    ).toBeDefined();
+  test('Fast mode is shown by its presence, so it is absent when off', () => {
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: false })} />);
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
+    expect(screen.queryByTestId('agent-thread-fast')).toBeNull();
   });
 
-  test('marks a permissive mode on the legacy modes surface too', () => {
+  test('an agent that reports no effort shows none rather than a placeholder', () => {
+    render(<ThreadView info={headerInfo({ fast: true })} />);
+    expect(screen.queryByTestId('agent-thread-effort')).toBeNull();
+    expect(screen.getByTestId('agent-thread-fast')).toBeTruthy();
+  });
+
+  test('effort tracks the live value', () => {
+    const { rerender } = render(<ThreadView info={headerInfo({ effort: 'max' })} />);
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
+    rerender(<ThreadView info={headerInfo({ effort: 'low' })} />);
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Low');
+  });
+
+  test('an agent with only a reasoning level shows it once, not as model and effort both', () => {
     render(
       <ThreadView
         info={makeInfo({
           status: 'ready',
-          modes: {
-            currentModeId: 'yolo',
-            availableModes: [
-              { id: 'default', name: 'Default' },
-              { id: 'yolo', name: 'YOLO' },
-            ],
-          },
+          configOptions: [
+            {
+              id: 'effort',
+              name: 'Effort',
+              category: 'thought_level',
+              type: 'select',
+              currentValue: 'max',
+              options: [{ value: 'max', name: 'Max' }],
+            },
+          ],
         })}
       />,
     );
-    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.textContent).toBe('Max');
   });
 
-  test('the accent tracks the live mode, restored or hand-picked alike', async () => {
-    const { rerender } = render(<ThreadView info={modeInfo('default')} />);
+  test('a model_config boolean whose display name merely says fast is not the Fast badge', () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'opus',
+              options: [{ value: 'opus', name: 'Opus 5' }],
+            },
+            {
+              id: 'thinking',
+              name: 'Fast thinking',
+              category: 'model_config',
+              type: 'boolean',
+              currentValue: true,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.queryByTestId('agent-thread-fast')).toBeNull();
+  });
+
+  test('the state the header shows is also the name assistive tech reads', () => {
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.getAttribute('aria-label')).toBe('Agent settings — Opus 5, Fast, Max');
+  });
+
+  test('the label joins its parts the way the active locale does, not with a fixed comma', () => {
+    i18n.load('ar', {});
+    i18n.activate('ar');
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const label =
+      screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label') ?? '';
+    expect(label).toContain('\u060c');
+    expect(label).not.toContain('Opus 5, Fast');
+  });
+
+  test('a permissive mode is named in the header rather than coloured as a warning', () => {
+    render(<ThreadView info={headerInfo({ mode: 'bypassPermissions', effort: 'max' })} />);
     expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
-    rerender(<ThreadView info={modeInfo('bypassPermissions')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
-    rerender(<ThreadView info={modeInfo('default')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+    expect(screen.getByTestId('agent-thread-permissive-mode').textContent).toBe(
+      'Acts without asking',
+    );
+    expect(
+      screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label'),
+    ).toContain('Acts without asking');
+  });
+
+  test('the mode is still named, and disclosed once, when it is the primary select', () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          configOptions: [
+            {
+              id: 'permission',
+              name: 'Permission mode',
+              category: 'mode',
+              type: 'select',
+              currentValue: 'bypassPermissions',
+              options: [
+                { value: 'default', name: 'Default' },
+                { value: 'bypassPermissions', name: 'Bypass permissions' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.textContent).toBe('Bypass permissionsActs without asking');
+    expect(screen.getByTestId('agent-thread-permissive-mode').textContent).toBe(
+      'Acts without asking',
+    );
+    expect(trigger.getAttribute('aria-label')).toBe(
+      'Agent settings — Bypass permissions, Acts without asking',
+    );
+  });
+
+  test('a default effort is named, not described with the menu sentence', () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'opus',
+              options: [{ value: 'opus', name: 'Opus 5' }],
+            },
+            {
+              id: 'effort',
+              name: 'Effort',
+              category: 'thought_level',
+              type: 'select',
+              currentValue: 'default',
+              options: [
+                { value: 'default', name: 'Default' },
+                { value: 'max', name: 'Max' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Default');
+    expect(screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label')).toBe(
+      'Agent settings — Opus 5, Default',
+    );
+  });
+
+  test('a working-directory-scoped mode is disclosed too, not only a full bypass', () => {
+    render(<ThreadView info={headerInfo({ mode: 'acceptEdits', effort: 'max' })} />);
+    expect(screen.getByTestId('agent-thread-permissive-mode').textContent).toBe(
+      'Acts without asking',
+    );
+    expect(screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label')).toBe(
+      'Agent settings — Opus 5, Acts without asking, Max',
+    );
+  });
+
+  test('an ordinary mode is not named, so the chip means something', () => {
+    render(<ThreadView info={headerInfo({ effort: 'max' })} />);
+    expect(screen.queryByTestId('agent-thread-permissive-mode')).toBeNull();
+  });
+
+  test('the hover text carries the state the accessible name carries', async () => {
+    const user = userEvent.setup();
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+
+    await user.hover(trigger);
+
+    await screen.findByRole('tooltip');
+    const hover = screen.getByTestId('agent-thread-settings-tooltip');
+    expect(hover.textContent).toBe(trigger.getAttribute('aria-label'));
+  });
+
+  test('the state is described once, so it is not announced twice', async () => {
+    const user = userEvent.setup();
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+
+    await user.hover(trigger);
+
+    const described = await screen.findByRole('tooltip');
+    expect(trigger.getAttribute('aria-label')).toContain('Opus 5');
+    expect(described.textContent).toBe('Agent settings');
+  });
+
+  test('the archived hover text carries the resume hint too', async () => {
+    const user = userEvent.setup();
+    render(<ThreadView info={{ ...headerInfo({ effort: 'max', fast: true }), archived: true }} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+
+    await user.hover(trigger);
+
+    await screen.findByRole('tooltip');
+    const hover = screen.getByTestId('agent-thread-settings-tooltip');
+    expect(hover.textContent).toBe(trigger.getAttribute('aria-label'));
+    expect(hover.textContent).toContain('changes apply when you pick this conversation back up');
+  });
+
+  test('an archived thread announces the same state it shows', () => {
+    render(<ThreadView info={{ ...headerInfo({ effort: 'max', fast: true }), archived: true }} />);
+    const label =
+      screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label') ?? '';
+    expect(label).toContain('Opus 5');
+    expect(label).toContain('Max');
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
   });
 });
 
@@ -786,7 +1012,7 @@ describe('ThreadView agent settings (modes)', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-ask'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'ask');
@@ -811,7 +1037,7 @@ describe('ThreadView agent settings (modes)', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-yolo'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'yolo');
@@ -1818,7 +2044,7 @@ describe('ThreadView config value hints', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     const effortRow = screen.getByTestId('agent-thread-config-effort');
     expect(effortRow.textContent).toContain("Model's default effort");
 
@@ -1860,7 +2086,7 @@ describe('ThreadView config value hints', () => {
       />,
     );
 
-    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
     expect(trigger.textContent).toContain('Opus (1M context) · default');
 
     await userEvent.click(trigger);
@@ -4711,7 +4937,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     const row = screen.getByTestId('agent-thread-context-window');
     expect(row.textContent).toContain('Context window');
     expect(row.textContent).toContain('Default');
@@ -4744,7 +4970,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     const row = screen.getByTestId('agent-thread-context-window');
     expect(row.textContent).toContain('272K');
     expect(row.textContent).not.toContain('872K');
@@ -4763,7 +4989,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     expect(screen.getByTestId('agent-thread-context-window').textContent).toContain('Default');
   });
 
@@ -4777,7 +5003,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-context-window'));
     await userEvent.click(await screen.findByTestId('agent-thread-context-window-872000'));
 
@@ -4797,7 +5023,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-context-window'));
     await userEvent.click(await screen.findByTestId('agent-thread-context-window-872000'));
 
@@ -4819,7 +5045,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     expect(screen.queryByTestId('agent-thread-context-window')).toBeNull();
   });
 
@@ -4832,7 +5058,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     expect(screen.queryByTestId('agent-thread-context-window')).toBeNull();
   });
 
@@ -4848,7 +5074,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-context-window'));
 
     expect((await screen.findByTestId('agent-thread-context-window-locked')).textContent).toContain(

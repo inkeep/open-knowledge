@@ -434,6 +434,11 @@
     ],
     "3m2GBo": ["Recherche dans les documents"],
     "3mFsc3": ["Restaurer avec les modifications distantes"],
+    "3n4SJG": [
+      "Paramètres de l'agent — ",
+      ["headerSummary"],
+      " : les modifications s'appliquent lorsque vous reprendrez cette conversation"
+    ],
     "3n7lnE": [
       "Cet agent n'a pas encore de fichier de ce type sur cette machine. Ouvrez-le une fois, puis vérifiez à nouveau."
     ],
@@ -1928,9 +1933,6 @@
     "IKoTAC": ["Laisser désactivé"],
     "IMLUBh": ["Valeur de couleur non valide"],
     "INN7OX": ["Afficher ", ["hiddenCount"], " de plus"],
-    "INZWqo": [
-      "Paramètres de l'agent : les modifications s'appliquent lorsque vous reprendrez cette conversation"
-    ],
     "INp_z6": ["Commenter ce ", ["0"], " ou interroger l’IA à son sujet"],
     "IO8REi": ["Impossible d'ouvrir « ", ["name"], " » : ", ["0"]],
     "IQPyrD": ["Page manquante — cliquez pour la créer"],
@@ -2140,6 +2142,7 @@
       "Certains fichiers ne sont pas listés : l'arbre de travail contient trop de modifications."
     ],
     "Kx881F": [["0"], " a été restauré."],
+    "KziH2K": ["Rapide"],
     "L-rMC9": ["Réinitialiser à la valeur par défaut"],
     "L1BQTH": [["0"], " n'est pas encore installé — ouverture de sa page de téléchargement."],
     "L1ZE3M": ["Statistiques du document"],
@@ -2359,7 +2362,6 @@
     "MrUmCD": ["échec de compilation inconnu"],
     "MrwYIK": ["Bascule un commentaire de source via CodeMirror."],
     "MsARMw": ["Jouer à Blob Run"],
-    "MuxcRB": [["0"], " permet à ", ["1"], " d'agir sans demander"],
     "Mv2lM4": [
       "La compétence « ",
       ["conflictName"],
@@ -4277,6 +4279,7 @@
     "fWsBTs": ["Une erreur s'est produite. Veuillez réessayer."],
     "fYKgzG": ["Échec du chargement des projets récents."],
     "fYjgXu": ["Liste d'éléments sans numérotation."],
+    "fYnzNa": ["Paramètres de l'agent — ", ["headerSummary"]],
     "fZj9em": ["Corriger ", ["flatId"]],
     "f_PkYv": [
       "Redémarrer ferme le serveur de ce projet. Les agents connectés (Claude Code, Codex, Cursor) verront leur connexion MCP OpenKnowledge se fermer de façon inattendue — vous devrez peut-être redémarrer l'agent, ou désactiver puis réactiver son serveur MCP OpenKnowledge, pour vous reconnecter."
@@ -5997,6 +6000,7 @@
     "uoJF_D": ["C'était trop compliqué à installer ou à prendre en main"],
     "ur2XSb": ["Éditeur visuel"],
     "uuoHOU": ["La commande a échoué."],
+    "uv4Owp": ["Agit sans demander"],
     "uwzRx4": [
       "Ajustez la taille et le délai d'attente des requêtes d'indexation pour les serveurs d'embeddings lents ou limités en mémoire. La plupart des configurations devraient conserver les valeurs par défaut."
     ],

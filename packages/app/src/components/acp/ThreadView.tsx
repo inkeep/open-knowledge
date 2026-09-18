@@ -1,6 +1,7 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { deriveAgentPosture } from '@inkeep/open-knowledge-core/acp/agent-posture';
+import { isPermissiveMode } from '@inkeep/open-knowledge-core/acp/permissive-mode';
 import type {
   AttachmentPart,
   QueuedMessage,
@@ -128,7 +129,6 @@ import {
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import { contextChoicesForModel, useModelCandidates } from '@/lib/acp/model-candidates';
-import { isPermissiveMode } from '@/lib/acp/permissive-mode';
 import { formatShellCommand, revealHiddenCharacters } from '@/lib/acp/shell-command-format';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
@@ -154,6 +154,7 @@ import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-h
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
+import { formatUnitList } from '@/lib/tool-list-format';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
@@ -1361,6 +1362,7 @@ function ThreadHeader({
 }
 
 type SelectConfigOption = Extract<SessionConfigOption, { type: 'select' }>;
+type BooleanConfigOption = Extract<SessionConfigOption, { type: 'boolean' }>;
 
 function currentSelectEntry(
   option: SelectConfigOption,
@@ -1388,14 +1390,16 @@ function selectOptionName(option: SelectConfigOption): string {
   return currentSelectEntry(option)?.name ?? humanizeValueId(option.currentValue);
 }
 
+function selectOptionHeaderText(option: SelectConfigOption): string {
+  const entry = currentSelectEntry(option);
+  if (entry === undefined) return humanizeValueId(option.currentValue);
+  return resolveDefaultOptionLabel(option) ?? entry.name;
+}
+
 function selectOptionSummary(agentId: string, option: SelectConfigOption): string {
   const entry = currentSelectEntry(option);
   if (entry === undefined) return humanizeValueId(option.currentValue);
-  return (
-    configValueHint(agentId, option.id, entry.value) ??
-    resolveDefaultOptionLabel(option) ??
-    entry.name
-  );
+  return configValueHint(agentId, option.id, entry.value) ?? selectOptionHeaderText(option);
 }
 
 function hasSelectValues(option: SelectConfigOption): boolean {
@@ -1454,7 +1458,7 @@ function AgentSettingsPopover({
   hasStartedWork: boolean;
   onNewChat: () => void;
 }): ReactNode {
-  const { t } = useLingui();
+  const { i18n, t } = useLingui();
   const reasonId = useId();
   const client = getAgentThreadClient();
   const settingsKey = agentSettingsKey(info.agent);
@@ -1519,25 +1523,45 @@ function AgentSettingsPopover({
   }
 
   const legacyModeName = showLegacyModes ? modeSurface.currentName : undefined;
-  const permissiveMode =
-    modeSurface !== null &&
-    isPermissiveMode({ id: modeSurface.currentId, name: modeSurface.currentName });
 
+  const effortSelect = configOptions.find(
+    (option): option is SelectConfigOption =>
+      option.type === 'select' && option.category === 'thought_level',
+  );
   const primarySelect =
     configOptions.find(
       (option): option is SelectConfigOption =>
         option.type === 'select' && option.category === 'model',
     ) ?? configOptions.find((option): option is SelectConfigOption => option.type === 'select');
+  const fastToggle = configOptions.find(
+    (option): option is BooleanConfigOption =>
+      option.type === 'boolean' && option.category === 'model_config' && /fast/i.test(option.id),
+  );
+  const actsWithoutAsking =
+    modeSurface !== null &&
+    isPermissiveMode({ id: modeSurface.currentId, name: modeSurface.currentName });
   const triggerText =
     primarySelect !== undefined
-      ? selectOptionSummary(info.agent.id, primarySelect)
+      ? selectOptionHeaderText(primarySelect)
       : (legacyModeName ?? t`Settings`);
-  const accentTooltip =
+  const effortText =
+    effortSelect !== undefined && effortSelect !== primarySelect
+      ? selectOptionHeaderText(effortSelect)
+      : null;
+  const fastOn = fastToggle?.currentValue === true;
+  const headerSummary = formatUnitList(
+    [
+      triggerText,
+      actsWithoutAsking ? t`Acts without asking` : null,
+      fastOn ? t`Fast` : null,
+      effortText,
+    ].filter((part): part is string => part !== null),
+    i18n.locale,
+  );
+  const settingsLabel =
     info.archived === true
-      ? t`Agent settings — changes apply when you pick this conversation back up`
-      : permissiveMode && modeSurface !== null
-        ? t`${modeSurface.currentName} lets ${info.agent.name} act without asking`
-        : t`Agent settings`;
+      ? t`Agent settings — ${headerSummary} — changes apply when you pick this conversation back up`
+      : t`Agent settings — ${headerSummary}`;
 
   return (
     <DropdownMenu>
@@ -1547,24 +1571,36 @@ function AgentSettingsPopover({
             <Button
               type="button"
               variant="ghost"
-              className="h-6 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
-              aria-label={accentTooltip}
+              className="h-6 min-w-0 max-w-sm shrink gap-1.5 rounded-md pl-1.5 pr-1! text-xs"
+              aria-label={settingsLabel}
               data-testid="agent-thread-settings"
             >
-              {}
-              {permissiveMode ? (
+              <span className="min-w-0 truncate">{triggerText}</span>
+              {actsWithoutAsking ? (
                 <span
-                  className="size-1.5 shrink-0 rounded-full bg-amber-500 ring-[3px] ring-amber-500/15 dark:bg-amber-400 dark:ring-amber-400/15"
-                  data-testid="agent-thread-mode-accent"
-                  aria-hidden="true"
-                />
+                  className="shrink-0 text-muted-foreground"
+                  data-testid="agent-thread-permissive-mode"
+                >
+                  {t`Acts without asking`}
+                </span>
               ) : null}
-              <span className="truncate">{triggerText}</span>
+              {fastOn ? (
+                <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-fast">
+                  {t`Fast`}
+                </span>
+              ) : null}
+              {effortText !== null ? (
+                <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-effort">
+                  {effortText}
+                </span>
+              ) : null}
               <ChevronDown className="size-3.5" data-icon="inline-end" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{accentTooltip}</TooltipContent>
+        <TooltipContent side="bottom" aria-label={t`Agent settings`}>
+          <span data-testid="agent-thread-settings-tooltip">{settingsLabel}</span>
+        </TooltipContent>
       </Tooltip>
       {}
       <DropdownMenuContent align="end" className="w-60" data-testid="agent-thread-settings-popover">

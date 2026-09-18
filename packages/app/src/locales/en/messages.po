@@ -351,12 +351,6 @@ msgstr "{0} isn't installed yet — opening its download page."
 msgid "{0} kept its current context window."
 msgstr "{0} kept its current context window."
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} lets {1} act without asking"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1590,6 +1584,10 @@ msgstr "Active panel content for the selected tab shows here."
 msgid "Activity"
 msgstr "Activity"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "Acts without asking"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1865,8 +1863,12 @@ msgid "Agent settings"
 msgstr "Agent settings"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "Agent settings — changes apply when you pick this conversation back up"
+msgid "Agent settings — {headerSummary}"
+msgstr "Agent settings — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6280,6 +6282,10 @@ msgstr "Failed to update the sync interval — {detail}"
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "Failed to upload file"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "Fast"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

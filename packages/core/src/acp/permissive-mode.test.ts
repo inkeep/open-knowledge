@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 
-import { isPermissiveMode } from './permissive-mode';
+import { isPermissiveMode } from './permissive-mode.ts';
 
 describe('isPermissiveMode', () => {
   test.each([
@@ -15,7 +15,7 @@ describe('isPermissiveMode', () => {
   });
 
   test.each([
-    ['claude-agent-acp', 'default', 'Default'],
+    ['claude-agent-acp', 'default', 'Manual'],
     ['claude-agent-acp', 'plan', 'Plan Mode'],
     ['codex-acp', 'read-only', 'Read-only'],
     ['codex-acp', 'agent', 'Agent'],

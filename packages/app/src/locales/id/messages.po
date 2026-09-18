@@ -351,12 +351,6 @@ msgstr "{0} belum terpasang — membuka halaman unduhannya."
 msgid "{0} kept its current context window."
 msgstr "{0} mempertahankan jendela konteksnya saat ini."
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} membiarkan {1} bertindak tanpa bertanya"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1586,6 +1580,10 @@ msgstr "Isi panel aktif untuk tab yang dipilih muncul di sini."
 msgid "Activity"
 msgstr "Aktivitas"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "Bertindak tanpa bertanya"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1861,8 +1859,12 @@ msgid "Agent settings"
 msgstr "Pengaturan agen"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "Pengaturan agen: perubahan berlaku saat Anda melanjutkan percakapan ini"
+msgid "Agent settings — {headerSummary}"
+msgstr "Pengaturan agen — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "Pengaturan agen — {headerSummary}: perubahan berlaku saat Anda melanjutkan percakapan ini"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6276,6 +6278,10 @@ msgstr "Gagal memperbarui interval sinkronisasi — {detail}"
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "Gagal mengunggah berkas"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "Cepat"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

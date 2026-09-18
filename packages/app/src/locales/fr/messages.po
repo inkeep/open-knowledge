@@ -351,12 +351,6 @@ msgstr "{0} n'est pas encore installé — ouverture de sa page de téléchargem
 msgid "{0} kept its current context window."
 msgstr "{0} a conservé sa fenêtre de contexte actuelle."
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} permet à {1} d'agir sans demander"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1590,6 +1584,10 @@ msgstr "Le contenu du panneau actif de l'onglet sélectionné s'affiche ici."
 msgid "Activity"
 msgstr "Activité"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "Agit sans demander"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1865,8 +1863,12 @@ msgid "Agent settings"
 msgstr "Paramètres de l'agent"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "Paramètres de l'agent : les modifications s'appliquent lorsque vous reprendrez cette conversation"
+msgid "Agent settings — {headerSummary}"
+msgstr "Paramètres de l'agent — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "Paramètres de l'agent — {headerSummary} : les modifications s'appliquent lorsque vous reprendrez cette conversation"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6280,6 +6282,10 @@ msgstr "Échec de la mise à jour de l'intervalle de synchronisation — {detail
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "Échec de l'envoi du fichier"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "Rapide"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

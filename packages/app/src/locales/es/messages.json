@@ -420,6 +420,11 @@
     "3l_cXP": ["Échale un vistazo si quieres. Este archivo exacto es lo que recibimos."],
     "3m2GBo": ["Buscando documentos"],
     "3mFsc3": ["Restaurar con los cambios remotos"],
+    "3n4SJG": [
+      "Ajustes del agente — ",
+      ["headerSummary"],
+      ": los cambios se aplican cuando retomes esta conversación"
+    ],
     "3n7lnE": [
       "Este agente aún no tiene un archivo de este tipo en este equipo. Ábrelo una vez y vuelve a comprobarlo."
     ],
@@ -1900,7 +1905,6 @@
     "IKoTAC": ["Dejarlo desactivado"],
     "IMLUBh": ["Valor de color no válido"],
     "INN7OX": ["Mostrar ", ["hiddenCount"], " más"],
-    "INZWqo": ["Ajustes del agente: los cambios se aplican cuando retomes esta conversación"],
     "INp_z6": ["Comenta o pregunta a la IA sobre este ", ["0"]],
     "IO8REi": ["No se pudo abrir \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Página inexistente: haz clic para crearla"],
@@ -2101,6 +2105,7 @@
     "Kuw5NN": ["Cómo configurar ", ["rowLabel"]],
     "KvwJv8": ["Algunos archivos no aparecen: el árbol de trabajo tiene demasiados cambios."],
     "Kx881F": ["Se restauró ", ["0"], "."],
+    "KziH2K": ["Rápido"],
     "L-rMC9": ["Restablecer al valor por defecto"],
     "L1BQTH": [["0"], " todavía no está instalado: abriendo su página de descarga."],
     "L1ZE3M": ["Estadísticas del documento"],
@@ -2316,7 +2321,6 @@
     "MrUmCD": ["fallo de compilación desconocido"],
     "MrwYIK": ["Activa o desactiva un comentario en el código con CodeMirror."],
     "MsARMw": ["Jugar a Blob Run"],
-    "MuxcRB": [["0"], " permite que ", ["1"], " actúe sin preguntar"],
     "Mv2lM4": [
       "No se instaló la skill «",
       ["conflictName"],
@@ -4238,6 +4242,7 @@
     "fWsBTs": ["Algo salió mal. Inténtalo de nuevo."],
     "fYKgzG": ["No se pudieron cargar los proyectos recientes."],
     "fYjgXu": ["Lista de elementos sin numerar."],
+    "fYnzNa": ["Ajustes del agente — ", ["headerSummary"]],
     "fZj9em": ["Arreglar ", ["flatId"]],
     "f_PkYv": [
       "Reiniciar cierra el servidor de este proyecto. Los agentes conectados (Claude Code, Codex, Cursor) verán cómo su conexión MCP con OpenKnowledge se cierra de forma inesperada; puede que tengas que reiniciar el agente, o apagar y encender su servidor MCP de OpenKnowledge, para reconectar."
@@ -5933,6 +5938,7 @@
     "uoJF_D": ["Era demasiado difícil de configurar o de empezar a usar"],
     "ur2XSb": ["Editor visual"],
     "uuoHOU": ["El comando falló."],
+    "uv4Owp": ["Actúa sin preguntar"],
     "uwzRx4": [
       "Ajusta el tamaño y el tiempo de espera de las solicitudes de indexación para servidores de embeddings lentos o con poca memoria. La mayoría de las configuraciones deberían mantener los valores predeterminados."
     ],

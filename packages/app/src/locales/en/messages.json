@@ -367,6 +367,11 @@
     "3l_cXP": ["Take a look if you'd like. This exact file is what we receive."],
     "3m2GBo": ["Searching docs"],
     "3mFsc3": ["Restore with remote changes"],
+    "3n4SJG": [
+      "Agent settings — ",
+      ["headerSummary"],
+      " — changes apply when you pick this conversation back up"
+    ],
     "3n7lnE": [
       "This agent has no file of this kind on this machine yet. Open the agent once, then check again."
     ],
@@ -1620,7 +1625,6 @@
     "IKoTAC": ["Keep disabled"],
     "IMLUBh": ["Invalid color value"],
     "INN7OX": ["Show ", ["hiddenCount"], " more"],
-    "INZWqo": ["Agent settings — changes apply when you pick this conversation back up"],
     "INp_z6": ["Comment or ask AI about this ", ["0"]],
     "IO8REi": ["Couldn't open \"", ["name"], "\": ", ["0"]],
     "IQPyrD": ["Missing page — click to create"],
@@ -1801,6 +1805,7 @@
     "Kuw5NN": ["How to set up ", ["rowLabel"]],
     "KvwJv8": ["Some files are not listed — the working tree has too many changes."],
     "Kx881F": ["Restored ", ["0"], "."],
+    "KziH2K": ["Fast"],
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
@@ -1983,7 +1988,6 @@
     "MrUmCD": ["unknown build failure"],
     "MrwYIK": ["Toggle a source comment through CodeMirror."],
     "MsARMw": ["Play Blob Run"],
-    "MuxcRB": [["0"], " lets ", ["1"], " act without asking"],
     "Mv2lM4": [
       "Skill \"",
       ["conflictName"],
@@ -3624,6 +3628,7 @@
     "fWsBTs": ["Something went wrong. Please try again."],
     "fYKgzG": ["Failed to load recent projects."],
     "fYjgXu": ["Unordered list of items."],
+    "fYnzNa": ["Agent settings — ", ["headerSummary"]],
     "fZj9em": ["Fix ", ["flatId"]],
     "f_PkYv": [
       "Restarting closes this project's server. Connected agents (Claude Code, Codex, Cursor) will see their OpenKnowledge MCP connection close unexpectedly — you may need to restart the agent, or toggle its OpenKnowledge MCP server off and on, to reconnect."
@@ -5151,6 +5156,7 @@
     "uoJF_D": ["It was too hard to set up or get started"],
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],
+    "uv4Owp": ["Acts without asking"],
     "uwzRx4": [
       "Adjust indexing request size and timeout for slow or memory-constrained embedding servers. Most setups should keep the defaults."
     ],

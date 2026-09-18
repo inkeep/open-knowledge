@@ -351,12 +351,6 @@ msgstr ""
 msgid "{0} kept its current context window."
 msgstr ""
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr ""
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1586,6 +1580,10 @@ msgstr ""
 msgid "Activity"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr ""
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1861,7 +1859,11 @@ msgid "Agent settings"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
+msgid "Agent settings — {headerSummary}"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx
@@ -6275,6 +6277,10 @@ msgstr ""
 
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
 msgstr ""
 
 #: src/components/FeedbackForm.tsx

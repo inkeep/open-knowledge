@@ -364,6 +364,11 @@
     "3l_cXP": ["Silakan lihat kalau mau. Berkas persis inilah yang kami terima."],
     "3m2GBo": ["Mencari dokumen"],
     "3mFsc3": ["Pulihkan dengan perubahan remote"],
+    "3n4SJG": [
+      "Pengaturan agen — ",
+      ["headerSummary"],
+      ": perubahan berlaku saat Anda melanjutkan percakapan ini"
+    ],
     "3n7lnE": [
       "Agen ini belum memiliki file jenis ini di mesin ini. Buka agen sekali, lalu periksa lagi."
     ],
@@ -1647,7 +1652,6 @@
     "IKoTAC": ["Biarkan nonaktif"],
     "IMLUBh": ["Nilai warna tidak valid"],
     "INN7OX": ["Tampilkan ", ["hiddenCount"], " lagi"],
-    "INZWqo": ["Pengaturan agen: perubahan berlaku saat Anda melanjutkan percakapan ini"],
     "INp_z6": ["Beri komentar atau tanya AI tentang ", ["0"], " ini"],
     "IO8REi": ["\"", ["name"], "\" tidak bisa dibuka: ", ["0"]],
     "IQPyrD": ["Halaman belum ada — klik untuk membuat"],
@@ -1836,6 +1840,7 @@
     "Kuw5NN": ["Cara menyiapkan ", ["rowLabel"]],
     "KvwJv8": ["Sebagian file tidak ditampilkan: working tree memiliki terlalu banyak perubahan."],
     "Kx881F": [["0"], " dipulihkan."],
+    "KziH2K": ["Cepat"],
     "L-rMC9": ["Setel ulang ke bawaan"],
     "L1BQTH": [["0"], " belum terpasang — membuka halaman unduhannya."],
     "L1ZE3M": ["Statistik dokumen"],
@@ -2001,7 +2006,6 @@
     "MrUmCD": ["kegagalan build tidak diketahui"],
     "MrwYIK": ["Menyalakan atau mematikan komentar sumber lewat CodeMirror."],
     "MsARMw": ["Mainkan Blob Run"],
-    "MuxcRB": [["0"], " membiarkan ", ["1"], " bertindak tanpa bertanya"],
     "Mv2lM4": [
       "Skill “",
       ["conflictName"],
@@ -3654,6 +3658,7 @@
     "fWsBTs": ["Ada yang tidak beres. Silakan coba lagi."],
     "fYKgzG": ["Gagal memuat proyek terbaru."],
     "fYjgXu": ["Daftar item tanpa nomor."],
+    "fYnzNa": ["Pengaturan agen — ", ["headerSummary"]],
     "fZj9em": ["Perbaiki ", ["flatId"]],
     "f_PkYv": [
       "Memulai ulang akan menutup server proyek ini. Agen yang terhubung (Claude Code, Codex, Cursor) akan melihat koneksi MCP OpenKnowledge mereka tertutup tak terduga — Anda mungkin perlu memulai ulang agennya, atau mematikan lalu menyalakan server MCP OpenKnowledge padanya, untuk tersambung kembali."
@@ -5168,6 +5173,7 @@
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
     "ur2XSb": ["Penyunting visual"],
     "uuoHOU": ["Perintah gagal."],
+    "uv4Owp": ["Bertindak tanpa bertanya"],
     "uwzRx4": [
       "Sesuaikan ukuran dan batas waktu permintaan pengindeksan untuk server embedding yang lambat atau terbatas memori. Sebagian besar penyiapan sebaiknya mempertahankan nilai bawaan."
     ],

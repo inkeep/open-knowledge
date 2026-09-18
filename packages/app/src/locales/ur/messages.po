@@ -351,12 +351,6 @@ msgstr "{0} ابھی نصب نہیں ہے — اس کا ڈاؤن لوڈ صفحہ
 msgid "{0} kept its current context window."
 msgstr "{0} نے اپنی موجودہ سیاق ونڈو برقرار رکھی۔"
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} کی بدولت {1} بغیر پوچھے عمل کرتا ہے"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1590,6 +1584,10 @@ msgstr "منتخب ٹیب کے فعال پینل کا مواد یہاں دکھا
 msgid "Activity"
 msgstr "سرگرمی"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "پوچھے بغیر کام کرتا ہے"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1865,8 +1863,12 @@ msgid "Agent settings"
 msgstr "ایجنٹ کی ترتیبات"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "ایجنٹ کی ترتیبات: تبدیلیاں اس وقت لاگو ہوں گی جب آپ یہ گفتگو دوبارہ شروع کریں گے"
+msgid "Agent settings — {headerSummary}"
+msgstr "ایجنٹ کی ترتیبات — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "ایجنٹ کی ترتیبات — {headerSummary}: تبدیلیاں اس وقت لاگو ہوں گی جب آپ یہ گفتگو دوبارہ شروع کریں گے"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6280,6 +6282,10 @@ msgstr "مطابقت پذیری کا وقفہ اپ ڈیٹ نہیں ہو سکا �
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "فائل اپ لوڈ نہیں ہو سکی"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "تیز"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

@@ -351,12 +351,6 @@ msgstr "{0} 尚未安裝——正在開啟它的下載頁面。"
 msgid "{0} kept its current context window."
 msgstr "{0} 保留了目前的脈絡視窗。"
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} 允許 {1} 不必先詢問就執行"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1590,6 +1584,10 @@ msgstr "所選分頁的作用中面板內容會顯示在這裡。"
 msgid "Activity"
 msgstr "動態"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "無需確認即可操作"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1865,8 +1863,12 @@ msgid "Agent settings"
 msgstr "代理設定"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "代理設定：變更將在繼續此對話時生效"
+msgid "Agent settings — {headerSummary}"
+msgstr "代理設定 — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "代理設定 — {headerSummary}：變更將在繼續此對話時生效"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6280,6 +6282,10 @@ msgstr "更新同步間隔失敗 — {detail}"
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "上傳檔案失敗"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "快速"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

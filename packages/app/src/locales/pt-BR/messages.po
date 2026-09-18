@@ -351,12 +351,6 @@ msgstr "{0} ainda não está instalado — abrindo sua página de download."
 msgid "{0} kept its current context window."
 msgstr "{0} manteve a janela de contexto atual."
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} permite que {1} aja sem perguntar"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1586,6 +1580,10 @@ msgstr "O conteúdo do painel ativo da aba selecionada aparece aqui."
 msgid "Activity"
 msgstr "Atividade"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "Age sem perguntar"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1861,8 +1859,12 @@ msgid "Agent settings"
 msgstr "Configurações do agente"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "Configurações do agente: as alterações se aplicam quando você retomar esta conversa"
+msgid "Agent settings — {headerSummary}"
+msgstr "Configurações do agente — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "Configurações do agente — {headerSummary}: as alterações se aplicam quando você retomar esta conversa"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6276,6 +6278,10 @@ msgstr "Falha ao atualizar o intervalo de sincronização — {detail}"
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "Falha ao enviar o arquivo"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "Rápido"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

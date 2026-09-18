@@ -351,12 +351,6 @@ msgstr "{0} 미설치 상태입니다. 다운로드 페이지를 엽니다."
 msgid "{0} kept its current context window."
 msgstr "{0}이(가) 현재 컨텍스트 창을 유지했습니다."
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0}에서 {1} 확인 없이 작업할 수 있습니다"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1590,6 +1584,10 @@ msgstr "선택한 탭의 활성 패널 콘텐츠가 여기에 표시됩니다."
 msgid "Activity"
 msgstr "활동"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "묻지 않고 실행"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1865,8 +1863,12 @@ msgid "Agent settings"
 msgstr "에이전트 설정"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "에이전트 설정: 변경 사항은 이 대화를 다시 시작할 때 적용됩니다"
+msgid "Agent settings — {headerSummary}"
+msgstr "에이전트 설정 — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "에이전트 설정 — {headerSummary}: 변경 사항은 이 대화를 다시 시작할 때 적용됩니다"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6280,6 +6282,10 @@ msgstr "동기화 주기를 업데이트하지 못했습니다 — {detail}"
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "파일을 업로드하지 못했습니다"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "빠름"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

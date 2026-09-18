@@ -351,12 +351,6 @@ msgstr "{0} 尚未安装——正在打开它的下载页面。"
 msgid "{0} kept its current context window."
 msgstr "{0} 保留了当前的上下文窗口。"
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} 允许 {1} 无需询问即可执行"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1590,6 +1584,10 @@ msgstr "所选标签页的活动面板内容显示在这里。"
 msgid "Activity"
 msgstr "动态"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "无需确认即可操作"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1865,8 +1863,12 @@ msgid "Agent settings"
 msgstr "智能体设置"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "智能体设置：更改将在继续此对话时生效"
+msgid "Agent settings — {headerSummary}"
+msgstr "智能体设置 — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "智能体设置 — {headerSummary}：更改将在继续此对话时生效"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6280,6 +6282,10 @@ msgstr "更新同步间隔失败 — {detail}"
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "上传文件失败"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "快速"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

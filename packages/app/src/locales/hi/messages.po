@@ -351,12 +351,6 @@ msgstr "{0} अभी इंस्टॉल नहीं है — इसका
 msgid "{0} kept its current context window."
 msgstr "{0} ने अपनी मौजूदा संदर्भ विंडो बनाए रखी।"
 
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} {1} को बिना पूछे काम करने देता है"
-
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
 #: src/components/acp/ThreadView.tsx
@@ -1586,6 +1580,10 @@ msgstr "चयनित टैब की सक्रिय पैनल सा�
 msgid "Activity"
 msgstr "गतिविधि"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Acts without asking"
+msgstr "बिना पूछे काम करता है"
+
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
@@ -1861,8 +1859,12 @@ msgid "Agent settings"
 msgstr "एजेंट सेटिंग"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "एजेंट सेटिंग: परिवर्तन तब लागू होंगे जब आप यह बातचीत फिर से शुरू करेंगे"
+msgid "Agent settings — {headerSummary}"
+msgstr "एजेंट सेटिंग — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "एजेंट सेटिंग — {headerSummary}: परिवर्तन तब लागू होंगे जब आप यह बातचीत फिर से शुरू करेंगे"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -6276,6 +6278,10 @@ msgstr "सिंक अंतराल अपडेट नहीं हो स�
 #: src/components/FileTree.tsx
 msgid "Failed to upload file"
 msgstr "फ़ाइल अपलोड करने में विफल"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "तेज़"
 
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."

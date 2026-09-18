@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatToolList } from './tool-list-format';
+import { formatToolList, formatUnitList } from './tool-list-format';
 
 describe('formatToolList', () => {
   test('joins with a locale conjunction so a checkbox label reads as prose', () => {
@@ -24,5 +24,27 @@ describe('formatToolList', () => {
 
   test('the conjunction is localized, not hardcoded English', () => {
     expect(formatToolList(['Claude', 'Cursor'], 'es')).toBe('Claude y Cursor');
+  });
+});
+
+describe('formatUnitList', () => {
+  test('joins attributes without a conjunction, so it reads as a list of states', () => {
+    expect(formatUnitList(['Opus 5', 'Fast', 'Max'], 'en')).toBe('Opus 5, Fast, Max');
+  });
+
+  test('uses the separator the locale uses, not a fixed comma', () => {
+    expect(formatUnitList(['Opus 5', 'Fast', 'Max'], 'ar')).toContain('،');
+    expect(formatUnitList(['Opus 5', 'Fast', 'Max'], 'ar')).not.toContain('Opus 5, Fast');
+  });
+
+  test('a single part is returned unchanged', () => {
+    expect(formatUnitList(['Opus 5'], 'en')).toBe('Opus 5');
+  });
+
+  test('an empty locale falls back to the runtime default instead of throwing', () => {
+    const parts = ['Opus 5', 'Fast', 'Max'];
+    expect(formatUnitList(parts, '')).toBe(
+      new Intl.ListFormat(undefined, { style: 'short', type: 'unit' }).format(parts),
+    );
   });
 });
