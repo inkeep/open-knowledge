@@ -60,6 +60,7 @@
     "*.ts",
     "tests/stress/fixtures",
     "tests/half-open-forced-close.test-helper.ts",
+    "tests/stress/_helpers/acp-catalog.ts",
     "tests/stress/_helpers/image.ts",
     "tests/stress/_helpers/theme-fade.ts"
   ],

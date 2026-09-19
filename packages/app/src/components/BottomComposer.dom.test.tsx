@@ -1220,6 +1220,17 @@ describe('BottomComposer (dismiss / reopen)', () => {
   });
 });
 
+describe('BottomComposer (collapse tab)', () => {
+  test('the collapse tab paints its own opaque fill, so the border it straddles cannot show through', async () => {
+    await renderComposer('notes');
+
+    const tab = screen.getByTestId('ask-ai-collapse');
+    expect(tab.className).toContain('dark:bg-background');
+    expect(tab.className).toContain('dark:hover:bg-muted');
+    expect(tab.className).not.toMatch(/dark:bg-input\/30/);
+  });
+});
+
 describe('BottomComposer (conflict footer stacking)', () => {
   test('the wrapper anchors its bottom to --conflict-footer-height, not a hard bottom-0', async () => {
     await renderComposer('notes');

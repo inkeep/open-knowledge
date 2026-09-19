@@ -1337,12 +1337,8 @@
   line-height: 1.5;
   margin-left: 0;
   padding-left: 0;
-  /* No trailing dead zone either: nothing can follow a one-line prompt, so the
-     affordance never engages here and the pad would only add dead space. The
-     token needs no reset — this element is excluded from the opt-in rule that
-     grants it — but the padding does, because the scroller rule adds the
-     composer's own height on top. */
-  padding-bottom: 0;
+  /* STOP: 0.25rem mirrors this element's own `py-1` top; 0 un-centres the composer row. */
+  padding-bottom: 0.25rem;
   /* Drop the right gutter mirror too — the slim composer is a single-line prompt,
      not a document body, so it needs neither the drag-handle hit area nor the
      full-width-block border slack. */

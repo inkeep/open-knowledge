@@ -749,7 +749,7 @@ export function BottomComposer({
           aria-label={t`Collapse Ask AI`}
           onClick={() => onDismiss?.()}
           data-testid="ask-ai-collapse"
-          className="-top-2.5 -translate-x-1/2 absolute left-1/2 z-10 h-5 w-10 rounded-md p-0 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100"
+          className="-top-2.5 -translate-x-1/2 absolute left-1/2 z-10 h-5 w-10 rounded-md p-0 text-muted-foreground opacity-0 shadow-sm transition-opacity hover:text-foreground focus-visible:opacity-100 group-focus-within:opacity-100 group-hover:opacity-100 dark:bg-background dark:hover:bg-muted"
         >
           <ChevronDown className="size-3.5" aria-hidden />
         </Button>
@@ -867,9 +867,9 @@ export function BottomComposer({
       </div>
       <div className="flex items-end gap-2">
         {attachmentsAccepted ? (
-          <AttachFilesButton testId="ask-ai-attach-files" onFiles={ingestFiles} />
+          <AttachFilesButton testId="ask-ai-attach-files" onFiles={ingestFiles} size="icon" />
         ) : null}
-        <div className="relative flex-1">
+        <div className="relative flex min-h-8 flex-1 flex-col justify-center">
           <ComposerMentionInput
             ref={inputRef}
             ariaLabel={t`Ask AI`}
@@ -889,12 +889,12 @@ export function BottomComposer({
             <div
               aria-hidden
               className={cn(
-                'pointer-events-none absolute inset-0 truncate px-0 py-1 text-base text-muted-foreground/60 md:text-sm',
+                'pointer-events-none absolute inset-0 flex items-center px-0 py-0 text-base text-muted-foreground/60 md:text-sm',
                 !reduced && 'transition-opacity duration-500 ease-in-out',
                 suggestion.visible ? 'opacity-100' : 'opacity-0',
               )}
             >
-              {suggestion.text}
+              <span className="min-w-0 truncate">{suggestion.text}</span>
             </div>
           ) : null}
         </div>
@@ -966,6 +966,7 @@ export function BottomComposer({
           menuAttributes={COMPOSER_PORTAL_ATTRIBUTES}
           triggerAriaLabel={t`Choose agent`}
           testIds={{
+            group: 'ask-ai-agent-group',
             primary: 'ask-ai-send',
             trigger: 'ask-ai-agent-trigger',
             menu: 'ask-ai-agent-menu',

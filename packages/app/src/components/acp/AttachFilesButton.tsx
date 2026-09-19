@@ -1,6 +1,6 @@
 import { useLingui } from '@lingui/react/macro';
 import { Plus } from 'lucide-react';
-import type { ReactNode } from 'react';
+import type { ComponentProps, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -8,10 +8,12 @@ export function AttachFilesButton({
   onFiles,
   referencesOnly = false,
   testId,
+  size = 'icon-sm',
 }: {
   onFiles: (files: readonly File[]) => Promise<void> | void;
   referencesOnly?: boolean;
   testId: string;
+  size?: Extract<ComponentProps<typeof Button>['size'], 'icon-sm' | 'icon'>;
 }): ReactNode {
   const { t } = useLingui();
   const openFilePicker = () => {
@@ -29,7 +31,7 @@ export function AttachFilesButton({
       <TooltipTrigger asChild>
         <Button
           type="button"
-          size="icon-sm"
+          size={size}
           variant="ghost"
           className="rounded-lg"
           onClick={openFilePicker}
