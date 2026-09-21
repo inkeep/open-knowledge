@@ -98,6 +98,15 @@ import {
 } from './EditorWorkspace';
 import { shouldPaintOverlay } from './editor-area-overlay';
 import {
+  describeRailFloorShortfall,
+  describeRailWidthShortfall,
+  type RailPanelSpaceRefusal,
+  type RailPanelSpaceResult,
+  type RailWidthShortfall,
+  resolveRailPanelSpace,
+  resolveRailPanelSpacePx,
+} from './editor-area-panel-space';
+import {
   AGENTS_COLUMN_ID,
   accountRailLayout,
   DOC_PANEL_ID,
@@ -210,6 +219,23 @@ const LazyAgentDiffPane = lazy(async () => {
   const mod = await import('@/components/AgentDiffPane');
   return { default: mod.AgentDiffPane };
 });
+
+export const MAX_RAIL_PIN_EXHAUSTED_REPORTS = 5;
+
+type RailPinOutcome =
+  | { readonly stage: 'pinned' }
+  | { readonly stage: 'group-missing' }
+  | { readonly stage: 'read-failed' }
+  | { readonly stage: 'panel-space-unresolved'; readonly refusal: RailPanelSpaceRefusal }
+  | { readonly stage: 'layout-unaccounted'; readonly unaccountedIds: readonly string[] }
+  | { readonly stage: 'no-residual-panel' }
+  | { readonly stage: 'no-pinned-columns' }
+  | { readonly stage: 'pins-do-not-fit'; readonly shortfall: Record<string, RailWidthShortfall> }
+  | { readonly stage: 'write-failed' }
+  | { readonly stage: 'verify-failed' }
+  | { readonly stage: 'width-shortfall'; readonly shortfall: Record<string, RailWidthShortfall> };
+
+type RailPinExhaustedTrigger = 'rail-column-sync' | 'doc-slot-presence';
 
 const DOC_PANEL_MIN_WIDTH_PX = 300;
 const DOC_PANEL_MIN_SIZE = `${DOC_PANEL_MIN_WIDTH_PX}px`;
@@ -499,17 +525,27 @@ function EditorAreaInner({
 
   const docSlotPresentRef = useRef(false);
   const presenceRepinFrameRef = useRef(0);
+  const railPinOutcomeRef = useRef<RailPinOutcome>({ stage: 'group-missing' });
+  const railPinExhaustedReportsRef = useRef<Record<RailPinExhaustedTrigger, number>>({
+    'rail-column-sync': 0,
+    'doc-slot-presence': 0,
+  });
+
+  const reportRailPinExhausted = useEffectEvent((trigger: RailPinExhaustedTrigger) => {
+    if (railPinExhaustedReportsRef.current[trigger] >= MAX_RAIL_PIN_EXHAUSTED_REPORTS) return;
+    railPinExhaustedReportsRef.current[trigger] += 1;
+    console.warn(
+      JSON.stringify({
+        event: 'right-rail-pin-exhausted',
+        trigger,
+        ...railPinOutcomeRef.current,
+      }),
+    );
+  });
 
   const groupRef = useGroupRef();
   function resolveGroupPxWidth(): number | null {
-    for (const ref of [panelRef, terminalColumnPanelRef, agentsColumnPanelRef]) {
-      const size = ref.current?.getSize();
-      if (size != null && size.asPercentage > 1 && size.inPixels > 0) {
-        return (size.inPixels / size.asPercentage) * 100;
-      }
-    }
-    const el = groupContainerElRef.current;
-    return el != null && el.offsetWidth > 0 ? el.offsetWidth : null;
+    return resolveRailPanelSpacePx(groupContainerElRef.current);
   }
 
   function resolveAdmissionMetrics(): {
@@ -611,19 +647,31 @@ function EditorAreaInner({
 
   function applyRailLayout(docCollapsed: boolean): boolean {
     const group = groupRef.current;
-    if (group == null) return false;
-    let containerPx: number | null;
+    if (group == null) {
+      railPinOutcomeRef.current = { stage: 'group-missing' };
+      return false;
+    }
+    let panelSpace: RailPanelSpaceResult;
     let layout: Record<string, number>;
     try {
-      containerPx = resolveGroupPxWidth();
+      panelSpace = resolveRailPanelSpace(groupContainerElRef.current);
       layout = group.getLayout();
     } catch (error) {
+      railPinOutcomeRef.current = { stage: 'read-failed' };
       reportUnexpectedPanelGroupFailure('apply-rail-layout-read-failed', error);
       return false;
     }
-    if (containerPx == null) return false;
+    if (!panelSpace.ok) {
+      railPinOutcomeRef.current = { stage: 'panel-space-unresolved', refusal: panelSpace.refusal };
+      return false;
+    }
+    const containerPx = panelSpace.panelSpacePx;
     const accounting = accountRailLayout(Object.keys(layout));
     if (!accounting.ok) {
+      railPinOutcomeRef.current =
+        accounting.unaccountedIds.length === 0
+          ? { stage: 'no-residual-panel' }
+          : { stage: 'layout-unaccounted', unaccountedIds: accounting.unaccountedIds };
       if (import.meta.env.DEV) {
         console.warn(
           JSON.stringify({
@@ -635,7 +683,6 @@ function EditorAreaInner({
       return false;
     }
     const residualId = accounting.residualId;
-    if (residualId == null) return false;
 
     const buildPins = (atFloor: boolean): Record<string, number> => {
       const pins: Record<string, number> = {};
@@ -664,8 +711,17 @@ function EditorAreaInner({
       return pins;
     };
 
+    const widthsFrom = (pcts: Record<string, number>) => {
+      const widths = new Map<string, number>();
+      for (const [id, pct] of Object.entries(pcts)) widths.set(id, (pct / 100) * containerPx);
+      return widths;
+    };
+
     let pins = buildPins(false);
-    if (Object.keys(pins).length === 0) return false;
+    if (Object.keys(pins).length === 0) {
+      railPinOutcomeRef.current = { stage: 'no-pinned-columns' };
+      return false;
+    }
 
     let next = computeStickyRepinLayout({
       currentLayout: layout,
@@ -682,10 +738,18 @@ function EditorAreaInner({
         residualId,
       });
     }
-    if (next === layout) return true;
+    if (next === layout) {
+      const shortfall = describeRailFloorShortfall(pins, widthsFrom(layout));
+      const pinned = Object.keys(shortfall).length === 0;
+      railPinOutcomeRef.current = pinned
+        ? { stage: 'pinned' }
+        : { stage: 'pins-do-not-fit', shortfall };
+      return pinned;
+    }
     try {
       group.setLayout(next);
     } catch (error) {
+      railPinOutcomeRef.current = { stage: 'write-failed' };
       reportUnexpectedPanelGroupFailure('apply-rail-layout-write-failed', error);
       return false;
     }
@@ -693,15 +757,16 @@ function EditorAreaInner({
     try {
       readBack = group.getLayout();
     } catch (error) {
+      railPinOutcomeRef.current = { stage: 'verify-failed' };
       reportUnexpectedPanelGroupFailure('apply-rail-layout-verify-failed', error);
       return false;
     }
-    for (const [id, px] of Object.entries(pins)) {
-      const pct = readBack[id];
-      if (pct == null) continue;
-      if (Math.abs((pct / 100) * containerPx - px) > 1) return false;
-    }
-    return true;
+    const shortfall = describeRailWidthShortfall(pins, widthsFrom(readBack));
+    const pinned = Object.keys(shortfall).length === 0;
+    railPinOutcomeRef.current = pinned
+      ? { stage: 'pinned' }
+      : { stage: 'width-shortfall', shortfall };
+    return pinned;
   }
 
   function reclaimHiddenRailColumn(columnId: string, present: boolean, widthPx: number) {
@@ -797,11 +862,15 @@ function EditorAreaInner({
     return applyRailLayout(isCollapsedRef.current);
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: see above.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: syncRailColumns is render-bound but reads only refs, so the mount closure stays current; listing it would restart the retry loop on every render
   useEffect(() => {
     const frameRef = { id: 0 };
     const attempt = (attemptsLeft: number) => {
-      if (syncRailColumns() || attemptsLeft <= 0) return;
+      if (syncRailColumns()) return;
+      if (attemptsLeft <= 0) {
+        reportRailPinExhausted('rail-column-sync');
+        return;
+      }
       frameRef.id = requestAnimationFrame(() => attempt(attemptsLeft - 1));
     };
     attempt(30);
@@ -1195,7 +1264,11 @@ function EditorAreaInner({
     const docCollapsed = isCollapsedRef.current;
     const attempt = (attemptsLeft: number) => {
       presenceRepinFrameRef.current = 0;
-      if (assertRightRailLayoutRef.current(docCollapsed) || attemptsLeft <= 0) return;
+      if (assertRightRailLayoutRef.current(docCollapsed)) return;
+      if (attemptsLeft <= 0) {
+        reportRailPinExhausted('doc-slot-presence');
+        return;
+      }
       presenceRepinFrameRef.current = requestAnimationFrame(() => attempt(attemptsLeft - 1));
     };
     attempt(30);
