@@ -1584,10 +1584,6 @@ msgstr "Le contenu du panneau actif de l'onglet sélectionné s'affiche ici."
 msgid "Activity"
 msgstr "Activité"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "Agit sans demander"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

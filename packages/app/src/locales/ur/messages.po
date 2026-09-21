@@ -1584,10 +1584,6 @@ msgstr "منتخب ٹیب کے فعال پینل کا مواد یہاں دکھا
 msgid "Activity"
 msgstr "سرگرمی"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "پوچھے بغیر کام کرتا ہے"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

@@ -855,18 +855,20 @@ describe('ThreadView chat header', () => {
     expect(label).not.toContain('Opus 5, Fast');
   });
 
-  test('a permissive mode is named in the header rather than coloured as a warning', () => {
-    render(<ThreadView info={headerInfo({ mode: 'bypassPermissions', effort: 'max' })} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
-    expect(screen.getByTestId('agent-thread-permissive-mode').textContent).toBe(
-      'Acts without asking',
-    );
-    expect(
-      screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label'),
-    ).toContain('Acts without asking');
-  });
+  test.each(['default', 'acceptEdits', 'bypassPermissions'])(
+    'the %s mode reaches the header neither as text nor as a colour',
+    (mode) => {
+      render(<ThreadView info={headerInfo({ mode, effort: 'max' })} />);
 
-  test('the mode is still named, and disclosed once, when it is the primary select', () => {
+      expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+      expect(screen.queryByTestId('agent-thread-permissive-mode')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label'),
+      ).toBe('Agent settings — Opus 5, Max');
+    },
+  );
+
+  test('a mode-only agent still names its mode, since that is the only select there is', () => {
     render(
       <ThreadView
         info={makeInfo({
@@ -888,13 +890,9 @@ describe('ThreadView chat header', () => {
       />,
     );
     const trigger = screen.getByRole('button', { name: /^Agent settings/ });
-    expect(trigger.textContent).toBe('Bypass permissionsActs without asking');
-    expect(screen.getByTestId('agent-thread-permissive-mode').textContent).toBe(
-      'Acts without asking',
-    );
-    expect(trigger.getAttribute('aria-label')).toBe(
-      'Agent settings — Bypass permissions, Acts without asking',
-    );
+    expect(trigger.textContent).toBe('Bypass permissions');
+    expect(screen.queryByTestId('agent-thread-permissive-mode')).toBeNull();
+    expect(trigger.getAttribute('aria-label')).toBe('Agent settings — Bypass permissions');
   });
 
   test('a default effort is named, not described with the menu sentence', () => {
@@ -931,21 +929,6 @@ describe('ThreadView chat header', () => {
     expect(screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label')).toBe(
       'Agent settings — Opus 5, Default',
     );
-  });
-
-  test('a working-directory-scoped mode is disclosed too, not only a full bypass', () => {
-    render(<ThreadView info={headerInfo({ mode: 'acceptEdits', effort: 'max' })} />);
-    expect(screen.getByTestId('agent-thread-permissive-mode').textContent).toBe(
-      'Acts without asking',
-    );
-    expect(screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label')).toBe(
-      'Agent settings — Opus 5, Acts without asking, Max',
-    );
-  });
-
-  test('an ordinary mode is not named, so the chip means something', () => {
-    render(<ThreadView info={headerInfo({ effort: 'max' })} />);
-    expect(screen.queryByTestId('agent-thread-permissive-mode')).toBeNull();
   });
 
   test('the hover text carries the state the accessible name carries', async () => {

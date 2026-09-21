@@ -1584,10 +1584,6 @@ msgstr "所选标签页的活动面板内容显示在这里。"
 msgid "Activity"
 msgstr "动态"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "无需确认即可操作"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

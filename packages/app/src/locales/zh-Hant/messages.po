@@ -1584,10 +1584,6 @@ msgstr "所選分頁的作用中面板內容會顯示在這裡。"
 msgid "Activity"
 msgstr "動態"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "無需確認即可操作"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

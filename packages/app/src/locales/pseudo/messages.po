@@ -1580,10 +1580,6 @@ msgstr ""
 msgid "Activity"
 msgstr ""
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr ""
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

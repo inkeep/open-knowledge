@@ -1,7 +1,6 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { deriveAgentPosture } from '@inkeep/open-knowledge-core/acp/agent-posture';
-import { isPermissiveMode } from '@inkeep/open-knowledge-core/acp/permissive-mode';
 import type {
   AttachmentPart,
   QueuedMessage,
@@ -1537,9 +1536,6 @@ function AgentSettingsPopover({
     (option): option is BooleanConfigOption =>
       option.type === 'boolean' && option.category === 'model_config' && /fast/i.test(option.id),
   );
-  const actsWithoutAsking =
-    modeSurface !== null &&
-    isPermissiveMode({ id: modeSurface.currentId, name: modeSurface.currentName });
   const triggerText =
     primarySelect !== undefined
       ? selectOptionHeaderText(primarySelect)
@@ -1550,12 +1546,9 @@ function AgentSettingsPopover({
       : null;
   const fastOn = fastToggle?.currentValue === true;
   const headerSummary = formatUnitList(
-    [
-      triggerText,
-      actsWithoutAsking ? t`Acts without asking` : null,
-      fastOn ? t`Fast` : null,
-      effortText,
-    ].filter((part): part is string => part !== null),
+    [triggerText, fastOn ? t`Fast` : null, effortText].filter(
+      (part): part is string => part !== null,
+    ),
     i18n.locale,
   );
   const settingsLabel =
@@ -1576,14 +1569,6 @@ function AgentSettingsPopover({
               data-testid="agent-thread-settings"
             >
               <span className="min-w-0 truncate">{triggerText}</span>
-              {actsWithoutAsking ? (
-                <span
-                  className="shrink-0 text-muted-foreground"
-                  data-testid="agent-thread-permissive-mode"
-                >
-                  {t`Acts without asking`}
-                </span>
-              ) : null}
               {fastOn ? (
                 <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-fast">
                   {t`Fast`}

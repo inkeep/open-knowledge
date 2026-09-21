@@ -1584,10 +1584,6 @@ msgstr "يظهر هنا محتوى اللوحة النشطة للتبويب ال
 msgid "Activity"
 msgstr "النشاط"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "يتصرف دون سؤال"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

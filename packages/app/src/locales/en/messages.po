@@ -1584,10 +1584,6 @@ msgstr "Active panel content for the selected tab shows here."
 msgid "Activity"
 msgstr "Activity"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "Acts without asking"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

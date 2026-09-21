@@ -1580,10 +1580,6 @@ msgstr "चयनित टैब की सक्रिय पैनल सा�
 msgid "Activity"
 msgstr "गतिविधि"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "बिना पूछे काम करता है"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

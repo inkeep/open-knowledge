@@ -1584,10 +1584,6 @@ msgstr "선택한 탭의 활성 패널 콘텐츠가 여기에 표시됩니다."
 msgid "Activity"
 msgstr "활동"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "묻지 않고 실행"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"

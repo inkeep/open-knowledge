@@ -1584,10 +1584,6 @@ msgstr "Aquí se muestra el contenido del panel activo de la pestaña selecciona
 msgid "Activity"
 msgstr "Actividad"
 
-#: src/components/acp/ThreadView.tsx
-msgid "Acts without asking"
-msgstr "Actúa sin preguntar"
-
 #: src/components/AppMenubar.tsx
 #: src/lib/native-menu-catalog.ts
 msgid "Actual Size"
