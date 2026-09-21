@@ -63,6 +63,7 @@ export default defineConfig({
     'ok/no-raw-route-hash-construction': 'error',
     'ok/no-resolved-value-theme-source': 'error',
     'ok/no-roundtrip-identity-oracle': 'error',
+    'ok/no-sentinel-signal-target': 'error',
     'ok/no-split-suggestion-dispatch': 'error',
     'ok/no-themeless-pierre-diff': 'error',
     'ok/no-unconverted-git-pathspec': 'error',

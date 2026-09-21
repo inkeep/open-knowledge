@@ -17,6 +17,7 @@ import codexFixture from '../../../../test-support/fixtures/codex-legacy-warning
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
+import { isValidLockPid } from '../process-alive.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
 import {
@@ -4997,6 +4998,10 @@ describe('diagnostic stream lifetime', () => {
     try {
       expect(await resumed).toMatchObject({ code: 'spawn-failed' });
       const pid = Number(readFileSync(pidFile, 'utf8'));
+      expect(
+        isValidLockPid(pid),
+        `resumed-pid held ${JSON.stringify(readFileSync(pidFile, 'utf8'))}`,
+      ).toBe(true);
       await expect
         .poll(
           () => {
@@ -5018,9 +5023,21 @@ describe('diagnostic stream lifetime', () => {
       expect(replay.at(-1)).toMatchObject({ kind: 'status', detail: 'thread closed' });
     } finally {
       if (existsSync(pidFile)) {
-        try {
-          process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL');
-        } catch {}
+        const raw = readFileSync(pidFile, 'utf8');
+        const pid = Number(raw);
+        if (isValidLockPid(pid)) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {}
+        } else {
+          console.warn(
+            `[resume-after-close cleanup] left a spawned child unreaped: ${pidFile} held ${JSON.stringify(raw)}, which isValidLockPid rejects`,
+          );
+        }
+      } else {
+        console.warn(
+          `[resume-after-close cleanup] no pidfile at ${pidFile}: either the resume failed before spawning, or a child was spawned and this test threw before the child's first write — in that case it is still running`,
+        );
       }
     }
   }, 15_000);

@@ -17,6 +17,7 @@ export const UNSCOPED_RULES = new Set([
   'no-hand-rolled-spinner',
   'no-loosely-typed-webcontents-ipc',
   'no-resolved-value-theme-source',
+  'no-sentinel-signal-target',
   'no-split-suggestion-dispatch',
   'no-unportaled-editor-content',
 ]);
