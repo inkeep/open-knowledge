@@ -6,7 +6,9 @@ export {
 export { simulateCopyAndRead, simulateCutAndRead } from './clipboard.ts';
 export { resetContentToFixtureBaseline } from './content-reset.ts';
 export {
+  type CaretPlacement,
   focusEditor,
+  placeCaretAtEndOfText,
   primeFullLayout,
   selectAllAndWaitForSelection,
   selectText,
