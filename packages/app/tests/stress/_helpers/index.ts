@@ -80,6 +80,8 @@ export {
   FADE_DURATION_MS,
   FADE_REPORT_WINDOW_MS,
   installThemeFadeProbe,
+  runningRootAnimations,
+  switchColorThemeAndSettleFade,
   type ThemeFadeProbeWindow,
   type ThemeFadeReport,
 } from './theme-fade.ts';

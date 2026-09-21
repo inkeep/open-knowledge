@@ -53,8 +53,11 @@
   // guarantee also stops at the module boundary: the three `*.e2e.ts` call
   // sites stay outside the program, so their
   // `window as typeof window & ThemeFadeProbeWindow` casts and their reads off
-  // the returned report are unchecked. It imports only `@playwright/test`, so
-  // its closure adds no other file to the program.
+  // the returned report are unchecked — which is why the color-theme switch
+  // helper rejects an inapplicable theme id by throwing rather than by typing
+  // its parameter. It imports `@playwright/test` and
+  // `@inkeep/open-knowledge-core`, whose declarations `src` already pulls into
+  // the program, so its closure adds no other file to it.
   "include": [
     "src",
     "*.ts",

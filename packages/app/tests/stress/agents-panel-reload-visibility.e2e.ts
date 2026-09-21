@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
 import { HISTORY_PANEL_WIDTH_PX } from '../../src/hooks/use-history-presentation-mode';
-import { expect, test } from './_helpers';
+import { expect, switchColorThemeAndSettleFade, test } from './_helpers';
 
 const AGENTS_PANEL_MOUNT = '[data-agents-panel-mount]';
 const AGENTS_REVEAL_TAB = '[data-terminal-reveal="right"]';
@@ -45,60 +45,57 @@ function relativeLuminance(channels: readonly number[]): number {
   return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
-async function readComputedColor(
-  locator: Locator,
-  property: 'color' | 'backgroundColor',
-): Promise<readonly [number, number, number, number]> {
-  return locator.evaluate((element, colorProperty) => {
-    const color = getComputedStyle(element)[colorProperty];
-    const canvas = new OffscreenCanvas(1, 1);
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('Could not create a color conversion context');
-    context.clearRect(0, 0, 1, 1);
-    context.fillStyle = color;
-    context.fillRect(0, 0, 1, 1);
-    return Array.from(context.getImageData(0, 0, 1, 1).data) as [number, number, number, number];
-  }, property);
+interface ContrastPair {
+  foreground: readonly [number, number, number, number];
+  background: readonly [number, number, number, number];
 }
 
-async function readEffectiveBackground(
-  locator: Locator,
-): Promise<readonly [number, number, number, number]> {
-  return locator.evaluate((element) => {
-    const canvas = new OffscreenCanvas(1, 1);
-    const context = canvas.getContext('2d', { willReadFrequently: true });
-    if (!context) throw new Error('Could not create a color conversion context');
-    const layers: Array<[number, number, number, number]> = [];
-    let current: Element | null = element;
-    while (current !== null) {
-      context.clearRect(0, 0, 1, 1);
-      context.fillStyle = getComputedStyle(current).backgroundColor;
-      context.fillRect(0, 0, 1, 1);
-      const layer = Array.from(context.getImageData(0, 0, 1, 1).data) as [
-        number,
-        number,
-        number,
-        number,
-      ];
-      layers.push(layer);
-      if (layer[3] === 255) break;
-      current = current.parentElement;
-    }
-    const base = layers.at(-1);
-    if (base === undefined || base[3] !== 255) {
-      throw new Error('Contrast background has no opaque ancestor');
-    }
-    const composite = [...base] as [number, number, number, number];
-    for (let index = layers.length - 2; index >= 0; index -= 1) {
-      const layer = layers[index];
-      if (layer === undefined) continue;
-      const alpha = layer[3] / 255;
-      for (let channel = 0; channel < 3; channel += 1) {
-        composite[channel] = layer[channel] * alpha + composite[channel] * (1 - alpha);
+async function readContrastPair(foreground: Locator, background: Locator): Promise<ContrastPair> {
+  const backgroundElement = await background.elementHandle();
+  if (!backgroundElement) throw new Error('the contrast background locator resolved to no element');
+  try {
+    return await foreground.evaluate((foregroundElement, backgroundNode) => {
+      const canvas = new OffscreenCanvas(1, 1);
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      if (!context) throw new Error('Could not create a color conversion context');
+      const toBytes = (color: string): [number, number, number, number] => {
+        context.clearRect(0, 0, 1, 1);
+        context.fillStyle = color;
+        context.fillRect(0, 0, 1, 1);
+        return Array.from(context.getImageData(0, 0, 1, 1).data) as [
+          number,
+          number,
+          number,
+          number,
+        ];
+      };
+      const foregroundColor = toBytes(getComputedStyle(foregroundElement).color);
+      const layers: Array<[number, number, number, number]> = [];
+      let current: Element | null = backgroundNode;
+      while (current !== null) {
+        const layer = toBytes(getComputedStyle(current).backgroundColor);
+        layers.push(layer);
+        if (layer[3] === 255) break;
+        current = current.parentElement;
       }
-    }
-    return composite;
-  });
+      const base = layers.at(-1);
+      if (base === undefined || base[3] !== 255) {
+        throw new Error('Contrast background has no opaque ancestor');
+      }
+      const composite = [...base] as [number, number, number, number];
+      for (let index = layers.length - 2; index >= 0; index -= 1) {
+        const layer = layers[index];
+        if (layer === undefined) continue;
+        const alpha = layer[3] / 255;
+        for (let channel = 0; channel < 3; channel += 1) {
+          composite[channel] = layer[channel] * alpha + composite[channel] * (1 - alpha);
+        }
+      }
+      return { foreground: foregroundColor, background: composite };
+    }, backgroundElement);
+  } finally {
+    await backgroundElement.dispose();
+  }
 }
 
 async function expectContrast(
@@ -106,8 +103,10 @@ async function expectContrast(
   background: Locator,
   minimum: number,
 ): Promise<void> {
-  const foregroundColor = await readComputedColor(foreground, 'color');
-  const backgroundColor = await readEffectiveBackground(background);
+  const { foreground: foregroundColor, background: backgroundColor } = await readContrastPair(
+    foreground,
+    background,
+  );
   const foregroundAlpha = foregroundColor[3] / 255;
   const composite = foregroundColor
     .slice(0, 3)
@@ -120,7 +119,10 @@ async function expectContrast(
   const ratio =
     (Math.max(foregroundLuminance, backgroundLuminance) + 0.05) /
     (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
-  expect(ratio).toBeGreaterThanOrEqual(minimum);
+  expect(
+    ratio,
+    `contrast ${ratio.toFixed(4)} is below the required ${minimum} for foreground rgba(${foregroundColor.join(', ')}) composited over background rgba(${backgroundColor.join(', ')})`,
+  ).toBeGreaterThanOrEqual(minimum);
 }
 
 function observedOrder(marks: RouteMark[]): RouteMarkRoute[] {
@@ -473,10 +475,7 @@ test.describe('chat history navigation', () => {
     await alphaRename.hover();
     await expectContrast(alphaRename, alphaListItem, 4.5);
     await expectContrast(betaRow, betaRow.locator('xpath=..'), 4.5);
-    await page.evaluate(() => {
-      document.documentElement.dataset.colorTheme = 'solarized';
-      document.documentElement.style.colorScheme = 'light';
-    });
+    await switchColorThemeAndSettleFade(page, 'solarized');
     await alphaRow.hover();
     await expectContrast(alphaRow, alphaListItem, 4.5);
     await expectContrast(alphaRename, alphaListItem, 4.5);
@@ -640,9 +639,7 @@ test.describe('chat history navigation', () => {
     await expect(archivedDelete).not.toHaveAttribute('aria-disabled');
     await archivedDelete.hover();
     await expectContrast(archivedDelete, archivedListItem, 3);
-    await page.evaluate(() => {
-      document.documentElement.dataset.colorTheme = 'solarized';
-    });
+    await switchColorThemeAndSettleFade(page, 'solarized');
     await archivedRow.hover();
     await expectContrast(archivedRename, archivedListItem, 4.5);
     await archivedDelete.hover();
