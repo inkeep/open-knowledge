@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import {
   type ApiHelpers,
   expect,
+  TOOLBAR_OVERLAP_PX,
   test,
   waitForActiveProviderSynced as waitForProvider,
 } from './_helpers';
@@ -16,6 +17,135 @@ async function getYText(page: Page): Promise<string> {
 
 function uniqueDocName(label: string): string {
   return `test-ux-${label}-${randomUUID().slice(0, 8)}`;
+}
+
+const hoverScrollCases = [
+  {
+    id: 'internal-markdown',
+    chipSelector: 'span[data-link]',
+    linkText: 'Internal target',
+    panelKind: 'internal-link',
+    markdown: (targetDoc: string) => `[Internal target](${targetDoc}.md)`,
+  },
+  {
+    id: 'wiki',
+    chipSelector: '[data-wiki-link]',
+    linkText: 'Wiki target',
+    panelKind: 'wiki-link',
+    markdown: (targetDoc: string) => `[[${targetDoc}|Wiki target]]`,
+  },
+] as const;
+
+function longDocumentWithLink(link: string): string {
+  const paragraphs = Array.from(
+    { length: 140 },
+    (_, index) =>
+      `Paragraph ${index}: ${'Open Knowledge interaction test filler text. '.repeat(18)}`,
+  );
+  paragraphs.splice(80, 0, link);
+  return `# Long source\n\n${paragraphs.join('\n\n')}\n`;
+}
+
+const SCROLL_SETTLE_STABLE_FRAMES = 3;
+const SCROLL_SETTLE_MAX_FRAMES = 180;
+const WHEEL_STEP_MIN_PX = 100;
+const WHEEL_STEP_MAX_PX = 1200;
+const CHIP_HOVER_BOTTOM_MARGIN_PX = 40;
+const SCROLL_CLAMP_TOLERANCE_PX = 2;
+
+async function waitForScrollToSettle(scroller: Locator): Promise<number> {
+  return scroller.evaluate(
+    (element, { requiredStableFrames, maxFrames }) =>
+      new Promise<number>((resolve, reject) => {
+        let previous = element.scrollTop;
+        let stableFrames = 0;
+        let frames = 0;
+        const sample = () => {
+          const current = element.scrollTop;
+          stableFrames = current === previous ? stableFrames + 1 : 0;
+          previous = current;
+          if (stableFrames >= requiredStableFrames) {
+            resolve(current);
+            return;
+          }
+          frames += 1;
+          if (frames >= maxFrames) {
+            reject(
+              new Error(
+                `Editor scroll did not settle within ${maxFrames} frames; last scrollTop ${current}`,
+              ),
+            );
+            return;
+          }
+          requestAnimationFrame(sample);
+        };
+        requestAnimationFrame(sample);
+      }),
+    {
+      requiredStableFrames: SCROLL_SETTLE_STABLE_FRAMES,
+      maxFrames: SCROLL_SETTLE_MAX_FRAMES,
+    },
+  );
+}
+
+async function bringLinkIntoViewWithWheel(
+  page: Page,
+  scroller: Locator,
+  chip: Locator,
+): Promise<void> {
+  const scrollerBox = await scroller.boundingBox();
+  if (!scrollerBox) throw new Error('Editor scroll container has no bounding box');
+  await page.mouse.move(scrollerBox.x + scrollerBox.width - 20, scrollerBox.y + 80);
+
+  const readScrollTop = async (): Promise<number> =>
+    scroller.evaluate((element) => element.scrollTop);
+
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    const state = await chip.evaluate(
+      (element, { toolbarPx, bottomMarginPx }) => {
+        const scrollContainer = element.closest<HTMLElement>(
+          '[data-testid="editor-scroll-container"]',
+        );
+        if (!scrollContainer) throw new Error('Link is outside the editor scroll container');
+        const linkRect = element.getBoundingClientRect();
+        const portRect = scrollContainer.getBoundingClientRect();
+        return {
+          delta: linkRect.top - (portRect.top + portRect.height * 0.5),
+          scrollTop: scrollContainer.scrollTop,
+          maxScrollTop: scrollContainer.scrollHeight - scrollContainer.clientHeight,
+          visible:
+            linkRect.top >= portRect.top + toolbarPx &&
+            linkRect.bottom <= portRect.bottom - bottomMarginPx,
+        };
+      },
+      { toolbarPx: TOOLBAR_OVERLAP_PX, bottomMarginPx: CHIP_HOVER_BOTTOM_MARGIN_PX },
+    );
+    if (state.visible) {
+      await waitForScrollToSettle(scroller);
+      return;
+    }
+
+    const magnitude = Math.min(
+      WHEEL_STEP_MAX_PX,
+      Math.max(WHEEL_STEP_MIN_PX, Math.abs(state.delta)),
+    );
+    const step = state.delta < 0 ? -magnitude : magnitude;
+    const canScrollFurther =
+      step < 0
+        ? state.scrollTop > SCROLL_CLAMP_TOLERANCE_PX
+        : state.scrollTop < state.maxScrollTop - SCROLL_CLAMP_TOLERANCE_PX;
+    if (!canScrollFurther) {
+      throw new Error(
+        `Editor scroll container is clamped at scrollTop ${state.scrollTop} of ${state.maxScrollTop}; cannot wheel the link into view`,
+      );
+    }
+    await page.mouse.wheel(0, step);
+    await (step < 0
+      ? expect.poll(readScrollTop).toBeLessThan(state.scrollTop)
+      : expect.poll(readScrollTop).toBeGreaterThan(state.scrollTop));
+  }
+
+  throw new Error('Could not bring the link into view with wheel input');
 }
 
 async function openFreshDoc(api: ApiHelpers, page: Page, label: string): Promise<string> {
@@ -287,6 +417,57 @@ test('sidebar folder: row click navigates to folder overview; treeitem toggles e
   await expect(folderRow).toHaveAttribute('aria-expanded', 'true');
   await expect(nestedFile).toBeVisible();
 });
+
+for (const hoverScrollCase of hoverScrollCases) {
+  test(`LINK-HOVER-SCROLL-${hoverScrollCase.id}: first hover preview dismissal preserves the reading position`, async ({
+    page,
+    api,
+  }) => {
+    const sourceDoc = uniqueDocName(`hover-scroll-${hoverScrollCase.id}`);
+    const targetDoc = uniqueDocName(`hover-scroll-target-${hoverScrollCase.id}`);
+    await api.seedDocs([
+      {
+        name: sourceDoc,
+        markdown: longDocumentWithLink(hoverScrollCase.markdown(targetDoc)),
+      },
+      { name: targetDoc, markdown: '# Target\n\nTarget body.\n' },
+    ]);
+
+    await page.goto('/');
+    const sourceRow = page.getByRole('treeitem', { name: `${sourceDoc}.md`, exact: true });
+    await expect(sourceRow).toBeVisible();
+    await sourceRow.click();
+    await waitForProvider(page);
+
+    const editor = page
+      .locator('.ProseMirror:not(.composer-prosemirror)')
+      .filter({ hasText: 'Paragraph 139' });
+    await expect(editor).toBeAttached();
+    const scroller = page.getByTestId('editor-scroll-container').filter({ has: editor }).first();
+    await expect(scroller).toBeVisible();
+    await expect(sourceRow).toBeFocused();
+
+    const chip = editor.locator(hoverScrollCase.chipSelector, {
+      hasText: hoverScrollCase.linkText,
+    });
+    await expect(chip).toBeAttached();
+    await bringLinkIntoViewWithWheel(page, scroller, chip);
+
+    const scrollBeforeHover = await waitForScrollToSettle(scroller);
+    expect(scrollBeforeHover).toBeGreaterThan(500);
+
+    await chip.hover();
+    const panel = page.locator(`[data-ok-prop-panel="${hoverScrollCase.panelKind}"]`);
+    await expect(panel).toBeVisible();
+
+    await page.mouse.move(4, 4);
+    await expect(panel).toBeHidden();
+    await expect(sourceRow).toBeFocused();
+    const scrollAfterDismissal = await waitForScrollToSettle(scroller);
+
+    expect(scrollAfterDismissal).toBe(scrollBeforeHover);
+  });
+}
 
 test('markdown link edit dialog preserves page mode while clearing and updates the href target', async ({
   page,
