@@ -1,4 +1,8 @@
 export { acpCatalogBody } from './acp-catalog.ts';
+export {
+  AUDIT_CONSOLE_RECORD_CASES,
+  chromiumResourceFailureRecord,
+} from './audit-console-records.test-helper.ts';
 export { simulateCopyAndRead, simulateCutAndRead } from './clipboard.ts';
 export { resetContentToFixtureBaseline } from './content-reset.ts';
 export {
