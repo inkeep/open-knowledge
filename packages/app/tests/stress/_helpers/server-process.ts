@@ -96,7 +96,15 @@ export async function checkCollabSync(
 
 export { getFreePort } from '../../free-port.test-helper.ts';
 
-export async function waitForHttpReady(baseURL: string, timeoutMs: number): Promise<void> {
+function describeExit(proc: ChildProcess): string {
+  return proc.signalCode === null ? `with code ${proc.exitCode}` : `on ${proc.signalCode}`;
+}
+
+export async function waitForHttpReady(
+  baseURL: string,
+  timeoutMs: number,
+  proc?: ChildProcess,
+): Promise<void> {
   const start = Date.now();
   let lastErr: unknown;
   while (Date.now() - start < timeoutMs) {
@@ -106,6 +114,11 @@ export async function waitForHttpReady(baseURL: string, timeoutMs: number): Prom
       lastErr = new Error(`unexpected status ${res.status}`);
     } catch (err) {
       lastErr = err;
+    }
+    if (proc !== undefined && (proc.exitCode !== null || proc.signalCode !== null)) {
+      throw new Error(
+        `dev server command for ${baseURL} exited ${describeExit(proc)} after ${Date.now() - start}ms without becoming ready. Last error: ${String(lastErr)}`,
+      );
     }
     await wait(250);
   }

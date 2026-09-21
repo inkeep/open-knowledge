@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -105,8 +105,12 @@ async function checkApiConfig(baseURL: string, timeoutMs = 2_000): Promise<void>
   }
 }
 
-async function waitForServerReady(baseURL: string, port: number): Promise<void> {
-  await waitForHttpReady(baseURL, 60_000);
+async function waitForServerReady(
+  baseURL: string,
+  port: number,
+  proc: ChildProcess,
+): Promise<void> {
+  await waitForHttpReady(baseURL, 60_000, proc);
   await checkApiConfig(baseURL);
   await checkCollabSync(port);
 }
@@ -232,7 +236,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
       });
 
       try {
-        await waitForServerReady(baseURL, port);
+        await waitForServerReady(baseURL, port, proc);
         await warmupAppFirstLoad(browser, baseURL);
       } catch (err) {
         const reason = err instanceof Error ? err.message : String(err);

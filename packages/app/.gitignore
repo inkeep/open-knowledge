@@ -1,0 +1,9 @@
+# Vendored Excalidraw font tree and the staging siblings the publish path creates,
+# regenerated per machine by `scripts/copy-excalidraw-assets.mjs`, which `predev`
+# and `build` both run. ~13 MB of upstream `@excalidraw/excalidraw/dist/prod/fonts`,
+# attributed in `THIRD_PARTY_NOTICES.md` via the package's own SPDX: the copy is
+# build output, not source. This file lives here rather than in the subtree root
+# `.gitignore` so the rules reach `inkeep/open-knowledge` too, where the root ignore
+# file is the overlay's and not this tree's.
+public/excalidraw-assets/
+/.excalidraw-assets-staging-*/

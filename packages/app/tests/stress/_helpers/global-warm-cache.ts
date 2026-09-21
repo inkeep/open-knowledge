@@ -70,7 +70,7 @@ async function buildSeedOnce(key: string): Promise<void> {
   });
   let succeeded = false;
   try {
-    await waitForHttpReady(`http://127.0.0.1:${port}`, 60_000);
+    await waitForHttpReady(`http://127.0.0.1:${port}`, 60_000, proc);
     const depsDir = join(buildDir, 'deps');
     const metaPath = join(depsDir, '_metadata.json');
     const deadline = Date.now() + OPTIMIZER_SETTLE_BUDGET_MS;
@@ -90,17 +90,18 @@ async function buildSeedOnce(key: string): Promise<void> {
       await wait(1_000);
     }
     if (!existsSync(metaPath)) {
-      throw new Error(
-        `optimizer metadata never appeared within ${OPTIMIZER_SETTLE_BUDGET_MS}ms — server log tail:\n${tailServerLog(log)}`,
-      );
+      throw new Error(`optimizer metadata never appeared within ${OPTIMIZER_SETTLE_BUDGET_MS}ms`);
     }
     if (stablePolls < 2) {
       throw new Error(
-        `optimizer deps dir did not stabilize within ${OPTIMIZER_SETTLE_BUDGET_MS}ms (stablePolls=${stablePolls}) — server log tail:\n${tailServerLog(log)}`,
+        `optimizer deps dir did not stabilize within ${OPTIMIZER_SETTLE_BUDGET_MS}ms (stablePolls=${stablePolls})`,
       );
     }
     writeFileSync(join(buildDir, SEED_KEY_FILENAME), key, 'utf-8');
     succeeded = true;
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new Error(`${reason}\n--- dev server log tail (${log.path}) ---\n${tailServerLog(log)}`);
   } finally {
     try {
       await killGracefully(proc);
