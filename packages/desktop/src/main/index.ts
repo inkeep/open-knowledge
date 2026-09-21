@@ -476,6 +476,7 @@ import {
 } from './terminal-dock-persistence.ts';
 import { observeTerminalLaunch } from './terminal-gate-observation.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
+import type { AppShutdownCause } from './terminal-manager.ts';
 import {
   clampPtyDimension,
   createTerminalManager,
@@ -965,6 +966,10 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
 let navigatorWindow: BrowserWindowLike | null = null;
 let wm: WindowManager;
 let terminalReaper: TerminalReaper | null = null;
+let announcedShutdownCause: AppShutdownCause = 'quit';
+const noteRestartPending = (): void => {
+  announcedShutdownCause = 'relaunch';
+};
 
 function sweepConsoleHostsBeforeUpdate(): WindowsUpdateSurvivorSweepResult {
   const logger = getLogger('updater');
@@ -3793,6 +3798,7 @@ function registerIpcHandlers() {
     clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
     logger: {
       warn: (data) => getLogger('terminal').warn(data, String(data.event ?? 'terminal-manager')),
+      info: (data) => getLogger('terminal').info(data, String(data.event ?? 'terminal-manager')),
     },
     canSpawnAt: (projectRoot) => isTerminalConsented(projectRoot),
     recordShellExit,
@@ -6474,6 +6480,7 @@ function bootPrimaryInstance(): void {
                       },
                       copyCommandToClipboard: (command) => clipboard.writeText(command),
                       relaunchApp: () => {
+                        noteRestartPending();
                         app.relaunch();
                         app.quit();
                       },
@@ -6503,7 +6510,7 @@ function bootPrimaryInstance(): void {
         prepareForRelaunch: async () => {
           freezeFocusTracking('prepare-for-relaunch');
           captureWindowRestoreSnapshot('prepare-for-relaunch');
-          await terminalReaper?.killAll();
+          await terminalReaper?.killAll('relaunch');
           await wm?.stopAllOwnedServers();
           flushDesktopLogger();
         },
@@ -6559,7 +6566,13 @@ function bootPrimaryInstance(): void {
           infoPlistPath,
           getCurrentVersion: () => app.getVersion(),
           dialog,
-          app,
+          app: {
+            relaunch: (options) => {
+              noteRestartPending();
+              app.relaunch(options);
+            },
+            quit: () => app.quit(),
+          },
         });
       }
     })
@@ -6570,7 +6583,8 @@ function bootPrimaryInstance(): void {
     });
 
   app.on('before-quit', () => {
-    getLogger('lifecycle').info({}, 'before-quit');
+    getLogger('lifecycle').info({ cause: announcedShutdownCause }, 'before-quit');
+    terminalReaper?.noteAppShutdown(announcedShutdownCause);
     freezeFocusTracking('before-quit');
     captureWindowRestoreSnapshot('before-quit');
     autoUpdaterHandle?.recordInstallHandoffOnQuit();
@@ -6582,7 +6596,7 @@ function bootPrimaryInstance(): void {
     getLogger('updater').info({}, 'before-quit-for-update — update install will relaunch the app');
     freezeFocusTracking('before-quit-for-update');
     captureWindowRestoreSnapshot('before-quit-for-update');
-    void (terminalReaper?.killAll() ?? Promise.resolve()).then(() => {
+    void (terminalReaper?.killAll('update-install') ?? Promise.resolve()).then(() => {
       const result = sweepConsoleHostsBeforeUpdate();
       if (result.scanFailed || result.revalidationFailed || result.failedCount > 0) {
         getLogger('updater').warn(
@@ -6599,7 +6613,7 @@ function bootPrimaryInstance(): void {
     defer: (callback) => setImmediate(callback),
     drain: async () => {
       const [terminalResult] = await Promise.allSettled([
-        terminalReaper?.killAll() ?? Promise.resolve(),
+        terminalReaper?.killAll('quit') ?? Promise.resolve(),
         slidesDeckRegistry.reapAll(),
       ]);
       if (terminalResult.status === 'rejected') {

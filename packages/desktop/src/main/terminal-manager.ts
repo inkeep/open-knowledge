@@ -46,7 +46,10 @@ export interface TerminalManagerDeps {
   lowWaterBytes?: number;
   replayCapBytes?: number;
   shutdownMs?: number;
-  logger?: { warn: (o: Record<string, unknown>) => void };
+  logger?: {
+    warn: (o: Record<string, unknown>) => void;
+    info?: (o: Record<string, unknown>) => void;
+  };
   recordShellExit?: (info: { crashed: boolean }) => void;
   recordTerminalSession?: () => void;
   recordConcurrentSessions?: (info: { count: number }) => void;
@@ -85,11 +88,26 @@ interface SessionState {
   paused: boolean;
   killRequested: boolean;
   commandRan: boolean;
+  sawOutput: boolean;
+  spawnedAt: number | null;
   customLabel: string | null;
   ordinal: number | null;
   order: number;
   shellFamily: WindowsShellFamily | null;
   shellNoticeReason: Extract<TerminalShellNoticeReason, 'unsupported-family'> | null;
+}
+
+export type AppShutdownCause = 'quit' | 'update-install' | 'relaunch';
+
+type SessionEndOutcome =
+  | { reason: 'shell-exit'; exitCode: number | null; signal: number | null }
+  | { reason: 'host-exited'; exitCode: number | null }
+  | { reason: 'window-closed' }
+  | { reason: 'app-shutdown'; cause: AppShutdownCause }
+  | { reason: 'cancelled-before-spawn' };
+
+function assertNeverSessionEndOutcome(value: never): never {
+  throw new Error(`unhandled session end outcome: ${JSON.stringify(value)}`);
 }
 
 interface PtyWindowHandle {
@@ -141,8 +159,9 @@ export interface TerminalManager {
   ): void;
   setSessionOrder(req: { windowId: number; orderedPtyIds: readonly string[] }): void;
   adoptSession(req: TerminalAdoptRequest): OkPtyAdoptResult;
+  noteAppShutdown(cause: AppShutdownCause): void;
   killForWindow(windowId: number): void;
-  killAll(): Promise<void>;
+  killAll(cause: AppShutdownCause): Promise<void>;
 }
 
 export function createTerminalManager(deps: TerminalManagerDeps): TerminalManager {
@@ -153,6 +172,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
   const shutdownMs = deps.shutdownMs ?? DEFAULT_SHUTDOWN_MS;
   const handles = new Map<number, PtyWindowHandle>();
   const pendingShutdowns = new Set<Promise<void>>();
+  let announcedShutdown: AppShutdownCause | null = null;
 
   function safeKillUtility(handle: PtyWindowHandle): void {
     try {
@@ -323,6 +343,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
 
     switch (message.type) {
       case 'data':
+        session.sawOutput = true;
         session.outbound += message.data;
         session.replay += message.data;
         if (session.replay.length > replayCap) {
@@ -332,16 +353,18 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         break;
       case 'exit': {
         const { ptyId } = message;
+        const exitCode = message.exitCode ?? -1;
         clearSessionTimers(session);
         deliver(handle, ptyId, session);
         maybeRecordSession(session);
         handle.sessions.delete(ptyId);
         deps.recordShellExit?.({ crashed: false });
-        pushExit(handle, {
-          ptyId,
-          exitCode: message.exitCode ?? -1,
+        logSessionEnd(windowId, ptyId, session, {
+          reason: 'shell-exit',
+          exitCode: message.exitCode ?? null,
           signal: message.signal,
         });
+        pushExit(handle, { ptyId, exitCode, signal: message.signal });
         break;
       }
       case 'spawn-error': {
@@ -414,10 +437,45 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       } else {
         maybeRecordSession(session);
         deps.recordShellExit?.({ crashed: !session.killRequested });
+        logSessionEnd(windowId, ptyId, session, { reason: 'host-exited', exitCode: code });
         pushExit(handle, { ptyId, exitCode: code ?? 1, signal: null, hostExited: true });
       }
     }
     handle.sessions.clear();
+  }
+
+  function endedRoutinely(session: SessionState, outcome: SessionEndOutcome): boolean {
+    if (session.killRequested) return true;
+    switch (outcome.reason) {
+      case 'shell-exit':
+        return session.sawOutput && outcome.signal === null;
+      case 'host-exited':
+        return false;
+      case 'window-closed':
+      case 'app-shutdown':
+      case 'cancelled-before-spawn':
+        return true;
+      default:
+        return assertNeverSessionEndOutcome(outcome);
+    }
+  }
+
+  function logSessionEnd(
+    windowId: number,
+    ptyId: string,
+    session: SessionState,
+    outcome: SessionEndOutcome,
+  ): void {
+    deps.logger?.[endedRoutinely(session, outcome) ? 'info' : 'warn']?.({
+      event: 'terminal-manager-session-exit',
+      windowId,
+      ptyId,
+      ...outcome,
+      killRequested: session.killRequested,
+      sawOutput: session.sawOutput,
+      shellFamily: session.shellFamily,
+      uptimeMs: session.spawnedAt === null ? null : Math.max(0, Date.now() - session.spawnedAt),
+    });
   }
 
   function maybeRecordSession(session: SessionState): void {
@@ -476,6 +534,8 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         paused: false,
         killRequested: false,
         commandRan: false,
+        sawOutput: false,
+        spawnedAt: null,
         customLabel: null,
         ordinal: null,
         order: nextOrder,
@@ -527,12 +587,13 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       const handle = handles.get(req.windowId);
       const session = handle?.sessions.get(req.ptyId);
       if (!handle || !session) return;
+      session.killRequested = true;
       if (session.pendingCreate !== null) {
         clearSessionTimers(session);
         handle.sessions.delete(req.ptyId);
+        logSessionEnd(req.windowId, req.ptyId, session, { reason: 'cancelled-before-spawn' });
         return;
       }
-      session.killRequested = true;
       if (session.paused) {
         session.paused = false;
         session.pendingBytes = 0;
@@ -634,6 +695,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
           });
           return { ok: false, reason: 'host-unavailable' };
         }
+        session.spawnedAt = Date.now();
         deps.recordConcurrentSessions?.({ count: liveCount });
         return { ok: true, replay: '' };
       }
@@ -661,14 +723,27 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       };
     },
 
+    noteAppShutdown(cause): void {
+      announcedShutdown = cause;
+    },
+
     killForWindow(windowId): void {
       const handle = handles.get(windowId);
       if (!handle) return;
       let reserved = 0;
-      for (const session of handle.sessions.values()) {
+      for (const [ptyId, session] of handle.sessions) {
         clearSessionTimers(session);
         maybeRecordSession(session);
         if (session.pendingCreate !== null) reserved += 1;
+        else
+          logSessionEnd(
+            windowId,
+            ptyId,
+            session,
+            announcedShutdown === null
+              ? { reason: 'window-closed' }
+              : { reason: 'app-shutdown', cause: announcedShutdown },
+          );
       }
       if (reserved > 0)
         deps.logger?.warn({ event: 'terminal-manager-reaped-reservations', windowId, reserved });
@@ -676,14 +751,15 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       void beginHostShutdown(handle);
     },
 
-    async killAll(): Promise<void> {
+    async killAll(cause): Promise<void> {
       const shutdowns: Promise<void>[] = [];
       for (const [windowId, handle] of handles) {
         let reserved = 0;
-        for (const session of handle.sessions.values()) {
+        for (const [ptyId, session] of handle.sessions) {
           clearSessionTimers(session);
           maybeRecordSession(session);
           if (session.pendingCreate !== null) reserved += 1;
+          else logSessionEnd(windowId, ptyId, session, { reason: 'app-shutdown', cause });
         }
         if (reserved > 0)
           deps.logger?.warn({ event: 'terminal-manager-reaped-reservations', windowId, reserved });

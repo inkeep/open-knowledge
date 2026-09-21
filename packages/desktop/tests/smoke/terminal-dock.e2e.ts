@@ -249,6 +249,12 @@ const terminalStatus = (page: Page) => page.locator('[data-terminal-status]');
 const readinessBanner = (page: Page) =>
   page.getByRole('tabpanel').getByTestId('terminal-readiness-banner');
 
+const activeTerminalOutput = (page: Page) =>
+  page
+    .getByRole('tabpanel')
+    .getByRole('region', { name: 'Terminal', exact: true })
+    .locator('.xterm-accessibility');
+
 async function waitForRendererResponsive(page: Page): Promise<void> {
   await expect(async () => {
     for (let probe = 0; probe < 3; probe += 1) {
@@ -1005,9 +1011,7 @@ test.describe('Docked terminal — live Electron', () => {
     );
     const beforeRestart = await page.evaluate(() => window.okDesktop?.terminal.list());
     expect(beforeRestart).toHaveLength(2);
-    const terminalOutput = page
-      .getByRole('region', { name: 'Terminal', exact: true })
-      .locator('.xterm-accessibility');
+    const terminalOutput = activeTerminalOutput(page);
     await expect(terminalOutput).toContainText('FAKE_CLAUDE_TUI_READY');
     await restartNotice.getByRole('button', { name: 'Restart terminal' }).click();
     await expect(restartNotice).toHaveCount(0);
@@ -1060,6 +1064,9 @@ test.describe('Docked terminal — live Electron', () => {
         page.getByRole('tablist', { name: 'Terminal sessions' }).getByRole('tab'),
       ).toHaveCount(index + 2);
       await expect(readinessBanner(page)).toBeVisible({ timeout: 15_000 });
+      await expect(activeTerminalOutput(page)).toContainText('FAKE_CLAUDE_TUI_READY', {
+        timeout: 15_000,
+      });
     }
     const sessionsBefore = await page.evaluate(() => window.okDesktop?.terminal.list());
     expect(sessionsBefore).toHaveLength(3);
