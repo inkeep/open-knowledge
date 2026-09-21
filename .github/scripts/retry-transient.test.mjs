@@ -74,6 +74,8 @@ beforeEach(() => {
 });
 
 const nodeCmd = (src) => [process.execPath, '-e', src];
+const childSelfExitMs = 60_000;
+const readinessTimeoutDefaultMs = 5_000;
 const sourceSection = (source, start, end) => {
   const startIndex = source.indexOf(start);
   const endIndex = source.indexOf(end, startIndex);
@@ -730,9 +732,98 @@ describe('deadlines and cancellation', () => {
     cleanup: { ok: true, reason: 'clean' },
     evidence: inspect(text, options).evidence,
   });
-  const assertPidDead = (path) => {
+  const childDeathObservationMs = 2_000;
+
+  test('a fixture child outlasts every poll window a death is observed in', () => {
+    for (const [window, windowMs] of [
+      ['the death polls that observe a child leave the process table', childDeathObservationMs],
+      ['the readiness barrier', readinessTimeoutDefaultMs],
+    ]) {
+      expect(
+        childSelfExitMs,
+        `process.kill(pid, 0) throwing cannot tell a child production stopped from one that expired on its own, so every death assertion here is honest only while a fixture child outlasts the window it is observed in: childSelfExitMs ${childSelfExitMs} must exceed ${window} ${windowMs}`,
+      ).toBeGreaterThan(windowMs);
+    }
+  });
+
+  const assertChildRanThenDied = async (ctx, path) => {
+    const testTimeoutMs = ctx.task.timeout;
+    expect(
+      testTimeoutMs,
+      'the running tier resolved no timeout for this test, so the bound below is pinned against nothing',
+    ).toBeGreaterThan(0);
+    expect(
+      childSelfExitMs,
+      `process.kill(pid, 0) throwing cannot tell a child production stopped from one that expired on its own, so this death assertion is honest only while a fixture child outlasts the window it is observed in: childSelfExitMs ${childSelfExitMs} must exceed the ${testTimeoutMs} timeout this tier resolved for this test, which caps spawn-to-assertion elapsed outright`,
+    ).toBeGreaterThan(testTimeoutMs);
+    expect(
+      existsSync(path),
+      `no pid file at ${path}: the child was killed before it reached user code, so this run proved nothing about stopping a live child`,
+    ).toBe(true);
     const pid = Number(readFileSync(path, 'utf8'));
-    expect(() => process.kill(pid, 0)).toThrow();
+    expect(pid, `pid file at ${path} holds no usable pid`).toBeGreaterThan(0);
+    await vi.waitFor(
+      () =>
+        expect(
+          () => process.kill(pid, 0),
+          `child ${pid} from ${path} was still in the process table ${childDeathObservationMs}ms after the run returned: the run did not stop it`,
+        ).toThrow(),
+      { timeout: childDeathObservationMs, interval: 10 },
+    );
+  };
+  const spawnLiveChild = async (
+    pidFile,
+    { readinessTimeoutMs = readinessTimeoutDefaultMs } = {},
+  ) => {
+    rmSync(pidFile, { force: true });
+    const [executable, ...args] = nodeCmd(
+      `require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setTimeout(() => {},${childSelfExitMs})`,
+    );
+    const spawnOptions = {
+      stdio: ['inherit', 'pipe', 'pipe'],
+      detached: process.platform !== 'win32',
+      windowsHide: process.platform === 'win32',
+    };
+    const child = spawn(executable, args, spawnOptions);
+    const spawnFailed = new Promise((_resolve, reject) => {
+      child.once('error', (error) =>
+        reject(
+          new Error(
+            `child ${child.pid} failed to spawn and never wrote ${pidFile}: ${error.message}`,
+          ),
+        ),
+      );
+    });
+    try {
+      await Promise.race([
+        spawnFailed,
+        vi.waitFor(
+          () =>
+            expect(
+              existsSync(pidFile),
+              `child ${child.pid} never wrote ${pidFile}: it did not reach user code, so no run against it can prove anything about stopping a live child`,
+            ).toBe(true),
+          { timeout: readinessTimeoutMs, interval: 10 },
+        ),
+      ]);
+    } catch (error) {
+      child.kill('SIGKILL');
+      throw error;
+    }
+    let requestedSpawnOptions;
+    return {
+      child,
+      spawnFn: (_executable, _args, options) => {
+        requestedSpawnOptions = options;
+        return child;
+      },
+      assertSpawnedAsProductionAsked: () => {
+        expect(
+          requestedSpawnOptions,
+          'the fixture child stands in for the one runAttempt would have spawned, so runAttempt must have asked spawnFn for the same options; detached is load-bearing because production addresses the tree by negative pid, which resolves only while the child leads its own group',
+        ).toEqual(spawnOptions);
+      },
+    };
   };
 
   test('real macOS budget arithmetic admits a quick incident-style retry', async () => {
@@ -809,29 +900,11 @@ describe('deadlines and cancellation', () => {
     expect(result.log).toContain('projected-attempt-ms=1250');
   });
 
-  test('attempt timeout stops and cleans the child without retrying', async () => {
-    const pidFile = join(scratch, 'timeout-child-pid');
-    const result = await run({
-      command: nodeCmd(
-        `require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(() => {},1000)`,
-      ),
-      attemptTimeoutMs: 40,
-      deadlineEpochMs: Date.now() + 5_000,
-    });
-    expect(result).toMatchObject({ ok: false, reason: 'attempt-timeout', attempts: 1 });
-    expect(result.log).toContain(
-      'decision=stop reason=control:attempt-timeout outcome=attempt-timeout attempt=1/3 code=none signal=SIGTERM',
-    );
-    expect(result.log).not.toContain('phase=');
-    assertPidDead(pidFile);
-  });
-
-  test('absolute deadline stops and cleans a live child', async () => {
+  test('absolute deadline stops and cleans a live child', async (ctx) => {
     const pidFile = join(scratch, 'deadline-child-pid');
+    const live = await spawnLiveChild(pidFile);
     const result = await run({
-      command: nodeCmd(
-        `require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setInterval(() => {},1000)`,
-      ),
+      spawnFn: live.spawnFn,
       attemptTimeoutMs: 10_000,
       cleanupReserveMs: 10,
       deadlineEpochMs: Date.now() + 1_100,
@@ -839,7 +912,85 @@ describe('deadlines and cancellation', () => {
     expect(result).toMatchObject({ ok: false, reason: 'deadline', attempts: 1 });
     expect(result.log).toContain('reason=control:deadline outcome=deadline');
     expect(result.log).toContain('phase=mid-attempt');
-    assertPidDead(pidFile);
+    live.assertSpawnedAsProductionAsked();
+    await assertChildRanThenDied(ctx, pidFile);
+  });
+
+  test('a one-millisecond attempt timeout still stops a child that reached user code', async (ctx) => {
+    const pidFile = join(scratch, 'short-timeout-live-child-pid');
+    const live = await spawnLiveChild(pidFile);
+    const result = await run({
+      spawnFn: live.spawnFn,
+      attemptTimeoutMs: 1,
+      deadlineEpochMs: Date.now() + 5_000,
+    });
+    expect(result).toMatchObject({ ok: false, reason: 'attempt-timeout', attempts: 1 });
+    expect(
+      result.log,
+      'the attempt-timeout stop line must carry the decision facts and end at one terminal shape: signal=SIGTERM or signal=SIGKILL when a rung of the ladder landed and the close was observed, optionally carrying the registered cleanup reason its arm returned, or signal=none paired with that reason, and never a bare signal=none, which would leave the line saying nothing about how the child was stopped. Both branches close the cleanup vocabulary and the line ends at the shape, so an unregistered reason or anything trailing it fails here. What each cleanup reason means is pinned executably by the owned-tree cleanup describes; whether the child actually died is assertChildRanThenDied next.',
+    ).toMatch(
+      /decision=stop reason=control:attempt-timeout outcome=attempt-timeout attempt=1\/3 code=none (?:signal=SIG(?:TERM|KILL)(?: cleanup=(?:signal-send-failure|close-not-observed|tree-survived-kill|taskkill-failure))?|signal=none cleanup=(?:signal-send-failure|close-not-observed|tree-survived-kill|taskkill-failure))$/m,
+    );
+    expect(result.log).not.toContain('phase=');
+    live.assertSpawnedAsProductionAsked();
+    await assertChildRanThenDied(ctx, pidFile);
+  });
+
+  test('an already-expired absolute deadline still stops a child that reached user code', async (ctx) => {
+    const pidFile = join(scratch, 'expired-deadline-live-child-pid');
+    const live = await spawnLiveChild(pidFile);
+    let reads = 0;
+    const result = await run({
+      spawnFn: live.spawnFn,
+      nowFn: () => {
+        reads += 1;
+        return reads === 1 ? 0 : 1_401;
+      },
+      deadlineEpochMs: 1_500,
+      attemptTimeoutMs: 1_000,
+      cleanupReserveMs: 100,
+    });
+    expect(result).toMatchObject({ ok: false, reason: 'deadline', attempts: 1 });
+    expect(result.log).toContain('reason=control:deadline outcome=deadline');
+    expect(result.log).toContain('phase=mid-attempt');
+    live.assertSpawnedAsProductionAsked();
+    await assertChildRanThenDied(ctx, pidFile);
+  });
+
+  test('the readiness barrier rejects on its own timer and reaps the child when the pid file never appears', async () => {
+    const pidFile = join(scratch, 'never-ready-child-pid');
+    const settleBudgetMs = 1_000;
+    let settleTimer;
+    const settled = await Promise.race([
+      spawnLiveChild(pidFile, { readinessTimeoutMs: 1 }).then(
+        (live) => {
+          live.child.kill('SIGKILL');
+          return { outcome: 'ready' };
+        },
+        (error) => ({ outcome: 'rejected', message: error.message }),
+      ),
+      new Promise((resolve) => {
+        settleTimer = setTimeout(() => resolve({ outcome: 'unsettled' }), settleBudgetMs);
+      }),
+    ]);
+    clearTimeout(settleTimer);
+    expect(
+      settled.outcome,
+      `the readiness barrier came back '${settled.outcome}' for a one-millisecond window; a pid file cannot arrive that fast, so 'ready' means the barrier ignored its own window and 'unsettled' means it polls unbounded and can only fail by hanging the runner`,
+    ).toBe('rejected');
+    const abandonedPid = Number(/child (\d+) never wrote/.exec(settled.message)?.[1]);
+    expect(
+      abandonedPid,
+      `the readiness failure must name the child it abandoned so the orphan is findable, got: ${settled.message}`,
+    ).toBeGreaterThan(0);
+    await vi.waitFor(
+      () =>
+        expect(
+          () => process.kill(abandonedPid, 0),
+          `child ${abandonedPid} outlived the readiness barrier that abandoned it: a barrier that gives up must reap the child, not leave a detached orphan running`,
+        ).toThrow(),
+      { timeout: childDeathObservationMs, interval: 10 },
+    );
   });
 
   test('does not start an attempt or backoff that cannot fit the deadline', async () => {
@@ -870,7 +1021,7 @@ describe('deadlines and cancellation', () => {
   test('global deadline exhaustion aborts an active attempt', async () => {
     let reads = 0;
     const result = await run({
-      command: nodeCmd('setInterval(() => {}, 1000)'),
+      command: nodeCmd(`setTimeout(() => {}, ${childSelfExitMs})`),
       nowFn: () => {
         reads += 1;
         return reads === 1 ? 0 : 1_401;
@@ -883,23 +1034,36 @@ describe('deadlines and cancellation', () => {
     expect(result.log).toContain('reason=control:deadline outcome=deadline');
   });
 
-  test('parent cancellation during a child stops the tree and removes handlers', async () => {
+  test('parent cancellation during a child stops the tree and removes handlers', async (ctx) => {
     const signals = new EventEmitter();
     const pidFile = join(scratch, 'cancelled-child-pid');
     const promise = run({
       command: nodeCmd(
-        `require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));console.log('ready');setInterval(() => {},1000)`,
+        `require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));console.log('ready');setTimeout(() => {},${childSelfExitMs})`,
       ),
       signalSource: signals,
     });
-    while (!existsSync(pidFile)) await new Promise((resolve) => setTimeout(resolve, 5));
+    const readinessError = await vi
+      .waitFor(
+        () =>
+          expect(
+            existsSync(pidFile),
+            `the cancelled child never wrote ${pidFile}: it did not reach user code, so cancelling it proves nothing about stopping a live child`,
+          ).toBe(true),
+        { timeout: readinessTimeoutDefaultMs, interval: 10 },
+      )
+      .then(
+        () => undefined,
+        (error) => error,
+      );
     signals.emit('SIGINT');
     const result = await promise;
+    if (readinessError) throw readinessError;
     expect(result).toMatchObject({ ok: false, reason: 'signal', signal: 'SIGINT', attempts: 1 });
     expect(result.log).toContain('reason=control:signal outcome=signal');
     expect(signals.listenerCount('SIGINT')).toBe(0);
     expect(signals.listenerCount('SIGTERM')).toBe(0);
-    assertPidDead(pidFile);
+    await assertChildRanThenDied(ctx, pidFile);
   });
 
   test('parent cancellation during backoff prevents another attempt', async () => {
@@ -936,7 +1100,7 @@ describe('deadlines and cancellation', () => {
 
   test.runIf(process.platform !== 'win32')(
     'reaps a real grandchild before the next attempt starts',
-    async () => {
+    async (ctx) => {
       const helper = join(scratch, 'tree-helper.mjs');
       const count = join(scratch, 'tree-count');
       const pidFile = join(scratch, 'grandchild-pid');
@@ -944,7 +1108,7 @@ describe('deadlines and cancellation', () => {
       writeFileSync(count, '0');
       writeFileSync(
         helper,
-        `import { spawn } from 'node:child_process';import { readFileSync,writeFileSync } from 'node:fs';const [count,pidFile,overlap]=process.argv.slice(2);const n=+readFileSync(count,'utf8')+1;writeFileSync(count,String(n));if(n===1){const child=spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setInterval(()=>{},1000)'],{stdio:'ignore'});writeFileSync(pidFile,String(child.pid));console.error('socket hang up');process.exit(1)}const pid=+readFileSync(pidFile,'utf8');try{process.kill(pid,0);writeFileSync(overlap,'alive');process.exit(1)}catch{process.exit(0)}`,
+        `import { spawn } from 'node:child_process';import { readFileSync,writeFileSync } from 'node:fs';const [count,pidFile,overlap]=process.argv.slice(2);const n=+readFileSync(count,'utf8')+1;writeFileSync(count,String(n));if(n===1){const child=spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setTimeout(()=>{},${childSelfExitMs})'],{stdio:'ignore'});writeFileSync(pidFile,String(child.pid));console.error('socket hang up');process.exit(1)}const pid=+readFileSync(pidFile,'utf8');try{process.kill(pid,0);writeFileSync(overlap,'alive');process.exit(1)}catch{process.exit(0)}`,
       );
       const result = await run({
         command: [process.execPath, helper, count, pidFile, overlap],
@@ -952,7 +1116,7 @@ describe('deadlines and cancellation', () => {
       });
       expect(result).toMatchObject({ ok: true, attempts: 2 });
       expect(existsSync(overlap)).toBe(false);
-      expect(() => process.kill(Number(readFileSync(pidFile, 'utf8')), 0)).toThrow();
+      await assertChildRanThenDied(ctx, pidFile);
     },
     5_000,
   );
@@ -971,7 +1135,7 @@ describe('deadlines and cancellation', () => {
           '--',
           process.execPath,
           '-e',
-          'console.log("ready");setInterval(()=>{},1000)',
+          `console.log("ready");setTimeout(()=>{},${childSelfExitMs})`,
         ],
         { stdio: ['ignore', 'pipe', 'pipe'] },
       );
@@ -991,6 +1155,61 @@ describe('deadlines and cancellation', () => {
 
 describe('POSIX owned-tree cleanup reasons', () => {
   const options = { graceMs: 1, cleanupReserveMs: 1, waitForClose: async () => false };
+
+  test('escalates a group that outlives SIGTERM, sending SIGTERM to the group before SIGKILL', async () => {
+    const sends = [];
+    let groupAlive = true;
+    const controller = createOwnedTreeController({
+      platform: 'darwin',
+      killFn: (target, signal) => {
+        if (signal === 0) {
+          if (!groupAlive) throw Object.assign(new Error('gone'), { code: 'ESRCH' });
+          return;
+        }
+        sends.push([target, signal]);
+        if (signal === 'SIGKILL') groupAlive = false;
+      },
+      sleepFn: async () => {},
+      pollIntervalMs: 1,
+    });
+    expect(await controller.cleanup(4321, { ...options, waitForClose: async () => true })).toEqual({
+      ok: true,
+      reason: 'clean',
+    });
+    expect(
+      sends,
+      'with a group that never leaves the table, the POSIX ladder sends SIGTERM before SIGKILL and addresses both to the process group by negative pid',
+    ).toEqual([
+      [-4321, 'SIGTERM'],
+      [-4321, 'SIGKILL'],
+    ]);
+  });
+
+  test('sends no SIGKILL when the group leaves the table inside the grace window', async () => {
+    const sends = [];
+    let groupAlive = true;
+    const controller = createOwnedTreeController({
+      platform: 'darwin',
+      killFn: (target, signal) => {
+        if (signal === 0) {
+          if (!groupAlive) throw Object.assign(new Error('gone'), { code: 'ESRCH' });
+          return;
+        }
+        sends.push([target, signal]);
+        if (signal === 'SIGTERM') groupAlive = false;
+      },
+      sleepFn: async () => {},
+      pollIntervalMs: 1,
+    });
+    expect(await controller.cleanup(4321, { ...options, waitForClose: async () => true })).toEqual({
+      ok: true,
+      reason: 'clean',
+    });
+    expect(
+      sends,
+      'a group that is gone before the grace wait returns is already stopped, so the ladder owes it no SIGKILL: escalating anyway denies a real packaging child the window the graceful rung exists to give it',
+    ).toEqual([[-4321, 'SIGTERM']]);
+  });
 
   test('distinguishes signal-send failure', async () => {
     const controller = createOwnedTreeController({
