@@ -42,7 +42,7 @@
   "scripts": {
     "build:cli": "rm -rf dist && tsdown",
     "build:app": "cp -r ../app/dist dist/public",
-    "build:skill-asset": "tsx ../server/scripts/build-skill-bundles.ts && mkdir -p dist/assets/skills && cp -R ../server/dist/assets/skills/. dist/assets/skills/",
+    "build:skill-asset": "tsx scripts/build-skill-assets.ts",
     "build:notices": "mkdir -p dist && cp ../../THIRD_PARTY_NOTICES.md dist/THIRD_PARTY_NOTICES.md",
     "build:license": "mkdir -p dist && cp ../../LICENSE dist/LICENSE",
     "build:native": "mkdir -p dist/native && cp ../native-config/index.js ../native-config/index.d.ts ../native-config/package.json dist/native/ && (cp ../native-config/*.node dist/native/ 2>/dev/null || true)",

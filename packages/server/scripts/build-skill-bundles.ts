@@ -107,6 +107,11 @@ interface ComposedBundle {
   readonly outputPath: string;
 }
 
+/*
+ * WARN: `packages/cli/scripts/build-skill-assets.ts` calls `buildSkillBundles`
+ * and `buildPackSkills` by relative path and depends on both signatures, so a
+ * change to either one has to land in that consumer in the same edit.
+ */
 /**
  * Compose every bundle and write the result to `distDir/<bundle>/SKILL.md`.
  * Returns one entry per bundle. The dist tree is wiped + recreated so a
