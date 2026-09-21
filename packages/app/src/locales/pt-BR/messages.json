@@ -370,6 +370,7 @@
     "3Ib6FN": ["Mover para baixo"],
     "3J7d2N": ["Título de seção grande."],
     "3JYy1p": ["O ramo ", ["0"], " não existe mais. Clonado no ramo padrão."],
+    "3JjdaA": ["Executar"],
     "3KOHFt": [
       "Adicionar propriedades (",
       [
@@ -391,6 +392,7 @@
       " principais ocorrências — continue digitando para restringir"
     ],
     "3Mwaly": ["Não foi possível inicializar ", ["0"], "."],
+    "3SBpHy": [["0"], " +", ["rest"], " mais"],
     "3SDfZl": [
       "<0>Espelho — escolha uma fonte.</0> Defina <1>src</1> + <2>anchor</2> no painel de propriedades para apontar para um <3><MirrorSource></3> em outro lugar."
     ],
@@ -3798,6 +3800,7 @@
     "cOSAfL": ["Nenhum repositório encontrado na sua conta do GitHub."],
     "cOrTMo": ["Seu link de compartilhamento está pronto abaixo."],
     "cPAWbl": ["Enviado por e-mail"],
+    "cQlPDN": ["Ler"],
     "cRHuuI": ["Não deu para copiar o caminho"],
     "cRm498": ["Ainda não há arquivos de esquema neste projeto — crie um para começar a validar."],
     "cSCbv3": ["BETA"],
@@ -5194,6 +5197,7 @@
     ],
     "oy5bJW": ["Você pode adicionar"],
     "oyBV3W": ["Caminho da pasta de habilidades personalizada"],
+    "oz1PyN": [["0"], " × ", ["label"]],
     "p0Iq25": ["Inserir link"],
     "p2LEhJ": ["Token de acesso pessoal"],
     "p3m_Gk": [
@@ -5955,6 +5959,7 @@
     "w7bnEb": ["Crie uma habilidade pessoal, disponível em todos os projetos."],
     "w7nm4K": ["Citação em bloco recuada para citar fontes."],
     "wDgmsr": ["Instalação de \"", ["0"], "\" atualizada (", ["1"], ")"],
+    "wE-556": ["Pensar"],
     "wErce0": ["Escolha um arquivo de habilidade"],
     "wF2wqQ": ["Data desconhecida"],
     "wFJbVM": [
@@ -6055,6 +6060,7 @@
     "xBFg6z": ["Do plugin ", ["0"]],
     "xCJdfg": ["Limpar"],
     "xCdTnb": ["Fechar nova aba"],
+    "xD4Xm2": ["Buscar"],
     "xDBki3": ["Sugestões de títulos"],
     "xDEcka": ["O provedor está limitando a frequência desta chave. Tente de novo em instantes."],
     "xDKOFk": ["Ignorado"],

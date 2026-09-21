@@ -322,6 +322,7 @@
     "3Ib6FN": ["Move down"],
     "3J7d2N": ["Big section heading."],
     "3JYy1p": ["Branch ", ["0"], " no longer exists. Cloned to default branch."],
+    "3JjdaA": ["Run"],
     "3KOHFt": [
       "Add properties (",
       [
@@ -338,6 +339,7 @@
     "3MA3Hh": ["Couldn't read the ", ["gitignorePath"], " rule: ", ["previewError"]],
     "3MnvrL": ["Showing top ", ["0"], " matches — keep typing to narrow"],
     "3Mwaly": ["Could not initialize ", ["0"], "."],
+    "3SBpHy": [["0"], " +", ["rest"], " more"],
     "3SDfZl": [
       "<0>Mirror — pick a source.</0> Set <1>src</1> + <2>anchor</2> via the property panel to point at a <3><MirrorSource></3> elsewhere."
     ],
@@ -3339,6 +3341,7 @@
     "cOSAfL": ["No repositories found on your GitHub account."],
     "cOrTMo": ["Your share link is ready below."],
     "cPAWbl": ["Emailed"],
+    "cQlPDN": ["Read"],
     "cRHuuI": ["Couldn't copy path"],
     "cRm498": ["No schema files in this project yet — create one to start validating."],
     "cSCbv3": ["BETA"],
@@ -4588,6 +4591,7 @@
     ],
     "oy5bJW": ["You can add"],
     "oyBV3W": ["Custom skills folder path"],
+    "oz1PyN": [["0"], " × ", ["label"]],
     "p0Iq25": ["Insert link"],
     "p2LEhJ": ["Personal access token"],
     "p3m_Gk": [
@@ -5268,6 +5272,7 @@
     "w7bnEb": ["Create a personal skill, available across every project."],
     "w7nm4K": ["Indented blockquote for citations."],
     "wDgmsr": ["\"", ["0"], "\" install refreshed (", ["1"], ")"],
+    "wE-556": ["Think"],
     "wErce0": ["Choose a skill archive"],
     "wF2wqQ": ["Unknown date"],
     "wFJbVM": [
@@ -5366,6 +5371,7 @@
     "xBFg6z": ["From the ", ["0"], " plugin"],
     "xCJdfg": ["Clear"],
     "xCdTnb": ["Close new tab"],
+    "xD4Xm2": ["Fetch"],
     "xDBki3": ["Heading suggestions"],
     "xDEcka": ["The provider is rate-limiting this key. Try again in a moment."],
     "xDKOFk": ["Ignored"],

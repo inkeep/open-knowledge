@@ -24,13 +24,50 @@ export type ToolCallGlyph =
 export interface ToolCallDisplay {
   text: string;
   glyph: ToolCallGlyph;
+  preview?: string;
+}
+
+const PREVIEW_KEYS = [
+  'command',
+  'path',
+  'file_path',
+  'filePath',
+  'query',
+  'pattern',
+  'url',
+  'prompt',
+];
+
+const PREVIEW_LIMIT = 60;
+
+function argumentValue(rawInput: unknown): string | undefined {
+  const record = asRecord(unwrapMcpInput(rawInput)?.args ?? rawInput);
+  const value = PREVIEW_KEYS.map((key) => stringField(record, key)).find(
+    (candidate): candidate is string => candidate !== null,
+  );
+  const line = value?.trim().split('\n')[0]?.trim();
+  return line === undefined || line === '' ? undefined : line;
+}
+
+function ellipsize(line: string): string {
+  return line.length > PREVIEW_LIMIT ? `${line.slice(0, PREVIEW_LIMIT).trimEnd()}…` : line;
 }
 
 const OPEN_KNOWLEDGE_TOOLS: ReadonlySet<string> = new Set(OPEN_KNOWLEDGE_MCP_TOOLS);
 
-const OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)$/;
+const OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)(?:[-_][a-z]+)*$/;
 
-const OPEN_KNOWLEDGE_TITLE = /^(?:mcp[^a-z0-9]+)?(?:open[-_ ]?knowledge|ok)[^a-z0-9]+([a-z_]+)$/;
+const OPEN_KNOWLEDGE_TITLE =
+  /^(?:mcp[^a-z0-9]+)?(?:open[-_ ]?knowledge|ok)(?:-[a-z]+)*[^a-z0-9]+([a-z_]+)$/;
+
+const MCP_TITLE = /^mcp([^a-zA-Z0-9]+)([a-zA-Z0-9][a-zA-Z0-9_-]*?)\1([a-zA-Z0-9][a-zA-Z0-9_-]*)$/;
+
+function mcpServerAndTool(title: string): string | null {
+  const match = MCP_TITLE.exec(title.trim());
+  const server = match?.[2];
+  const tool = match?.[3];
+  return server === undefined || tool === undefined ? null : `${server} · ${tool}`;
+}
 
 interface OpenKnowledgeCall {
   tool: string;
@@ -261,6 +298,45 @@ const KIND_GLYPHS: Record<string, ToolCallGlyph> = {
   switch_mode: 'switch_mode',
 };
 
+function kindLabel(toolKind: string): string | null {
+  switch (toolKind) {
+    case 'read':
+      return t`Read`;
+    case 'edit':
+      return t`Edit`;
+    case 'delete':
+      return t`Delete`;
+    case 'move':
+      return t`Move`;
+    case 'search':
+      return t`Search`;
+    case 'execute':
+      return t`Run`;
+    case 'fetch':
+      return t`Fetch`;
+    case 'think':
+      return t`Think`;
+    default:
+      return null;
+  }
+}
+
+export function toolRunLabel(call: { title: string; toolKind: string; rawInput: unknown }): string {
+  const tool = openKnowledgeToolName(call);
+  if (tool !== null) return `OpenKnowledge ${tool.replace(/_/g, ' ')}`;
+  return mcpServerAndTool(call.title) ?? kindLabel(call.toolKind) ?? call.title;
+}
+
+export function toolRunKey(call: { title: string; toolKind: string; rawInput: unknown }): string {
+  const tool = openKnowledgeToolName(call);
+  if (tool !== null) return `ok:${tool}`;
+  const match = MCP_TITLE.exec(call.title.trim());
+  const server = match?.[2];
+  const mcpTool = match?.[3];
+  if (server !== undefined && mcpTool !== undefined) return `mcp:${server}.${mcpTool}`;
+  return `kind:${call.toolKind}`;
+}
+
 export function describeToolCall(call: {
   title: string;
   toolKind: string;
@@ -268,5 +344,12 @@ export function describeToolCall(call: {
 }): ToolCallDisplay {
   const openKnowledge = identifyOpenKnowledgeCall(call.title, call.rawInput);
   if (openKnowledge !== null) return openKnowledgeDisplay(openKnowledge.tool, openKnowledge.args);
-  return { text: call.title, glyph: KIND_GLYPHS[call.toolKind] ?? 'other' };
+  const text = mcpServerAndTool(call.title) ?? call.title;
+  const value = argumentValue(call.rawInput);
+  const redundant = value !== undefined && text.includes(value);
+  return {
+    text,
+    glyph: KIND_GLYPHS[call.toolKind] ?? 'other',
+    ...(value === undefined || redundant ? {} : { preview: ellipsize(value) }),
+  };
 }

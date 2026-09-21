@@ -288,6 +288,16 @@ msgstr ""
 msgid "{0} (opens in a new tab)"
 msgstr ""
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr ""
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr ""
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -4763,6 +4773,7 @@ msgstr ""
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr ""
 
@@ -5350,6 +5361,7 @@ msgstr ""
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr ""
@@ -6285,6 +6297,10 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
 msgstr ""
 
 #: src/components/SyncStatusBadge.tsx
@@ -8546,6 +8562,7 @@ msgid "Most installed"
 msgstr ""
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr ""
 
@@ -11139,6 +11156,10 @@ msgstr ""
 msgid "React"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr ""
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr ""
@@ -12029,6 +12050,10 @@ msgstr ""
 msgid "Ruminating…"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr ""
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr ""
@@ -12174,6 +12199,7 @@ msgstr ""
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr ""
@@ -14384,6 +14410,10 @@ msgstr ""
 #. Says what the OpenKnowledge-authored skills are for, and where installing one puts it
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
 msgstr ""
 
 #: src/components/acp/ThreadView.tsx

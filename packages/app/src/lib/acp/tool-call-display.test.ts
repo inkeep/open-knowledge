@@ -266,14 +266,37 @@ describe('describeToolCall — everything that is not an OK tool', () => {
         toolKind: 'other',
         rawInput: { teamId: 'abc' },
       }),
-    ).toEqual({ glyph: 'other', text: 'mcp__linear-server__list_issues' });
+    ).toEqual({ glyph: 'other', text: 'linear-server · list_issues' });
     expect(
       describeToolCall({
         title: 'mcp.github.create_issue',
         toolKind: 'execute',
         rawInput: { server: 'github', tool: 'create_issue', arguments: {} },
       }),
-    ).toEqual({ glyph: 'execute', text: 'mcp.github.create_issue' });
+    ).toEqual({ glyph: 'execute', text: 'github · create_issue' });
+  });
+
+  test('a server whose own name carries an underscore is not split inside it', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__linear_server__list_issues',
+        toolKind: 'other',
+        rawInput: {},
+      }).text,
+    ).toBe('linear_server · list_issues');
+    expect(
+      describeToolCall({
+        title: 'mcp__sequential_thinking__sequentialthinking',
+        toolKind: 'think',
+        rawInput: {},
+      }).text,
+    ).toBe('sequential_thinking · sequentialthinking');
+  });
+
+  test('an id with no tool segment keeps the raw title rather than inventing one', () => {
+    expect(describeToolCall({ title: 'mcp__github__', toolKind: 'other', rawInput: {} }).text).toBe(
+      'mcp__github__',
+    );
   });
 
   test('an ok-prefixed tool OK does not serve keeps its own name', () => {
@@ -287,6 +310,69 @@ describe('describeToolCall — everything that is not an OK tool', () => {
     expect(
       describeToolCall({ title: 'Something new', toolKind: 'teleport', rawInput: undefined }),
     ).toEqual({ glyph: 'other', text: 'Something new' });
+  });
+
+  test('a suffixed Open Knowledge server still resolves to the OK display', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__open-knowledge-dev__write',
+        toolKind: 'other',
+        rawInput: { document: { path: 'notes.md', content: '# Notes' } },
+      }).text,
+    ).toBe('OpenKnowledge wrote to notes');
+  });
+
+  test('a title that is not an MCP id is left exactly as the agent sent it', () => {
+    expect(
+      describeToolCall({ title: 'Read file', toolKind: 'read', rawInput: undefined }).text,
+    ).toBe('Read file');
+  });
+
+  test('a primary argument rides along with the label', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__linear__save_issue',
+        toolKind: 'other',
+        rawInput: { query: 'assignee:me state:open' },
+      }),
+    ).toEqual({ glyph: 'other', text: 'linear · save_issue', preview: 'assignee:me state:open' });
+  });
+
+  test('a long command is cut to one line and ellipsized', () => {
+    const command = `ps -p 51625 -o pid,command | tail -n +1; echo "----"; curl -s localhost:3000\nsecond line`;
+    const display = describeToolCall({ title: 'bash', toolKind: 'execute', rawInput: { command } });
+    expect(display.preview).toBe('ps -p 51625 -o pid,command | tail -n +1; echo "----"; curl -…');
+    expect(display.preview?.length).toBeLessThanOrEqual(61);
+    expect(display.preview).not.toContain('second line');
+  });
+
+  test('a long command that is already the label does not get repeated beside it', () => {
+    const command =
+      'ps -p 51625 -o pid,command | tail -n +1; echo "----"; curl -s localhost:3000/health';
+    expect(command.length).toBeGreaterThan(60);
+    expect(
+      describeToolCall({ title: command, toolKind: 'execute', rawInput: { command } }).preview,
+    ).toBeUndefined();
+  });
+
+  test('no preview when the label already carries the same text', () => {
+    expect(
+      describeToolCall({
+        title: 'git status --short',
+        toolKind: 'execute',
+        rawInput: { command: 'git status --short' },
+      }).preview,
+    ).toBeUndefined();
+  });
+
+  test('an argument that is not a named primary one stays out of the row', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__linear__list',
+        toolKind: 'other',
+        rawInput: { teamId: 'abc' },
+      }).preview,
+    ).toBeUndefined();
   });
 
   test('every ACP tool kind resolves to its own glyph', () => {

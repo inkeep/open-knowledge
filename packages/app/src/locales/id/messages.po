@@ -288,6 +288,16 @@ msgstr "{0} · bawaan"
 msgid "{0} (opens in a new tab)"
 msgstr "{0} (terbuka di tab baru)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} +{rest} lainnya"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -4763,6 +4773,7 @@ msgstr "Bawaan: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "Hapus"
 
@@ -5350,6 +5361,7 @@ msgstr "Setiap push adalah satu commit ke remote Anda."
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "Sunting"
@@ -6286,6 +6298,10 @@ msgstr "Masukan tidak tersedia saat ini. Silakan coba lagi nanti."
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr "Blok kode berpagar dengan teks monospasi."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "Ambil"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
@@ -8546,6 +8562,7 @@ msgid "Most installed"
 msgstr "Paling banyak dipasang"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "Pindahkan"
 
@@ -11139,6 +11156,10 @@ msgstr "Jalankan ulang audit proyek"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "Baca"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Baca basis kode ini dan susun spesifikasi teknis untuk modul yang paling rumit: sebuah ikhtisar, arsitekturnya, berkas-berkas utamanya, dan pertanyaan terbuka, semuanya tertaut dari sebuah halaman indeks spesifikasi."
@@ -12029,6 +12050,10 @@ msgstr "Aturan"
 msgid "Ruminating…"
 msgstr "Merenung…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "Jalankan"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Jalankan audit proyek dari panel Masalah."
@@ -12174,6 +12199,7 @@ msgstr "Gulir ke awal"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "Cari"
@@ -14385,6 +14411,10 @@ msgstr "Aturan-aturan ini berasal dari berkas <0>{configFile}</0> proyek Anda, y
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "Keterampilan ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Memasang satu akan menambahkannya ke setiap alat AI di mesin ini."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "Berpikir"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"

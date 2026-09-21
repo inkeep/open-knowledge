@@ -326,6 +326,7 @@
     "3Ib6FN": ["Turunkan"],
     "3J7d2N": ["Judul bagian besar."],
     "3JYy1p": ["Cabang ", ["0"], " sudah tidak ada. Dikloning ke cabang bawaan."],
+    "3JjdaA": ["Jalankan"],
     "3KOHFt": [
       "Tambahkan properti (",
       ["problemCount", "plural", { "other": ["#", " properti wajib belum ada"] }],
@@ -335,6 +336,7 @@
     "3MA3Hh": ["Tidak dapat membaca aturan ", ["gitignorePath"], ": ", ["previewError"]],
     "3MnvrL": ["Menampilkan ", ["0"], " kecocokan teratas — terus ketik untuk mempersempit"],
     "3Mwaly": [["0"], " tidak dapat diinisialisasi."],
+    "3SBpHy": [["0"], " +", ["rest"], " lainnya"],
     "3SDfZl": [
       "<0>Cermin — pilih sebuah sumber.</0> Atur <1>src</1> + <2>anchor</2> lewat panel properti agar mengarah ke <3><MirrorSource></3> di tempat lain."
     ],
@@ -3384,6 +3386,7 @@
     "cOSAfL": ["Tidak ada repositori yang ditemukan di akun GitHub Anda."],
     "cOrTMo": ["Tautan berbagi Anda sudah siap di bawah."],
     "cPAWbl": ["Dikirim lewat surel"],
+    "cQlPDN": ["Baca"],
     "cRHuuI": ["Jalurnya tidak bisa disalin"],
     "cRm498": ["Belum ada berkas skema di proyek ini — buat satu untuk mulai memvalidasi."],
     "cSCbv3": ["BETA"],
@@ -4616,6 +4619,7 @@
     ],
     "oy5bJW": ["Anda dapat menambahkan"],
     "oyBV3W": ["Jalur folder keterampilan khusus"],
+    "oz1PyN": [["0"], " × ", ["label"]],
     "p0Iq25": ["Sisipkan tautan"],
     "p2LEhJ": ["Token akses pribadi"],
     "p3m_Gk": [
@@ -5288,6 +5292,7 @@
     "w7bnEb": ["Buat keterampilan pribadi, tersedia di semua proyek."],
     "w7nm4K": ["Kutipan blok berindentasi untuk mengutip sumber."],
     "wDgmsr": ["Pemasangan \"", ["0"], "\" diperbarui (", ["1"], ")"],
+    "wE-556": ["Berpikir"],
     "wErce0": ["Pilih arsip keterampilan"],
     "wF2wqQ": ["Tanggal tidak diketahui"],
     "wFJbVM": [
@@ -5380,6 +5385,7 @@
     "xBFg6z": ["Dari plugin ", ["0"]],
     "xCJdfg": ["Bersihkan"],
     "xCdTnb": ["Tutup tab baru"],
+    "xD4Xm2": ["Ambil"],
     "xDBki3": ["Saran judul"],
     "xDEcka": ["Penyedianya sedang membatasi laju kunci ini. Coba lagi sebentar."],
     "xDKOFk": ["Diabaikan"],

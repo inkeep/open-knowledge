@@ -288,6 +288,16 @@ msgstr "{0} · डिफ़ॉल्ट"
 msgid "{0} (opens in a new tab)"
 msgstr "{0} (नए टैब में खुलता है)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} +{rest} और"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -4763,6 +4773,7 @@ msgstr "डिफ़ॉल्ट: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "हटाएँ"
 
@@ -5350,6 +5361,7 @@ msgstr "हर पुश आपके रिमोट पर एक कमिट
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "संपादित करें"
@@ -6286,6 +6298,10 @@ msgstr "प्रतिक्रिया अभी उपलब्ध नही
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr "मोनोस्पेस पाठ वाला बाड़बंद कोड ब्लॉक।"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "लाना"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
@@ -8546,6 +8562,7 @@ msgid "Most installed"
 msgstr "सबसे ज़्यादा इंस्टॉल"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "हिलाएँ"
 
@@ -11139,6 +11156,10 @@ msgstr "प्रोजेक्ट ऑडिट फिर से चलाए�
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "पढ़ना"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "इस कोडबेस को पढ़ें और सबसे जटिल मॉड्यूल के लिए एक तकनीकी स्पेक का मसौदा बनाएँ: एक सिंहावलोकन, संरचना, प्रमुख फ़ाइलें और खुले प्रश्न, ये सभी एक स्पेक अनुक्रमणिका पेज से जुड़े हों।"
@@ -12029,6 +12050,10 @@ msgstr "नियम"
 msgid "Ruminating…"
 msgstr "मनन किया जा रहा है…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "चलाना"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Problems पैनल से एक प्रोजेक्ट ऑडिट चलाएँ।"
@@ -12174,6 +12199,7 @@ msgstr "शुरुआत तक स्क्रॉल करें"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "खोजें"
@@ -14385,6 +14411,10 @@ msgstr "ये नियम आपके प्रोजेक्ट की <0>{
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "ये आपके AI टूल को OpenKnowledge के साथ काम करना सिखाती हैं। किसी एक को इंस्टॉल करने पर वह इस मशीन के हर AI टूल में जुड़ जाती है।"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "सोचना"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"

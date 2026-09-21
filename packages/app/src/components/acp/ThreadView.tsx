@@ -147,7 +147,13 @@ import {
   type RenderedToolCall,
   resolvePermissionOutcome,
 } from '@/lib/acp/thread-event-model';
-import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
+import {
+  describeToolCall,
+  type ToolCallGlyph,
+  toolRunKey,
+  toolRunLabel,
+} from '@/lib/acp/tool-call-display';
+import { adjacentToolRuns, type ToolRun } from '@/lib/acp/tool-call-groups';
 import { toolFailureHint } from '@/lib/acp/tool-failure-hint';
 import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
@@ -272,6 +278,9 @@ export function ThreadView({
   const composerRef = useRef<ComposerMentionInputHandle>(null);
   const [pendingAttachments, setPendingAttachments] = useState<readonly AttachmentPart[]>([]);
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
+  const [expandedToolRuns, setExpandedToolRuns] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   const openImagePreview = (preview: ImagePreview) => setImagePreview(preview);
   const [pendingUploads, setPendingUploads] = useState<
     readonly { readonly id: string; readonly name: string; readonly mimeType: string }[]
@@ -848,6 +857,20 @@ export function ThreadView({
   const foldedItems = foldedEntries.map((entry) => entry.item);
   const visibleEntries = foldedEntries.filter((_, index) => !revertedPositions.has(index));
   const visibleItems = visibleEntries.map((entry) => entry.item);
+  const toolRunByIndex = new Map<number, { runId: string; run: ToolRun; isHead: boolean }>();
+  for (const run of adjacentToolRuns(visibleItems, (item) =>
+    item.kind === 'tool_call' && item.status === 'completed' ? toolRunKey(item) : null,
+  )) {
+    const head = visibleItems[run.start];
+    if (head?.kind !== 'tool_call') continue;
+    for (let offset = 0; offset < run.size; offset += 1) {
+      toolRunByIndex.set(run.start + offset, {
+        runId: head.toolCallId,
+        run,
+        isHead: offset === 0,
+      });
+    }
+  }
   const agentNotices =
     model === null
       ? []
@@ -1085,6 +1108,32 @@ export function ThreadView({
                   <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
                     {visibleEntries.map(({ item, modelIndex }, index) => {
                       const id = transcriptItemId(item, modelIndex);
+                      const group = toolRunByIndex.get(index);
+                      const collapsed = group !== undefined && !expandedToolRuns.has(group.runId);
+                      if (collapsed && !group.isHead) return null;
+                      if (collapsed && group.isHead) {
+                        const runId = group.runId;
+                        return (
+                          <MessageScrollerItem
+                            key={id}
+                            messageId={id}
+                            className="flex flex-col"
+                            data-tool-call=""
+                          >
+                            <ToolCallGroupRow
+                              calls={visibleItems
+                                .slice(group.run.start, group.run.start + group.run.size)
+                                .filter(
+                                  (candidate): candidate is RenderedToolCall =>
+                                    candidate.kind === 'tool_call',
+                                )}
+                              onExpand={() =>
+                                setExpandedToolRuns((previous) => new Set(previous).add(runId))
+                              }
+                            />
+                          </MessageScrollerItem>
+                        );
+                      }
                       return (
                         <MessageScrollerItem
                           key={id}
@@ -2784,6 +2833,52 @@ function stripWrappingFence(text: string): string {
   return lines.slice(1, -1).join('\n');
 }
 
+function ToolCallGroupRow({
+  calls,
+  onExpand,
+}: {
+  calls: readonly RenderedToolCall[];
+  onExpand: () => void;
+}): ReactNode {
+  const { t } = useLingui();
+  const head = calls[0];
+  if (head === undefined) return null;
+  const Icon = TOOL_ICONS[describeToolCall(head).glyph];
+  const label = toolRunLabel(head);
+  const details = calls
+    .map((call) => {
+      const path = call.locations[0]?.path ?? call.diffs[0]?.path;
+      return path !== undefined ? (path.split('/').pop() ?? path) : describeToolCall(call).preview;
+    })
+    .filter((detail): detail is string => detail !== undefined && detail !== '');
+  const shown = [...new Set(details)].slice(0, 2);
+  const rest = details.length - shown.length;
+  const summary =
+    shown.length === 0 ? '' : rest > 0 ? t`${shown.join(', ')} +${rest} more` : shown.join(', ');
+  return (
+    <div className="text-xs" data-testid="agent-thread-tool-group">
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
+        onClick={onExpand}
+        aria-expanded={false}
+        data-testid="agent-thread-tool-group-expand"
+      >
+        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <span className="shrink-0 truncate">{t`${calls.length} × ${label}`}</span>
+        {summary === '' ? null : (
+          <span className="min-w-0 flex-1 truncate text-left text-muted-foreground/70">
+            {summary}
+          </span>
+        )}
+        <ChevronRight className="ml-auto size-3 shrink-0 text-muted-foreground" aria-hidden />
+      </Button>
+    </div>
+  );
+}
+
 function ToolCallCard({
   call,
   terminals,
@@ -2834,7 +2929,17 @@ function ToolCallCard({
   const row = (
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 truncate">{display.text}</span>
+      <span className="min-w-0 truncate" title={call.title}>
+        {display.text}
+      </span>
+      {display.preview === undefined ? null : (
+        <span
+          className="min-w-0 flex-1 truncate text-muted-foreground/70"
+          data-testid="agent-thread-tool-preview"
+        >
+          {display.preview}
+        </span>
+      )}
       {}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         <PermissionRefusalMark permission={permission} status={call.status} />

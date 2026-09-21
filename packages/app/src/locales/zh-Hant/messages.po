@@ -288,6 +288,16 @@ msgstr "{0} · 預設"
 msgid "{0} (opens in a new tab)"
 msgstr "{0}（在新分頁中開啟）"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} 等 {rest} 項"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -4767,6 +4777,7 @@ msgstr "預設：<0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "刪除"
 
@@ -5354,6 +5365,7 @@ msgstr "每次推送就是向你的遠端儲存庫提交一次。"
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "編輯"
@@ -6290,6 +6302,10 @@ msgstr "意見回饋功能目前無法使用。請稍後再試。"
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr "使用等寬字體的圍欄程式碼區塊。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "取得"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
@@ -8550,6 +8566,7 @@ msgid "Most installed"
 msgstr "安裝次數最多"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "移動"
 
@@ -11143,6 +11160,10 @@ msgstr "重新執行專案稽核"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "讀取"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "把這個程式碼庫讀過一遍，為其中最複雜的模組草擬一份技術規格：總覽、架構、關鍵檔案和待解決的問題，全部從規格索引頁連過去。"
@@ -12033,6 +12054,10 @@ msgstr "規則"
 msgid "Ruminating…"
 msgstr "反覆琢磨中…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "執行"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "在「問題」面板中執行一次專案稽核。"
@@ -12178,6 +12203,7 @@ msgstr "捲動到開頭"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "搜尋"
@@ -14389,6 +14415,10 @@ msgstr "這些規則來自你專案的 <0>{configFile}</0> 檔案，那個檔案
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "它們教你的 AI 工具如何使用 OpenKnowledge。安裝其中一個，會把它加入本機的每個 AI 工具。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "思考"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"

@@ -382,6 +382,7 @@
     "3Ib6FN": ["Descendre"],
     "3J7d2N": ["Grand titre de section."],
     "3JYy1p": ["La branche ", ["0"], " n'existe plus. Clonage effectué sur la branche par défaut."],
+    "3JjdaA": ["Exécuter"],
     "3KOHFt": [
       "Ajouter des propriétés (",
       [
@@ -403,6 +404,7 @@
       " résultats les plus pertinents — continuez à saisir pour affiner"
     ],
     "3Mwaly": ["Impossible d'initialiser ", ["0"], "."],
+    "3SBpHy": [["0"], " +", ["rest"], " de plus"],
     "3SDfZl": [
       "<0>Miroir — choisissez une source.</0> Définissez <1>src</1> + <2>anchor</2> dans le panneau des propriétés pour pointer vers un <3><MirrorSource></3> ailleurs."
     ],
@@ -3925,6 +3927,7 @@
     "cOSAfL": ["Aucun dépôt trouvé sur votre compte GitHub."],
     "cOrTMo": ["Votre lien de partage est prêt ci-dessous."],
     "cPAWbl": ["Envoyé par e-mail"],
+    "cQlPDN": ["Lire"],
     "cRHuuI": ["Impossible de copier le chemin"],
     "cRm498": [
       "Pas encore de fichier de schéma dans ce projet — créez-en un pour commencer à valider."
@@ -5341,6 +5344,7 @@
     ],
     "oy5bJW": ["Vous pouvez ajouter"],
     "oyBV3W": ["Chemin du dossier de compétences personnalisé"],
+    "oz1PyN": [["0"], " × ", ["label"]],
     "p0Iq25": ["Insérer un lien"],
     "p2LEhJ": ["Jeton d'accès personnel"],
     "p3m_Gk": [
@@ -6151,6 +6155,7 @@
     "w7bnEb": ["Créez une compétence personnelle, disponible dans tous les projets."],
     "w7nm4K": ["Citation en retrait pour les références."],
     "wDgmsr": ["Installation de « ", ["0"], " » actualisée (", ["1"], ")"],
+    "wE-556": ["Réfléchir"],
     "wErce0": ["Choisir une archive de compétence"],
     "wF2wqQ": ["Date inconnue"],
     "wFJbVM": [
@@ -6251,6 +6256,7 @@
     "xBFg6z": ["Du plugin ", ["0"]],
     "xCJdfg": ["Effacer"],
     "xCdTnb": ["Fermer le nouvel onglet"],
+    "xD4Xm2": ["Récupérer"],
     "xDBki3": ["Suggestions de titres"],
     "xDEcka": ["Le fournisseur limite le débit de cette clé. Réessayez dans un instant."],
     "xDKOFk": ["Ignoré"],

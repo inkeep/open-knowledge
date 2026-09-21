@@ -288,6 +288,16 @@ msgstr "{0} · default"
 msgid "{0} (opens in a new tab)"
 msgstr "{0} (opens in a new tab)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} +{rest} more"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -4767,6 +4777,7 @@ msgstr "Default: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "Delete"
 
@@ -5354,6 +5365,7 @@ msgstr "Each push is one commit to your remote."
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "Edit"
@@ -6290,6 +6302,10 @@ msgstr "Feedback isn't available right now. Please try again later."
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr "Fenced code block with monospace text."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "Fetch"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
@@ -8550,6 +8566,7 @@ msgid "Most installed"
 msgstr "Most installed"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "Move"
 
@@ -11143,6 +11160,10 @@ msgstr "Re-run the project audit"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "Read"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
@@ -12033,6 +12054,10 @@ msgstr "Rules"
 msgid "Ruminating…"
 msgstr "Ruminating…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "Run"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Run a project audit from the Problems panel."
@@ -12178,6 +12203,7 @@ msgstr "Scroll to start"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "Search"
@@ -14389,6 +14415,10 @@ msgstr "These rules come from your project's <0>{configFile}</0> file, which ful
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "Think"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"

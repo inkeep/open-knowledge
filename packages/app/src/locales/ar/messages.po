@@ -288,6 +288,16 @@ msgstr "{0} · افتراضي"
 msgid "{0} (opens in a new tab)"
 msgstr "{0} (يفتح في علامة تبويب جديدة)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} +{rest} أخرى"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -4767,6 +4777,7 @@ msgstr "الافتراضي: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "حذف"
 
@@ -5354,6 +5365,7 @@ msgstr "كل عملية دفع هي تثبيت واحد في مستودعك ال
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "تحرير"
@@ -6290,6 +6302,10 @@ msgstr "الملاحظات غير متاحة الآن. يرجى المحاولة
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr "كتلة كود محصورة بنص أحادي التباعد."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "جلب"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
@@ -8550,6 +8566,7 @@ msgid "Most installed"
 msgstr "الأكثر تثبيتًا"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "نقل"
 
@@ -11143,6 +11160,10 @@ msgstr "إعادة تشغيل مراجعة المشروع"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "قراءة"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "اقرأ مستودع الكود هذا وصُغ مواصفات تقنية لأعقد وحدة فيه: نظرة عامة، والبنية، والملفات الرئيسية، والأسئلة المفتوحة، وكلها مرتبطة من صفحة فهرس المواصفات."
@@ -12033,6 +12054,10 @@ msgstr "القواعد"
 msgid "Ruminating…"
 msgstr "يجري التفكير مليًا…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "تشغيل"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "شغّل مراجعة مشروع من لوحة المشكلات."
@@ -12178,6 +12203,7 @@ msgstr "التمرير إلى البداية"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "بحث"
@@ -14389,6 +14415,10 @@ msgstr "تأتي هذه القواعد من ملف <0>{configFile}</0> في مش
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "تعلّم هذه المهاراتُ أدواتِك كيفية العمل مع OpenKnowledge. تثبيت واحدة يضيفها إلى كل أداة ذكاء اصطناعي على هذا الجهاز."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "تفكير"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"

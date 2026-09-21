@@ -288,6 +288,16 @@ msgstr "{0} · 기본값"
 msgid "{0} (opens in a new tab)"
 msgstr "{0}(새 탭에서 열림)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} 외 {rest}개"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -4767,6 +4777,7 @@ msgstr "기본값: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "삭제"
 
@@ -5354,6 +5365,7 @@ msgstr "푸시 한 번이 원격에 커밋 하나입니다."
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "편집"
@@ -6290,6 +6302,10 @@ msgstr "현재 피드백을 사용할 수 없습니다. 나중에 다시 시도�
 #: src/editor/slash-command/items.tsx
 msgid "Fenced code block with monospace text."
 msgstr "고정폭 텍스트가 있는 펜스 코드 블록입니다."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "가져오기"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
@@ -8550,6 +8566,7 @@ msgid "Most installed"
 msgstr "가장 많이 설치됨"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "이동"
 
@@ -11143,6 +11160,10 @@ msgstr "프로젝트 감사 다시 실행"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "읽기"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "이 코드베이스를 읽고 가장 복잡한 모듈의 기술 사양 초안을 작성합니다. 개요, 아키텍처, 주요 파일, 미해결 질문을 모두 사양 색인 페이지에서 연결합니다."
@@ -12033,6 +12054,10 @@ msgstr "규칙"
 msgid "Ruminating…"
 msgstr "곰곰이 생각 중…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "실행"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Problems 패널에서 프로젝트 감사를 실행합니다."
@@ -12178,6 +12203,7 @@ msgstr "시작으로 스크롤"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "검색"
@@ -14389,6 +14415,10 @@ msgstr "이 규칙은 프로젝트의 <0>{configFile}</0> 파일에서 가져오
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "이 스킬들은 AI 도구가 OpenKnowledge와 함께 작동하는 방법을 가르칩니다. 하나를 설치하면 이 컴퓨터의 모든 AI 도구에 추가됩니다."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "생각"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"

@@ -1558,6 +1558,26 @@ describe('ThreadView tool-call status', () => {
     expect(row).toContain('OpenKnowledge wrote to meetings/standup');
     expect(row).not.toContain('mcp__open-knowledge__write');
   });
+
+  test('the raw id the label replaced stays reachable on hover', () => {
+    model = makeModel({
+      items: [
+        toolCall({
+          status: 'completed',
+          title: 'mcp__linear-server__list_issues',
+          toolKind: 'other',
+          rawInput: {},
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const row = screen.getByTestId('agent-thread-tool-call');
+    expect(row.textContent).toContain('linear-server · list_issues');
+    expect(within(row).getByTitle('mcp__linear-server__list_issues').textContent).toBe(
+      'linear-server · list_issues',
+    );
+  });
 });
 
 describe('ThreadView permission merged into its tool call', () => {
@@ -1725,6 +1745,78 @@ describe('ThreadView tool-call collapse', () => {
     expect(screen.getByRole('button', { name: /Run tests/ }).getAttribute('aria-expanded')).toBe(
       'true',
     );
+  });
+});
+
+describe('ThreadView tool-call grouping', () => {
+  const reads = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      toolCall({
+        toolCallId: `r${index}`,
+        title: `Read file-${index}.ts`,
+        toolKind: 'read',
+        status: 'completed',
+        locations: [{ path: `src/file-${index}.ts` }],
+      }),
+    );
+
+  test('folds a run of same-kind calls into one row that counts them by tool, not by title', () => {
+    model = makeModel({ turnActive: false, items: reads(3) });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.queryAllByTestId('agent-thread-tool-call')).toHaveLength(0);
+    const group = screen.getByTestId('agent-thread-tool-group');
+    expect(group.textContent).toContain('3 × Read');
+    expect(group.textContent).not.toContain('3 × Read file-0.ts');
+    expect(group.textContent).toContain('file-0.ts, file-1.ts +1 more');
+  });
+
+  test('expanding gives every call in the run its own row back', async () => {
+    model = makeModel({ turnActive: false, items: reads(3) });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    await userEvent.click(screen.getByTestId('agent-thread-tool-group-expand'));
+
+    expect(screen.queryByTestId('agent-thread-tool-group')).toBeNull();
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(3);
+  });
+
+  test('leaves a pair alone, and a call of another tool splits the run around it', () => {
+    model = makeModel({ turnActive: false, items: reads(2) });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    expect(screen.queryByTestId('agent-thread-tool-group')).toBeNull();
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(2);
+
+    cleanup();
+    const [first, second, third, fourth, fifth] = reads(5);
+    model = makeModel({
+      turnActive: false,
+      items: [
+        first,
+        second,
+        toolCall({ toolCallId: 'x', title: 'Run tests', status: 'completed' }),
+        third,
+        fourth,
+        fifth,
+      ].filter((item): item is RenderedItem => item !== undefined),
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-tool-group').textContent).toContain('3 × Read');
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(3);
+  });
+
+  test('a call still running holds its own row rather than being folded away', () => {
+    const [first, second, third] = reads(3);
+    model = makeModel({
+      items: [first, second, { ...third, status: 'in_progress' as const }].filter(
+        (item): item is RenderedItem => item !== undefined,
+      ),
+    });
+    render(<ThreadView info={makeInfo()} />);
+
+    expect(screen.queryByTestId('agent-thread-tool-group')).toBeNull();
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(3);
   });
 });
 
