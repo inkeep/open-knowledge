@@ -265,6 +265,41 @@ describe('ComposerMentionInput (component)', () => {
     expect(mentions).toEqual(['notes.md']);
   });
 
+  test('points the textbox at its description and drops the reference when it is cleared', () => {
+    const { rerender } = render(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Message Claude"
+        ariaDescribedBy="hint-a hint-b"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Message Claude' });
+    expect(box.getAttribute('aria-describedby')).toBe('hint-a hint-b');
+
+    rerender(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Message Claude"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(box.hasAttribute('aria-describedby')).toBe(false);
+
+    rerender(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Message Claude"
+        ariaDescribedBy="hint-a"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(box.getAttribute('aria-describedby')).toBe('hint-a');
+  });
+
   test('disabled turns off editing but keeps content, placeholder, and the handle', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     const { rerender } = render(

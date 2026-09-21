@@ -5,6 +5,7 @@ import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
 export function MockComposerMentionInput({
   ref,
   ariaLabel,
+  ariaDescribedBy,
   onEmptyChange,
   onContentChange,
   onSubmit,
@@ -16,6 +17,7 @@ export function MockComposerMentionInput({
 }: {
   ref?: Ref<ComposerMentionInputHandle>;
   ariaLabel: string;
+  ariaDescribedBy?: string;
   onEmptyChange: (isEmpty: boolean) => void;
   onContentChange?: (doc: JSONContent) => void;
   onSubmit: () => void;
@@ -73,6 +75,7 @@ export function MockComposerMentionInput({
     <textarea
       ref={localRef}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       placeholder={placeholder}
       disabled={disabled}
       data-testid={testId}

@@ -15225,6 +15225,11 @@ msgstr "दो पेज (विषम)"
 msgid "Type"
 msgstr "प्रकार"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "किसी पेज का उल्लेख करने के लिए '@' लिखें"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "कमांड देखने के लिए '/' टाइप करें"

@@ -30,6 +30,7 @@ import {
   useHandoffDispatch,
 } from '@/components/handoff/useHandoffDispatch';
 import { useInstalledAgents } from '@/components/handoff/useInstalledAgents';
+import { RotatingComposerPlaceholder } from '@/components/RotatingComposerPlaceholder';
 import { Button } from '@/components/ui/button';
 import { Spinner } from '@/components/ui/spinner';
 import {
@@ -50,7 +51,6 @@ import {
 import type { EditorSurface } from '@/editor/selection-stats';
 import { useComposerAttachments } from '@/editor/use-composer-attachments';
 import { useConflictComposerPrefill } from '@/hooks/use-conflict-composer-prefill';
-import { useReducedMotion } from '@/hooks/use-reduced-motion';
 import { useSelectionContext } from '@/hooks/use-selection-context';
 import { isDesktopTargetEnabled, isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
@@ -89,8 +89,6 @@ import { nextTouchedFiles } from './composer-touched-files';
 import { focusComposerInputOnCardPointer } from './focus-composer-on-card-pointer';
 import { usePageList } from './PageListContext';
 
-const SUGGESTION_HOLD_MS = 5200;
-const SUGGESTION_FADE_MS = 500;
 const MARKDOWN_RELATIVE_PATH_EXTENSION = /\.(md|mdx)$/i;
 
 function docNameToComposerRelativePath(docName: string, docExt?: string): string {
@@ -102,31 +100,6 @@ function isNativeTextControl(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
   const tagName = target.tagName.toUpperCase();
   return tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT';
-}
-
-function useRotatingSuggestion(
-  phrases: readonly string[],
-  enabled: boolean,
-): { text: string; visible: boolean } {
-  const [index, setIndex] = useState(0);
-  const [visible, setVisible] = useState(true);
-
-  useEffect(() => {
-    if (!enabled) return;
-    if (visible) {
-      const id = setTimeout(() => setVisible(false), SUGGESTION_HOLD_MS);
-      return () => clearTimeout(id);
-    }
-    const id = setTimeout(() => {
-      setIndex((i) => i + 1);
-      setVisible(true);
-    }, SUGGESTION_FADE_MS);
-    return () => clearTimeout(id);
-  }, [visible, enabled]);
-
-  if (!enabled) return { text: phrases[0] ?? '', visible: true };
-  const safeIndex = phrases.length > 0 ? index % phrases.length : 0;
-  return { text: phrases[safeIndex] ?? '', visible };
 }
 
 const COMPOSER_PORTAL_ATTRIBUTE = 'data-composer-portal';
@@ -161,7 +134,6 @@ export function BottomComposer({
   const folderMode = folderPath !== undefined;
   const activeDocOrNull = folderMode ? null : (docName ?? null);
   const effectiveSurface: EditorSurface = surface ?? 'wysiwyg';
-  const reduced = useReducedMotion();
   const workspace = useWorkspace();
   const { pageMeta } = usePageList();
   const { states, refresh: refreshInstalledAgents } = useInstalledAgents();
@@ -472,10 +444,6 @@ export function BottomComposer({
         t`Create a new spec file for my user story`,
         t`Summarize everything I changed this week`,
       ];
-  const suggestion = useRotatingSuggestion(
-    suggestions,
-    !reduced && isEmpty && !dismissed && !hasQueuedComments,
-  );
 
   const handleSelectAgent = (target: TargetData) => {
     setSelectedId(target.id);
@@ -886,16 +854,12 @@ export function BottomComposer({
           />
           {}
           {isEmpty ? (
-            <div
-              aria-hidden
-              className={cn(
-                'pointer-events-none absolute inset-0 flex items-center px-0 py-0 text-base text-muted-foreground/60 md:text-sm',
-                !reduced && 'transition-opacity duration-500 ease-in-out',
-                suggestion.visible ? 'opacity-100' : 'opacity-0',
-              )}
-            >
-              <span className="min-w-0 truncate">{suggestion.text}</span>
-            </div>
+            <RotatingComposerPlaceholder
+              phrases={suggestions}
+              rotating={!hasQueuedComments}
+              className="flex items-center px-0 py-0"
+              testId="ask-ai-composer-placeholder"
+            />
           ) : null}
         </div>
         <AgentSplitButton

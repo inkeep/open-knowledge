@@ -15225,6 +15225,11 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr ""

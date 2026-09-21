@@ -66,6 +66,7 @@ function textToParagraphs(text: string): JSONContent[] {
 export function ComposerMentionInput({
   ref,
   ariaLabel,
+  ariaDescribedBy,
   onEmptyChange,
   onContentChange,
   onMentionsChange,
@@ -81,6 +82,7 @@ export function ComposerMentionInput({
 }: {
   ref?: Ref<ComposerMentionInputHandle>;
   ariaLabel: string;
+  ariaDescribedBy?: string;
   onEmptyChange: (isEmpty: boolean) => void;
   onContentChange?: (doc: JSONContent) => void;
   onMentionsChange?: (mentions: string[]) => void;
@@ -130,6 +132,7 @@ export function ComposerMentionInput({
       attributes: {
         role: 'textbox',
         'aria-label': ariaLabel,
+        ...(ariaDescribedBy !== undefined ? { 'aria-describedby': ariaDescribedBy } : {}),
         'aria-multiline': 'true',
         ...(testId !== undefined ? { 'data-testid': testId } : {}),
         class: cn('composer-prosemirror py-1 outline-none'),
@@ -177,8 +180,10 @@ export function ComposerMentionInput({
     const view = (editor as unknown as { editorView?: ComposerEditorView }).editorView;
     if (!view) return;
     view.dom.setAttribute('aria-label', ariaLabel ?? '');
+    if (ariaDescribedBy === undefined) view.dom.removeAttribute('aria-describedby');
+    else view.dom.setAttribute('aria-describedby', ariaDescribedBy);
     view.dispatch(editor.state.tr.setMeta('addToHistory', false));
-  }, [editor, placeholder, ariaLabel]);
+  }, [editor, placeholder, ariaLabel, ariaDescribedBy]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;

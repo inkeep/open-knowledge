@@ -236,6 +236,13 @@ vi.doMock('@/comments/comment-chips', async () => {
 });
 
 const FIRST_SUGGESTION = /Research the extinction of flightless birds/i;
+
+function suggestionShown(): boolean {
+  const phrase = document
+    .querySelector('[data-testid="ask-ai-composer-placeholder"] [data-rotating-placeholder]')
+    ?.getAttribute('data-rotating-placeholder');
+  return FIRST_SUGGESTION.test(phrase ?? '');
+}
 const DEFAULT_AGENT_NAME = VISIBLE_TARGETS[0]?.displayName;
 const EXPECTED_COMPOSER_POPUP_LABELS = ['composer-mention', 'composer-slash'] as const;
 
@@ -472,7 +479,7 @@ describe('BottomComposer (shell behavior)', () => {
     const restore = stubReducedMotion(true);
     try {
       await renderComposer();
-      expect(screen.getByText(FIRST_SUGGESTION)).toBeTruthy();
+      expect(suggestionShown()).toBe(true);
       expect(getInput()).toBeTruthy();
     } finally {
       restore();
@@ -495,11 +502,11 @@ describe('BottomComposer (shell behavior)', () => {
     const restore = stubReducedMotion(true);
     try {
       await renderComposer();
-      expect(screen.getByText(FIRST_SUGGESTION)).toBeTruthy();
+      expect(suggestionShown()).toBe(true);
 
       fireEvent.change(getInput(), { target: { value: 'condense this doc' } });
 
-      expect(screen.queryByText(FIRST_SUGGESTION)).toBeNull();
+      expect(suggestionShown()).toBe(false);
     } finally {
       restore();
     }

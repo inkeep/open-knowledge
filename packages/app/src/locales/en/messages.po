@@ -15229,6 +15229,11 @@ msgstr "Two-page (odd)"
 msgid "Type"
 msgstr "Type"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "Type '@' to mention a page"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "Type '/' for commands"

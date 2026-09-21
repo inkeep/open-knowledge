@@ -15229,6 +15229,11 @@ msgstr "雙頁（奇數）"
 msgid "Type"
 msgstr "類型"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "輸入「@」提及頁面"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "輸入「/」開啟命令"

@@ -15229,6 +15229,11 @@ msgstr "두 페이지 (홀수)"
 msgid "Type"
 msgstr "유형"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "페이지를 언급하려면 '@' 입력"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "명령을 사용하려면 '/' 입력"

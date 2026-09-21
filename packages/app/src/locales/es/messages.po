@@ -15229,6 +15229,11 @@ msgstr "Dos páginas (impares)"
 msgid "Type"
 msgstr "Tipo"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "Escribe '@' para mencionar una página"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "Escribe '/' para ver los comandos"

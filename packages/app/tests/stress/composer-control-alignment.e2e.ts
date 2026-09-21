@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { acpCatalogBody, expect, test } from './_helpers';
+import type { Page } from '@playwright/test';
+import { type ApiHelpers, acpCatalogBody, expect, test } from './_helpers';
 
 const WYSIWYG_BODY = '.editor-doc-scroll .ProseMirror:not(.composer-prosemirror)';
 const COMPOSER_CARD = '[data-testid="bottom-composer"] > div';
 const ATTACH = '[data-testid="ask-ai-attach-files"]';
 const COMPOSER_INPUT = '.composer-prosemirror';
 const PICKER = '[data-testid="ask-ai-agent-group"]';
+const SUGGESTION_PHRASE = '[data-testid="ask-ai-composer-placeholder"] [data-rotating-placeholder]';
 
 const FIRST_PAINT_TIMEOUT_MS = 30_000;
 const SETTLE_TIMEOUT_MS = 15_000;
@@ -28,35 +30,39 @@ const WHY = [
   'stylesheet: the jsdom suite mocks the input and loads no CSS, so nothing there can see this.',
 ].join('\n');
 
+async function openAskAiComposer(page: Page, api: ApiHelpers): Promise<void> {
+  const docName = `composer-alignment-${randomUUID().slice(0, 8)}`;
+  await api.seedDocs([{ name: `${docName}.md`, markdown: 'Alignment fixture.\n' }]);
+  await page.route('**/api/installed-agents', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ claude: true }),
+    }),
+  );
+  await page.route('**/api/acp/catalog', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(acpCatalogBody([{ id: 'alignment-agent', name: 'Alignment Agent' }])),
+    }),
+  );
+
+  await page.goto(`/#/${docName}`);
+  await expect(page.locator(WYSIWYG_BODY).first()).toBeVisible({
+    timeout: FIRST_PAINT_TIMEOUT_MS,
+  });
+  await expect(page.locator(COMPOSER_CARD).first()).toBeVisible({
+    timeout: FIRST_PAINT_TIMEOUT_MS,
+  });
+}
+
 test.describe('Ask AI composer control alignment', () => {
   test('the attach button, the prompt text and the agent picker share one centre line', async ({
     page,
     api,
   }) => {
-    const docName = `composer-alignment-${randomUUID().slice(0, 8)}`;
-    await api.seedDocs([{ name: `${docName}.md`, markdown: 'Alignment fixture.\n' }]);
-    await page.route('**/api/installed-agents', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ claude: true }),
-      }),
-    );
-    await page.route('**/api/acp/catalog', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify(acpCatalogBody([{ id: 'alignment-agent', name: 'Alignment Agent' }])),
-      }),
-    );
-
-    await page.goto(`/#/${docName}`);
-    await expect(page.locator(WYSIWYG_BODY).first()).toBeVisible({
-      timeout: FIRST_PAINT_TIMEOUT_MS,
-    });
-    await expect(page.locator(COMPOSER_CARD).first()).toBeVisible({
-      timeout: FIRST_PAINT_TIMEOUT_MS,
-    });
+    await openAskAiComposer(page, api);
     await expect(
       page.locator(ATTACH).first(),
       'the composer rendered without its attach control, so the row this test measures is not the ' +
@@ -103,5 +109,33 @@ test.describe('Ask AI composer control alignment', () => {
         { message: WHY, timeout: SETTLE_TIMEOUT_MS },
       )
       .toBeLessThanOrEqual(CENTRE_TOLERANCE_PX);
+  });
+
+  test('the empty composer paints its suggestion through the overlay pseudo-element', async ({
+    page,
+    api,
+  }) => {
+    await openAskAiComposer(page, api);
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate((selector) => {
+            const phrase = document.querySelector(selector);
+            if (!(phrase instanceof HTMLElement)) return 'no overlay phrase element';
+            const attribute = phrase.getAttribute('data-rotating-placeholder') ?? '';
+            const painted = getComputedStyle(phrase, '::before').content;
+            return attribute !== '' && painted === JSON.stringify(attribute)
+              ? 'painted'
+              : `painted ${painted} for ${JSON.stringify(attribute)}`;
+          }, SUGGESTION_PHRASE),
+        {
+          message:
+            'the suggestion overlay painted no text: its ::before content no longer resolves to ' +
+            'the phrase attribute, so the composer shows an empty placeholder',
+          timeout: SETTLE_TIMEOUT_MS,
+        },
+      )
+      .toBe('painted');
   });
 });

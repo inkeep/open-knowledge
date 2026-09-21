@@ -15229,6 +15229,11 @@ msgstr "دو صفحے (طاق)"
 msgid "Type"
 msgstr "قسم"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "کسی صفحہ کا حوالہ دینے کے لیے '@' ٹائپ کریں"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "کمانڈز دیکھنے کے لیے '/' ٹائپ کریں"

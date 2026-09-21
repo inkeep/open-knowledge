@@ -15229,6 +15229,11 @@ msgstr "صفحتان (فردي)"
 msgid "Type"
 msgstr "النوع"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "اكتب '@' للإشارة إلى صفحة"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "اكتب '/' لعرض الأوامر"

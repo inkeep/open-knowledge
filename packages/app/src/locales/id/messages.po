@@ -15225,6 +15225,11 @@ msgstr "Dua halaman (ganjil)"
 msgid "Type"
 msgstr "Tipe"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "Ketik '@' untuk menyebut halaman"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "Ketik '/' untuk melihat perintah"

@@ -69,6 +69,7 @@ import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
 import { useOptionalPageList } from '@/components/PageListContext';
+import { RotatingComposerPlaceholder } from '@/components/RotatingComposerPlaceholder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -159,7 +160,7 @@ import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-h
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
-import { formatUnitList } from '@/lib/tool-list-format';
+import { formatToolList, formatUnitList } from '@/lib/tool-list-format';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
@@ -1547,7 +1548,7 @@ function AgentSettingsPopover({
             <Button
               type="button"
               variant="ghost"
-              className="h-6 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
+              className="h-7 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
               aria-label={t`Agent settings`}
               aria-disabled
               aria-describedby={reasonId}
@@ -1613,7 +1614,7 @@ function AgentSettingsPopover({
             <Button
               type="button"
               variant="ghost"
-              className="h-6 min-w-0 max-w-sm shrink gap-1.5 rounded-md pl-1.5 pr-1! text-xs"
+              className="h-7 min-w-0 max-w-sm shrink gap-1.5 rounded-md pl-1.5 pr-1! text-xs"
               aria-label={settingsLabel}
               data-testid="agent-thread-settings"
             >
@@ -3865,7 +3866,7 @@ function ThreadComposer({
   onIngestAllFiles: (files: readonly File[]) => Promise<void>;
   onRemovePendingAttachment: (index: number) => void;
 }): ReactNode {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const agentName = agentDisplayName(info.agent.name);
 
   const [isEmpty, setIsEmpty] = useState(true);
@@ -3880,6 +3881,28 @@ function ThreadComposer({
   const queue = info.queue ?? [];
 
   const hasSendableContent = !isEmpty || hasQueuedComments || pendingAttachments.length > 0;
+
+  const agentHasCommands = (info.availableCommands ?? []).length > 0;
+  const composerHintId = useId();
+  const mentionHint = t`Type '@' to mention a page`;
+  const commandHint = t`Type '/' for commands`;
+  const composerHint = agentHasCommands
+    ? formatToolList([mentionHint, commandHint], i18n.locale)
+    : mentionHint;
+  const placeholderRotating = !archived && status === 'ready';
+  const placeholderPhrases = placeholderRotating
+    ? [t`Message ${agentName}`, mentionHint, ...(agentHasCommands ? [commandHint] : [])]
+    : [
+        archived
+          ? resumePending
+            ? t`Resuming the chat`
+            : t`Pick up where you left off`
+          : status === 'auth_required'
+            ? t`Sign in to ${agentName} first`
+            : status === 'authenticating'
+              ? t`Signing in to ${agentName}`
+              : t`Message ${agentName}`,
+      ];
 
   const sendButton = (
     <Button
@@ -3941,37 +3964,41 @@ function ThreadComposer({
             onRemove={onRemovePendingAttachment}
           />
         ) : null}
-        <ComposerMentionInput
-          ref={composerRef}
-          ariaLabel={t`Message ${agentName}`}
-          onEmptyChange={setIsEmpty}
-          onSubmit={onSubmit}
-          attachmentDrop={{ kind: 'host' }}
-          onEscape={() => {
-            if (turnActive && !cancelPending) onCancel();
-          }}
-          placeholder={
-            archived
-              ? resumePending
-                ? t`Resuming the chat`
-                : t`Pick up where you left off`
-              : status === 'auth_required'
-                ? t`Sign in to ${agentName} first`
-                : status === 'authenticating'
-                  ? t`Signing in to ${agentName}`
-                  : t`Message ${agentName}`
-          }
-          disabled={composerDisabled}
-          slashCommands={info.availableCommands ?? null}
-          className={cn(
-            'max-h-40 overflow-y-auto px-2.5 pt-1 text-base md:text-sm',
-            composerDisabled && 'opacity-50',
-          )}
-          testId="agent-thread-composer"
-        />
+        <div className="relative">
+          <ComposerMentionInput
+            ref={composerRef}
+            ariaLabel={t`Message ${agentName}`}
+            ariaDescribedBy={placeholderRotating ? composerHintId : undefined}
+            onEmptyChange={setIsEmpty}
+            onSubmit={onSubmit}
+            attachmentDrop={{ kind: 'host' }}
+            onEscape={() => {
+              if (turnActive && !cancelPending) onCancel();
+            }}
+            disabled={composerDisabled}
+            slashCommands={info.availableCommands ?? null}
+            className={cn(
+              'max-h-40 overflow-y-auto px-2.5 pt-1 text-base md:text-sm',
+              composerDisabled && 'opacity-50',
+            )}
+            testId="agent-thread-composer"
+          />
+          {placeholderRotating ? (
+            <span id={composerHintId} className="sr-only">
+              {composerHint}
+            </span>
+          ) : null}
+          {isEmpty ? (
+            <RotatingComposerPlaceholder
+              phrases={placeholderPhrases}
+              rotating={placeholderRotating}
+              className={cn('px-2.5 pt-2', composerDisabled && 'opacity-50')}
+              testId="agent-thread-composer-placeholder"
+            />
+          ) : null}
+        </div>
         {}
-        <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
-          <AgentSettingsPopover info={info} hasStartedWork={hasStartedWork} onNewChat={onNewChat} />
+        <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
           <AttachFilesButton
             testId="agent-thread-attach-files"
             onFiles={onIngestAllFiles}
@@ -3981,6 +4008,7 @@ function ThreadComposer({
               info.promptCapabilities.embeddedContext !== true
             }
           />
+          <AgentSettingsPopover info={info} hasStartedWork={hasStartedWork} onNewChat={onNewChat} />
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />

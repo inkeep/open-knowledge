@@ -15225,6 +15225,11 @@ msgstr "দুই পাতা (বিজোড়)"
 msgid "Type"
 msgstr "ধরন"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "একটি পাতা উল্লেখ করতে '@' টাইপ করুন"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "কমান্ড দেখতে '/' টাইপ করুন"
