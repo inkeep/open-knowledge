@@ -7,6 +7,7 @@ import {
   type ManagedArtifactWatcherUnsubscribe,
   startManagedArtifactWatcher,
 } from './managed-artifact-watcher.ts';
+import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
 
 let root: string;
 let cleanup: ManagedArtifactWatcherUnsubscribe | null = null;
@@ -19,15 +20,6 @@ afterEach(async () => {
   cleanup = null;
   rmSync(root, { recursive: true, force: true });
 });
-
-async function eventually(predicate: () => boolean, timeoutMs = 20_000): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    if (predicate()) return;
-    await new Promise((r) => setTimeout(r, 50));
-  }
-  throw new Error('eventually: predicate never became true');
-}
 
 const RUNNING_IN_CI = Boolean(process.env.CI);
 
@@ -42,7 +34,11 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
     const leaf = resolve(skillDir, 'SKILL.md');
     writeFileSync(leaf, 'v1', 'utf-8');
 
-    await eventually(() => seen.some(([p, c]) => p === leaf && c === 'v1'));
+    await waitWithinTestBudget(
+      "the watcher to report the new SKILL.md with its 'v1' contents",
+      () => seen.some(([p, c]) => p === leaf && c === 'v1'),
+      { timeoutMs: 20_000, pollMs: 50 },
+    );
   }, 25_000);
 
   test('fires onUnlink (not onChange) when a SKILL.md is deleted', async () => {
@@ -62,7 +58,11 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
 
     rmSync(leaf, { force: true });
 
-    await eventually(() => unlinked.includes(leaf));
+    await waitWithinTestBudget(
+      'the watcher to report the deleted SKILL.md as unlinked',
+      () => unlinked.includes(leaf),
+      { timeoutMs: 20_000, pollMs: 50 },
+    );
     expect(changed).not.toContain(leaf);
   }, 25_000);
 
@@ -79,7 +79,11 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
     writeFileSync(resolve(skillDir, 'NOTES.md'), 'noise', 'utf-8');
     writeFileSync(leaf, 'v2', 'utf-8');
 
-    await eventually(() => contents.includes('v2'));
+    await waitWithinTestBudget(
+      "the watcher to report the edited SKILL.md with its 'v2' contents",
+      () => contents.includes('v2'),
+      { timeoutMs: 20_000, pollMs: 50 },
+    );
     expect(contents).not.toContain('noise');
   }, 25_000);
 });

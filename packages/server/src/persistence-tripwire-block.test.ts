@@ -5,8 +5,10 @@ import { updateYFragment } from '@tiptap/y-tiptap';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
+import { expectStable } from './expect-stable.test-helper.ts';
 import { mdManager, schema } from './md-manager.ts';
 import { createServer } from './server-factory.ts';
+import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dirname, 'persistence-tripwire.fixtures');
 
@@ -44,33 +46,6 @@ function replaceFragmentFromMarkdown(doc: Y.Doc, markdown: string): void {
     },
     { source: 'connection', connection: { context: { principalId: 'principal-test-tripwire' } } },
   );
-}
-
-async function waitForCondition(
-  predicate: () => boolean,
-  { timeoutMs = 5_000, pollMs = 25 }: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-  throw new Error(`waitForCondition timed out after ${timeoutMs}ms`);
-}
-
-async function expectStable<T>(
-  read: () => T,
-  { durationMs = 600, pollMs = 50 }: { durationMs?: number; pollMs?: number } = {},
-): Promise<T> {
-  const initial = read();
-  const deadline = Date.now() + durationMs;
-  while (Date.now() < deadline) {
-    if (read() !== initial) {
-      throw new Error('value changed during stability window');
-    }
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-  return initial;
 }
 
 describe('persistence onStoreDocument tripwire', () => {
@@ -115,19 +90,30 @@ describe('persistence onStoreDocument tripwire', () => {
       const doubledChildren = serverDoc.getXmlFragment('default').length;
       expect(doubledChildren).toBe(baseChildren * 2);
 
-      await waitForCondition(() => {
-        return warnSpy.mock.calls.some((call) => {
-          const arg = String(call[0] ?? '');
-          return arg.includes('"event":"ok-persistence-duplication-blocked"');
-        });
-      });
+      await waitWithinTestBudget(
+        'an ok-persistence-duplication-blocked warning to be logged',
+        () =>
+          warnSpy.mock.calls.some((call) => {
+            const arg = String(call[0] ?? '');
+            return arg.includes('"event":"ok-persistence-duplication-blocked"');
+          }),
+        { timeoutMs: 5_000 },
+      );
 
-      await expectStable(() => readFileSync(docPath, 'utf-8'));
+      await expectStable(`${docName}.md on disk`, () => readFileSync(docPath, 'utf-8'));
       expect(readFileSync(docPath, 'utf-8')).toBe(baselineBytes);
 
-      await waitForCondition(() => serverDoc.getXmlFragment('default').length === baseChildren);
+      await waitWithinTestBudget(
+        `the ${docName} fragment to be rolled back to its baseline child count`,
+        () => serverDoc.getXmlFragment('default').length === baseChildren,
+        { timeoutMs: 5_000 },
+      );
       expect(serverDoc.getXmlFragment('default').length).toBe(baseChildren);
-      await waitForCondition(() => serverDoc.getText('source').toString() === baselineBytes);
+      await waitWithinTestBudget(
+        `the ${docName} source text to be rolled back to the baseline bytes`,
+        () => serverDoc.getText('source').toString() === baselineBytes,
+        { timeoutMs: 5_000 },
+      );
       expect(serverDoc.getText('source').toString()).toBe(baselineBytes);
 
       const blockedCalls = warnSpy.mock.calls
@@ -189,7 +175,11 @@ describe('persistence onStoreDocument tripwire', () => {
       replaceFragmentFromMarkdown(serverDoc, candidateMarkdown);
 
       const baselineSize = readFileSync(docPath, 'utf-8').length;
-      await waitForCondition(() => readFileSync(docPath, 'utf-8').length !== baselineSize);
+      await waitWithinTestBudget(
+        `${docName}.md on disk to change size from its baseline`,
+        () => readFileSync(docPath, 'utf-8').length !== baselineSize,
+        { timeoutMs: 5_000 },
+      );
 
       const finalContent = readFileSync(docPath, 'utf-8');
       expect(finalContent.length).toBeGreaterThan(baselineSize);
