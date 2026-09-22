@@ -103,7 +103,8 @@ function rewriteNode(node: MdastNode | undefined, resolver: DocPathResolver): vo
   for (const child of children) {
     if (child === undefined || child === null) continue;
     if (child.type === 'link') {
-      next.push(child);
+      const doc = typeof child.url === 'string' ? resolveLinkUrl(child.url, resolver) : null;
+      next.push(doc === null ? child : { ...child, url: hashFromDocName(doc) });
       continue;
     }
     if (child.type === 'text' && typeof child.value === 'string') {
@@ -128,6 +129,22 @@ function rewriteNode(node: MdastNode | undefined, resolver: DocPathResolver): vo
     next.push(child);
   }
   node.children = next;
+}
+
+const FILE_SCHEME = /^file:\/\//i;
+const OTHER_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+
+function resolveLinkUrl(url: string, resolver: DocPathResolver): string | null {
+  if (url.startsWith('#')) return null;
+  const path = FILE_SCHEME.test(url) ? url.replace(FILE_SCHEME, '') : url;
+  if (OTHER_SCHEME.test(path)) return null;
+  let decoded = path;
+  try {
+    decoded = decodeURIComponent(path);
+  } catch {
+    return null;
+  }
+  return resolver(decoded);
 }
 
 function splitTextByPaths(value: string, resolver: DocPathResolver): MdastNode[] {

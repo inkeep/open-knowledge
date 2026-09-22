@@ -104,6 +104,27 @@ describe('AgentMarkdown doc-path links', () => {
     setDocPathResolver(null);
   });
 
+  test('a markdown link the agent wrote to a doc opens in-app instead of being blocked', () => {
+    const { container } = renderWithResolver(
+      'See [REPORT.md](public/open-knowledge/reports/foo/REPORT.md) for the findings.',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT');
+    expect(anchor?.textContent).toBe('REPORT.md');
+    expect(container.textContent).not.toContain('[blocked]');
+  });
+
+  test('a markdown link to a file: URL of a workspace doc opens in-app too', () => {
+    const { container } = renderWithResolver(
+      '[the report](file:///Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md)',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT');
+    expect(container.textContent).not.toContain('[blocked]');
+  });
+
   test('a repo-root-relative .md path in prose renders as an in-app hash link', () => {
     const { container } = renderWithResolver(
       'Written to public/open-knowledge/reports/foo/REPORT.md (458 lines)',

@@ -335,4 +335,44 @@ describe('remarkDocPathLinks', () => {
     expect(kids[2]).toEqual({ type: 'text', value: ' into ' });
     expect(kids[3]?.url).toBe('#/b/two');
   });
+
+  test('a link the agent wrote to a doc path becomes an in-app link, text untouched', () => {
+    for (const href of [
+      'public/open-knowledge/reports/foo/REPORT.md',
+      '/Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md',
+      'file:///Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md',
+      'reports/foo/REPORT.md#findings',
+      'public/open-knowledge/reports/foo/REPORT%2Emd',
+    ]) {
+      const tree = makeTree([
+        {
+          type: 'paragraph',
+          children: [{ type: 'link', url: href, children: [{ type: 'text', value: 'REPORT.md' }] }],
+        },
+      ]);
+      setDocPathResolver(resolve);
+      remarkDocPathLinks()()(tree);
+      const link = tree.children?.[0]?.children?.[0];
+      expect(link?.url, href).toBe('#/reports/foo/REPORT');
+      expect(link?.children?.[0]).toEqual({ type: 'text', value: 'REPORT.md' });
+    }
+  });
+
+  test('a link to a doc that is not in the workspace is left exactly as written', () => {
+    for (const href of [
+      'public/open-knowledge/reports/nope/REPORT.md',
+      'mailto:someone@example.com',
+      '#/already/in-app',
+    ]) {
+      const tree = makeTree([
+        {
+          type: 'paragraph',
+          children: [{ type: 'link', url: href, children: [{ type: 'text', value: 'x' }] }],
+        },
+      ]);
+      setDocPathResolver(resolve);
+      remarkDocPathLinks()()(tree);
+      expect(tree.children?.[0]?.children?.[0]?.url, href).toBe(href);
+    }
+  });
 });
