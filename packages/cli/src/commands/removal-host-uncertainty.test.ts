@@ -1,4 +1,10 @@
-import { type ChildProcess, type SpawnSyncReturns, spawn } from 'node:child_process';
+import {
+  type ChildProcess,
+  type SpawnSyncOptions,
+  type SpawnSyncReturns,
+  spawn,
+  spawnSync,
+} from 'node:child_process';
 import { once } from 'node:events';
 import {
   chmodSync,
@@ -12,25 +18,20 @@ import {
 } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import { isProcessAlive } from '@inkeep/open-knowledge-server';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { startDefunctProcess } from './defunct-process.test-helper.ts';
+import { buildDeinitPlan, runRemoval } from './removal-plan.ts';
+import { stopServerForRemoval } from './stop-for-removal.ts';
 
-const spawnSyncMock = vi.fn();
-
-let realSpawnSync: typeof import('node:child_process').spawnSync;
-let buildDeinitPlan: typeof import('./removal-plan.ts').buildDeinitPlan;
-let runRemoval: typeof import('./removal-plan.ts').runRemoval;
-let isProcessAlive: typeof import('@inkeep/open-knowledge-server').isProcessAlive;
-let stopServerForRemoval: typeof import('./stop-for-removal.ts').stopServerForRemoval;
-
-beforeAll(async () => {
-  const realCp = await vi.importActual<typeof import('node:child_process')>('node:child_process');
-  realSpawnSync = realCp.spawnSync;
-  vi.doMock('node:child_process', () => ({ ...realCp, spawnSync: spawnSyncMock }));
-  ({ buildDeinitPlan, runRemoval } = await import('./removal-plan.ts'));
-  ({ isProcessAlive } = await import('@inkeep/open-knowledge-server'));
-  ({ stopServerForRemoval } = await import('./stop-for-removal.ts'));
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, spawnSync: vi.fn() };
 });
+
+const spawnSyncMock = vi.mocked(spawnSync);
+const { spawnSync: realSpawnSync } =
+  await vi.importActual<typeof import('node:child_process')>('node:child_process');
 
 interface HostProcess {
   pid: number;
@@ -96,7 +97,7 @@ describe.skipIf(process.platform === 'win32')(
     function installHost(plan: HostPlan): void {
       const scriptedCwds = new Map((plan.cwdQueries ?? []).map((q) => [q.pids, q.result]));
       spawnSyncMock.mockImplementation(
-        (command: string, args: readonly string[] = [], options?: unknown) => {
+        (command: string, args: readonly string[] = [], options?: SpawnSyncOptions) => {
           if (command === 'pgrep') {
             return spawnResult({ stdout: plan.processes.map((p) => `${p.pid}\n`).join('') });
           }
@@ -110,10 +111,10 @@ describe.skipIf(process.platform === 'win32')(
           if (command === 'lsof' && args[0] === '-p') {
             const scripted = scriptedCwds.get(String(args[1]));
             if (scripted !== undefined) return scripted;
-            return realSpawnSync(command, args, options as never);
+            return realSpawnSync(command, args, options);
           }
           escapedSpawns.push(`${command} ${args.join(' ')}`);
-          return realSpawnSync(command, args, options as never);
+          return realSpawnSync(command, args, options);
         },
       );
     }
@@ -185,9 +186,9 @@ describe.skipIf(process.platform === 'win32')(
       }
 
       const cwdQuery = spawnSyncMock.mock.calls.find(
-        ([command, args]: [string, readonly string[]]) => command === 'lsof' && args[0] === '-p',
+        ([command, args]) => command === 'lsof' && args?.[0] === '-p',
       );
-      expect(cwdQuery?.[1][1]).toBe(`${live},${scanOnly}`);
+      expect(cwdQuery?.[1]?.[1]).toBe(`${live},${scanOnly}`);
       expect(reportedToCaller).toContain(scanOnly);
       expect(reportedToCaller).toContain(live);
       expect(stderrChunks.filter((chunk) => chunk.includes('[process-scan]'))).toEqual([]);

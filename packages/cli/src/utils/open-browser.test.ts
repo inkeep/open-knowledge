@@ -1,17 +1,14 @@
-import { describe as _bunDescribe, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
+import { describe as _bunDescribe, afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { openBrowser } from './open-browser.ts';
+
+const { execFileMock } = vi.hoisted(() => ({ execFileMock: vi.fn() }));
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return { ...actual, execFile: (...args: unknown[]) => execFileMock(...args) };
+});
 
 const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
-const execFileMock = vi.fn();
-let openBrowser: typeof import('./open-browser.ts')['openBrowser'];
-
-beforeAll(async () => {
-  await vi.doMock('node:child_process', async () => {
-    const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process');
-    return { ...actual, execFile: (...args: unknown[]) => execFileMock(...args) };
-  });
-  ({ openBrowser } = await import('./open-browser.ts'));
-});
 
 describe('openBrowser', () => {
   const originalPlatform = process.platform;
