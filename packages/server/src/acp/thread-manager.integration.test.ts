@@ -16,10 +16,12 @@ import codexFixture from '../../../../test-support/fixtures/codex-legacy-warning
 };
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
+import { resolveBundledSkillDir } from '../build-skill-zip.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
 import { isValidLockPid } from '../process-alive.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
+import { isWithin } from './archive.ts';
 import {
   installNodeFixture,
   npmCli,
@@ -30,11 +32,14 @@ import {
   writeRecordingNpm,
 } from './package-acquisition.test-helper.ts';
 import { AcpPermissionStore } from './permissions.ts';
+import * as projectSkillStaging from './project-skill-staging.ts';
+import { PROJECT_SKILL_ENTRY, projectSkillStageDir } from './project-skill-staging.ts';
 import { AcpRegistry } from './registry.ts';
 import {
   ACP_ENVIRONMENT_NOTE,
   AcpThreadManager,
   type AcpThreadManagerOptions,
+  buildEnvironmentNote,
   MAX_QUEUED_PROMPTS,
 } from './thread-manager.ts';
 
@@ -63,6 +68,7 @@ function tmp(): string {
 afterEach(async () => {
   await Promise.allSettled(managers.map((m) => m.destroy()));
   managers = [];
+  vi.restoreAllMocks();
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
 });
@@ -84,6 +90,7 @@ function makeManager(
     agentPresenceBroadcaster?: AgentPresenceBroadcaster;
     sessionManager?: AgentSessionManager;
     log?: PinoLogger;
+    projectSkillSourceDir?: string | null;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -135,6 +142,14 @@ function internals(manager: AcpThreadManager): {
     child: (threadId) => m.threads.get(threadId)?.child,
     sessionId: (threadId) => m.threads.get(threadId)?.sessionId,
   };
+}
+
+function stagedSkillPath(localDir: string): string {
+  return join(projectSkillStageDir(localDir), PROJECT_SKILL_ENTRY);
+}
+
+function stagedSkillNote(localDir: string): string {
+  return buildEnvironmentNote({ skillPath: stagedSkillPath(localDir) });
 }
 
 describe('package acquisition failure projection', () => {
@@ -979,7 +994,7 @@ process.stdin.on('data', (chunk) => {
     await waitFor(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000);
     manager.sendPrompt(info.threadId, 'first hello');
     await waitFor(() => receivedTexts().length === 3, 15_000);
-    expect(receivedTexts()[2]).toBe(`received:${ACP_ENVIRONMENT_NOTE}\n\nfirst hello`);
+    expect(receivedTexts()[2]).toBe(`received:${stagedSkillNote(localDir)}\n\nfirst hello`);
     const userMessages = events
       .map((e) => e.event)
       .filter((e) => e.kind === 'user_message')
@@ -1173,7 +1188,8 @@ describe('AcpThreadManager persistence + resume', () => {
     }
   };
   const kinds = (events: Collected): string[] => events.map((e) => e.event.kind);
-  const notedEcho = (text: string): string => `echo:${ACP_ENVIRONMENT_NOTE}\n\n${text}`;
+  const notedEcho = (localDir: string, text: string): string =>
+    `echo:${stagedSkillNote(localDir)}\n\n${text}`;
   const agentChunks = (events: Collected): string[] =>
     events
       .map((e) => e.event)
@@ -1271,7 +1287,7 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(replayed.length).toBeGreaterThanOrEqual(liveEvents.length);
     expect(replayed.map((e) => e.seq)).toEqual(replayed.map((_, i) => i));
     expect(kinds(replayed)).toContain('user_message');
-    expect(agentChunks(replayed)).toContain(notedEcho('hello there'));
+    expect(agentChunks(replayed)).toContain(notedEcho(localDir, 'hello there'));
   }, 45_000);
 
   test('closing a never-prompted thread discards it instead of archiving', async () => {
@@ -1581,7 +1597,10 @@ describe('AcpThreadManager persistence + resume', () => {
       .filter((e): e is Extract<ThreadEvent, { kind: 'user_message' }> => e.kind === 'user_message')
       .map((e) => e.content);
     expect(userMessages).toEqual(['first message', 'second message']);
-    expect(agentChunks(replayed)).toEqual([notedEcho('first message'), 'echo:second message']);
+    expect(agentChunks(replayed)).toEqual([
+      notedEcho(localDir, 'first message'),
+      'echo:second message',
+    ]);
     expect(manager.getInfo(threadId)?.availableCommands).toBeNull();
 
     await manager.closeThread(threadId);
@@ -1610,7 +1629,10 @@ describe('AcpThreadManager persistence + resume', () => {
 
     const replayed: Collected = [];
     await manager.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toEqual([notedEcho('first message'), 'echo:second message']);
+    expect(agentChunks(replayed)).toEqual([
+      notedEcho(localDir, 'first message'),
+      'echo:second message',
+    ]);
     expect(agentChunks(replayed)).not.toContain('old-user');
     expect(agentChunks(replayed)).not.toContain('old-agent');
 
@@ -1638,7 +1660,7 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(manager.getInfo(threadId)?.archived).toBe(true);
     const replayed: Collected = [];
     await manager.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toContain(notedEcho('first message'));
+    expect(agentChunks(replayed)).toContain(notedEcho(localDir, 'first message'));
   }, 45_000);
 
   test('an agent that drops its resume capability retires the offer instead of repeating it', async () => {
@@ -1708,7 +1730,7 @@ describe('AcpThreadManager persistence + resume', () => {
     );
     const replayed: Collected = [];
     await manager2.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toContain(notedEcho('survives shutdown'));
+    expect(agentChunks(replayed)).toContain(notedEcho(localDir, 'survives shutdown'));
     await manager2.closeThread(threadId);
   }, 45_000);
 });
@@ -5495,6 +5517,7 @@ function registryManagerFor(
   contentDir: string,
   localDir: string,
   binDir: string,
+  extra?: Parameters<typeof makeManager>[2],
 ): AcpThreadManager {
   const manifest = {
     id: agentId,
@@ -5511,6 +5534,7 @@ function registryManagerFor(
           status: 200,
         })) as unknown as typeof fetch,
     }),
+    ...extra,
   });
 }
 
@@ -5728,6 +5752,263 @@ describe.skipIf(process.platform === 'win32')('a typed session notice mid-turn',
     expect(bothTurns.length).toBe(firstTurn.length * 2);
     expect(thread.manager.getInfo(thread.threadId)?.status).toBe('ready');
   }, 60_000);
+});
+
+describe('AcpThreadManager project skill delivery', () => {
+  const BLOCKS_AGENT = `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const notify = (update) =>
+  write({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 's1', update } });
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({
+        protocolVersion: 1,
+        agentCapabilities: {
+          promptCapabilities: { embeddedContext: process.env.FAKE_EMBEDDED === '1' },
+        },
+      });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1' });
+    } else if (msg.method === 'session/prompt') {
+      notify({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'blocks:' + JSON.stringify(msg.params.prompt) },
+      });
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`;
+
+  type EchoedBlock = { type: string; text?: string; resource?: Record<string, string> };
+
+  function writeBlocksAgent(localDir: string, id: string, embeddedContext: boolean): void {
+    const agentPath = join(localDir, `${id}-blocks-agent.mjs`);
+    writeFileSync(agentPath, BLOCKS_AGENT);
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        {
+          id,
+          name: `Fake ${id}`,
+          command: 'node',
+          args: [agentPath],
+          env: { FAKE_EMBEDDED: embeddedContext ? '1' : '0' },
+        },
+      ]),
+    );
+  }
+
+  async function firstPromptBlocks(
+    manager: AcpThreadManager,
+    agentId: string,
+    prompt: string,
+    source: 'custom' | 'registry' = 'custom',
+  ): Promise<EchoedBlock[]> {
+    const info = await manager.createThread({ agent: { source, id: agentId } });
+    const events: ThreadEvent[] = [];
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') events.push(frame.event);
+      if (frame.op === 'events') events.push(...frame.events);
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, prompt);
+    const echoed = (): string | undefined =>
+      events
+        .filter((e) => e.kind === 'session_update')
+        .map((e) => (e.update as { content?: { text?: string } }).content?.text ?? '')
+        .find((text) => text.startsWith('blocks:'));
+    await waitUntil(() => echoed() !== undefined, 15_000, 'echoed prompt blocks');
+    return JSON.parse((echoed() as string).slice('blocks:'.length)) as EchoedBlock[];
+  }
+
+  function geminiRegistryManager(
+    localDir: string,
+    embeddedContext: boolean,
+    extra?: Parameters<typeof makeManager>[2],
+  ): AcpThreadManager {
+    const binDir = tmp();
+    writeRegistryAgentShims(binDir, []);
+    writeFileSync(
+      join(binDir, 'agent.mjs'),
+      `process.env.FAKE_EMBEDDED = ${JSON.stringify(embeddedContext ? '1' : '0')};\n${BLOCKS_AGENT}`,
+    );
+    return registryManagerFor('gemini', tmp(), localDir, binDir, extra);
+  }
+
+  const bundledSkillText = (): string =>
+    readFileSync(
+      join(resolveBundledSkillDir('project', { checkDesktop: false }), PROJECT_SKILL_ENTRY),
+      'utf8',
+    );
+
+  test('stages the shipped bundle under localDir and points the first prompt at it', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'pointer-agent', false);
+    const manager = makeManager(tmp(), localDir);
+
+    const blocks = await firstPromptBlocks(manager, 'pointer-agent', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${stagedSkillNote(localDir)}\n\nhello` }]);
+    expect(readFileSync(stagedSkillPath(localDir), 'utf8')).toBe(bundledSkillText());
+    expect(existsSync(join(projectSkillStageDir(localDir), 'references'))).toBe(true);
+  }, 30_000);
+
+  test('a custom agent named gemini receives the ordinary path pointer', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'gemini', true);
+    const manager = makeManager(tmp(), localDir);
+
+    const blocks = await firstPromptBlocks(manager, 'gemini', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${stagedSkillNote(localDir)}\n\nhello` }]);
+  }, 30_000);
+
+  test('a content subfolder still receives the pointer above its cwd', async () => {
+    const projectDir = tmp();
+    const contentDir = join(projectDir, 'docs');
+    const localDir = join(projectDir, '.ok', 'local');
+    mkdirSync(contentDir, { recursive: true });
+    mkdirSync(localDir, { recursive: true });
+    writeBlocksAgent(localDir, 'subfolder-agent', false);
+    const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+    const manager = makeManager(contentDir, localDir, { log: capturingLog(lines) });
+
+    const blocks = await firstPromptBlocks(manager, 'subfolder-agent', 'hello');
+    expect(isWithin(contentDir, stagedSkillPath(localDir))).toBe(false);
+    expect(blocks).toEqual([{ type: 'text', text: `${stagedSkillNote(localDir)}\n\nhello` }]);
+    expect(lines.some((line) => line.msg.includes('skill staged above agent cwd'))).toBe(true);
+  }, 30_000);
+
+  test('concurrent connects share staging and a later connect still repairs changes', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'concurrent-agent', false);
+    const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+    const barrier = Promise.withResolvers<void>();
+    let coordinate = false;
+    let arrivals = 0;
+    const manager = makeManager(tmp(), localDir, {
+      log: capturingLog(lines),
+      resolveLoginShellPath: async () => {
+        if (coordinate) {
+          arrivals += 1;
+          if (arrivals === 2) barrier.resolve();
+          await barrier.promise;
+        }
+        return null;
+      },
+    });
+    await manager.init();
+    coordinate = true;
+    const stage = vi.spyOn(projectSkillStaging, 'stageProjectSkill');
+    await Promise.all([
+      firstPromptBlocks(manager, 'concurrent-agent', 'first'),
+      firstPromptBlocks(manager, 'concurrent-agent', 'second'),
+    ]);
+    expect(stage).toHaveBeenCalledTimes(1);
+    const staged = lines.find((line) => line.msg.includes('project skill staged'));
+    expect(staged?.obj).toMatchObject({ localDir });
+    expect(staged?.obj).not.toHaveProperty('threadId');
+    expect(staged?.obj).not.toHaveProperty('agentId');
+
+    coordinate = false;
+    writeFileSync(stagedSkillPath(localDir), 'modified');
+    await firstPromptBlocks(manager, 'concurrent-agent', 'third');
+    expect(stage).toHaveBeenCalledTimes(2);
+    expect(readFileSync(stagedSkillPath(localDir), 'utf8')).toBe(bundledSkillText());
+  }, 30_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'registry gemini receives no pointer when the inline skill cannot be read',
+    async () => {
+      const localDir = tmp();
+      const sourceDir = tmp();
+      mkdirSync(join(sourceDir, PROJECT_SKILL_ENTRY));
+      const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+      const manager = geminiRegistryManager(localDir, true, {
+        projectSkillSourceDir: sourceDir,
+        log: capturingLog(lines),
+      });
+
+      const blocks = await firstPromptBlocks(manager, 'gemini', 'hello', 'registry');
+      expect(blocks).toEqual([{ type: 'text', text: `${ACP_ENVIRONMENT_NOTE}\n\nhello` }]);
+      const failure = lines.find((line) => line.msg.includes('skill inline read failed'));
+      expect(failure?.obj.err).toMatchObject({ code: 'EISDIR' });
+    },
+    30_000,
+  );
+
+  test('sends the plain note when staging fails, and never blocks the spawn', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'degrade-agent', false);
+    const manager = makeManager(tmp(), localDir, {
+      projectSkillSourceDir: join(localDir, 'no-such-bundle'),
+    });
+
+    const blocks = await firstPromptBlocks(manager, 'degrade-agent', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${ACP_ENVIRONMENT_NOTE}\n\nhello` }]);
+    expect(existsSync(projectSkillStageDir(localDir))).toBe(false);
+  }, 30_000);
+
+  test('sends the plain note when staging is switched off', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'off-agent', false);
+    const manager = makeManager(tmp(), localDir, { projectSkillSourceDir: null });
+
+    const blocks = await firstPromptBlocks(manager, 'off-agent', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${ACP_ENVIRONMENT_NOTE}\n\nhello` }]);
+    expect(existsSync(projectSkillStageDir(localDir))).toBe(false);
+  }, 30_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'registry gemini gets the skill body inline as an embedded resource',
+    async () => {
+      const localDir = tmp();
+      const manager = geminiRegistryManager(localDir, true);
+
+      const blocks = await firstPromptBlocks(manager, 'gemini', 'hello', 'registry');
+      const skillPath = stagedSkillPath(localDir);
+      expect(blocks).toEqual([
+        { type: 'text', text: `${buildEnvironmentNote({ skillPath, inline: true })}\n\nhello` },
+        {
+          type: 'resource',
+          resource: {
+            uri: pathToFileURL(skillPath).href,
+            mimeType: 'text/markdown',
+            text: bundledSkillText(),
+          },
+        },
+      ]);
+    },
+    30_000,
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'registry gemini without embeddedContext still gets the body, as a text block',
+    async () => {
+      const localDir = tmp();
+      const manager = geminiRegistryManager(localDir, false);
+
+      const blocks = await firstPromptBlocks(manager, 'gemini', 'hello', 'registry');
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]?.type).toBe('text');
+      expect(blocks[1]?.type).toBe('text');
+      expect(blocks[1]?.text).toContain(bundledSkillText());
+    },
+    30_000,
+  );
 });
 
 describe('status frames for an open that installs nothing', () => {

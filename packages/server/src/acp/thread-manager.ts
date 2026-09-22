@@ -8,15 +8,18 @@ import type { ChildProcess } from 'node:child_process';
 import { readFile, realpath } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { Readable, Writable } from 'node:stream';
+import { pathToFileURL } from 'node:url';
 import {
   client as acpClient,
   methods as acpMethods,
   type ClientConnection,
+  type ContentBlock,
   type InitializeResponse,
   type McpServer,
   ndJsonStream,
   type PermissionOption,
   PROTOCOL_VERSION,
+  type PromptCapabilities,
   RequestError,
   type RequestPermissionResponse,
   type SessionConfigOption,
@@ -61,6 +64,7 @@ import {
   applyAgentMarkdownWrite,
   snapshotBlocks,
 } from '../agent-sessions.ts';
+import { resolveBundledSkillDir } from '../build-skill-zip.ts';
 import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import {
   CONCURRENT_OVERWRITE_REFUSED_DETAIL,
@@ -73,6 +77,7 @@ import { resolveOnPath } from '../git-preflight.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
+import { isWithin } from './archive.ts';
 import { buildPromptBlocks } from './attachment-blocks.ts';
 import {
   ACQUISITION_DETAIL_MAX_CHARS,
@@ -128,6 +133,7 @@ import {
   launchContextMechanism,
 } from './model-discovery/launch-context.ts';
 import type { AcpPermissionStore } from './permissions.ts';
+import { PROJECT_SKILL_ENTRY, stageProjectSkill } from './project-skill-staging.ts';
 import {
   ACP_AGENT_EDITOR_IDS,
   type AcpRegistry,
@@ -173,6 +179,56 @@ export const ACP_ENVIRONMENT_NOTE =
   '(such as /tasks or /bashes) and keyboard shortcuts (such as Ctrl+O) do not ' +
   'exist here; never recommend them. The only slash commands available to the ' +
   'user are the ones you advertise over ACP.';
+
+export interface ProjectSkillNoteInput {
+  skillPath: string;
+  inline?: boolean;
+}
+
+export function buildEnvironmentNote(skill: ProjectSkillNoteInput | null): string {
+  if (skill === null) return ACP_ENVIRONMENT_NOTE;
+  const pointer =
+    skill.inline === true
+      ? 'This project uses OpenKnowledge. Its agent skill (SKILL.md) is attached to this message. ' +
+        'Follow it before editing any markdown here; it overrides generic markdown habits. ' +
+        'If you already have the `open-knowledge` skill loaded, skip it.'
+      : `This project uses OpenKnowledge. Its agent skill is at \`${skill.skillPath}\`. ` +
+        'Read it before editing any markdown here; it overrides generic markdown habits, ' +
+        'and you may read its `references/` files by path when it points to them. ' +
+        'If you already have the `open-knowledge` skill loaded, skip the read.';
+  return `${ACP_ENVIRONMENT_NOTE}\n\n${pointer}`;
+}
+
+const INLINE_SKILL_AGENT_IDS: ReadonlySet<string> = new Set(['gemini']);
+
+export function deliversSkillInline(agentRef: {
+  source: 'registry' | 'custom';
+  id: string;
+}): boolean {
+  return agentRef.source === 'registry' && INLINE_SKILL_AGENT_IDS.has(agentRef.id);
+}
+
+interface StagedProjectSkill {
+  skillPath: string;
+  inlineText: string | null;
+}
+
+export function inlineSkillBlock(
+  skillPath: string,
+  text: string,
+  capabilities: PromptCapabilities | null | undefined,
+): ContentBlock {
+  if (capabilities?.embeddedContext !== true) {
+    return {
+      type: 'text',
+      text: `\n\n--- OpenKnowledge skill: ${PROJECT_SKILL_ENTRY} ---\n${text}\n--- End skill ---`,
+    };
+  }
+  return {
+    type: 'resource',
+    resource: { uri: pathToFileURL(skillPath).href, text, mimeType: 'text/markdown' },
+  };
+}
 
 export class ThreadOpError extends Error {
   readonly code:
@@ -274,6 +330,7 @@ interface ThreadRecord {
   hadUserMessage: boolean;
   titleHint?: string;
   envNotePending: boolean;
+  projectSkill: StagedProjectSkill | null;
 }
 
 export interface HarnessManagedMcpEntryHit {
@@ -341,6 +398,7 @@ export interface AcpThreadManagerOptions {
     fetchImpl?: typeof fetch;
   };
   resolveLoginShellPath?: () => Promise<string | null>;
+  projectSkillSourceDir?: string | null;
   log: PinoLogger;
   maxThreads?: number;
   idleReapMs?: number;
@@ -395,6 +453,7 @@ export class AcpThreadManager {
   private readonly persistence: ThreadPersistenceStore;
   private readonly resolveLoginShellPath: () => Promise<string | null>;
   private readonly healthyInterpreters = new Set<string>();
+  private projectSkillStaging: Promise<string> | null = null;
   private destroyed = false;
   private initialized = false;
 
@@ -603,6 +662,7 @@ export class AcpThreadManager {
       hadUserMessage: false,
       titleHint: params.titleHint,
       envNotePending: false,
+      projectSkill: null,
     };
     this.threads.set(threadId, record);
     this.emitStatus(record, 'spawning');
@@ -652,6 +712,44 @@ export class AcpThreadManager {
     };
   }
 
+  private async stageProjectSkillFor(record: ThreadRecord): Promise<StagedProjectSkill | null> {
+    const source = this.opts.projectSkillSourceDir;
+    if (source === null) return null;
+    const logContext = { threadId: record.info.threadId, agentId: record.info.agent.id };
+    let dir: string;
+    try {
+      this.projectSkillStaging ??= stageProjectSkill({
+        localDir: this.opts.localDir,
+        sourceDir: source ?? resolveBundledSkillDir('project', { checkDesktop: false }),
+        log: this.opts.log,
+        logContext: { localDir: this.opts.localDir },
+      }).finally(() => {
+        this.projectSkillStaging = null;
+      });
+      dir = await this.projectSkillStaging;
+    } catch (err) {
+      this.opts.log.warn({ err, ...logContext }, '[acp-threads] skill staging failed');
+      return null;
+    }
+    if (!isWithin(record.cwd, dir)) {
+      this.opts.log.info(
+        { ...logContext, cwd: record.cwd, skillDir: dir },
+        '[acp-threads] skill staged above agent cwd',
+      );
+    }
+    const skillPath = join(dir, PROJECT_SKILL_ENTRY);
+    if (!deliversSkillInline(record.agentRef)) return { skillPath, inlineText: null };
+    try {
+      return { skillPath, inlineText: await readFile(skillPath, 'utf8') };
+    } catch (err) {
+      this.opts.log.warn(
+        { err, ...logContext, skillPath },
+        '[acp-threads] skill inline read failed; skipping skill delivery',
+      );
+      return null;
+    }
+  }
+
   private async connectAgent(
     record: ThreadRecord,
     custom: CustomAgentEntry | null,
@@ -691,6 +789,9 @@ export class AcpThreadManager {
     if (launch === null || record.closed) return null;
 
     const loginShellPath = await this.resolveLoginShellPath().catch(() => null);
+    if (record.closed) return null;
+
+    record.projectSkill = await this.stageProjectSkillFor(record);
     if (record.closed) return null;
 
     const terminals = new AcpTerminalSet({
@@ -817,12 +918,42 @@ export class AcpThreadManager {
       .onRequest(acpMethods.client.session.requestPermission, (ctx) =>
         this.handlePermissionRequest(record, ctx.params.toolCall, ctx.params.options),
       )
-      .onRequest(acpMethods.client.fs.readTextFile, (ctx) =>
-        this.handleFsRead(ctx.params.path, ctx.params.line ?? null, ctx.params.limit ?? null),
-      )
+      .onRequest(acpMethods.client.fs.readTextFile, async (ctx) => {
+        try {
+          return await this.handleFsRead(
+            ctx.params.path,
+            ctx.params.line ?? null,
+            ctx.params.limit ?? null,
+          );
+        } catch (err) {
+          this.opts.log.warn(
+            {
+              err,
+              threadId: record.info.threadId,
+              agentId: record.info.agent.id,
+              path: ctx.params.path,
+            },
+            '[acp-threads] agent file read failed',
+          );
+          throw err;
+        }
+      })
       .onRequest(acpMethods.client.fs.writeTextFile, async (ctx) => {
-        await this.handleFsWrite(record, ctx.params.path, ctx.params.content);
-        return {};
+        try {
+          await this.handleFsWrite(record, ctx.params.path, ctx.params.content);
+          return {};
+        } catch (err) {
+          this.opts.log.warn(
+            {
+              err,
+              threadId: record.info.threadId,
+              agentId: record.info.agent.id,
+              path: ctx.params.path,
+            },
+            '[acp-threads] agent file write failed',
+          );
+          throw err;
+        }
       })
       .onRequest(acpMethods.client.terminal.create, (ctx) => {
         record.info.lastActivityAt = Date.now();
@@ -2314,9 +2445,33 @@ export class AcpThreadManager {
       this.echoUserMessage(t, content, attachments);
     }
     let wireText = content;
+    let skillBlock: ContentBlock | null = null;
     if (t.envNotePending && !content.startsWith('/')) {
       t.envNotePending = false;
-      wireText = `${ACP_ENVIRONMENT_NOTE}\n\n${content}`;
+      const skill = t.projectSkill;
+      const inline = skill !== null && skill.inlineText !== null;
+      const note = buildEnvironmentNote(
+        skill === null ? null : { skillPath: skill.skillPath, inline },
+      );
+      wireText = `${note}\n\n${content}`;
+      if (skill !== null) {
+        if (skill.inlineText !== null) {
+          skillBlock = inlineSkillBlock(
+            skill.skillPath,
+            skill.inlineText,
+            t.info.promptCapabilities,
+          );
+        }
+        this.opts.log.info(
+          {
+            threadId: t.info.threadId,
+            agentId: t.info.agent.id,
+            skillPath: skill.skillPath,
+            delivery: inline ? 'inline' : 'path',
+          },
+          '[acp-threads] skill pointer sent',
+        );
+      }
     }
     t.turnActive = true;
     t.cancelRequested = false;
@@ -2360,7 +2515,7 @@ export class AcpThreadManager {
       }
       return t.conn.agent.request(acpMethods.agent.session.prompt, {
         sessionId,
-        prompt: [...built.blocks],
+        prompt: skillBlock === null ? [...built.blocks] : [...built.blocks, skillBlock],
       });
     });
     requestPromise
@@ -3283,6 +3438,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     closed: false,
     hadUserMessage: true,
     envNotePending: false,
+    projectSkill: null,
   };
 }
 

@@ -123,6 +123,7 @@ The app runs a collaboration server for the open project. It writes runtime stat
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
+| `.ok/local/agent-skill/open-knowledge/` | Runtime copy of the OpenKnowledge project skill (`SKILL.md` and `references/`), refreshed before in-app agent processes start. New in-app agent sessions receive this guidance automatically, even when the skill is not installed into an editor | In-project, gitignored with the `local/` ignore rule |
 | `.ok/local/skill-move-retained.json` | Bookkeeping for a skill move between Project and Global scope that could not finish: which destination copy was kept, why, and what the source looked like at the time. Keyed by scope and skill name, one record each. A record clears when a later move of that skill completes, when the copy at the destination stops matching the one recorded, or when you delete that skill at that scope. No document content | In-project, gitignored |
 | `.ok/local/terminal/claude-settings-{mcp,tools,mcp-tools}.json` | Windows-only Claude launch settings written when **Open in Claude** requests MCP or tool preapproval; one of three possible files, overwritten rather than appended on each launch that uses that combination. macOS and Linux pass the same settings inline | In-project, gitignored |
 | `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
@@ -133,7 +134,7 @@ Diagnostic logs and telemetry are **on by default but local-only** — credentia
 
 On each launch and project open, the app also runs **repair sweeps**: it rewrites *existing* `open-knowledge` MCP entries (in the editor configs above) to the current canonical form, and removes any stale `open-knowledge-ui` entry left in `.claude/launch.json` by an older OK version. It **never adds** an MCP entry to an editor that doesn't already have one. Same `OK_RECLAIM_DISABLE=1` opt-out.
 
-**Skills are never installed by a sweep.** OpenKnowledge writes a skill only when you ask for one — the first-launch setup dialog, the Settings toggles, Skills Studio, or `ok init`. A launch does two housekeeping passes over skills and writes nothing new: it removes superseded pre-split `open-knowledge` copies OpenKnowledge itself left in your agent folders, and it removes a bundle you switched off that is still on disk.
+**Skills are never installed by a sweep.** OpenKnowledge writes a skill into editor folders only when you ask for one — the first-launch setup dialog, the Settings toggles, Skills Studio, or `ok init`. A launch does two housekeeping passes over installed editor skills and writes nothing new into those folders: it removes superseded pre-split `open-knowledge` copies OpenKnowledge itself left in your agent folders, and it removes a bundle you switched off that is still on disk.
 
 ### Home directory and credentials (`~/.ok/`)
 
@@ -247,6 +248,7 @@ On Windows, Claude Desktop and OpenCode configs live under `%APPDATA%\Claude\` a
 | `.ok/local/logs/server-*.jsonl` | Local server logs, rotated at ~25 MB | In-project, gitignored |
 | `.ok/local/cache/<branch>/backlinks.json` | Backlink-graph cache | In-project, gitignored |
 | `.ok/local/installed-skills.json` | Per-project skill-install markers (which editors each skill is projected into) | In-project, gitignored |
+| `.ok/local/agent-skill/open-knowledge/` | Runtime copy of the OpenKnowledge project skill (`SKILL.md` and `references/`), refreshed before in-app agent processes start. New in-app agent sessions receive this guidance automatically, even when the skill is not installed into an editor | In-project, gitignored with the `local/` ignore rule |
 | `.ok/local/skill-move-retained.json` | Bookkeeping for a skill move between Project and Global scope that could not finish: which destination copy was kept, why, and what the source looked like at the time. Keyed by scope and skill name, one record each. A record clears when a later move of that skill completes, when the copy at the destination stops matching the one recorded, or when you delete that skill at that scope. No document content | In-project, gitignored |
 | `.ok/local/comments/` | [Comments](/docs/features/comments) left on documents, one JSON file each — the note, the passage it quotes, and whether it has been sent | In-project, gitignored |
 | `.git/ok/` — or `.git/worktrees/<name>/ok/` in a linked worktree, or the enclosing repo's `.git/ok-<slug>/` when your project is a subfolder of a larger repo | Shadow git repo holding per-writer work-in-progress refs (powers the timeline); always inside a git admin dir, never in your content tree. Its own `info/exclude` file, written when OpenKnowledge opens the repo, keeps machine-local runtime state — `.ok/local/` and `.ok/worktrees/`, plus the pre-`.ok/local/` equivalents that older projects still keep at the `.ok/` root (`.ok/principal.json`, `.ok/server.lock`, `.ok/cache/`, …) — and the `.tmp.<uuid>` files an in-flight atomic write leaves behind out of every saved version, the way `.ok/.gitignore` keeps them out of git | In-project, gitignored (inside `.git/`) |
@@ -260,7 +262,9 @@ On each boot, `ok start` also runs **repair sweeps**: it re-checks a few things 
 | Existing `open-knowledge` MCP entries | The same editor configs `ok init` writes — **both** user-level (`~/.claude.json`, `~/.cursor/mcp.json`, …) and project-level | Outside-project (editor config) **and** in-project |
 | Stale `open-knowledge-ui` entry in `.claude/launch.json` | Project | Removed if present — OK no longer writes launch.json |
 
-Disable both with `OK_RECLAIM_DISABLE=1`. `ok start` does not touch skill files; `ok repair-skills` is the explicit command for that.
+Disable both repair sweeps with `OK_RECLAIM_DISABLE=1`. They leave installed editor skills alone; `ok repair-skills` is the explicit command for those. Starting an in-app agent thread creates or refreshes the runtime skill copy listed above.
+
+Projects initialized by an older CLI may lack the `local/` rule in `.ok/.gitignore`, which leaves these runtime files visible in `git status`. Add `local/` to that file or open the project in the desktop app, which updates it automatically. The runtime skill copy is always excluded from the knowledge base.
 
 ### `ok mcp`
 
