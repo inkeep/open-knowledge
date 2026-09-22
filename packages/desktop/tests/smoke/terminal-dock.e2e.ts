@@ -11,6 +11,13 @@ import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import {
+  armDockRevealProbe,
+  DOCK_REVEAL_BUDGET_MS,
+  DOCK_REVEAL_WATCH_CEILING_MS,
+  measureDockRevealMs,
+  watchForDockReveal,
+} from './_helpers/dock-reveal-latency';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import {
@@ -33,6 +40,8 @@ const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 const SHELL_COMMANDS = terminalSmokeShellCommands();
+const TERMINAL_DOCK_PANEL_ID = 'terminal-dock-panel';
+const TERMINAL_DOCK_PANEL_SELECTOR = `#${TERMINAL_DOCK_PANEL_ID}`;
 
 interface SeedOpts {
   consent?: boolean;
@@ -637,7 +646,7 @@ test.describe('Docked terminal — live Electron', () => {
     await expectCollapsedRailColumn(page, '#terminal-column');
   });
 
-  test('QA-022 toggle reveals the dock within 2 seconds and mounts within 15 seconds', async ({
+  test('QA-022 toggle reveals the dock and mounts the terminal inside their liveness budgets', async ({
     captureStderrFor,
   }) => {
     const s = seed('perf', { consent: true });
@@ -649,13 +658,17 @@ test.describe('Docked terminal — live Electron', () => {
     await waitForRendererResponsive(page);
 
     const t0 = await page.evaluate(() => performance.now());
-    expect(await clickViewTerminalItem(app, page)).toBe('Show Terminal');
-    await page.waitForSelector('#terminal-dock-panel', {
-      state: 'visible',
-      timeout: 5_000,
+    const dockElapsed = await measureDockRevealMs({
+      armProbe: () => armDockRevealProbe(page, TERMINAL_DOCK_PANEL_ID),
+      watchForReveal: () =>
+        watchForDockReveal(page, TERMINAL_DOCK_PANEL_ID, DOCK_REVEAL_WATCH_CEILING_MS),
+      triggerReveal: async () => {
+        expect(await clickViewTerminalItem(app, page)).toBe('Show Terminal');
+      },
     });
-    const dockElapsed = await page.evaluate((start) => performance.now() - start, t0);
-    expect(dockElapsed).toBeLessThan(2000);
+    console.log(`[dock-reveal] revealMs=${dockElapsed.toFixed(1)}`);
+    await expect(page.locator(TERMINAL_DOCK_PANEL_SELECTOR)).toBeVisible();
+    expect(dockElapsed).toBeLessThan(DOCK_REVEAL_BUDGET_MS);
 
     const mountBudgetMs = 15_000;
     await page.waitForSelector('section[aria-label="Terminal"]', {
