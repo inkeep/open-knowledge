@@ -2140,6 +2140,25 @@ export class AcpThreadManager {
 
   steerPrompt(threadId: string, content: string, attachments?: readonly AttachmentPart[]): void {
     const t = this.mustGet(threadId);
+    this.assertSteerable(t);
+    this.steerWith(t, content, attachments);
+  }
+
+  sendQueuedNow(threadId: string, id: string): boolean {
+    const t = this.mustGet(threadId);
+    const queue = t.info.queue ?? [];
+    const message = queue.find((m) => m.id === id);
+    if (message === undefined) return false;
+    this.assertSteerable(t);
+    const parked = this.takeSteer(t);
+    const rest = queue.filter((m) => m.id !== id);
+    const next = parked === null ? rest : [queuedFromSteer(parked), ...rest];
+    t.info.queue = next.length > 0 ? next : undefined;
+    this.steerWith(t, message.content, message.attachments);
+    return true;
+  }
+
+  private assertSteerable(t: ThreadRecord): void {
     if (t.info.archived === true) {
       throw new ThreadOpError('not-ready', 'the thread is archived — resume it first');
     }
@@ -2152,6 +2171,13 @@ export class AcpThreadManager {
     if (t.sessionId === null || t.conn === null) {
       throw new ThreadOpError('not-ready', 'thread has no live agent session');
     }
+  }
+
+  private steerWith(
+    t: ThreadRecord,
+    content: string,
+    attachments?: readonly AttachmentPart[],
+  ): void {
     if (!t.turnActive) {
       this.dispatchPrompt(t, content, attachments, { echo: true });
       return;
@@ -2173,15 +2199,7 @@ export class AcpThreadManager {
     const steer = t.info.steer;
     if (steer === undefined || t.closed || !t.turnActive) return;
     t.info.steer = undefined;
-    const demoted: QueuedMessage = {
-      id: crypto.randomUUID(),
-      content: steer.content,
-      ts: steer.ts,
-    };
-    if (steer.attachments !== undefined && steer.attachments.length > 0) {
-      demoted.attachments = steer.attachments;
-    }
-    t.info.queue = [demoted, ...(t.info.queue ?? [])];
+    t.info.queue = [queuedFromSteer(steer), ...(t.info.queue ?? [])];
     this.emitInfo(t);
   }
 
@@ -3354,6 +3372,14 @@ async function connectionFailureDetail(
       tail: await stderrTailDetail(record),
     }),
   };
+}
+
+function queuedFromSteer(steer: SteerMessage): QueuedMessage {
+  const demoted: QueuedMessage = { id: crypto.randomUUID(), content: steer.content, ts: steer.ts };
+  if (steer.attachments !== undefined && steer.attachments.length > 0) {
+    demoted.attachments = steer.attachments;
+  }
+  return demoted;
 }
 
 function isThreadClosed(t: ThreadRecord): boolean {

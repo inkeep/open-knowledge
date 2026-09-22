@@ -12526,6 +12526,10 @@ msgstr "Kirim masukan…"
 msgid "Send in this chat"
 msgstr "Kirim di obrolan ini"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "Kirim sekarang"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "Kirim laporan"

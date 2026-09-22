@@ -48,6 +48,7 @@ let editQueuedResult: Promise<void> = Promise.resolve();
 const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => editQueuedResult);
 const holdQueued = vi.fn((_threadId: string, _id: string, _held: boolean) => {});
 const removeQueued = vi.fn((_threadId: string, _id: string) => {});
+const sendQueuedNow = vi.fn((_threadId: string, _id: string) => {});
 const toastError = vi.fn((_message: string) => {});
 const cancel = vi.fn((_threadId: string) => {});
 const retryThread = vi.fn(async (_threadId: string) => {});
@@ -72,6 +73,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     editQueued,
     holdQueued,
     removeQueued,
+    sendQueuedNow,
     setMode,
     setConfigOption,
     setContextWindow,
@@ -494,6 +496,7 @@ afterEach(() => {
   editQueuedResult = Promise.resolve();
   holdQueued.mockClear();
   removeQueued.mockClear();
+  sendQueuedNow.mockClear();
   toastError.mockClear();
   cancel.mockClear();
   retryThread.mockClear();
@@ -2382,6 +2385,53 @@ describe('ThreadView queued-message holds', () => {
     const row = screen.getByTestId('agent-thread-queued');
     expect(row.getAttribute('data-held')).toBeNull();
     expect(screen.queryByTestId('agent-thread-queued-release')).toBeNull();
+  });
+
+  test('mid-turn, Send now on a queued row jumps it ahead of the run', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued('jump me')} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-send-now'));
+    expect(sendQueuedNow).toHaveBeenCalledWith('thread-1', 'q1');
+    expect(steer).not.toHaveBeenCalled();
+    expect(removeQueued).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  test('a held row offers Send now too, next to its release', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued('parked text', true)} />);
+
+    const row = screen.getByTestId('agent-thread-queued');
+    expect(within(row).getByTestId('agent-thread-queued-release')).toBeTruthy();
+    fireEvent.click(within(row).getByTestId('agent-thread-queued-send-now'));
+    expect(sendQueuedNow).toHaveBeenCalledWith('thread-1', 'q1');
+    expect(holdQueued).not.toHaveBeenCalled();
+  });
+
+  test('with no run to interrupt, a held row only offers its release', () => {
+    model = makeModel({ turnActive: false });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          queue: [{ id: 'q1', content: 'parked text', ts: 1, held: true }],
+        })}
+      />,
+    );
+
+    expect(screen.queryByTestId('agent-thread-queued-send-now')).toBeNull();
+    expect(screen.getByTestId('agent-thread-queued-release')).toBeTruthy();
+  });
+
+  test('Send now says what it costs before it is pressed', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    await user.hover(screen.getByTestId('agent-thread-queued-send-now'));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Stops the current run and sends this instead');
   });
 
   test('an edit that lost its race says so instead of vanishing', async () => {

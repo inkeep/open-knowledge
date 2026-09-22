@@ -135,6 +135,10 @@ export function attachAcpThreadSocket(
             manager.removeQueued(frame.threadId, frame.id);
             return;
           }
+          case 'queue_send_now': {
+            manager.sendQueuedNow(frame.threadId, frame.id);
+            return;
+          }
           case 'permission_response': {
             manager.respondPermission(frame.threadId, frame.requestId, frame.outcome);
             return;

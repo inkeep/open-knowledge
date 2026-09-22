@@ -12530,6 +12530,10 @@ msgstr "Send feedback…"
 msgid "Send in this chat"
 msgstr "Send in this chat"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "Send now"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "Send report"

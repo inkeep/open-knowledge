@@ -12530,6 +12530,10 @@ msgstr "피드백 보내기…"
 msgid "Send in this chat"
 msgstr "이 채팅에서 전송"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "지금 전송"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "보고서 보내기"

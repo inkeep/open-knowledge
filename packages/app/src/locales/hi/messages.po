@@ -12526,6 +12526,10 @@ msgstr "प्रतिक्रिया भेजें…"
 msgid "Send in this chat"
 msgstr "इसी चैट में भेजें"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "अभी भेजें"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "रिपोर्ट भेजें"

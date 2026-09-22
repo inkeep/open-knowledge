@@ -12530,6 +12530,10 @@ msgstr "رائے بھیجیں…"
 msgid "Send in this chat"
 msgstr "اسی چیٹ میں بھیجیں"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "ابھی بھیجیں"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "رپورٹ بھیجیں"

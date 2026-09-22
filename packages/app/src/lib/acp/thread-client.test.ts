@@ -459,6 +459,14 @@ describe('queue edit settlement', () => {
       { op: 'queue_hold', threadId: 't1', id: 'q1', held: false },
     ]);
   });
+
+  test('sendQueuedNow sends the jump-the-line frame verbatim', () => {
+    const { client, sent } = makeWiredClient();
+    client.sendQueuedNow('t1', 'q1');
+    expect(sent.filter((f) => f.op === 'queue_send_now')).toEqual([
+      { op: 'queue_send_now', threadId: 't1', id: 'q1' },
+    ]);
+  });
 });
 
 describe('retry and sign-in lifecycle', () => {

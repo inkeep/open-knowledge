@@ -12526,6 +12526,10 @@ msgstr "মতামত পাঠান…"
 msgid "Send in this chat"
 msgstr "এই চ্যাটেই পাঠান"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "এখনই পাঠান"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "রিপোর্ট পাঠান"

@@ -3950,7 +3950,7 @@ function ThreadComposer({
   return (
     <div className="p-2">
       {queue.length > 0 && !archived ? (
-        <QueuedMessageList threadId={info.threadId} queue={queue} />
+        <QueuedMessageList threadId={info.threadId} queue={queue} turnActive={turnActive} />
       ) : null}
       {}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
@@ -4103,9 +4103,11 @@ function ThreadComposer({
 function QueuedMessageList({
   threadId,
   queue,
+  turnActive,
 }: {
   threadId: string;
   queue: readonly QueuedMessage[];
+  turnActive: boolean;
 }): ReactNode {
   const { t } = useLingui();
   return (
@@ -4114,7 +4116,12 @@ function QueuedMessageList({
         {t`Queued — sends when this run finishes`}
       </span>
       {queue.map((message) => (
-        <QueuedMessageRow key={message.id} threadId={threadId} message={message} />
+        <QueuedMessageRow
+          key={message.id}
+          threadId={threadId}
+          message={message}
+          turnActive={turnActive}
+        />
       ))}
     </div>
   );
@@ -4123,9 +4130,11 @@ function QueuedMessageList({
 function QueuedMessageRow({
   threadId,
   message,
+  turnActive,
 }: {
   threadId: string;
   message: QueuedMessage;
+  turnActive: boolean;
 }): ReactNode {
   const { t } = useLingui();
   const client = getAgentThreadClient();
@@ -4249,6 +4258,24 @@ function QueuedMessageRow({
             <Check className="size-3.5" aria-hidden="true" />
           </Button>
         </>
+      ) : null}
+      {turnActive ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className="size-6 shrink-0 text-muted-foreground"
+              onClick={() => client.sendQueuedNow(threadId, message.id)}
+              aria-label={t`Send now`}
+              data-testid="agent-thread-queued-send-now"
+            >
+              <Zap className="size-3.5" aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t`Stops the current run and sends this instead`}</TooltipContent>
+        </Tooltip>
       ) : null}
       <Button
         type="button"

@@ -12526,6 +12526,10 @@ msgstr "Enviar comentários…"
 msgid "Send in this chat"
 msgstr "Enviar neste chat"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "Enviar agora"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
 msgstr "Enviar o relatório"

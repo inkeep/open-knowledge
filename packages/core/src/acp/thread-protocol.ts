@@ -284,6 +284,11 @@ export type ThreadClientFrame =
       id: string;
     }
   | {
+      op: 'queue_send_now';
+      threadId: string;
+      id: string;
+    }
+  | {
       op: 'permission_response';
       threadId: string;
       requestId: string;
@@ -390,6 +395,7 @@ const CLIENT_OPS = new Set([
   'queue_edit',
   'queue_hold',
   'queue_remove',
+  'queue_send_now',
   'permission_response',
   'runtime_consent_response',
   'pi_bridge_consent_response',
@@ -504,6 +510,7 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       if (!str('threadId') || !str('id') || typeof frame.held !== 'boolean') return null;
       return frame as unknown as ThreadClientFrame;
     case 'queue_remove':
+    case 'queue_send_now':
       if (!str('threadId') || !str('id')) return null;
       return frame as unknown as ThreadClientFrame;
     case 'permission_response': {

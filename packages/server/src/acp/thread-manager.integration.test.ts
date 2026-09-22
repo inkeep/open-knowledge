@@ -2865,6 +2865,123 @@ describe('AcpThreadManager prompt queueing', () => {
 
     await manager.closeThread(info.threadId);
   }, 40_000);
+
+  test('Send now pulls a queued entry out of line and steers with it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeCancelHonoringGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'steer-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'patient one');
+    manager.sendPrompt(info.threadId, 'jump the line');
+    const target = (manager.getInfo(info.threadId)?.queue ?? [])[1];
+    if (target === undefined) throw new Error('queue entry missing');
+
+    expect(manager.sendQueuedNow(info.threadId, 'no-such-id')).toBe(false);
+    expect(manager.sendQueuedNow(info.threadId, target.id)).toBe(true);
+    expect(manager.getInfo(info.threadId)?.steer?.content).toBe('jump the line');
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'patient one',
+    ]);
+
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(stopReasons(events)[0]).toBe('cancelled');
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'jump the line', 'patient one']);
+    expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('Send now ahead of a parked steer keeps that steer first in line, not dropped', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir, { steerStallMs: 60_000 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'queued first');
+    manager.steerPrompt(info.threadId, 'could not interrupt');
+    const queued = (manager.getInfo(info.threadId)?.queue ?? [])[0];
+    if (queued === undefined) throw new Error('queue entry missing');
+
+    expect(manager.sendQueuedNow(info.threadId, queued.id)).toBe(true);
+    expect(manager.getInfo(info.threadId)?.steer?.content).toBe('queued first');
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'could not interrupt',
+    ]);
+
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(userMessages(events)).toEqual([
+      'WAIT at the gate',
+      'queued first',
+      'could not interrupt',
+    ]);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('Send now on a held entry with no run going just sends it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'parked');
+    const entry = (manager.getInfo(info.threadId)?.queue ?? [])[0];
+    if (entry === undefined) throw new Error('queue entry missing');
+    manager.holdQueued(info.threadId, entry.id, true);
+
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 1,
+      20_000,
+      'the gated turn ends',
+    );
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 20_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.queue?.length).toBe(1);
+
+    expect(manager.sendQueuedNow(info.threadId, entry.id)).toBe(true);
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 2,
+      20_000,
+      'two turn ends',
+    );
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'parked']);
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
 });
 
 describe.skipIf(process.platform === 'win32')('login-shell PATH fallback', () => {
