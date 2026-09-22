@@ -19,14 +19,17 @@ import {
   BOOT_LOG_HEARTBEAT_MS,
   BOOT_LOG_STALL_MS,
   type BootLogSnapshot,
+  bootGapLineFor,
   bootGapSourceFor,
   bootLogDirFor,
   bootLogGapSummary,
+  bootNarrationFor,
   classifyBootLog,
   describeMissingBootLog,
   formatBootGapLine,
   giveUpReason,
   hasBootCompleted,
+  isMoreCompleteNarration,
   launchDesktopApp,
   launchHomeFor,
   READY_WAIT_GIVE_UP_REASONS,
@@ -204,7 +207,9 @@ describe('waitForReadySignal — progress gating', () => {
         },
         readLog: () => snapshot({ exists: false }),
       }),
-    ).rejects.toThrow(/NOT FOUND/);
+    ).rejects.toThrow(
+      'Boot log: /tmp/x/.ok/logs (NOT FOUND, the cause is not determined here (it may have been removed, never written, or written elsewhere))',
+    );
   });
 
   it('says the log cannot explain the wait, rather than blaming the app, on the stall path', async () => {
@@ -706,7 +711,7 @@ describe('the stall rule applies only while boot narration is live', () => {
 });
 
 describe('boot-log evidence survives a spec that removes its own launch home', () => {
-  it('snapshots the boot log when boot ends, not at teardown', async () => {
+  it('snapshots the boot log when the wait ends, not at teardown', async () => {
     const home = seedHome([
       JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
       markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
@@ -727,8 +732,198 @@ describe('boot-log evidence survives a spec that removes its own launch home', (
     await waitForWindowByMode(app, 'editor');
     expect(tryBootLogFor(app)).toBeUndefined();
   });
+
+  it('remembers the narration a give-up read, so a removed log dir cannot erase it', async () => {
+    const narration = [
+      JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
+      markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+      markLine('serverSpawned', 500, '2026-09-04T00:00:01.500Z'),
+    ];
+    const home = seedHome(narration);
+    const app = { windows: () => [] };
+    rememberLaunchHome(app, home);
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    expect(tryFirstWaitFor(app)).toMatchObject({ gaveUp: true, reason: 'cap' });
+    rmSync(join(home, '.ok'), { recursive: true, force: true });
+    expect(readBootLogLines(home)).toEqual([]);
+    expect(tryBootLogFor(app)).toEqual(narration);
+  });
+
+  it('remembers the narration even when the give-up probe never answered', async () => {
+    const narration = [
+      JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
+      markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+      markLine('serverSpawned', 500, '2026-09-04T00:00:01.500Z'),
+    ];
+    const home = seedHome(narration);
+    const stuck = Promise.withResolvers<string | undefined>();
+    let answered = false;
+    const page = {
+      evaluate: () =>
+        stuck.promise.then((mode) => {
+          answered = true;
+          return mode;
+        }),
+    };
+    const app = { windows: () => [page] };
+    rememberLaunchHome(app, home);
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    const probeAnswered = answered;
+    stuck.resolve(undefined);
+    expect({ probeAnswered, wait: tryFirstWaitFor(app) }).toMatchObject({
+      probeAnswered: false,
+      wait: { gaveUp: true, reason: 'cap' },
+    });
+    rmSync(join(home, '.ok'), { recursive: true, force: true });
+    expect(tryBootLogFor(app)).toEqual(narration);
+  });
+
+  it('still remembers nothing when a give-up found no log, so unavailable stays honest', async () => {
+    const app = { windows: () => [] };
+    rememberLaunchHome(app, seedHome());
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    expect(tryFirstWaitFor(app)).toMatchObject({ gaveUp: true, reason: 'notfound' });
+    expect(tryBootLogFor(app)).toBeUndefined();
+  });
+
+  it('keeps the fuller narration when a later wait reads a log that has since shrunk', async () => {
+    const opening = JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT });
+    const whole = [
+      opening,
+      markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+      markLine('serverLockReady', 14_428, '2026-09-04T00:00:14.428Z'),
+    ];
+    const home = seedHome(whole);
+    const editor = { evaluate: async () => 'editor' };
+    const app = { windows: () => [editor] };
+    rememberLaunchHome(app, home);
+    await waitForWindowByMode(app, 'editor');
+    expect(tryBootLogFor(app)).toEqual(whole);
+
+    writeFileSync(join(bootLogDirFor(home), 'desktop.2026-09-03.log'), `${opening}\n`, 'utf8');
+    expect(readBootLogLines(home)).toEqual([opening]);
+
+    await waitForWindowByMode(app, 'editor');
+    expect(tryBootLogFor(app)).toEqual(whole);
+  });
 });
 
+describe('the teardown line reports the most complete narration the run produced', () => {
+  const early = [
+    JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
+    markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+  ];
+  const whole = [
+    ...early,
+    markLine('serverLockReady', 14_428, '2026-09-04T00:00:14.428Z'),
+    markLine('windowCreated', 14_521, '2026-09-04T00:00:14.521Z'),
+    markLine('loadUrlResolved', 18_569, '2026-09-04T00:00:18.569Z'),
+  ];
+
+  it('prefers the longer on-disk log to a snapshot taken earlier in the run', () => {
+    const onDisk = readBootLog(seedHome(whole));
+    expect(onDisk.lines).toEqual(whole);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(early, onDisk),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect(gap.summary?.lineCount).toBe(whole.length);
+    expect(gap.reason).toBeUndefined();
+  });
+
+  it('keeps the snapshot when the disk read came back empty', () => {
+    const onDisk = readBootLog(seedHome());
+    expect(onDisk.lines).toEqual([]);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(whole, onDisk),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect(gap.summary?.lineCount).toBe(whole.length);
+    expect(gap.source).toBe('wait-snapshot');
+  });
+
+  it('names no cause at all when it has narration to report', () => {
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(early, readBootLog(seedHome(whole))),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect(gap.summary).toBeDefined();
+    expect(gap.reason).toBeUndefined();
+  });
+
+  it('names the cause it can see when neither side narrated anything at all', () => {
+    const onDisk = readBootLog(seedHome());
+    expect(onDisk.exists).toBe(false);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(undefined, onDisk),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect({ summary: gap.summary, source: gap.source, reason: gap.reason }).toEqual({
+      summary: undefined,
+      source: 'unavailable',
+      reason:
+        'no desktop log file when the fixture read it; the cause is not determined here (it may have been removed, never written, or written elsewhere)',
+    });
+  });
+
+  it('credits the disk read when the disk read is what it reported', () => {
+    const onDisk = readBootLog(seedHome(whole));
+    expect(onDisk.lines).toEqual(whole);
+    expect(
+      bootGapLineFor({
+        slot: 0,
+        narration: bootNarrationFor(early, onDisk),
+        readyWaitCount: 1,
+        homeShared: false,
+      }).source,
+    ).toBe('teardown-read');
+    expect(
+      bootGapLineFor({
+        slot: 0,
+        narration: bootNarrationFor(early, onDisk),
+        readyWaitCount: 1,
+        homeShared: true,
+      }).source,
+    ).toBe('teardown-read-shared-home');
+  });
+
+  it('labels a give-up snapshot by the wait that took it, not by a boot that never completed', async () => {
+    const home = seedHome(early);
+    const app = { windows: () => [] };
+    rememberLaunchHome(app, home);
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    rmSync(join(home, '.ok'), { recursive: true, force: true });
+    const firstWait = tryFirstWaitFor(app);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(tryBootLogFor(app), readBootLog(home)),
+      readyWaitCount: readyWaitsFor(app)?.length ?? 0,
+      ...(firstWait === undefined ? {} : { firstWait }),
+      homeShared: false,
+    });
+    expect(gap.summary?.lineCount).toBe(early.length);
+    expect({ source: gap.source, bootComplete: gap.summary?.bootComplete }).toEqual({
+      source: 'wait-snapshot',
+      bootComplete: false,
+    });
+  });
+});
 describe('the recorded ready wait names which wait it measured', () => {
   const slowFirstPoll = () => {
     const editor = { evaluate: async () => 'editor' };
@@ -812,7 +1007,7 @@ describe('one classifier decides both the prose and the reason token', () => {
 
   it('names the teardown states it can tell apart, without claiming a cause it cannot know', () => {
     expect(describeMissingBootLog(snapshot({ exists: false }))).toBe(
-      'no desktop log file at teardown (a test.afterEach removed the launch home before the fixture could read it, or the app wrote no log file)',
+      'no desktop log file when the fixture read it; the cause is not determined here (it may have been removed, never written, or written elsewhere)',
     );
     expect(describeMissingBootLog(snapshot({ exists: true, lineCount: 0 }))).toBe(
       'log files present but empty',
@@ -927,10 +1122,10 @@ describe('bootGapSourceFor', () => {
       'unavailable',
     );
     expect(bootGapSourceFor({ hasLines: true, snapshotted: true, homeShared: false })).toBe(
-      'boot-complete',
+      'wait-snapshot',
     );
     expect(bootGapSourceFor({ hasLines: true, snapshotted: true, homeShared: true })).toBe(
-      'boot-complete',
+      'wait-snapshot',
     );
     expect(bootGapSourceFor({ hasLines: true, snapshotted: false, homeShared: false })).toBe(
       'teardown-read',
@@ -941,11 +1136,24 @@ describe('bootGapSourceFor', () => {
   });
 });
 
+describe('isMoreCompleteNarration', () => {
+  it('accepts a candidate that says more than what is already held', () => {
+    expect(isMoreCompleteNarration(['a', 'b'], ['a'])).toBe(true);
+    expect(isMoreCompleteNarration(['a'], undefined)).toBe(true);
+  });
+
+  it('rejects a candidate that says the same or less, so a tie keeps what is held', () => {
+    expect(isMoreCompleteNarration(['a'], ['a', 'b'])).toBe(false);
+    expect(isMoreCompleteNarration(['b'], ['a'])).toBe(false);
+    expect(isMoreCompleteNarration([], undefined)).toBe(false);
+  });
+});
+
 describe('formatBootGapLine', () => {
   it('states the measured gap next to the bound it has to clear', () => {
     const line = formatBootGapLine({
       slot: 0,
-      source: 'boot-complete',
+      source: 'wait-snapshot',
       readyWaitCount: 2,
       firstWait: {
         ordinal: 0,
@@ -962,7 +1170,7 @@ describe('formatBootGapLine', () => {
       ]),
     });
     expect(line).toContain('[boot-gap] slot=0');
-    expect(line).toContain('source=boot-complete');
+    expect(line).toContain('source=wait-snapshot');
     expect(line).toContain(`stallMs=${BOOT_LOG_STALL_MS}`);
     expect(line).toContain('totalBootMs=3000');
     expect(line).toContain('maxGapMs=1600');
@@ -1007,7 +1215,7 @@ describe('formatBootGapLine', () => {
     for (const reason of READY_WAIT_GIVE_UP_REASONS) {
       const line = formatBootGapLine({
         slot: 0,
-        source: 'boot-complete',
+        source: 'wait-snapshot',
         readyWaitCount: 1,
         firstWait: {
           ordinal: 0,

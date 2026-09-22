@@ -209,9 +209,12 @@ export function bootLogGapSummary(all: readonly string[]): BootLogGapSummary {
 
 type BootGapSource =
   | 'unavailable'
-  | 'boot-complete'
+  | 'wait-snapshot'
   | 'teardown-read'
   | 'teardown-read-shared-home';
+
+const UNDETERMINED_ABSENT_LOG_CAUSE =
+  'the cause is not determined here (it may have been removed, never written, or written elsewhere)';
 
 export function describeMissingBootLog(snapshot: BootLogSnapshot): string {
   switch (classifyBootLog(snapshot)) {
@@ -220,7 +223,7 @@ export function describeMissingBootLog(snapshot: BootLogSnapshot): string {
         ? `log dir unreadable (${snapshot.unreadableReason})`
         : `log files unreadable: ${snapshot.unreadableFiles.join(', ')}`;
     case 'notfound':
-      return 'no desktop log file at teardown (a test.afterEach removed the launch home before the fixture could read it, or the app wrote no log file)';
+      return `no desktop log file when the fixture read it; ${UNDETERMINED_ABSENT_LOG_CAUSE}`;
     case 'empty':
       return 'log files present but empty';
     case 'ok':
@@ -228,14 +231,12 @@ export function describeMissingBootLog(snapshot: BootLogSnapshot): string {
   }
 }
 
-export interface BootGapLine {
+export type BootGapLine = {
   slot: number;
   source: BootGapSource;
   firstWait?: ReadyWaitRecord;
   readyWaitCount?: number;
-  summary: BootLogGapSummary | undefined;
-  reason?: string;
-}
+} & ({ summary: BootLogGapSummary; reason?: never } | { summary?: never; reason: string });
 
 export function bootGapSourceFor(input: {
   hasLines: boolean;
@@ -243,8 +244,58 @@ export function bootGapSourceFor(input: {
   homeShared: boolean;
 }): BootGapSource {
   if (!input.hasLines) return 'unavailable';
-  if (input.snapshotted) return 'boot-complete';
+  if (input.snapshotted) return 'wait-snapshot';
   return input.homeShared ? 'teardown-read-shared-home' : 'teardown-read';
+}
+
+class NarrationOfOneRead {
+  readonly lines: readonly string[];
+  readonly snapshotted: boolean;
+  readonly #read: BootLogSnapshot;
+
+  constructor(atBoot: readonly string[] | undefined, onDisk: BootLogSnapshot) {
+    const useDisk = isMoreCompleteNarration(onDisk.lines, atBoot);
+    this.lines = useDisk ? onDisk.lines : (atBoot ?? []);
+    this.snapshotted = !useDisk && atBoot !== undefined;
+    this.#read = onDisk;
+  }
+
+  get missingLogReason(): string | undefined {
+    return this.lines.length === 0 ? describeMissingBootLog(this.#read) : undefined;
+  }
+}
+
+export type BootNarration = NarrationOfOneRead;
+
+export function bootNarrationFor(
+  atBoot: readonly string[] | undefined,
+  onDisk: BootLogSnapshot,
+): BootNarration {
+  return new NarrationOfOneRead(atBoot, onDisk);
+}
+
+export function bootGapLineFor(input: {
+  slot: number;
+  narration: BootNarration;
+  readyWaitCount: number;
+  firstWait?: ReadyWaitRecord;
+  homeShared: boolean;
+}): BootGapLine {
+  const { narration } = input;
+  const reason = narration.missingLogReason;
+  const base = {
+    slot: input.slot,
+    source: bootGapSourceFor({
+      hasLines: reason === undefined,
+      snapshotted: narration.snapshotted,
+      homeShared: input.homeShared,
+    }),
+    readyWaitCount: input.readyWaitCount,
+    ...(input.firstWait === undefined ? {} : { firstWait: input.firstWait }),
+  };
+  return reason === undefined
+    ? { ...base, summary: bootLogGapSummary(narration.lines) }
+    : { ...base, reason };
 }
 
 export function formatBootGapLine(line: BootGapLine): string {
@@ -270,7 +321,7 @@ export function formatBootGapLine(line: BootGapLine): string {
         ]),
   ];
   if (line.summary === undefined) {
-    parts.push(`reason=${JSON.stringify(line.reason ?? 'unknown')}`);
+    parts.push(`reason=${JSON.stringify(line.reason)}`);
     return parts.join(' ');
   }
   parts.push(
@@ -333,10 +384,7 @@ function describeBootLog(snapshot: BootLogSnapshot): string {
             `${snapshot.unreadableFiles.join(', ')} — a runner filesystem problem, not evidence ` +
             'about the app)';
     case 'notfound':
-      return (
-        `Boot log: ${snapshot.dir} (NOT FOUND — the app may have died before it could log, ` +
-        'or a required build artifact is missing)'
-      );
+      return `Boot log: ${snapshot.dir} (NOT FOUND, ${UNDETERMINED_ABSENT_LOG_CAUSE})`;
     case 'empty':
       return (
         `Boot log: ${snapshot.dir} (${snapshot.fileCount} file(s) present but EMPTY — the app ` +
@@ -548,8 +596,15 @@ export function tryLaunchHomeFor(app: object): string | undefined {
   return HOME_BY_APP.get(app);
 }
 
+export function isMoreCompleteNarration(
+  candidate: readonly string[],
+  held: readonly string[] | undefined,
+): boolean {
+  return candidate.length > (held?.length ?? 0);
+}
+
 export function rememberBootLog(app: object, lines: readonly string[]): void {
-  if (lines.length === 0) return;
+  if (!isMoreCompleteNarration(lines, BOOT_LOG_BY_APP.get(app))) return;
   BOOT_LOG_BY_APP.set(app, [...lines]);
 }
 
@@ -636,12 +691,12 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       },
     });
     succeeded = true;
-    rememberBootLog(app, readBootLogLines(home));
     return found;
   } catch (error) {
     if (error instanceof ReadySignalGiveUp) reason = error.reason;
     throw error;
   } finally {
+    rememberBootLog(app, readBootLogLines(home));
     rememberReadyWait(app, {
       what,
       elapsedMs: Date.now() - startedAt,
