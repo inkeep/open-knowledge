@@ -25,6 +25,12 @@ export function composeSkillAssets(paths: SkillBundlePaths): string[] {
 
 if (import.meta.main) {
   const paths = resolveSkillAssetPaths();
-  const built = composeSkillAssets(paths);
-  console.log(`[build-skill-assets] composed ${built.length} skill asset(s) → ${paths.distDir}`);
+  try {
+    const built = composeSkillAssets(paths);
+    console.log(`[build-skill-assets] composed ${built.length} skill asset(s) → ${paths.distDir}`);
+  } catch (err) {
+    console.error('[build-skill-assets] composing the skill assets failed:');
+    console.error(err);
+    process.exitCode = 1;
+  }
 }

@@ -1,0 +1,8 @@
+# Staging roots and displaced-tree holders created by the skill-bundle composer
+# (packages/server/scripts/build-skill-bundles.ts). They sit beside `dist/`
+# rather than inside it so npm's `files: ["dist"]`, electron-builder's copy
+# filter and turbo's `dist/**` output declaration cannot take them; biome.jsonc
+# excludes the same prefix, since it reads no ignore file. This file
+# lives here rather than in the subtree root `.gitignore` so the rule reaches
+# `inkeep/open-knowledge` too, where the root ignore file is the overlay's.
+/.ok-skill-publish-*/
