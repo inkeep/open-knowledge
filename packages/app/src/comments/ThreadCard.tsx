@@ -320,6 +320,7 @@ export function ThreadCard({
         <div className="flex flex-col gap-1.5">
           <ComposerMentionInput
             ref={editFieldRef}
+            mentionRecency={{ currentDocName: thread.docName, recentPaths: [] }}
             ariaLabel={t`Edit this comment`}
             placeholder={t`Edit this comment`}
             attachmentDrop={{ kind: 'refuse' }}

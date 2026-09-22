@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import type { Editor } from '@tiptap/core';
 import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mentionRecencyAttribute } from '@/components/acp/composer-mention-input.test-helper';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
 import { FULL_PAGE_CM_HOST_SELECTORS, type FullPageCmHost } from '@/editor/document-scrollports';
 import type { EditorSurface } from '@/editor/selection-stats';
@@ -80,6 +81,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
     onMentionsChange,
     onSubmit,
     className,
+    mentionRecency,
   }: {
     ref?: Ref<ComposerMentionInputHandle>;
     ariaLabel: string;
@@ -87,6 +89,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
     onMentionsChange?: (mentions: string[]) => void;
     onSubmit: () => void;
     className?: string;
+    mentionRecency?: { currentDocName: string | null; recentPaths: readonly string[] };
   }) => {
     const localRef = useRef<HTMLTextAreaElement>(null);
     useEffect(() => {
@@ -111,6 +114,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
         ref={localRef}
         aria-label={ariaLabel}
         className={className}
+        data-mention-recency={mentionRecencyAttribute(mentionRecency)}
         onChange={(event) => onEmptyChange(event.target.value.trim() === '')}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
@@ -2066,5 +2070,27 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
         'deadline arm cannot fire, and fakes only setTimeout and clearTimeout so that jsdom, ' +
         'which drives requestAnimationFrame off setInterval, keeps producing real frames',
     ).toBe(afterBackstop);
+  });
+});
+
+describe('what the Ask AI @ picker is told to list first', () => {
+  test('a doc view hands the picker the open doc and no chat attachments', async () => {
+    await renderComposer('foo');
+
+    const handed = screen
+      .getByRole('textbox', { name: 'Ask AI' })
+      .getAttribute('data-mention-recency');
+    expect(JSON.parse(handed ?? 'null')).toEqual({ currentDocName: 'foo', recentPaths: [] });
+  });
+
+  test('a folder view has no doc to pin', async () => {
+    const { BottomComposer } = await import('./BottomComposer');
+    const { TooltipProvider } = await import('@/components/ui/tooltip');
+    render(<BottomComposer folderPath="specs" />, { wrapper: TooltipProvider });
+
+    const handed = screen
+      .getByRole('textbox', { name: 'Ask AI' })
+      .getAttribute('data-mention-recency');
+    expect(JSON.parse(handed ?? 'null')).toEqual({ currentDocName: null, recentPaths: [] });
   });
 });

@@ -106,8 +106,9 @@ vi.doMock('sonner', () => ({
   toast: { error: toastError, success: vi.fn(), info: vi.fn() },
 }));
 
+let activeDocName: string | null = null;
 vi.doMock('@/editor/DocumentContext', () => ({
-  useDocumentContext: () => ({ systemProvider: null }),
+  useDocumentContext: () => ({ systemProvider: null, activeDocName }),
 }));
 
 vi.doMock('@/lib/use-workspace', () => ({
@@ -5185,5 +5186,46 @@ describe('ThreadView context window', () => {
 
     expect(await screen.findByTestId('agent-thread-context-window-locked')).toBeTruthy();
     expect(screen.queryByTestId('agent-thread-context-window-872000')).toBeNull();
+  });
+});
+
+describe('ThreadView hands the composer what to list first', () => {
+  test('the open doc and the paths this chat attached, newest first', () => {
+    activeDocName = 'notes/today';
+    try {
+      model = makeModel({
+        turnActive: false,
+        items: [
+          {
+            kind: 'message',
+            role: 'user',
+            text: 'first',
+            messageId: 'm1',
+            attachments: [{ kind: 'file', path: 'specs/a.md', name: 'a' }],
+          },
+          {
+            kind: 'message',
+            role: 'user',
+            text: 'second',
+            messageId: 'm2',
+            attachments: [
+              { kind: 'folder', path: 'plans', name: 'plans' },
+              { kind: 'image', data: 'AAAA', mimeType: 'image/png', name: 'shot.png' },
+            ],
+          },
+        ],
+      });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+      const handed = screen
+        .getByTestId('agent-thread-composer')
+        .getAttribute('data-mention-recency');
+      expect(JSON.parse(handed ?? 'null')).toEqual({
+        currentDocName: 'notes/today',
+        recentPaths: ['plans', 'specs/a.md'],
+      });
+    } finally {
+      activeDocName = null;
+    }
   });
 });

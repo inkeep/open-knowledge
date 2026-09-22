@@ -1,7 +1,7 @@
 import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ChevronDown, Pencil } from 'lucide-react';
-import { type ReactNode, useEffect, useRef, useState } from 'react';
+import { type ReactNode, use, useEffect, useRef, useState } from 'react';
 import { useCalendarDayNow } from '@/components/acp/calendar-day-store';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { formatSentAt } from '@/components/acp/sent-at';
@@ -28,6 +28,7 @@ import { enabledThreadAgents } from '@/lib/acp/launcher-selection';
 import { type RegisteredAgent, useRegisteredAgents } from '@/lib/acp/registered-agents';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
 import { cn } from '@/lib/utils';
+import { MentionRecencyContext } from './mention-recency-context';
 
 export type ResendTarget =
   | { kind: 'this-thread' }
@@ -117,6 +118,8 @@ export function UserMessageEditor({
   onSend: (text: string, target: ResendTarget, chips: readonly AttachmentPart[]) => Promise<void>;
 }): ReactNode {
   const { t } = useLingui();
+  const mentionRecency = use(MentionRecencyContext);
+  if (mentionRecency === null) throw new Error('UserMessageEditor requires MentionRecencyContext');
   const fieldRef = useRef<ComposerMentionInputHandle>(null);
   const [draftEmpty, setDraftEmpty] = useState(initialText.trim() === '');
   const [sending, setSending] = useState(false);
@@ -153,6 +156,7 @@ export function UserMessageEditor({
         onEscape={onCancel}
         className="max-h-60 overflow-y-auto text-sm"
         testId="agent-thread-user-message-edit-field"
+        mentionRecency={mentionRecency}
       />
       <div className="flex items-center justify-end gap-1.5">
         <Button

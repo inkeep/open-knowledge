@@ -136,3 +136,105 @@ describe('createMentionCorpus — fetch retry contract', () => {
     expect(calls).toBe(2);
   });
 });
+
+describe('createMentionCorpus — what the empty picker shows first', () => {
+  const pages: PageItem[] = [
+    { docName: 'changesets/a', title: 'A' },
+    { docName: 'changesets/b', title: 'B' },
+    { docName: 'plan', title: 'Plan' },
+    { docName: 'notes/today', title: 'Today' },
+    { docName: 'specs/api', title: 'API' },
+  ];
+  const corpus = () => createMentionCorpus(async () => pages);
+
+  test('the document being edited comes first, then what the chat already attached', async () => {
+    const items = await corpus().getItems('', {
+      currentDocName: 'notes/today',
+      recentPaths: ['specs/api.md', 'plan.md'],
+    });
+
+    expect(items.map((item) => item.path)).toEqual([
+      'notes/today.md',
+      'specs/api.md',
+      'plan.md',
+      'changesets/a.md',
+      'changesets/b.md',
+    ]);
+  });
+
+  test('with nothing to go on, the order is the workspace order as before', async () => {
+    const items = await corpus().getItems('');
+
+    expect(items.map((item) => item.path)).toEqual([
+      'changesets/a.md',
+      'changesets/b.md',
+      'plan.md',
+      'notes/today.md',
+      'specs/api.md',
+    ]);
+  });
+
+  test('a typed query searches as it always did and ignores recency', async () => {
+    const items = await corpus().getItems('changesets', {
+      currentDocName: 'notes/today',
+      recentPaths: ['plan.md'],
+    });
+
+    expect(items.map((item) => item.path)).toEqual(['changesets/a.md', 'changesets/b.md']);
+  });
+
+  test('an attached path that is no longer in the workspace is simply skipped', async () => {
+    const items = await corpus().getItems('', {
+      currentDocName: null,
+      recentPaths: ['gone.md', 'plan.md'],
+    });
+
+    expect(items[0]?.path).toBe('plan.md');
+    expect(items).toHaveLength(5);
+  });
+
+  test('a folder the chat attached is pinned like a file', async () => {
+    const withFolder: PageItem[] = [...pages, { kind: 'folder', docName: 'specs', title: 'specs' }];
+    const items = await createMentionCorpus(async () => withFolder).getItems('', {
+      currentDocName: null,
+      recentPaths: ['specs'],
+    });
+
+    expect(items[0]).toMatchObject({ path: 'specs', kind: 'folder' });
+  });
+
+  test('an extension-qualified open doc still pins its page', async () => {
+    const items = await corpus().getItems('', {
+      currentDocName: 'notes/today.md',
+      recentPaths: [],
+    });
+
+    expect(items[0]?.path).toBe('notes/today.md');
+  });
+
+  test('a long chat cannot push the workspace out of the default list', async () => {
+    const many: PageItem[] = Array.from({ length: 12 }, (_, i) => ({
+      docName: `a/${i}`,
+      title: `A${i}`,
+    }));
+    const attached = many
+      .slice(3)
+      .reverse()
+      .map((page) => `${page.docName}.md`);
+    const items = await createMentionCorpus(async () => many).getItems('', {
+      currentDocName: null,
+      recentPaths: attached,
+    });
+
+    expect(items.map((i) => i.path)).toEqual([
+      'a/11.md',
+      'a/10.md',
+      'a/9.md',
+      'a/8.md',
+      'a/0.md',
+      'a/1.md',
+      'a/2.md',
+      'a/3.md',
+    ]);
+  });
+});

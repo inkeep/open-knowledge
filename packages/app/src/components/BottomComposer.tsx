@@ -841,6 +841,7 @@ export function BottomComposer({
           <ComposerMentionInput
             ref={inputRef}
             ariaLabel={t`Ask AI`}
+            mentionRecency={{ currentDocName: activeDocOrNull, recentPaths: [] }}
             attachmentDrop={attachmentDrop}
             onEmptyChange={setIsEmpty}
             onContentChange={(doc) => {

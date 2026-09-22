@@ -8,8 +8,11 @@ import {
   type ComposerAttachmentPart,
   composerMentionExtensions,
   composerMentionSuggestionKey,
+  EMPTY_MENTION_RECENCY,
   isComposerEmpty,
+  type MentionRecency,
   serializeComposerContent,
+  setMentionRecency,
 } from '@/editor/composer-mention/composer-mention';
 import {
   composerFirstLineText,
@@ -78,6 +81,7 @@ export function ComposerMentionInput({
   disabled = false,
   testId,
   slashCommands,
+  mentionRecency,
   attachmentDrop,
 }: {
   ref?: Ref<ComposerMentionInputHandle>;
@@ -94,6 +98,7 @@ export function ComposerMentionInput({
   disabled?: boolean;
   testId?: string;
   slashCommands?: SlashCommandItem[] | null;
+  mentionRecency?: MentionRecency;
   attachmentDrop: ComposerAttachmentDropPolicy;
 }) {
   const { t } = useLingui();
@@ -203,6 +208,11 @@ export function ComposerMentionInput({
     }
     setSlashHint(resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)));
   }, [editor, slashCommands]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    setMentionRecency(editor, mentionRecency ?? EMPTY_MENTION_RECENCY);
+  }, [editor, mentionRecency]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once seed-integrity check; initialDoc is the one-time draft seed and must not re-trigger this effect.
   useEffect(() => {

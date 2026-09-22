@@ -147,3 +147,17 @@ describe('the click-away commit', () => {
     expect(editComment).not.toHaveBeenCalled();
   });
 });
+
+describe('what the comment edit @ picker is told to list first', () => {
+  test('the card pins the doc its thread belongs to', () => {
+    renderEditing();
+
+    const handed = document
+      .querySelector('textarea[data-mention-recency]')
+      ?.getAttribute('data-mention-recency');
+    expect(JSON.parse(handed ?? 'null')).toEqual({
+      currentDocName: 'recipes/stir-fry',
+      recentPaths: [],
+    });
+  });
+});
