@@ -158,6 +158,75 @@ describe('suggestLinks', () => {
     }
   });
 
+  test('ignores HTML and JSX tag markup but keeps text between tags matchable', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-suggest-links-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const hocuspocus = new Hocuspocus({ quiet: true });
+    const source = [
+      '<Callout type="warn">',
+      'Always use a Callout for warnings.',
+      '</Callout>',
+      '',
+      '<Image src="/callout.png" alt="Callout" />',
+      '',
+      'Mark it <b>Callout</b> in bold.',
+      '',
+      '<!-- Callout is disabled here -->',
+    ].join('\n');
+
+    try {
+      writeFileSync(join(contentDir, 'callout.md'), '# Callout\n', 'utf-8');
+      writeFileSync(join(contentDir, 'notes.md'), source, 'utf-8');
+
+      const result = await suggestLinks({
+        hocuspocus,
+        fileIndex: buildFileIndex(contentDir, ['callout', 'notes']),
+        docName: 'callout',
+      });
+
+      expect(result.mentions).toEqual([
+        {
+          source: 'notes',
+          excerpt: 'Always use a Callout for warnings.',
+          offset: source.indexOf('Callout for warnings'),
+        },
+        {
+          source: 'notes',
+          excerpt: 'Mark it <b>Callout</b> in bold.',
+          offset: source.indexOf('<b>Callout') + '<b>'.length,
+        },
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('keeps prose around a stray angle bracket matchable', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-suggest-links-'));
+    const contentDir = join(projectDir, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    const hocuspocus = new Hocuspocus({ quiet: true });
+    const source = 'When a<b holds, prefer the Callout pattern over x>y checks.';
+
+    try {
+      writeFileSync(join(contentDir, 'callout.md'), '# Callout\n', 'utf-8');
+      writeFileSync(join(contentDir, 'notes.md'), source, 'utf-8');
+
+      const result = await suggestLinks({
+        hocuspocus,
+        fileIndex: buildFileIndex(contentDir, ['callout', 'notes']),
+        docName: 'callout',
+      });
+
+      expect(result.mentions).toEqual([
+        { source: 'notes', excerpt: source, offset: source.indexOf('Callout') },
+      ]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
   test('keeps labels linked to other pages matchable', async () => {
     const projectDir = mkdtempSync(join(tmpdir(), 'ok-suggest-links-'));
     const contentDir = join(projectDir, 'content');
