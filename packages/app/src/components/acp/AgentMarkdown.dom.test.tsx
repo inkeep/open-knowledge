@@ -211,6 +211,45 @@ describe('AgentMarkdown doc-path links', () => {
     expect(link?.textContent).toBe('docs/intro.mdx');
   });
 
+  test('a reference-style link stays literal text — the renderer never joins a definition to its reference', () => {
+    const { container } = renderWithResolver(
+      'see [the report][r]\n\n[r]: public/open-knowledge/reports/foo/REPORT.md',
+    );
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.textContent).toContain('[the report][r]');
+  });
+
+  test('a heading fragment on a doc link survives onto the in-app route', () => {
+    const { container } = renderWithResolver(
+      '[findings](public/open-knowledge/reports/foo/REPORT.md#findings)',
+    );
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT#findings');
+  });
+
+  test('a fragment on a prose or backticked path lands on the in-app route as well', () => {
+    const { container } = renderWithResolver(
+      'see public/open-knowledge/reports/foo/REPORT.md#findings and `reports/foo/REPORT.md#root-cause`',
+    );
+    const hrefs = Array.from(
+      container.querySelectorAll('[data-testid="agent-thread-doc-link"]'),
+      (a) => a.getAttribute('href'),
+    );
+    expect(hrefs).toEqual(['#/reports/foo/REPORT#findings', '#/reports/foo/REPORT#root-cause']);
+    expect(container.textContent).toContain(
+      'REPORT.md#findings and reports/foo/REPORT.md#root-cause',
+    );
+  });
+
+  test('a javascript: href never renders as a link, percent-encoded or not', () => {
+    for (const href of ['javascript:alert(1)', 'javascript%3Aalert(1)']) {
+      const { container, unmount } = renderWithResolver(`[run](${href})`);
+      expect(container.querySelector('a[href^="javascript"]'), href).toBeNull();
+      expect(container.querySelector('[data-testid="agent-thread-doc-link"]'), href).toBeNull();
+      unmount();
+    }
+  });
+
   test('an external link keeps target=_blank + Streamdown link styling', () => {
     const { container } = renderWithResolver('see [docs](https://example.com/x)');
     const link = container.querySelector('a[href="https://example.com/x"]');

@@ -1,10 +1,11 @@
+import { decodeHrefPath, isExternalHref } from '@inkeep/open-knowledge-core';
 import { docNameFromAbsolutePath } from '@/components/acp/follow-file';
 import { hashFromDocName } from '@/lib/doc-hash';
 import type { Workspace } from '@/lib/workspace-paths';
 
 export type DocPathResolver = (candidate: string) => string | null;
 
-const DOC_PATH_REGEX = /(?<![A-Za-z0-9_./@-])[A-Za-z0-9_./@-]+\.(?:md|mdx)\b/g;
+const DOC_PATH_REGEX = /(?<![A-Za-z0-9_./@-])[A-Za-z0-9_./@-]+\.(?:md|mdx)\b(?:#[A-Za-z0-9_-]+)?/g;
 
 export interface BuildDocPathResolverInput {
   readonly workspace: Workspace | null;
@@ -102,9 +103,11 @@ function rewriteNode(node: MdastNode | undefined, resolver: DocPathResolver): vo
   const next: MdastNode[] = [];
   for (const child of children) {
     if (child === undefined || child === null) continue;
-    if (child.type === 'link') {
-      const doc = typeof child.url === 'string' ? resolveLinkUrl(child.url, resolver) : null;
-      next.push(doc === null ? child : { ...child, url: hashFromDocName(doc) });
+    if (child.type === 'link' || child.type === 'definition') {
+      const target = typeof child.url === 'string' ? resolveLinkUrl(child.url, resolver) : null;
+      next.push(
+        target === null ? child : { ...child, url: hashFromDocName(target.docName, target.anchor) },
+      );
       continue;
     }
     if (child.type === 'text' && typeof child.value === 'string') {
@@ -112,13 +115,13 @@ function rewriteNode(node: MdastNode | undefined, resolver: DocPathResolver): vo
       continue;
     }
     if (child.type === 'inlineCode' && typeof child.value === 'string') {
-      const doc = resolver(child.value.trim());
-      if (doc === null) {
+      const target = resolveTarget(child.value.trim(), resolver);
+      if (target === null) {
         next.push(child);
       } else {
         next.push({
           type: 'link',
-          url: hashFromDocName(doc),
+          url: hashFromDocName(target.docName, target.anchor),
           title: null,
           children: [child],
         });
@@ -132,19 +135,42 @@ function rewriteNode(node: MdastNode | undefined, resolver: DocPathResolver): vo
 }
 
 const FILE_SCHEME = /^file:\/\//i;
-const OTHER_SCHEME = /^[a-z][a-z0-9+.-]*:/i;
+const FILE_DRIVE_SLASH = /^\/(?=[a-z]:(?:$|[/\\?]))/i;
+const WINDOWS_DRIVE = /^[a-z]:(?:$|[/\\?])/i;
 
-function resolveLinkUrl(url: string, resolver: DocPathResolver): string | null {
-  if (url.startsWith('#')) return null;
-  const path = FILE_SCHEME.test(url) ? url.replace(FILE_SCHEME, '') : url;
-  if (OTHER_SCHEME.test(path)) return null;
-  let decoded = path;
-  try {
-    decoded = decodeURIComponent(path);
-  } catch {
-    return null;
-  }
-  return resolver(decoded);
+interface LinkTarget {
+  docName: string;
+  anchor: string | null;
+}
+
+function splitFragment(candidate: string): { path: string; anchor: string | null } {
+  const hashIdx = candidate.indexOf('#');
+  if (hashIdx === -1) return { path: candidate, anchor: null };
+  return { path: candidate.slice(0, hashIdx), anchor: candidate.slice(hashIdx + 1) || null };
+}
+
+function resolveTarget(candidate: string, resolver: DocPathResolver): LinkTarget | null {
+  const { path, anchor } = splitFragment(candidate);
+  if (path === '') return null;
+  const docName = resolver(path);
+  return docName === null ? null : { docName, anchor };
+}
+
+function resolveLinkUrl(url: string, resolver: DocPathResolver): LinkTarget | null {
+  const { path: rawPath, anchor } = splitFragment(url);
+  if (rawPath === '') return null;
+  const path = FILE_SCHEME.test(rawPath)
+    ? rawPath.replace(FILE_SCHEME, '').replace(FILE_DRIVE_SLASH, '')
+    : rawPath;
+  if (isForeignScheme(path)) return null;
+  const decoded = decodeHrefPath(path);
+  if (isForeignScheme(decoded)) return null;
+  const docName = resolver(decoded);
+  return docName === null ? null : { docName, anchor };
+}
+
+function isForeignScheme(path: string): boolean {
+  return isExternalHref(path) && !WINDOWS_DRIVE.test(path);
 }
 
 function splitTextByPaths(value: string, resolver: DocPathResolver): MdastNode[] {
@@ -155,14 +181,14 @@ function splitTextByPaths(value: string, resolver: DocPathResolver): MdastNode[]
   while (match !== null) {
     const [candidate] = match;
     const start = match.index;
-    const doc = resolver(candidate);
-    if (doc !== null) {
+    const target = resolveTarget(candidate, resolver);
+    if (target !== null) {
       if (start > cursor) {
         out.push({ type: 'text', value: value.slice(cursor, start) });
       }
       out.push({
         type: 'link',
-        url: hashFromDocName(doc),
+        url: hashFromDocName(target.docName, target.anchor),
         title: null,
         children: [{ type: 'text', value: candidate }],
       });

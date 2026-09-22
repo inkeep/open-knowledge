@@ -341,7 +341,6 @@ describe('remarkDocPathLinks', () => {
       'public/open-knowledge/reports/foo/REPORT.md',
       '/Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md',
       'file:///Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md',
-      'reports/foo/REPORT.md#findings',
       'public/open-knowledge/reports/foo/REPORT%2Emd',
     ]) {
       const tree = makeTree([
@@ -362,6 +361,9 @@ describe('remarkDocPathLinks', () => {
     for (const href of [
       'public/open-knowledge/reports/nope/REPORT.md',
       'mailto:someone@example.com',
+      'javascript:alert(1)',
+      'javascript%3Aalert(1)',
+      '//example.com/reports/foo/REPORT.md',
       '#/already/in-app',
     ]) {
       const tree = makeTree([
@@ -374,5 +376,139 @@ describe('remarkDocPathLinks', () => {
       remarkDocPathLinks()()(tree);
       expect(tree.children?.[0]?.children?.[0]?.url, href).toBe(href);
     }
+  });
+
+  test('a scheme-shaped href never resolves, encoded or not, even when a page would match it', () => {
+    const resolveOdd = buildDocPathResolver({
+      workspace,
+      pages: new Set(['myapp:reports/foo/REPORT']),
+    });
+    for (const href of ['myapp:reports/foo/REPORT.md', 'myapp%3Areports/foo/REPORT.md']) {
+      const tree = makeTree([
+        {
+          type: 'paragraph',
+          children: [{ type: 'link', url: href, children: [{ type: 'text', value: 'x' }] }],
+        },
+      ]);
+      setDocPathResolver(resolveOdd);
+      remarkDocPathLinks()()(tree);
+      expect(tree.children?.[0]?.children?.[0]?.url, href).toBe(href);
+    }
+  });
+
+  test('a link fragment rides along onto the in-app route', () => {
+    const cases: ReadonlyArray<readonly [string, string]> = [
+      ['reports/foo/REPORT.md#findings', '#/reports/foo/REPORT#findings'],
+      ['public/open-knowledge/reports/foo/REPORT.md#root-cause', '#/reports/foo/REPORT#root-cause'],
+      ['reports/foo/REPORT.md#', '#/reports/foo/REPORT'],
+    ];
+    for (const [href, expected] of cases) {
+      const tree = makeTree([
+        {
+          type: 'paragraph',
+          children: [{ type: 'link', url: href, children: [{ type: 'text', value: 'x' }] }],
+        },
+      ]);
+      setDocPathResolver(resolve);
+      remarkDocPathLinks()()(tree);
+      expect(tree.children?.[0]?.children?.[0]?.url, href).toBe(expected);
+    }
+  });
+
+  test('a fragment on a backticked or prose path rides along too', () => {
+    const tree = makeTree([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'text', value: 'see reports/foo/REPORT.md#findings and ' },
+          { type: 'inlineCode', value: 'reports/foo/REPORT.md#root-cause' },
+          { type: 'text', value: ' or reports/foo/REPORT.md# alone' },
+        ],
+      },
+    ]);
+    setDocPathResolver(resolve);
+    remarkDocPathLinks()()(tree);
+    const kids = tree.children?.[0]?.children ?? [];
+    expect(kids.map((k) => k.type)).toEqual([
+      'text',
+      'link',
+      'text',
+      'link',
+      'text',
+      'link',
+      'text',
+    ]);
+    expect(kids[1]?.url).toBe('#/reports/foo/REPORT#findings');
+    expect(kids[1]?.children?.[0]).toEqual({
+      type: 'text',
+      value: 'reports/foo/REPORT.md#findings',
+    });
+    expect(kids[3]?.url).toBe('#/reports/foo/REPORT#root-cause');
+    expect(kids[3]?.children?.[0]?.type).toBe('inlineCode');
+    expect(kids[5]?.url).toBe('#/reports/foo/REPORT');
+    expect(kids[6]).toEqual({ type: 'text', value: '# alone' });
+  });
+
+  test('a Windows path in a link reaches the resolver instead of reading as a scheme', () => {
+    const resolveWindows = buildDocPathResolver({
+      workspace: windowsWorkspace,
+      pages: new Set(['reports/foo/REPORT']),
+    });
+    for (const href of [
+      'C:\\Users\\abraham\\repo\\public\\open-knowledge\\reports\\foo\\REPORT.md',
+      'file:///C:/Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md',
+    ]) {
+      const tree = makeTree([
+        {
+          type: 'paragraph',
+          children: [{ type: 'link', url: href, children: [{ type: 'text', value: 'x' }] }],
+        },
+      ]);
+      setDocPathResolver(resolveWindows);
+      remarkDocPathLinks()()(tree);
+      expect(tree.children?.[0]?.children?.[0]?.url, href).toBe('#/reports/foo/REPORT');
+    }
+  });
+
+  test('a reference-style link resolves through its definition', () => {
+    const tree = makeTree([
+      {
+        type: 'paragraph',
+        children: [{ type: 'linkReference', children: [{ type: 'text', value: 'the report' }] }],
+      },
+      { type: 'definition', url: 'public/open-knowledge/reports/foo/REPORT.md', title: null },
+    ]);
+    setDocPathResolver(resolve);
+    remarkDocPathLinks()()(tree);
+    expect(tree.children?.[1]?.url).toBe('#/reports/foo/REPORT');
+    expect(tree.children?.[0]?.children?.[0]?.type).toBe('linkReference');
+  });
+
+  test('a malformed percent-escape is taken literally, and later links still resolve', () => {
+    const resolveLiteral = buildDocPathResolver({
+      workspace,
+      pages: new Set(['reports/100%/REPORT', 'reports/foo/REPORT']),
+    });
+    const link = (url: string): MdastNode => ({
+      type: 'link',
+      url,
+      children: [{ type: 'text', value: 'x' }],
+    });
+    const tree = makeTree([
+      {
+        type: 'paragraph',
+        children: [
+          link('reports/100%/REPORT.md'),
+          link('reports/foo%zz/REPORT.md'),
+          link('reports/foo/REPORT.md'),
+        ],
+      },
+    ]);
+    setDocPathResolver(resolveLiteral);
+    remarkDocPathLinks()()(tree);
+    const kids = tree.children?.[0]?.children ?? [];
+    expect(kids[0]?.url).toBe('#/reports/100%25/REPORT');
+    expect(kids[1]?.url).toBe('reports/foo%zz/REPORT.md');
+    expect(kids[2]?.url).toBe('#/reports/foo/REPORT');
   });
 });
