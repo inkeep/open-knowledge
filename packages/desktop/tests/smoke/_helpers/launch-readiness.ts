@@ -351,6 +351,7 @@ export interface ReadySignalOptions<T> {
   sleep?: (ms: number) => Promise<void>;
   readLog?: (home: string) => BootLogSnapshot;
   startDeadline?: (ms: number) => ReadyDeadline;
+  isProbePending?: () => boolean;
 }
 
 export interface ReadyDeadline {
@@ -513,6 +514,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
       const probeError: ProbeErrorSummary | undefined =
         lastProbeError === undefined ? undefined : { last: lastProbeError, threwPolls, totalPolls };
       const elapsed = now() - startedAt;
+      const probePending = probePendingAtGiveUp || options.isProbePending?.() === true;
       const stallArmed =
         explicitLiveness !== undefined
           ? explicitLiveness === 'boot'
@@ -526,7 +528,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
             stallMs,
             snapshot,
             probeError,
-            probePendingAtGiveUp,
+            probePending,
           ),
           giveUpReason('stall', snapshot),
         );
@@ -540,7 +542,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
             stallMs,
             snapshot,
             probeError,
-            probePendingAtGiveUp,
+            probePending,
           ),
           giveUpReason('cap', snapshot),
         );
@@ -560,6 +562,15 @@ interface ModeProbePage {
 
 interface ModeProbeApp<TPage> {
   windows(): TPage[];
+}
+
+type ModeProbeResult =
+  | { kind: 'mode'; value: string | undefined }
+  | { kind: 'error'; error: Error };
+
+interface ModeProbeState {
+  pending: boolean;
+  result: ModeProbeResult | undefined;
 }
 
 const HOME_BY_APP = new WeakMap<object, string>();
@@ -664,6 +675,8 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
   const what = `${mode} window`;
   const capMs = options.capMs ?? BOOT_LOG_CAP_MS;
   const startedAt = Date.now();
+  const probeStates = new WeakMap<TPage, ModeProbeState>();
+  let pendingProbeCount = 0;
   let succeeded = false;
   let reason: ReadyWaitGiveUpReason = 'none';
   try {
@@ -674,16 +687,57 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       ...(options.stallMs !== undefined ? { stallMs: options.stallMs } : {}),
       capMs,
       ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
+      isProbePending: () => pendingProbeCount > 0,
       probe: async () => {
+        const pages = app.windows();
+        for (const page of pages) {
+          let state = probeStates.get(page);
+          if (state === undefined) {
+            state = { pending: false, result: undefined };
+            probeStates.set(page, state);
+          }
+          if (state.pending || state.result !== undefined) continue;
+          state.pending = true;
+          pendingProbeCount += 1;
+          try {
+            void evaluateWindowMode(page).then(
+              (value) => {
+                state.pending = false;
+                pendingProbeCount -= 1;
+                state.result = { kind: 'mode', value };
+              },
+              (error: unknown) => {
+                state.pending = false;
+                pendingProbeCount -= 1;
+                state.result = {
+                  kind: 'error',
+                  error: error instanceof Error ? error : new Error(String(error)),
+                };
+              },
+            );
+          } catch (error) {
+            state.pending = false;
+            pendingProbeCount -= 1;
+            state.result = {
+              kind: 'error',
+              error: error instanceof Error ? error : new Error(String(error)),
+            };
+          }
+        }
+
+        await Promise.resolve();
         let lastError: Error | undefined;
         let readCleanly = false;
-        for (const page of app.windows()) {
-          try {
-            const found = await evaluateWindowMode(page);
+        for (const page of pages) {
+          const state = probeStates.get(page);
+          const result = state?.result;
+          if (state === undefined || result === undefined) continue;
+          state.result = undefined;
+          if (result.kind === 'mode') {
             readCleanly = true;
-            if (found === mode) return page;
-          } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
+            if (result.value === mode) return page;
+          } else {
+            lastError = result.error;
           }
         }
         if (!readCleanly && lastError !== undefined) throw lastError;

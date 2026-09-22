@@ -343,6 +343,167 @@ describe('waitForWindowByMode', () => {
     });
     expect(found).toBe(editor);
   });
+
+  it('finds a ready page without waiting for an older pending page', async () => {
+    const pending = Promise.withResolvers<string | undefined>();
+    const navigator = { evaluate: () => pending.promise };
+    const editor = { evaluate: async () => 'editor' };
+    try {
+      await expect(
+        waitForWindowByMode({ windows: () => [navigator, editor] }, 'editor', {
+          home: '/unused',
+          capMs: 100,
+          stallMs: 600_000,
+          pollMs: 10,
+        }),
+      ).resolves.toBe(editor);
+    } finally {
+      pending.resolve('navigator');
+    }
+  });
+
+  it('finds a ready page that arrives while an older page is still pending', async () => {
+    const pending = Promise.withResolvers<string | undefined>();
+    const started = Promise.withResolvers<void>();
+    const navigator = {
+      evaluate: () => {
+        started.resolve();
+        return pending.promise;
+      },
+    };
+    const editor = { evaluate: async () => 'editor' };
+    let pages = [navigator];
+    const waiting = waitForWindowByMode({ windows: () => pages }, 'editor', {
+      home: '/unused',
+      capMs: 100,
+      stallMs: 600_000,
+      pollMs: 10,
+    });
+    await started.promise;
+    pages = [navigator, editor];
+    try {
+      await expect(waiting).resolves.toBe(editor);
+    } finally {
+      pending.resolve('navigator');
+    }
+  });
+
+  it('keeps at most one evaluation in flight per page and requests only on the poll cadence', async () => {
+    const pending = Promise.withResolvers<string | undefined>();
+    let pendingCalls = 0;
+    let pendingInFlight = 0;
+    let maxPendingInFlight = 0;
+    let navigatorCalls = 0;
+    const held = {
+      evaluate: () => {
+        pendingCalls += 1;
+        pendingInFlight += 1;
+        maxPendingInFlight = Math.max(maxPendingInFlight, pendingInFlight);
+        return pending.promise.finally(() => {
+          pendingInFlight -= 1;
+        });
+      },
+    };
+    const navigator = {
+      evaluate: async () => {
+        navigatorCalls += 1;
+        return 'navigator';
+      },
+    };
+    const waiting = waitForWindowByMode({ windows: () => [held, navigator] }, 'editor', {
+      home: '/unused',
+      capMs: 120,
+      stallMs: 600_000,
+      pollMs: 10,
+    });
+    try {
+      await expect(waiting).rejects.toThrow(/did not arrive/);
+    } finally {
+      pending.resolve('navigator');
+    }
+    expect(pendingCalls).toBe(1);
+    expect(maxPendingInFlight).toBe(1);
+    expect(navigatorCalls).toBeGreaterThan(1);
+    expect(navigatorCalls).toBeLessThanOrEqual(15);
+  });
+
+  it('handles a page rejection that arrives after the cap', () => {
+    const scriptDir = mkdtempSync(join(tmpdir(), 'ok-window-readiness-strict-'));
+    const script = join(scriptDir, 'late-rejection.mjs');
+    const home = seedHome();
+    try {
+      writeFileSync(
+        script,
+        [
+          'const { waitForWindowByMode } = await import(process.argv[2]);',
+          'let fail = (error) => { throw error; };',
+          'const pending = new Promise((_resolve, reject) => { fail = reject; });',
+          'const page = { evaluate: () => pending };',
+          "setTimeout(() => fail(new Error('renderer detached after the cap')), 250);",
+          "const error = await waitForWindowByMode({ windows: () => [page] }, 'editor', {",
+          '  home: process.argv[3],',
+          '  capMs: 60,',
+          '  stallMs: 600_000,',
+          '  pollMs: 10,',
+          '}).catch((e) => e);',
+          "if (!(error instanceof Error)) { console.error('the wait did not give up'); process.exit(2); }",
+          'await new Promise((resolve) => setTimeout(resolve, 600));',
+          "console.log('survived');",
+        ].join('\n'),
+        'utf8',
+      );
+      const run = spawnSync(
+        process.execPath,
+        [
+          '--unhandled-rejections=strict',
+          script,
+          new URL('./launch-readiness.ts', import.meta.url).href,
+          home,
+        ],
+        { encoding: 'utf8', timeout: 20_000 },
+      );
+      expect({
+        status: run.status,
+        stdout: run.stdout.trim(),
+        stderr: run.stderr.trim(),
+      }).toEqual({ status: 0, stdout: 'survived', stderr: '' });
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('surfaces errors only when no settled page read cleanly', async () => {
+    const first = {
+      evaluate: async (): Promise<string | undefined> => {
+        throw new Error('first target closed');
+      },
+    };
+    const second = {
+      evaluate: async (): Promise<string | undefined> => {
+        throw new Error('second target closed');
+      },
+    };
+    const error = await waitForWindowByMode({ windows: () => [first, second] }, 'editor', {
+      home: '/unused',
+      capMs: 80,
+      stallMs: 600_000,
+      pollMs: 10,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('second target closed');
+
+    const navigator = { evaluate: async () => 'navigator' };
+    const cleanError = await waitForWindowByMode({ windows: () => [first, navigator] }, 'editor', {
+      home: '/unused',
+      capMs: 80,
+      stallMs: 600_000,
+      pollMs: 10,
+    }).catch((caught: unknown) => caught);
+    expect(cleanError).toBeInstanceOf(Error);
+    expect((cleanError as Error).message).toContain('Probe errors: none on any poll.');
+    expect((cleanError as Error).message).not.toContain('first target closed');
+  });
 });
 
 describe('launchDesktopApp', () => {
@@ -1357,7 +1518,7 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
     }).toEqual({ status: 0, stdout: 'survived', stderr: '' });
   });
 
-  it('records a give-up when the first window never answers, instead of no record at all', async () => {
+  it('records a give-up when no editor exists and one window never answers', async () => {
     let releaseStuck: () => void = () => {};
     const stuck = {
       evaluate: () =>
@@ -1365,8 +1526,8 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
           releaseStuck = () => resolve('navigator');
         }),
     };
-    const ready = { evaluate: async () => 'editor' };
-    const app = { windows: () => [stuck, ready] };
+    const navigator = { evaluate: async () => 'navigator' };
+    const app = { windows: () => [stuck, navigator] };
     rememberLaunchHome(app, narratingHome());
     let released = false;
     const release = setTimeout(() => {
@@ -1378,7 +1539,7 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
       stallMs: 600_000,
       pollMs: 10,
     }).then(
-      (page) => ({ resolvedWith: page === ready ? 'ready-page' : 'stuck-page' }),
+      (page) => ({ resolvedWith: page }),
       (error: unknown) => ({ rejectedWith: (error as Error).message }),
     );
     clearTimeout(release);
@@ -1386,6 +1547,9 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
     expect(released).toBe(false);
     expect(outcome).not.toHaveProperty('resolvedWith');
     expect(outcome).toMatchObject({ rejectedWith: expect.stringMatching(/did not arrive/) });
+    expect(outcome).toMatchObject({
+      rejectedWith: expect.stringContaining('The last probe had not answered when the cap fired.'),
+    });
     expect(tryFirstWaitFor(app)).toMatchObject({ gaveUp: true, reason: 'cap', capMs: 80 });
   });
 
