@@ -71,6 +71,81 @@ describe('stopServerForRemoval', () => {
     return pid;
   }
 
+  async function startUnreapedServer(): Promise<number> {
+    const readyPath = join(dir, 'unreaped-ready');
+    const serverPath = join(dir, 'unreaped-server.cjs');
+    writeFileSync(
+      serverPath,
+      [
+        "const fs = require('node:fs');",
+        "process.on('SIGTERM', () => { process.exit(0); });",
+        "process.stdin.on('end', () => { process.exit(0); });",
+        'process.stdin.resume();',
+        'setInterval(() => {}, 1000);',
+        `fs.writeFileSync(${JSON.stringify(readyPath)}, 'ready');`,
+        '',
+      ].join('\n'),
+    );
+    const holderPath = join(dir, 'unreaped-holder.cjs');
+    writeFileSync(
+      holderPath,
+      [
+        "const { spawn } = require('node:child_process');",
+        "const { existsSync, writeSync } = require('node:fs');",
+        `const child = spawn(process.execPath, [${JSON.stringify(serverPath)}], { stdio: ['pipe', 'ignore', 'ignore'] });`,
+        'const deadline = Date.now() + 10000;',
+        `while (Date.now() < deadline && !existsSync(${JSON.stringify(readyPath)})) {`,
+        '  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 20);',
+        '}',
+        "writeSync(1, JSON.stringify({ pid: child.pid }) + '\\n');",
+        'Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0);',
+        '',
+      ].join('\n'),
+    );
+    const holder = spawn(process.execPath, [holderPath], { stdio: ['ignore', 'pipe', 'inherit'] });
+    children.push(holder);
+    const pid = await new Promise<number>((resolvePid, reject) => {
+      let buffered = '';
+      holder.stdout?.on('data', (chunk) => {
+        buffered += String(chunk);
+        const newline = buffered.indexOf('\n');
+        if (newline !== -1) {
+          resolvePid((JSON.parse(buffered.slice(0, newline)) as { pid: number }).pid);
+        }
+      });
+      holder.once('exit', (code) =>
+        reject(new Error(`Unreaped-server holder exited before reporting (code ${code})`)),
+      );
+    });
+    writeFileSync(
+      lockFilePath(dir, 'server'),
+      JSON.stringify({ pid, hostname: hostname(), port: 0, startedAt: new Date().toISOString() }),
+    );
+    return pid;
+  }
+
+  function installPsCallLog(): { path: string; binDir: string } {
+    const binDir = join(dir, 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const path = join(dir, 'ps-calls.log');
+    const realPs = execFileSync('sh', ['-c', 'command -v ps'], { encoding: 'utf8' }).trim();
+    const shim = join(binDir, 'ps');
+    writeFileSync(
+      shim,
+      `#!/bin/sh\nprintf '%s\\n' "$*" >> ${JSON.stringify(path)}\nexec ${realPs} "$@"\n`,
+    );
+    chmodSync(shim, 0o755);
+    writeFileSync(path, '');
+    return { path, binDir };
+  }
+
+  async function fixtureExit(pid: number): Promise<ChildProcess> {
+    const child = children.find((candidate) => candidate.pid === pid);
+    if (child === undefined) throw new Error(`No fixture child for pid ${pid}`);
+    if (child.exitCode === null && child.signalCode === null) await once(child, 'exit');
+    return child;
+  }
+
   test('recovers a dead PID-only lock for deinit', async () => {
     writeFileSync(lockFilePath(dir, 'server'), JSON.stringify({ pid: 4242 }));
     expect(await stopServerForRemoval(dir, { isAlive: () => false })).toMatchObject({
@@ -558,7 +633,8 @@ describe('stopServerForRemoval', () => {
       stopped: 1,
       failed: [],
     });
-    expect(isProcessAlive(pid)).toBe(false);
+    const exited = await fixtureExit(pid);
+    expect(exited.signalCode ?? exited.exitCode).not.toBe(0);
   });
 
   test('does not signal a local process named by a foreign-host lock', async () => {
@@ -593,8 +669,29 @@ describe('stopServerForRemoval', () => {
     const outcome = await stopServerForRemoval(dir, { timeoutMs: 2000, pollIntervalMs: 10 });
     expect(outcome).toEqual({ stopped: 1, failed: [] });
     expect(readFileSync(flushed, 'utf8')).toBe('saved');
-    expect(isProcessAlive(pid)).toBe(false);
+    expect((await fixtureExit(pid)).exitCode).toBe(0);
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'counts a process left defunct by the wait as stopped, without reading its state on every poll',
+    async () => {
+      const psCalls = installPsCallLog();
+      const pid = await startUnreapedServer();
+      const originalPath = process.env.PATH;
+      process.env.PATH = `${psCalls.binDir}:${originalPath ?? ''}`;
+      let outcome: Awaited<ReturnType<typeof stopServerForRemoval>>;
+      try {
+        outcome = await stopServerForRemoval(dir, { timeoutMs: 400, pollIntervalMs: 10 });
+      } finally {
+        process.env.PATH = originalPath;
+      }
+      expect(outcome).toEqual({ stopped: 1, failed: [] });
+      const stateReads = readFileSync(psCalls.path, 'utf8')
+        .split('\n')
+        .filter((call) => call.includes('stat=') && call.includes(String(pid)));
+      expect(stateReads.length).toBeLessThanOrEqual(2);
+    },
+  );
 
   test.skipIf(process.platform === 'win32')(
     'fails without escalating when the server ignores SIGTERM',

@@ -86,7 +86,7 @@ export function readRemovalProcessStart(
         windowsHide: true,
         env: { ...env, LC_ALL: 'C', TZ: 'UTC0' },
       };
-      const raw = run('/bin/ps', ['-p', String(pid), '-o', 'lstart='], commandOptions).trim();
+      const raw = run('ps', ['-p', String(pid), '-o', 'lstart='], commandOptions).trim();
       if (!/^\w{3}\s+\w{3}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4}$/.test(raw)) return null;
       const startedAt = Date.parse(`${raw} UTC`);
       return Number.isFinite(startedAt) ? startedAt : null;

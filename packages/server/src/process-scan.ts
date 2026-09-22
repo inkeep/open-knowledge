@@ -1,9 +1,12 @@
-import { spawnSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, lstatSync, readdirSync } from 'node:fs';
 import { realpath } from 'node:fs/promises';
 import { basename, isAbsolute, join, resolve } from 'node:path';
-import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
-import { isProcessAlive, isValidLockPid } from './process-alive.ts';
+import {
+  LOCAL_OP_PIPE_STDIO_OPTIONS,
+  withHiddenWindowsConsole,
+} from './child-process-windows-hide.ts';
+import { isValidLockPid, type ProcessLiveness, readProcessLiveness } from './process-alive.ts';
 
 const SPAWN_TIMEOUT_MS = 2000;
 const LOCK_SCAN_MAX_DEPTH = 3;
@@ -193,6 +196,85 @@ export function processUsage(pid: number): ProcessUsage | null {
   return { cpuPercent, memPercent };
 }
 
+export interface ProcessProbeFailure {
+  pid: number;
+  reason: string;
+}
+
+export interface ProcessProbeOptions {
+  onProbeFailure?: (failure: ProcessProbeFailure) => void;
+}
+
+function renderProbeFailure(failure: ProcessProbeFailure): string {
+  return `[process-scan] could not read the state of process ${failure.pid} (${failure.reason}); treating it as not defunct\n`;
+}
+
+export type ProcessState =
+  | { status: 'running' }
+  | { status: 'defunct' }
+  | { status: 'gone' }
+  | { status: 'unreadable'; reason: string };
+
+function reportUnreadableState(
+  pid: number,
+  reason: string,
+  options: ProcessProbeOptions,
+): ProcessState {
+  const failure: ProcessProbeFailure = { pid, reason };
+  if (options.onProbeFailure) options.onProbeFailure(failure);
+  else process.stderr.write(renderProbeFailure(failure));
+  return { status: 'unreadable', reason };
+}
+
+export function readProcessState(pid: number, options: ProcessProbeOptions = {}): ProcessState {
+  if (process.platform !== 'darwin' && process.platform !== 'linux') {
+    return { status: 'unreadable', reason: `no process-state query on ${process.platform}` };
+  }
+  try {
+    const state = execFileSync(
+      'ps',
+      ['-p', String(pid), '-o', 'stat='],
+      withHiddenWindowsConsole({
+        encoding: 'utf8',
+        ...LOCAL_OP_PIPE_STDIO_OPTIONS,
+        timeout: SPAWN_TIMEOUT_MS,
+        env: { ...process.env, LC_ALL: 'C' },
+      }),
+    );
+    return state.trim().startsWith('Z') ? { status: 'defunct' } : { status: 'running' };
+  } catch (err: unknown) {
+    if (!(err instanceof Error)) return reportUnreadableState(pid, String(err), options);
+    const failure = err as NodeJS.ErrnoException & {
+      status?: number | null;
+      stderr?: Buffer | string | null;
+    };
+    const stderrText = String(failure.stderr ?? '');
+    if (typeof failure.status === 'number' && stderrText.trim() === '') return { status: 'gone' };
+    const diagnostic =
+      stderrText
+        .split('\n')
+        .find((line) => line.trim() !== '')
+        ?.trim() ?? '';
+    return reportUnreadableState(pid, diagnostic || failure.code || failure.message, options);
+  }
+}
+
+export function isDefunctProcess(pid: number, options: ProcessProbeOptions = {}): boolean {
+  return readProcessState(pid, options).status === 'defunct';
+}
+
+function psAbsenceOutranksLiveness(state: ProcessState, liveness: ProcessLiveness): boolean {
+  return state.status === 'gone' && liveness === 'signalable';
+}
+
+export function isLockProcessRunning(pid: number, options: ProcessProbeOptions = {}): boolean {
+  const liveness = readProcessLiveness(pid);
+  if (liveness === 'absent') return false;
+  const state = readProcessState(pid, options);
+  if (state.status === 'defunct') return false;
+  return !psAbsenceOutranksLiveness(state, liveness);
+}
+
 function parsePidCwds(stdout: string): Map<number, string> {
   const cwds = new Map<number, string>();
   let pid: number | null = null;
@@ -376,7 +458,20 @@ export interface LockProcessScan {
   unavailable: string[];
 }
 
-export async function scanLockProcesses(): Promise<LockProcessScan> {
+export function createProbeFailureReporter(): (pid: number) => ProcessProbeOptions {
+  const warned = new Set<number>();
+  return (pid) => ({
+    onProbeFailure: (failure) => {
+      if (warned.has(pid)) return;
+      warned.add(pid);
+      process.stderr.write(renderProbeFailure(failure));
+    },
+  });
+}
+
+export async function scanLockProcesses(
+  probeOptions: (pid: number) => ProcessProbeOptions = createProbeFailureReporter(),
+): Promise<LockProcessScan> {
   const scan: LockProcessScan = { candidates: [], unavailable: [] };
   let entries: OkProcessEntry[];
   try {
@@ -431,9 +526,14 @@ export async function scanLockProcesses(): Promise<LockProcessScan> {
   for (const { pid, source } of pendingCwd) {
     const cwd = cwds.get(pid);
     if (cwd) await addProject(cwd, pid, source);
-    else if (isProcessAlive(pid))
+    else if (isLockProcessRunning(pid, probeOptions(pid)))
       scan.unavailable.push(`Could not read the working directory of process ${pid}`);
   }
   if (listenersUnavailable) scan.unavailable.push('Could not enumerate TCP listeners with lsof');
+  const defunctCandidates = new Set<number>();
+  for (const pid of new Set(scan.candidates.map((candidate) => candidate.pid))) {
+    if (isDefunctProcess(pid, probeOptions(pid))) defunctCandidates.add(pid);
+  }
+  scan.candidates = scan.candidates.filter((candidate) => !defunctCandidates.has(candidate.pid));
   return scan;
 }

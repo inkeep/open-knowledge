@@ -14,7 +14,7 @@ describe('readRemovalProcessStart', () => {
         }),
       ).toBe(Date.parse('2026-09-08T20:21:34.000Z'));
       expect(run).toHaveBeenCalledWith(
-        '/bin/ps',
+        'ps',
         ['-p', '123', '-o', 'lstart='],
         expect.objectContaining({
           timeout: 5000,

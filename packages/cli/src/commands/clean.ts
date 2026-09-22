@@ -1,5 +1,5 @@
 import { unlinkSync } from 'node:fs';
-import { type Config, resolveLockDir } from '@inkeep/open-knowledge-server';
+import { type Config, isLockProcessRunning, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { describeLockOwnershipRefusal, inspectLock, type LockState } from './lock-state.ts';
 
@@ -67,7 +67,8 @@ interface CleanOutcome {
 }
 
 export function runClean(deps: RunCleanDeps): CleanOutcome {
-  const inspect = deps.inspect ?? (() => inspectLock(deps.lockDir, 'server'));
+  const inspect =
+    deps.inspect ?? (() => inspectLock(deps.lockDir, 'server', { isAlive: isLockProcessRunning }));
   const unlink = deps.unlink ?? ((path) => unlinkSync(path));
   const log = deps.log ?? ((msg) => console.log(msg));
   const error = deps.error ?? ((msg) => console.error(msg));

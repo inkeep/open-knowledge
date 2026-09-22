@@ -4,6 +4,7 @@ import { PROJECT_SKILL_PROJECTION_PATHS } from '@inkeep/open-knowledge-core';
 import { atomicWriteFileSync } from '@inkeep/open-knowledge-core/server';
 import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import {
+  createProbeFailureReporter,
   type LockProcessScan,
   resolveLockDir,
   scanLockProcesses,
@@ -408,13 +409,15 @@ export async function runRemoval(
       op.kind === 'stop-server' && !op.preserveProjectState ? [resolve(op.lockDir)] : [],
     ),
   );
-  const scan = deps.scanProcesses ?? scanLockProcesses;
+  const runProbe = createProbeFailureReporter();
+  const scan = deps.scanProcesses ?? (() => scanLockProcesses(runProbe));
   let processScan: Promise<LockProcessScan> | undefined;
   const stopServer =
     deps.stopServer ??
     ((lockDir: string) =>
       stopServerForRemoval(lockDir, {
         preserveProjectState: plan.scope === 'uninstall' && !deinitLockDirs.has(resolve(lockDir)),
+        probe: runProbe,
         scanProcesses: () => (processScan ??= scan()),
       }));
 

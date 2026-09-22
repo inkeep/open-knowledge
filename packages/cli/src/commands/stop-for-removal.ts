@@ -2,8 +2,11 @@ import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import {
+  createProbeFailureReporter,
+  isLockProcessRunning,
   isProcessAlive,
   type LockProcessScan,
+  type ProcessProbeOptions,
   scanLockProcesses,
 } from '@inkeep/open-knowledge-server';
 import { getCliLogger } from '../cli-logger.ts';
@@ -17,6 +20,7 @@ import { runStop } from './stop.ts';
 
 interface StopForRemovalOptions {
   preserveProjectState?: boolean;
+  probe?: (pid: number) => ProcessProbeOptions;
   scanProcesses?: () => Promise<LockProcessScan>;
   timeoutMs?: number;
   pollIntervalMs?: number;
@@ -32,7 +36,10 @@ export async function stopServerForRemoval(
   lockDir: string,
   options: StopForRemovalOptions = {},
 ): Promise<{ stopped: number; failed: Array<{ pid: number; error: string }>; skipped?: string }> {
-  const isAlive = options.isAlive ?? isProcessAlive;
+  const probeOptions = options.probe ?? createProbeFailureReporter();
+  const isAlive =
+    options.isAlive ?? ((pid: number) => isLockProcessRunning(pid, probeOptions(pid)));
+  const hasProcessEntry = options.isAlive ?? isProcessAlive;
   const state = inspectLock(lockDir, 'server', { isAlive });
   const lockRecovery =
     'Quit OpenKnowledge and stop any OpenKnowledge server processes. ' +
@@ -104,7 +111,7 @@ export async function stopServerForRemoval(
       : foreignHost
         ? 'foreign-owned'
         : 'malformed';
-    const scan = await (options.scanProcesses ?? scanLockProcesses)();
+    const scan = await (options.scanProcesses ?? (() => scanLockProcesses(probeOptions)))();
     const canonical = await realpath(lockDir).catch(() => resolve(lockDir));
     const candidates = scan.candidates.filter(
       (candidate) => candidate.lockDir === canonical && isAlive(candidate.pid),
@@ -203,12 +210,15 @@ export async function stopServerForRemoval(
   const deadline = performance.now() + timeoutMs;
   while (pending.size > 0) {
     for (const pid of pending) {
-      if (!isAlive(pid)) pending.delete(pid);
+      if (!hasProcessEntry(pid)) pending.delete(pid);
     }
     if (pending.size === 0) break;
     const remaining = deadline - performance.now();
     if (remaining <= 0) break;
     await setTimeout(Math.min(options.pollIntervalMs ?? 50, remaining));
+  }
+  for (const pid of pending) {
+    if (!isAlive(pid)) pending.delete(pid);
   }
   for (const pid of pending) {
     failed.push({ pid, error: `still running ${timeoutMs}ms after SIGTERM` });
