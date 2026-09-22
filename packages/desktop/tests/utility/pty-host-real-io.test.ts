@@ -5,16 +5,25 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import { isTerminalPlatform } from '../../src/shared/terminal-platform.ts';
+import {
+  HARNESS_CHILD_KILL_WAIT_MS,
+  HARNESS_VERDICT_POLL_INTERVAL_MS,
+  harnessTimeouts,
+} from '../support/pty-readiness.test-helper.ts';
 import { removeTempDirBestEffort } from '../support/temp-dir-cleanup.test-helper.ts';
 
 const HARNESS = fileURLToPath(new URL('./pty-host.real-io-harness.ts', import.meta.url));
+const HARNESS_TIMEOUTS = harnessTimeouts(process.platform);
 
 const TERMINAL_PLATFORM = isTerminalPlatform(process.platform);
 const SUCCESS_RESULT = `HARNESS_RESULT ok=${process.platform === 'win32' ? 5 : 4} fail=0`;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function runHarness(outputDir: string): Promise<string> {
+async function runHarness(
+  outputDir: string,
+  extraEnv: Record<string, string> = {},
+): Promise<string> {
   const outputPath = join(outputDir, 'output.log');
   const outputFd = openSync(outputPath, 'w');
   const child = (() => {
@@ -25,6 +34,7 @@ async function runHarness(outputDir: string): Promise<string> {
           TEMP: outputDir,
           TMP: outputDir,
           TMPDIR: outputDir,
+          ...extraEnv,
         },
         stdio: ['ignore', outputFd, outputFd],
         windowsHide: true,
@@ -51,13 +61,13 @@ async function runHarness(outputDir: string): Promise<string> {
   async function terminateChild(): Promise<void> {
     if (exitResult === null) {
       child.kill();
-      await Promise.race([exitPromise, sleep(2_000)]);
+      await Promise.race([exitPromise, sleep(HARNESS_CHILD_KILL_WAIT_MS)]);
     }
     child.unref();
   }
 
   try {
-    const deadline = Date.now() + (process.platform === 'win32' ? 90_000 : 45_000);
+    const deadline = Date.now() + HARNESS_TIMEOUTS.verdictDeadlineMs;
     while (Date.now() < deadline) {
       const output = readFileSync(outputPath, 'utf8');
       if (spawnError !== null) {
@@ -84,7 +94,7 @@ async function runHarness(outputDir: string): Promise<string> {
           `real-PTY harness exited ${exitResult.code ?? exitResult.signal} without a verdict:\n${output}`,
         );
       }
-      await sleep(25);
+      await sleep(HARNESS_VERDICT_POLL_INTERVAL_MS);
     }
 
     const output = readFileSync(outputPath, 'utf8');
@@ -109,6 +119,25 @@ describe('PTY host — real shell I/O (Node runtime)', () => {
         removeTempDirBestEffort(outputDir);
       }
     },
-    process.platform === 'win32' ? 105_000 : 60_000,
+    HARNESS_TIMEOUTS.testTimeoutMs,
+  );
+
+  test.skipIf(!TERMINAL_PLATFORM)(
+    'refuses every scenario a spent budget cannot cover, rather than running into the hard timeout',
+    async () => {
+      const outputDir = mkdtempSync(join(tmpdir(), 'ok-real-pty-budget-'));
+      try {
+        const failure = await runHarness(outputDir, { OK_PTY_HARNESS_BUDGET_MS: '1' }).then(
+          () => null,
+          (error: unknown) => (error as Error).message,
+        );
+        expect(failure).toContain('the 1ms harness budget was spent before this scenario started');
+        expect(failure).toContain('HARNESS_RESULT ok=0');
+        expect(failure).not.toContain('hard timeout');
+      } finally {
+        removeTempDirBestEffort(outputDir);
+      }
+    },
+    HARNESS_TIMEOUTS.testTimeoutMs,
   );
 });

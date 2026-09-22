@@ -10,7 +10,10 @@ import {
 } from '../smoke/_helpers/terminal-smoke-shell.ts';
 import {
   buildCwdFileProofCommand,
+  createHarnessBudget,
   createPtyHostProbe,
+  harnessTimeouts,
+  resolveHarnessBudgetMs,
   waitForCondition,
   waitForEvaluatedInput,
   waitForShellReady,
@@ -36,6 +39,7 @@ let inFlight: string | null = null;
 async function scenario(name: string, fn: () => Promise<void>): Promise<void> {
   inFlight = name;
   try {
+    harnessBudget.grantMs('this scenario started');
     await fn();
     results.push({ name, ok: true });
     console.log(`PASS ${name}`);
@@ -51,6 +55,12 @@ const BASE_ENV = { ...process.env };
 const shellCommands = terminalSmokeShellCommands();
 const CWD_PROOF_FILE = '.ok-pty-cwd-proof';
 const WINDOWS_LAUNCH_WAIT = { timeoutMs: 20_000 } as const;
+const HARNESS_BUDGET_MS = resolveHarnessBudgetMs(
+  process.env.OK_PTY_HARNESS_BUDGET_MS,
+  harnessTimeouts(process.platform).budgetMs,
+);
+const HARNESS_REPORT_RESERVE_MS = 1_000;
+const harnessBudget = createHarnessBudget(HARNESS_BUDGET_MS, HARNESS_REPORT_RESERVE_MS);
 
 async function waitForWindowsInputReady(
   host: ReturnType<typeof createHost>,
@@ -58,13 +68,16 @@ async function waitForWindowsInputReady(
   label: string,
 ): Promise<void> {
   const probe = buildInputReadyProbe();
-  const readyMs = await waitForEvaluatedInput(
+  const timing = await waitForEvaluatedInput(
     host.streamOf(ptyId),
     (data) => host.send({ type: 'input', ptyId, data }),
     { input: `${probe.command}\r`, marker: probe.marker },
     label,
+    { budgetMs: harnessBudget.grantMs(label) },
   );
-  console.log(`INPUT_READY ${label} readyMs=${readyMs}`);
+  console.log(
+    `INPUT_READY ${label} firstOutputMs=${timing.firstOutputMs} firstOutput=${timing.firstOutput} readyMs=${timing.roundTripMs}`,
+  );
 }
 
 async function waitForInteractiveShellReady(
@@ -255,17 +268,14 @@ async function main(): Promise<void> {
   process.exit(failed === 0 ? 0 : 1);
 }
 
-const hardTimeout = setTimeout(
-  () => {
-    const passed = results.filter((result) => result.ok).length;
-    const failed = results.length - passed + 1;
-    console.log(
-      `HARNESS_RESULT ok=${passed} fail=${failed} :: hard timeout during ${inFlight ?? 'startup'}`,
-    );
-    process.exit(1);
-  },
-  process.platform === 'win32' ? 85_000 : 30_000,
-);
+const hardTimeout = setTimeout(() => {
+  const passed = results.filter((result) => result.ok).length;
+  const failed = results.length - passed + 1;
+  console.log(
+    `HARNESS_RESULT ok=${passed} fail=${failed} :: hard timeout during ${inFlight ?? 'startup'}`,
+  );
+  process.exit(1);
+}, HARNESS_BUDGET_MS);
 hardTimeout.unref();
 
 void main().catch((err) => {
