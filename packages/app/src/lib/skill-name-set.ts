@@ -7,6 +7,7 @@ import { listSkills } from '@/lib/skills-api';
 interface SkillNameInfo {
   scope: SkillScope;
   path: string;
+  description?: string;
   managed?: boolean;
   absolutePath?: string;
 }
@@ -31,6 +32,9 @@ async function refresh(): Promise<void> {
         const info: SkillNameInfo = {
           scope: sk.scope,
           path: sk.path,
+          ...(sk.description !== undefined && sk.description.trim() !== ''
+            ? { description: sk.description }
+            : {}),
           ...(sk.managed === true ? { managed: true } : {}),
           ...(sk.absolutePath !== undefined ? { absolutePath: sk.absolutePath } : {}),
         };

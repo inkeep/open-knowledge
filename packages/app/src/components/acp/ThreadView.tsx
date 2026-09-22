@@ -1729,11 +1729,19 @@ function ContextWindowSub({
   const { t } = useLingui();
   if (choices.length < 2) return null;
   const summary = currentTokens === null ? t`Default` : formatContextTokens(currentTokens);
+  const contextWindowLabel = t`Context window`;
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="gap-2" data-testid="agent-thread-context-window">
-        <span className="min-w-0 flex-1 truncate">{t`Context window`}</span>
-        <span className="max-w-[11rem] truncate text-1sm text-muted-foreground">{summary}</span>
+        <span className="min-w-0 truncate" title={contextWindowLabel}>
+          {contextWindowLabel}
+        </span>
+        <span
+          className="min-w-16 flex-1 truncate text-end text-1sm text-muted-foreground"
+          title={summary}
+        >
+          {summary}
+        </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="max-w-72 overscroll-contain">
         <DropdownMenuLabel>{t`Context window`}</DropdownMenuLabel>
@@ -1807,8 +1815,13 @@ function ConfigSelectSub({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="gap-2" data-testid={`agent-thread-config-${option.id}`}>
-        <span className="min-w-0 flex-1 truncate">{option.name}</span>
-        <span className="max-w-[11rem] truncate text-1sm text-muted-foreground">
+        <span className="min-w-0 truncate" title={option.name}>
+          {option.name}
+        </span>
+        <span
+          className="min-w-16 flex-1 truncate text-end text-1sm text-muted-foreground"
+          title={selectOptionSummary(agentId, option)}
+        >
           {selectOptionSummary(agentId, option)}
         </span>
       </DropdownMenuSubTrigger>
