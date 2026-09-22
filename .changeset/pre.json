@@ -2,16 +2,16 @@
   "mode": "pre",
   "tag": "beta",
   "initialVersions": {
-    "@inkeep/open-knowledge-docs": "0.0.215",
-    "@inkeep/open-knowledge-app": "0.77.3",
-    "@inkeep/open-knowledge": "0.77.3",
-    "@inkeep/open-knowledge-core": "0.77.3",
-    "@inkeep/open-knowledge-desktop": "0.77.3",
-    "@inkeep/md-conformance": "0.0.223",
+    "@inkeep/open-knowledge-docs": "0.0.216",
+    "@inkeep/open-knowledge-app": "0.77.4",
+    "@inkeep/open-knowledge": "0.77.4",
+    "@inkeep/open-knowledge-core": "0.77.4",
+    "@inkeep/open-knowledge-desktop": "0.77.4",
+    "@inkeep/md-conformance": "0.0.224",
     "@inkeep/open-knowledge-md-audit": "0.0.0",
     "@inkeep/open-knowledge-native-config": "0.0.0",
     "@inkeep/open-knowledge-plugin": "0.3.1",
-    "@inkeep/open-knowledge-server": "0.77.3"
+    "@inkeep/open-knowledge-server": "0.77.4"
   },
   "changesets": []
 }
