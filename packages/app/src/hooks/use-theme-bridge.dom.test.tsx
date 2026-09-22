@@ -50,6 +50,40 @@ function makeRejectingBridge(rejectionError: Error): StubBridge {
   };
 }
 
+interface DeferredBridge extends StubBridge {
+  resolveCall: (index: number) => void;
+  rejectCall: (index: number, error: Error) => void;
+}
+
+function makeDeferredBridge(): DeferredBridge {
+  const setCalls: string[] = [];
+  const signalCalls: Array<{ reducedTransparency: boolean }> = [];
+  const pending: Array<{ resolve: () => void; reject: (error: Error) => void }> = [];
+  return {
+    setThemeSource: (value: string) => {
+      setCalls.push(value);
+      return new Promise<{ ok: true }>((resolve, reject) => {
+        pending.push({ resolve: () => resolve({ ok: true as const }), reject });
+      });
+    },
+    signalThemeApplied: (payload: { reducedTransparency: boolean }) => {
+      signalCalls.push(payload);
+    },
+    setThemeSourceCalls: setCalls,
+    signalThemeAppliedCalls: signalCalls,
+    resolveCall: (index: number) => {
+      const deferred = pending[index];
+      if (!deferred) throw new Error(`no pending setThemeSource call at index ${index}`);
+      deferred.resolve();
+    },
+    rejectCall: (index: number, error: Error) => {
+      const deferred = pending[index];
+      if (!deferred) throw new Error(`no pending setThemeSource call at index ${index}`);
+      deferred.reject(error);
+    },
+  };
+}
+
 function HookProbe({
   bridge,
   themeValue,
@@ -319,6 +353,127 @@ describe('useThemeBridge (Tier-3 mount)', () => {
       },
       { timeout: ASYNC_EFFECT_TIMEOUT_MS },
     );
+    expect(stubBridge.setThemeSourceCalls).toEqual(['dark']);
+  });
+
+  test('a readiness re-entry with an unchanged preference re-reports chrome without re-pushing the source', async () => {
+    const stubBridge = makeStubBridge();
+    const typedBridge = stubBridge as unknown as OkDesktopBridge;
+    const { rerender } = render(<HookProbe bridge={undefined} themeValue={undefined} />);
+
+    rerender(<HookProbe bridge={typedBridge} themeValue="system" />);
+    await waitFor(
+      () => {
+        expect(stubBridge.signalThemeAppliedCalls.length).toBe(1);
+      },
+      { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+    );
+    expect(stubBridge.setThemeSourceCalls).toEqual(['system']);
+
+    rerender(<HookProbe bridge={undefined} themeValue={undefined} />);
+    rerender(<HookProbe bridge={typedBridge} themeValue="system" />);
+
+    await waitFor(
+      () => {
+        expect(stubBridge.signalThemeAppliedCalls.length).toBe(2);
+      },
+      { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+    );
+    expect(stubBridge.setThemeSourceCalls).toEqual(['system']);
+  });
+
+  test('a re-render with a referentially distinct bridge re-pushes the unchanged preference', async () => {
+    const firstBridge = makeStubBridge();
+    const secondBridge = makeStubBridge();
+    expect(secondBridge).not.toBe(firstBridge);
+    const { rerender } = render(
+      <HookProbe bridge={firstBridge as unknown as OkDesktopBridge} themeValue="system" />,
+    );
+    await waitFor(
+      () => {
+        expect(firstBridge.setThemeSourceCalls).toEqual(['system']);
+      },
+      { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+    );
+
+    rerender(<HookProbe bridge={secondBridge as unknown as OkDesktopBridge} themeValue="system" />);
+
+    await waitFor(
+      () => {
+        expect(secondBridge.setThemeSourceCalls).toEqual(['system']);
+      },
+      { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+    );
+    expect(firstBridge.setThemeSourceCalls).toEqual(['system']);
+  });
+
+  test('a superseded push that later fails leaves the push that replaced it recorded', async () => {
+    const deferredBridge = makeDeferredBridge();
+    const typedBridge = deferredBridge as unknown as OkDesktopBridge;
+    const { rerender } = render(
+      <HookProbe bridge={typedBridge} themeValue="light" colorThemeKey="before" />,
+    );
+    expect(deferredBridge.setThemeSourceCalls).toEqual(['light']);
+
+    rerender(<HookProbe bridge={typedBridge} themeValue="dark" colorThemeKey="before" />);
+    expect(deferredBridge.setThemeSourceCalls).toEqual(['light', 'dark']);
+
+    await act(async () => {
+      deferredBridge.resolveCall(1);
+    });
+    await act(async () => {
+      deferredBridge.rejectCall(0, new Error('ipc-teardown: superseded push unreachable'));
+    });
+
+    rerender(<HookProbe bridge={typedBridge} themeValue="dark" colorThemeKey="after" />);
+
+    expect(deferredBridge.setThemeSourceCalls).toEqual(['light', 'dark']);
+  });
+
+  test('a re-entry that skips the push waits for that push before signalling the theme applied', async () => {
+    const deferredBridge = makeDeferredBridge();
+    const typedBridge = deferredBridge as unknown as OkDesktopBridge;
+    const { rerender } = render(
+      <HookProbe bridge={typedBridge} themeValue="system" colorThemeKey="before" />,
+    );
+    expect(deferredBridge.setThemeSourceCalls).toEqual(['system']);
+    expect(deferredBridge.signalThemeAppliedCalls).toHaveLength(0);
+
+    rerender(<HookProbe bridge={typedBridge} themeValue="system" colorThemeKey="after" />);
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(deferredBridge.setThemeSourceCalls).toEqual(['system']);
+    expect(deferredBridge.signalThemeAppliedCalls).toHaveLength(0);
+
+    await act(async () => {
+      deferredBridge.resolveCall(0);
+    });
+    await waitFor(
+      () => {
+        expect(deferredBridge.signalThemeAppliedCalls).toHaveLength(1);
+      },
+      { timeout: ASYNC_EFFECT_TIMEOUT_MS },
+    );
+  });
+
+  test('a push that fails without being superseded is re-attempted on the next re-entry', async () => {
+    const deferredBridge = makeDeferredBridge();
+    const typedBridge = deferredBridge as unknown as OkDesktopBridge;
+    const { rerender } = render(
+      <HookProbe bridge={typedBridge} themeValue="dark" colorThemeKey="before" />,
+    );
+    expect(deferredBridge.setThemeSourceCalls).toEqual(['dark']);
+
+    await act(async () => {
+      deferredBridge.rejectCall(0, new Error('ipc-teardown: setThemeSource bridge unreachable'));
+    });
+
+    rerender(<HookProbe bridge={typedBridge} themeValue="dark" colorThemeKey="after" />);
+
+    expect(deferredBridge.setThemeSourceCalls).toEqual(['dark', 'dark']);
   });
 
   test('waits for the final transition sample without rerendering its owner', async () => {

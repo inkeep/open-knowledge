@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { subscribeColorThemeEpoch } from '@/lib/color-theme-epoch';
 import { cssColorToHex } from '@/lib/css-color-to-hex';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -31,11 +31,19 @@ function readChromeColors(): { bg: string; symbol: string } | undefined {
   }
 }
 
+type PushedSource = {
+  readonly bridge: OkDesktopBridge;
+  readonly source: ThemePreference;
+  readonly settled: Promise<unknown>;
+};
+
 export function useThemeBridge(
   bridge: OkDesktopBridge | undefined,
   themeValue: ThemePreference | undefined,
   colorThemeKey?: string,
 ): void {
+  const pushedSource = useRef<PushedSource | null>(null);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: colorThemeKey requests a fresh settled report for same-mode palette changes
   useEffect(() => {
     if (themeValue !== 'light' && themeValue !== 'dark' && themeValue !== 'system') return;
@@ -57,22 +65,32 @@ export function useThemeBridge(
     };
     const unsubscribe = subscribeColorThemeEpoch(signalSettledTheme);
     mql.addEventListener('change', signalSettledTheme);
-    bridge
-      .setThemeSource(themeValue)
-      .catch((err: unknown) => {
-        console.warn(
-          JSON.stringify({
-            event: 'theme-source-set-failed',
-            themeValue,
-            error: err instanceof Error ? err.message : String(err),
-          }),
-        );
-      })
-      .finally(() => {
-        if (cancelled) return;
-        applied = true;
-        signalSettledTheme();
-      });
+    const settle = () => {
+      if (cancelled) return;
+      applied = true;
+      signalSettledTheme();
+    };
+    const pushed = pushedSource.current;
+    if (pushed?.bridge === bridge && pushed.source === themeValue) {
+      void pushed.settled.then(settle);
+    } else {
+      const entry: PushedSource = {
+        bridge,
+        source: themeValue,
+        settled: bridge.setThemeSource(themeValue).catch((err: unknown) => {
+          if (pushedSource.current === entry) pushedSource.current = null;
+          console.warn(
+            JSON.stringify({
+              event: 'theme-source-set-failed',
+              themeValue,
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          );
+        }),
+      };
+      pushedSource.current = entry;
+      void entry.settled.then(settle);
+    }
     return () => {
       cancelled = true;
       unsubscribe();

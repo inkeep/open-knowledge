@@ -499,7 +499,7 @@ import {
 } from './terminal-window.ts';
 import { getTerminalWindowContext, resolvePtyProjectRoot } from './terminal-window-registry.ts';
 import { applyThemeApplied } from './theme-applied-handler.ts';
-import { applyThemeSource, isOkThemeSource } from './theme-handler.ts';
+import { applyThemeSource, emitThemeSourceRecord, isOkThemeSource } from './theme-handler.ts';
 import { createUninstallScreenRegistry } from './uninstall-ipc.ts';
 import {
   loadUninstallEntry,
@@ -4403,7 +4403,7 @@ function registerIpcHandlers() {
     return { ok: true };
   });
 
-  handle('ok:theme:set-source', async (_event, { source }) => {
+  handle('ok:theme:set-source', async (event, { source }) => {
     return applyThemeSource(
       {
         getThemeSource: () =>
@@ -4411,9 +4411,10 @@ function registerIpcHandlers() {
         setThemeSource: (s) => {
           nativeTheme.themeSource = s;
         },
-        warn: (line) => console.warn(line),
+        emit: emitThemeSourceRecord,
       },
       source,
+      BrowserWindow.fromWebContents(event.sender)?.id ?? null,
     );
   });
 
