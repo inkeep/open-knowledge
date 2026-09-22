@@ -53,6 +53,29 @@ async function gotoAndAwaitTree(page: Page, path: string): Promise<void> {
   await expect(sidebar(page).getByRole('treeitem').first()).toBeVisible({ timeout: 30_000 });
 }
 
+async function focusIsInsideFileTree(page: Page, survivingRowPath: string): Promise<boolean> {
+  return page.evaluate((rowPath) => {
+    let element: Element | null = document.activeElement;
+    while (element?.shadowRoot?.activeElement != null) {
+      element = element.shadowRoot.activeElement;
+    }
+    if (element?.closest('[role="tree"]') == null) return false;
+    const root = element.getRootNode();
+    if (!(root instanceof ShadowRoot)) return false;
+    return root.querySelector(`[data-item-path="${rowPath}"]`) != null;
+  }, survivingRowPath);
+}
+
+async function focusedRowLabel(page: Page): Promise<string | null> {
+  return page.evaluate(() => {
+    let element: Element | null = document.activeElement;
+    while (element?.shadowRoot?.activeElement != null) {
+      element = element.shadowRoot.activeElement;
+    }
+    return element?.getAttribute('aria-label') ?? null;
+  });
+}
+
 async function expandFolder(page: Page) {
   await folderRow(page).focus();
   await folderRow(page).press('ArrowRight');
@@ -195,6 +218,44 @@ test('activation does not steal focus from the editor', async ({ page }) => {
     return !!active?.closest('[data-slot="sidebar-container"]');
   });
   expect(focusInSidebar).toBe(false);
+});
+
+test('a background page-list change leaves keyboard focus on the row the user focused', async ({
+  page,
+  api,
+}) => {
+  await gotoAndAwaitTree(page, `/#/test-doc`);
+  await fileRow(page, 'test-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
+
+  await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'false');
+  await folderRow(page).focus();
+  await expect.poll(() => focusedRowLabel(page)).toBe('sidebar-folder');
+
+  await api.createPage('zz-background-doc.md');
+  await fileRow(page, 'zz-background-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
+
+  await expect.poll(() => focusedRowLabel(page)).toBe('sidebar-folder');
+
+  await page.keyboard.press('ArrowRight');
+  await expect(folderRow(page)).toHaveAttribute('aria-expanded', 'true');
+});
+
+test('a background deletion of the focused row leaves keyboard focus inside the tree', async ({
+  page,
+  workerServer,
+}) => {
+  await gotoAndAwaitTree(page, `/#/test-doc`);
+  await fileRow(page, 'test-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
+  await expandFolder(page);
+  await fileRow(page, 'nested-doc.md').waitFor({ state: 'visible', timeout: 15_000 });
+
+  await fileRow(page, 'nested-doc.md').focus();
+  await expect.poll(() => focusedRowLabel(page)).toBe('nested-doc.md');
+
+  await deletePathIfExists(workerServer.baseURL, 'file', 'sidebar-folder/nested-doc');
+  await fileRow(page, 'nested-doc.md').waitFor({ state: 'detached', timeout: 15_000 });
+
+  await expect.poll(() => focusIsInsideFileTree(page, 'sidebar-folder/')).toBe(true);
 });
 
 test('hovering a sidebar row surfaces its full relative path as a title (VS Code parity)', async ({
