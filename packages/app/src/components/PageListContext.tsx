@@ -9,6 +9,10 @@ import {
 } from '@/editor/page-list-cache';
 import { subscribeToDocumentsChanged } from '@/lib/documents-events';
 import { fetchDocumentListShared } from '@/lib/documents-fetch';
+import {
+  type DocumentTeardownObserver,
+  installDocumentTeardownObserver,
+} from '@/lib/install-document-teardown-observer';
 import { parseApiError } from '@/lib/parse-api-error';
 import { pageListReady } from '@/lib/perf/startup-marks';
 import { createRefreshScheduler } from '@/lib/refresh-scheduler';
@@ -112,7 +116,9 @@ async function loadDocumentListSummary(): Promise<{
     throw new Error(parseApiError(body) ?? `/api/documents responded with ${status}`);
   }
   const data = (body ?? {}) as { documents?: DocumentListEntry[] };
-  if (!Array.isArray(data.documents)) return { assetPaths: [], folderPaths: [], filePaths: [] };
+  if (!Array.isArray(data.documents)) {
+    throw new Error(parseApiError(body) ?? '/api/documents returned no usable documents field');
+  }
   const assetPaths = data.documents
     .filter((entry): entry is DocumentListEntry & { kind: 'asset'; path: string } => {
       return entry.kind === 'asset' && typeof entry.path === 'string' && entry.path.length > 0;
@@ -150,18 +156,26 @@ export function PageListProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const latestRequestIdRef = useRef(0);
+  const documentTeardownRef = useRef<DocumentTeardownObserver | null>(null);
 
-  function refetch() {
+  function runRefresh(issuedWhileLive: boolean) {
     const requestId = ++latestRequestIdRef.current;
+    const abandonedByTeardown = () =>
+      issuedWhileLive && documentTeardownRef.current?.isUnloading() === true;
     return Promise.all([
-      loadPages(),
-      loadDocumentListSummary().catch((err) => {
+      loadPages().catch((err: unknown) => {
+        if (abandonedByTeardown()) return null;
+        throw err;
+      }),
+      loadDocumentListSummary().catch((err: unknown) => {
+        if (abandonedByTeardown()) return null;
         logLoadAssetsError(err);
         return { assetPaths: [], folderPaths: [], filePaths: [] };
       }),
     ])
       .then(([pageSummaries, documentList]) => {
         if (requestId !== latestRequestIdRef.current) return;
+        if (pageSummaries === null) return;
         const pageNames = new Set(pageSummaries.map((page) => page.docName));
         setServerPages(pageNames);
         setServerPageTitles(
@@ -183,9 +197,11 @@ export function PageListProvider({ children }: { children: ReactNode }) {
             ),
           ),
         );
-        setServerAssetPaths(new Set(documentList.assetPaths));
-        setServerFolderPaths(new Set(documentList.folderPaths));
-        setServerFilePaths(new Set(documentList.filePaths));
+        if (documentList !== null) {
+          setServerAssetPaths(new Set(documentList.assetPaths));
+          setServerFolderPaths(new Set(documentList.folderPaths));
+          setServerFilePaths(new Set(documentList.filePaths));
+        }
         setOptimisticPages((prev) => pruneConfirmedOptimisticPages(prev, pageNames));
         setError(null);
         pageListReady();
@@ -201,6 +217,10 @@ export function PageListProvider({ children }: { children: ReactNode }) {
       });
   }
 
+  function refetch() {
+    return runRefresh(documentTeardownRef.current?.isUnloading() !== true);
+  }
+
   function addPage(docName: string) {
     setOptimisticPages((prev) => {
       if (prev.has(docName)) return prev;
@@ -213,12 +233,22 @@ export function PageListProvider({ children }: { children: ReactNode }) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: run only on mount
   useEffect(() => {
-    const scheduler = createRefreshScheduler(refetch);
-    scheduler.request();
+    documentTeardownRef.current = installDocumentTeardownObserver();
+    let requestedWhileLive = true;
+    const scheduler = createRefreshScheduler(() => {
+      const issuedWhileLive = requestedWhileLive;
+      requestedWhileLive = true;
+      return runRefresh(issuedWhileLive);
+    });
+    const requestRefresh = () => {
+      if (documentTeardownRef.current?.isUnloading() === true) requestedWhileLive = false;
+      scheduler.request();
+    };
+    requestRefresh();
     let pushFlushTimer: ReturnType<typeof setTimeout> | null = null;
     const handleResume = () => {
       if (document.visibilityState === 'visible') {
-        scheduler.request();
+        requestRefresh();
       }
     };
     window.addEventListener('focus', handleResume);
@@ -228,7 +258,7 @@ export function PageListProvider({ children }: { children: ReactNode }) {
       if (pushFlushTimer !== null) return;
       pushFlushTimer = setTimeout(() => {
         pushFlushTimer = null;
-        scheduler.request();
+        requestRefresh();
       }, PUSH_REFRESH_COALESCE_MS);
     });
     return () => {
@@ -237,6 +267,8 @@ export function PageListProvider({ children }: { children: ReactNode }) {
       window.removeEventListener('focus', handleResume);
       window.removeEventListener('visibilitychange', handleResume);
       unsubscribe();
+      documentTeardownRef.current?.uninstall();
+      documentTeardownRef.current = null;
     };
   }, []);
 
