@@ -948,6 +948,10 @@ msgstr "{loadErrorTitle}: {message}"
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "{localizedMessage}, 줄 {displayLine}"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "{server} MCP 서버의 {mcpTool}"
+
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {#분 전}}"
@@ -2598,6 +2602,10 @@ msgstr "이야기 속 세계를 만들고 관리합니다. 캐릭터, 장소, �
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "<0>openknowledge.skill</0> 빌드 중, Claude Desktop App 여는 중"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "문서나 폴더의 공유 링크를 만듭니다"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "글머리 기호 목록"
@@ -2874,6 +2882,14 @@ msgstr "확인 중…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "체크박스가 있는 체크리스트입니다."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "문서의 마크다운 문제를 검사하고 고칠 수 있습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "프로젝트 전체의 마크다운 문제와 끊어진 링크를 검사합니다"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -4672,6 +4688,10 @@ msgstr "폴더 생성됨"
 msgid "created template"
 msgstr "템플릿 생성됨"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "문서, 폴더, 템플릿, 스킬 또는 에셋을 만들거나 교체합니다"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "<0>{folderPart}/</0> 폴더를 만듭니다"
@@ -4906,6 +4926,14 @@ msgstr "완전히 삭제됨"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "템플릿 삭제됨"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "문서, 폴더, 템플릿, 스킬 또는 에셋을 삭제합니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "파일을 삭제합니다"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5489,6 +5517,14 @@ msgstr "편집기 선택 영역"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "편집기 상태 표시줄"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "문서, 폴더, 템플릿 또는 스킬을 그 자리에서 편집합니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "파일을 편집합니다"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6311,6 +6347,10 @@ msgstr "가져오기"
 msgid "Fetch failed — check the server logs for details."
 msgstr "가져오기 실패. 자세한 내용은 서버 로그를 확인하세요."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "웹 페이지를 가져옵니다"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
 msgstr "가져오는 중"
@@ -6436,6 +6476,14 @@ msgstr "다음 일치 항목 찾기"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "이전 일치 항목 찾기"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "이 프로젝트의 문서와 파일을 제목, 내용 또는 경로로 찾습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "스킬을 찾고 설치된 스킬을 읽습니다"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6693,6 +6741,10 @@ msgstr "받은 편지함에서 제품 업데이트를 받아 보세요."
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "설정 시작"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "이 프로젝트나 문서를 앱에서 여는 링크를 가져옵니다"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7299,6 +7351,10 @@ msgstr "\"{0}\"으로 가져왔습니다. 이름 \"{1}\"은 이미 사용 중입
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "가져오는 중"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "스킬을 이 프로젝트로 가져옵니다"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8307,6 +8363,10 @@ msgstr "이 지식 베이스를 Claude Skill로 사용할 수 있게 합니다."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "이 위치를 소스로 지정. 스킬의 실제 폴더가 여기로 이동합니다"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "스킬을 더 많은 위치에서 쓸 수 있게 하거나 한 위치에서 제거합니다"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "잘못된 apply 응답"
@@ -8738,6 +8798,14 @@ msgstr "템플릿 이동됨"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "위로 이동했습니다."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "문서, 폴더, 에셋, 템플릿 또는 스킬을 이동하거나 이름을 바꿉니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "파일을 이동하거나 이름을 바꿉니다"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11192,6 +11260,34 @@ msgstr "작업 트리를 읽는 중"
 msgid "Reading…"
 msgstr "읽는 중…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "파일을 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "읽기 전용 셸 명령으로 이 프로젝트의 문서와 폴더를 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "새 문서가 프로젝트 스타일을 따르도록 작성 팔레트를 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "링크 그래프를 읽습니다: 무엇이 무엇에 연결되는지"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "문서나 스킬의 버전 기록, 또는 폴더의 활동을 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "이 프로젝트의 OpenKnowledge 설정을 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "편집 간의 미해결 충돌을 읽습니다"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "빠르게 시작할 수 있는 미리 준비된 폴더와 템플릿입니다."
@@ -11207,6 +11303,10 @@ msgstr "이유: {reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "이유: {reason} ({osDetail})"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "행동하기 전에 생각합니다"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11828,6 +11928,10 @@ msgstr "삭제하기 전에 {files}의 충돌을 해결하고, +{overflow}개 �
 msgid "Resolved"
 msgstr "해결됨"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "유지할 내용을 골라 충돌을 해결합니다"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "기본 위치 확인 중"
@@ -11930,6 +12034,10 @@ msgstr "이전 버전 ({0})으로 복원했습니다"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "{0} 버전으로 복원했습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "문서나 스킬을 이전 버전으로 복원합니다"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12082,6 +12190,10 @@ msgstr "실행 중"
 msgid "Running project audit"
 msgstr "프로젝트 감사 실행 중"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "셸 명령을 실행합니다"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "현재 파일과 같은 폴더"
@@ -12152,6 +12264,10 @@ msgstr "저장 위치"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "팀을 위해 프로젝트와 함께 저장됨."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "프로젝트의 모든 문서에 대한 복원 지점을 저장합니다"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
@@ -12332,6 +12448,10 @@ msgstr "워크트리 검색"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "워크트리 및 브랜치 검색"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "파일을 검색합니다"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12860,6 +12980,10 @@ msgstr "고급 설정 보기"
 msgid "Show Agents"
 msgstr "에이전트 표시"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "모두 보기"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "모두 표시"
@@ -12909,6 +13033,7 @@ msgstr "HTML 미리보기 표시"
 msgid "Show in Explorer"
 msgstr "탐색기에서 보기"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13632,6 +13757,10 @@ msgstr "워크트리 전환"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "워크트리 전환…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "에이전트 모드를 전환합니다"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"

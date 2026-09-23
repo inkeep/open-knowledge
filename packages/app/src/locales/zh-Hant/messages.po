@@ -948,6 +948,10 @@ msgstr "{loadErrorTitle}：{message}"
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "第 {displayLine} 行：{localizedMessage}"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "來自 {server} MCP 伺服器的 {mcpTool}"
+
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分鐘前}}"
@@ -2598,6 +2602,10 @@ msgstr "建立並掌握你故事背後的世界。一個安放角色、地點、
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "正在建置 <0>openknowledge.skill</0> 並開啟 Claude Desktop App"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "為文件或資料夾建立可分享的連結"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "項目符號清單"
@@ -2874,6 +2882,14 @@ msgstr "正在檢查…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "帶核取方塊的清單。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "檢查文件中的 Markdown 問題，並可修正"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "檢查整個專案的 Markdown 問題與失效連結"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -4672,6 +4688,10 @@ msgstr "已建立資料夾"
 msgid "created template"
 msgstr "已建立範本"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "建立或取代文件、資料夾、範本、技能或資源"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "建立 <0>{folderPart}/</0> 資料夾"
@@ -4906,6 +4926,14 @@ msgstr "徹底刪除"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "已刪除範本"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "刪除文件、資料夾、範本、技能或資源"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "刪除檔案"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5489,6 +5517,14 @@ msgstr "編輯器選取範圍"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "編輯器狀態列"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "就地編輯文件、資料夾、範本或技能"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "編輯檔案"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6311,6 +6347,10 @@ msgstr "取得"
 msgid "Fetch failed — check the server logs for details."
 msgstr "取得失敗——詳情請看伺服器記錄。"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "擷取網頁"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
 msgstr "正在取得"
@@ -6436,6 +6476,14 @@ msgstr "尋找下一個相符項"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "尋找上一個相符項"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "依標題、內容或路徑尋找此專案中的文件與檔案"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "尋找技能並讀取已安裝的技能"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6693,6 +6741,10 @@ msgstr "把產品動態寄到你的信箱。"
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "開始設定"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "取得在應用程式中開啟此專案或文件的連結"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7299,6 +7351,10 @@ msgstr "已用「{0}」這個名稱匯入——名稱「{1}」已被占用。"
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "正在匯入"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "將技能匯入此專案"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8307,6 +8363,10 @@ msgstr "把這個知識庫當成 Claude 技能提供出去。"
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "把這裡設為來源——技能真正的資料夾會搬到這裡"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "讓技能在更多位置可用，或從某個位置移除"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "套用回應格式錯誤"
@@ -8738,6 +8798,14 @@ msgstr "已移動範本"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "已向上移動。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "移動或重新命名文件、資料夾、資源、範本或技能"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "移動或重新命名檔案"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11192,6 +11260,34 @@ msgstr "正在讀取工作區"
 msgid "Reading…"
 msgstr "閱讀中…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "讀取檔案"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "以唯讀 shell 指令讀取此專案中的文件與資料夾"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "讀取寫作調色盤，讓新文件符合專案風格"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "讀取連結圖：什麼連到什麼"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "讀取文件或技能的版本記錄，或資料夾的活動"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "讀取此專案的 OpenKnowledge 設定"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "讀取編輯之間尚未解決的衝突"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "現成的資料夾和範本，幫你快速上手。"
@@ -11207,6 +11303,10 @@ msgstr "原因：{reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "原因：{reason}（{osDetail}）"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "先思考再行動"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11828,6 +11928,10 @@ msgstr "刪除前請先解決 {files} 以及另外 {overflow} 個檔案上的衝
 msgid "Resolved"
 msgstr "已解決"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "透過選擇要保留的內容來解決衝突"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "正在決定預設位置"
@@ -11930,6 +12034,10 @@ msgstr "已還原到較早的版本（{0}）"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "已還原到 {0} 的版本"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "將文件或技能還原到較早的版本"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12082,6 +12190,10 @@ msgstr "執行中"
 msgid "Running project audit"
 msgstr "正在執行專案稽核"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "執行 shell 指令"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "和目前檔案相同的資料夾"
@@ -12152,6 +12264,10 @@ msgstr "儲存到"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "和專案一起保存，供你的團隊使用。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "為專案中的每份文件儲存還原點"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
@@ -12332,6 +12448,10 @@ msgstr "搜尋 worktree"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "搜尋 worktree 和分支"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "搜尋檔案"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12860,6 +12980,10 @@ msgstr "顯示進階選項"
 msgid "Show Agents"
 msgstr "顯示「代理」"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "全部顯示"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "顯示全部"
@@ -12909,6 +13033,7 @@ msgstr "顯示 HTML 預覽"
 msgid "Show in Explorer"
 msgstr "在檔案總管中顯示"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13632,6 +13757,10 @@ msgstr "切換 worktree"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "切換 worktree…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "切換智慧代理模式"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"

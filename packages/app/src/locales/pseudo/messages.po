@@ -948,6 +948,10 @@ msgstr ""
 msgid "{localizedMessage} at line {displayLine}"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr ""
+
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr ""
@@ -2594,6 +2598,10 @@ msgstr ""
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr ""
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr ""
@@ -2869,6 +2877,14 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
 msgstr ""
 
 #: src/components/CreatedItemsList.tsx
@@ -4668,6 +4684,10 @@ msgstr ""
 msgid "created template"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr ""
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr ""
@@ -4901,6 +4921,14 @@ msgstr ""
 
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
 msgstr ""
 
 #: src/components/DeleteConfirmationDialog.tsx
@@ -5484,6 +5512,14 @@ msgstr ""
 
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
 msgstr ""
 
 #: src/components/settings/CustomThemeEditor.tsx
@@ -6307,6 +6343,10 @@ msgstr ""
 msgid "Fetch failed — check the server logs for details."
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr ""
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
 msgstr ""
@@ -6431,6 +6471,14 @@ msgstr ""
 
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
 msgstr ""
 
 #. Primary button that applies the first-launch setup choices
@@ -6688,6 +6736,10 @@ msgstr ""
 
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
 msgstr ""
 
 #: src/components/ExploreSkills.tsx
@@ -7294,6 +7346,10 @@ msgstr ""
 
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
 msgstr ""
 
 #: src/components/settings/LintingSection.tsx
@@ -8303,6 +8359,10 @@ msgstr ""
 msgid "Make this the source — the skill's real folder moves here"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr ""
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr ""
@@ -8733,6 +8793,14 @@ msgstr ""
 
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
 msgstr ""
 
 #: src/components/file-tree-trash-copy.ts
@@ -11188,6 +11256,34 @@ msgstr ""
 msgid "Reading…"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr ""
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr ""
@@ -11202,6 +11298,10 @@ msgstr ""
 
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
 msgstr ""
 
 #: src/components/CloneDialog.tsx
@@ -11824,6 +11924,10 @@ msgstr ""
 msgid "Resolved"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr ""
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr ""
@@ -11925,6 +12029,10 @@ msgstr ""
 #. placeholder {0}: formatAbsoluteTime(target.timestamp)
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -12078,6 +12186,10 @@ msgstr ""
 msgid "Running project audit"
 msgstr ""
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr ""
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr ""
@@ -12147,6 +12259,10 @@ msgstr ""
 #: src/components/settings/SharingSection.tsx
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
 msgstr ""
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
@@ -12327,6 +12443,10 @@ msgstr ""
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
@@ -12856,6 +12976,10 @@ msgstr ""
 msgid "Show Agents"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr ""
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr ""
@@ -12905,6 +13029,7 @@ msgstr ""
 msgid "Show in Explorer"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13627,6 +13752,10 @@ msgstr ""
 
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
+msgstr ""
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
 msgstr ""
 
 #: src/components/ShareBranchSwitchDialog.tsx

@@ -948,6 +948,10 @@ msgstr "{loadErrorTitle} : {message}"
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "{localizedMessage} à la ligne {displayLine}"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "{mcpTool} du serveur MCP {server}"
+
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {il y a # min} many {il y a # min} other {il y a # min}}"
@@ -2598,6 +2602,10 @@ msgstr "Construisez et gardez la trace du monde qui se cache derrière votre his
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "Construction de <0>openknowledge.skill</0> et ouverture de l'application Claude Desktop"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "Crée un lien partageable vers un document ou un dossier"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "Liste à puces"
@@ -2874,6 +2882,14 @@ msgstr "Vérification…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Liste avec cases à cocher."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "Vérifie les documents à la recherche de problèmes markdown et peut les corriger"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "Vérifie tout le projet à la recherche de problèmes markdown et de liens cassés"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -4672,6 +4688,10 @@ msgstr "dossier créé"
 msgid "created template"
 msgstr "modèle créé"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "Crée ou remplace un document, un dossier, un modèle, une compétence ou une ressource"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "Crée le dossier <0>{folderPart}/</0>"
@@ -4906,6 +4926,14 @@ msgstr "Supprimées définitivement"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "modèle supprimé"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "Supprime un document, un dossier, un modèle, une compétence ou une ressource"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "Supprime un fichier"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5489,6 +5517,14 @@ msgstr "Sélection de l'éditeur"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "Barre d'état de l'éditeur"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "Modifie sur place un document, un dossier, un modèle ou une compétence"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "Modifie un fichier"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6311,6 +6347,10 @@ msgstr "Récupérer"
 msgid "Fetch failed — check the server logs for details."
 msgstr "Échec de la récupération — consultez les journaux du serveur pour les détails."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "Récupère une page web"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
 msgstr "Récupération"
@@ -6436,6 +6476,14 @@ msgstr "Occurrence suivante"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "Occurrence précédente"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "Trouve des documents et des fichiers de ce projet par titre, contenu ou chemin"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "Trouve des compétences et lit celles qui sont installées"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6693,6 +6741,10 @@ msgstr "Recevez les nouveautés du produit dans votre boîte mail."
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "Configurer"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "Obtient le lien qui ouvre ce projet ou un document dans l'app"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7299,6 +7351,10 @@ msgstr "Importé sous « {0} » — le nom « {1} » était déjà pris."
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "Importation"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "Importe une compétence dans ce projet"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8307,6 +8363,10 @@ msgstr "Rendre cette base de connaissances disponible en tant que compétence Cl
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "En faire la source — le vrai dossier de la compétence est déplacé ici"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "Rend une compétence disponible à d'autres endroits, ou la retire de l'un d'eux"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "Réponse d'application mal formée"
@@ -8738,6 +8798,14 @@ msgstr "modèle déplacé"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "Déplacé vers le haut."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "Déplace ou renomme un document, un dossier, une ressource, un modèle ou une compétence"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "Déplace ou renomme un fichier"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11192,6 +11260,34 @@ msgstr "Lecture de l'arbre de travail"
 msgid "Reading…"
 msgstr "Lecture…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "Lit un fichier"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "Lit les documents et dossiers de ce projet avec des commandes shell en lecture seule"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "Lit la palette de rédaction pour que les nouveaux documents suivent le style du projet"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "Lit le graphe des liens : qui pointe vers quoi"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "Lit l'historique des versions d'un document ou d'une compétence, ou l'activité d'un dossier"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "Lit les paramètres OpenKnowledge de ce projet"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "Lit les conflits non résolus entre modifications"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "Des dossiers et des modèles prêts à l'emploi pour démarrer rapidement."
@@ -11207,6 +11303,10 @@ msgstr "Raison : {reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "Raison : {reason} ({osDetail})"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "Réfléchit avant d'agir"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11828,6 +11928,10 @@ msgstr "Résolvez le conflit sur {files} et {overflow} autres fichiers avant de 
 msgid "Resolved"
 msgstr "Résolu"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "Résout un conflit en choisissant le contenu à conserver"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "Détermination de l'emplacement par défaut"
@@ -11930,6 +12034,10 @@ msgstr "Version antérieure restaurée ({0})"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "Restauré à la version du {0}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "Restaure un document ou une compétence à une version antérieure"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12082,6 +12190,10 @@ msgstr "en cours"
 msgid "Running project audit"
 msgstr "Audit du projet en cours"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "Exécute une commande shell"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "Même dossier que le fichier actuel"
@@ -12152,6 +12264,10 @@ msgstr "Enregistré dans"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "Enregistré avec le projet pour votre équipe."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "Enregistre un point de restauration pour chaque document du projet"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
@@ -12332,6 +12448,10 @@ msgstr "Rechercher des worktrees"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "Rechercher des worktrees et des branches"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "Recherche dans les fichiers"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12860,6 +12980,10 @@ msgstr "Afficher les options avancées"
 msgid "Show Agents"
 msgstr "Afficher les agents"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "Tout afficher"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "Tout afficher"
@@ -12909,6 +13033,7 @@ msgstr "Afficher l'aperçu HTML"
 msgid "Show in Explorer"
 msgstr "Afficher dans l'Explorateur"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13632,6 +13757,10 @@ msgstr "Changer de worktree"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "Changer de worktree…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "Change le mode de l'agent"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"

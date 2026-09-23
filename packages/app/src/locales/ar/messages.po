@@ -948,6 +948,10 @@ msgstr "{loadErrorTitle}: {message}"
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "{localizedMessage} في السطر {displayLine}"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "{mcpTool} من خادم MCP {server}"
+
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, zero {قبل # دقيقة} one {قبل # دقيقة} two {قبل # دقيقة} few {قبل # دقائق} many {قبل # دقيقة} other {قبل # دقيقة}}"
@@ -2598,6 +2602,10 @@ msgstr "ابنِ العالم الذي تدور فيه قصتك وتتبّعه. 
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "يجري بناء <0>openknowledge.skill</0> وفتح تطبيق Claude Desktop"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "ينشئ رابطًا قابلًا للمشاركة لمستند أو مجلد"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "قائمة نقطية"
@@ -2874,6 +2882,14 @@ msgstr "يجري التحقق..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "قائمة تحقق بمربعات اختيار."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "يفحص المستندات بحثًا عن مشكلات Markdown ويمكنه إصلاحها"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "يفحص المشروع بأكمله بحثًا عن مشكلات Markdown والروابط المعطلة"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -4672,6 +4688,10 @@ msgstr "أنشأ مجلدًا"
 msgid "created template"
 msgstr "أنشأ قالبًا"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "ينشئ أو يستبدل مستندًا أو مجلدًا أو قالبًا أو مهارة أو أصلًا"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "ينشئ المجلد <0>{folderPart}/</0>"
@@ -4906,6 +4926,14 @@ msgstr "تُحذف نهائيًا"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "حذف قالبًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "يحذف مستندًا أو مجلدًا أو قالبًا أو مهارة أو أصلًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "يحذف ملفًا"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5489,6 +5517,14 @@ msgstr "تحديد المحرر"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "شريط حالة المحرر"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "يحرّر مستندًا أو مجلدًا أو قالبًا أو مهارة في مكانه"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "يحرّر ملفًا"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6311,6 +6347,10 @@ msgstr "جلب"
 msgid "Fetch failed — check the server logs for details."
 msgstr "فشل الجلب — راجع سجلات الخادم للتفاصيل."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "يجلب صفحة ويب"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
 msgstr "يجري الجلب"
@@ -6436,6 +6476,14 @@ msgstr "البحث عن التطابق التالي"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "البحث عن التطابق السابق"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "يبحث عن المستندات والملفات في هذا المشروع حسب العنوان أو المحتوى أو المسار"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "يبحث عن المهارات ويقرأ ما هو مثبّت"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6693,6 +6741,10 @@ msgstr "احصل على تحديثات المنتج في بريدك."
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "ابدأ الإعداد"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "يحصل على الرابط الذي يفتح هذا المشروع أو مستندًا في التطبيق"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7299,6 +7351,10 @@ msgstr "استُورد باسم «{0}» — الاسم «{1}» كان مأخوذ
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "يجري الاستيراد"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "يستورد مهارة إلى هذا المشروع"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8307,6 +8363,10 @@ msgstr "أتِح قاعدة المعرفة هذه كمهارة Claude."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "اجعل هذا هو المصدر — ينتقل مجلد المهارة الحقيقي إلى هنا"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "يتيح مهارة في أماكن أكثر، أو يزيلها من أحدها"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "استجابة التطبيق مشوّهة"
@@ -8738,6 +8798,14 @@ msgstr "نقل قالبًا"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "تم النقل إلى أعلى."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "ينقل مستندًا أو مجلدًا أو أصلًا أو قالبًا أو مهارة أو يعيد تسميته"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "ينقل ملفًا أو يعيد تسميته"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11192,6 +11260,34 @@ msgstr "جارٍ قراءة شجرة العمل"
 msgid "Reading…"
 msgstr "يجري القراءة…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "يقرأ ملفًا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "يقرأ المستندات والمجلدات في هذا المشروع بأوامر shell للقراءة فقط"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "يقرأ لوحة التأليف لتتوافق المستندات الجديدة مع أسلوب المشروع"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "يقرأ مخطط الروابط: ما الذي يرتبط بماذا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "يقرأ سجل إصدارات مستند أو مهارة، أو نشاط مجلد"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "يقرأ إعدادات OpenKnowledge لهذا المشروع"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "يقرأ التعارضات غير المحلولة بين التعديلات"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "مجلدات وقوالب جاهزة لتبدأ بسرعة."
@@ -11207,6 +11303,10 @@ msgstr "السبب: {reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "السبب: {reason} ({osDetail})"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "يفكّر قبل أن يتصرف"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11828,6 +11928,10 @@ msgstr "احسم التعارض في {files} و{overflow} ملفات أخرى ق
 msgid "Resolved"
 msgstr "محلول"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "يحل تعارضًا باختيار المحتوى الذي يُحتفظ به"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "يجري تحديد الموقع الافتراضي"
@@ -11930,6 +12034,10 @@ msgstr "تمت استعادة نسخة سابقة ({0})"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "تمت الاستعادة إلى نسخة {0}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "يستعيد مستندًا أو مهارة إلى إصدار سابق"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12082,6 +12190,10 @@ msgstr "قيد التشغيل"
 msgid "Running project audit"
 msgstr "تجري مراجعة المشروع"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "يشغّل أمر shell"
+
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
 msgstr "المجلد نفسه للملف الحالي"
@@ -12152,6 +12264,10 @@ msgstr "حُفظ في"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "يُحفظ مع المشروع لفريقك."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "يحفظ نقطة استعادة لكل مستند في المشروع"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
@@ -12332,6 +12448,10 @@ msgstr "البحث في أشجار العمل"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "البحث في أشجار العمل والفروع"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "يبحث في الملفات"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12860,6 +12980,10 @@ msgstr "إظهار المتقدم"
 msgid "Show Agents"
 msgstr "إظهار الوكلاء"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "إظهار الكل"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "إظهار الكل"
@@ -12909,6 +13033,7 @@ msgstr "إظهار معاينة HTML"
 msgid "Show in Explorer"
 msgstr "الإظهار في المستعرض"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13632,6 +13757,10 @@ msgstr "تبديل شجرة العمل"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "تبديل شجرة العمل…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "يبدّل وضع الوكيل"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"

@@ -1,6 +1,6 @@
 import { OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { describeToolCall } from './tool-call-display';
+import { describeToolCall, describeToolPurpose } from './tool-call-display';
 
 describe('describeToolCall — Open Knowledge MCP tools', () => {
   test('Claude names the tool in the title and puts the arguments in rawInput', () => {
@@ -231,6 +231,54 @@ describe('describeToolCall — Open Knowledge MCP tools', () => {
     expect(
       describeToolCall({ title: 'ok_restore_version', toolKind: 'other', rawInput: {} }),
     ).toEqual({ glyph: 'restore', text: 'OpenKnowledge restored an earlier version' });
+  });
+});
+
+describe('describeToolPurpose', () => {
+  test('every registered OK tool explains itself, each in its own words', () => {
+    const seen = new Set<string>();
+    for (const tool of OPEN_KNOWLEDGE_MCP_TOOLS) {
+      const purpose = describeToolPurpose({
+        title: `mcp__open-knowledge__${tool}`,
+        toolKind: 'other',
+        rawInput: {},
+      });
+      expect(purpose, tool).not.toBeNull();
+      expect(seen.has(purpose ?? ''), tool).toBe(false);
+      seen.add(purpose ?? '');
+    }
+  });
+
+  test('move and history name every target their tools take', () => {
+    expect(
+      describeToolPurpose({ title: 'mcp__open-knowledge__move', toolKind: 'other', rawInput: {} }),
+    ).toBe('Moves or renames a document, folder, asset, template, or skill');
+    expect(
+      describeToolPurpose({
+        title: 'mcp__open-knowledge__history',
+        toolKind: 'other',
+        rawInput: {},
+      }),
+    ).toBe("Reads the version history of a document or skill, or a folder's activity");
+  });
+
+  test("another server's tool is placed by server, not explained", () => {
+    expect(
+      describeToolPurpose({ title: 'mcp__linear__get_issue', toolKind: 'other', rawInput: {} }),
+    ).toBe('get_issue from the linear MCP server');
+  });
+
+  test('a built-in tool is explained by its kind', () => {
+    expect(describeToolPurpose({ title: 'Read', toolKind: 'read', rawInput: {} })).toBe(
+      'Reads a file',
+    );
+    expect(describeToolPurpose({ title: 'Bash', toolKind: 'execute', rawInput: {} })).toBe(
+      'Runs a shell command',
+    );
+  });
+
+  test('a tool of unknown kind has nothing to add', () => {
+    expect(describeToolPurpose({ title: 'Run tests', toolKind: 'other', rawInput: {} })).toBeNull();
   });
 });
 

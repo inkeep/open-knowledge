@@ -4,7 +4,9 @@ import { ErrorBoundary } from 'react-error-boundary';
 import { type Components, defaultRemarkPlugins, Streamdown } from 'streamdown';
 import { codeHighlighter } from '@/lib/acp/code-highlighter';
 import { remarkHardBreaks } from '@/lib/acp/remark-hard-breaks';
+import { remarkUntrustedContent } from '@/lib/acp/remark-untrusted-content';
 import { docNameFromHash } from '@/lib/doc-hash';
+import { cn } from '@/lib/utils';
 import { remarkDocPathLinks } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
 
@@ -37,7 +39,15 @@ function AgentAnchor(props: { href?: string; children?: ReactNode }): ReactNode 
   );
 }
 
-export function AgentMarkdown({ text }: { text: string }): ReactNode {
+export function AgentMarkdown({
+  text,
+  className,
+  untrusted = false,
+}: {
+  text: string;
+  className?: string;
+  untrusted?: boolean;
+}): ReactNode {
   const resolverReady = use(DocPathResolverReadyContext);
   return (
     <ErrorBoundary
@@ -49,10 +59,14 @@ export function AgentMarkdown({ text }: { text: string }): ReactNode {
     >
       <Streamdown
         key={resolverReady ? 'with-resolver' : 'no-resolver'}
-        className="[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_li+li]:mt-2 [&_li>p]:block! [&_li>*+*]:mt-2 [&_li_[data-streamdown=code-block]]:my-2! [&_code]:text-1sm [&_pre]:text-1sm [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:max-h-80 [&_[data-streamdown=code-block-body]]:overflow-auto"
+        className={cn(
+          '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_li+li]:mt-2 [&_li>p]:block! [&_li>*+*]:mt-2 [&_li_[data-streamdown=code-block]]:my-2! [&_code]:text-1sm [&_pre]:text-1sm [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:max-h-80 [&_[data-streamdown=code-block-body]]:overflow-auto',
+          className,
+        )}
         remarkPlugins={[
           ...Object.values(defaultRemarkPlugins),
           remarkHardBreaks,
+          ...(untrusted ? [remarkUntrustedContent()] : []),
           remarkDocPathLinks(),
         ]}
         components={{ a: AgentAnchor } as Components}

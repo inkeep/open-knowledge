@@ -2977,6 +2977,11 @@ button:active:not(:disabled) {
   );
 }
 
+.scroll-fade-mask-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.5rem), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 1.5rem), transparent 100%);
+}
+
 .scroll-fade-mask-x {
   -webkit-mask-image: linear-gradient(
     to right,
@@ -3106,6 +3111,25 @@ button:active:not(:disabled) {
     animation-range:
       0 1rem,
       calc(100% - 1rem) 100%;
+  }
+
+  .scroll-fade-mask-bottom {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      black calc(100% - 1.5rem),
+      rgba(0, 0, 0, var(--scroll-fade-bottom)) 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      black calc(100% - 1.5rem),
+      rgba(0, 0, 0, var(--scroll-fade-bottom)) 100%
+    );
+    animation-name: scroll-fade-bottom-out;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self);
+    animation-range: calc(100% - 1.5rem) 100%;
   }
 
   .scroll-fade-mask-x {

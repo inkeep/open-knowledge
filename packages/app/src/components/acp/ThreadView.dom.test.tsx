@@ -1485,16 +1485,164 @@ describe('ThreadView tool-call status', () => {
     expect(screen.getByTestId('agent-thread-tool-check')).toBeDefined();
   });
 
-  test('a fenced output block renders without its backticks', async () => {
+  test('a fenced output block is unwrapped and handed on as a json code block', async () => {
     model = makeModel({
       items: [toolCall({ status: 'completed', content: ['```json\n{"ok":true}\n```'] })],
       turnActive: false,
     });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     await openToolCall();
-    const body = screen.getByTestId('agent-thread-tool-call').textContent ?? '';
-    expect(body).toContain('{"ok":true}');
-    expect(body).not.toContain('```');
+    const block = screen.getByTestId('agent-thread-tool-json');
+    expect(block.textContent).toBe('```json\n{\n  "ok": true\n}\n```');
+  });
+
+  test('shell output stays verbatim even when it is shaped like markdown', async () => {
+    model = makeModel({
+      items: [toolCall({ status: 'completed', content: ['# not a heading\n- a\n- b\n- c'] })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await openToolCall();
+    expect(screen.queryByTestId('agent-thread-tool-markdown')).toBeNull();
+    const pre = screen.getByTestId('agent-thread-tool-call').querySelector('pre');
+    expect(pre?.textContent).toBe('# not a heading\n- a\n- b\n- c');
+  });
+
+  test('markdown-shaped output from a non-shell tool renders as markdown', async () => {
+    model = makeModel({
+      items: [
+        toolCall({
+          title: 'Fetch notes',
+          toolKind: 'other',
+          status: 'completed',
+          content: ['## Results\n- one\n- two\n- three'],
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await userEvent.click(screen.getByRole('button', { name: /Fetch notes/ }));
+    const block = screen.getByTestId('agent-thread-tool-markdown');
+    expect(within(block).getByTestId('rendered-markdown').textContent).toBe(
+      '## Results\n- one\n- two\n- three',
+    );
+    expect(screen.getByTestId('agent-thread-tool-call').querySelector('pre')).toBeNull();
+  });
+
+  test('JSON output is reindented and shown as a code block', async () => {
+    model = makeModel({
+      items: [
+        toolCall({
+          title: 'Lookup',
+          toolKind: 'other',
+          status: 'completed',
+          content: ['{"ok":true,"n":1}'],
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await userEvent.click(screen.getByRole('button', { name: /Lookup/ }));
+    expect(screen.getByTestId('agent-thread-tool-json').textContent).toBe(
+      '```json\n{\n  "ok": true,\n  "n": 1\n}\n```',
+    );
+  });
+
+  test('a tall body is capped with a fade until Show all lifts the cap', async () => {
+    const proto = HTMLElement.prototype;
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 1000 });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 320 });
+    Object.defineProperty(proto, 'scrollTo', { configurable: true, value: () => {} });
+    try {
+      model = makeModel({
+        items: [toolCall({ status: 'completed', content: ['line'] })],
+        turnActive: false,
+      });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+      await openToolCall();
+      const body = screen.getByTestId('agent-thread-tool-body');
+      expect(body.getAttribute('data-capped')).toBe('true');
+      expect(body.className).toContain('scroll-fade-mask-bottom');
+
+      const toggle = screen.getByTestId('agent-thread-tool-show-all');
+      expect(toggle.textContent).toBe('Show all');
+      await userEvent.click(toggle);
+      expect(body.getAttribute('data-capped')).toBeNull();
+      expect(body.className).not.toContain('max-h-80');
+      expect(toggle.textContent).toBe('Show less');
+    } finally {
+      delete (proto as { scrollHeight?: unknown }).scrollHeight;
+      delete (proto as { clientHeight?: unknown }).clientHeight;
+      delete (proto as { scrollTo?: unknown }).scrollTo;
+    }
+  });
+
+  test('a short body has no cap and no Show all', async () => {
+    model = makeModel({
+      items: [toolCall({ status: 'completed', content: ['line'] })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await openToolCall();
+    expect(screen.getByTestId('agent-thread-tool-body').getAttribute('data-capped')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-tool-show-all')).toBeNull();
+  });
+
+  test('hovering a row says what the tool does and shows its raw id', async () => {
+    const user = userEvent.setup();
+    model = makeModel({
+      items: [
+        toolCall({
+          title: 'mcp__open-knowledge__exec',
+          toolKind: 'other',
+          rawInput: { command: 'ls' },
+          content: ['out'],
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await user.hover(screen.getByRole('button', { name: /OpenKnowledge ran ls/ }));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('read-only shell commands');
+    expect(tooltip.textContent).toContain('mcp__open-knowledge__exec');
+  });
+
+  test('a tool with nothing to add gets no tooltip wrapper at all', async () => {
+    const user = userEvent.setup();
+    model = makeModel({
+      items: [toolCall({ title: 'Run tests', toolKind: 'other', content: ['out'] })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const button = screen.getByRole('button', { name: /Run tests/ });
+    expect(button.getAttribute('data-state')).toBeNull();
+    await user.hover(button);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  test('a row with no body keeps its explanation as a title, readable without hover', () => {
+    model = makeModel({
+      items: [toolCall({ title: 'mcp__open-knowledge__exec', toolKind: 'other', rawInput: {} })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const row = screen.getByTestId('agent-thread-tool-call');
+    expect(row.querySelector('button')).toBeNull();
+    const title = row.querySelector('[title]')?.getAttribute('title') ?? '';
+    expect(title).toContain('read-only shell commands');
+    expect(title).toContain('mcp__open-knowledge__exec');
+  });
+
+  test('a built-in tool is explained by its kind', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ items: [toolCall({ content: ['out'] })], turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await user.hover(screen.getByRole('button', { name: /Run tests/ }));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Runs a shell command');
+    expect(tooltip.textContent).toContain('Run tests');
   });
 
   test('a fence opening partway through is output, not a wrapper', async () => {
@@ -1563,7 +1711,8 @@ describe('ThreadView tool-call status', () => {
     expect(row).not.toContain('mcp__open-knowledge__write');
   });
 
-  test('the raw id the label replaced stays reachable on hover', () => {
+  test('the raw id the label replaced stays reachable on hover', async () => {
+    const user = userEvent.setup();
     model = makeModel({
       items: [
         toolCall({
@@ -1571,6 +1720,7 @@ describe('ThreadView tool-call status', () => {
           title: 'mcp__linear-server__list_issues',
           toolKind: 'other',
           rawInput: {},
+          content: ['out'],
         }),
       ],
       turnActive: false,
@@ -1578,9 +1728,12 @@ describe('ThreadView tool-call status', () => {
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     const row = screen.getByTestId('agent-thread-tool-call');
     expect(row.textContent).toContain('linear-server · list_issues');
-    expect(within(row).getByTitle('mcp__linear-server__list_issues').textContent).toBe(
-      'linear-server · list_issues',
-    );
+    expect(row.textContent).not.toContain('mcp__linear-server__list_issues');
+
+    await user.hover(screen.getByRole('button', { name: /list_issues/ }));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('list_issues from the linear-server MCP server');
+    expect(tooltip.textContent).toContain('mcp__linear-server__list_issues');
   });
 });
 
@@ -1838,7 +1991,9 @@ describe('ThreadView raw input', () => {
 
     await userEvent.click(trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(block.textContent).toContain('notes/today');
+    expect(within(block).getByTestId('rendered-markdown').textContent).toBe(
+      '```json\n{\n  "docName": "notes/today",\n  "position": "append"\n}\n```',
+    );
   });
 
   test('an empty rawInput object renders no input block', () => {

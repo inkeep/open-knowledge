@@ -15,6 +15,27 @@ describe('AgentMarkdown', () => {
     expect(container.textContent).not.toContain('**');
   });
 
+  test('untrusted text renders no raw HTML element and loads no image', () => {
+    const { container } = render(
+      <AgentMarkdown text={'<b>bold</b> then ![a chart](https://example.com/x.png)'} untrusted />,
+    );
+    expect(container.querySelector('b')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).toContain('bold');
+    expect(container.textContent).toContain('a chart');
+  });
+
+  test('a json fence from a tool result highlights as a code block and takes a className', async () => {
+    const { container } = render(
+      <AgentMarkdown text={'```json\n{\n  "ok": true\n}\n```'} className="tool-body" />,
+    );
+    expect(container.querySelector('.tool-body')).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('pre')?.textContent).toContain('"ok": true');
+    });
+    expect(container.textContent).not.toContain('```');
+  });
+
   test('renders fenced code blocks', async () => {
     const { container } = render(<AgentMarkdown text={'```ts\nconst x = 1;\n```'} />);
     await waitFor(() => {

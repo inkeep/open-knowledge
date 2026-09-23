@@ -152,12 +152,20 @@ import {
 } from '@/lib/acp/thread-event-model';
 import {
   describeToolCall,
+  describeToolPurpose,
   type ToolCallGlyph,
   toolRunKey,
   toolRunLabel,
 } from '@/lib/acp/tool-call-display';
 import { adjacentToolRuns, type ToolRun } from '@/lib/acp/tool-call-groups';
 import { toolFailureHint } from '@/lib/acp/tool-failure-hint';
+import {
+  jsonMarkdown,
+  looksLikeMarkdown,
+  prettyJson,
+  type ToolOutputMode,
+  toolOutputMode,
+} from '@/lib/acp/tool-output-format';
 import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
@@ -2830,6 +2838,111 @@ function UserMessageAttachments({
   );
 }
 
+const TOOL_MARKDOWN_CLASS =
+  '[&_pre]:text-[11px]! [&_code]:text-[11px]! [&_[data-streamdown=code-block-body]]:p-2! [&_[data-streamdown=code-block-body]]:max-h-none!';
+
+interface ToolTooltipText {
+  purpose: string | null;
+  id: string;
+}
+
+function toolTooltipText(
+  call: { title: string; toolKind: string; rawInput: unknown },
+  labelText: string,
+): ToolTooltipText | null {
+  const purpose = describeToolPurpose(call);
+  if (purpose === null && call.title === labelText) return null;
+  return { purpose, id: call.title };
+}
+
+function toolTitleText(text: ToolTooltipText | null): string | undefined {
+  if (text === null) return undefined;
+  return text.purpose === null ? text.id : `${text.purpose}\n${text.id}`;
+}
+
+function ToolTooltipContent({ text }: { text: ToolTooltipText }): ReactNode {
+  return (
+    <TooltipContent side="top" align="start" className="max-w-72">
+      {text.purpose !== null ? <span className="block">{text.purpose}</span> : null}
+      <span className="block font-mono text-[10px] opacity-70" dir="ltr">
+        {text.id}
+      </span>
+    </TooltipContent>
+  );
+}
+
+function ToolOutputBlock({ text, mode }: { text: string; mode: ToolOutputMode }): ReactNode {
+  const body = stripWrappingFence(text);
+  const json = prettyJson(body);
+  if (json !== null) {
+    return (
+      <div data-testid="agent-thread-tool-json">
+        <AgentMarkdown text={jsonMarkdown(json)} className={TOOL_MARKDOWN_CLASS} untrusted />
+      </div>
+    );
+  }
+  if (mode === 'markdown' || (mode === 'auto' && looksLikeMarkdown(body))) {
+    return (
+      <div className="rounded bg-muted/50 px-2 py-1" data-testid="agent-thread-tool-markdown">
+        <AgentMarkdown text={body} className={TOOL_MARKDOWN_CLASS} untrusted />
+      </div>
+    );
+  }
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 font-mono text-[11px]">
+      {body}
+    </pre>
+  );
+}
+
+function CappedToolBody({ children }: { children: ReactNode }): ReactNode {
+  const { t } = useLingui();
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    if (showAll) return;
+    const el = bodyRef.current;
+    if (el === null) return;
+    const measure = (): void => setOverflowing(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [showAll]);
+  const capped = !showAll && overflowing;
+  return (
+    <>
+      <div
+        ref={bodyRef}
+        className={cn(
+          'flex flex-col gap-1.5',
+          !showAll && 'max-h-80 overflow-y-auto subtle-scrollbar',
+          capped && 'scroll-fade-mask-bottom',
+        )}
+        data-testid="agent-thread-tool-body"
+        data-capped={capped ? 'true' : undefined}
+      >
+        {children}
+      </div>
+      {overflowing ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto self-start px-1 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide hover:bg-transparent"
+          onClick={() => setShowAll((value) => !value)}
+          aria-expanded={showAll}
+          data-testid="agent-thread-tool-show-all"
+        >
+          {showAll ? t`Show less` : t`Show all`}
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
 function formatRawInput(rawInput: unknown): string | null {
   if (rawInput === undefined || rawInput === null) return null;
   if (
@@ -2841,12 +2954,12 @@ function formatRawInput(rawInput: unknown): string | null {
   }
   let text: string | undefined;
   try {
-    text = JSON.stringify(rawInput, null, 1);
+    text = JSON.stringify(rawInput, null, 2);
   } catch {
     return null;
   }
   if (text === undefined) return null;
-  return text.length > 2_000 ? `${text.slice(0, 2_000)}…` : text;
+  return text.length > 8_000 ? `${text.slice(0, 8_000)}…` : text;
 }
 
 function stripWrappingFence(text: string): string {
@@ -2879,26 +2992,37 @@ function ToolCallGroupRow({
   const rest = details.length - shown.length;
   const summary =
     shown.length === 0 ? '' : rest > 0 ? t`${shown.join(', ')} +${rest} more` : shown.join(', ');
+  const tooltip = toolTooltipText(head, label);
+  const button = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
+      onClick={onExpand}
+      aria-expanded={false}
+      data-testid="agent-thread-tool-group-expand"
+    >
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="shrink-0 truncate">{t`${calls.length} × ${label}`}</span>
+      {summary === '' ? null : (
+        <span className="min-w-0 flex-1 truncate text-left text-muted-foreground/70">
+          {summary}
+        </span>
+      )}
+      <ChevronRight className="ml-auto size-3 shrink-0 text-muted-foreground" aria-hidden />
+    </Button>
+  );
   return (
     <div className="text-xs" data-testid="agent-thread-tool-group">
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
-        onClick={onExpand}
-        aria-expanded={false}
-        data-testid="agent-thread-tool-group-expand"
-      >
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="shrink-0 truncate">{t`${calls.length} × ${label}`}</span>
-        {summary === '' ? null : (
-          <span className="min-w-0 flex-1 truncate text-left text-muted-foreground/70">
-            {summary}
-          </span>
-        )}
-        <ChevronRight className="ml-auto size-3 shrink-0 text-muted-foreground" aria-hidden />
-      </Button>
+      {tooltip === null ? (
+        button
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <ToolTooltipContent text={tooltip} />
+        </Tooltip>
+      )}
     </div>
   );
 }
@@ -2950,12 +3074,12 @@ function ToolCallCard({
     rawInput !== null ||
     failureHint !== null;
   const expanded = open && hasBody;
+  const outputMode = toolOutputMode(call);
+  const tooltip = toolTooltipText(call, display.text);
   const row = (
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-      <span className="min-w-0 truncate" title={call.title}>
-        {display.text}
-      </span>
+      <span className="min-w-0 truncate">{display.text}</span>
       {display.preview === undefined ? null : (
         <span
           className="min-w-0 flex-1 truncate text-muted-foreground/70"
@@ -2975,6 +3099,18 @@ function ToolCallCard({
       </span>
     </>
   );
+  const rowButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
+      onClick={toggleOpen}
+      aria-expanded={open}
+    >
+      {row}
+    </Button>
+  );
   return (
     <div
       className={cn('text-xs', expanded && 'rounded-md border border-border/60')}
@@ -2982,66 +3118,66 @@ function ToolCallCard({
       data-testid="agent-thread-tool-call"
     >
       {hasBody ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
-          onClick={toggleOpen}
-          aria-expanded={open}
+        tooltip === null ? (
+          rowButton
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>{rowButton}</TooltipTrigger>
+            <ToolTooltipContent text={tooltip} />
+          </Tooltip>
+        )
+      ) : (
+        <div
+          className="flex w-full items-center gap-1.5 px-2 py-1.5"
+          title={toolTitleText(tooltip)}
         >
           {row}
-        </Button>
-      ) : (
-        <div className="flex w-full items-center gap-1.5 px-2 py-1.5">{row}</div>
+        </div>
       )}
       {expanded ? (
         <div className="flex flex-col gap-1.5 border-border/60 border-t px-2 py-1.5">
-          {call.diffs.map((diff, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: diffs are positional within a card
-            <InlineDiff key={index} diff={diff} />
-          ))}
-          {callTerminals.map((terminal) => (
-            <TerminalBlock key={terminal.terminalId} terminal={terminal} />
-          ))}
-          {call.content.map((text, index) => (
-            <pre
+          <CappedToolBody>
+            {call.diffs.map((diff, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: diffs are positional within a card
+              <InlineDiff key={index} diff={diff} />
+            ))}
+            {callTerminals.map((terminal) => (
+              <TerminalBlock key={terminal.terminalId} terminal={terminal} />
+            ))}
+            {call.content.map((text, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: content blocks are positional
-              key={index}
-              className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 font-mono text-[11px]"
-            >
-              {stripWrappingFence(text)}
-            </pre>
-          ))}
-          {failureHint !== null || failureText !== '' ? (
-            <div className="flex items-center gap-2" data-testid="agent-thread-tool-failure-help">
-              <span className="flex-1 text-muted-foreground">{failureHint}</span>
-              {failureText !== '' ? (
-                <CopyButton
-                  copyContent={failureText}
-                  clipboardWrite={scheduleClipboardWrite}
-                  size="icon-xs"
-                  ariaLabel={t`Copy error`}
-                  testId="agent-thread-tool-failure-copy"
-                />
-              ) : null}
-            </div>
-          ) : null}
-          {rawInput !== null ? <RawInputBlock text={rawInput} /> : null}
-          {call.locations.length > 0 ? (
-            <div className="flex flex-wrap gap-1 text-muted-foreground">
-              {call.locations.map((loc, index) => (
-                <span
-                  // biome-ignore lint/suspicious/noArrayIndexKey: locations are positional
-                  key={index}
-                  className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[11px]"
-                >
-                  {loc.path}
-                  {loc.line !== undefined ? `:${loc.line}` : ''}
-                </span>
-              ))}
-            </div>
-          ) : null}
+              <ToolOutputBlock key={index} text={text} mode={outputMode} />
+            ))}
+            {failureHint !== null || failureText !== '' ? (
+              <div className="flex items-center gap-2" data-testid="agent-thread-tool-failure-help">
+                <span className="flex-1 text-muted-foreground">{failureHint}</span>
+                {failureText !== '' ? (
+                  <CopyButton
+                    copyContent={failureText}
+                    clipboardWrite={scheduleClipboardWrite}
+                    size="icon-xs"
+                    ariaLabel={t`Copy error`}
+                    testId="agent-thread-tool-failure-copy"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {rawInput !== null ? <RawInputBlock text={rawInput} /> : null}
+            {call.locations.length > 0 ? (
+              <div className="flex flex-wrap gap-1 text-muted-foreground">
+                {call.locations.map((loc, index) => (
+                  <span
+                    // biome-ignore lint/suspicious/noArrayIndexKey: locations are positional
+                    key={index}
+                    className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[11px]"
+                  >
+                    {loc.path}
+                    {loc.line !== undefined ? `:${loc.line}` : ''}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </CappedToolBody>
         </div>
       ) : null}
     </div>
@@ -3258,9 +3394,7 @@ function RawInputBlock({ text }: { text: string }): ReactNode {
         {t`Input`}
       </Button>
       {open ? (
-        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground">
-          {text}
-        </pre>
+        <AgentMarkdown text={jsonMarkdown(text)} className={TOOL_MARKDOWN_CLASS} untrusted />
       ) : null}
     </div>
   );
