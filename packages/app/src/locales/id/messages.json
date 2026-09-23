@@ -4690,6 +4690,13 @@
     "pXB6SL": [
       "Folder milik keterampilan itu sendiri — sumber tempat lokasi lain menyalin atau menaut"
     ],
+    "pZ-2hM": [
+      "Tidak ada kabar dari ",
+      ["agentName"],
+      " selama ",
+      ["stalledMinutes", "plural", { "other": ["#", " menit"] }],
+      ". Jika tampak macet, hentikan dan coba lagi."
+    ],
     "pZ91JC": [
       "OpenKnowledge diinisialisasi di ",
       ["gitRoot"],

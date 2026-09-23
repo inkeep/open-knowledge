@@ -4656,6 +4656,13 @@
     "pWT04I": ["Checking..."],
     "pWbsW6": ["Loading docs"],
     "pXB6SL": ["The skill's own folder — the source other locations copy or link from"],
+    "pZ-2hM": [
+      "Nothing from ",
+      ["agentName"],
+      " for ",
+      ["stalledMinutes", "plural", { "one": ["#", " minute"], "other": ["#", " minutes"] }],
+      ". If it looks stuck, Stop and try again."
+    ],
     "pZ91JC": [
       "Initialized OpenKnowledge at ",
       ["gitRoot"],

@@ -9610,6 +9610,10 @@ msgstr "کچھ نہیں ({0} کسی دستاویز سے مماثل نہیں ہو
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "کچھ نہیں ({0} درست پیٹرن نہیں ہے)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "{agentName} کی طرف سے {stalledMinutes, plural, one {# منٹ} other {# منٹ}} سے کچھ نہیں آیا۔ اگر پھنسا ہوا لگے تو روکیں اور دوبارہ کوشش کریں۔"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "رپورٹ کا جائزہ لے کر بھیجنے تک کمپیوٹر سے کچھ بھی باہر نہیں جاتا۔"

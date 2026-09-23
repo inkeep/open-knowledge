@@ -9606,6 +9606,10 @@ msgstr "tidak apa pun ({0} tidak bisa cocok dengan sebuah dokumen)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "tidak apa pun ({0} bukan pola yang valid)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "Tidak ada kabar dari {agentName} selama {stalledMinutes, plural, other {# menit}}. Jika tampak macet, hentikan dan coba lagi."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "Tidak ada yang dikirim dari komputer sampai laporan ditinjau dan dikirim."

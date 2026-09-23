@@ -9610,6 +9610,10 @@ msgstr "없음 ({0}로는 문서와 일치하지 않음)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "없음 ({0}로는 유효한 패턴이 아님)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "{stalledMinutes, plural, other {#분}} 동안 {agentName}에서 아무 응답이 없습니다. 멈춘 것 같으면 중지하고 다시 시도하세요."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "보고서를 검토하고 보내기 전에는 어떤 정보도 컴퓨터 밖으로 전송되지 않습니다."

@@ -211,6 +211,7 @@ import {
 import { transcriptItemId } from './transcript-item-id';
 import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
 import { useDelayedInstallStatus } from './use-delayed-install-status';
+import { useMinutesSince } from './use-minutes-since';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
 
 const CANCEL_STALL_MS = 10_000;
@@ -575,6 +576,7 @@ export function ThreadView({
   const lastSeq = state?.lastSeq ?? null;
   const [cancelPending, setCancelPending] = useState(false);
   const [cancelStalled, setCancelStalled] = useState(false);
+  const stalledMinutes = useMinutesSince(info.stalledSince);
   const [planApprovalPending, setPlanApprovalPending] = useState(false);
 
   useEffect(() => {
@@ -1236,6 +1238,21 @@ export function ThreadView({
                     other="Uploading # attachments"
                   />
                 </p>
+              ) : null}
+            </div>
+            <div role="status" aria-live="polite" data-testid="agent-thread-stalled-region">
+              {info.stalledSince !== undefined && turnActive && !cancelPending && !cancelStalled ? (
+                <div
+                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                  data-testid="agent-thread-stalled"
+                >
+                  <span className="flex-1">
+                    {t`Nothing from ${agentName} for ${plural(stalledMinutes, {
+                      one: '# minute',
+                      other: '# minutes',
+                    })}. If it looks stuck, Stop and try again.`}
+                  </span>
+                </div>
               ) : null}
             </div>
             {info.steer !== undefined && !archived ? (

@@ -9610,6 +9610,10 @@ msgstr "لا شيء ({0} لا يمكن أن يطابق مستندًا)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "لا شيء ({0} ليس نمطًا صالحًا)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "لا شيء من {agentName} منذ {stalledMinutes, plural, zero {# دقيقة} one {دقيقة واحدة} two {دقيقتين} few {# دقائق} many {# دقيقة} other {# دقيقة}}. إن بدا عالقًا، أوقفه وحاول مجددًا."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "لا يغادر أي شيء جهازك حتى تراجع التقرير وترسله."

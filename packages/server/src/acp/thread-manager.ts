@@ -27,6 +27,7 @@ import {
   type SessionUpdate,
   type SetSessionConfigOptionRequest,
   type SetSessionConfigOptionResponse,
+  type StopReason,
   type ToolCallUpdate,
 } from '@agentclientprotocol/sdk';
 import {
@@ -162,6 +163,7 @@ const REPLAY_CHUNK_SIZE = 512;
 const DEFAULT_UNWATCHED_TURN_CANCEL_MS = 10 * 60 * 1000;
 const DEFAULT_UNWATCHED_TURN_KILL_MS = 20 * 60 * 1000;
 const DEFAULT_STEER_STALL_MS = 10_000;
+const DEFAULT_TURN_STALL_MS = 3 * 60 * 1000;
 const DEFAULT_AUTHENTICATE_TIMEOUT_MS = 5 * 60 * 1000;
 const STDERR_TAIL_LINES = 40;
 const SIGN_IN_OUTPUT_LINES = 6;
@@ -321,6 +323,9 @@ interface ThreadRecord {
   turnActive: boolean;
   cancelRequested: boolean;
   steerStallTimer: ReturnType<typeof setTimeout> | null;
+  stallTimer: ReturnType<typeof setTimeout> | null;
+  turnStartedAt: number | null;
+  agentActivityAt: number;
   unwatchedSince: number | null;
   unwatchedCancelSent: boolean;
   pendingBroadcast: ThreadEvent[];
@@ -406,6 +411,7 @@ export interface AcpThreadManagerOptions {
   authenticateTimeoutMs?: number;
   unwatchedTurnCancelMs?: number;
   unwatchedTurnKillMs?: number;
+  turnStallMs?: number;
 }
 
 export function buildOkMcpStdioCommand(
@@ -450,6 +456,7 @@ export class AcpThreadManager {
   private readonly authenticateTimeoutMs: number;
   private readonly unwatchedTurnCancelMs: number;
   private readonly unwatchedTurnKillMs: number;
+  private readonly turnStallMs: number;
   private readonly persistence: ThreadPersistenceStore;
   private readonly resolveLoginShellPath: () => Promise<string | null>;
   private readonly healthyInterpreters = new Set<string>();
@@ -467,6 +474,7 @@ export class AcpThreadManager {
     this.authenticateTimeoutMs = opts.authenticateTimeoutMs ?? DEFAULT_AUTHENTICATE_TIMEOUT_MS;
     this.unwatchedTurnCancelMs = opts.unwatchedTurnCancelMs ?? DEFAULT_UNWATCHED_TURN_CANCEL_MS;
     this.unwatchedTurnKillMs = opts.unwatchedTurnKillMs ?? DEFAULT_UNWATCHED_TURN_KILL_MS;
+    this.turnStallMs = opts.turnStallMs ?? DEFAULT_TURN_STALL_MS;
     this.persistence = new ThreadPersistenceStore({
       primaryDir: opts.globalDir ?? opts.localDir,
       legacyDir: opts.globalDir !== null ? opts.localDir : null,
@@ -653,6 +661,9 @@ export class AcpThreadManager {
       turnActive: false,
       cancelRequested: false,
       steerStallTimer: null,
+      stallTimer: null,
+      turnStartedAt: null,
+      agentActivityAt: now,
       unwatchedSince: now,
       unwatchedCancelSent: false,
       pendingBroadcast: [],
@@ -919,6 +930,7 @@ export class AcpThreadManager {
         this.handlePermissionRequest(record, ctx.params.toolCall, ctx.params.options),
       )
       .onRequest(acpMethods.client.fs.readTextFile, async (ctx) => {
+        this.touchTurnActivity(record);
         try {
           return await this.handleFsRead(
             ctx.params.path,
@@ -956,20 +968,24 @@ export class AcpThreadManager {
         }
       })
       .onRequest(acpMethods.client.terminal.create, (ctx) => {
-        record.info.lastActivityAt = Date.now();
+        this.touchTurnActivity(record);
         return terminals.create(ctx.params);
       })
-      .onRequest(acpMethods.client.terminal.output, (ctx) =>
-        terminals.output(ctx.params.terminalId),
-      )
-      .onRequest(acpMethods.client.terminal.waitForExit, (ctx) =>
-        terminals.waitForExit(ctx.params.terminalId),
-      )
+      .onRequest(acpMethods.client.terminal.output, (ctx) => {
+        this.touchTurnActivity(record);
+        return terminals.output(ctx.params.terminalId);
+      })
+      .onRequest(acpMethods.client.terminal.waitForExit, (ctx) => {
+        this.touchTurnActivity(record);
+        return terminals.waitForExit(ctx.params.terminalId);
+      })
       .onRequest(acpMethods.client.terminal.kill, async (ctx) => {
+        this.touchTurnActivity(record);
         await terminals.kill(ctx.params.terminalId);
         return {};
       })
       .onRequest(acpMethods.client.terminal.release, async (ctx) => {
+        this.touchTurnActivity(record);
         await terminals.release(ctx.params.terminalId);
         return {};
       })
@@ -2349,6 +2365,70 @@ export class AcpThreadManager {
     return steer;
   }
 
+  private armStallTimer(t: ThreadRecord, delayMs = this.turnStallMs): void {
+    if (t.stallTimer !== null) clearTimeout(t.stallTimer);
+    const timer = setTimeout(() => this.checkStall(t), delayMs);
+    timer.unref?.();
+    t.stallTimer = timer;
+  }
+
+  private checkStall(t: ThreadRecord): void {
+    t.stallTimer = null;
+    if (t.closed || !t.turnActive || t.info.stalledSince !== undefined) return;
+    if (t.pendingPermissions.size > 0) {
+      this.armStallTimer(t);
+      return;
+    }
+    const silentMs = Date.now() - t.agentActivityAt;
+    if (silentMs < this.turnStallMs) {
+      this.armStallTimer(t, this.turnStallMs - silentMs);
+      return;
+    }
+    t.info.stalledSince = t.agentActivityAt;
+    this.opts.log.warn(
+      { threadId: t.info.threadId, agentId: t.info.agent.id, silentMs },
+      '[acp-threads] turn stalled: no agent activity',
+    );
+    this.emitInfo(t);
+  }
+
+  private touchTurnActivity(t: ThreadRecord): void {
+    const now = Date.now();
+    t.agentActivityAt = now;
+    t.info.lastActivityAt = now;
+    if (t.info.stalledSince === undefined) return;
+    const stalledForMs = Date.now() - t.info.stalledSince;
+    t.info.stalledSince = undefined;
+    this.opts.log.info(
+      { threadId: t.info.threadId, agentId: t.info.agent.id, stalledForMs },
+      '[acp-threads] turn resumed after stall',
+    );
+    this.emitInfo(t);
+    if (t.turnActive) this.armStallTimer(t);
+  }
+
+  private clearStall(t: ThreadRecord): void {
+    if (t.stallTimer !== null) {
+      clearTimeout(t.stallTimer);
+      t.stallTimer = null;
+    }
+    t.info.stalledSince = undefined;
+  }
+
+  private logTurnEnded(t: ThreadRecord, outcome: StopReason | 'failed'): void {
+    const startedAt = t.turnStartedAt;
+    t.turnStartedAt = null;
+    this.opts.log.info(
+      {
+        threadId: t.info.threadId,
+        agentId: t.info.agent.id,
+        outcome,
+        durationMs: startedAt === null ? undefined : Date.now() - startedAt,
+      },
+      '[acp-threads] turn ended',
+    );
+  }
+
   editQueued(threadId: string, id: string, content: string): boolean {
     const t = this.mustGet(threadId);
     const queue = t.info.queue ?? [];
@@ -2475,8 +2555,15 @@ export class AcpThreadManager {
     }
     t.turnActive = true;
     t.cancelRequested = false;
-    this.appendEvent(t, { kind: 'turn_started', ts: Date.now() });
+    t.turnStartedAt = Date.now();
+    t.agentActivityAt = t.turnStartedAt;
+    this.appendEvent(t, { kind: 'turn_started', ts: t.turnStartedAt });
     this.emitStatus(t, 'running');
+    this.opts.log.info(
+      { threadId: t.info.threadId, agentId: t.info.agent.id },
+      '[acp-threads] turn started',
+    );
+    this.armStallTimer(t);
 
     const sessionId = t.sessionId;
     const promptBuild = buildPromptBlocks(
@@ -2521,6 +2608,8 @@ export class AcpThreadManager {
     requestPromise
       .then((response) => {
         t.turnActive = false;
+        this.clearStall(t);
+        this.logTurnEnded(t, response.stopReason);
         if (isThreadClosed(t)) return;
         this.appendEvent(t, {
           kind: 'turn_ended',
@@ -2543,6 +2632,8 @@ export class AcpThreadManager {
       })
       .catch(async (err) => {
         t.turnActive = false;
+        this.clearStall(t);
+        this.logTurnEnded(t, t.cancelRequested ? 'cancelled' : 'failed');
         if (isThreadClosed(t)) return;
         this.appendEvent(t, { kind: 'turn_ended', stopReason: 'cancelled', ts: Date.now() });
         if (t.sessionId !== null && t.conn !== null) {
@@ -2596,6 +2687,9 @@ export class AcpThreadManager {
     }
     if (t.conn === null || t.sessionId === null) return;
     if (t.turnActive) t.cancelRequested = true;
+    const wasStalled = t.info.stalledSince !== undefined;
+    this.clearStall(t);
+    if (wasStalled) this.emitInfo(t);
     this.failPendingPermissions(t);
     this.restoreRunningAfterPermission(t);
     t.conn.agent
@@ -2779,6 +2873,7 @@ export class AcpThreadManager {
     if (pending === undefined) return;
     t.pendingPermissions.delete(requestId);
     clearTimeout(pending.timer);
+    this.touchTurnActivity(t);
     if (outcome.kind === 'selected') {
       pending.resolve({ outcome: { outcome: 'selected', optionId: outcome.optionId } });
       this.appendEvent(t, {
@@ -2850,6 +2945,7 @@ export class AcpThreadManager {
         clearTimeout(t.flushTimer);
         t.flushTimer = null;
       }
+      this.clearStall(t);
       await this.persistence.whenIdle(threadId);
       await this.persistence.delete(threadId);
       this.opts.log.info({ threadId }, '[acp-threads] empty thread discarded on close');
@@ -2885,6 +2981,7 @@ export class AcpThreadManager {
       clearTimeout(t.flushTimer);
       t.flushTimer = null;
     }
+    this.clearStall(t);
     await this.persistence.whenIdle(threadId);
     await this.persistence.delete(threadId);
     this.opts.log.info({ threadId }, '[acp-threads] thread deleted');
@@ -2905,7 +3002,7 @@ export class AcpThreadManager {
     toolCall: ToolCallUpdate,
     options: PermissionOption[],
   ): Promise<RequestPermissionResponse> {
-    record.info.lastActivityAt = Date.now();
+    this.touchTurnActivity(record);
     const decision = this.opts.permissions.decide(record.info.agent.id, toolCall, options);
     if (decision.auto !== null) {
       const requestId = crypto.randomUUID();
@@ -2963,7 +3060,7 @@ export class AcpThreadManager {
   }
 
   private handleSessionUpdate(record: ThreadRecord, notification: SessionNotification): void {
-    record.info.lastActivityAt = Date.now();
+    this.touchTurnActivity(record);
     const update: SessionUpdate = notification.update;
     if (update.sessionUpdate === 'current_mode_update' && record.info.modes) {
       record.info.modes = { ...record.info.modes, currentModeId: update.currentModeId };
@@ -3015,7 +3112,7 @@ export class AcpThreadManager {
     requestedPath: string,
     content: string,
   ): Promise<void> {
-    record.info.lastActivityAt = Date.now();
+    this.touchTurnActivity(record);
     const target = await this.confinePath(requestedPath);
     if (target.docName !== null) {
       const session = await this.opts.sessionManager.getSession(
@@ -3175,6 +3272,7 @@ export class AcpThreadManager {
     if (status === 'exited' || status === 'error') {
       t.info.queue = undefined;
       this.clearSteer(t);
+      this.clearStall(t);
     }
     t.info.status = status;
     t.info.lastActivityAt = Date.now();
@@ -3249,7 +3347,13 @@ export class AcpThreadManager {
   }
 
   private buildMeta(t: ThreadRecord): PersistedThreadMeta {
-    const { queue: _queue, steer: _steer, signInOutput: _signInOutput, ...info } = t.info;
+    const {
+      queue: _queue,
+      steer: _steer,
+      signInOutput: _signInOutput,
+      stalledSince: _stalledSince,
+      ...info
+    } = t.info;
     return {
       version: 1,
       info,
@@ -3430,6 +3534,9 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     turnActive: false,
     cancelRequested: false,
     steerStallTimer: null,
+    stallTimer: null,
+    turnStartedAt: null,
+    agentActivityAt: Date.now(),
     unwatchedSince: null,
     unwatchedCancelSent: false,
     pendingBroadcast: [],

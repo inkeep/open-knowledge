@@ -129,6 +129,7 @@ export interface ThreadInfo {
   resumable?: boolean;
   queue?: QueuedMessage[];
   steer?: SteerMessage;
+  stalledSince?: number;
   signInOutput?: string[];
 }
 

@@ -9606,6 +9606,10 @@ msgstr "कुछ नहीं ({0} किसी दस्तावेज़ स
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "कुछ नहीं ({0} एक मान्य पैटर्न नहीं है)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "{agentName} से {stalledMinutes, plural, one {# मिनट} other {# मिनट}} से कुछ नहीं आया। अगर अटका हुआ लगे, तो रोकें और फिर कोशिश करें।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "रिपोर्ट की जाँच करके भेजने तक आपके कंप्यूटर से कुछ भी बाहर नहीं जाता।"

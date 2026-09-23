@@ -9606,6 +9606,10 @@ msgstr "nada ({0} não pode corresponder a um documento)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "nada ({0} não é um padrão válido)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "Nada de {agentName} há {stalledMinutes, plural, one {# minuto} many {# minutos} other {# minutos}}. Se parecer travado, pare e tente de novo."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "Nada sai do computador até que o relatório seja revisado e enviado."

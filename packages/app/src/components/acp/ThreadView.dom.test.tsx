@@ -2382,6 +2382,69 @@ describe('ThreadView queue rescue on Stop', () => {
   });
 });
 
+describe('ThreadView stalled turn', () => {
+  test('a silent turn says how long the agent has been quiet', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView info={makeInfo({ status: 'running', stalledSince: Date.now() - 4 * 60_000 })} />,
+    );
+    const strip = screen.getByTestId('agent-thread-stalled');
+    const region = screen.getByTestId('agent-thread-stalled-region');
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(strip.textContent).toContain('for 4 minutes');
+    expect(strip.textContent).toContain('If it looks stuck, Stop and try again.');
+  });
+
+  test('a stall that appears mid-session shows its real age on first paint', () => {
+    model = makeModel({ turnActive: true });
+    const { rerender } = render(<ThreadView info={makeInfo({ status: 'running' })} />);
+    expect(screen.queryByTestId('agent-thread-stalled')).toBeNull();
+
+    rerender(
+      <ThreadView info={makeInfo({ status: 'running', stalledSince: Date.now() - 3 * 60_000 })} />,
+    );
+    expect(screen.getByTestId('agent-thread-stalled').textContent).toContain('for 3 minutes');
+  });
+
+  test('a stall that just started reads as one minute, never zero', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={makeInfo({ status: 'running', stalledSince: Date.now() })} />);
+    expect(screen.getByTestId('agent-thread-stalled').textContent).toContain('for 1 minute.');
+  });
+
+  test('the live region is already in the DOM before a stall, so the text lands in it', () => {
+    model = makeModel({ turnActive: true });
+    const { rerender } = render(<ThreadView info={makeInfo({ status: 'running' })} />);
+    const region = screen.getByTestId('agent-thread-stalled-region');
+    expect(region.textContent).toBe('');
+
+    rerender(
+      <ThreadView info={makeInfo({ status: 'running', stalledSince: Date.now() - 5 * 60_000 })} />,
+    );
+    expect(screen.getByTestId('agent-thread-stalled-region')).toBe(region);
+    expect(region.textContent).toContain('for 5 minutes');
+  });
+
+  test('pressing Stop retires the notice instead of telling you to press it again', () => {
+    model = makeModel({ turnActive: true });
+    render(
+      <ThreadView info={makeInfo({ status: 'running', stalledSince: Date.now() - 60_000 })} />,
+    );
+    expect(screen.getByTestId('agent-thread-stalled')).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId('agent-thread-cancel'));
+    expect(cancel).toHaveBeenCalledWith('thread-1');
+    expect(screen.queryByTestId('agent-thread-stalled')).toBeNull();
+  });
+
+  test('once the turn is over the notice goes away', () => {
+    model = makeModel({ turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready', stalledSince: Date.now() - 60_000 })} />);
+    expect(screen.queryByTestId('agent-thread-stalled')).toBeNull();
+  });
+});
+
 describe('ThreadView steer now', () => {
   test('mid-turn with a draft, Steer now sends the correction and clears the composer', () => {
     model = makeModel({ turnActive: true });

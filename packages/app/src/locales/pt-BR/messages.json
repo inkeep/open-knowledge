@@ -5268,6 +5268,17 @@
     "pXB6SL": [
       "A pasta própria da habilidade — a fonte de onde os outros locais copiam ou para onde apontam"
     ],
+    "pZ-2hM": [
+      "Nada de ",
+      ["agentName"],
+      " há ",
+      [
+        "stalledMinutes",
+        "plural",
+        { "one": ["#", " minuto"], "many": ["#", " minutos"], "other": ["#", " minutos"] }
+      ],
+      ". Se parecer travado, pare e tente de novo."
+    ],
     "pZ91JC": [
       "OpenKnowledge inicializado em ",
       ["gitRoot"],

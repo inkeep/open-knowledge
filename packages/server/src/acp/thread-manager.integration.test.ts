@@ -83,6 +83,7 @@ function makeManager(
     authenticateTimeoutMs?: number;
     unwatchedTurnCancelMs?: number;
     unwatchedTurnKillMs?: number;
+    turnStallMs?: number;
     isIgnoredPath?: (relPosix: string) => boolean;
     registry?: AcpRegistry;
     runtimeInstall?: AcpThreadManagerOptions['runtimeInstall'];
@@ -3001,6 +3002,235 @@ describe('AcpThreadManager prompt queueing', () => {
     expect(userMessages(events)).toEqual(['WAIT at the gate', 'parked']);
     expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
     expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  function writeStutterAgent(localDir: string, releasePath: string): void {
+    writeRequestingAgentEntry(
+      localDir,
+      'stutter-agent',
+      `
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'one;' } });
+  const fs = await import('node:fs');
+  while (!fs.existsSync(${JSON.stringify(releasePath)})) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'two;' } });
+  await new Promise((r) => setTimeout(r, 900));
+  finish();
+`,
+    );
+  }
+
+  test('a turn that goes silent is flagged as stalled, and the flag is never persisted', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeGateAgent(localDir, join(localDir, 'release-turn'));
+    const warn = vi.spyOn(log, 'warn');
+    const manager = makeManager(contentDir, localDir, { turnStallMs: 250 });
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.stalledSince !== undefined,
+      5_000,
+      'stall flagged',
+    );
+    const stalledSince = manager.getInfo(info.threadId)?.stalledSince ?? 0;
+    expect(Date.now() - stalledSince).toBeGreaterThanOrEqual(250);
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: info.threadId, silentMs: expect.any(Number) }),
+      '[acp-threads] turn stalled: no agent activity',
+    );
+
+    await manager.closeThread(info.threadId);
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    expect(manager2.getInfo(info.threadId)).toBeDefined();
+    expect(manager2.getInfo(info.threadId)?.stalledSince).toBeUndefined();
+  }, 40_000);
+
+  test('typing while the agent is quiet neither delays the notice nor restarts its count', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeGateAgent(localDir, join(localDir, 'release-turn'));
+    const manager = makeManager(contentDir, localDir, { turnStallMs: 400 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const queuedAt = Date.now();
+    manager.sendPrompt(info.threadId, 'queued while the agent is quiet');
+    expect(manager.getInfo(info.threadId)?.lastActivityAt).toBeGreaterThanOrEqual(queuedAt);
+
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.stalledSince !== undefined,
+      5_000,
+      'stall flagged',
+    );
+    expect(manager.getInfo(info.threadId)?.stalledSince ?? Number.POSITIVE_INFINITY).toBeLessThan(
+      queuedAt,
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  function writeReadingAgent(localDir: string, releasePath: string, readPath: string): void {
+    writeRequestingAgentEntry(
+      localDir,
+      'reading-agent',
+      `
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'one;' } });
+  const fs = await import('node:fs');
+  while (!fs.existsSync(${JSON.stringify(releasePath)})) {
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  await request('fs/read_text_file', { sessionId: msg.params.sessionId, path: ${JSON.stringify(readPath)} });
+  await new Promise((r) => setTimeout(r, 300));
+  finish();
+`,
+    );
+  }
+
+  test('a client file read from a quiet agent counts as activity', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    const readPath = join(contentDir, 'note.md');
+    writeFileSync(readPath, '# hello\n');
+    writeReadingAgent(localDir, releasePath, readPath);
+    const infoLog = vi.spyOn(log, 'info');
+    const manager = makeManager(contentDir, localDir, { turnStallMs: 250 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'reading-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'go');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.stalledSince !== undefined,
+      5_000,
+      'stall flagged',
+    );
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => infoLog.mock.calls.some((call) => call[1] === '[acp-threads] turn resumed after stall'),
+      5_000,
+      'the file read cleared the stall',
+    );
+    await waitUntil(() => !internals(manager).turnActive(info.threadId), 20_000, 'turn ended');
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('Stop retires the stall flag at once, even while the agent ignores the cancel', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeGateAgent(localDir, join(localDir, 'release-turn'));
+    const manager = makeManager(contentDir, localDir, { turnStallMs: 250 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.stalledSince !== undefined,
+      5_000,
+      'stall flagged',
+    );
+    manager.cancel(info.threadId);
+    expect(manager.getInfo(info.threadId)?.stalledSince).toBeUndefined();
+    expect(internals(manager).turnActive(info.threadId)).toBe(true);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('a turn waiting on your permission is not a stall', async () => {
+    const localDir = tmp();
+    writeExampleAgentEntry(localDir);
+    const warn = vi.spyOn(log, 'warn');
+    const manager = makeManager(tmp(), localDir, { turnStallMs: 200 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'example' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'Improve my project please');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'awaiting_permission',
+      20_000,
+      'permission pending',
+    );
+    const stallWarnings = (): number =>
+      warn.mock.calls.filter((call) => call[1] === '[acp-threads] turn stalled: no agent activity')
+        .length;
+    const before = stallWarnings();
+    expect(manager.getInfo(info.threadId)?.stalledSince).toBeUndefined();
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(manager.getInfo(info.threadId)?.stalledSince).toBeUndefined();
+    expect(stallWarnings()).toBe(before);
+
+    const request = events
+      .map((e) => e.event)
+      .find(
+        (e): e is Extract<ThreadEvent, { kind: 'permission_request' }> =>
+          e.kind === 'permission_request',
+      );
+    if (request === undefined) throw new Error('permission request missing');
+    manager.respondPermission(info.threadId, request.requestId, { kind: 'cancelled' });
+    expect(manager.getInfo(info.threadId)?.stalledSince).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 45_000);
+
+  test('the stall clears the moment the agent speaks again, and the turn logs its lifecycle', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeStutterAgent(localDir, releasePath);
+    const infoLog = vi.spyOn(log, 'info');
+    const warn = vi.spyOn(log, 'warn');
+    const manager = makeManager(contentDir, localDir, { turnStallMs: 250 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'stutter-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'go');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.stalledSince !== undefined,
+      5_000,
+      'first stall',
+    );
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => infoLog.mock.calls.some((call) => call[1] === '[acp-threads] turn resumed after stall'),
+      5_000,
+      'stall cleared on activity',
+    );
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 1,
+      20_000,
+      'turn ended',
+    );
+    expect(manager.getInfo(info.threadId)?.stalledSince).toBeUndefined();
+    expect(agentText(events)).toBe('one;two;');
+    const messages = infoLog.mock.calls.map((call) => call[1]);
+    expect(messages).toContain('[acp-threads] turn started');
+    const ended = infoLog.mock.calls.find((call) => call[1] === '[acp-threads] turn ended');
+    const endedFields = ended?.[0] as { durationMs?: number } | undefined;
+    expect(endedFields).toMatchObject({ threadId: info.threadId, outcome: 'end_turn' });
+    expect(endedFields?.durationMs).toBeGreaterThan(0);
+    expect(
+      warn.mock.calls.filter((call) => call[1] === '[acp-threads] turn stalled: no agent activity'),
+    ).toHaveLength(2);
 
     await manager.closeThread(info.threadId);
   }, 40_000);

@@ -9606,6 +9606,10 @@ msgstr "কিছুই নয় ({0} কোনো নথির সঙ্গে
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "কিছুই নয় ({0} একটি বৈধ প্যাটার্ন নয়)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "{agentName} থেকে {stalledMinutes, plural, one {# মিনিট} other {# মিনিট}} ধরে কিছুই আসেনি। আটকে গেছে মনে হলে, থামিয়ে আবার চেষ্টা করুন।"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "রিপোর্ট পরীক্ষা করে না পাঠানো পর্যন্ত কম্পিউটার থেকে কিছুই বাইরে যায় না।"

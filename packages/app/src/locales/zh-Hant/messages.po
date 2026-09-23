@@ -9610,6 +9610,10 @@ msgstr "無（{0} 無法比對到任何文件）"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "無（{0} 不是有效的模式）"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "{agentName} 已有 {stalledMinutes, plural, other {# 分鐘}}沒有任何回應。如果看起來卡住了，請停止並重試。"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "在您檢查並傳送報告之前，任何資訊都不會離開您的電腦。"

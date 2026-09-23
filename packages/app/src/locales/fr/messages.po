@@ -9610,6 +9610,10 @@ msgstr "rien ({0} ne peut correspondre à aucun document)"
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "rien ({0} n'est pas un motif valide)"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "Rien de {agentName} depuis {stalledMinutes, plural, one {# minute} many {# minutes} other {# minutes}}. Si ça semble bloqué, arrêtez et réessayez."
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
 msgstr "Rien ne quitte votre ordinateur avant la vérification et l’envoi du rapport."

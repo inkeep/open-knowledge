@@ -5382,6 +5382,17 @@
     "pXB6SL": [
       "La carpeta propia de la habilidad: el origen del que copian o al que enlazan las demás ubicaciones"
     ],
+    "pZ-2hM": [
+      "Nada de ",
+      ["agentName"],
+      " desde hace ",
+      [
+        "stalledMinutes",
+        "plural",
+        { "one": ["#", " minuto"], "many": ["#", " minutos"], "other": ["#", " minutos"] }
+      ],
+      ". Si parece atascado, detenlo y vuelve a intentarlo."
+    ],
     "pZ91JC": [
       "OpenKnowledge se inicializó en ",
       ["gitRoot"],

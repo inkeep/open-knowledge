@@ -5425,6 +5425,17 @@
     "pXB6SL": [
       "Le dossier propre à la compétence — la source depuis laquelle les autres emplacements copient ou pointent"
     ],
+    "pZ-2hM": [
+      "Rien de ",
+      ["agentName"],
+      " depuis ",
+      [
+        "stalledMinutes",
+        "plural",
+        { "one": ["#", " minute"], "many": ["#", " minutes"], "other": ["#", " minutes"] }
+      ],
+      ". Si ça semble bloqué, arrêtez et réessayez."
+    ],
     "pZ91JC": [
       "OpenKnowledge initialisé dans ",
       ["gitRoot"],
