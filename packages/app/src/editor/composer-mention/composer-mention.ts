@@ -9,6 +9,7 @@ import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
 import { X } from 'lucide-react';
 import { fileEntryPathIconToSvgString } from '@/components/file-entry-icon';
+import { normalizeDocNameInput } from '@/lib/doc-paths';
 import { docNameToRelativePath } from '@/lib/workspace-paths';
 import {
   clearSuggestionSelectableCount,
@@ -34,6 +35,58 @@ export interface MentionItem {
 }
 
 const MAX_MENTION_ITEMS = 8;
+const MAX_PINNED_ITEMS = 4;
+const EXTENSION_NAME = 'composerMention';
+
+export interface MentionRecency {
+  readonly currentDocName: string | null;
+  readonly recentPaths: readonly string[];
+}
+
+export const EMPTY_MENTION_RECENCY: MentionRecency = { currentDocName: null, recentPaths: [] };
+
+interface MentionStorage {
+  recency: MentionRecency;
+}
+
+function mentionStorage(editor: Editor): MentionStorage | undefined {
+  return (editor.storage as unknown as Partial<Record<string, MentionStorage>>)[EXTENSION_NAME];
+}
+
+function getMentionRecency(editor: Editor): MentionRecency {
+  return mentionStorage(editor)?.recency ?? EMPTY_MENTION_RECENCY;
+}
+
+export function setMentionRecency(editor: Editor, recency: MentionRecency): void {
+  const storage = mentionStorage(editor);
+  if (storage !== undefined) storage.recency = recency;
+}
+
+function rankByRecency(pages: PageItem[], recency: MentionRecency): PageItem[] {
+  const current =
+    recency.currentDocName === null ? null : normalizeDocNameInput(recency.currentDocName);
+  const order = new Map<string, number>();
+  for (const [index, path] of recency.recentPaths.entries()) order.set(path, index + 1);
+  const pinned: { page: PageItem; order: number }[] = [];
+  for (const page of pages) {
+    if (current !== null && page.docName === current) {
+      pinned.push({ page, order: 0 });
+      continue;
+    }
+    const position = order.get(pageItemToPath(page));
+    if (position !== undefined) pinned.push({ page, order: position });
+  }
+  pinned.sort((a, b) => a.order - b.order);
+  const kept = pinned.slice(0, MAX_PINNED_ITEMS).map((entry) => entry.page);
+  const keptSet = new Set(kept);
+  return [
+    ...kept,
+    ...filterPages(
+      pages.filter((page) => !keptSet.has(page)),
+      '',
+    ),
+  ];
+}
 
 export const composerMentionSuggestionKey = new PluginKey('composerMentionSuggestion');
 
@@ -85,7 +138,7 @@ const ComposerHistory = Extension.create({
 });
 
 const ComposerMention = Node.create({
-  name: 'composerMention',
+  name: EXTENSION_NAME,
   group: 'inline',
   inline: true,
   atom: true,
@@ -168,6 +221,9 @@ const ComposerMention = Node.create({
     };
   },
 
+  addStorage() {
+    return { recency: EMPTY_MENTION_RECENCY };
+  },
   addProseMirrorPlugins() {
     return [configureComposerMentionSuggestion(this.editor)];
   },
@@ -217,7 +273,10 @@ export function createMentionCorpus(
       return { loaded: pagesLoaded, error: fetchError };
     },
 
-    async getItems(query: string): Promise<MentionItem[]> {
+    async getItems(
+      query: string,
+      recency: MentionRecency = EMPTY_MENTION_RECENCY,
+    ): Promise<MentionItem[]> {
       if (!pagesLoaded) {
         pagesPromise ||= fetch();
         try {
@@ -232,7 +291,10 @@ export function createMentionCorpus(
           pagesPromise = null;
         }
       }
-      return filterPages(cachedPages, query)
+      const ordered = (
+        query === '' ? rankByRecency(cachedPages, recency) : filterPages(cachedPages, query)
+      ).slice(0, MAX_MENTION_ITEMS);
+      return ordered
         .map((page) => ({
           docName: page.docName,
           title: page.title,
@@ -259,7 +321,7 @@ function configureComposerMentionSuggestion(editor: Editor) {
     pluginKey: composerMentionSuggestionKey,
     char: '@',
 
-    items: ({ query }) => corpus.getItems(query),
+    items: ({ query }) => corpus.getItems(query, getMentionRecency(editor)),
 
     command: ({ editor, range, props: item }) => {
       try {

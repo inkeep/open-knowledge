@@ -1,6 +1,9 @@
+import type { AppShutdownCause } from './terminal-manager.ts';
+
 export interface TerminalReaper {
+  noteAppShutdown(cause: AppShutdownCause): void;
   killForWindow(windowId: number): void;
-  killAll(): Promise<void>;
+  killAll(cause: AppShutdownCause): Promise<void>;
 }
 
 export interface ClosableWindow {

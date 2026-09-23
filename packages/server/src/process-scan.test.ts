@@ -2,6 +2,7 @@ import type { SpawnSyncReturns } from 'node:child_process';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const spawnSyncMock = vi.fn();
+const execFileSyncMock = vi.fn();
 const existsSyncMock = vi.fn();
 const readdirSyncMock = vi.fn();
 const lstatSyncMock = vi.fn();
@@ -10,22 +11,36 @@ let scanLockProcesses: typeof import('./process-scan.ts').scanLockProcesses;
 let discoverLockDirs: typeof import('./process-scan.ts').discoverLockDirs;
 let findOkProcessPids: typeof import('./process-scan.ts').findOkProcessPids;
 let readPidCwds: typeof import('./process-scan.ts').readPidCwds;
+let isDefunctProcess: typeof import('./process-scan.ts').isDefunctProcess;
+let isLockProcessRunning: typeof import('./process-scan.ts').isLockProcessRunning;
+let readProcessState: typeof import('./process-scan.ts').readProcessState;
 let realCp: typeof import('node:child_process');
 let realFs: typeof import('node:fs');
 
 beforeAll(async () => {
   realCp = await vi.importActual<typeof import('node:child_process')>('node:child_process');
   realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
-  vi.doMock('node:child_process', () => ({ ...realCp, spawnSync: spawnSyncMock }));
+  execFileSyncMock.mockImplementation(realCp.execFileSync);
+  vi.doMock('node:child_process', () => ({
+    ...realCp,
+    spawnSync: spawnSyncMock,
+    execFileSync: execFileSyncMock,
+  }));
   vi.doMock('node:fs', () => ({
     ...realFs,
     existsSync: existsSyncMock,
     readdirSync: readdirSyncMock,
     lstatSync: lstatSyncMock,
   }));
-  ({ scanLockProcesses, discoverLockDirs, findOkProcessPids, readPidCwds } = await import(
-    './process-scan.ts'
-  ));
+  ({
+    scanLockProcesses,
+    discoverLockDirs,
+    findOkProcessPids,
+    readPidCwds,
+    isDefunctProcess,
+    isLockProcessRunning,
+    readProcessState,
+  } = await import('./process-scan.ts'));
 });
 
 function refuseUnmockedSpawn(command: string, args: readonly string[] = []): never {
@@ -516,11 +531,11 @@ describe('discoverLockDirs', () => {
       (p: unknown) => p === lockDir || p === `${lockDir}/server.lock`,
     );
     readdirSyncSpy.mockImplementation((p: unknown) => {
-      if (p === parent) return ['garth_nix'] as unknown as ReturnType<typeof fs.readdirSync>;
-      return [] as unknown as ReturnType<typeof fs.readdirSync>;
+      if (p === parent) return ['garth_nix'] as unknown as ReturnType<typeof realFs.readdirSync>;
+      return [] as unknown as ReturnType<typeof realFs.readdirSync>;
     });
     lstatSyncSpy.mockImplementation(
-      () => ({ isDirectory: () => true }) as unknown as ReturnType<typeof fs.lstatSync>,
+      () => ({ isDirectory: () => true }) as unknown as ReturnType<typeof realFs.lstatSync>,
     );
 
     try {
@@ -564,11 +579,11 @@ describe('discoverLockDirs', () => {
         p === `${childLockDir}/server.lock`,
     );
     readdirSyncSpy.mockImplementation((p: unknown) => {
-      if (p === parent) return ['garth_nix'] as unknown as ReturnType<typeof fs.readdirSync>;
-      return [] as unknown as ReturnType<typeof fs.readdirSync>;
+      if (p === parent) return ['garth_nix'] as unknown as ReturnType<typeof realFs.readdirSync>;
+      return [] as unknown as ReturnType<typeof realFs.readdirSync>;
     });
     lstatSyncSpy.mockImplementation(
-      () => ({ isDirectory: () => true }) as unknown as ReturnType<typeof fs.lstatSync>,
+      () => ({ isDirectory: () => true }) as unknown as ReturnType<typeof realFs.lstatSync>,
     );
 
     try {
@@ -606,11 +621,20 @@ describe('discoverLockDirs', () => {
 });
 
 describe('lock recovery process evidence', () => {
+  let stderrWrites: string[];
   beforeEach(() => {
     spawnSyncMock.mockReset();
+    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+    stderrWrites = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    });
   });
   afterEach(() => {
+    vi.restoreAllMocks();
     spawnSyncMock.mockReset();
+    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
   });
 
   it('does not mistake failed process enumeration for evidence of absence', async () => {
@@ -627,6 +651,17 @@ describe('lock recovery process evidence', () => {
     spawnSyncMock
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1, stderr: 'permission denied' }));
+    expect((await scanLockProcesses()).unavailable).toEqual([
+      'Could not enumerate TCP listeners with lsof',
+    ]);
+  });
+  it('treats a listener query that exits non-zero with a table as incomplete enumeration', async () => {
+    spawnSyncMock.mockReturnValueOnce(makeSpawnResult({ status: 1 })).mockReturnValueOnce(
+      makeSpawnResult({
+        status: 1,
+        stdout: `COMMAND PID USER\nnode ${process.pid} user\n`,
+      }),
+    );
     expect((await scanLockProcesses()).unavailable).toEqual([
       'Could not enumerate TCP listeners with lsof',
     ]);
@@ -669,6 +704,149 @@ describe('lock recovery process evidence', () => {
       `Could not read the working directory of process ${process.pid}`,
     ]);
   });
+
+  it('retains a live candidate whose process-state probe could not answer', async () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('spawnSync ps ENOENT'), { code: 'ENOENT' });
+    });
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+
+    const scan = await scanLockProcesses();
+
+    const stateProbes = execFileSyncMock.mock.calls.filter((call) =>
+      (call[1] as string[] | undefined)?.includes(String(process.pid)),
+    );
+    expect(stateProbes).toHaveLength(1);
+    expect(scan.unavailable).toEqual([
+      `Could not read the working directory of process ${process.pid}`,
+    ]);
+    expect(stderrWrites.join('')).toContain(
+      `could not read the state of process ${process.pid} (ENOENT)`,
+    );
+  });
+  it('reports a process-state probe that ran and could not answer', async () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), {
+        status: 1,
+        stderr: 'ps: nosuchcol: keyword not found\nps: no valid keywords\n',
+      });
+    });
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+
+    const scan = await scanLockProcesses();
+
+    expect(scan.unavailable).toEqual([
+      `Could not read the working directory of process ${process.pid}`,
+    ]);
+    expect(stderrWrites.join('')).toContain(
+      `could not read the state of process ${process.pid} (ps: nosuchcol: keyword not found)`,
+    );
+  });
+
+  it('reports a probe failure whose reason follows a blank stderr line', async () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), {
+        status: 1,
+        stderr: '\nps: nosuchcol: keyword not found\nps: no valid keywords\n',
+      });
+    });
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+
+    const scan = await scanLockProcesses();
+
+    expect(scan.unavailable).toEqual([
+      `Could not read the working directory of process ${process.pid}`,
+    ]);
+    expect(stderrWrites.join('')).toContain(
+      `could not read the state of process ${process.pid} (ps: nosuchcol: keyword not found)`,
+    );
+  });
+
+  it('renders a multi-line probe failure as one diagnostic line', async () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), {
+        status: 1,
+        stderr: 'error: unknown user-defined format specifier "bogus"\n\nUsage:\n ps [options]\n',
+      });
+    });
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+
+    await scanLockProcesses();
+
+    const written = stderrWrites.join('');
+    expect(written).toContain(
+      `could not read the state of process ${process.pid} (error: unknown user-defined format specifier "bogus")`,
+    );
+    expect(written.trimEnd().split('\n')).toHaveLength(1);
+  });
+
+  it('keeps no uncertainty and stays silent when the process-state probe finds the pid already gone', async () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), { status: 1, stderr: '' });
+    });
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+
+    const scan = await scanLockProcesses();
+
+    const stateProbes = execFileSyncMock.mock.calls.filter((call) =>
+      (call[1] as string[] | undefined)?.includes(String(process.pid)),
+    );
+    expect(stateProbes).toHaveLength(1);
+    expect(scan.unavailable).toEqual([]);
+    expect(stderrWrites.join('')).toBe('');
+  });
+
+  it('warns once per process when one scan probes the same pid twice', async () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('spawnSync ps ENOENT'), { code: 'ENOENT' });
+    });
+    spawnSyncMock
+      .mockReturnValueOnce(
+        makeSpawnResult({
+          stdout: `${process.pid} open-knowledge-server notes\n${process.pid} node cli.mjs --ok-project-path=/notes\n`,
+        }),
+      )
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
+
+    await scanLockProcesses();
+
+    const stateProbes = execFileSyncMock.mock.calls.filter((call) =>
+      (call[1] as string[] | undefined)?.includes(String(process.pid)),
+    );
+    expect(stateProbes).toHaveLength(2);
+    const warnings = stderrWrites
+      .join('')
+      .split('\n')
+      .filter((line) => line.includes(`could not read the state of process ${process.pid}`));
+    expect(warnings).toHaveLength(1);
+  });
+
   it('retains a live candidate the batched query could not answer for', async () => {
     spawnSyncMock
       .mockReturnValueOnce(
@@ -720,5 +898,135 @@ describe('lock recovery process evidence', () => {
       pid: process.pid,
       source: 'listener-cwd',
     });
+  });
+});
+
+describe('isDefunctProcess', () => {
+  const realPlatform = process.platform;
+  let stderrWrites: string[];
+  beforeEach(() => {
+    execFileSyncMock.mockReset();
+    stderrWrites = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    });
+  });
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+    vi.restoreAllMocks();
+    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+  });
+
+  it('skips the probe entirely on an unsupported platform', () => {
+    execFileSyncMock.mockReturnValue('SN  \n');
+    expect(isDefunctProcess(4242)).toBe(false);
+    expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    expect(isDefunctProcess(4242)).toBe(false);
+    expect(execFileSyncMock).toHaveBeenCalledTimes(1);
+  });
+  it('reads a zombie state as defunct', () => {
+    execFileSyncMock.mockReturnValue('Z+  \n');
+    expect(isDefunctProcess(4242)).toBe(true);
+  });
+  it('reads any other state as not defunct', () => {
+    execFileSyncMock.mockReturnValue('SN  \n');
+    expect(isDefunctProcess(4242)).toBe(false);
+  });
+  it('reads a ps-confirmed absence as not defunct without reporting', () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), { status: 1, stderr: '' });
+    });
+    expect(isDefunctProcess(4242)).toBe(false);
+    expect(stderrWrites.join('')).toBe('');
+  });
+  it('reads a probe that could not run as not defunct and reports why', () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('spawnSync ps ENOENT'), { code: 'ENOENT' });
+    });
+    expect(isDefunctProcess(4242)).toBe(false);
+    expect(stderrWrites.join('')).toContain('could not read the state of process 4242 (ENOENT)');
+  });
+});
+
+describe('readProcessState', () => {
+  const realPlatform = process.platform;
+  let stderrWrites: string[];
+  beforeEach(() => {
+    execFileSyncMock.mockReset();
+    stderrWrites = [];
+    vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(String(chunk));
+      return true;
+    });
+  });
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+    vi.restoreAllMocks();
+    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+  });
+
+  it('tells a confirmed absence apart from a confirmed live process', () => {
+    execFileSyncMock.mockReturnValue('SN  \n');
+    expect(readProcessState(4242)).toEqual({ status: 'running' });
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), { status: 1, stderr: '' });
+    });
+    expect(readProcessState(4242)).toEqual({ status: 'gone' });
+  });
+  it('tells a zombie apart from a probe that could not answer', () => {
+    execFileSyncMock.mockReturnValue('Z+  \n');
+    expect(readProcessState(4242)).toEqual({ status: 'defunct' });
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('spawnSync ps ENOENT'), { code: 'ENOENT' });
+    });
+    expect(readProcessState(4242)).toEqual({ status: 'unreadable', reason: 'ENOENT' });
+  });
+  it('reports an unsupported platform as unreadable without probing or writing', () => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+    expect(readProcessState(4242)).toEqual({
+      status: 'unreadable',
+      reason: 'no process-state query on win32',
+    });
+    expect(execFileSyncMock).not.toHaveBeenCalled();
+    expect(stderrWrites.join('')).toBe('');
+  });
+});
+
+describe('isLockProcessRunning', () => {
+  const realPlatform = process.platform;
+  beforeEach(() => {
+    execFileSyncMock.mockReset();
+  });
+  afterEach(() => {
+    Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+    vi.restoreAllMocks();
+    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+  });
+
+  it('lets a probe-confirmed absence override a process that was alive a moment earlier', () => {
+    execFileSyncMock.mockReturnValue('SN  \n');
+    expect(isLockProcessRunning(process.pid)).toBe(true);
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), { status: 1, stderr: '' });
+    });
+    expect(isLockProcessRunning(process.pid)).toBe(false);
+  });
+  it('keeps a live process running when the probe could not answer', () => {
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('spawnSync ps ENOENT'), { code: 'ENOENT' });
+    });
+    vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    expect(isLockProcessRunning(process.pid)).toBe(true);
+  });
+  it('keeps a foreign-owned process running when the probe cannot see it', () => {
+    vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
+    });
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error('Command failed: ps'), { status: 1, stderr: '' });
+    });
+    expect(isLockProcessRunning(4242)).toBe(true);
   });
 });

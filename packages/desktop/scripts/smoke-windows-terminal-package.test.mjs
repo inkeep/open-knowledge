@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -36,7 +36,7 @@ function runPython(args, env) {
       code: 0,
       output: execFileSync(pythonBin, args, {
         encoding: 'utf8',
-        env: { ...process.env, ...env },
+        env: { ...process.env, ...env, PYTHONDONTWRITEBYTECODE: '1' },
         stdio: ['ignore', 'pipe', 'pipe'],
         timeout: 25_000,
       }),
@@ -137,6 +137,15 @@ const fixtures = [];
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) rmSync(fixture, { recursive: true, force: true });
 });
+
+function drainDriverBytecode() {
+  const cacheDir = join(dirname(driverPath), '__pycache__');
+  const left = existsSync(cacheDir)
+    ? readdirSync(cacheDir).map((entry) => join(cacheDir, entry))
+    : [];
+  rmSync(cacheDir, { recursive: true, force: true });
+  return left;
+}
 
 function ptyEchoSnippet() {
   const extractor = [
@@ -490,5 +499,45 @@ describe('packaged Windows terminal smoke driver', () => {
         '(130s discovery + 30s echo + 3s overrun + 5s margin), ' +
         'so one phase overran and was killed before it could report itself',
     );
+  });
+
+  test('imports the CDP driver without leaving Python bytecode in the repository', () => {
+    const driverMarker = MARKER_LINE.trim();
+    const readDriverMarker = [
+      'import importlib.util, sys, types',
+      "sys.modules['websocket'] = types.ModuleType('websocket')",
+      `spec = importlib.util.spec_from_file_location('d', ${JSON.stringify(driverPath)})`,
+      'm = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)',
+      'sys.stdout.write(m.MARKER)',
+    ].join('\n');
+
+    drainDriverBytecode();
+    try {
+      const shippedSnippet = ptyEchoSnippet();
+      const afterShippedCallSite = drainDriverBytecode();
+      const overriddenCallerClear = runPython(['-c', readDriverMarker], {
+        PYTHONDONTWRITEBYTECODE: '',
+      });
+      const afterHelperOverrodeCallerClear = drainDriverBytecode();
+
+      expect(shippedSnippet).toContain(driverMarker);
+      expect(
+        overriddenCallerClear.code,
+        `the caller-clear arm's python spawn on ${driverPath} exited non-zero: ${overriddenCallerClear.output}`,
+      ).toBe(0);
+      expect(overriddenCallerClear.output.trim()).toBe(driverMarker);
+      expect(
+        { afterShippedCallSite, afterHelperOverrodeCallerClear },
+        `a python spawn compiled ${driverPath} into the repository: CPython caches an imported module's bytecode beside its source, and the push-boundary gate refuses a tree carrying untracked files`,
+      ).toEqual({ afterShippedCallSite: [], afterHelperOverrodeCallerClear: [] });
+    } finally {
+      try {
+        drainDriverBytecode();
+      } catch (error) {
+        process.stderr.write(
+          `[pycache-drain] failed to clear __pycache__ under ${dirname(driverPath)}; python bytecode is left in the working tree, where the push-boundary gate will refuse it: ${error}\n`,
+        );
+      }
+    }
   });
 });

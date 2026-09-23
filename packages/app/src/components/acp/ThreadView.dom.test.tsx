@@ -1,4 +1,5 @@
 import type { ThreadEvent, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { i18n } from '@lingui/core';
 import {
   act,
   cleanup,
@@ -22,6 +23,9 @@ import type {
 } from '@/lib/acp/thread-event-model';
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
+i18n.load('en', {});
+i18n.activate('en');
+
 const render = (ui: Parameters<typeof rtlRender>[0]) => rtlRender(ui, { wrapper: TooltipProvider });
 
 let model: ThreadRenderModel | null = null;
@@ -44,6 +48,7 @@ let editQueuedResult: Promise<void> = Promise.resolve();
 const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => editQueuedResult);
 const holdQueued = vi.fn((_threadId: string, _id: string, _held: boolean) => {});
 const removeQueued = vi.fn((_threadId: string, _id: string) => {});
+const sendQueuedNow = vi.fn((_threadId: string, _id: string) => {});
 const toastError = vi.fn((_message: string) => {});
 const cancel = vi.fn((_threadId: string) => {});
 const retryThread = vi.fn(async (_threadId: string) => {});
@@ -68,6 +73,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     editQueued,
     holdQueued,
     removeQueued,
+    sendQueuedNow,
     setMode,
     setConfigOption,
     setContextWindow,
@@ -102,8 +108,9 @@ vi.doMock('sonner', () => ({
   toast: { error: toastError, success: vi.fn(), info: vi.fn() },
 }));
 
+let activeDocName: string | null = null;
 vi.doMock('@/editor/DocumentContext', () => ({
-  useDocumentContext: () => ({ systemProvider: null }),
+  useDocumentContext: () => ({ systemProvider: null, activeDocName }),
 }));
 
 vi.doMock('@/lib/use-workspace', () => ({
@@ -474,6 +481,7 @@ async function openToolCall(): Promise<void> {
 
 afterEach(() => {
   cleanup();
+  i18n.activate('en');
   localStorage.clear();
   vi.useRealTimers();
   respondPermission.mockClear();
@@ -488,6 +496,7 @@ afterEach(() => {
   editQueuedResult = Promise.resolve();
   holdQueued.mockClear();
   removeQueued.mockClear();
+  sendQueuedNow.mockClear();
   toastError.mockClear();
   cancel.mockClear();
   retryThread.mockClear();
@@ -542,7 +551,7 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
     const follow = screen.getByRole('button', { name: "Follow the agent's edits" });
     expect(screen.queryByTestId('agent-thread-agent-name')).toBeNull();
     expect(trigger.textContent).toContain('Sonnet');
@@ -588,7 +597,7 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-model'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
 
@@ -652,7 +661,7 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
     expect(trigger.getAttribute('aria-label')).not.toMatch(/pick this conversation back up/);
     await userEvent.click(trigger);
     expect(screen.queryByTestId('agent-thread-settings-archived-hint')).toBeNull();
@@ -692,14 +701,14 @@ describe('ThreadView agent settings', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
 
     await userEvent.click(screen.getByTestId('agent-thread-config-model'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-opus'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'model', 'opus');
     expect(getRememberedAgentConfig(key)).toEqual({ model: 'opus' });
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-permission'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-bypass'));
     expect(setConfigOption).toHaveBeenCalledWith('thread-1', 'permission', 'bypass');
@@ -707,8 +716,8 @@ describe('ThreadView agent settings', () => {
   });
 });
 
-describe('ThreadView permissive-mode accent', () => {
-  const modeInfo = (currentValue: string) =>
+describe('ThreadView chat header', () => {
+  const headerInfo = (over?: { effort?: string; fast?: boolean; mode?: string }) =>
     makeInfo({
       status: 'ready',
       configOptions: [
@@ -717,55 +726,259 @@ describe('ThreadView permissive-mode accent', () => {
           name: 'Permission mode',
           category: 'mode',
           type: 'select',
-          currentValue,
+          currentValue: over?.mode ?? 'default',
           options: [
             { value: 'default', name: 'Default' },
+            { value: 'acceptEdits', name: 'Accept Edits' },
             { value: 'bypassPermissions', name: 'Bypass permissions' },
           ],
+        },
+        {
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'opus',
+          options: [{ value: 'opus', name: 'Opus 5' }],
+        },
+        ...(over?.effort === undefined
+          ? []
+          : [
+              {
+                id: 'effort',
+                name: 'Effort',
+                category: 'thought_level' as const,
+                type: 'select' as const,
+                currentValue: over.effort,
+                options: [
+                  { value: 'max', name: 'Max' },
+                  { value: 'low', name: 'Low' },
+                ],
+              },
+            ]),
+        {
+          id: 'fast',
+          name: 'Fast mode',
+          category: 'model_config',
+          type: 'boolean',
+          currentValue: over?.fast ?? false,
         },
       ],
     });
 
-  test('an ordinary mode carries no accent', () => {
-    render(<ThreadView info={modeInfo('default')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+  test('keeps the model, the effort and Fast mode all visible without opening anything', () => {
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.textContent).toContain('Opus 5');
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
+    expect(screen.getByTestId('agent-thread-fast').textContent).toBe('Fast');
   });
 
-  test('a mode that lets the agent act unprompted is marked, and says so', () => {
-    render(<ThreadView info={modeInfo('bypassPermissions')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
-    expect(
-      screen.getByRole('button', {
-        name: /Bypass permissions lets Claude Agent act without asking/,
-      }),
-    ).toBeDefined();
+  test('Fast mode is shown by its presence, so it is absent when off', () => {
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: false })} />);
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
+    expect(screen.queryByTestId('agent-thread-fast')).toBeNull();
   });
 
-  test('marks a permissive mode on the legacy modes surface too', () => {
+  test('an agent that reports no effort shows none rather than a placeholder', () => {
+    render(<ThreadView info={headerInfo({ fast: true })} />);
+    expect(screen.queryByTestId('agent-thread-effort')).toBeNull();
+    expect(screen.getByTestId('agent-thread-fast')).toBeTruthy();
+  });
+
+  test('effort tracks the live value', () => {
+    const { rerender } = render(<ThreadView info={headerInfo({ effort: 'max' })} />);
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
+    rerender(<ThreadView info={headerInfo({ effort: 'low' })} />);
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Low');
+  });
+
+  test('an agent with only a reasoning level shows it once, not as model and effort both', () => {
     render(
       <ThreadView
         info={makeInfo({
           status: 'ready',
-          modes: {
-            currentModeId: 'yolo',
-            availableModes: [
-              { id: 'default', name: 'Default' },
-              { id: 'yolo', name: 'YOLO' },
-            ],
-          },
+          configOptions: [
+            {
+              id: 'effort',
+              name: 'Effort',
+              category: 'thought_level',
+              type: 'select',
+              currentValue: 'max',
+              options: [{ value: 'max', name: 'Max' }],
+            },
+          ],
         })}
       />,
     );
-    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.textContent).toBe('Max');
   });
 
-  test('the accent tracks the live mode, restored or hand-picked alike', async () => {
-    const { rerender } = render(<ThreadView info={modeInfo('default')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
-    rerender(<ThreadView info={modeInfo('bypassPermissions')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).not.toBeNull();
-    rerender(<ThreadView info={modeInfo('default')} />);
-    expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+  test('a model_config boolean whose display name merely says fast is not the Fast badge', () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'opus',
+              options: [{ value: 'opus', name: 'Opus 5' }],
+            },
+            {
+              id: 'thinking',
+              name: 'Fast thinking',
+              category: 'model_config',
+              type: 'boolean',
+              currentValue: true,
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.queryByTestId('agent-thread-fast')).toBeNull();
+  });
+
+  test('the state the header shows is also the name assistive tech reads', () => {
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.getAttribute('aria-label')).toBe('Agent settings — Opus 5, Fast, Max');
+  });
+
+  test('the label joins its parts the way the active locale does, not with a fixed comma', () => {
+    i18n.load('ar', {});
+    i18n.activate('ar');
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const label =
+      screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label') ?? '';
+    expect(label).toContain('\u060c');
+    expect(label).not.toContain('Opus 5, Fast');
+  });
+
+  test.each(['default', 'acceptEdits', 'bypassPermissions'])(
+    'the %s mode reaches the header neither as text nor as a colour',
+    (mode) => {
+      render(<ThreadView info={headerInfo({ mode, effort: 'max' })} />);
+
+      expect(screen.queryByTestId('agent-thread-mode-accent')).toBeNull();
+      expect(screen.queryByTestId('agent-thread-permissive-mode')).toBeNull();
+      expect(
+        screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label'),
+      ).toBe('Agent settings — Opus 5, Max');
+    },
+  );
+
+  test('a mode-only agent still names its mode, since that is the only select there is', () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          configOptions: [
+            {
+              id: 'permission',
+              name: 'Permission mode',
+              category: 'mode',
+              type: 'select',
+              currentValue: 'bypassPermissions',
+              options: [
+                { value: 'default', name: 'Default' },
+                { value: 'bypassPermissions', name: 'Bypass permissions' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.textContent).toBe('Bypass permissions');
+    expect(screen.queryByTestId('agent-thread-permissive-mode')).toBeNull();
+    expect(trigger.getAttribute('aria-label')).toBe('Agent settings — Bypass permissions');
+  });
+
+  test('a default effort is named, not described with the menu sentence', () => {
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          configOptions: [
+            {
+              id: 'model',
+              name: 'Model',
+              category: 'model',
+              type: 'select',
+              currentValue: 'opus',
+              options: [{ value: 'opus', name: 'Opus 5' }],
+            },
+            {
+              id: 'effort',
+              name: 'Effort',
+              category: 'thought_level',
+              type: 'select',
+              currentValue: 'default',
+              options: [
+                { value: 'default', name: 'Default' },
+                { value: 'max', name: 'Max' },
+              ],
+            },
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Default');
+    expect(screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label')).toBe(
+      'Agent settings — Opus 5, Default',
+    );
+  });
+
+  test('the hover text carries the state the accessible name carries', async () => {
+    const user = userEvent.setup();
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+
+    await user.hover(trigger);
+
+    await screen.findByRole('tooltip');
+    const hover = screen.getByTestId('agent-thread-settings-tooltip');
+    expect(hover.textContent).toBe(trigger.getAttribute('aria-label'));
+  });
+
+  test('the state is described once, so it is not announced twice', async () => {
+    const user = userEvent.setup();
+    render(<ThreadView info={headerInfo({ effort: 'max', fast: true })} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+
+    await user.hover(trigger);
+
+    const described = await screen.findByRole('tooltip');
+    expect(trigger.getAttribute('aria-label')).toContain('Opus 5');
+    expect(described.textContent).toBe('Agent settings');
+  });
+
+  test('the archived hover text carries the resume hint too', async () => {
+    const user = userEvent.setup();
+    render(<ThreadView info={{ ...headerInfo({ effort: 'max', fast: true }), archived: true }} />);
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+
+    await user.hover(trigger);
+
+    await screen.findByRole('tooltip');
+    const hover = screen.getByTestId('agent-thread-settings-tooltip');
+    expect(hover.textContent).toBe(trigger.getAttribute('aria-label'));
+    expect(hover.textContent).toContain('changes apply when you pick this conversation back up');
+  });
+
+  test('an archived thread announces the same state it shows', () => {
+    render(<ThreadView info={{ ...headerInfo({ effort: 'max', fast: true }), archived: true }} />);
+    const label =
+      screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label') ?? '';
+    expect(label).toContain('Opus 5');
+    expect(label).toContain('Max');
+    expect(screen.getByTestId('agent-thread-effort').textContent).toBe('Max');
   });
 });
 
@@ -786,7 +999,7 @@ describe('ThreadView agent settings (modes)', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-ask'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'ask');
@@ -811,7 +1024,7 @@ describe('ThreadView agent settings (modes)', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-config-legacy-mode'));
     await userEvent.click(await screen.findByTestId('agent-thread-config-option-yolo'));
     expect(setMode).toHaveBeenCalledWith('thread-1', 'yolo');
@@ -1272,16 +1485,164 @@ describe('ThreadView tool-call status', () => {
     expect(screen.getByTestId('agent-thread-tool-check')).toBeDefined();
   });
 
-  test('a fenced output block renders without its backticks', async () => {
+  test('a fenced output block is unwrapped and handed on as a json code block', async () => {
     model = makeModel({
       items: [toolCall({ status: 'completed', content: ['```json\n{"ok":true}\n```'] })],
       turnActive: false,
     });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     await openToolCall();
-    const body = screen.getByTestId('agent-thread-tool-call').textContent ?? '';
-    expect(body).toContain('{"ok":true}');
-    expect(body).not.toContain('```');
+    const block = screen.getByTestId('agent-thread-tool-json');
+    expect(block.textContent).toBe('```json\n{\n  "ok": true\n}\n```');
+  });
+
+  test('shell output stays verbatim even when it is shaped like markdown', async () => {
+    model = makeModel({
+      items: [toolCall({ status: 'completed', content: ['# not a heading\n- a\n- b\n- c'] })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await openToolCall();
+    expect(screen.queryByTestId('agent-thread-tool-markdown')).toBeNull();
+    const pre = screen.getByTestId('agent-thread-tool-call').querySelector('pre');
+    expect(pre?.textContent).toBe('# not a heading\n- a\n- b\n- c');
+  });
+
+  test('markdown-shaped output from a non-shell tool renders as markdown', async () => {
+    model = makeModel({
+      items: [
+        toolCall({
+          title: 'Fetch notes',
+          toolKind: 'other',
+          status: 'completed',
+          content: ['## Results\n- one\n- two\n- three'],
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await userEvent.click(screen.getByRole('button', { name: /Fetch notes/ }));
+    const block = screen.getByTestId('agent-thread-tool-markdown');
+    expect(within(block).getByTestId('rendered-markdown').textContent).toBe(
+      '## Results\n- one\n- two\n- three',
+    );
+    expect(screen.getByTestId('agent-thread-tool-call').querySelector('pre')).toBeNull();
+  });
+
+  test('JSON output is reindented and shown as a code block', async () => {
+    model = makeModel({
+      items: [
+        toolCall({
+          title: 'Lookup',
+          toolKind: 'other',
+          status: 'completed',
+          content: ['{"ok":true,"n":1}'],
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await userEvent.click(screen.getByRole('button', { name: /Lookup/ }));
+    expect(screen.getByTestId('agent-thread-tool-json').textContent).toBe(
+      '```json\n{\n  "ok": true,\n  "n": 1\n}\n```',
+    );
+  });
+
+  test('a tall body is capped with a fade until Show all lifts the cap', async () => {
+    const proto = HTMLElement.prototype;
+    Object.defineProperty(proto, 'scrollHeight', { configurable: true, get: () => 1000 });
+    Object.defineProperty(proto, 'clientHeight', { configurable: true, get: () => 320 });
+    Object.defineProperty(proto, 'scrollTo', { configurable: true, value: () => {} });
+    try {
+      model = makeModel({
+        items: [toolCall({ status: 'completed', content: ['line'] })],
+        turnActive: false,
+      });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+      await openToolCall();
+      const body = screen.getByTestId('agent-thread-tool-body');
+      expect(body.getAttribute('data-capped')).toBe('true');
+      expect(body.className).toContain('scroll-fade-mask-bottom');
+
+      const toggle = screen.getByTestId('agent-thread-tool-show-all');
+      expect(toggle.textContent).toBe('Show all');
+      await userEvent.click(toggle);
+      expect(body.getAttribute('data-capped')).toBeNull();
+      expect(body.className).not.toContain('max-h-80');
+      expect(toggle.textContent).toBe('Show less');
+    } finally {
+      delete (proto as { scrollHeight?: unknown }).scrollHeight;
+      delete (proto as { clientHeight?: unknown }).clientHeight;
+      delete (proto as { scrollTo?: unknown }).scrollTo;
+    }
+  });
+
+  test('a short body has no cap and no Show all', async () => {
+    model = makeModel({
+      items: [toolCall({ status: 'completed', content: ['line'] })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await openToolCall();
+    expect(screen.getByTestId('agent-thread-tool-body').getAttribute('data-capped')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-tool-show-all')).toBeNull();
+  });
+
+  test('hovering a row says what the tool does and shows its raw id', async () => {
+    const user = userEvent.setup();
+    model = makeModel({
+      items: [
+        toolCall({
+          title: 'mcp__open-knowledge__exec',
+          toolKind: 'other',
+          rawInput: { command: 'ls' },
+          content: ['out'],
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await user.hover(screen.getByRole('button', { name: /OpenKnowledge ran ls/ }));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('read-only shell commands');
+    expect(tooltip.textContent).toContain('mcp__open-knowledge__exec');
+  });
+
+  test('a tool with nothing to add gets no tooltip wrapper at all', async () => {
+    const user = userEvent.setup();
+    model = makeModel({
+      items: [toolCall({ title: 'Run tests', toolKind: 'other', content: ['out'] })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const button = screen.getByRole('button', { name: /Run tests/ });
+    expect(button.getAttribute('data-state')).toBeNull();
+    await user.hover(button);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  test('a row with no body keeps its explanation as a title, readable without hover', () => {
+    model = makeModel({
+      items: [toolCall({ title: 'mcp__open-knowledge__exec', toolKind: 'other', rawInput: {} })],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const row = screen.getByTestId('agent-thread-tool-call');
+    expect(row.querySelector('button')).toBeNull();
+    const title = row.querySelector('[title]')?.getAttribute('title') ?? '';
+    expect(title).toContain('read-only shell commands');
+    expect(title).toContain('mcp__open-knowledge__exec');
+  });
+
+  test('a built-in tool is explained by its kind', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ items: [toolCall({ content: ['out'] })], turnActive: false });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await user.hover(screen.getByRole('button', { name: /Run tests/ }));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Runs a shell command');
+    expect(tooltip.textContent).toContain('Run tests');
   });
 
   test('a fence opening partway through is output, not a wrapper', async () => {
@@ -1348,6 +1709,31 @@ describe('ThreadView tool-call status', () => {
     const row = screen.getByTestId('agent-thread-tool-call').textContent ?? '';
     expect(row).toContain('OpenKnowledge wrote to meetings/standup');
     expect(row).not.toContain('mcp__open-knowledge__write');
+  });
+
+  test('the raw id the label replaced stays reachable on hover', async () => {
+    const user = userEvent.setup();
+    model = makeModel({
+      items: [
+        toolCall({
+          status: 'completed',
+          title: 'mcp__linear-server__list_issues',
+          toolKind: 'other',
+          rawInput: {},
+          content: ['out'],
+        }),
+      ],
+      turnActive: false,
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const row = screen.getByTestId('agent-thread-tool-call');
+    expect(row.textContent).toContain('linear-server · list_issues');
+    expect(row.textContent).not.toContain('mcp__linear-server__list_issues');
+
+    await user.hover(screen.getByRole('button', { name: /list_issues/ }));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('list_issues from the linear-server MCP server');
+    expect(tooltip.textContent).toContain('mcp__linear-server__list_issues');
   });
 });
 
@@ -1519,6 +1905,78 @@ describe('ThreadView tool-call collapse', () => {
   });
 });
 
+describe('ThreadView tool-call grouping', () => {
+  const reads = (count: number) =>
+    Array.from({ length: count }, (_, index) =>
+      toolCall({
+        toolCallId: `r${index}`,
+        title: `Read file-${index}.ts`,
+        toolKind: 'read',
+        status: 'completed',
+        locations: [{ path: `src/file-${index}.ts` }],
+      }),
+    );
+
+  test('folds a run of same-kind calls into one row that counts them by tool, not by title', () => {
+    model = makeModel({ turnActive: false, items: reads(3) });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.queryAllByTestId('agent-thread-tool-call')).toHaveLength(0);
+    const group = screen.getByTestId('agent-thread-tool-group');
+    expect(group.textContent).toContain('3 × Read');
+    expect(group.textContent).not.toContain('3 × Read file-0.ts');
+    expect(group.textContent).toContain('file-0.ts, file-1.ts +1 more');
+  });
+
+  test('expanding gives every call in the run its own row back', async () => {
+    model = makeModel({ turnActive: false, items: reads(3) });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    await userEvent.click(screen.getByTestId('agent-thread-tool-group-expand'));
+
+    expect(screen.queryByTestId('agent-thread-tool-group')).toBeNull();
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(3);
+  });
+
+  test('leaves a pair alone, and a call of another tool splits the run around it', () => {
+    model = makeModel({ turnActive: false, items: reads(2) });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    expect(screen.queryByTestId('agent-thread-tool-group')).toBeNull();
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(2);
+
+    cleanup();
+    const [first, second, third, fourth, fifth] = reads(5);
+    model = makeModel({
+      turnActive: false,
+      items: [
+        first,
+        second,
+        toolCall({ toolCallId: 'x', title: 'Run tests', status: 'completed' }),
+        third,
+        fourth,
+        fifth,
+      ].filter((item): item is RenderedItem => item !== undefined),
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-tool-group').textContent).toContain('3 × Read');
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(3);
+  });
+
+  test('a call still running holds its own row rather than being folded away', () => {
+    const [first, second, third] = reads(3);
+    model = makeModel({
+      items: [first, second, { ...third, status: 'in_progress' as const }].filter(
+        (item): item is RenderedItem => item !== undefined,
+      ),
+    });
+    render(<ThreadView info={makeInfo()} />);
+
+    expect(screen.queryByTestId('agent-thread-tool-group')).toBeNull();
+    expect(screen.getAllByTestId('agent-thread-tool-call')).toHaveLength(3);
+  });
+});
+
 describe('ThreadView raw input', () => {
   test('collapses raw tool input by default and reveals it on request', async () => {
     model = makeModel({
@@ -1533,7 +1991,9 @@ describe('ThreadView raw input', () => {
 
     await userEvent.click(trigger);
     expect(trigger.getAttribute('aria-expanded')).toBe('true');
-    expect(block.textContent).toContain('notes/today');
+    expect(within(block).getByTestId('rendered-markdown').textContent).toBe(
+      '```json\n{\n  "docName": "notes/today",\n  "position": "append"\n}\n```',
+    );
   });
 
   test('an empty rawInput object renders no input block', () => {
@@ -1818,7 +2278,7 @@ describe('ThreadView config value hints', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     const effortRow = screen.getByTestId('agent-thread-config-effort');
     expect(effortRow.textContent).toContain("Model's default effort");
 
@@ -1860,7 +2320,7 @@ describe('ThreadView config value hints', () => {
       />,
     );
 
-    const trigger = screen.getByRole('button', { name: 'Agent settings' });
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
     expect(trigger.textContent).toContain('Opus (1M context) · default');
 
     await userEvent.click(trigger);
@@ -2082,6 +2542,53 @@ describe('ThreadView queued-message holds', () => {
     expect(screen.queryByTestId('agent-thread-queued-release')).toBeNull();
   });
 
+  test('mid-turn, Send now on a queued row jumps it ahead of the run', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued('jump me')} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-queued-send-now'));
+    expect(sendQueuedNow).toHaveBeenCalledWith('thread-1', 'q1');
+    expect(steer).not.toHaveBeenCalled();
+    expect(removeQueued).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  test('a held row offers Send now too, next to its release', () => {
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued('parked text', true)} />);
+
+    const row = screen.getByTestId('agent-thread-queued');
+    expect(within(row).getByTestId('agent-thread-queued-release')).toBeTruthy();
+    fireEvent.click(within(row).getByTestId('agent-thread-queued-send-now'));
+    expect(sendQueuedNow).toHaveBeenCalledWith('thread-1', 'q1');
+    expect(holdQueued).not.toHaveBeenCalled();
+  });
+
+  test('with no run to interrupt, a held row only offers its release', () => {
+    model = makeModel({ turnActive: false });
+    render(
+      <ThreadView
+        info={makeInfo({
+          status: 'ready',
+          queue: [{ id: 'q1', content: 'parked text', ts: 1, held: true }],
+        })}
+      />,
+    );
+
+    expect(screen.queryByTestId('agent-thread-queued-send-now')).toBeNull();
+    expect(screen.getByTestId('agent-thread-queued-release')).toBeTruthy();
+  });
+
+  test('Send now says what it costs before it is pressed', async () => {
+    const user = userEvent.setup();
+    model = makeModel({ turnActive: true });
+    render(<ThreadView info={oneQueued()} />);
+
+    await user.hover(screen.getByTestId('agent-thread-queued-send-now'));
+    const tooltip = await screen.findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Stops the current run and sends this instead');
+  });
+
   test('an edit that lost its race says so instead of vanishing', async () => {
     editQueuedResult = Promise.reject(new Error('queued message already dispatched'));
     model = makeModel({ turnActive: true });
@@ -2150,7 +2657,7 @@ describe('ThreadView send-vs-queue labelling', () => {
 });
 
 describe('ThreadView attachment disclosure', () => {
-  test('a references-only agent explains that behavior on the attachment affordance', async () => {
+  test('a references-only agent explains that behavior in the add menu', async () => {
     const user = userEvent.setup();
     model = makeModel({ turnActive: false });
     render(
@@ -2162,14 +2669,16 @@ describe('ThreadView attachment disclosure', () => {
       />,
     );
 
-    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
 
-    expect((await screen.findByRole('tooltip')).textContent).toBe(
-      'Attach a file · references only (no embedded contents)',
-    );
+    expect(
+      screen.getByRole('menuitem', {
+        name: 'Attach files · references only (no embedded contents)',
+      }).textContent,
+    ).toBe('Attach files · references only (no embedded contents)');
   });
 
-  test('an embedding-capable agent keeps the attachment tooltip concise', async () => {
+  test('an embedding-capable agent keeps the file option concise', async () => {
     const user = userEvent.setup();
     model = makeModel({ turnActive: false });
     render(
@@ -2181,9 +2690,9 @@ describe('ThreadView attachment disclosure', () => {
       />,
     );
 
-    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
 
-    expect((await screen.findByRole('tooltip')).textContent).toBe('Attach a file');
+    expect(screen.getByRole('menuitem', { name: 'Attach files' }).textContent).toBe('Attach files');
   });
 
   test('unknown capabilities do not flash a references-only claim during handshake', async () => {
@@ -2191,9 +2700,9 @@ describe('ThreadView attachment disclosure', () => {
     model = makeModel({ turnActive: false });
     render(<ThreadView info={makeInfo({ status: 'ready', promptCapabilities: null })} />);
 
-    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
 
-    expect((await screen.findByRole('tooltip')).textContent).toBe('Attach a file');
+    expect(screen.getByRole('menuitem', { name: 'Attach files' }).textContent).toBe('Attach files');
   });
 });
 
@@ -2756,11 +3265,26 @@ describe('ThreadView retry', () => {
     expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(true);
   });
 
-  test('a thread whose agent is gone for good has nothing left to type into', () => {
+  test('an exiting agent closes the add menu and moves focus to settings', async () => {
+    const user = userEvent.setup();
     model = makeModel({ turnActive: false, items: [] });
-    render(<ThreadView info={makeInfo({ status: 'exited' })} />);
+    const view = render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
+    expect(screen.getByRole('menuitem', { name: 'Attach files' })).toBeDefined();
+
+    view.rerender(<ThreadView info={makeInfo({ status: 'exited' })} />);
 
     expect(screen.getByTestId('agent-thread-composer').hasAttribute('disabled')).toBe(true);
+    const addMenu = screen.getByTestId('agent-thread-add-to-prompt');
+    expect(addMenu.hasAttribute('disabled')).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByRole('menuitem', { name: 'Attach files' })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByTestId('agent-thread-settings'));
+    });
+
+    view.rerender(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    expect(screen.queryByRole('menuitem', { name: 'Attach files' })).toBeNull();
   });
 
   test('the header names the build OK launched', () => {
@@ -3965,9 +4489,22 @@ describe('ThreadView auth-required dead ends', () => {
   });
 
   test('a thread genuinely still starting keeps its progress message and offers nothing', () => {
-    for (const status of ['installing', 'spawning'] as const) {
+    vi.useFakeTimers();
+    const progressMessages = ['Installing Claude…', 'Starting Claude…'] as const;
+    for (const [status, message] of [
+      ['installing', 'Installing Claude…'],
+      ['spawning', 'Starting Claude…'],
+    ] as const) {
       const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
       expect(screen.queryByTestId('agent-thread-auth-action')).toBeNull();
+      const surface = screen.getByTestId('agent-thread-transcript');
+      const shown = progressMessages.filter((candidate) =>
+        surface.textContent?.includes(candidate),
+      );
+      expect({ status, shown }).toEqual({ status, shown: [message] });
       view.unmount();
     }
   });
@@ -4164,6 +4701,350 @@ describe('ThreadView auth-required dead ends', () => {
   });
 });
 
+describe('ThreadView start progress', () => {
+  function transcriptItem(): RenderedItem {
+    return { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' };
+  }
+
+  test('a thread that already has a transcript still says installing rather than starting', () => {
+    vi.useFakeTimers();
+    const progressMessages = ['Installing Claude…', 'Starting Claude…'] as const;
+    for (const [status, message] of [
+      ['installing', 'Installing Claude…'],
+      ['spawning', 'Starting Claude…'],
+    ] as const) {
+      model = makeModel({ turnActive: false, items: [transcriptItem()] });
+      const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+
+      const starting = screen.getByTestId('agent-thread-starting');
+      const shown = progressMessages.filter((candidate) =>
+        starting.textContent?.includes(candidate),
+      );
+      expect({ status, shown }).toEqual({ status, shown: [message] });
+      view.unmount();
+    }
+  });
+
+  test('a thread that already has a transcript still announces its start status', () => {
+    vi.useFakeTimers();
+    for (const [status, message] of [
+      ['installing', 'Installing Claude…'],
+      ['spawning', 'Starting Claude…'],
+    ] as const) {
+      model = makeModel({ turnActive: false, items: [transcriptItem()] });
+      const view = render(<ThreadView info={makeInfo({ archived: false, status })} />);
+      act(() => {
+        vi.advanceTimersByTime(200);
+      });
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(message);
+      expect(screen.getByTestId('agent-thread-starting').textContent).toContain(message);
+      view.unmount();
+    }
+  });
+
+  test('the start-status live region is mounted before there is a start to announce', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+
+    const region = screen.getByTestId('agent-thread-start-status');
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.getAttribute('aria-atomic')).toBe('true');
+    expect(region.textContent).toBe('');
+  });
+
+  test('the start status is announced on the same region across the install probe', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    const region = screen.getByTestId('agent-thread-start-status');
+    expect(region.textContent).toBe('Starting Claude…');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+    expect(screen.getByTestId('agent-thread-start-status')).toBe(region);
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+    act(() => {
+      vi.advanceTimersByTime(300);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-start-status')).toBe(region);
+  });
+
+  test('reaching ready announces the end of the wait', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test('a thread that was already ready announces nothing', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+  });
+
+  test('returning to ready after a turn does not re-announce the start', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'running' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+  });
+
+  test('a start that pauses for sign-in still announces when it becomes ready', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'authenticating' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test('a thread that mounts already waiting on sign-in announces when it becomes ready', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />,
+    );
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'authenticating' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test('a sign-in forced mid-conversation announces that the thread is usable again', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'ready' })} />,
+    );
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'running' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'authenticating' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+  });
+
+  test.each(['error', 'exited'] as const)(
+    'a wait that begins at sign-in and ends in %s announces the failure',
+    (status) => {
+      model = makeModel({ turnActive: false, items: [] });
+      const { rerender } = render(
+        <ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />,
+      );
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status })} />);
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+    },
+  );
+
+  test.each(['error', 'exited'] as const)(
+    'a start that ends in %s announces the failure',
+    (status) => {
+      model = makeModel({ turnActive: false, items: [] });
+      const { rerender } = render(
+        <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+      );
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status })} />);
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+    },
+  );
+
+  test.each([
+    ['error', 'exited'],
+    ['exited', 'error'],
+  ] as const)(
+    'a start that ends in %s and then %s holds the failure announcement',
+    (first, second) => {
+      model = makeModel({ turnActive: false, items: [] });
+      const { rerender } = render(
+        <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+      );
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status: first })} />);
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+
+      rerender(<ThreadView info={makeInfo({ archived: false, status: second })} />);
+
+      expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+        "Claude couldn't start",
+      );
+    },
+  );
+
+  test('a start that had already succeeded when the agent exited announces no failure', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Claude is ready');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('');
+  });
+
+  test('a probe that settles inside the show delay never paints the install label', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).not.toContain('Installing');
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+    act(() => {
+      vi.advanceTimersByTime(1_000);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).not.toContain('Installing');
+  });
+
+  test('the install label paints only after the show delay and in both places at once', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(199);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain('Starting Claude…');
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain(
+      'Installing Claude…',
+    );
+  });
+
+  test('once painted, the install label holds for its minimum visible window', () => {
+    vi.useFakeTimers();
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'installing' })} />);
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+    act(() => {
+      vi.advanceTimersByTime(249);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Installing Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain(
+      'Installing Claude…',
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe('Starting Claude…');
+    expect(screen.getByTestId('agent-thread-transcript').textContent).toContain('Starting Claude…');
+  });
+
+  test('a brand-new thread commits the start-status region before its first label', async () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const steps: string[] = [];
+    const inRegion = (node: Node | null): boolean => {
+      const el = node instanceof HTMLElement ? node : (node?.parentElement ?? null);
+      return el?.getAttribute('data-testid') === 'agent-thread-start-status';
+    };
+    let regionSeen = false;
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        if (inRegion(record.target)) {
+          steps.push('label');
+          continue;
+        }
+        for (const added of record.addedNodes) {
+          if (
+            !regionSeen &&
+            added instanceof HTMLElement &&
+            added.querySelector('[data-testid="agent-thread-start-status"]') !== null
+          ) {
+            regionSeen = true;
+            steps.push('region');
+          }
+        }
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+    try {
+      render(<ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />);
+      await waitFor(() => {
+        expect(steps).toEqual(['region', 'label']);
+      });
+    } finally {
+      observer.disconnect();
+    }
+  });
+});
+
 describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
   const makeDropTransfer = (files: readonly File[]) => ({
     types: ['Files'],
@@ -4354,7 +5235,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     const row = screen.getByTestId('agent-thread-context-window');
     expect(row.textContent).toContain('Context window');
     expect(row.textContent).toContain('Default');
@@ -4387,7 +5268,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     const row = screen.getByTestId('agent-thread-context-window');
     expect(row.textContent).toContain('272K');
     expect(row.textContent).not.toContain('872K');
@@ -4406,7 +5287,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     expect(screen.getByTestId('agent-thread-context-window').textContent).toContain('Default');
   });
 
@@ -4420,7 +5301,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-context-window'));
     await userEvent.click(await screen.findByTestId('agent-thread-context-window-872000'));
 
@@ -4440,7 +5321,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-context-window'));
     await userEvent.click(await screen.findByTestId('agent-thread-context-window-872000'));
 
@@ -4462,7 +5343,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     expect(screen.queryByTestId('agent-thread-context-window')).toBeNull();
   });
 
@@ -4475,7 +5356,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     expect(screen.queryByTestId('agent-thread-context-window')).toBeNull();
   });
 
@@ -4491,7 +5372,7 @@ describe('ThreadView context window', () => {
       />,
     );
 
-    await userEvent.click(screen.getByRole('button', { name: 'Agent settings' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
     await userEvent.click(screen.getByTestId('agent-thread-context-window'));
 
     expect((await screen.findByTestId('agent-thread-context-window-locked')).textContent).toContain(
@@ -4527,5 +5408,46 @@ describe('ThreadView context window', () => {
 
     expect(await screen.findByTestId('agent-thread-context-window-locked')).toBeTruthy();
     expect(screen.queryByTestId('agent-thread-context-window-872000')).toBeNull();
+  });
+});
+
+describe('ThreadView hands the composer what to list first', () => {
+  test('the open doc and the paths this chat attached, newest first', () => {
+    activeDocName = 'notes/today';
+    try {
+      model = makeModel({
+        turnActive: false,
+        items: [
+          {
+            kind: 'message',
+            role: 'user',
+            text: 'first',
+            messageId: 'm1',
+            attachments: [{ kind: 'file', path: 'specs/a.md', name: 'a' }],
+          },
+          {
+            kind: 'message',
+            role: 'user',
+            text: 'second',
+            messageId: 'm2',
+            attachments: [
+              { kind: 'folder', path: 'plans', name: 'plans' },
+              { kind: 'image', data: 'AAAA', mimeType: 'image/png', name: 'shot.png' },
+            ],
+          },
+        ],
+      });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+      const handed = screen
+        .getByTestId('agent-thread-composer')
+        .getAttribute('data-mention-recency');
+      expect(JSON.parse(handed ?? 'null')).toEqual({
+        currentDocName: 'notes/today',
+        recentPaths: ['plans', 'specs/a.md'],
+      });
+    } finally {
+      activeDocName = null;
+    }
   });
 });

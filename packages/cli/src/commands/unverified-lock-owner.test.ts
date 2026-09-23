@@ -1,6 +1,15 @@
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { isLockProcessRunning, readProcessState } from '@inkeep/open-knowledge-server';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { runClean } from './clean.ts';
 import { makeServerLockCheck } from './diagnose-health-checks/server-lock.ts';
@@ -21,7 +30,19 @@ beforeEach(() => {
   lockPath = join(lockDir, 'server.lock');
   writeFileSync(lockPath, raw);
 });
-afterEach(() => rmSync(project, { recursive: true, force: true }));
+afterEach(() => {
+  vi.restoreAllMocks();
+  rmSync(project, { recursive: true, force: true });
+});
+
+function installBlindPsProbe(): string {
+  const binDir = join(project, 'bin');
+  mkdirSync(binDir, { recursive: true });
+  const shim = join(binDir, 'ps');
+  writeFileSync(shim, '#!/bin/sh\nexit 1\n');
+  chmodSync(shim, 0o755);
+  return binDir;
+}
 const inspect = () => inspectLock(lockDir, 'server', { isAlive: () => true });
 
 test('models a live PID-only lock without asserting absent metadata', () => {
@@ -151,3 +172,26 @@ test('global-only cleanup still refuses an associated live server candidate', as
   ).rejects.toThrow('unverified');
   expect(readFileSync(lockPath, 'utf8')).toBe(raw);
 });
+
+test.skipIf(process.platform === 'win32')(
+  'reads a live foreign-owned PID as unverified, not dead, when the state probe cannot see it',
+  () => {
+    writeFileSync(lockPath, JSON.stringify({ pid: process.pid }));
+    vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('kill EPERM'), { code: 'EPERM' });
+    });
+    const binDir = installBlindPsProbe();
+    const originalPath = process.env.PATH;
+    process.env.PATH = binDir;
+    try {
+      expect(readProcessState(process.pid)).toEqual({ status: 'gone' });
+      expect(inspectLock(lockDir, 'server', { isAlive: isLockProcessRunning })).toEqual({
+        status: 'unverified-owner',
+        lockPath,
+        pid: process.pid,
+      });
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  },
+);

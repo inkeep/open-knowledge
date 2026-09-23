@@ -1,5 +1,5 @@
 import type { FileTreeDirectoryHandle, FileTree as PierreFileTreeModel } from '@pierre/trees';
-import { type RefObject, useEffect } from 'react';
+import { type RefObject, useEffect, useRef } from 'react';
 
 export function asDirectoryHandle(
   item: ReturnType<PierreFileTreeModel['getItem']>,
@@ -22,6 +22,14 @@ function selectOnlyTreeItem(
   }
 }
 
+function keyboardFocusIsHeldByAnotherRow(
+  model: Pick<PierreFileTreeModel, 'getFocusedPath'>,
+  activeTreePath: string,
+): boolean {
+  const focusedPath = model.getFocusedPath();
+  return focusedPath !== null && focusedPath !== activeTreePath;
+}
+
 function deselectAllTreeItems(model: PierreFileTreeModel): void {
   for (const selectedPath of model.getSelectedPaths()) {
     model.getItem(selectedPath)?.deselect();
@@ -35,6 +43,8 @@ export function useSelectionMirror(
   suppressSelectionRef: RefObject<boolean>,
   treePathsSignature: string,
 ): void {
+  const lastActiveTreePathRef = useRef<string | null>(null);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: `treePathsSignature` is a re-run trigger, not a value read in the closure — it forces the mirror to re-assert selection after `model.resetPaths` rebuilds the tree. Sibling pattern: the reset + reveal-active-row effects in FileTree.tsx.
   useEffect(() => {
     const releaseSelectionSuppression = () => {
@@ -44,6 +54,7 @@ export function useSelectionMirror(
     };
     suppressSelectionRef.current = true;
     if (!activeTreePath) {
+      lastActiveTreePathRef.current = null;
       deselectAllTreeItems(model);
       releaseSelectionSuppression();
       return;
@@ -59,17 +70,26 @@ export function useSelectionMirror(
     }
     const item = model.getItem(activeTreePath);
     if (!item) {
+      lastActiveTreePathRef.current = null;
       deselectAllTreeItems(model);
       releaseSelectionSuppression();
       return;
     }
-    if (model.getSelectedPaths().length > 1 && item.isSelected()) {
+    const activeTreePathChanged = lastActiveTreePathRef.current !== activeTreePath;
+    lastActiveTreePathRef.current = activeTreePath;
+    const claimKeyboardFocus = () => {
+      if (!activeTreePathChanged && keyboardFocusIsHeldByAnotherRow(model, activeTreePath)) {
+        return;
+      }
       item.focus();
+    };
+    if (model.getSelectedPaths().length > 1 && item.isSelected()) {
+      claimKeyboardFocus();
       releaseSelectionSuppression();
       return;
     }
     selectOnlyTreeItem(model, item);
-    item.focus();
+    claimKeyboardFocus();
     releaseSelectionSuppression();
   }, [
     activeAncestorTreePathsSignature,

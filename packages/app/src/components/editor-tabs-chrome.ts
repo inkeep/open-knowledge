@@ -33,10 +33,13 @@ interface PaneStripDropData {
 
 export type EditorTabDropData = PaneEdgeDropData | PaneStripDropData;
 
-const TAB_CLOSE_BUTTON_CLASS =
-  'flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-foreground/10 hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50';
-const DRAGGING_TAB_ACTIVE_CLASS =
-  'border-border bg-background text-foreground hover:bg-background focus-visible:bg-background';
+export const TAB_CLOSE_BUTTON_CLASS =
+  'flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-muted-foreground/20 hover:text-foreground hover:opacity-100 focus-visible:ring-2 focus-visible:ring-ring/50';
+export const TAB_SELECTED_SURFACE_CLASS = 'bg-sidebar-selected text-sidebar-selected-foreground';
+export const TAB_SELECTED_SURFACE_IMPORTANT_CLASS =
+  'bg-sidebar-selected! text-sidebar-selected-foreground!';
+export const TAB_HOVER_SURFACE_IMPORTANT_CLASS = 'bg-sidebar-hover! text-sidebar-hover-foreground!';
+const DRAGGING_TAB_ACTIVE_CLASS = `${TAB_SELECTED_SURFACE_CLASS} hover:bg-sidebar-selected focus-visible:bg-sidebar-selected`;
 export const DRAGGING_TAB_Z_INDEX = 20;
 export const TAB_REORDER_AUTO_SCROLL = false;
 export const TAB_KEYBOARD_DRAG_CODES = {
@@ -57,6 +60,15 @@ export function getTabCloseButtonClass(isActive: boolean): string {
       ? 'mr-1 opacity-100'
       : 'pointer-events-none absolute right-1 opacity-0 group-hover:pointer-events-auto group-hover:opacity-100',
   );
+}
+
+export const TAB_TITLE_FADE_CLASS =
+  'overflow-hidden whitespace-nowrap mask-r-from-[calc(100%-1.5rem)] mask-r-to-[100%]';
+
+export function getTabTitleOverflowClassName(isActive: boolean): string {
+  return isActive
+    ? TAB_TITLE_FADE_CLASS
+    : 'truncate group-hover:text-clip group-hover:mask-r-from-[calc(100%-3rem)] group-hover:mask-r-to-[calc(100%-1.5rem)]';
 }
 
 export function getTabCloseButtonTabIndex(isActive: boolean): -1 | undefined {

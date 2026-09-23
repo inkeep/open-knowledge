@@ -14,6 +14,7 @@ import { noRawHtmlInteractiveElement } from './rules/no-raw-html-interactive-ele
 import { noRawRouteHashConstruction } from './rules/no-raw-route-hash-construction.mjs';
 import { noResolvedValueThemeSource } from './rules/no-resolved-value-theme-source.mjs';
 import { noRoundtripIdentityOracle } from './rules/no-roundtrip-identity-oracle.mjs';
+import { noSentinelSignalTarget } from './rules/no-sentinel-signal-target.mjs';
 import { noSplitSuggestionDispatch } from './rules/no-split-suggestion-dispatch.mjs';
 import { noThemelessPierreDiff } from './rules/no-themeless-pierre-diff.mjs';
 import { noUnconvertedGitPathspec } from './rules/no-unconverted-git-pathspec.mjs';
@@ -45,6 +46,7 @@ const declared = {
   'no-raw-route-hash-construction': noRawRouteHashConstruction,
   'no-resolved-value-theme-source': noResolvedValueThemeSource,
   'no-roundtrip-identity-oracle': noRoundtripIdentityOracle,
+  'no-sentinel-signal-target': noSentinelSignalTarget,
   'no-split-suggestion-dispatch': noSplitSuggestionDispatch,
   'no-themeless-pierre-diff': noThemelessPierreDiff,
   'no-unconverted-git-pathspec': noUnconvertedGitPathspec,

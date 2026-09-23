@@ -12,6 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { TERMINAL_CLI_IDS, TERMINAL_CLIS } from '@inkeep/open-knowledge-core';
+import { isValidLockPid } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
 const desktopLog = vi.hoisted(() => ({
@@ -299,7 +300,8 @@ function spawnDeck(
   env?: NodeJS.ProcessEnv,
 ) {
   const child = spawnDetachedInteractiveChild(shell, [...args.slice(0, -1), command], env);
-  const shellPid = child.pid ?? 0;
+  const shellPid = child.pid;
+  if (!isValidLockPid(shellPid)) throw new Error(`no pid for detached ${shell}`);
   const descendants = () =>
     spawnSync('/bin/ps', ['-eo', 'pid,ppid,pgid'], { encoding: 'utf8' })
       .stdout.split('\n')
@@ -307,8 +309,14 @@ function spawnDeck(
       .filter((row) => row.length === 3 && row[1] === shellPid);
   const reap = () => {
     for (const [pid] of descendants()) {
+      if (!isValidLockPid(pid)) {
+        console.warn(
+          `[spawnDeck] skipped a ps row under ppid ${shellPid}: pid column parsed to ${JSON.stringify(pid)}, which isValidLockPid rejects`,
+        );
+        continue;
+      }
       try {
-        process.kill(pid ?? 0, 'SIGKILL');
+        process.kill(pid, 'SIGKILL');
       } catch {}
     }
     try {

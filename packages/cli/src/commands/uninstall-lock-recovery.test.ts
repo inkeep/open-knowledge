@@ -168,7 +168,9 @@ describe.skipIf(process.platform === 'win32')('uninstall lock recovery in an iso
     const project = join(root, 'project');
     write(join(project, '.ok', 'local', 'server.lock'), 'not json');
     write(join(project, 'notes.md'), '# Keep');
-    const outcome = await runRemoval(buildDeinitPlan(project, join(root, 'home')));
+    const outcome = await runRemoval(buildDeinitPlan(project, join(root, 'home')), {
+      scanProcesses: scanCandidatesWithoutHostUncertainty,
+    });
     expect(outcome.failed).toEqual([]);
     expect(outcome.results[0]).toMatchObject({
       status: 'skipped',

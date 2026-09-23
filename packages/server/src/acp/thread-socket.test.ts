@@ -515,7 +515,7 @@ describe('/collab/thread socket — steer', () => {
 });
 
 describe('/collab/thread socket — queue ops', () => {
-  test('queue_edit / queue_remove route to the manager; unknown thread → error frame', async () => {
+  test('queue_edit / queue_remove / queue_send_now route to the manager; unknown thread → error frame', async () => {
     const manager = makeManager(tmp(), tmp());
     await manager.init();
     const socket = attachFakeSocket(manager);
@@ -538,10 +538,16 @@ describe('/collab/thread socket — queue ops', () => {
       JSON.stringify({ op: 'queue_edit', threadId: 'missing', id: 'q1', content: 'new text' }),
     );
     socket.emit(JSON.stringify({ op: 'queue_remove', threadId: 'missing', id: 'q1' }));
+    socket.emit(JSON.stringify({ op: 'queue_send_now', threadId: 'missing', id: 'q1' }));
     socket.emit(JSON.stringify({ op: 'queue_edit', threadId: 'missing', id: 'q1', content: '' }));
-    await awaitErrors(3);
+    await awaitErrors(4);
 
-    expect(errors().map((f) => f.code)).toEqual(['unknown-thread', 'unknown-thread', 'bad-frame']);
+    expect(errors().map((f) => f.code)).toEqual([
+      'unknown-thread',
+      'unknown-thread',
+      'unknown-thread',
+      'bad-frame',
+    ]);
     expect(errors()[0]?.threadId).toBe('missing');
   });
 
@@ -566,6 +572,7 @@ describe('/collab/thread socket — queue ops', () => {
       JSON.stringify({ op: 'queue_edit', threadId, id: 'gone', content: 'my correction' }),
     );
     socket.emit(JSON.stringify({ op: 'queue_hold', threadId, id: 'gone', held: true }));
+    socket.emit(JSON.stringify({ op: 'queue_send_now', threadId, id: 'gone' }));
     socket.emit(
       JSON.stringify({
         op: 'queue_edit',

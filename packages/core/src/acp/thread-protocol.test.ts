@@ -155,6 +155,16 @@ describe('parseThreadClientFrame', () => {
     expect(parseThreadClientFrame(JSON.stringify({ op: 'queue_remove', id: 'q1' }))).toBeNull();
   });
 
+  test('queue_send_now requires threadId and id', () => {
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_send_now', threadId: 't', id: 'q1' })),
+    ).toMatchObject({ op: 'queue_send_now', threadId: 't', id: 'q1' });
+    expect(
+      parseThreadClientFrame(JSON.stringify({ op: 'queue_send_now', threadId: 't' })),
+    ).toBeNull();
+    expect(parseThreadClientFrame(JSON.stringify({ op: 'queue_send_now', id: 'q1' }))).toBeNull();
+  });
+
   test('permission_response validates the outcome union', () => {
     expect(
       parseThreadClientFrame(

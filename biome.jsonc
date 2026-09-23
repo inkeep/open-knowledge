@@ -117,6 +117,7 @@
       "!packages/native-config/index.js",
       "!packages/native-config/index.d.ts",
       "!packages/native-config/target",
+      "!**/.ok-skill-publish-*",
       "!**/.next",
       "!**/.source",
       // Second generated content build, emitted by the docs app's real-source

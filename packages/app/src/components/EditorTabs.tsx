@@ -73,29 +73,31 @@ import {
   getSortableTabStyle,
   getTabCloseButtonClass,
   getTabCloseButtonTabIndex,
+  getTabTitleOverflowClassName,
   shouldOpenTabContextMenu,
+  TAB_SELECTED_SURFACE_CLASS,
 } from './editor-tabs-chrome';
 import { usePageList } from './PageListContext';
 import { scrollTabStripOnWheel } from './tab-strip-wheel';
 import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 const TAB_BASE_CLASS =
-  'group @container/tab relative -mb-px flex h-10 min-w-32 max-w-48 grow-0 basis-36 shrink cursor-grab items-center overflow-hidden border border-transparent font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset active:cursor-grabbing';
-const TAB_ACTIVE_CLASS =
-  'z-10 rounded-t-lg rounded-b-none border-border border-b-0 bg-background text-foreground';
+  'group @container/tab relative flex h-7 min-w-32 max-w-48 grow-0 basis-36 shrink cursor-grab items-center overflow-hidden border border-transparent font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset active:cursor-grabbing';
+const TAB_ACTIVE_CLASS = `z-10 rounded-md ${TAB_SELECTED_SURFACE_CLASS}`;
+const TAB_ACTIVE_UNFOCUSED_CLASS =
+  'z-10 rounded-md bg-sidebar-hover text-sidebar-hover-muted-foreground';
 const TAB_INACTIVE_CLASS =
-  'rounded-t-md text-muted-foreground hover:border-border/70 hover:bg-muted/60 hover:text-foreground focus-visible:border-border focus-visible:bg-muted focus-visible:text-foreground';
+  'rounded-md text-muted-foreground hover:bg-sidebar-hover hover:text-sidebar-hover-foreground focus-visible:bg-sidebar-hover focus-visible:text-sidebar-hover-foreground';
 const TAB_BUTTON_CLASS =
-  'flex h-full min-w-0 flex-1 cursor-pointer items-center overflow-hidden pl-3 pr-1.5 text-left text-[13px] outline-none @max-[5rem]/tab:pl-2';
+  'flex h-full min-w-0 flex-1 cursor-pointer items-center overflow-hidden pl-3 pr-1.5 text-left text-1sm outline-none @max-[5rem]/tab:pl-2';
 
-function tabTitleClassName(isFocusedActive: boolean, isPreview: boolean): string {
-  return cn(TAB_BUTTON_CLASS, isFocusedActive && 'font-semibold', isPreview && 'italic');
+function tabShellClassName(isActive: boolean, isFocusedPane: boolean): string {
+  if (!isActive) return cn(TAB_BASE_CLASS, TAB_INACTIVE_CLASS);
+  return cn(TAB_BASE_CLASS, isFocusedPane ? TAB_ACTIVE_CLASS : TAB_ACTIVE_UNFOCUSED_CLASS);
 }
 
-function tabTitleOverflowClassName(isActive: boolean): string {
-  return isActive
-    ? 'overflow-hidden whitespace-nowrap mask-r-from-[calc(100%-1.5rem)] mask-r-to-[100%]'
-    : 'truncate group-hover:text-clip group-hover:mask-r-from-[calc(100%-3rem)] group-hover:mask-r-to-[calc(100%-1.5rem)]';
+function tabTitleClassName(isActive: boolean, isPreview: boolean): string {
+  return cn(TAB_BUTTON_CLASS, isActive && 'font-semibold', isPreview && 'italic');
 }
 
 function syncTabOverflowIndicators(scrollContainer: HTMLElement): void {
@@ -519,7 +521,6 @@ function DocumentTabButton({
   extension,
   hideDocExtension,
   isActive,
-  isFocusedPane,
   isPreview,
   promoteTab,
   tabId,
@@ -531,7 +532,6 @@ function DocumentTabButton({
   extension: string;
   hideDocExtension: boolean;
   isActive: boolean;
-  isFocusedPane: boolean;
   isPreview: boolean;
   promoteTab: (tabId: string) => void;
   tabId: string;
@@ -547,7 +547,7 @@ function DocumentTabButton({
         type="button"
         aria-label={buttonAccessibleLabel}
         dir="auto"
-        className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
+        className={tabTitleClassName(isActive, isPreview)}
         onClick={() => {
           activateTab(tabId);
         }}
@@ -562,7 +562,7 @@ function DocumentTabButton({
         <span className="flex min-w-0 flex-1 items-center">
           <span
             data-editor-tab-title-overflow={isActive ? 'fade' : 'ellipsis'}
-            className={cn('min-w-0 flex-1', tabTitleOverflowClassName(isActive))}
+            className={cn('min-w-0 flex-1', getTabTitleOverflowClassName(isActive))}
           >
             {baseName}
           </span>
@@ -584,6 +584,7 @@ interface EditorTabFrameProps {
   dropIndicatorSide?: 'before' | 'after';
   forceCloseVisible: boolean;
   isActive: boolean;
+  isFocusedPane: boolean;
   isPinned: boolean;
   isPreview: boolean;
   openTabs: readonly string[];
@@ -611,6 +612,7 @@ function EditorTabFrame({
   dropIndicatorSide,
   forceCloseVisible,
   isActive,
+  isFocusedPane,
   isPinned,
   isPreview,
   openTabs,
@@ -655,7 +657,7 @@ function EditorTabFrame({
         aria-keyshortcuts={ariaKeyShortcuts}
         data-active-tab={isActive ? 'true' : undefined}
         data-preview-tab={isPreview ? 'true' : undefined}
-        className={cn(TAB_BASE_CLASS, isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS)}
+        className={tabShellClassName(isActive, isFocusedPane)}
         onAuxClick={(event) => {
           if (event.button !== 1) return;
           event.preventDefault();
@@ -952,7 +954,7 @@ export function EditorTabs({
       data-editor-pane-tabs={resolvedPaneId}
       data-electron-drag={isElectronHost ? '' : undefined}
       className={cn(
-        'flex h-12 w-full min-w-0 touch-manipulation items-end overflow-hidden',
+        'flex h-12 w-full min-w-0 touch-manipulation items-center overflow-hidden',
         reserveLeadingChrome
           ? 'pl-[calc(var(--editor-header-leading-offset,0px)+var(--editor-header-leading-width,0px)+0.5rem)]'
           : 'pl-2',
@@ -964,7 +966,7 @@ export function EditorTabs({
         data-editor-tab-overflow-root=""
         data-electron-drag={isElectronHost ? '' : undefined}
         className={cn(
-          'group/tab-overflow relative flex min-w-0 flex-1 self-stretch items-end gap-px overflow-hidden',
+          'group/tab-overflow relative flex min-w-0 flex-1 self-stretch items-center gap-px overflow-hidden',
           isElectronHost && '[-webkit-app-region:drag]',
         )}
       >
@@ -979,14 +981,14 @@ export function EditorTabs({
         <SortableContext items={[...visibleTabIds]} strategy={horizontalListSortingStrategy}>
           <div
             className={cn(
-              'relative h-10 w-fit max-w-[calc(100%-1.75rem)] min-w-0 flex-none self-end',
+              'relative h-full w-fit max-w-[calc(100%-1.75rem)] min-w-0 flex-none self-center',
               isElectronHost && '[-webkit-app-region:no-drag]',
             )}
           >
             <div
               ref={tabScrollRef}
               data-editor-tab-scroll=""
-              className="scrollbar-none flex h-10 w-fit max-w-full min-w-0 items-end gap-px overflow-x-auto overflow-y-hidden overscroll-x-contain group-data-[overflow-left]/tab-overflow:mask-l-from-[calc(100%-4rem)] group-data-[overflow-right]/tab-overflow:mask-r-from-[calc(100%-4rem)]"
+              className="scrollbar-none flex h-full w-fit max-w-full min-w-0 items-center gap-px overflow-x-auto overflow-y-hidden overscroll-x-contain group-data-[overflow-left]/tab-overflow:mask-l-from-[calc(100%-4rem)] group-data-[overflow-right]/tab-overflow:mask-r-from-[calc(100%-4rem)]"
               onScroll={(event) => syncTabOverflowIndicators(event.currentTarget)}
               onWheel={(event) => {
                 scrollTabStripOnWheel(event);
@@ -1034,10 +1036,7 @@ export function EditorTabs({
                         aria-current={isActive ? 'page' : undefined}
                         aria-keyshortcuts={ariaKeyShortcuts}
                         data-active-tab={isActive ? 'true' : undefined}
-                        className={cn(
-                          TAB_BASE_CLASS,
-                          isActive ? TAB_ACTIVE_CLASS : TAB_INACTIVE_CLASS,
-                        )}
+                        className={tabShellClassName(isActive, isFocusedPane)}
                         onAuxClick={(event) => {
                           if (event.button !== 1) return;
                           event.preventDefault();
@@ -1052,7 +1051,7 @@ export function EditorTabs({
                           type="button"
                           aria-label={t`Activate new tab`}
                           data-testid="editor-new-tab-placeholder-button"
-                          className={tabTitleClassName(isActive && isFocusedPane, false)}
+                          className={tabTitleClassName(isActive, false)}
                           onClick={() => activateNewTab(tabId)}
                           tabIndex={-1}
                         >
@@ -1116,6 +1115,7 @@ export function EditorTabs({
                       closeTabs={closeVisibleTabs}
                       forceCloseVisible={forceTabCloseVisible}
                       isActive={isActive}
+                      isFocusedPane={isFocusedPane}
                       isPinned={isPinned}
                       isPreview={isPreview}
                       pinTab={pinTab}
@@ -1130,7 +1130,7 @@ export function EditorTabs({
                           type="button"
                           aria-label={accessibleLabel}
                           dir="auto"
-                          className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
+                          className={tabTitleClassName(isActive, isPreview)}
                           onClick={() => activateTab(tabId)}
                           onDoubleClick={(event) => {
                             event.preventDefault();
@@ -1141,7 +1141,7 @@ export function EditorTabs({
                         >
                           <span
                             data-editor-tab-title-overflow={isActive ? 'fade' : 'ellipsis'}
-                            className={cn('min-w-0 flex-1', tabTitleOverflowClassName(isActive))}
+                            className={cn('min-w-0 flex-1', getTabTitleOverflowClassName(isActive))}
                           >
                             {prefix && (
                               <span
@@ -1219,6 +1219,7 @@ export function EditorTabs({
                       closeTabs={closeVisibleTabs}
                       forceCloseVisible={forceTabCloseVisible}
                       isActive={isActive}
+                      isFocusedPane={isFocusedPane}
                       isPinned={isPinned}
                       isPreview={isPreview}
                       pinTab={pinTab}
@@ -1243,7 +1244,7 @@ export function EditorTabs({
                           type="button"
                           aria-label={accessibleLabel}
                           dir="auto"
-                          className={tabTitleClassName(isActive && isFocusedPane, isPreview)}
+                          className={tabTitleClassName(isActive, isPreview)}
                           onClick={() => activateTab(tabId)}
                           onDoubleClick={(event) => {
                             event.preventDefault();
@@ -1254,7 +1255,7 @@ export function EditorTabs({
                         >
                           <span
                             data-editor-tab-title-overflow={isActive ? 'fade' : 'ellipsis'}
-                            className={cn('min-w-0 flex-1', tabTitleOverflowClassName(isActive))}
+                            className={cn('min-w-0 flex-1', getTabTitleOverflowClassName(isActive))}
                           >
                             {prefix ? (
                               <span
@@ -1305,6 +1306,7 @@ export function EditorTabs({
                     closeTabs={closeVisibleTabs}
                     forceCloseVisible={forceTabCloseVisible}
                     isActive={isActive}
+                    isFocusedPane={isFocusedPane}
                     isPinned={isPinned}
                     isPreview={isPreview}
                     pinTab={pinTab}
@@ -1339,7 +1341,6 @@ export function EditorTabs({
                       extension={extension}
                       hideDocExtension={hideDocExtension}
                       isActive={isActive}
-                      isFocusedPane={isFocusedPane}
                       isPreview={isPreview}
                       promoteTab={promoteTab}
                       tabId={tabId}
@@ -1358,10 +1359,7 @@ export function EditorTabs({
               variant="ghost"
               aria-label={t`New tab`}
               data-testid="editor-new-tab-button"
-              className={cn(
-                'first:mb-3 mb-1.5 shrink-0',
-                isElectronHost && '[-webkit-app-region:no-drag]',
-              )}
+              className={cn('shrink-0', isElectronHost && '[-webkit-app-region:no-drag]')}
               onClick={openNewTab}
             >
               <PlusIcon aria-hidden="true" />

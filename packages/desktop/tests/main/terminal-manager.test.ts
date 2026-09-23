@@ -69,10 +69,13 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
   const timers: Array<(() => void) | null> = [];
   const timerDelays: number[] = [];
   const warns: Array<Record<string, unknown>> = [];
+  const infos: Array<Record<string, unknown>> = [];
+  const forkedWindowIds: number[] = [];
   let idn = 0;
   const mgr = createTerminalManager({
     canSpawnAt: () => true,
-    forkPtyHost: () => {
+    forkPtyHost: (windowId) => {
+      forkedWindowIds.push(windowId);
       const u = new FakeUtility();
       forked.push(u);
       return u as unknown as PtyUtilityLike;
@@ -101,7 +104,7 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
     coalesceMs: 12,
     highWaterBytes: 100,
     lowWaterBytes: 20,
-    logger: { warn: (o) => warns.push(o) },
+    logger: { warn: (o) => warns.push(o), info: (o) => infos.push(o) },
     ...over,
   });
   const runTimers = (): void => {
@@ -126,6 +129,8 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
     sent,
     forked,
     warns,
+    infos,
+    forkedWindowIds,
     runTimers,
     dataPayloads,
     exits,
@@ -314,14 +319,20 @@ describe('terminal creation waits for the renderer to subscribe', () => {
     expect(h.warns).toContainEqual(
       expect.objectContaining({ event: 'terminal-manager-reaped-reservations', reserved: 1 }),
     );
+    expect(
+      [...h.warns, ...h.infos].filter((w) => w.event === 'terminal-manager-session-exit'),
+    ).toEqual([]);
   });
 
   test('logs the reservations it reaps when the app quits', () => {
     const h = reserve();
-    h.mgr.killAll();
+    h.mgr.killAll('quit');
     expect(h.warns).toContainEqual(
       expect.objectContaining({ event: 'terminal-manager-reaped-reservations', reserved: 1 }),
     );
+    expect(
+      [...h.warns, ...h.infos].filter((w) => w.event === 'terminal-manager-session-exit'),
+    ).toEqual([]);
   });
 
   test('refuses to spawn when consent was withdrawn between the create and the start', () => {
@@ -446,6 +457,7 @@ describe('createTerminalManager — create', () => {
       rows: 24,
     });
     expect(r).toEqual({ ok: true, ptyId: 'pty-1' });
+    expect(h.forkedWindowIds).toEqual([1]);
     expect(h.forked).toHaveLength(1);
     expect(h.forked[0]?.posted).toEqual([
       { type: 'create', ptyId: 'pty-1', cwd: PROJECT, cols: 80, rows: 24 },
@@ -717,6 +729,7 @@ describe('createTerminalManager — create', () => {
       rows: 24,
     });
     expect(h.forked).toHaveLength(2);
+    expect(h.forkedWindowIds).toEqual([1, 2]);
   });
 });
 
@@ -858,6 +871,404 @@ describe('createTerminalManager — exit + crash surfacing', () => {
     });
 
     expect(h.exits()[0]).toEqual({ ptyId: 'pty-1', exitCode: -1, signal: null });
+  });
+
+  test('records a session-exit log line for a session that never produced output', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: undefined, signal: null });
+
+    const line = h.warns.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.ptyId).toBe('pty-1');
+    expect(line?.exitCode).toBeNull();
+    expect(line?.signal).toBeNull();
+    expect(line?.killRequested).toBe(false);
+    expect(line?.sawOutput).toBe(false);
+  });
+
+  test('warns when a spawned shell produces nothing and exits cleanly without a kill', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+
+    const line = h.warns.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.sawOutput).toBe(false);
+    expect(line?.exitCode).toBe(0);
+    expect(line?.signal).toBeNull();
+    expect(line?.killRequested).toBe(false);
+    expect(h.infos.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+  });
+
+  test('routes a shell that produced output and exited non-zero without a signal to info', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'boom\r\n' });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 127, signal: null });
+
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.exitCode).toBe(127);
+    expect(line?.sawOutput).toBe(true);
+  });
+
+  test('explains a reservation cancelled before the shell was ever spawned', () => {
+    const h = makeManager();
+    const created = h.mgr.create({
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    expect(created.ok).toBe(true);
+
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.reason).toBe('cancelled-before-spawn');
+    expect(line?.ptyId).toBe('pty-1');
+    expect(line?.killRequested).toBe(true);
+    expect(line?.sawOutput).toBe(false);
+    expect(line?.uptimeMs).toBeNull();
+  });
+
+  test('routes a killed session that produced output to info, not warn', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'hello' });
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.reason).toBe('shell-exit');
+    expect(line?.killRequested).toBe(true);
+    expect(line?.sawOutput).toBe(true);
+  });
+
+  test('routes a shell killed before it ever printed anything to info', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.reason).toBe('shell-exit');
+    expect(line?.killRequested).toBe(true);
+    expect(line?.sawOutput).toBe(false);
+  });
+
+  test('routes a shell that exited on its own after producing output to info', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'hello' });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+    expect(h.infos.find((w) => w.event === 'terminal-manager-session-exit')).toBeDefined();
+  });
+
+  test('warns when a shell that was not killed dies on a signal', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'hello' });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: 9 });
+
+    const line = h.warns.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.signal).toBe(9);
+    expect(h.infos.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+  });
+
+  test('measures uptime from the spawn, not from the reservation that preceded it', () => {
+    const now = vi.spyOn(Date, 'now');
+    try {
+      const h = makeManager();
+      now.mockReturnValue(1_000);
+      const created = h.mgr.create({
+        windowId: 1,
+        webContents: makeWebContents(),
+        projectRoot: PROJECT,
+        cols: 80,
+        rows: 24,
+      });
+      expect(created.ok).toBe(true);
+      now.mockReturnValue(6_000);
+      expect(
+        h.mgr.adoptSession({
+          windowId: 1,
+          start: true,
+          ptyId: 'pty-1',
+          webContents: makeWebContents(),
+        }).ok,
+      ).toBe(true);
+      now.mockReturnValue(6_250);
+      h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 1, signal: null });
+
+      const line = h.warns.find((w) => w.event === 'terminal-manager-session-exit');
+      expect(line).toBeDefined();
+      expect(line?.uptimeMs).toBe(250);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  test('explains every live session when the pty host dies under them', () => {
+    const h = makeManager();
+    for (let i = 0; i < 2; i += 1) {
+      createStartedTerminal(h.mgr, {
+        windowId: 1,
+        webContents: makeWebContents(),
+        projectRoot: PROJECT,
+        cols: 80,
+        rows: 24,
+      });
+    }
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-2' });
+    h.forked[0]?.emitExit(7);
+
+    const lines = [...h.warns, ...h.infos].filter(
+      (w) => w.event === 'terminal-manager-session-exit',
+    );
+    expect(lines.map((w) => w.ptyId).sort()).toEqual(['pty-1', 'pty-2']);
+    for (const line of lines) {
+      expect(line.reason).toBe('host-exited');
+      expect(line.exitCode).toBe(7);
+      expect(typeof line.uptimeMs).toBe('number');
+    }
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toHaveLength(1);
+    expect(h.warns.find((w) => w.event === 'terminal-manager-session-exit')?.ptyId).toBe('pty-1');
+  });
+
+  test('explains a live session that a closing window takes down with it', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'hello' });
+
+    h.mgr.killForWindow(1);
+
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.reason).toBe('window-closed');
+    expect(line?.ptyId).toBe('pty-1');
+    expect(line?.sawOutput).toBe(true);
+    expect(line?.killRequested).toBe(false);
+  });
+
+  test('explains a live session that an app shutdown takes down with it', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'hello' });
+
+    h.mgr.killAll('quit');
+
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line).toBeDefined();
+    expect(line?.reason).toBe('app-shutdown');
+    expect(line?.ptyId).toBe('pty-1');
+    expect(line?.sawOutput).toBe(true);
+    expect(line?.killRequested).toBe(false);
+  });
+
+  test('a window reaped during app shutdown is logged app-shutdown, not window-closed', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.mgr.noteAppShutdown('quit');
+    h.mgr.killForWindow(1);
+
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.reason).toBe('app-shutdown');
+  });
+
+  test('a window reaped after a non-quit announcement carries that cause, not a hardcoded quit', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.mgr.noteAppShutdown('update-install');
+    h.mgr.killForWindow(1);
+
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.reason).toBe('app-shutdown');
+    expect(line?.cause).toBe('update-install');
+  });
+
+  test('a window closed while the app keeps running is still logged window-closed', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.mgr.killForWindow(1);
+
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.reason).toBe('window-closed');
+  });
+
+  test('a host death after real output stays warn even though output was seen', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({ type: 'data', ptyId: 'pty-1', data: 'hello' });
+    h.forked[0]?.emitExit(1);
+
+    const line = h.warns.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.reason).toBe('host-exited');
+    expect(line?.sawOutput).toBe(true);
+    expect(h.infos.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+  });
+
+  test('a killed session whose exit carries a signal still routes to info', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: 9 });
+
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.killRequested).toBe(true);
+    expect(line?.signal).toBe(9);
+    expect(h.warns.filter((w) => w.event === 'terminal-manager-session-exit')).toEqual([]);
+  });
+
+  test('a host death that reported no exit code records exitCode null, not a number', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitExit(null);
+
+    const line = h.warns.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.reason).toBe('host-exited');
+    expect(line?.exitCode).toBeNull();
+  });
+
+  test('the exit line carries the shell family the host resolved for that session', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({
+      type: 'shell-notice',
+      ptyId: 'pty-1',
+      notice: 'shell-resolved',
+      shellFamily: 'powershell',
+    });
+    h.forked[0]?.emitMessage({ type: 'exit', ptyId: 'pty-1', exitCode: 0, signal: null });
+
+    const line = [...h.infos, ...h.warns].find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.shellFamily).toBe('powershell');
+  });
+
+  test('an app shutdown names its cause, so an update install is not read as a quit', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    void h.mgr.killAll('update-install');
+
+    const line = h.infos.find((w) => w.event === 'terminal-manager-session-exit');
+    expect(line?.reason).toBe('app-shutdown');
+    expect(line?.cause).toBe('update-install');
   });
 
   test('maps a host spawn-error to a never-started exit carrying the message', () => {
@@ -1341,7 +1752,7 @@ describe('createTerminalManager — lifecycle reap', () => {
       cols: 80,
       rows: 24,
     });
-    h.mgr.killAll();
+    h.mgr.killAll('quit');
     expect(h.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
     expect(h.forked[1]?.posted.at(-1)).toEqual({ type: 'shutdown' });
     expect(h.forked[0]?.killed).toBe(0);
@@ -1370,7 +1781,7 @@ describe('createTerminalManager — lifecycle reap', () => {
     });
 
     let settled = false;
-    const quit = h.mgr.killAll().then(() => {
+    const quit = h.mgr.killAll('quit').then(() => {
       settled = true;
     });
     await new Promise((resolve) => setImmediate(resolve));
@@ -1392,7 +1803,7 @@ describe('createTerminalManager — lifecycle reap', () => {
     });
 
     let settled = false;
-    const quit = h.mgr.killAll().then(() => {
+    const quit = h.mgr.killAll('quit').then(() => {
       settled = true;
     });
     await new Promise((resolve) => setImmediate(resolve));
@@ -1434,7 +1845,7 @@ describe('createTerminalManager — lifecycle reap', () => {
       });
     }
 
-    expect(() => mgr.killAll()).not.toThrow();
+    expect(() => mgr.killAll('quit')).not.toThrow();
     for (const timer of timers) expect(() => timer()).not.toThrow();
     expect(forked.map((u) => u.killAttempts)).toEqual([1, 1, 1]);
   });
@@ -1656,7 +2067,7 @@ describe('createTerminalManager — telemetry', () => {
     h.start(1);
     h.start(2);
     h.mgr.input({ windowId: 1, ptyId: 'pty-1', data: 'build\r' });
-    h.mgr.killAll();
+    h.mgr.killAll('quit');
     expect(h.sessions).toHaveLength(1);
     expect(h.shellExits).toEqual([]);
   });

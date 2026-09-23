@@ -10,6 +10,15 @@ interface SlashCommandMenuProps {
   onHoverIndex?: (index: number) => void;
 }
 
+function skillBlurb(item: SlashCommandItem): string | undefined {
+  return item.category === 'skills' ? item.description : undefined;
+}
+
+function secondLine(item: SlashCommandItem): string {
+  const spoken = item.preview?.description ?? skillBlurb(item);
+  return spoken === undefined ? '' : `. ${spoken}`;
+}
+
 export function SlashCommandMenu({
   items,
   selectedIndex,
@@ -84,9 +93,7 @@ export function SlashCommandMenu({
       >
         {}
         <span className="sr-only" aria-live="polite" aria-atomic="true">
-          {selectedItem
-            ? `${selectedItem.label}${selectedItem.preview ? `. ${selectedItem.preview.description}` : ''}`
-            : ''}
+          {selectedItem ? `${selectedItem.label}${secondLine(selectedItem)}` : ''}
         </span>
         {categories.map((cat) => (
           // biome-ignore lint/a11y/useSemanticElements: WAI-ARIA listbox pattern requires role="group" for option groups — <fieldset> is non-standard inside role="listbox"
@@ -121,6 +128,11 @@ export function SlashCommandMenu({
                   <Icon className="size-4 shrink-0 text-muted-foreground" />
                   <div className="flex flex-col min-w-0">
                     <span className="truncate">{item.label}</span>
+                    {skillBlurb(item) === undefined ? null : (
+                      <span className="line-clamp-2 text-xs text-muted-foreground">
+                        {skillBlurb(item)}
+                      </span>
+                    )}
                   </div>
                 </button>
               );

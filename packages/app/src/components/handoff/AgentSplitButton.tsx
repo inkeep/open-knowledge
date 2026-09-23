@@ -38,6 +38,7 @@ export interface ThreadAgentRow {
 }
 
 export interface AgentSplitButtonTestIds {
+  group?: string;
   primary: string;
   trigger: string;
   menu: string;
@@ -109,7 +110,7 @@ export function AgentSplitButton({
     typeof testIds.terminal === 'function' ? testIds.terminal(cli) : testIds.terminal;
 
   return (
-    <ButtonGroup className={className}>
+    <ButtonGroup className={className} data-testid={testIds.group}>
       <Button
         type="button"
         variant="outline"

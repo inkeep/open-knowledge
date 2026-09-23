@@ -8,8 +8,11 @@ import {
   type ComposerAttachmentPart,
   composerMentionExtensions,
   composerMentionSuggestionKey,
+  EMPTY_MENTION_RECENCY,
   isComposerEmpty,
+  type MentionRecency,
   serializeComposerContent,
+  setMentionRecency,
 } from '@/editor/composer-mention/composer-mention';
 import {
   composerFirstLineText,
@@ -54,6 +57,7 @@ export interface ComposerMentionInputHandle {
     attachments: ComposerAttachmentPart[];
   };
   openMentionPicker: () => void;
+  openSlashCommandPicker: () => void;
 }
 
 function textToParagraphs(text: string): JSONContent[] {
@@ -66,6 +70,7 @@ function textToParagraphs(text: string): JSONContent[] {
 export function ComposerMentionInput({
   ref,
   ariaLabel,
+  ariaDescribedBy,
   onEmptyChange,
   onContentChange,
   onMentionsChange,
@@ -77,10 +82,12 @@ export function ComposerMentionInput({
   disabled = false,
   testId,
   slashCommands,
+  mentionRecency,
   attachmentDrop,
 }: {
   ref?: Ref<ComposerMentionInputHandle>;
   ariaLabel: string;
+  ariaDescribedBy?: string;
   onEmptyChange: (isEmpty: boolean) => void;
   onContentChange?: (doc: JSONContent) => void;
   onMentionsChange?: (mentions: string[]) => void;
@@ -92,6 +99,7 @@ export function ComposerMentionInput({
   disabled?: boolean;
   testId?: string;
   slashCommands?: SlashCommandItem[] | null;
+  mentionRecency?: MentionRecency;
   attachmentDrop: ComposerAttachmentDropPolicy;
 }) {
   const { t } = useLingui();
@@ -130,6 +138,7 @@ export function ComposerMentionInput({
       attributes: {
         role: 'textbox',
         'aria-label': ariaLabel,
+        ...(ariaDescribedBy !== undefined ? { 'aria-describedby': ariaDescribedBy } : {}),
         'aria-multiline': 'true',
         ...(testId !== undefined ? { 'data-testid': testId } : {}),
         class: cn('composer-prosemirror py-1 outline-none'),
@@ -177,8 +186,10 @@ export function ComposerMentionInput({
     const view = (editor as unknown as { editorView?: ComposerEditorView }).editorView;
     if (!view) return;
     view.dom.setAttribute('aria-label', ariaLabel ?? '');
+    if (ariaDescribedBy === undefined) view.dom.removeAttribute('aria-describedby');
+    else view.dom.setAttribute('aria-describedby', ariaDescribedBy);
     view.dispatch(editor.state.tr.setMeta('addToHistory', false));
-  }, [editor, placeholder, ariaLabel]);
+  }, [editor, placeholder, ariaLabel, ariaDescribedBy]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -198,6 +209,11 @@ export function ComposerMentionInput({
     }
     setSlashHint(resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)));
   }, [editor, slashCommands]);
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    setMentionRecency(editor, mentionRecency ?? EMPTY_MENTION_RECENCY);
+  }, [editor, mentionRecency]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once seed-integrity check; initialDoc is the one-time draft seed and must not re-trigger this effect.
   useEffect(() => {
@@ -255,6 +271,11 @@ export function ComposerMentionInput({
       openMentionPicker: () => {
         if (!editor) return;
         editor.chain().focus().insertContent('@').run();
+      },
+      openSlashCommandPicker: () => {
+        if (!editor || !isComposerEmpty(editor) || (getSlashCommands(editor)?.length ?? 0) === 0)
+          return;
+        editor.chain().focus().insertContent('/').run();
       },
     }),
     [editor],

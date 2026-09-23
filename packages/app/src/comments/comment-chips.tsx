@@ -1,7 +1,7 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
-import { MessageSquare, Plus, X } from 'lucide-react';
+import { MessageSquare, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -35,38 +35,14 @@ export function useSelectedCommentDocs(): readonly CommentDocTally[] {
 export function QueuedCommentsChip({
   count,
   docs = [],
-  attached,
-  onAttach,
   onDismiss,
 }: {
   count: number;
   docs?: readonly CommentDocTally[];
-  attached: boolean;
-  onAttach: () => void;
   onDismiss: () => void;
 }) {
   const { t } = useLingui();
   if (count === 0) return null;
-  if (!attached) {
-    return (
-      <Button
-        type="button"
-        size="sm"
-        variant="ghost"
-        aria-pressed={false}
-        aria-label={t`Add your comments to this message`}
-        onClick={onAttach}
-        data-testid="composer-context-chip-comments"
-        className={cn(
-          'h-auto min-h-0 gap-1 rounded-md border border-dashed bg-transparent px-1.5 py-0.5',
-          'text-xs font-normal text-muted-foreground hover:bg-muted/60 hover:text-foreground',
-        )}
-      >
-        <Plus className="size-3" />
-        <Trans>Comments</Trans>
-      </Button>
-    );
-  }
   return (
     <span
       data-testid="composer-context-chip-comments"

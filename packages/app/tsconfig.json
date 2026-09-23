@@ -53,13 +53,32 @@
   // guarantee also stops at the module boundary: the three `*.e2e.ts` call
   // sites stay outside the program, so their
   // `window as typeof window & ThemeFadeProbeWindow` casts and their reads off
-  // the returned report are unchecked. It imports only `@playwright/test`, so
-  // its closure adds no other file to the program.
+  // the returned report are unchecked — which is why the color-theme switch
+  // helper rejects an inapplicable theme id by throwing rather than by typing
+  // its parameter. It imports `@playwright/test` and
+  // `@inkeep/open-knowledge-core`, whose declarations `src` already pulls into
+  // the program, so its closure adds no other file to it.
+  //
+  // `tests/stress/_helpers/editor-state.ts` is named for the same reason. It
+  // pins the `CaretPlacement` shape `placeCaretAtEndOfText` returns: four
+  // required fields, so the barrier predicate that constructs it fails to
+  // compile if a field is dropped or carries the wrong type (TS2322) or is
+  // misnamed (TS2561), rather than surfacing as a wrong number at an
+  // assertion. The pin stops
+  // there: a construction that supplies all four with the right types is
+  // accepted whatever the values mean. Playwright's runner transforms
+  // `.ts` without typechecking it, so without this entry nothing checks the
+  // type the barrier's callers narrow against. It imports only
+  // `@playwright/test`, so its closure adds no other file to the program. The
+  // `.e2e.ts` and `.dom.test.ts` consumers stay outside: the former would pull
+  // the whole `_helpers` barrel in, and the latter is excluded as `*.test.ts`.
   "include": [
     "src",
     "*.ts",
     "tests/stress/fixtures",
     "tests/half-open-forced-close.test-helper.ts",
+    "tests/stress/_helpers/acp-catalog.ts",
+    "tests/stress/_helpers/editor-state.ts",
     "tests/stress/_helpers/image.ts",
     "tests/stress/_helpers/theme-fade.ts"
   ],

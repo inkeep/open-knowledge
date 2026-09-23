@@ -1,5 +1,10 @@
-import { describe, expect, test } from 'vitest';
+import type { ChildProcess } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { hostname, tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
 import { buildCleanPlan, runClean } from './clean.ts';
+import { startDefunctProcess } from './defunct-process.test-helper.ts';
 import type { LockState } from './lock-state.ts';
 
 function alive(pid: number, port: number): LockState {
@@ -176,4 +181,45 @@ test('never prunes a malformed foreign-owned lock', () => {
   });
   expect(unlinked).toEqual([]);
   expect(outcome.failed[0]?.error).toContain('owning machine');
+});
+
+describe('runClean over a lock whose recorded process has exited but is unreaped', () => {
+  const children: ChildProcess[] = [];
+  let root: string | undefined;
+
+  afterEach(async () => {
+    for (const child of children.splice(0)) {
+      if (child.exitCode !== null || child.signalCode !== null) continue;
+      child.kill('SIGKILL');
+      await new Promise((resolve) => child.once('exit', resolve));
+    }
+    if (root !== undefined) rmSync(root, { recursive: true, force: true });
+    root = undefined;
+  });
+
+  test.skipIf(process.platform === 'win32')('prunes it, as a crash-stale lock', async () => {
+    root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-clean-defunct-')));
+    const defunct = await startDefunctProcess(root, children);
+    expect(defunct.state).toMatch(/^Z/);
+
+    const lockDir = join(root, '.ok', 'local');
+    mkdirSync(lockDir, { recursive: true });
+    const lockPath = join(lockDir, 'server.lock');
+    writeFileSync(
+      lockPath,
+      JSON.stringify({
+        pid: defunct.pid,
+        hostname: hostname(),
+        port: 7391,
+        startedAt: new Date().toISOString(),
+        worktreeRoot: root,
+      }),
+    );
+
+    const outcome = runClean({ lockDir, log: () => {}, error: () => {} });
+
+    expect(outcome.failed).toEqual([]);
+    expect(outcome.pruned.map((target) => target.lockPath)).toEqual([lockPath]);
+    expect(existsSync(lockPath)).toBe(false);
+  });
 });

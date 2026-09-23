@@ -17,12 +17,14 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { SKILL_NAME_REGEX } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
+import { BUNDLE_SKILL_NAME } from '../src/skill-bundles.ts';
 import { enumeratePackSkills } from '../src/skill-pack-sources.ts';
 import {
   BUNDLE_IDS,
+  buildAgentPluginArtifact,
   buildPackSkills,
   buildSkillBundles,
   checkSharedContentByteEquality,
@@ -78,6 +80,26 @@ function fixture(opts: {
     writeFileSync(dest, body);
   }
   return { skillsDir, distDir: join(root, 'dist', 'assets', 'skills') };
+}
+
+const FRONTMATTER_NAME = /^name:[ \t]*(\S+)[ \t]*$/m;
+
+function collectShippedSkills(): Array<{ name: string; dir: string }> {
+  const { skillsDir } = defaultPaths();
+  const skills: Array<{ name: string; dir: string }> = [];
+  for (const bundle of BUNDLE_IDS) {
+    const dir = join(skillsDir, bundle);
+    const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
+    skills.push({ name: FRONTMATTER_NAME.exec(md)?.[1] ?? '', dir });
+  }
+  const packsDir = join(skillsDir, 'packs');
+  for (const entry of readdirSync(packsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    for (const source of enumeratePackSkills(join(packsDir, entry.name))) {
+      skills.push({ name: source.name, dir: source.sourceDir });
+    }
+  }
+  return skills;
 }
 
 describe('composeSkill', () => {
@@ -161,6 +183,24 @@ describe('buildSkillBundles', () => {
       project: '# p\n',
     });
     expect(() => buildSkillBundles(paths)).toThrow(/missing\.md/);
+  });
+});
+
+describe('buildAgentPluginArtifact', () => {
+  test('the published artifact carries composed SKILL.md bytes, not the raw source', () => {
+    const paths = fixture({
+      discovery: 'discovery: {{> _shared/intro.md }}\n',
+      project: 'project: {{> _shared/intro.md }}\n',
+      shared: { 'intro.md': 'SHARED-INTRO' },
+    });
+    const outRoot = buildAgentPluginArtifact(paths);
+    for (const id of ['discovery', 'project'] as const) {
+      const skillMd = join(outRoot, 'skills', BUNDLE_SKILL_NAME[id], 'SKILL.md');
+      expect(existsSync(skillMd)).toBe(true);
+      const text = readFileSync(skillMd, 'utf-8');
+      expect(text).toContain('SHARED-INTRO');
+      expect(text).not.toContain('{{>');
+    }
   });
 });
 
@@ -347,26 +387,6 @@ describe('repo assets — production guard', () => {
 // longer catches a cross-pack duplicate) and must be visible to subtree
 // `pnpm check`, not only to the monorepo-root mirror test.
 describe('repo assets — shipped skill names (mirror gate)', () => {
-  const FRONTMATTER_NAME = /^name:[ \t]*(\S+)[ \t]*$/m;
-
-  const collectShippedSkills = (): Array<{ name: string; dir: string }> => {
-    const { skillsDir } = defaultPaths();
-    const skills: Array<{ name: string; dir: string }> = [];
-    for (const bundle of BUNDLE_IDS) {
-      const dir = join(skillsDir, bundle);
-      const md = readFileSync(join(dir, 'SKILL.md'), 'utf-8');
-      skills.push({ name: FRONTMATTER_NAME.exec(md)?.[1] ?? '', dir });
-    }
-    const packsDir = join(skillsDir, 'packs');
-    for (const entry of readdirSync(packsDir, { withFileTypes: true })) {
-      if (!entry.isDirectory()) continue;
-      for (const source of enumeratePackSkills(join(packsDir, entry.name))) {
-        skills.push({ name: source.name, dir: source.sourceDir });
-      }
-    }
-    return skills;
-  };
-
   test('every shipped skill has a valid name, unique across packs and built-ins', () => {
     const skills = collectShippedSkills();
     // 3 built-ins + 8 pack orientation skills + 7 members. Deliberate tripwire:
@@ -406,5 +426,19 @@ describe('repo assets — shipped skill names (mirror gate)', () => {
         'repository: "https://github.com/inkeep/open-knowledge-skills"',
       );
     }
+  });
+});
+
+describe('repo assets — the source-fallback tripwire', () => {
+  test('no composed SKILL.md references a shared include while readers can still fall back to source', () => {
+    const { skillsDir } = defaultPaths();
+    const referencing = collectShippedSkills()
+      .map(({ dir }) => join(dir, 'SKILL.md'))
+      .filter((file) => /\{\{>\s*_shared\//.test(readFileSync(file, 'utf-8')))
+      .map((file) => relative(skillsDir, file));
+    expect(
+      referencing,
+      'resolveBundledSkillDir probes dist/assets/skills/<which> and then falls through to the uncomposed assets/skills/<which> (build-skill-zip.ts:51-52), and listPackSkillSources resolves pack directories through that same chain, so a reader arriving while a publish is between its two renames receives SOURCE bytes. That is harmless only while composition is an identity transform. The first SKILL.md to reference a shared include makes that fallback serve an unresolved placeholder, silently, and no other check in this repo reds on it. This test pins the condition that keeps the residual absent window benign; retire it by making the fallback unable to serve uncomposed bytes, not by deleting it.',
+    ).toEqual([]);
   });
 });

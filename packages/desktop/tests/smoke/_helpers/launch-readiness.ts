@@ -1,10 +1,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  BOOT_HEARTBEAT_EVENTS,
   DESKTOP_BOOT_EVENT,
+  DESKTOP_OPEN_PROJECT_FAILED_EVENT,
   isBootHeartbeatEvent,
+  isStartupMarkEvent,
   SPAWN_WAIT_HEARTBEAT_MS,
   startupMarkLine,
+  UTILITY_INIT_TIMEOUT_MS,
 } from '../../../src/shared/boot-narration.ts';
 
 export const BOOT_LOG_HEARTBEAT_MS = SPAWN_WAIT_HEARTBEAT_MS;
@@ -138,14 +142,89 @@ function currentLaunch(lines: readonly string[]): string[] {
   return lastBoot === -1 ? [...lines] : lines.slice(lastBoot);
 }
 
+function isLaunchNarrationLine(line: string): boolean {
+  const event = parseEvent(line);
+  return event !== undefined && (isStartupMarkEvent(event) || isBootHeartbeatEvent(event));
+}
+
+function lastLaunchNarrationIndex(launch: readonly string[]): number {
+  for (let i = launch.length - 1; i >= 0; i -= 1) {
+    const line = launch[i];
+    if (line !== undefined && isLaunchNarrationLine(line)) return i;
+  }
+  return -1;
+}
+
 function bootPrefix(lines: readonly string[]): string[] {
   const launch = currentLaunch(lines);
   const end = launch.findIndex((line) => parseEvent(line) === BOOT_COMPLETE_EVENT);
-  return end === -1 ? launch : launch.slice(0, end + 1);
+  if (end === -1) return launch;
+  return lastLaunchNarrationIndex(launch) > end ? launch : launch.slice(0, end + 1);
 }
 
 export function hasBootCompleted(all: readonly string[]): boolean {
   return currentLaunch(all).some((line) => parseEvent(line) === BOOT_COMPLETE_EVENT);
+}
+
+const DECLARED_PHASE_OPEN_EVENT = startupMarkLine('serverSpawned', 0).event;
+
+const DECLARED_PHASE_CLOSED_EVENT = startupMarkLine('serverLockReady', 0).event;
+
+function openDeclaredPhaseStart(launch: readonly string[]): number {
+  const openedAt = launch.map(parseEvent).lastIndexOf(DECLARED_PHASE_OPEN_EVENT);
+  if (openedAt === -1) return -1;
+  for (let i = openedAt + 1; i < launch.length; i += 1) {
+    const line = launch[i];
+    if (line === undefined) continue;
+    const event = parseEvent(line);
+    if (event === DECLARED_PHASE_CLOSED_EVENT || event === DESKTOP_OPEN_PROJECT_FAILED_EVENT)
+      return -1;
+  }
+  return openedAt;
+}
+
+export function hasOpenDeclaredPhase(all: readonly string[]): boolean {
+  return openDeclaredPhaseStart(currentLaunch(all)) !== -1;
+}
+
+function isUsableDurationField(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
+}
+
+export interface DeclaredPhaseBudget {
+  elapsedMs: number;
+  initTimeoutMs: number;
+}
+
+export function parseDeclaredPhaseBudget(line: string): DeclaredPhaseBudget | undefined {
+  try {
+    const parsed = JSON.parse(line) as {
+      event?: unknown;
+      elapsedMs?: unknown;
+      initTimeoutMs?: unknown;
+    };
+    if (parsed.event !== BOOT_HEARTBEAT_EVENTS.utilityWait) return undefined;
+    const { elapsedMs, initTimeoutMs } = parsed;
+    if (!isUsableDurationField(elapsedMs) || !isUsableDurationField(initTimeoutMs))
+      return undefined;
+    if (initTimeoutMs > UTILITY_INIT_TIMEOUT_MS) return undefined;
+    if (elapsedMs < 0 || elapsedMs > initTimeoutMs) return undefined;
+    return { elapsedMs, initTimeoutMs };
+  } catch {}
+  return undefined;
+}
+
+function newestDeclaredPhaseBudget(all: readonly string[]): DeclaredPhaseBudget | undefined {
+  const launch = currentLaunch(all);
+  const openedAt = openDeclaredPhaseStart(launch);
+  if (openedAt === -1) return undefined;
+  for (let i = launch.length - 1; i > openedAt; i -= 1) {
+    const line = launch[i];
+    if (line === undefined) continue;
+    const budget = parseDeclaredPhaseBudget(line);
+    if (budget !== undefined) return budget;
+  }
+  return undefined;
 }
 
 function parseLastPhase(line: string): string | undefined {
@@ -209,9 +288,12 @@ export function bootLogGapSummary(all: readonly string[]): BootLogGapSummary {
 
 type BootGapSource =
   | 'unavailable'
-  | 'boot-complete'
+  | 'wait-snapshot'
   | 'teardown-read'
   | 'teardown-read-shared-home';
+
+const UNDETERMINED_ABSENT_LOG_CAUSE =
+  'the cause is not determined here (it may have been removed, never written, or written elsewhere)';
 
 export function describeMissingBootLog(snapshot: BootLogSnapshot): string {
   switch (classifyBootLog(snapshot)) {
@@ -220,7 +302,7 @@ export function describeMissingBootLog(snapshot: BootLogSnapshot): string {
         ? `log dir unreadable (${snapshot.unreadableReason})`
         : `log files unreadable: ${snapshot.unreadableFiles.join(', ')}`;
     case 'notfound':
-      return 'no desktop log file at teardown (a test.afterEach removed the launch home before the fixture could read it, or the app wrote no log file)';
+      return `no desktop log file when the fixture read it; ${UNDETERMINED_ABSENT_LOG_CAUSE}`;
     case 'empty':
       return 'log files present but empty';
     case 'ok':
@@ -228,14 +310,12 @@ export function describeMissingBootLog(snapshot: BootLogSnapshot): string {
   }
 }
 
-export interface BootGapLine {
+export type BootGapLine = {
   slot: number;
   source: BootGapSource;
   firstWait?: ReadyWaitRecord;
   readyWaitCount?: number;
-  summary: BootLogGapSummary | undefined;
-  reason?: string;
-}
+} & ({ summary: BootLogGapSummary; reason?: never } | { summary?: never; reason: string });
 
 export function bootGapSourceFor(input: {
   hasLines: boolean;
@@ -243,8 +323,58 @@ export function bootGapSourceFor(input: {
   homeShared: boolean;
 }): BootGapSource {
   if (!input.hasLines) return 'unavailable';
-  if (input.snapshotted) return 'boot-complete';
+  if (input.snapshotted) return 'wait-snapshot';
   return input.homeShared ? 'teardown-read-shared-home' : 'teardown-read';
+}
+
+class NarrationOfOneRead {
+  readonly lines: readonly string[];
+  readonly snapshotted: boolean;
+  readonly #read: BootLogSnapshot;
+
+  constructor(atBoot: readonly string[] | undefined, onDisk: BootLogSnapshot) {
+    const useDisk = isMoreCompleteNarration(onDisk.lines, atBoot);
+    this.lines = useDisk ? onDisk.lines : (atBoot ?? []);
+    this.snapshotted = !useDisk && atBoot !== undefined;
+    this.#read = onDisk;
+  }
+
+  get missingLogReason(): string | undefined {
+    return this.lines.length === 0 ? describeMissingBootLog(this.#read) : undefined;
+  }
+}
+
+export type BootNarration = NarrationOfOneRead;
+
+export function bootNarrationFor(
+  atBoot: readonly string[] | undefined,
+  onDisk: BootLogSnapshot,
+): BootNarration {
+  return new NarrationOfOneRead(atBoot, onDisk);
+}
+
+export function bootGapLineFor(input: {
+  slot: number;
+  narration: BootNarration;
+  readyWaitCount: number;
+  firstWait?: ReadyWaitRecord;
+  homeShared: boolean;
+}): BootGapLine {
+  const { narration } = input;
+  const reason = narration.missingLogReason;
+  const base = {
+    slot: input.slot,
+    source: bootGapSourceFor({
+      hasLines: reason === undefined,
+      snapshotted: narration.snapshotted,
+      homeShared: input.homeShared,
+    }),
+    readyWaitCount: input.readyWaitCount,
+    ...(input.firstWait === undefined ? {} : { firstWait: input.firstWait }),
+  };
+  return reason === undefined
+    ? { ...base, summary: bootLogGapSummary(narration.lines) }
+    : { ...base, reason };
 }
 
 export function formatBootGapLine(line: BootGapLine): string {
@@ -257,6 +387,7 @@ export function formatBootGapLine(line: BootGapLine): string {
       ? [
           'firstWaitMs=none',
           'firstWaitCapMs=none',
+          'firstWaitRequestedCapMs=none',
           'firstWaitWhat=none',
           'firstWaitGaveUp=none',
           'firstWaitReason=none',
@@ -264,13 +395,14 @@ export function formatBootGapLine(line: BootGapLine): string {
       : [
           `firstWaitMs=${line.firstWait.elapsedMs}`,
           `firstWaitCapMs=${line.firstWait.capMs}`,
+          `firstWaitRequestedCapMs=${line.firstWait.requestedCapMs}`,
           `firstWaitWhat=${JSON.stringify(line.firstWait.what)}`,
           `firstWaitGaveUp=${line.firstWait.gaveUp}`,
           `firstWaitReason=${line.firstWait.reason}`,
         ]),
   ];
   if (line.summary === undefined) {
-    parts.push(`reason=${JSON.stringify(line.reason ?? 'unknown')}`);
+    parts.push(`reason=${JSON.stringify(line.reason)}`);
     return parts.join(' ');
   }
   parts.push(
@@ -300,6 +432,8 @@ export interface ReadySignalOptions<T> {
   sleep?: (ms: number) => Promise<void>;
   readLog?: (home: string) => BootLogSnapshot;
   startDeadline?: (ms: number) => ReadyDeadline;
+  isProbePending?: () => boolean;
+  onCapExtended?: (capMs: number) => void;
 }
 
 export interface ReadyDeadline {
@@ -333,10 +467,7 @@ function describeBootLog(snapshot: BootLogSnapshot): string {
             `${snapshot.unreadableFiles.join(', ')} — a runner filesystem problem, not evidence ` +
             'about the app)';
     case 'notfound':
-      return (
-        `Boot log: ${snapshot.dir} (NOT FOUND — the app may have died before it could log, ` +
-        'or a required build artifact is missing)'
-      );
+      return `Boot log: ${snapshot.dir} (NOT FOUND, ${UNDETERMINED_ABSENT_LOG_CAUSE})`;
     case 'empty':
       return (
         `Boot log: ${snapshot.dir} (${snapshot.fileCount} file(s) present but EMPTY — the app ` +
@@ -348,7 +479,7 @@ function describeBootLog(snapshot: BootLogSnapshot): string {
 }
 
 function describeFailure(
-  reason: 'stalled' | 'cap',
+  reason: 'stalled' | 'stalled-in-declared-phase' | 'cap',
   what: string,
   elapsedMs: number,
   stallMs: number,
@@ -358,17 +489,24 @@ function describeFailure(
 ): string {
   const phase = snapshot.lastEvent ?? '(no boot event recorded)';
   const state = classifyBootLog(snapshot);
+  const silence =
+    `${what} did not arrive, and the app logged no new boot activity for ${stallMs}ms ` +
+    `(gave up after ${elapsedMs}ms). `;
   const head =
     state !== 'ok'
       ? `${what} did not arrive within ${elapsedMs}ms, and the boot log cannot say why.`
       : reason === 'stalled'
-        ? `${what} did not arrive, and the app logged no new boot activity for ${stallMs}ms ` +
-          `(gave up after ${elapsedMs}ms). Main narrates every ${BOOT_LOG_HEARTBEAT_MS}ms from ` +
+        ? `${silence}Main narrates every ${BOOT_LOG_HEARTBEAT_MS}ms from ` +
           'process start until the first window is shown, so this silence after phase ' +
           `${phase} means the app stopped making progress.`
-        : probePending
-          ? `${what} did not arrive within ${elapsedMs}ms.`
-          : `${what} did not arrive within ${elapsedMs}ms, though the app kept logging boot activity.`;
+        : reason === 'stalled-in-declared-phase'
+          ? `${silence}Main beats every ${BOOT_LOG_HEARTBEAT_MS}ms while a startup phase it ` +
+            'declared is still open, and it had shown a window before this silence, so this ' +
+            `silence after phase ${phase} means the app stopped making progress inside that ` +
+            'open phase rather than before its first window.'
+          : probePending
+            ? `${what} did not arrive within ${elapsedMs}ms.`
+            : `${what} did not arrive within ${elapsedMs}ms, though the app kept logging boot activity.`;
   const lines = [head, `Last main-process boot event: ${phase}`, describeBootLog(snapshot)];
   lines.push(
     probeError === undefined
@@ -432,11 +570,16 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   let totalPolls = 0;
 
   let capElapsed = false;
-  const deadline = startDeadline(capMs);
-  const capReached = deadline.expired.then((): typeof DEADLINE_PASSED => {
-    capElapsed = true;
-    return DEADLINE_PASSED;
-  });
+  const armCapReached = (armed: ReadyDeadline): Promise<typeof DEADLINE_PASSED> =>
+    armed.expired.then((): typeof DEADLINE_PASSED => {
+      capElapsed = true;
+      return DEADLINE_PASSED;
+    });
+  let deadline = startDeadline(capMs);
+  let capReached = armCapReached(deadline);
+  let armedCapMs = capMs;
+  let grantedElapsedMs = Number.NEGATIVE_INFINITY;
+  let derivedDeadlineAt: number | undefined;
   let probePendingAtGiveUp = false;
 
   try {
@@ -462,28 +605,55 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
         lastProgressAt = now();
       }
 
+      const declaredPhaseOpen = hasOpenDeclaredPhase(snapshot.lines);
+      if (declaredPhaseOpen) {
+        const budget = newestDeclaredPhaseBudget(snapshot.lines);
+        if (budget !== undefined && budget.elapsedMs > grantedElapsedMs) {
+          grantedElapsedMs = budget.elapsedMs;
+          const remaining = Math.max(
+            budget.initTimeoutMs - budget.elapsedMs,
+            UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+          );
+          derivedDeadlineAt = Math.max(derivedDeadlineAt ?? 0, now() + remaining);
+        }
+      }
+      const effectiveCapMs =
+        derivedDeadlineAt === undefined ? capMs : Math.max(capMs, derivedDeadlineAt - startedAt);
+      if (effectiveCapMs > armedCapMs) {
+        deadline.cancel();
+        capElapsed = false;
+        probePendingAtGiveUp = false;
+        armedCapMs = effectiveCapMs;
+        options.onCapExtended?.(armedCapMs);
+        deadline = startDeadline(Math.max(startedAt + armedCapMs - now(), 0));
+        capReached = armCapReached(deadline);
+      }
+
       const probeError: ProbeErrorSummary | undefined =
         lastProbeError === undefined ? undefined : { last: lastProbeError, threwPolls, totalPolls };
       const elapsed = now() - startedAt;
+      const probePending = probePendingAtGiveUp || options.isProbePending?.() === true;
       const stallArmed =
         explicitLiveness !== undefined
           ? explicitLiveness === 'boot'
-          : !hasBootCompleted(snapshot.lines);
+          : !hasBootCompleted(snapshot.lines) || declaredPhaseOpen;
       if (stallArmed && now() - lastProgressAt >= stallMs) {
         throw new ReadySignalGiveUp(
           describeFailure(
-            'stalled',
+            declaredPhaseOpen && hasBootCompleted(snapshot.lines)
+              ? 'stalled-in-declared-phase'
+              : 'stalled',
             options.what,
             elapsed,
             stallMs,
             snapshot,
             probeError,
-            probePendingAtGiveUp,
+            probePending,
           ),
           giveUpReason('stall', snapshot),
         );
       }
-      if (capElapsed || elapsed >= capMs) {
+      if (capElapsed || elapsed >= effectiveCapMs) {
         throw new ReadySignalGiveUp(
           describeFailure(
             'cap',
@@ -492,7 +662,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
             stallMs,
             snapshot,
             probeError,
-            probePendingAtGiveUp,
+            probePending,
           ),
           giveUpReason('cap', snapshot),
         );
@@ -512,6 +682,15 @@ interface ModeProbePage {
 
 interface ModeProbeApp<TPage> {
   windows(): TPage[];
+}
+
+type ModeProbeResult =
+  | { kind: 'mode'; value: string | undefined }
+  | { kind: 'error'; error: Error };
+
+interface ModeProbeState {
+  pending: boolean;
+  result: ModeProbeResult | undefined;
 }
 
 const HOME_BY_APP = new WeakMap<object, string>();
@@ -534,6 +713,7 @@ export interface ReadyWaitRecord {
   what: string;
   elapsedMs: number;
   capMs: number;
+  requestedCapMs: number;
   gaveUp: boolean;
   reason: ReadyWaitGiveUpReason;
 }
@@ -548,8 +728,15 @@ export function tryLaunchHomeFor(app: object): string | undefined {
   return HOME_BY_APP.get(app);
 }
 
+export function isMoreCompleteNarration(
+  candidate: readonly string[],
+  held: readonly string[] | undefined,
+): boolean {
+  return candidate.length > (held?.length ?? 0);
+}
+
 export function rememberBootLog(app: object, lines: readonly string[]): void {
-  if (lines.length === 0) return;
+  if (!isMoreCompleteNarration(lines, BOOT_LOG_BY_APP.get(app))) return;
   BOOT_LOG_BY_APP.set(app, [...lines]);
 }
 
@@ -608,7 +795,10 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
   const home = options.home ?? launchHomeFor(app);
   const what = `${mode} window`;
   const capMs = options.capMs ?? BOOT_LOG_CAP_MS;
+  let decidingCapMs = capMs;
   const startedAt = Date.now();
+  const probeStates = new WeakMap<TPage, ModeProbeState>();
+  let pendingProbeCount = 0;
   let succeeded = false;
   let reason: ReadyWaitGiveUpReason = 'none';
   try {
@@ -619,16 +809,60 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       ...(options.stallMs !== undefined ? { stallMs: options.stallMs } : {}),
       capMs,
       ...(options.pollMs !== undefined ? { pollMs: options.pollMs } : {}),
+      isProbePending: () => pendingProbeCount > 0,
+      onCapExtended: (extended) => {
+        decidingCapMs = extended;
+      },
       probe: async () => {
+        const pages = app.windows();
+        for (const page of pages) {
+          let state = probeStates.get(page);
+          if (state === undefined) {
+            state = { pending: false, result: undefined };
+            probeStates.set(page, state);
+          }
+          if (state.pending || state.result !== undefined) continue;
+          state.pending = true;
+          pendingProbeCount += 1;
+          try {
+            void evaluateWindowMode(page).then(
+              (value) => {
+                state.pending = false;
+                pendingProbeCount -= 1;
+                state.result = { kind: 'mode', value };
+              },
+              (error: unknown) => {
+                state.pending = false;
+                pendingProbeCount -= 1;
+                state.result = {
+                  kind: 'error',
+                  error: error instanceof Error ? error : new Error(String(error)),
+                };
+              },
+            );
+          } catch (error) {
+            state.pending = false;
+            pendingProbeCount -= 1;
+            state.result = {
+              kind: 'error',
+              error: error instanceof Error ? error : new Error(String(error)),
+            };
+          }
+        }
+
+        await Promise.resolve();
         let lastError: Error | undefined;
         let readCleanly = false;
-        for (const page of app.windows()) {
-          try {
-            const found = await evaluateWindowMode(page);
+        for (const page of pages) {
+          const state = probeStates.get(page);
+          const result = state?.result;
+          if (state === undefined || result === undefined) continue;
+          state.result = undefined;
+          if (result.kind === 'mode') {
             readCleanly = true;
-            if (found === mode) return page;
-          } catch (error) {
-            lastError = error instanceof Error ? error : new Error(String(error));
+            if (result.value === mode) return page;
+          } else {
+            lastError = result.error;
           }
         }
         if (!readCleanly && lastError !== undefined) throw lastError;
@@ -636,16 +870,17 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       },
     });
     succeeded = true;
-    rememberBootLog(app, readBootLogLines(home));
     return found;
   } catch (error) {
     if (error instanceof ReadySignalGiveUp) reason = error.reason;
     throw error;
   } finally {
+    rememberBootLog(app, readBootLogLines(home));
     rememberReadyWait(app, {
       what,
       elapsedMs: Date.now() - startedAt,
-      capMs,
+      capMs: decidingCapMs,
+      requestedCapMs: capMs,
       gaveUp: !succeeded,
       reason,
     });

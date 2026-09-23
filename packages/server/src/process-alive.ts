@@ -1,13 +1,17 @@
-export function isProcessAlive(pid: number): boolean {
+export type ProcessLiveness = 'signalable' | 'foreign' | 'absent';
+
+export function readProcessLiveness(pid: number): ProcessLiveness {
   try {
     process.kill(pid, 0);
-    return true;
+    return 'signalable';
   } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'code' in err && err.code === 'EPERM') {
-      return true;
-    }
-    return false;
+    if (err && typeof err === 'object' && 'code' in err && err.code === 'EPERM') return 'foreign';
+    return 'absent';
   }
+}
+
+export function isProcessAlive(pid: number): boolean {
+  return readProcessLiveness(pid) !== 'absent';
 }
 
 export function isValidLockPid(value: unknown): value is number {

@@ -264,7 +264,8 @@ export function createInteractionLayer(
     }, HOVER_CLOSE_DELAY);
   };
 
-  let lastActivator: HTMLElement | null = null;
+  type FocusOwner = { kind: 'none' } | { kind: 'activator'; element: HTMLElement };
+  let focusOwner: FocusOwner = { kind: 'none' };
   let restoringFocus = false;
   const restoreFocusTo = (target: HTMLElement): void => {
     try {
@@ -281,18 +282,28 @@ export function createInteractionLayer(
       if (typeof document !== 'undefined') {
         const active = document.activeElement as HTMLElement | null;
         if (active && isPotentialChipElement(active, activeId)) {
-          lastActivator = active;
+          focusOwner = { kind: 'activator', element: active };
         } else {
-          lastActivator = null;
+          focusOwner = { kind: 'none' };
         }
+      } else {
+        focusOwner = { kind: 'none' };
       }
       return;
     }
+    const owner = focusOwner;
+    focusOwner = { kind: 'none' };
     if (typeof document === 'undefined') return;
-    const target = lastActivator;
-    lastActivator = null;
-    if (target && document.contains(target) && typeof target.focus === 'function') {
-      restoreFocusTo(target);
+    if (owner.kind === 'none') {
+      const active = document.activeElement;
+      if (
+        !active?.closest(
+          '[data-ok-prop-panel], [data-ok-layer-spawned], [data-ok-interaction-layer]',
+        )
+      )
+        return;
+    } else if (document.contains(owner.element) && typeof owner.element.focus === 'function') {
+      restoreFocusTo(owner.element);
       return;
     }
     const dom = editorDom ?? getEditorDom(editor);

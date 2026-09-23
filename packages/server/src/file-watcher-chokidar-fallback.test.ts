@@ -11,6 +11,7 @@ import {
   startWatcher,
   writeTracker,
 } from './file-watcher.ts';
+import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
 
 describe('isChokidarPathIgnored — stats matrix', () => {
   let tmpDir: string;
@@ -82,15 +83,6 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  async function until(predicate: () => boolean, timeoutMs = 15_000): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (predicate()) return true;
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    return predicate();
-  }
-
   test('edits to a pre-existing subfolder doc dispatch a DiskEvent', async () => {
     const filter = createContentFilter({ projectDir: tmpDir, contentDir });
     const events: DiskEvent[] = [];
@@ -99,14 +91,18 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
     });
     try {
       writeFileSync(resolve(contentDir, 'root.md'), '# Root edited\n');
-      expect(
-        await until(() => events.some((e) => e.kind === 'update' && e.docName === 'root')),
-      ).toBe(true);
+      await waitWithinTestBudget(
+        "an update DiskEvent for 'root'",
+        () => events.some((e) => e.kind === 'update' && e.docName === 'root'),
+        { timeoutMs: 15_000, pollMs: 40 },
+      );
 
       writeFileSync(resolve(contentDir, 'sub', 'note.md'), '# Note edited\n\n[Gone](./gone)\n');
-      expect(
-        await until(() => events.some((e) => e.kind === 'update' && e.docName === 'sub/note')),
-      ).toBe(true);
+      await waitWithinTestBudget(
+        "an update DiskEvent for 'sub/note'",
+        () => events.some((e) => e.kind === 'update' && e.docName === 'sub/note'),
+        { timeoutMs: 15_000, pollMs: 40 },
+      );
     } finally {
       await handle.unsubscribe();
     }
@@ -120,19 +116,20 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
     });
     try {
       mkdirSync(resolve(contentDir, 'fresh'));
-      expect(
-        await until(() =>
-          events.some((e) => e.kind === 'folder-create' && e.relativePath === 'fresh'),
-        ),
-      ).toBe(true);
+      await waitWithinTestBudget(
+        "a folder-create DiskEvent for the new 'fresh' subfolder",
+        () => events.some((e) => e.kind === 'folder-create' && e.relativePath === 'fresh'),
+        { timeoutMs: 15_000, pollMs: 40 },
+      );
       writeFileSync(resolve(contentDir, 'fresh', 'child.md'), '# Child\n');
-      expect(
-        await until(() =>
+      await waitWithinTestBudget(
+        "a create or update DiskEvent for 'fresh/child'",
+        () =>
           events.some(
             (e) => (e.kind === 'create' || e.kind === 'update') && e.docName === 'fresh/child',
           ),
-        ),
-      ).toBe(true);
+        { timeoutMs: 15_000, pollMs: 40 },
+      );
     } finally {
       await handle.unsubscribe();
     }
@@ -148,9 +145,11 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
       mkdirSync(resolve(contentDir, 'node_modules', 'dep'), { recursive: true });
       writeFileSync(resolve(contentDir, 'node_modules', 'dep', 'readme.md'), '# Dep\n');
       writeFileSync(resolve(contentDir, 'root.md'), '# Root sentinel\n');
-      expect(
-        await until(() => events.some((e) => e.kind === 'update' && e.docName === 'root')),
-      ).toBe(true);
+      await waitWithinTestBudget(
+        "the 'root' sentinel update DiskEvent that proves the watcher is live",
+        () => events.some((e) => e.kind === 'update' && e.docName === 'root'),
+        { timeoutMs: 15_000, pollMs: 40 },
+      );
       expect(
         events.some((e) => 'docName' in e && String(e.docName).startsWith('node_modules')),
       ).toBe(false);
@@ -176,15 +175,6 @@ describe('chokidar backend — templates-as-content watching (forceBackend)', ()
     await rm(tmpDir, { recursive: true, force: true });
   });
 
-  async function until(predicate: () => boolean, timeoutMs = 6000): Promise<boolean> {
-    const deadline = Date.now() + timeoutMs;
-    while (Date.now() < deadline) {
-      if (predicate()) return true;
-      await new Promise((r) => setTimeout(r, 40));
-    }
-    return predicate();
-  }
-
   test('a template created in a brand-new .ok/templates folder dispatches a DiskEvent', async () => {
     const filter = createContentFilter({ projectDir: tmpDir, contentDir });
     const events: DiskEvent[] = [];
@@ -195,16 +185,18 @@ describe('chokidar backend — templates-as-content watching (forceBackend)', ()
       const target = resolve(contentDir, 'notes', '.ok', 'templates', 'standup.md');
       mkdirSync(resolve(target, '..'), { recursive: true });
       const src = '---\ntitle: Standup\ndescription: a standup template\n---\n\n# {{date}}\n';
-      expect(
-        await until(() => {
+      await waitWithinTestBudget(
+        "a create or update DiskEvent for 'notes/.ok/templates/standup'",
+        () => {
           writeFileSync(target, src);
           return events.some(
             (e) =>
               (e.kind === 'create' || e.kind === 'update') &&
               e.docName === 'notes/.ok/templates/standup',
           );
-        }),
-      ).toBe(true);
+        },
+        { timeoutMs: 6_000, pollMs: 40 },
+      );
     } finally {
       await handle.unsubscribe();
     }
@@ -221,11 +213,11 @@ describe('chokidar backend — templates-as-content watching (forceBackend)', ()
       const target = resolve(contentDir, '.ok', 'templates', 'daily.md');
       const conflicted = '# Daily\n\n<<<<<<< HEAD\nours\n=======\ntheirs\n>>>>>>> branch\n';
       writeFileSync(target, conflicted);
-      expect(
-        await until(() =>
-          events.some((e) => e.kind === 'conflict' && e.docName === '.ok/templates/daily'),
-        ),
-      ).toBe(true);
+      await waitWithinTestBudget(
+        "a conflict DiskEvent for '.ok/templates/daily'",
+        () => events.some((e) => e.kind === 'conflict' && e.docName === '.ok/templates/daily'),
+        { timeoutMs: 6_000, pollMs: 40 },
+      );
     } finally {
       await handle.unsubscribe();
     }

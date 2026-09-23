@@ -20,6 +20,7 @@ import {
   OK_PATH_UNRESOLVABLE,
   OK_STORE_REFUSED,
 } from './document-durability-state.ts';
+import { expectStable } from './expect-stable.test-helper.ts';
 import { getLogger } from './logger.ts';
 import { lossCaptureCurrentPath, parseLossCaptureLines } from './loss-capture.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
@@ -28,6 +29,7 @@ import { classifyDuplication } from './persistence-tripwire.ts';
 import { createServer } from './server-factory.ts';
 import { initShadowRepo, type ShadowHandle, shadowGit } from './shadow-repo.ts';
 import { getDocumentHistory } from './timeline-query.ts';
+import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
 
 const FIXTURE_DIR = resolve(import.meta.dirname, 'persistence-tripwire.fixtures');
 
@@ -51,31 +53,6 @@ function occurrences(haystack: string, needle: string): number {
     i = haystack.indexOf(needle, i + needle.length);
   }
   return n;
-}
-
-async function waitFor(
-  predicate: () => boolean,
-  { timeoutMs = 8_000, pollMs = 25 }: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-  throw new Error(`waitFor timed out after ${timeoutMs}ms`);
-}
-
-async function expectStable<T>(
-  read: () => T,
-  { durationMs = 700, pollMs = 50 }: { durationMs?: number; pollMs?: number } = {},
-): Promise<T> {
-  const initial = read();
-  const deadline = Date.now() + durationMs;
-  while (Date.now() < deadline) {
-    if (read() !== initial) throw new Error('value changed during stability window');
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-  return initial;
 }
 
 interface Rig {
@@ -158,15 +135,29 @@ describe('persistence tripwire vs a whole-document paste', () => {
       if (!serverDoc) return;
 
       replaceSource(serverDoc, USER_DOC);
-      await waitFor(() => readFileSync(docPath, 'utf-8').length > 0);
+      await waitWithinTestBudget(
+        `the ${docName}.md to be written to disk`,
+        () => readFileSync(docPath, 'utf-8').length > 0,
+        { timeoutMs: 8_000 },
+      );
       const baseline = readFileSync(docPath, 'utf-8');
       expect(baseline).toBe(USER_DOC);
 
       replaceSource(serverDoc, `${USER_DOC}\n${USER_DOC}`);
       expect(occurrences(serverDoc.getText('source').toString(), USER_DOC_LINE)).toBe(2);
 
-      await waitFor(() => readFileSync(docPath, 'utf-8') !== baseline);
-      const persisted = await expectStable(() => readFileSync(docPath, 'utf-8'));
+      await waitWithinTestBudget(
+        `${docName}.md on disk to change from its settled baseline`,
+        () => readFileSync(docPath, 'utf-8') !== baseline,
+        { timeoutMs: 8_000 },
+      );
+      const persisted = await expectStable(
+        `${docName}.md on disk`,
+        () => readFileSync(docPath, 'utf-8'),
+        {
+          durationMs: 700,
+        },
+      );
       expect(occurrences(persisted, USER_DOC_LINE)).toBe(2);
       expect(persisted.length).toBeGreaterThan(baseline.length);
 
@@ -226,16 +217,28 @@ describe('persistence tripwire vs a whole-document paste', () => {
       replaceSource(serverDoc, doubledMarkdown);
       expect(serverDoc.getText('source').toString()).toBe(doubledMarkdown);
 
-      await waitFor(() => blockedEvents(warnSpy).length > 0);
+      await waitWithinTestBudget(
+        'an ok-persistence-duplication-blocked warning to be logged',
+        () => blockedEvents(warnSpy).length > 0,
+        { timeoutMs: 8_000 },
+      );
 
-      await expectStable(() => readFileSync(docPath, 'utf-8'));
+      await expectStable(`${docName}.md on disk`, () => readFileSync(docPath, 'utf-8'), {
+        durationMs: 700,
+      });
       expect(readFileSync(docPath, 'utf-8')).toBe(baselineBytes);
-      await waitFor(() => serverDoc.getText('source').toString() === baselineBytes);
+      await waitWithinTestBudget(
+        `the ${docName} source text to be rolled back to the baseline bytes`,
+        () => serverDoc.getText('source').toString() === baselineBytes,
+        { timeoutMs: 8_000 },
+      );
       expect(getMetrics().persistenceDuplicationReset).toBe(1);
 
-      await waitFor(() => getMetrics().persistenceDuplicationResetCheckpointCreated >= 1, {
-        timeoutMs: 10_000,
-      });
+      await waitWithinTestBudget(
+        'a persistence-duplication-reset checkpoint to be created',
+        () => getMetrics().persistenceDuplicationResetCheckpointCreated >= 1,
+        { timeoutMs: 10_000 },
+      );
       const shas = (
         await shadowGit(rig.shadow).raw(
           'for-each-ref',
@@ -314,7 +317,11 @@ describe('persistence tripwire with an absent reconciled base', () => {
       const serverDoc = server.hocuspocus.documents.get(docName);
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
-      await waitFor(() => server.durabilityState.getReconciledBase(docName) === baseMarkdown);
+      await waitWithinTestBudget(
+        `the reconciled base for ${docName} to be adopted from disk`,
+        () => server.durabilityState.getReconciledBase(docName) === baseMarkdown,
+        { timeoutMs: 8_000 },
+      );
 
       server.durabilityState.deleteReconciledBase(docName);
       expect(server.durabilityState.getReconciledBase(docName)).toBeUndefined();
@@ -327,14 +334,22 @@ describe('persistence tripwire with an absent reconciled base', () => {
         { timeout: 10_000, interval: 25 },
       );
 
-      await expectStable(() => readFileSync(docPath, 'utf-8'));
+      await expectStable(`${docName}.md on disk`, () => readFileSync(docPath, 'utf-8'), {
+        durationMs: 700,
+      });
       expect(readFileSync(docPath, 'utf-8')).toBe(baseMarkdown);
-      await waitFor(() => serverDoc.getText('source').toString() === baseMarkdown);
+      await waitWithinTestBudget(
+        `the ${docName} source text to be reset to the base markdown`,
+        () => serverDoc.getText('source').toString() === baseMarkdown,
+        { timeoutMs: 8_000 },
+      );
       expect(getMetrics().persistenceDuplicationSpared).toBe(0);
 
-      await waitFor(() => getMetrics().persistenceDuplicationResetCheckpointCreated >= 1, {
-        timeoutMs: 10_000,
-      });
+      await waitWithinTestBudget(
+        'a persistence-duplication-reset checkpoint to be created',
+        () => getMetrics().persistenceDuplicationResetCheckpointCreated >= 1,
+        { timeoutMs: 10_000 },
+      );
       const hist = await getDocumentHistory(rig.shadow, { docName }, '');
       expect(hist.entries.some((e) => e.checkpoint?.kind === 'persistence-duplication-reset')).toBe(
         true,
@@ -375,16 +390,28 @@ describe('persistence tripwire with an absent reconciled base', () => {
       if (!serverDoc) return;
 
       replaceSource(serverDoc, settledMarkdown);
-      await waitFor(() => readFileSync(docPath, 'utf-8').length > baseMarkdown.length);
+      await waitWithinTestBudget(
+        `the settled write to reach ${docName}.md on disk`,
+        () => readFileSync(docPath, 'utf-8').length > baseMarkdown.length,
+        { timeoutMs: 8_000 },
+      );
       const settledStored = readFileSync(docPath, 'utf-8');
-      await waitFor(() => server.durabilityState.getReconciledBase(docName) === settledStored);
+      await waitWithinTestBudget(
+        `the reconciled base for ${docName} to catch up to the settled bytes on disk`,
+        () => server.durabilityState.getReconciledBase(docName) === settledStored,
+        { timeoutMs: 8_000 },
+      );
 
       server.durabilityState.deleteReconciledBase(docName);
       expect(server.durabilityState.getReconciledBase(docName)).toBeUndefined();
 
       const settledSource = serverDoc.getText('source').toString();
       replaceSource(serverDoc, `${settledSource.trimEnd()}\n\n${settledSource}`);
-      await waitFor(() => occurrences(serverDoc.getText('source').toString(), settledMarker) === 2);
+      await waitWithinTestBudget(
+        'the doubled paste to appear twice in the source text',
+        () => occurrences(serverDoc.getText('source').toString(), settledMarker) === 2,
+        { timeoutMs: 8_000 },
+      );
 
       await vi.waitFor(
         () => expect(getMetrics().persistenceDuplicationSpared).toBeGreaterThanOrEqual(1),
@@ -396,9 +423,15 @@ describe('persistence tripwire with an absent reconciled base', () => {
         .filter((s) => s.includes('"event":"ok-persistence-duplication-spared"'));
       expect(spared).toHaveLength(1);
 
-      await waitFor(() => occurrences(readFileSync(docPath, 'utf-8'), settledMarker) === 2);
+      await waitWithinTestBudget(
+        `the doubled paste to reach ${docName}.md on disk`,
+        () => occurrences(readFileSync(docPath, 'utf-8'), settledMarker) === 2,
+        { timeoutMs: 8_000 },
+      );
       const doubledDisk = readFileSync(docPath, 'utf-8');
-      await expectStable(() => readFileSync(docPath, 'utf-8'));
+      await expectStable(`${docName}.md on disk`, () => readFileSync(docPath, 'utf-8'), {
+        durationMs: 700,
+      });
       expect(readFileSync(docPath, 'utf-8')).toBe(doubledDisk);
       expect(getMetrics().persistenceDuplicationReset).toBe(0);
 

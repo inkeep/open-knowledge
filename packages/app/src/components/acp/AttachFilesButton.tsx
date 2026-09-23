@@ -1,42 +1,35 @@
 import { useLingui } from '@lingui/react/macro';
-import { Plus } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { Paperclip } from 'lucide-react';
+import type { ComponentProps, ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { openFilePicker } from '@/lib/file-picker';
 
 export function AttachFilesButton({
   onFiles,
   referencesOnly = false,
   testId,
+  size = 'icon-sm',
 }: {
   onFiles: (files: readonly File[]) => Promise<void> | void;
   referencesOnly?: boolean;
   testId: string;
+  size?: Extract<ComponentProps<typeof Button>['size'], 'icon-sm' | 'icon'>;
 }): ReactNode {
   const { t } = useLingui();
-  const openFilePicker = () => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.multiple = true;
-    input.addEventListener('change', () => {
-      const files = Array.from(input.files ?? []);
-      if (files.length > 0) void onFiles(files);
-    });
-    input.click();
-  };
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
           type="button"
-          size="icon-sm"
+          size={size}
           variant="ghost"
           className="rounded-lg"
-          onClick={openFilePicker}
+          onClick={() => openFilePicker({ multiple: true, onFiles })}
           aria-label={t`Attach a file`}
           data-testid={testId}
         >
-          <Plus className="size-4" aria-hidden="true" />
+          <Paperclip className="size-3.5" aria-hidden="true" />
         </Button>
       </TooltipTrigger>
       <TooltipContent side="top">

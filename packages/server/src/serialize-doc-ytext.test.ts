@@ -6,6 +6,7 @@ import { describe as _vitestDescribe, afterEach, beforeEach, expect, test, vi } 
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
 import { createServer } from './server-factory.ts';
+import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
 
 const describe = process.env.CI ? _vitestDescribe.skip : _vitestDescribe;
 
@@ -29,18 +30,6 @@ async function setupFixture(): Promise<Fixture> {
     contentDir,
     cleanup: () => rmSync(tmpDir, { recursive: true, force: true }),
   };
-}
-
-async function waitForCondition(
-  predicate: () => boolean,
-  { timeoutMs = 5_000, pollMs = 25 }: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (predicate()) return;
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-  throw new Error(`waitForCondition timed out after ${timeoutMs}ms`);
 }
 
 beforeEach(() => {
@@ -76,17 +65,20 @@ describe('FR-34: serializeDoc returns ytext bytes verbatim', () => {
     try {
       await server.ready;
       const conn = await server.hocuspocus.openDirectConnection(docName);
-      await waitForCondition(() => server.durabilityState.getReconciledBase(docName) !== undefined);
+      await waitWithinTestBudget(
+        `reconciledBase for ${docName} to be seeded from disk`,
+        () => server.durabilityState.getReconciledBase(docName) !== undefined,
+        { timeoutMs: 5_000 },
+      );
       expect(server.durabilityState.getReconciledBase(docName)).toBe(initialContent);
 
       const updatedContent = '---\n# Title Updated\n';
       writeFileSync(docPath, updatedContent, 'utf-8');
 
-      await waitForCondition(
+      await waitWithinTestBudget(
+        `reconciledBase for ${docName} to pick up the updated bytes from disk`,
         () => server.durabilityState.getReconciledBase(docName) === updatedContent,
-        {
-          timeoutMs: 8_000,
-        },
+        { timeoutMs: 8_000 },
       );
       expect(server.durabilityState.getReconciledBase(docName)).toBe(updatedContent);
 
@@ -128,18 +120,19 @@ describe('FR-35: setReconciledBase stores raw bytes uniformly across all paths',
     try {
       await server.ready;
       const conn = await server.hocuspocus.openDirectConnection(docName);
-      await waitForCondition(
+      await waitWithinTestBudget(
+        `reconciledBase for ${docName} to be seeded with the initial bytes`,
         () => server.durabilityState.getReconciledBase(docName) === initialContent,
+        { timeoutMs: 5_000 },
       );
 
       const updatedContent = '---\n# Title\n\nA __strong__ paragraph.\n\nNew block.\n';
       writeFileSync(docPath, updatedContent, 'utf-8');
 
-      await waitForCondition(
+      await waitWithinTestBudget(
+        `reconciledBase for ${docName} to pick up the updated bytes from disk`,
         () => server.durabilityState.getReconciledBase(docName) === updatedContent,
-        {
-          timeoutMs: 8_000,
-        },
+        { timeoutMs: 8_000 },
       );
 
       const finalBase = server.durabilityState.getReconciledBase(docName);
@@ -147,10 +140,14 @@ describe('FR-35: setReconciledBase stores raw bytes uniformly across all paths',
       expect(finalBase).toContain('---\n');
       expect(finalBase).toContain('__strong__');
 
-      await waitForCondition(() => {
-        if (!existsSync(docPath)) return false;
-        return readFileSync(docPath, 'utf-8') === updatedContent;
-      });
+      await waitWithinTestBudget(
+        `${docName}.md on disk to hold the updated bytes`,
+        () => {
+          if (!existsSync(docPath)) return false;
+          return readFileSync(docPath, 'utf-8') === updatedContent;
+        },
+        { timeoutMs: 5_000 },
+      );
       expect(readFileSync(docPath, 'utf-8')).toBe(updatedContent);
 
       conn.disconnect();

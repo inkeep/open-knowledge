@@ -633,11 +633,36 @@ describe('EditorTabs runtime behavior', () => {
     }
   });
 
-  test('bolds the active tab only when its pane is focused', async () => {
-    focusedPaneId = 'pane-b';
-    await renderEditorTabs();
+  test('pairs every tab surface with its own foreground token', async () => {
+    const { container } = await renderEditorTabs();
 
-    expectVisualClassTokensAbsent(tabButton('docs/team/spec.mdx').className, ['font-semibold']);
+    const inactiveShell = container.querySelector<HTMLElement>(
+      '[data-sortable-id]:not([data-active-tab])',
+    );
+    expectVisualClassTokens(inactiveShell?.className, [
+      'hover:bg-sidebar-hover',
+      'hover:text-sidebar-hover-foreground',
+      'focus-visible:bg-sidebar-hover',
+      'focus-visible:text-sidebar-hover-foreground',
+    ]);
+    expectVisualClassTokensAbsent(inactiveShell?.className, [
+      'hover:text-foreground',
+      'focus-visible:text-foreground',
+    ]);
+  });
+
+  test('keeps the active tab bold in an unfocused pane, and on its own surface', async () => {
+    focusedPaneId = 'pane-b';
+    const { container } = await renderEditorTabs();
+
+    expectVisualClassTokens(tabButton('docs/team/spec.mdx').className, ['font-semibold']);
+
+    const shell = container.querySelector<HTMLElement>('[data-active-tab="true"]');
+    expectVisualClassTokens(shell?.className, [
+      'bg-sidebar-hover',
+      'text-sidebar-hover-muted-foreground',
+    ]);
+    expectVisualClassTokensAbsent(shell?.className, ['bg-sidebar-selected']);
   });
 
   test('keeps folder, asset, and new-tab branches closeable and independently activatable', async () => {
@@ -858,7 +883,7 @@ describe('EditorTabs runtime behavior', () => {
     expect(overflowRoot.getAttribute('data-electron-drag')).toBe('');
     expectVisualClassTokens(overflowRoot.className, [
       'flex',
-      'items-end',
+      'items-center',
       'gap-px',
       'min-w-0',
       'flex-1',
@@ -1513,9 +1538,12 @@ describe('EditorTabs runtime behavior', () => {
       .find((element) => element.tagName === 'BUTTON')
       ?.closest('[data-sortable-id]') as HTMLElement;
     expectVisualClassTokens(activeSortable.className, [
+      'rounded-md',
+      'bg-sidebar-selected',
+      'text-sidebar-selected-foreground',
+    ]);
+    expectVisualClassTokensAbsent(activeSortable.className, [
       'rounded-t-lg',
-      'rounded-b-none',
-      'border-border',
       'border-b-0',
       'bg-background',
     ]);

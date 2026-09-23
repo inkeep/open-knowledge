@@ -63,12 +63,20 @@ import {
 } from '@/comments/comment-chips';
 import { subscribeSendInThread } from '@/comments/open-chat-send';
 import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
+import {
+  ComposerAddMenu,
+  ComposerCommandsMenuItem,
+  ComposerCommentsMenuItem,
+  ComposerFilesMenuItem,
+  ComposerMentionMenuItem,
+} from '@/components/ComposerAddMenu';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { CopyButton } from '@/components/CopyButton';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
 import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
 import { useOptionalPageList } from '@/components/PageListContext';
+import { RotatingComposerPlaceholder } from '@/components/RotatingComposerPlaceholder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
@@ -105,6 +113,7 @@ import {
   ComposerMentionInput,
   type ComposerMentionInputHandle,
 } from '@/editor/ComposerMentionInput';
+import type { MentionRecency } from '@/editor/composer-mention/composer-mention';
 import { useDocumentContext } from '@/editor/DocumentContext';
 import { agentDisplayName } from '@/lib/acp/agent-display';
 import {
@@ -128,10 +137,10 @@ import {
 import { computeDiffRows } from '@/lib/acp/inline-diff';
 import { launchAgentThread } from '@/lib/acp/launch-agent-thread';
 import { contextChoicesForModel, useModelCandidates } from '@/lib/acp/model-candidates';
-import { isPermissiveMode } from '@/lib/acp/permissive-mode';
 import { formatShellCommand, revealHiddenCharacters } from '@/lib/acp/shell-command-format';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
+import { threadAttachmentPaths } from '@/lib/acp/thread-attachment-paths';
 import {
   getAgentThreadClient,
   ThreadContextWindowError,
@@ -148,17 +157,31 @@ import {
   type RenderedToolCall,
   resolvePermissionOutcome,
 } from '@/lib/acp/thread-event-model';
-import { describeToolCall, type ToolCallGlyph } from '@/lib/acp/tool-call-display';
+import {
+  describeToolCall,
+  describeToolPurpose,
+  type ToolCallGlyph,
+  toolRunKey,
+  toolRunLabel,
+} from '@/lib/acp/tool-call-display';
+import { adjacentToolRuns, type ToolRun } from '@/lib/acp/tool-call-groups';
 import { toolFailureHint } from '@/lib/acp/tool-failure-hint';
+import {
+  jsonMarkdown,
+  looksLikeMarkdown,
+  prettyJson,
+  type ToolOutputMode,
+  toolOutputMode,
+} from '@/lib/acp/tool-output-format';
 import { docNameFromHash, filePathToDocName, hashFromDocName } from '@/lib/doc-hash';
 import { dispatchExternalLinkClick } from '@/lib/external-link';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
 import { scheduleClipboardWrite } from '@/lib/share/clipboard-adapter';
+import { formatToolList, formatUnitList } from '@/lib/tool-list-format';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentNoticeAnnouncer } from './AgentNoticeAnnouncer';
-import { AttachFilesButton } from './AttachFilesButton';
 import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
 import {
@@ -169,6 +192,7 @@ import {
   loadFollowFilePref,
   saveFollowFilePref,
 } from './follow-file';
+import { MentionRecencyContext } from './mention-recency-context';
 import { type ImagePreview, ImagePreviewContext, PendingImageStrip } from './PendingImageStrip';
 import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
@@ -186,6 +210,7 @@ import {
 } from './thread-auth-offer';
 import { transcriptItemId } from './transcript-item-id';
 import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
+import { useDelayedInstallStatus } from './use-delayed-install-status';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
 
 const CANCEL_STALL_MS = 10_000;
@@ -271,6 +296,9 @@ export function ThreadView({
   const composerRef = useRef<ComposerMentionInputHandle>(null);
   const [pendingAttachments, setPendingAttachments] = useState<readonly AttachmentPart[]>([]);
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
+  const [expandedToolRuns, setExpandedToolRuns] = useState<ReadonlySet<string>>(
+    () => new Set<string>(),
+  );
   const openImagePreview = (preview: ImagePreview) => setImagePreview(preview);
   const [pendingUploads, setPendingUploads] = useState<
     readonly { readonly id: string; readonly name: string; readonly mimeType: string }[]
@@ -436,6 +464,58 @@ export function ThreadView({
   const [resumePending, setResumePending] = useState(false);
   const [newChatPending, setNewChatPending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
+  const displayedStartStatus = useDelayedInstallStatus(status);
+  const wasStarting = useRef(false);
+  const [startOutcome, setStartOutcome] = useState<'ready' | 'failed' | null>(null);
+  useEffect(() => {
+    if (
+      status === 'installing' ||
+      status === 'spawning' ||
+      status === 'auth_required' ||
+      status === 'authenticating'
+    ) {
+      wasStarting.current = true;
+      setStartOutcome(null);
+      return;
+    }
+    if (status === 'ready') {
+      if (!wasStarting.current) return;
+      wasStarting.current = false;
+      setStartOutcome('ready');
+      return;
+    }
+    if (status === 'error' || status === 'exited') {
+      if (!wasStarting.current) {
+        setStartOutcome((announced) => (announced === 'failed' ? announced : null));
+        return;
+      }
+      wasStarting.current = false;
+      setStartOutcome('failed');
+      return;
+    }
+    if (status === 'running' || status === 'awaiting_permission') {
+      wasStarting.current = false;
+      setStartOutcome(null);
+      return;
+    }
+    const exhaustive: never = status;
+    void exhaustive;
+  }, [status]);
+  const startStatusMessage =
+    displayedStartStatus === 'installing'
+      ? t`Installing ${agentName}…`
+      : displayedStartStatus === 'spawning'
+        ? t`Starting ${agentName}…`
+        : startOutcome === 'ready'
+          ? t`${agentName} is ready`
+          : startOutcome === 'failed'
+            ? t`${agentName} couldn't start`
+            : '';
+  const [startRegionMounted, setStartRegionMounted] = useState(false);
+  useEffect(() => {
+    setStartRegionMounted(true);
+  }, []);
+  const announcedStartStatus = startRegionMounted ? startStatusMessage : '';
   const hasRecoverablePromptFailure =
     !archived &&
     status === 'error' &&
@@ -462,7 +542,7 @@ export function ThreadView({
   const resolverReady = docPathResolver !== null;
   const transcriptFollowTarget = model !== null ? latestFollowTarget(model.items, workspace) : null;
 
-  const { systemProvider } = useDocumentContext();
+  const { systemProvider, activeDocName } = useDocumentContext();
   const [presenceWrites, setPresenceWrites] = useState<ReadonlyArray<PresenceWrite>>([]);
   useEffect(() => {
     if (!turnActive) {
@@ -795,6 +875,20 @@ export function ThreadView({
   const foldedItems = foldedEntries.map((entry) => entry.item);
   const visibleEntries = foldedEntries.filter((_, index) => !revertedPositions.has(index));
   const visibleItems = visibleEntries.map((entry) => entry.item);
+  const toolRunByIndex = new Map<number, { runId: string; run: ToolRun; isHead: boolean }>();
+  for (const run of adjacentToolRuns(visibleItems, (item) =>
+    item.kind === 'tool_call' && item.status === 'completed' ? toolRunKey(item) : null,
+  )) {
+    const head = visibleItems[run.start];
+    if (head?.kind !== 'tool_call') continue;
+    for (let offset = 0; offset < run.size; offset += 1) {
+      toolRunByIndex.set(run.start + offset, {
+        runId: head.toolCallId,
+        run,
+        isHead: offset === 0,
+      });
+    }
+  }
   const agentNotices =
     model === null
       ? []
@@ -889,6 +983,10 @@ export function ThreadView({
         : '';
 
   const items = visibleItems;
+  const mentionRecency: MentionRecency = {
+    currentDocName: activeDocName,
+    recentPaths: threadAttachmentPaths(items),
+  };
   let authPrompt: ThreadFailureDetail | null = null;
   if (awaitingSignIn && !archived) {
     for (let index = items.length - 1; index >= 0; index -= 1) {
@@ -901,321 +999,359 @@ export function ThreadView({
   }
 
   return (
-    <ImagePreviewContext.Provider value={openImagePreview}>
-      <ImagePreviewDialog
-        preview={imagePreview}
-        onOpenChange={(open) => !open && setImagePreview(null)}
-      />
-      {/* biome-ignore lint/a11y/noStaticElementInteractions: drop-target — keyboard/AT users have the + picker button in the composer; drop is a pointer-only affordance. */}
-      <div
-        className="relative flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
-        data-agent-thread-root=""
-        onDragEnter={(event) => {
-          if (isExternalFileDrag(event)) {
+    <MentionRecencyContext value={mentionRecency}>
+      <ImagePreviewContext.Provider value={openImagePreview}>
+        <ImagePreviewDialog
+          preview={imagePreview}
+          onOpenChange={(open) => !open && setImagePreview(null)}
+        />
+        {/* biome-ignore lint/a11y/noStaticElementInteractions: drop-target — keyboard/AT users have the + picker button in the composer; drop is a pointer-only affordance. */}
+        <div
+          className="relative flex min-h-0 flex-1 flex-col text-gray-800 dark:text-gray-200"
+          data-agent-thread-root=""
+          onDragEnter={(event) => {
+            if (isExternalFileDrag(event)) {
+              event.preventDefault();
+              setDragActive(true);
+            }
+          }}
+          onDragOver={(event) => {
+            if (isExternalFileDrag(event)) {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'copy';
+              setDragActive(true);
+            }
+          }}
+          onDragLeave={(event) => {
+            const next = event.relatedTarget;
+            if (next instanceof Node && event.currentTarget.contains(next)) return;
+            setDragActive(false);
+          }}
+          onDrop={(event) => {
+            if (!isExternalFileDrag(event)) return;
             event.preventDefault();
-            setDragActive(true);
-          }
-        }}
-        onDragOver={(event) => {
-          if (isExternalFileDrag(event)) {
-            event.preventDefault();
-            event.dataTransfer.dropEffect = 'copy';
-            setDragActive(true);
-          }
-        }}
-        onDragLeave={(event) => {
-          const next = event.relatedTarget;
-          if (next instanceof Node && event.currentTarget.contains(next)) return;
-          setDragActive(false);
-        }}
-        onDrop={(event) => {
-          if (!isExternalFileDrag(event)) return;
-          event.preventDefault();
-          setDragActive(false);
-          const files = collectAllFiles(event.dataTransfer);
-          if (files.length === 0) {
-            dropNoticeIdRef.current += 1;
-            setDropNotice({
-              text: t`Folders and empty files can't be attached — drop the files themselves.`,
-              id: dropNoticeIdRef.current,
-            });
-            return;
-          }
-          void ingestFiles(files);
-        }}
-      >
-        <DocPathResolverReadyContext value={resolverReady}>
-          <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
-          {}
-          <AgentNoticeAnnouncer
-            notices={agentNotices}
-            agentName={agentName}
-            replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
-          />
-          {model !== null && model.plan.length > 0 ? (
-            <PlanChecklist
-              plan={model.plan}
-              approval={
-                canPrompt && !archived && !planApprovalPending
-                  ? {
-                      onApprove: () => {
-                        setPlanApprovalPending(true);
-                        void sendText('Approve. Please proceed with the plan.');
-                      },
-                      onAskChanges: () => {
-                        const prefix = t`In the plan above, please `;
-                        const composer = composerRef.current;
-                        if (
-                          composer !== null &&
-                          !composer.getContent().instruction.endsWith(prefix)
-                        ) {
-                          composer.appendText(prefix);
-                        }
-                        composer?.focusEnd();
-                      },
-                      onReject: () => {
-                        setPlanApprovalPending(true);
-                        void sendText('Reject. Please stop and do not proceed with this plan.');
-                      },
-                    }
-                  : undefined
-              }
+            setDragActive(false);
+            const files = collectAllFiles(event.dataTransfer);
+            if (files.length === 0) {
+              dropNoticeIdRef.current += 1;
+              setDropNotice({
+                text: t`Folders and empty files can't be attached — drop the files themselves.`,
+                id: dropNoticeIdRef.current,
+              });
+              return;
+            }
+            void ingestFiles(files);
+          }}
+        >
+          <DocPathResolverReadyContext value={resolverReady}>
+            <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
+            {}
+            <AgentNoticeAnnouncer
+              notices={agentNotices}
+              agentName={agentName}
+              replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
             />
-          ) : null}
-          {authPrompt !== null || model === null || visibleItems.length === 0 ? (
-            <div
-              className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
-              data-testid="agent-thread-transcript"
-            >
-              {authPrompt !== null ? (
-                <div className="flex min-h-full items-center justify-center">
-                  <ThreadAuthPrompt
-                    failure={authPrompt}
-                    offer={threadAuthOffer({
-                      authMethods: authPrompt.authMethods ?? [],
-                      agentName,
-                      terminalCli,
-                    })}
+            {model !== null && model.plan.length > 0 ? (
+              <PlanChecklist
+                plan={model.plan}
+                approval={
+                  canPrompt && !archived && !planApprovalPending
+                    ? {
+                        onApprove: () => {
+                          setPlanApprovalPending(true);
+                          void sendText('Approve. Please proceed with the plan.');
+                        },
+                        onAskChanges: () => {
+                          const prefix = t`In the plan above, please `;
+                          const composer = composerRef.current;
+                          if (
+                            composer !== null &&
+                            !composer.getContent().instruction.endsWith(prefix)
+                          ) {
+                            composer.appendText(prefix);
+                          }
+                          composer?.focusEnd();
+                        },
+                        onReject: () => {
+                          setPlanApprovalPending(true);
+                          void sendText('Reject. Please stop and do not proceed with this plan.');
+                        },
+                      }
+                    : undefined
+                }
+              />
+            ) : null}
+            {authPrompt !== null || model === null || visibleItems.length === 0 ? (
+              <div
+                className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                data-testid="agent-thread-transcript"
+              >
+                {authPrompt !== null ? (
+                  <div className="flex min-h-full items-center justify-center">
+                    <ThreadAuthPrompt
+                      failure={authPrompt}
+                      offer={threadAuthOffer({
+                        authMethods: authPrompt.authMethods ?? [],
+                        agentName,
+                        terminalCli,
+                      })}
+                      agent={info.agent}
+                      agentName={agentName}
+                      signingIn={signingIn}
+                      signInOutput={info.signInOutput}
+                      showRetry={canRetry}
+                      retryPending={retryPending}
+                      onRetry={retryThread}
+                      onAuthAction={runAuthAction}
+                      runningAuthAction={runningAuthAction}
+                      onAuthenticate={authenticateThread}
+                    />
+                  </div>
+                ) : (
+                  <ThreadEmptyState
+                    status={status}
+                    displayedStartStatus={displayedStartStatus}
+                    archived={archived}
                     agent={info.agent}
-                    agentName={agentName}
-                    signingIn={signingIn}
-                    signInOutput={info.signInOutput}
-                    showRetry={canRetry}
-                    retryPending={retryPending}
-                    onRetry={retryThread}
+                    authOffer={authOffer}
                     onAuthAction={runAuthAction}
                     runningAuthAction={runningAuthAction}
-                    onAuthenticate={authenticateThread}
                   />
-                </div>
-              ) : (
-                <ThreadEmptyState
-                  status={status}
-                  archived={archived}
-                  agent={info.agent}
-                  authOffer={authOffer}
-                  onAuthAction={runAuthAction}
-                  runningAuthAction={runningAuthAction}
-                />
-              )}
-            </div>
-          ) : (
-            <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
-              <ScrollToEndBridge apiRef={scrollApiRef} />
-              <MessageScroller className="min-h-0 flex-1">
-                <MessageScrollerViewport
-                  aria-label={t`Agent transcript`}
-                  className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
-                  data-testid="agent-thread-transcript"
-                >
-                  <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-                    {visibleEntries.map(({ item, modelIndex }, index) => {
-                      const id = transcriptItemId(item, modelIndex);
-                      return (
-                        <MessageScrollerItem
-                          key={id}
-                          messageId={id}
-                          className="flex flex-col"
-                          scrollAnchor={item.kind === 'message' && item.role === 'user'}
-                          data-tool-call={item.kind === 'tool_call' ? '' : undefined}
-                        >
-                          <ThreadItem
-                            item={item}
-                            threadId={info.threadId}
-                            agent={info.agent}
-                            actionable={!archived && status !== 'exited' && status !== 'error'}
-                            streaming={turnActive && index === visibleItems.length - 1}
-                            terminals={model.terminals}
-                            permissionsByToolCall={model.permissionsByToolCall}
-                            showRetry={index === retryNoticeIndex}
-                            retryPending={retryPending}
-                            onRetry={retryThread}
-                            showRestore={index === restoreNoticeIndex}
-                            onRestore={() => restoreFailedPromptToComposer(index)}
-                            authOffer={
-                              index === authOfferNoticeIndex ? authOffer : authHistoryOffer
-                            }
-                            onAuthAction={runAuthAction}
-                            runningAuthAction={runningAuthAction}
-                            onResend={resendMessage}
-                            canSendHere={canPrompt || canQueue}
-                            isLatestUserTurn={index === lastUserTurnIndex}
-                          />
-                        </MessageScrollerItem>
-                      );
-                    })}
-                    {turnActive ? (
-                      status === 'awaiting_permission' ? (
-                        <div
-                          className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                          data-testid="agent-thread-awaiting-permission"
-                        >
-                          <span>{t`Waiting for your approval`}</span>
-                        </div>
-                      ) : (
-                        <WorkingAvatar
-                          status={workingStatusText(activeToolKind(model.items), thinkingLine)}
-                          className="px-1 py-1"
-                          testId="agent-thread-working"
-                        />
-                      )
-                    ) : status === 'installing' || status === 'spawning' ? (
-                      <div
-                        className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
-                        data-testid="agent-thread-starting"
-                      >
-                        <Spinner className="size-3.5" aria-hidden="true" />
-                        {}
-                        <span className="shimmer">{t`Starting the agent…`}</span>
-                      </div>
-                    ) : null}
-                  </MessageScrollerContent>
-                </MessageScrollerViewport>
-                <MessageScrollerButton direction="end" />
-              </MessageScroller>
-            </MessageScrollerProvider>
-          )}
-          <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
-            {dropNotice !== null ? (
-              <div
-                key={dropNotice.id}
-                className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
-              >
-                {dropNotice.text}
+                )}
               </div>
-            ) : uploadsPending ? (
-              <p className="sr-only">
-                <Plural
-                  value={pendingUploads.length}
-                  one="Uploading # attachment"
-                  other="Uploading # attachments"
-                />
-              </p>
+            ) : (
+              <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+                <ScrollToEndBridge apiRef={scrollApiRef} />
+                <MessageScroller className="min-h-0 flex-1">
+                  <MessageScrollerViewport
+                    aria-label={t`Agent transcript`}
+                    className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                    data-testid="agent-thread-transcript"
+                  >
+                    <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
+                      {visibleEntries.map(({ item, modelIndex }, index) => {
+                        const id = transcriptItemId(item, modelIndex);
+                        const group = toolRunByIndex.get(index);
+                        const collapsed = group !== undefined && !expandedToolRuns.has(group.runId);
+                        if (collapsed && !group.isHead) return null;
+                        if (collapsed && group.isHead) {
+                          const runId = group.runId;
+                          return (
+                            <MessageScrollerItem
+                              key={id}
+                              messageId={id}
+                              className="flex flex-col"
+                              data-tool-call=""
+                            >
+                              <ToolCallGroupRow
+                                calls={visibleItems
+                                  .slice(group.run.start, group.run.start + group.run.size)
+                                  .filter(
+                                    (candidate): candidate is RenderedToolCall =>
+                                      candidate.kind === 'tool_call',
+                                  )}
+                                onExpand={() =>
+                                  setExpandedToolRuns((previous) => new Set(previous).add(runId))
+                                }
+                              />
+                            </MessageScrollerItem>
+                          );
+                        }
+                        return (
+                          <MessageScrollerItem
+                            key={id}
+                            messageId={id}
+                            className="flex flex-col"
+                            scrollAnchor={item.kind === 'message' && item.role === 'user'}
+                            data-tool-call={item.kind === 'tool_call' ? '' : undefined}
+                          >
+                            <ThreadItem
+                              item={item}
+                              threadId={info.threadId}
+                              agent={info.agent}
+                              actionable={!archived && status !== 'exited' && status !== 'error'}
+                              streaming={turnActive && index === visibleItems.length - 1}
+                              terminals={model.terminals}
+                              permissionsByToolCall={model.permissionsByToolCall}
+                              showRetry={index === retryNoticeIndex}
+                              retryPending={retryPending}
+                              onRetry={retryThread}
+                              showRestore={index === restoreNoticeIndex}
+                              onRestore={() => restoreFailedPromptToComposer(index)}
+                              authOffer={
+                                index === authOfferNoticeIndex ? authOffer : authHistoryOffer
+                              }
+                              onAuthAction={runAuthAction}
+                              runningAuthAction={runningAuthAction}
+                              onResend={resendMessage}
+                              canSendHere={canPrompt || canQueue}
+                              isLatestUserTurn={index === lastUserTurnIndex}
+                            />
+                          </MessageScrollerItem>
+                        );
+                      })}
+                      {turnActive ? (
+                        status === 'awaiting_permission' ? (
+                          <div
+                            className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                            data-testid="agent-thread-awaiting-permission"
+                          >
+                            <span>{t`Waiting for your approval`}</span>
+                          </div>
+                        ) : (
+                          <WorkingAvatar
+                            status={workingStatusText(activeToolKind(model.items), thinkingLine)}
+                            className="px-1 py-1"
+                            testId="agent-thread-working"
+                          />
+                        )
+                      ) : status === 'installing' || status === 'spawning' ? (
+                        <div
+                          className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
+                          data-testid="agent-thread-starting"
+                        >
+                          <Spinner className="size-3.5" aria-hidden="true" />
+                          <span className="shimmer">{startStatusMessage}</span>
+                        </div>
+                      ) : null}
+                    </MessageScrollerContent>
+                  </MessageScrollerViewport>
+                  <MessageScrollerButton direction="end" />
+                </MessageScroller>
+              </MessageScrollerProvider>
+            )}
+            <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
+              {dropNotice !== null ? (
+                <div
+                  key={dropNotice.id}
+                  className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                >
+                  {dropNotice.text}
+                </div>
+              ) : uploadsPending ? (
+                <p className="sr-only">
+                  <Plural
+                    value={pendingUploads.length}
+                    one="Uploading # attachment"
+                    other="Uploading # attachments"
+                  />
+                </p>
+              ) : null}
+            </div>
+            {info.steer !== undefined && !archived ? (
+              <div
+                className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                data-testid="agent-thread-steer-pending"
+              >
+                <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
+                <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
+                <span className="min-w-0 flex-1 truncate text-foreground/80">
+                  {info.steer.content}
+                </span>
+              </div>
             ) : null}
-          </div>
-          {info.steer !== undefined && !archived ? (
-            <div
-              className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
-              data-testid="agent-thread-steer-pending"
-            >
-              <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-              <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
-              <span className="min-w-0 flex-1 truncate text-foreground/80">
-                {info.steer.content}
-              </span>
-            </div>
-          ) : null}
-          {cancelStalled && turnActive ? (
-            <div
-              className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-              data-testid="agent-thread-cancel-stalled"
-            >
-              <span className="flex-1">
-                {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
-              </span>
-              <Button
-                type="button"
-                size="sm"
-                variant="destructive"
-                className="h-6 text-xs"
-                onClick={() => client.closeThread(info.threadId)}
-                data-testid="agent-thread-force-stop"
+            {cancelStalled && turnActive ? (
+              <div
+                className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                data-testid="agent-thread-cancel-stalled"
               >
-                {t`Force stop`}
-              </Button>
-            </div>
-          ) : null}
-          <span
-            className="sr-only"
-            role="status"
-            aria-live="polite"
-            data-testid="agent-thread-auth-status"
-          >
-            {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
-          </span>
-          <span
-            className="sr-only"
-            role="status"
-            aria-live="polite"
-            data-testid="agent-thread-resume-status"
-          >
-            {resumeFailureMessage}
-          </span>
-          {resumeFailureMessage !== '' ? (
-            <div
-              className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-              data-testid="agent-thread-resume-failed"
+                <span className="flex-1">
+                  {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="destructive"
+                  className="h-6 text-xs"
+                  onClick={() => client.closeThread(info.threadId)}
+                  data-testid="agent-thread-force-stop"
+                >
+                  {t`Force stop`}
+                </Button>
+              </div>
+            ) : null}
+            <span
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              data-testid="agent-thread-auth-status"
             >
-              <span className="flex-1">{resumeFailureMessage}</span>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                className="h-6 shrink-0 text-xs"
-                disabled={runningAuthAction !== null}
-                aria-busy={runningAuthAction === 'new-chat'}
-                onClick={startFreshThread}
-                data-testid="agent-thread-resume-fallback-new"
+              {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
+            </span>
+            <span
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              data-testid="agent-thread-resume-status"
+            >
+              {resumeFailureMessage}
+            </span>
+            <span
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              data-testid="agent-thread-start-status"
+            >
+              {announcedStartStatus}
+            </span>
+            {resumeFailureMessage !== '' ? (
+              <div
+                className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                data-testid="agent-thread-resume-failed"
               >
-                {runningAuthAction === 'new-chat' ? (
-                  <Spinner className="size-3" aria-hidden="true" />
-                ) : null}
-                {t`New chat with ${agentName}`}
-              </Button>
-            </div>
-          ) : null}
-          <ThreadComposer
-            info={info}
-            hasStartedWork={items.some((item) => item.kind === 'message' && item.role === 'user')}
-            onNewChat={startFreshThread}
-            composerRef={composerRef}
-            onSubmit={submit}
-            canPrompt={canPrompt}
-            canQueue={canQueue}
-            turnActive={turnActive}
-            cancelPending={cancelPending}
-            onCancel={requestCancel}
-            onSteer={requestSteer}
-            status={status}
-            archived={archived}
-            resumePending={resumePending}
-            usage={model?.tokenUsage ?? null}
-            selectedCommentCount={selectedCommentCount}
-            selectedCommentDocs={selectedCommentDocs}
-            hasQueuedComments={hasQueuedComments}
-            onAttachComments={() => setCommentsAttached(true)}
-            onDismissComments={() => setCommentsAttached(false)}
-            pendingAttachments={pendingAttachments}
-            pendingUploads={pendingUploads}
-            imagesAccepted={imagesAccepted}
-            onIngestImageFiles={ingestFiles}
-            onIngestAllFiles={ingestFiles}
-            onRemovePendingAttachment={removePendingAttachment}
-          />
-          {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
-        </DocPathResolverReadyContext>
-      </div>
-    </ImagePreviewContext.Provider>
+                <span className="flex-1">{resumeFailureMessage}</span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="h-6 shrink-0 text-xs"
+                  disabled={runningAuthAction !== null}
+                  aria-busy={runningAuthAction === 'new-chat'}
+                  onClick={startFreshThread}
+                  data-testid="agent-thread-resume-fallback-new"
+                >
+                  {runningAuthAction === 'new-chat' ? (
+                    <Spinner className="size-3" aria-hidden="true" />
+                  ) : null}
+                  {t`New chat with ${agentName}`}
+                </Button>
+              </div>
+            ) : null}
+            <ThreadComposer
+              info={info}
+              hasStartedWork={items.some((item) => item.kind === 'message' && item.role === 'user')}
+              onNewChat={startFreshThread}
+              composerRef={composerRef}
+              mentionRecency={mentionRecency}
+              onSubmit={submit}
+              canPrompt={canPrompt}
+              canQueue={canQueue}
+              turnActive={turnActive}
+              cancelPending={cancelPending}
+              onCancel={requestCancel}
+              onSteer={requestSteer}
+              status={status}
+              archived={archived}
+              resumePending={resumePending}
+              usage={model?.tokenUsage ?? null}
+              selectedCommentCount={selectedCommentCount}
+              selectedCommentDocs={selectedCommentDocs}
+              hasQueuedComments={hasQueuedComments}
+              onAttachComments={() => setCommentsAttached(true)}
+              onDismissComments={() => setCommentsAttached(false)}
+              pendingAttachments={pendingAttachments}
+              pendingUploads={pendingUploads}
+              imagesAccepted={imagesAccepted}
+              onIngestImageFiles={ingestFiles}
+              onIngestAllFiles={ingestFiles}
+              onRemovePendingAttachment={removePendingAttachment}
+            />
+            {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+          </DocPathResolverReadyContext>
+        </div>
+      </ImagePreviewContext.Provider>
+    </MentionRecencyContext>
   );
 }
 
@@ -1299,6 +1435,7 @@ function ThreadHeader({
 }
 
 type SelectConfigOption = Extract<SessionConfigOption, { type: 'select' }>;
+type BooleanConfigOption = Extract<SessionConfigOption, { type: 'boolean' }>;
 
 function currentSelectEntry(
   option: SelectConfigOption,
@@ -1326,14 +1463,16 @@ function selectOptionName(option: SelectConfigOption): string {
   return currentSelectEntry(option)?.name ?? humanizeValueId(option.currentValue);
 }
 
+function selectOptionHeaderText(option: SelectConfigOption): string {
+  const entry = currentSelectEntry(option);
+  if (entry === undefined) return humanizeValueId(option.currentValue);
+  return resolveDefaultOptionLabel(option) ?? entry.name;
+}
+
 function selectOptionSummary(agentId: string, option: SelectConfigOption): string {
   const entry = currentSelectEntry(option);
   if (entry === undefined) return humanizeValueId(option.currentValue);
-  return (
-    configValueHint(agentId, option.id, entry.value) ??
-    resolveDefaultOptionLabel(option) ??
-    entry.name
-  );
+  return configValueHint(agentId, option.id, entry.value) ?? selectOptionHeaderText(option);
 }
 
 function hasSelectValues(option: SelectConfigOption): boolean {
@@ -1387,12 +1526,14 @@ function AgentSettingsPopover({
   info,
   hasStartedWork,
   onNewChat,
+  triggerRef,
 }: {
   info: ThreadInfo;
   hasStartedWork: boolean;
   onNewChat: () => void;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }): ReactNode {
-  const { t } = useLingui();
+  const { i18n, t } = useLingui();
   const reasonId = useId();
   const client = getAgentThreadClient();
   const settingsKey = agentSettingsKey(info.agent);
@@ -1431,9 +1572,10 @@ function AgentSettingsPopover({
           {}
           <span className="inline-flex cursor-not-allowed">
             <Button
+              ref={triggerRef}
               type="button"
               variant="ghost"
-              className="h-6 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
+              className="h-7 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
               aria-label={t`Agent settings`}
               aria-disabled
               aria-describedby={reasonId}
@@ -1457,25 +1599,39 @@ function AgentSettingsPopover({
   }
 
   const legacyModeName = showLegacyModes ? modeSurface.currentName : undefined;
-  const permissiveMode =
-    modeSurface !== null &&
-    isPermissiveMode({ id: modeSurface.currentId, name: modeSurface.currentName });
 
+  const effortSelect = configOptions.find(
+    (option): option is SelectConfigOption =>
+      option.type === 'select' && option.category === 'thought_level',
+  );
   const primarySelect =
     configOptions.find(
       (option): option is SelectConfigOption =>
         option.type === 'select' && option.category === 'model',
     ) ?? configOptions.find((option): option is SelectConfigOption => option.type === 'select');
+  const fastToggle = configOptions.find(
+    (option): option is BooleanConfigOption =>
+      option.type === 'boolean' && option.category === 'model_config' && /fast/i.test(option.id),
+  );
   const triggerText =
     primarySelect !== undefined
-      ? selectOptionSummary(info.agent.id, primarySelect)
+      ? selectOptionHeaderText(primarySelect)
       : (legacyModeName ?? t`Settings`);
-  const accentTooltip =
+  const effortText =
+    effortSelect !== undefined && effortSelect !== primarySelect
+      ? selectOptionHeaderText(effortSelect)
+      : null;
+  const fastOn = fastToggle?.currentValue === true;
+  const headerSummary = formatUnitList(
+    [triggerText, fastOn ? t`Fast` : null, effortText].filter(
+      (part): part is string => part !== null,
+    ),
+    i18n.locale,
+  );
+  const settingsLabel =
     info.archived === true
-      ? t`Agent settings — changes apply when you pick this conversation back up`
-      : permissiveMode && modeSurface !== null
-        ? t`${modeSurface.currentName} lets ${info.agent.name} act without asking`
-        : t`Agent settings`;
+      ? t`Agent settings — ${headerSummary} — changes apply when you pick this conversation back up`
+      : t`Agent settings — ${headerSummary}`;
 
   return (
     <DropdownMenu>
@@ -1483,26 +1639,31 @@ function AgentSettingsPopover({
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <Button
+              ref={triggerRef}
               type="button"
               variant="ghost"
-              className="h-6 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
-              aria-label={accentTooltip}
+              className="h-7 min-w-0 max-w-sm shrink gap-1.5 rounded-md pl-1.5 pr-1! text-xs"
+              aria-label={settingsLabel}
               data-testid="agent-thread-settings"
             >
-              {}
-              {permissiveMode ? (
-                <span
-                  className="size-1.5 shrink-0 rounded-full bg-amber-500 ring-[3px] ring-amber-500/15 dark:bg-amber-400 dark:ring-amber-400/15"
-                  data-testid="agent-thread-mode-accent"
-                  aria-hidden="true"
-                />
+              <span className="min-w-0 truncate">{triggerText}</span>
+              {fastOn ? (
+                <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-fast">
+                  {t`Fast`}
+                </span>
               ) : null}
-              <span className="truncate">{triggerText}</span>
+              {effortText !== null ? (
+                <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-effort">
+                  {effortText}
+                </span>
+              ) : null}
               <ChevronDown className="size-3.5" data-icon="inline-end" aria-hidden="true" />
             </Button>
           </DropdownMenuTrigger>
         </TooltipTrigger>
-        <TooltipContent side="bottom">{accentTooltip}</TooltipContent>
+        <TooltipContent side="bottom" aria-label={t`Agent settings`}>
+          <span data-testid="agent-thread-settings-tooltip">{settingsLabel}</span>
+        </TooltipContent>
       </Tooltip>
       {}
       <DropdownMenuContent align="end" className="w-60" data-testid="agent-thread-settings-popover">
@@ -1596,11 +1757,19 @@ function ContextWindowSub({
   const { t } = useLingui();
   if (choices.length < 2) return null;
   const summary = currentTokens === null ? t`Default` : formatContextTokens(currentTokens);
+  const contextWindowLabel = t`Context window`;
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="gap-2" data-testid="agent-thread-context-window">
-        <span className="min-w-0 flex-1 truncate">{t`Context window`}</span>
-        <span className="max-w-[11rem] truncate text-1sm text-muted-foreground">{summary}</span>
+        <span className="min-w-0 truncate" title={contextWindowLabel}>
+          {contextWindowLabel}
+        </span>
+        <span
+          className="min-w-16 flex-1 truncate text-end text-1sm text-muted-foreground"
+          title={summary}
+        >
+          {summary}
+        </span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className="max-w-72 overscroll-contain">
         <DropdownMenuLabel>{t`Context window`}</DropdownMenuLabel>
@@ -1674,8 +1843,13 @@ function ConfigSelectSub({
   return (
     <DropdownMenuSub>
       <DropdownMenuSubTrigger className="gap-2" data-testid={`agent-thread-config-${option.id}`}>
-        <span className="min-w-0 flex-1 truncate">{option.name}</span>
-        <span className="max-w-[11rem] truncate text-1sm text-muted-foreground">
+        <span className="min-w-0 truncate" title={option.name}>
+          {option.name}
+        </span>
+        <span
+          className="min-w-16 flex-1 truncate text-end text-1sm text-muted-foreground"
+          title={selectOptionSummary(agentId, option)}
+        >
           {selectOptionSummary(agentId, option)}
         </span>
       </DropdownMenuSubTrigger>
@@ -1822,6 +1996,7 @@ function ThreadAuthOfferButton({
 
 function ThreadEmptyState({
   status,
+  displayedStartStatus,
   archived,
   agent,
   authOffer,
@@ -1829,6 +2004,7 @@ function ThreadEmptyState({
   runningAuthAction,
 }: {
   status: ThreadInfo['status'];
+  displayedStartStatus: ThreadInfo['status'];
   archived: boolean;
   agent: ThreadInfo['agent'];
   authOffer: ThreadAuthOfferWithoutSignIn;
@@ -1874,9 +2050,9 @@ function ThreadEmptyState({
   }
 
   const loadingMessage =
-    status === 'installing'
+    displayedStartStatus === 'installing'
       ? t`Installing ${agentName}…`
-      : status === 'spawning'
+      : displayedStartStatus === 'spawning'
         ? t`Starting ${agentName}…`
         : status === 'authenticating'
           ? t`Signing in to ${agentName}…`
@@ -2672,6 +2848,111 @@ function UserMessageAttachments({
   );
 }
 
+const TOOL_MARKDOWN_CLASS =
+  '[&_pre]:text-[11px]! [&_code]:text-[11px]! [&_[data-streamdown=code-block-body]]:p-2! [&_[data-streamdown=code-block-body]]:max-h-none!';
+
+interface ToolTooltipText {
+  purpose: string | null;
+  id: string;
+}
+
+function toolTooltipText(
+  call: { title: string; toolKind: string; rawInput: unknown },
+  labelText: string,
+): ToolTooltipText | null {
+  const purpose = describeToolPurpose(call);
+  if (purpose === null && call.title === labelText) return null;
+  return { purpose, id: call.title };
+}
+
+function toolTitleText(text: ToolTooltipText | null): string | undefined {
+  if (text === null) return undefined;
+  return text.purpose === null ? text.id : `${text.purpose}\n${text.id}`;
+}
+
+function ToolTooltipContent({ text }: { text: ToolTooltipText }): ReactNode {
+  return (
+    <TooltipContent side="top" align="start" className="max-w-72">
+      {text.purpose !== null ? <span className="block">{text.purpose}</span> : null}
+      <span className="block font-mono text-[10px] opacity-70" dir="ltr">
+        {text.id}
+      </span>
+    </TooltipContent>
+  );
+}
+
+function ToolOutputBlock({ text, mode }: { text: string; mode: ToolOutputMode }): ReactNode {
+  const body = stripWrappingFence(text);
+  const json = prettyJson(body);
+  if (json !== null) {
+    return (
+      <div data-testid="agent-thread-tool-json">
+        <AgentMarkdown text={jsonMarkdown(json)} className={TOOL_MARKDOWN_CLASS} untrusted />
+      </div>
+    );
+  }
+  if (mode === 'markdown' || (mode === 'auto' && looksLikeMarkdown(body))) {
+    return (
+      <div className="rounded bg-muted/50 px-2 py-1" data-testid="agent-thread-tool-markdown">
+        <AgentMarkdown text={body} className={TOOL_MARKDOWN_CLASS} untrusted />
+      </div>
+    );
+  }
+  return (
+    <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 font-mono text-[11px]">
+      {body}
+    </pre>
+  );
+}
+
+function CappedToolBody({ children }: { children: ReactNode }): ReactNode {
+  const { t } = useLingui();
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const [overflowing, setOverflowing] = useState(false);
+  const [showAll, setShowAll] = useState(false);
+  useEffect(() => {
+    if (showAll) return;
+    const el = bodyRef.current;
+    if (el === null) return;
+    const measure = (): void => setOverflowing(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [showAll]);
+  const capped = !showAll && overflowing;
+  return (
+    <>
+      <div
+        ref={bodyRef}
+        className={cn(
+          'flex flex-col gap-1.5',
+          !showAll && 'max-h-80 overflow-y-auto subtle-scrollbar',
+          capped && 'scroll-fade-mask-bottom',
+        )}
+        data-testid="agent-thread-tool-body"
+        data-capped={capped ? 'true' : undefined}
+      >
+        {children}
+      </div>
+      {overflowing ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="h-auto self-start px-1 py-0.5 text-[10px] text-muted-foreground uppercase tracking-wide hover:bg-transparent"
+          onClick={() => setShowAll((value) => !value)}
+          aria-expanded={showAll}
+          data-testid="agent-thread-tool-show-all"
+        >
+          {showAll ? t`Show less` : t`Show all`}
+        </Button>
+      ) : null}
+    </>
+  );
+}
+
 function formatRawInput(rawInput: unknown): string | null {
   if (rawInput === undefined || rawInput === null) return null;
   if (
@@ -2683,12 +2964,12 @@ function formatRawInput(rawInput: unknown): string | null {
   }
   let text: string | undefined;
   try {
-    text = JSON.stringify(rawInput, null, 1);
+    text = JSON.stringify(rawInput, null, 2);
   } catch {
     return null;
   }
   if (text === undefined) return null;
-  return text.length > 2_000 ? `${text.slice(0, 2_000)}…` : text;
+  return text.length > 8_000 ? `${text.slice(0, 8_000)}…` : text;
 }
 
 function stripWrappingFence(text: string): string {
@@ -2697,6 +2978,63 @@ function stripWrappingFence(text: string): string {
   const lines = trimmed.split('\n');
   if (lines.length < 2 || lines[lines.length - 1]?.trim() !== '```') return text;
   return lines.slice(1, -1).join('\n');
+}
+
+function ToolCallGroupRow({
+  calls,
+  onExpand,
+}: {
+  calls: readonly RenderedToolCall[];
+  onExpand: () => void;
+}): ReactNode {
+  const { t } = useLingui();
+  const head = calls[0];
+  if (head === undefined) return null;
+  const Icon = TOOL_ICONS[describeToolCall(head).glyph];
+  const label = toolRunLabel(head);
+  const details = calls
+    .map((call) => {
+      const path = call.locations[0]?.path ?? call.diffs[0]?.path;
+      return path !== undefined ? (path.split('/').pop() ?? path) : describeToolCall(call).preview;
+    })
+    .filter((detail): detail is string => detail !== undefined && detail !== '');
+  const shown = [...new Set(details)].slice(0, 2);
+  const rest = details.length - shown.length;
+  const summary =
+    shown.length === 0 ? '' : rest > 0 ? t`${shown.join(', ')} +${rest} more` : shown.join(', ');
+  const tooltip = toolTooltipText(head, label);
+  const button = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
+      onClick={onExpand}
+      aria-expanded={false}
+      data-testid="agent-thread-tool-group-expand"
+    >
+      <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="shrink-0 truncate">{t`${calls.length} × ${label}`}</span>
+      {summary === '' ? null : (
+        <span className="min-w-0 flex-1 truncate text-left text-muted-foreground/70">
+          {summary}
+        </span>
+      )}
+      <ChevronRight className="ml-auto size-3 shrink-0 text-muted-foreground" aria-hidden />
+    </Button>
+  );
+  return (
+    <div className="text-xs" data-testid="agent-thread-tool-group">
+      {tooltip === null ? (
+        button
+      ) : (
+        <Tooltip>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
+          <ToolTooltipContent text={tooltip} />
+        </Tooltip>
+      )}
+    </div>
+  );
 }
 
 function ToolCallCard({
@@ -2746,10 +3084,20 @@ function ToolCallCard({
     rawInput !== null ||
     failureHint !== null;
   const expanded = open && hasBody;
+  const outputMode = toolOutputMode(call);
+  const tooltip = toolTooltipText(call, display.text);
   const row = (
     <>
       <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
       <span className="min-w-0 truncate">{display.text}</span>
+      {display.preview === undefined ? null : (
+        <span
+          className="min-w-0 flex-1 truncate text-muted-foreground/70"
+          data-testid="agent-thread-tool-preview"
+        >
+          {display.preview}
+        </span>
+      )}
       {}
       <span className="ml-auto flex shrink-0 items-center gap-1.5">
         <PermissionRefusalMark permission={permission} status={call.status} />
@@ -2761,6 +3109,18 @@ function ToolCallCard({
       </span>
     </>
   );
+  const rowButton = (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
+      onClick={toggleOpen}
+      aria-expanded={open}
+    >
+      {row}
+    </Button>
+  );
   return (
     <div
       className={cn('text-xs', expanded && 'rounded-md border border-border/60')}
@@ -2768,66 +3128,66 @@ function ToolCallCard({
       data-testid="agent-thread-tool-call"
     >
       {hasBody ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          className="h-auto w-full justify-start gap-1.5 rounded-md px-2 py-1.5 font-normal"
-          onClick={toggleOpen}
-          aria-expanded={open}
+        tooltip === null ? (
+          rowButton
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild>{rowButton}</TooltipTrigger>
+            <ToolTooltipContent text={tooltip} />
+          </Tooltip>
+        )
+      ) : (
+        <div
+          className="flex w-full items-center gap-1.5 px-2 py-1.5"
+          title={toolTitleText(tooltip)}
         >
           {row}
-        </Button>
-      ) : (
-        <div className="flex w-full items-center gap-1.5 px-2 py-1.5">{row}</div>
+        </div>
       )}
       {expanded ? (
         <div className="flex flex-col gap-1.5 border-border/60 border-t px-2 py-1.5">
-          {call.diffs.map((diff, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: diffs are positional within a card
-            <InlineDiff key={index} diff={diff} />
-          ))}
-          {callTerminals.map((terminal) => (
-            <TerminalBlock key={terminal.terminalId} terminal={terminal} />
-          ))}
-          {call.content.map((text, index) => (
-            <pre
+          <CappedToolBody>
+            {call.diffs.map((diff, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: diffs are positional within a card
+              <InlineDiff key={index} diff={diff} />
+            ))}
+            {callTerminals.map((terminal) => (
+              <TerminalBlock key={terminal.terminalId} terminal={terminal} />
+            ))}
+            {call.content.map((text, index) => (
               // biome-ignore lint/suspicious/noArrayIndexKey: content blocks are positional
-              key={index}
-              className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/50 px-2 py-1 font-mono text-[11px]"
-            >
-              {stripWrappingFence(text)}
-            </pre>
-          ))}
-          {failureHint !== null || failureText !== '' ? (
-            <div className="flex items-center gap-2" data-testid="agent-thread-tool-failure-help">
-              <span className="flex-1 text-muted-foreground">{failureHint}</span>
-              {failureText !== '' ? (
-                <CopyButton
-                  copyContent={failureText}
-                  clipboardWrite={scheduleClipboardWrite}
-                  size="icon-xs"
-                  ariaLabel={t`Copy error`}
-                  testId="agent-thread-tool-failure-copy"
-                />
-              ) : null}
-            </div>
-          ) : null}
-          {rawInput !== null ? <RawInputBlock text={rawInput} /> : null}
-          {call.locations.length > 0 ? (
-            <div className="flex flex-wrap gap-1 text-muted-foreground">
-              {call.locations.map((loc, index) => (
-                <span
-                  // biome-ignore lint/suspicious/noArrayIndexKey: locations are positional
-                  key={index}
-                  className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[11px]"
-                >
-                  {loc.path}
-                  {loc.line !== undefined ? `:${loc.line}` : ''}
-                </span>
-              ))}
-            </div>
-          ) : null}
+              <ToolOutputBlock key={index} text={text} mode={outputMode} />
+            ))}
+            {failureHint !== null || failureText !== '' ? (
+              <div className="flex items-center gap-2" data-testid="agent-thread-tool-failure-help">
+                <span className="flex-1 text-muted-foreground">{failureHint}</span>
+                {failureText !== '' ? (
+                  <CopyButton
+                    copyContent={failureText}
+                    clipboardWrite={scheduleClipboardWrite}
+                    size="icon-xs"
+                    ariaLabel={t`Copy error`}
+                    testId="agent-thread-tool-failure-copy"
+                  />
+                ) : null}
+              </div>
+            ) : null}
+            {rawInput !== null ? <RawInputBlock text={rawInput} /> : null}
+            {call.locations.length > 0 ? (
+              <div className="flex flex-wrap gap-1 text-muted-foreground">
+                {call.locations.map((loc, index) => (
+                  <span
+                    // biome-ignore lint/suspicious/noArrayIndexKey: locations are positional
+                    key={index}
+                    className="rounded bg-muted/50 px-1 py-0.5 font-mono text-[11px]"
+                  >
+                    {loc.path}
+                    {loc.line !== undefined ? `:${loc.line}` : ''}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+          </CappedToolBody>
         </div>
       ) : null}
     </div>
@@ -3044,9 +3404,7 @@ function RawInputBlock({ text }: { text: string }): ReactNode {
         {t`Input`}
       </Button>
       {open ? (
-        <pre className="overflow-x-auto whitespace-pre-wrap break-words rounded bg-muted/30 px-2 py-1 font-mono text-[11px] text-muted-foreground">
-          {text}
-        </pre>
+        <AgentMarkdown text={jsonMarkdown(text)} className={TOOL_MARKDOWN_CLASS} untrusted />
       ) : null}
     </div>
   );
@@ -3621,6 +3979,7 @@ function ThreadComposer({
   hasStartedWork,
   onNewChat,
   composerRef,
+  mentionRecency,
   onSubmit,
   canPrompt,
   canQueue,
@@ -3648,6 +4007,7 @@ function ThreadComposer({
   hasStartedWork: boolean;
   onNewChat: () => void;
   composerRef: RefObject<ComposerMentionInputHandle | null>;
+  mentionRecency: MentionRecency;
   onSubmit: () => void;
   canPrompt: boolean;
   canQueue: boolean;
@@ -3675,10 +4035,11 @@ function ThreadComposer({
   onIngestAllFiles: (files: readonly File[]) => Promise<void>;
   onRemovePendingAttachment: (index: number) => void;
 }): ReactNode {
-  const { t } = useLingui();
+  const { t, i18n } = useLingui();
   const agentName = agentDisplayName(info.agent.name);
 
   const [isEmpty, setIsEmpty] = useState(true);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
 
   const composerDisabled = archived ? resumePending : status === 'exited';
 
@@ -3690,6 +4051,28 @@ function ThreadComposer({
   const queue = info.queue ?? [];
 
   const hasSendableContent = !isEmpty || hasQueuedComments || pendingAttachments.length > 0;
+
+  const agentHasCommands = (info.availableCommands ?? []).length > 0;
+  const composerHintId = useId();
+  const mentionHint = t`Type '@' to mention a page`;
+  const commandHint = t`Type '/' for commands`;
+  const composerHint = agentHasCommands
+    ? formatToolList([mentionHint, commandHint], i18n.locale)
+    : mentionHint;
+  const placeholderRotating = !archived && status === 'ready';
+  const placeholderPhrases = placeholderRotating
+    ? [t`Message ${agentName}`, mentionHint, ...(agentHasCommands ? [commandHint] : [])]
+    : [
+        archived
+          ? resumePending
+            ? t`Resuming the chat`
+            : t`Pick up where you left off`
+          : status === 'auth_required'
+            ? t`Sign in to ${agentName} first`
+            : status === 'authenticating'
+              ? t`Signing in to ${agentName}`
+              : t`Message ${agentName}`,
+      ];
 
   const sendButton = (
     <Button
@@ -3712,7 +4095,7 @@ function ThreadComposer({
   return (
     <div className="p-2">
       {queue.length > 0 && !archived ? (
-        <QueuedMessageList threadId={info.threadId} queue={queue} />
+        <QueuedMessageList threadId={info.threadId} queue={queue} turnActive={turnActive} />
       ) : null}
       {}
       {/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only affordance — pressing the card's whitespace focuses the composer input; keyboard/AT users reach it via Tab. See focus-composer-on-card-pointer.ts. */}
@@ -3732,13 +4115,11 @@ function ThreadComposer({
       >
         {}
         {}
-        {selectedCommentCount > 0 ? (
+        {hasQueuedComments ? (
           <ComposerContextChips className="px-3 pt-2 pb-1">
             <QueuedCommentsChip
               count={selectedCommentCount}
               docs={selectedCommentDocs}
-              attached={hasQueuedComments}
-              onAttach={onAttachComments}
               onDismiss={onDismissComments}
             />
           </ComposerContextChips>
@@ -3751,45 +4132,72 @@ function ThreadComposer({
             onRemove={onRemovePendingAttachment}
           />
         ) : null}
-        <ComposerMentionInput
-          ref={composerRef}
-          ariaLabel={t`Message ${agentName}`}
-          onEmptyChange={setIsEmpty}
-          onSubmit={onSubmit}
-          attachmentDrop={{ kind: 'host' }}
-          onEscape={() => {
-            if (turnActive && !cancelPending) onCancel();
-          }}
-          placeholder={
-            archived
-              ? resumePending
-                ? t`Resuming the chat`
-                : t`Pick up where you left off`
-              : status === 'auth_required'
-                ? t`Sign in to ${agentName} first`
-                : status === 'authenticating'
-                  ? t`Signing in to ${agentName}`
-                  : t`Message ${agentName}`
-          }
-          disabled={composerDisabled}
-          slashCommands={info.availableCommands ?? null}
-          className={cn(
-            'max-h-40 overflow-y-auto px-2.5 pt-1 text-base md:text-sm',
-            composerDisabled && 'opacity-50',
-          )}
-          testId="agent-thread-composer"
-        />
+        <div className="relative">
+          <ComposerMentionInput
+            ref={composerRef}
+            ariaLabel={t`Message ${agentName}`}
+            ariaDescribedBy={placeholderRotating ? composerHintId : undefined}
+            onEmptyChange={setIsEmpty}
+            onSubmit={onSubmit}
+            attachmentDrop={{ kind: 'host' }}
+            onEscape={() => {
+              if (turnActive && !cancelPending) onCancel();
+            }}
+            disabled={composerDisabled}
+            slashCommands={info.availableCommands ?? null}
+            mentionRecency={mentionRecency}
+            className={cn(
+              'max-h-40 overflow-y-auto px-2.5 pt-1 text-base md:text-sm',
+              composerDisabled && 'opacity-50',
+            )}
+            testId="agent-thread-composer"
+          />
+          {placeholderRotating ? (
+            <span id={composerHintId} className="sr-only">
+              {composerHint}
+            </span>
+          ) : null}
+          {isEmpty ? (
+            <RotatingComposerPlaceholder
+              phrases={placeholderPhrases}
+              rotating={placeholderRotating}
+              className={cn('px-2.5 pt-2', composerDisabled && 'opacity-50')}
+              testId="agent-thread-composer-placeholder"
+            />
+          ) : null}
+        </div>
         {}
-        <div className="flex items-center gap-2 px-1.5 pt-1 pb-1.5">
-          <AgentSettingsPopover info={info} hasStartedWork={hasStartedWork} onNewChat={onNewChat} />
-          <AttachFilesButton
-            testId="agent-thread-attach-files"
-            onFiles={onIngestAllFiles}
-            referencesOnly={
-              info.promptCapabilities !== null &&
-              info.promptCapabilities !== undefined &&
-              info.promptCapabilities.embeddedContext !== true
-            }
+        <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
+          <ComposerAddMenu
+            disabled={composerDisabled}
+            disabledFocusTargetRef={settingsTriggerRef}
+            testId="agent-thread-add-to-prompt"
+          >
+            <ComposerFilesMenuItem
+              onFiles={onIngestAllFiles}
+              attachmentMode={
+                info.promptCapabilities !== null &&
+                info.promptCapabilities !== undefined &&
+                info.promptCapabilities.embeddedContext !== true
+                  ? 'reference'
+                  : 'embedded'
+              }
+            />
+            {selectedCommentCount > 0 && !hasQueuedComments ? (
+              <ComposerCommentsMenuItem count={selectedCommentCount} onSelect={onAttachComments} />
+            ) : null}
+            <ComposerMentionMenuItem onSelect={() => composerRef.current?.openMentionPicker()} />
+            {agentHasCommands && isEmpty ? (
+              <ComposerCommandsMenuItem
+                onSelect={() => composerRef.current?.openSlashCommandPicker()}
+              />
+            ) : null}
+          </ComposerAddMenu>
+          <AgentSettingsPopover
+            info={info}
+            hasStartedWork={hasStartedWork}
+            onNewChat={onNewChat}
+            triggerRef={settingsTriggerRef}
           />
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
@@ -3859,9 +4267,11 @@ function ThreadComposer({
 function QueuedMessageList({
   threadId,
   queue,
+  turnActive,
 }: {
   threadId: string;
   queue: readonly QueuedMessage[];
+  turnActive: boolean;
 }): ReactNode {
   const { t } = useLingui();
   return (
@@ -3870,7 +4280,12 @@ function QueuedMessageList({
         {t`Queued — sends when this run finishes`}
       </span>
       {queue.map((message) => (
-        <QueuedMessageRow key={message.id} threadId={threadId} message={message} />
+        <QueuedMessageRow
+          key={message.id}
+          threadId={threadId}
+          message={message}
+          turnActive={turnActive}
+        />
       ))}
     </div>
   );
@@ -3879,9 +4294,11 @@ function QueuedMessageList({
 function QueuedMessageRow({
   threadId,
   message,
+  turnActive,
 }: {
   threadId: string;
   message: QueuedMessage;
+  turnActive: boolean;
 }): ReactNode {
   const { t } = useLingui();
   const client = getAgentThreadClient();
@@ -4005,6 +4422,24 @@ function QueuedMessageRow({
             <Check className="size-3.5" aria-hidden="true" />
           </Button>
         </>
+      ) : null}
+      {turnActive ? (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              className="size-6 shrink-0 text-muted-foreground"
+              onClick={() => client.sendQueuedNow(threadId, message.id)}
+              aria-label={t`Send now`}
+              data-testid="agent-thread-queued-send-now"
+            >
+              <Zap className="size-3.5" aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t`Stops the current run and sends this instead`}</TooltipContent>
+        </Tooltip>
       ) : null}
       <Button
         type="button"

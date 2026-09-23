@@ -70,7 +70,7 @@ function makeTerminalManager() {
       return shutdownTimers.length;
     },
     clearTimer: () => {},
-    logger: { warn: () => {} },
+    logger: { warn: () => {}, info: () => {} },
   });
   const runShutdownTimers = (): void => {
     for (const cb of shutdownTimers) cb();

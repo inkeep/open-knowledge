@@ -7,6 +7,10 @@ import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { homeEnv, userDataDirFor } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
+import {
+  observeThemeSourcePushes,
+  waitForEveryWindowToPushItsThemeSource,
+} from './_helpers/theme-source-pushes';
 
 const TARGET = resolveDesktopTarget();
 
@@ -243,6 +247,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       }),
     );
     captureStderrFor(app, { home: tmpHome, cleanupDirs: [tmpHome, projectDir] });
+    const pushedBy = observeThemeSourcePushes(app);
 
     await app.firstWindow({ timeout: 15_000 });
     const deepLink = `openknowledge://open?project=${encodeURIComponent(projectDir)}&doc=${encodeURIComponent(docName)}`;
@@ -312,6 +317,7 @@ test.describe('chrome-modernization theme-sync smoke', () => {
       }
     }).toPass({ timeout: 2_000 });
 
+    await waitForEveryWindowToPushItsThemeSource(app, pushedBy);
     await editorPage.evaluate(async () => {
       await window.okDesktop?.setThemeSource?.('light');
     });

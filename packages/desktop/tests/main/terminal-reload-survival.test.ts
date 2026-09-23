@@ -70,7 +70,7 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
     newPtyId: () => `pty-${++idn}`,
     setTimer: () => 0,
     clearTimer: () => {},
-    logger: { warn: () => {} },
+    logger: { warn: () => {}, info: () => {} },
     ...over,
   });
   return { mgr, forked, exits, shellExits };
@@ -385,7 +385,7 @@ describe('issue #351 — re-adopting a surviving session is edge-correct across 
 
   test('a host that dies between the presence check and the resume post is refused and warned', () => {
     const warns: Record<string, unknown>[] = [];
-    const h = makeManager({ logger: { warn: (o) => warns.push(o) } });
+    const h = makeManager({ logger: { warn: (o) => warns.push(o), info: () => {} } });
     const created = createStartedTerminal(h.mgr, {
       windowId: 1,
       webContents: makeWebContents(),

@@ -8,6 +8,9 @@ export interface LogEntry {
 const LOAD_FAILURE =
   /Failed to load resource|net::ERR_|Failed to fetch|error loading dynamically imported module|status of \d{3}/i;
 
+const AUDIT_ENDPOINT_PATH = '/api/audit';
+
+// STOP: a predicate here matching a bare load failure or a bare status masks genuine failures on every other endpoint, in every stress spec that shares this filter.
 const BENIGN_PREDICATES: Array<(e: LogEntry) => boolean> = [
   (e) => e.text.includes('favicon'),
   (e) => e.text.includes('HMR'),
@@ -29,6 +32,9 @@ const BENIGN_PREDICATES: Array<(e: LogEntry) => boolean> = [
   (e) => !!e.url?.includes('/collab') && e.url.startsWith('ws://'),
   (e) => e.text.includes("can't establish a connection"),
   (e) => e.text.includes('can’t establish a connection'),
+
+  (e) =>
+    URL.parse(e.url ?? '')?.pathname === AUDIT_ENDPOINT_PATH && e.text.includes('status of 409'),
 ];
 
 export function filterCriticalErrors(logs: LogEntry[]): LogEntry[] {

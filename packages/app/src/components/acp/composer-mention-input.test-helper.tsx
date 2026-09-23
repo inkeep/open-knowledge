@@ -1,10 +1,16 @@
 import type { JSONContent } from '@tiptap/core';
 import { type Ref, useImperativeHandle, useRef } from 'react';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
+import type { MentionRecency } from '@/editor/composer-mention/composer-mention';
+
+export function mentionRecencyAttribute(recency: MentionRecency | undefined): string | undefined {
+  return recency === undefined ? undefined : JSON.stringify(recency);
+}
 
 export function MockComposerMentionInput({
   ref,
   ariaLabel,
+  ariaDescribedBy,
   onEmptyChange,
   onContentChange,
   onSubmit,
@@ -13,9 +19,11 @@ export function MockComposerMentionInput({
   placeholder,
   disabled,
   testId,
+  mentionRecency,
 }: {
   ref?: Ref<ComposerMentionInputHandle>;
   ariaLabel: string;
+  ariaDescribedBy?: string;
   onEmptyChange: (isEmpty: boolean) => void;
   onContentChange?: (doc: JSONContent) => void;
   onSubmit: () => void;
@@ -24,6 +32,7 @@ export function MockComposerMentionInput({
   placeholder?: string;
   disabled?: boolean;
   testId?: string;
+  mentionRecency?: MentionRecency;
 }) {
   const localRef = useRef<HTMLTextAreaElement>(null);
   const notify = () => {
@@ -68,14 +77,20 @@ export function MockComposerMentionInput({
       attachments: [],
     }),
     openMentionPicker: () => {},
+    openSlashCommandPicker: () => {
+      if (localRef.current) localRef.current.value = '/';
+      notify();
+    },
   }));
   return (
     <textarea
       ref={localRef}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       placeholder={placeholder}
       disabled={disabled}
       data-testid={testId}
+      data-mention-recency={mentionRecencyAttribute(mentionRecency)}
       className={className}
       onChange={notify}
       onKeyDown={(event) => {

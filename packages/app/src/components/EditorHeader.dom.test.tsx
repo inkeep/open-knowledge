@@ -283,6 +283,7 @@ describe('EditorHeader runtime behavior', () => {
       'h-12',
       'shrink-0',
       'items-center',
+      'bg-background',
       'shadow-[inset_0_-1px_0_var(--border)]',
     ]);
     expectVisualClassTokensAbsent(header.className, [
@@ -606,10 +607,7 @@ describe('EditorHeader runtime behavior', () => {
           ?.textContent,
       ).toBe('notes');
       expectVisualClassTokens(header.className, ['bg-background']);
-      expectVisualClassTokensAbsent(header.className, [
-        'bg-muted/35',
-        'shadow-[inset_0_-1px_0_var(--border)]',
-      ]);
+      expectVisualClassTokensAbsent(header.className, ['shadow-[inset_0_-1px_0_var(--border)]']);
       expectVisualClassTokens(leadingZone.className, [
         'left-[var(--ok-titlebar-reserve-left,1rem)]',
       ]);

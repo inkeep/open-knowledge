@@ -15,6 +15,7 @@ import { HocuspocusProvider } from '@hocuspocus/provider';
 import { SYSTEM_DOC_NAME } from '@inkeep/open-knowledge-core';
 import * as Y from 'yjs';
 import { APP_PACKAGE_ROOT } from './seed-key.ts';
+import { removeAllStrictDuringTeardown } from './teardown-fs.ts';
 
 export { APP_PACKAGE_ROOT };
 
@@ -24,11 +25,32 @@ export function viteSeedIsReady(): boolean {
   return existsSync(join(VITE_E2E_SEED_DIR, 'deps', '_metadata.json'));
 }
 
+export function rollbackPreparedViteCacheDir(
+  dir: string,
+  remove: (target: string) => void = removeAllStrictDuringTeardown,
+): string | undefined {
+  try {
+    remove(dir);
+  } catch (err) {
+    return `rolling back ${dir} after the vite seed copy failed did not complete: ${err instanceof Error ? err.message : String(err)}`;
+  }
+  if (existsSync(dir)) {
+    return `rolling back ${dir} after the vite seed copy failed left the directory on disk`;
+  }
+  return undefined;
+}
+
 export function prepareViteCacheDir(prefix: string): string {
   mkdirSync(join(APP_PACKAGE_ROOT, 'node_modules'), { recursive: true });
   const dir = mkdtempSync(join(APP_PACKAGE_ROOT, 'node_modules', `.vite-${prefix}-`));
   if (viteSeedIsReady()) {
-    cpSync(VITE_E2E_SEED_DIR, dir, { recursive: true, force: true });
+    try {
+      cpSync(VITE_E2E_SEED_DIR, dir, { recursive: true, force: true });
+    } catch (err) {
+      const rollbackFailure = rollbackPreparedViteCacheDir(dir);
+      if (rollbackFailure !== undefined) console.warn(`[e2e teardown] ${rollbackFailure}`);
+      throw err;
+    }
   }
   return dir;
 }
@@ -61,11 +83,19 @@ export function tailServerLog(log: ServerLog, lines = 40): string {
   }
 }
 
+export function requireBoundMs(bound: number, callSite: string): number {
+  if (typeof bound === 'number' && Number.isFinite(bound) && bound > 0) return bound;
+  throw new TypeError(
+    `${callSite} needs its caller to name the millisecond bound it spends and received ${String(bound)}; an omitted bound reaches the timer as undefined, which Node clamps to 1ms and reports as a near-instant failure rather than as the missing argument it is`,
+  );
+}
+
 export async function checkCollabSync(
   port: number,
-  timeoutMs = 10_000,
+  timeoutMs: number,
   loopbackHost: '127.0.0.1' | '::1' = '127.0.0.1',
 ): Promise<void> {
+  requireBoundMs(timeoutMs, 'checkCollabSync');
   const doc = new Y.Doc();
   const provider = new HocuspocusProvider({
     url: `ws://${loopbackHost === '::1' ? '[::1]' : '127.0.0.1'}:${port}/collab`,
@@ -96,7 +126,16 @@ export async function checkCollabSync(
 
 export { getFreePort } from '../../free-port.test-helper.ts';
 
-export async function waitForHttpReady(baseURL: string, timeoutMs: number): Promise<void> {
+function describeExit(proc: ChildProcess): string {
+  return proc.signalCode === null ? `with code ${proc.exitCode}` : `on ${proc.signalCode}`;
+}
+
+export async function waitForHttpReady(
+  baseURL: string,
+  timeoutMs: number,
+  proc?: ChildProcess,
+): Promise<void> {
+  requireBoundMs(timeoutMs, 'waitForHttpReady');
   const start = Date.now();
   let lastErr: unknown;
   while (Date.now() - start < timeoutMs) {
@@ -106,6 +145,11 @@ export async function waitForHttpReady(baseURL: string, timeoutMs: number): Prom
       lastErr = new Error(`unexpected status ${res.status}`);
     } catch (err) {
       lastErr = err;
+    }
+    if (proc !== undefined && (proc.exitCode !== null || proc.signalCode !== null)) {
+      throw new Error(
+        `dev server command for ${baseURL} exited ${describeExit(proc)} after ${Date.now() - start}ms without becoming ready. Last error: ${String(lastErr)}`,
+      );
     }
     await wait(250);
   }

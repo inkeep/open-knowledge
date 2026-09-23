@@ -15,6 +15,7 @@ import { z } from 'zod';
 import {
   npmPackResult,
   type ResolvedLaunch,
+  resetAcquisitionCache,
   resolveWindowsCommand,
   spawnAcpAgent,
   terminateAgentTree,
@@ -49,6 +50,27 @@ export function npmCli(name: 'npm' | 'npx'): string {
 export function installNodeFixture(bin: string): void {
   if (process.platform === 'win32') copyFileSync(process.execPath, join(bin, 'node.exe'));
   else symlinkSync(process.execPath, join(bin, 'node'));
+}
+
+export function writeRecordingNpm(bin: string, probeLog: string): void {
+  writeExecutable(
+    join(bin, 'npm'),
+    `require('node:fs').appendFileSync(${JSON.stringify(probeLog)}, JSON.stringify(process.argv.slice(2)) + '\\n');
+     const spec = process.argv[3];
+     const at = spec.lastIndexOf('@');
+     const range = spec.slice(at + 1);
+     const version = range.includes(' - ') ? range.split(' - ')[1] : range;
+     process.stdout.write(JSON.stringify([{ name: spec.slice(0, at), version }]));`,
+  );
+}
+
+export function probedDescriptors(probeLog: string): string[] {
+  if (!existsSync(probeLog)) return [];
+  return readFileSync(probeLog, 'utf8')
+    .trim()
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => (JSON.parse(line) as string[])[1] ?? '');
 }
 
 export function withAcquisitionHome<T>(run: (home: string) => Promise<T>): Promise<T> {
@@ -100,6 +122,7 @@ async function acquisitionHome<T>(run: (home: string) => Promise<T>, network: bo
   for (const [key, value] of Object.entries(env)) if (value !== undefined) process.env[key] = value;
   writeFileSync(join(home.path, '.npmrc'), '');
   writeFileSync(join(home.path, 'global.npmrc'), '');
+  resetAcquisitionCache();
   try {
     return await run(home.path);
   } finally {

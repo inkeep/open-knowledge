@@ -8,6 +8,7 @@ import {
   BOOT_HEARTBEAT_EVENTS,
   BOOT_HEARTBEAT_MAX_BEATS,
   DESKTOP_BOOT_EVENT,
+  DESKTOP_OPEN_PROJECT_FAILED_EVENT,
   SPAWN_STARTUP_DEADLINE_MS,
   SPAWN_WAIT_EXTENSION_FACTOR,
   SPAWN_WAIT_HEARTBEAT_MS,
@@ -17,19 +18,24 @@ import {
 import {
   BOOT_LOG_CAP_MS,
   BOOT_LOG_HEARTBEAT_MS,
+  BOOT_LOG_POLL_MS,
   BOOT_LOG_STALL_MS,
   type BootLogSnapshot,
+  bootGapLineFor,
   bootGapSourceFor,
   bootLogDirFor,
   bootLogGapSummary,
+  bootNarrationFor,
   classifyBootLog,
   describeMissingBootLog,
   formatBootGapLine,
   giveUpReason,
   hasBootCompleted,
+  isMoreCompleteNarration,
   launchDesktopApp,
   launchHomeFor,
   READY_WAIT_GIVE_UP_REASONS,
+  type ReadyDeadline,
   readBootLog,
   readBootLogLines,
   readyWaitsFor,
@@ -170,6 +176,25 @@ describe('waitForReadySignal — progress gating', () => {
     expect(clock).toBeLessThanOrEqual(BOOT_LOG_STALL_MS + 1_000);
   });
 
+  it('still names the first window as the end of narration when no window has been shown', async () => {
+    let clock = 0;
+    const message = await waitForReadySignal<string>({
+      probe: async () => undefined,
+      home: '/unused',
+      what: 'editor window',
+      now: () => clock,
+      sleep: async () => {
+        clock += 1_000;
+      },
+      readLog: () => snapshot({ lineCount: 3, lastEvent: 'desktop.boot' }),
+    }).then(
+      () => 'the wait resolved instead of giving up',
+      (error: unknown) => (error as Error).message,
+    );
+    expect(message).toContain('until the first window is shown');
+    expect(message).not.toContain('while a startup phase it declared is still open');
+  });
+
   it('names the boot phase and the log tail when it gives up', async () => {
     let clock = 0;
     await expect(
@@ -204,7 +229,9 @@ describe('waitForReadySignal — progress gating', () => {
         },
         readLog: () => snapshot({ exists: false }),
       }),
-    ).rejects.toThrow(/NOT FOUND/);
+    ).rejects.toThrow(
+      'Boot log: /tmp/x/.ok/logs (NOT FOUND, the cause is not determined here (it may have been removed, never written, or written elsewhere))',
+    );
   });
 
   it('says the log cannot explain the wait, rather than blaming the app, on the stall path', async () => {
@@ -337,6 +364,167 @@ describe('waitForWindowByMode', () => {
       home: '/unused',
     });
     expect(found).toBe(editor);
+  });
+
+  it('finds a ready page without waiting for an older pending page', async () => {
+    const pending = Promise.withResolvers<string | undefined>();
+    const navigator = { evaluate: () => pending.promise };
+    const editor = { evaluate: async () => 'editor' };
+    try {
+      await expect(
+        waitForWindowByMode({ windows: () => [navigator, editor] }, 'editor', {
+          home: '/unused',
+          capMs: 100,
+          stallMs: 600_000,
+          pollMs: 10,
+        }),
+      ).resolves.toBe(editor);
+    } finally {
+      pending.resolve('navigator');
+    }
+  });
+
+  it('finds a ready page that arrives while an older page is still pending', async () => {
+    const pending = Promise.withResolvers<string | undefined>();
+    const started = Promise.withResolvers<void>();
+    const navigator = {
+      evaluate: () => {
+        started.resolve();
+        return pending.promise;
+      },
+    };
+    const editor = { evaluate: async () => 'editor' };
+    let pages = [navigator];
+    const waiting = waitForWindowByMode({ windows: () => pages }, 'editor', {
+      home: '/unused',
+      capMs: 100,
+      stallMs: 600_000,
+      pollMs: 10,
+    });
+    await started.promise;
+    pages = [navigator, editor];
+    try {
+      await expect(waiting).resolves.toBe(editor);
+    } finally {
+      pending.resolve('navigator');
+    }
+  });
+
+  it('keeps at most one evaluation in flight per page and requests only on the poll cadence', async () => {
+    const pending = Promise.withResolvers<string | undefined>();
+    let pendingCalls = 0;
+    let pendingInFlight = 0;
+    let maxPendingInFlight = 0;
+    let navigatorCalls = 0;
+    const held = {
+      evaluate: () => {
+        pendingCalls += 1;
+        pendingInFlight += 1;
+        maxPendingInFlight = Math.max(maxPendingInFlight, pendingInFlight);
+        return pending.promise.finally(() => {
+          pendingInFlight -= 1;
+        });
+      },
+    };
+    const navigator = {
+      evaluate: async () => {
+        navigatorCalls += 1;
+        return 'navigator';
+      },
+    };
+    const waiting = waitForWindowByMode({ windows: () => [held, navigator] }, 'editor', {
+      home: '/unused',
+      capMs: 120,
+      stallMs: 600_000,
+      pollMs: 10,
+    });
+    try {
+      await expect(waiting).rejects.toThrow(/did not arrive/);
+    } finally {
+      pending.resolve('navigator');
+    }
+    expect(pendingCalls).toBe(1);
+    expect(maxPendingInFlight).toBe(1);
+    expect(navigatorCalls).toBeGreaterThan(1);
+    expect(navigatorCalls).toBeLessThanOrEqual(15);
+  });
+
+  it('handles a page rejection that arrives after the cap', () => {
+    const scriptDir = mkdtempSync(join(tmpdir(), 'ok-window-readiness-strict-'));
+    const script = join(scriptDir, 'late-rejection.mjs');
+    const home = seedHome();
+    try {
+      writeFileSync(
+        script,
+        [
+          'const { waitForWindowByMode } = await import(process.argv[2]);',
+          'let fail = (error) => { throw error; };',
+          'const pending = new Promise((_resolve, reject) => { fail = reject; });',
+          'const page = { evaluate: () => pending };',
+          "setTimeout(() => fail(new Error('renderer detached after the cap')), 250);",
+          "const error = await waitForWindowByMode({ windows: () => [page] }, 'editor', {",
+          '  home: process.argv[3],',
+          '  capMs: 60,',
+          '  stallMs: 600_000,',
+          '  pollMs: 10,',
+          '}).catch((e) => e);',
+          "if (!(error instanceof Error)) { console.error('the wait did not give up'); process.exit(2); }",
+          'await new Promise((resolve) => setTimeout(resolve, 600));',
+          "console.log('survived');",
+        ].join('\n'),
+        'utf8',
+      );
+      const run = spawnSync(
+        process.execPath,
+        [
+          '--unhandled-rejections=strict',
+          script,
+          new URL('./launch-readiness.ts', import.meta.url).href,
+          home,
+        ],
+        { encoding: 'utf8', timeout: 20_000 },
+      );
+      expect({
+        status: run.status,
+        stdout: run.stdout.trim(),
+        stderr: run.stderr.trim(),
+      }).toEqual({ status: 0, stdout: 'survived', stderr: '' });
+    } finally {
+      rmSync(scriptDir, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('surfaces errors only when no settled page read cleanly', async () => {
+    const first = {
+      evaluate: async (): Promise<string | undefined> => {
+        throw new Error('first target closed');
+      },
+    };
+    const second = {
+      evaluate: async (): Promise<string | undefined> => {
+        throw new Error('second target closed');
+      },
+    };
+    const error = await waitForWindowByMode({ windows: () => [first, second] }, 'editor', {
+      home: '/unused',
+      capMs: 80,
+      stallMs: 600_000,
+      pollMs: 10,
+    }).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain('second target closed');
+
+    const navigator = { evaluate: async () => 'navigator' };
+    const cleanError = await waitForWindowByMode({ windows: () => [first, navigator] }, 'editor', {
+      home: '/unused',
+      capMs: 80,
+      stallMs: 600_000,
+      pollMs: 10,
+    }).catch((caught: unknown) => caught);
+    expect(cleanError).toBeInstanceOf(Error);
+    expect((cleanError as Error).message).toContain('Probe errors: none on any poll.');
+    expect((cleanError as Error).message).not.toContain('first target closed');
   });
 });
 
@@ -619,18 +807,447 @@ describe('the cap is a livelock backstop, deliberately tighter than the app can 
     expect(BOOT_LOG_STALL_MS).toBeLessThan(BOOT_LOG_CAP_MS);
   });
 
-  it("clears the unpackaged app's own utility-fork deadline by the observation margin", () => {
-    expect(BOOT_LOG_CAP_MS - UTILITY_INIT_TIMEOUT_MS).toBeGreaterThanOrEqual(
-      UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
-    );
-  });
-
   it('lets the cap stay the operative verdict on a boot that never shows a window', () => {
     expect(BOOT_HEARTBEAT_MAX_BEATS * SPAWN_WAIT_HEARTBEAT_MS).toBeGreaterThan(BOOT_LOG_CAP_MS);
   });
 
   it("is deliberately below the packaged path's graduated spawn budget", () => {
     expect(BOOT_LOG_CAP_MS).toBeLessThan(SPAWN_STARTUP_DEADLINE_MS * SPAWN_WAIT_EXTENSION_FACTOR);
+  });
+});
+
+const DEEP_LINK_APP_T0 = Date.parse('2026-09-22T14:28:32.504Z');
+
+const LAUNCH_RESOLVED_AT_MS = 400;
+
+const MEASURED_FORK_OFFSETS = [861, 3919, 6210, 10423] as const;
+
+const UTILITY_TIMEOUT_VERDICT = `utility init timed out after ${UTILITY_INIT_TIMEOUT_MS}ms`;
+
+const LATE_WINDOW_FORK_MS = 3_514;
+
+interface NarrationLine {
+  at: number;
+  text: string;
+}
+
+function isoAt(atMs: number): string {
+  return new Date(DEEP_LINK_APP_T0 + atMs).toISOString();
+}
+
+function markAt(phase: string, atMs: number): NarrationLine {
+  return { at: atMs, text: markLine(phase, atMs, isoAt(atMs)) };
+}
+
+function eventAt(atMs: number, body: Record<string, unknown>): NarrationLine {
+  return { at: atMs, text: JSON.stringify({ time: isoAt(atMs), ...body }) };
+}
+
+function deepLinkNarration(forkAtMs: number): NarrationLine[] {
+  const beats: NarrationLine[] = [];
+  for (
+    let beat = SPAWN_WAIT_HEARTBEAT_MS;
+    beat < UTILITY_INIT_TIMEOUT_MS;
+    beat += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    beats.push(
+      eventAt(forkAtMs + beat, {
+        event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+        elapsedMs: beat,
+        initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+      }),
+    );
+  }
+  return [
+    eventAt(0, { event: DESKTOP_BOOT_EVENT }),
+    markAt('serverSpawned', forkAtMs),
+    eventAt(forkAtMs + 900, { event: 'desktop-navigator-load-resolved' }),
+    markAt('windowShown', forkAtMs + 1_300),
+    ...beats,
+    eventAt(forkAtMs + UTILITY_INIT_TIMEOUT_MS, {
+      event: DESKTOP_OPEN_PROJECT_FAILED_EVENT,
+      entryPoint: 'deep-link',
+      err: { message: UTILITY_TIMEOUT_VERDICT },
+    }),
+  ];
+}
+
+function lateWindowNarration(): NarrationLine[] {
+  return [
+    ...deepLinkNarration(LATE_WINDOW_FORK_MS).slice(0, -1),
+    markAt('serverLockReady', 22_213),
+    markAt('windowCreated', 22_231),
+    markAt('loadUrlResolved', 23_445),
+    eventAt(23_474, { subsystem: 'project', msg: 'project window created' }),
+  ];
+}
+
+interface VirtualClock {
+  now: () => number;
+  sleep: (ms: number) => Promise<void>;
+  startDeadline: (ms: number) => ReadyDeadline;
+  readLog: (home: string) => BootLogSnapshot;
+}
+
+function virtualClock(home: string, narration: readonly NarrationLine[]): VirtualClock {
+  let clock = 0;
+  const pending: { at: number; resolve: () => void }[] = [];
+  const logFile = join(bootLogDirFor(home), 'desktop.0.log');
+  const publish = (): void => {
+    const appElapsed = LAUNCH_RESOLVED_AT_MS + clock;
+    const visible = narration.filter((entry) => entry.at <= appElapsed).map((entry) => entry.text);
+    writeFileSync(logFile, visible.length === 0 ? '' : `${visible.join('\n')}\n`, 'utf8');
+  };
+  publish();
+  return {
+    now: () => clock,
+    sleep: async (ms: number) => {
+      clock += ms;
+      for (let i = pending.length - 1; i >= 0; i -= 1) {
+        const entry = pending[i];
+        if (entry !== undefined && entry.at <= clock) {
+          pending.splice(i, 1);
+          entry.resolve();
+        }
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    },
+    startDeadline: (ms: number) => {
+      const reached = Promise.withResolvers<void>();
+      const entry = { at: clock + ms, resolve: reached.resolve };
+      pending.push(entry);
+      return {
+        expired: reached.promise,
+        cancel: () => {
+          const index = pending.indexOf(entry);
+          if (index >= 0) pending.splice(index, 1);
+        },
+      };
+    },
+    readLog: (readFrom: string) => {
+      publish();
+      return readBootLog(readFrom);
+    },
+  };
+}
+
+interface WaitOutcome {
+  gaveUp: boolean;
+  message: string;
+  elapsedMs: number;
+}
+
+async function waitWithoutEditorWindow(narration: readonly NarrationLine[]): Promise<WaitOutcome> {
+  const home = seedHome();
+  mkdirSync(bootLogDirFor(home), { recursive: true });
+  const clock = virtualClock(home, narration);
+  const settled = await waitForReadySignal<string>({
+    home,
+    what: 'editor window',
+    probe: async () => undefined,
+    now: clock.now,
+    sleep: clock.sleep,
+    readLog: clock.readLog,
+    startDeadline: clock.startDeadline,
+  }).then(
+    () => ({ gaveUp: false, message: '' }),
+    (error: unknown) => ({ gaveUp: true, message: (error as Error).message }),
+  );
+  return { ...settled, elapsedMs: clock.now() };
+}
+
+function verdictReadableAtMs(forkAtMs: number): number {
+  return forkAtMs + UTILITY_INIT_TIMEOUT_MS - LAUNCH_RESOLVED_AT_MS;
+}
+
+const FORKS_THE_STATIC_CAP_CUTS_SHORT = MEASURED_FORK_OFFSETS.filter(
+  (forkAtMs) => verdictReadableAtMs(forkAtMs) > BOOT_LOG_CAP_MS,
+);
+
+describe("the wait outlives the app's own deadline for the phase the window is gated behind", () => {
+  it('runs exactly the measured forks whose verdict lands past the static cap', () => {
+    expect(FORKS_THE_STATIC_CAP_CUTS_SHORT).toEqual([6210, 10423]);
+  });
+
+  it.each(FORKS_THE_STATIC_CAP_CUTS_SHORT)(
+    "reports the app's own open-project verdict when the utility fork landed at %ims",
+    async (forkAtMs) => {
+      const outcome = await waitWithoutEditorWindow(deepLinkNarration(forkAtMs));
+      expect(outcome.gaveUp).toBe(true);
+      expect(outcome.elapsedMs).toBeGreaterThan(BOOT_LOG_CAP_MS);
+      expect(outcome.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+      expect(outcome.message).toContain(UTILITY_TIMEOUT_VERDICT);
+      expect(outcome.message).not.toContain(
+        `Last main-process boot event: ${BOOT_HEARTBEAT_EVENTS.utilityWait}`,
+      );
+    },
+  );
+
+  it("stays inside the app's own declared budget when the app never publishes a verdict", async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[2];
+    const outcome = await waitWithoutEditorWindow(deepLinkNarration(forkAtMs).slice(0, -1));
+    expect(outcome.gaveUp).toBe(true);
+    expect(outcome.elapsedMs).toBeLessThanOrEqual(
+      forkAtMs -
+        LAUNCH_RESOLVED_AT_MS +
+        UTILITY_INIT_TIMEOUT_MS +
+        UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+    );
+  });
+});
+
+describe('the give-up describes the narration the wait actually read', () => {
+  it('does not report activity across a silence that ran through the whole open phase', async () => {
+    const silentAfterFirstWindow = deepLinkNarration(MEASURED_FORK_OFFSETS[0]).slice(0, 4);
+    const outcome = await waitWithoutEditorWindow(silentAfterFirstWindow);
+    expect(outcome.gaveUp).toBe(true);
+    expect(outcome.message).not.toContain('kept logging boot activity');
+    expect(outcome.message).toContain('logged no new boot activity');
+  });
+
+  it('treats the app going quiet after its own verdict as a closed phase, not a stall', async () => {
+    const verdictThenQuiet: NarrationLine[] = [
+      eventAt(0, { event: DESKTOP_BOOT_EVENT }),
+      markAt('serverSpawned', 500),
+      markAt('windowShown', 1_800),
+      eventAt(5_500, {
+        event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+        elapsedMs: 5_000,
+        initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+      }),
+      eventAt(7_000, {
+        event: DESKTOP_OPEN_PROJECT_FAILED_EVENT,
+        entryPoint: 'deep-link',
+        err: { message: UTILITY_TIMEOUT_VERDICT },
+      }),
+    ];
+    const outcome = await waitWithoutEditorWindow(verdictThenQuiet);
+    expect(outcome.gaveUp).toBe(true);
+    expect(outcome.elapsedMs).toBe(BOOT_LOG_CAP_MS);
+    expect(outcome.message).not.toContain('logged no new boot activity');
+    expect(outcome.message).toContain('kept logging boot activity');
+  });
+});
+
+describe('the boot-gap line covers the phase the wait gave up in', () => {
+  const narration = lateWindowNarration();
+  const lines = narration.map((entry) => entry.text);
+  const launchSpanMs = (narration.at(-1)?.at ?? 0) - (narration[0]?.at ?? 0);
+  const heartbeatsEmitted = narration.filter((entry) =>
+    entry.text.includes(BOOT_HEARTBEAT_EVENTS.utilityWait),
+  ).length;
+
+  it('spans the whole launch the harness read, not the prefix that ends at the first window', () => {
+    expect(launchSpanMs).toBeGreaterThan(0);
+    expect(bootLogGapSummary(lines).totalBootMs).toBe(launchSpanMs);
+  });
+
+  it('counts the heartbeats the app emitted after it showed its first window', () => {
+    expect(heartbeatsEmitted).toBeGreaterThan(0);
+    expect(bootLogGapSummary(lines).beatsSeen).toBe(heartbeatsEmitted);
+  });
+
+  it('renders that span into the [boot-gap] triage line', () => {
+    const line = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(lines, snapshot({ lines, lineCount: lines.length })),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect(formatBootGapLine(line)).toContain(`totalBootMs=${launchSpanMs}`);
+  });
+});
+
+function withUtilityBeats(
+  narration: readonly NarrationLine[],
+  rewrite: (beat: Record<string, unknown>) => string,
+): NarrationLine[] {
+  return narration.map((entry) => {
+    const parsed = JSON.parse(entry.text) as Record<string, unknown>;
+    return parsed.event === BOOT_HEARTBEAT_EVENTS.utilityWait
+      ? { at: entry.at, text: rewrite(parsed) }
+      : entry;
+  });
+}
+
+describe('a budget the app did not declare cleanly buys the wait no extra time', () => {
+  const granting = deepLinkNarration(MEASURED_FORK_OFFSETS[2]);
+
+  it('outlives the static cap when every beat declares a well-formed budget', async () => {
+    const outcome = await waitWithoutEditorWindow(granting);
+    expect(outcome.gaveUp).toBe(true);
+    expect(outcome.elapsedMs).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    expect(outcome.message).toContain(UTILITY_TIMEOUT_VERDICT);
+  });
+
+  it.each([
+    [
+      'an initTimeoutMs that is not a number',
+      (beat: Record<string, unknown>) =>
+        JSON.stringify({ ...beat, initTimeoutMs: String(beat.initTimeoutMs) }),
+    ],
+    [
+      'an initTimeoutMs the JSON parse overflowed to Infinity',
+      (beat: Record<string, unknown>) =>
+        JSON.stringify(beat).replace(
+          `"initTimeoutMs":${UTILITY_INIT_TIMEOUT_MS}`,
+          '"initTimeoutMs":1e999',
+        ),
+    ],
+    [
+      'a negative elapsedMs',
+      (beat: Record<string, unknown>) =>
+        JSON.stringify({ ...beat, elapsedMs: -(beat.elapsedMs as number) }),
+    ],
+    [
+      'a beat line that does not parse',
+      (beat: Record<string, unknown>) => `${JSON.stringify(beat)}{`,
+    ],
+    [
+      'an initTimeoutMs larger than the budget the app can declare',
+      (beat: Record<string, unknown>) =>
+        JSON.stringify({ ...beat, initTimeoutMs: UTILITY_INIT_TIMEOUT_MS * 2 }),
+    ],
+    [
+      'the budget on a heartbeat that does not own the open phase',
+      (beat: Record<string, unknown>) =>
+        JSON.stringify({ ...beat, event: BOOT_HEARTBEAT_EVENTS.spawnWait }),
+    ],
+  ])('stops at the static cap when the app published %s', async (_label, rewrite) => {
+    const outcome = await waitWithoutEditorWindow(withUtilityBeats(granting, rewrite));
+    expect(outcome.gaveUp).toBe(true);
+    expect(outcome.elapsedMs).toBe(BOOT_LOG_CAP_MS);
+    expect(outcome.message).not.toContain(UTILITY_TIMEOUT_VERDICT);
+  });
+
+  it('stops granting once the app overruns the budget it kept declaring', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[2];
+    const overrunBeats: NarrationLine[] = [];
+    for (
+      let elapsedMs = UTILITY_INIT_TIMEOUT_MS;
+      elapsedMs <= UTILITY_INIT_TIMEOUT_MS * 2;
+      elapsedMs += SPAWN_WAIT_HEARTBEAT_MS
+    ) {
+      overrunBeats.push(
+        eventAt(forkAtMs + elapsedMs, {
+          event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+          elapsedMs,
+          initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+        }),
+      );
+    }
+    const lastBeatReadableAt = (overrunBeats.at(-1)?.at ?? 0) - LAUNCH_RESOLVED_AT_MS;
+    expect(overrunBeats.length).toBeGreaterThan(1);
+    expect(lastBeatReadableAt).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    const outcome = await waitWithoutEditorWindow([
+      ...deepLinkNarration(forkAtMs).slice(0, -1),
+      ...overrunBeats,
+    ]);
+    expect(outcome.gaveUp).toBe(true);
+    expect(outcome.elapsedMs).toBeLessThan(lastBeatReadableAt);
+  });
+
+  it('still takes a beat that reports it is exactly at the budget it declares', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const atBudget = [
+      ...deepLinkNarration(forkAtMs).slice(0, -1),
+      eventAt(forkAtMs + UTILITY_INIT_TIMEOUT_MS, {
+        event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+        elapsedMs: UTILITY_INIT_TIMEOUT_MS,
+        initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+      }),
+    ];
+    const outcome = await waitWithoutEditorWindow(atBudget);
+    expect(outcome.gaveUp).toBe(true);
+    expect(outcome.elapsedMs).toBeGreaterThan(BOOT_LOG_CAP_MS);
+  });
+});
+
+function slowForkNarration(): NarrationLine[] {
+  const forkAtMs = BOOT_LOG_CAP_MS + LAUNCH_RESOLVED_AT_MS - SPAWN_WAIT_HEARTBEAT_MS;
+  const lines: NarrationLine[] = [eventAt(0, { event: DESKTOP_BOOT_EVENT })];
+  for (let at = SPAWN_WAIT_HEARTBEAT_MS; at < forkAtMs; at += SPAWN_WAIT_HEARTBEAT_MS) {
+    lines.push(eventAt(at, { event: BOOT_HEARTBEAT_EVENTS.navigatorLoad, elapsedMs: at }));
+  }
+  lines.push(markAt('serverSpawned', forkAtMs), markAt('windowShown', forkAtMs + 1_300));
+  for (
+    let elapsedMs = SPAWN_WAIT_HEARTBEAT_MS;
+    elapsedMs < UTILITY_INIT_TIMEOUT_MS;
+    elapsedMs += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    lines.push(
+      eventAt(forkAtMs + elapsedMs, {
+        event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+        elapsedMs,
+        initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+      }),
+    );
+  }
+  return lines;
+}
+
+describe('the extension keeps the probe running rather than only deferring the verdict', () => {
+  it('finds a window that arrives after the static cap but inside the declared budget', async () => {
+    const home = seedHome();
+    mkdirSync(bootLogDirFor(home), { recursive: true });
+    const clock = virtualClock(home, deepLinkNarration(MEASURED_FORK_OFFSETS[2]));
+    const found = await waitForReadySignal<string>({
+      home,
+      what: 'editor window',
+      probe: async () => (clock.now() > BOOT_LOG_CAP_MS ? 'late-editor-page' : undefined),
+      now: clock.now,
+      sleep: clock.sleep,
+      readLog: clock.readLog,
+      startDeadline: clock.startDeadline,
+    });
+    expect(found).toBe('late-editor-page');
+    expect(clock.now()).toBeGreaterThan(BOOT_LOG_CAP_MS);
+  });
+
+  it('keeps probing when the first declared budget lands on the poll the static cap fires', async () => {
+    const home = seedHome();
+    mkdirSync(bootLogDirFor(home), { recursive: true });
+    const clock = virtualClock(home, slowForkNarration());
+    const found = await waitForReadySignal<string>({
+      home,
+      what: 'editor window',
+      probe: async () => (clock.now() > BOOT_LOG_CAP_MS ? 'post-cap-editor-page' : undefined),
+      now: clock.now,
+      sleep: clock.sleep,
+      readLog: clock.readLog,
+      startDeadline: clock.startDeadline,
+    });
+    expect(found).toBe('post-cap-editor-page');
+    expect(clock.now()).toBeGreaterThan(BOOT_LOG_CAP_MS);
+  });
+
+  it('stops blaming a probe that was outstanding when the cap it outlived fired', async () => {
+    const home = seedHome();
+    mkdirSync(bootLogDirFor(home), { recursive: true });
+    const clock = virtualClock(home, slowForkNarration());
+    let overranTheCap = false;
+    const outcome = await waitForReadySignal<string>({
+      home,
+      what: 'editor window',
+      probe: async () => {
+        if (!overranTheCap && clock.now() >= BOOT_LOG_CAP_MS - BOOT_LOG_POLL_MS) {
+          overranTheCap = true;
+          await clock.sleep(BOOT_LOG_POLL_MS * 2);
+        }
+        return undefined;
+      },
+      now: clock.now,
+      sleep: clock.sleep,
+      readLog: clock.readLog,
+      startDeadline: clock.startDeadline,
+    }).then(
+      () => ({ gaveUp: false, message: '' }),
+      (error: unknown) => ({ gaveUp: true, message: (error as Error).message }),
+    );
+    expect(overranTheCap).toBe(true);
+    expect(outcome.gaveUp).toBe(true);
+    expect(clock.now()).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    expect(outcome.message).not.toContain('The last probe had not answered when the cap fired.');
   });
 });
 
@@ -672,25 +1289,56 @@ describe('the stall rule applies only while boot narration is live', () => {
     await expect(waitFor('terminal', terminal, home)).resolves.toBe(terminal);
   });
 
-  it('disarms mid-wait when the app shows its window, so the cap decides not the stall', async () => {
+  const MID_WAIT_CAP_MS = 20_000;
+
+  const BOOT_ONLY_SEED = [
+    JSON.stringify({ event: DESKTOP_BOOT_EVENT, time: '2026-09-04T00:00:00.000Z' }),
+  ];
+
+  const windowShownMidWait = (seed: readonly string[]) => {
     let clock = 0;
-    const lines = [JSON.stringify({ event: DESKTOP_BOOT_EVENT, time: '2026-09-04T00:00:00.000Z' })];
-    await expect(
-      waitForReadySignal<string>({
-        probe: async () => undefined,
-        home: '/unused',
-        what: 'editor window',
-        capMs: 20_000,
-        now: () => clock,
-        sleep: async () => {
-          clock += 1_000;
-          if (clock === 3_000)
-            lines.push(markLine('windowShown', 3_000, '2026-09-04T00:00:03.000Z'));
-        },
-        readLog: () => snapshot({ lines, lineCount: lines.length, lastEvent: 'desktop.boot' }),
-      }),
-    ).rejects.toThrow(/kept logging boot activity/);
-    expect(clock).toBeGreaterThan(BOOT_LOG_STALL_MS);
+    const lines = [...seed];
+    const settled = waitForReadySignal<string>({
+      probe: async () => undefined,
+      home: '/unused',
+      what: 'editor window',
+      capMs: MID_WAIT_CAP_MS,
+      now: () => clock,
+      sleep: async () => {
+        clock += 1_000;
+        if (clock === 3_000) lines.push(markLine('windowShown', 3_000, '2026-09-04T00:00:03.000Z'));
+      },
+      readLog: () => snapshot({ lines, lineCount: lines.length, lastEvent: 'desktop.boot' }),
+    });
+    return { settled, gaveUpAt: () => clock };
+  };
+
+  it('disarms mid-wait when nothing the app declared is still open, so the cap decides', async () => {
+    const run = windowShownMidWait(BOOT_ONLY_SEED);
+    await expect(run.settled).rejects.toThrow(/kept logging boot activity/);
+    expect(run.gaveUpAt()).toBeGreaterThan(BOOT_LOG_STALL_MS);
+  });
+
+  it('keeps it armed over that same narration plus one line the app never closed', async () => {
+    const run = windowShownMidWait([
+      ...BOOT_ONLY_SEED,
+      markLine('serverSpawned', 500, '2026-09-04T00:00:00.500Z'),
+    ]);
+    await expect(run.settled).rejects.toThrow(/logged no new boot activity/);
+    expect(run.gaveUpAt()).toBeLessThan(MID_WAIT_CAP_MS);
+  });
+
+  it('blames the open phase it stalled in, not a window it had already shown', async () => {
+    const run = windowShownMidWait([
+      ...BOOT_ONLY_SEED,
+      markLine('serverSpawned', 500, '2026-09-04T00:00:00.500Z'),
+    ]);
+    const message = await run.settled.then(
+      () => 'the wait resolved instead of giving up',
+      (error: unknown) => (error as Error).message,
+    );
+    expect(message).not.toContain('until the first window is shown');
+    expect(message).toContain('while a startup phase it declared is still open');
   });
 
   it('reads boot completion off the app mark, not off a mode list', () => {
@@ -706,7 +1354,7 @@ describe('the stall rule applies only while boot narration is live', () => {
 });
 
 describe('boot-log evidence survives a spec that removes its own launch home', () => {
-  it('snapshots the boot log when boot ends, not at teardown', async () => {
+  it('snapshots the boot log when the wait ends, not at teardown', async () => {
     const home = seedHome([
       JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
       markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
@@ -727,8 +1375,198 @@ describe('boot-log evidence survives a spec that removes its own launch home', (
     await waitForWindowByMode(app, 'editor');
     expect(tryBootLogFor(app)).toBeUndefined();
   });
+
+  it('remembers the narration a give-up read, so a removed log dir cannot erase it', async () => {
+    const narration = [
+      JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
+      markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+      markLine('serverSpawned', 500, '2026-09-04T00:00:01.500Z'),
+    ];
+    const home = seedHome(narration);
+    const app = { windows: () => [] };
+    rememberLaunchHome(app, home);
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    expect(tryFirstWaitFor(app)).toMatchObject({ gaveUp: true, reason: 'cap' });
+    rmSync(join(home, '.ok'), { recursive: true, force: true });
+    expect(readBootLogLines(home)).toEqual([]);
+    expect(tryBootLogFor(app)).toEqual(narration);
+  });
+
+  it('remembers the narration even when the give-up probe never answered', async () => {
+    const narration = [
+      JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
+      markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+      markLine('serverSpawned', 500, '2026-09-04T00:00:01.500Z'),
+    ];
+    const home = seedHome(narration);
+    const stuck = Promise.withResolvers<string | undefined>();
+    let answered = false;
+    const page = {
+      evaluate: () =>
+        stuck.promise.then((mode) => {
+          answered = true;
+          return mode;
+        }),
+    };
+    const app = { windows: () => [page] };
+    rememberLaunchHome(app, home);
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    const probeAnswered = answered;
+    stuck.resolve(undefined);
+    expect({ probeAnswered, wait: tryFirstWaitFor(app) }).toMatchObject({
+      probeAnswered: false,
+      wait: { gaveUp: true, reason: 'cap' },
+    });
+    rmSync(join(home, '.ok'), { recursive: true, force: true });
+    expect(tryBootLogFor(app)).toEqual(narration);
+  });
+
+  it('still remembers nothing when a give-up found no log, so unavailable stays honest', async () => {
+    const app = { windows: () => [] };
+    rememberLaunchHome(app, seedHome());
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    expect(tryFirstWaitFor(app)).toMatchObject({ gaveUp: true, reason: 'notfound' });
+    expect(tryBootLogFor(app)).toBeUndefined();
+  });
+
+  it('keeps the fuller narration when a later wait reads a log that has since shrunk', async () => {
+    const opening = JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT });
+    const whole = [
+      opening,
+      markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+      markLine('serverLockReady', 14_428, '2026-09-04T00:00:14.428Z'),
+    ];
+    const home = seedHome(whole);
+    const editor = { evaluate: async () => 'editor' };
+    const app = { windows: () => [editor] };
+    rememberLaunchHome(app, home);
+    await waitForWindowByMode(app, 'editor');
+    expect(tryBootLogFor(app)).toEqual(whole);
+
+    writeFileSync(join(bootLogDirFor(home), 'desktop.2026-09-03.log'), `${opening}\n`, 'utf8');
+    expect(readBootLogLines(home)).toEqual([opening]);
+
+    await waitForWindowByMode(app, 'editor');
+    expect(tryBootLogFor(app)).toEqual(whole);
+  });
 });
 
+describe('the teardown line reports the most complete narration the run produced', () => {
+  const early = [
+    JSON.stringify({ time: '2026-09-04T00:00:00.000Z', event: DESKTOP_BOOT_EVENT }),
+    markLine('appReady', 0, '2026-09-04T00:00:01.000Z'),
+  ];
+  const whole = [
+    ...early,
+    markLine('serverLockReady', 14_428, '2026-09-04T00:00:14.428Z'),
+    markLine('windowCreated', 14_521, '2026-09-04T00:00:14.521Z'),
+    markLine('loadUrlResolved', 18_569, '2026-09-04T00:00:18.569Z'),
+  ];
+
+  it('prefers the longer on-disk log to a snapshot taken earlier in the run', () => {
+    const onDisk = readBootLog(seedHome(whole));
+    expect(onDisk.lines).toEqual(whole);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(early, onDisk),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect(gap.summary?.lineCount).toBe(whole.length);
+    expect(gap.reason).toBeUndefined();
+  });
+
+  it('keeps the snapshot when the disk read came back empty', () => {
+    const onDisk = readBootLog(seedHome());
+    expect(onDisk.lines).toEqual([]);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(whole, onDisk),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect(gap.summary?.lineCount).toBe(whole.length);
+    expect(gap.source).toBe('wait-snapshot');
+  });
+
+  it('names no cause at all when it has narration to report', () => {
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(early, readBootLog(seedHome(whole))),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect(gap.summary).toBeDefined();
+    expect(gap.reason).toBeUndefined();
+  });
+
+  it('names the cause it can see when neither side narrated anything at all', () => {
+    const onDisk = readBootLog(seedHome());
+    expect(onDisk.exists).toBe(false);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(undefined, onDisk),
+      readyWaitCount: 1,
+      homeShared: false,
+    });
+    expect({ summary: gap.summary, source: gap.source, reason: gap.reason }).toEqual({
+      summary: undefined,
+      source: 'unavailable',
+      reason:
+        'no desktop log file when the fixture read it; the cause is not determined here (it may have been removed, never written, or written elsewhere)',
+    });
+  });
+
+  it('credits the disk read when the disk read is what it reported', () => {
+    const onDisk = readBootLog(seedHome(whole));
+    expect(onDisk.lines).toEqual(whole);
+    expect(
+      bootGapLineFor({
+        slot: 0,
+        narration: bootNarrationFor(early, onDisk),
+        readyWaitCount: 1,
+        homeShared: false,
+      }).source,
+    ).toBe('teardown-read');
+    expect(
+      bootGapLineFor({
+        slot: 0,
+        narration: bootNarrationFor(early, onDisk),
+        readyWaitCount: 1,
+        homeShared: true,
+      }).source,
+    ).toBe('teardown-read-shared-home');
+  });
+
+  it('labels a give-up snapshot by the wait that took it, not by a boot that never completed', async () => {
+    const home = seedHome(early);
+    const app = { windows: () => [] };
+    rememberLaunchHome(app, home);
+    await expect(
+      waitForWindowByMode(app, 'editor', { capMs: 300, stallMs: 600_000, pollMs: 20 }),
+    ).rejects.toThrow(/did not arrive/);
+    rmSync(join(home, '.ok'), { recursive: true, force: true });
+    const firstWait = tryFirstWaitFor(app);
+    const gap = bootGapLineFor({
+      slot: 0,
+      narration: bootNarrationFor(tryBootLogFor(app), readBootLog(home)),
+      readyWaitCount: readyWaitsFor(app)?.length ?? 0,
+      ...(firstWait === undefined ? {} : { firstWait }),
+      homeShared: false,
+    });
+    expect(gap.summary?.lineCount).toBe(early.length);
+    expect({ source: gap.source, bootComplete: gap.summary?.bootComplete }).toEqual({
+      source: 'wait-snapshot',
+      bootComplete: false,
+    });
+  });
+});
 describe('the recorded ready wait names which wait it measured', () => {
   const slowFirstPoll = () => {
     const editor = { evaluate: async () => 'editor' };
@@ -745,6 +1583,25 @@ describe('the recorded ready wait names which wait it measured', () => {
     expect(wait?.capMs).toBe(9_000);
     expect(wait?.gaveUp).toBe(false);
     expect(wait?.elapsedMs).toBeGreaterThanOrEqual(50);
+  });
+
+  it('carries the deadline the app bought it, beside the cap its caller asked for', async () => {
+    const home = seedHome([
+      JSON.stringify({ event: DESKTOP_BOOT_EVENT, time: '2026-09-04T00:00:00.000Z' }),
+      markLine('serverSpawned', 500, '2026-09-04T00:00:00.500Z'),
+      JSON.stringify({
+        time: '2026-09-04T00:00:05.500Z',
+        event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+        elapsedMs: SPAWN_WAIT_HEARTBEAT_MS,
+        initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+      }),
+    ]);
+    const app = slowFirstPoll();
+    rememberLaunchHome(app, home);
+    await waitForWindowByMode(app, 'editor', { pollMs: 20, capMs: 300 });
+    const wait = tryFirstWaitFor(app);
+    expect(wait?.requestedCapMs).toBe(300);
+    expect(wait?.capMs).toBeGreaterThan(300);
   });
 
   it('reports the first wait, not a later re-find of an already-open window', async () => {
@@ -812,7 +1669,7 @@ describe('one classifier decides both the prose and the reason token', () => {
 
   it('names the teardown states it can tell apart, without claiming a cause it cannot know', () => {
     expect(describeMissingBootLog(snapshot({ exists: false }))).toBe(
-      'no desktop log file at teardown (a test.afterEach removed the launch home before the fixture could read it, or the app wrote no log file)',
+      'no desktop log file when the fixture read it; the cause is not determined here (it may have been removed, never written, or written elsewhere)',
     );
     expect(describeMissingBootLog(snapshot({ exists: true, lineCount: 0 }))).toBe(
       'log files present but empty',
@@ -927,10 +1784,10 @@ describe('bootGapSourceFor', () => {
       'unavailable',
     );
     expect(bootGapSourceFor({ hasLines: true, snapshotted: true, homeShared: false })).toBe(
-      'boot-complete',
+      'wait-snapshot',
     );
     expect(bootGapSourceFor({ hasLines: true, snapshotted: true, homeShared: true })).toBe(
-      'boot-complete',
+      'wait-snapshot',
     );
     expect(bootGapSourceFor({ hasLines: true, snapshotted: false, homeShared: false })).toBe(
       'teardown-read',
@@ -941,17 +1798,31 @@ describe('bootGapSourceFor', () => {
   });
 });
 
+describe('isMoreCompleteNarration', () => {
+  it('accepts a candidate that says more than what is already held', () => {
+    expect(isMoreCompleteNarration(['a', 'b'], ['a'])).toBe(true);
+    expect(isMoreCompleteNarration(['a'], undefined)).toBe(true);
+  });
+
+  it('rejects a candidate that says the same or less, so a tie keeps what is held', () => {
+    expect(isMoreCompleteNarration(['a'], ['a', 'b'])).toBe(false);
+    expect(isMoreCompleteNarration(['b'], ['a'])).toBe(false);
+    expect(isMoreCompleteNarration([], undefined)).toBe(false);
+  });
+});
+
 describe('formatBootGapLine', () => {
   it('states the measured gap next to the bound it has to clear', () => {
     const line = formatBootGapLine({
       slot: 0,
-      source: 'boot-complete',
+      source: 'wait-snapshot',
       readyWaitCount: 2,
       firstWait: {
         ordinal: 0,
         what: 'editor window',
         elapsedMs: 2_100,
         capMs: 9_000,
+        requestedCapMs: 9_000,
         gaveUp: false,
         reason: 'none',
       },
@@ -962,18 +1833,40 @@ describe('formatBootGapLine', () => {
       ]),
     });
     expect(line).toContain('[boot-gap] slot=0');
-    expect(line).toContain('source=boot-complete');
+    expect(line).toContain('source=wait-snapshot');
     expect(line).toContain(`stallMs=${BOOT_LOG_STALL_MS}`);
     expect(line).toContain('totalBootMs=3000');
     expect(line).toContain('maxGapMs=1600');
     expect(line).toContain('firstWaitMs=2100');
     expect(line).toContain('firstWaitCapMs=9000');
+    expect(line).toContain('firstWaitRequestedCapMs=9000');
     expect(line).not.toContain(`firstWaitCapMs=${BOOT_LOG_CAP_MS}`);
     expect(line).toContain('firstWaitWhat="editor window"');
     expect(line).toContain('firstWaitGaveUp=false');
     expect(line).toContain('firstWaitReason=none');
     expect(line).toContain('readyWaitCount=2');
     expect(line).toContain('bootComplete=true');
+  });
+
+  it('separates the deadline the wait ran to from the one its caller asked for', () => {
+    const line = formatBootGapLine({
+      slot: 0,
+      source: 'wait-snapshot',
+      readyWaitCount: 1,
+      firstWait: {
+        ordinal: 0,
+        what: 'editor window',
+        elapsedMs: 30_100,
+        capMs: 30_000,
+        requestedCapMs: BOOT_LOG_CAP_MS,
+        gaveUp: true,
+        reason: 'cap',
+      },
+      summary: undefined,
+      reason: 'no summary',
+    });
+    expect(line).toContain('firstWaitCapMs=30000');
+    expect(line).toContain(`firstWaitRequestedCapMs=${BOOT_LOG_CAP_MS}`);
   });
 
   it('says why there is no measurement rather than printing a zero', () => {
@@ -988,6 +1881,7 @@ describe('formatBootGapLine', () => {
     expect(line).toContain('reason="log dir gone at teardown"');
     expect(line).toContain('firstWaitMs=none');
     expect(line).toContain('firstWaitCapMs=none');
+    expect(line).toContain('firstWaitRequestedCapMs=none');
     expect(line).toContain('firstWaitWhat=none');
     expect(line).toContain('firstWaitGaveUp=none');
     expect(line).toContain('firstWaitReason=none');
@@ -1007,13 +1901,14 @@ describe('formatBootGapLine', () => {
     for (const reason of READY_WAIT_GIVE_UP_REASONS) {
       const line = formatBootGapLine({
         slot: 0,
-        source: 'boot-complete',
+        source: 'wait-snapshot',
         readyWaitCount: 1,
         firstWait: {
           ordinal: 0,
           what: 'editor window',
           elapsedMs: 25_000,
           capMs: BOOT_LOG_CAP_MS,
+          requestedCapMs: BOOT_LOG_CAP_MS,
           gaveUp: reason !== 'none',
           reason,
         },
@@ -1149,7 +2044,7 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
     }).toEqual({ status: 0, stdout: 'survived', stderr: '' });
   });
 
-  it('records a give-up when the first window never answers, instead of no record at all', async () => {
+  it('records a give-up when no editor exists and one window never answers', async () => {
     let releaseStuck: () => void = () => {};
     const stuck = {
       evaluate: () =>
@@ -1157,8 +2052,8 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
           releaseStuck = () => resolve('navigator');
         }),
     };
-    const ready = { evaluate: async () => 'editor' };
-    const app = { windows: () => [stuck, ready] };
+    const navigator = { evaluate: async () => 'navigator' };
+    const app = { windows: () => [stuck, navigator] };
     rememberLaunchHome(app, narratingHome());
     let released = false;
     const release = setTimeout(() => {
@@ -1170,7 +2065,7 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
       stallMs: 600_000,
       pollMs: 10,
     }).then(
-      (page) => ({ resolvedWith: page === ready ? 'ready-page' : 'stuck-page' }),
+      (page) => ({ resolvedWith: page }),
       (error: unknown) => ({ rejectedWith: (error as Error).message }),
     );
     clearTimeout(release);
@@ -1178,6 +2073,9 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
     expect(released).toBe(false);
     expect(outcome).not.toHaveProperty('resolvedWith');
     expect(outcome).toMatchObject({ rejectedWith: expect.stringMatching(/did not arrive/) });
+    expect(outcome).toMatchObject({
+      rejectedWith: expect.stringContaining('The last probe had not answered when the cap fired.'),
+    });
     expect(tryFirstWaitFor(app)).toMatchObject({ gaveUp: true, reason: 'cap', capMs: 80 });
   });
 

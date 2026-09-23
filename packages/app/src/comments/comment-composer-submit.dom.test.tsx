@@ -2,6 +2,7 @@ import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { mentionRecencyAttribute } from '@/components/acp/composer-mention-input.test-helper';
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
@@ -39,16 +40,19 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
     onEmptyChange,
     onSubmit,
     onEscape,
+    mentionRecency,
   }: {
     ref?: { current: unknown };
     placeholder?: string;
     onEmptyChange: (empty: boolean) => void;
     onSubmit: () => void;
     onEscape?: () => void;
+    mentionRecency?: { currentDocName: string | null; recentPaths: readonly string[] };
   }) => {
     return (
       <textarea
         placeholder={placeholder}
+        data-mention-recency={mentionRecencyAttribute(mentionRecency)}
         ref={(el) => {
           if (ref === undefined || ref === null || el === null) return;
           ref.current = {
@@ -246,5 +250,17 @@ describe('the comment composer', () => {
 
     expect(screen.queryByPlaceholderText('Add a comment')).not.toBeNull();
     popup.remove();
+  });
+});
+
+describe('what the comment @ picker is told to list first', () => {
+  test('the affordance pins the doc it is anchored to', async () => {
+    const field = await openComposer();
+
+    const handed = field.getAttribute('data-mention-recency');
+    expect(JSON.parse(handed ?? 'null')).toEqual({
+      currentDocName: 'recipes/stir-fry',
+      recentPaths: [],
+    });
   });
 });

@@ -429,12 +429,19 @@ export {
   updateProcessLockPort,
 } from './process-lock.ts';
 export {
+  createProbeFailureReporter,
   discoverLockDirs,
   extractOkBinaryPath,
+  isDefunctProcess,
+  isLockProcessRunning,
   type LockProcessScan,
+  type ProcessProbeFailure,
+  type ProcessProbeOptions,
+  type ProcessState,
   type ProcessUsage,
   processCommand,
   processUsage,
+  readProcessState,
   scanLockProcesses,
 } from './process-scan.ts';
 export {

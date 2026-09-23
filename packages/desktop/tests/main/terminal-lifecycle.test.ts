@@ -77,7 +77,7 @@ function makeRig() {
     clearTimer: (token) => {
       if (typeof token === 'number' && timers[token]) timers[token].cancelled = true;
     },
-    logger: { warn: (event) => warnings.push(event) },
+    logger: { warn: (event) => warnings.push(event), info: () => {} },
   });
   const reaper: TerminalReaper = mgr;
   function openTerminalWindow(id: number): { win: FakeWindow; ptyId: string } {
@@ -180,7 +180,7 @@ describe('terminal lifecycle — app quit reap', () => {
     rig.openTerminalWindow(1);
     rig.openTerminalWindow(2);
 
-    rig.reaper.killAll();
+    rig.reaper.killAll('quit');
     expect(rig.forked[0]?.posted.at(-1)).toEqual({ type: 'shutdown' });
     expect(rig.forked[1]?.posted.at(-1)).toEqual({ type: 'shutdown' });
     rig.runTimers();

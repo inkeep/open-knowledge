@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · 참조만(내용을 포함하지 않음)"
 
@@ -288,6 +289,16 @@ msgstr "{0} · 기본값"
 msgid "{0} (opens in a new tab)"
 msgstr "{0}(새 탭에서 열림)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} 외 {rest}개"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -350,12 +361,6 @@ msgstr "{0} 미설치 상태입니다. 다운로드 페이지를 엽니다."
 #: src/components/acp/ThreadView.tsx
 msgid "{0} kept its current context window."
 msgstr "{0}이(가) 현재 컨텍스트 창을 유지했습니다."
-
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0}에서 {1} 확인 없이 작업할 수 있습니다"
 
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
@@ -569,6 +574,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName}이(가) 이 채팅을 이어갈 수 없습니다. 대화 기록은 유지되므로 새 채팅을 시작하세요."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} 시작 실패"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} 대화 시작 실패."
 
@@ -580,6 +589,10 @@ msgstr "{agentName} 시작 실패."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName}: 이미지 첨부 미지원"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} 준비 완료"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -935,6 +948,10 @@ msgstr "{loadErrorTitle}: {message}"
 #: src/components/ProblemsPanel.tsx
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "{localizedMessage}, 줄 {displayLine}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "{server} MCP 서버의 {mcpTool}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -1736,13 +1753,13 @@ msgstr "{gitignorePath}에 추가"
 msgid "Add to Dictionary"
 msgstr "사전에 추가"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "프롬프트에 추가"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "값 추가"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "이 메시지에 댓글 남기기"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -1857,8 +1874,12 @@ msgid "Agent settings"
 msgstr "에이전트 설정"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "에이전트 설정: 변경 사항은 이 대화를 다시 시작할 때 적용됩니다"
+msgid "Agent settings — {headerSummary}"
+msgstr "에이전트 설정 — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "에이전트 설정 — {headerSummary}: 변경 사항은 이 대화를 다시 시작할 때 적용됩니다"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -2206,6 +2227,18 @@ msgstr "에셋: {title}"
 
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
+msgstr "파일 첨부"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "댓글 첨부"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "댓글 첨부: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
 msgstr "파일 첨부"
 
 #: src/components/ImageAttachments.tsx
@@ -2582,6 +2615,10 @@ msgstr "이야기 속 세계를 만들고 관리합니다. 캐릭터, 장소, �
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "<0>openknowledge.skill</0> 빌드 중, Claude Desktop App 여는 중"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "문서나 폴더의 공유 링크를 만듭니다"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "글머리 기호 목록"
@@ -2858,6 +2895,14 @@ msgstr "확인 중…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "체크박스가 있는 체크리스트입니다."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "문서의 마크다운 문제를 검사하고 고칠 수 있습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "프로젝트 전체의 마크다운 문제와 끊어진 링크를 검사합니다"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -3291,6 +3336,7 @@ msgid "commands"
 msgstr "명령어"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "명령"
 
@@ -3323,7 +3369,6 @@ msgstr "이 {0}에 댓글을 남기거나 AI에 질문"
 msgid "Comment or ask AI about this code block"
 msgstr "이 코드 블록에 댓글을 남기거나 AI에 질문"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -4656,6 +4701,10 @@ msgstr "폴더 생성됨"
 msgid "created template"
 msgstr "템플릿 생성됨"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "문서, 폴더, 템플릿, 스킬 또는 에셋을 만들거나 교체합니다"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "<0>{folderPart}/</0> 폴더를 만듭니다"
@@ -4761,6 +4810,7 @@ msgstr "기본값: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "삭제"
 
@@ -4889,6 +4939,14 @@ msgstr "완전히 삭제됨"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "템플릿 삭제됨"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "문서, 폴더, 템플릿, 스킬 또는 에셋을 삭제합니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "파일을 삭제합니다"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5348,6 +5406,7 @@ msgstr "푸시 한 번이 원격에 커밋 하나입니다."
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "편집"
@@ -5471,6 +5530,14 @@ msgstr "편집기 선택 영역"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "편집기 상태 표시줄"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "문서, 폴더, 템플릿 또는 스킬을 그 자리에서 편집합니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "파일을 편집합니다"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6273,6 +6340,10 @@ msgstr "동기화 주기를 업데이트하지 못했습니다 — {detail}"
 msgid "Failed to upload file"
 msgstr "파일을 업로드하지 못했습니다"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "빠름"
+
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."
 msgstr "현재 피드백을 사용할 수 없습니다. 나중에 다시 시도하세요."
@@ -6281,9 +6352,17 @@ msgstr "현재 피드백을 사용할 수 없습니다. 나중에 다시 시도�
 msgid "Fenced code block with monospace text."
 msgstr "고정폭 텍스트가 있는 펜스 코드 블록입니다."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "가져오기"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
 msgstr "가져오기 실패. 자세한 내용은 서버 로그를 확인하세요."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "웹 페이지를 가져옵니다"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
@@ -6410,6 +6489,14 @@ msgstr "다음 일치 항목 찾기"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "이전 일치 항목 찾기"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "이 프로젝트의 문서와 파일을 제목, 내용 또는 경로로 찾습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "스킬을 찾고 설치된 스킬을 읽습니다"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6667,6 +6754,10 @@ msgstr "받은 편지함에서 제품 업데이트를 받아 보세요."
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "설정 시작"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "이 프로젝트나 문서를 앱에서 여는 링크를 가져옵니다"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7273,6 +7364,10 @@ msgstr "\"{0}\"으로 가져왔습니다. 이름 \"{1}\"은 이미 사용 중입
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "가져오는 중"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "스킬을 이 프로젝트로 가져옵니다"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8281,6 +8376,10 @@ msgstr "이 지식 베이스를 Claude Skill로 사용할 수 있게 합니다."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "이 위치를 소스로 지정. 스킬의 실제 폴더가 여기로 이동합니다"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "스킬을 더 많은 위치에서 쓸 수 있게 하거나 한 위치에서 제거합니다"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "잘못된 apply 응답"
@@ -8398,6 +8497,10 @@ msgstr "MCP 서버"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "중간 크기 섹션 제목입니다."
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "페이지 언급"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -8540,6 +8643,7 @@ msgid "Most installed"
 msgstr "가장 많이 설치됨"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "이동"
 
@@ -8711,6 +8815,14 @@ msgstr "템플릿 이동됨"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "위로 이동했습니다."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "문서, 폴더, 에셋, 템플릿 또는 스킬을 이동하거나 이름을 바꿉니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "파일을 이동하거나 이름을 바꿉니다"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11133,6 +11245,10 @@ msgstr "프로젝트 감사 다시 실행"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "읽기"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "이 코드베이스를 읽고 가장 복잡한 모듈의 기술 사양 초안을 작성합니다. 개요, 아키텍처, 주요 파일, 미해결 질문을 모두 사양 색인 페이지에서 연결합니다."
@@ -11161,6 +11277,34 @@ msgstr "작업 트리를 읽는 중"
 msgid "Reading…"
 msgstr "읽는 중…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "파일을 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "읽기 전용 셸 명령으로 이 프로젝트의 문서와 폴더를 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "새 문서가 프로젝트 스타일을 따르도록 작성 팔레트를 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "링크 그래프를 읽습니다: 무엇이 무엇에 연결되는지"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "문서나 스킬의 버전 기록, 또는 폴더의 활동을 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "이 프로젝트의 OpenKnowledge 설정을 읽습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "편집 간의 미해결 충돌을 읽습니다"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "빠르게 시작할 수 있는 미리 준비된 폴더와 템플릿입니다."
@@ -11176,6 +11320,10 @@ msgstr "이유: {reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "이유: {reason} ({osDetail})"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "행동하기 전에 생각합니다"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11797,6 +11945,10 @@ msgstr "삭제하기 전에 {files}의 충돌을 해결하고, +{overflow}개 �
 msgid "Resolved"
 msgstr "해결됨"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "유지할 내용을 골라 충돌을 해결합니다"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "기본 위치 확인 중"
@@ -11899,6 +12051,10 @@ msgstr "이전 버전 ({0})으로 복원했습니다"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "{0} 버전으로 복원했습니다"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "문서나 스킬을 이전 버전으로 복원합니다"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12023,6 +12179,10 @@ msgstr "규칙"
 msgid "Ruminating…"
 msgstr "곰곰이 생각 중…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "실행"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Problems 패널에서 프로젝트 감사를 실행합니다."
@@ -12046,6 +12206,10 @@ msgstr "실행 중"
 #: src/components/ProblemsPanel.tsx
 msgid "Running project audit"
 msgstr "프로젝트 감사 실행 중"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "셸 명령을 실행합니다"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
@@ -12118,6 +12282,10 @@ msgstr "저장 위치"
 msgid "Saved with the project for your team."
 msgstr "팀을 위해 프로젝트와 함께 저장됨."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "프로젝트의 모든 문서에 대한 복원 지점을 저장합니다"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "<0>~/Downloads/openknowledge.skill</0>에 저장 후 Claude Desktop App 열기. PATH에 Node.js 또는 Bun 필요."
@@ -12168,6 +12336,7 @@ msgstr "시작으로 스크롤"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "검색"
@@ -12296,6 +12465,10 @@ msgstr "워크트리 검색"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "워크트리 및 브랜치 검색"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "파일을 검색합니다"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12493,6 +12666,10 @@ msgstr "피드백 보내기…"
 #: src/components/acp/UserMessageActions.tsx
 msgid "Send in this chat"
 msgstr "이 채팅에서 전송"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "지금 전송"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
@@ -12820,6 +12997,10 @@ msgstr "고급 설정 보기"
 msgid "Show Agents"
 msgstr "에이전트 표시"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "모두 보기"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "모두 표시"
@@ -12869,6 +13050,7 @@ msgstr "HTML 미리보기 표시"
 msgid "Show in Explorer"
 msgstr "탐색기에서 보기"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13423,7 +13605,6 @@ msgstr "로그인 흐름 시작 중"
 msgid "Starting terminal…"
 msgstr "터미널 시작 중…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "에이전트 시작 중…"
@@ -13593,6 +13774,10 @@ msgstr "워크트리 전환"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "워크트리 전환…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "에이전트 모드를 전환합니다"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"
@@ -14380,6 +14565,10 @@ msgstr "이 규칙은 프로젝트의 <0>{configFile}</0> 파일에서 가져오
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "이 스킬들은 AI 도구가 OpenKnowledge와 함께 작동하는 방법을 가르칩니다. 하나를 설치하면 이 컴퓨터의 모든 AI 도구에 추가됩니다."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "생각"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
@@ -15190,6 +15379,11 @@ msgstr "두 페이지 (홀수)"
 msgid "Type"
 msgstr "유형"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "페이지를 언급하려면 '@' 입력"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "명령을 사용하려면 '/' 입력"

@@ -24,13 +24,50 @@ export type ToolCallGlyph =
 export interface ToolCallDisplay {
   text: string;
   glyph: ToolCallGlyph;
+  preview?: string;
+}
+
+const PREVIEW_KEYS = [
+  'command',
+  'path',
+  'file_path',
+  'filePath',
+  'query',
+  'pattern',
+  'url',
+  'prompt',
+];
+
+const PREVIEW_LIMIT = 60;
+
+function argumentValue(rawInput: unknown): string | undefined {
+  const record = asRecord(unwrapMcpInput(rawInput)?.args ?? rawInput);
+  const value = PREVIEW_KEYS.map((key) => stringField(record, key)).find(
+    (candidate): candidate is string => candidate !== null,
+  );
+  const line = value?.trim().split('\n')[0]?.trim();
+  return line === undefined || line === '' ? undefined : line;
+}
+
+function ellipsize(line: string): string {
+  return line.length > PREVIEW_LIMIT ? `${line.slice(0, PREVIEW_LIMIT).trimEnd()}…` : line;
 }
 
 const OPEN_KNOWLEDGE_TOOLS: ReadonlySet<string> = new Set(OPEN_KNOWLEDGE_MCP_TOOLS);
 
-const OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)$/;
+const OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)(?:[-_][a-z]+)*$/;
 
-const OPEN_KNOWLEDGE_TITLE = /^(?:mcp[^a-z0-9]+)?(?:open[-_ ]?knowledge|ok)[^a-z0-9]+([a-z_]+)$/;
+const OPEN_KNOWLEDGE_TITLE =
+  /^(?:mcp[^a-z0-9]+)?(?:open[-_ ]?knowledge|ok)(?:-[a-z]+)*[^a-z0-9]+([a-z_]+)$/;
+
+const MCP_TITLE = /^mcp([^a-zA-Z0-9]+)([a-zA-Z0-9][a-zA-Z0-9_-]*?)\1([a-zA-Z0-9][a-zA-Z0-9_-]*)$/;
+
+function mcpServerAndTool(title: string): string | null {
+  const match = MCP_TITLE.exec(title.trim());
+  const server = match?.[2];
+  const tool = match?.[3];
+  return server === undefined || tool === undefined ? null : `${server} · ${tool}`;
+}
 
 interface OpenKnowledgeCall {
   tool: string;
@@ -261,6 +298,135 @@ const KIND_GLYPHS: Record<string, ToolCallGlyph> = {
   switch_mode: 'switch_mode',
 };
 
+function kindLabel(toolKind: string): string | null {
+  switch (toolKind) {
+    case 'read':
+      return t`Read`;
+    case 'edit':
+      return t`Edit`;
+    case 'delete':
+      return t`Delete`;
+    case 'move':
+      return t`Move`;
+    case 'search':
+      return t`Search`;
+    case 'execute':
+      return t`Run`;
+    case 'fetch':
+      return t`Fetch`;
+    case 'think':
+      return t`Think`;
+    default:
+      return null;
+  }
+}
+
+function openKnowledgePurpose(tool: string): string | null {
+  switch (tool) {
+    case 'exec':
+      return t`Reads documents and folders in this project with read-only shell commands`;
+    case 'search':
+      return t`Finds documents and files in this project by title, content, or path`;
+    case 'history':
+      return t`Reads the version history of a document or skill, or a folder's activity`;
+    case 'links':
+      return t`Reads the link graph: what links to what`;
+    case 'skills':
+      return t`Finds skills and reads what's installed`;
+    case 'config':
+      return t`Reads this project's OpenKnowledge settings`;
+    case 'palette':
+      return t`Reads the authoring palette so new documents match the project's style`;
+    case 'preview_url':
+      return t`Gets the link that opens this project or a document in the app`;
+    case 'share_link':
+      return t`Builds a shareable link to a document or folder`;
+    case 'lint':
+      return t`Checks documents for markdown problems and can fix them`;
+    case 'audit':
+      return t`Checks the whole project for markdown problems and broken links`;
+    case 'write':
+      return t`Creates or replaces a document, folder, template, skill, or asset`;
+    case 'edit':
+      return t`Edits a document, folder, template, or skill in place`;
+    case 'delete':
+      return t`Deletes a document, folder, template, skill, or asset`;
+    case 'move':
+      return t`Moves or renames a document, folder, asset, template, or skill`;
+    case 'install':
+      return t`Makes a skill available in more places, or removes it from one`;
+    case 'import':
+      return t`Imports a skill into this project`;
+    case 'checkpoint':
+      return t`Saves a restore point for every document in the project`;
+    case 'restore_version':
+      return t`Restores a document or skill to an earlier version`;
+    case 'conflicts':
+      return t`Reads unresolved conflicts between edits`;
+    case 'resolve_conflict':
+      return t`Resolves a conflict by choosing which content to keep`;
+    default:
+      return null;
+  }
+}
+
+function kindPurpose(toolKind: string): string | null {
+  switch (toolKind) {
+    case 'read':
+      return t`Reads a file`;
+    case 'edit':
+      return t`Edits a file`;
+    case 'delete':
+      return t`Deletes a file`;
+    case 'move':
+      return t`Moves or renames a file`;
+    case 'search':
+      return t`Searches files`;
+    case 'execute':
+      return t`Runs a shell command`;
+    case 'fetch':
+      return t`Fetches a web page`;
+    case 'think':
+      return t`Reasons before acting`;
+    case 'switch_mode':
+      return t`Switches the agent's mode`;
+    default:
+      return null;
+  }
+}
+
+export function describeToolPurpose(call: {
+  title: string;
+  toolKind: string;
+  rawInput: unknown;
+}): string | null {
+  const tool = openKnowledgeToolName(call);
+  if (tool !== null) return openKnowledgePurpose(tool);
+  const match = MCP_TITLE.exec(call.title.trim());
+  const server = match?.[2];
+  const mcpTool = match?.[3];
+  if (server !== undefined && mcpTool !== undefined) {
+    return t`${mcpTool} from the ${server} MCP server`;
+  }
+  return kindPurpose(call.toolKind);
+}
+
+export function toolRunLabel(call: { title: string; toolKind: string; rawInput: unknown }): string {
+  const tool = openKnowledgeToolName(call);
+  if (tool !== null) return `OpenKnowledge ${tool.replace(/_/g, ' ')}`;
+  return mcpServerAndTool(call.title) ?? kindLabel(call.toolKind) ?? call.title;
+}
+
+export function toolRunKey(call: { title: string; toolKind: string; rawInput: unknown }): string {
+  const tool = openKnowledgeToolName(call);
+  if (tool !== null) return `ok:${tool}`;
+  const match = MCP_TITLE.exec(call.title.trim());
+  const server = match?.[2];
+  const mcpTool = match?.[3];
+  if (server !== undefined && mcpTool !== undefined) return `mcp:${server}.${mcpTool}`;
+  return `kind:${call.toolKind}`;
+}
+
 export function describeToolCall(call: {
   title: string;
   toolKind: string;
@@ -268,5 +434,12 @@ export function describeToolCall(call: {
 }): ToolCallDisplay {
   const openKnowledge = identifyOpenKnowledgeCall(call.title, call.rawInput);
   if (openKnowledge !== null) return openKnowledgeDisplay(openKnowledge.tool, openKnowledge.args);
-  return { text: call.title, glyph: KIND_GLYPHS[call.toolKind] ?? 'other' };
+  const text = mcpServerAndTool(call.title) ?? call.title;
+  const value = argumentValue(call.rawInput);
+  const redundant = value !== undefined && text.includes(value);
+  return {
+    text,
+    glyph: KIND_GLYPHS[call.toolKind] ?? 'other',
+    ...(value === undefined || redundant ? {} : { preview: ellipsize(value) }),
+  };
 }

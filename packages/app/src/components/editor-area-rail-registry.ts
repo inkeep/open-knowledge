@@ -24,12 +24,19 @@ export function findResidualPanelId(layoutIds: Iterable<string>): string | null 
   return count === 1 ? residual : null;
 }
 
-export interface RailLayoutAccounting {
-  readonly residualId: string | null;
-  readonly presentPeers: readonly RightRailPanelId[];
-  readonly unaccountedIds: readonly string[];
-  readonly ok: boolean;
-}
+export type RailLayoutAccounting =
+  | {
+      readonly ok: true;
+      readonly residualId: string;
+      readonly presentPeers: readonly RightRailPanelId[];
+      readonly unaccountedIds: readonly string[];
+    }
+  | {
+      readonly ok: false;
+      readonly residualId: string | null;
+      readonly presentPeers: readonly RightRailPanelId[];
+      readonly unaccountedIds: readonly string[];
+    };
 
 export function accountRailLayout(layoutIds: Iterable<string>): RailLayoutAccounting {
   const ids = [...layoutIds];
@@ -38,6 +45,8 @@ export function accountRailLayout(layoutIds: Iterable<string>): RailLayoutAccoun
   const accounted = new Set<string>(presentPeers);
   if (residualId != null) accounted.add(residualId);
   const unaccountedIds = ids.filter((id) => !accounted.has(id));
-  const ok = residualId != null && unaccountedIds.length === 0;
-  return { residualId, presentPeers, unaccountedIds, ok };
+  if (residualId == null || unaccountedIds.length > 0) {
+    return { ok: false, residualId, presentPeers, unaccountedIds };
+  }
+  return { ok: true, residualId, presentPeers, unaccountedIds };
 }

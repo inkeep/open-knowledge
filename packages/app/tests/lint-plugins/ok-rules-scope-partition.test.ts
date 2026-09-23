@@ -18,12 +18,13 @@ describe('ok-rules scope table', () => {
     expect(scoped.filter((r) => UNSCOPED_RULES.has(r))).toEqual([]);
   });
 
-  test('UNSCOPED_RULES holds exactly the six rules that are deliberately global', () => {
+  test('UNSCOPED_RULES holds exactly the rules that are deliberately global', () => {
     expect([...UNSCOPED_RULES].sort()).toEqual([
       'microcopy-ellipsis',
       'no-hand-rolled-spinner',
       'no-loosely-typed-webcontents-ipc',
       'no-resolved-value-theme-source',
+      'no-sentinel-signal-target',
       'no-split-suggestion-dispatch',
       'no-unportaled-editor-content',
     ]);

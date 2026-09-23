@@ -3,7 +3,7 @@ title: Skills OpenKnowledge ships
 description: What each built-in skill does, and how to install or remove it.
 ---
 
-OpenKnowledge ships skills that teach an AI how to work with OpenKnowledge itself. None is required, and none installs without you choosing it.
+OpenKnowledge ships skills that teach an AI how to work with OpenKnowledge itself. Installing them into your editors is optional and requires your choice. In-app agent threads receive the project guidance automatically, as described below.
 
 | Skill | Use it to | Where |
 | --- | --- | --- |
@@ -26,5 +26,7 @@ Only the discovery skill is offered at first launch; the authoring one is offere
 <Image src="/images/skills-studio/settings-project-skills.png" alt="Settings, This project, Skills Studio: the project's own open-knowledge skill and the project-local skill folders." width={1600} height={1244} />
 
 The `open-knowledge` skill installs into the project's own skill folders, which are not committed by default. A teammate who clones the repository installs it themselves.
+
+Agents started inside OpenKnowledge receive the project skill on the first non-command message of each new in-app agent session. This uses a [runtime copy under `.ok/local/`](../../reference/what-open-knowledge-writes.mdx) and leaves editor skill folders unchanged. Gemini receives the top-level skill text inline; its file tool cannot read the gitignored `references/` files. Other agents receive a path to read the skill and its references.
 
 From the CLI: `ok init --skills discovery,write-skill` selects built-ins during setup, `ok init --no-skills` skips them.

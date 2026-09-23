@@ -21,6 +21,8 @@ export const KNOWN_UNSWEPT = {
     'same helper, plus fixture paths built from a bare root-relative constant',
   '../app/src/editor/observers.ts':
     'bridge-no-wallclock.test.ts reaches it via a lowercase repoRoot and a root-relative literal',
+  '../../AGENTS.md':
+    'no-sentinel-signal-target.test.ts reaches it through join(REPO_ROOT, AGENTS_REL), a named constant the sweep cannot resolve',
 };
 
 function walkTestFiles(dir, out = []) {

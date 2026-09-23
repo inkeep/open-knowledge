@@ -1,11 +1,12 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, expectTypeOf, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { stringify } from 'yaml';
 import { resolveThemePlugin } from '../theme/theme-plugins.ts';
+import { serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey } from './config-leak-serializer.test-helper.ts';
 import { isKnownConfigError } from './errors.ts';
-import { type ReadConfigSafelyResult, readConfigSafely } from './read-config-safely.ts';
+import { readConfigSafely } from './read-config-safely.ts';
 import { REMOVED_KEYS } from './removed-keys.ts';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -33,10 +34,16 @@ function leafPresent(value: unknown, path: readonly string[]): boolean {
 
 let testDir: string;
 
+const CONFIG_VALUES_THE_VALUE_FALLBACK_ARM_MUST_NEVER_ECHO = ['PRIVATE_INVALID_VALUE'] as const;
+
+const FIXTURE_PATH_DELIBERATELY_CARRIES_EVERY_FORBIDDEN_VALUE =
+  CONFIG_VALUES_THE_VALUE_FALLBACK_ARM_MUST_NEVER_ECHO.join('-');
+
 beforeEach(() => {
+  const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   testDir = resolve(
     tmpdir(),
-    `ok-readconfig-test-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    `ok-readconfig-test-${FIXTURE_PATH_DELIBERATELY_CARRIES_EVERY_FORBIDDEN_VALUE}-${stamp}`,
   );
   mkdirSync(testDir, { recursive: true });
 });
@@ -46,10 +53,99 @@ afterEach(() => {
 });
 
 describe('readConfigSafely', () => {
-  test('successful reads expose only recovered diagnostic codes', () => {
-    expectTypeOf<
-      Extract<ReadConfigSafelyResult, { valid: true }>['diagnostics'][number]['code']
-    >().toEqualTypeOf<'REMOVED_KEY' | 'VALUE_FALLBACK'>();
+  test('the fixture path carries every value the VALUE_FALLBACK arm must not echo, so no absence check can pass on path luck', () => {
+    for (const value of CONFIG_VALUES_THE_VALUE_FALLBACK_ARM_MUST_NEVER_ECHO) {
+      expect(testDir, `testDir must carry ${value}`).toContain(value);
+    }
+  });
+
+  test('the REMOVED_KEY arm echoes three raw config lines centred on where the removed value begins, so the window reaches past the stale key into a still-supported setting value, which the VALUE_FALLBACK arm omits', () => {
+    const path = resolve(testDir, 'removed-with-snippet.yml');
+    writeFileSync(
+      path,
+      [
+        'alphaUnknown: OUTSIDE_WINDOW_ABOVE',
+        'folders:',
+        '  - path: "FLAGGED_ENTRY_ECHOED/**"',
+        'content: {dir: NEIGHBOUR_FOREIGN_VALUE_ECHOED}',
+        'deltaUnknown: OUTSIDE_WINDOW_BELOW',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = readConfigSafely({ absPath: path, warn: () => {} });
+
+    expect(result.valid).toBe(true);
+    if (result.valid) {
+      expect(result.value.content.dir).toBe('NEIGHBOUR_FOREIGN_VALUE_ECHOED');
+      const removed = result.diagnostics.filter((d) => d.code === 'REMOVED_KEY');
+      expect(removed).toHaveLength(1);
+      const [diag] = removed;
+      if (diag?.code === 'REMOVED_KEY') {
+        const snippet = diag.source?.snippet;
+        expect(snippet).toContain('folders:');
+        expect(snippet).toContain('FLAGGED_ENTRY_ECHOED');
+        expect(snippet).toContain('NEIGHBOUR_FOREIGN_VALUE_ECHOED');
+        expect(snippet).not.toContain('OUTSIDE_WINDOW_ABOVE');
+        expect(snippet).not.toContain('OUTSIDE_WINDOW_BELOW');
+      }
+    }
+  });
+
+  test('the leak serializer exempts exactly the caller-supplied paths under the file key, and no other value and no other key', () => {
+    const supplied = resolve(testDir, 'supplied.yml');
+    const suppliedPathUnderAKeyOtherThanFile = resolve(testDir, 'second-supplied.yml');
+    const configValueThatHappensToSitUnderTheFixtureRoot = resolve(
+      testDir,
+      'DECOY_UNDER_FIXTURE_ROOT',
+    );
+
+    const serialized = serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+      {
+        file: supplied,
+        sidelinedTo: suppliedPathUnderAKeyOtherThanFile,
+        issues: [{ file: 'VALUE_KEYED_FILE_BUT_NOT_THE_SUPPLIED_PATH' }],
+        detail: configValueThatHappensToSitUnderTheFixtureRoot,
+      },
+      [supplied, suppliedPathUnderAKeyOtherThanFile],
+    );
+
+    expect(serialized).not.toContain(JSON.stringify(supplied));
+    expect(
+      serialized,
+      'the exemption is not confined to the file key: it stripped a supplied path from another key',
+    ).toContain(JSON.stringify(suppliedPathUnderAKeyOtherThanFile));
+    expect(serialized).toContain(JSON.stringify('VALUE_KEYED_FILE_BUT_NOT_THE_SUPPLIED_PATH'));
+    expect(serialized).toContain(JSON.stringify(configValueThatHappensToSitUnderTheFixtureRoot));
+  });
+
+  test('a fixture with both a removed key and a non-integer embeddings batch size reports exactly REMOVED_KEY and VALUE_FALLBACK, and no third code', () => {
+    const path = resolve(testDir, 'recovered-and-removed.yml');
+    writeFileSync(
+      path,
+      [
+        'folders:',
+        '  - path: "LEGACY_ENTRY/**"',
+        'search:',
+        '  semantic:',
+        '    maxBatchSize: NOT_AN_INTEGER',
+        '',
+      ].join('\n'),
+      'utf-8',
+    );
+
+    const result = readConfigSafely({ absPath: path, warn: () => {} });
+
+    expect(result.valid).toBe(true);
+    if (!result.valid) return;
+
+    const codes = result.diagnostics.map((d) => d.code);
+    expect(
+      codes,
+      'the fixture produced no recovered diagnostics, so the exclusion check below is vacuous',
+    ).toEqual(expect.arrayContaining(['REMOVED_KEY', 'VALUE_FALLBACK']));
+    expect([...new Set(codes)].sort()).toEqual(['REMOVED_KEY', 'VALUE_FALLBACK']);
   });
 
   test('missing file → valid=true, value is schema defaults', () => {
@@ -157,7 +253,15 @@ describe('readConfigSafely', () => {
       result,
     );
     expect(warnings).toEqual([]);
-    expect(JSON.stringify(result.diagnostics)).not.toContain('PRIVATE_INVALID_VALUE');
+    const valueBearingFields = serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+      result.diagnostics,
+      [path],
+    );
+    expect(
+      valueBearingFields,
+      'the leak serializer produced no haystack, so the absence check below is vacuous',
+    ).toContain(JSON.stringify(['search', 'semantic', 'maxBatchSize']));
+    expect(valueBearingFields).not.toContain('PRIVATE_INVALID_VALUE');
     expect(result.diagnostics).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ code: 'SCHEMA_INVALID' })]),
     );

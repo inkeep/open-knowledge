@@ -8,32 +8,43 @@ import type {
   ThreadInfo,
   ThreadServerFrame,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { afterEach, describe, expect, test } from 'vitest';
+import { THREAD_REOPEN_OP_TIMEOUT_MS } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import codexFixture from '../../../../test-support/fixtures/codex-legacy-warning-envelopes.json' with {
   type: 'json',
 };
 import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import type { AgentSessionManager } from '../agent-sessions.ts';
+import { resolveBundledSkillDir } from '../build-skill-zip.ts';
 import { getLogger, type PinoLogger } from '../logger.ts';
+import { isValidLockPid } from '../process-alive.ts';
 import { RUNTIME_VERSION } from '../version-constants.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
+import { isWithin } from './archive.ts';
 import {
   installNodeFixture,
   npmCli,
+  probedDescriptors,
   registryPackage,
+  withAcquisitionHome,
   writeExecutable,
+  writeRecordingNpm,
 } from './package-acquisition.test-helper.ts';
 import { AcpPermissionStore } from './permissions.ts';
+import * as projectSkillStaging from './project-skill-staging.ts';
+import { PROJECT_SKILL_ENTRY, projectSkillStageDir } from './project-skill-staging.ts';
 import { AcpRegistry } from './registry.ts';
 import {
   ACP_ENVIRONMENT_NOTE,
   AcpThreadManager,
   type AcpThreadManagerOptions,
+  buildEnvironmentNote,
   MAX_QUEUED_PROMPTS,
 } from './thread-manager.ts';
 
 const log = getLogger('acp-thread-test');
+const BLOCKING_CONSENT_BUDGET_MS = Math.floor(THREAD_REOPEN_OP_TIMEOUT_MS / 2);
 
 const EXAMPLE_AGENT = join(
   dirname(Bun.resolveSync('@agentclientprotocol/sdk', import.meta.dirname)),
@@ -57,6 +68,7 @@ function tmp(): string {
 afterEach(async () => {
   await Promise.allSettled(managers.map((m) => m.destroy()));
   managers = [];
+  vi.restoreAllMocks();
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
 });
@@ -73,10 +85,12 @@ function makeManager(
     unwatchedTurnKillMs?: number;
     isIgnoredPath?: (relPosix: string) => boolean;
     registry?: AcpRegistry;
+    runtimeInstall?: AcpThreadManagerOptions['runtimeInstall'];
     resolveLoginShellPath?: () => Promise<string | null>;
     agentPresenceBroadcaster?: AgentPresenceBroadcaster;
     sessionManager?: AgentSessionManager;
     log?: PinoLogger;
+    projectSkillSourceDir?: string | null;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -128,6 +142,14 @@ function internals(manager: AcpThreadManager): {
     child: (threadId) => m.threads.get(threadId)?.child,
     sessionId: (threadId) => m.threads.get(threadId)?.sessionId,
   };
+}
+
+function stagedSkillPath(localDir: string): string {
+  return join(projectSkillStageDir(localDir), PROJECT_SKILL_ENTRY);
+}
+
+function stagedSkillNote(localDir: string): string {
+  return buildEnvironmentNote({ skillPath: stagedSkillPath(localDir) });
 }
 
 describe('package acquisition failure projection', () => {
@@ -405,6 +427,15 @@ async function waitUntil(pred: () => boolean, ms: number, what: string): Promise
   }
 }
 
+async function statusesOf(manager: AcpThreadManager, threadId: string): Promise<string[]> {
+  const statuses: string[] = [];
+  await manager.subscribe(threadId, 0, (frame) => {
+    const events = frame.op === 'event' ? [frame.event] : frame.op === 'events' ? frame.events : [];
+    for (const event of events) if (event.kind === 'status') statuses.push(event.status);
+  });
+  return statuses;
+}
+
 describe('AcpThreadManager (real subprocess)', () => {
   test('runs a full turn against the SDK example agent, permission round-trip included', async () => {
     expect(existsSync(EXAMPLE_AGENT)).toBe(true);
@@ -420,7 +451,7 @@ describe('AcpThreadManager (real subprocess)', () => {
 
     const events: Array<{ seq: number; event: ThreadEvent }> = [];
     const info = await manager.createThread({ agent: { source: 'custom', id: 'example' } });
-    expect(['installing', 'spawning']).toContain(info.status);
+    expect(info.status).toBe('spawning');
     await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
       if (frame.op === 'event') events.push({ seq: frame.seq, event: frame.event });
       if (frame.op === 'events') {
@@ -963,7 +994,7 @@ process.stdin.on('data', (chunk) => {
     await waitFor(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000);
     manager.sendPrompt(info.threadId, 'first hello');
     await waitFor(() => receivedTexts().length === 3, 15_000);
-    expect(receivedTexts()[2]).toBe(`received:${ACP_ENVIRONMENT_NOTE}\n\nfirst hello`);
+    expect(receivedTexts()[2]).toBe(`received:${stagedSkillNote(localDir)}\n\nfirst hello`);
     const userMessages = events
       .map((e) => e.event)
       .filter((e) => e.kind === 'user_message')
@@ -979,12 +1010,8 @@ process.stdin.on('data', (chunk) => {
   }, 30_000);
 });
 
-function writeResumableAgentEntry(localDir: string, id: string, env: Record<string, string>): void {
-  const agentPath = join(localDir, `${id}.mjs`);
-  writeFileSync(
-    agentPath,
-    `
-import { appendFileSync } from 'node:fs';
+const RESUMABLE_AGENT_SOURCE = `
+const { appendFileSync } = process.getBuiltinModule('node:fs');
 const caps = (process.env.FAKE_CAPS ?? '').split(',').filter(Boolean);
 const withConfig = process.env.FAKE_CONFIG === '1';
 const withModes = process.env.FAKE_MODES === '1';
@@ -1097,8 +1124,11 @@ process.stdin.on('data', (chunk) => {
     }
   }
 });
-`,
-  );
+`;
+
+function writeResumableAgentEntry(localDir: string, id: string, env: Record<string, string>): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(agentPath, RESUMABLE_AGENT_SOURCE);
   writeFileSync(
     join(localDir, 'acp-agents.json'),
     JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath], env }]),
@@ -1158,7 +1188,8 @@ describe('AcpThreadManager persistence + resume', () => {
     }
   };
   const kinds = (events: Collected): string[] => events.map((e) => e.event.kind);
-  const notedEcho = (text: string): string => `echo:${ACP_ENVIRONMENT_NOTE}\n\n${text}`;
+  const notedEcho = (localDir: string, text: string): string =>
+    `echo:${stagedSkillNote(localDir)}\n\n${text}`;
   const agentChunks = (events: Collected): string[] =>
     events
       .map((e) => e.event)
@@ -1256,7 +1287,7 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(replayed.length).toBeGreaterThanOrEqual(liveEvents.length);
     expect(replayed.map((e) => e.seq)).toEqual(replayed.map((_, i) => i));
     expect(kinds(replayed)).toContain('user_message');
-    expect(agentChunks(replayed)).toContain(notedEcho('hello there'));
+    expect(agentChunks(replayed)).toContain(notedEcho(localDir, 'hello there'));
   }, 45_000);
 
   test('closing a never-prompted thread discards it instead of archiving', async () => {
@@ -1566,7 +1597,10 @@ describe('AcpThreadManager persistence + resume', () => {
       .filter((e): e is Extract<ThreadEvent, { kind: 'user_message' }> => e.kind === 'user_message')
       .map((e) => e.content);
     expect(userMessages).toEqual(['first message', 'second message']);
-    expect(agentChunks(replayed)).toEqual([notedEcho('first message'), 'echo:second message']);
+    expect(agentChunks(replayed)).toEqual([
+      notedEcho(localDir, 'first message'),
+      'echo:second message',
+    ]);
     expect(manager.getInfo(threadId)?.availableCommands).toBeNull();
 
     await manager.closeThread(threadId);
@@ -1595,7 +1629,10 @@ describe('AcpThreadManager persistence + resume', () => {
 
     const replayed: Collected = [];
     await manager.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toEqual([notedEcho('first message'), 'echo:second message']);
+    expect(agentChunks(replayed)).toEqual([
+      notedEcho(localDir, 'first message'),
+      'echo:second message',
+    ]);
     expect(agentChunks(replayed)).not.toContain('old-user');
     expect(agentChunks(replayed)).not.toContain('old-agent');
 
@@ -1623,7 +1660,7 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(manager.getInfo(threadId)?.archived).toBe(true);
     const replayed: Collected = [];
     await manager.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toContain(notedEcho('first message'));
+    expect(agentChunks(replayed)).toContain(notedEcho(localDir, 'first message'));
   }, 45_000);
 
   test('an agent that drops its resume capability retires the offer instead of repeating it', async () => {
@@ -1693,7 +1730,7 @@ describe('AcpThreadManager persistence + resume', () => {
     );
     const replayed: Collected = [];
     await manager2.subscribe(threadId, 0, collector(replayed));
-    expect(agentChunks(replayed)).toContain(notedEcho('survives shutdown'));
+    expect(agentChunks(replayed)).toContain(notedEcho(localDir, 'survives shutdown'));
     await manager2.closeThread(threadId);
   }, 45_000);
 });
@@ -2847,6 +2884,123 @@ describe('AcpThreadManager prompt queueing', () => {
     expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
     expect(userMessages(events)).toEqual(['nothing to interrupt']);
     expect(stopReasons(events)).toEqual(['end_turn']);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('Send now pulls a queued entry out of line and steers with it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeCancelHonoringGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'steer-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'patient one');
+    manager.sendPrompt(info.threadId, 'jump the line');
+    const target = (manager.getInfo(info.threadId)?.queue ?? [])[1];
+    if (target === undefined) throw new Error('queue entry missing');
+
+    expect(manager.sendQueuedNow(info.threadId, 'no-such-id')).toBe(false);
+    expect(manager.sendQueuedNow(info.threadId, target.id)).toBe(true);
+    expect(manager.getInfo(info.threadId)?.steer?.content).toBe('jump the line');
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'patient one',
+    ]);
+
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(stopReasons(events)[0]).toBe('cancelled');
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'jump the line', 'patient one']);
+    expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('Send now ahead of a parked steer keeps that steer first in line, not dropped', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir, { steerStallMs: 60_000 });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'queued first');
+    manager.steerPrompt(info.threadId, 'could not interrupt');
+    const queued = (manager.getInfo(info.threadId)?.queue ?? [])[0];
+    if (queued === undefined) throw new Error('queue entry missing');
+
+    expect(manager.sendQueuedNow(info.threadId, queued.id)).toBe(true);
+    expect(manager.getInfo(info.threadId)?.steer?.content).toBe('queued first');
+    expect((manager.getInfo(info.threadId)?.queue ?? []).map((m) => m.content)).toEqual([
+      'could not interrupt',
+    ]);
+
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 3,
+      20_000,
+      `three turn ends; got ${JSON.stringify(events.map((e) => e.event.kind))}`,
+    );
+    expect(userMessages(events)).toEqual([
+      'WAIT at the gate',
+      'queued first',
+      'could not interrupt',
+    ]);
+
+    await manager.closeThread(info.threadId);
+  }, 40_000);
+
+  test('Send now on a held entry with no run going just sends it', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const releasePath = join(localDir, 'release-turn');
+    writeGateAgent(localDir, releasePath);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.sendPrompt(info.threadId, 'parked');
+    const entry = (manager.getInfo(info.threadId)?.queue ?? [])[0];
+    if (entry === undefined) throw new Error('queue entry missing');
+    manager.holdQueued(info.threadId, entry.id, true);
+
+    writeFileSync(releasePath, 'go');
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 1,
+      20_000,
+      'the gated turn ends',
+    );
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 20_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.queue?.length).toBe(1);
+
+    expect(manager.sendQueuedNow(info.threadId, entry.id)).toBe(true);
+    await waitUntil(
+      () => events.filter((e) => e.event.kind === 'turn_ended').length === 2,
+      20_000,
+      'two turn ends',
+    );
+    expect(userMessages(events)).toEqual(['WAIT at the gate', 'parked']);
+    expect(manager.getInfo(info.threadId)?.queue).toBeUndefined();
+    expect(manager.getInfo(info.threadId)?.steer).toBeUndefined();
 
     await manager.closeThread(info.threadId);
   }, 40_000);
@@ -4983,6 +5137,10 @@ describe('diagnostic stream lifetime', () => {
     try {
       expect(await resumed).toMatchObject({ code: 'spawn-failed' });
       const pid = Number(readFileSync(pidFile, 'utf8'));
+      expect(
+        isValidLockPid(pid),
+        `resumed-pid held ${JSON.stringify(readFileSync(pidFile, 'utf8'))}`,
+      ).toBe(true);
       await expect
         .poll(
           () => {
@@ -5004,9 +5162,21 @@ describe('diagnostic stream lifetime', () => {
       expect(replay.at(-1)).toMatchObject({ kind: 'status', detail: 'thread closed' });
     } finally {
       if (existsSync(pidFile)) {
-        try {
-          process.kill(Number(readFileSync(pidFile, 'utf8')), 'SIGKILL');
-        } catch {}
+        const raw = readFileSync(pidFile, 'utf8');
+        const pid = Number(raw);
+        if (isValidLockPid(pid)) {
+          try {
+            process.kill(pid, 'SIGKILL');
+          } catch {}
+        } else {
+          console.warn(
+            `[resume-after-close cleanup] left a spawned child unreaped: ${pidFile} held ${JSON.stringify(raw)}, which isValidLockPid rejects`,
+          );
+        }
+      } else {
+        console.warn(
+          `[resume-after-close cleanup] no pidfile at ${pidFile}: either the resume failed before spawning, or a child was spawned and this test threw before the child's first write — in that case it is still running`,
+        );
       }
     }
   }, 15_000);
@@ -5347,6 +5517,7 @@ function registryManagerFor(
   contentDir: string,
   localDir: string,
   binDir: string,
+  extra?: Parameters<typeof makeManager>[2],
 ): AcpThreadManager {
   const manifest = {
     id: agentId,
@@ -5363,6 +5534,7 @@ function registryManagerFor(
           status: 200,
         })) as unknown as typeof fetch,
     }),
+    ...extra,
   });
 }
 
@@ -5580,4 +5752,717 @@ describe.skipIf(process.platform === 'win32')('a typed session notice mid-turn',
     expect(bothTurns.length).toBe(firstTurn.length * 2);
     expect(thread.manager.getInfo(thread.threadId)?.status).toBe('ready');
   }, 60_000);
+});
+
+describe('AcpThreadManager project skill delivery', () => {
+  const BLOCKS_AGENT = `
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+const notify = (update) =>
+  write({ jsonrpc: '2.0', method: 'session/update', params: { sessionId: 's1', update } });
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    const reply = (result) =>
+      process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, result }) + '\\n');
+    if (msg.method === 'initialize') {
+      reply({
+        protocolVersion: 1,
+        agentCapabilities: {
+          promptCapabilities: { embeddedContext: process.env.FAKE_EMBEDDED === '1' },
+        },
+      });
+    } else if (msg.method === 'session/new') {
+      reply({ sessionId: 's1' });
+    } else if (msg.method === 'session/prompt') {
+      notify({
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'blocks:' + JSON.stringify(msg.params.prompt) },
+      });
+      reply({ stopReason: 'end_turn' });
+    } else if (msg.id !== undefined) {
+      reply({});
+    }
+  }
+});
+`;
+
+  type EchoedBlock = { type: string; text?: string; resource?: Record<string, string> };
+
+  function writeBlocksAgent(localDir: string, id: string, embeddedContext: boolean): void {
+    const agentPath = join(localDir, `${id}-blocks-agent.mjs`);
+    writeFileSync(agentPath, BLOCKS_AGENT);
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        {
+          id,
+          name: `Fake ${id}`,
+          command: 'node',
+          args: [agentPath],
+          env: { FAKE_EMBEDDED: embeddedContext ? '1' : '0' },
+        },
+      ]),
+    );
+  }
+
+  async function firstPromptBlocks(
+    manager: AcpThreadManager,
+    agentId: string,
+    prompt: string,
+    source: 'custom' | 'registry' = 'custom',
+  ): Promise<EchoedBlock[]> {
+    const info = await manager.createThread({ agent: { source, id: agentId } });
+    const events: ThreadEvent[] = [];
+    await manager.subscribe(info.threadId, 0, (frame: ThreadServerFrame) => {
+      if (frame.op === 'event') events.push(frame.event);
+      if (frame.op === 'events') events.push(...frame.events);
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, prompt);
+    const echoed = (): string | undefined =>
+      events
+        .filter((e) => e.kind === 'session_update')
+        .map((e) => (e.update as { content?: { text?: string } }).content?.text ?? '')
+        .find((text) => text.startsWith('blocks:'));
+    await waitUntil(() => echoed() !== undefined, 15_000, 'echoed prompt blocks');
+    return JSON.parse((echoed() as string).slice('blocks:'.length)) as EchoedBlock[];
+  }
+
+  function geminiRegistryManager(
+    localDir: string,
+    embeddedContext: boolean,
+    extra?: Parameters<typeof makeManager>[2],
+  ): AcpThreadManager {
+    const binDir = tmp();
+    writeRegistryAgentShims(binDir, []);
+    writeFileSync(
+      join(binDir, 'agent.mjs'),
+      `process.env.FAKE_EMBEDDED = ${JSON.stringify(embeddedContext ? '1' : '0')};\n${BLOCKS_AGENT}`,
+    );
+    return registryManagerFor('gemini', tmp(), localDir, binDir, extra);
+  }
+
+  const bundledSkillText = (): string =>
+    readFileSync(
+      join(resolveBundledSkillDir('project', { checkDesktop: false }), PROJECT_SKILL_ENTRY),
+      'utf8',
+    );
+
+  test('stages the shipped bundle under localDir and points the first prompt at it', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'pointer-agent', false);
+    const manager = makeManager(tmp(), localDir);
+
+    const blocks = await firstPromptBlocks(manager, 'pointer-agent', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${stagedSkillNote(localDir)}\n\nhello` }]);
+    expect(readFileSync(stagedSkillPath(localDir), 'utf8')).toBe(bundledSkillText());
+    expect(existsSync(join(projectSkillStageDir(localDir), 'references'))).toBe(true);
+  }, 30_000);
+
+  test('a custom agent named gemini receives the ordinary path pointer', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'gemini', true);
+    const manager = makeManager(tmp(), localDir);
+
+    const blocks = await firstPromptBlocks(manager, 'gemini', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${stagedSkillNote(localDir)}\n\nhello` }]);
+  }, 30_000);
+
+  test('a content subfolder still receives the pointer above its cwd', async () => {
+    const projectDir = tmp();
+    const contentDir = join(projectDir, 'docs');
+    const localDir = join(projectDir, '.ok', 'local');
+    mkdirSync(contentDir, { recursive: true });
+    mkdirSync(localDir, { recursive: true });
+    writeBlocksAgent(localDir, 'subfolder-agent', false);
+    const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+    const manager = makeManager(contentDir, localDir, { log: capturingLog(lines) });
+
+    const blocks = await firstPromptBlocks(manager, 'subfolder-agent', 'hello');
+    expect(isWithin(contentDir, stagedSkillPath(localDir))).toBe(false);
+    expect(blocks).toEqual([{ type: 'text', text: `${stagedSkillNote(localDir)}\n\nhello` }]);
+    expect(lines.some((line) => line.msg.includes('skill staged above agent cwd'))).toBe(true);
+  }, 30_000);
+
+  test('concurrent connects share staging and a later connect still repairs changes', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'concurrent-agent', false);
+    const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+    const barrier = Promise.withResolvers<void>();
+    let coordinate = false;
+    let arrivals = 0;
+    const manager = makeManager(tmp(), localDir, {
+      log: capturingLog(lines),
+      resolveLoginShellPath: async () => {
+        if (coordinate) {
+          arrivals += 1;
+          if (arrivals === 2) barrier.resolve();
+          await barrier.promise;
+        }
+        return null;
+      },
+    });
+    await manager.init();
+    coordinate = true;
+    const stage = vi.spyOn(projectSkillStaging, 'stageProjectSkill');
+    await Promise.all([
+      firstPromptBlocks(manager, 'concurrent-agent', 'first'),
+      firstPromptBlocks(manager, 'concurrent-agent', 'second'),
+    ]);
+    expect(stage).toHaveBeenCalledTimes(1);
+    const staged = lines.find((line) => line.msg.includes('project skill staged'));
+    expect(staged?.obj).toMatchObject({ localDir });
+    expect(staged?.obj).not.toHaveProperty('threadId');
+    expect(staged?.obj).not.toHaveProperty('agentId');
+
+    coordinate = false;
+    writeFileSync(stagedSkillPath(localDir), 'modified');
+    await firstPromptBlocks(manager, 'concurrent-agent', 'third');
+    expect(stage).toHaveBeenCalledTimes(2);
+    expect(readFileSync(stagedSkillPath(localDir), 'utf8')).toBe(bundledSkillText());
+  }, 30_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'registry gemini receives no pointer when the inline skill cannot be read',
+    async () => {
+      const localDir = tmp();
+      const sourceDir = tmp();
+      mkdirSync(join(sourceDir, PROJECT_SKILL_ENTRY));
+      const lines: { obj: Record<string, unknown>; msg: string }[] = [];
+      const manager = geminiRegistryManager(localDir, true, {
+        projectSkillSourceDir: sourceDir,
+        log: capturingLog(lines),
+      });
+
+      const blocks = await firstPromptBlocks(manager, 'gemini', 'hello', 'registry');
+      expect(blocks).toEqual([{ type: 'text', text: `${ACP_ENVIRONMENT_NOTE}\n\nhello` }]);
+      const failure = lines.find((line) => line.msg.includes('skill inline read failed'));
+      expect(failure?.obj.err).toMatchObject({ code: 'EISDIR' });
+    },
+    30_000,
+  );
+
+  test('sends the plain note when staging fails, and never blocks the spawn', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'degrade-agent', false);
+    const manager = makeManager(tmp(), localDir, {
+      projectSkillSourceDir: join(localDir, 'no-such-bundle'),
+    });
+
+    const blocks = await firstPromptBlocks(manager, 'degrade-agent', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${ACP_ENVIRONMENT_NOTE}\n\nhello` }]);
+    expect(existsSync(projectSkillStageDir(localDir))).toBe(false);
+  }, 30_000);
+
+  test('sends the plain note when staging is switched off', async () => {
+    const localDir = tmp();
+    writeBlocksAgent(localDir, 'off-agent', false);
+    const manager = makeManager(tmp(), localDir, { projectSkillSourceDir: null });
+
+    const blocks = await firstPromptBlocks(manager, 'off-agent', 'hello');
+    expect(blocks).toEqual([{ type: 'text', text: `${ACP_ENVIRONMENT_NOTE}\n\nhello` }]);
+    expect(existsSync(projectSkillStageDir(localDir))).toBe(false);
+  }, 30_000);
+
+  test.skipIf(process.platform === 'win32')(
+    'registry gemini gets the skill body inline as an embedded resource',
+    async () => {
+      const localDir = tmp();
+      const manager = geminiRegistryManager(localDir, true);
+
+      const blocks = await firstPromptBlocks(manager, 'gemini', 'hello', 'registry');
+      const skillPath = stagedSkillPath(localDir);
+      expect(blocks).toEqual([
+        { type: 'text', text: `${buildEnvironmentNote({ skillPath, inline: true })}\n\nhello` },
+        {
+          type: 'resource',
+          resource: {
+            uri: pathToFileURL(skillPath).href,
+            mimeType: 'text/markdown',
+            text: bundledSkillText(),
+          },
+        },
+      ]);
+    },
+    30_000,
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'registry gemini without embeddedContext still gets the body, as a text block',
+    async () => {
+      const localDir = tmp();
+      const manager = geminiRegistryManager(localDir, false);
+
+      const blocks = await firstPromptBlocks(manager, 'gemini', 'hello', 'registry');
+      expect(blocks).toHaveLength(2);
+      expect(blocks[0]?.type).toBe('text');
+      expect(blocks[1]?.type).toBe('text');
+      expect(blocks[1]?.text).toContain(bundledSkillText());
+    },
+    30_000,
+  );
+});
+
+describe('status frames for an open that installs nothing', () => {
+  test('a custom agent start never reports installing', async () => {
+    const localDir = tmp();
+    writeExampleAgentEntry(localDir);
+    const manager = makeManager(tmp(), localDir);
+
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'example' } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      'the custom agent to become ready',
+    );
+
+    const statuses = await statusesOf(manager, info.threadId);
+    expect(info.status).toBe('spawning');
+    expect(statuses[0]).toBe('spawning');
+    expect(statuses).not.toContain('installing');
+  }, 30_000);
+
+  test('a custom agent retry never reports installing', async () => {
+    const localDir = tmp();
+    writeRequestingAgentEntry(
+      localDir,
+      'retry-no-install',
+      "write({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'prompt failed' } });",
+    );
+    const manager = makeManager(tmp(), localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'retry-no-install' },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'fail this turn');
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      15_000,
+      'the prompt failure',
+    );
+    writeRequestingAgentEntry(localDir, 'retry-no-install', 'finish();');
+    const beforeRetry = (await statusesOf(manager, info.threadId)).length;
+
+    expect((await manager.retryThread(info.threadId)).status).toBe('ready');
+
+    const afterRetry = (await statusesOf(manager, info.threadId)).slice(beforeRetry);
+    expect(afterRetry[0]).toBe('spawning');
+    expect(afterRetry).not.toContain('installing');
+  }, 45_000);
+
+  test('a custom agent resume never reports installing', async () => {
+    const localDir = tmp();
+    writeResumableAgentEntry(localDir, 'resume-no-install', { FAKE_CAPS: 'resume,load' });
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'resume-no-install' },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'retain this session');
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'turn ended');
+    await manager.closeThread(info.threadId);
+    const beforeResume = (await statusesOf(manager, info.threadId)).length;
+
+    await manager.resumeThread(info.threadId);
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'ready',
+      15_000,
+      'the resumed thread to become ready',
+    );
+
+    const afterResume = (await statusesOf(manager, info.threadId)).slice(beforeResume);
+    expect(afterResume[0]).toBe('spawning');
+    expect(afterResume).not.toContain('installing');
+  }, 45_000);
+});
+
+describe('registry adapter acquisition probe scope across thread opens', () => {
+  const PINNED_ADAPTER = 'probe-scope-manager-fixture';
+  const PINNED_DESCRIPTOR = `${PINNED_ADAPTER}@7.0.0`;
+
+  const acquisitionBin = (home: string, agentSource: string): { bin: string; probeLog: string } => {
+    const bin = join(home, 'bin');
+    mkdirSync(bin);
+    installNodeFixture(bin);
+    const probeLog = join(home, 'probes.log');
+    writeExecutable(
+      join(bin, 'npx'),
+      `if (process.argv.slice(2).join(' ') === '--version') process.exit(0);\n${agentSource}`,
+    );
+    writeRecordingNpm(bin, probeLog);
+    return { bin, probeLog };
+  };
+
+  const recordingAcquisitionBin = (home: string): { bin: string; probeLog: string } =>
+    acquisitionBin(
+      home,
+      `let buffer = '';
+       process.stdin.setEncoding('utf8');
+       process.stdin.on('data', (chunk) => {
+         buffer += chunk;
+         let idx = buffer.indexOf('\\n');
+         while (idx !== -1) {
+           const line = buffer.slice(0, idx);
+           buffer = buffer.slice(idx + 1);
+           idx = buffer.indexOf('\\n');
+           if (line.trim() === '') continue;
+           const reply = { jsonrpc: '2.0', id: JSON.parse(line).id, error: { code: -32603, message: 'fixture adapter declines to initialize' } };
+           process.stdout.write(JSON.stringify(reply) + '\\n');
+         }
+       });`,
+    );
+
+  const resumableAcquisitionBin = (home: string): { bin: string; probeLog: string } =>
+    acquisitionBin(home, RESUMABLE_AGENT_SOURCE);
+
+  const pinnedAdapterManager = (
+    home: string,
+    bin: string,
+    env?: Record<string, string>,
+  ): { agentId: string; manager: AcpThreadManager } => {
+    const localDir = tmp();
+    const agent = registryPackage(PINNED_DESCRIPTOR, 'npx', { PATH: bin, ...env });
+    const registry = new AcpRegistry({
+      localDir,
+      log,
+      fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+    });
+    return { agentId: agent.id, manager: makeManager(home, localDir, { registry }) };
+  };
+
+  test('two thread opens of one pinned registry adapter acquire it once', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(first.threadId)?.status === 'error',
+        20_000,
+        'the first open to settle',
+      );
+      const second = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(second.threadId)?.status === 'error',
+        20_000,
+        'the second open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+    });
+  }, 60_000);
+
+  test('a retry re-acquires the pinned adapter instead of reusing the open probe', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+
+      await manager.retryThread(info.threadId).catch(() => {});
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR, PINNED_DESCRIPTOR]);
+    });
+  }, 60_000);
+
+  test('a resume reuses the acquisition its open made instead of probing again', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = resumableAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin, {
+        FAKE_CAPS: 'resume,load',
+      });
+      await manager.init();
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the open to become ready',
+      );
+      manager.sendPrompt(info.threadId, 'retain this session');
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the turn to end',
+      );
+      await manager.closeThread(info.threadId);
+      const beforeResume = (await statusesOf(manager, info.threadId)).length;
+
+      await manager.resumeThread(info.threadId);
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the resumed thread to become ready',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+      const afterResume = (await statusesOf(manager, info.threadId)).slice(beforeResume);
+      expect(afterResume[0]).toBe('spawning');
+      expect(afterResume).not.toContain('installing');
+    });
+  }, 90_000);
+
+  test('a resume whose runtime offer goes unanswered expires on the budget the resume waits on', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin } = resumableAcquisitionBin(home);
+      const localDir = tmp();
+      const runtimeRoot = tmp();
+      const agent = registryPackage(PINNED_DESCRIPTOR, 'npx', {
+        PATH: bin,
+        FAKE_CAPS: 'resume,load',
+      });
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const manager = makeManager(home, localDir, {
+        registry,
+        runtimeInstall: { root: runtimeRoot },
+      });
+      await manager.init();
+
+      const events: ThreadEvent[] = [];
+      const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+      await manager.subscribe(info.threadId, 0, (frame) => {
+        if (frame.op === 'event') events.push(frame.event);
+        else if (frame.op === 'events') events.push(...frame.events);
+      });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the open to become ready',
+      );
+      manager.sendPrompt(info.threadId, 'retain this session');
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'ready',
+        20_000,
+        'the turn to end',
+      );
+      expect(internals(manager).sessionId(info.threadId)).toBe('sess-fixed');
+      await manager.closeThread(info.threadId);
+      expect(manager.getInfo(info.threadId)?.archived).toBe(true);
+
+      for (const leaf of ['npx', 'npx.cjs', 'npx.cmd']) {
+        rmSync(join(bin, leaf), { force: true });
+      }
+
+      let refusal: unknown;
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const resuming = manager.resumeThread(info.threadId).catch((error: unknown) => error);
+        await waitUntil(
+          () => events.some((event) => event.kind === 'runtime_consent_request'),
+          20_000,
+          'the resume to offer the managed runtime',
+        );
+        await vi.advanceTimersByTimeAsync(BLOCKING_CONSENT_BUDGET_MS + 1_000);
+        await waitUntil(
+          () => events.some((event) => event.kind === 'runtime_consent_resolved'),
+          20_000,
+          'the offer to expire on the budget the resume is waiting on',
+        );
+        refusal = await resuming;
+      } finally {
+        vi.useRealTimers();
+      }
+
+      const resolved = events.find(
+        (event): event is Extract<ThreadEvent, { kind: 'runtime_consent_resolved' }> =>
+          event.kind === 'runtime_consent_resolved',
+      );
+      expect(resolved?.decision).toBe('timeout');
+      expect(refusal).toMatchObject({
+        message: expect.stringContaining('expired before it was answered'),
+      });
+
+      await waitUntil(
+        () => events.some((event) => event.kind === 'status' && event.status === 'exited'),
+        20_000,
+        'the resume to record its terminal status',
+      );
+      const terminal = events
+        .filter(
+          (event): event is Extract<ThreadEvent, { kind: 'status' }> => event.kind === 'status',
+        )
+        .at(-1);
+      expect(terminal?.status).toBe('exited');
+      expect(terminal?.failure?.agentMessage).toContain('expired before it was answered');
+      expect(
+        terminal?.failure?.agentMessage,
+        're-offering the download would tell the user an offer they let expire was never made',
+      ).not.toContain('OK can download a private copy');
+    });
+  }, 120_000);
+
+  test('an open that really probes the registry reports installing while it probes', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+      expect(await statusesOf(manager, info.threadId)).toEqual([
+        'spawning',
+        'installing',
+        'spawning',
+        'error',
+      ]);
+    });
+  }, 60_000);
+
+  test('a second open served from the warm memo never reports installing', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const { agentId, manager } = pinnedAdapterManager(home, bin);
+
+      const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(first.threadId)?.status === 'error',
+        20_000,
+        'the first open to settle',
+      );
+      const second = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(second.threadId)?.status === 'error',
+        20_000,
+        'the second open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR]);
+      const statuses = await statusesOf(manager, second.threadId);
+      expect(statuses[0]).toBe('spawning');
+      expect(statuses).not.toContain('installing');
+    });
+  }, 60_000);
+
+  test('an unpinned registry package resolves without reporting installing', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const localDir = tmp();
+      const agent = registryPackage(PINNED_ADAPTER, 'npx', { PATH: bin });
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+      });
+      const manager = makeManager(home, localDir, { registry });
+
+      const info = await manager.createThread({ agent: { source: 'registry', id: agent.id } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([]);
+      const statuses = await statusesOf(manager, info.threadId);
+      expect(statuses[0]).toBe('spawning');
+      expect(statuses).not.toContain('installing');
+    });
+  }, 60_000);
+
+  test('a custom agent launched through the same npx never reports installing', async () => {
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const localDir = tmp();
+      writeFileSync(
+        join(localDir, 'acp-agents.json'),
+        JSON.stringify([
+          {
+            id: 'custom-npx',
+            name: 'Custom npx agent',
+            command: join(bin, 'npx'),
+            args: ['-y', PINNED_DESCRIPTOR],
+          },
+        ]),
+      );
+      const manager = makeManager(home, localDir);
+
+      const info = await manager.createThread({ agent: { source: 'custom', id: 'custom-npx' } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'the open to settle',
+      );
+
+      expect(probedDescriptors(probeLog)).toEqual([]);
+      const statuses = await statusesOf(manager, info.threadId);
+      expect(statuses[0]).toBe('spawning');
+      expect(statuses).not.toContain('installing');
+    });
+  }, 60_000);
+
+  test('a retry re-acquires its own adapter and leaves a second adapter memoized', async () => {
+    const BYSTANDER_DESCRIPTOR = 'probe-scope-bystander-fixture@3.0.0';
+    await withAcquisitionHome(async (home) => {
+      const { bin, probeLog } = recordingAcquisitionBin(home);
+      const localDir = tmp();
+      const retried = {
+        ...registryPackage(PINNED_DESCRIPTOR, 'npx', { PATH: bin }),
+        id: 'adapter-retried',
+      };
+      const bystander = {
+        ...registryPackage(BYSTANDER_DESCRIPTOR, 'npx', { PATH: bin }),
+        id: 'adapter-bystander',
+      };
+      const registry = new AcpRegistry({
+        localDir,
+        log,
+        fetchImpl: async () => new Response(JSON.stringify({ agents: [retried, bystander] })),
+      });
+      const manager = makeManager(home, localDir, { registry });
+      const settle = async (agentId: string): Promise<string> => {
+        const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(info.threadId)?.status === 'error',
+          20_000,
+          `the ${agentId} open to settle`,
+        );
+        return info.threadId;
+      };
+
+      const retriedThread = await settle(retried.id);
+      await settle(bystander.id);
+      expect(probedDescriptors(probeLog)).toEqual([PINNED_DESCRIPTOR, BYSTANDER_DESCRIPTOR]);
+
+      await manager.retryThread(retriedThread).catch(() => {});
+      expect(probedDescriptors(probeLog)).toEqual([
+        PINNED_DESCRIPTOR,
+        BYSTANDER_DESCRIPTOR,
+        PINNED_DESCRIPTOR,
+      ]);
+
+      await settle(bystander.id);
+
+      expect(probedDescriptors(probeLog)).toEqual([
+        PINNED_DESCRIPTOR,
+        BYSTANDER_DESCRIPTOR,
+        PINNED_DESCRIPTOR,
+      ]);
+    });
+  }, 90_000);
 });

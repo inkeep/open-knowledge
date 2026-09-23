@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · صرف حوالہ جات (کوئی ایمبیڈڈ مواد نہیں)"
 
@@ -288,6 +289,16 @@ msgstr "{0} · ڈیفالٹ"
 msgid "{0} (opens in a new tab)"
 msgstr "{0} (نئے ٹیب میں کھلتا ہے)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} +{rest} مزید"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -350,12 +361,6 @@ msgstr "{0} ابھی نصب نہیں ہے — اس کا ڈاؤن لوڈ صفحہ
 #: src/components/acp/ThreadView.tsx
 msgid "{0} kept its current context window."
 msgstr "{0} نے اپنی موجودہ سیاق ونڈو برقرار رکھی۔"
-
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} کی بدولت {1} بغیر پوچھے عمل کرتا ہے"
 
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
@@ -569,6 +574,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} اس چیٹ کو دوبارہ جاری نہیں رکھ سکتا۔ ٹرانسکرپٹ محفوظ ہے، اس لیے جاری رکھنے کے لیے نئی چیٹ شروع کریں۔"
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} شروع نہ ہو سکا"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} گفتگو شروع نہ کر سکا۔"
 
@@ -580,6 +589,10 @@ msgstr "{agentName} شروع نہ ہو سکا۔"
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} تصویری منسلکات قبول نہیں کرتا۔"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} تیار ہے"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -935,6 +948,10 @@ msgstr "{loadErrorTitle}: {message}"
 #: src/components/ProblemsPanel.tsx
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "سطر {displayLine} پر {localizedMessage}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "{server} MCP سرور کا {mcpTool}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -1736,13 +1753,13 @@ msgstr "{gitignorePath} میں شامل کریں"
 msgid "Add to Dictionary"
 msgstr "لغت میں شامل کریں"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "پرامپٹ میں شامل کریں"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "قدر شامل کریں"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "اس پیغام میں اپنے تبصرے شامل کریں"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -1857,8 +1874,12 @@ msgid "Agent settings"
 msgstr "ایجنٹ کی ترتیبات"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "ایجنٹ کی ترتیبات: تبدیلیاں اس وقت لاگو ہوں گی جب آپ یہ گفتگو دوبارہ شروع کریں گے"
+msgid "Agent settings — {headerSummary}"
+msgstr "ایجنٹ کی ترتیبات — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "ایجنٹ کی ترتیبات — {headerSummary}: تبدیلیاں اس وقت لاگو ہوں گی جب آپ یہ گفتگو دوبارہ شروع کریں گے"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -2207,6 +2228,18 @@ msgstr "اثاثہ: {title}"
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "فائل منسلک کریں"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "تبصرے منسلک کریں"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "تبصرے منسلک کریں: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
+msgstr "فائلیں منسلک کریں"
 
 #: src/components/ImageAttachments.tsx
 #: src/components/ReportBugImageDropzone.tsx
@@ -2582,6 +2615,10 @@ msgstr "اپنی کہانی کے پس منظر کی دنیا بنائیں اور
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "<0>openknowledge.skill</0> بنایا جا رہا ہے اور Claude Desktop App کھولا جا رہا ہے"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "کسی دستاویز یا فولڈر کا قابلِ اشتراک لنک بناتا ہے"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "بلٹ فہرست"
@@ -2858,6 +2895,14 @@ msgstr "جانچا جا رہا ہے..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "چیک باکسز کے ساتھ چیک لسٹ۔"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "دستاویزات میں مارک ڈاؤن کے مسائل جانچتا ہے اور انہیں ٹھیک کر سکتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "پورے پروجیکٹ میں مارک ڈاؤن کے مسائل اور ٹوٹے ہوئے لنکس جانچتا ہے"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -3291,6 +3336,7 @@ msgid "commands"
 msgstr "کمانڈز"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "کمانڈز"
 
@@ -3323,7 +3369,6 @@ msgstr "اس {0} پر تبصرہ کریں یا AI سے پوچھیں"
 msgid "Comment or ask AI about this code block"
 msgstr "اس کوڈ بلاک پر تبصرہ کریں یا AI سے پوچھیں"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -4656,6 +4701,10 @@ msgstr "فولڈر بنایا"
 msgid "created template"
 msgstr "ٹیمپلیٹ بنایا"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "دستاویز، فولڈر، ٹیمپلیٹ، اسکل یا اثاثہ بناتا یا بدلتا ہے"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "<0>{folderPart}/</0> فولڈر بناتا ہے"
@@ -4761,6 +4810,7 @@ msgstr "طے شدہ: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "حذف کریں"
 
@@ -4889,6 +4939,14 @@ msgstr "ہمیشہ کے لیے حذف"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "ٹیمپلیٹ حذف کیا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "دستاویز، فولڈر، ٹیمپلیٹ، اسکل یا اثاثہ حذف کرتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "ایک فائل حذف کرتا ہے"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5348,6 +5406,7 @@ msgstr "ہر پُش آپ کے ریموٹ پر ایک کمٹ ہے۔"
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "ترمیم"
@@ -5471,6 +5530,14 @@ msgstr "ایڈیٹر کا انتخاب"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "ایڈیٹر کی حالت کا بار"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "دستاویز، فولڈر، ٹیمپلیٹ یا اسکل کو وہیں ترمیم کرتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "ایک فائل میں ترمیم کرتا ہے"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6273,6 +6340,10 @@ msgstr "مطابقت پذیری کا وقفہ اپ ڈیٹ نہیں ہو سکا �
 msgid "Failed to upload file"
 msgstr "فائل اپ لوڈ نہیں ہو سکی"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "تیز"
+
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."
 msgstr "رائے ابھی دستیاب نہیں۔ براہِ کرم بعد میں دوبارہ کوشش کریں۔"
@@ -6281,9 +6352,17 @@ msgstr "رائے ابھی دستیاب نہیں۔ براہِ کرم بعد می�
 msgid "Fenced code block with monospace text."
 msgstr "یکساں چوڑائی والے متن کے ساتھ باڑ والا کوڈ بلاک۔"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "حاصل کرنا"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
 msgstr "لانا ناکام رہا — تفصیلات کے لیے سرور کے لاگز دیکھیں۔"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "ایک ویب صفحہ لاتا ہے"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
@@ -6410,6 +6489,14 @@ msgstr "اگلی مماثلت تلاش کریں"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "پچھلی مماثلت تلاش کریں"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "عنوان، مواد یا پاتھ سے اس پروجیکٹ کی دستاویزات اور فائلیں تلاش کرتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "اسکلز تلاش کرتا ہے اور پڑھتا ہے کہ کیا انسٹال ہے"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6667,6 +6754,10 @@ msgstr "مصنوعات کی اپ ڈیٹس اپنے اِن باکس میں پائ
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "ترتیب دیں"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "وہ لنک لاتا ہے جو اس پروجیکٹ یا کسی دستاویز کو ایپ میں کھولتا ہے"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7273,6 +7364,10 @@ msgstr "«{0}» کے نام سے درآمد ہوا — نام «{1}» پہلے �
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "درآمد کیا جا رہا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "اس پروجیکٹ میں ایک اسکل درآمد کرتا ہے"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8281,6 +8376,10 @@ msgstr "اس نالج بیس کو Claude مہارت کے طور پر دستیا�
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "اسے ماخذ بنائیں — مہارت کا اصل فولڈر یہاں منتقل ہو جائے گا"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "کسی اسکل کو مزید جگہوں پر دستیاب کرتا ہے، یا کسی ایک سے ہٹاتا ہے"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "اپلائی کا جواب بگڑا ہوا ہے"
@@ -8398,6 +8497,10 @@ msgstr "MCP سرورز"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "درمیانہ سیکشن عنوان۔"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "کسی صفحہ کا حوالہ دیں"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -8540,6 +8643,7 @@ msgid "Most installed"
 msgstr "سب سے زیادہ نصب شدہ"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "منتقل کریں"
 
@@ -8711,6 +8815,14 @@ msgstr "ٹیمپلیٹ منتقل کیا"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "اوپر منتقل کر دیا گیا۔"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "دستاویز، فولڈر، اثاثہ، ٹیمپلیٹ یا اسکل منتقل کرتا ہے یا اس کا نام بدلتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "ایک فائل منتقل کرتا ہے یا اس کا نام بدلتا ہے"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11133,6 +11245,10 @@ msgstr "پروجیکٹ کا آڈٹ دوبارہ چلائیں"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "پڑھنا"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "اس کوڈ بیس کو پڑھیں اور سب سے پیچیدہ ماڈیول کے لیے تکنیکی اسپیک لکھیں: ایک جائزہ، ڈھانچہ، بنیادی فائلیں، اور کھلے سوالات، جو سب اسپیکس کے اشاریہ صفحے سے جڑے ہوں۔"
@@ -11161,6 +11277,34 @@ msgstr "ورکنگ ٹری پڑھی جا رہی ہے"
 msgid "Reading…"
 msgstr "پڑھا جا رہا ہے…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "ایک فائل پڑھتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "صرف پڑھنے والے شیل کمانڈز سے اس پروجیکٹ کی دستاویزات اور فولڈر پڑھتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "تحریری پیلیٹ پڑھتا ہے تاکہ نئی دستاویزات پروجیکٹ کے انداز سے مطابقت رکھیں"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "لنک گراف پڑھتا ہے: کیا کس سے جڑا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "کسی دستاویز یا اسکل کی ورژن ہسٹری، یا فولڈر کی سرگرمی پڑھتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "اس پروجیکٹ کی OpenKnowledge ترتیبات پڑھتا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "ترامیم کے درمیان حل نہ ہونے والے تنازعات پڑھتا ہے"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "جلد شروع کرنے کے لیے تیار شدہ فولڈرز اور ٹیمپلیٹس۔"
@@ -11176,6 +11320,10 @@ msgstr "وجہ: {reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "وجہ: {reason} ({osDetail})"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "عمل کرنے سے پہلے سوچتا ہے"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11797,6 +11945,10 @@ msgstr "حذف کرنے سے پہلے {files} اور مزید {overflow} فائ�
 msgid "Resolved"
 msgstr "حل شدہ"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "کون سا مواد رکھنا ہے یہ چن کر تنازع حل کرتا ہے"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "طے شدہ مقام معلوم کیا جا رہا ہے"
@@ -11899,6 +12051,10 @@ msgstr "ایک پرانا ورژن بحال کر دیا گیا ({0})"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "{0} کے ورژن پر بحال کر دیا گیا"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "کسی دستاویز یا اسکل کو پہلے والے ورژن پر بحال کرتا ہے"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12023,6 +12179,10 @@ msgstr "قواعد"
 msgid "Ruminating…"
 msgstr "گہری سوچ جاری ہے…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "چلانا"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "مسائل کے پینل سے پروجیکٹ کا آڈٹ چلائیں۔"
@@ -12046,6 +12206,10 @@ msgstr "چل رہا ہے"
 #: src/components/ProblemsPanel.tsx
 msgid "Running project audit"
 msgstr "پروجیکٹ کا آڈٹ چل رہا ہے"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "ایک شیل کمانڈ چلاتا ہے"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
@@ -12118,6 +12282,10 @@ msgstr "یہاں محفوظ ہوا"
 msgid "Saved with the project for your team."
 msgstr "آپ کی ٹیم کے لیے پروجیکٹ کے ساتھ محفوظ۔"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "پروجیکٹ کی ہر دستاویز کے لیے ایک بحالی پوائنٹ محفوظ کرتا ہے"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "فائل کو <0>~/Downloads/openknowledge.skill</0> میں محفوظ کرتا ہے اور Claude Desktop App کھولتا ہے۔ آپ کے PATH میں Node.js یا Bun درکار ہے۔"
@@ -12168,6 +12336,7 @@ msgstr "شروع تک سکرول کریں"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "تلاش"
@@ -12296,6 +12465,10 @@ msgstr "ورک ٹریز تلاش کریں"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "ورک ٹریز اور برانچیں تلاش کریں"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "فائلوں میں تلاش کرتا ہے"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12493,6 +12666,10 @@ msgstr "رائے بھیجیں…"
 #: src/components/acp/UserMessageActions.tsx
 msgid "Send in this chat"
 msgstr "اسی چیٹ میں بھیجیں"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "ابھی بھیجیں"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
@@ -12820,6 +12997,10 @@ msgstr "اعلیٰ آپشنز دکھائیں"
 msgid "Show Agents"
 msgstr "ایجنٹس دکھائیں"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "سب دکھائیں"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "سب دکھائیں"
@@ -12869,6 +13050,7 @@ msgstr "HTML کا پیش منظر دکھائیں"
 msgid "Show in Explorer"
 msgstr "ایکسپلورر میں دکھائیں"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13423,7 +13605,6 @@ msgstr "سائن اِن کا عمل شروع کیا جا رہا ہے"
 msgid "Starting terminal…"
 msgstr "ٹرمینل شروع ہو رہا ہے…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "ایجنٹ شروع کیا جا رہا ہے…"
@@ -13593,6 +13774,10 @@ msgstr "ورک ٹری بدلیں"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "ورک ٹری بدلیں…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "ایجنٹ کا موڈ بدلتا ہے"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"
@@ -14380,6 +14565,10 @@ msgstr "یہ قواعد آپ کے پروجیکٹ کی <0>{configFile}</0> فائ
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "یہ آپ کے AI ٹولز کو OpenKnowledge کے ساتھ کام کرنا سکھاتی ہیں۔ کسی ایک کو نصب کرنے سے وہ اس مشین کے ہر AI ٹول میں شامل ہو جاتی ہے۔"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "سوچنا"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
@@ -15190,6 +15379,11 @@ msgstr "دو صفحے (طاق)"
 msgid "Type"
 msgstr "قسم"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "کسی صفحہ کا حوالہ دینے کے لیے '@' ٹائپ کریں"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "کمانڈز دیکھنے کے لیے '/' ٹائپ کریں"

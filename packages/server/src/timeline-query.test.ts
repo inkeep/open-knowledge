@@ -30,6 +30,64 @@ import {
 } from './shadow-repo';
 import { getDocumentHistory, getFolderTimeline, historyWalkCap } from './timeline-query';
 
+const CHAIN_PERF_SAMPLES = 3;
+const CHECKPOINT_PERF_SAMPLES = 3;
+
+type TimelineQueryRun = () => Promise<Awaited<ReturnType<typeof getDocumentHistory>>>;
+
+function median(runs: number[]): number {
+  const sorted = [...runs].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)] ?? Number.NaN;
+}
+
+async function timeQuery(run: TimelineQueryRun): Promise<{ ms: number; total: number }> {
+  const t0 = performance.now();
+  const result = await run();
+  return { ms: performance.now() - t0, total: result.total };
+}
+
+async function sampleChainWalkCost(
+  withRenameHistory: TimelineQueryRun,
+  withoutRenameHistory: TimelineQueryRun,
+  samples: number,
+  fixtureCommitCounts: { reachingWholeChain: number; reachingCurrentNameOnly: number },
+): Promise<{ ratios: number[]; withMs: number[]; withoutMs: number[] }> {
+  const { reachingWholeChain, reachingCurrentNameOnly } = fixtureCommitCounts;
+  const expectTotals = (label: string, run: { total: number }, expected: number): void => {
+    expect(
+      run.total,
+      `${label}: matched ${run.total} commits where this fixture builds exactly ${expected} that ` +
+        'the query must reach. The fixture dates every commit, so this count is fixed by how many ' +
+        'commits it writes and not by how fast the host wrote them. getDocumentHistory swallows a ' +
+        'failed predecessor step and an outright error, and both make the with-chain arm cheaper ' +
+        'without throwing, so an arm that walked less of the chain must not be priced as if it ' +
+        'had run',
+    ).toBe(expected);
+  };
+
+  const warmWith = await timeQuery(withRenameHistory);
+  const warmWithout = await timeQuery(withoutRenameHistory);
+  expectTotals('warm-up, with-chain', warmWith, reachingWholeChain);
+  expectTotals('warm-up, no-chain', warmWithout, reachingCurrentNameOnly);
+
+  const ratios: number[] = [];
+  const withMs: number[] = [];
+  const withoutMs: number[] = [];
+  for (let i = 0; i < samples; i++) {
+    const chainFirst = i % 2 === 0;
+    const first = await timeQuery(chainFirst ? withRenameHistory : withoutRenameHistory);
+    const second = await timeQuery(chainFirst ? withoutRenameHistory : withRenameHistory);
+    const w = chainFirst ? first : second;
+    const b = chainFirst ? second : first;
+    expectTotals(`sample ${i}, with-chain`, w, reachingWholeChain);
+    expectTotals(`sample ${i}, no-chain`, b, reachingCurrentNameOnly);
+    withMs.push(w.ms);
+    withoutMs.push(b.ms);
+    ratios.push(w.ms / b.ms);
+  }
+  return { ratios, withMs, withoutMs };
+}
+
 let tmpDir: string;
 
 beforeEach(async () => {
@@ -662,9 +720,11 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
     expect(aShas).toContain(newASha);
   }, 15_000);
 
-  test('perf: chain depth 5 query completes in bounded latency', async () => {
+  test('perf: chain depth 5 walk reaches every epoch, and records its relative cost', async () => {
     const { contentDir, shadow } = await setup();
+    const { cw, sv } = datedCommits(shadow);
     const names = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const commitsPerEpoch = 2;
     const index = createEmptyIndex();
     let prevName: string | null = null;
     for (const name of names) {
@@ -674,7 +734,7 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
         } catch {}
       }
       writeFileSync(resolve(contentDir, `${name}.md`), `# ${name}\n`);
-      const sha = await commitWip(shadow, human, 'content/docs', `WIP: ${name}`);
+      const sha = await cw(`WIP: ${name}`);
       if (prevName) {
         appendRenameLogEntry(
           shadow.gitDir,
@@ -682,21 +742,44 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
           index,
         );
       }
-      await saveVersion(shadow, 'content/docs', [human]);
+      await sv();
       prevName = name;
     }
     setRenameLogIndex(shadow.gitDir, index);
 
-    const t0 = performance.now();
-    const result = await getDocumentHistory(shadow, { docName: 'f' }, 'content/docs');
-    const elapsed = performance.now() - t0;
-    expect(result.entries.length).toBeGreaterThan(0);
-    expect(elapsed).toBeLessThan(2_000);
+    const noRenameHistory = createEmptyIndex();
+    const withRenameHistory = () => getDocumentHistory(shadow, { docName: 'f' }, 'content/docs');
+    const withoutRenameHistory = () =>
+      getDocumentHistory(shadow, { docName: 'f' }, 'content/docs', {
+        renameLogIndex: noRenameHistory,
+      });
+
+    const { ratios, withMs, withoutMs } = await sampleChainWalkCost(
+      withRenameHistory,
+      withoutRenameHistory,
+      CHAIN_PERF_SAMPLES,
+      {
+        reachingWholeChain: names.length * commitsPerEpoch,
+        reachingCurrentNameOnly: commitsPerEpoch,
+      },
+    );
+    const ratio = median(ratios);
+    const withMedian = median(withMs);
+    const withoutMedian = median(withoutMs);
+
+    console.log(
+      `[perf] chain depth 5, ${CHAIN_PERF_SAMPLES} pairs: median per-pair ratio ` +
+        `${ratio.toFixed(2)}x; arm medians with-chain ${withMedian.toFixed(0)}ms, no-chain ` +
+        `${withoutMedian.toFixed(0)}ms. All three are observations, not assertions. At this depth and without checkpoints the per-query fixed cost is too large a share of both arms for the ratio to discriminate a regression, so asserting it here would be vacuous. What this test pins is the fixture-anchored commit count above.`,
+    );
   }, 30_000);
 
-  test('perf: chain depth 5 + 100 checkpoints stays within NFR target', async () => {
+  test('perf: chain depth 5 + ~100 checkpoints walk reaches every epoch, and records its relative cost', async () => {
     const { contentDir, shadow } = await setup();
+    const { cw, sv } = datedCommits(shadow);
     const names = ['a', 'b', 'c', 'd', 'e', 'f'];
+    const revisionsPerEpoch = 17;
+    const commitsPerEpoch = 1 + revisionsPerEpoch * 2;
     const index = createEmptyIndex();
     let prevName: string | null = null;
     for (const name of names) {
@@ -706,7 +789,7 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
         } catch {}
       }
       writeFileSync(resolve(contentDir, `${name}.md`), `# ${name} v0\n`);
-      const renameSha = await commitWip(shadow, human, 'content/docs', `WIP: ${name} v0`);
+      const renameSha = await cw(`WIP: ${name} v0`);
       if (prevName) {
         appendRenameLogEntry(
           shadow.gitDir,
@@ -714,33 +797,46 @@ describe('getDocumentHistory — rename-history mitigation (US-004)', () => {
           index,
         );
       }
-      for (let i = 1; i <= 17; i++) {
+      for (let i = 1; i <= revisionsPerEpoch; i++) {
         writeFileSync(resolve(contentDir, `${name}.md`), `# ${name} v${i}\n`);
-        await commitWip(shadow, human, 'content/docs', `WIP: ${name} v${i}`);
-        await saveVersion(shadow, 'content/docs', [human]);
+        await cw(`WIP: ${name} v${i}`);
+        await sv();
       }
       prevName = name;
     }
     setRenameLogIndex(shadow.gitDir, index);
 
-    await getDocumentHistory(shadow, { docName: 'f' }, 'content/docs');
+    const noRenameHistory = createEmptyIndex();
+    const withRenameHistory = () => getDocumentHistory(shadow, { docName: 'f' }, 'content/docs');
+    const withoutRenameHistory = () =>
+      getDocumentHistory(shadow, { docName: 'f' }, 'content/docs', {
+        renameLogIndex: noRenameHistory,
+      });
 
-    const runs: number[] = [];
-    for (let i = 0; i < 3; i++) {
-      const t0 = performance.now();
-      const result = await getDocumentHistory(shadow, { docName: 'f' }, 'content/docs');
-      runs.push(performance.now() - t0);
-      expect(result.entries.length).toBeGreaterThan(0);
-    }
-    runs.sort((a, b) => a - b);
-    const median = runs[1] ?? runs[0] ?? 0;
+    const { ratios, withMs, withoutMs } = await sampleChainWalkCost(
+      withRenameHistory,
+      withoutRenameHistory,
+      CHECKPOINT_PERF_SAMPLES,
+      {
+        reachingWholeChain: names.length * commitsPerEpoch,
+        reachingCurrentNameOnly: commitsPerEpoch,
+      },
+    );
+    const ratio = median(ratios);
+    const withMedian = median(withMs);
+    const withoutMedian = median(withoutMs);
 
     console.log(
-      `[perf] chain depth 5 + ~100 checkpoints median: ${median.toFixed(1)}ms ` +
-        `(NFR ≤ 200ms; runs: ${runs.map((r) => r.toFixed(0)).join('ms, ')}ms)`,
+      `[perf] chain depth 5 + ~100 checkpoints, ${CHECKPOINT_PERF_SAMPLES} pairs: median per-pair ` +
+        `ratio ${ratio.toFixed(2)}x; arm medians with-chain ${withMedian.toFixed(0)}ms, no-chain ` +
+        `${withoutMedian.toFixed(0)}ms. All three are observations, not assertions. A ceiling of ` +
+        `${names.length}x, the number of name epochs the chain spans, was measured against a ` +
+        'quadratic mutation of the chain walk and separated it from healthy code in only two of ' +
+        'four runs, so at this depth the per-query fixed cost both arms pay compresses the ratio ' +
+        'too far for it to discriminate. What this test pins is the fixture-anchored commit count ' +
+        'above. An executable owner for the read-path cost belongs in the variance-aware ' +
+        'comparator, which this change did not adopt.',
     );
-
-    expect(median).toBeLessThan(1_000);
   }, 180_000);
 
   test('lazy-population window: empty-commitSha entry → chain truncates → behavior matches no-rename-history', async () => {

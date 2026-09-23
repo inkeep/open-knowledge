@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import type { Editor } from '@tiptap/core';
 import { type ReactNode, type Ref, useEffect, useImperativeHandle, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { mentionRecencyAttribute } from '@/components/acp/composer-mention-input.test-helper';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
 import { FULL_PAGE_CM_HOST_SELECTORS, type FullPageCmHost } from '@/editor/document-scrollports';
 import type { EditorSurface } from '@/editor/selection-stats';
@@ -20,6 +21,7 @@ import {
   loadStickyAgent as loadStickyDefaultAgent,
   saveStickyAgent as saveStickyDefaultAgent,
 } from '@/lib/unified-agent-store';
+import { createComposerDropdownMenuMock } from './composer-dropdown-menu.test-helper';
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
@@ -34,40 +36,7 @@ vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => <span data-testid={`target-icon-${id}`} />,
 }));
 
-type MenuChild = {
-  children?: ReactNode;
-  disabled?: boolean;
-  onSelect?: () => void;
-  [key: string]: unknown;
-};
-vi.doMock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: MenuChild) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: MenuChild) => <>{children}</>,
-  DropdownMenuContent: ({ children, ...props }: MenuChild) => (
-    <div role="menu" {...props}>
-      {children}
-    </div>
-  ),
-  DropdownMenuGroup: ({ children }: MenuChild) => <>{children}</>,
-  DropdownMenuItem: ({ children, disabled, onSelect, ...props }: MenuChild) => (
-    <button type="button" role="menuitem" disabled={disabled} onClick={onSelect} {...props}>
-      {children}
-    </button>
-  ),
-  DropdownMenuCheckboxItem: ({ children, disabled, checked, ...props }: MenuChild) => (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked === true}
-      disabled={disabled}
-      {...props}
-    >
-      {children}
-    </button>
-  ),
-  DropdownMenuLabel: ({ children, ...props }: MenuChild) => <div {...props}>{children}</div>,
-  DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
-}));
+vi.doMock('@/components/ui/dropdown-menu', createComposerDropdownMenuMock);
 
 let mockInlineMentions: string[] = [];
 let emitMentions: ((mentions: string[]) => void) | null = null;
@@ -80,6 +49,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
     onMentionsChange,
     onSubmit,
     className,
+    mentionRecency,
   }: {
     ref?: Ref<ComposerMentionInputHandle>;
     ariaLabel: string;
@@ -87,6 +57,7 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
     onMentionsChange?: (mentions: string[]) => void;
     onSubmit: () => void;
     className?: string;
+    mentionRecency?: { currentDocName: string | null; recentPaths: readonly string[] };
   }) => {
     const localRef = useRef<HTMLTextAreaElement>(null);
     useEffect(() => {
@@ -104,13 +75,24 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
       getContent: () => ({
         instruction: localRef.current?.value ?? '',
         mentions: mockInlineMentions,
+        attachments: [],
       }),
+      focusEnd: () => localRef.current?.focus(),
+      refuseDrop: () => {},
+      setText: (text: string) => {
+        if (localRef.current) localRef.current.value = text;
+        onEmptyChange(text.trim() === '');
+      },
+      appendText: () => {},
+      openMentionPicker: () => {},
+      openSlashCommandPicker: () => {},
     }));
     return (
       <textarea
         ref={localRef}
         aria-label={ariaLabel}
         className={className}
+        data-mention-recency={mentionRecencyAttribute(mentionRecency)}
         onChange={(event) => onEmptyChange(event.target.value.trim() === '')}
         onKeyDown={(event) => {
           if (event.key === 'Escape') {
@@ -236,6 +218,13 @@ vi.doMock('@/comments/comment-chips', async () => {
 });
 
 const FIRST_SUGGESTION = /Research the extinction of flightless birds/i;
+
+function suggestionShown(): boolean {
+  const phrase = document
+    .querySelector('[data-testid="ask-ai-composer-placeholder"] [data-rotating-placeholder]')
+    ?.getAttribute('data-rotating-placeholder');
+  return FIRST_SUGGESTION.test(phrase ?? '');
+}
 const DEFAULT_AGENT_NAME = VISIBLE_TARGETS[0]?.displayName;
 const EXPECTED_COMPOSER_POPUP_LABELS = ['composer-mention', 'composer-slash'] as const;
 
@@ -287,6 +276,7 @@ async function renderComposerWithTerminal(
 async function renderComposerWithThrowingTerminal(docName = 'notes') {
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
+  const { TooltipProvider } = await import('@/components/ui/tooltip');
   return render(
     <TerminalLaunchProvider
       value={{
@@ -298,6 +288,7 @@ async function renderComposerWithThrowingTerminal(docName = 'notes') {
     >
       <BottomComposer docName={docName} surface="wysiwyg" />
     </TerminalLaunchProvider>,
+    { wrapper: TooltipProvider },
   );
 }
 
@@ -310,7 +301,8 @@ async function renderComposerWithInstalledClis(installed: Record<string, boolean
 
 async function renderFolderComposer(folderPath = 'specs/foo') {
   const { BottomComposer } = await import('./BottomComposer');
-  return render(<BottomComposer folderPath={folderPath} />);
+  const { TooltipProvider } = await import('@/components/ui/tooltip');
+  return render(<BottomComposer folderPath={folderPath} />, { wrapper: TooltipProvider });
 }
 
 function getInput() {
@@ -472,7 +464,7 @@ describe('BottomComposer (shell behavior)', () => {
     const restore = stubReducedMotion(true);
     try {
       await renderComposer();
-      expect(screen.getByText(FIRST_SUGGESTION)).toBeTruthy();
+      expect(suggestionShown()).toBe(true);
       expect(getInput()).toBeTruthy();
     } finally {
       restore();
@@ -495,11 +487,11 @@ describe('BottomComposer (shell behavior)', () => {
     const restore = stubReducedMotion(true);
     try {
       await renderComposer();
-      expect(screen.getByText(FIRST_SUGGESTION)).toBeTruthy();
+      expect(suggestionShown()).toBe(true);
 
       fireEvent.change(getInput(), { target: { value: 'condense this doc' } });
 
-      expect(screen.queryByText(FIRST_SUGGESTION)).toBeNull();
+      expect(suggestionShown()).toBe(false);
     } finally {
       restore();
     }
@@ -674,6 +666,18 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     });
     expect(dispatchCalls).toHaveLength(0);
     expect(recordAskedAiSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a terminal target keeps page mentions available without exposing file attachment', async () => {
+    const user = userEvent.setup();
+    await renderComposerWithTerminal();
+
+    await user.click(screen.getByTestId('ask-ai-agent-trigger'));
+    await user.click(await screen.findByTestId('ask-ai-agent-option-terminal'));
+
+    expect(screen.getByTestId('ask-ai-add-to-prompt')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Mention a page' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Attach files' })).toBeNull();
   });
 
   test('a terminal launch that throws keeps the draft, toasts, and records no Ask-AI step', async () => {
@@ -1220,6 +1224,17 @@ describe('BottomComposer (dismiss / reopen)', () => {
   });
 });
 
+describe('BottomComposer (collapse tab)', () => {
+  test('the collapse tab paints its own opaque fill, so the border it straddles cannot show through', async () => {
+    await renderComposer('notes');
+
+    const tab = screen.getByTestId('ask-ai-collapse');
+    expect(tab.className).toContain('dark:bg-background');
+    expect(tab.className).toContain('dark:hover:bg-muted');
+    expect(tab.className).not.toMatch(/dark:bg-input\/30/);
+  });
+});
+
 describe('BottomComposer (conflict footer stacking)', () => {
   test('the wrapper anchors its bottom to --conflict-footer-height, not a hard bottom-0', async () => {
     await renderComposer('notes');
@@ -1296,6 +1311,7 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
 
   test('declines ⇧⌘L while an overlay owns the keyboard', async () => {
     const { BottomComposer } = await import('./BottomComposer');
+    const { TooltipProvider } = await import('@/components/ui/tooltip');
     const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
       '@/components/ui/dialog'
     );
@@ -1309,6 +1325,7 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
           </DialogContent>
         </Dialog>
       </>,
+      { wrapper: TooltipProvider },
     );
     await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
     const composerInput = document.querySelector('textarea');
@@ -1326,7 +1343,7 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
 
 describe('BottomComposer (queued-comments chip lifecycle)', () => {
   const DETACH = /leave these comments out of this message/i;
-  const REATTACH = /add your comments to this message/i;
+  const REATTACH = /attach comments: 2/i;
 
   test('a ticked batch rides the message by default', async () => {
     selectedCommentCount = 2;
@@ -1339,7 +1356,12 @@ describe('BottomComposer (queued-comments chip lifecycle)', () => {
     await renderComposer();
     fireEvent.click(screen.getByRole('button', { name: DETACH }));
     expect(screen.queryByRole('button', { name: DETACH })).toBeNull();
-    expect(screen.getByRole('button', { name: REATTACH })).toBeTruthy();
+    expect(screen.queryByTestId('composer-context-chip-comments')).toBeNull();
+    expect(screen.getByRole('menuitem', { name: REATTACH })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Commands' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: REATTACH }));
+    expect(screen.getByRole('button', { name: DETACH })).toBeTruthy();
   });
 
   test('posting a new comment re-attaches a dismissed batch', async () => {
@@ -2048,5 +2070,27 @@ describe('BottomComposer (end-of-document scroll compensation)', () => {
         'deadline arm cannot fire, and fakes only setTimeout and clearTimeout so that jsdom, ' +
         'which drives requestAnimationFrame off setInterval, keeps producing real frames',
     ).toBe(afterBackstop);
+  });
+});
+
+describe('what the Ask AI @ picker is told to list first', () => {
+  test('a doc view hands the picker the open doc and no chat attachments', async () => {
+    await renderComposer('foo');
+
+    const handed = screen
+      .getByRole('textbox', { name: 'Ask AI' })
+      .getAttribute('data-mention-recency');
+    expect(JSON.parse(handed ?? 'null')).toEqual({ currentDocName: 'foo', recentPaths: [] });
+  });
+
+  test('a folder view has no doc to pin', async () => {
+    const { BottomComposer } = await import('./BottomComposer');
+    const { TooltipProvider } = await import('@/components/ui/tooltip');
+    render(<BottomComposer folderPath="specs" />, { wrapper: TooltipProvider });
+
+    const handed = screen
+      .getByRole('textbox', { name: 'Ask AI' })
+      .getAttribute('data-mention-recency');
+    expect(JSON.parse(handed ?? 'null')).toEqual({ currentDocName: null, recentPaths: [] });
   });
 });

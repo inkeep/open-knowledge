@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { ShowGateRegistry } from './show-gate.ts';
 import type { TerminalReaper } from './terminal-lifecycle.ts';
+import type { AppShutdownCause } from './terminal-manager.ts';
 import {
   createTerminalWindow,
   resolveTerminalWindowProject,
@@ -48,6 +49,7 @@ function makeDeps(opts: {
   const showGate = { register, fireThemeApplied: () => {} } as unknown as ShowGateRegistry;
   const killForWindow = vi.fn((_id: number) => {});
   const terminalReaper = {
+    noteAppShutdown: (_cause: AppShutdownCause) => {},
     killForWindow,
     killAll: () => Promise.resolve(),
   } satisfies TerminalReaper;

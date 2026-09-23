@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, resolve } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { stringify } from 'yaml';
 import { collectConfigDiagnostics } from './collect-config-diagnostics.ts';
+import { serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey } from './config-leak-serializer.test-helper.ts';
 import type { WriteScope } from './errors.ts';
 import { REMOVED_KEYS } from './removed-keys.ts';
 import { resolveConfigPath } from './write-config-patch.ts';
@@ -26,10 +27,47 @@ let projectDir: string;
 let homeDir: string;
 const quiet = () => {};
 
+const CONFIG_VALUES_THE_FINDING_FIELDS_MUST_NEVER_ECHO = [
+  'SENTINEL_SIBLING_DIR',
+  'SENTINEL_REMOVED_LEAF',
+  'USER_ONLY_VALUE',
+  'USER_HOST_VALUE',
+  'PROJECT_ONLY_VALUE',
+  'PROJECT_FOLDER_VALUE',
+  'LOCAL_ONLY_VALUE',
+  'midnight',
+  'PRIVATE_INVALID_VALUE',
+  '900000',
+] as const;
+
+const FIXTURE_PATH_DELIBERATELY_CARRIES_EVERY_FORBIDDEN_VALUE =
+  CONFIG_VALUES_THE_FINDING_FIELDS_MUST_NEVER_ECHO.join('-');
+
+const NAME_MAX_BYTES_PER_PATH_COMPONENT = 255;
+
+const ROOM_FOR_ONE_MORE_FORBIDDEN_VALUE =
+  1 + Math.max(...CONFIG_VALUES_THE_FINDING_FIELDS_MUST_NEVER_ECHO.map((value) => value.length));
+
+const FIXTURE_CONFIG_SCOPES = [
+  'user',
+  'project',
+  'project-local',
+] as const satisfies readonly WriteScope[];
+
+function suppliedConfigPaths(): readonly string[] {
+  return FIXTURE_CONFIG_SCOPES.map((scope) => resolveConfigPath(scope, projectDir, homeDir));
+}
+
 beforeEach(() => {
   const stamp = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-  projectDir = resolve(tmpdir(), `ok-diag-project-${stamp}`);
-  homeDir = resolve(tmpdir(), `ok-diag-home-${stamp}`);
+  projectDir = resolve(
+    tmpdir(),
+    `ok-diag-project-${FIXTURE_PATH_DELIBERATELY_CARRIES_EVERY_FORBIDDEN_VALUE}-${stamp}`,
+  );
+  homeDir = resolve(
+    tmpdir(),
+    `ok-diag-home-${FIXTURE_PATH_DELIBERATELY_CARRIES_EVERY_FORBIDDEN_VALUE}-${stamp}`,
+  );
   mkdirSync(projectDir, { recursive: true });
   mkdirSync(homeDir, { recursive: true });
 });
@@ -58,6 +96,48 @@ function collect() {
 }
 
 describe('collectConfigDiagnostics', () => {
+  test('the fixture path carries every forbidden value, so no absence check can pass on path luck', () => {
+    for (const value of CONFIG_VALUES_THE_FINDING_FIELDS_MUST_NEVER_ECHO) {
+      expect(projectDir, `projectDir must carry ${value}`).toContain(value);
+      expect(homeDir, `homeDir must carry ${value}`).toContain(value);
+    }
+
+    for (const dir of [projectDir, homeDir]) {
+      const component = basename(dir);
+      expect(
+        component.length + ROOM_FOR_ONE_MORE_FORBIDDEN_VALUE,
+        `${component} has no room left to carry another forbidden value: beforeEach mkdirSync throws ENAMETOOLONG before any assertion in this file can report it`,
+      ).toBeLessThanOrEqual(NAME_MAX_BYTES_PER_PATH_COMPONENT);
+    }
+  });
+
+  test('the leak serializer exempts exactly the fixture-supplied config paths under the file key, and no other value and no other key', () => {
+    const supplied = resolveConfigPath('project', projectDir, homeDir);
+    const suppliedPathUnderAKeyOtherThanFile = resolveConfigPath('user', projectDir, homeDir);
+    const configValueThatHappensToSitUnderTheFixtureRoot = resolve(
+      projectDir,
+      'DECOY_UNDER_FIXTURE_ROOT',
+    );
+
+    const serialized = serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+      {
+        file: supplied,
+        sidelinedTo: suppliedPathUnderAKeyOtherThanFile,
+        issues: [{ file: 'VALUE_KEYED_FILE_BUT_NOT_A_SUPPLIED_PATH' }],
+        detail: configValueThatHappensToSitUnderTheFixtureRoot,
+      },
+      suppliedConfigPaths(),
+    );
+
+    expect(serialized).not.toContain(JSON.stringify(supplied));
+    expect(
+      serialized,
+      'the exemption is not confined to the file key: it stripped a supplied path from another key',
+    ).toContain(JSON.stringify(suppliedPathUnderAKeyOtherThanFile));
+    expect(serialized).toContain(JSON.stringify('VALUE_KEYED_FILE_BUT_NOT_A_SUPPLIED_PATH'));
+    expect(serialized).toContain(JSON.stringify(configValueThatHappensToSitUnderTheFixtureRoot));
+  });
+
   test('no config files → empty report', () => {
     expect(collect()).toEqual({ diagnostics: [] });
   });
@@ -131,7 +211,10 @@ describe('collectConfigDiagnostics', () => {
       expect(finding, `finding for ${entry.path.join('.')}`).toBeDefined();
       expect(finding).toMatchObject({ scope: 'project-local', redirect: entry.redirect });
 
-      const serialized = JSON.stringify(diagnostics);
+      const serialized = serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+        diagnostics,
+        suppliedConfigPaths(),
+      );
       expect(serialized).not.toContain('SENTINEL_SIBLING_DIR');
       expect(serialized).not.toContain('SENTINEL_REMOVED_LEAF');
 
@@ -152,7 +235,22 @@ describe('collectConfigDiagnostics', () => {
     setPath(localCfg, ['appearance', 'sidebar', 'showAllFiles'], false);
     writeScopeConfig('project-local', localCfg);
 
-    const serialized = JSON.stringify(collect());
+    const report = collect();
+
+    expect(report.diagnostics).toMatchObject([
+      { code: 'REMOVED_KEY', scope: 'user', path: ['server', 'host'] },
+      { code: 'REMOVED_KEY', scope: 'project', path: ['folders'] },
+      {
+        code: 'REMOVED_KEY',
+        scope: 'project-local',
+        path: ['appearance', 'sidebar', 'showAllFiles'],
+      },
+    ]);
+
+    const serialized = serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+      report,
+      suppliedConfigPaths(),
+    );
     for (const secret of [
       'USER_ONLY_VALUE',
       'USER_HOST_VALUE',
@@ -170,7 +268,12 @@ describe('collectConfigDiagnostics', () => {
     const { diagnostics } = collect();
 
     expect(diagnostics).toEqual([{ code: 'SCHEMA_INVALID', scope: 'project-local', file }]);
-    expect(JSON.stringify(diagnostics)).not.toContain('midnight');
+    expect(
+      serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+        diagnostics,
+        suppliedConfigPaths(),
+      ),
+    ).not.toContain('midnight');
     expect(existsSync(file)).toBe(true);
   });
 
@@ -203,8 +306,12 @@ describe('collectConfigDiagnostics', () => {
         ],
       },
     ]);
-    expect(JSON.stringify(diagnostics)).not.toContain('PRIVATE_INVALID_VALUE');
-    expect(JSON.stringify(diagnostics)).not.toContain('900000');
+    const valueBearingFields = serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+      diagnostics,
+      suppliedConfigPaths(),
+    );
+    expect(valueBearingFields).not.toContain('PRIVATE_INVALID_VALUE');
+    expect(valueBearingFields).not.toContain('900000');
     expect(existsSync(file)).toBe(true);
   });
 
@@ -224,5 +331,46 @@ describe('collectConfigDiagnostics', () => {
     const { diagnostics } = collect();
 
     expect(diagnostics).toEqual([{ code: 'UNREADABLE', scope: 'project-local', file }]);
+  });
+
+  test('a report mixing REMOVED_KEY and VALUE_FALLBACK pins file on both arms and proves the leak scan is not vacuous', () => {
+    const removed = REMOVED_KEYS.find(
+      (k) => k.path.join('.') === 'appearance.sidebar.showAllFiles',
+    );
+    if (!removed) throw new Error('fixture key missing from registry');
+
+    const projectCfg: Record<string, unknown> = { content: { dir: 'LEAK_PROBE_SIBLING_DIR' } };
+    setPath(projectCfg, removed.path, 'LEAK_PROBE_REMOVED_LEAF');
+    const projectFile = writeScopeConfig('project', projectCfg);
+
+    const localFile = writeScopeRaw(
+      'project-local',
+      'search:\n  semantic:\n    maxBatchSize: LEAK_PROBE_FALLBACK_INPUT\n',
+    );
+
+    const { diagnostics } = collect();
+
+    expect(diagnostics).toMatchObject([
+      { code: 'REMOVED_KEY', scope: 'project', file: projectFile, path: removed.path },
+      { code: 'VALUE_FALLBACK', scope: 'project-local', file: localFile },
+    ]);
+
+    const valueBearingFields = serializeEveryFieldExceptCallerSuppliedPathsUnderTheFileKey(
+      diagnostics,
+      suppliedConfigPaths(),
+    );
+    expect(
+      valueBearingFields,
+      'the leak serializer produced no haystack, so every absence check in this file is vacuous',
+    ).toContain(JSON.stringify(removed.path));
+    for (const probe of [
+      'LEAK_PROBE_SIBLING_DIR',
+      'LEAK_PROBE_REMOVED_LEAF',
+      'LEAK_PROBE_FALLBACK_INPUT',
+    ]) {
+      expect(valueBearingFields, `raw config value ${probe} reached a finding field`).not.toContain(
+        probe,
+      );
+    }
   });
 });

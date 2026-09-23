@@ -7,6 +7,7 @@ import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } fro
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
 import { createServer } from './server-factory.ts';
+import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
 
 function reconstructSerializeDoc(
   hocuspocus: import('@hocuspocus/server').Hocuspocus,
@@ -41,18 +42,6 @@ async function setupFixture(): Promise<Fixture> {
     contentDir,
     cleanup: () => rmSync(tmpDir, { recursive: true, force: true }),
   };
-}
-
-async function waitForCondition(
-  predicate: () => boolean | Promise<boolean>,
-  { timeoutMs = 5_000, pollMs = 25 }: { timeoutMs?: number; pollMs?: number } = {},
-): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (await predicate()) return;
-    await new Promise((r) => setTimeout(r, pollMs));
-  }
-  throw new Error(`waitForCondition timed out after ${timeoutMs}ms`);
 }
 
 beforeEach(() => {
@@ -94,10 +83,14 @@ describe('A3: serializeDoc(docName) byte-equals git show :<stage>:<file> when fr
       await server.ready;
       const conn = await server.hocuspocus.openDirectConnection(docName);
       try {
-        await waitForCondition(() => {
-          const doc = server.hocuspocus.documents.get(docName);
-          return doc?.getText('source').toString().includes('First paragraph.');
-        });
+        await waitWithinTestBudget(
+          `the ${docName} source text to contain 'First paragraph.'`,
+          () => {
+            const doc = server.hocuspocus.documents.get(docName);
+            return doc?.getText('source').toString().includes('First paragraph.') === true;
+          },
+          { timeoutMs: 5_000 },
+        );
 
         const fromYtext = reconstructSerializeDoc(server.hocuspocus, docName);
         if (fromYtext === null) {

@@ -128,6 +128,7 @@
         "!README.md",
         "../../test-support/*.ts",
         "../../oxlint.config.ts",
+        "../../AGENTS.md",
         "../../lint-plugins/**",
         "../plugin/**",
         "../../plugins/ok/**",

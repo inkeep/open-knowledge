@@ -248,20 +248,16 @@ describe('editor tab chrome helpers', () => {
   test('dragged tabs use active-tab colors even when the source tab was inactive', () => {
     const className = getSortableTabClassName({
       className:
-        'bg-transparent hover:bg-muted focus-visible:bg-muted border-transparent text-muted-foreground',
+        'rounded-md text-muted-foreground hover:bg-sidebar-hover hover:text-foreground focus-visible:bg-sidebar-hover focus-visible:text-foreground',
       isDragging: true,
     });
+    const tokens = className.split(/\s+/);
 
-    expect(className).toContain('bg-background');
-    expect(className).toContain('hover:bg-background');
-    expect(className).toContain('focus-visible:bg-background');
-    expect(className).toContain('border-border');
-    expect(className).toContain('text-foreground');
-    expect(className).not.toContain('bg-transparent');
-    expect(className).not.toContain('hover:bg-muted');
-    expect(className).not.toContain('focus-visible:bg-muted');
-    expect(className).not.toContain('border-transparent');
-    expect(className).not.toContain('text-muted-foreground');
+    expect(tokens).toContain('bg-sidebar-selected');
+    expect(tokens).toContain('text-sidebar-selected-foreground');
+    expect(tokens).not.toContain('text-muted-foreground');
+    expect(tokens).not.toContain('hover:bg-sidebar-hover');
+    expect(tokens).not.toContain('focus-visible:bg-sidebar-hover');
   });
 
   test('non-dragged tabs preserve caller classes', () => {

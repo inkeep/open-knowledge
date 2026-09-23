@@ -1268,12 +1268,8 @@
   line-height: 1.5;
   margin-left: 0;
   padding-left: 0;
-  /* No trailing dead zone either: nothing can follow a one-line prompt, so the
-     affordance never engages here and the pad would only add dead space. The
-     token needs no reset — this element is excluded from the opt-in rule that
-     grants it — but the padding does, because the scroller rule adds the
-     composer's own height on top. */
-  padding-bottom: 0;
+  /* STOP: 0.25rem mirrors this element's own `py-1` top; 0 un-centres the composer row. */
+  padding-bottom: 0.25rem;
   /* Drop the right gutter mirror too — the slim composer is a single-line prompt,
      not a document body, so it needs neither the drag-handle hit area nor the
      full-width-block border slack. */
@@ -2917,6 +2913,11 @@ button:active:not(:disabled) {
   );
 }
 
+.scroll-fade-mask-bottom {
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 1.5rem), transparent 100%);
+  mask-image: linear-gradient(to bottom, black calc(100% - 1.5rem), transparent 100%);
+}
+
 .scroll-fade-mask-x {
   -webkit-mask-image: linear-gradient(
     to right,
@@ -3048,6 +3049,25 @@ button:active:not(:disabled) {
       calc(100% - 1rem) 100%;
   }
 
+  .scroll-fade-mask-bottom {
+    -webkit-mask-image: linear-gradient(
+      to bottom,
+      black calc(100% - 1.5rem),
+      rgba(0, 0, 0, var(--scroll-fade-bottom)) 100%
+    );
+    mask-image: linear-gradient(
+      to bottom,
+      black calc(100% - 1.5rem),
+      rgba(0, 0, 0, var(--scroll-fade-bottom)) 100%
+    );
+    animation-name: scroll-fade-bottom-out;
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: scroll(self);
+    animation-range: calc(100% - 1.5rem) 100%;
+  }
+
   .scroll-fade-mask-x {
     -webkit-mask-image: linear-gradient(
       to right,
@@ -3146,6 +3166,7 @@ button:active:not(:disabled) {
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-hover: var(--sidebar-hover);
   --color-sidebar-hover-foreground: var(--sidebar-hover-foreground);
+  --color-sidebar-hover-muted-foreground: var(--sidebar-hover-muted-foreground);
   --color-sidebar-selected: var(--sidebar-selected);
   --color-sidebar-selected-foreground: var(--sidebar-selected-foreground);
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);

@@ -1,0 +1,14 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [],
+  "files": [
+    "src/expect-stable.test.ts",
+    "src/file-watcher-chokidar-fallback.test.ts",
+    "src/managed-artifact-watcher.test.ts",
+    "src/persistence-tripwire-block.test.ts",
+    "src/persistence-tripwire-paste.test.ts",
+    "src/serialize-doc-vs-git-show-byte-equality.test.ts",
+    "src/serialize-doc-ytext.test.ts",
+    "src/wait-within-test-budget.test.ts"
+  ]
+}

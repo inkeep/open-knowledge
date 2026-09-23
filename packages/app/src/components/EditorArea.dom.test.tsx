@@ -207,12 +207,59 @@ let groupLayout: Record<string, number> = {};
 let groupSetLayoutCalls: Array<Record<string, number>> = [];
 let panelIsCollapsed = false;
 let mockGroupPx = 1360;
+let mockPanelPercentage: number | null = null;
+let mockPanelPx: number | null = null;
+let rejectGroupLayoutWrites = false;
+let deferPanelGeometryCommit = false;
+let committedGroupLayout: Record<string, number> = {};
+
+beforeEach(() => {
+  mockPanelPercentage = null;
+  mockPanelPx = null;
+  rejectGroupLayoutWrites = false;
+  deferPanelGeometryCommit = false;
+  committedGroupLayout = {};
+});
+
+function geometryLayout(): Record<string, number> {
+  return deferPanelGeometryCommit ? committedGroupLayout : groupLayout;
+}
+
+function mockedPanelWidthPx(element: HTMLElement): number {
+  const layout = geometryLayout();
+  if (element.id !== '') return ((layout[element.id] ?? 0) / 100) * mockGroupPx;
+  const group = element.parentElement;
+  if (group == null) return 0;
+  let claimedPercentage = 0;
+  for (const sibling of group.querySelectorAll<HTMLElement>(':scope > [data-panel]')) {
+    if (sibling.id !== '') claimedPercentage += layout[sibling.id] ?? 0;
+  }
+  return (Math.max(0, 100 - claimedPercentage) / 100) * mockGroupPx;
+}
+
+function measureMockedPanel(element: HTMLDivElement | null) {
+  if (element == null) return;
+  Object.defineProperty(element, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => {
+      const width = mockedPanelWidthPx(element);
+      return { width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0 };
+    },
+  });
+  Object.defineProperty(element, 'offsetWidth', {
+    configurable: true,
+    get: () => Math.round(mockedPanelWidthPx(element)),
+  });
+}
 vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => ({
     current: {
       collapse: () => {},
       expand: () => {},
-      getSize: () => ({ asPercentage: 25, inPixels: mockGroupPx / 4 }),
+      getSize: () => ({
+        asPercentage: mockPanelPercentage ?? 25,
+        inPixels: mockPanelPx ?? mockGroupPx / 4,
+      }),
       isCollapsed: () => panelIsCollapsed,
     },
   }),
@@ -220,8 +267,16 @@ vi.doMock('react-resizable-panels', () => ({
     current: {
       getLayout: () => groupLayout,
       setLayout: (layout: Record<string, number>) => {
-        groupLayout = layout;
         groupSetLayoutCalls.push(layout);
+        if (rejectGroupLayoutWrites) return;
+        groupLayout = layout;
+        if (deferPanelGeometryCommit) {
+          queueMicrotask(() => {
+            committedGroupLayout = layout;
+          });
+        } else {
+          committedGroupLayout = layout;
+        }
       },
     },
   }),
@@ -229,7 +284,9 @@ vi.doMock('react-resizable-panels', () => ({
 
 vi.doMock('@/components/ui/resizable', () => ({
   ResizablePanelGroup: ({ children }: { children: ReactNode }) => (
-    <div data-testid="resizable-group">{children}</div>
+    <div data-testid="resizable-group" data-group="true" data-slot="resizable-panel-group">
+      {children}
+    </div>
   ),
   ResizablePanel: ({
     children,
@@ -246,7 +303,14 @@ vi.doMock('@/components/ui/resizable', () => ({
   }) => {
     if (id != null) railPanelOnResizeById.set(id, onResize ?? null);
     return (
-      <div id={id} data-min-size={minSize} data-max-size={maxSize}>
+      <div
+        id={id}
+        data-panel="true"
+        data-slot="resizable-panel"
+        ref={measureMockedPanel}
+        data-min-size={minSize}
+        data-max-size={maxSize}
+      >
         {children}
       </div>
     );
@@ -329,6 +393,8 @@ const { TooltipProvider } = await import('@/components/ui/tooltip');
 const { emitLocalMenuAction } = await import('@/lib/local-menu-action-bus');
 const { requestDocPanelTab } = await import('./doc-panel-events');
 const { AGENTS_COLUMN_ID, TERMINAL_COLUMN_ID } = await import('./editor-area-rail-registry');
+const { MAX_RAIL_PIN_EXHAUSTED_REPORTS } = await import('./EditorArea');
+const { RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX } = await import('./right-rail-admission');
 
 function renderEditorArea() {
   return render(
@@ -810,6 +876,372 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     expect(corrected).toBeDefined();
     expect(corrected?.['doc-panel']).toBe(0);
     expect(corrected?.['editor-main']).toBe(100);
+  });
+
+  test('the terminal pin is taken against rendered panel space, not a panel-ratio estimate', async () => {
+    setViewportWidth(1900);
+    mockGroupPx = 1610;
+    docCtx = DOC_LIVE_CTX;
+    mockPanelPercentage = (319.51 / 1610) * 100;
+    mockPanelPx = 320;
+    const view = render(
+      <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
+    );
+    groupLayout = {
+      'editor-main': 100 - (320 / 1610) * 100 - (740 / 1610) * 100,
+      'doc-panel': (320 / 1610) * 100,
+      'terminal-column': (740 / 1610) * 100,
+      'agents-column': 0,
+    };
+    groupSetLayoutCalls = [];
+
+    view.rerender(
+      <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible />,
+    );
+    await act(async () => {});
+
+    const corrected = groupSetLayoutCalls.at(-1);
+    expect(corrected).toBeDefined();
+    const terminalPercentage = corrected?.['terminal-column'];
+    if (terminalPercentage == null) throw new Error('terminal column was not pinned');
+    expect((terminalPercentage / 100) * 1610).toBeGreaterThan(739);
+    expect(terminalPercentage).toBeCloseTo((740 / 1610) * 100, 3);
+  });
+
+  const RAIL_LAYOUT_1610 = {
+    'editor-main': 100 - (320 / 1610) * 100 - (740 / 1610) * 100,
+    'doc-panel': (320 / 1610) * 100,
+    'terminal-column': (740 / 1610) * 100,
+    'agents-column': 0,
+  };
+
+  const readExhaustedReports = (warnings: readonly string[]) =>
+    warnings
+      .map((message) => {
+        try {
+          return JSON.parse(message) as {
+            event?: string;
+            trigger?: string;
+            stage?: string;
+            refusal?: string;
+            shortfall?: Record<string, unknown>;
+            unaccountedIds?: readonly string[];
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((entry) => entry?.event === 'right-rail-pin-exhausted');
+
+  async function withSynchronousFrames(run: () => void) {
+    const warnings: string[] = [];
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation((message: unknown) => {
+      warnings.push(String(message));
+    });
+    const realRequestAnimationFrame = globalThis.requestAnimationFrame;
+    globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+      callback(0);
+      return 0;
+    }) as typeof globalThis.requestAnimationFrame;
+    try {
+      run();
+      await act(async () => {});
+    } finally {
+      globalThis.requestAnimationFrame = realRequestAnimationFrame;
+      warnSpy.mockRestore();
+    }
+    return warnings;
+  }
+
+  test('the terminal pin is verified against the write, not the frame the panels still show', async () => {
+    setViewportWidth(1900);
+    mockGroupPx = 1610;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
+    );
+    groupLayout = { ...RAIL_LAYOUT_1610 };
+    committedGroupLayout = { ...RAIL_LAYOUT_1610 };
+    deferPanelGeometryCommit = true;
+    groupSetLayoutCalls = [];
+
+    const warnings = await withSynchronousFrames(() => {
+      view.rerender(
+        <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible />,
+      );
+    });
+
+    const corrected = groupSetLayoutCalls.at(-1);
+    expect(corrected).toBeDefined();
+    expect(corrected?.['terminal-column']).toBeCloseTo((740 / 1610) * 100, 3);
+    expect(readExhaustedReports(warnings)).toEqual([]);
+  });
+
+  test('an exhausted terminal pin reports the width the column actually got', async () => {
+    setViewportWidth(1900);
+    mockGroupPx = 1610;
+    docCtx = DOC_LIVE_CTX;
+    const strandedTerminalPercentage = 44;
+    const view = render(
+      <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
+    );
+    groupLayout = {
+      'editor-main': 100 - (320 / 1610) * 100 - strandedTerminalPercentage,
+      'doc-panel': (320 / 1610) * 100,
+      'terminal-column': strandedTerminalPercentage,
+      'agents-column': 0,
+    };
+    rejectGroupLayoutWrites = true;
+
+    const warnings = await withSynchronousFrames(() => {
+      view.rerender(
+        <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible />,
+      );
+    });
+
+    const exhausted = readExhaustedReports(warnings).at(0);
+    expect(exhausted).toBeDefined();
+    expect(exhausted?.trigger).toBe('rail-column-sync');
+    expect(exhausted?.stage).toBe('width-shortfall');
+    expect(exhausted?.shortfall?.['terminal-column']).toEqual({
+      targetPx: 740,
+      renderedPx: expect.closeTo((strandedTerminalPercentage / 100) * 1610, 6),
+    });
+  });
+
+  test('a second exhausted loop reports its own outcome, not the one before it', async () => {
+    setViewportWidth(1900);
+    mockGroupPx = 1610;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
+    );
+    groupLayout = {
+      'editor-main': 100 - (320 / 1610) * 100 - 44,
+      'doc-panel': (320 / 1610) * 100,
+      'terminal-column': 44,
+      'agents-column': 0,
+    };
+    rejectGroupLayoutWrites = true;
+
+    const warnings = await withSynchronousFrames(() => {
+      view.rerender(
+        <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible />,
+      );
+      mockGroupPx = 0;
+      docCtx = EMPTY_DOC_CTX;
+      view.rerender(
+        <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible />,
+      );
+    });
+
+    const [fromColumnSync, fromDocSlot] = readExhaustedReports(warnings);
+    expect(fromColumnSync?.trigger).toBe('rail-column-sync');
+    expect(fromColumnSync?.stage).toBe('width-shortfall');
+    expect(fromColumnSync?.shortfall?.['terminal-column']).toEqual({
+      targetPx: 740,
+      renderedPx: expect.closeTo((44 / 100) * 1610, 6),
+    });
+    expect(fromDocSlot?.trigger).toBe('doc-slot-presence');
+    expect(fromDocSlot?.stage).toBe('panel-space-unresolved');
+    expect(fromDocSlot?.refusal).toBe('panel-space-empty');
+    expect(fromDocSlot?.shortfall).toBeUndefined();
+  });
+
+  test('a layout carrying stray ids reports them instead of a bare missing-residual', async () => {
+    setViewportWidth(1900);
+    mockGroupPx = 1610;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea
+        {...baseProps}
+        terminalVisible={false}
+        terminalPlacement="right"
+        agentsVisible={false}
+      />,
+    );
+    groupLayout = { 'editor-main': 50, 'preview-main': 50 };
+    groupSetLayoutCalls = [];
+
+    const warnings = await withSynchronousFrames(() => {
+      view.rerender(
+        <EditorArea
+          {...baseProps}
+          terminalVisible
+          terminalPlacement="right"
+          agentsVisible={false}
+        />,
+      );
+    });
+
+    expect(groupSetLayoutCalls).toHaveLength(0);
+    const exhausted = readExhaustedReports(warnings).at(0);
+    expect(exhausted).toBeDefined();
+    expect(exhausted?.trigger).toBe('rail-column-sync');
+    expect(exhausted?.stage).toBe('layout-unaccounted');
+    expect(exhausted?.unaccountedIds).toEqual(['editor-main', 'preview-main']);
+  });
+
+  test('a rail with no room for its floor widths reports the pin it could not place', async () => {
+    setViewportWidth(500);
+    mockGroupPx = 300;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea
+        {...baseProps}
+        terminalVisible={false}
+        terminalPlacement="right"
+        agentsVisible={false}
+      />,
+    );
+    groupLayout = {
+      'editor-main': 60,
+      'doc-panel': 0,
+      'terminal-column': 40,
+      'agents-column': 0,
+    };
+    groupSetLayoutCalls = [];
+
+    const warnings = await withSynchronousFrames(() => {
+      view.rerender(
+        <EditorArea
+          {...baseProps}
+          terminalVisible
+          terminalPlacement="right"
+          agentsVisible={false}
+        />,
+      );
+    });
+
+    expect(groupSetLayoutCalls).toHaveLength(0);
+    const exhausted = readExhaustedReports(warnings).at(0);
+    expect(exhausted).toBeDefined();
+    expect(exhausted?.trigger).toBe('rail-column-sync');
+    expect(exhausted?.stage).toBe('pins-do-not-fit');
+    expect(exhausted?.shortfall?.['terminal-column']).toEqual({
+      targetPx: RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX,
+      renderedPx: expect.closeTo((40 / 100) * 300, 6),
+    });
+  });
+
+  test('a rail short of its floors leaves out the column that is already wide enough', async () => {
+    const DOC_PANEL_FLOOR_PX = 300;
+    const groupPx = DOC_PANEL_FLOOR_PX + RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX - 5;
+    const terminalRenderedPx = RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX + 175;
+    const docRenderedPx = 40;
+    setViewportWidth(700);
+    mockGroupPx = groupPx;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea
+        {...baseProps}
+        terminalVisible={false}
+        terminalPlacement="right"
+        agentsVisible={false}
+      />,
+    );
+    act(() => emitLocalMenuAction('toggle-doc-panel'));
+    groupLayout = {
+      'editor-main': ((groupPx - terminalRenderedPx - docRenderedPx) / groupPx) * 100,
+      'doc-panel': (docRenderedPx / groupPx) * 100,
+      'terminal-column': (terminalRenderedPx / groupPx) * 100,
+      'agents-column': 0,
+    };
+
+    const warnings = await withSynchronousFrames(() => {
+      view.rerender(
+        <EditorArea
+          {...baseProps}
+          terminalVisible
+          terminalPlacement="right"
+          agentsVisible={false}
+        />,
+      );
+    });
+
+    const exhausted = readExhaustedReports(warnings).at(0);
+    expect(exhausted).toBeDefined();
+    expect(exhausted?.trigger).toBe('rail-column-sync');
+    expect(exhausted?.stage).toBe('pins-do-not-fit');
+    expect(Object.keys(exhausted?.shortfall ?? {})).toEqual(['doc-panel']);
+    expect(exhausted?.shortfall?.['doc-panel']).toEqual({
+      targetPx: DOC_PANEL_FLOOR_PX,
+      renderedPx: expect.closeTo(docRenderedPx, 6),
+    });
+  });
+
+  test('a pin that can never land stops reporting once the mount has had its say', async () => {
+    setViewportWidth(1900);
+    mockGroupPx = 1610;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
+    );
+    groupLayout = {
+      'editor-main': 100 - (320 / 1610) * 100 - 44,
+      'doc-panel': (320 / 1610) * 100,
+      'terminal-column': 44,
+      'agents-column': 0,
+    };
+    rejectGroupLayoutWrites = true;
+
+    const warnings = await withSynchronousFrames(() => {
+      for (let toggle = 0; toggle < MAX_RAIL_PIN_EXHAUSTED_REPORTS + 3; toggle += 1) {
+        view.rerender(
+          <EditorArea
+            {...baseProps}
+            terminalVisible
+            terminalPlacement="right"
+            agentsVisible={toggle % 2 === 0}
+          />,
+        );
+      }
+    });
+
+    expect(
+      readExhaustedReports(warnings).filter((report) => report.trigger === 'rail-column-sync')
+        .length,
+    ).toBe(MAX_RAIL_PIN_EXHAUSTED_REPORTS);
+  });
+
+  test('one exhausted trigger does not spend the budget the other trigger needs', async () => {
+    setViewportWidth(1900);
+    mockGroupPx = 1610;
+    docCtx = DOC_LIVE_CTX;
+    const view = render(
+      <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible={false} />,
+    );
+    groupLayout = {
+      'editor-main': 100 - (320 / 1610) * 100 - 44,
+      'doc-panel': (320 / 1610) * 100,
+      'terminal-column': 44,
+      'agents-column': 0,
+    };
+    rejectGroupLayoutWrites = true;
+
+    const warnings = await withSynchronousFrames(() => {
+      for (let toggle = 0; toggle < MAX_RAIL_PIN_EXHAUSTED_REPORTS + 3; toggle += 1) {
+        view.rerender(
+          <EditorArea
+            {...baseProps}
+            terminalVisible
+            terminalPlacement="right"
+            agentsVisible={toggle % 2 === 0}
+          />,
+        );
+      }
+      mockGroupPx = 0;
+      docCtx = EMPTY_DOC_CTX;
+      view.rerender(
+        <EditorArea {...baseProps} terminalVisible terminalPlacement="right" agentsVisible />,
+      );
+    });
+
+    const reports = readExhaustedReports(warnings);
+    expect(reports.filter((report) => report.trigger === 'rail-column-sync').length).toBe(
+      MAX_RAIL_PIN_EXHAUSTED_REPORTS,
+    );
+    expect(reports.filter((report) => report.trigger === 'doc-slot-presence').length).toBe(1);
   });
 
   test('revealing the agents panel keeps the open doc panel open despite a stale cached layout', async () => {

@@ -17,19 +17,26 @@
  * the composed (placeholder-free) bundle is what gets installed. At v1
  * `_shared/` carries no shared prose yet — neither bundle references a
  * placeholder, so composition is an identity transform — but the mechanism +
- * the CI byte-equality guard exist now so shared prose can land without drift
+ * the byte-equality guard exist now so shared prose can land without drift
  * the moment two bundles overlap.
  *
  * Build-time, NOT runtime: composing at runtime would add install-time
  * complexity; this matches the standard build-step include pattern.
- *
- * Usage:
- *   bun packages/server/scripts/build-skill-bundles.ts            # compose → dist
- *   bun packages/server/scripts/build-skill-bundles.ts --check    # CI guard, no writes
  */
 
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BUNDLE_IDS, BUNDLE_SKILL_NAME, type BundleId } from '../src/skill-bundles.ts';
 import { enumeratePackSkills } from '../src/skill-pack-sources.ts';
@@ -107,29 +114,253 @@ interface ComposedBundle {
   readonly outputPath: string;
 }
 
+const REMOVAL_RETRIES = 3;
+
+const STAGING_ROOT_PREFIX = '.ok-skill-publish-';
+
+const KEPT_TREE_PREFIX = `${STAGING_ROOT_PREFIX}kept-`;
+
+const STALE_STAGING_AGE_MS = 30_000;
+
+const DESTINATION_OCCUPIED_CODES = new Set(['ENOTEMPTY', 'EEXIST']);
+
+function discardTree(path: string): void {
+  try {
+    rmSync(path, { recursive: true, force: true, maxRetries: REMOVAL_RETRIES });
+  } catch (err) {
+    const reason = (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+    console.warn(`[build-skill-bundles] could not remove ${path}: ${reason}`);
+  }
+}
+
+function reinstateTree(superseded: string, dest: string): boolean {
+  try {
+    renameSync(superseded, dest);
+    return true;
+  } catch (err) {
+    const reason = (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+    console.error(
+      `[build-skill-bundles] could not reinstate ${dest} from ${superseded}: ${reason}`,
+    );
+    return false;
+  }
+}
+
+function destinationIsPublished(dest: string): boolean {
+  try {
+    return readdirSync(dest).length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function peerPublished(dest: string, err: unknown): boolean {
+  const code =
+    typeof err === 'object' && err !== null ? (err as NodeJS.ErrnoException).code : undefined;
+  if (code !== undefined && DESTINATION_OCCUPIED_CODES.has(code)) return true;
+  return destinationIsPublished(dest);
+}
+
+function stagingParentFor(distDir: string): string {
+  let current = distDir;
+  while (current !== dirname(current)) {
+    if (basename(current) === 'dist') return dirname(current);
+    current = dirname(current);
+  }
+  return dirname(distDir);
+}
+
+type TreeInspection =
+  | { readonly ok: true; readonly newest: number }
+  | { readonly ok: false; readonly failed: string };
+
+function inspectTree(path: string): TreeInspection {
+  let newest = 0;
+  let failed: string | null = null;
+  const visit = (current: string): void => {
+    if (failed !== null) return;
+    let isDirectory: boolean;
+    try {
+      const entry = lstatSync(current);
+      if (entry.mtimeMs > newest) newest = entry.mtimeMs;
+      isDirectory = entry.isDirectory();
+    } catch (err) {
+      failed = (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+      return;
+    }
+    if (!isDirectory) return;
+    let children: string[];
+    try {
+      children = readdirSync(current);
+    } catch (err) {
+      failed = (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+      return;
+    }
+    for (const child of children) visit(join(current, child));
+  };
+  visit(path);
+  return failed === null ? { ok: true, newest } : { ok: false, failed };
+}
+
+function keepDisplacedTree(holder: string): { readonly kept: boolean; readonly root: string } {
+  const kept = join(
+    dirname(holder),
+    `${KEPT_TREE_PREFIX}${basename(holder).slice(STAGING_ROOT_PREFIX.length)}`,
+  );
+  try {
+    renameSync(holder, kept);
+    return { kept: true, root: kept };
+  } catch (err) {
+    const reason = (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+    console.error(
+      `[build-skill-bundles] could not move ${holder} out of reclaimable scratch: ${reason}`,
+    );
+    return { kept: false, root: holder };
+  }
+}
+
+const sweepNotices = new Set<string>();
+
+function noticeOnce(path: string, note: string): void {
+  if (sweepNotices.has(path)) return;
+  sweepNotices.add(path);
+  console.warn(`[build-skill-bundles] ${path}: ${note}`);
+}
+
+let sweepRuns = 0;
+
+function reapStaleStagingRoots(stagingParent: string): boolean {
+  sweepRuns += 1;
+  const cutoff = Date.now() - STALE_STAGING_AGE_MS;
+  let entries: string[];
+  try {
+    entries = readdirSync(stagingParent);
+  } catch (err) {
+    const reason = (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+    noticeOnce(stagingParent, `could not be swept for reclaimable scratch (${reason})`);
+    return false;
+  }
+  for (const name of entries) {
+    if (!name.startsWith(STAGING_ROOT_PREFIX)) continue;
+    const full = join(stagingParent, name);
+    if (name.startsWith(KEPT_TREE_PREFIX)) {
+      noticeOnce(
+        full,
+        'not reclaimed; it holds the tree a failed publish kept, which nothing removes automatically',
+      );
+      continue;
+    }
+    const age = inspectTree(full);
+    if (!age.ok) {
+      if (age.failed !== 'ENOENT') {
+        noticeOnce(full, `not reclaimed; its age could not be established (${age.failed})`);
+      }
+      continue;
+    }
+    if (age.newest >= cutoff) continue;
+    discardTree(full);
+  }
+  return true;
+}
+
+const sweptStagingParents = new Set<string>();
+
+function openStagingRoot(distDir: string): string {
+  const stagingParent = stagingParentFor(distDir);
+  mkdirSync(stagingParent, { recursive: true });
+  if (!sweptStagingParents.has(stagingParent) && reapStaleStagingRoots(stagingParent)) {
+    sweptStagingParents.add(stagingParent);
+  }
+  return mkdtempSync(join(stagingParent, STAGING_ROOT_PREFIX));
+}
+
+/* WARN: `packages/app/scripts/copy-excalidraw-assets.mjs` publishes a directory by the same
+   stage-then-displace-then-rename shape; its failure semantics are its own. */
+function publishTree(stagingRoot: string, staged: string, dest: string): void {
+  mkdirSync(dirname(dest), { recursive: true });
+  const holder = mkdtempSync(`${stagingRoot}-superseded-`);
+  const superseded = join(holder, basename(dest));
+  let displaced = false;
+  let stranded = false;
+  try {
+    try {
+      renameSync(dest, superseded);
+      displaced = true;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && existsSync(dest)) throw err;
+      if (code !== 'ENOENT') {
+        console.warn(
+          `[build-skill-bundles] could not displace ${dest} before publishing: ${code ?? (err as Error).message}`,
+        );
+      }
+    }
+    try {
+      renameSync(staged, dest);
+    } catch (err) {
+      if (peerPublished(dest, err)) {
+        console.warn(
+          `[build-skill-bundles] yielded ${dest} to a peer that published it first; discarding this run's tree for it`,
+        );
+        return;
+      }
+      if (!displaced) throw err;
+      if (reinstateTree(superseded, dest)) throw err;
+      stranded = true;
+      const reason = (err as NodeJS.ErrnoException).code ?? (err as Error).message;
+      const outcome = keepDisplacedTree(holder);
+      const copy = join(outcome.root, basename(dest));
+      const fate = outcome.kept
+        ? `kept at ${copy}`
+        : `left at ${copy}, which a later build may reclaim`;
+      throw new Error(
+        `[build-skill-bundles] could not publish ${dest} (${reason}) and could not put back the tree it displaced: ${dest} is now absent and that tree is its only copy, ${fate}`,
+      );
+    }
+  } finally {
+    if (!stranded) discardTree(holder);
+  }
+}
+
+function stageComposedBundle(
+  sourceDir: string,
+  stageDir: string,
+  resolve: (name: string) => string,
+): { composed: string; placeholders: string[] } {
+  const source = readFileSync(join(sourceDir, 'SKILL.md'), 'utf-8');
+  const { composed, placeholders } = composeSkill(source, resolve);
+  cpSync(sourceDir, stageDir, { recursive: true });
+  writeFileSync(join(stageDir, 'SKILL.md'), composed, 'utf-8');
+  return { composed, placeholders };
+}
+
+/*
+ * WARN: `packages/cli/scripts/build-skill-assets.ts` calls `buildSkillBundles`
+ * and `buildPackSkills` by relative path and depends on both signatures, so a
+ * change to either one has to land in that consumer in the same edit.
+ */
 /**
  * Compose every bundle and write the result to `distDir/<bundle>/SKILL.md`.
- * Returns one entry per bundle. The dist tree is wiped + recreated so a
- * removed source file never leaves a stale composed artifact behind.
+ * Returns one entry per bundle.
  */
 export function buildSkillBundles(paths: SkillBundlePaths = defaultPaths()): ComposedBundle[] {
   const resolve = sharedResolver(paths.skillsDir);
   const results: ComposedBundle[] = [];
-  for (const bundle of BUNDLE_IDS) {
-    const sourceDir = join(paths.skillsDir, bundle);
-    const source = readFileSync(join(sourceDir, 'SKILL.md'), 'utf-8');
-    const { composed, placeholders } = composeSkill(source, resolve);
-    const outDir = join(paths.distDir, bundle);
-    const outputPath = join(outDir, 'SKILL.md');
-    rmSync(outDir, { recursive: true, force: true });
-    // Copy the ENTIRE source bundle dir (references/, scripts/, …) so the
-    // shipped bundle is complete, THEN overwrite SKILL.md with the composed
-    // (placeholder-resolved) text. Without the dir copy the composer emitted
-    // only SKILL.md, so a bundle's references never reached published / desktop
-    // builds — `resolveBundledSkillDir` prefers dist, which would carry no refs.
-    cpSync(sourceDir, outDir, { recursive: true });
-    writeFileSync(outputPath, composed, 'utf-8');
-    results.push({ bundle, composed, placeholders, outputPath });
+  const stagingRoot = openStagingRoot(paths.distDir);
+  try {
+    for (const bundle of BUNDLE_IDS) {
+      const stageDir = join(stagingRoot, bundle);
+      const { composed, placeholders } = stageComposedBundle(
+        join(paths.skillsDir, bundle),
+        stageDir,
+        resolve,
+      );
+      const outDir = join(paths.distDir, bundle);
+      publishTree(stagingRoot, stageDir, outDir);
+      results.push({ bundle, composed, placeholders, outputPath: join(outDir, 'SKILL.md') });
+    }
+  } finally {
+    discardTree(stagingRoot);
   }
   return results;
 }
@@ -153,33 +384,36 @@ export function buildPackSkills(paths: SkillBundlePaths = defaultPaths()): strin
   if (!existsSync(packsSrc)) return [];
   const resolve = sharedResolver(paths.skillsDir);
   const built: string[] = [];
-  for (const entry of readdirSync(packsSrc, { withFileTypes: true })) {
-    if (!entry.isDirectory()) continue;
-    const sourceDir = join(packsSrc, entry.name);
-    const skills = enumeratePackSkills(sourceDir);
-    if (skills.length === 0) continue;
-    const outDir = join(paths.distDir, 'packs', entry.name);
-    rmSync(outDir, { recursive: true, force: true });
-    // Copy the full pack dir (seed content + any references + member skill dirs)
-    // then overwrite each composed SKILL.md — same completeness rule as the
-    // named bundles.
-    cpSync(sourceDir, outDir, { recursive: true });
-    for (const skill of skills) {
-      const rel = relative(sourceDir, skill.sourceDir);
-      const { composed } = composeSkill(
-        readFileSync(join(skill.sourceDir, 'SKILL.md'), 'utf-8'),
-        resolve,
-      );
-      writeFileSync(join(outDir, rel, 'SKILL.md'), composed, 'utf-8');
-      built.push(skill.name);
+  const stagingRoot = openStagingRoot(paths.distDir);
+  try {
+    for (const entry of readdirSync(packsSrc, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const sourceDir = join(packsSrc, entry.name);
+      const skills = enumeratePackSkills(sourceDir);
+      if (skills.length === 0) continue;
+      const composedSkills = skills.map((skill) => ({
+        name: skill.name,
+        rel: relative(sourceDir, skill.sourceDir),
+        composed: composeSkill(readFileSync(join(skill.sourceDir, 'SKILL.md'), 'utf-8'), resolve)
+          .composed,
+      }));
+      const stageDir = join(stagingRoot, 'packs', entry.name);
+      cpSync(sourceDir, stageDir, { recursive: true });
+      for (const skill of composedSkills) {
+        writeFileSync(join(stageDir, skill.rel, 'SKILL.md'), skill.composed, 'utf-8');
+        built.push(skill.name);
+      }
+      publishTree(stagingRoot, stageDir, join(paths.distDir, 'packs', entry.name));
     }
+  } finally {
+    discardTree(stagingRoot);
   }
   return built;
 }
 
 /**
  * Compose the Agent Plugins (agent-plugins.org) view of the built-ins: a
- * conformant plugin directory derived from the SAME composed dist bundles —
+ * conformant plugin directory —
  * `dist/assets/agent-plugin/{plugin.json, skills/<real skill name>/…}`.
  *
  * Derived, not a second source: the internal `assets/skills/<id>` layout stays
@@ -190,20 +424,35 @@ export function buildPackSkills(paths: SkillBundlePaths = defaultPaths()): strin
  */
 export function buildAgentPluginArtifact(paths: SkillBundlePaths = defaultPaths()): string {
   const outRoot = join(paths.distDir, '..', 'agent-plugin');
-  rmSync(outRoot, { recursive: true, force: true });
-  for (const bundle of BUNDLE_IDS) {
-    const composedDir = join(paths.distDir, bundle);
-    cpSync(composedDir, join(outRoot, 'skills', BUNDLE_SKILL_NAME[bundle]), { recursive: true });
+  const resolve = sharedResolver(paths.skillsDir);
+  const stagingRoot = openStagingRoot(paths.distDir);
+  const stageRoot = join(stagingRoot, 'agent-plugin');
+  try {
+    for (const bundle of BUNDLE_IDS) {
+      stageComposedBundle(
+        join(paths.skillsDir, bundle),
+        join(stageRoot, 'skills', BUNDLE_SKILL_NAME[bundle]),
+        resolve,
+      );
+    }
+    const manifest = {
+      $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
+      name: 'open-knowledge',
+      description:
+        'OpenKnowledge built-in skills: project workflow, discovery, and skill authoring',
+      author: { name: 'Inkeep' },
+      repository: 'https://github.com/inkeep/open-knowledge',
+      keywords: ['openknowledge', 'knowledge-base'],
+    };
+    writeFileSync(
+      join(stageRoot, 'plugin.json'),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      'utf-8',
+    );
+    publishTree(stagingRoot, stageRoot, outRoot);
+  } finally {
+    discardTree(stagingRoot);
   }
-  const manifest = {
-    $schema: 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json',
-    name: 'open-knowledge',
-    description: 'OpenKnowledge built-in skills: project workflow, discovery, and skill authoring',
-    author: { name: 'Inkeep' },
-    repository: 'https://github.com/inkeep/open-knowledge',
-    keywords: ['openknowledge', 'knowledge-base'],
-  };
-  writeFileSync(join(outRoot, 'plugin.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf-8');
   return outRoot;
 }
 
@@ -213,7 +462,7 @@ interface ByteEqualityResult {
 }
 
 /**
- * CI byte-equality guard. For every `{{> _shared/<name>.md }}`
+ * Byte-equality guard. For every `{{> _shared/<name>.md }}`
  * placeholder referenced by any bundle, assert (a) the `_shared/<name>` file
  * exists and (b) the composed output of EVERY referencing bundle contains the
  * shared file's exact bytes. Because all bundles resolve the same `_shared/`
@@ -280,28 +529,40 @@ if (import.meta.main) {
   const check = process.argv.includes('--check');
   if (check) {
     const result = checkSharedContentByteEquality();
-    if (!result.ok) {
+    if (result.ok) {
+      console.log('[build-skill-bundles] shared-content byte-equality check passed.');
+    } else {
       console.error('[build-skill-bundles] shared-content byte-equality check FAILED:');
       for (const v of result.violations) console.error(`  - ${v}`);
-      process.exit(1);
+      process.exitCode = 1;
     }
-    console.log('[build-skill-bundles] shared-content byte-equality check passed.');
   } else {
-    const built = buildSkillBundles();
-    for (const b of built) {
-      const note =
-        b.placeholders.length > 0
-          ? ` (resolved ${b.placeholders.length} placeholder(s): ${b.placeholders.join(', ')})`
-          : ' (no placeholders)';
-      console.log(`[build-skill-bundles] composed ${b.bundle} → ${b.outputPath}${note}`);
+    let stage = 'composing the skill bundles';
+    try {
+      const built = buildSkillBundles();
+      for (const b of built) {
+        const note =
+          b.placeholders.length > 0
+            ? ` (resolved ${b.placeholders.length} placeholder(s): ${b.placeholders.join(', ')})`
+            : ' (no placeholders)';
+        console.log(`[build-skill-bundles] composed ${b.bundle} → ${b.outputPath}${note}`);
+      }
+      stage = 'composing the pack skills';
+      const packs = buildPackSkills();
+      if (packs.length > 0) {
+        console.log(
+          `[build-skill-bundles] composed ${packs.length} pack skill(s): ${packs.join(', ')}`,
+        );
+      }
+      stage = 'composing the Agent Plugins artifact';
+      const pluginRoot = buildAgentPluginArtifact();
+      console.log(`[build-skill-bundles] composed Agent Plugins artifact → ${pluginRoot}`);
+    } catch (err) {
+      console.error(`[build-skill-bundles] ${stage} failed:`);
+      console.error(err);
+      process.exitCode = 1;
     }
-    const packs = buildPackSkills();
-    if (packs.length > 0) {
-      console.log(
-        `[build-skill-bundles] composed ${packs.length} pack skill(s): ${packs.join(', ')}`,
-      );
-    }
-    const pluginRoot = buildAgentPluginArtifact();
-    console.log(`[build-skill-bundles] composed Agent Plugins artifact → ${pluginRoot}`);
   }
 }
+
+export const __testing = { peerPublished, keepDisplacedTree, sweepRuns: () => sweepRuns };

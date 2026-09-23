@@ -2,6 +2,7 @@ import * as actualLinguiMacro from '@lingui/react/macro';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { MentionRecencyContext } from '@/components/acp/mention-recency-context';
 import { setComposerDraftDoc } from '@/components/composer-draft-store';
 import {
   type AgentThreadLaunchDetail,
@@ -18,6 +19,7 @@ import {
   expectDragOverIsCancelled,
   makeImageFile,
 } from '@/editor/composer-drop.test-helper';
+import { EMPTY_MENTION_RECENCY } from '@/editor/composer-mention/composer-mention';
 import { reloadEnabledAgentsFromStorage } from '@/lib/acp/enabled-agents';
 import { registerAgent, reloadRegisteredAgentsFromStorage } from '@/lib/acp/registered-agents';
 import { saveStickyAgent } from '@/lib/unified-agent-store';
@@ -276,13 +278,15 @@ describe('every ComposerMentionInput surface either refuses the drop with a reas
             hostDrops.push(...Array.from(event.dataTransfer.files).map((file) => file.name));
           }}
         >
-          <UserMessageEditor
-            initialText="try again with the screenshot"
-            currentAgent={{ source: 'registry', id: 'claude-acp', name: 'Claude Agent' }}
-            canSendHere
-            onCancel={() => {}}
-            onSend={() => Promise.resolve()}
-          />
+          <MentionRecencyContext value={EMPTY_MENTION_RECENCY}>
+            <UserMessageEditor
+              initialText="try again with the screenshot"
+              currentAgent={{ source: 'registry', id: 'claude-acp', name: 'Claude Agent' }}
+              canSendHere
+              onCancel={() => {}}
+              onSend={() => Promise.resolve()}
+            />
+          </MentionRecencyContext>
         </div>
       </TooltipProvider>,
     );

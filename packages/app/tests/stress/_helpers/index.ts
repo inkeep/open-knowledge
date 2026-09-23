@@ -1,7 +1,14 @@
+export { acpCatalogBody } from './acp-catalog.ts';
+export {
+  AUDIT_CONSOLE_RECORD_CASES,
+  chromiumResourceFailureRecord,
+} from './audit-console-records.test-helper.ts';
 export { simulateCopyAndRead, simulateCutAndRead } from './clipboard.ts';
 export { resetContentToFixtureBaseline } from './content-reset.ts';
 export {
+  type CaretPlacement,
   focusEditor,
+  placeCaretAtEndOfText,
   primeFullLayout,
   selectAllAndWaitForSelection,
   selectText,
@@ -79,6 +86,8 @@ export {
   FADE_DURATION_MS,
   FADE_REPORT_WINDOW_MS,
   installThemeFadeProbe,
+  runningRootAnimations,
+  switchColorThemeAndSettleFade,
   type ThemeFadeProbeWindow,
   type ThemeFadeReport,
 } from './theme-fade.ts';

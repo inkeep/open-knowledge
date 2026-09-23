@@ -1,9 +1,11 @@
 /** Exercises `render` + `userEvent` under the jsdom substrate (precedent #43). */
 
+import { FileTree } from '@pierre/trees';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { revealActiveRow } from './file-tree-reveal';
 import { useSelectionMirror } from './use-selection-mirror';
 
 interface StubItem {
@@ -18,14 +20,19 @@ interface StubItem {
   getFocusCount: () => number;
 }
 
+type ExpansionOnlyModel = Pick<StubModel, 'getItem' | 'getSelectedPaths' | 'getFocusedPath'>;
+
 interface StubModel {
   getItem: (path: string) => StubItem | null;
   getSelectedPaths: () => string[];
+  getFocusedPath: () => string | null;
+  addPath: (path: string) => void;
 }
 
 function makeStubModel(paths: string[]): StubModel {
   const items = new Map<string, StubItem>();
-  for (const p of paths) {
+  let focusedPath: string | null = null;
+  const addPath = (p: string) => {
     let selected = false;
     let focusCount = 0;
     items.set(p, {
@@ -41,10 +48,14 @@ function makeStubModel(paths: string[]): StubModel {
       expand: () => {},
       focus: () => {
         focusCount += 1;
+        focusedPath = p;
       },
       isDirectory: () => false,
       getFocusCount: () => focusCount,
     });
+  };
+  for (const p of paths) {
+    addPath(p);
   }
   return {
     getItem: (path: string) => items.get(path) ?? null,
@@ -52,11 +63,20 @@ function makeStubModel(paths: string[]): StubModel {
       Array.from(items.entries())
         .filter(([, it]) => it.isSelected())
         .map(([p]) => p),
+    getFocusedPath: () => focusedPath,
+    addPath,
   };
 }
 
-function Harness({ initialPath, model }: { initialPath: string | null; model: StubModel }) {
+interface HarnessModel {
+  getItem: (path: string) => unknown;
+  getSelectedPaths: () => readonly string[];
+  getFocusedPath: () => string | null;
+}
+
+function Harness({ initialPath, model }: { initialPath: string | null; model: HarnessModel }) {
   const [activeTreePath, setActiveTreePath] = useState<string | null>(initialPath);
+  const [treePathsSignature, setTreePathsSignature] = useState('initial');
   const suppressSelectionRef = useRef(false);
 
   useSelectionMirror(
@@ -65,10 +85,18 @@ function Harness({ initialPath, model }: { initialPath: string | null; model: St
     activeTreePath,
     '',
     suppressSelectionRef,
+    treePathsSignature,
   );
 
   return (
     <>
+      <button
+        type="button"
+        data-testid="repopulate"
+        onClick={() => setTreePathsSignature((previous) => `${previous}+`)}
+      >
+        repopulate
+      </button>
       <button type="button" data-testid="set-A" onClick={() => setActiveTreePath('A.md')}>
         A
       </button>
@@ -186,12 +214,13 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
         },
       ],
     ]);
-    const model: StubModel = {
+    const model: ExpansionOnlyModel = {
       getItem: (path: string) => items.get(path) ?? null,
       getSelectedPaths: () =>
         Array.from(items.entries())
           .filter(([, it]) => it.isSelected())
           .map(([p]) => p),
+      getFocusedPath: () => null,
     };
     function PartiallyHiddenHarness() {
       const suppressSelectionRef = useRef(false);
@@ -247,9 +276,10 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
         },
       ],
     ]);
-    const model: StubModel = {
+    const model: ExpansionOnlyModel = {
       getItem: (path: string) => items.get(path) ?? null,
       getSelectedPaths: () => [],
+      getFocusedPath: () => null,
     };
     function AncestorHarness() {
       const suppressSelectionRef = useRef(false);
@@ -290,6 +320,150 @@ describe('FileTree selection-mirror (Tier-3 mount)', () => {
     render(<Harness initialPath="A.md" model={model} />);
 
     expect(model.getSelectedPaths()).toEqual(['A.md']);
+  });
+
+  test('a repopulation re-run leaves keyboard focus on the row the user focused', async () => {
+    const user = userEvent.setup();
+    const model = makeStubModel(['A.md', 'B.md', 'folder/']);
+    render(<Harness initialPath="A.md" model={model} />);
+
+    model.getItem('folder/')?.focus();
+    expect(model.getFocusedPath()).toBe('folder/');
+    const activeFocusCountBefore = model.getItem('A.md')?.getFocusCount();
+
+    await user.click(screen.getByTestId('repopulate'));
+
+    expect(model.getFocusedPath()).toBe('folder/');
+    expect(model.getItem('A.md')?.getFocusCount()).toBe(activeFocusCountBefore);
+    expect(model.getSelectedPaths()).toEqual(['A.md']);
+  });
+
+  test('a true activation still claims focus even while another row holds it', async () => {
+    const user = userEvent.setup();
+    const model = makeStubModel(['A.md', 'B.md', 'folder/']);
+    render(<Harness initialPath="A.md" model={model} />);
+
+    model.getItem('folder/')?.focus();
+    expect(model.getFocusedPath()).toBe('folder/');
+
+    await user.click(screen.getByTestId('set-B'));
+
+    expect(model.getFocusedPath()).toBe('B.md');
+  });
+
+  test('a real drop of the focused row leaves focus where @pierre/trees resolves it', async () => {
+    const user = userEvent.setup();
+    const model = new FileTree({ paths: ['A.md', 'afolder/x.md', 'zfolder/sibling.md'] });
+    model.getItem('zfolder/')?.expand();
+    render(<Harness initialPath="A.md" model={model} />);
+
+    model.getItem('zfolder/sibling.md')?.focus();
+    expect(model.getFocusedPath()).toBe('zfolder/sibling.md');
+
+    model.resetPaths(['A.md', 'afolder/x.md']);
+    const fallback = model.getFocusedPath();
+    expect(fallback).not.toBeNull();
+    expect(fallback).not.toBe('A.md');
+
+    await user.click(screen.getByTestId('repopulate'));
+
+    expect(model.getFocusedPath()).toBe(fallback);
+    expect(model.getSelectedPaths()).toEqual(['A.md']);
+  });
+
+  test('an activation whose row appears only on a later repopulation claims keyboard focus', async () => {
+    const user = userEvent.setup();
+    const model = makeStubModel(['folder/', 'B.md']);
+    render(<Harness initialPath="A.md" model={model} />);
+
+    model.getItem('folder/')?.focus();
+    expect(model.getFocusedPath()).toBe('folder/');
+    expect(model.getSelectedPaths()).toEqual([]);
+
+    model.addPath('A.md');
+    await user.click(screen.getByTestId('repopulate'));
+
+    expect(model.getFocusedPath()).toBe('A.md');
+    expect(model.getSelectedPaths()).toEqual(['A.md']);
+  });
+
+  test('re-activating a document after the active path was cleared claims keyboard focus', async () => {
+    const user = userEvent.setup();
+    const model = makeStubModel(['folder/', 'A.md', 'B.md']);
+    render(<Harness initialPath="A.md" model={model} />);
+
+    await user.click(screen.getByTestId('set-null'));
+    expect(model.getSelectedPaths()).toEqual([]);
+
+    model.getItem('folder/')?.focus();
+    expect(model.getFocusedPath()).toBe('folder/');
+
+    await user.click(screen.getByTestId('set-A'));
+
+    expect(model.getFocusedPath()).toBe('A.md');
+    expect(model.getSelectedPaths()).toEqual(['A.md']);
+  });
+
+  test('a real drop of a nested focused row leaves focus on the surviving folder, not the first row', async () => {
+    const user = userEvent.setup();
+    const model = new FileTree({
+      paths: ['A.md', 'afolder/x.md', 'zfolder/nested.md', 'zfolder/sibling.md'],
+    });
+    model.getItem('afolder/')?.expand();
+    model.getItem('zfolder/')?.expand();
+    render(<Harness initialPath="A.md" model={model} />);
+
+    model.getItem('zfolder/nested.md')?.focus();
+    expect(model.getFocusedPath()).toBe('zfolder/nested.md');
+
+    model.resetPaths(['A.md', 'afolder/x.md', 'zfolder/sibling.md']);
+    const fallback = model.getFocusedPath();
+    expect(fallback).toBe('zfolder/');
+
+    await user.click(screen.getByTestId('repopulate'));
+
+    expect(model.getFocusedPath()).toBe(fallback);
+    expect(model.getSelectedPaths()).toEqual(['A.md']);
+  });
+
+  test('returning to a document after one with no tree row claims keyboard focus', async () => {
+    const user = userEvent.setup();
+    const model = makeStubModel(['A.md', 'B.md', 'folder/']);
+    render(<Harness initialPath="A.md" model={model} />);
+
+    model.getItem('folder/')?.focus();
+    expect(model.getFocusedPath()).toBe('folder/');
+
+    await user.click(screen.getByTestId('set-absent'));
+    await user.click(screen.getByTestId('set-A'));
+
+    expect(model.getFocusedPath()).toBe('A.md');
+    expect(model.getSelectedPaths()).toEqual(['A.md']);
+  });
+
+  test('a suppressed claim also withholds the active row reveal, and an activation restores it', async () => {
+    const user = userEvent.setup();
+    const model = makeStubModel(['A.md', 'B.md', 'folder/']);
+    render(<Harness initialPath="A.md" model={model} />);
+
+    model.getItem('folder/')?.focus();
+    await user.click(screen.getByTestId('repopulate'));
+
+    const scrollAfterRepopulation = vi.fn();
+    revealActiveRow(
+      { getFocusedPath: () => model.getFocusedPath(), scrollToPath: scrollAfterRepopulation },
+      'A.md',
+    );
+    expect(scrollAfterRepopulation).not.toHaveBeenCalled();
+
+    await user.click(screen.getByTestId('set-B'));
+
+    const scrollAfterActivation = vi.fn();
+    revealActiveRow(
+      { getFocusedPath: () => model.getFocusedPath(), scrollToPath: scrollAfterActivation },
+      'B.md',
+    );
+    expect(scrollAfterActivation).toHaveBeenCalledTimes(1);
   });
 
   test('unmount drains the queueMicrotask cleanup without React post-unmount warning', async () => {

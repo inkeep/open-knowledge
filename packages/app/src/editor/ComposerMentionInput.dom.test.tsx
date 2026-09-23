@@ -30,6 +30,14 @@ function getComposerEditor(box: HTMLElement): Editor {
   return (box as unknown as { editor: Editor }).editor;
 }
 
+async function waitForSelectableItem(editor: Editor): Promise<void> {
+  for (let i = 0; i < 50; i++) {
+    if (suggestionHasSelectableItem(editor.view)) return;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  throw new Error('mention popup never produced a selectable item');
+}
+
 let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
@@ -265,6 +273,41 @@ describe('ComposerMentionInput (component)', () => {
     expect(mentions).toEqual(['notes.md']);
   });
 
+  test('points the textbox at its description and drops the reference when it is cleared', () => {
+    const { rerender } = render(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Message Claude"
+        ariaDescribedBy="hint-a hint-b"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Message Claude' });
+    expect(box.getAttribute('aria-describedby')).toBe('hint-a hint-b');
+
+    rerender(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Message Claude"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(box.hasAttribute('aria-describedby')).toBe(false);
+
+    rerender(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Message Claude"
+        ariaDescribedBy="hint-a"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+      />,
+    );
+    expect(box.getAttribute('aria-describedby')).toBe('hint-a');
+  });
+
   test('disabled turns off editing but keeps content, placeholder, and the handle', () => {
     const ref = createRef<ComposerMentionInputHandle>();
     const { rerender } = render(
@@ -469,14 +512,6 @@ describe('ComposerMentionInput — Enter defers to the @-mention popup', () => {
     return state?.active ?? false;
   }
 
-  async function waitForSelectableItem(editor: Editor): Promise<void> {
-    for (let i = 0; i < 50; i++) {
-      if (suggestionHasSelectableItem(editor.view)) return;
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    }
-    throw new Error('mention popup never produced a selectable item');
-  }
-
   test('Enter submits while the popup is closed', () => {
     const onSubmit = vi.fn(() => {});
     render(
@@ -656,5 +691,59 @@ describe('ComposerMentionInput — setText round-trips the text it was given', (
     onEmptyChange.mockClear();
     act(() => ref.current?.setText(''));
     expect(onEmptyChange).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('ComposerMentionInput — what the @ popup lists first', () => {
+  let fetchSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    const page = (docName: string, title: string) => ({
+      docName,
+      title,
+      docExt: '.md',
+      size: 1,
+      modified: '2026-01-01T00:00:00.000Z',
+    });
+    fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(
+        async () =>
+          new Response(
+            JSON.stringify({ pages: [page('foo', 'Foo'), page('bar', 'Bar'), page('baz', 'Baz')] }),
+            { status: 200, headers: { 'content-type': 'application/json' } },
+          ),
+      );
+  });
+
+  afterEach(() => {
+    fetchSpy.mockRestore();
+  });
+
+  test('the open doc leads, then what the chat attached, then the rest', async () => {
+    render(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ariaLabel="Ask AI"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+        mentionRecency={{ currentDocName: 'bar', recentPaths: ['baz.md'] }}
+      />,
+    );
+    const box = screen.getByRole('textbox', { name: 'Ask AI' });
+    const editor = getComposerEditor(box);
+
+    await act(async () => {
+      editor.commands.insertContent('@');
+    });
+    await waitForSelectableItem(editor);
+
+    const rows = [...document.querySelectorAll('[role="option"]')].map(
+      (row) => row.textContent ?? '',
+    );
+    expect(rows).toHaveLength(3);
+    expect(rows[0]).toContain('bar.md');
+    expect(rows[1]).toContain('baz.md');
+    expect(rows[2]).toContain('foo.md');
   });
 });

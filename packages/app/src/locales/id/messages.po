@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · hanya referensi (tanpa konten tertanam)"
 
@@ -288,6 +289,16 @@ msgstr "{0} · bawaan"
 msgid "{0} (opens in a new tab)"
 msgstr "{0} (terbuka di tab baru)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} +{rest} lainnya"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -350,12 +361,6 @@ msgstr "{0} belum terpasang — membuka halaman unduhannya."
 #: src/components/acp/ThreadView.tsx
 msgid "{0} kept its current context window."
 msgstr "{0} mempertahankan jendela konteksnya saat ini."
-
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} membiarkan {1} bertindak tanpa bertanya"
 
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
@@ -569,6 +574,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} tidak dapat melanjutkan obrolan ini. Transkrip tetap tersimpan, jadi mulai obrolan baru untuk melanjutkan."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} tidak dapat dijalankan"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} tidak dapat memulai percakapan."
 
@@ -580,6 +589,10 @@ msgstr "{agentName} tidak dapat dijalankan."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} tidak menerima lampiran gambar."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} siap"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -935,6 +948,10 @@ msgstr "{loadErrorTitle}: {message}"
 #: src/components/ProblemsPanel.tsx
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "{localizedMessage} pada baris {displayLine}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "{mcpTool} dari server MCP {server}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -1732,13 +1749,13 @@ msgstr "Tambahkan ke {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Tambahkan ke kamus"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "Tambahkan ke prompt"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Tambahkan nilai"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "Tambahkan komentar Anda ke pesan ini"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -1853,8 +1870,12 @@ msgid "Agent settings"
 msgstr "Pengaturan agen"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "Pengaturan agen: perubahan berlaku saat Anda melanjutkan percakapan ini"
+msgid "Agent settings — {headerSummary}"
+msgstr "Pengaturan agen — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "Pengaturan agen — {headerSummary}: perubahan berlaku saat Anda melanjutkan percakapan ini"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -2202,6 +2223,18 @@ msgstr "Aset: {title}"
 
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
+msgstr "Lampirkan berkas"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "Lampirkan komentar"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "Lampirkan komentar: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
 msgstr "Lampirkan berkas"
 
 #: src/components/ImageAttachments.tsx
@@ -2578,6 +2611,10 @@ msgstr "Bangun dan pantau dunia di balik cerita Anda. Rumah bagi tokoh, tempat, 
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "Membangun <0>openknowledge.skill</0> dan membuka aplikasi Claude Desktop"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "Membuat tautan yang bisa dibagikan ke dokumen atau folder"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "Daftar berpoin"
@@ -2854,6 +2891,14 @@ msgstr "Memeriksa..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Daftar periksa dengan kotak centang."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "Memeriksa dokumen untuk masalah markdown dan bisa memperbaikinya"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "Memeriksa seluruh proyek untuk masalah markdown dan tautan rusak"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -3287,6 +3332,7 @@ msgid "commands"
 msgstr "perintah"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "Perintah"
 
@@ -3319,7 +3365,6 @@ msgstr "Beri komentar atau tanya AI tentang {0} ini"
 msgid "Comment or ask AI about this code block"
 msgstr "Beri komentar atau tanya AI tentang blok kode ini"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -4652,6 +4697,10 @@ msgstr "folder dibuat"
 msgid "created template"
 msgstr "templat dibuat"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "Membuat atau mengganti dokumen, folder, templat, keterampilan, atau aset"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "Membuat folder <0>{folderPart}/</0>"
@@ -4757,6 +4806,7 @@ msgstr "Bawaan: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "Hapus"
 
@@ -4885,6 +4935,14 @@ msgstr "Dihapus permanen"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "templat dihapus"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "Menghapus dokumen, folder, templat, keterampilan, atau aset"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "Menghapus berkas"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5344,6 +5402,7 @@ msgstr "Setiap push adalah satu commit ke remote Anda."
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "Sunting"
@@ -5467,6 +5526,14 @@ msgstr "Pilihan penyunting"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "Bilah status penyunting"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "Mengedit dokumen, folder, templat, atau keterampilan di tempat"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "Mengedit berkas"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6269,6 +6336,10 @@ msgstr "Gagal memperbarui interval sinkronisasi — {detail}"
 msgid "Failed to upload file"
 msgstr "Gagal mengunggah berkas"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "Cepat"
+
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."
 msgstr "Masukan tidak tersedia saat ini. Silakan coba lagi nanti."
@@ -6277,9 +6348,17 @@ msgstr "Masukan tidak tersedia saat ini. Silakan coba lagi nanti."
 msgid "Fenced code block with monospace text."
 msgstr "Blok kode berpagar dengan teks monospasi."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "Ambil"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
 msgstr "Fetch gagal — periksa log server untuk detailnya."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "Mengambil halaman web"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
@@ -6406,6 +6485,14 @@ msgstr "Cari kecocokan berikutnya"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "Cari kecocokan sebelumnya"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "Mencari dokumen dan berkas di proyek ini berdasarkan judul, isi, atau path"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "Mencari keterampilan dan membaca yang sudah terpasang"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6663,6 +6750,10 @@ msgstr "Dapatkan kabar terbaru produk di kotak masuk Anda."
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "Mulai siapkan"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "Mengambil tautan yang membuka proyek ini atau sebuah dokumen di aplikasi"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7269,6 +7360,10 @@ msgstr "Diimpor sebagai \"{0}\" — nama \"{1}\" sudah dipakai."
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "Mengimpor"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "Mengimpor keterampilan ke proyek ini"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8277,6 +8372,10 @@ msgstr "Jadikan basis pengetahuan ini tersedia sebagai Keterampilan Claude."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "Jadikan ini sumbernya — folder asli keterampilan ini pindah ke sini"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "Membuat keterampilan tersedia di lebih banyak tempat, atau menghapusnya dari satu tempat"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "Respons apply salah bentuk"
@@ -8394,6 +8493,10 @@ msgstr "Server MCP"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "Judul bagian sedang."
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "Sebut halaman"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -8536,6 +8639,7 @@ msgid "Most installed"
 msgstr "Paling banyak dipasang"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "Pindahkan"
 
@@ -8707,6 +8811,14 @@ msgstr "templat dipindahkan"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "Dipindahkan ke atas."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "Memindahkan atau mengganti nama dokumen, folder, aset, templat, atau keterampilan"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "Memindahkan atau mengganti nama berkas"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11129,6 +11241,10 @@ msgstr "Jalankan ulang audit proyek"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "Baca"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Baca basis kode ini dan susun spesifikasi teknis untuk modul yang paling rumit: sebuah ikhtisar, arsitekturnya, berkas-berkas utamanya, dan pertanyaan terbuka, semuanya tertaut dari sebuah halaman indeks spesifikasi."
@@ -11157,6 +11273,34 @@ msgstr "Membaca working tree"
 msgid "Reading…"
 msgstr "Membaca…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "Membaca berkas"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "Membaca dokumen dan folder di proyek ini dengan perintah shell hanya-baca"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "Membaca palet penulisan agar dokumen baru mengikuti gaya proyek"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "Membaca graf tautan: apa menaut ke apa"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "Membaca riwayat versi dokumen atau keterampilan, atau aktivitas folder"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "Membaca pengaturan OpenKnowledge proyek ini"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "Membaca konflik yang belum terselesaikan antar suntingan"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "Folder dan templat siap pakai agar Anda cepat memulai."
@@ -11172,6 +11316,10 @@ msgstr "Alasan: {reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "Alasan: {reason} ({osDetail})"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "Bernalar sebelum bertindak"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11793,6 +11941,10 @@ msgstr "Selesaikan konflik pada {files} dan {overflow} berkas lainnya sebelum me
 msgid "Resolved"
 msgstr "Selesai"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "Menyelesaikan konflik dengan memilih isi yang dipertahankan"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "Menentukan lokasi bawaan"
@@ -11895,6 +12047,10 @@ msgstr "Versi terdahulu dipulihkan ({0})"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "Dipulihkan ke versi dari {0}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "Memulihkan dokumen atau keterampilan ke versi sebelumnya"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12019,6 +12175,10 @@ msgstr "Aturan"
 msgid "Ruminating…"
 msgstr "Merenung…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "Jalankan"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Jalankan audit proyek dari panel Masalah."
@@ -12042,6 +12202,10 @@ msgstr "berjalan"
 #: src/components/ProblemsPanel.tsx
 msgid "Running project audit"
 msgstr "Menjalankan audit proyek"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "Menjalankan perintah shell"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
@@ -12114,6 +12278,10 @@ msgstr "Disimpan ke"
 msgid "Saved with the project for your team."
 msgstr "Disimpan bersama proyek untuk tim Anda."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "Menyimpan titik pemulihan untuk setiap dokumen di proyek"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "Menyimpan berkasnya ke <0>~/Downloads/openknowledge.skill</0> dan membuka aplikasi Claude Desktop. Memerlukan Node.js atau Bun di PATH Anda."
@@ -12164,6 +12332,7 @@ msgstr "Gulir ke awal"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "Cari"
@@ -12292,6 +12461,10 @@ msgstr "Cari worktree"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "Cari worktree dan cabang"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "Mencari di berkas"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12489,6 +12662,10 @@ msgstr "Kirim masukan…"
 #: src/components/acp/UserMessageActions.tsx
 msgid "Send in this chat"
 msgstr "Kirim di obrolan ini"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "Kirim sekarang"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
@@ -12816,6 +12993,10 @@ msgstr "Tampilkan opsi lanjutan"
 msgid "Show Agents"
 msgstr "Tampilkan Agen"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "Tampilkan semua"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "Tampilkan semua"
@@ -12865,6 +13046,7 @@ msgstr "Tampilkan pratinjau HTML"
 msgid "Show in Explorer"
 msgstr "Tampilkan di Explorer"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13419,7 +13601,6 @@ msgstr "Memulai alur masuk"
 msgid "Starting terminal…"
 msgstr "Memulai terminal…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "Memulai agennya…"
@@ -13589,6 +13770,10 @@ msgstr "Ganti worktree"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "Ganti worktree…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "Mengganti mode agen"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"
@@ -14376,6 +14561,10 @@ msgstr "Aturan-aturan ini berasal dari berkas <0>{configFile}</0> proyek Anda, y
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "Keterampilan ini mengajarkan alat AI Anda cara bekerja dengan OpenKnowledge. Memasang satu akan menambahkannya ke setiap alat AI di mesin ini."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "Berpikir"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
@@ -15186,6 +15375,11 @@ msgstr "Dua halaman (ganjil)"
 msgid "Type"
 msgstr "Tipe"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "Ketik '@' untuk menyebut halaman"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "Ketik '/' untuk melihat perintah"

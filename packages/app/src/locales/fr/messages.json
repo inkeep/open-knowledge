@@ -21,6 +21,9 @@
         { "one": ["#", " modèle"], "many": ["#", " modèles"], "other": ["#", " modèles"] }
       ]
     ],
+    "-6eIxv": [
+      "Déplace ou renomme un document, un dossier, une ressource, un modèle ou une compétence"
+    ],
     "-7s4fw": ["Rechercher des agents"],
     "-8PP0T": ["Respecter la casse"],
     "-Al4WQ": ["Afficher ou masquer Terminal"],
@@ -100,6 +103,7 @@
       "Les compétences fournies avec ce projet, et les dossiers dans lesquels ses outils IA les lisent."
     ],
     "0Gd0NU": ["Partagé"],
+    "0Ht36j": ["Trouve des compétences et lit celles qui sont installées"],
     "0J6nhG": [
       "Une copie est un vrai dossier à part entière, et OK la maintient alignée sur la source : modifiez la compétence ici et chaque copie est actualisée. Cela s'arrête dès que vous modifiez une copie à la main en dehors d'OK — à partir de là elle suit son propre chemin et apparaît comme une compétence distincte. Un lien symbolique, lui, pointe vers la source, donc rien ne peut diverger, mais un emplacement cesse de fonctionner si la source est supprimée."
     ],
@@ -313,6 +317,7 @@
     "2Snes1": ["Ceci envoie l'adresse du lien hors de votre machine"],
     "2UTDg2": [["0"], " a conservé sa fenêtre de contexte actuelle."],
     "2VSPan": ["Terminal a été fermé pour faire de la place au panneau des agents."],
+    "2WFPgt": ["Importe une compétence dans ce projet"],
     "2XQ8Ww": ["Ouvrir l'aperçu quand l'agent modifie"],
     "2YOwme": ["Redémarré — exécute maintenant la v", ["appRuntime"], "."],
     "2YZwPB": ["La réponse des liens sortants ne correspond pas à la forme attendue."],
@@ -382,6 +387,7 @@
     "3Ib6FN": ["Descendre"],
     "3J7d2N": ["Grand titre de section."],
     "3JYy1p": ["La branche ", ["0"], " n'existe plus. Clonage effectué sur la branche par défaut."],
+    "3JjdaA": ["Exécuter"],
     "3KOHFt": [
       "Ajouter des propriétés (",
       [
@@ -403,6 +409,7 @@
       " résultats les plus pertinents — continuez à saisir pour affiner"
     ],
     "3Mwaly": ["Impossible d'initialiser ", ["0"], "."],
+    "3SBpHy": [["0"], " +", ["rest"], " de plus"],
     "3SDfZl": [
       "<0>Miroir — choisissez une source.</0> Définissez <1>src</1> + <2>anchor</2> dans le panneau des propriétés pour pointer vers un <3><MirrorSource></3> ailleurs."
     ],
@@ -434,6 +441,11 @@
     ],
     "3m2GBo": ["Recherche dans les documents"],
     "3mFsc3": ["Restaurer avec les modifications distantes"],
+    "3n4SJG": [
+      "Paramètres de l'agent — ",
+      ["headerSummary"],
+      " : les modifications s'appliquent lorsque vous reprendrez cette conversation"
+    ],
     "3n7lnE": [
       "Cet agent n'a pas encore de fichier de ce type sur cette machine. Ouvrez-le une fois, puis vérifiez à nouveau."
     ],
@@ -463,6 +475,7 @@
     ],
     "3wiBAs": ["Où doit-elle résider ?"],
     "3y6XTb": ["Recherche sémantique"],
+    "3ylAXU": ["Vérifie les documents à la recherche de problèmes markdown et peut les corriger"],
     "3zDeFb": ["Rumination…"],
     "3zyg_A": ["Motifs d'exclusion"],
     "4-Phgi": ["Afficher ou masquer les agents"],
@@ -502,6 +515,7 @@
     "4Vgtaz": [
       "Le tableau est injoignable. Il n'existe peut-être pas, ou le serveur est peut-être hors ligne."
     ],
+    "4WndXK": ["Trouve des documents et des fichiers de ce projet par titre, contenu ou chemin"],
     "4_-TKi": ["Accepter les deux versions pour le conflit ", ["0"]],
     "4buZWd": ["Hérité de ", ["path"]],
     "4c_a6S": ["Rien de défini pour l'instant."],
@@ -645,6 +659,7 @@
       "</1> pour insérer automatiquement la date du jour ou le nom de l'auteur."
     ],
     "5hFl0U": ["Copier la référence"],
+    "5hn4gs": ["Joindre des commentaires"],
     "5jEnaB": ["Non disponible sur cette plateforme"],
     "5k0NLb": ["Examiner"],
     "5kWklo": ["(certains sont peut-être déjà masqués par d'autres règles)"],
@@ -938,6 +953,7 @@
     "8YymuQ": ["Aucun agent n'est encore configuré — ouverture de Configurer les agents."],
     "8Z_GCT": [["source"], " · source importée"],
     "8_brI5": ["Le nom est obligatoire"],
+    "8bJRqt": [["mcpTool"], " du serveur MCP ", ["server"]],
     "8cS0nH": ["Partage de configuration indisponible : ", ["0"], "."],
     "8cpOa8": ["Impossible de se déconnecter — veuillez réessayer."],
     "8cpeU3": ["Dépôts partagés"],
@@ -989,6 +1005,7 @@
     "9CNRDG": [
       "Le serveur OpenKnowledge a mis trop de temps a repondre. Demandez a l'agent de reessayer."
     ],
+    "9D9gK1": ["Ajouter à l’invite"],
     "9E_WAi": [["errorText"], " et ", ["warningText"]],
     "9EykGQ": ["Insérer une colonne à droite"],
     "9GbR5F": ["MAX"],
@@ -1033,6 +1050,7 @@
     ],
     "9_euHO": ["Voir ", ["name"]],
     "9aVlF2": ["Changer de fournisseur"],
+    "9b2x_Z": ["Enregistre un point de restauration pour chaque document du projet"],
     "9bCiQ8": ["Aucune page ne manque de liens entrants dans le graphe."],
     "9bG48P": ["Envoi en cours"],
     "9clcD5": ["Ouvrir les documents étiquetés #", ["chip"]],
@@ -1245,6 +1263,7 @@
     "BgV29F": ["Champ de recherche de l'éditeur visuel actif"],
     "Bgaa_U": ["Échec de la mise à jour du paramètre de performance — ", ["detail"]],
     "BhLPRk": ["« ", ["name"], " » ramené à la version installée"],
+    "BhMWIs": ["Lit les conflits non résolus entre modifications"],
     "BiVBP9": ["Impossible de lire les langues de la correction orthographique."],
     "BjitBo": ["Télécharger ", ["0"]],
     "BkGtRl": [
@@ -1515,6 +1534,9 @@
     "EPKVES": ["Mettre à jour « ", ["skillName"], " » par-dessus vos modifications ?"],
     "EPwuTC": [["usedLabel"], " / ", ["sizeLabel"], " tokens utilisés"],
     "EQXPXf": ["Défiler jusqu'à la fin"],
+    "EQlL2-": [
+      "Crée ou remplace un document, un dossier, un modèle, une compétence ou une ressource"
+    ],
     "ES1zFv": ["Placez OpenKnowledge.app dans la Corbeille"],
     "ETyvvg": ["Aucune langue correspondante."],
     "EWCJFu": [["target"], " créé"],
@@ -1845,6 +1867,7 @@
     "HGNCsl": [
       "Connexion perdue — gardez cet onglet ouvert, vos modifications se synchroniseront une fois reconnecté"
     ],
+    "HHQcx0": ["Rend une compétence disponible à d'autres endroits, ou la retire de l'un d'eux"],
     "HIb0vl": ["Erreur réseau — veuillez réessayer"],
     "HJ7aHU": [
       "Déplace le bloc courant vers le haut ou vers le bas. Dans les listes, déplace l’élément courant ou les éléments sélectionnés."
@@ -1928,13 +1951,13 @@
     "IKoTAC": ["Laisser désactivé"],
     "IMLUBh": ["Valeur de couleur non valide"],
     "INN7OX": ["Afficher ", ["hiddenCount"], " de plus"],
-    "INZWqo": [
-      "Paramètres de l'agent : les modifications s'appliquent lorsque vous reprendrez cette conversation"
-    ],
     "INp_z6": ["Commenter ce ", ["0"], " ou interroger l’IA à son sujet"],
     "IO8REi": ["Impossible d'ouvrir « ", ["name"], " » : ", ["0"]],
     "IQPyrD": ["Page manquante — cliquez pour la créer"],
     "IQgeSn": ["Échec de l'enregistrement du champ de schéma"],
+    "IQpf95": [
+      "Lit l'historique des versions d'un document ou d'une compétence, ou l'activité d'un dossier"
+    ],
     "IR6Txi": ["Aligner à gauche"],
     "IRv9cH": [["repoName"], " cloné."],
     "IW2KMF": ["Impossible de modifier la vérification orthographique. Réessayez."],
@@ -1968,6 +1991,7 @@
     "It9oAP": ["La version ", ["editor"], " est désormais la source"],
     "ItxGi3": ["Les pièces jointes doivent totaliser moins de 3 Mo."],
     "IvKbeq": ["Les deux agents liront tout ce qui se trouve dans ", ["keep"], "."],
+    "Iw8I0n": ["Mentionner une page"],
     "Ix0K8o": ["Masquer les nœuds d'URL externes"],
     "IxHMdF": ["Impossible de supprimer ce commentaire."],
     "IxyZXD": ["Capture d'écran"],
@@ -2054,6 +2078,7 @@
     "K-h9cT": ["Impossible d'enregistrer la résolution pour ", ["filePath"], "."],
     "K0N7zS": ["Échec de la lecture de l'état du partage de configuration"],
     "K1ckLX": ["Échec de la création du dossier"],
+    "K3sx4_": ["Modifie sur place un document, un dossier, un modèle ou une compétence"],
     "K4G55s": ["Vérification de la source"],
     "K6MQQk": [
       "La synchronisation échoue. Consultez l'état de la synchronisation pour les détails."
@@ -2140,6 +2165,7 @@
       "Certains fichiers ne sont pas listés : l'arbre de travail contient trop de modifications."
     ],
     "Kx881F": [["0"], " a été restauré."],
+    "KziH2K": ["Rapide"],
     "L-rMC9": ["Réinitialiser à la valeur par défaut"],
     "L1BQTH": [["0"], " n'est pas encore installé — ouverture de sa page de téléchargement."],
     "L1ZE3M": ["Statistiques du document"],
@@ -2181,6 +2207,7 @@
     "LJeFU6": [
       "Lancez OpenKnowledge depuis n'importe quel terminal : <0>ok</0> ouvre un projet, <1>ok init</1> connecte vos agents."
     ],
+    "LK83k1": ["Tapez '@' pour mentionner une page"],
     "LKIPzv": [
       [
         "laterEdits",
@@ -2359,7 +2386,6 @@
     "MrUmCD": ["échec de compilation inconnu"],
     "MrwYIK": ["Bascule un commentaire de source via CodeMirror."],
     "MsARMw": ["Jouer à Blob Run"],
-    "MuxcRB": [["0"], " permet à ", ["1"], " d'agir sans demander"],
     "Mv2lM4": [
       "La compétence « ",
       ["conflictName"],
@@ -2387,6 +2413,7 @@
     "N5rzKJ": ["Supprimer ", ["0"], " compétences"],
     "N6j2JH": ["Modifier ", ["0"]],
     "N7Lau6": ["Valider et synchroniser"],
+    "N7m8E-": ["Joindre des fichiers"],
     "NBdIgR": ["Commenter"],
     "NErvOX": ["Enregistré dans"],
     "NEzPEh": ["Créez une nouvelle branche, ou extrayez-en une existante, dans sa propre fenêtre."],
@@ -2431,6 +2458,7 @@
     "NnQapF": ["Ouvrir avec l'IA ", ["targetDisplayName"]],
     "NoY1k4": ["Structure de réponse du serveur invalide"],
     "NpC29w": ["Crée un nouvel élément de liste à partir de l'élément courant."],
+    "NpEm3p": ["Envoyer maintenant"],
     "NpRLRj": ["Annulez vos résolutions pour modifier ceci."],
     "NrFwux": ["Échec de l'enregistrement des règles de contenu — ", ["0"]],
     "Ns0z5o": [
@@ -2546,6 +2574,7 @@
     "P0HC30": ["Ce ", ["targetNoun"], " a été déplacé vers <0>", ["0"], "</0>. L'ouvrir là-bas ?"],
     "P3NS4G": ["Erreur de syntaxe du motif (ligne ", ["lineNumber"], ") : ", ["message"]],
     "P3hnm0": ["Fichier trop volumineux pour être ouvert"],
+    "P3l74W": ["Recherche dans les fichiers"],
     "P47EWZ": ["Impossible de mettre à jour les paramètres de la barre latérale"],
     "P6gXB-": ["Remplacer ", ["keyName"]],
     "P6lAT3": ["Dossier cible : ", ["linkTitle"], ". Cliquez pour ouvrir la synthèse."],
@@ -2600,6 +2629,7 @@
     ],
     "P_bX4O": ["Comment configurer"],
     "PdA9NZ": [["ahead"], " en avance"],
+    "PeNdk1": ["Réfléchit avant d'agir"],
     "PezM4_": [
       "Compétence OpenKnowledge enregistrée. Importez-la dans Claude Desktop, puis cliquez à nouveau sur Cowork."
     ],
@@ -2949,6 +2979,7 @@
     "TLIO3j": ["Bascule la mise en forme italique."],
     "TMLAx2": ["Obligatoire"],
     "TNKAIS": ["L'application redémarre le serveur de ce projet."],
+    "TOel0d": ["Supprime un fichier"],
     "TQJCR6": [
       [
         "0",
@@ -3084,7 +3115,6 @@
     "Uobeu9": ["Ajoute la compétence à ", ["rootRel"], " — également lu par ", ["0"]],
     "Up2_7p": ["Copier le chemin complet"],
     "UpCz01": ["Ce document"],
-    "UpOct_": ["Ajoutez vos commentaires à ce message"],
     "UuYo7g": [
       "Ce ",
       ["targetNoun"],
@@ -3470,6 +3500,7 @@
     ],
     "YS9mSt": ["« ", ["name"], " » mis à jour depuis ", ["0"]],
     "YSFv5w": ["Aucun dépôt git — le partage de configuration ne s'applique pas ici."],
+    "YScUUO": ["Récupère une page web"],
     "YTLmTM": ["Supprimer le dossier <0>.git</0> parent"],
     "YW7Q86": [
       "Les paramètres de recherche ne sont pas encore chargés — réessayez dans un instant"
@@ -3655,6 +3686,7 @@
     "_IX_7x": ["Autre"],
     "_IfSZn": ["Un thème enregistré utilise déjà ce nom."],
     "_JOGC0": ["Envoyer un retour…"],
+    "_KnFpR": [["agentName"], " n’a pas pu démarrer"],
     "_LK4d6": ["Cette liste n'est peut-être pas à jour."],
     "_LczaQ": ["Refusé — ", ["optionName"]],
     "_NWEid": ["Rechercher des fichiers de schéma par chemin"],
@@ -3868,6 +3900,9 @@
       "Construction de <0>openknowledge.skill</0> et ouverture de l'application Claude Desktop"
     ],
     "bwy8Y7": ["Sur <0>", ["address"], "</0>"],
+    "bzsK8N": [
+      "Lit la palette de rédaction pour que les nouveaux documents suivent le style du projet"
+    ],
     "c1LZZH": ["Lien copié."],
     "c2ktXL": ["Rapports précédents"],
     "c3XJ18": ["Aide"],
@@ -3922,6 +3957,7 @@
     "cOSAfL": ["Aucun dépôt trouvé sur votre compte GitHub."],
     "cOrTMo": ["Votre lien de partage est prêt ci-dessous."],
     "cPAWbl": ["Envoyé par e-mail"],
+    "cQlPDN": ["Lire"],
     "cRHuuI": ["Impossible de copier le chemin"],
     "cRm498": [
       "Pas encore de fichier de schéma dans ce projet — créez-en un pour commencer à valider."
@@ -3987,6 +4023,7 @@
     "crqzW5": ["Outils IA"],
     "cs4mps": ["Partage de la configuration"],
     "csDS2L": ["Disponible"],
+    "csczHM": ["Obtient le lien qui ouvre ce projet ou un document dans l'app"],
     "cstC0z": ["Motif (expression régulière)"],
     "ct2kv5": ["Aucun titre dans ", ["pageTarget"]],
     "cuA8QW": ["Organiser les spécifications"],
@@ -4192,6 +4229,7 @@
     "eUFXS1": ["Trier les compétences"],
     "eVPynQ": ["Ouvrez <0><1>", ["verificationUri"], "</1><2/></0> et saisissez ce code :"],
     "eXPP7Z": ["Réflexion…"],
+    "eXqor1": ["Modifie un fichier"],
     "e_ToF5": ["Se connecter avec ", ["0"]],
     "ea7AYn": ["Ignorer les liens cassés dans log.md"],
     "eaHUxx": ["Barre d'outils Fichiers"],
@@ -4276,6 +4314,7 @@
     "fWsBTs": ["Une erreur s'est produite. Veuillez réessayer."],
     "fYKgzG": ["Échec du chargement des projets récents."],
     "fYjgXu": ["Liste d'éléments sans numérotation."],
+    "fYnzNa": ["Paramètres de l'agent — ", ["headerSummary"]],
     "fZj9em": ["Corriger ", ["flatId"]],
     "f_PkYv": [
       "Redémarrer ferme le serveur de ce projet. Les agents connectés (Claude Code, Codex, Cursor) verront leur connexion MCP OpenKnowledge se fermer de façon inattendue — vous devrez peut-être redémarrer l'agent, ou désactiver puis réactiver son serveur MCP OpenKnowledge, pour vous reconnecter."
@@ -4756,6 +4795,7 @@
     "jEdF24": ["Page manquante : ", ["linkTitle"], ". Cliquez pour la créer."],
     "jJdwCB": ["Rétablir"],
     "jKd3AP": ["Impossible d'activer le terminal : ", ["0"]],
+    "jKeGuZ": ["Supprime un document, un dossier, un modèle, une compétence ou une ressource"],
     "jL3gox": ["Sélectionnez une valeur"],
     "jLOL1H": ["Passez sur une branche pour partager."],
     "jO18NZ": ["Je passe à un autre outil"],
@@ -4774,6 +4814,7 @@
       "Intègre une page externe dans une iframe en ligne (docs, démos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Activer Auto (Tirer seulement)"],
+    "jVe0gf": ["Joindre des commentaires : ", ["count"]],
     "jWwQo6": ["lot"],
     "jWzDfC": ["Vérification des outils IA dont vous disposez"],
     "jZ_E5M": ["Échec de la récupération — consultez les journaux du serveur pour les détails."],
@@ -4786,6 +4827,7 @@
     "jerqF0": ["Chargement de l'état des branches"],
     "jhtG3I": [" Votre sélection a été restaurée."],
     "jjtmV_": ["Nom du premier fichier"],
+    "jk-ieO": ["Déplace ou renomme un fichier"],
     "jnCROW": [
       "Un instantané de la mémoire au moment du plantage, et l'élément qui nous aide le plus. Il peut contenir du contenu de document et ne peut pas être masqué, alors décochez-le si vous préférez ne pas le partager."
     ],
@@ -4997,6 +5039,7 @@
     "lZAiSP": ["La réponse des rétroliens ne correspond pas à la forme attendue."],
     "lZoQdy": ["Compétence ouverte"],
     "lZvQrY": ["Utiliser ", ["0"], " comme thème sombre"],
+    "lZw9AX": ["Tout afficher"],
     "l_6JHD": ["Rechercher des icônes..."],
     "l_FAT6": ["Utilisez uniquement des lettres, des chiffres, <0>-</0> ou <1>_</1>."],
     "l_UFPv": ["Propriétés"],
@@ -5087,6 +5130,10 @@
     "mR3uQg": ["Ce fichier a été supprimé sur la branche actuelle (conflit delete-modify)."],
     "mToVM9": ["Envoyer un message à ", ["agentName"]],
     "mU3j1b": ["Retirer l'élément ", ["0"]],
+    "mUHqmk": [
+      "Lit les documents et dossiers de ce projet avec des commandes shell en lecture seule"
+    ],
+    "mV3l9a": ["Lit un fichier"],
     "mVFyH-": [["accessibleLabel"], " (conflit)"],
     "mWVJRX": ["Section repliable avec un résumé cliquable."],
     "mYGY3B": ["Date"],
@@ -5296,6 +5343,7 @@
     "oLyLo6": ["Le service d'arrière-plan du terminal n'est pas en cours d'exécution."],
     "oP-FQW": ["Utilisez un chemin relatif à l'intérieur de la compétence"],
     "oPU_4D": ["Envoyer quand l’agent sera libre"],
+    "oPbSBQ": ["Crée un lien partageable vers un document ou un dossier"],
     "oQA-cA": ["Chemin complet"],
     "oS1YpJ": ["Ouvre le Navigateur de projets."],
     "oVW7VD": ["S'installe dans ce projet"],
@@ -5315,6 +5363,7 @@
     "ojGc_T": ["Ouvrir le commentaire"],
     "olb6oq": ["Comment configurer de nouveaux projets avec OpenKnowledge."],
     "omXJcU": ["Fermer les autres"],
+    "onzRyh": ["Lit le graphe des liens : qui pointe vers quoi"],
     "opPbzN": ["Copie la compétence dans ", ["path"]],
     "optX0N": ["il y a ", ["0"], " h"],
     "oqB2ez": ["Occurrence précédente"],
@@ -5337,6 +5386,7 @@
     ],
     "oy5bJW": ["Vous pouvez ajouter"],
     "oyBV3W": ["Chemin du dossier de compétences personnalisé"],
+    "oz1PyN": [["0"], " × ", ["label"]],
     "p0Iq25": ["Insérer un lien"],
     "p2LEhJ": ["Jeton d'accès personnel"],
     "p3m_Gk": [
@@ -5414,9 +5464,11 @@
     "pfkaJ2": ["YAML ou JSON, dans l'une ou l'autre disposition base16."],
     "pgDlbM": ["Afficher/masquer les outils de développement"],
     "pgq_xf": [["0"], "/", ["1"], " ", ["2"]],
+    "phF2Ai": ["Exécute une commande shell"],
     "phM8Kh": ["Dépôt trouvé, mais le projet n'a pas pu être ouvert. Veuillez réessayer."],
     "pha01Y": ["Pages du projet sans arête entrante dans le graphe."],
     "pkAft1": ["La recherche a échoué."],
+    "pkmXTp": [["agentName"], " est prêt"],
     "pmUArF": ["Espace de travail"],
     "poAsUN": ["aucun agent — enregistrées, installées nulle part"],
     "ppDgFi": ["Redémarrer avec la version de cette application"],
@@ -5547,6 +5599,7 @@
     "qjHMHf": ["Échec de la désactivation de la synchronisation — ", ["detail"]],
     "qkqG0b": ["Prendre la version amont"],
     "qlAIQ1": ["Distant"],
+    "qlVnbJ": ["Restaure un document ou une compétence à une version antérieure"],
     "qo4zCg": ["Le chemin ne peut pas contenir d'antislash"],
     "qoN0PD": [
       "Redémarrez cette session de terminal pour utiliser les outils OpenKnowledge nouvellement installés."
@@ -5934,6 +5987,7 @@
     "uH_S-u": [["loadErrorTitle"], " : ", ["message"]],
     "uIA8mX": ["Ajoute ces fichiers"],
     "uJfwF8": ["Déjà installé — rien de nouveau à importer."],
+    "uJrVbJ": ["Change le mode de l'agent"],
     "uK2peg": [
       "Vérifie votre projet par rapport au Open Knowledge Format. Désactivez-le à tout moment dans Paramètres."
     ],
@@ -5986,6 +6040,7 @@
         }
       ]
     ],
+    "uhYnaD": ["Résout un conflit en choisissant le contenu à conserver"],
     "uksqrP": ["Dépôt introuvable. Il a peut-être été renommé, supprimé ou déplacé."],
     "ul1Atu": ["Conversion…"],
     "um-es7": ["Livrez l'éditeur avec un"],
@@ -6146,6 +6201,7 @@
     "w7bnEb": ["Créez une compétence personnelle, disponible dans tous les projets."],
     "w7nm4K": ["Citation en retrait pour les références."],
     "wDgmsr": ["Installation de « ", ["0"], " » actualisée (", ["1"], ")"],
+    "wE-556": ["Réfléchir"],
     "wErce0": ["Choisir une archive de compétence"],
     "wF2wqQ": ["Date inconnue"],
     "wFJbVM": [
@@ -6179,6 +6235,7 @@
     "wXFalZ": ["Aperçu de ", ["filename"]],
     "wXO4Tg": ["il y a ", ["hrs"], " h"],
     "wXw19Y": ["« ", ["projectName"], " » retiré des projets récents. Son dossier n'existe plus."],
+    "wYlyFt": ["Lit les paramètres OpenKnowledge de ce projet"],
     "wZPUJx": ["« ", ["0"], " »"],
     "w_Sphq": ["Pièces jointes"],
     "waCGTy": ["Connecter vos outils d'IA à ce projet"],
@@ -6195,6 +6252,7 @@
     "wfZwqe": ["Installer ", ["rowLabel"]],
     "wgNoIs": ["Tout sélectionner"],
     "wgj--j": ["Ajoute une entrée MCP OpenKnowledge globale pour cet agent."],
+    "wjxDZa": ["Vérifie tout le projet à la recherche de problèmes markdown et de liens cassés"],
     "wk_v1X": [
       "La synchronisation de ce worktree est réglée sur Auto (Tirer et Pousser), héritée de ",
       ["project"],
@@ -6246,6 +6304,7 @@
     "xBFg6z": ["Du plugin ", ["0"]],
     "xCJdfg": ["Effacer"],
     "xCdTnb": ["Fermer le nouvel onglet"],
+    "xD4Xm2": ["Récupérer"],
     "xDBki3": ["Suggestions de titres"],
     "xDEcka": ["Le fournisseur limite le débit de cette clé. Réessayez dans un instant."],
     "xDKOFk": ["Ignoré"],

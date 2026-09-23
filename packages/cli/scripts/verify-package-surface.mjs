@@ -11,6 +11,11 @@ export const REQUIRED_PACK_FILES = [
   'dist/THIRD_PARTY_NOTICES.md',
   'dist/native/native-config.win32-x64-msvc.node',
   'dist/native/native-config.win32-arm64-msvc.node',
+  'dist/assets/skills/discovery/SKILL.md',
+  'dist/assets/skills/project/SKILL.md',
+  'dist/assets/skills/write-skill/SKILL.md',
+  'dist/assets/skills/packs/knowledge-base/SKILL.md',
+  'dist/assets/skills/packs/software-lifecycle/write-a-spec/SKILL.md',
 ];
 
 export const REQUIRED_KEYWORDS = ['knowledge-base', 'markdown', 'local-first', 'mcp', 'ai', 'cli'];

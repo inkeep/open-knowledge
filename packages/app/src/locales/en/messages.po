@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · references only (no embedded contents)"
 
@@ -288,6 +289,16 @@ msgstr "{0} · default"
 msgid "{0} (opens in a new tab)"
 msgstr "{0} (opens in a new tab)"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} +{rest} more"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -350,12 +361,6 @@ msgstr "{0} isn't installed yet — opening its download page."
 #: src/components/acp/ThreadView.tsx
 msgid "{0} kept its current context window."
 msgstr "{0} kept its current context window."
-
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} lets {1} act without asking"
 
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
@@ -569,6 +574,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} can't pick this chat back up. The transcript is kept, so start a new chat to continue."
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} couldn't start"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} couldn't start a conversation."
 
@@ -580,6 +589,10 @@ msgstr "{agentName} couldn't start."
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} doesn't accept image attachments."
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} is ready"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -935,6 +948,10 @@ msgstr "{loadErrorTitle}: {message}"
 #: src/components/ProblemsPanel.tsx
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "{localizedMessage} at line {displayLine}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "{mcpTool} from the {server} MCP server"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -1736,13 +1753,13 @@ msgstr "Add to {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Add to Dictionary"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "Add to prompt"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Add value"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "Add your comments to this message"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -1857,8 +1874,12 @@ msgid "Agent settings"
 msgstr "Agent settings"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "Agent settings — changes apply when you pick this conversation back up"
+msgid "Agent settings — {headerSummary}"
+msgstr "Agent settings — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -2207,6 +2228,18 @@ msgstr "Asset: {title}"
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "Attach a file"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "Attach comments"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "Attach comments: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
+msgstr "Attach files"
 
 #: src/components/ImageAttachments.tsx
 #: src/components/ReportBugImageDropzone.tsx
@@ -2582,6 +2615,10 @@ msgstr "Build and keep track of the world behind your story. A home for your cha
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "Builds a shareable link to a document or folder"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "Bullet list"
@@ -2858,6 +2895,14 @@ msgstr "Checking..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Checklist with checkboxes."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "Checks documents for markdown problems and can fix them"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "Checks the whole project for markdown problems and broken links"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -3291,6 +3336,7 @@ msgid "commands"
 msgstr "commands"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "Commands"
 
@@ -3323,7 +3369,6 @@ msgstr "Comment or ask AI about this {0}"
 msgid "Comment or ask AI about this code block"
 msgstr "Comment or ask AI about this code block"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -4656,6 +4701,10 @@ msgstr "created folder"
 msgid "created template"
 msgstr "created template"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "Creates or replaces a document, folder, template, skill, or asset"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "Creates the <0>{folderPart}/</0> folder"
@@ -4761,6 +4810,7 @@ msgstr "Default: <0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "Delete"
 
@@ -4889,6 +4939,14 @@ msgstr "Deleted for good"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "deleted template"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "Deletes a document, folder, template, skill, or asset"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "Deletes a file"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5348,6 +5406,7 @@ msgstr "Each push is one commit to your remote."
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "Edit"
@@ -5471,6 +5530,14 @@ msgstr "Editor selection"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "Editor status bar"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "Edits a document, folder, template, or skill in place"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "Edits a file"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6273,6 +6340,10 @@ msgstr "Failed to update the sync interval — {detail}"
 msgid "Failed to upload file"
 msgstr "Failed to upload file"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "Fast"
+
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."
 msgstr "Feedback isn't available right now. Please try again later."
@@ -6281,9 +6352,17 @@ msgstr "Feedback isn't available right now. Please try again later."
 msgid "Fenced code block with monospace text."
 msgstr "Fenced code block with monospace text."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "Fetch"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
 msgstr "Fetch failed — check the server logs for details."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "Fetches a web page"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
@@ -6410,6 +6489,14 @@ msgstr "Find next match"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "Find previous match"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "Finds documents and files in this project by title, content, or path"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "Finds skills and reads what's installed"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6667,6 +6754,10 @@ msgstr "Get product updates in your inbox."
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "Get set up"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "Gets the link that opens this project or a document in the app"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7273,6 +7364,10 @@ msgstr "Imported as \"{0}\" — the name \"{1}\" was taken."
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "Importing"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "Imports a skill into this project"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8281,6 +8376,10 @@ msgstr "Make this knowledge base available as a Claude Skill."
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "Make this the source — the skill's real folder moves here"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "Makes a skill available in more places, or removes it from one"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "Malformed apply response"
@@ -8398,6 +8497,10 @@ msgstr "MCP servers"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "Medium section heading."
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "Mention a page"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -8540,6 +8643,7 @@ msgid "Most installed"
 msgstr "Most installed"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "Move"
 
@@ -8711,6 +8815,14 @@ msgstr "moved template"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "Moved up."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "Moves or renames a document, folder, asset, template, or skill"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "Moves or renames a file"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11133,6 +11245,10 @@ msgstr "Re-run the project audit"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "Read"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
@@ -11161,6 +11277,34 @@ msgstr "Reading working tree"
 msgid "Reading…"
 msgstr "Reading…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "Reads a file"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "Reads documents and folders in this project with read-only shell commands"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "Reads the authoring palette so new documents match the project's style"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "Reads the link graph: what links to what"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "Reads the version history of a document or skill, or a folder's activity"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "Reads this project's OpenKnowledge settings"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "Reads unresolved conflicts between edits"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "Ready-made folders and templates to get you started quickly."
@@ -11176,6 +11320,10 @@ msgstr "Reason: {reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "Reason: {reason} ({osDetail})"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "Reasons before acting"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11797,6 +11945,10 @@ msgstr "Resolve the conflict on {files}, +{overflow} more before deleting."
 msgid "Resolved"
 msgstr "Resolved"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "Resolves a conflict by choosing which content to keep"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "Resolving default location"
@@ -11899,6 +12051,10 @@ msgstr "Restored an earlier version ({0})"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "Restored to the version from {0}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "Restores a document or skill to an earlier version"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12023,6 +12179,10 @@ msgstr "Rules"
 msgid "Ruminating…"
 msgstr "Ruminating…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "Run"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "Run a project audit from the Problems panel."
@@ -12046,6 +12206,10 @@ msgstr "running"
 #: src/components/ProblemsPanel.tsx
 msgid "Running project audit"
 msgstr "Running project audit"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "Runs a shell command"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
@@ -12118,6 +12282,10 @@ msgstr "Saved to"
 msgid "Saved with the project for your team."
 msgstr "Saved with the project for your team."
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "Saves a restore point for every document in the project"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
@@ -12168,6 +12336,7 @@ msgstr "Scroll to start"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "Search"
@@ -12296,6 +12465,10 @@ msgstr "Search worktrees"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "Search worktrees and branches"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "Searches files"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12493,6 +12666,10 @@ msgstr "Send feedback…"
 #: src/components/acp/UserMessageActions.tsx
 msgid "Send in this chat"
 msgstr "Send in this chat"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "Send now"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
@@ -12820,6 +12997,10 @@ msgstr "Show advanced"
 msgid "Show Agents"
 msgstr "Show Agents"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "Show all"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "Show All"
@@ -12869,6 +13050,7 @@ msgstr "Show HTML preview"
 msgid "Show in Explorer"
 msgstr "Show in Explorer"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13423,7 +13605,6 @@ msgstr "Starting sign-in flow"
 msgid "Starting terminal…"
 msgstr "Starting terminal…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "Starting the agent…"
@@ -13593,6 +13774,10 @@ msgstr "Switch worktree"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "Switch worktree…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "Switches the agent's mode"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"
@@ -14380,6 +14565,10 @@ msgstr "These rules come from your project's <0>{configFile}</0> file, which ful
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "Think"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
@@ -15190,6 +15379,11 @@ msgstr "Two-page (odd)"
 msgid "Type"
 msgstr "Type"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "Type '@' to mention a page"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "Type '/' for commands"

@@ -1,9 +1,12 @@
+import type { Page } from '@playwright/test';
 import {
   expect,
   FADE_DURATION_MS,
   FADE_REPORT_WINDOW_MS,
   installThemeFadeProbe,
   openColorThemes,
+  runningRootAnimations,
+  switchColorThemeAndSettleFade,
   type ThemeFadeProbeWindow,
   test,
 } from './_helpers';
@@ -135,17 +138,9 @@ test('theme settings retarget rapidly and honor reduced motion', async ({ page }
     .getByRole('button', { name: 'Use Monokai for the active light mode' })
     .evaluate((button) => button.click());
   await expect.poll(() => page.locator('html').getAttribute('data-color-theme')).toBe('monokai');
-  const rootTransitions = await page.evaluate(() => {
-    const isTransition = (animation: Animation): animation is CSSTransition =>
-      'transitionProperty' in animation;
-    return document.documentElement
-      .getAnimations({ subtree: false })
-      .map((animation) =>
-        isTransition(animation) ? animation.transitionProperty : animation.constructor.name,
-      );
-  });
+  const rootAnimations = await runningRootAnimations(page);
   expect(
-    rootTransitions,
+    rootAnimations,
     'under reduced motion a palette switch must start no transition on the document root',
   ).toEqual([]);
   expect(await page.evaluate(() => document.activeElement?.getAttribute('data-testid'))).toBe(
@@ -387,4 +382,243 @@ test('default light and dark modes fade surfaces without losing selection', asyn
       (property) => !['transform', 'opacity', 'box-shadow'].includes(property),
     ),
   ).toEqual([]);
+});
+
+interface RootFadeWitnessWindow {
+  okRootFadeWitness?: { startedRootTransitions: number };
+  okRootFadeHold?: AbortController;
+}
+
+async function installRootFadeWitness(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    const witness = { startedRootTransitions: 0 };
+    (window as typeof window & RootFadeWitnessWindow).okRootFadeWitness = witness;
+    root.addEventListener('transitionrun', (event) => {
+      if (event.target !== root || !event.propertyName.startsWith('--')) return;
+      witness.startedRootTransitions += 1;
+    });
+  });
+}
+
+async function holdRootFadeOpen(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const root = document.documentElement;
+    const scope = window as typeof window & RootFadeWitnessWindow;
+    if (scope.okRootFadeHold && !scope.okRootFadeHold.signal.aborted) {
+      throw new Error(
+        'holdRootFadeOpen(page) was called while a hold is still open; releaseRootFade(page) must run first, or the earlier hold can never be revoked',
+      );
+    }
+    const controller = new AbortController();
+    scope.okRootFadeHold = controller;
+    root.addEventListener(
+      'transitionrun',
+      (event) => {
+        if (event.target !== root || !event.propertyName.startsWith('--')) return;
+        for (const animation of root.getAnimations({ subtree: false })) animation.pause();
+      },
+      { signal: controller.signal },
+    );
+  });
+}
+
+async function releaseRootFade(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const { okRootFadeHold } = window as typeof window & RootFadeWitnessWindow;
+    if (!okRootFadeHold) {
+      throw new Error(
+        'window.okRootFadeHold is absent; holdRootFadeOpen(page) must run before releaseRootFade(page)',
+      );
+    }
+    if (okRootFadeHold.signal.aborted) {
+      throw new Error(
+        'releaseRootFade(page) was called on an already-released hold, so it would resume whatever happens to be running rather than the fade a hold was keeping open',
+      );
+    }
+    okRootFadeHold.abort();
+    for (const animation of document.documentElement.getAnimations({ subtree: false })) {
+      animation.play();
+    }
+  });
+}
+
+function readStartedRootTransitions(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const { okRootFadeWitness } = window as typeof window & RootFadeWitnessWindow;
+    if (!okRootFadeWitness) {
+      throw new Error(
+        'window.okRootFadeWitness is absent; installRootFadeWitness(page) must run after the last navigation',
+      );
+    }
+    return okRootFadeWitness.startedRootTransitions;
+  });
+}
+
+test('switching the color theme hands control back only once the :root fade has settled, and releasing the hold lets a later switch settle', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme-color-transitions');
+  await expect.poll(() => runningRootAnimations(page)).toEqual([]);
+  await installRootFadeWitness(page);
+  await holdRootFadeOpen(page);
+
+  let switchOutcome = 'pending';
+  const switching = switchColorThemeAndSettleFade(page, 'solarized').then(
+    () => {
+      switchOutcome = 'returned';
+    },
+    (error: Error) => {
+      switchOutcome = `failed: ${error.message}`;
+    },
+  );
+
+  await expect.poll(() => readStartedRootTransitions(page)).toBeGreaterThan(0);
+  const held = await runningRootAnimations(page);
+  expect(
+    held,
+    'the color theme write started :root animations but none are held open, so the switch not having returned yet would prove nothing',
+  ).not.toEqual([]);
+  expect(
+    switchOutcome,
+    `the color theme switch handed control back while ${held.length} :root animations were held mid-fade, so every color read taken after it samples a frame of the fade rather than the theme`,
+  ).toBe('pending');
+
+  await releaseRootFade(page);
+  await switching;
+  expect(
+    switchOutcome,
+    'releasing the held :root fade did not let the color theme switch return',
+  ).toBe('returned');
+
+  const startedBeforeAfterRelease = await readStartedRootTransitions(page);
+  let afterReleaseOutcome = 'pending';
+  await switchColorThemeAndSettleFade(page, 'dracula').then(
+    () => {
+      afterReleaseOutcome = 'returned';
+    },
+    (error: Error) => {
+      afterReleaseOutcome = `failed: ${error.message}`;
+    },
+  );
+  expect(
+    await readStartedRootTransitions(page),
+    'the post-release color theme write started no :root transition, so it exercised no hold and its settling would prove nothing',
+  ).toBeGreaterThan(startedBeforeAfterRelease);
+  expect(
+    afterReleaseOutcome,
+    'a color theme switch started after the release did not settle; if the reason is that the hold was never disarmed, every :root transition started after the release is paused on arrival with nothing left to play it',
+  ).toBe('returned');
+});
+
+test('switching to a color theme the attribute write cannot select fails the call', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme-color-transitions');
+  const before = await page.locator('html').getAttribute('data-color-theme');
+
+  for (const unselectable of ['default', 'custom', 'solarised']) {
+    await expect(
+      switchColorThemeAndSettleFade(page, unselectable),
+      `no stylesheet rule targets html[data-color-theme="${unselectable}"], so switching to it must fail rather than resolve as a settled switch that changed nothing`,
+    ).rejects.toThrow(/cannot apply/);
+  }
+
+  expect(
+    await page.locator('html').getAttribute('data-color-theme'),
+    'a rejected color theme switch must leave the attribute the product owns untouched',
+  ).toBe(before);
+});
+
+test('switching the color theme under reduced motion returns with no fade to wait for', async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme-color-transitions');
+  await installRootFadeWitness(page);
+
+  await switchColorThemeAndSettleFade(page, 'solarized');
+  const startedAtReturn = await readStartedRootTransitions(page);
+  const runningAtReturn = await runningRootAnimations(page);
+
+  await expect(
+    page.locator('html'),
+    'the switch returned without applying the color theme, so "no fade was running" proves nothing',
+  ).toHaveAttribute('data-color-theme', 'solarized');
+  expect(
+    startedAtReturn,
+    'reduced motion must suppress the fade entirely, so this test no longer exercises the nothing-to-wait-for path the barrier has to return from',
+  ).toBe(0);
+  expect(
+    runningAtReturn,
+    'the color theme switch returned with animations still running on :root under reduced motion',
+  ).toEqual([]);
+});
+
+test('switching the color theme with its fade retargeted mid-flight still hands control back on a settled tree', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.locator('html')).toHaveAttribute('data-theme-color-transitions');
+  await expect.poll(() => runningRootAnimations(page)).toEqual([]);
+  await installRootFadeWitness(page);
+  await holdRootFadeOpen(page);
+
+  let firstOutcome = 'pending';
+  const firstSwitch = switchColorThemeAndSettleFade(page, 'solarized').then(
+    () => {
+      firstOutcome = 'returned';
+    },
+    (error: Error) => {
+      firstOutcome = `failed: ${error.message}`;
+    },
+  );
+
+  await expect.poll(() => readStartedRootTransitions(page)).toBeGreaterThan(0);
+  const startedBeforeRetarget = await readStartedRootTransitions(page);
+  expect(
+    await runningRootAnimations(page),
+    'the first color theme write started no :root animations that are still held open, so retargeting them would prove nothing',
+  ).not.toEqual([]);
+
+  let secondOutcome = 'pending';
+  const secondSwitch = switchColorThemeAndSettleFade(page, 'dracula').then(
+    () => {
+      secondOutcome = 'returned';
+    },
+    (error: Error) => {
+      secondOutcome = `failed: ${error.message}`;
+    },
+  );
+
+  await expect
+    .poll(() => readStartedRootTransitions(page), {
+      message:
+        'the second color theme write started no new :root token transitions, so the first switch had no fade in flight to retarget and this test does not exercise the case it exists for',
+    })
+    .toBeGreaterThan(startedBeforeRetarget);
+
+  await releaseRootFade(page);
+  await firstSwitch;
+  await secondSwitch;
+
+  expect(
+    firstOutcome,
+    'a second color theme switch retargeted the first switch’s fade, which cancels every :root token transition the first call was waiting on; the barrier must read the live animation list rather than hold promises for specific animation instances, or it surfaces that cancellation as the first call’s own failure',
+  ).toBe('returned');
+  expect(
+    secondOutcome,
+    'the color theme switch that retargeted the fade did not hand control back once its own wave settled',
+  ).toBe('returned');
+  expect(
+    await runningRootAnimations(page),
+    'both color theme switches returned with animations still running on :root',
+  ).toEqual([]);
+  await expect(
+    page.locator('html'),
+    'the retargeting switch did not leave its own color theme on the attribute the product owns, so the settled tree is not the one the second call asked for',
+  ).toHaveAttribute('data-color-theme', 'dracula');
 });

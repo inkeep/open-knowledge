@@ -15,6 +15,27 @@ describe('AgentMarkdown', () => {
     expect(container.textContent).not.toContain('**');
   });
 
+  test('untrusted text renders no raw HTML element and loads no image', () => {
+    const { container } = render(
+      <AgentMarkdown text={'<b>bold</b> then ![a chart](https://example.com/x.png)'} untrusted />,
+    );
+    expect(container.querySelector('b')).toBeNull();
+    expect(container.querySelector('img')).toBeNull();
+    expect(container.textContent).toContain('bold');
+    expect(container.textContent).toContain('a chart');
+  });
+
+  test('a json fence from a tool result highlights as a code block and takes a className', async () => {
+    const { container } = render(
+      <AgentMarkdown text={'```json\n{\n  "ok": true\n}\n```'} className="tool-body" />,
+    );
+    expect(container.querySelector('.tool-body')).not.toBeNull();
+    await waitFor(() => {
+      expect(container.querySelector('pre')?.textContent).toContain('"ok": true');
+    });
+    expect(container.textContent).not.toContain('```');
+  });
+
   test('renders fenced code blocks', async () => {
     const { container } = render(<AgentMarkdown text={'```ts\nconst x = 1;\n```'} />);
     await waitFor(() => {
@@ -104,6 +125,27 @@ describe('AgentMarkdown doc-path links', () => {
     setDocPathResolver(null);
   });
 
+  test('a markdown link the agent wrote to a doc opens in-app instead of being blocked', () => {
+    const { container } = renderWithResolver(
+      'See [REPORT.md](public/open-knowledge/reports/foo/REPORT.md) for the findings.',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT');
+    expect(anchor?.textContent).toBe('REPORT.md');
+    expect(container.textContent).not.toContain('[blocked]');
+  });
+
+  test('a markdown link to a file: URL of a workspace doc opens in-app too', () => {
+    const { container } = renderWithResolver(
+      '[the report](file:///Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md)',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT');
+    expect(container.textContent).not.toContain('[blocked]');
+  });
+
   test('a repo-root-relative .md path in prose renders as an in-app hash link', () => {
     const { container } = renderWithResolver(
       'Written to public/open-knowledge/reports/foo/REPORT.md (458 lines)',
@@ -188,6 +230,45 @@ describe('AgentMarkdown doc-path links', () => {
     expect(link).not.toBeNull();
     expect(link?.getAttribute('href')).toBe('#/docs/intro');
     expect(link?.textContent).toBe('docs/intro.mdx');
+  });
+
+  test('a reference-style link stays literal text — the renderer never joins a definition to its reference', () => {
+    const { container } = renderWithResolver(
+      'see [the report][r]\n\n[r]: public/open-knowledge/reports/foo/REPORT.md',
+    );
+    expect(container.querySelector('a')).toBeNull();
+    expect(container.textContent).toContain('[the report][r]');
+  });
+
+  test('a heading fragment on a doc link survives onto the in-app route', () => {
+    const { container } = renderWithResolver(
+      '[findings](public/open-knowledge/reports/foo/REPORT.md#findings)',
+    );
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT#findings');
+  });
+
+  test('a fragment on a prose or backticked path lands on the in-app route as well', () => {
+    const { container } = renderWithResolver(
+      'see public/open-knowledge/reports/foo/REPORT.md#findings and `reports/foo/REPORT.md#root-cause`',
+    );
+    const hrefs = Array.from(
+      container.querySelectorAll('[data-testid="agent-thread-doc-link"]'),
+      (a) => a.getAttribute('href'),
+    );
+    expect(hrefs).toEqual(['#/reports/foo/REPORT#findings', '#/reports/foo/REPORT#root-cause']);
+    expect(container.textContent).toContain(
+      'REPORT.md#findings and reports/foo/REPORT.md#root-cause',
+    );
+  });
+
+  test('a javascript: href never renders as a link, percent-encoded or not', () => {
+    for (const href of ['javascript:alert(1)', 'javascript%3Aalert(1)']) {
+      const { container, unmount } = renderWithResolver(`[run](${href})`);
+      expect(container.querySelector('a[href^="javascript"]'), href).toBeNull();
+      expect(container.querySelector('[data-testid="agent-thread-doc-link"]'), href).toBeNull();
+      unmount();
+    }
   });
 
   test('an external link keeps target=_blank + Streamdown link styling', () => {

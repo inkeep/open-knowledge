@@ -273,6 +273,10 @@ export class AgentThreadClient {
     this.send({ op: 'queue_remove', threadId, id });
   }
 
+  sendQueuedNow(threadId: string, id: string): void {
+    this.send({ op: 'queue_send_now', threadId, id });
+  }
+
   respondPermission(
     threadId: string,
     requestId: string,

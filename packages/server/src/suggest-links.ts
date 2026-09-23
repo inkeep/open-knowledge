@@ -153,6 +153,41 @@ function readInlineCode(line: string, start: number): { text: string; nextIndex:
   return { text: line.slice(start, openEnd), nextIndex: openEnd };
 }
 
+const HTML_TAG_HEAD_RE = /<\/?[A-Za-z][\w.-]*(?=[\s/>])/y;
+const HTML_TAG_BODY_CHAR_RE = /[\s\w.:@$=/-]/;
+
+function readHtmlTag(line: string, start: number): { text: string; nextIndex: number } | null {
+  if (line.startsWith('<!--', start)) {
+    const close = line.indexOf('-->', start + 4);
+    return close === -1 ? null : { text: line.slice(start, close + 3), nextIndex: close + 3 };
+  }
+
+  HTML_TAG_HEAD_RE.lastIndex = start;
+  const head = HTML_TAG_HEAD_RE.exec(line);
+  if (!head) return null;
+
+  let quote: string | null = null;
+  let braceDepth = 0;
+  for (let index = start + head[0].length; index < line.length; index += 1) {
+    const char = line[index];
+    if (quote) {
+      if (char === quote) quote = null;
+    } else if (char === '"' || char === "'" || char === '`') {
+      quote = char;
+    } else if (char === '{') {
+      braceDepth += 1;
+    } else if (char === '}') {
+      braceDepth -= 1;
+    } else if (braceDepth === 0 && char === '>') {
+      return { text: line.slice(start, index + 1), nextIndex: index + 1 };
+    } else if (braceDepth === 0 && !HTML_TAG_BODY_CHAR_RE.test(char)) {
+      return null;
+    }
+  }
+
+  return null;
+}
+
 function readWikiLink(
   line: string,
   start: number,
@@ -345,6 +380,15 @@ function scanLineForMentions(
       if (inlineCode) {
         appendNonMatchableText(inlineCode.text);
         index = inlineCode.nextIndex;
+        continue;
+      }
+    }
+
+    if (line[index] === '<') {
+      const tag = readHtmlTag(line, index);
+      if (tag) {
+        appendNonMatchableText(tag.text);
+        index = tag.nextIndex;
         continue;
       }
     }

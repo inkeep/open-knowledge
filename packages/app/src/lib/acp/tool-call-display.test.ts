@@ -1,6 +1,6 @@
 import { OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
-import { describeToolCall } from './tool-call-display';
+import { describeToolCall, describeToolPurpose } from './tool-call-display';
 
 describe('describeToolCall — Open Knowledge MCP tools', () => {
   test('Claude names the tool in the title and puts the arguments in rawInput', () => {
@@ -234,6 +234,54 @@ describe('describeToolCall — Open Knowledge MCP tools', () => {
   });
 });
 
+describe('describeToolPurpose', () => {
+  test('every registered OK tool explains itself, each in its own words', () => {
+    const seen = new Set<string>();
+    for (const tool of OPEN_KNOWLEDGE_MCP_TOOLS) {
+      const purpose = describeToolPurpose({
+        title: `mcp__open-knowledge__${tool}`,
+        toolKind: 'other',
+        rawInput: {},
+      });
+      expect(purpose, tool).not.toBeNull();
+      expect(seen.has(purpose ?? ''), tool).toBe(false);
+      seen.add(purpose ?? '');
+    }
+  });
+
+  test('move and history name every target their tools take', () => {
+    expect(
+      describeToolPurpose({ title: 'mcp__open-knowledge__move', toolKind: 'other', rawInput: {} }),
+    ).toBe('Moves or renames a document, folder, asset, template, or skill');
+    expect(
+      describeToolPurpose({
+        title: 'mcp__open-knowledge__history',
+        toolKind: 'other',
+        rawInput: {},
+      }),
+    ).toBe("Reads the version history of a document or skill, or a folder's activity");
+  });
+
+  test("another server's tool is placed by server, not explained", () => {
+    expect(
+      describeToolPurpose({ title: 'mcp__linear__get_issue', toolKind: 'other', rawInput: {} }),
+    ).toBe('get_issue from the linear MCP server');
+  });
+
+  test('a built-in tool is explained by its kind', () => {
+    expect(describeToolPurpose({ title: 'Read', toolKind: 'read', rawInput: {} })).toBe(
+      'Reads a file',
+    );
+    expect(describeToolPurpose({ title: 'Bash', toolKind: 'execute', rawInput: {} })).toBe(
+      'Runs a shell command',
+    );
+  });
+
+  test('a tool of unknown kind has nothing to add', () => {
+    expect(describeToolPurpose({ title: 'Run tests', toolKind: 'other', rawInput: {} })).toBeNull();
+  });
+});
+
 describe('describeToolCall — everything that is not an OK tool', () => {
   test("an ordinary call keeps the adapter's title and takes its glyph from the kind", () => {
     expect(
@@ -266,14 +314,37 @@ describe('describeToolCall — everything that is not an OK tool', () => {
         toolKind: 'other',
         rawInput: { teamId: 'abc' },
       }),
-    ).toEqual({ glyph: 'other', text: 'mcp__linear-server__list_issues' });
+    ).toEqual({ glyph: 'other', text: 'linear-server · list_issues' });
     expect(
       describeToolCall({
         title: 'mcp.github.create_issue',
         toolKind: 'execute',
         rawInput: { server: 'github', tool: 'create_issue', arguments: {} },
       }),
-    ).toEqual({ glyph: 'execute', text: 'mcp.github.create_issue' });
+    ).toEqual({ glyph: 'execute', text: 'github · create_issue' });
+  });
+
+  test('a server whose own name carries an underscore is not split inside it', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__linear_server__list_issues',
+        toolKind: 'other',
+        rawInput: {},
+      }).text,
+    ).toBe('linear_server · list_issues');
+    expect(
+      describeToolCall({
+        title: 'mcp__sequential_thinking__sequentialthinking',
+        toolKind: 'think',
+        rawInput: {},
+      }).text,
+    ).toBe('sequential_thinking · sequentialthinking');
+  });
+
+  test('an id with no tool segment keeps the raw title rather than inventing one', () => {
+    expect(describeToolCall({ title: 'mcp__github__', toolKind: 'other', rawInput: {} }).text).toBe(
+      'mcp__github__',
+    );
   });
 
   test('an ok-prefixed tool OK does not serve keeps its own name', () => {
@@ -287,6 +358,69 @@ describe('describeToolCall — everything that is not an OK tool', () => {
     expect(
       describeToolCall({ title: 'Something new', toolKind: 'teleport', rawInput: undefined }),
     ).toEqual({ glyph: 'other', text: 'Something new' });
+  });
+
+  test('a suffixed Open Knowledge server still resolves to the OK display', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__open-knowledge-dev__write',
+        toolKind: 'other',
+        rawInput: { document: { path: 'notes.md', content: '# Notes' } },
+      }).text,
+    ).toBe('OpenKnowledge wrote to notes');
+  });
+
+  test('a title that is not an MCP id is left exactly as the agent sent it', () => {
+    expect(
+      describeToolCall({ title: 'Read file', toolKind: 'read', rawInput: undefined }).text,
+    ).toBe('Read file');
+  });
+
+  test('a primary argument rides along with the label', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__linear__save_issue',
+        toolKind: 'other',
+        rawInput: { query: 'assignee:me state:open' },
+      }),
+    ).toEqual({ glyph: 'other', text: 'linear · save_issue', preview: 'assignee:me state:open' });
+  });
+
+  test('a long command is cut to one line and ellipsized', () => {
+    const command = `ps -p 51625 -o pid,command | tail -n +1; echo "----"; curl -s localhost:3000\nsecond line`;
+    const display = describeToolCall({ title: 'bash', toolKind: 'execute', rawInput: { command } });
+    expect(display.preview).toBe('ps -p 51625 -o pid,command | tail -n +1; echo "----"; curl -…');
+    expect(display.preview?.length).toBeLessThanOrEqual(61);
+    expect(display.preview).not.toContain('second line');
+  });
+
+  test('a long command that is already the label does not get repeated beside it', () => {
+    const command =
+      'ps -p 51625 -o pid,command | tail -n +1; echo "----"; curl -s localhost:3000/health';
+    expect(command.length).toBeGreaterThan(60);
+    expect(
+      describeToolCall({ title: command, toolKind: 'execute', rawInput: { command } }).preview,
+    ).toBeUndefined();
+  });
+
+  test('no preview when the label already carries the same text', () => {
+    expect(
+      describeToolCall({
+        title: 'git status --short',
+        toolKind: 'execute',
+        rawInput: { command: 'git status --short' },
+      }).preview,
+    ).toBeUndefined();
+  });
+
+  test('an argument that is not a named primary one stays out of the row', () => {
+    expect(
+      describeToolCall({
+        title: 'mcp__linear__list',
+        toolKind: 'other',
+        rawInput: { teamId: 'abc' },
+      }).preview,
+    ).toBeUndefined();
   });
 
   test('every ACP tool kind resolves to its own glyph', () => {

@@ -94,7 +94,7 @@ vi.doMock('sonner', () => ({
 }));
 
 vi.doMock('@/editor/DocumentContext', () => ({
-  useDocumentContext: () => ({ systemProvider: null }),
+  useDocumentContext: () => ({ systemProvider: null, activeDocName: 'notes/today' }),
 }));
 
 let workspace: Workspace | null = null;
@@ -667,5 +667,27 @@ describe('a sent attachment chip', () => {
     ]);
     expect(within(attachmentRow()).getByText('@Setup')).toBeDefined();
     expect(within(attachmentRow()).queryByRole('link')).toBeNull();
+  });
+});
+
+describe('what the edit-and-resend @ picker is told to list first', () => {
+  test('the same open doc and attachments the main composer gets', async () => {
+    mountWith([
+      userMessage({
+        attachments: [
+          { kind: 'file', path: 'specs/a.md', name: 'a' },
+          { kind: 'image', data: 'AAAA', mimeType: 'image/png', name: 'shot.png' },
+        ],
+      }),
+    ]);
+    await startEditing();
+
+    const handed = screen
+      .getByTestId('agent-thread-user-message-edit-field')
+      .getAttribute('data-mention-recency');
+    expect(JSON.parse(handed ?? 'null')).toEqual({
+      currentDocName: 'notes/today',
+      recentPaths: ['specs/a.md'],
+    });
   });
 });

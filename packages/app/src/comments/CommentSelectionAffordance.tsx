@@ -179,6 +179,7 @@ export function CommentSelectionAffordance({
       <ComposerMentionInput
         ref={inputRef}
         ariaLabel={t`Add a comment`}
+        mentionRecency={{ currentDocName: docName, recentPaths: [] }}
         placeholder={t`Add a comment`}
         attachmentDrop={{ kind: 'refuse' }}
         onEmptyChange={setEmpty}

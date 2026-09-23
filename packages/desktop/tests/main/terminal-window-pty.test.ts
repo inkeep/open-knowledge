@@ -42,7 +42,7 @@ function makeManager() {
     newPtyId: () => `pty-${++idn}`,
     setTimer: () => 0,
     clearTimer: () => {},
-    logger: { warn: () => {} },
+    logger: { warn: () => {}, info: () => {} },
   });
   return { mgr, forked };
 }

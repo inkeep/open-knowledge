@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import { waitForAgentsDockPublish } from './_helpers/dock-state-ready';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
@@ -16,6 +17,7 @@ test.describe('terminal dock-state IPC', () => {
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('terminal tab snapshot survives renderer reload together', async ({ captureStderrFor }) => {
+    test.setTimeout(200_000);
     const testRoot = mkdtempSync(join(tmpdir(), 'ok-terminal-dock-state-'));
     const projectDir = join(testRoot, 'project');
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
@@ -61,38 +63,50 @@ test.describe('terminal dock-state IPC', () => {
     const editorPage = page;
     if (editorPage == null) throw new Error('editor window vanished after readiness poll');
 
+    await waitForAgentsDockPublish(
+      () => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()),
+      undefined,
+      { timeout: 35_000 },
+    );
     await expect
-      .poll(() => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()))
+      .poll(() => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()), {
+        timeout: 10_000,
+      })
       .toMatchObject({ agents: { order: [], activeKey: null } });
 
     await expect
-      .poll(async () => {
-        await editorPage.evaluate(() =>
-          window.okDesktop?.terminal.setDockState({
-            surface: 'agents',
-            order: ['thread-a', 'thread-b'],
-            activeKey: 'thread-a',
-          }),
-        );
-        return editorPage.evaluate(() => window.okDesktop?.terminal.getDockState());
-      })
+      .poll(
+        async () => {
+          await editorPage.evaluate(() =>
+            window.okDesktop?.terminal.setDockState({
+              surface: 'agents',
+              order: ['thread-a', 'thread-b'],
+              activeKey: 'thread-a',
+            }),
+          );
+          return editorPage.evaluate(() => window.okDesktop?.terminal.getDockState());
+        },
+        { timeout: 5_000 },
+      )
       .toMatchObject({ agents: { order: ['thread-a', 'thread-b'], activeKey: 'thread-a' } });
     await expect
-      .poll(() =>
-        editorPage.evaluate(() =>
-          window.okDesktop?.terminal.setDockState({
-            surface: 'terminal',
-            order: ['pty-a', 'pty-b'],
-            activeKey: 'pty-b',
-            terminalSnapshot: {
-              tabs: [
-                { ordinal: 1, customLabel: null },
-                { ordinal: 2, customLabel: 'Build' },
-              ],
-              activeOrdinal: 2,
-            },
-          }),
-        ),
+      .poll(
+        () =>
+          editorPage.evaluate(() =>
+            window.okDesktop?.terminal.setDockState({
+              surface: 'terminal',
+              order: ['pty-a', 'pty-b'],
+              activeKey: 'pty-b',
+              terminalSnapshot: {
+                tabs: [
+                  { ordinal: 1, customLabel: null },
+                  { ordinal: 2, customLabel: 'Build' },
+                ],
+                activeOrdinal: 2,
+              },
+            }),
+          ),
+        { timeout: 5_000 },
       )
       .toEqual({ ok: true });
 
@@ -108,24 +122,33 @@ test.describe('terminal dock-state IPC', () => {
       agents: { order: ['thread-a', 'thread-b'], activeKey: 'thread-a' },
     };
     await expect
-      .poll(() => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()))
+      .poll(() => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()), {
+        timeout: 5_000,
+      })
       .toMatchObject(expectedBeforeReload);
     const dockState = await editorPage.evaluate(() => window.okDesktop?.terminal.getDockState());
     expect(dockState).not.toHaveProperty('placement');
     expect(dockState).not.toHaveProperty('rightWidth');
 
     await editorPage.reload({ waitUntil: 'domcontentloaded' });
+    await waitForAgentsDockPublish(
+      () => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()),
+      expectedBeforeReload.agents,
+      { timeout: 25_000 },
+    );
     await expect
-      .poll(() =>
-        editorPage.evaluate(async () => {
-          const state = await window.okDesktop?.terminal.getDockState();
-          return {
-            agents: state?.agents,
-            terminalCount: state?.terminal?.order.length,
-            activeIndex: state?.terminal?.order.indexOf(state.terminal.activeKey ?? ''),
-            terminalSnapshot: state?.terminalSnapshot,
-          };
-        }),
+      .poll(
+        () =>
+          editorPage.evaluate(async () => {
+            const state = await window.okDesktop?.terminal.getDockState();
+            return {
+              agents: state?.agents,
+              terminalCount: state?.terminal?.order.length,
+              activeIndex: state?.terminal?.order.indexOf(state.terminal.activeKey ?? ''),
+              terminalSnapshot: state?.terminalSnapshot,
+            };
+          }),
+        { timeout: 20_000 },
       )
       .toEqual({
         agents: { order: [], activeKey: null },

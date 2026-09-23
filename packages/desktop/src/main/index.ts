@@ -133,6 +133,7 @@ import {
   BOOT_HEARTBEAT_EVENTS,
   BOOT_HEARTBEAT_MAX_BEATS,
   DESKTOP_BOOT_EVENT,
+  DESKTOP_OPEN_PROJECT_FAILED_EVENT,
   startupMarkLine,
 } from '../shared/boot-narration.ts';
 import type {
@@ -227,6 +228,7 @@ import { copyImageToClipboard } from './copy-image-clipboard.ts';
 import {
   type CrashDetection,
   createCrashDetection,
+  isProcessCrashReason,
   SENTINEL_HEARTBEAT_INTERVAL_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
@@ -238,6 +240,11 @@ import {
 } from './create-new-project.ts';
 import { createDebugIpc, type DebugIpcHandle } from './debug-ipc.ts';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
+import {
+  createDesktopProcessObservability,
+  type DesktopProcessObservability,
+  readRendererPid,
+} from './desktop-process-observability.ts';
 import {
   collectDesktopUninstallProjectCandidates,
   confirmDesktopUninstall,
@@ -476,6 +483,7 @@ import {
 } from './terminal-dock-persistence.ts';
 import { observeTerminalLaunch } from './terminal-gate-observation.ts';
 import { type TerminalReaper, wireWindowTerminalReap } from './terminal-lifecycle.ts';
+import type { AppShutdownCause } from './terminal-manager.ts';
 import {
   clampPtyDimension,
   createTerminalManager,
@@ -498,7 +506,7 @@ import {
 } from './terminal-window.ts';
 import { getTerminalWindowContext, resolvePtyProjectRoot } from './terminal-window-registry.ts';
 import { applyThemeApplied } from './theme-applied-handler.ts';
-import { applyThemeSource, isOkThemeSource } from './theme-handler.ts';
+import { applyThemeSource, emitThemeSourceRecord, isOkThemeSource } from './theme-handler.ts';
 import { createUninstallScreenRegistry } from './uninstall-ipc.ts';
 import {
   loadUninstallEntry,
@@ -965,6 +973,10 @@ function attachSpellcheckMenuToWindow(win: BrowserWindow): void {
 let navigatorWindow: BrowserWindowLike | null = null;
 let wm: WindowManager;
 let terminalReaper: TerminalReaper | null = null;
+let announcedShutdownCause: AppShutdownCause = 'quit';
+const noteRestartPending = (): void => {
+  announcedShutdownCause = 'relaunch';
+};
 
 function sweepConsoleHostsBeforeUpdate(): WindowsUpdateSurvivorSweepResult {
   const logger = getLogger('updater');
@@ -1140,6 +1152,7 @@ let mcpWiringHandle: RunMcpWiringHandle | null = null;
 let rendererReadySink: RendererReadySink | null = null;
 let crashDetection: CrashDetection | null = null;
 let rendererRecovery: RendererRecovery | null = null;
+let desktopProcessObservability: DesktopProcessObservability | null = null;
 let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
 let osShutdownNoted = false;
 
@@ -1202,7 +1215,10 @@ function resolveLocalOpCli(): LocalOpCliInvocation {
 
 function runDriverBootSmokeInProduction(): void {
   runDriverBootSmoke({
-    fork: (entry) => utilityProcess.fork(entry, [], {}) as unknown as DriverUtilityLike,
+    fork: (entry) =>
+      utilityProcess.fork(entry, [], {
+        serviceName: 'OpenKnowledge Driver Boot',
+      }) as unknown as DriverUtilityLike,
     quit: () => {
       try {
         app.quit();
@@ -2077,7 +2093,7 @@ async function openProjectOrFallbackToNavigator(
       (err as Error & { holderIsOwnChild?: boolean }).holderIsOwnChild === true;
     getLogger('project').error(
       {
-        event: 'desktop-open-project-failed',
+        event: DESKTOP_OPEN_PROJECT_FAILED_EVENT,
         projectPath,
         entryPoint,
         kind,
@@ -3785,8 +3801,10 @@ function registerIpcHandlers() {
   };
 
   const terminalManager = createTerminalManager({
-    forkPtyHost: () =>
-      utilityProcess.fork(join(__dirname, 'utility/pty-host.js')) as unknown as PtyUtilityLike,
+    forkPtyHost: (windowId) =>
+      utilityProcess.fork(join(__dirname, 'utility/pty-host.js'), [], {
+        serviceName: `OpenKnowledge Terminal Host ${windowId}`,
+      }) as unknown as PtyUtilityLike,
     sendData: (wc, payload) => sendToRenderer(wc, 'ok:pty:data', payload),
     sendExit: (wc, payload) => sendToRenderer(wc, 'ok:pty:exit', payload),
     sendNotice: (wc, payload) => sendToRenderer(wc, 'ok:pty:notice', payload),
@@ -3795,6 +3813,7 @@ function registerIpcHandlers() {
     clearTimer: (token) => clearTimeout(token as ReturnType<typeof setTimeout>),
     logger: {
       warn: (data) => getLogger('terminal').warn(data, String(data.event ?? 'terminal-manager')),
+      info: (data) => getLogger('terminal').info(data, String(data.event ?? 'terminal-manager')),
     },
     canSpawnAt: (projectRoot) => isTerminalConsented(projectRoot),
     recordShellExit,
@@ -4399,7 +4418,7 @@ function registerIpcHandlers() {
     return { ok: true };
   });
 
-  handle('ok:theme:set-source', async (_event, { source }) => {
+  handle('ok:theme:set-source', async (event, { source }) => {
     return applyThemeSource(
       {
         getThemeSource: () =>
@@ -4407,9 +4426,10 @@ function registerIpcHandlers() {
         setThemeSource: (s) => {
           nativeTheme.themeSource = s;
         },
-        warn: (line) => console.warn(line),
+        emit: emitThemeSourceRecord,
       },
       source,
+      BrowserWindow.fromWebContents(event.sender)?.id ?? null,
     );
   });
 
@@ -5846,6 +5866,14 @@ function bootPrimaryInstance(): void {
   );
 
   startLocalCrashReporter(crashReporter);
+  desktopProcessObservability = createDesktopProcessObservability({
+    now: () => new Date(),
+    getAppMetrics: () => app.getAppMetrics(),
+    getAllWindows: () => BrowserWindow.getAllWindows(),
+    logger: getLogger('desktop-process-observability'),
+    setInterval: (callback, ms) => setInterval(callback, ms).unref(),
+    clearInterval: (handle) => clearInterval(handle),
+  });
   crashDetection = createCrashDetection({
     sentinelPath: join(app.getPath('userData'), 'bug-report-dirty-shutdown.json'),
     ackStorePath: join(app.getPath('userData'), 'bug-report-crash-acks.json'),
@@ -5930,6 +5958,7 @@ function bootPrimaryInstance(): void {
   powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
   powerMonitor.on('resume', () => crashDetection?.noteResume());
   app.on('browser-window-created', (_event, win) => {
+    desktopProcessObservability?.observeWindow(win);
     win.on('session-end', (event) => {
       if (crashDetection === null || osShutdownNoted) return;
       osShutdownNoted = true;
@@ -5952,20 +5981,46 @@ function bootPrimaryInstance(): void {
     if (details.type === 'Utility') {
       getServerExitRecorder().noteGoneReason(details.reason);
     }
-    crashDetection?.handleChildProcessGone(details);
+    const crashReason = isProcessCrashReason(details.reason);
+    const processSnapshot = crashReason
+      ? desktopProcessObservability?.snapshotForCrash()
+      : undefined;
+    crashDetection?.handleChildProcessGone({
+      ...details,
+      processSnapshot,
+    });
+    if (crashReason) flushDesktopLogger();
   });
 
   app.on('web-contents-created', (_event, contents) => {
     attachRendererConsoleCapture(contents);
     contents.on('render-process-gone', (_e, details) => {
-      crashDetection?.handleRenderProcessGone(details);
+      let rendererPid: number | null = null;
+      const crashReason = isProcessCrashReason(details.reason);
+      if (crashReason) {
+        rendererPid = readRendererPid(contents);
+      }
+      const processSnapshot = crashReason
+        ? desktopProcessObservability?.snapshotForCrash({
+            contentsId: contents.id,
+            rendererPid,
+          })
+        : undefined;
+      crashDetection?.handleRenderProcessGone({
+        ...details,
+        processSnapshot,
+      });
       rendererRecovery?.handleRenderProcessGone(contents, details);
+      if (crashReason) flushDesktopLogger();
     });
     contents.once('destroyed', () => {
       rendererRecovery?.dispose(contents);
     });
     const retryDelivery = () => crashDetection?.notifyRendererReady();
-    contents.on('did-finish-load', retryDelivery);
+    contents.on('did-finish-load', () => {
+      retryDelivery();
+      desktopProcessObservability?.sampleNow('renderer-ready');
+    });
     contents.on('did-stop-loading', retryDelivery);
   });
 
@@ -6125,6 +6180,7 @@ function bootPrimaryInstance(): void {
     .then(async () => {
       startupWaterfall.mark('appReady');
       startupWaterfall.otelEnabled = beginRoot();
+      desktopProcessObservability?.start();
       logBootAccessibilityPosture();
       const shellEnvLogger = {
         event: (payload: Record<string, unknown> & { event: string }) =>
@@ -6476,6 +6532,7 @@ function bootPrimaryInstance(): void {
                       },
                       copyCommandToClipboard: (command) => clipboard.writeText(command),
                       relaunchApp: () => {
+                        noteRestartPending();
                         app.relaunch();
                         app.quit();
                       },
@@ -6505,7 +6562,7 @@ function bootPrimaryInstance(): void {
         prepareForRelaunch: async () => {
           freezeFocusTracking('prepare-for-relaunch');
           captureWindowRestoreSnapshot('prepare-for-relaunch');
-          await terminalReaper?.killAll();
+          await terminalReaper?.killAll('relaunch');
           await wm?.stopAllOwnedServers();
           flushDesktopLogger();
         },
@@ -6561,7 +6618,13 @@ function bootPrimaryInstance(): void {
           infoPlistPath,
           getCurrentVersion: () => app.getVersion(),
           dialog,
-          app,
+          app: {
+            relaunch: (options) => {
+              noteRestartPending();
+              app.relaunch(options);
+            },
+            quit: () => app.quit(),
+          },
         });
       }
     })
@@ -6572,7 +6635,8 @@ function bootPrimaryInstance(): void {
     });
 
   app.on('before-quit', () => {
-    getLogger('lifecycle').info({}, 'before-quit');
+    getLogger('lifecycle').info({ cause: announcedShutdownCause }, 'before-quit');
+    terminalReaper?.noteAppShutdown(announcedShutdownCause);
     freezeFocusTracking('before-quit');
     captureWindowRestoreSnapshot('before-quit');
     autoUpdaterHandle?.recordInstallHandoffOnQuit();
@@ -6584,7 +6648,7 @@ function bootPrimaryInstance(): void {
     getLogger('updater').info({}, 'before-quit-for-update — update install will relaunch the app');
     freezeFocusTracking('before-quit-for-update');
     captureWindowRestoreSnapshot('before-quit-for-update');
-    void (terminalReaper?.killAll() ?? Promise.resolve()).then(() => {
+    void (terminalReaper?.killAll('update-install') ?? Promise.resolve()).then(() => {
       const result = sweepConsoleHostsBeforeUpdate();
       if (result.scanFailed || result.revalidationFailed || result.failedCount > 0) {
         getLogger('updater').warn(
@@ -6601,7 +6665,7 @@ function bootPrimaryInstance(): void {
     defer: (callback) => setImmediate(callback),
     drain: async () => {
       const [terminalResult] = await Promise.allSettled([
-        terminalReaper?.killAll() ?? Promise.resolve(),
+        terminalReaper?.killAll('quit') ?? Promise.resolve(),
         slidesDeckRegistry.reapAll(),
       ]);
       if (terminalResult.status === 'rejected') {
@@ -6619,6 +6683,8 @@ function bootPrimaryInstance(): void {
       crashSentinelHeartbeat = null;
     }
     rendererRecovery = null;
+    desktopProcessObservability?.stop();
+    desktopProcessObservability = null;
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
     dockOrderForWindow.clear();

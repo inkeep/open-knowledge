@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · 仅引用（无嵌入内容）"
 
@@ -288,6 +289,16 @@ msgstr "{0} · 默认"
 msgid "{0} (opens in a new tab)"
 msgstr "{0}（在新标签页中打开）"
 
+#. placeholder {0}: shown.join(', ')
+#: src/components/acp/ThreadView.tsx
+msgid "{0} +{rest} more"
+msgstr "{0} 等 {rest} 项"
+
+#. placeholder {0}: calls.length
+#: src/components/acp/ThreadView.tsx
+msgid "{0} × {label}"
+msgstr "{0} × {label}"
+
 #. placeholder {0}: info.agent.name
 #: src/components/acp/ThreadView.tsx
 msgid "{0} acts without asking — OpenKnowledge can't add permission prompts for it"
@@ -350,12 +361,6 @@ msgstr "{0} 尚未安装——正在打开它的下载页面。"
 #: src/components/acp/ThreadView.tsx
 msgid "{0} kept its current context window."
 msgstr "{0} 保留了当前的上下文窗口。"
-
-#. placeholder {0}: modeSurface.currentName
-#. placeholder {1}: info.agent.name
-#: src/components/acp/ThreadView.tsx
-msgid "{0} lets {1} act without asking"
-msgstr "{0} 允许 {1} 无需询问即可执行"
 
 #. placeholder {0}: item.agentName
 #. placeholder {1}: item.displayName
@@ -569,6 +574,10 @@ msgid "{agentName} can't pick this chat back up. The transcript is kept, so star
 msgstr "{agentName} 无法继续此对话。记录会保留，请开始新对话以继续。"
 
 #: src/components/acp/ThreadView.tsx
+msgid "{agentName} couldn't start"
+msgstr "{agentName} 无法启动"
+
+#: src/components/acp/ThreadView.tsx
 msgid "{agentName} couldn't start a conversation."
 msgstr "{agentName} 无法开始对话。"
 
@@ -580,6 +589,10 @@ msgstr "{agentName} 无法启动。"
 #: src/lib/acp/launch-agent-thread.ts
 msgid "{agentName} doesn't accept image attachments."
 msgstr "{agentName} 不接受图像附件。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} is ready"
+msgstr "{agentName} 已就绪"
 
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} isn't running. Start a new chat to sign in."
@@ -935,6 +948,10 @@ msgstr "{loadErrorTitle}：{message}"
 #: src/components/ProblemsPanel.tsx
 msgid "{localizedMessage} at line {displayLine}"
 msgstr "第 {displayLine} 行：{localizedMessage}"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "{mcpTool} from the {server} MCP server"
+msgstr "来自 {server} MCP 服务器的 {mcpTool}"
 
 #: src/components/TimelinePanel.tsx
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
@@ -1736,13 +1753,13 @@ msgstr "添加到 {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "添加到词典"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "添加到提示词"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "添加值"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "把你的评论写在这条消息里"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -1857,8 +1874,12 @@ msgid "Agent settings"
 msgstr "智能体设置"
 
 #: src/components/acp/ThreadView.tsx
-msgid "Agent settings — changes apply when you pick this conversation back up"
-msgstr "智能体设置：更改将在继续此对话时生效"
+msgid "Agent settings — {headerSummary}"
+msgstr "智能体设置 — {headerSummary}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Agent settings — {headerSummary} — changes apply when you pick this conversation back up"
+msgstr "智能体设置 — {headerSummary}：更改将在继续此对话时生效"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Agent transcript"
@@ -2206,6 +2227,18 @@ msgstr "资源：{title}"
 
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
+msgstr "附加文件"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "附加评论"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "附加评论：{count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
 msgstr "附加文件"
 
 #: src/components/ImageAttachments.tsx
@@ -2582,6 +2615,10 @@ msgstr "构建并梳理你故事背后的世界。一个安放角色、地点、
 msgid "Building <0>openknowledge.skill</0> and opening the Claude Desktop App"
 msgstr "正在构建 <0>openknowledge.skill</0> 并打开 Claude 桌面应用"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Builds a shareable link to a document or folder"
+msgstr "为文档或文件夹创建可分享的链接"
+
 #: src/lib/keyboard-shortcuts.ts
 msgid "Bullet list"
 msgstr "无序列表"
@@ -2858,6 +2895,14 @@ msgstr "正在检查…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "带复选框的清单。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks documents for markdown problems and can fix them"
+msgstr "检查文档中的 Markdown 问题，并可修复"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Checks the whole project for markdown problems and broken links"
+msgstr "检查整个项目的 Markdown 问题和失效链接"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Checks your project against the Open Knowledge Format. Turn it off any time in Settings."
@@ -3291,6 +3336,7 @@ msgid "commands"
 msgstr "命令"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "命令"
 
@@ -3323,7 +3369,6 @@ msgstr "对此{0}发表评论或询问 AI"
 msgid "Comment or ask AI about this code block"
 msgstr "对此代码块发表评论或询问 AI"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -4656,6 +4701,10 @@ msgstr "已创建文件夹"
 msgid "created template"
 msgstr "已创建模板"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Creates or replaces a document, folder, template, skill, or asset"
+msgstr "创建或替换文档、文件夹、模板、技能或资源"
+
 #: src/components/SkillFileCreateDialog.tsx
 msgid "Creates the <0>{folderPart}/</0> folder"
 msgstr "创建 <0>{folderPart}/</0> 文件夹"
@@ -4761,6 +4810,7 @@ msgstr "默认：<0>{0}</0>"
 #: src/components/skill-actions.tsx
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/JsxComponentView.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Delete"
 msgstr "删除"
 
@@ -4889,6 +4939,14 @@ msgstr "彻底删除"
 #: src/components/FolderTimelineCard.tsx
 msgid "deleted template"
 msgstr "已删除模板"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a document, folder, template, skill, or asset"
+msgstr "删除文档、文件夹、模板、技能或资源"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Deletes a file"
+msgstr "删除文件"
 
 #: src/components/DeleteConfirmationDialog.tsx
 #: src/components/TrashFailureModal.tsx
@@ -5348,6 +5406,7 @@ msgstr "每次推送就是向你的远程仓库提交一次。"
 #: src/components/TemplateRow.tsx
 #: src/editor/extensions/InternalLinkPropPanel.tsx
 #: src/editor/extensions/WikiLinkPropPanel.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/native-menu-catalog.ts
 msgid "Edit"
 msgstr "编辑"
@@ -5471,6 +5530,14 @@ msgstr "编辑器选区"
 #: src/components/EditorFooter.tsx
 msgid "Editor status bar"
 msgstr "编辑器状态栏"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a document, folder, template, or skill in place"
+msgstr "就地编辑文档、文件夹、模板或技能"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Edits a file"
+msgstr "编辑文件"
 
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Edits apply live and save automatically to this theme."
@@ -6273,6 +6340,10 @@ msgstr "更新同步间隔失败 — {detail}"
 msgid "Failed to upload file"
 msgstr "上传文件失败"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Fast"
+msgstr "快速"
+
 #: src/components/FeedbackForm.tsx
 msgid "Feedback isn't available right now. Please try again later."
 msgstr "反馈功能暂时不可用。请稍后再试。"
@@ -6281,9 +6352,17 @@ msgstr "反馈功能暂时不可用。请稍后再试。"
 msgid "Fenced code block with monospace text."
 msgstr "使用等宽字体的围栏代码块。"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetch"
+msgstr "获取"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetch failed — check the server logs for details."
 msgstr "获取失败——详情请查看服务器日志。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Fetches a web page"
+msgstr "获取网页"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Fetching"
@@ -6410,6 +6489,14 @@ msgstr "查找下一处匹配"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Find previous match"
 msgstr "查找上一处匹配"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds documents and files in this project by title, content, or path"
+msgstr "按标题、内容或路径查找此项目中的文档和文件"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Finds skills and reads what's installed"
+msgstr "查找技能并读取已安装的技能"
 
 #. Primary button that applies the first-launch setup choices
 #: src/components/McpConsentDialogBody.tsx
@@ -6667,6 +6754,10 @@ msgstr "把产品动态发到你的邮箱。"
 #: src/components/OnboardingCard.tsx
 msgid "Get set up"
 msgstr "开始设置"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Gets the link that opens this project or a document in the app"
+msgstr "获取在应用中打开此项目或文档的链接"
 
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
@@ -7273,6 +7364,10 @@ msgstr "已作为“{0}”导入——名称“{1}”已被占用。"
 #: src/components/ImportSkillForm.tsx
 msgid "Importing"
 msgstr "正在导入"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Imports a skill into this project"
+msgstr "将技能导入此项目"
 
 #: src/components/settings/LintingSection.tsx
 msgid "In a log document: entry headings lead with an ISO YYYY-MM-DD date, newest first. How many titles you use, and whether entries are bullets, is up to you."
@@ -8281,6 +8376,10 @@ msgstr "把这个知识库作为 Claude 技能提供出去。"
 msgid "Make this the source — the skill's real folder moves here"
 msgstr "把这里设为来源——技能的真实文件夹会移到这里"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Makes a skill available in more places, or removes it from one"
+msgstr "让技能在更多位置可用，或从某个位置移除"
+
 #: src/lib/seed-client.ts
 msgid "Malformed apply response"
 msgstr "应用响应格式错误"
@@ -8398,6 +8497,10 @@ msgstr "MCP 服务器"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "中号章节标题。"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "提及页面"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -8540,6 +8643,7 @@ msgid "Most installed"
 msgstr "安装量最高"
 
 #: src/components/SkillScopeMoveDialog.tsx
+#: src/lib/acp/tool-call-display.ts
 msgid "Move"
 msgstr "移动"
 
@@ -8711,6 +8815,14 @@ msgstr "已移动模板"
 #: src/components/editor/SelectionAnnouncer.tsx
 msgid "Moved up."
 msgstr "已上移。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a document, folder, asset, template, or skill"
+msgstr "移动或重命名文档、文件夹、资源、模板或技能"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Moves or renames a file"
+msgstr "移动或重命名文件"
 
 #: src/components/file-tree-trash-copy.ts
 msgid "Moving"
@@ -11133,6 +11245,10 @@ msgstr "重新运行项目审查"
 msgid "React"
 msgstr "React"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Read"
+msgstr "读取"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "通读这个代码库，为其中最复杂的模块起草一份技术规格：总览、架构、关键文件和待解决的问题，全部从规格索引页链接过去。"
@@ -11161,6 +11277,34 @@ msgstr "正在读取工作区"
 msgid "Reading…"
 msgstr "正在阅读…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads a file"
+msgstr "读取文件"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads documents and folders in this project with read-only shell commands"
+msgstr "用只读 shell 命令读取此项目中的文档和文件夹"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the authoring palette so new documents match the project's style"
+msgstr "读取写作调色板，让新文档符合项目风格"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the link graph: what links to what"
+msgstr "读取链接图：什么链接到什么"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads the version history of a document or skill, or a folder's activity"
+msgstr "读取文档或技能的版本历史，或文件夹的活动"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads this project's OpenKnowledge settings"
+msgstr "读取此项目的 OpenKnowledge 设置"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reads unresolved conflicts between edits"
+msgstr "读取编辑之间未解决的冲突"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "现成的文件夹和模板，帮你快速上手。"
@@ -11176,6 +11320,10 @@ msgstr "原因：{reason}"
 #: src/components/TrashFailureModal.tsx
 msgid "Reason: {reason} ({osDetail})"
 msgstr "原因：{reason}（{osDetail}）"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Reasons before acting"
+msgstr "先思考再行动"
 
 #: src/components/CloneDialog.tsx
 msgid "Receiving objects"
@@ -11797,6 +11945,10 @@ msgstr "删除前请先解决 {files} 以及另外 {overflow} 个文件上的冲
 msgid "Resolved"
 msgstr "已解决"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Resolves a conflict by choosing which content to keep"
+msgstr "通过选择保留的内容来解决冲突"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Resolving default location"
 msgstr "正在确定默认位置"
@@ -11899,6 +12051,10 @@ msgstr "已恢复到较早的版本（{0}）"
 #: src/components/TimelinePanel.tsx
 msgid "Restored to the version from {0}"
 msgstr "已恢复到 {0} 的版本"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Restores a document or skill to an earlier version"
+msgstr "将文档或技能恢复到早期版本"
 
 #: src/components/CommandPalette.tsx
 msgid "Results capped — this workspace has more files than search can index. A missing file may be a cap artifact, not a typo."
@@ -12023,6 +12179,10 @@ msgstr "规则"
 msgid "Ruminating…"
 msgstr "正在反复琢磨…"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Run"
+msgstr "运行"
+
 #: src/components/settings/LintingSection.tsx
 msgid "Run a project audit from the Problems panel."
 msgstr "在「问题」面板中运行一次项目审查。"
@@ -12046,6 +12206,10 @@ msgstr "运行中"
 #: src/components/ProblemsPanel.tsx
 msgid "Running project audit"
 msgstr "正在运行项目审查"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Runs a shell command"
+msgstr "运行 shell 命令"
 
 #: src/components/settings/AttachmentsSection.tsx
 msgid "Same folder as current file"
@@ -12118,6 +12282,10 @@ msgstr "保存到"
 msgid "Saved with the project for your team."
 msgstr "与项目一起保存，供你的团队使用。"
 
+#: src/lib/acp/tool-call-display.ts
+msgid "Saves a restore point for every document in the project"
+msgstr "为项目中的每个文档保存一个还原点"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "Saves the file to <0>~/Downloads/openknowledge.skill</0> and opens the Claude Desktop App. Requires Node.js or Bun on your PATH."
 msgstr "把文件保存到 <0>~/Downloads/openknowledge.skill</0> 并打开 Claude 桌面应用。需要你的 PATH 中有 Node.js 或 Bun。"
@@ -12168,6 +12336,7 @@ msgstr "滚动到开头"
 #: src/components/EditorHeader.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 #: src/components/SidebarSearchBar.tsx
+#: src/lib/acp/tool-call-display.ts
 #: src/lib/keyboard-shortcuts.ts
 msgid "Search"
 msgstr "搜索"
@@ -12296,6 +12465,10 @@ msgstr "搜索 worktree"
 #: src/components/RecentProjectsMenu.tsx
 msgid "Search worktrees and branches"
 msgstr "搜索 worktree 和分支"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Searches files"
+msgstr "搜索文件"
 
 #: src/components/CommandPalette.tsx
 #: src/components/ExploreSkills.tsx
@@ -12493,6 +12666,10 @@ msgstr "发送反馈…"
 #: src/components/acp/UserMessageActions.tsx
 msgid "Send in this chat"
 msgstr "在当前对话中发送"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Send now"
+msgstr "立即发送"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Send report"
@@ -12820,6 +12997,10 @@ msgstr "显示高级选项"
 msgid "Show Agents"
 msgstr "显示「智能体」"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Show all"
+msgstr "全部显示"
+
 #: src/lib/native-menu-catalog.ts
 msgid "Show All"
 msgstr "显示全部"
@@ -12869,6 +13050,7 @@ msgstr "显示 HTML 预览"
 msgid "Show in Explorer"
 msgstr "在资源管理器中显示"
 
+#: src/components/acp/ThreadView.tsx
 #: src/components/PackCardGrid.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 msgid "Show less"
@@ -13423,7 +13605,6 @@ msgstr "正在启动登录流程"
 msgid "Starting terminal…"
 msgstr "正在启动终端…"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
 msgid "Starting the agent…"
 msgstr "正在启动智能体…"
@@ -13593,6 +13774,10 @@ msgstr "切换 worktree"
 #: src/components/AppMenubar.tsx
 msgid "Switch worktree…"
 msgstr "切换 worktree…"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Switches the agent's mode"
+msgstr "切换智能体模式"
 
 #: src/components/ShareBranchSwitchDialog.tsx
 msgid "Switching branches"
@@ -14380,6 +14565,10 @@ msgstr "这些规则来自你项目的 <0>{configFile}</0> 文件，该文件完
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "它们教你的 AI 工具如何使用 OpenKnowledge。安装其中一个，会把它添加到本机的每个 AI 工具。"
+
+#: src/lib/acp/tool-call-display.ts
+msgid "Think"
+msgstr "思考"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Thinking"
@@ -15190,6 +15379,11 @@ msgstr "双页（奇数）"
 msgid "Type"
 msgstr "类型"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Type '@' to mention a page"
+msgstr "输入“@”提及页面"
+
+#: src/components/acp/ThreadView.tsx
 #: src/editor/TiptapEditor.tsx
 msgid "Type '/' for commands"
 msgstr "输入“/”打开命令"
