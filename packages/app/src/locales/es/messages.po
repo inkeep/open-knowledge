@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · solo referencias (sin contenido incrustado)"
 
@@ -1752,13 +1753,13 @@ msgstr "Añadir a {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Añadir al diccionario"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "Añadir al prompt"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Añadir valor"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "Añade tus comentarios a este mensaje"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -2227,6 +2228,18 @@ msgstr "Recurso: {title}"
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "Adjuntar un archivo"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "Adjuntar comentarios"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "Adjuntar comentarios: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
+msgstr "Adjuntar archivos"
 
 #: src/components/ImageAttachments.tsx
 #: src/components/ReportBugImageDropzone.tsx
@@ -3323,6 +3336,7 @@ msgid "commands"
 msgstr "comandos"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "Comandos"
 
@@ -3355,7 +3369,6 @@ msgstr "Comenta o pregunta a la IA sobre este {0}"
 msgid "Comment or ask AI about this code block"
 msgstr "Comenta o pregunta a la IA sobre este bloque de código"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8484,6 +8497,10 @@ msgstr "Servidores MCP"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "Encabezado de sección mediano."
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "Mencionar una página"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx

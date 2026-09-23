@@ -21,6 +21,7 @@ import {
   loadStickyAgent as loadStickyDefaultAgent,
   saveStickyAgent as saveStickyDefaultAgent,
 } from '@/lib/unified-agent-store';
+import { createComposerDropdownMenuMock } from './composer-dropdown-menu.test-helper';
 
 vi.doMock('@lingui/react/macro', () => ({
   ...actualLinguiMacro,
@@ -35,40 +36,7 @@ vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => <span data-testid={`target-icon-${id}`} />,
 }));
 
-type MenuChild = {
-  children?: ReactNode;
-  disabled?: boolean;
-  onSelect?: () => void;
-  [key: string]: unknown;
-};
-vi.doMock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: MenuChild) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: MenuChild) => <>{children}</>,
-  DropdownMenuContent: ({ children, ...props }: MenuChild) => (
-    <div role="menu" {...props}>
-      {children}
-    </div>
-  ),
-  DropdownMenuGroup: ({ children }: MenuChild) => <>{children}</>,
-  DropdownMenuItem: ({ children, disabled, onSelect, ...props }: MenuChild) => (
-    <button type="button" role="menuitem" disabled={disabled} onClick={onSelect} {...props}>
-      {children}
-    </button>
-  ),
-  DropdownMenuCheckboxItem: ({ children, disabled, checked, ...props }: MenuChild) => (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked === true}
-      disabled={disabled}
-      {...props}
-    >
-      {children}
-    </button>
-  ),
-  DropdownMenuLabel: ({ children, ...props }: MenuChild) => <div {...props}>{children}</div>,
-  DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
-}));
+vi.doMock('@/components/ui/dropdown-menu', createComposerDropdownMenuMock);
 
 let mockInlineMentions: string[] = [];
 let emitMentions: ((mentions: string[]) => void) | null = null;
@@ -107,7 +75,17 @@ vi.doMock('@/editor/ComposerMentionInput', () => ({
       getContent: () => ({
         instruction: localRef.current?.value ?? '',
         mentions: mockInlineMentions,
+        attachments: [],
       }),
+      focusEnd: () => localRef.current?.focus(),
+      refuseDrop: () => {},
+      setText: (text: string) => {
+        if (localRef.current) localRef.current.value = text;
+        onEmptyChange(text.trim() === '');
+      },
+      appendText: () => {},
+      openMentionPicker: () => {},
+      openSlashCommandPicker: () => {},
     }));
     return (
       <textarea
@@ -298,6 +276,7 @@ async function renderComposerWithTerminal(
 async function renderComposerWithThrowingTerminal(docName = 'notes') {
   const { BottomComposer } = await import('./BottomComposer');
   const { TerminalLaunchProvider } = await import('./handoff/TerminalLaunchContext');
+  const { TooltipProvider } = await import('@/components/ui/tooltip');
   return render(
     <TerminalLaunchProvider
       value={{
@@ -309,6 +288,7 @@ async function renderComposerWithThrowingTerminal(docName = 'notes') {
     >
       <BottomComposer docName={docName} surface="wysiwyg" />
     </TerminalLaunchProvider>,
+    { wrapper: TooltipProvider },
   );
 }
 
@@ -321,7 +301,8 @@ async function renderComposerWithInstalledClis(installed: Record<string, boolean
 
 async function renderFolderComposer(folderPath = 'specs/foo') {
   const { BottomComposer } = await import('./BottomComposer');
-  return render(<BottomComposer folderPath={folderPath} />);
+  const { TooltipProvider } = await import('@/components/ui/tooltip');
+  return render(<BottomComposer folderPath={folderPath} />, { wrapper: TooltipProvider });
 }
 
 function getInput() {
@@ -685,6 +666,18 @@ describe('BottomComposer (dispatch + picker + sticky default)', () => {
     });
     expect(dispatchCalls).toHaveLength(0);
     expect(recordAskedAiSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('a terminal target keeps page mentions available without exposing file attachment', async () => {
+    const user = userEvent.setup();
+    await renderComposerWithTerminal();
+
+    await user.click(screen.getByTestId('ask-ai-agent-trigger'));
+    await user.click(await screen.findByTestId('ask-ai-agent-option-terminal'));
+
+    expect(screen.getByTestId('ask-ai-add-to-prompt')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Mention a page' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Attach files' })).toBeNull();
   });
 
   test('a terminal launch that throws keeps the draft, toasts, and records no Ask-AI step', async () => {
@@ -1318,6 +1311,7 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
 
   test('declines ⇧⌘L while an overlay owns the keyboard', async () => {
     const { BottomComposer } = await import('./BottomComposer');
+    const { TooltipProvider } = await import('@/components/ui/tooltip');
     const { Dialog, DialogContent, DialogDescription, DialogTitle } = await import(
       '@/components/ui/dialog'
     );
@@ -1331,6 +1325,7 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
           </DialogContent>
         </Dialog>
       </>,
+      { wrapper: TooltipProvider },
     );
     await waitFor(() => expect(screen.getByRole('dialog')).not.toBeNull());
     const composerInput = document.querySelector('textarea');
@@ -1348,7 +1343,7 @@ describe('BottomComposer ⇧⌘L — overlay gate', () => {
 
 describe('BottomComposer (queued-comments chip lifecycle)', () => {
   const DETACH = /leave these comments out of this message/i;
-  const REATTACH = /add your comments to this message/i;
+  const REATTACH = /attach comments: 2/i;
 
   test('a ticked batch rides the message by default', async () => {
     selectedCommentCount = 2;
@@ -1361,7 +1356,12 @@ describe('BottomComposer (queued-comments chip lifecycle)', () => {
     await renderComposer();
     fireEvent.click(screen.getByRole('button', { name: DETACH }));
     expect(screen.queryByRole('button', { name: DETACH })).toBeNull();
-    expect(screen.getByRole('button', { name: REATTACH })).toBeTruthy();
+    expect(screen.queryByTestId('composer-context-chip-comments')).toBeNull();
+    expect(screen.getByRole('menuitem', { name: REATTACH })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Commands' })).toBeNull();
+
+    fireEvent.click(screen.getByRole('menuitem', { name: REATTACH }));
+    expect(screen.getByRole('button', { name: DETACH })).toBeTruthy();
   });
 
   test('posting a new comment re-attaches a dismissed batch', async () => {

@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · hanya referensi (tanpa konten tertanam)"
 
@@ -1748,13 +1749,13 @@ msgstr "Tambahkan ke {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Tambahkan ke kamus"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "Tambahkan ke prompt"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Tambahkan nilai"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "Tambahkan komentar Anda ke pesan ini"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -2222,6 +2223,18 @@ msgstr "Aset: {title}"
 
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
+msgstr "Lampirkan berkas"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "Lampirkan komentar"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "Lampirkan komentar: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
 msgstr "Lampirkan berkas"
 
 #: src/components/ImageAttachments.tsx
@@ -3319,6 +3332,7 @@ msgid "commands"
 msgstr "perintah"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "Perintah"
 
@@ -3351,7 +3365,6 @@ msgstr "Beri komentar atau tanya AI tentang {0} ini"
 msgid "Comment or ask AI about this code block"
 msgstr "Beri komentar atau tanya AI tentang blok kode ini"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8480,6 +8493,10 @@ msgstr "Server MCP"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "Judul bagian sedang."
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "Sebut halaman"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx

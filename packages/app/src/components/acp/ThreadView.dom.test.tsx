@@ -2657,7 +2657,7 @@ describe('ThreadView send-vs-queue labelling', () => {
 });
 
 describe('ThreadView attachment disclosure', () => {
-  test('a references-only agent explains that behavior on the attachment affordance', async () => {
+  test('a references-only agent explains that behavior in the add menu', async () => {
     const user = userEvent.setup();
     model = makeModel({ turnActive: false });
     render(
@@ -2669,14 +2669,16 @@ describe('ThreadView attachment disclosure', () => {
       />,
     );
 
-    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
 
-    expect((await screen.findByRole('tooltip')).textContent).toBe(
-      'Attach a file · references only (no embedded contents)',
-    );
+    expect(
+      screen.getByRole('menuitem', {
+        name: 'Attach files · references only (no embedded contents)',
+      }).textContent,
+    ).toBe('Attach files · references only (no embedded contents)');
   });
 
-  test('an embedding-capable agent keeps the attachment tooltip concise', async () => {
+  test('an embedding-capable agent keeps the file option concise', async () => {
     const user = userEvent.setup();
     model = makeModel({ turnActive: false });
     render(
@@ -2688,9 +2690,9 @@ describe('ThreadView attachment disclosure', () => {
       />,
     );
 
-    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
 
-    expect((await screen.findByRole('tooltip')).textContent).toBe('Attach a file');
+    expect(screen.getByRole('menuitem', { name: 'Attach files' }).textContent).toBe('Attach files');
   });
 
   test('unknown capabilities do not flash a references-only claim during handshake', async () => {
@@ -2698,9 +2700,9 @@ describe('ThreadView attachment disclosure', () => {
     model = makeModel({ turnActive: false });
     render(<ThreadView info={makeInfo({ status: 'ready', promptCapabilities: null })} />);
 
-    await user.hover(screen.getByTestId('agent-thread-attach-files'));
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
 
-    expect((await screen.findByRole('tooltip')).textContent).toBe('Attach a file');
+    expect(screen.getByRole('menuitem', { name: 'Attach files' }).textContent).toBe('Attach files');
   });
 });
 
@@ -3263,11 +3265,26 @@ describe('ThreadView retry', () => {
     expect(screen.getByTestId('agent-thread-send').hasAttribute('disabled')).toBe(true);
   });
 
-  test('a thread whose agent is gone for good has nothing left to type into', () => {
+  test('an exiting agent closes the add menu and moves focus to settings', async () => {
+    const user = userEvent.setup();
     model = makeModel({ turnActive: false, items: [] });
-    render(<ThreadView info={makeInfo({ status: 'exited' })} />);
+    const view = render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    await user.click(screen.getByTestId('agent-thread-add-to-prompt'));
+    expect(screen.getByRole('menuitem', { name: 'Attach files' })).toBeDefined();
+
+    view.rerender(<ThreadView info={makeInfo({ status: 'exited' })} />);
 
     expect(screen.getByTestId('agent-thread-composer').hasAttribute('disabled')).toBe(true);
+    const addMenu = screen.getByTestId('agent-thread-add-to-prompt');
+    expect(addMenu.hasAttribute('disabled')).toBe(true);
+    await waitFor(() => {
+      expect(screen.queryByRole('menuitem', { name: 'Attach files' })).toBeNull();
+      expect(document.activeElement).toBe(screen.getByTestId('agent-thread-settings'));
+    });
+
+    view.rerender(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    expect(screen.queryByRole('menuitem', { name: 'Attach files' })).toBeNull();
   });
 
   test('the header names the build OK launched', () => {

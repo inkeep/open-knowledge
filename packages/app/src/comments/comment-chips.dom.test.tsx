@@ -31,8 +31,6 @@ async function renderChip(
   props: Partial<{
     count: number;
     docs: readonly { docName: string; count: number }[];
-    attached: boolean;
-    onAttach: () => void;
     onDismiss: () => void;
   }> = {},
 ) {
@@ -43,8 +41,6 @@ async function renderChip(
       <QueuedCommentsChip
         count={props.count ?? 3}
         {...(props.docs !== undefined ? { docs: props.docs } : {})}
-        attached={props.attached ?? true}
-        onAttach={props.onAttach ?? (() => {})}
         onDismiss={props.onDismiss ?? (() => {})}
       />
     </TooltipProvider>,
@@ -92,25 +88,6 @@ describe('the queued-comments chip', () => {
     expect(chip.querySelector('svg.lucide-plus')).toBeNull();
     expect(screen.queryByTestId('composer-comments-list')).toBeNull();
     expect(screen.getAllByRole('button')).toHaveLength(2);
-  });
-
-  test('dismissed, it becomes the way back rather than disappearing', async () => {
-    let attached = 0;
-    await renderChip({
-      attached: false,
-      onAttach: () => {
-        attached += 1;
-      },
-    });
-
-    const chip = screen.getByTestId('composer-context-chip-comments');
-    expect(chip.textContent).toContain('Comments');
-    expect(chip.textContent).not.toContain('3');
-    expect(chip.querySelector('svg.lucide-plus')).not.toBeNull();
-
-    fireEvent.click(chip);
-    expect(attached).toBe(1);
-    expect(screen.queryByRole('button', { name: /leave these comments out/i })).toBeNull();
   });
 });
 

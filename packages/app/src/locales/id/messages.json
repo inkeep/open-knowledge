@@ -551,6 +551,7 @@
       "</1> untuk mengisi tanggal hari ini atau nama penulis secara otomatis."
     ],
     "5hFl0U": ["Salin referensi"],
+    "5hn4gs": ["Lampirkan komentar"],
     "5jEnaB": ["Tidak tersedia di platform ini"],
     "5k0NLb": ["Tinjau"],
     "5kWklo": ["(sebagian mungkin sudah disembunyikan oleh aturan lain)"],
@@ -850,6 +851,7 @@
     "99eR72": ["Pilihan tabel penyunting visual"],
     "9Bd18D": ["Gagal memuat halaman pusat"],
     "9CNRDG": ["Server OpenKnowledge terlalu lama merespons. Minta agen mencoba lagi."],
+    "9D9gK1": ["Tambahkan ke prompt"],
     "9E_WAi": [["errorText"], " dan ", ["warningText"]],
     "9EykGQ": ["Sisipkan kolom di kanan"],
     "9GbR5F": ["MAKS"],
@@ -1698,6 +1700,7 @@
     "It9oAP": ["Versi ", ["editor"], " kini menjadi sumbernya"],
     "ItxGi3": ["Total lampiran harus di bawah 3 MB."],
     "IvKbeq": ["Kedua agen akhirnya membaca semua yang ada di ", ["keep"], "."],
+    "Iw8I0n": ["Sebut halaman"],
     "Ix0K8o": ["Sembunyikan simpul URL eksternal"],
     "IxHMdF": ["Komentar itu tidak bisa dihapus."],
     "IxyZXD": ["Tangkapan layar"],
@@ -2050,6 +2053,7 @@
     "N5rzKJ": ["Hapus ", ["0"], " keterampilan"],
     "N6j2JH": ["Sunting ", ["0"]],
     "N7Lau6": ["Commit dan sinkronkan"],
+    "N7m8E-": ["Lampirkan berkas"],
     "NBdIgR": ["Komentari"],
     "NErvOX": ["Disimpan ke"],
     "NEzPEh": ["Buat cabang baru, atau ambil cabang yang sudah ada, di jendelanya sendiri."],
@@ -2674,7 +2678,6 @@
     "Uobeu9": ["Menambahkan keterampilan ke ", ["rootRel"], " — juga dibaca oleh ", ["0"]],
     "Up2_7p": ["Salin jalur lengkap"],
     "UpCz01": ["Dokumen ini"],
-    "UpOct_": ["Tambahkan komentar Anda ke pesan ini"],
     "UuYo7g": [
       ["targetNoun"],
       " ini sudah dipindahkan, diganti nama, atau dihapus di salinan lokal Anda. Lakukan commit pada perubahan Anda atau aktifkan sinkronisasi otomatis."
@@ -4141,6 +4144,7 @@
       "Menyematkan halaman eksternal dalam iframe sebaris (dokumentasi, demo, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Aktifkan Otomatis (hanya Pull)"],
+    "jVe0gf": ["Lampirkan komentar: ", ["count"]],
     "jWwQo6": ["batch"],
     "jWzDfC": ["Memeriksa alat AI yang Anda miliki"],
     "jZ_E5M": ["Fetch gagal — periksa log server untuk detailnya."],

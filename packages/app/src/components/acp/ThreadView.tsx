@@ -63,6 +63,13 @@ import {
 } from '@/comments/comment-chips';
 import { subscribeSendInThread } from '@/comments/open-chat-send';
 import { dispatchComments, subscribeCommentPosted } from '@/comments/store';
+import {
+  ComposerAddMenu,
+  ComposerCommandsMenuItem,
+  ComposerCommentsMenuItem,
+  ComposerFilesMenuItem,
+  ComposerMentionMenuItem,
+} from '@/components/ComposerAddMenu';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { CopyButton } from '@/components/CopyButton';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
@@ -175,7 +182,6 @@ import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils';
 import { AgentMarkdown } from './AgentMarkdown';
 import { AgentNoticeAnnouncer } from './AgentNoticeAnnouncer';
-import { AttachFilesButton } from './AttachFilesButton';
 import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
 import {
@@ -1520,10 +1526,12 @@ function AgentSettingsPopover({
   info,
   hasStartedWork,
   onNewChat,
+  triggerRef,
 }: {
   info: ThreadInfo;
   hasStartedWork: boolean;
   onNewChat: () => void;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 }): ReactNode {
   const { i18n, t } = useLingui();
   const reasonId = useId();
@@ -1564,6 +1572,7 @@ function AgentSettingsPopover({
           {}
           <span className="inline-flex cursor-not-allowed">
             <Button
+              ref={triggerRef}
               type="button"
               variant="ghost"
               className="h-7 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
@@ -1630,6 +1639,7 @@ function AgentSettingsPopover({
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
             <Button
+              ref={triggerRef}
               type="button"
               variant="ghost"
               className="h-7 min-w-0 max-w-sm shrink gap-1.5 rounded-md pl-1.5 pr-1! text-xs"
@@ -4029,6 +4039,7 @@ function ThreadComposer({
   const agentName = agentDisplayName(info.agent.name);
 
   const [isEmpty, setIsEmpty] = useState(true);
+  const settingsTriggerRef = useRef<HTMLButtonElement>(null);
 
   const composerDisabled = archived ? resumePending : status === 'exited';
 
@@ -4104,13 +4115,11 @@ function ThreadComposer({
       >
         {}
         {}
-        {selectedCommentCount > 0 ? (
+        {hasQueuedComments ? (
           <ComposerContextChips className="px-3 pt-2 pb-1">
             <QueuedCommentsChip
               count={selectedCommentCount}
               docs={selectedCommentDocs}
-              attached={hasQueuedComments}
-              onAttach={onAttachComments}
               onDismiss={onDismissComments}
             />
           </ComposerContextChips>
@@ -4159,16 +4168,37 @@ function ThreadComposer({
         </div>
         {}
         <div className="flex items-center gap-0.5 px-1.5 pt-1 pb-1.5">
-          <AttachFilesButton
-            testId="agent-thread-attach-files"
-            onFiles={onIngestAllFiles}
-            referencesOnly={
-              info.promptCapabilities !== null &&
-              info.promptCapabilities !== undefined &&
-              info.promptCapabilities.embeddedContext !== true
-            }
+          <ComposerAddMenu
+            disabled={composerDisabled}
+            disabledFocusTargetRef={settingsTriggerRef}
+            testId="agent-thread-add-to-prompt"
+          >
+            <ComposerFilesMenuItem
+              onFiles={onIngestAllFiles}
+              attachmentMode={
+                info.promptCapabilities !== null &&
+                info.promptCapabilities !== undefined &&
+                info.promptCapabilities.embeddedContext !== true
+                  ? 'reference'
+                  : 'embedded'
+              }
+            />
+            {selectedCommentCount > 0 && !hasQueuedComments ? (
+              <ComposerCommentsMenuItem count={selectedCommentCount} onSelect={onAttachComments} />
+            ) : null}
+            <ComposerMentionMenuItem onSelect={() => composerRef.current?.openMentionPicker()} />
+            {agentHasCommands && isEmpty ? (
+              <ComposerCommandsMenuItem
+                onSelect={() => composerRef.current?.openSlashCommandPicker()}
+              />
+            ) : null}
+          </ComposerAddMenu>
+          <AgentSettingsPopover
+            info={info}
+            hasStartedWork={hasStartedWork}
+            onNewChat={onNewChat}
+            triggerRef={settingsTriggerRef}
           />
-          <AgentSettingsPopover info={info} hasStartedWork={hasStartedWork} onNewChat={onNewChat} />
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />

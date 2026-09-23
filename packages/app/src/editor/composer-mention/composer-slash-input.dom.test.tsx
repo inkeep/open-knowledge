@@ -201,6 +201,34 @@ describe('token decoration + hint line', () => {
 });
 
 describe('picker lifecycle', () => {
+  test('the imperative command affordance opens the same picker as typing slash', async () => {
+    const { editor, ref } = renderComposer({ slashCommands: COMMANDS });
+
+    act(() => ref.current?.openSlashCommandPicker());
+
+    expect(await pressKeyOnceItemsLoad(editor, 'ArrowDown')).toBe(true);
+    expect(screen.getByTestId('composer-slash-menu').textContent).toContain('/review');
+  });
+
+  test('the imperative command affordance leaves a non-empty draft unchanged', () => {
+    const { box, ref } = renderComposer({ slashCommands: COMMANDS });
+    act(() => ref.current?.setText('keep this draft'));
+
+    act(() => ref.current?.openSlashCommandPicker());
+
+    expect(ref.current?.getContent().instruction).toBe('keep this draft');
+    expect(box.querySelector('[data-testid="composer-slash-menu"]')).toBeNull();
+  });
+
+  test('the imperative command affordance does nothing without available commands', () => {
+    const { box, ref } = renderComposer({ slashCommands: [] });
+
+    act(() => ref.current?.openSlashCommandPicker());
+
+    expect(ref.current?.getContent().instruction).toBe('');
+    expect(box.querySelector('[data-testid="composer-slash-menu"]')).toBeNull();
+  });
+
   test('typing / at message start opens the picker; Enter inserts a pill in ONE transaction', async () => {
     const { editor, ref, box } = renderComposer({ slashCommands: COMMANDS });
     editor.commands.focus('end');

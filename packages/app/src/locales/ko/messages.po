@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · 참조만(내용을 포함하지 않음)"
 
@@ -1752,13 +1753,13 @@ msgstr "{gitignorePath}에 추가"
 msgid "Add to Dictionary"
 msgstr "사전에 추가"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "프롬프트에 추가"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "값 추가"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "이 메시지에 댓글 남기기"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -2226,6 +2227,18 @@ msgstr "에셋: {title}"
 
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
+msgstr "파일 첨부"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "댓글 첨부"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "댓글 첨부: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
 msgstr "파일 첨부"
 
 #: src/components/ImageAttachments.tsx
@@ -3323,6 +3336,7 @@ msgid "commands"
 msgstr "명령어"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "명령"
 
@@ -3355,7 +3369,6 @@ msgstr "이 {0}에 댓글을 남기거나 AI에 질문"
 msgid "Comment or ask AI about this code block"
 msgstr "이 코드 블록에 댓글을 남기거나 AI에 질문"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8484,6 +8497,10 @@ msgstr "MCP 서버"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "중간 크기 섹션 제목입니다."
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "페이지 언급"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx

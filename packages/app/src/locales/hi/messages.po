@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · केवल संदर्भ (कोई एम्बेडेड सामग्री नहीं)"
 
@@ -1748,13 +1749,13 @@ msgstr "{gitignorePath} में जोड़ें"
 msgid "Add to Dictionary"
 msgstr "शब्दकोश में जोड़ें"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "प्रॉम्प्ट में जोड़ें"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "मान जोड़ें"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "इस संदेश में अपनी टिप्पणियाँ जोड़ें"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -2223,6 +2224,18 @@ msgstr "एसेट: {title}"
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "फ़ाइल संलग्न करें"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "टिप्पणियाँ संलग्न करें"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "टिप्पणियाँ संलग्न करें: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
+msgstr "फ़ाइलें संलग्न करें"
 
 #: src/components/ImageAttachments.tsx
 #: src/components/ReportBugImageDropzone.tsx
@@ -3319,6 +3332,7 @@ msgid "commands"
 msgstr "कमांड"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "कमांड"
 
@@ -3351,7 +3365,6 @@ msgstr "इस {0} पर टिप्पणी करें या AI से �
 msgid "Comment or ask AI about this code block"
 msgstr "इस कोड ब्लॉक पर टिप्पणी करें या AI से पूछें"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8480,6 +8493,10 @@ msgstr "MCP सर्वर"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "मध्यम अनुभाग शीर्षक।"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "किसी पेज का उल्लेख करें"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx

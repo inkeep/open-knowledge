@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · 僅引用（無嵌入內容）"
 
@@ -1752,13 +1753,13 @@ msgstr "新增至 {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "加入詞典"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "加入提示"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "新增值"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "把你的註解寫在這則訊息裡"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -2226,6 +2227,18 @@ msgstr "資產：{title}"
 
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
+msgstr "附加檔案"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "附加註解"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "附加註解：{count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
 msgstr "附加檔案"
 
 #: src/components/ImageAttachments.tsx
@@ -3323,6 +3336,7 @@ msgid "commands"
 msgstr "指令"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "指令"
 
@@ -3355,7 +3369,6 @@ msgstr "對此{0}發表評論或詢問 AI"
 msgid "Comment or ask AI about this code block"
 msgstr "對此程式碼區塊發表評論或詢問 AI"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8484,6 +8497,10 @@ msgstr "MCP 伺服器"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "中型章節標題。"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "提及頁面"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx

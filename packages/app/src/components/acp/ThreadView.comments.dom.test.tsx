@@ -163,12 +163,11 @@ describe('ThreadView queued-comment chip', () => {
     );
 
     await user.click(screen.getByRole('button', { name: /leave these comments out/i }));
-    const detached = screen.getByTestId('composer-context-chip-comments');
-    expect(detached.textContent).toContain('Comments');
-    expect(detached.textContent).not.toContain('2 comments');
+    expect(screen.queryByTestId('composer-context-chip-comments')).toBeNull();
     expect((screen.getByTestId('agent-thread-send') as HTMLButtonElement).disabled).toBe(true);
 
-    await user.click(detached);
+    await user.click(screen.getByRole('button', { name: /add to prompt/i }));
+    await user.click(screen.getByRole('menuitem', { name: /attach comments: 2/i }));
     expect(screen.getByTestId('composer-context-chip-comments').textContent).toContain(
       '2 comments',
     );
@@ -179,9 +178,7 @@ describe('ThreadView queued-comment chip', () => {
     render(<ThreadView info={makeInfo()} />);
 
     await user.click(screen.getByRole('button', { name: /leave these comments out/i }));
-    expect(screen.getByTestId('composer-context-chip-comments').textContent).not.toContain(
-      '2 comments',
-    );
+    expect(screen.queryByTestId('composer-context-chip-comments')).toBeNull();
 
     act(() => emitCommentPostedForTest());
 

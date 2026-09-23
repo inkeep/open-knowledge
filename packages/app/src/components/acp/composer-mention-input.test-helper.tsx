@@ -77,6 +77,10 @@ export function MockComposerMentionInput({
       attachments: [],
     }),
     openMentionPicker: () => {},
+    openSlashCommandPicker: () => {
+      if (localRef.current) localRef.current.value = '/';
+      notify();
+    },
   }));
   return (
     <textarea

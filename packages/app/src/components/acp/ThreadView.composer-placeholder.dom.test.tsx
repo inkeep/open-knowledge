@@ -1,5 +1,6 @@
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { act, cleanup, render as rtlRender, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { SUGGESTION_FADE_MS, SUGGESTION_HOLD_MS } from '@/hooks/use-rotating-suggestion';
@@ -142,6 +143,29 @@ describe('ACP composer placeholder', () => {
       "Type '/' for commands",
       'Message Claude',
     ]);
+  });
+
+  test('offers Commands in the shared add menu only when the agent reports commands', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<ThreadView info={info()} />);
+
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+    expect(screen.queryByRole('menuitem', { name: 'Commands' })).toBeNull();
+    await user.keyboard('{Escape}');
+
+    rerender(
+      <ThreadView
+        info={info({ availableCommands: [{ name: 'review', description: 'Review the diff' }] })}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+
+    expect(screen.getByRole('menuitem', { name: 'Commands' })).toBeDefined();
+    await user.keyboard('{Escape}');
+    await user.type(screen.getByRole('textbox', { name: 'Message Claude' }), 'draft');
+    await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
+
+    expect(screen.queryByRole('menuitem', { name: 'Commands' })).toBeNull();
   });
 
   test('holds the sign-in prompt instead of rotating while auth is pending', () => {

@@ -634,6 +634,7 @@
       "</1> para rellenar automáticamente la fecha de hoy o el nombre del autor."
     ],
     "5hFl0U": ["Copiar referencia"],
+    "5hn4gs": ["Adjuntar comentarios"],
     "5jEnaB": ["No disponible en esta plataforma"],
     "5k0NLb": ["Revisar"],
     "5kWklo": ["(puede que otras reglas ya oculten algunos)"],
@@ -975,6 +976,7 @@
     "9CNRDG": [
       "El servidor de OpenKnowledge tardo demasiado en responder. Pide al agente que vuelva a intentarlo."
     ],
+    "9D9gK1": ["Añadir al prompt"],
     "9E_WAi": [["errorText"], " y ", ["warningText"]],
     "9EykGQ": ["Insertar columna a la derecha"],
     "9GbR5F": ["MÁX"],
@@ -1957,6 +1959,7 @@
     "It9oAP": ["La versión de ", ["editor"], " es ahora el origen"],
     "ItxGi3": ["Los adjuntos deben sumar menos de 3 MB."],
     "IvKbeq": ["Ambos agentes acaban leyendo todo lo que hay en ", ["keep"], "."],
+    "Iw8I0n": ["Mencionar una página"],
     "Ix0K8o": ["Ocultar los nodos de URL externas"],
     "IxHMdF": ["No se pudo eliminar ese comentario."],
     "IxyZXD": ["Captura de pantalla"],
@@ -2365,6 +2368,7 @@
     "N5rzKJ": ["Eliminar ", ["0"], " habilidades"],
     "N6j2JH": ["Editar ", ["0"]],
     "N7Lau6": ["Confirmar y sincronizar"],
+    "N7m8E-": ["Adjuntar archivos"],
     "NBdIgR": ["Comentar"],
     "NErvOX": ["Guardado en"],
     "NEzPEh": ["Crea una rama nueva, o extrae una existente, en su propia ventana."],
@@ -3069,7 +3073,6 @@
     "Uobeu9": ["Añade la habilidad a ", ["rootRel"], ", que también lee ", ["0"]],
     "Up2_7p": ["Copiar ruta completa"],
     "UpCz01": ["Este documento"],
-    "UpOct_": ["Añade tus comentarios a este mensaje"],
     "UuYo7g": [
       "Este ",
       ["targetNoun"],
@@ -4774,6 +4777,7 @@
       "Incrusta una página externa en un iframe en línea (documentación, demos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Activar Automático (solo Pull)"],
+    "jVe0gf": ["Adjuntar comentarios: ", ["count"]],
     "jWwQo6": ["lote"],
     "jWzDfC": ["Comprobando qué herramientas de IA tienes"],
     "jZ_E5M": ["Falló el fetch: consulta los registros del servidor para ver los detalles."],

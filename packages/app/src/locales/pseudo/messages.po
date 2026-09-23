@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr ""
 
@@ -1748,12 +1749,12 @@ msgstr ""
 msgid "Add to Dictionary"
 msgstr ""
 
-#: src/components/settings/frontmatter-schema-field-editor.tsx
-msgid "Add value"
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
 msgstr ""
 
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
+#: src/components/settings/frontmatter-schema-field-editor.tsx
+msgid "Add value"
 msgstr ""
 
 #: src/components/PropertyDiffBlock.tsx
@@ -2222,6 +2223,18 @@ msgstr ""
 
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
+msgstr ""
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr ""
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr ""
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
 msgstr ""
 
 #: src/components/ImageAttachments.tsx
@@ -3319,6 +3332,7 @@ msgid "commands"
 msgstr ""
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr ""
 
@@ -3351,7 +3365,6 @@ msgstr ""
 msgid "Comment or ask AI about this code block"
 msgstr ""
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8479,6 +8492,10 @@ msgstr ""
 
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
+msgstr ""
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
 msgstr ""
 
 #: src/components/MermaidDocEditor.tsx

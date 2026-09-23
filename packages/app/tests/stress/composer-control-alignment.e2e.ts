@@ -4,7 +4,7 @@ import { type ApiHelpers, acpCatalogBody, expect, test } from './_helpers';
 
 const WYSIWYG_BODY = '.editor-doc-scroll .ProseMirror:not(.composer-prosemirror)';
 const COMPOSER_CARD = '[data-testid="bottom-composer"] > div';
-const ATTACH = '[data-testid="ask-ai-attach-files"]';
+const ADD_TO_PROMPT = '[data-testid="ask-ai-add-to-prompt"]';
 const COMPOSER_INPUT = '.composer-prosemirror';
 const PICKER = '[data-testid="ask-ai-agent-group"]';
 const SUGGESTION_PHRASE = '[data-testid="ask-ai-composer-placeholder"] [data-rotating-placeholder]';
@@ -12,13 +12,15 @@ const SUGGESTION_PHRASE = '[data-testid="ask-ai-composer-placeholder"] [data-rot
 const FIRST_PAINT_TIMEOUT_MS = 30_000;
 const SETTLE_TIMEOUT_MS = 15_000;
 const CENTRE_TOLERANCE_PX = 1;
+const PLACEHOLDER_OPTICAL_LIFT_PX = 1;
+const PLACEHOLDER_POSITION_TOLERANCE_PX = 0.25;
 
 const WHY = [
-  'the attach button, the prompt text and the agent picker no longer share a centre line.',
+  'the add-to-prompt button, the prompt text and the agent picker no longer share a centre line.',
   '',
   'Three production knobs place that line, and reverting any one of them alone reopens the',
   'spread past this tolerance:',
-  '  1. size="icon" on AttachFilesButton in BottomComposer, so it matches the picker height',
+  '  1. size="icon" on ComposerAddMenu in BottomComposer, so it matches the picker height',
   '  2. min-h-8 flex flex-col justify-center on the prompt column, giving the first line box',
   '     the control height while going inert once the input grows past one line',
   '  3. padding-bottom: 0.25rem on .ProseMirror.composer-prosemirror, which makes the input box',
@@ -58,14 +60,29 @@ async function openAskAiComposer(page: Page, api: ApiHelpers): Promise<void> {
 }
 
 test.describe('Ask AI composer control alignment', () => {
-  test('the attach button, the prompt text and the agent picker share one centre line', async ({
+  test('the mention action returns keyboard focus to the composer', async ({ page, api }) => {
+    await openAskAiComposer(page, api);
+
+    const composer = page.locator(COMPOSER_INPUT).first();
+    const menu = page.locator('[data-composer-portal]');
+    await page.locator(ADD_TO_PROMPT).first().click();
+    await expect(menu).toBeVisible();
+    await page.getByRole('menuitem', { name: 'Mention a page' }).click();
+
+    await expect(menu).toHaveCount(0);
+    await expect(composer).toBeFocused();
+    await page.keyboard.type('r');
+    await expect(composer).toContainText('@r');
+  });
+
+  test('the add-to-prompt button, the prompt text and the agent picker share one centre line', async ({
     page,
     api,
   }) => {
     await openAskAiComposer(page, api);
     await expect(
-      page.locator(ATTACH).first(),
-      'the composer rendered without its attach control, so the row this test measures is not the ' +
+      page.locator(ADD_TO_PROMPT).first(),
+      'the composer rendered without its add-to-prompt control, so the row this test measures is not the ' +
         'three-control row it exists to pin',
     ).toBeVisible({ timeout: FIRST_PAINT_TIMEOUT_MS });
     await expect(page.locator(COMPOSER_INPUT).first()).toBeVisible({
@@ -77,7 +94,7 @@ test.describe('Ask AI composer control alignment', () => {
       .poll(
         () =>
           page.evaluate(
-            ({ attachSel, inputSel, pickerSel }) => {
+            ({ addToPromptSel, inputSel, pickerSel }) => {
               const resolve = (selector: string): HTMLElement => {
                 const found = document.querySelector(selector);
                 if (!(found instanceof HTMLElement)) {
@@ -85,7 +102,7 @@ test.describe('Ask AI composer control alignment', () => {
                 }
                 return found;
               };
-              const attach = resolve(attachSel);
+              const addToPrompt = resolve(addToPromptSel);
               const input = resolve(inputSel);
               const picker = resolve(pickerSel);
               const boxCentre = (el: HTMLElement): number => {
@@ -101,20 +118,17 @@ test.describe('Ask AI composer control alignment', () => {
                   Number.parseFloat(style.lineHeight) / 2
                 );
               };
-              const centres = [boxCentre(attach), lineCentre(input), boxCentre(picker)];
+              const centres = [boxCentre(addToPrompt), lineCentre(input), boxCentre(picker)];
               return Math.max(...centres) - Math.min(...centres);
             },
-            { attachSel: ATTACH, inputSel: COMPOSER_INPUT, pickerSel: PICKER },
+            { addToPromptSel: ADD_TO_PROMPT, inputSel: COMPOSER_INPUT, pickerSel: PICKER },
           ),
         { message: WHY, timeout: SETTLE_TIMEOUT_MS },
       )
       .toBeLessThanOrEqual(CENTRE_TOLERANCE_PX);
   });
 
-  test('the empty composer paints its suggestion through the overlay pseudo-element', async ({
-    page,
-    api,
-  }) => {
+  test('the empty composer paints and optically centers its suggestion', async ({ page, api }) => {
     await openAskAiComposer(page, api);
 
     await expect
@@ -137,5 +151,35 @@ test.describe('Ask AI composer control alignment', () => {
         },
       )
       .toBe('painted');
+
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            ({ addToPromptSel, phraseSel, opticalLift }) => {
+              const addToPrompt = document.querySelector(addToPromptSel);
+              const phrase = document.querySelector(phraseSel);
+              if (!(addToPrompt instanceof HTMLElement) || !(phrase instanceof HTMLElement)) {
+                return Number.POSITIVE_INFINITY;
+              }
+              const addToPromptRect = addToPrompt.getBoundingClientRect();
+              const phraseRect = phrase.getBoundingClientRect();
+              const addToPromptCentre = addToPromptRect.top + addToPromptRect.height / 2;
+              const phraseCentre = phraseRect.top + phraseRect.height / 2;
+              return Math.abs(addToPromptCentre - phraseCentre - opticalLift);
+            },
+            {
+              addToPromptSel: ADD_TO_PROMPT,
+              phraseSel: SUGGESTION_PHRASE,
+              opticalLift: PLACEHOLDER_OPTICAL_LIFT_PX,
+            },
+          ),
+        {
+          message:
+            'the placeholder lost its one-pixel optical lift and appears low beside the add-to-prompt control',
+          timeout: SETTLE_TIMEOUT_MS,
+        },
+      )
+      .toBeLessThanOrEqual(PLACEHOLDER_POSITION_TOLERANCE_PX);
   });
 });

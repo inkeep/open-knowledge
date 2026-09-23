@@ -57,6 +57,7 @@ export interface ComposerMentionInputHandle {
     attachments: ComposerAttachmentPart[];
   };
   openMentionPicker: () => void;
+  openSlashCommandPicker: () => void;
 }
 
 function textToParagraphs(text: string): JSONContent[] {
@@ -270,6 +271,11 @@ export function ComposerMentionInput({
       openMentionPicker: () => {
         if (!editor) return;
         editor.chain().focus().insertContent('@').run();
+      },
+      openSlashCommandPicker: () => {
+        if (!editor || !isComposerEmpty(editor) || (getSlashCommands(editor)?.length ?? 0) === 0)
+          return;
+        editor.chain().focus().insertContent('/').run();
       },
     }),
     [editor],

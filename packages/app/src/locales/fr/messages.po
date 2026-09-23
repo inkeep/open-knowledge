@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · références seulement (pas de contenu intégré)"
 
@@ -1752,13 +1753,13 @@ msgstr "Ajouter à {gitignorePath}"
 msgid "Add to Dictionary"
 msgstr "Ajouter au dictionnaire"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "Ajouter à l’invite"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "Ajouter une valeur"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "Ajoutez vos commentaires à ce message"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -2227,6 +2228,18 @@ msgstr "Ressource : {title}"
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "Joindre un fichier"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "Joindre des commentaires"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "Joindre des commentaires : {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
+msgstr "Joindre des fichiers"
 
 #: src/components/ImageAttachments.tsx
 #: src/components/ReportBugImageDropzone.tsx
@@ -3323,6 +3336,7 @@ msgid "commands"
 msgstr "commandes"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "Commandes"
 
@@ -3355,7 +3369,6 @@ msgstr "Commenter ce {0} ou interroger l’IA à son sujet"
 msgid "Comment or ask AI about this code block"
 msgstr "Commenter ce bloc de code ou interroger l’IA à son sujet"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8484,6 +8497,10 @@ msgstr "Serveurs MCP"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "Titre de section moyen."
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "Mentionner une page"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx

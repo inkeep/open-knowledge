@@ -38,8 +38,12 @@ const SNAPPY_TOKENS = [
 async function renderDropdownMenu() {
   const {
     DropdownMenu,
+    DropdownMenuCheckboxItem,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
     DropdownMenuSub,
     DropdownMenuSubContent,
     DropdownMenuSubTrigger,
@@ -52,6 +56,12 @@ async function renderDropdownMenu() {
         <DropdownMenuTrigger>Target</DropdownMenuTrigger>
         <DropdownMenuContent forceMount={true}>
           <DropdownMenuItem>Open</DropdownMenuItem>
+          <DropdownMenuItem inset={true}>Inset</DropdownMenuItem>
+          <DropdownMenuCheckboxItem checked={true}>Checked</DropdownMenuCheckboxItem>
+          <DropdownMenuRadioGroup value="selected">
+            <DropdownMenuRadioItem value="selected">Selected</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuLabel inset={true}>Label</DropdownMenuLabel>
           <DropdownMenuSub open={true}>
             <DropdownMenuSubTrigger>More</DropdownMenuSubTrigger>
             <DropdownMenuSubContent forceMount={true}>
@@ -121,6 +131,40 @@ describe('DropdownMenu runtime class contracts', () => {
       'data-open:bg-accent',
       'data-open:text-accent-foreground',
     ]);
+  });
+
+  test('subtrigger chevrons use logical spacing for trailing RTL alignment', async () => {
+    await renderDropdownMenu();
+
+    const trigger = document.querySelector('[data-slot="dropdown-menu-sub-trigger"]');
+    const chevron = trigger?.querySelector('svg');
+    expectVisualClassTokens(chevron?.getAttribute('class'), ['ms-auto']);
+    expectVisualClassTokensAbsent(chevron?.getAttribute('class'), ['ml-auto']);
+  });
+
+  test('item insets and selection indicators use logical positioning', async () => {
+    await renderDropdownMenu();
+
+    for (const slot of [
+      'dropdown-menu-item',
+      'dropdown-menu-checkbox-item',
+      'dropdown-menu-radio-item',
+      'dropdown-menu-label',
+      'dropdown-menu-sub-trigger',
+    ]) {
+      const element = document.querySelector(`[data-slot="${slot}"]`);
+      expectVisualClassTokens(element?.getAttribute('class'), ['data-inset:ps-7']);
+      expectVisualClassTokensAbsent(element?.getAttribute('class'), ['data-inset:pl-7']);
+    }
+
+    for (const slot of [
+      'dropdown-menu-checkbox-item-indicator',
+      'dropdown-menu-radio-item-indicator',
+    ]) {
+      const indicator = document.querySelector(`[data-slot="${slot}"]`);
+      expectVisualClassTokens(indicator?.getAttribute('class'), ['end-2']);
+      expectVisualClassTokensAbsent(indicator?.getAttribute('class'), ['right-2']);
+    }
   });
 
   test('snappy transition tier and long-form state drift do not return', async () => {

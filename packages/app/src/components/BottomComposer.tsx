@@ -13,9 +13,14 @@ import {
   useSelectedCommentDocs,
 } from '@/comments/comment-chips';
 import { type BatchPreparedItem, dispatchComments, subscribeCommentPosted } from '@/comments/store';
-import { AttachFilesButton } from '@/components/acp/AttachFilesButton';
 import { PendingImageStrip } from '@/components/acp/PendingImageStrip';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
+import {
+  ComposerAddMenu,
+  ComposerCommentsMenuItem,
+  ComposerFilesMenuItem,
+  ComposerMentionMenuItem,
+} from '@/components/ComposerAddMenu';
 import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
@@ -788,12 +793,10 @@ export function BottomComposer({
           </>
         ) : null}
         {}
-        {selectedCommentCount > 0 && (
+        {hasQueuedComments && (
           <QueuedCommentsChip
             count={selectedCommentCount}
             docs={selectedCommentDocs}
-            attached={commentsAttached}
-            onAttach={() => setCommentsAttached(true)}
             onDismiss={() => setCommentsAttached(false)}
           />
         )}
@@ -834,9 +837,16 @@ export function BottomComposer({
         ) : null}
       </div>
       <div className="flex items-end gap-2">
-        {attachmentsAccepted ? (
-          <AttachFilesButton testId="ask-ai-attach-files" onFiles={ingestFiles} size="icon" />
-        ) : null}
+        <ComposerAddMenu testId="ask-ai-add-to-prompt" size="icon">
+          {attachmentsAccepted ? <ComposerFilesMenuItem onFiles={ingestFiles} /> : null}
+          {selectedCommentCount > 0 && !hasQueuedComments ? (
+            <ComposerCommentsMenuItem
+              count={selectedCommentCount}
+              onSelect={() => setCommentsAttached(true)}
+            />
+          ) : null}
+          <ComposerMentionMenuItem onSelect={() => inputRef.current?.openMentionPicker()} />
+        </ComposerAddMenu>
         <div className="relative flex min-h-8 flex-1 flex-col justify-center">
           <ComposerMentionInput
             ref={inputRef}
@@ -858,7 +868,7 @@ export function BottomComposer({
             <RotatingComposerPlaceholder
               phrases={suggestions}
               rotating={!hasQueuedComments}
-              className="flex items-center px-0 py-0"
+              className="flex -translate-y-px items-center px-0 py-0"
               testId="ask-ai-composer-placeholder"
             />
           ) : null}

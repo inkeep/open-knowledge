@@ -632,6 +632,7 @@
       "</1> para preencher automaticamente a data de hoje ou o nome do autor."
     ],
     "5hFl0U": ["Copiar referência"],
+    "5hn4gs": ["Anexar comentários"],
     "5jEnaB": ["Indisponível nesta plataforma"],
     "5k0NLb": ["Revisar"],
     "5kWklo": ["(outras regras podem já ocultar alguns)"],
@@ -967,6 +968,7 @@
     "9CNRDG": [
       "O servidor do OpenKnowledge demorou demais para responder. Peca ao agente que tente de novo."
     ],
+    "9D9gK1": ["Adicionar ao prompt"],
     "9E_WAi": [["errorText"], " e ", ["warningText"]],
     "9EykGQ": ["Inserir coluna à direita"],
     "9GbR5F": ["MÁX"],
@@ -1934,6 +1936,7 @@
     "It9oAP": ["A versão do ", ["editor"], " agora é a fonte"],
     "ItxGi3": ["Os anexos devem somar menos de 3 MB."],
     "IvKbeq": ["Os dois agentes passam a ler tudo o que está em ", ["keep"], "."],
+    "Iw8I0n": ["Mencionar uma página"],
     "Ix0K8o": ["Ocultar os nós de URL externa"],
     "IxHMdF": ["Não deu para excluir esse comentário."],
     "IxyZXD": ["Captura de tela"],
@@ -2336,6 +2339,7 @@
     "N5rzKJ": ["Excluir ", ["0"], " habilidades"],
     "N6j2JH": ["Editar ", ["0"]],
     "N7Lau6": ["Fazer commit e sincronizar"],
+    "N7m8E-": ["Anexar arquivos"],
     "NBdIgR": ["Comentar"],
     "NErvOX": ["Salvo em"],
     "NEzPEh": ["Crie um novo ramo, ou extraia um existente, em uma janela própria."],
@@ -3028,7 +3032,6 @@
     "Uobeu9": ["Adiciona a habilidade a ", ["rootRel"], " — também lida por ", ["0"]],
     "Up2_7p": ["Copiar caminho completo"],
     "UpCz01": ["Este documento"],
-    "UpOct_": ["Adicione seus comentários a esta mensagem"],
     "UuYo7g": [
       "Este ",
       ["targetNoun"],
@@ -4674,6 +4677,7 @@
       "Incorpora uma página externa em um iframe embutido (documentação, demos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Ativar Automático (somente Pull)"],
+    "jVe0gf": ["Anexar comentários: ", ["count"]],
     "jWwQo6": ["lote"],
     "jWzDfC": ["Verificando quais ferramentas de IA você tem"],
     "jZ_E5M": ["Falha ao buscar — veja os logs do servidor para os detalhes."],

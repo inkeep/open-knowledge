@@ -659,6 +659,7 @@
       "</1> pour insérer automatiquement la date du jour ou le nom de l'auteur."
     ],
     "5hFl0U": ["Copier la référence"],
+    "5hn4gs": ["Joindre des commentaires"],
     "5jEnaB": ["Non disponible sur cette plateforme"],
     "5k0NLb": ["Examiner"],
     "5kWklo": ["(certains sont peut-être déjà masqués par d'autres règles)"],
@@ -1004,6 +1005,7 @@
     "9CNRDG": [
       "Le serveur OpenKnowledge a mis trop de temps a repondre. Demandez a l'agent de reessayer."
     ],
+    "9D9gK1": ["Ajouter à l’invite"],
     "9E_WAi": [["errorText"], " et ", ["warningText"]],
     "9EykGQ": ["Insérer une colonne à droite"],
     "9GbR5F": ["MAX"],
@@ -1989,6 +1991,7 @@
     "It9oAP": ["La version ", ["editor"], " est désormais la source"],
     "ItxGi3": ["Les pièces jointes doivent totaliser moins de 3 Mo."],
     "IvKbeq": ["Les deux agents liront tout ce qui se trouve dans ", ["keep"], "."],
+    "Iw8I0n": ["Mentionner une page"],
     "Ix0K8o": ["Masquer les nœuds d'URL externes"],
     "IxHMdF": ["Impossible de supprimer ce commentaire."],
     "IxyZXD": ["Capture d'écran"],
@@ -2410,6 +2413,7 @@
     "N5rzKJ": ["Supprimer ", ["0"], " compétences"],
     "N6j2JH": ["Modifier ", ["0"]],
     "N7Lau6": ["Valider et synchroniser"],
+    "N7m8E-": ["Joindre des fichiers"],
     "NBdIgR": ["Commenter"],
     "NErvOX": ["Enregistré dans"],
     "NEzPEh": ["Créez une nouvelle branche, ou extrayez-en une existante, dans sa propre fenêtre."],
@@ -3111,7 +3115,6 @@
     "Uobeu9": ["Ajoute la compétence à ", ["rootRel"], " — également lu par ", ["0"]],
     "Up2_7p": ["Copier le chemin complet"],
     "UpCz01": ["Ce document"],
-    "UpOct_": ["Ajoutez vos commentaires à ce message"],
     "UuYo7g": [
       "Ce ",
       ["targetNoun"],
@@ -4811,6 +4814,7 @@
       "Intègre une page externe dans une iframe en ligne (docs, démos, Figma, CodeSandbox)."
     ],
     "jTUxaN": ["Activer Auto (Tirer seulement)"],
+    "jVe0gf": ["Joindre des commentaires : ", ["count"]],
     "jWwQo6": ["lot"],
     "jWzDfC": ["Vérification des outils IA dont vous disposez"],
     "jZ_E5M": ["Échec de la récupération — consultez les journaux du serveur pour les détails."],

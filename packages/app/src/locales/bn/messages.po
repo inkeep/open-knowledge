@@ -14,6 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/components/acp/AttachFilesButton.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid " · references only (no embedded contents)"
 msgstr " · শুধু রেফারেন্স (কোনো এম্বেড করা বিষয়বস্তু নেই)"
 
@@ -1748,13 +1749,13 @@ msgstr "{gitignorePath}-এ যোগ করুন"
 msgid "Add to Dictionary"
 msgstr "অভিধানে যোগ করুন"
 
+#: src/components/ComposerAddMenu.tsx
+msgid "Add to prompt"
+msgstr "প্রম্পটে যোগ করুন"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Add value"
 msgstr "মান যোগ করুন"
-
-#: src/comments/comment-chips.tsx
-msgid "Add your comments to this message"
-msgstr "এই বার্তায় আপনার মন্তব্য যোগ করুন"
 
 #: src/components/PropertyDiffBlock.tsx
 #: src/components/SkillDirectoryResult.tsx
@@ -2223,6 +2224,18 @@ msgstr "সম্পদ: {title}"
 #: src/components/acp/AttachFilesButton.tsx
 msgid "Attach a file"
 msgstr "একটি ফাইল সংযুক্ত করুন"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments"
+msgstr "মন্তব্য সংযুক্ত করুন"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach comments: {count}"
+msgstr "মন্তব্য সংযুক্ত করুন: {count}"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Attach files"
+msgstr "ফাইল সংযুক্ত করুন"
 
 #: src/components/ImageAttachments.tsx
 #: src/components/ReportBugImageDropzone.tsx
@@ -3319,6 +3332,7 @@ msgid "commands"
 msgstr "কমান্ড"
 
 #: src/components/CommandPalette.tsx
+#: src/components/ComposerAddMenu.tsx
 msgid "Commands"
 msgstr "কমান্ড"
 
@@ -3351,7 +3365,6 @@ msgstr "এই {0} নিয়ে মন্তব্য করুন বা AI-
 msgid "Comment or ask AI about this code block"
 msgstr "এই কোড ব্লক নিয়ে মন্তব্য করুন বা AI-কে জিজ্ঞাসা করুন"
 
-#: src/comments/comment-chips.tsx
 #: src/comments/CommentListPanel.tsx
 #: src/components/DocPanel.tsx
 msgid "Comments"
@@ -8480,6 +8493,10 @@ msgstr "MCP সার্ভার"
 #: src/editor/slash-command/items.tsx
 msgid "Medium section heading."
 msgstr "মাঝারি বিভাগ শিরোনাম।"
+
+#: src/components/ComposerAddMenu.tsx
+msgid "Mention a page"
+msgstr "একটি পাতা উল্লেখ করুন"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx

@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { setComposerDraftDoc } from '@/components/composer-draft-store';
+import { createComposerDropdownMenuMock } from '@/components/composer-dropdown-menu.test-helper';
 import {
   type AgentThreadLaunchDetail,
   subscribeToAgentThreadLaunchRequests,
@@ -47,40 +48,7 @@ vi.doMock('@/components/handoff/OpenInAgentMenuItem', () => ({
   TargetIcon: ({ id }: { id: string }) => <span data-testid={`target-icon-${id}`} />,
 }));
 
-type MenuChild = {
-  children?: ReactNode;
-  disabled?: boolean;
-  onSelect?: () => void;
-  [key: string]: unknown;
-};
-vi.doMock('@/components/ui/dropdown-menu', () => ({
-  DropdownMenu: ({ children }: MenuChild) => <div>{children}</div>,
-  DropdownMenuTrigger: ({ children }: MenuChild) => <>{children}</>,
-  DropdownMenuContent: ({ children, ...props }: MenuChild) => (
-    <div role="menu" {...props}>
-      {children}
-    </div>
-  ),
-  DropdownMenuGroup: ({ children }: MenuChild) => <>{children}</>,
-  DropdownMenuItem: ({ children, disabled, onSelect, ...props }: MenuChild) => (
-    <button type="button" role="menuitem" disabled={disabled} onClick={onSelect} {...props}>
-      {children}
-    </button>
-  ),
-  DropdownMenuCheckboxItem: ({ children, disabled, checked, ...props }: MenuChild) => (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={checked === true}
-      disabled={disabled}
-      {...props}
-    >
-      {children}
-    </button>
-  ),
-  DropdownMenuLabel: ({ children, ...props }: MenuChild) => <div {...props}>{children}</div>,
-  DropdownMenuSeparator: () => <hr data-testid="menu-separator" />,
-}));
+vi.doMock('@/components/ui/dropdown-menu', createComposerDropdownMenuMock);
 
 let installStates: Record<string, { installed: boolean | null }> = {};
 vi.doMock('@/components/handoff/useInstalledAgents', () => ({
