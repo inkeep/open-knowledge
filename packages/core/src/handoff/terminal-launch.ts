@@ -1,4 +1,4 @@
-import { MCP_SERVER_NAME } from '../constants/mcp.ts';
+import { MCP_SERVER_NAME, type OpenKnowledgeMcpTool } from '../constants/mcp.ts';
 import type { HandoffTarget } from './types.ts';
 
 export function shellSingleQuote(s: string): string {
@@ -192,13 +192,13 @@ const OK_AUTO_APPROVE_ALLOW_RULES: readonly string[] = [
   'Bash(ok open:*)',
 ];
 
-export const OK_GATED_TOOL_NAMES: readonly string[] = [
+export const OK_GATED_TOOL_NAMES = [
   'delete',
   'move',
   'share_link',
   'install',
   'import',
-];
+] as const satisfies ReadonlyArray<OpenKnowledgeMcpTool>;
 
 const OK_AUTO_APPROVE_ASK_RULES: readonly string[] = OK_GATED_TOOL_NAMES.map(
   (tool) => `mcp__${MCP_SERVER_NAME}__${tool}`,

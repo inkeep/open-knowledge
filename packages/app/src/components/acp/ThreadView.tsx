@@ -1654,10 +1654,14 @@ function AgentSettingsPopover({
       ? selectOptionHeaderText(effortSelect)
       : null;
   const fastOn = fastToggle?.currentValue === true;
+  const readOnlyShellOn = info.chatGrants?.includes('read_only_shell') === true;
   const headerSummary = formatUnitList(
-    [triggerText, fastOn ? t`Fast` : null, effortText].filter(
-      (part): part is string => part !== null,
-    ),
+    [
+      triggerText,
+      fastOn ? t`Fast` : null,
+      effortText,
+      readOnlyShellOn ? t`Read-only allowed` : null,
+    ].filter((part): part is string => part !== null),
     i18n.locale,
   );
   const settingsLabel =
@@ -1687,6 +1691,14 @@ function AgentSettingsPopover({
               {effortText !== null ? (
                 <span className="shrink-0 text-muted-foreground" data-testid="agent-thread-effort">
                   {effortText}
+                </span>
+              ) : null}
+              {readOnlyShellOn ? (
+                <span
+                  className="shrink-0 text-muted-foreground"
+                  data-testid="agent-thread-read-only-shell"
+                >
+                  {t`Read-only allowed`}
                 </span>
               ) : null}
               <ChevronDown className="size-3.5" data-icon="inline-end" aria-hidden="true" />
@@ -1767,6 +1779,17 @@ function AgentSettingsPopover({
               rememberAgentMode(settingsKey, modeId);
             }}
           />
+        ) : null}
+        {info.chatGrants?.includes('read_only_shell') ? (
+          <DropdownMenuItem
+            onSelect={() => client.setChatGrant(info.threadId, 'read_only_shell', false)}
+            data-testid="agent-thread-settings-read-only-shell"
+          >
+            <span className="flex min-w-0 flex-col">
+              <span>{t`Ask again before read-only commands`}</span>
+              <span className="text-muted-foreground text-xs">{t`They run without asking while this chat is open`}</span>
+            </span>
+          </DropdownMenuItem>
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -3513,10 +3536,15 @@ function PermissionPrompt({
   const selectOption = (optionId: string): void => {
     client.respondPermission(threadId, item.requestId, { kind: 'selected', optionId });
   };
+  const allowReadOnlyShell = (optionId: string): void => {
+    client.setChatGrant(threadId, 'read_only_shell', true);
+    selectOption(optionId);
+  };
 
   const allowOptions = item.options.filter((option) => option.kind.startsWith('allow'));
   const rejectOptions = item.options.filter((option) => option.kind.startsWith('reject'));
   const primaryAllow = allowOptions.find((o) => o.kind === 'allow_once') ?? allowOptions[0];
+  const readOnlyOffer = item.readOnlyShell && primaryAllow !== undefined;
   const secondaryAllows = allowOptions.filter((option) => option !== primaryAllow);
   const primaryReject = rejectOptions.find((o) => o.kind === 'reject_once') ?? rejectOptions[0];
   const denyOptions =
@@ -3563,26 +3591,41 @@ function PermissionPrompt({
         </div>
       ) : !actionable ? (
         <div className="text-muted-foreground text-xs">{t`This request is no longer active.`}</div>
-      ) : allowOptions.length > 1 || denyOptions.length > 1 ? (
+      ) : allowOptions.length > 1 || denyOptions.length > 1 || readOnlyOffer ? (
         <div className="flex flex-col gap-1" data-testid="agent-thread-permission-stack">
           {(primaryAllow !== undefined ? [primaryAllow, ...secondaryAllows] : allowOptions).map(
             (option) => {
               const isPrimary = option === primaryAllow;
               return (
-                <Button
-                  key={option.optionId}
-                  ref={isPrimary ? primaryRef : undefined}
-                  aria-describedby={isPrimary ? describedBy : undefined}
-                  type="button"
-                  size="sm"
-                  variant={isPrimary ? 'default' : 'outline'}
-                  className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans"
-                  onClick={() => selectOption(option.optionId)}
-                  data-testid={isPrimary ? 'agent-thread-permission-allow' : undefined}
-                  data-permission-kind={option.kind}
-                >
-                  {option.name}
-                </Button>
+                <Fragment key={option.optionId}>
+                  <Button
+                    ref={isPrimary ? primaryRef : undefined}
+                    aria-describedby={isPrimary ? describedBy : undefined}
+                    type="button"
+                    size="sm"
+                    variant={isPrimary ? 'default' : 'outline'}
+                    className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans"
+                    onClick={() => selectOption(option.optionId)}
+                    data-testid={isPrimary ? 'agent-thread-permission-allow' : undefined}
+                    data-permission-kind={option.kind}
+                  >
+                    {option.name}
+                  </Button>
+                  {isPrimary && readOnlyOffer ? (
+                    <Button
+                      aria-describedby={describedBy}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans"
+                      onClick={() => allowReadOnlyShell(option.optionId)}
+                      data-testid="agent-thread-permission-allow-read-only"
+                      data-permission-kind="chat_read_only_shell"
+                    >
+                      {t`Allow read-only commands while this chat is open`}
+                    </Button>
+                  ) : null}
+                </Fragment>
               );
             },
           )}

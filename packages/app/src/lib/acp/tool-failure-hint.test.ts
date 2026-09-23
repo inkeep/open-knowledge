@@ -26,6 +26,7 @@ function permission(resolved: RenderedPermission['resolved']): RenderedPermissio
       { optionId: 'yes', name: 'Allow', kind: 'allow_once' },
       { optionId: 'no', name: 'Reject', kind: 'reject_once' },
     ],
+    readOnlyShell: false,
     resolved,
     toolCallId: 'c1',
     mergedIntoToolCall: true,

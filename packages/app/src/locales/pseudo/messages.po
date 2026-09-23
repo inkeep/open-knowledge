@@ -1935,6 +1935,10 @@ msgstr ""
 msgid "Allow external access"
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Allow read-only commands while this chat is open"
+msgstr ""
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr ""
@@ -2079,7 +2083,7 @@ msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr ""
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr ""
 
 #: src/components/settings/ScopeBadge.tsx
@@ -2182,6 +2186,10 @@ msgstr ""
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Ask {agentName}, {hint}"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "Ask again before read-only commands"
 msgstr ""
 
 #: src/components/BottomComposer.tsx
@@ -11253,6 +11261,10 @@ msgstr ""
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr ""
 
+#: src/components/acp/ThreadView.tsx
+msgid "Read-only allowed"
+msgstr ""
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr ""
@@ -14565,6 +14577,10 @@ msgstr ""
 #. Says what the OpenKnowledge-authored skills are for, and where installing one puts it
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "They run without asking while this chat is open"
 msgstr ""
 
 #: src/lib/acp/tool-call-display.ts

@@ -3364,6 +3364,9 @@
     "cOSAfL": ["No repositories found on your GitHub account."],
     "cOrTMo": ["Your share link is ready below."],
     "cPAWbl": ["Emailed"],
+    "cPgQ_i": [
+      "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+    ],
     "cQlPDN": ["Read"],
     "cRHuuI": ["Couldn't copy path"],
     "cRm498": ["No schema files in this project yet — create one to start validating."],
@@ -3841,6 +3844,7 @@
       ["agent"],
       "'s machine-wide skills folder, so it can find OpenKnowledge in any project."
     ],
+    "guqrFr": ["Ask again before read-only commands"],
     "gv5w9J": ["owner/repo, a git URL, or a local path"],
     "gvApb7": [
       "Turn the things you read into clear, trusted articles. Save a source, figure out what it means, then keep the final version so you can rely on it later."
@@ -4081,9 +4085,6 @@
     "jC8Bv4": ["Having a look around…"],
     "jC8LSZ": ["Reset view filters"],
     "jDhTLC": ["Choose icon"],
-    "jENU1Q": [
-      "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-    ],
     "jEVipR": [
       "These currently read from another folder. After linking, they read from ",
       ["keep"],
@@ -4350,6 +4351,7 @@
       ["display"],
       " with a symlink to the skill's source folder? Nothing else moves."
     ],
+    "m0q5tM": ["Allow read-only commands while this chat is open"],
     "m16xKo": ["Add"],
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Writes an entry to"],
@@ -4433,6 +4435,7 @@
     "mlDKzr": [
       "Wrote the Open Knowledge extension, but couldn't mark the folder trusted, so it won't load. This thread has no Open Knowledge tools."
     ],
+    "mlW9Zw": ["They run without asking while this chat is open"],
     "mlvM8g": ["Couldn't re-place that comment."],
     "mmNeqE": [
       "The embeddings provider's vector size kept changing. Semantic search is off until OpenKnowledge restarts."
@@ -5156,6 +5159,7 @@
     "uM6jnS": ["Restore failed"],
     "uNGmQn": ["Couldn't run the test. Check that OpenKnowledge is still running."],
     "uO9WLl": ["Push"],
+    "uPJml1": ["Read-only allowed"],
     "uQNW00": ["Detached HEAD — checkout a branch to resume"],
     "uQewpR": [
       "Couldn't restart the server — it's running under a different account. Restart your computer to clear it, then reopen this project."

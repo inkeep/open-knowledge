@@ -1939,6 +1939,10 @@ msgstr "모든 태그"
 msgid "Allow external access"
 msgstr "외부 접근 허용"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Allow read-only commands while this chat is open"
+msgstr "이 채팅이 열려 있는 동안 읽기 전용 명령 허용"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "허용되는 요소 값 (비워 두면 모두 허용)"
@@ -2083,8 +2087,8 @@ msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "적용 대상 (glob, 앞의 !는 제외, 비워 두면 모든 문서)"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "이 컴퓨터의 모든 프로젝트에 적용됩니다. 기본 제공 터미널에서 시작한 Claude와 Codex는 OpenKnowledge의 읽기 및 쓰기 도구를 자동 승인합니다(Claude는 \"ok open\"도 자동 실행). 삭제, 이동, 공유, 가져오기, 스킬 설치, 기타 명령, OpenKnowledge 외부 파일 편집은 계속 확인을 요청합니다. Cursor, OpenCode, Pi에는 적용되지 않습니다. 에이전트별로 최선의 동작을 시도합니다."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "이 컴퓨터의 모든 프로젝트에 적용됩니다. 내장 터미널에서 시작한 Claude와 Codex, 그리고 앱 내 에이전트 패널 채팅의 모든 에이전트는 OpenKnowledge의 읽기 및 쓰기 도구를 자동으로 승인합니다(Claude는 \"ok open\"도 자동 실행). 스킬 삭제·이동·공유·가져오기·설치, 기타 명령, OpenKnowledge 외 파일 편집은 여전히 확인을 요청합니다. 터미널에서는 Cursor, OpenCode, Pi에 영향이 없습니다. 에이전트별 최선 노력."
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2187,6 +2191,10 @@ msgstr "{agentName}에게 질문"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Ask {agentName}, {hint}"
 msgstr "{agentName}에게 질문, {hint}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Ask again before read-only commands"
+msgstr "읽기 전용 명령 전에 다시 묻기"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -11257,6 +11265,10 @@ msgstr "읽기"
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "이 코드베이스를 읽고 가장 복잡한 모듈의 기술 사양 초안을 작성합니다. 개요, 아키텍처, 주요 파일, 미해결 질문을 모두 사양 색인 페이지에서 연결합니다."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Read-only allowed"
+msgstr "읽기 전용 허용됨"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr "다른 문서의 MirrorSource 블록을 읽기 전용으로 복사한 내용입니다. 소스에서 편집하면 실시간으로 업데이트됩니다."
@@ -14570,6 +14582,10 @@ msgstr "이 규칙은 프로젝트의 <0>{configFile}</0> 파일에서 가져오
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "이 스킬들은 AI 도구가 OpenKnowledge와 함께 작동하는 방법을 가르칩니다. 하나를 설치하면 이 컴퓨터의 모든 AI 도구에 추가됩니다."
+
+#: src/components/acp/ThreadView.tsx
+msgid "They run without asking while this chat is open"
+msgstr "이 채팅이 열려 있는 동안 묻지 않고 실행됩니다"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Think"

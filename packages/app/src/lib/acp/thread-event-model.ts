@@ -9,8 +9,8 @@ import type {
   ThreadEvent,
   ThreadFailureDetail,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { shellCommandFromRawInput } from '@inkeep/open-knowledge-core/acp/tool-call-input';
 import { t } from '@lingui/core/macro';
-import { shellCommandFromRawInput } from '@/lib/acp/shell-command-format';
 
 type RenderedMessage =
   | {
@@ -48,6 +48,7 @@ export interface RenderedPermission {
   toolKind: string;
   command: string | null;
   options: PermissionOption[];
+  readOnlyShell: boolean;
   resolved: { optionId: string | null; auto: boolean } | null;
   toolCallId: string | null;
   mergedIntoToolCall: boolean;
@@ -324,6 +325,7 @@ export class ThreadRenderModelBuilder {
             shellCommandOf(toolKind, event.toolCall.rawInput) ??
             shellCommandOf(toolKind, call?.kind === 'tool_call' ? call.rawInput : undefined),
           options: event.options,
+          readOnlyShell: event.readOnlyShell === true,
           resolved: null,
           toolCallId,
           mergedIntoToolCall: callIndex !== undefined,

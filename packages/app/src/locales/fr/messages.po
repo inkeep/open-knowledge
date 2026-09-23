@@ -1939,6 +1939,10 @@ msgstr "Toutes les étiquettes"
 msgid "Allow external access"
 msgstr "Autoriser l'accès externe"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Allow read-only commands while this chat is open"
+msgstr "Autoriser les commandes en lecture seule tant que ce chat est ouvert"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "Valeurs d'élément autorisées (vide = toutes)"
@@ -2083,8 +2087,8 @@ msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "S'applique à (globs — un ! initial exclut ; vide signifie tous les documents)"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "S'applique à tous les projets de cette machine. Claude et Codex, lancés depuis le terminal intégré, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi automatiquement « ok open »). Supprimer, déplacer, partager, importer ou installer des compétences, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Cursor, OpenCode et Pi ne sont pas concernés. Au mieux selon l'agent."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "S'applique à tous les projets de cette machine. Claude et Codex lancés depuis le terminal intégré, ainsi que tout agent dans un chat du panneau Agents de l'app, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi \"ok open\" automatiquement). Supprimer, déplacer, partager, importer ou installer des skills, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Dans le terminal, Cursor, OpenCode et Pi ne sont pas concernés. Au mieux, selon l'agent."
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2187,6 +2191,10 @@ msgstr "Demander à {agentName}"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Ask {agentName}, {hint}"
 msgstr "Demander à {agentName}, {hint}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Ask again before read-only commands"
+msgstr "Redemander avant les commandes en lecture seule"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -11257,6 +11265,10 @@ msgstr "Lire"
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Parcours ce code et rédige une spécification technique pour le module le plus complexe : une synthèse, l'architecture, les fichiers clés et les questions ouvertes, le tout relié depuis une page d'index des spécifications."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Read-only allowed"
+msgstr "Lecture seule autorisée"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr "Copie en lecture seule d'un bloc MirrorSource d'un autre document. Modifiez à la source et la copie se met à jour en direct."
@@ -14570,6 +14582,10 @@ msgstr "Ces règles proviennent du fichier <0>{configFile}</0> de votre projet, 
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "Elles apprennent à vos outils IA à travailler avec OpenKnowledge. En installer une l'ajoute à tous les outils IA de cette machine."
+
+#: src/components/acp/ThreadView.tsx
+msgid "They run without asking while this chat is open"
+msgstr "Elles s'exécutent sans demander tant que ce chat est ouvert"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Think"

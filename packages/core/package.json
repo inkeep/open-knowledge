@@ -77,6 +77,12 @@
       "types": "./dist/acp-codex-legacy-notice.d.mts",
       "default": "./dist/acp-codex-legacy-notice.mjs"
     },
+    "./acp/tool-call-input": {
+      "@inkeep/source": "./src/acp/tool-call-input.ts",
+      "development": "./src/acp/tool-call-input.ts",
+      "types": "./dist/acp-tool-call-input.d.mts",
+      "default": "./dist/acp-tool-call-input.mjs"
+    },
     "./desktop-bridge": {
       "@inkeep/source": "./src/desktop-bridge.ts",
       "development": "./src/desktop-bridge.ts",

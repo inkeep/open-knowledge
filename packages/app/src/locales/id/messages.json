@@ -3411,6 +3411,9 @@
     "cOSAfL": ["Tidak ada repositori yang ditemukan di akun GitHub Anda."],
     "cOrTMo": ["Tautan berbagi Anda sudah siap di bawah."],
     "cPAWbl": ["Dikirim lewat surel"],
+    "cPgQ_i": [
+      "Berlaku untuk semua proyek di mesin ini. Claude dan Codex yang dimulai dari terminal bawaan, serta agen apa pun dalam obrolan panel Agen di aplikasi, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga otomatis menjalankan \"ok open\"). Menghapus, memindahkan, membagikan, mengimpor atau memasang skill, perintah lain, dan pengeditan berkas non-OpenKnowledge tetap bertanya. Di terminal, Cursor, OpenCode, dan Pi tidak terpengaruh. Upaya terbaik per agen."
+    ],
     "cQlPDN": ["Baca"],
     "cRHuuI": ["Jalurnya tidak bisa disalin"],
     "cRm498": ["Belum ada berkas skema di proyek ini — buat satu untuk mulai memvalidasi."],
@@ -3867,6 +3870,7 @@
       ["agent"],
       ", sehingga ia dapat menemukan OpenKnowledge di proyek mana pun."
     ],
+    "guqrFr": ["Tanya lagi sebelum perintah hanya-baca"],
     "gv5w9J": ["pemilik/repo, sebuah URL git, atau jalur lokal"],
     "gvApb7": [
       "Ubah apa yang Anda baca menjadi artikel yang jelas dan tepercaya. Simpan sebuah sumber, cari tahu maknanya, lalu simpan versi finalnya agar bisa Anda andalkan nanti."
@@ -4114,9 +4118,6 @@
     "jC8Bv4": ["Melihat-lihat sekitar…"],
     "jC8LSZ": ["Setel ulang filter tampilan"],
     "jDhTLC": ["Pilih ikon"],
-    "jENU1Q": [
-      "Berlaku untuk semua proyek di komputer ini. Claude dan Codex, yang dijalankan dari terminal bawaan, otomatis menyetujui alat baca dan tulis OpenKnowledge (Claude juga menjalankan \"ok open\" sendiri). Menghapus, memindahkan, membagikan, mengimpor atau memasang keterampilan, perintah lain, dan penyuntingan berkas di luar OpenKnowledge tetap ditanyakan. Cursor, OpenCode, dan Pi tidak terpengaruh. Sebaik mungkin, per agen."
-    ],
     "jEVipR": [
       "Saat ini keterampilan ini dibaca dari folder lain. Setelah ditautkan, keterampilan ini dibaca dari ",
       ["keep"],
@@ -4389,6 +4390,7 @@
       ["display"],
       " dengan symlink ke folder sumber keterampilan ini? Tidak ada hal lain yang berpindah."
     ],
+    "m0q5tM": ["Izinkan perintah hanya-baca selama obrolan ini terbuka"],
     "m16xKo": ["Tambah"],
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Menulis entri ke"],
@@ -4466,6 +4468,7 @@
     "mlDKzr": [
       "Ekstensi Open Knowledge sudah ditulis, tetapi folder tidak bisa ditandai tepercaya, jadi ekstensi itu tidak akan dimuat. Utas ini tidak memiliki alat Open Knowledge."
     ],
+    "mlW9Zw": ["Perintah tersebut berjalan tanpa bertanya selama obrolan ini terbuka"],
     "mlvM8g": ["Komentar itu tidak bisa ditempatkan ulang."],
     "mmNeqE": [
       "Ukuran vektor penyedia embedding terus berubah. Pencarian semantik dinonaktifkan hingga OpenKnowledge dimulai ulang."
@@ -5186,6 +5189,7 @@
     "uM6jnS": ["Gagal memulihkan"],
     "uNGmQn": ["Pengujiannya tidak bisa dijalankan. Pastikan OpenKnowledge masih berjalan."],
     "uO9WLl": ["Push"],
+    "uPJml1": ["Hanya-baca diizinkan"],
     "uQNW00": ["HEAD terlepas — ambil sebuah cabang untuk melanjutkan"],
     "uQewpR": [
       "Server tidak bisa dimulai ulang — ia berjalan di bawah akun lain. Mulai ulang komputer Anda untuk membersihkannya, lalu buka lagi proyek ini."

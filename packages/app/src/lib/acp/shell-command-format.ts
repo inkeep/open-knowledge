@@ -1,5 +1,3 @@
-import { asRecord } from '@/lib/acp/mcp-input';
-
 export interface ShellLine {
   readonly text: string;
   readonly continuation: boolean;
@@ -7,13 +5,7 @@ export interface ShellLine {
 
 const PIPELINE_WRAP_THRESHOLD = 72;
 
-const POSIX_SHELL = /^(?:\/bin\/|\/usr\/bin\/|\/usr\/local\/bin\/)?(?:ba|da|z)?sh$/;
-
-const PLAIN_ARGUMENT = /^[\w@%+=:,./-]+$/;
-
 const BLANK_ROW = /^[ \t]*$/;
-
-const HAS_TEXT = /[^ \t\n]/;
 
 const EDGE_BLANKS = /^[ \t]+|[ \t]+$/g;
 
@@ -145,25 +137,4 @@ export function revealHiddenCharacters(text: string): string {
     HIDDEN_CHARACTER,
     (char) => `⟨U+${(char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0')}⟩`,
   );
-}
-
-export function shellCommandFromRawInput(rawInput: unknown): string | null {
-  const value = asRecord(rawInput).command;
-  const command = Array.isArray(value) ? commandFromArgv(value) : value;
-  return typeof command === 'string' && HAS_TEXT.test(command) ? command : null;
-}
-
-function commandFromArgv(argv: readonly unknown[]): string | null {
-  if (argv.length === 0 || !argv.every((part): part is string => typeof part === 'string')) {
-    return null;
-  }
-  const [shell = '', flag, script = ''] = argv;
-  if (argv.length === 3 && POSIX_SHELL.test(shell) && (flag === '-c' || flag === '-lc')) {
-    return script;
-  }
-  return argv.map(quoteArgument).join(' ');
-}
-
-function quoteArgument(argument: string): string {
-  return PLAIN_ARGUMENT.test(argument) ? argument : `'${argument.replaceAll("'", `'\\''`)}'`;
 }

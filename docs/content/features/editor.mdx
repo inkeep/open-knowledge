@@ -256,6 +256,10 @@ Five tools stay gated: `delete` and `move` (knowledge-base-wide blast radius), `
 
 Turn it off in **Settings → Terminal → “Let agents use OpenKnowledge without asking”** ([`agents.autoApproveOkTools`](../reference/configuration.mdx)). It applies to every project on this machine and defaults on.
 
+In-app agent chats in the Agents panel follow the same rule and the same setting: OpenKnowledge tools other than those five run without a prompt, the five still ask, and turning the setting off makes every OpenKnowledge tool ask again.
+
+Shell commands in an in-app chat still prompt one at a time. When the command an agent asks to run is read-only (listing, reading, and searching files, `git status`, `log`, `diff` and other read-only git subcommands, and plain `curl` GET probes), the prompt adds **Allow read-only commands while this chat is open**. Choosing it approves that command and every later read-only command in the same chat without a prompt; anything the classifier cannot prove read-only, including redirections, pipes into other programs, command substitution, or an expansion in the arguments, keeps prompting. The grant shows as **Read-only allowed** on the agent settings trigger, lasts while the chat stays open (a restarted server prompts again), and **Ask again before read-only commands** in that menu revokes it.
+
 ## Tabs and split panes
 
 Tabs share the main editor header and shrink as the row fills, keeping every open target visible without a horizontal scrollbar. Drag a tab to reorder it. Opening a file from the sidebar uses a lightweight preview tab by default: the next single-clicked file replaces it, while double-clicking the tab title, pinning, or choosing **Keep open** from its context menu keeps it open. Turn previews off with **Settings → Preferences → Preview tabs** ([`editor.previewTabs`](/docs/reference/configuration)).

@@ -112,6 +112,8 @@ export interface SteerMessage {
   ts: number;
 }
 
+export type ThreadChatGrant = 'read_only_shell';
+
 export interface ThreadInfo {
   threadId: string;
   agent: ThreadAgentInfo;
@@ -131,6 +133,7 @@ export interface ThreadInfo {
   steer?: SteerMessage;
   stalledSince?: number;
   signInOutput?: string[];
+  chatGrants?: readonly ThreadChatGrant[];
 }
 
 export type ThreadEvent =
@@ -146,6 +149,7 @@ export type ThreadEvent =
       requestId: string;
       toolCall: ToolCallUpdate;
       options: PermissionOption[];
+      readOnlyShell?: boolean;
       ts: number;
     }
   | {
@@ -290,6 +294,12 @@ export type ThreadClientFrame =
       id: string;
     }
   | {
+      op: 'set_chat_grant';
+      threadId: string;
+      grant: ThreadChatGrant;
+      enabled: boolean;
+    }
+  | {
       op: 'permission_response';
       threadId: string;
       requestId: string;
@@ -397,6 +407,7 @@ const CLIENT_OPS = new Set([
   'queue_hold',
   'queue_remove',
   'queue_send_now',
+  'set_chat_grant',
   'permission_response',
   'runtime_consent_response',
   'pi_bridge_consent_response',
@@ -509,6 +520,15 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       return frame as unknown as ThreadClientFrame;
     case 'queue_hold':
       if (!str('threadId') || !str('id') || typeof frame.held !== 'boolean') return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'set_chat_grant':
+      if (
+        !str('threadId') ||
+        frame.grant !== 'read_only_shell' ||
+        typeof frame.enabled !== 'boolean'
+      ) {
+        return null;
+      }
       return frame as unknown as ThreadClientFrame;
     case 'queue_remove':
     case 'queue_send_now':

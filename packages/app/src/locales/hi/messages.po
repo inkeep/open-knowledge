@@ -1935,6 +1935,10 @@ msgstr "सभी टैग"
 msgid "Allow external access"
 msgstr "बाहरी एक्सेस की अनुमति दें"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Allow read-only commands while this chat is open"
+msgstr "जब तक यह चैट खुली है, केवल-पढ़ने वाले कमांड की अनुमति दें"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "अनुमत तत्व मान (खाली = कोई भी)"
@@ -2079,8 +2083,8 @@ msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "किस पर लागू (ग्लोब — शुरू में ! बाहर रखता है; खाली का अर्थ हर दस्तावेज़)"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "इस मशीन के सभी प्रोजेक्ट पर लागू होता है। अंतर्निहित टर्मिनल से शुरू किए गए Claude और Codex, OpenKnowledge के पढ़ने और लिखने वाले टूल स्वत: स्वीकृत करते हैं (Claude \"ok open\" भी स्वत: चलाता है)। स्किल हटाना, हिलाना, साझा करना, आयात करना या इंस्टॉल करना, अन्य कमांड, और OpenKnowledge के बाहर की फ़ाइल संपादन अब भी पूछते हैं। Cursor, OpenCode और Pi अप्रभावित रहते हैं। हर एजेंट के लिए यथासंभव।"
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "इस मशीन के सभी प्रोजेक्ट पर लागू होता है। बिल्ट-इन टर्मिनल से शुरू किए गए Claude और Codex, और ऐप के एजेंट पैनल चैट में कोई भी एजेंट, OpenKnowledge के पढ़ने और लिखने वाले टूल स्वतः स्वीकृत करते हैं (Claude \"ok open\" भी स्वतः चलाता है)। स्किल हटाना, ले जाना, साझा करना, आयात या इंस्टॉल करना, अन्य कमांड और गैर-OpenKnowledge फ़ाइल संपादन अब भी पूछते हैं। टर्मिनल में Cursor, OpenCode और Pi पर असर नहीं पड़ता। हर एजेंट के लिए यथासंभव।"
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2183,6 +2187,10 @@ msgstr "{agentName} से पूछें"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Ask {agentName}, {hint}"
 msgstr "{agentName} से पूछें, {hint}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Ask again before read-only commands"
+msgstr "केवल-पढ़ने वाले कमांड से पहले फिर से पूछें"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -11253,6 +11261,10 @@ msgstr "पढ़ना"
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "इस कोडबेस को पढ़ें और सबसे जटिल मॉड्यूल के लिए एक तकनीकी स्पेक का मसौदा बनाएँ: एक सिंहावलोकन, संरचना, प्रमुख फ़ाइलें और खुले प्रश्न, ये सभी एक स्पेक अनुक्रमणिका पेज से जुड़े हों।"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Read-only allowed"
+msgstr "केवल-पढ़ने की अनुमति है"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr "किसी दूसरे दस्तावेज़ के MirrorSource ब्लॉक की केवल-पढ़ने योग्य प्रति। स्रोत पर संपादित करें और यह तुरंत अद्यतित हो जाती है।"
@@ -14566,6 +14578,10 @@ msgstr "ये नियम आपके प्रोजेक्ट की <0>{
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "ये आपके AI टूल को OpenKnowledge के साथ काम करना सिखाती हैं। किसी एक को इंस्टॉल करने पर वह इस मशीन के हर AI टूल में जुड़ जाती है।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "They run without asking while this chat is open"
+msgstr "जब तक यह चैट खुली है, वे बिना पूछे चलते हैं"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Think"

@@ -1,5 +1,13 @@
 import type { ChildProcess } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -31,7 +39,7 @@ import {
   writeExecutable,
   writeRecordingNpm,
 } from './package-acquisition.test-helper.ts';
-import { AcpPermissionStore } from './permissions.ts';
+import { AcpPermissionStore, readAutoApproveOkTools } from './permissions.ts';
 import * as projectSkillStaging from './project-skill-staging.ts';
 import { PROJECT_SKILL_ENTRY, projectSkillStageDir } from './project-skill-staging.ts';
 import { AcpRegistry } from './registry.ts';
@@ -92,6 +100,7 @@ function makeManager(
     sessionManager?: AgentSessionManager;
     log?: PinoLogger;
     projectSkillSourceDir?: string | null;
+    autoApproveOkTools?: () => boolean;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -2003,6 +2012,181 @@ describe('AcpThreadManager terminals + permission effects', () => {
     );
   }
 
+  function writeOkToolAgentEntry(localDir: string): void {
+    writeRequestingAgentEntry(
+      localDir,
+      'ok-tool-agent',
+      `
+  const response = await request('session/request_permission', {
+    toolCall: {
+      toolCallId: 'ok1',
+      title: 'mcp__open-knowledge__search',
+      kind: 'other',
+      rawInput: { query: 'permission' },
+    },
+    options: [
+      { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+      { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+    ],
+  });
+  const outcome = response.outcome;
+  notify({
+    sessionUpdate: 'agent_message_chunk',
+    content: {
+      type: 'text',
+      text: 'ok-tool:' + (outcome.outcome === 'selected' ? outcome.optionId : outcome.outcome) + ';',
+    },
+  });
+  finish();
+`,
+    );
+  }
+
+  test('agents.autoApproveOkTools in the user config decides whether an OK tool call asks', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const home = tmp();
+    writeOkToolAgentEntry(localDir);
+    const manager = makeManager(contentDir, localDir, {
+      autoApproveOkTools: () => readAutoApproveOkTools(contentDir, home),
+    });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'ok-tool-agent' } });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    const requests = () => events.filter((e) => e.event.kind === 'permission_request');
+    const autoApprovals = () =>
+      events.filter(
+        (e) => e.event.kind === 'permission_resolved' && e.event.auto && e.event.optionId !== null,
+      );
+    const turnsEnded = () => events.filter((e) => e.event.kind === 'turn_ended').length;
+
+    mkdirSync(join(home, '.ok'), { recursive: true });
+    writeFileSync(join(home, '.ok', 'global.yml'), 'agents:\n  autoApproveOkTools: false\n');
+    manager.sendPrompt(info.threadId, 'search');
+    await waitUntil(() => requests().length === 1, 20_000, 'a prompt while the setting is off');
+    const request = requests()[0]?.event;
+    if (request?.kind !== 'permission_request') throw new Error('unreachable');
+    manager.respondPermission(info.threadId, request.requestId, {
+      kind: 'selected',
+      optionId: 'allow',
+    });
+    await waitUntil(() => turnsEnded() === 1, 20_000, 'first turn end');
+    expect(autoApprovals()).toHaveLength(0);
+
+    rmSync(join(home, '.ok', 'global.yml'), { force: true });
+    manager.sendPrompt(info.threadId, 'search again');
+    await waitUntil(() => turnsEnded() === 2, 20_000, 'second turn end');
+    expect(requests()).toHaveLength(1);
+    expect(autoApprovals()).toHaveLength(1);
+    expect(agentText(events)).toContain('ok-tool:allow;ok-tool:allow;');
+
+    await manager.closeThread(info.threadId);
+  }, 60_000);
+
+  function writeShellProbingAgentEntry(localDir: string): void {
+    writeRequestingAgentEntry(
+      localDir,
+      'shell-probing-agent',
+      `
+  const outcomes = [];
+  for (const command of ['ls -la', 'rm -rf scratch']) {
+    const response = await request('session/request_permission', {
+      toolCall: {
+        toolCallId: 'sh' + outcomes.length,
+        title: 'Run ' + command,
+        kind: 'execute',
+        rawInput: { command },
+      },
+      options: [
+        { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+        { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+      ],
+    });
+    const outcome = response.outcome;
+    outcomes.push(outcome.outcome === 'selected' ? outcome.optionId : outcome.outcome);
+  }
+  notify({
+    sessionUpdate: 'agent_message_chunk',
+    content: { type: 'text', text: 'outcomes:' + outcomes.join(',') + ';' },
+  });
+  finish();
+`,
+    );
+  }
+
+  test('the read-only shell grant approves read-only commands for the rest of the chat, and only those', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeShellProbingAgentEntry(localDir);
+    const manager = makeManager(contentDir, localDir);
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'shell-probing-agent' },
+    });
+    const events: Collected = [];
+    await manager.subscribe(info.threadId, 0, collect(events));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    const requests = () =>
+      events
+        .map((e) => e.event)
+        .filter(
+          (e): e is Extract<ThreadEvent, { kind: 'permission_request' }> =>
+            e.kind === 'permission_request',
+        );
+    const turnsEnded = () => events.filter((e) => e.event.kind === 'turn_ended').length;
+    const answer = (requestId: string, optionId: string) =>
+      manager.respondPermission(info.threadId, requestId, { kind: 'selected', optionId });
+
+    manager.sendPrompt(info.threadId, 'probe');
+    await waitUntil(() => requests().length === 1, 20_000, 'first request');
+    const first = requests()[0];
+    if (first === undefined) throw new Error('unreachable');
+    expect(first.toolCall.title).toBe('Run ls -la');
+    expect(first.readOnlyShell).toBe(true);
+    manager.setChatGrant(info.threadId, 'read_only_shell', true);
+    expect(manager.getInfo(info.threadId)?.chatGrants).toEqual(['read_only_shell']);
+    answer(first.requestId, 'allow');
+    await waitUntil(() => requests().length === 2, 20_000, 'second request');
+    const second = requests()[1];
+    if (second === undefined) throw new Error('unreachable');
+    expect(second.toolCall.title).toBe('Run rm -rf scratch');
+    expect(second.readOnlyShell).toBeUndefined();
+    answer(second.requestId, 'reject');
+    await waitUntil(() => turnsEnded() === 1, 20_000, 'first turn end');
+    expect(agentText(events)).toContain('outcomes:allow,reject;');
+
+    manager.sendPrompt(info.threadId, 'probe again');
+    await waitUntil(() => requests().length === 3, 20_000, 'third request');
+    const third = requests()[2];
+    if (third === undefined) throw new Error('unreachable');
+    expect(third.toolCall.title).toBe('Run rm -rf scratch');
+    const autoResolved = events
+      .map((e) => e.event)
+      .filter((e) => e.kind === 'permission_resolved' && e.auto && e.optionId === 'allow');
+    expect(autoResolved).toHaveLength(1);
+    answer(third.requestId, 'allow');
+    await waitUntil(() => turnsEnded() === 2, 20_000, 'second turn end');
+    expect(agentText(events)).toContain('outcomes:allow,allow;');
+
+    manager.setChatGrant(info.threadId, 'read_only_shell', false);
+    expect(manager.getInfo(info.threadId)?.chatGrants).toBeUndefined();
+    manager.sendPrompt(info.threadId, 'probe once more');
+    await waitUntil(() => requests().length === 4, 20_000, 'fourth request');
+    const fourth = requests()[3];
+    if (fourth === undefined) throw new Error('unreachable');
+    expect(fourth.toolCall.title).toBe('Run ls -la');
+    expect(fourth.readOnlyShell).toBe(true);
+    answer(fourth.requestId, 'reject');
+    await waitUntil(() => requests().length === 5, 20_000, 'fifth request');
+    const fifth = requests()[4];
+    if (fifth === undefined) throw new Error('unreachable');
+    answer(fifth.requestId, 'reject');
+    await waitUntil(() => turnsEnded() === 3, 20_000, 'third turn end');
+    expect(agentText(events)).toContain('outcomes:reject,reject;');
+
+    await manager.closeThread(info.threadId);
+  }, 60_000);
+
   test('approve → the planted file EXISTS; status parks on awaiting_permission meanwhile', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -2683,6 +2867,37 @@ describe('AcpThreadManager prompt queueing', () => {
     expect(manager2.getInfo(info.threadId)).toBeDefined();
     expect(manager2.getInfo(info.threadId)?.queue).toBeUndefined();
     expect(manager2.getInfo(info.threadId)?.steer).toBeUndefined();
+  }, 40_000);
+
+  test('the read-only shell grant is not persisted, so a rehydrated thread asks again', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeGateAgent(localDir, join(localDir, 'release-turn'));
+    const manager = makeManager(contentDir, localDir);
+    await manager.init();
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'gate-agent' } });
+    await manager.subscribe(info.threadId, 0, () => {});
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    manager.sendPrompt(info.threadId, 'WAIT at the gate');
+    await waitUntil(() => internals(manager).turnActive(info.threadId), 5_000, 'turn active');
+    manager.setChatGrant(info.threadId, 'read_only_shell', true);
+    expect(manager.getInfo(info.threadId)?.chatGrants).toEqual(['read_only_shell']);
+    await manager.closeThread(info.threadId);
+
+    const findMeta = (): string | undefined =>
+      readdirSync(localDir, { recursive: true })
+        .map(String)
+        .find((entry) => entry.endsWith(`${info.threadId}.meta.json`));
+    await waitUntil(() => findMeta() !== undefined, 5_000, 'persisted meta');
+    const metaFile = findMeta();
+    if (metaFile === undefined) throw new Error('unreachable');
+    expect(readFileSync(join(localDir, metaFile), 'utf8')).not.toContain('chatGrants');
+
+    const manager2 = makeManager(contentDir, localDir);
+    await manager2.init();
+    expect(manager2.getInfo(info.threadId)).toBeDefined();
+    expect(manager2.getInfo(info.threadId)?.chatGrants).toBeUndefined();
   }, 40_000);
 
   test('a steer stops the run, goes first, and lets the queue drain behind it', async () => {

@@ -49,6 +49,7 @@ import type {
   SteerMessage,
   ThreadAgentInfo,
   ThreadAuthMethod,
+  ThreadChatGrant,
   ThreadEvent,
   ThreadFailureDetail,
   ThreadInfo,
@@ -135,6 +136,7 @@ import {
 } from './model-discovery/launch-context.ts';
 import type { AcpPermissionStore } from './permissions.ts';
 import { PROJECT_SKILL_ENTRY, stageProjectSkill } from './project-skill-staging.ts';
+import { readOnlyShellCommand } from './read-only-shell.ts';
 import {
   ACP_AGENT_EDITOR_IDS,
   type AcpRegistry,
@@ -336,6 +338,7 @@ interface ThreadRecord {
   titleHint?: string;
   envNotePending: boolean;
   projectSkill: StagedProjectSkill | null;
+  chatGrants: Set<ThreadChatGrant>;
 }
 
 export interface HarnessManagedMcpEntryHit {
@@ -412,6 +415,7 @@ export interface AcpThreadManagerOptions {
   unwatchedTurnCancelMs?: number;
   unwatchedTurnKillMs?: number;
   turnStallMs?: number;
+  autoApproveOkTools?: () => boolean;
 }
 
 export function buildOkMcpStdioCommand(
@@ -674,6 +678,7 @@ export class AcpThreadManager {
       titleHint: params.titleHint,
       envNotePending: false,
       projectSkill: null,
+      chatGrants: new Set(),
     };
     this.threads.set(threadId, record);
     this.emitStatus(record, 'spawning');
@@ -2896,6 +2901,19 @@ export class AcpThreadManager {
     this.restoreRunningAfterPermission(t);
   }
 
+  setChatGrant(threadId: string, grant: ThreadChatGrant, enabled: boolean): void {
+    const t = this.mustGet(threadId);
+    if (t.chatGrants.has(grant) === enabled) return;
+    if (enabled) t.chatGrants.add(grant);
+    else t.chatGrants.delete(grant);
+    t.info.chatGrants = t.chatGrants.size > 0 ? [...t.chatGrants] : undefined;
+    this.opts.log.info(
+      { threadId, agentId: t.info.agent.id, grant, enabled },
+      '[acp-threads] chat grant changed',
+    );
+    this.emitInfo(t);
+  }
+
   private restoreRunningAfterPermission(t: ThreadRecord): void {
     if (
       t.pendingPermissions.size === 0 &&
@@ -3003,7 +3021,13 @@ export class AcpThreadManager {
     options: PermissionOption[],
   ): Promise<RequestPermissionResponse> {
     this.touchTurnActivity(record);
-    const decision = this.opts.permissions.decide(record.info.agent.id, toolCall, options);
+    const decision = this.opts.permissions.decide(
+      record.info.agent.id,
+      toolCall,
+      options,
+      record.chatGrants,
+      this.opts.autoApproveOkTools?.() ?? true,
+    );
     if (decision.auto !== null) {
       const requestId = crypto.randomUUID();
       this.appendEvent(record, {
@@ -3022,6 +3046,7 @@ export class AcpThreadManager {
       requestId,
       toolCall,
       options,
+      ...(readOnlyShellCommand(toolCall) !== null ? { readOnlyShell: true } : {}),
       ts: Date.now(),
     });
     if (record.turnActive && record.info.status === 'running') {
@@ -3352,6 +3377,7 @@ export class AcpThreadManager {
       steer: _steer,
       signInOutput: _signInOutput,
       stalledSince: _stalledSince,
+      chatGrants: _chatGrants,
       ...info
     } = t.info;
     return {
@@ -3503,6 +3529,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
       queue: undefined,
       steer: undefined,
       signInOutput: undefined,
+      chatGrants: undefined,
     },
     docName: meta.docName,
     agentRef: meta.agentRef,
@@ -3546,6 +3573,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     hadUserMessage: true,
     envNotePending: false,
     projectSkill: null,
+    chatGrants: new Set(),
   };
 }
 

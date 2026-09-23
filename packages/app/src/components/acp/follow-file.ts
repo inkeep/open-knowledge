@@ -1,5 +1,5 @@
 import { OPEN_KNOWLEDGE_MCP_WRITE_TOOLS } from '@inkeep/open-knowledge-core';
-import { stringField, unwrapMcpInput } from '@/lib/acp/mcp-input';
+import { stringField, unwrapMcpInput } from '@inkeep/open-knowledge-core/acp/tool-call-input';
 import type { RenderedToolCall } from '@/lib/acp/thread-event-model';
 import type { Workspace } from '@/lib/workspace-paths';
 

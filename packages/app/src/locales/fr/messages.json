@@ -3958,6 +3958,9 @@
     "cOSAfL": ["Aucun dépôt trouvé sur votre compte GitHub."],
     "cOrTMo": ["Votre lien de partage est prêt ci-dessous."],
     "cPAWbl": ["Envoyé par e-mail"],
+    "cPgQ_i": [
+      "S'applique à tous les projets de cette machine. Claude et Codex lancés depuis le terminal intégré, ainsi que tout agent dans un chat du panneau Agents de l'app, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi \"ok open\" automatiquement). Supprimer, déplacer, partager, importer ou installer des skills, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Dans le terminal, Cursor, OpenCode et Pi ne sont pas concernés. Au mieux, selon l'agent."
+    ],
     "cQlPDN": ["Lire"],
     "cRHuuI": ["Impossible de copier le chemin"],
     "cRm498": [
@@ -4522,6 +4525,7 @@
       ["agent"],
       ", pour qu'il puisse trouver OpenKnowledge dans n'importe quel projet."
     ],
+    "guqrFr": ["Redemander avant les commandes en lecture seule"],
     "gv5w9J": ["owner/repo, une URL git, ou un chemin local"],
     "gvApb7": [
       "Transformez ce que vous lisez en articles clairs et fiables. Enregistrez une source, dégagez-en le sens, puis conservez la version finale pour pouvoir vous y fier plus tard."
@@ -4784,9 +4788,6 @@
     "jC8Bv4": ["Petit tour d'horizon…"],
     "jC8LSZ": ["Réinitialiser les filtres d'affichage"],
     "jDhTLC": ["Choisir une icône"],
-    "jENU1Q": [
-      "S'applique à tous les projets de cette machine. Claude et Codex, lancés depuis le terminal intégré, approuvent automatiquement les outils de lecture et d'écriture d'OpenKnowledge (Claude exécute aussi automatiquement « ok open »). Supprimer, déplacer, partager, importer ou installer des compétences, les autres commandes et les modifications de fichiers hors OpenKnowledge demandent toujours confirmation. Cursor, OpenCode et Pi ne sont pas concernés. Au mieux selon l'agent."
-    ],
     "jEVipR": [
       "Ces compétences sont actuellement lues depuis un autre dossier. Après la liaison, elles seront lues depuis ",
       ["keep"],
@@ -5086,6 +5087,7 @@
       ["display"],
       " par un lien symbolique vers le dossier source de la compétence ? Rien d'autre ne bouge."
     ],
+    "m0q5tM": ["Autoriser les commandes en lecture seule tant que ce chat est ouvert"],
     "m16xKo": ["Ajouter"],
     "m2T1Xj": ["Étiquette #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Écrit une entrée dans"],
@@ -5189,6 +5191,7 @@
     "mlDKzr": [
       "L'extension Open Knowledge a été écrite, mais le dossier n'a pas pu être marqué comme approuvé, donc elle ne se chargera pas. Ce fil n'a pas les outils Open Knowledge."
     ],
+    "mlW9Zw": ["Elles s'exécutent sans demander tant que ce chat est ouvert"],
     "mlvM8g": ["Impossible de replacer ce commentaire."],
     "mmNeqE": [
       "La taille des vecteurs du fournisseur d’embeddings changeait continuellement. La recherche sémantique est désactivée jusqu’au redémarrage d’OpenKnowledge."
@@ -6009,6 +6012,7 @@
     "uM6jnS": ["Échec de la restauration"],
     "uNGmQn": ["Impossible d'exécuter le test. Vérifiez qu'OpenKnowledge fonctionne toujours."],
     "uO9WLl": ["Pousser"],
+    "uPJml1": ["Lecture seule autorisée"],
     "uQNW00": ["HEAD détachée — extrayez une branche pour reprendre"],
     "uQewpR": [
       "Impossible de redémarrer le serveur — il s'exécute sous un autre compte. Redémarrez votre ordinateur pour le libérer, puis rouvrez ce projet."

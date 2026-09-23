@@ -139,6 +139,10 @@ export function attachAcpThreadSocket(
             manager.sendQueuedNow(frame.threadId, frame.id);
             return;
           }
+          case 'set_chat_grant': {
+            manager.setChatGrant(frame.threadId, frame.grant, frame.enabled);
+            return;
+          }
           case 'permission_response': {
             manager.respondPermission(frame.threadId, frame.requestId, frame.outcome);
             return;

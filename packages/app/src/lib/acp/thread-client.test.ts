@@ -467,6 +467,16 @@ describe('queue edit settlement', () => {
       { op: 'queue_send_now', threadId: 't1', id: 'q1' },
     ]);
   });
+
+  test('setChatGrant sends the grant and its direction', () => {
+    const { client, sent } = makeWiredClient();
+    client.setChatGrant('t1', 'read_only_shell', true);
+    client.setChatGrant('t1', 'read_only_shell', false);
+    expect(sent.filter((f) => f.op === 'set_chat_grant')).toEqual([
+      { op: 'set_chat_grant', threadId: 't1', grant: 'read_only_shell', enabled: true },
+      { op: 'set_chat_grant', threadId: 't1', grant: 'read_only_shell', enabled: false },
+    ]);
+  });
 });
 
 describe('retry and sign-in lifecycle', () => {

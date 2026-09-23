@@ -3912,6 +3912,9 @@
     "cOSAfL": ["No se encontraron repositorios en tu cuenta de GitHub."],
     "cOrTMo": ["Tu enlace para compartir está listo abajo."],
     "cPAWbl": ["Enviado por correo"],
+    "cPgQ_i": [
+      "Se aplica a todos los proyectos de esta máquina. Claude y Codex iniciados desde la terminal integrada, y cualquier agente en un chat del panel de agentes de la app, aprueban automáticamente las herramientas de lectura y escritura de OpenKnowledge (Claude también ejecuta \"ok open\" automáticamente). Eliminar, mover, compartir, importar o instalar skills, otros comandos y las ediciones de archivos ajenos a OpenKnowledge siguen preguntando. En la terminal, Cursor, OpenCode y Pi no se ven afectados. Según lo permita cada agente."
+    ],
     "cQlPDN": ["Leer"],
     "cRHuuI": ["No se pudo copiar la ruta"],
     "cRm498": [
@@ -4487,6 +4490,7 @@
       ["agent"],
       ", para que pueda encontrar OpenKnowledge en cualquier proyecto."
     ],
+    "guqrFr": ["Volver a preguntar antes de los comandos de solo lectura"],
     "gv5w9J": ["propietario/repo, una URL de git o una ruta local"],
     "gvApb7": [
       "Convierte lo que lees en artículos claros y fiables. Guarda una fuente, averigua qué significa y conserva la versión final para poder apoyarte en ella más adelante."
@@ -4747,9 +4751,6 @@
     "jC8Bv4": ["Echando un vistazo…"],
     "jC8LSZ": ["Restablecer los filtros de vista"],
     "jDhTLC": ["Elegir icono"],
-    "jENU1Q": [
-      "Se aplica a todos los proyectos de este equipo. Claude y Codex, iniciados desde la terminal integrada, aprueban automáticamente las herramientas de lectura y escritura de OpenKnowledge (Claude además ejecuta \"ok open\" por su cuenta). Eliminar, mover, compartir, importar o instalar habilidades, otros comandos y las ediciones de archivos ajenos a OpenKnowledge siguen preguntando. Cursor, OpenCode y Pi no se ven afectados. Es un esfuerzo por agente, sin garantías."
-    ],
     "jEVipR": [
       "Actualmente se leen desde otra carpeta. Después de vincularlas, se leerán desde ",
       ["keep"],
@@ -5043,6 +5044,7 @@
       ["display"],
       " por un enlace simbólico a la carpeta de origen de la habilidad? No se mueve nada más."
     ],
+    "m0q5tM": ["Permitir comandos de solo lectura mientras este chat esté abierto"],
     "m16xKo": ["Añadir"],
     "m2T1Xj": ["Etiqueta #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Escribe una entrada en"],
@@ -5146,6 +5148,7 @@
     "mlDKzr": [
       "Se escribió la extensión de Open Knowledge, pero no se pudo marcar la carpeta como de confianza, así que no se cargará. Este hilo no tiene herramientas de Open Knowledge."
     ],
+    "mlW9Zw": ["Se ejecutan sin preguntar mientras este chat esté abierto"],
     "mlvM8g": ["No se pudo volver a colocar ese comentario."],
     "mmNeqE": [
       "El tamaño de los vectores del proveedor de embeddings siguió cambiando. La búsqueda semántica está desactivada hasta que se reinicie OpenKnowledge."
@@ -5941,6 +5944,7 @@
     "uM6jnS": ["Falló la restauración"],
     "uNGmQn": ["No se pudo ejecutar la prueba. Comprueba que OpenKnowledge siga en marcha."],
     "uO9WLl": ["Push"],
+    "uPJml1": ["Solo lectura permitido"],
     "uQNW00": ["HEAD desacoplado: extrae una rama para continuar"],
     "uQewpR": [
       "No se pudo reiniciar el servidor: se está ejecutando con otra cuenta. Reinicia el equipo para liberarlo y vuelve a abrir este proyecto."

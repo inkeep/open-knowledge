@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { PermissionOption, ToolCallUpdate } from '@agentclientprotocol/sdk';
+import type { ThreadChatGrant } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
 import { getLogger } from '../logger.ts';
-import { AcpPermissionStore } from './permissions.ts';
+import { AcpPermissionStore, readAutoApproveOkTools } from './permissions.ts';
 
 const log = getLogger('acp-permissions-test');
 
@@ -61,6 +62,109 @@ describe('AcpPermissionStore', () => {
 
     const rehydrated = new AcpPermissionStore(dir, log);
     expect(rehydrated.hasAllowAlways('gemini', 'edit')).toBe(true);
+  });
+
+  test('auto-allows calls to the OpenKnowledge MCP server, whatever the harness names them', () => {
+    const store = new AcpPermissionStore(tmp(), log);
+    const claude = {
+      toolCallId: 'tc1',
+      title: 'mcp__open-knowledge__write',
+      kind: 'edit',
+    } as ToolCallUpdate;
+    const codex = {
+      toolCallId: 'tc2',
+      title: 'mcp.open-knowledge.exec',
+      kind: 'execute',
+      rawInput: { server: 'open-knowledge', tool: 'exec', arguments: { command: 'ls' } },
+    } as ToolCallUpdate;
+    const pi = { toolCallId: 'tc3', title: 'ok_search', kind: 'search' } as ToolCallUpdate;
+    for (const call of [claude, codex, pi]) {
+      expect(store.decide('claude', call, OPTIONS).auto?.optionId).toBe('allow');
+    }
+  });
+
+  test('the five gated OK tools still ask, and the user setting turns the rest off', () => {
+    const store = new AcpPermissionStore(tmp(), log);
+    for (const tool of ['delete', 'move', 'share_link', 'install', 'import']) {
+      const call = {
+        toolCallId: 'tc1',
+        title: `mcp__open-knowledge__${tool}`,
+        kind: 'other',
+      } as ToolCallUpdate;
+      expect(store.decide('claude', call, OPTIONS).auto).toBeNull();
+    }
+    const write = {
+      toolCallId: 'tc2',
+      title: 'mcp__open-knowledge__write',
+      kind: 'edit',
+    } as ToolCallUpdate;
+    expect(store.decide('claude', write, OPTIONS, undefined, false).auto).toBeNull();
+    expect(store.decide('claude', write, OPTIONS, undefined, true).auto?.optionId).toBe('allow');
+  });
+
+  test('a gated OK tool asks no matter what kind it carries or what the agent was allowed before', async () => {
+    const store = new AcpPermissionStore(tmp(), log);
+    const always = OPTIONS.find((o) => o.kind === 'allow_always');
+    if (always === undefined) throw new Error('fixture');
+    const gated = (kind: ToolCallUpdate['kind']): ToolCallUpdate =>
+      ({ toolCallId: 'tc1', title: 'mcp__open-knowledge__delete', kind }) as ToolCallUpdate;
+    await store.recordChoice('claude', toolCall('other'), always);
+    expect(store.decide('claude', toolCall('other'), OPTIONS).auto).not.toBeNull();
+    expect(store.decide('claude', gated('other'), OPTIONS).auto).toBeNull();
+    expect(store.decide('claude', gated('read'), OPTIONS).auto).toBeNull();
+    const granted: ReadonlySet<ThreadChatGrant> = new Set(['read_only_shell']);
+    expect(store.decide('claude', gated('execute'), OPTIONS, granted).auto).toBeNull();
+
+    const fresh = new AcpPermissionStore(tmp(), log);
+    await fresh.recordChoice('claude', gated('other'), always);
+    expect(fresh.hasAllowAlways('claude', 'other')).toBe(false);
+    expect(fresh.decide('claude', toolCall('other'), OPTIONS).auto).toBeNull();
+  });
+
+  test('a foreign server that borrows an OK tool name still asks', () => {
+    const store = new AcpPermissionStore(tmp(), log);
+    const foreign = {
+      toolCallId: 'tc1',
+      title: 'mcp__ok-payments__write',
+      kind: 'edit',
+    } as ToolCallUpdate;
+    const bare = {
+      toolCallId: 'tc2',
+      title: 'write',
+      kind: 'edit',
+      rawInput: { tool: 'write' },
+    } as ToolCallUpdate;
+    expect(store.decide('claude', foreign, OPTIONS).auto).toBeNull();
+    expect(store.decide('claude', bare, OPTIONS).auto).toBeNull();
+  });
+
+  test('read-only shell commands auto-allow only under the chat grant, and only when read-only', () => {
+    const store = new AcpPermissionStore(tmp(), log);
+    const shell = (command: string): ToolCallUpdate =>
+      ({
+        toolCallId: 'tc1',
+        title: command,
+        kind: 'execute',
+        rawInput: { command },
+      }) as ToolCallUpdate;
+    const granted: ReadonlySet<ThreadChatGrant> = new Set(['read_only_shell']);
+    expect(store.decide('claude', shell('ls -la'), OPTIONS).auto).toBeNull();
+    expect(store.decide('claude', shell('ls -la'), OPTIONS, granted).auto?.optionId).toBe('allow');
+    expect(store.decide('claude', shell('rm -rf scratch'), OPTIONS, granted).auto).toBeNull();
+    expect(store.decide('claude', shell('ls > out.txt'), OPTIONS, granted).auto).toBeNull();
+  });
+
+  test('readAutoApproveOkTools reads the user config and defaults to on', () => {
+    const home = tmp();
+    const projectDir = tmp();
+    expect(readAutoApproveOkTools(projectDir, home)).toBe(true);
+    mkdirSync(join(home, '.ok'), { recursive: true });
+    writeFileSync(join(home, '.ok', 'global.yml'), 'agents:\n  autoApproveOkTools: false\n');
+    expect(readAutoApproveOkTools(projectDir, home)).toBe(false);
+    writeFileSync(join(home, '.ok', 'global.yml'), 'agents:\n  autoApproveOkTools: true\n');
+    expect(readAutoApproveOkTools(projectDir, home)).toBe(true);
+    writeFileSync(join(home, '.ok', 'global.yml'), 'telemetry: {}\n');
+    expect(readAutoApproveOkTools(projectDir, home)).toBe(true);
   });
 
   test('allow_once selections do not persist', async () => {

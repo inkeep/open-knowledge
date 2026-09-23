@@ -13,6 +13,7 @@ const entry = {
   'acp-agent-posture': 'src/acp/agent-posture.ts',
   'acp-permissive-mode': 'src/acp/permissive-mode.ts',
   'acp-codex-legacy-notice': 'src/acp/codex-legacy-notice.ts',
+  'acp-tool-call-input': 'src/acp/tool-call-input.ts',
   'desktop-bridge': 'src/desktop-bridge.ts',
 };
 

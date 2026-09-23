@@ -165,6 +165,27 @@ describe('parseThreadClientFrame', () => {
     expect(parseThreadClientFrame(JSON.stringify({ op: 'queue_send_now', id: 'q1' }))).toBeNull();
   });
 
+  test('set_chat_grant needs a known grant and a boolean', () => {
+    expect(
+      parseThreadClientFrame(
+        JSON.stringify({
+          op: 'set_chat_grant',
+          threadId: 't',
+          grant: 'read_only_shell',
+          enabled: true,
+        }),
+      ),
+    ).toMatchObject({ op: 'set_chat_grant', grant: 'read_only_shell', enabled: true });
+    for (const frame of [
+      { op: 'set_chat_grant', threadId: 't', grant: 'read_only_shell' },
+      { op: 'set_chat_grant', threadId: 't', grant: 'everything', enabled: true },
+      { op: 'set_chat_grant', grant: 'read_only_shell', enabled: false },
+      { op: 'set_chat_grant', threadId: 't', grant: 'read_only_shell', enabled: 'yes' },
+    ]) {
+      expect(parseThreadClientFrame(JSON.stringify(frame))).toBeNull();
+    }
+  });
+
   test('permission_response validates the outcome union', () => {
     expect(
       parseThreadClientFrame(

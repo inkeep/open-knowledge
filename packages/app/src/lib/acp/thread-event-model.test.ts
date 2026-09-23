@@ -142,6 +142,26 @@ describe('buildThreadRenderModel', () => {
     expect(perm.resolved).toEqual({ optionId: 'allow', auto: false });
   });
 
+  test('carries the server verdict that a shell command is read-only', () => {
+    const request = (requestId: string, readOnlyShell?: boolean): ThreadEvent =>
+      ev({
+        kind: 'permission_request',
+        requestId,
+        toolCall: { toolCallId: requestId, title: 'Run ls', kind: 'execute' } as never,
+        options: [{ optionId: 'allow', name: 'Allow', kind: 'allow_once' }],
+        ...(readOnlyShell === undefined ? {} : { readOnlyShell }),
+        ts: 1,
+      });
+    const model = buildThreadRenderModel(
+      [request('p1', true), request('p2', false), request('p3')],
+      null,
+    );
+    const flags = model.items
+      .filter((item) => item.kind === 'permission')
+      .map((item) => item.readOnlyShell);
+    expect(flags).toEqual([true, false, false]);
+  });
+
   test('links a permission to the call it gates, whichever event lands first', () => {
     const request = ev({
       kind: 'permission_request',

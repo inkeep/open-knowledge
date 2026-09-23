@@ -1,5 +1,6 @@
 import type {
   AttachmentPart,
+  ThreadChatGrant,
   ThreadClientFrame,
   ThreadErrorCode,
   ThreadEvent,
@@ -275,6 +276,10 @@ export class AgentThreadClient {
 
   sendQueuedNow(threadId: string, id: string): void {
     this.send({ op: 'queue_send_now', threadId, id });
+  }
+
+  setChatGrant(threadId: string, grant: ThreadChatGrant, enabled: boolean): void {
+    this.send({ op: 'set_chat_grant', threadId, grant, enabled });
   }
 
   respondPermission(

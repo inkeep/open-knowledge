@@ -1,10 +1,6 @@
 import * as fc from 'fast-check';
 import { describe, expect, test } from 'vitest';
-import {
-  formatShellCommand,
-  revealHiddenCharacters,
-  shellCommandFromRawInput,
-} from './shell-command-format';
+import { formatShellCommand, revealHiddenCharacters } from './shell-command-format';
 
 const texts = (command: string): string[] => formatShellCommand(command).map((line) => line.text);
 
@@ -158,58 +154,5 @@ describe('revealHiddenCharacters', () => {
   test('leaves ordinary text, tabs and newlines alone', () => {
     const plain = "grep -n 'x'\tfile\nnext — café 日本";
     expect(revealHiddenCharacters(plain)).toBe(plain);
-  });
-});
-
-describe('shellCommandFromRawInput', () => {
-  test('reads the command a bash tool call carries', () => {
-    expect(shellCommandFromRawInput({ command: 'ls -la', description: 'list' })).toBe('ls -la');
-  });
-
-  test('reads the script out of the shell wrapper a Codex exec approval carries', () => {
-    const approval = {
-      call_id: 'call_1',
-      command: ['bash', '-lc', 'ls; pwd'],
-      cwd: '/repo',
-      parsed_cmd: [],
-    };
-    expect(shellCommandFromRawInput(approval)).toBe('ls; pwd');
-    expect(shellCommandFromRawInput({ command: ['/bin/zsh', '-lc', 'echo hi'] })).toBe('echo hi');
-    expect(shellCommandFromRawInput({ command: ['sh', '-c', 'make test'] })).toBe('make test');
-  });
-
-  test('an interpreter outside the system bin dirs is never elided from the gate', () => {
-    for (const shell of ['./sh', '/tmp/agent-work/bash', 'C:\\Users\\x\\evil\\bash.exe']) {
-      expect(shellCommandFromRawInput({ command: [shell, '-lc', 'ls'] })).toContain(shell);
-    }
-    expect(shellCommandFromRawInput({ command: ['/usr/local/bin/bash', '-lc', 'ls'] })).toBe('ls');
-  });
-
-  test('joins any other argv into the line a shell would read the same way', () => {
-    expect(
-      shellCommandFromRawInput({ command: ['git', 'commit', '-m', "fix the user's bug"] }),
-    ).toBe("git commit -m 'fix the user'\\''s bug'");
-    expect(shellCommandFromRawInput({ command: ['bash', '-x', 'script.sh'] })).toBe(
-      'bash -x script.sh',
-    );
-    expect(shellCommandFromRawInput({ command: ['echo', ''] })).toBe("echo ''");
-  });
-
-  test('declines anything that is not a usable command', () => {
-    for (const input of [
-      null,
-      undefined,
-      {},
-      [],
-      'ls',
-      { command: '' },
-      { command: '   ' },
-      { command: 42 },
-      { command: [] },
-      { command: ['ls', 1] },
-      { command: ['bash', '-lc', '  '] },
-    ]) {
-      expect({ input, got: shellCommandFromRawInput(input) }).toEqual({ input, got: null });
-    }
   });
 });

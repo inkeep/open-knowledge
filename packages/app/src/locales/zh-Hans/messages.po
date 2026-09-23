@@ -1939,6 +1939,10 @@ msgstr "所有标签"
 msgid "Allow external access"
 msgstr "允许外部访问"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Allow read-only commands while this chat is open"
+msgstr "在此对话打开期间允许只读命令"
+
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
 msgstr "允许的元素值（留空 = 任意）"
@@ -2083,8 +2087,8 @@ msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "适用于（glob 模式；以 ! 开头表示排除；留空表示所有文档）"
 
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "适用于这台电脑上的所有项目。从内置终端启动的 Claude 和 Codex 会自动批准 OpenKnowledge 的读写工具（Claude 还会自动运行 “ok open”）。删除、移动、共享、导入或安装技能，以及其他命令和 OpenKnowledge 之外的文件编辑，仍然会询问。Cursor、OpenCode 和 Pi 不受影响。各智能体尽力而为。"
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "适用于本机上的所有项目。从内置终端启动的 Claude 和 Codex，以及应用内智能体面板对话中的任何智能体，都会自动批准 OpenKnowledge 的读写工具（Claude 还会自动运行 \"ok open\"）。删除、移动、分享、导入或安装技能、其他命令以及非 OpenKnowledge 文件的编辑仍会询问。在终端中，Cursor、OpenCode 和 Pi 不受影响。按各智能体尽力而为。"
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2187,6 +2191,10 @@ msgstr "询问 {agentName}"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Ask {agentName}, {hint}"
 msgstr "询问 {agentName}，{hint}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Ask again before read-only commands"
+msgstr "只读命令前重新询问"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -11257,6 +11265,10 @@ msgstr "读取"
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "通读这个代码库，为其中最复杂的模块起草一份技术规格：总览、架构、关键文件和待解决的问题，全部从规格索引页链接过去。"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Read-only allowed"
+msgstr "已允许只读命令"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr "来自另一个文档的 MirrorSource 块的只读副本。在来源处编辑，这里会实时更新。"
@@ -14570,6 +14582,10 @@ msgstr "这些规则来自你项目的 <0>{configFile}</0> 文件，该文件完
 #: src/components/settings/BuiltInSkillsSection.tsx
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "它们教你的 AI 工具如何使用 OpenKnowledge。安装其中一个，会把它添加到本机的每个 AI 工具。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "They run without asking while this chat is open"
+msgstr "在此对话打开期间它们无需询问即可运行"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Think"

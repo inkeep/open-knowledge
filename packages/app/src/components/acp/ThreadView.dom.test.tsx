@@ -50,6 +50,7 @@ const editQueued = vi.fn((_threadId: string, _id: string, _content: string) => e
 const holdQueued = vi.fn((_threadId: string, _id: string, _held: boolean) => {});
 const removeQueued = vi.fn((_threadId: string, _id: string) => {});
 const sendQueuedNow = vi.fn((_threadId: string, _id: string) => {});
+const setChatGrant = vi.fn((_threadId: string, _grant: string, _enabled: boolean) => {});
 const toastError = vi.fn((_message: string) => {});
 const cancel = vi.fn((_threadId: string) => {});
 const retryThread = vi.fn(async (_threadId: string) => {});
@@ -75,6 +76,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     holdQueued,
     removeQueued,
     sendQueuedNow,
+    setChatGrant,
     setMode,
     setConfigOption,
     setContextWindow,
@@ -469,6 +471,7 @@ function permission(overrides?: Partial<Extract<RenderedItem, { kind: 'permissio
     toolKind: 'execute',
     command: null,
     options: [{ optionId: 'yes', name: 'Allow', kind: 'allow_once' }],
+    readOnlyShell: false,
     resolved: null,
     toolCallId: null,
     mergedIntoToolCall: false,
@@ -486,6 +489,7 @@ afterEach(() => {
   localStorage.clear();
   vi.useRealTimers();
   respondPermission.mockClear();
+  setChatGrant.mockClear();
   setConfigOption.mockClear();
   setMode.mockClear();
   setContextWindow.mockClear();
@@ -1195,6 +1199,63 @@ describe('ThreadView inline diff', () => {
 });
 
 describe('ThreadView permissions', () => {
+  test('a read-only shell command offers to allow read-only commands for the chat', async () => {
+    model = makeModel({ items: [permission({ command: 'ls -la', readOnlyShell: true })] });
+    render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
+
+    const offer = screen.getByTestId('agent-thread-permission-allow-read-only');
+    expect(offer.textContent).toBe('Allow read-only commands while this chat is open');
+    const primary = screen.getByTestId('agent-thread-permission-allow');
+    expect(primary.compareDocumentPosition(offer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await userEvent.click(offer);
+    expect(setChatGrant).toHaveBeenCalledWith('thread-1', 'read_only_shell', true);
+    expect(respondPermission).toHaveBeenCalledWith('thread-1', 'r1', {
+      kind: 'selected',
+      optionId: 'yes',
+    });
+  });
+
+  test('a command the server did not vouch for gets no read-only offer', () => {
+    model = makeModel({ items: [permission({ command: 'rm -rf scratch' })] });
+    render(<ThreadView info={makeInfo({ status: 'awaiting_permission' })} />);
+
+    expect(screen.queryByTestId('agent-thread-permission-allow-read-only')).toBeNull();
+    expect(screen.queryByTestId('agent-thread-permission-stack')).toBeNull();
+    expect(screen.getByTestId('agent-thread-permission-allow')).toBeTruthy();
+  });
+
+  test('the settings menu can make read-only commands ask again', async () => {
+    const modes = {
+      currentModeId: 'code',
+      availableModes: [
+        { id: 'ask', name: 'Ask' },
+        { id: 'code', name: 'Code' },
+      ],
+    };
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ status: 'ready', modes, chatGrants: ['read_only_shell'] })} />,
+    );
+    const trigger = screen.getByRole('button', { name: /^Agent settings/ });
+    expect(trigger.getAttribute('aria-label')).toContain('Read-only allowed');
+    expect(screen.getByTestId('agent-thread-read-only-shell').textContent).toBe(
+      'Read-only allowed',
+    );
+    await userEvent.click(trigger);
+    const row = await screen.findByTestId('agent-thread-settings-read-only-shell');
+    expect(row.textContent).toContain('Ask again before read-only commands');
+    await userEvent.click(row);
+    expect(setChatGrant).toHaveBeenCalledWith('thread-1', 'read_only_shell', false);
+
+    rerender(<ThreadView info={makeInfo({ status: 'ready', modes })} />);
+    expect(screen.queryByTestId('agent-thread-read-only-shell')).toBeNull();
+    expect(
+      screen.getByRole('button', { name: /^Agent settings/ }).getAttribute('aria-label'),
+    ).not.toContain('Read-only');
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
+    expect(screen.queryByTestId('agent-thread-settings-read-only-shell')).toBeNull();
+  });
+
   test('moves focus from the composer to the primary permission when no overlay is open', () => {
     model = makeModel();
     const runningInfo = makeInfo({ status: 'running' });
