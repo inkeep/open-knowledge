@@ -239,6 +239,7 @@ function renderSection(
       </TooltipProvider>
     </QueryClientProvider>,
   );
+  return client;
 }
 
 beforeEach(() => {
@@ -374,6 +375,259 @@ describe('AgentConnectionsSection', () => {
     const tail = names.slice(2);
     expect(tail).toEqual([...tail].sort((a, b) => a.localeCompare(b)));
     expect(tail).toContain('Cline');
+  });
+
+  test('keeps the expanded agent order stable after enabling and resorts on remount', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText('Claude Agent');
+    await expandInApp();
+    const sectionSelector = 'section[aria-labelledby="settings-configure-agents-in-app"]';
+    const names = (): string[] =>
+      within(document.querySelector<HTMLElement>(sectionSelector) as HTMLElement)
+        .getAllByText(/^(Claude Agent|Gemini|Cursor|OpenCode|Cline)$/)
+        .map((node) => node.textContent ?? '');
+    const before = names();
+    expect(before.indexOf('Cline')).toBeLessThan(before.indexOf('Cursor'));
+
+    const cursor = screen.getByTestId('configure-agents-in-app-registry:cursor');
+    await user.click(cursor);
+
+    expect(cursor.getAttribute('aria-checked')).toBe('true');
+    expect(document.activeElement).toBe(cursor);
+    expect(names()).toEqual(before);
+
+    cleanup();
+    renderSection();
+    await screen.findByText('ACP wrapper for Cursor');
+    await expandInApp();
+    const after = names();
+    expect(after.indexOf('Cursor')).toBeLessThan(after.indexOf('Cline'));
+  });
+
+  test('keeps the expanded agent order stable when catalog detection refreshes', async () => {
+    let refreshedCatalog = structuredClone(catalog);
+    fetchCatalog = () => Promise.resolve(refreshedCatalog);
+    const client = renderSection();
+    await screen.findByText('Claude Agent');
+    await expandInApp();
+    const sectionSelector = 'section[aria-labelledby="settings-configure-agents-in-app"]';
+    const names = (): string[] =>
+      within(document.querySelector<HTMLElement>(sectionSelector) as HTMLElement)
+        .getAllByText(/^(Claude Agent|Gemini|Cursor|OpenCode|Cline)$/)
+        .map((node) => node.textContent ?? '');
+    const before = names();
+    const cursor = screen.getByTestId('configure-agents-in-app-registry:cursor');
+
+    refreshedCatalog = {
+      ...refreshedCatalog,
+      agents: refreshedCatalog.agents.map((agent) =>
+        agent.id === 'cursor'
+          ? {
+              ...agent,
+              harness: { cli: 'cursor', availability: 'present', credentials: 'unknown' },
+            }
+          : agent,
+      ),
+    };
+    await client.invalidateQueries({ queryKey: ['acp-catalog'] });
+    await waitFor(() => expect(cursor.getAttribute('aria-checked')).toBe('true'));
+
+    expect(names()).toEqual(before);
+  });
+
+  test('adds a newly detected catalog agent after the existing primary rows', async () => {
+    let refreshedCatalog = structuredClone(catalog);
+    fetchCatalog = () => Promise.resolve(refreshedCatalog);
+    const client = renderSection();
+    await screen.findByText('Claude Agent');
+
+    refreshedCatalog = {
+      ...refreshedCatalog,
+      agents: [
+        ...refreshedCatalog.agents,
+        {
+          id: 'brand-new',
+          name: 'Brand New',
+          version: '1',
+          source: 'registry',
+          supported: true,
+          featured: false,
+          harness: { cli: 'brand-new', availability: 'present', credentials: 'unknown' },
+        },
+      ],
+    };
+    await client.invalidateQueries({ queryKey: ['acp-catalog'] });
+
+    await screen.findByText('Brand New');
+    const inApp = within(
+      document.querySelector<HTMLElement>(
+        'section[aria-labelledby="settings-configure-agents-in-app"]',
+      ) as HTMLElement,
+    );
+    const names = (): string[] =>
+      inApp
+        .getAllByText(/^(Claude Agent|Gemini|Brand New|Cline|Cursor|OpenCode)$/)
+        .map((node) => node.textContent ?? '');
+    expect(names()).toEqual(['Claude Agent', 'Gemini', 'Brand New']);
+
+    await expandInApp();
+    expect(names()).toEqual(['Claude Agent', 'Gemini', 'Brand New', 'Cline', 'Cursor', 'OpenCode']);
+  });
+
+  test('keeps a late catalog agent in place when it is enabled', async () => {
+    let refreshedCatalog = structuredClone(catalog);
+    fetchCatalog = () => Promise.resolve(refreshedCatalog);
+    const user = userEvent.setup();
+    const client = renderSection();
+    await screen.findByText('Claude Agent');
+
+    refreshedCatalog = {
+      ...refreshedCatalog,
+      agents: [
+        ...refreshedCatalog.agents,
+        {
+          id: 'late-arrival',
+          name: 'Late Arrival',
+          version: '1',
+          source: 'registry',
+          supported: true,
+          featured: false,
+        },
+      ],
+    };
+    await client.invalidateQueries({ queryKey: ['acp-catalog'] });
+    await expandInApp();
+
+    const inApp = within(
+      document.querySelector<HTMLElement>(
+        'section[aria-labelledby="settings-configure-agents-in-app"]',
+      ) as HTMLElement,
+    );
+    const names = (): string[] =>
+      inApp
+        .getAllByText(/^(Claude Agent|Gemini|Cline|Cursor|OpenCode|Late Arrival)$/)
+        .map((node) => node.textContent ?? '');
+    const expected = ['Claude Agent', 'Gemini', 'Cline', 'Cursor', 'OpenCode', 'Late Arrival'];
+    expect(names()).toEqual(expected);
+    const lateArrival = await screen.findByTestId('configure-agents-in-app-registry:late-arrival');
+
+    await user.click(lateArrival);
+
+    expect(lateArrival.getAttribute('aria-checked')).toBe('true');
+    expect(names()).toEqual(expected);
+  });
+
+  test('keeps an existing agent folded when detection refreshes', async () => {
+    let refreshedCatalog = structuredClone(catalog);
+    fetchCatalog = () => Promise.resolve(refreshedCatalog);
+    const client = renderSection();
+    await screen.findByText('Claude Agent');
+    const toggle = screen.getByTestId('configure-agents-in-app-show-more');
+
+    expect(screen.queryByText('ACP wrapper for Cursor')).toBeNull();
+    expect(toggle.textContent).toContain('Show 3 more');
+
+    refreshedCatalog = {
+      ...refreshedCatalog,
+      agents: refreshedCatalog.agents.map((agent) =>
+        agent.id === 'cursor'
+          ? {
+              ...agent,
+              harness: { cli: 'cursor', availability: 'present', credentials: 'unknown' },
+            }
+          : agent,
+      ),
+    };
+    await client.invalidateQueries({ queryKey: ['acp-catalog'] });
+    await waitFor(() =>
+      expect(screen.getByTestId('configure-agents-in-app-show-more').textContent).toContain(
+        'Show 3 more',
+      ),
+    );
+
+    expect(screen.queryByText('ACP wrapper for Cursor')).toBeNull();
+    await expandInApp();
+    expect(
+      screen.getByTestId('configure-agents-in-app-registry:cursor').getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  test('keeps an initially enabled agent visible after disabling and resorts on remount', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ 'in-app:registry:cursor': true }));
+    reloadEnabledAgentsFromStorage();
+    const user = userEvent.setup();
+    renderSection();
+
+    const cursor = await screen.findByTestId('configure-agents-in-app-registry:cursor');
+    await user.click(cursor);
+
+    expect(cursor.getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByText('ACP wrapper for Cursor')).toBeTruthy();
+
+    cleanup();
+    renderSection();
+    await screen.findByText('Claude Agent');
+    expect(screen.queryByText('ACP wrapper for Cursor')).toBeNull();
+  });
+
+  test('preserves the initial order when expanding after disabling an agent', async () => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ 'in-app:registry:cursor': true }));
+    reloadEnabledAgentsFromStorage();
+    const user = userEvent.setup();
+    renderSection();
+    const inApp = within(
+      document.querySelector<HTMLElement>(
+        'section[aria-labelledby="settings-configure-agents-in-app"]',
+      ) as HTMLElement,
+    );
+    const names = (): string[] =>
+      inApp
+        .getAllByText(/^(Claude Agent|Gemini|Cursor|OpenCode|Cline)$/)
+        .map((node) => node.textContent ?? '');
+
+    const cursor = await screen.findByTestId('configure-agents-in-app-registry:cursor');
+    const initialPrimaryOrder = names();
+    await user.click(cursor);
+    await expandInApp();
+
+    expect(names().slice(0, initialPrimaryOrder.length)).toEqual(initialPrimaryOrder);
+  });
+
+  test('promotes an agent enabled in search when the search is cleared', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText('Claude Agent');
+    const search = screen.getByTestId('configure-agents-search');
+    await user.type(search, 'cursor');
+    const cursor = screen.getByTestId('configure-agents-in-app-registry:cursor');
+
+    await user.click(cursor);
+    await user.clear(search);
+
+    expect(cursor.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('ACP wrapper for Cursor')).toBeTruthy();
+    expect(
+      screen.getByTestId('configure-agents-in-app-show-more').getAttribute('aria-expanded'),
+    ).toBe('false');
+  });
+
+  test('promotes an agent enabled in the expanded list before collapsing it', async () => {
+    const user = userEvent.setup();
+    renderSection();
+    await screen.findByText('Claude Agent');
+    await expandInApp();
+    const cursor = screen.getByTestId('configure-agents-in-app-registry:cursor');
+
+    await user.click(cursor);
+    await user.click(screen.getByTestId('configure-agents-in-app-show-more'));
+
+    expect(cursor.getAttribute('aria-checked')).toBe('true');
+    expect(screen.getByText('ACP wrapper for Cursor')).toBeTruthy();
+    expect(screen.queryByText('Cline')).toBeNull();
+    expect(
+      screen.getByTestId('configure-agents-in-app-show-more').getAttribute('aria-expanded'),
+    ).toBe('false');
   });
 
   test('a group with something installed sorts above one with nothing', async () => {

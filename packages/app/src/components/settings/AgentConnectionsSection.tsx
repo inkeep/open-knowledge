@@ -38,12 +38,14 @@ import {
 } from '@/lib/acp/catalog';
 import {
   desktopEnabledKey,
+  type EnabledOverrides,
   inAppEnabledKey,
   setAgentEnabled,
   terminalEnabledKey,
   useEnabledOverrides,
 } from '@/lib/acp/enabled-agents';
 import {
+  type RegisteredAgent,
   reassignDefaultIfDisabled,
   registerAgent,
   useRegisteredAgents,
@@ -376,6 +378,93 @@ function readProducedFacts(snapshot: HostSnapshot | null): boolean {
   );
 }
 
+interface InAppOrdering {
+  primaryKeys: ReadonlySet<string>;
+  ranks: ReadonlyMap<string, number>;
+}
+
+function inAppAgentKey(agent: { source: string; id: string }): string {
+  return `${agent.source}:${agent.id}`;
+}
+
+function isInAppAgentChecked(
+  overrides: EnabledOverrides,
+  registeredKeys: ReadonlySet<string>,
+  agent: CatalogAgent,
+): boolean {
+  const isRegistered = registeredKeys.has(inAppAgentKey(agent));
+  const isDetected = isHarnessDetected(agent);
+  return isInAppAgentEnabled(
+    overrides,
+    agent.source,
+    agent.id,
+    isRegistered || isDetected,
+    agent.supported,
+  );
+}
+
+function isPrimaryInAppAgent(
+  overrides: EnabledOverrides,
+  registeredKeys: ReadonlySet<string>,
+  agent: CatalogAgent,
+): boolean {
+  return (
+    (agent.harness !== undefined && harnessPresenceRank(agent) === 0) ||
+    isInAppAgentChecked(overrides, registeredKeys, agent)
+  );
+}
+
+function createInAppOrdering(
+  agents: readonly CatalogAgent[],
+  overrides: EnabledOverrides,
+  registered: readonly RegisteredAgent[],
+): InAppOrdering {
+  const registeredKeys = new Set(registered.map((agent) => inAppAgentKey(agent)));
+  const isPrimary = (agent: CatalogAgent): boolean =>
+    isPrimaryInAppAgent(overrides, registeredKeys, agent);
+  const ordered = [...agents].sort(
+    (a, b) => Number(isPrimary(b)) - Number(isPrimary(a)) || a.name.localeCompare(b.name),
+  );
+  return {
+    primaryKeys: new Set(ordered.filter(isPrimary).map(inAppAgentKey)),
+    ranks: new Map(ordered.map((agent, index) => [inAppAgentKey(agent), index])),
+  };
+}
+
+function extendInAppOrdering(
+  ordering: InAppOrdering,
+  agents: readonly CatalogAgent[],
+  overrides: EnabledOverrides,
+  registered: readonly RegisteredAgent[],
+): InAppOrdering {
+  const unseen = agents.filter((agent) => !ordering.ranks.has(inAppAgentKey(agent)));
+  if (unseen.length === 0) return ordering;
+
+  const registeredKeys = new Set(registered.map((agent) => inAppAgentKey(agent)));
+  const isPrimary = (agent: CatalogAgent): boolean =>
+    isPrimaryInAppAgent(overrides, registeredKeys, agent);
+  const unseenPrimary = unseen.filter(isPrimary).sort((a, b) => a.name.localeCompare(b.name));
+  const unseenSecondary = unseen
+    .filter((agent) => !isPrimary(agent))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const existingKeys = [...ordering.ranks.entries()]
+    .sort(([, a], [, b]) => a - b)
+    .map(([key]) => key);
+  const existingPrimary = existingKeys.filter((key) => ordering.primaryKeys.has(key));
+  const existingSecondary = existingKeys.filter((key) => !ordering.primaryKeys.has(key));
+  const orderedKeys = [
+    ...existingPrimary,
+    ...unseenPrimary.map(inAppAgentKey),
+    ...existingSecondary,
+    ...unseenSecondary.map(inAppAgentKey),
+  ];
+
+  return {
+    primaryKeys: new Set([...ordering.primaryKeys, ...unseenPrimary.map(inAppAgentKey)]),
+    ranks: new Map(orderedKeys.map((key, index) => [key, index])),
+  };
+}
+
 export function AgentConnectionsSection({
   applyConnections = applyAgentConnectionIntents,
 }: {
@@ -404,6 +493,20 @@ export function AgentConnectionsSection({
     queryFn: ({ signal }) => fetchAgentCatalog(signal),
     staleTime: 5 * 60 * 1000,
   });
+  const [inAppOrdering, setInAppOrdering] = useState<InAppOrdering | null>(() =>
+    catalog.data === undefined
+      ? null
+      : createInAppOrdering(catalog.data.agents, overrides, registered),
+  );
+  let activeInAppOrdering = inAppOrdering ?? createInAppOrdering([], overrides, registered);
+  if (catalog.data !== undefined) {
+    const nextInAppOrdering =
+      inAppOrdering === null
+        ? createInAppOrdering(catalog.data.agents, overrides, registered)
+        : extendInAppOrdering(inAppOrdering, catalog.data.agents, overrides, registered);
+    if (nextInAppOrdering !== inAppOrdering) setInAppOrdering(nextInAppOrdering);
+    activeInAppOrdering = nextInAppOrdering;
+  }
 
   const refreshOnMount = useEffectEvent(() => {
     void refresh();
@@ -432,7 +535,7 @@ export function AgentConnectionsSection({
   }, [applyConnections, reloadInstallState]);
 
   const catalogAgents = catalog.data?.agents;
-  const registeredKeys = new Set(registered.map((a) => `${a.source}:${a.id}`));
+  const registeredKeys = new Set(registered.map((agent) => inAppAgentKey(agent)));
   const installedClis = terminalLaunch?.installedClis ?? {};
 
   const connections = snapshot === null ? [] : connectionsFromSnapshot(snapshot);
@@ -593,6 +696,22 @@ export function AgentConnectionsSection({
     setConfigureId(agentId);
   }
 
+  function refreshInAppOrdering(): void {
+    if (catalogAgents !== undefined) {
+      setInAppOrdering(createInAppOrdering(catalogAgents, overrides, registered));
+    }
+  }
+
+  function updateQuery(nextQuery: string): void {
+    if (query.trim() !== '' && nextQuery.trim() === '') refreshInAppOrdering();
+    setQuery(nextQuery);
+  }
+
+  function toggleInAppOverflow(): void {
+    if (showInAppOverflow) refreshInAppOrdering();
+    setShowInAppOverflow(!showInAppOverflow);
+  }
+
   const q = query.trim().toLowerCase();
   const matches = (text: string): boolean => q === '' || text.toLowerCase().includes(q);
 
@@ -637,21 +756,17 @@ export function AgentConnectionsSection({
   const showDesktop = !searching || desktopTargets.length > 0 || unlaunchableIds.length > 0;
 
   const inAppChecked = (agent: CatalogAgent): boolean => {
-    const isRegistered = registeredKeys.has(`${agent.source}:${agent.id}`);
-    const isDetected = isHarnessDetected(agent);
-    return isInAppAgentEnabled(
-      overrides,
-      agent.source,
-      agent.id,
-      isRegistered || isDetected,
-      agent.supported,
-    );
+    return isInAppAgentChecked(overrides, registeredKeys, agent);
   };
-  const isPrimaryAgent = (a: CatalogAgent): boolean =>
-    (a.harness !== undefined && harnessPresenceRank(a) === 0) || inAppChecked(a);
-  const inAppPrimary = inAppAgents.filter(isPrimaryAgent);
+  const wasPrimaryAgentAtOrderingBoundary = (agent: CatalogAgent): boolean => {
+    return activeInAppOrdering.primaryKeys.has(inAppAgentKey(agent));
+  };
+  const orderingRank = (agent: CatalogAgent): number => {
+    return activeInAppOrdering.ranks.get(inAppAgentKey(agent)) ?? Number.MAX_SAFE_INTEGER;
+  };
+  const inAppPrimary = inAppAgents.filter(wasPrimaryAgentAtOrderingBoundary);
   const inAppShown = [...(searching || showInAppOverflow ? inAppAgents : inAppPrimary)].sort(
-    (a, b) => Number(isPrimaryAgent(b)) - Number(isPrimaryAgent(a)) || a.name.localeCompare(b.name),
+    (a, b) => orderingRank(a) - orderingRank(b) || a.name.localeCompare(b.name),
   );
   const inAppHiddenCount = searching ? 0 : inAppAgents.length - inAppPrimary.length;
 
@@ -703,11 +818,12 @@ export function AgentConnectionsSection({
       ) : (
         <>
           {inAppShown.map((agent: CatalogAgent) => {
+            const agentKey = inAppAgentKey(agent);
             const checked = inAppChecked(agent);
             const hint = !agent.supported ? t`Not available on this platform` : agent.description;
             return (
               <AgentRow
-                key={`${agent.source}:${agent.id}`}
+                key={agentKey}
                 icon={
                   <RegisteredAgentIcon
                     agentId={agent.id}
@@ -720,8 +836,8 @@ export function AgentConnectionsSection({
                 checked={checked}
                 disabled={!agent.supported}
                 ariaLabel={t`Enable ${agent.name}`}
-                testId={`configure-agents-in-app-${agent.source}:${agent.id}`}
-                rowTestId={`configure-agents-in-app-row-${agent.source}:${agent.id}`}
+                testId={`configure-agents-in-app-${agentKey}`}
+                rowTestId={`configure-agents-in-app-row-${agentKey}`}
                 onToggle={(next) => {
                   if (next) {
                     registerAgent(
@@ -738,7 +854,7 @@ export function AgentConnectionsSection({
                     setAgentEnabled(inAppEnabledKey(agent.source, agent.id), true);
                   } else {
                     setAgentEnabled(inAppEnabledKey(agent.source, agent.id), false);
-                    reassignDefaultIfDisabled(`${agent.source}:${agent.id}`, (a) =>
+                    reassignDefaultIfDisabled(agentKey, (a) =>
                       isInAppAgentEnabled(overrides, a.source, a.id, true, a.supported),
                     );
                   }
@@ -749,7 +865,7 @@ export function AgentConnectionsSection({
           <FoldToggleButton
             hiddenCount={inAppHiddenCount}
             expanded={showInAppOverflow}
-            onToggle={() => setShowInAppOverflow((v) => !v)}
+            onToggle={toggleInAppOverflow}
             testId="configure-agents-in-app-show-more"
           />
         </>
@@ -945,7 +1061,7 @@ export function AgentConnectionsSection({
         />
         <Input
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => updateQuery(event.target.value)}
           placeholder={t`Search agents`}
           aria-label={t`Search agents`}
           className="ps-8"
