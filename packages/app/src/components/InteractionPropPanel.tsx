@@ -76,7 +76,6 @@ export const InteractionPropPanel: FC<InteractionPropPanelProps> = ({
         side="bottom"
         align="start"
         sideOffset={8}
-        collisionPadding={8}
         aria-label={ariaLabel}
         data-ok-prop-panel={kind}
         data-ok-declines-keyboard=""

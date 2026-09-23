@@ -178,7 +178,10 @@ export const HelpPopover: FC = () => {
             <Trans>Resources</Trans>
           </TooltipContent>
         </Tooltip>
-        <PopoverContent align="end" className="w-56 p-3">
+        <PopoverContent
+          align="end"
+          className="w-56 p-3 subtle-scrollbar max-h-(--radix-popover-content-available-height) overflow-y-auto data-[state=closed]:overflow-hidden"
+        >
           {sections.map((section, index) => (
             <div key={section.key} className={cn(index > 0 && 'mt-3')}>
               <SectionHeading>{t(section.heading)}</SectionHeading>
