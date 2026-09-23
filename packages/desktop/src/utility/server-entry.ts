@@ -1,25 +1,11 @@
 import { rename, writeFile } from 'node:fs/promises';
 import { isAbsolute, relative, resolve } from 'node:path';
-import {
-  detectGh,
-  detectGhAccounts,
-  ensurePiBridge,
-  getNativeTomlMcpEditor,
-  loadConfig,
-  makeLazyProbeTokenStore,
-  probeOwnManagedEditorMcpEntry,
-  probePiBridgeState,
-} from '@inkeep/open-knowledge';
-import { resolveServerRuntimeConfig, type ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
-import {
-  type BootedServer,
-  type BootServerOptions,
-  type Config,
-  ConfigSchema,
-  ensureProjectGit,
-  initContent,
-  makeLazyEmbeddingsKeyStore,
-  type ServerExitReason,
+import type { ServerRuntimeConfig } from '@inkeep/open-knowledge-core';
+import type {
+  BootedServer,
+  BootServerOptions,
+  Config,
+  ServerExitReason,
 } from '@inkeep/open-knowledge-server';
 import { type KeyringSmokeResult, runKeyringSmoke } from './keyring-smoke.ts';
 
@@ -89,12 +75,18 @@ export type UtilityOutgoingMessage =
   | UtilityDegradedMessage
   | UtilityDebugKeyringSmokeResultMessage;
 
+type UtilityBootedServer = Pick<BootedServer, 'port' | 'destroy' | 'degraded'>;
+
+interface UtilityServerModule {
+  bootServer: (opts: BootServerOptions) => Promise<UtilityBootedServer>;
+}
+
 export interface SetupUtilityDeps {
   parentPort: {
     on(event: 'message', handler: (event: { data: unknown }) => void): void;
     postMessage(value: UtilityOutgoingMessage): void;
   } | null;
-  importServer: () => Promise<typeof import('@inkeep/open-knowledge-server')>;
+  importServer: () => Promise<UtilityServerModule>;
   exit: (code: number) => void;
   parentPid: number;
   killProbe: (pid: number, signal: number | string) => void;
@@ -136,7 +128,7 @@ export interface UtilityHandle {
 }
 
 export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
-  let booted: BootedServer | null = null;
+  let booted: UtilityBootedServer | null = null;
   let parentPollHandle: { unref?: () => void; clear: () => void } | null = null;
   let shuttingDown = false;
   let resolveReady!: (msg: UtilityReadyMessage) => void;
@@ -193,7 +185,21 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
 
   async function handleInit(msg: UtilityInitMessage) {
     try {
-      const server = await deps.importServer();
+      const [server, cli, serverNamespace] = await Promise.all([
+        deps.importServer(),
+        import('@inkeep/open-knowledge'),
+        import('@inkeep/open-knowledge-server'),
+      ]);
+      const {
+        detectGh,
+        detectGhAccounts,
+        ensurePiBridge,
+        getNativeTomlMcpEditor,
+        makeLazyProbeTokenStore,
+        probeOwnManagedEditorMcpEntry,
+        probePiBridgeState,
+      } = cli;
+      const { makeLazyEmbeddingsKeyStore } = serverNamespace;
       const projectDir = msg.opts.projectDir ?? msg.opts.contentDir;
       const prepare = deps.prepareBootEnvironment ?? defaultPrepareBootEnvironment;
       const prepared = await prepare(msg.opts);
@@ -265,6 +271,10 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         });
       }
     } catch (err) {
+      console.warn('[utility] init failed', {
+        err: (err as Error).message,
+        stack: (err as Error).stack,
+      });
       const errMsg: UtilityErrorMessage = {
         type: 'error',
         message: (err as Error).message,
@@ -371,11 +381,16 @@ function isAddressInUse(err: unknown): boolean {
   );
 }
 
-export function resolveDesktopServerRuntime(projectDir: string): {
+export async function resolveDesktopServerRuntime(projectDir: string): Promise<{
   config: Config;
   configValid: boolean;
   serverRuntime: ServerRuntimeConfig;
-} {
+}> {
+  const [{ loadConfig }, { resolveServerRuntimeConfig }, { ConfigSchema }] = await Promise.all([
+    import('@inkeep/open-knowledge'),
+    import('@inkeep/open-knowledge-core'),
+    import('@inkeep/open-knowledge-server'),
+  ]);
   let config: Config;
   let configValid: boolean;
   try {
@@ -405,6 +420,7 @@ async function defaultPrepareBootEnvironment(
   ipcOpts: UtilityInitMessage['opts'],
 ): Promise<PreparedBootEnvironment> {
   const projectDir = ipcOpts.projectDir ?? ipcOpts.contentDir;
+  const { ensureProjectGit, initContent } = await import('@inkeep/open-knowledge-server');
 
   const degradedHints: string[] = [];
   if (ipcOpts.didEnsureGit !== true) {
@@ -416,7 +432,7 @@ async function defaultPrepareBootEnvironment(
 
   initContent(projectDir);
 
-  const { config, configValid, serverRuntime } = resolveDesktopServerRuntime(projectDir);
+  const { config, configValid, serverRuntime } = await resolveDesktopServerRuntime(projectDir);
 
   const contentDir = resolveContentDir(projectDir, config, ipcOpts.contentDir);
   const rawContentDir = config.content.dir;

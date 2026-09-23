@@ -156,6 +156,7 @@ export default {
         'src/utility/pty-host.ts',
         'src/**/*.test.ts',
         'src/**/*.typelock.ts',
+        'src/utility/server-entry-load-probe.fixture.test-helper.ts',
         'scripts/*.mjs',
         'tests/**/*.test.ts',
         'tests/**/*.test.mjs',

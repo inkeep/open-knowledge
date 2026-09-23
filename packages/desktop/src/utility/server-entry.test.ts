@@ -42,56 +42,56 @@ function writeLocalConfig(yaml: string) {
 }
 
 describe('resolveDesktopServerRuntime — scope-correct three-layer load', () => {
-  test('honors a project-local server.allowExternal (the desktop consent path)', () => {
+  test('honors a project-local server.allowExternal (the desktop consent path)', async () => {
     writeLocalConfig('server:\n  allowExternal: true\n');
-    const { serverRuntime, configValid } = resolveDesktopServerRuntime(testDir);
+    const { serverRuntime, configValid } = await resolveDesktopServerRuntime(testDir);
     expect(configValid).toBe(true);
     expect(serverRuntime.allowExternal).toBe(true);
   });
 
-  test('a committed server.allowExternal stays inert (clone-leak guard)', () => {
+  test('a committed server.allowExternal stays inert (clone-leak guard)', async () => {
     writeProjectConfig('server:\n  allowExternal: true\n');
-    const { serverRuntime } = resolveDesktopServerRuntime(testDir);
+    const { serverRuntime } = await resolveDesktopServerRuntime(testDir);
     expect(serverRuntime.allowExternal).toBe(false);
   });
 
-  test('project-local wins over a committed allowExternal in either direction', () => {
+  test('project-local wins over a committed allowExternal in either direction', async () => {
     writeProjectConfig('server:\n  allowExternal: true\n');
     writeLocalConfig('server:\n  allowExternal: false\n');
-    expect(resolveDesktopServerRuntime(testDir).serverRuntime.allowExternal).toBe(false);
+    expect((await resolveDesktopServerRuntime(testDir)).serverRuntime.allowExternal).toBe(false);
 
     rmSync(resolve(testDir, '.ok'), { recursive: true, force: true });
     writeProjectConfig('server:\n  allowExternal: false\n');
     writeLocalConfig('server:\n  allowExternal: true\n');
-    expect(resolveDesktopServerRuntime(testDir).serverRuntime.allowExternal).toBe(true);
+    expect((await resolveDesktopServerRuntime(testDir)).serverRuntime.allowExternal).toBe(true);
   });
 
-  test('surfaces committed server.externalUrl + server.port (project scope, honest boot)', () => {
+  test('surfaces committed server.externalUrl + server.port (project scope, honest boot)', async () => {
     writeProjectConfig('server:\n  externalUrl: https://box.tailnet.ts.net\n  port: 24550\n');
-    const { serverRuntime } = resolveDesktopServerRuntime(testDir);
+    const { serverRuntime } = await resolveDesktopServerRuntime(testDir);
     expect(serverRuntime.externalUrl).toBe('https://box.tailnet.ts.net');
     expect(serverRuntime.port).toBe(24550);
   });
 
-  test('a project-local consent + committed externalUrl together admit the tunnel', () => {
+  test('a project-local consent + committed externalUrl together admit the tunnel', async () => {
     writeProjectConfig('server:\n  externalUrl: https://box.tailnet.ts.net\n  port: 24550\n');
     writeLocalConfig('server:\n  allowExternal: true\n');
-    const { serverRuntime } = resolveDesktopServerRuntime(testDir);
+    const { serverRuntime } = await resolveDesktopServerRuntime(testDir);
     expect(serverRuntime.allowExternal).toBe(true);
     expect(serverRuntime.externalUrl).toBe('https://box.tailnet.ts.net');
   });
 
-  test('degrades to schema defaults (consent forced off) on a schema-invalid config', () => {
+  test('degrades to schema defaults (consent forced off) on a schema-invalid config', async () => {
     writeProjectConfig('server:\n  port: "abc"\n');
-    const { config, configValid, serverRuntime } = resolveDesktopServerRuntime(testDir);
+    const { config, configValid, serverRuntime } = await resolveDesktopServerRuntime(testDir);
     expect(configValid).toBe(false);
     expect(serverRuntime.allowExternal).toBe(false);
     expect(serverRuntime.loopbackOnly).toBe(true);
     expect(config.server?.allowExternal ?? false).toBe(false);
   });
 
-  test('no config files at all resolves to loopback-only defaults', () => {
-    const { serverRuntime, configValid } = resolveDesktopServerRuntime(testDir);
+  test('no config files at all resolves to loopback-only defaults', async () => {
+    const { serverRuntime, configValid } = await resolveDesktopServerRuntime(testDir);
     expect(configValid).toBe(true);
     expect(serverRuntime.allowExternal).toBe(false);
     expect(serverRuntime.loopbackOnly).toBe(true);
