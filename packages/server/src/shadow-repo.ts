@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, rmSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   OK_DIR,
   OK_MACHINE_LOCAL_ROOT_DIRS,
@@ -92,11 +92,37 @@ const SHADOW_EXCLUDE_PATTERNS: readonly string[] = [
   ATOMIC_TEMP_GLOB,
 ];
 
-const SHADOW_EXCLUDE_CONTENT = `# OpenKnowledge machine-local state and in-flight atomic writes: never part of a version, never staged.
-${SHADOW_EXCLUDE_PATTERNS.join('\n')}
-`;
+function realpathOrResolved(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return resolve(path);
+  }
+}
 
-const EXCLUDE_PATTERN_ARGS = SHADOW_EXCLUDE_PATTERNS.flatMap((pattern) => ['-x', pattern]);
+export function gitDirExcludePatterns(shadow: ShadowHandle): string[] {
+  const workTreeReal = realpathOrResolved(shadow.workTree);
+  const patterns = new Set<string>();
+  for (const candidate of [resolve(shadow.workTree, '.git'), shadow.gitDir]) {
+    if (!existsSync(candidate)) continue;
+    const rel = relative(workTreeReal, realpathOrResolved(candidate));
+    if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue;
+    const segments = rel.split(sep);
+    if (segments.includes('.git')) continue;
+    patterns.add(`/${segments.join('/')}/`);
+  }
+  return [...patterns];
+}
+
+function shadowExcludePatterns(shadow: ShadowHandle): string[] {
+  return [...SHADOW_EXCLUDE_PATTERNS, ...gitDirExcludePatterns(shadow)];
+}
+
+function shadowExcludeContent(shadow: ShadowHandle): string {
+  return `# OpenKnowledge machine-local state, in-flight atomic writes, and any git dir inside the work tree: never part of a version, never staged.
+${shadowExcludePatterns(shadow).join('\n')}
+`;
+}
 
 const UPDATE_INDEX_ARGV_BUDGET_BYTES = 8000;
 
@@ -137,7 +163,8 @@ async function dropExcludedIndexEntries(
   let dropped = 0;
   let listedCount: number | undefined;
   try {
-    const listed = await sg.env(env).raw('ls-files', '-z', '-i', '-c', ...EXCLUDE_PATTERN_ARGS);
+    const excludeArgs = shadowExcludePatterns(shadow).flatMap((pattern) => ['-x', pattern]);
+    const listed = await sg.env(env).raw('ls-files', '-z', '-i', '-c', ...excludeArgs);
     const stale = listed.split('\0').filter((p) => p.length > 0);
     listedCount = stale.length;
     for (const chunk of chunkByArgvBudget(stale, UPDATE_INDEX_ARGV_BUDGET_BYTES)) {
@@ -173,7 +200,7 @@ async function ensureShadowExcludes(shadow: ShadowHandle): Promise<void> {
     tracedMkdirSync(infoDir, { recursive: true });
     const outcome = ensureGitignoreEntries(
       excludeFile,
-      SHADOW_EXCLUDE_CONTENT,
+      shadowExcludeContent(shadow),
       'shadow info/exclude',
     );
     shadowExcludesWritten.set(shadow.gitDir, true);
