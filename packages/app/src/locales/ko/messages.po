@@ -2167,7 +2167,6 @@ msgstr "질문"
 msgid "Ask {0} CLI"
 msgstr "{0} CLI 질문"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -16058,6 +16057,10 @@ msgstr "이 지식 베이스는 무엇에 쓰나요?"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "AI 작업 내용? (선택 사항)"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "무엇을 작업할까요?"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."

@@ -283,6 +283,45 @@ function highlightStderr(machineDetail: string): ReactNode {
   });
 }
 
+function isSignInWaitingStatus(status: ThreadInfo['status']): boolean {
+  return status === 'auth_required' || status === 'authenticating';
+}
+
+function isStartingStatus(status: ThreadInfo['status']): boolean {
+  return status === 'installing' || status === 'spawning' || isSignInWaitingStatus(status);
+}
+
+function nextStartOutcome(
+  status: ThreadInfo['status'],
+  previous: ThreadInfo['status'],
+  announced: 'ready' | 'failed' | null,
+): 'ready' | 'failed' | null {
+  if (isStartingStatus(previous)) {
+    if (status === 'ready') return 'ready';
+    if (status === 'error' || status === 'exited') return 'failed';
+  }
+  switch (status) {
+    case 'installing':
+    case 'spawning':
+    case 'auth_required':
+    case 'authenticating':
+      return null;
+    case 'ready':
+      return announced;
+    case 'error':
+    case 'exited':
+      return announced === 'failed' ? 'failed' : null;
+    case 'running':
+    case 'awaiting_permission':
+      return null;
+    default: {
+      const exhaustive: never = status;
+      void exhaustive;
+      return null;
+    }
+  }
+}
+
 export function ThreadView({
   info,
   active = true,
@@ -466,42 +505,17 @@ export function ThreadView({
   const [newChatPending, setNewChatPending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
   const displayedStartStatus = useDelayedInstallStatus(status);
-  const wasStarting = useRef(false);
-  const [startOutcome, setStartOutcome] = useState<'ready' | 'failed' | null>(null);
-  useEffect(() => {
-    if (
-      status === 'installing' ||
-      status === 'spawning' ||
-      status === 'auth_required' ||
-      status === 'authenticating'
-    ) {
-      wasStarting.current = true;
-      setStartOutcome(null);
-      return;
-    }
-    if (status === 'ready') {
-      if (!wasStarting.current) return;
-      wasStarting.current = false;
-      setStartOutcome('ready');
-      return;
-    }
-    if (status === 'error' || status === 'exited') {
-      if (!wasStarting.current) {
-        setStartOutcome((announced) => (announced === 'failed' ? announced : null));
-        return;
-      }
-      wasStarting.current = false;
-      setStartOutcome('failed');
-      return;
-    }
-    if (status === 'running' || status === 'awaiting_permission') {
-      wasStarting.current = false;
-      setStartOutcome(null);
-      return;
-    }
-    const exhaustive: never = status;
-    void exhaustive;
-  }, [status]);
+  const [startState, setStartState] = useState<{
+    seen: ThreadInfo['status'];
+    outcome: 'ready' | 'failed' | null;
+  }>({ seen: status, outcome: null });
+  if (startState.seen !== status) {
+    setStartState({
+      seen: status,
+      outcome: nextStartOutcome(status, startState.seen, startState.outcome),
+    });
+  }
+  const startOutcome = startState.outcome;
   const startStatusMessage =
     displayedStartStatus === 'installing'
       ? t`Installing ${agentName}…`
@@ -529,7 +543,7 @@ export function ThreadView({
     ? !resumePending && resumable
     : (status === 'ready' || hasRecoverablePromptFailure) && !turnActive;
   const signingIn = status === 'authenticating';
-  const awaitingSignIn = status === 'auth_required' || signingIn;
+  const awaitingSignIn = isSignInWaitingStatus(status);
   const canRetry = !archived && (status === 'error' || awaitingSignIn);
   const terminalCli = useHarnessTerminalCli(info.agent.id);
   const [retryPending, setRetryPending] = useState(false);
@@ -1113,6 +1127,7 @@ export function ThreadView({
                   <ThreadEmptyState
                     status={status}
                     displayedStartStatus={displayedStartStatus}
+                    justSettled={startOutcome === 'ready'}
                     archived={archived}
                     agent={info.agent}
                     authOffer={authOffer}
@@ -2014,6 +2029,7 @@ function ThreadAuthOfferButton({
 function ThreadEmptyState({
   status,
   displayedStartStatus,
+  justSettled,
   archived,
   agent,
   authOffer,
@@ -2022,6 +2038,7 @@ function ThreadEmptyState({
 }: {
   status: ThreadInfo['status'];
   displayedStartStatus: ThreadInfo['status'];
+  justSettled: boolean;
   archived: boolean;
   agent: ThreadInfo['agent'];
   authOffer: ThreadAuthOfferWithoutSignIn;
@@ -2030,6 +2047,12 @@ function ThreadEmptyState({
 }): ReactNode {
   const { t } = useLingui();
   const agentName = agentDisplayName(agent.name);
+  const [showSettle, setShowSettle] = useState(justSettled);
+  const [previousJustSettled, setPreviousJustSettled] = useState(justSettled);
+  if (previousJustSettled !== justSettled) {
+    setPreviousJustSettled(justSettled);
+    if (justSettled) setShowSettle(true);
+  }
 
   if (archived) {
     return <ThreadTranscriptSkeleton />;
@@ -2037,24 +2060,32 @@ function ThreadEmptyState({
 
   if (status === 'ready') {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-        <RegisteredAgentIcon
-          agentId={agent.id}
-          iconUrl={agent.iconUrl}
-          className="size-12 opacity-25 grayscale"
-        />
-        <p className="text-muted-foreground text-sm">{t`Ask ${agentName}`}</p>
+      <div className="flex h-full items-center justify-center px-6">
+        <div
+          className={cn('flex items-center gap-2.5', showSettle && 'animate-agent-ready-settle')}
+          data-testid="agent-thread-ready"
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) setShowSettle(false);
+          }}
+        >
+          <RegisteredAgentIcon agentId={agent.id} iconUrl={agent.iconUrl} className="size-6" />
+          <p className="text-foreground/70 text-center text-base">{t`What should we work on?`}</p>
+        </div>
       </div>
     );
   }
 
   if (authOffer.actionLabel !== null) {
+    const waitingOnSignIn = isSignInWaitingStatus(status);
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div
+        className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
+        data-testid="agent-thread-auth-offer"
+      >
         <RegisteredAgentIcon
           agentId={agent.id}
           iconUrl={agent.iconUrl}
-          className="size-12 opacity-25 grayscale"
+          className={cn('size-12', !waitingOnSignIn && 'opacity-25 grayscale')}
         />
         <p className="text-muted-foreground text-sm">{authOffer.headline}</p>
         <ThreadAuthOfferButton
@@ -2075,13 +2106,16 @@ function ThreadEmptyState({
           ? t`Signing in to ${agentName}…`
           : t`Connecting to ${agentName}…`;
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+    <div
+      className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center"
+      data-testid="agent-thread-starting-empty-state"
+    >
       <RegisteredAgentIcon
         agentId={agent.id}
         iconUrl={agent.iconUrl}
-        className="size-12 animate-pulse opacity-25 grayscale motion-reduce:animate-none"
+        className="size-8 animate-agent-mark-breathe opacity-25 grayscale motion-reduce:animate-none"
       />
-      <p className="shimmer text-sm">{loadingMessage}</p>
+      <p className="shimmer-subtle text-sm">{loadingMessage}</p>
     </div>
   );
 }
@@ -2378,11 +2412,7 @@ function ThreadAuthPrompt({
       className="mx-auto flex w-full max-w-72 flex-col items-center gap-4 px-2 py-6 text-center"
       data-testid="agent-thread-notice"
     >
-      <RegisteredAgentIcon
-        agentId={agent.id}
-        iconUrl={agent.iconUrl}
-        className="size-12 opacity-25 grayscale"
-      />
+      <RegisteredAgentIcon agentId={agent.id} iconUrl={agent.iconUrl} className="size-12" />
       {}
       <div className="sr-only" role="status" aria-live="polite">
         {signingIn ? t`Signing in to ${agentName}` : ''}

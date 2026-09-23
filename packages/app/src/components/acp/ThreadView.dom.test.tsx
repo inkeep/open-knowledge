@@ -21,6 +21,7 @@ import type {
   RenderedTerminal,
   ThreadRenderModel,
 } from '@/lib/acp/thread-event-model';
+import { expectVisualClassTokensAbsent } from '@/test-utils/visual-contract';
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
 i18n.load('en', {});
@@ -2822,6 +2823,12 @@ describe('ThreadView retry', () => {
 
     expect(screen.queryByTestId('agent-thread-restore')).toBeNull();
     expect(screen.getByTestId('agent-thread-auth-status')).toBeDefined();
+    const signInMark = screen.getByTestId('agent-thread-notice').firstElementChild;
+    expect(signInMark?.tagName.toLowerCase()).toBe('svg');
+    expectVisualClassTokensAbsent(signInMark?.getAttribute('class') ?? '', [
+      'opacity-25',
+      'grayscale',
+    ]);
   });
 
   test('a prompt failure offers Edit and resend instead of Retry, seeds the composer, and hides the failed pair', async () => {

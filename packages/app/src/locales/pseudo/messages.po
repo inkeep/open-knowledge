@@ -2163,7 +2163,6 @@ msgstr ""
 msgid "Ask {0} CLI"
 msgstr ""
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -16053,6 +16052,10 @@ msgstr ""
 
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
+msgstr ""
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
 msgstr ""
 
 #: src/components/CreatedItemsList.tsx

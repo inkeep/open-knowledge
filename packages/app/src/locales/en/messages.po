@@ -2167,7 +2167,6 @@ msgstr "Ask"
 msgid "Ask {0} CLI"
 msgstr "Ask {0} CLI"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -16058,6 +16057,10 @@ msgstr "What is this knowledge base for?"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "What should the AI do? (optional)"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "What should we work on?"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."

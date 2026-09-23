@@ -2167,7 +2167,6 @@ msgstr "詢問"
 msgid "Ask {0} CLI"
 msgstr "詢問 {0} CLI"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -16058,6 +16057,10 @@ msgstr "這個知識庫是要做什麼用的？"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "希望 AI 做什麼？（選填）"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "我們來做些什麼？"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."

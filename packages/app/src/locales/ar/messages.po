@@ -2167,7 +2167,6 @@ msgstr "اسأل"
 msgid "Ask {0} CLI"
 msgstr "اسأل واجهة {0} السطرية"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -16058,6 +16057,10 @@ msgstr "ما الغرض من قاعدة المعرفة هذه؟"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "ما الذي ينبغي أن يفعله الذكاء الاصطناعي؟ (اختياري)"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "على ماذا نعمل؟"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."

@@ -2163,7 +2163,6 @@ msgstr "पूछें"
 msgid "Ask {0} CLI"
 msgstr "{0} CLI से पूछें"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -16054,6 +16053,10 @@ msgstr "यह ज्ञान आधार किस लिए है?"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "AI को क्या करना चाहिए? (वैकल्पिक)"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "हम किस पर काम करें?"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."

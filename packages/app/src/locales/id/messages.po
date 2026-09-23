@@ -2163,7 +2163,6 @@ msgstr "Tanya"
 msgid "Ask {0} CLI"
 msgstr "Tanya CLI {0}"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -16054,6 +16053,10 @@ msgstr "Untuk apa basis pengetahuan ini?"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "Apa yang harus dilakukan AI? (opsional)"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "Apa yang ingin kita kerjakan?"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."

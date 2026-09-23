@@ -330,6 +330,7 @@
     "3J7d2N": ["Judul bagian besar."],
     "3JYy1p": ["Cabang ", ["0"], " sudah tidak ada. Dikloning ke cabang bawaan."],
     "3JjdaA": ["Jalankan"],
+    "3Jsk1e": ["Apa yang ingin kita kerjakan?"],
     "3KOHFt": [
       "Tambahkan properti (",
       ["problemCount", "plural", { "other": ["#", " properti wajib belum ada"] }],

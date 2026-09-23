@@ -219,6 +219,31 @@
   --animate-agent-breathing: agent-breathing 2.4s ease-in-out infinite;
   --animate-undo-ready: undo-ready 600ms var(--ease-out-strong) forwards;
 
+  @keyframes agent-ready-settle {
+    from {
+      opacity: 0;
+      transform: translateY(3px) scale(0.96);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+
+  --animate-agent-ready-settle: agent-ready-settle 240ms var(--ease-out-strong) both;
+
+  @keyframes agent-mark-breathe {
+    0%,
+    100% {
+      opacity: 0.25;
+    }
+    50% {
+      opacity: 0.12;
+    }
+  }
+
+  --animate-agent-mark-breathe: agent-mark-breathe 2.4s ease-in-out infinite;
+
   @keyframes sidebar-push-pulse {
     0% {
       box-shadow: inset 4px 0 0 0 color-mix(in oklab, var(--primary) 0%, transparent);
@@ -385,6 +410,36 @@
   }
 }
 
+/* A quieter shimmer for the agent-thread starting state, whose status line sits
+   alone in an otherwise empty pane. The sweep runs from `--muted-foreground` to
+   a 35% mix toward `--foreground`, so its floor is the contrast the text would
+   have had unswept and its peak stays far below the default utility's full
+   `--foreground`. Mixing toward `--background` instead would drop the trough
+   under WCAG AA on the default light theme. */
+@utility shimmer-subtle {
+  background: linear-gradient(
+    90deg,
+    var(--muted-foreground) 25%,
+    color-mix(in oklab, var(--foreground) 35%, var(--muted-foreground)) 50%,
+    var(--muted-foreground) 75%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer-subtle {
+    animation: none;
+    background: none;
+    -webkit-text-fill-color: var(--muted-foreground);
+    color: var(--muted-foreground);
+  }
+}
+
 /* Reduced-motion override — keep the opacity crossfade as a comprehension
    aid (the panel still appears/disappears) but pin the height so the
    layout-triggering animation doesn't fire. Matches the rest of this
@@ -465,6 +520,23 @@
 @media (prefers-reduced-motion: reduce) {
   .ok-agent-insert-flash {
     animation-duration: 1ms;
+  }
+}
+
+/* The agent-ready settle keeps its fade for reduced-motion viewers — it is what
+   marks the agent becoming usable — and drops only the spatial part. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-agent-ready-settle {
+    animation-name: agent-ready-fade;
+  }
+}
+
+@keyframes agent-ready-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
