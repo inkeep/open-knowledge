@@ -1885,6 +1885,7 @@ msgstr "代理設定 — {headerSummary}：變更將在繼續此對話時生效"
 msgid "Agent transcript"
 msgstr "代理記錄"
 
+#: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
@@ -14029,6 +14030,7 @@ msgstr "可用的範本"
 
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
+#: src/components/EditorArea.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx

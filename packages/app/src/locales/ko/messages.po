@@ -1885,6 +1885,7 @@ msgstr "에이전트 설정 — {headerSummary}: 변경 사항은 이 대화를 
 msgid "Agent transcript"
 msgstr "에이전트 대화 기록"
 
+#: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
@@ -14029,6 +14030,7 @@ msgstr "사용 가능한 템플릿"
 
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
+#: src/components/EditorArea.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx

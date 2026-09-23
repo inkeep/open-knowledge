@@ -1,6 +1,6 @@
-import { act, cleanup, render } from '@testing-library/react';
+import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import * as ResizablePrimitive from 'react-resizable-panels';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from '@/components/ui/resizable';
 import {
   describeRailFloorShortfall,
@@ -320,6 +320,180 @@ describe('the markers the resolver keys on are the ones the panel library guaran
     expect(panelSpacePx).toBe(1610);
 
     expect(resolveRailPanelSpacePx(container)).toBeCloseTo(panelSpacePx, 6);
+  });
+
+  test('the agents-only separator reports and keyboard-resizes the Agents pane', () => {
+    const offsetWidth = vi
+      .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+      .mockImplementation(function () {
+        if (this.id === 'editor-main') return 700;
+        if (this.id === 'agents-column') return 300;
+        return 0;
+      });
+    const offsetLeft = vi
+      .spyOn(HTMLElement.prototype, 'offsetLeft', 'get')
+      .mockImplementation(function () {
+        if (this.id === 'terminal-column') return 700;
+        if (this.id === 'agents-column') return 701;
+        if (this.hasAttribute('data-separator')) {
+          const separators = [...(this.parentElement?.querySelectorAll('[data-separator]') ?? [])];
+          return separators.indexOf(this) === 0 ? 699 : 700;
+        }
+        return 0;
+      });
+    try {
+      const view = render(
+        <ResizablePanelGroup
+          id="agents-only-aria-group"
+          orientation="horizontal"
+          defaultLayout={{ 'editor-main': 70, 'terminal-column': 0, 'agents-column': 30 }}
+        >
+          <ResizablePanel id="editor-main" minSize="5%" />
+          <ResizableHandle />
+          <ResizablePanel id="terminal-column" minSize="0%" maxSize="0%">
+            Terminal
+          </ResizablePanel>
+          <ResizableHandle aria-label="Agents" aria-controls="agents-column" />
+          <ResizablePanel
+            id="agents-column"
+            minSize="0%"
+            maxSize="95%"
+            collapsible
+            collapsedSize="0%"
+          >
+            Agents
+          </ResizablePanel>
+        </ResizablePanelGroup>,
+      );
+
+      const separator = view.getByRole('separator', { name: 'Agents' });
+      expect.soft(separator.getAttribute('aria-controls')).toBe('agents-column');
+      const primaryPane = view.container.querySelector('#agents-column');
+      if (!(primaryPane instanceof HTMLElement)) throw new Error('primary pane not found');
+      const hiddenTerminal = view.container.querySelector('#terminal-column');
+      if (!(hiddenTerminal instanceof HTMLElement)) throw new Error('hidden terminal not found');
+      expect(primaryPane.textContent).toBe('Agents');
+      expect(Number(hiddenTerminal.style.flexGrow)).toBe(0);
+
+      const valueMin = Number(separator.getAttribute('aria-valuemin'));
+      const valueNow = Number(separator.getAttribute('aria-valuenow'));
+      const valueMax = Number(separator.getAttribute('aria-valuemax'));
+      expect.soft(valueMin).toBeLessThan(valueMax);
+      expect.soft(valueNow).toBeGreaterThanOrEqual(valueMin);
+      expect.soft(valueNow).toBeLessThanOrEqual(valueMax);
+      expect.soft(valueNow).toBe(Number(primaryPane.style.flexGrow));
+
+      const previousAgentsSize = Number(primaryPane.style.flexGrow);
+      fireEvent.keyDown(separator, { key: 'ArrowLeft' });
+      expect(Number(primaryPane.style.flexGrow)).toBeGreaterThan(previousAgentsSize);
+      expect(Number(hiddenTerminal.style.flexGrow)).toBe(0);
+      expect(separator.getAttribute('aria-valuenow')).toBe(primaryPane.style.flexGrow);
+
+      fireEvent.keyDown(separator, { key: 'Home' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMin);
+      fireEvent.keyDown(separator, { key: 'End' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMax);
+      fireEvent.keyDown(separator, { key: 'Enter' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMin);
+      fireEvent.keyDown(separator, { key: 'Enter' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMax);
+    } finally {
+      offsetLeft.mockRestore();
+      offsetWidth.mockRestore();
+    }
+  });
+
+  test('the terminal-visible separator reports and keyboard-resizes the Terminal pane', () => {
+    const offsetWidth = vi
+      .spyOn(HTMLElement.prototype, 'offsetWidth', 'get')
+      .mockImplementation(function () {
+        if (this.id === 'editor-main') return 200;
+        if (this.id === 'terminal-column') return 500;
+        if (this.id === 'agents-column') return 300;
+        return 0;
+      });
+    const offsetLeft = vi
+      .spyOn(HTMLElement.prototype, 'offsetLeft', 'get')
+      .mockImplementation(function () {
+        if (this.id === 'terminal-column') return 201;
+        if (this.id === 'agents-column') return 702;
+        if (this.hasAttribute('data-separator')) {
+          const separators = [...(this.parentElement?.querySelectorAll('[data-separator]') ?? [])];
+          return separators.indexOf(this) === 0 ? 200 : 701;
+        }
+        return 0;
+      });
+    try {
+      const view = render(
+        <ResizablePanelGroup
+          id="terminal-visible-aria-group"
+          orientation="horizontal"
+          defaultLayout={{ 'editor-main': 20, 'terminal-column': 50, 'agents-column': 30 }}
+        >
+          <ResizablePanel id="editor-main" minSize="20%" maxSize="20%" />
+          <ResizableHandle />
+          <ResizablePanel
+            id="terminal-column"
+            minSize="0%"
+            maxSize="70%"
+            collapsible
+            collapsedSize="0%"
+          >
+            Terminal
+          </ResizablePanel>
+          <ResizableHandle aria-label="Terminal" aria-controls="terminal-column" />
+          <ResizablePanel id="agents-column" minSize="10%" maxSize="80%">
+            Agents
+          </ResizablePanel>
+        </ResizablePanelGroup>,
+      );
+
+      const separator = view.getByRole('separator', { name: 'Terminal' });
+      expect.soft(separator.getAttribute('aria-controls')).toBe('terminal-column');
+      const editorPane = view.container.querySelector('#editor-main');
+      if (!(editorPane instanceof HTMLElement)) throw new Error('editor pane not found');
+      const primaryPane = view.container.querySelector('#terminal-column');
+      if (!(primaryPane instanceof HTMLElement)) throw new Error('primary pane not found');
+      const agentsPane = view.container.querySelector('#agents-column');
+      if (!(agentsPane instanceof HTMLElement)) throw new Error('agents pane not found');
+      expect(primaryPane.textContent).toBe('Terminal');
+
+      const valueMin = Number(separator.getAttribute('aria-valuemin'));
+      const valueNow = Number(separator.getAttribute('aria-valuenow'));
+      const valueMax = Number(separator.getAttribute('aria-valuemax'));
+      expect.soft(valueMin).toBeLessThan(valueMax);
+      expect.soft(valueNow).toBeGreaterThanOrEqual(valueMin);
+      expect.soft(valueNow).toBeLessThanOrEqual(valueMax);
+      expect.soft(valueNow).toBe(Number(primaryPane.style.flexGrow));
+
+      const previousTerminalSize = Number(primaryPane.style.flexGrow);
+      const previousAgentsSize = Number(agentsPane.style.flexGrow);
+      fireEvent.keyDown(separator, { key: 'ArrowRight' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(previousTerminalSize + 5);
+      expect(Number(agentsPane.style.flexGrow)).toBe(previousAgentsSize - 5);
+      expect(Number(editorPane.style.flexGrow)).toBe(20);
+      expect(separator.getAttribute('aria-valuenow')).toBe(primaryPane.style.flexGrow);
+
+      fireEvent.keyDown(separator, { key: 'Home' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMin);
+      expect(Number(agentsPane.style.flexGrow)).toBe(80);
+      expect(Number(editorPane.style.flexGrow)).toBe(20);
+      fireEvent.keyDown(separator, { key: 'End' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMax);
+      expect(Number(agentsPane.style.flexGrow)).toBe(10);
+      expect(Number(editorPane.style.flexGrow)).toBe(20);
+      fireEvent.keyDown(separator, { key: 'Enter' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMin);
+      expect(Number(agentsPane.style.flexGrow)).toBe(80);
+      expect(Number(editorPane.style.flexGrow)).toBe(20);
+      fireEvent.keyDown(separator, { key: 'Enter' });
+      expect(Number(primaryPane.style.flexGrow)).toBe(valueMax);
+      expect(Number(agentsPane.style.flexGrow)).toBe(10);
+      expect(Number(editorPane.style.flexGrow)).toBe(20);
+    } finally {
+      offsetLeft.mockRestore();
+      offsetWidth.mockRestore();
+    }
   });
 
   test('a panel rendered straight from the library still counts toward the panel space', () => {

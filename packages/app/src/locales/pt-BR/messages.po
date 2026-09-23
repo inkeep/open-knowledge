@@ -1881,6 +1881,7 @@ msgstr "Configurações do agente — {headerSummary}: as alterações se aplica
 msgid "Agent transcript"
 msgstr "Transcrição do agente"
 
+#: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
@@ -14025,6 +14026,7 @@ msgstr "Modelos disponíveis"
 
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
+#: src/components/EditorArea.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx

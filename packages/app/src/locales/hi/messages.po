@@ -1881,6 +1881,7 @@ msgstr "एजेंट सेटिंग — {headerSummary}: परिवर�
 msgid "Agent transcript"
 msgstr "एजेंट प्रतिलेख"
 
+#: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
@@ -14025,6 +14026,7 @@ msgstr "उपलब्ध टेम्पलेट"
 
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
+#: src/components/EditorArea.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx

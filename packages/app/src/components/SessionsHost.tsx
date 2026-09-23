@@ -212,6 +212,30 @@ function focusInsideHost(hostEl: HTMLElement | null): boolean {
   return hostEl?.contains(document.activeElement) ?? false;
 }
 
+function focusAvailableButton(candidate: HTMLButtonElement | null): HTMLButtonElement | null {
+  if (
+    candidate == null ||
+    candidate.disabled ||
+    candidate.tabIndex < 0 ||
+    !candidate.isConnected ||
+    candidate.closest('[aria-disabled="true"], [hidden], [inert], [aria-hidden="true"]') != null
+  ) {
+    return null;
+  }
+  let current: HTMLElement | null = candidate;
+  while (current != null) {
+    const style = window.getComputedStyle(current);
+    if (style.display === 'none' || style.visibility === 'hidden') return null;
+    current = current.parentElement;
+  }
+  candidate.focus();
+  return document.activeElement === candidate ? candidate : null;
+}
+
+function emptyAgentStateFallbackButton(hostEl: HTMLElement): HTMLButtonElement | null {
+  return hostEl.querySelector<HTMLButtonElement>('[data-testid="terminal-new-chat"]');
+}
+
 export type SessionSurface = 'terminal-dock' | 'agents-panel' | 'terminal-window';
 
 function chordTargetsHost(hostEl: HTMLElement | null, isWindow: boolean): boolean {
@@ -466,7 +490,9 @@ export function SessionsHost({
   const [emptyAgentLaunchState, setEmptyAgentLaunchState] = useState<EmptyAgentLaunchState>('idle');
   const pendingAgentLaunchRequestRef = useRef<AgentPaneLaunchRequest | null>(null);
   const retryAgentLaunchRequestRef = useRef<AgentPaneLaunchRequest | null>(null);
-  const emptyAgentRetryButtonRef = useRef<HTMLButtonElement>(null);
+  const emptyAgentActionButtonRef = useRef<HTMLButtonElement>(null);
+  const revealFocusRef = useRef<{ pendingThreadId: string | null } | null>(null);
+  const revealFocusWasShowingRef = useRef(false);
   const retryFocusRequestedRef = useRef(false);
   const restoreAbandonedRef = useRef(false);
   const restoreUnreadRef = useRef(false);
@@ -479,6 +505,13 @@ export function SessionsHost({
   const consumedRestoreRevealNonceRef = useRef(terminalRestoreRevealNonce);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   const stripLaunchNonceRef = useRef(0);
+
+  useLayoutEffect(() => {
+    const revealing = isShowing && !revealFocusWasShowingRef.current;
+    revealFocusWasShowingRef.current = isShowing;
+    if (revealing) revealFocusRef.current = { pendingThreadId: null };
+    if (!isShowing) revealFocusRef.current = null;
+  }, [isShowing]);
 
   const openThreadTabs = useOpenAgentThreadTabs();
   const agentThreads = useAgentThreads();
@@ -497,7 +530,7 @@ export function SessionsHost({
     if (emptyAgentLaunchState !== 'failed' && emptyAgentLaunchState !== 'deduped') return;
     const frame = window.requestAnimationFrame(() => {
       retryFocusRequestedRef.current = false;
-      emptyAgentRetryButtonRef.current?.focus();
+      emptyAgentActionButtonRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [emptyAgentLaunchState]);
@@ -1147,7 +1180,11 @@ export function SessionsHost({
     const newest = added[added.length - 1];
     if (newest != null) {
       setActiveSessionId(newest);
-      queueMicrotask(() => focusThreadSession(newest));
+      if (revealFocusRef.current != null) {
+        revealFocusRef.current.pendingThreadId = newest;
+      } else {
+        queueMicrotask(() => focusThreadSession(newest));
+      }
     }
   }, [openThreadTabs, hostThreads]);
 
@@ -1598,16 +1635,36 @@ export function SessionsHost({
   useEffect(() => {
     if (!isShowing || attachedHostEl == null) return;
     const focusOrigin = document.activeElement;
-    const initialActive = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
-    if (initialActive != null && focusSession(initialActive)) return;
-    let landed = focusInsideHost(attachedHostEl);
+    const initialTargetId = revealFocusRef.current?.pendingThreadId ?? activeSessionIdRef.current;
+    const initialActive = sessionsRef.current.find((s) => s.id === initialTargetId);
+    let initialFallbackLanding = false;
+    if (initialActive != null) {
+      const fallback = fallbackSessionFocusElement(initialActive);
+      const preferred = focusSession(initialActive);
+      if (preferred) {
+        revealFocusRef.current = null;
+        return;
+      }
+      initialFallbackLanding = fallback != null && document.activeElement === fallback;
+    }
+    const emptySurfaceLanding =
+      hostThreads && initialActive == null
+        ? (focusAvailableButton(emptyAgentActionButtonRef.current) ??
+          focusAvailableButton(emptyAgentStateFallbackButton(attachedHostEl)))
+        : null;
+    revealFocusRef.current = { pendingThreadId: revealFocusRef.current?.pendingThreadId ?? null };
+    let landed = initialFallbackLanding;
+    let attemptedFallback: HTMLElement | null = null;
     let retryFrame: number | null = null;
+    let retired = false;
     const recordLanding = (event: FocusEvent) => {
-      if (attachedHostEl.contains(event.target as Node | null)) landed = true;
+      if (event.target === attemptedFallback) landed = true;
     };
     const retryFocus = () => {
       retryFrame = null;
-      const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+      if (retired) return;
+      const targetId = revealFocusRef.current?.pendingThreadId ?? activeSessionIdRef.current;
+      const active = sessionsRef.current.find((s) => s.id === targetId);
       if (active == null) return;
       const focused = document.activeElement;
       const fallback = fallbackSessionFocusElement(active);
@@ -1615,15 +1672,25 @@ export function SessionsHost({
         focused != null &&
         focused !== document.body &&
         focused !== focusOrigin &&
-        focused !== fallback
-      )
+        focused !== fallback &&
+        focused !== emptySurfaceLanding
+      ) {
+        landed = true;
+        revealFocusRef.current = null;
         return;
+      }
+      landed = false;
+      attemptedFallback = fallback;
       const preferred = focusSession(active);
-      landed = focusInsideHost(attachedHostEl) || landed;
-      if (preferred) observer.disconnect();
+      attemptedFallback = null;
+      landed = preferred || landed || (fallback != null && document.activeElement === fallback);
+      if (preferred) {
+        revealFocusRef.current = null;
+        observer.disconnect();
+      }
     };
     const scheduleRetry = () => {
-      if (retryFrame !== null) return;
+      if (retired || retryFrame !== null) return;
       retryFrame = window.requestAnimationFrame(retryFocus);
     };
     document.addEventListener('focusin', recordLanding, true);
@@ -1634,7 +1701,11 @@ export function SessionsHost({
     observer.observe(attachedHostEl, { subtree: true, childList: true });
     scheduleRetry();
     const deadline = window.setTimeout(() => {
+      retired = true;
+      if (retryFrame != null) window.cancelAnimationFrame(retryFrame);
+      retryFrame = null;
       observer.disconnect();
+      revealFocusRef.current = null;
       const focusNowhere =
         document.activeElement == null || document.activeElement === document.body;
       const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
@@ -1645,6 +1716,8 @@ export function SessionsHost({
       }
     }, REVEAL_FOCUS_LANDING_TIMEOUT_MS);
     return () => {
+      retired = true;
+      revealFocusRef.current = null;
       document.removeEventListener('focusin', recordLanding, true);
       observer.disconnect();
       if (retryFrame != null) window.cancelAnimationFrame(retryFrame);
@@ -1774,7 +1847,7 @@ export function SessionsHost({
       onRetry={
         emptyAgentState === 'agents-unavailable' ? refetchAgentCatalog : retryFailedAgentLaunch
       }
-      retryButtonRef={emptyAgentRetryButtonRef}
+      actionButtonRef={emptyAgentActionButtonRef}
     />
   ) : sessions.length === 0 ? (
     terminalAvailable ? null : (
@@ -1994,12 +2067,12 @@ function EmptyAgentSessionsState({
   state,
   onConfigureAgents,
   onRetry,
-  retryButtonRef,
+  actionButtonRef,
 }: {
   state: EmptyAgentState;
   onConfigureAgents: () => void;
   onRetry: () => void;
-  retryButtonRef: RefObject<HTMLButtonElement | null>;
+  actionButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
   const { t } = useLingui();
   let content: ReactNode;
@@ -2027,7 +2100,7 @@ function EmptyAgentSessionsState({
       content = (
         <div className="flex flex-col items-center gap-2" data-testid="sessions-dock-no-agents">
           <p>{t`No agents enabled.`}</p>
-          <Button type="button" size="sm" onClick={onConfigureAgents}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onConfigureAgents}>
             {t`Configure agents`}
           </Button>
         </div>
@@ -2040,7 +2113,7 @@ function EmptyAgentSessionsState({
           data-testid="sessions-dock-agents-unavailable"
         >
           <p>{t`Couldn't load your agents.`}</p>
-          <Button type="button" size="sm" onClick={onRetry}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onRetry}>
             {t`Try again`}
           </Button>
         </div>
@@ -2050,7 +2123,7 @@ function EmptyAgentSessionsState({
       content = (
         <div className="flex flex-col items-center gap-2" data-testid="sessions-dock-launch-failed">
           <p>{t`Couldn't start the agent thread.`}</p>
-          <Button ref={retryButtonRef} type="button" size="sm" onClick={onRetry}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onRetry}>
             {t`Try again`}
           </Button>
         </div>
@@ -2063,7 +2136,7 @@ function EmptyAgentSessionsState({
           data-testid="sessions-dock-launch-deduped"
         >
           <p>{t`Already starting a chat with this agent — try again in a moment.`}</p>
-          <Button ref={retryButtonRef} type="button" size="sm" onClick={onRetry}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onRetry}>
             {t`Try again`}
           </Button>
         </div>

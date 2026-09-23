@@ -248,6 +248,7 @@ function makeTerminalBridge(): OkDesktopBridge {
 
 type HarnessControl = {
   setVisible: (v: boolean) => void;
+  setShowing: (v: boolean) => void;
   setThreadLaunch: (t: ThreadLaunchIntent | null) => void;
   setRestoreSettled: (v: boolean) => void;
   setBridge: (b: OkDesktopBridge | null) => void;
@@ -265,6 +266,7 @@ function Harness({
   threadLaunch: initialThreadLaunch = null,
   control,
   initiallyRestoreSettled = true,
+  initialShowing,
   onRequestEditorFocus,
 }: {
   bridge?: OkDesktopBridge | null;
@@ -273,10 +275,12 @@ function Harness({
   threadLaunch?: ThreadLaunchIntent | null;
   control?: { current: HarnessControl | null };
   initiallyRestoreSettled?: boolean;
+  initialShowing?: boolean;
   onRequestEditorFocus?: () => void;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(initialVisible);
+  const [showing, setShowing] = useState(initialShowing ?? initialVisible);
   const [threadLaunch, setThreadLaunch] = useState(initialThreadLaunch);
   const [restoreSettled, setRestoreSettled] = useState(initiallyRestoreSettled);
   const [bridge, setBridge] = useState(initialBridge);
@@ -284,7 +288,11 @@ function Harness({
   useEffect(() => {
     if (control != null)
       control.current = {
-        setVisible,
+        setVisible: (next) => {
+          setVisible(next);
+          setShowing(next);
+        },
+        setShowing,
         setThreadLaunch,
         setRestoreSettled,
         setBridge,
@@ -307,7 +315,7 @@ function Harness({
         }}
         installedClis={{}}
         container={container}
-        isShowing={visible && container != null}
+        isShowing={showing && container != null}
         onRequestEditorFocus={onRequestEditorFocus ?? (() => {})}
       />
     </TooltipProvider>
@@ -1447,6 +1455,428 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Connecting/ }));
   });
+
+  test('an actionable empty reveal focuses Configure agents despite earlier controls', async () => {
+    const control = makeControl();
+    setInitialRosterIds(new Set());
+    render(<Harness initialVisible initialShowing={false} control={control} />);
+
+    const action = await screen.findByRole('button', { name: 'Configure agents' });
+    const hostElement = screen.getByTestId('dock-container').firstElementChild;
+    expect(hostElement).toBeInstanceOf(HTMLElement);
+    const disqualified = document.createElement('button');
+    disqualified.disabled = true;
+    disqualified.setAttribute('aria-label', 'Disabled earlier action');
+    const unrelated = document.createElement('button');
+    unrelated.setAttribute('aria-label', 'Earlier unrelated action');
+    hostElement?.prepend(unrelated);
+    hostElement?.prepend(disqualified);
+
+    try {
+      act(() => control.current?.setShowing(true));
+
+      await waitFor(() => expect(document.activeElement).toBe(action));
+    } finally {
+      disqualified.remove();
+      unrelated.remove();
+    }
+  });
+
+  test('a content-less empty reveal focuses the named new-chat fallback despite earlier controls', async () => {
+    const control = makeControl();
+    mockRegisteredAgent = FIRST_AGENT;
+    setInitialRosterIds(new Set(['t1']));
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Restored' })]);
+    render(<Harness initialVisible initialShowing={false} control={control} />);
+    await screen.findByTestId('thread-view');
+
+    act(() => setOpenThreads([]));
+    await waitFor(() => expect(screen.getByTestId('sessions-dock-empty').textContent).toBe(''));
+
+    const fallback = screen.getByRole('button', { name: 'New chat with First Agent' });
+    const hostElement = screen.getByTestId('dock-container').firstElementChild;
+    expect(hostElement).toBeInstanceOf(HTMLElement);
+    const disqualified = document.createElement('button');
+    disqualified.tabIndex = -1;
+    disqualified.setAttribute('aria-label', 'Unfocusable earlier action');
+    const unrelated = document.createElement('button');
+    unrelated.setAttribute('aria-label', 'Earlier unrelated action');
+    hostElement?.prepend(unrelated);
+    hostElement?.prepend(disqualified);
+
+    try {
+      act(() => control.current?.setShowing(true));
+
+      await waitFor(() => expect(document.activeElement).toBe(fallback));
+    } finally {
+      disqualified.remove();
+      unrelated.remove();
+    }
+  });
+
+  test('an empty reveal upgrades its focus landing when a session arrives', async () => {
+    const control = makeControl();
+    render(<Harness initialVisible={false} control={control} />);
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+    await screen.findByTestId('sessions-dock-empty');
+
+    const host = screen.getByTestId('dock-container');
+    await waitFor(() => expect(host.contains(document.activeElement)).toBe(true));
+    const emptyLanding = document.activeElement;
+    expect(emptyLanding).not.toBeNull();
+    await act(async () => {});
+    expect(document.activeElement).toBe(emptyLanding);
+
+    act(() => {
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+    });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer')),
+    );
+  });
+
+  test('an empty reveal retries a missed session handoff without another mutation', async () => {
+    const control = makeControl();
+    render(<Harness initialVisible={false} control={control} />);
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+    await screen.findByTestId('sessions-dock-empty');
+
+    const host = screen.getByTestId('dock-container');
+    await waitFor(() => expect(host.contains(document.activeElement)).toBe(true));
+
+    const originalFocus = HTMLElement.prototype.focus;
+    let composerMissed = false;
+    let tabMissed = false;
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function focusWithOneHandoffMiss(
+        this: HTMLElement,
+        options?: FocusOptions,
+      ) {
+        if (this.matches('[data-testid="agent-thread-composer"]') && !composerMissed) {
+          composerMissed = true;
+          return;
+        }
+        if (this.matches('[role="tab"][data-tab-id="t1"]') && composerMissed && !tabMissed) {
+          tabMissed = true;
+          return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+      });
+
+      await waitFor(() => expect(tabMissed).toBe(true));
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer')),
+      );
+    } finally {
+      focusSpy.mockRestore();
+    }
+  });
+
+  test('a fallback-tab landing leaves no redundant reveal retry frame queued', async () => {
+    const control = makeControl();
+    const queuedFrames: FrameRequestCallback[] = [];
+    let nextFrameId = 0;
+    const frameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      queuedFrames.push(callback);
+      nextFrameId += 1;
+      return nextFrameId;
+    });
+    const cancelFrameSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    render(<Harness initialVisible={false} control={control} />);
+    const hostElement = screen.getByTestId('dock-container').firstElementChild;
+    expect(hostElement).toBeInstanceOf(HTMLElement);
+    const unrelated = document.createElement('button');
+    hostElement?.append(unrelated);
+
+    let allowTargetLanding = false;
+    let targetAttempted = false;
+    const originalFocus = HTMLElement.prototype.focus;
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function holdFirstTargetAttempt(
+        this: HTMLElement,
+        options?: FocusOptions,
+      ) {
+        if (!allowTargetLanding && this.matches('[role="tab"][data-tab-id="t1"]')) {
+          targetAttempted = true;
+          return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      await screen.findByTestId('sessions-dock-empty');
+      await waitFor(() =>
+        expect(screen.getByTestId('dock-container').contains(document.activeElement)).toBe(true),
+      );
+
+      act(() => {
+        for (const callback of queuedFrames.splice(0)) callback(0);
+      });
+      expect(queuedFrames).toHaveLength(0);
+
+      act(() => {
+        unrelated.focus();
+        unrelated.blur();
+      });
+
+      threadViewHeld = true;
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+      });
+      const fallbackTab = await screen.findByRole('tab', { name: /Arrived/ });
+      await waitFor(() => expect(targetAttempted).toBe(true));
+      expect(queuedFrames.length).toBeGreaterThan(0);
+
+      allowTargetLanding = true;
+      act(() => {
+        for (const callback of queuedFrames.splice(0)) callback(0);
+      });
+      expect(document.activeElement).toBe(fallbackTab);
+      expect(queuedFrames).toHaveLength(0);
+
+      const marker = document.createElement('span');
+      act(() => {
+        hostElement?.append(marker);
+      });
+      await act(async () => {});
+      marker.remove();
+
+      expect(queuedFrames).toHaveLength(0);
+    } finally {
+      focusSpy.mockRestore();
+      cancelFrameSpy.mockRestore();
+      frameSpy.mockRestore();
+      unrelated.remove();
+    }
+  });
+
+  test('a reveal focus retry cannot move focus after its deadline', async () => {
+    vi.useFakeTimers();
+    const control = makeControl();
+    const queuedFrames: Array<{ id: number; callback: FrameRequestCallback }> = [];
+    let nextFrameId = 0;
+    const frameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      nextFrameId += 1;
+      queuedFrames.push({ id: nextFrameId, callback });
+      return nextFrameId;
+    });
+    const cancelFrameSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await act(async () => {});
+    const outside = document.body.appendChild(document.createElement('input'));
+    outside.focus();
+
+    let allowTargetLanding = false;
+    const originalFocus = HTMLElement.prototype.focus;
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function holdRevealTarget(this: HTMLElement, options?: FocusOptions) {
+        if (
+          !allowTargetLanding &&
+          this.matches('[role="tab"], [data-testid="agent-thread-composer"]')
+        ) {
+          return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      const retry = queuedFrames.at(-1);
+      expect(retry).toBeDefined();
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      allowTargetLanding = true;
+      act(() => {
+        retry?.callback(0);
+      });
+
+      expect(document.activeElement).toBe(outside);
+      expect(cancelFrameSpy).toHaveBeenCalledWith(retry?.id);
+    } finally {
+      focusSpy.mockRestore();
+      cancelFrameSpy.mockRestore();
+      frameSpy.mockRestore();
+      outside.remove();
+      vi.useRealTimers();
+    }
+  });
+
+  test('a same-batch reveal and session arrival leaves no competing focus transfer queued', async () => {
+    const control = makeControl();
+    render(<Harness initialVisible={false} control={control} />);
+    const outside = document.body.appendChild(document.createElement('input'));
+    const pendingMicrotasks: VoidFunction[] = [];
+    const microtaskSpy = vi
+      .spyOn(globalThis, 'queueMicrotask')
+      .mockImplementation((callback) => pendingMicrotasks.push(callback));
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+        setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+      });
+      await screen.findByTestId('agent-thread-composer');
+
+      outside.focus();
+      expect(document.activeElement).toBe(outside);
+
+      act(() => {
+        while (pendingMicrotasks.length > 0) pendingMicrotasks.shift()?.();
+      });
+      await act(async () => {});
+
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      microtaskSpy.mockRestore();
+      outside.remove();
+    }
+  });
+
+  test('a same-batch pending handoff keeps later focus moves from a competing arrival', async () => {
+    const control = makeControl();
+    const outside = document.body.appendChild(document.createElement('input'));
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't0', title: 'Already open' })]);
+    render(<Harness initialVisible initialShowing={false} control={control} />);
+    const firstTab = await screen.findByRole('tab', { name: /Already open/ });
+    await waitFor(() => expect(document.activeElement).toBe(firstTab));
+    act(() => outside.focus());
+
+    const pendingMicrotasks: VoidFunction[] = [];
+    const queuedFrames: FrameRequestCallback[] = [];
+    let nextFrameId = 0;
+    let allowTargetLanding = false;
+    let firstTargetAttempted = false;
+    const originalFocus = HTMLElement.prototype.focus;
+    const microtaskSpy = vi
+      .spyOn(globalThis, 'queueMicrotask')
+      .mockImplementation((callback) => pendingMicrotasks.push(callback));
+    const frameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      queuedFrames.push(callback);
+      nextFrameId += 1;
+      return nextFrameId;
+    });
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function holdRevealTarget(this: HTMLElement, options?: FocusOptions) {
+        if (!allowTargetLanding) {
+          if (this.matches('[role="tab"]')) {
+            if (this.dataset.tabId === 't1') firstTargetAttempted = true;
+            return;
+          }
+          if (this.dataset.testid === 'terminal-new-chat') return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        control.current?.setShowing(true);
+        setOpenThreads([
+          makeThread({ threadId: 't0', title: 'Already open' }),
+          makeThread({ threadId: 't1', title: 'Reveal arrival' }),
+        ]);
+      });
+      await screen.findByRole('tab', { name: /Reveal arrival/ });
+      await act(async () => {});
+      expect(document.activeElement).toBe(outside);
+      expect(firstTargetAttempted).toBe(true);
+      expect(queuedFrames.length).toBeGreaterThan(0);
+
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't0', title: 'Already open' }),
+          makeThread({ threadId: 't1', title: 'Reveal arrival' }),
+          makeThread({ threadId: 't2', title: 'Later arrival' }),
+        ]);
+      });
+      const ownedTargetTab = await screen.findByRole('tab', { name: /Later arrival/ });
+      await act(async () => {});
+
+      allowTargetLanding = true;
+      act(() => {
+        for (const callback of queuedFrames.splice(0)) callback(0);
+      });
+      expect(document.activeElement).toBe(ownedTargetTab);
+
+      act(() => outside.focus());
+      expect(document.activeElement).toBe(outside);
+
+      act(() => {
+        while (pendingMicrotasks.length > 0) pendingMicrotasks.shift()?.();
+      });
+
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      focusSpy.mockRestore();
+      frameSpy.mockRestore();
+      microtaskSpy.mockRestore();
+      outside.remove();
+    }
+  });
+
+  test.each(['inside', 'outside'] as const)(
+    'a session arriving after an empty reveal does not steal focus moved %s the host',
+    async (targetLocation) => {
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      await screen.findByTestId('sessions-dock-empty');
+
+      const host = screen.getByTestId('dock-container');
+      await waitFor(() => expect(host.contains(document.activeElement)).toBe(true));
+      const emptyLanding = document.activeElement;
+      const focusTarget =
+        targetLocation === 'inside'
+          ? Array.from(host.querySelectorAll<HTMLElement>('button:not(:disabled)')).find(
+              (candidate) => candidate !== emptyLanding && candidate.tabIndex >= 0,
+            )
+          : document.body.appendChild(document.createElement('input'));
+      expect(focusTarget).toBeDefined();
+
+      try {
+        focusTarget?.focus();
+        expect(document.activeElement).toBe(focusTarget);
+
+        act(() => {
+          setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+        });
+        await screen.findByTestId('agent-thread-composer');
+        await act(async () => {});
+
+        expect(document.activeElement).toBe(focusTarget);
+      } finally {
+        if (targetLocation === 'outside') focusTarget?.remove();
+      }
+    },
+  );
 
   test('collapsing the dock hands focus back to the editor', async () => {
     const user = userEvent.setup();

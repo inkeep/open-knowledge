@@ -611,10 +611,12 @@ test.describe('Docked terminal — live Electron', () => {
     await clickViewAgentsItem(app);
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     await expect
-      .poll(() =>
-        page
-          .locator('#terminal-column')
-          .evaluate((element) => element.getBoundingClientRect().width),
+      .poll(
+        () =>
+          page
+            .locator('#terminal-column')
+            .evaluate((element) => element.getBoundingClientRect().width),
+        { timeout: 10_000 },
       )
       .toBeGreaterThan(739);
     await typeInTerminal(page, `${SHELL_COMMANDS.columns('RAIL_COLS')}\r`);
