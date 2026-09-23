@@ -33,7 +33,7 @@ export interface PtyUtilityLike {
 type TimerToken = unknown;
 
 export interface TerminalManagerDeps {
-  forkPtyHost: () => PtyUtilityLike;
+  forkPtyHost: (windowId: number) => PtyUtilityLike;
   sendData: (webContents: SendableWebContents, payload: { ptyId: string; data: string }) => void;
   sendExit: (webContents: SendableWebContents, payload: OkPtyExit) => void;
   sendNotice?: (webContents: SendableWebContents, payload: OkPtyNotice) => void;
@@ -490,7 +490,7 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
       existing.webContents = req.webContents;
       return existing;
     }
-    const utility = deps.forkPtyHost();
+    const utility = deps.forkPtyHost(req.windowId);
     const handle: PtyWindowHandle = {
       webContents: req.webContents,
       utility,

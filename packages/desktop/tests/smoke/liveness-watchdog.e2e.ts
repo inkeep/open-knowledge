@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { type ElectronApplication, _electron as electron } from '@playwright/test';
@@ -41,6 +41,22 @@ function readBootBreadcrumbs(tmpHome: string): BootBreadcrumb[] {
     } catch {}
   }
   return out.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+}
+
+function readDesktopEvents(tmpHome: string): Array<Record<string, unknown>> {
+  const logsDir = join(tmpHome, '.ok', 'logs');
+  if (!existsSync(logsDir)) return [];
+  const lines = readdirSync(logsDir)
+    .filter((name) => name.startsWith('desktop.') && name.endsWith('.log'))
+    .flatMap((name) => readFileSync(join(logsDir, name), 'utf8').split('\n'));
+  const out: Array<Record<string, unknown>> = [];
+  for (const line of lines) {
+    try {
+      const parsed = JSON.parse(line) as Record<string, unknown>;
+      if (typeof parsed.event === 'string') out.push(parsed);
+    } catch {}
+  }
+  return out;
 }
 
 function readWitness(tmpHome: string): WitnessRecord | null {
@@ -151,6 +167,129 @@ test.describe('liveness watchdog separates a frozen main thread from a dead one 
 
     const breadcrumb = await relaunchAndReadBreadcrumb(tmpHome, captureStderrFor);
     console.log('[liveness-watchdog] died breadcrumb', JSON.stringify(breadcrumb));
+    expect(breadcrumb.dirtyShutdown).toBe(true);
+    expect(breadcrumb.livenessVerdict).toBe('died');
+  });
+
+  test('Utility and renderer crashes remain recoverable before an external process-tree kill (PRD-8779)', async ({
+    captureStderrFor,
+  }) => {
+    test.setTimeout(200_000);
+    const tmpHome = mkdtempSync(join(tmpdir(), 'ok-process-crash-chain-'));
+    const utilityEntry = join(tmpHome, 'crash-utility.mjs');
+    writeFileSync(
+      utilityEntry,
+      `setTimeout(() => typeof process.crash === 'function' ? process.crash() : process.abort(), 100)\n`,
+    );
+    const app = await launchIsolated(tmpHome);
+    captureStderrFor(app, { cleanupDirs: [tmpHome] });
+    await expect
+      .poll(
+        () =>
+          readDesktopEvents(tmpHome).some(
+            (event) =>
+              event.event === 'desktop-process-observability.sample' &&
+              event.trigger === 'renderer-ready',
+          ),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+    await waitForWitnessPings(tmpHome, 2);
+
+    const utilityExit = await app.evaluate(async ({ utilityProcess }, entry) => {
+      return await new Promise<{ code: number | null; timedOut: boolean }>((resolve) => {
+        const child = utilityProcess.fork(entry, [], { serviceName: 'PRD-8779 crash probe' });
+        const timer = setTimeout(() => {
+          child.kill();
+          resolve({ code: null, timedOut: true });
+        }, 10_000);
+        child.once('exit', (code) => {
+          clearTimeout(timer);
+          resolve({ code, timedOut: false });
+        });
+      });
+    }, utilityEntry);
+    expect(utilityExit.timedOut).toBe(false);
+    await expect
+      .poll(
+        () =>
+          readDesktopEvents(tmpHome).some(
+            (event) => event.event === 'crash-detection.child-process-gone',
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+
+    const renderer = await app.evaluate(async ({ BrowserWindow }) => {
+      const window = BrowserWindow.getAllWindows().find((candidate) => !candidate.isDestroyed());
+      if (window === undefined) throw new Error('no live window to crash');
+      const target = {
+        contentsId: window.webContents.id,
+        rendererPid: window.webContents.getOSProcessId(),
+      };
+      window.webContents.debugger.attach('1.3');
+      try {
+        await window.webContents.debugger.sendCommand('Page.crash');
+      } catch {}
+      return target;
+    });
+    await expect
+      .poll(
+        () =>
+          readDesktopEvents(tmpHome).some(
+            (event) => event.event === 'crash-detection.render-process-gone',
+          ),
+        { timeout: 20_000 },
+      )
+      .toBe(true);
+    await expect
+      .poll(
+        () =>
+          app.evaluate(({ BrowserWindow }) => {
+            const window = BrowserWindow.getAllWindows().find(
+              (candidate) => !candidate.isDestroyed(),
+            );
+            return (
+              window !== undefined &&
+              !window.webContents.isCrashed() &&
+              !window.webContents.isLoading()
+            );
+          }),
+        { timeout: 30_000 },
+      )
+      .toBe(true);
+
+    const events = readDesktopEvents(tmpHome);
+    const childCrash = events.find((event) => event.event === 'crash-detection.child-process-gone');
+    const rendererCrash = events.find(
+      (event) => event.event === 'crash-detection.render-process-gone',
+    );
+    expect(childCrash).toMatchObject({
+      processType: 'Utility',
+      reason: 'crashed',
+      name: 'PRD-8779 crash probe',
+      processSnapshot: {
+        lastSample: { processes: expect.any(Array), windows: expect.any(Array) },
+        liveSample: { processes: expect.any(Array), windows: expect.any(Array) },
+      },
+    });
+    expect(rendererCrash).toMatchObject({
+      reason: 'crashed',
+      processSnapshot: {
+        affectedRenderer: renderer,
+        lastSample: {
+          processes: expect.arrayContaining([
+            expect.objectContaining({ pid: renderer.rendererPid, type: 'Tab' }),
+          ]),
+        },
+        liveSample: { processes: expect.any(Array), windows: expect.any(Array) },
+      },
+    });
+    expect(app.process().exitCode).toBeNull();
+
+    await killProcessTree(app);
+    const breadcrumb = await relaunchAndReadBreadcrumb(tmpHome, captureStderrFor);
+    console.log('[process-crash-chain] breadcrumb', JSON.stringify(breadcrumb));
     expect(breadcrumb.dirtyShutdown).toBe(true);
     expect(breadcrumb.livenessVerdict).toBe('died');
   });

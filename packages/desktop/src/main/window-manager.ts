@@ -229,7 +229,7 @@ export interface WindowManagerDeps {
   forkUtility(
     entry: string,
     args: string[],
-    opts: { windowLifecycleBound?: boolean },
+    opts: { windowLifecycleBound?: boolean; serviceName: string },
   ): UtilityProcessLike;
   utilityEntryPath: string;
   spawnDetachedServer?(opts: {
@@ -352,6 +352,8 @@ export class WindowManager {
   private readonly projectPendingByPath = new Map<string, Promise<ProjectContext>>();
 
   private readonly keepalives = new Map<string, KeepaliveHandle>();
+
+  private projectServerSequence = 0;
 
   private readonly deps: WindowManagerDeps;
 
@@ -1209,12 +1211,22 @@ export class WindowManager {
       ? resolveLocalOpCliArgsForUtilityFork(opts.localOpCliInvocation)
       : null;
 
+    const serviceName = `OpenKnowledge Project Server ${++this.projectServerSequence}`;
     const utility = this.deps.forkUtility(
       this.deps.utilityEntryPath,
       [`--ok-lock-dir-b64=${Buffer.from(lockDir, 'utf8').toString('base64url')}`],
       {
         windowLifecycleBound: true,
+        serviceName,
       },
+    );
+    this.deps.log?.info(
+      {
+        event: 'desktop-project-server-forked',
+        name: serviceName,
+        projectPath,
+      },
+      '[window-manager] project server utility forked',
     );
     const utilityRef = utility;
     const stopUtilityWaitHeartbeat = startBootHeartbeat(

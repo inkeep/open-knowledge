@@ -70,10 +70,12 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
   const timerDelays: number[] = [];
   const warns: Array<Record<string, unknown>> = [];
   const infos: Array<Record<string, unknown>> = [];
+  const forkedWindowIds: number[] = [];
   let idn = 0;
   const mgr = createTerminalManager({
     canSpawnAt: () => true,
-    forkPtyHost: () => {
+    forkPtyHost: (windowId) => {
+      forkedWindowIds.push(windowId);
       const u = new FakeUtility();
       forked.push(u);
       return u as unknown as PtyUtilityLike;
@@ -128,6 +130,7 @@ function makeManager(over?: Partial<TerminalManagerDeps>) {
     forked,
     warns,
     infos,
+    forkedWindowIds,
     runTimers,
     dataPayloads,
     exits,
@@ -454,6 +457,7 @@ describe('createTerminalManager — create', () => {
       rows: 24,
     });
     expect(r).toEqual({ ok: true, ptyId: 'pty-1' });
+    expect(h.forkedWindowIds).toEqual([1]);
     expect(h.forked).toHaveLength(1);
     expect(h.forked[0]?.posted).toEqual([
       { type: 'create', ptyId: 'pty-1', cwd: PROJECT, cols: 80, rows: 24 },
@@ -725,6 +729,7 @@ describe('createTerminalManager — create', () => {
       rows: 24,
     });
     expect(h.forked).toHaveLength(2);
+    expect(h.forkedWindowIds).toEqual([1, 2]);
   });
 });
 

@@ -115,6 +115,8 @@ interface TestEnv {
     projectPath?: string;
   }>;
   forkUtilityArgs: string[][];
+  forkUtilityOpts: Array<{ windowLifecycleBound?: boolean; serviceName: string }>;
+  logEntries: Array<{ payload: object; message: string }>;
   timers: Array<{ cb: () => void; ms: number }>;
   killProbe: ReturnType<typeof vi.fn>;
   activateApp: ReturnType<typeof vi.fn>;
@@ -131,6 +133,8 @@ function buildEnv(): TestEnv {
     projectPath?: string;
   }> = [];
   const forkUtilityArgs: string[][] = [];
+  const forkUtilityOpts: Array<{ windowLifecycleBound?: boolean; serviceName: string }> = [];
+  const logEntries: Array<{ payload: object; message: string }> = [];
   const timers: Array<{ cb: () => void; ms: number }> = [];
   const killProbe = vi.fn(() => {});
   const activateApp = vi.fn(() => {});
@@ -155,6 +159,8 @@ function buildEnv(): TestEnv {
     windows,
     createWindowOpts,
     forkUtilityArgs,
+    forkUtilityOpts,
+    logEntries,
     timers,
     killProbe,
     activateApp,
@@ -166,8 +172,9 @@ function buildEnv(): TestEnv {
         windows.push(w);
         return w;
       },
-      forkUtility: (_entry, args) => {
+      forkUtility: (_entry, args, opts) => {
         forkUtilityArgs.push(args);
+        forkUtilityOpts.push(opts);
         const u = makeUtility(++pidCounter);
         utilities.push(u);
         return u;
@@ -182,6 +189,11 @@ function buildEnv(): TestEnv {
       killProbe,
       activateApp,
       showGate,
+      log: {
+        info: (payload, message) => logEntries.push({ payload, message }),
+        warn: (payload, message) => logEntries.push({ payload, message }),
+        error: (payload, message) => logEntries.push({ payload, message }),
+      },
     },
   };
 }
@@ -232,6 +244,17 @@ describe('WindowManager', () => {
     const promise = wm.createProjectWindow({ projectPath: '/tmp/test-project' });
 
     expect(env.utilities.length).toBe(1);
+    expect(env.forkUtilityOpts).toEqual([
+      { windowLifecycleBound: true, serviceName: 'OpenKnowledge Project Server 1' },
+    ]);
+    expect(env.logEntries).toContainEqual({
+      payload: {
+        event: 'desktop-project-server-forked',
+        name: 'OpenKnowledge Project Server 1',
+        projectPath: '/tmp/test-project',
+      },
+      message: '[window-manager] project server utility forked',
+    });
     const marker = env.forkUtilityArgs[0]?.find((arg) => arg.startsWith('--ok-lock-dir-b64='));
     expect(marker).toBeDefined();
     expect(
@@ -261,6 +284,18 @@ describe('WindowManager', () => {
 
     expect(env.windows.length).toBe(1);
     expect(env.windows[0]?.loadFile).toHaveBeenCalledWith('/fake/renderer/index.html');
+
+    const secondPromise = wm.createProjectWindow({ projectPath: '/tmp/second-project' });
+    expect(env.forkUtilityOpts[1]).toEqual({
+      windowLifecycleBound: true,
+      serviceName: 'OpenKnowledge Project Server 2',
+    });
+    env.utilities[1]?.fire({
+      type: 'ready',
+      port: 51235,
+      apiOrigin: 'http://localhost:51235',
+    });
+    await secondPromise;
   });
 
   test('createProjectWindow binds the utility server to numeric IPv4 loopback, never a hostname', async () => {

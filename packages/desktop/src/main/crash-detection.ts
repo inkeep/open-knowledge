@@ -10,6 +10,7 @@ import {
 import { dirname, join } from 'node:path';
 import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
 import { asReportableAppVersion } from './crashed-app-version.ts';
+import type { DesktopCrashProcessSnapshot } from './desktop-process-observability.ts';
 import {
   classifyPreviousLiveness,
   isFileMissingError,
@@ -28,6 +29,10 @@ import {
 } from './minidump-ownership.ts';
 
 const CRASH_REASONS = new Set(['crashed', 'oom', 'launch-failed', 'integrity-failure']);
+
+export function isProcessCrashReason(reason: string): boolean {
+  return CRASH_REASONS.has(reason);
+}
 
 const GPU_PROCESS_TYPE = 'GPU';
 
@@ -127,12 +132,18 @@ export interface CrashDetection {
   noteOsShutdown(reasons?: readonly string[]): void;
   noteSuspend(): void;
   noteResume(): void;
-  handleRenderProcessGone(details: { reason: string; exitCode?: number }): void;
+  handleRenderProcessGone(details: {
+    reason: string;
+    exitCode?: number;
+    processSnapshot?: DesktopCrashProcessSnapshot;
+  }): void;
   handleChildProcessGone(details: {
     type: string;
     reason: string;
     exitCode?: number;
     name?: string;
+    serviceName?: string;
+    processSnapshot?: DesktopCrashProcessSnapshot;
   }): void;
   notifyRendererReady(): void;
   ack(eventId: string): void;
@@ -812,7 +823,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     },
 
     handleRenderProcessGone(details): void {
-      if (!CRASH_REASONS.has(details.reason)) return;
+      if (!isProcessCrashReason(details.reason)) return;
       const owned = newestOwnedMinidump();
       deps.logger.warn(
         {
@@ -822,6 +833,9 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           foreignDumpsIgnored: owned.foreignSkipped,
           unreadableDumpsSkipped: owned.unknownSkipped,
           nonCrashDumpsSkipped: owned.nonCrashSkipped,
+          ...(details.processSnapshot === undefined
+            ? {}
+            : { processSnapshot: details.processSnapshot }),
         },
         'renderer process died abnormally',
       );
@@ -841,7 +855,7 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
     },
 
     handleChildProcessGone(details): void {
-      if (!CRASH_REASONS.has(details.reason)) return;
+      if (!isProcessCrashReason(details.reason)) return;
       const owned = newestOwnedMinidump();
       const gpu = details.type === GPU_PROCESS_TYPE ? noteGpuCrash() : null;
       deps.logger.warn(
@@ -850,9 +864,13 @@ export function createCrashDetection(deps: CrashDetectionDeps): CrashDetection {
           processType: details.type,
           reason: details.reason,
           exitCode: details.exitCode,
+          ...(details.name === undefined ? {} : { name: details.name }),
           foreignDumpsIgnored: owned.foreignSkipped,
           unreadableDumpsSkipped: owned.unknownSkipped,
           nonCrashDumpsSkipped: owned.nonCrashSkipped,
+          ...(details.processSnapshot === undefined
+            ? {}
+            : { processSnapshot: details.processSnapshot }),
           ...(gpu === null ? {} : { gpuCrashesInWindow: gpu.countInWindow }),
           ...(gpu?.suppressInvite === true ? { invitationSuppressed: 'gpu-recoverable' } : {}),
         },

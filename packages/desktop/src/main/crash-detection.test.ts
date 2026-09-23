@@ -264,6 +264,65 @@ describe('runtime process-gone invitations', () => {
     }
   });
 
+  test('runtime crash breadcrumbs retain the pre-crash and live process snapshots', () => {
+    const rig = makeRig();
+    const detection = createCrashDetection(rig.deps);
+    const processSnapshot = {
+      affectedRenderer: { contentsId: 17, rendererPid: 222 },
+      lastSampleAgeMs: 4_000,
+      lastSample: {
+        capturedAt: '2026-09-22T19:25:47.000Z',
+        processCount: 0,
+        processesTruncated: 0,
+        processes: [],
+        windowCount: 0,
+        windowsTruncated: 0,
+        windows: [],
+      },
+      liveSample: {
+        capturedAt: '2026-09-22T19:25:51.000Z',
+        processCount: 0,
+        processesTruncated: 0,
+        processes: [],
+        windowCount: 0,
+        windowsTruncated: 0,
+        windows: [],
+      },
+    };
+
+    detection.handleRenderProcessGone({
+      reason: 'crashed',
+      exitCode: -1,
+      processSnapshot,
+    });
+    const first = rig.emitted[0];
+    if (!first) throw new Error('expected a report invitation');
+    detection.ack(first.eventId);
+    detection.handleChildProcessGone({
+      type: 'Utility',
+      reason: 'crashed',
+      exitCode: -1,
+      name: 'OpenKnowledge Terminal Host 7',
+      serviceName: 'node.mojom.NodeService',
+      processSnapshot,
+    });
+
+    expect(
+      rig.warnings.find((line) => line.event === 'crash-detection.render-process-gone'),
+    ).toMatchObject({ processSnapshot });
+    expect(
+      rig.warnings.find((line) => line.event === 'crash-detection.child-process-gone'),
+    ).toMatchObject({
+      name: 'OpenKnowledge Terminal Host 7',
+      processSnapshot,
+    });
+    expect(
+      rig.warnings.find((line) => line.event === 'crash-detection.child-process-gone'),
+    ).not.toHaveProperty('serviceName');
+    expect(rig.emitted[0]).not.toHaveProperty('processSnapshot');
+    expect(rig.emitted[1]).not.toHaveProperty('processSnapshot');
+  });
+
   test('a second crash stays silent while one invitation is unanswered, and invites again after ack', () => {
     const rig = makeRig();
     const detection = createCrashDetection(rig.deps);

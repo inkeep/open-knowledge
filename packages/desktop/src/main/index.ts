@@ -227,6 +227,7 @@ import { copyImageToClipboard } from './copy-image-clipboard.ts';
 import {
   type CrashDetection,
   createCrashDetection,
+  isProcessCrashReason,
   SENTINEL_HEARTBEAT_INTERVAL_MS,
   startLocalCrashReporter,
 } from './crash-detection.ts';
@@ -238,6 +239,11 @@ import {
 } from './create-new-project.ts';
 import { createDebugIpc, type DebugIpcHandle } from './debug-ipc.ts';
 import { flushDesktopLogger, getLogger, getRootDesktopLogger } from './desktop-logger.ts';
+import {
+  createDesktopProcessObservability,
+  type DesktopProcessObservability,
+  readRendererPid,
+} from './desktop-process-observability.ts';
 import {
   collectDesktopUninstallProjectCandidates,
   confirmDesktopUninstall,
@@ -1145,6 +1151,7 @@ let mcpWiringHandle: RunMcpWiringHandle | null = null;
 let rendererReadySink: RendererReadySink | null = null;
 let crashDetection: CrashDetection | null = null;
 let rendererRecovery: RendererRecovery | null = null;
+let desktopProcessObservability: DesktopProcessObservability | null = null;
 let crashSentinelHeartbeat: NodeJS.Timeout | null = null;
 let osShutdownNoted = false;
 
@@ -1207,7 +1214,10 @@ function resolveLocalOpCli(): LocalOpCliInvocation {
 
 function runDriverBootSmokeInProduction(): void {
   runDriverBootSmoke({
-    fork: (entry) => utilityProcess.fork(entry, [], {}) as unknown as DriverUtilityLike,
+    fork: (entry) =>
+      utilityProcess.fork(entry, [], {
+        serviceName: 'OpenKnowledge Driver Boot',
+      }) as unknown as DriverUtilityLike,
     quit: () => {
       try {
         app.quit();
@@ -3788,8 +3798,10 @@ function registerIpcHandlers() {
   };
 
   const terminalManager = createTerminalManager({
-    forkPtyHost: () =>
-      utilityProcess.fork(join(__dirname, 'utility/pty-host.js')) as unknown as PtyUtilityLike,
+    forkPtyHost: (windowId) =>
+      utilityProcess.fork(join(__dirname, 'utility/pty-host.js'), [], {
+        serviceName: `OpenKnowledge Terminal Host ${windowId}`,
+      }) as unknown as PtyUtilityLike,
     sendData: (wc, payload) => sendToRenderer(wc, 'ok:pty:data', payload),
     sendExit: (wc, payload) => sendToRenderer(wc, 'ok:pty:exit', payload),
     sendNotice: (wc, payload) => sendToRenderer(wc, 'ok:pty:notice', payload),
@@ -5851,6 +5863,14 @@ function bootPrimaryInstance(): void {
   );
 
   startLocalCrashReporter(crashReporter);
+  desktopProcessObservability = createDesktopProcessObservability({
+    now: () => new Date(),
+    getAppMetrics: () => app.getAppMetrics(),
+    getAllWindows: () => BrowserWindow.getAllWindows(),
+    logger: getLogger('desktop-process-observability'),
+    setInterval: (callback, ms) => setInterval(callback, ms).unref(),
+    clearInterval: (handle) => clearInterval(handle),
+  });
   crashDetection = createCrashDetection({
     sentinelPath: join(app.getPath('userData'), 'bug-report-dirty-shutdown.json'),
     ackStorePath: join(app.getPath('userData'), 'bug-report-crash-acks.json'),
@@ -5935,6 +5955,7 @@ function bootPrimaryInstance(): void {
   powerMonitor.on('suspend', () => crashDetection?.noteSuspend());
   powerMonitor.on('resume', () => crashDetection?.noteResume());
   app.on('browser-window-created', (_event, win) => {
+    desktopProcessObservability?.observeWindow(win);
     win.on('session-end', (event) => {
       if (crashDetection === null || osShutdownNoted) return;
       osShutdownNoted = true;
@@ -5957,20 +5978,46 @@ function bootPrimaryInstance(): void {
     if (details.type === 'Utility') {
       getServerExitRecorder().noteGoneReason(details.reason);
     }
-    crashDetection?.handleChildProcessGone(details);
+    const crashReason = isProcessCrashReason(details.reason);
+    const processSnapshot = crashReason
+      ? desktopProcessObservability?.snapshotForCrash()
+      : undefined;
+    crashDetection?.handleChildProcessGone({
+      ...details,
+      processSnapshot,
+    });
+    if (crashReason) flushDesktopLogger();
   });
 
   app.on('web-contents-created', (_event, contents) => {
     attachRendererConsoleCapture(contents);
     contents.on('render-process-gone', (_e, details) => {
-      crashDetection?.handleRenderProcessGone(details);
+      let rendererPid: number | null = null;
+      const crashReason = isProcessCrashReason(details.reason);
+      if (crashReason) {
+        rendererPid = readRendererPid(contents);
+      }
+      const processSnapshot = crashReason
+        ? desktopProcessObservability?.snapshotForCrash({
+            contentsId: contents.id,
+            rendererPid,
+          })
+        : undefined;
+      crashDetection?.handleRenderProcessGone({
+        ...details,
+        processSnapshot,
+      });
       rendererRecovery?.handleRenderProcessGone(contents, details);
+      if (crashReason) flushDesktopLogger();
     });
     contents.once('destroyed', () => {
       rendererRecovery?.dispose(contents);
     });
     const retryDelivery = () => crashDetection?.notifyRendererReady();
-    contents.on('did-finish-load', retryDelivery);
+    contents.on('did-finish-load', () => {
+      retryDelivery();
+      desktopProcessObservability?.sampleNow('renderer-ready');
+    });
     contents.on('did-stop-loading', retryDelivery);
   });
 
@@ -6130,6 +6177,7 @@ function bootPrimaryInstance(): void {
     .then(async () => {
       startupWaterfall.mark('appReady');
       startupWaterfall.otelEnabled = beginRoot();
+      desktopProcessObservability?.start();
       logBootAccessibilityPosture();
       const shellEnvLogger = {
         event: (payload: Record<string, unknown> & { event: string }) =>
@@ -6632,6 +6680,8 @@ function bootPrimaryInstance(): void {
       crashSentinelHeartbeat = null;
     }
     rendererRecovery = null;
+    desktopProcessObservability?.stop();
+    desktopProcessObservability = null;
     dockVisibleForWindow.clear();
     agentPanelVisibleForWindow.clear();
     dockOrderForWindow.clear();
