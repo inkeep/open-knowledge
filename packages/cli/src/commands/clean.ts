@@ -2,6 +2,9 @@ import { unlinkSync } from 'node:fs';
 import { type Config, isLockProcessRunning, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { describeLockOwnershipRefusal, inspectLock, type LockState } from './lock-state.ts';
+import type { V1CleanDocument, V1Project, V1Result } from './supervision-json-v1.ts';
+import { v1Result } from './supervision-json-v1.ts';
+import { addV1FormatOption, writeV1Document } from './supervision-json-v1-output.ts';
 
 interface PruneTarget {
   name: 'server';
@@ -64,6 +67,17 @@ interface RunCleanDeps {
 interface CleanOutcome {
   pruned: PruneTarget[];
   failed: Array<{ target: Pick<PruneTarget, 'name' | 'lockPath'>; error: string }>;
+  decision: {
+    code:
+      | 'stale-removed'
+      | 'nothing-to-clean'
+      | 'live-retained'
+      | 'ownership-unverified'
+      | 'read-failed'
+      | 'remove-failed';
+    detail: string | null;
+    lockPath: string;
+  };
 }
 
 export function runClean(deps: RunCleanDeps): CleanOutcome {
@@ -73,7 +87,8 @@ export function runClean(deps: RunCleanDeps): CleanOutcome {
   const log = deps.log ?? ((msg) => console.log(msg));
   const error = deps.error ?? ((msg) => console.error(msg));
 
-  const plan = buildCleanPlan(inspect());
+  const state = inspect();
+  const plan = buildCleanPlan(state);
 
   if (plan.refusal) {
     error(`${plan.refusal.lockPath}: ${plan.refusal.error}`);
@@ -82,11 +97,24 @@ export function runClean(deps: RunCleanDeps): CleanOutcome {
       failed: [
         { target: { name: 'server', lockPath: plan.refusal.lockPath }, error: plan.refusal.error },
       ],
+      decision: {
+        code: state.status === 'read-error' ? 'read-failed' : 'ownership-unverified',
+        detail: plan.refusal.error,
+        lockPath: state.lockPath,
+      },
     };
   }
   if (plan.prune.length === 0) {
     log('No stale locks.');
-    return { pruned: [], failed: [] };
+    return {
+      pruned: [],
+      failed: [],
+      decision: {
+        code: state.status === 'alive' ? 'live-retained' : 'nothing-to-clean',
+        detail: null,
+        lockPath: state.lockPath,
+      },
+    };
   }
 
   const pruned: PruneTarget[] = [];
@@ -111,18 +139,77 @@ export function runClean(deps: RunCleanDeps): CleanOutcome {
     error(`Failed to prune: ${rendered}`);
   }
 
-  return { pruned, failed };
+  return {
+    pruned,
+    failed,
+    decision:
+      failed.length > 0
+        ? {
+            code: 'remove-failed',
+            detail: failed.map((item) => item.error).join('; '),
+            lockPath: state.lockPath,
+          }
+        : { code: 'stale-removed', detail: null, lockPath: state.lockPath },
+  };
 }
 
-export function cleanCommand(getConfig: () => Config): Command {
-  return new Command('clean')
-    .description('Prune a stale / corrupt open-knowledge lock file (never touches live locks)')
-    .action(() => {
-      getConfig();
-      const lockDir = resolveLockDir(process.cwd());
-      const outcome = runClean({ lockDir });
-      if (outcome.failed.length > 0) {
-        process.exitCode = 1;
+export function cleanCommand(
+  getConfig: () => Config,
+  getV1Context?: () => { project: V1Project; failure: string | null },
+): Command {
+  return addV1FormatOption(
+    new Command('clean').description(
+      'Prune a stale / corrupt open-knowledge lock file (never touches live locks)',
+    ),
+  ).action((options: { format?: string }) => {
+    if (options.format === 'json-v1') {
+      const context = getV1Context?.() ?? {
+        project: { root: process.cwd(), resolution: 'cwd' as const },
+        failure: null,
+      };
+      const failure = (
+        code: 'project-unavailable' | 'operation-failed',
+        detail: string,
+        project: V1Project = { root: null, resolution: 'unavailable' },
+      ): V1CleanDocument => ({
+        schemaVersion: 1,
+        command: 'clean',
+        result: v1Result('clean', code, detail) as V1Result<'clean'>,
+        project,
+        targets: [],
+      });
+      if (context.failure !== null) {
+        writeV1Document(failure('project-unavailable', context.failure));
+        return;
       }
-    });
+      try {
+        const root = context.project.root;
+        if (root === null) throw new Error('Project root is unavailable');
+        const outcome = runClean({ lockDir: resolveLockDir(root), log: () => {}, error: () => {} });
+        const { code, detail, lockPath } = outcome.decision;
+        writeV1Document({
+          schemaVersion: 1,
+          command: 'clean',
+          result: v1Result('clean', code, detail) as V1Result<'clean'>,
+          project: context.project,
+          targets: [{ lockPath, code, detail }],
+        });
+      } catch (error) {
+        writeV1Document(
+          failure(
+            'operation-failed',
+            error instanceof Error ? error.message : String(error),
+            context.project,
+          ),
+        );
+      }
+      return;
+    }
+    getConfig();
+    const lockDir = resolveLockDir(process.cwd());
+    const outcome = runClean({ lockDir });
+    if (outcome.failed.length > 0) {
+      process.exitCode = 1;
+    }
+  });
 }

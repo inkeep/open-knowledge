@@ -79,7 +79,10 @@ program
     const cwd = opts.cwd as string | undefined;
     const observationName = actionCommand.name();
     if (
-      (observationName === 'status' || observationName === 'ps') &&
+      (observationName === 'status' ||
+        observationName === 'ps' ||
+        observationName === 'stop' ||
+        observationName === 'clean') &&
       actionCommand.opts().format === 'json-v1'
     ) {
       try {
@@ -222,8 +225,18 @@ program.addCommand(uiTombstone, { hidden: true });
 
 program.addCommand(openCommand());
 
-program.addCommand(stopCommand(() => resolvedConfig));
-program.addCommand(cleanCommand(() => resolvedConfig));
+program.addCommand(
+  stopCommand(
+    () => resolvedConfig,
+    () => observationContext,
+  ),
+);
+program.addCommand(
+  cleanCommand(
+    () => resolvedConfig,
+    () => observationContext,
+  ),
+);
 program.addCommand(
   statusCommand(
     () => resolvedConfig,

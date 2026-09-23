@@ -1,5 +1,4 @@
 import { resolve } from 'node:path';
-import { desktopChannelLabel, resolveDesktopProductName } from '@inkeep/open-knowledge-core';
 import {
   type Config,
   isProcessAlive,
@@ -11,8 +10,11 @@ import type { Logger as PinoLoggerInstance } from 'pino';
 import { getCliLogger } from '../cli-logger.ts';
 import { getInvocationCwd } from '../project-anchor.ts';
 import { discoverLockDirs } from '../utils/process-scan.ts';
-import { inspectLock, type LockState } from './lock-state.ts';
+import { describeLockOwnershipRefusal, inspectLock, type LockState } from './lock-state.ts';
 import { runPs } from './ps.ts';
+import { buildStopV1, stopV1Failure } from './stop-v1.ts';
+import type { V1Project, V1StopTarget } from './supervision-json-v1.ts';
+import { addV1FormatOption, writeV1Document } from './supervision-json-v1-output.ts';
 
 const CLIENT_PROBE_TIMEOUT_MS = 1500;
 
@@ -91,26 +93,22 @@ interface RunStopDeps {
   error?: (msg: string) => void;
   probeClients?: (lockDir: string, logger?: PinoLoggerInstance) => Promise<number | null>;
   logger?: PinoLoggerInstance;
-  selfChannel?: 'stable' | 'beta';
 }
 
 interface StopOutcome {
   stopped: StopTargetPlan[];
   failed: Array<{ target: StopTargetPlan; error: string }>;
   hadTargets: boolean;
-  declined?: { clients: number } | { otherChannel: string };
-}
-
-function currentChannel(logger: PinoLoggerInstance | undefined): RunStopDeps['selfChannel'] {
-  try {
-    return resolveDesktopProductName();
-  } catch (err) {
-    logger?.warn(
-      { err },
-      `stop channel check skipped: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return undefined;
-  }
+  declined?: { clients: number };
+  decision: {
+    code:
+      | 'signalled'
+      | 'already-stopped'
+      | 'clients-connected'
+      | 'ownership-unverified'
+      | 'signal-failed';
+    detail: string | null;
+  };
 }
 
 export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
@@ -127,31 +125,21 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
   if (plan.targets.length === 0) {
     log('No running open-knowledge processes.');
     logger?.info({ lockDir: deps.lockDir, targets: 0 }, 'stop found nothing to signal');
-    return { stopped: [], failed: [], hadTargets: false };
-  }
-
-  const holder =
-    serverState.status === 'alive' || serverState.status === 'foreign-host'
-      ? serverState.lock.channel
-      : undefined;
-  if (deps.force !== true && typeof holder === 'string' && holder.length > 0) {
-    const self = deps.selfChannel ?? currentChannel(logger);
-    if (self !== undefined && holder !== self) {
-      error(
-        `Not stopping: the server at ${deps.lockDir} belongs to ${desktopChannelLabel(holder)}. ` +
-          'Stop it from that app or its CLI, or re-run with --force to terminate anyway.',
-      );
-      logger?.warn(
-        {
-          lockDir: deps.lockDir,
-          holderChannel: holder,
-          selfChannel: self,
-          pids: plan.targets.map((t) => t.pid),
-        },
-        'stop declined: server belongs to another channel',
-      );
-      return { stopped: [], failed: [], hadTargets: true, declined: { otherChannel: holder } };
-    }
+    return {
+      stopped: [],
+      failed: [],
+      hadTargets: false,
+      decision: {
+        code:
+          serverState.status === 'unverified-owner' || serverState.status === 'read-error'
+            ? 'ownership-unverified'
+            : 'already-stopped',
+        detail:
+          serverState.status === 'unverified-owner'
+            ? describeLockOwnershipRefusal(serverState)
+            : null,
+      },
+    };
   }
 
   if (deps.force !== true) {
@@ -166,7 +154,16 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
         { lockDir: deps.lockDir, clients, pids: plan.targets.map((t) => t.pid) },
         'stop declined: live collaboration clients',
       );
-      return { stopped: [], failed: [], hadTargets: true, declined: { clients } };
+      return {
+        stopped: [],
+        failed: [],
+        hadTargets: true,
+        declined: { clients },
+        decision: {
+          code: 'clients-connected',
+          detail: `${clients} collaboration clients are connected.`,
+        },
+      };
     }
   }
 
@@ -201,7 +198,15 @@ export async function runStop(deps: RunStopDeps): Promise<StopOutcome> {
     error(`Failed to stop: ${rendered}`);
   }
 
-  return { stopped, failed, hadTargets: true };
+  return {
+    stopped,
+    failed,
+    hadTargets: true,
+    decision:
+      failed.length > 0
+        ? { code: 'signal-failed', detail: failed.map((item) => item.error).join('; ') }
+        : { code: 'signalled', detail: 'SIGTERM sent.' },
+  };
 }
 
 function isStoppableState(
@@ -213,14 +218,16 @@ function isStoppableState(
   return false;
 }
 
-async function findLockDirByNumber(
+export async function findLockDirByNumber(
   n: number,
   isAlive: (pid: number) => boolean = isProcessAlive,
+  discover: () => Promise<string[]> = discoverLockDirs,
+  inspect: (lockDir: string) => LockState = (lockDir) => inspectLock(lockDir, 'server'),
 ): Promise<string | null> {
-  const lockDirs = await discoverLockDirs();
+  const lockDirs = await discover();
   let pidMatch: string | null = null;
   for (const lockDir of lockDirs) {
-    const server = inspectLock(lockDir, 'server');
+    const server = inspect(lockDir);
     if (!isStoppableState(server, isAlive)) continue;
     if (server.lock.port === n) return lockDir;
     if (pidMatch === null && server.lock.pid === n) pidMatch = lockDir;
@@ -264,77 +271,114 @@ async function countOtherRunningServers(exceptLockDir: string): Promise<number> 
   return count;
 }
 
-export function stopCommand(getConfig: () => Config): Command {
-  return new Command('stop')
-    .description(
-      'Stop open-knowledge server(s). With no argument: stops the server for the enclosing project — run it from anywhere inside the project. ' +
-        'Pass a port number, a directory path, or "all" to target globally.',
-    )
-    .argument('[target...]', 'port number, directory path (spaces OK), or "all"')
-    .option(
-      '--force',
-      'Stop even when the server belongs to another OpenKnowledge app (Stable or Beta) or editor windows or agents are still connected to it',
-    )
-    .action(async (parts: string[], options: { force?: boolean }) => {
-      const force = options.force === true;
-      const target = parts.length === 0 ? undefined : parts.join(' ');
+export function stopCommand(
+  getConfig: () => Config,
+  getV1Context?: () => { project: V1Project; failure: string | null },
+): Command {
+  return addV1FormatOption(
+    new Command('stop')
+      .description(
+        'Stop open-knowledge server(s). With no argument: stops the server for the enclosing project — run it from anywhere inside the project. ' +
+          'Pass a port number, a directory path, or "all" to target globally.',
+      )
+      .argument('[target...]', 'port number, directory path (spaces OK), or "all"')
+      .option(
+        '--force',
+        'Stop even when editor windows or agents are still connected to the server',
+      ),
+  ).action(async (parts: string[], options: { force?: boolean; format?: string }) => {
+    const force = options.force === true;
+    const target = parts.length === 0 ? undefined : parts.join(' ');
 
-      if (target === undefined) {
-        getConfig();
-        const lockDir = resolveLockDir(process.cwd());
-        const outcome = await runStop({ lockDir, force, log: () => {} });
-        if (outcome.hadTargets) {
-          if (outcome.stopped.length > 0) {
-            const rendered = outcome.stopped
-              .map((t) => `${t.name} (pid=${t.pid}, port=${t.port})`)
-              .join(', ');
-            console.log(`Stopped: ${rendered}`);
-          }
-          if (outcome.failed.length > 0 || outcome.declined !== undefined) process.exitCode = 1;
-        } else {
-          const others = await countOtherRunningServers(lockDir);
-          console.log(formatNoTargetMessage(process.cwd(), others, { listingFollows: others > 0 }));
-          if (others > 0) await runPs({});
-        }
+    if (options.format === 'json-v1') {
+      const context = getV1Context?.() ?? {
+        project: { root: process.cwd(), resolution: 'cwd' as const },
+        failure: null,
+      };
+      const kind: V1StopTarget['kind'] =
+        target === undefined
+          ? 'project'
+          : target === 'all'
+            ? 'all'
+            : /^\d+$/.test(target)
+              ? 'number'
+              : 'path';
+      const selector: V1StopTarget = { kind, value: target ?? null, projectRoot: null };
+      if (context.failure !== null) {
+        writeV1Document(stopV1Failure(selector, force, 'project-unavailable', context.failure));
         return;
       }
-
-      if (target === 'all') {
-        const lockDirs = await discoverLockDirs();
-        if (lockDirs.length === 0) {
-          console.log('No running open-knowledge servers found.');
-          return;
-        }
-        let stopped = 0;
-        for (const lockDir of lockDirs) {
-          if (!isStoppableState(inspectLock(lockDir, 'server'), isProcessAlive)) continue;
-          await executeStop(lockDir, force);
-          stopped++;
-        }
-        if (stopped === 0) console.log('No running open-knowledge servers found.');
-        return;
+      try {
+        writeV1Document(await buildStopV1({ target, force, projectRoot: context.project.root }));
+      } catch (error) {
+        writeV1Document(
+          stopV1Failure(
+            selector,
+            force,
+            'operation-failed',
+            error instanceof Error ? error.message : String(error),
+          ),
+        );
       }
+      return;
+    }
 
-      if (/^\d+$/.test(target)) {
-        const n = Number.parseInt(target, 10);
-        const lockDir = await findLockDirByNumber(n);
-        if (lockDir === null) {
-          console.log(`No running open-knowledge server found with port or PID ${n}.`);
-          return;
-        }
-        await executeStop(lockDir, force);
-        return;
-      }
-
-      const targetDir = resolve(getInvocationCwd(), target);
-      const lockDir = resolveLockDir(targetDir);
-      const buffered: string[] = [];
-      const outcome = await runStop({ lockDir, force, log: (msg) => buffered.push(msg) });
-      if (outcome.failed.length > 0 || outcome.declined !== undefined) process.exitCode = 1;
+    if (target === undefined) {
+      getConfig();
+      const lockDir = resolveLockDir(process.cwd());
+      const outcome = await runStop({ lockDir, force, log: () => {} });
       if (outcome.hadTargets) {
-        for (const line of buffered) console.log(line);
+        if (outcome.stopped.length > 0) {
+          const rendered = outcome.stopped
+            .map((t) => `${t.name} (pid=${t.pid}, port=${t.port})`)
+            .join(', ');
+          console.log(`Stopped: ${rendered}`);
+        }
+        if (outcome.failed.length > 0 || outcome.declined !== undefined) process.exitCode = 1;
       } else {
-        console.log(formatNoTargetMessage(targetDir, await countOtherRunningServers(lockDir)));
+        const others = await countOtherRunningServers(lockDir);
+        console.log(formatNoTargetMessage(process.cwd(), others, { listingFollows: others > 0 }));
+        if (others > 0) await runPs({});
       }
-    });
+      return;
+    }
+
+    if (target === 'all') {
+      const lockDirs = await discoverLockDirs();
+      if (lockDirs.length === 0) {
+        console.log('No running open-knowledge servers found.');
+        return;
+      }
+      let stopped = 0;
+      for (const lockDir of lockDirs) {
+        if (!isStoppableState(inspectLock(lockDir, 'server'), isProcessAlive)) continue;
+        await executeStop(lockDir, force);
+        stopped++;
+      }
+      if (stopped === 0) console.log('No running open-knowledge servers found.');
+      return;
+    }
+
+    if (/^\d+$/.test(target)) {
+      const n = Number.parseInt(target, 10);
+      const lockDir = await findLockDirByNumber(n);
+      if (lockDir === null) {
+        console.log(`No running open-knowledge server found with port or PID ${n}.`);
+        return;
+      }
+      await executeStop(lockDir, force);
+      return;
+    }
+
+    const targetDir = resolve(getInvocationCwd(), target);
+    const lockDir = resolveLockDir(targetDir);
+    const buffered: string[] = [];
+    const outcome = await runStop({ lockDir, force, log: (msg) => buffered.push(msg) });
+    if (outcome.failed.length > 0 || outcome.declined !== undefined) process.exitCode = 1;
+    if (outcome.hadTargets) {
+      for (const line of buffered) console.log(line);
+    } else {
+      console.log(formatNoTargetMessage(targetDir, await countOtherRunningServers(lockDir)));
+    }
+  });
 }
