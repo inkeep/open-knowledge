@@ -2,13 +2,16 @@ import type { spawn as NativeSpawn } from 'node:child_process';
 import { statSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, win32 } from 'node:path';
+import {
+  DESKTOP_PRODUCTS,
+  desktopWindowsExecutableName,
+  desktopWindowsInstallDirNames,
+} from '@inkeep/open-knowledge-core';
 import { spawnDetachedScrubbed } from '../utils/detached-spawn.ts';
 
-export const DESKTOP_BUNDLE_ID = 'com.inkeep.open-knowledge';
+export const DESKTOP_BUNDLE_ID = DESKTOP_PRODUCTS.stable.appId;
 
-const DESKTOP_BUNDLE_NAME = 'OpenKnowledge.app';
-
-const APPLICATIONS_BUNDLE_PATH = `/Applications/${DESKTOP_BUNDLE_NAME}`;
+const DESKTOP_PRODUCT_LIST = [DESKTOP_PRODUCTS.stable, DESKTOP_PRODUCTS.beta] as const;
 
 type DetectReason =
   | 'available'
@@ -60,21 +63,17 @@ function resolveBundlePath(deps: DetectDeps): string | null {
     }
   }
 
-  if (probeBundle(deps, APPLICATIONS_BUNDLE_PATH)) {
-    return APPLICATIONS_BUNDLE_PATH;
-  }
-
   const home = deps.homeDir ?? homedir();
-  const userBundlePath = join(home, 'Applications', DESKTOP_BUNDLE_NAME);
-  if (probeBundle(deps, userBundlePath)) {
-    return userBundlePath;
+  for (const product of DESKTOP_PRODUCT_LIST) {
+    for (const applicationsDir of [join(home, 'Applications'), '/Applications']) {
+      const bundlePath = join(applicationsDir, `${product.productName}.app`);
+      if (probeExecutable(deps, join(bundlePath, 'Contents', 'MacOS', product.productName))) {
+        return bundlePath;
+      }
+    }
   }
 
   return null;
-}
-
-function probeBundle(deps: DetectDeps, bundlePath: string): boolean {
-  return probeExecutable(deps, join(bundlePath, 'Contents', 'MacOS', 'OpenKnowledge'));
 }
 
 function probeExecutable(deps: DetectDeps, path: string): boolean {
@@ -87,28 +86,43 @@ function probeExecutable(deps: DetectDeps, path: string): boolean {
   }
 }
 
-const WIN_INSTALL_DIR_NAMES = ['@inkeepopen-knowledge-desktop', 'OpenKnowledge'] as const;
-
 function resolveWindowsExecutable(deps: DetectDeps): string | null {
-  if (deps.env.ELECTRON_RUN_AS_NODE === '1' && /\\OpenKnowledge\.exe$/i.test(deps.execPath)) {
-    return deps.execPath;
+  if (deps.env.ELECTRON_RUN_AS_NODE === '1') {
+    const bundledProduct = DESKTOP_PRODUCT_LIST.find((product) =>
+      deps.execPath
+        .toLowerCase()
+        .endsWith(`\\${desktopWindowsExecutableName(product).toLowerCase()}`),
+    );
+    if (bundledProduct) return deps.execPath;
   }
   const localAppData = deps.env.LOCALAPPDATA;
   if (localAppData) {
-    for (const dirName of WIN_INSTALL_DIR_NAMES) {
-      const exe = win32.join(localAppData, 'Programs', dirName, 'OpenKnowledge.exe');
-      if (probeExecutable(deps, exe)) return exe;
+    for (const product of DESKTOP_PRODUCT_LIST) {
+      for (const dirName of desktopWindowsInstallDirNames(product)) {
+        const exe = win32.join(
+          localAppData,
+          'Programs',
+          dirName,
+          desktopWindowsExecutableName(product),
+        );
+        if (probeExecutable(deps, exe)) return exe;
+      }
     }
   }
   return null;
 }
 
 function resolveLinuxExecutable(deps: DetectDeps): string | null {
-  if (deps.env.ELECTRON_RUN_AS_NODE === '1' && deps.execPath.endsWith('/openknowledge')) {
-    return deps.execPath;
+  if (deps.env.ELECTRON_RUN_AS_NODE === '1') {
+    const bundledProduct = DESKTOP_PRODUCT_LIST.find((product) =>
+      deps.execPath.endsWith(`/${product.linuxExecutableName}`),
+    );
+    if (bundledProduct) return deps.execPath;
   }
-  const debExe = '/opt/OpenKnowledge/openknowledge';
-  if (probeExecutable(deps, debExe)) return debExe;
+  for (const product of DESKTOP_PRODUCT_LIST) {
+    const debExe = `/opt/${product.productName}/${product.linuxExecutableName}`;
+    if (probeExecutable(deps, debExe)) return debExe;
+  }
   return null;
 }
 
@@ -166,13 +180,13 @@ export function launchDesktop(deps: LaunchDeps, detection?: DetectResult): void 
   log(
     'Launching OpenKnowledge desktop (use `ok start` for the browser server, or `OK_FORCE_BROWSER=1` to always skip)',
   );
-  if (platform === 'darwin') {
-    spawnDetachedScrubbed('open', ['-b', DESKTOP_BUNDLE_ID], { spawn: deps.spawn });
-    return;
-  }
   const target = detection?.bundlePath;
   if (!target) {
     log('Desktop launch skipped: no resolved desktop executable (caller bug).');
+    return;
+  }
+  if (platform === 'darwin') {
+    spawnDetachedScrubbed('open', ['-a', target], { spawn: deps.spawn });
     return;
   }
   spawnDetachedScrubbed(target, [], { spawn: deps.spawn });

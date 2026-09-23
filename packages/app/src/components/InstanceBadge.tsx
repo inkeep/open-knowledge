@@ -16,7 +16,7 @@ export function InstanceBadge({ className }: InstanceBadgeProps) {
       <TooltipTrigger asChild>
         <Badge
           variant="secondary"
-          aria-label={t`Dev instance: ${label}`}
+          aria-label={t`App instance: ${label}`}
           data-testid="instance-badge"
           className={className}
         >
@@ -24,7 +24,7 @@ export function InstanceBadge({ className }: InstanceBadgeProps) {
           <span className="max-w-40 truncate">{label}</span>
         </Badge>
       </TooltipTrigger>
-      <TooltipContent>{t`Dev instance: ${label} (isolated from other worktrees)`}</TooltipContent>
+      <TooltipContent>{t`${label} uses isolated app data`}</TooltipContent>
     </Tooltip>
   );
 }

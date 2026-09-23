@@ -928,6 +928,10 @@ msgstr "{label} diaktifkan"
 msgid "{label} problems"
 msgstr "{label} masalah"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} menggunakan data aplikasi terisolasi"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, other {Menghapus # suntingan yang lebih baru pada berkas ini.}}"
@@ -2053,6 +2057,10 @@ msgstr "Ada yang ingin Anda tambahkan? (opsional)"
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "Kunci API disetel"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "Instans aplikasi: {label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5043,14 +5051,6 @@ msgstr "Proyek OpenKnowledge yang terdeteksi"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "Mendeteksi"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "Instans pengembangan: {label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "Instans pengembangan: {label} (terpisah dari worktree lain)"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"

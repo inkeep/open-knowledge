@@ -4,12 +4,16 @@ import { captureServerEvent, resolveDistinctId, userAgentProperties } from '@/li
 export const dynamic = 'force-dynamic';
 
 const RELEASES_BASE = 'https://github.com/inkeep/open-knowledge/releases';
-const VALID_CHANNELS = new Set(['stable', 'beta']);
+const CHANNELS = {
+  stable: { manifestPrefix: 'latest', productPrefix: 'OpenKnowledge-' },
+  beta: { manifestPrefix: 'beta', productPrefix: 'OpenKnowledge-Beta-' },
+} as const;
+type UpdateChannel = keyof typeof CHANNELS;
 const SAFE_FILENAME = /^[A-Za-z0-9._-]+$/;
 const ARTIFACT_VERSION =
   /-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-(?:arm64|x64|universal)-mac\.zip(?:\.blockmap)?$/;
 const MANIFEST = /^(?:latest|beta)(?:-mac|-linux(?:-arm64)?)?\.yml$/;
-const BETA_TAG_FROM_URL = /\/releases\/download\/([^/]+)\//;
+const TAG_FROM_URL = /\/releases\/download\/([^/]+)\//;
 const HEADER_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 
 function headerVersion(request: Request, name: string): string | undefined {
@@ -75,7 +79,27 @@ async function latestBetaTag(): Promise<string | null> {
     );
   }
   if (redirect.kind === 'fallback') return null;
-  return BETA_TAG_FROM_URL.exec(redirect.url)?.[1] ?? null;
+  return TAG_FROM_URL.exec(redirect.url)?.[1] ?? null;
+}
+
+function isUpdateChannel(value: string): value is UpdateChannel {
+  return Object.hasOwn(CHANNELS, value);
+}
+
+function matchesChannelIdentity(
+  channel: UpdateChannel,
+  filename: string,
+  type: ArtifactType,
+): boolean {
+  const config = CHANNELS[channel];
+  if (type === 'manifest') {
+    return (
+      filename.startsWith(`${config.manifestPrefix}-`) ||
+      filename === `${config.manifestPrefix}.yml`
+    );
+  }
+  if (!filename.startsWith(config.productPrefix)) return false;
+  return channel !== 'stable' || !filename.startsWith(CHANNELS.beta.productPrefix);
 }
 
 export async function GET(
@@ -83,13 +107,15 @@ export async function GET(
   { params }: { params: Promise<{ channel: string; path: string[] }> },
 ): Promise<Response> {
   const { channel, path } = await params;
-  if (!VALID_CHANNELS.has(channel)) return errorResponse(404);
+  if (!isUpdateChannel(channel)) return errorResponse(404);
 
   const filename = path.join('/');
-  if (!SAFE_FILENAME.test(filename)) return errorResponse(404);
+  if (path.length !== 1 || !SAFE_FILENAME.test(filename)) return errorResponse(404);
 
   const type = classify(filename);
-  if (type === 'other') return errorResponse(404);
+  if (type === 'other' || !matchesChannelIdentity(channel, filename, type)) {
+    return errorResponse(404);
+  }
 
   const version = ARTIFACT_VERSION.exec(filename)?.[1];
 

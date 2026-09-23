@@ -253,6 +253,7 @@ jobs:
             echo "- Tag: \`${POINT_RELEASE_TAG}\` at \`${SYNTHETIC_SHA}\`"
             echo "- Over stable: \`${LATEST_STABLE_TAG}\`"
             echo "- Mode: \`${MODE}\` of \`${FIX_REFS}\`"
+            echo "- Desktop product: \`stable\` (Beta has an independent release lane)"
             echo "- Changeset delta for main-reset: \`${DELTA_IDS}\` (dispatched: ${MAIN_RESET_DISPATCHED})"
             if [[ -n "${RESOLVED_PATHS:-}" && "$RESOLVED_PATHS" != "[]" ]]; then
               echo "- **Re-derived config paths: \`${RESOLVED_PATHS}\`** — the pick conflicted there and the file"

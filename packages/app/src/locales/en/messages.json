@@ -3228,6 +3228,7 @@
     "aaI6cN": [
       "Couldn't connect to the agent service. Make sure the OpenKnowledge server is running and up to date (restart it if it was already running), then try again."
     ],
+    "aaiiRa": ["App instance: ", ["label"]],
     "aalx4E": ["Editing broken MDX source: ", ["reason"]],
     "aatPoi": ["Generated files"],
     "abiHje": ["Delete selected items"],
@@ -3322,7 +3323,6 @@
     "c3ZGrq": ["the doc ", ["0"]],
     "c4OLjD": ["Install for Claude Chat & Cowork (desktop app)"],
     "c4fVUV": ["Fix"],
-    "c5PTFE": ["Dev instance: ", ["label"], " (isolated from other worktrees)"],
     "c5f7sm": ["Code block language: ", ["currentLabel"], ". Click to change."],
     "c5rF4v": ["What is this knowledge base for?"],
     "c863eW": ["Could not switch to ", ["shareBranch"], ". Try switching manually."],
@@ -3885,6 +3885,7 @@
     "hFmYGU": ["Linked theme files aren’t supported"],
     "hGmuTc": ["Docs tagged #", ["tagDocsName"]],
     "hHMv6l": ["Delete block"],
+    "hHQHPX": [["label"], " uses isolated app data"],
     "hIQkLb": ["New chat"],
     "hItdtk": ["Browse folder"],
     "hLKfZe": ["Use a token instead"],
@@ -3996,7 +3997,6 @@
       "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
     ],
     "iOHg1t": ["Open embedded URL in new tab"],
-    "iRdfLr": ["Dev instance: ", ["label"]],
     "iSLIjg": ["Connect"],
     "iSQTsg": ["Ordered list"],
     "iSWh95": ["Image target \"", ["shown"], "\" does not resolve to an existing file."],

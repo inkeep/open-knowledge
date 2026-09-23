@@ -1,19 +1,19 @@
 import { describe, expect, test, vi } from 'vitest';
 import {
-  type BetaRedirect,
-  DMG_ASSET_NAME,
+  BETA_DMG_ASSET_NAME,
   FALLBACK_CACHE_CONTROL,
+  type PrereleaseRedirect,
   RELEASES_PAGE_URL,
   SUCCESS_CACHE_CONTROL,
 } from '../../../lib/download-links.ts';
 
-const TEST_DMG_URL = `https://github.com/inkeep/open-knowledge/releases/download/v0.1.0-beta.1/${DMG_ASSET_NAME}`;
+const TEST_DMG_URL = `https://github.com/inkeep/open-knowledge/releases/download/v0.1.0-beta.1/${BETA_DMG_ASSET_NAME}`;
 
-let _redirect: BetaRedirect = { kind: 'fresh', url: TEST_DMG_URL };
+let _redirect: PrereleaseRedirect = { kind: 'fresh', url: TEST_DMG_URL };
 
 vi.doMock('../../../lib/download-links.ts', () => ({
   createBetaResolver: () => () => Promise.resolve(_redirect),
-  toRedirectResponse: (r: BetaRedirect): Response =>
+  toRedirectResponse: (r: PrereleaseRedirect): Response =>
     new Response(null, {
       status: 302,
       headers: {

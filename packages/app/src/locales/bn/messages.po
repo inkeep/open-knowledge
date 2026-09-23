@@ -928,6 +928,10 @@ msgstr "{label} সক্রিয়"
 msgid "{label} problems"
 msgstr "{label} সমস্যা"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} আলাদা অ্যাপ ডেটা ব্যবহার করে"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, one {এই ফাইলের # নতুন সম্পাদনা সরিয়ে দেয়।} other {এই ফাইলের # নতুন সম্পাদনা সরিয়ে দেয়।}}"
@@ -2053,6 +2057,10 @@ msgstr "আর কিছু যোগ করতে চান? (ঐচ্ছি�
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "API কী নির্ধারিত"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "অ্যাপ ইনস্ট্যান্স: {label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5043,14 +5051,6 @@ msgstr "শনাক্ত হওয়া OpenKnowledge প্রকল্প"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "শনাক্ত করা হচ্ছে"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "ডেভ ইনস্ট্যান্স: {label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "ডেভ ইনস্ট্যান্স: {label} (অন্য ওয়ার্কট্রি থেকে পৃথক)"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"

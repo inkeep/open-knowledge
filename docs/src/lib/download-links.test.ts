@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
+  BETA_DMG_ASSET_NAME,
   createBetaResolver,
   DMG_ASSET_NAME,
   FALLBACK_CACHE_CONTROL,
@@ -17,7 +18,7 @@ function release(
   const {
     draft = false,
     prerelease = true,
-    assetNames = [DMG_ASSET_NAME],
+    assetNames = [BETA_DMG_ASSET_NAME],
     assetHost = 'https://github.com/inkeep/open-knowledge/releases/download',
   } = opts;
   return {
@@ -31,8 +32,8 @@ function release(
   };
 }
 
-function dmgUrl(tag: string) {
-  return `https://github.com/inkeep/open-knowledge/releases/download/${tag}/${DMG_ASSET_NAME}`;
+function dmgUrl(tag: string, assetName = BETA_DMG_ASSET_NAME) {
+  return `https://github.com/inkeep/open-knowledge/releases/download/${tag}/${assetName}`;
 }
 
 function jsonResponse(payload: unknown, status = 200) {
@@ -115,6 +116,14 @@ describe('pickLatestBetaDmgUrl', () => {
       release('v0.12.0-beta.6'),
     ]);
     expect(url).toBe(dmgUrl('v0.12.0-beta.6'));
+  });
+
+  test('skips legacy shared-identity beta artifacts', () => {
+    const url = pickLatestBetaDmgUrl([
+      release('v0.12.0-beta.8', { assetNames: [DMG_ASSET_NAME] }),
+      release('v0.12.0-beta.7'),
+    ]);
+    expect(url).toBe(dmgUrl('v0.12.0-beta.7'));
   });
 
   test('rejects asset URLs outside our release-download prefix', () => {

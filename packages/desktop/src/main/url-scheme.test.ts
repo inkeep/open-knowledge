@@ -108,6 +108,16 @@ describe('parseOpenKnowledgeUrl — valid inputs', () => {
 });
 
 describe('parseOpenKnowledgeUrl — protocol + host validation', () => {
+  test('accepts only the active variant scheme when one is supplied', () => {
+    const betaUrl = 'openknowledge-beta://open?project=/abs/path&doc=foo.md';
+    expect(parseOpenKnowledgeUrl(betaUrl, 'openknowledge-beta')).toMatchObject({
+      host: 'open',
+      project: '/abs/path',
+      doc: 'foo.md',
+    });
+    expect(parseOpenKnowledgeUrl(betaUrl)).toBeNull();
+  });
+
   test('rejects non-openknowledge protocol', () => {
     expect(parseOpenKnowledgeUrl('https://open?project=/abs/path&doc=foo.md')).toBeNull();
   });

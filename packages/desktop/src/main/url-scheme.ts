@@ -65,8 +65,8 @@ export type ShareParseResult =
     }
   | { readonly kind: 'invalid'; readonly source: ShareUrlSource };
 
-function classifyShareUrlSource(url: URL): ShareUrlSource | null {
-  if (url.protocol === 'openknowledge:' && url.hostname === 'share') return 'custom-scheme';
+function classifyShareUrlSource(url: URL, protocolScheme: string): ShareUrlSource | null {
+  if (url.protocol === `${protocolScheme}:` && url.hostname === 'share') return 'custom-scheme';
   if (
     (url.protocol === 'https:' || url.protocol === 'http:') &&
     SHARE_UNIVERSAL_LINK_HOSTS.has(url.hostname) &&
@@ -77,8 +77,9 @@ function classifyShareUrlSource(url: URL): ShareUrlSource | null {
   return null;
 }
 
-function classifyRawShareUrlSource(input: string): ShareUrlSource | null {
-  if (/^openknowledge:\/\/share(?::[^/?#@]*)?(?:[/?#]|$)/i.test(input)) {
+function classifyRawShareUrlSource(input: string, protocolScheme: string): ShareUrlSource | null {
+  const escapedScheme = protocolScheme.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  if (new RegExp(`^${escapedScheme}:\\/\\/share(?::[^/?#@]*)?(?:[/?#]|$)`, 'i').test(input)) {
     return 'custom-scheme';
   }
   if (/^https?:\/\/(?:www\.)?openknowledge\.ai(?::[^/?#@]*)?\/d\//i.test(input)) {
@@ -102,9 +103,12 @@ export type ShareNavigatorPayload = Extract<
   { readonly kind: 'launcher-consent' } | { readonly kind: 'launcher-miss' }
 >;
 
-export function parseShareUrl(input: string): ShareParseResult | null {
+export function parseShareUrl(
+  input: string,
+  protocolScheme: string = 'openknowledge',
+): ShareParseResult | null {
   if (typeof input !== 'string' || input.length === 0) return null;
-  const rawSource = classifyRawShareUrlSource(input);
+  const rawSource = classifyRawShareUrlSource(input, protocolScheme);
   if (input.includes('\x00') || /%00/i.test(input)) {
     return rawSource === null ? null : { kind: 'invalid', source: rawSource };
   }
@@ -116,7 +120,7 @@ export function parseShareUrl(input: string): ShareParseResult | null {
     return rawSource === null ? null : { kind: 'invalid', source: rawSource };
   }
 
-  const source = classifyShareUrlSource(url);
+  const source = classifyShareUrlSource(url, protocolScheme);
   if (source === 'custom-scheme') {
     return parseShareCustomScheme(url);
   }
@@ -245,7 +249,10 @@ function finalizeV1ShareResult(sharedUrl: string, source: ShareUrlSource): Share
   };
 }
 
-export function parseOpenKnowledgeUrl(input: string): ParsedOpenKnowledgeUrl | null {
+export function parseOpenKnowledgeUrl(
+  input: string,
+  protocolScheme: string = 'openknowledge',
+): ParsedOpenKnowledgeUrl | null {
   if (typeof input !== 'string' || input.length === 0) return null;
   if (input.includes('\x00') || /%00/i.test(input)) return null;
 
@@ -255,7 +262,7 @@ export function parseOpenKnowledgeUrl(input: string): ParsedOpenKnowledgeUrl | n
   } catch {
     return null;
   }
-  if (parsed.protocol !== 'openknowledge:') return null;
+  if (parsed.protocol !== `${protocolScheme}:`) return null;
   if (parsed.hostname !== 'open') return null;
 
   const project = parsed.searchParams.get('project');
@@ -290,7 +297,10 @@ interface ParsedOpenKnowledgeFileUrl {
   readonly file: string;
 }
 
-export function parseOpenKnowledgeFileUrl(input: string): ParsedOpenKnowledgeFileUrl | null {
+export function parseOpenKnowledgeFileUrl(
+  input: string,
+  protocolScheme: string = 'openknowledge',
+): ParsedOpenKnowledgeFileUrl | null {
   if (typeof input !== 'string' || input.length === 0) return null;
   if (input.includes('\x00') || /%00/i.test(input)) return null;
 
@@ -300,7 +310,7 @@ export function parseOpenKnowledgeFileUrl(input: string): ParsedOpenKnowledgeFil
   } catch {
     return null;
   }
-  if (parsed.protocol !== 'openknowledge:') return null;
+  if (parsed.protocol !== `${protocolScheme}:`) return null;
   if (parsed.hostname !== 'open') return null;
 
   const file = parsed.searchParams.get('file');
@@ -326,7 +336,10 @@ function isScreenTarget(value: string): value is ScreenTarget {
   return (SCREEN_TARGETS as readonly string[]).includes(value);
 }
 
-export function parseScreenUrl(input: string): ParsedScreenUrl | null {
+export function parseScreenUrl(
+  input: string,
+  protocolScheme: string = 'openknowledge',
+): ParsedScreenUrl | null {
   if (typeof input !== 'string' || input.length === 0) return null;
   if (input.includes('\x00') || /%00/i.test(input)) return null;
 
@@ -336,7 +349,7 @@ export function parseScreenUrl(input: string): ParsedScreenUrl | null {
   } catch {
     return null;
   }
-  if (parsed.protocol !== 'openknowledge:') return null;
+  if (parsed.protocol !== `${protocolScheme}:`) return null;
   if (parsed.hostname !== 'screen') return null;
 
   const name = parsed.searchParams.get('name');
@@ -412,6 +425,7 @@ interface ProtocolHandlerDeps {
   getInitialArgv?: () => readonly string[];
   setTimeout?: (cb: () => void, ms: number) => unknown;
   platform?: NodeJS.Platform;
+  protocolScheme?: string;
   now?: () => number;
   log?: {
     warn(obj: Record<string, unknown>, msg: string): void;
@@ -441,6 +455,7 @@ const URL_LAUNCH_SETTLE_GRACE_MS = 250;
 export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHandlerControl {
   const schedule = deps.setTimeout ?? ((cb, ms) => setTimeout(cb, ms));
   const platform = deps.platform ?? process.platform;
+  const protocolScheme = deps.protocolScheme ?? 'openknowledge';
   const urlQueue: string[] = [];
   const shareDedup = new Map<string, number>();
   let flushed = false;
@@ -461,7 +476,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
 
   if (!deps.app.isPackaged) {
     try {
-      const ok = deps.app.setAsDefaultProtocolClient('openknowledge');
+      const ok = deps.app.setAsDefaultProtocolClient(protocolScheme);
       if (!ok) {
         deps.log?.warn(
           {},
@@ -470,7 +485,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       } else {
         deps.app.on('before-quit', () => {
           try {
-            deps.app.removeAsDefaultProtocolClient('openknowledge');
+            deps.app.removeAsDefaultProtocolClient(protocolScheme);
           } catch (err) {
             deps.log?.warn(
               { err },
@@ -484,7 +499,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     }
   } else {
     try {
-      const ok = deps.app.setAsDefaultProtocolClient('openknowledge');
+      const ok = deps.app.setAsDefaultProtocolClient(protocolScheme);
       if (!ok) {
         deps.log?.error(
           {},
@@ -773,17 +788,17 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   };
 
   const routeUrl = (url: string): void => {
-    const share = parseShareUrl(url);
+    const share = parseShareUrl(url, protocolScheme);
     if (share !== null) {
       routeShare(share);
       return;
     }
-    const screen = parseScreenUrl(url);
+    const screen = parseScreenUrl(url, protocolScheme);
     if (screen !== null) {
       routeScreen(url, screen.name);
       return;
     }
-    const fileOpen = parseOpenKnowledgeFileUrl(url);
+    const fileOpen = parseOpenKnowledgeFileUrl(url, protocolScheme);
     if (fileOpen !== null) {
       const open = deps.openEphemeralFile;
       if (!open) {
@@ -798,7 +813,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
       });
       return;
     }
-    const parsed = parseOpenKnowledgeUrl(url);
+    const parsed = parseOpenKnowledgeUrl(url, protocolScheme);
     if (!parsed) {
       deps.log?.warn({}, '[url-scheme] dropped malformed URL');
       return;
@@ -826,11 +841,11 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
   };
 
   const enqueueOrRoute = (url: string): void => {
-    const isSingleFile = parseOpenKnowledgeFileUrl(url) !== null;
+    const isSingleFile = parseOpenKnowledgeFileUrl(url, protocolScheme) !== null;
     if (isSingleFile) {
       singleFileLaunch = true;
     }
-    if (isSingleFile || parseShareUrl(url)?.kind === 'ok') {
+    if (isSingleFile || parseShareUrl(url, protocolScheme)?.kind === 'ok') {
       urlLaunchOwnsWindow = true;
       settleNow();
     }
@@ -848,7 +863,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
 
   deps.app.on('open-file', (event, filePath) => {
     event.preventDefault();
-    enqueueOrRoute(`openknowledge://open?file=${encodeURIComponent(filePath)}`);
+    enqueueOrRoute(`${protocolScheme}://open?file=${encodeURIComponent(filePath)}`);
   });
 
   deps.app.on('continue-activity', (event, type, userInfo, details) => {
@@ -873,7 +888,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
     let fileArguments = 0;
     let unencodableArguments = 0;
     for (const arg of argv) {
-      if (arg.startsWith('openknowledge://')) {
+      if (arg.startsWith(`${protocolScheme}://`)) {
         urlArguments += 1;
         enqueueOrRoute(arg);
       } else if (
@@ -887,7 +902,7 @@ export function registerProtocolHandler(deps: ProtocolHandlerDeps): ProtocolHand
           continue;
         }
         fileArguments += 1;
-        enqueueOrRoute(`openknowledge://open?file=${encodeURIComponent(arg)}`);
+        enqueueOrRoute(`${protocolScheme}://open?file=${encodeURIComponent(arg)}`);
       }
     }
     deps.log?.info?.(

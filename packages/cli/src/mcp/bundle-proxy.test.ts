@@ -9,6 +9,9 @@ import {
 
 const userBundle = '/Users/alice/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh';
 const systemBundle = '/Applications/OpenKnowledge.app/Contents/Resources/cli/bin/ok.sh';
+const userBetaBundle =
+  '/Users/alice/Applications/OpenKnowledge Beta.app/Contents/Resources/cli/bin/ok.sh';
+const systemBetaBundle = '/Applications/OpenKnowledge Beta.app/Contents/Resources/cli/bin/ok.sh';
 
 describe('findBundledOkPath', () => {
   test('returns the user-local bundle before /Applications', () => {
@@ -22,6 +25,26 @@ describe('findBundledOkPath', () => {
     expect(
       findBundledOkPath('darwin', '/Users/alice', { existsSync: (p) => p === systemBundle }),
     ).toBe(systemBundle);
+  });
+
+  test('returns Beta from user or system Applications when Stable is absent', () => {
+    expect(
+      findBundledOkPath('darwin', '/Users/alice', {
+        existsSync: (p) => p === userBetaBundle,
+      }),
+    ).toBe(userBetaBundle);
+    expect(
+      findBundledOkPath('darwin', '/Users/alice', {
+        existsSync: (p) => p === systemBetaBundle,
+      }),
+    ).toBe(systemBetaBundle);
+  });
+
+  test('prefers Stable across install locations when both products exist', () => {
+    const seen = new Set([systemBundle, userBetaBundle]);
+    expect(findBundledOkPath('darwin', '/Users/alice', { existsSync: (p) => seen.has(p) })).toBe(
+      systemBundle,
+    );
   });
 
   test('returns null for absent bundles and non-macOS platforms', () => {

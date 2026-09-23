@@ -52,9 +52,8 @@ name: Draft release janitor
 # cold caches and build-macos's one retry. An earlier 5400 was derived from
 # build-macos's 75-minute timeout alone and did not cover the path.
 #
-# The list is narrowed to drafts plus PUBLISHED STABLES, which is exactly what
-# the selector reads (drafts are the candidates, published stables set the
-# ceiling). The narrowing is gh's LOCAL --jq transform of the full paginated
+# The list is narrowed to drafts plus PUBLISHED STABLES. Stable and beta drafts
+# share the stable-cycle ceiling. The narrowing is gh's LOCAL --jq transform of the full paginated
 # response: the releases endpoint has no filter parameter, so every release
 # still crosses the wire; what is bounded is the payload handed to the module.
 # That matters because Published betas are dead weight and this repo has

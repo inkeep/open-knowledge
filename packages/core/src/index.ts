@@ -520,7 +520,14 @@ export {
   PREVIEW_THEME_TOKENS,
   type PreviewThemeToken,
 } from './constants/preview-theme-tokens.ts';
-export { PRODUCT_NAME } from './constants/product.ts';
+export {
+  DESKTOP_PRODUCTS,
+  type DesktopProduct,
+  type DesktopProductName,
+  desktopWindowsExecutableName,
+  desktopWindowsInstallDirNames,
+  PRODUCT_NAME,
+} from './constants/product.ts';
 export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {

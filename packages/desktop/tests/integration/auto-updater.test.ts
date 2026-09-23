@@ -191,6 +191,7 @@ interface TestRig {
 function makeRig(
   overrides?: Partial<AppState> & {
     appVersion?: string;
+    buildChannel?: Parameters<typeof startAutoUpdater>[0]['buildChannel'];
     isPackaged?: boolean;
     platform?: NodeJS.Platform;
     forceDevBypass?: boolean;
@@ -212,6 +213,7 @@ function makeRig(
 } {
   const {
     appVersion = '0.3.1',
+    buildChannel,
     isPackaged = true,
     platform = 'darwin',
     forceDevBypass,
@@ -265,6 +267,7 @@ function makeRig(
     getPrimaryWindow: () => primaryWindow,
     getAllWindows: extraWindowCount > 0 ? () => fanOutTargets : undefined,
     getAppVersion: () => appVersion,
+    buildChannel,
     isPackaged,
     platform,
     forceDevBypass,
@@ -394,6 +397,13 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
 
   test('prerelease build version → channel=beta, allowPrerelease=true, allowDowngrade=false', () => {
     const { rig } = makeRig({ appVersion: '0.4.0-beta.36' });
+    expect(rig.updater.channel).toBe('beta');
+    expect(rig.updater.allowPrerelease).toBe(true);
+    expect(rig.updater.allowDowngrade).toBe(false);
+  });
+
+  test('compiled product channel overrides a mismatched package version', () => {
+    const { rig } = makeRig({ appVersion: '0.4.0', buildChannel: 'beta' });
     expect(rig.updater.channel).toBe('beta');
     expect(rig.updater.allowPrerelease).toBe(true);
     expect(rig.updater.allowDowngrade).toBe(false);

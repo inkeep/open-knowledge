@@ -22,10 +22,13 @@ set "NODE_OPTIONS="
 
 set "ELECTRON_RUN_AS_NODE=1"
 
-if not exist "%~dp0..\..\..\OpenKnowledge.exe" goto :missing
 if not exist "%~dp0..\dist\cli.mjs" goto :missing
 
-"%~dp0..\..\..\OpenKnowledge.exe" "%~dp0..\dist\cli.mjs" %*
+set "ELECTRON="
+for %%N in ("OpenKnowledge.exe" "OpenKnowledge Beta.exe") do if exist "%~dp0..\..\..\%%~N" set "ELECTRON=%~dp0..\..\..\%%~N"
+if not defined ELECTRON goto :missing
+
+"%ELECTRON%" "%~dp0..\dist\cli.mjs" %*
 endlocal & exit /b %ERRORLEVEL%
 
 :missing

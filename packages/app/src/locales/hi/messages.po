@@ -928,6 +928,10 @@ msgstr "{label} सक्षम"
 msgid "{label} problems"
 msgstr "{label} समस्याएँ"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} अलग ऐप डेटा का उपयोग करता है"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, one {इस फ़ाइल पर # नया संपादन हटाता है।} other {इस फ़ाइल पर # नए संपादन हटाता है।}}"
@@ -2053,6 +2057,10 @@ msgstr "कुछ और जोड़ना चाहेंगे? (वैकल
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "API कुंजी सेट है"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "ऐप इंस्टेंस: {label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5043,14 +5051,6 @@ msgstr "पाए गए OpenKnowledge प्रोजेक्ट"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "खोजा जा रहा है"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "डेव इंस्टेंस: {label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "डेव इंस्टेंस: {label} (अन्य वर्कट्री से अलग)"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"

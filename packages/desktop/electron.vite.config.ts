@@ -7,6 +7,7 @@ import { chromeTokensVitePlugin } from '../app/src/build/chrome-tokens-vite-plug
 import { RENDERER_DEDUPE } from '../app/vite.dedupe';
 import { rendererHtmlInput } from '../app/vite.entries';
 import { RENDERER_BABEL_OPTIONS } from '../app/vite.react-babel';
+import { parseDesktopVariantName } from './src/shared/desktop-variant';
 
 // Inject the app's version onto import.meta.env.VITE_APP_VERSION for the
 // renderer this config builds, which serves unpackaged runs only. A PACKAGED
@@ -39,6 +40,7 @@ injectAppVersionEnv();
  */
 
 const appRoot = resolve(__dirname, '../app');
+const desktopVariant = parseDesktopVariantName(process.env.OK_DESKTOP_VARIANT);
 
 // The Lingui macro resolves `lingui.config.ts` relative to cwd. electron-vite
 // runs from `packages/desktop`, so without this the renderer Babel pass fails
@@ -49,6 +51,9 @@ process.env.LINGUI_CONFIG ??= resolve(appRoot, 'lingui.config.ts');
 
 export default defineConfig({
   main: {
+    define: {
+      __OK_DESKTOP_VARIANT__: JSON.stringify(desktopVariant),
+    },
     build: {
       externalizeDeps: true,
       sourcemap: 'hidden',

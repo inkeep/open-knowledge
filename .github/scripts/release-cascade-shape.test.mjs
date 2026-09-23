@@ -1,9 +1,11 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: shell and GitHub expression fixtures must remain literal.
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
+import { DESKTOP_VARIANTS } from '../../packages/desktop/src/shared/desktop-variant.ts';
 import { buildSlackPayload } from './build-smoke-alert-payload.mjs';
 import { selectPromotion } from './select-beta-to-promote.mjs';
 import { smokePackagedDmg, VERDICT } from './smoke-packaged-dmg.mjs';
@@ -158,9 +160,7 @@ describe('the optional Windows signing lane proves what it reports', () => {
     expect(desktopBuildWinLinux.slice(attestation)).toContain(
       "Add-Content -LiteralPath $env:GITHUB_OUTPUT -Value 'signing_ran=true'",
     );
-    expect(desktopBuildWinLinux).toContain(
-      'steps.attest-windows-signing.outputs.signing_ran',
-    );
+    expect(desktopBuildWinLinux).toContain('steps.attest-windows-signing.outputs.signing_ran');
   });
 
   test('attests and package-checks both Windows outer architectures', () => {
@@ -270,18 +270,18 @@ describe('the publishing Windows lane attests its signed native payload', () => 
 
 describe('the fan-in publication DAG gates every platform', () => {
   test('publish-assets waits on all four build jobs', () => {
-    expect(desktopRelease).toContain(
-      'needs: [prepare, build-macos, build-windows, build-linux]',
-    );
+    expect(desktopRelease).toContain('needs: [prepare, build-macos, build-windows, build-linux]');
   });
 
   test('finalize waits on publish-assets (and the smoke via build-macos)', () => {
     expect(desktopRelease).toContain('needs: [prepare, build-macos, publish-assets]');
   });
 
-  test('no electron-builder invocation publishes; only the fan-in touches the Release', () => {
+  test('no variant builder invocation publishes; only the fan-in touches the Release', () => {
     expect(desktopRelease).not.toContain('--publish always');
-    const invocations = [...desktopRelease.matchAll(/electron-builder --\w+/g)];
+    const invocations = [
+      ...desktopRelease.matchAll(/run-electron-builder\.mjs --(?:mac|win|linux)/g),
+    ];
     expect(invocations.length).toBeGreaterThanOrEqual(3);
     expect(desktopRelease).toContain('gh release upload "$RELEASE_TAG"');
   });
@@ -558,10 +558,7 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
 
   test('a red tier gets one retry before the tick is refused', () => {
     const runs = [...verify.matchAll(/turbo run typecheck test/g)];
-    expect(
-      runs.length,
-      'verify must invoke the tiers twice: once, then one flake retry',
-    ).toBe(2);
+    expect(runs.length, 'verify must invoke the tiers twice: once, then one flake retry').toBe(2);
     expect(verify).toContain('case "$FIRST_STATUS" in');
     const ordinaryArm = verify.indexOf('*)', verify.indexOf('case "$FIRST_STATUS" in'));
     expect(ordinaryArm, 'the ordinary-failure arm must exist').toBeGreaterThan(-1);
@@ -592,7 +589,9 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     const wrappers = [...verify.matchAll(/timeout --foreground --kill-after=\d+s/g)];
     expect(wrappers.length, 'both attempts must carry their own budget').toBe(2);
 
-    const gateAt = verify.indexOf('"${TIER_VERDICT:-fail}" == "could-not-verify" ]]; then\n              echo');
+    const gateAt = verify.indexOf(
+      '"${TIER_VERDICT:-fail}" == "could-not-verify" ]]; then\n              echo',
+    );
     expect(gateAt, 'the warning must branch on the computed budget flag').toBeGreaterThan(-1);
     const couldNotVerifyAt = verify.indexOf('COULD NOT VERIFY', gateAt);
     const notFlakeAt = verify.indexOf('not flake-class', gateAt);
@@ -643,7 +642,10 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     const refusalPage = bugLaneVerifyStep('Page on a refusal (armed only)');
     expect(refusalPage).toContain('echo "delivered=${delivered}" >> "$GITHUB_OUTPUT"');
     expect(refusalPage).toContain('delivered=true');
-    for (const step of ['Record that this refusal was paged', 'Remember the refusal across ticks']) {
+    for (const step of [
+      'Record that this refusal was paged',
+      'Remember the refusal across ticks',
+    ]) {
       expect(bugLaneVerifyStep(step), `${step} must gate on delivery`).toContain(
         "if: steps.page.outputs.delivered == 'true'",
       );
@@ -756,10 +758,7 @@ describe('every release-pipeline post prefers the releases webhook', () => {
   const stepAfter = (source, name, next) => {
     const start = source.indexOf(`- name: ${name}`);
     if (start === -1) throw new Error(`no step named ${name}`);
-    return source.slice(
-      start,
-      next === undefined ? undefined : source.indexOf(`- name: ${next}`),
-    );
+    return source.slice(start, next === undefined ? undefined : source.indexOf(`- name: ${next}`));
   };
 
   for (const { label, step } of [
@@ -792,7 +791,9 @@ describe('every release-pipeline post prefers the releases webhook', () => {
 
   test('the aggregate smoke alarm resolves the releases webhook first', () => {
     const alarm = stepAfter(selectBeta, 'Page the release channel');
-    expect(alarm).toContain('SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}');
+    expect(alarm).toContain(
+      'SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}',
+    );
     expect(alarm).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
     expect(alarm).not.toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
   });
@@ -861,6 +862,41 @@ describe('macOS signing stays on the workflow-staged keychain', () => {
     const teardown = indexOfStep(names, 'Remove signing keychain');
     expect(teardown).toBeGreaterThan(indexOfStep(names, 'Build + sign + notarize DMG/ZIP'));
     expect(teardown).toBeLessThan(indexOfStep(names, 'Smoke the packaged DMG'));
+  });
+});
+
+describe('public desktop product variants stay independently buildable', () => {
+  const desktopBuild = read('desktop-build.yml');
+
+  test('manual public packaging workflows expose Stable and Beta only', () => {
+    for (const workflow of [desktopBuild, desktopBuildWinLinux]) {
+      expect(workflow).toContain('options: [stable, beta]');
+      expect(workflow).toContain('OK_DESKTOP_VARIANT:');
+      expect(workflow).toContain('run-electron-builder.mjs');
+    }
+  });
+
+  test('the release workflow maps public product tags to disjoint updater channels', () => {
+    for (const pair of [
+      ['*-beta.*', 'artifact_name=OpenKnowledge-Beta'],
+      ['channel=latest', 'artifact_name=OpenKnowledge'],
+    ]) {
+      expect(desktopRelease).toContain(pair[0]);
+      expect(desktopRelease).toContain(pair[1]);
+    }
+    expect(desktopRelease).toContain('ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}');
+    expect(desktopRelease).toContain('${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip');
+  });
+
+  test('signed Beta builds require their own provisioning profile', () => {
+    for (const workflow of [desktopBuild, desktopRelease]) {
+      expect(workflow).toContain('embedded.${OK_DESKTOP_VARIANT}.provisionprofile');
+      expect(workflow).toContain('security cms -D -i "$PROFILE_PATH"');
+    }
+  });
+
+  test('the fast-tier smoke downloads the Beta product artifact', () => {
+    expect(selectBeta).toContain(`--pattern '${DESKTOP_VARIANTS.beta.artifactName}-*.dmg'`);
   });
 });
 

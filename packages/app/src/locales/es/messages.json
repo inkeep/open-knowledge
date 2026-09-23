@@ -3740,6 +3740,7 @@
     "aaI6cN": [
       "No se pudo conectar con el servicio de agentes. Asegúrate de que el servidor de OpenKnowledge esté en marcha y actualizado (reinícialo si ya estaba en marcha) y vuelve a intentarlo."
     ],
+    "aaiiRa": ["Instancia de la aplicación: ", ["label"]],
     "aalx4E": ["Editando código MDX defectuoso: ", ["reason"]],
     "aatPoi": ["Archivos generados"],
     "abiHje": ["Eliminar los elementos seleccionados"],
@@ -3861,7 +3862,6 @@
     "c3ZGrq": ["el documento ", ["0"]],
     "c4OLjD": ["Instalar para Claude Chat y Cowork (aplicación de escritorio)"],
     "c4fVUV": ["Arreglar"],
-    "c5PTFE": ["Instancia de desarrollo: ", ["label"], " (aislada de otros worktrees)"],
     "c5f7sm": ["Lenguaje del bloque de código: ", ["currentLabel"], ". Haz clic para cambiarlo."],
     "c5rF4v": ["¿Para qué es esta base de conocimiento?"],
     "c863eW": ["No se pudo cambiar a ", ["shareBranch"], ". Prueba a cambiar manualmente."],
@@ -4533,6 +4533,7 @@
     "hFmYGU": ["No se admiten archivos de tema vinculados"],
     "hGmuTc": ["Documentos etiquetados con #", ["tagDocsName"]],
     "hHMv6l": ["Eliminar el bloque"],
+    "hHQHPX": [["label"], " usa datos de aplicación aislados"],
     "hIQkLb": ["Nuevo chat"],
     "hItdtk": ["Elegir carpeta"],
     "hLKfZe": ["Usar un token en su lugar"],
@@ -4658,7 +4659,6 @@
       "Una copia es una carpeta propia, y OK la mantiene alineada con el origen: edita la habilidad aquí y todas las copias se actualizan. Eso se detiene en cuanto editas a mano una copia fuera de OK; a partir de ahí sigue su propio camino y aparece como una habilidad aparte."
     ],
     "iOHg1t": ["Abrir la URL incrustada en una pestaña nueva"],
-    "iRdfLr": ["Instancia de desarrollo: ", ["label"]],
     "iSLIjg": ["Conectar"],
     "iSQTsg": ["Lista numerada"],
     "iSWh95": ["El destino de la imagen «", ["shown"], "» no corresponde a un archivo existente."],

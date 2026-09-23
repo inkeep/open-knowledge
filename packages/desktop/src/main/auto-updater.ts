@@ -101,6 +101,7 @@ interface StartAutoUpdaterOpts {
   getPrimaryWindow: () => { webContents: SendableWebContents } | null;
   getAllWindows?: () => readonly { webContents: SendableWebContents }[];
   getAppVersion: () => string;
+  buildChannel?: UpdateChannel;
   isPackaged: boolean;
   platform?: NodeJS.Platform;
   forceDevBypass?: boolean;
@@ -379,6 +380,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     getPrimaryWindow,
     getAllWindows,
     getAppVersion,
+    buildChannel: configuredBuildChannel,
     isPackaged,
     platform = process.platform,
     forceDevBypass = false,
@@ -398,7 +400,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = platform !== 'linux';
   const appVersion = getAppVersion();
-  const buildChannel = channelFromVersion(appVersion);
+  const buildChannel = configuredBuildChannel ?? channelFromVersion(appVersion);
   applyChannelSettings(updater, buildChannel);
 
   updater.forceDevUpdateConfig = forceDevBypass;

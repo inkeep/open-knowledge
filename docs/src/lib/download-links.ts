@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
-const RELEASES_API_URL = 'https://api.github.com/repos/inkeep/open-knowledge/releases?per_page=15';
+const RELEASES_API_URL = 'https://api.github.com/repos/inkeep/open-knowledge/releases?per_page=100';
 
 export const DMG_ASSET_NAME = 'OpenKnowledge-arm64.dmg';
+export const BETA_DMG_ASSET_NAME = 'OpenKnowledge-Beta-arm64.dmg';
 
 export const STABLE_DMG_URL = `https://github.com/inkeep/open-knowledge/releases/latest/download/${DMG_ASSET_NAME}`;
 
@@ -20,9 +21,9 @@ const ASSET_URL_PREFIX = 'https://github.com/inkeep/open-knowledge/releases/down
 
 const BETA_TAG_PATTERN = /^v(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/;
 
-type BetaRank = readonly [number, number, number, number];
+type PrereleaseRank = readonly [number, number, number, number];
 
-function compareBetaRank(a: BetaRank, b: BetaRank): number {
+function comparePrereleaseRank(a: PrereleaseRank, b: PrereleaseRank): number {
   for (let i = 0; i < 4; i++) {
     if (a[i] !== b[i]) return a[i] - b[i];
   }
@@ -54,25 +55,31 @@ export function pickLatestBetaDmgUrl(payload: unknown): string | null {
     return null;
   }
 
-  let best: { rank: BetaRank; url: string } | null = null;
+  let best: { rank: PrereleaseRank; url: string } | null = null;
   for (const release of parsed.data) {
     if (release.draft || !release.prerelease) continue;
     const parts = BETA_TAG_PATTERN.exec(release.tag_name);
     if (!parts) continue;
     const dmg = release.assets.find(
       (asset) =>
-        asset.name === DMG_ASSET_NAME && asset.browser_download_url.startsWith(ASSET_URL_PREFIX),
+        asset.name === BETA_DMG_ASSET_NAME &&
+        asset.browser_download_url.startsWith(ASSET_URL_PREFIX),
     );
     if (!dmg) continue;
-    const rank: BetaRank = [Number(parts[1]), Number(parts[2]), Number(parts[3]), Number(parts[4])];
-    if (!best || compareBetaRank(rank, best.rank) > 0) {
+    const rank: PrereleaseRank = [
+      Number(parts[1]),
+      Number(parts[2]),
+      Number(parts[3]),
+      Number(parts[4]),
+    ];
+    if (!best || comparePrereleaseRank(rank, best.rank) > 0) {
       best = { rank, url: dmg.browser_download_url };
     }
   }
   return best?.url ?? null;
 }
 
-export type BetaRedirect =
+export type PrereleaseRedirect =
   | { kind: 'fresh' | 'cached'; url: string }
   | { kind: 'stale-lkg'; url: string; refreshError: string }
   | { kind: 'fallback'; url: string; cause: string };
@@ -86,12 +93,12 @@ function describeError(err: unknown): string {
 
 export function createBetaResolver(
   deps: { fetchImpl?: typeof fetch; now?: () => number } = {},
-): () => Promise<BetaRedirect> {
+): () => Promise<PrereleaseRedirect> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now ?? Date.now;
   let lkg: { url: string; fetchedAt: number } | null = null;
 
-  return async function resolveBetaRedirect(): Promise<BetaRedirect> {
+  return async function resolveBetaRedirect(): Promise<PrereleaseRedirect> {
     if (lkg && now() - lkg.fetchedAt < LKG_TTL_MS) {
       return { kind: 'cached', url: lkg.url };
     }
@@ -116,7 +123,7 @@ export function createBetaResolver(
       }
       const url = pickLatestBetaDmgUrl(payload);
       if (!url) {
-        throw new Error('no published beta release carries the DMG asset');
+        throw new Error('no published beta release carries the Beta DMG asset');
       }
       lkg = { url, fetchedAt: now() };
       return { kind: 'fresh', url };
@@ -136,7 +143,7 @@ export const SUCCESS_CACHE_CONTROL = 'public, max-age=0, s-maxage=300, stale-whi
 
 export const FALLBACK_CACHE_CONTROL = 'no-store';
 
-export function toRedirectResponse(redirect: BetaRedirect): Response {
+export function toRedirectResponse(redirect: PrereleaseRedirect): Response {
   return new Response(null, {
     status: 302,
     headers: {

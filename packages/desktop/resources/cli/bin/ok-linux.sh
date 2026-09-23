@@ -9,7 +9,13 @@ done
 BIN_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
 ROOT_DIR="$(cd -P "$BIN_DIR/../../.." >/dev/null 2>&1 && pwd)"
-ELECTRON="$ROOT_DIR/openknowledge"
+ELECTRON=""
+for NAME in openknowledge openknowledge-beta; do
+  if [ -x "$ROOT_DIR/$NAME" ]; then
+    ELECTRON="$ROOT_DIR/$NAME"
+    break
+  fi
+done
 CLI="$BIN_DIR/../dist/cli.mjs"
 
 if [ ! -f "$CLI" ] || [ ! -x "$ELECTRON" ]; then

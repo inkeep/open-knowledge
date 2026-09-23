@@ -16,7 +16,7 @@ vi.doMock('../../../../lib/track.ts', () => ({
 }));
 
 const BETA_DMG_URL =
-  'https://github.com/inkeep/open-knowledge/releases/download/v0.20.0-beta.4/OpenKnowledge-arm64.dmg';
+  'https://github.com/inkeep/open-knowledge/releases/download/v0.20.0-beta.4/OpenKnowledge-Beta-arm64.dmg';
 type BetaRedirect = { kind: string; url: string; cause?: string; refreshError?: string };
 let _betaRedirect: BetaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
 vi.doMock('../../../../lib/download-links.ts', () => ({
@@ -76,7 +76,7 @@ describe('GET /updates/[channel]/[...path]', () => {
 
   test('beta zip parses the prerelease version and counts (no from_version header)', async () => {
     _lastCapture = null;
-    const file = 'OpenKnowledge-0.20.0-beta.4-arm64-mac.zip';
+    const file = 'OpenKnowledge-Beta-0.20.0-beta.4-arm64-mac.zip';
     const res = await call('beta', [file]);
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe(`${REL}/download/v0.20.0-beta.4/${file}`);
@@ -121,6 +121,15 @@ describe('GET /updates/[channel]/[...path]', () => {
 
   test('invalid channel → 404', async () => {
     expect((await call('canary', ['latest-mac.yml'])).status).toBe(404);
+  });
+
+  test('public channel paths reject the other product manifest or artifact', async () => {
+    expect((await call('stable', ['beta-mac.yml'])).status).toBe(404);
+    expect((await call('beta', ['latest-mac.yml'])).status).toBe(404);
+    expect((await call('stable', ['OpenKnowledge-Beta-0.21.0-beta.4-arm64-mac.zip'])).status).toBe(
+      404,
+    );
+    expect((await call('beta', ['OpenKnowledge-0.21.0-arm64-mac.zip'])).status).toBe(404);
   });
 
   test('path traversal / multi-segment → 404', async () => {
@@ -229,13 +238,13 @@ describe('GET /updates/[channel]/[...path]', () => {
     expect(_lastCapture?.properties?.to_version).toBe('0.20.0');
 
     _lastCapture = null;
-    await call('beta', ['OpenKnowledge-arm64.deb'], { 'x-ok-to-version': '9.9.9' });
+    await call('beta', ['OpenKnowledge-Beta-arm64.deb'], { 'x-ok-to-version': '9.9.9' });
     expect(_lastCapture?.properties?.to_version).toBe('0.20.0-beta.4');
   });
 
   test('Linux beta deb counts with to_version derived from the resolved beta tag', async () => {
     _lastCapture = null;
-    const file = 'OpenKnowledge-arm64.deb';
+    const file = 'OpenKnowledge-Beta-arm64.deb';
     const res = await call('beta', [file]);
     expect(res.status).toBe(302);
     expect(res.headers.get('location')).toBe(`${REL}/download/v0.20.0-beta.4/${file}`);

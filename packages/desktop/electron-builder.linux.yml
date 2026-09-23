@@ -30,9 +30,9 @@
 # dependencies. It is a top-level-only option (not per-platform), which is why
 # it lives in a Linux-only overlay instead of in the shared config.
 #
-# Linux builds MUST pass `--config electron-builder.linux.yml`. Forgetting it
-# fails the build loudly on node-liblzma rather than producing a silently
-# broken package, which is the failure mode this file is here to prevent.
+# Current build scripts use `run-electron-builder.mjs`, which applies this same
+# value to its generated config whenever `--linux` is present. This overlay is
+# retained for direct electron-builder callers, including monorepo validation.
 extends: file:./electron-builder.yml
 
 npmRebuild: false

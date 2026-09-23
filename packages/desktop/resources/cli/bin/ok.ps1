@@ -5,10 +5,13 @@
 # ELECTRON_RUN_AS_NODE=1 - no separate Node install required.
 
 $installDir = Resolve-Path (Join-Path $PSScriptRoot '..\..\..')
-$electron = Join-Path $installDir 'OpenKnowledge.exe'
+$electron = @('OpenKnowledge.exe', 'OpenKnowledge Beta.exe') |
+  ForEach-Object { Join-Path $installDir $_ } |
+  Where-Object { Test-Path $_ } |
+  Select-Object -First 1
 $cli = Join-Path $PSScriptRoot '..\dist\cli.mjs'
 
-if (-not (Test-Path $electron) -or -not (Test-Path $cli)) {
+if (-not $electron -or -not (Test-Path $cli)) {
   # Mirrors ok.sh / ok.cmd's ok-bundle-missing contract: two-line stderr
   # (human-readable + machine-readable JSON), exit 69 (EX_UNAVAILABLE).
   [Console]::Error.WriteLine('OpenKnowledge has been removed. Reinstall from the OpenKnowledge installer.')

@@ -928,6 +928,10 @@ msgstr ""
 msgid "{label} problems"
 msgstr ""
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} ûsês îsõlãtêd ãpp dãtã"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr ""
@@ -2053,6 +2057,10 @@ msgstr ""
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr ""
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "Ãpp înstãncê: {label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5042,14 +5050,6 @@ msgstr ""
 #: src/components/CommandPalette.tsx
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
-msgstr ""
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr ""
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
 msgstr ""
 
 #: src/components/ExploreSkills.tsx

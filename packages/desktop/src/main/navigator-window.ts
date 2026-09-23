@@ -53,6 +53,7 @@ interface NavigatorDeps extends BootHeartbeatDeps {
   rendererEntryPath: string;
   rendererDevUrl?: string | null;
   appVersion: string;
+  productName?: string;
   languagePreference: LanguagePreference;
   themePreference: OkThemeSource;
   showGate: ShowGateRegistry;
@@ -71,7 +72,7 @@ export function createNavigatorWindow(deps: NavigatorDeps): BrowserWindowLike {
       `--ok-${LANGUAGE_PREFERENCE_ARG_NAME}=${deps.languagePreference}`,
       `--ok-${THEME_PREFERENCE_ARG_NAME}=${deps.themePreference}`,
     ],
-    title: 'OpenKnowledge',
+    title: deps.productName ?? 'OpenKnowledge',
   });
   const disposeShowGate = deps.showGate.register(window, { kind: 'navigator' });
   window.on('closed', () => {

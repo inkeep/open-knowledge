@@ -3256,6 +3256,7 @@
     "aaI6cN": [
       "Tidak bisa terhubung ke layanan agen. Pastikan server OpenKnowledge berjalan dan mutakhir (mulai ulang jika sudah berjalan), lalu coba lagi."
     ],
+    "aaiiRa": ["Instans aplikasi: ", ["label"]],
     "aalx4E": ["Menyunting sumber MDX yang rusak: ", ["reason"]],
     "aatPoi": ["File yang dihasilkan"],
     "abiHje": ["Hapus item terpilih"],
@@ -3367,7 +3368,6 @@
     "c3ZGrq": ["dokumen ", ["0"]],
     "c4OLjD": ["Pasang untuk Claude Chat dan Cowork (aplikasi desktop)"],
     "c4fVUV": ["Perbaiki"],
-    "c5PTFE": ["Instans pengembangan: ", ["label"], " (terpisah dari worktree lain)"],
     "c5f7sm": ["Bahasa blok kode: ", ["currentLabel"], ". Klik untuk mengubah."],
     "c5rF4v": ["Untuk apa basis pengetahuan ini?"],
     "c863eW": ["Tidak dapat berpindah ke ", ["shareBranch"], ". Coba berpindah secara manual."],
@@ -3913,6 +3913,7 @@
     "hFmYGU": ["Berkas tema tertaut tidak didukung"],
     "hGmuTc": ["Dokumen bertag #", ["tagDocsName"]],
     "hHMv6l": ["Hapus blok"],
+    "hHQHPX": [["label"], " menggunakan data aplikasi terisolasi"],
     "hIQkLb": ["Obrolan baru"],
     "hItdtk": ["Pilih folder"],
     "hLKfZe": ["Pakai token saja"],
@@ -4031,7 +4032,6 @@
       "Salinan adalah folder tersendiri, dan OK menjaganya tetap selaras dengan sumbernya: sunting keterampilan di sini dan setiap salinan ikut diperbarui. Itu berhenti begitu Anda menyunting sebuah salinan secara manual di luar OK — sejak saat itu ia berjalan sendiri dan muncul sebagai keterampilan terpisah."
     ],
     "iOHg1t": ["Buka URL tersemat di tab baru"],
-    "iRdfLr": ["Instans pengembangan: ", ["label"]],
     "iSLIjg": ["Hubungkan"],
     "iSQTsg": ["Daftar berurut"],
     "iSWh95": ["Target gambar \"", ["shown"], "\" tidak merujuk ke file yang ada."],

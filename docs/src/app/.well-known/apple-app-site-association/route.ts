@@ -1,13 +1,13 @@
 export const dynamic = 'force-static';
 
 const APPLE_TEAM_ID = '6NZGSG335T';
-const APP_BUNDLE_ID = 'com.inkeep.open-knowledge';
+const APP_BUNDLE_IDS = ['com.inkeep.open-knowledge', 'com.inkeep.open-knowledge.beta'] as const;
 
 const AASA_MANIFEST = {
   applinks: {
     details: [
       {
-        appIDs: [`${APPLE_TEAM_ID}.${APP_BUNDLE_ID}`],
+        appIDs: APP_BUNDLE_IDS.map((bundleId) => `${APPLE_TEAM_ID}.${bundleId}`),
         components: [{ '/': '/d/*', comment: 'Share splash routes' }],
       },
     ],

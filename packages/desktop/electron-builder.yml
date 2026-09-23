@@ -15,12 +15,12 @@ electronVersion: "43.4.0"
 # other native modules still use that pass. node-pty's N-API prebuilds do not
 # require an Electron ABI rebuild.
 #
-# Linux skips the pass instead, via the `electron-builder.linux.yml` overlay
-# (`npmRebuild: false`) — Linux builds MUST pass `--config
-# electron-builder.linux.yml`. The skip is NOT expressed as a `beforeBuild` hook
-# returning false: in app-builder-lib that also asserts "node_modules are staged
-# externally", which suppresses dependency collection entirely and ships an asar
-# the app cannot start from. That overlay documents the mechanism in full.
+# Linux skips the pass instead: `run-electron-builder.mjs` sets
+# `npmRebuild: false` in its generated config whenever `--linux` is present. The
+# skip is NOT expressed as a `beforeBuild` hook returning false: in
+# app-builder-lib that also asserts "node_modules are staged externally", which
+# suppresses dependency collection entirely and ships an asar the app cannot
+# start from.
 
 directories:
   output: dist-desktop
@@ -363,10 +363,8 @@ dmg:
   # actual asset is `OpenKnowledge-0.4.1-arm64.dmg`. The arch suffix stays
   # because we only ship arm64 today; an x64 / universal build would need
   # a parallel artifactName + a splash decision rule.
-  # The docs site's /download/beta and /download/stable redirects also
-  # reference this exact asset name via DMG_ASSET_NAME in
-  # docs/src/lib/download-links.ts — changing the pattern breaks both
-  # routes and the share-splash URL together.
+  # The docs site's Stable/Beta download resolvers derive their product-specific
+  # names from this pattern in docs/src/lib/download-links.ts.
   artifactName: ${productName}-${arch}.${ext}
   title: ${productName}
   # The "drag me to Applications" arrow and branding are painted INTO the
@@ -526,7 +524,7 @@ linux:
   # The arm64 deb is built on a NATIVE arm64 runner (the `build-linux` matrix
   # in .github/workflows/desktop-build-win-linux.yml), never cross-compiled:
   # pnpm installs only the host-arch `@parcel/watcher` prebuild and the Linux
-  # build skips @electron/rebuild by design (see the overlay config), so an
+  # build skips @electron/rebuild in the generated config, so an
   # x64-host arm64 deb would package but ship the wrong native binaries.
   target:
     - target: deb
@@ -679,9 +677,7 @@ publish:
   - provider: github
     owner: inkeep
     repo: open-knowledge
-    # Explicit default — beta builds override at the CLI via
-    # `--config.publish.channel=beta`, which routes the manifest to
-    # `beta-mac.yml` instead of `latest-mac.yml`. Keeping this explicit so
-    # the channel intent is grep-able rather than relying on the implicit
-    # no-channel-field default.
+    # Stable defaults live here. `scripts/run-electron-builder.mjs` derives the
+    # Beta product identity, protocol, icon, CLI integration, and
+    # channel from `OK_DESKTOP_VARIANT` before invoking electron-builder.
     channel: latest

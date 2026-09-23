@@ -76,7 +76,7 @@ export default async function afterPack(context) {
     `${appName}.app`,
     'Contents',
     'Frameworks',
-    'OpenKnowledge Server.app',
+    `${appName} Server.app`,
   );
   const serverHelperBinary = join(serverHelperBundleDir, 'Contents', 'MacOS', `${appName} Helper`);
   if (!existsSync(electronHelperStub)) {

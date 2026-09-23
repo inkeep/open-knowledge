@@ -928,6 +928,10 @@ msgstr "已啟用 {label}"
 msgid "{label} problems"
 msgstr "{label} 個問題"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} 使用隔離的應用程式資料"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, other {會移除這個檔案上 # 處較新的編輯。}}"
@@ -2057,6 +2061,10 @@ msgstr "還有什麼想補充的嗎？（選填）"
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "API 金鑰已設定"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "應用程式實例：{label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5047,14 +5055,6 @@ msgstr "偵測到的 OpenKnowledge 專案"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "正在偵測"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "開發執行個體：{label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "開發執行個體：{label}（與其他 worktree 隔離）"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"

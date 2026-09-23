@@ -46,7 +46,13 @@ name: Desktop build
 # cannot accidentally attempt to notarize an ad-hoc-signed .app.
 
 on:
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Desktop product identity
+        type: choice
+        options: [stable, beta]
+        default: stable
 
 permissions:
   contents: read
@@ -62,6 +68,7 @@ concurrency:
 
 env:
   TURBO_TELEMETRY_DISABLED: 1
+  OK_DESKTOP_VARIANT: ${{ inputs.variant }}
 
 jobs:
   build-macos-dmg:
@@ -316,6 +323,18 @@ jobs:
         working-directory: packages/desktop
         run: node scripts/stage-parcel-watcher.mjs
 
+      - name: Validate variant provisioning profile
+        if: steps.signmode.outputs.mode == 'signed' && env.OK_DESKTOP_VARIANT != 'stable'
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          PROFILE_PATH="build/embedded.${OK_DESKTOP_VARIANT}.provisionprofile"
+          if [[ ! -f "$PROFILE_PATH" ]]; then
+            echo "::error::The committed ${OK_DESKTOP_VARIANT} Developer ID provisioning profile is missing."
+            exit 1
+          fi
+          security cms -D -i "$PROFILE_PATH" >/dev/null
+
       # Step B: package via electron-builder. Kept as a separate runner step
       # from step A (rather than chained via && in a single shell). The split
       # was originally forced by a packaging bug in the previous script runner:
@@ -350,9 +369,9 @@ jobs:
         working-directory: packages/desktop
         run: |
           if [[ "${{ steps.signmode.outputs.mode }}" == "unsigned" ]]; then
-            pnpm exec electron-builder --mac --publish never -c.mac.identity=null
+            node scripts/run-electron-builder.mjs --mac --publish never -c.mac.identity=null
           else
-            pnpm exec electron-builder --mac --publish never
+            node scripts/run-electron-builder.mjs --mac --publish never
           fi
 
       # Twin of desktop-release.yml's "Attest the signed macOS app": with
@@ -402,11 +421,11 @@ jobs:
           # on another Mac) can filter by prefix without inspecting the
           # DMG signature. Unsigned DMGs can run locally after `xattr -cr`
           # but must never be shipped as if they were a release build.
-          name: open-knowledge-macos-${{ steps.signmode.outputs.mode }}-${{ github.sha }}
+          name: open-knowledge-${{ env.OK_DESKTOP_VARIANT }}-macos-${{ steps.signmode.outputs.mode }}-${{ github.sha }}
           path: |
             packages/desktop/dist-desktop/*.dmg
             packages/desktop/dist-desktop/*.dmg.blockmap
-            packages/desktop/dist-desktop/latest-mac.yml
+            packages/desktop/dist-desktop/*-mac.yml
           retention-days: 14
           if-no-files-found: error
 

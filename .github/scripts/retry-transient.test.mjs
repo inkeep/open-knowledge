@@ -1615,7 +1615,9 @@ describe('workflow wiring', () => {
       expect(packageStep).toContain(`--attempt-timeout "${timeout}"`);
       expect(packageStep).toContain('--deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS"');
       const command = packageStep.split('\n').find((line) => /^\s*PKG_CMD:/.test(line));
-      expect(command).toContain("PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder");
+      expect(command).toContain(
+        "PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs",
+      );
       expect(command).toContain('--publish never');
     },
   );

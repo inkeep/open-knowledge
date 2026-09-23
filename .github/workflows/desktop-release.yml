@@ -155,6 +155,9 @@ jobs:
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
       version: ${{ steps.channel.outputs.version }}
+      variant: ${{ steps.channel.outputs.variant }}
+      product_name: ${{ steps.channel.outputs.product_name }}
+      artifact_name: ${{ steps.channel.outputs.artifact_name }}
       required: ${{ steps.required.outputs.required }}
     steps:
       - name: Link to triggering run
@@ -215,6 +218,9 @@ jobs:
           if [[ "$VERSION" == *-beta.* ]]; then
             {
               echo "channel=beta"
+              echo "variant=beta"
+              echo "product_name=OpenKnowledge Beta"
+              echo "artifact_name=OpenKnowledge-Beta"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
             echo "::notice::Building BETA channel from tag $RELEASE_TAG"
@@ -227,11 +233,14 @@ jobs:
             echo "::error::Tag $RELEASE_TAG is missing the .N suffix — beta releases must be tagged -beta.N (e.g. -beta.0, -beta.1) so electron-updater's cascade walk can order them. See packages/desktop/README.md beta-channel runbook."
             exit 1
           elif [[ "$VERSION" == *-* ]]; then
-            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported. See packages/desktop/README.md beta-channel runbook for the supported lifecycle."
+            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — desktop releases accept only -beta.N."
             exit 1
           else
             {
               echo "channel=latest"
+              echo "variant=stable"
+              echo "product_name=OpenKnowledge"
+              echo "artifact_name=OpenKnowledge"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
             echo "::notice::Building LATEST channel from tag $RELEASE_TAG"
@@ -537,16 +546,20 @@ jobs:
           if [[ "$VERSION" == *-beta.* ]]; then
             {
               echo "channel=beta"
+              echo "variant=beta"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
+            echo "OK_DESKTOP_VARIANT=beta" >> "$GITHUB_ENV"
           elif [[ "$VERSION" == *-* ]]; then
-            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported (prepare's twin step carries the full diagnostics)."
+            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — this public publisher accepts only -beta.N (prepare's twin step carries the full diagnostics)."
             exit 1
           else
             {
               echo "channel=latest"
+              echo "variant=stable"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
+            echo "OK_DESKTOP_VARIANT=stable" >> "$GITHUB_ENV"
           fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -796,6 +809,18 @@ jobs:
         working-directory: packages/desktop
         run: pnpm run build:desktop
 
+      - name: Validate variant provisioning profile
+        if: steps.channel.outputs.variant != 'stable'
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          PROFILE_PATH="build/embedded.${OK_DESKTOP_VARIANT}.provisionprofile"
+          if [[ ! -f "$PROFILE_PATH" ]]; then
+            echo "::error::The committed ${OK_DESKTOP_VARIANT} Developer ID provisioning profile is missing."
+            exit 1
+          fi
+          security cms -D -i "$PROFILE_PATH" >/dev/null
+
       - name: Build + sign + notarize DMG/ZIP
         # electron-builder signs with the identity in CSC_KEYCHAIN (pushed
         # into $GITHUB_ENV by the "Prepare signing keychain" step). CSC_LINK
@@ -805,7 +830,7 @@ jobs:
         # + staples + fuse-verifies. `--publish never`: the fan-in publish-assets job is
         # the only publication point — this job stages its outputs as a run
         # artifact below. electron-builder still writes the channel manifest
-        # (`latest-mac.yml` or `beta-mac.yml`, per `--config.publish.channel`)
+        # (`latest-mac.yml` or `beta-mac.yml`, per the generated config's publish channel)
         # into dist-desktop locally (proven by desktop-build.yml, whose
         # --publish never build uploads that same file).
         #
@@ -830,7 +855,7 @@ jobs:
           BUILD_VERSION: ${{ steps.channel.outputs.version }}
           BUILD_CHANNEL: ${{ steps.channel.outputs.channel }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}"'
+          PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}"'
         working-directory: packages/desktop
         run: |
           # extraMetadata.version override: kept as defense-in-depth so the
@@ -1012,6 +1037,9 @@ jobs:
     needs: prepare
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      OK_DESKTOP_VARIANT: ${{ needs.prepare.outputs.variant }}
+      OK_DESKTOP_PRODUCT_NAME: ${{ needs.prepare.outputs.product_name }}
     permissions:
       # See build-macos — packaging jobs are read-only by design.
       contents: read
@@ -1129,7 +1157,7 @@ jobs:
           BUILD_VERSION: ${{ needs.prepare.outputs.version }}
           BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
+          PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
         run: |
           set -euo pipefail
           missing=()
@@ -1211,9 +1239,9 @@ jobs:
               throw "Signed release produced no $($package.Arch) outer package at $($package.Path)."
             }
 
-            $appExecutable = Join-Path $package.Path 'OpenKnowledge.exe'
+            $appExecutable = Join-Path $package.Path "$env:OK_DESKTOP_PRODUCT_NAME.exe"
             if (-not (Test-Path -LiteralPath $appExecutable -PathType Leaf)) {
-              throw "Signed $($package.Arch) release package has no OpenKnowledge.exe."
+              throw "Signed $($package.Arch) release package has no $env:OK_DESKTOP_PRODUCT_NAME.exe."
             }
             $signature = Get-AuthenticodeSignature $appExecutable
             if ($signature.Status -ne 'Valid') {
@@ -1320,14 +1348,16 @@ jobs:
 
   # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
   # native deps from an x64 host is impractical (pnpm installs only the
-  # host-matching `@parcel/watcher-*` prebuild, and the Linux build skips
-  # @electron/rebuild by design — see electron-builder.linux.yml), so the
+  # host-matching `@parcel/watcher-*` prebuild, and the generated Linux config
+  # skips @electron/rebuild by design), so the
   # arm64 installers are built on GitHub's arm64 Linux runner where pnpm
   # installs the arm64 prebuilds directly.
   build-linux:
     needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    env:
+      OK_DESKTOP_VARIANT: ${{ needs.prepare.outputs.variant }}
     permissions:
       # See build-macos — packaging jobs are read-only by design.
       contents: read
@@ -1383,9 +1413,8 @@ jobs:
         env:
           # Rebuild native modules against Electron's Node ABI — mirrors the
           # mac job. (The packaging pass itself skips @electron/rebuild via
-          # the Linux overlay config; this install-time rebuild is what
-          # provides the ABI-correct prebuilds the overlay's rationale
-          # depends on.)
+          # the generated variant config; this install-time rebuild provides
+          # the ABI-correct prebuilds that decision depends on.)
           ELECTRON_SKIP_REBUILD: "0"
         run: pnpm install --frozen-lockfile
 
@@ -1434,47 +1463,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm
 
-      # The Linux packaging pass needs THREE config inputs at once: the
-      # `npmRebuild: false` overlay (electron-builder.linux.yml — a top-level
-      # option that CANNOT be passed as a CLI flag, because yargs leaves
-      # `-c.npmRebuild=false` as the string "false" and the packager's strict
-      # `=== false` ignores it), the channel, and the version override.
-      # Mixing a `--config <file>` with `--config.dot=flags` on one command
-      # line is yargs-merge territory nobody should trust a release to, so
-      # compose them the deterministic way: generate a release overlay that
-      # `extends` the Linux overlay (which itself extends the base config)
-      # and carries the channel + version inline. A broken extends chain
-      # fails LOUD (the node-liblzma -Werror explosion the Linux overlay's
-      # header documents), never silently.
-      #
-      # `publish` is deliberately the OBJECT form, not a one-element list.
-      # `extends` merges list-valued keys by CONCATENATION (deepAssign unions
-      # arrays), so a list here would APPEND a second publish entry after the
-      # base config's `channel: latest` one — and app-update.yml is written
-      # from the FIRST entry, silently pinning every Linux install to the
-      # wrong channel (the channel-correct assert below caught exactly this
-      # on the first live cut). An object hits deepAssign's array-vs-object
-      # branch and replaces the base list wholesale; the schema accepts both
-      # shapes.
-      - name: Generate the release overlay config (channel + version)
-        working-directory: packages/desktop
-        env:
-          CHANNEL: ${{ needs.prepare.outputs.channel }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          cat > electron-builder.release-linux.yml <<EOF
-          extends: file:./electron-builder.linux.yml
-          extraMetadata:
-            version: ${VERSION}
-          publish:
-            provider: github
-            owner: inkeep
-            repo: open-knowledge
-            channel: ${CHANNEL}
-          EOF
-          cat electron-builder.release-linux.yml
-
       # Each cell packages only its own arch, on a runner of that arch — so the
       # `.deb` / `.rpm` ship the matching `@parcel/watcher` / `@napi-rs/keyring`
       # prebuilds rather than degrading file-watching to chokidar. The deb and
@@ -1485,8 +1473,9 @@ jobs:
         working-directory: packages/desktop
         env:
           LINUX_TARGETS: ${{ matrix.targets }}
+          VERSION: ${{ needs.prepare.outputs.version }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --linux ${LINUX_TARGETS} --publish never --config electron-builder.release-linux.yml'
+          PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs --linux ${LINUX_TARGETS} --publish never --config.extraMetadata.version="${VERSION}"'
         run: |
           set -euo pipefail
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
@@ -1557,7 +1546,7 @@ jobs:
 
       # deb + rpm + the per-arch channel manifest. electron-builder names the
       # Linux manifest by arch: `latest-linux.yml` (x64) /
-      # `latest-linux-arm64.yml` (arm64), or beta-* on the beta channel —
+      # `latest-linux-arm64.yml` (arm64), or the matching beta-* channel files —
       # which is exactly the name electron-updater's provider computes from
       # process.arch on the client, and why each cell uploads a distinct
       # manifest with no collision. The deb and rpm entries share one
@@ -1612,6 +1601,7 @@ jobs:
       RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
       CHANNEL: ${{ needs.prepare.outputs.channel }}
       VERSION: ${{ needs.prepare.outputs.version }}
+      ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}
       REQUIRED: ${{ needs.prepare.outputs.required }}
     steps:
       - name: Download all platform release assets
@@ -1650,21 +1640,21 @@ jobs:
           #     app-update/package-type asserts.
           {
             echo "EXPECTED_ASSETS<<OK_INVENTORY_EOF"
-            echo "OpenKnowledge-arm64.dmg"
-            echo "OpenKnowledge-arm64.dmg.blockmap"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
+            echo "${ARTIFACT_NAME}-arm64.dmg"
+            echo "${ARTIFACT_NAME}-arm64.dmg.blockmap"
+            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip"
+            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip.blockmap"
             echo "${CHANNEL}-mac.yml"
             if [[ "$REQUIRED" == *windows* ]]; then
-              echo "OpenKnowledge-Setup-x64.exe"
-              echo "OpenKnowledge-Setup-arm64.exe"
+              echo "${ARTIFACT_NAME}-Setup-x64.exe"
+              echo "${ARTIFACT_NAME}-Setup-arm64.exe"
               echo "${CHANNEL}.yml"
             fi
             if [[ "$REQUIRED" == *linux* ]]; then
-              echo "OpenKnowledge-amd64.deb"
-              echo "OpenKnowledge-arm64.deb"
-              echo "OpenKnowledge-x86_64.rpm"
-              echo "OpenKnowledge-aarch64.rpm"
+              echo "${ARTIFACT_NAME}-amd64.deb"
+              echo "${ARTIFACT_NAME}-arm64.deb"
+              echo "${ARTIFACT_NAME}-x86_64.rpm"
+              echo "${ARTIFACT_NAME}-aarch64.rpm"
               echo "${CHANNEL}-linux.yml"
               echo "${CHANNEL}-linux-arm64.yml"
             fi
@@ -1672,18 +1662,18 @@ jobs:
             # line — without it the runner rejects the whole env file.
             echo "OK_INVENTORY_EOF"
             echo "ALLOWED_ASSETS<<OK_ALLOWED_EOF"
-            echo "OpenKnowledge-arm64.dmg"
-            echo "OpenKnowledge-arm64.dmg.blockmap"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
+            echo "${ARTIFACT_NAME}-arm64.dmg"
+            echo "${ARTIFACT_NAME}-arm64.dmg.blockmap"
+            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip"
+            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip.blockmap"
             echo "${CHANNEL}-mac.yml"
-            echo "OpenKnowledge-Setup-x64.exe"
-            echo "OpenKnowledge-Setup-arm64.exe"
+            echo "${ARTIFACT_NAME}-Setup-x64.exe"
+            echo "${ARTIFACT_NAME}-Setup-arm64.exe"
             echo "${CHANNEL}.yml"
-            echo "OpenKnowledge-amd64.deb"
-            echo "OpenKnowledge-arm64.deb"
-            echo "OpenKnowledge-x86_64.rpm"
-            echo "OpenKnowledge-aarch64.rpm"
+            echo "${ARTIFACT_NAME}-amd64.deb"
+            echo "${ARTIFACT_NAME}-arm64.deb"
+            echo "${ARTIFACT_NAME}-x86_64.rpm"
+            echo "${ARTIFACT_NAME}-aarch64.rpm"
             echo "${CHANNEL}-linux.yml"
             echo "${CHANNEL}-linux-arm64.yml"
             echo "OK_ALLOWED_EOF"

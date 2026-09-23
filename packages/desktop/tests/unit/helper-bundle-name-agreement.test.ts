@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DESKTOP_PRODUCTS, desktopWindowsExecutableName } from '@inkeep/open-knowledge-core';
 import {
   HELPER_BUNDLE_NAME,
   HELPER_EXECUTABLE_NAME,
@@ -13,6 +14,9 @@ const helperPlistPath = resolve(desktopRoot, 'build/helper-bundle/Info.plist');
 const afterPackPath = resolve(desktopRoot, 'scripts/afterPack.mjs');
 const electronBuilderYmlPath = resolve(desktopRoot, 'electron-builder.yml');
 const okShPath = resolve(desktopRoot, 'resources/cli/bin/ok.sh');
+const okCmdPath = resolve(desktopRoot, 'resources/cli/bin/ok.cmd');
+const okPs1Path = resolve(desktopRoot, 'resources/cli/bin/ok.ps1');
+const okLinuxPath = resolve(desktopRoot, 'resources/cli/bin/ok-linux.sh');
 
 function extractPlistString(content: string, key: string): string | null {
   const re = new RegExp(`<key>${key}</key>\\s*<string>([^<]*)</string>`);
@@ -42,10 +46,10 @@ describe('helper-bundle name agreement across spawn site / Info.plist / afterPac
     expect(HELPER_BUNDLE_NAME).not.toBe(`${HELPER_EXECUTABLE_NAME}.app`);
   });
 
-  test('afterPack.mjs uses `<appName> Helper` as the cloned-binary basename (not a custom name)', () => {
+  test('afterPack.mjs derives the helper bundle and executable from the product name', () => {
     const afterPack = readFileSync(afterPackPath, 'utf8');
     expect(afterPack).toMatch(/`\$\{appName\}\s+Helper`/);
-    expect(afterPack).toMatch(new RegExp(`['"]${HELPER_BUNDLE_NAME.replace(/\./g, '\\.')}['"]`));
+    expect(afterPack).toMatch(/`\$\{appName\} Server\.app`/);
   });
 
   test('electron-builder.yml extraFiles `to:` value references HELPER_BUNDLE_NAME (not just a YAML comment)', () => {
@@ -58,16 +62,27 @@ describe('helper-bundle name agreement across spawn site / Info.plist / afterPac
     );
   });
 
-  test('ok.sh hardcodes the helper bundle path consistent with HELPER_BUNDLE_NAME + HELPER_EXECUTABLE_NAME', () => {
+  test('ok.sh derives the helper path from its enclosing app bundle', () => {
     const okSh = readFileSync(okShPath, 'utf8');
-    const expectedHelperPath = `Frameworks/${HELPER_BUNDLE_NAME}/Contents/MacOS/${HELPER_EXECUTABLE_NAME}`;
-    expect(okSh).toContain(expectedHelperPath);
+    expect(okSh).toContain('APP_NAME="$(basename "$APP_PATH" .app)"');
+    expect(okSh).toContain('Frameworks/$APP_NAME Server.app/Contents/MacOS/$APP_NAME Helper');
   });
 
   test('ok.sh gates the helper redirect to the mcp + start subcommands only', () => {
     const okSh = readFileSync(okShPath, 'utf8');
     expect(okSh).toMatch(/case\s+"\$1"\s+in/);
     expect(okSh).toMatch(/mcp\|start\)/);
+  });
+
+  test('platform wrappers recognize every packaged desktop executable', () => {
+    const cmd = readFileSync(okCmdPath, 'utf8');
+    const ps1 = readFileSync(okPs1Path, 'utf8');
+    const linux = readFileSync(okLinuxPath, 'utf8');
+    for (const product of Object.values(DESKTOP_PRODUCTS)) {
+      expect(cmd).toContain(`"${desktopWindowsExecutableName(product)}"`);
+      expect(ps1).toContain(`'${desktopWindowsExecutableName(product)}'`);
+      expect(linux).toContain(product.linuxExecutableName);
+    }
   });
 
   test('all five sites agree on the executable name (single string-of-truth)', () => {
@@ -86,8 +101,6 @@ describe('helper-bundle name agreement across spawn site / Info.plist / afterPac
         'm',
       ),
     );
-    expect(okSh).toContain(
-      `Frameworks/${HELPER_BUNDLE_NAME}/Contents/MacOS/${HELPER_EXECUTABLE_NAME}`,
-    );
+    expect(okSh).toContain('Frameworks/$APP_NAME Server.app/Contents/MacOS/$APP_NAME Helper');
   });
 });

@@ -3789,6 +3789,7 @@
     "aaI6cN": [
       "Impossible de joindre le service d'agents. Vérifiez que le serveur OpenKnowledge est en cours d'exécution et à jour (redémarrez-le s'il tournait déjà), puis réessayez."
     ],
+    "aaiiRa": ["Instance de l’application : ", ["label"]],
     "aalx4E": ["Modification d'une source MDX cassée : ", ["reason"]],
     "aatPoi": ["Fichiers générés"],
     "abiHje": ["Supprimer les éléments sélectionnés"],
@@ -3910,7 +3911,6 @@
     "c3ZGrq": ["le document ", ["0"]],
     "c4OLjD": ["Installer pour Claude Chat et Cowork (application de bureau)"],
     "c4fVUV": ["Corriger"],
-    "c5PTFE": ["Instance de développement : ", ["label"], " (isolée des autres worktrees)"],
     "c5f7sm": ["Langage du bloc de code : ", ["currentLabel"], ". Cliquez pour changer."],
     "c5rF4v": ["À quoi sert cette base de connaissances ?"],
     "c863eW": [
@@ -4568,6 +4568,7 @@
     "hFmYGU": ["Les fichiers de thème liés ne sont pas pris en charge"],
     "hGmuTc": ["Documents étiquetés #", ["tagDocsName"]],
     "hHMv6l": ["Supprimer le bloc"],
+    "hHQHPX": [["label"], " utilise des données d’application isolées"],
     "hIQkLb": ["Nouvelle discussion"],
     "hItdtk": ["Parcourir le dossier"],
     "hLKfZe": ["Utiliser plutôt un jeton"],
@@ -4695,7 +4696,6 @@
       "Une copie est un vrai dossier à part entière, et OK la maintient alignée sur la source : modifiez la compétence ici et chaque copie est actualisée. Cela s'arrête dès que vous modifiez une copie à la main en dehors d'OK — à partir de là elle suit son propre chemin et apparaît comme une compétence distincte."
     ],
     "iOHg1t": ["Ouvrir l'URL intégrée dans un nouvel onglet"],
-    "iRdfLr": ["Instance de développement : ", ["label"]],
     "iSLIjg": ["Connecter"],
     "iSQTsg": ["Liste numérotée"],
     "iSWh95": ["La cible de l’image « ", ["shown"], " » ne correspond à aucun fichier existant."],

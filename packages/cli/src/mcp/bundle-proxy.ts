@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
+import { DESKTOP_PRODUCTS } from '@inkeep/open-knowledge-core';
 
 type BundleProxySuppression = 'env' | 'flag' | 'platform' | 'self' | null;
 
@@ -28,10 +29,12 @@ export function findBundledOkPath(
   fs: { existsSync(p: string): boolean },
 ): string | null {
   if (platform !== 'darwin') return null;
-  const candidates = [
-    join(home, 'Applications', 'OpenKnowledge.app', BUNDLE_RELATIVE_OK),
-    join('/Applications', 'OpenKnowledge.app', BUNDLE_RELATIVE_OK),
-  ];
+  const products = [DESKTOP_PRODUCTS.stable, DESKTOP_PRODUCTS.beta] as const;
+  const candidates = products.flatMap((product) =>
+    [join(home, 'Applications'), '/Applications'].map((applicationsDir) =>
+      join(applicationsDir, `${product.productName}.app`, BUNDLE_RELATIVE_OK),
+    ),
+  );
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 

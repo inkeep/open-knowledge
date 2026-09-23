@@ -3666,6 +3666,7 @@
     "aaI6cN": [
       "Não deu para conectar ao serviço de agentes. Confira se o servidor do OpenKnowledge está rodando e atualizado (reinicie se já estava rodando) e tente de novo."
     ],
+    "aaiiRa": ["Instância do aplicativo: ", ["label"]],
     "aalx4E": ["Editando código MDX quebrado: ", ["reason"]],
     "aatPoi": ["Arquivos gerados"],
     "abiHje": ["Excluir os itens selecionados"],
@@ -3781,7 +3782,6 @@
     "c3ZGrq": ["o documento ", ["0"]],
     "c4OLjD": ["Instalar para o Claude Chat e o Cowork (aplicativo de desktop)"],
     "c4fVUV": ["Corrigir"],
-    "c5PTFE": ["Instância de desenvolvimento: ", ["label"], " (isolada de outros worktrees)"],
     "c5f7sm": ["Linguagem do bloco de código: ", ["currentLabel"], ". Clique para alterar."],
     "c5rF4v": ["Para que serve esta base de conhecimento?"],
     "c863eW": ["Não foi possível mudar para ", ["shareBranch"], ". Tente mudar manualmente."],
@@ -4435,6 +4435,7 @@
     "hFmYGU": ["Arquivos de tema vinculados não são compatíveis"],
     "hGmuTc": ["Documentos com a tag #", ["tagDocsName"]],
     "hHMv6l": ["Excluir o bloco"],
+    "hHQHPX": [["label"], " usa dados isolados do aplicativo"],
     "hIQkLb": ["Novo chat"],
     "hItdtk": ["Escolher pasta"],
     "hLKfZe": ["Usar um token em vez disso"],
@@ -4560,7 +4561,6 @@
       "Uma cópia é uma pasta de verdade, e o OK a mantém em sintonia com a fonte: edite a habilidade aqui e todas as cópias são atualizadas. Isso para no momento em que você edita uma cópia à mão fora do OK — a partir daí ela segue seu próprio caminho e aparece como uma habilidade separada."
     ],
     "iOHg1t": ["Abrir a URL incorporada em uma nova aba"],
-    "iRdfLr": ["Instância de desenvolvimento: ", ["label"]],
     "iSLIjg": ["Conectar"],
     "iSQTsg": ["Lista ordenada"],
     "iSWh95": ["O destino da imagem \"", ["shown"], "\" não corresponde a um arquivo existente."],

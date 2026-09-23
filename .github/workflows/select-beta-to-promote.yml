@@ -347,7 +347,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/fast-tier-dmg"
-          gh release download "$CANDIDATE" --pattern '*.dmg' --dir "${RUNNER_TEMP}/fast-tier-dmg"
+          gh release download "$CANDIDATE" --pattern 'OpenKnowledge-Beta-*.dmg' --dir "${RUNNER_TEMP}/fast-tier-dmg"
 
       - name: Smoke the DMG
         id: smoke

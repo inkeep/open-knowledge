@@ -143,6 +143,7 @@ import type {
   OkMenuAction,
   OkMenuActionOrigin,
 } from '../shared/bridge-contract.ts';
+import { DESKTOP_VARIANT } from '../shared/desktop-variant.ts';
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
   EditorActiveTargetSnapshot,
@@ -177,7 +178,6 @@ import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
-  channelFromVersion,
   installWasInFlightDuring,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
@@ -281,7 +281,11 @@ import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { classifyInstallShape } from './install-shape.ts';
-import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
+import {
+  combineInstanceLabels,
+  formatInstanceAppName,
+  resolveInstanceLabel,
+} from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import {
   type EditorPresenceProbes,
@@ -1612,6 +1616,7 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
       : join(__dirname, '../renderer/index.html'),
     rendererDevUrl,
     appVersion: app.getVersion(),
+    productName: DESKTOP_VARIANT.productName,
     languagePreference: userPreferences.language,
     themePreference: userPreferences.theme,
     showGate,
@@ -2413,7 +2418,7 @@ function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebConte
       wc.reloadIgnoringCache();
       return;
     case 'toggleDevTools':
-      if (!app.isPackaged || channelFromVersion(app.getVersion()) === 'beta') {
+      if (!app.isPackaged || DESKTOP_VARIANT.name !== 'stable') {
         wc.toggleDevTools();
       }
       return;
@@ -2445,7 +2450,7 @@ async function runApplicationMenuRefresh(): Promise<void> {
   await installApplicationMenu({
     appName: app.name,
     translate: currentMenuTranslator(),
-    showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+    showDevToolsMenu: !app.isPackaged || DESKTOP_VARIANT.name !== 'stable',
     terminalCapable: isTerminalAvailable(),
     dialog,
     openNavigator,
@@ -4456,7 +4461,7 @@ function registerIpcHandlers() {
         return {
           recentProjects: appState.recentProjects.map((r) => ({ path: r.path, name: r.name })),
           spellCheckEnabled: appState.spellCheckEnabled,
-          showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+          showDevToolsMenu: !app.isPackaged || DESKTOP_VARIANT.name !== 'stable',
           canCheckForUpdates: autoUpdaterHandle != null,
           canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
           activeTarget: currentActiveTarget(),
@@ -4719,7 +4724,7 @@ function registerIpcHandlers() {
         desktopMeta: {
           version: app.getVersion(),
           packaged: app.isPackaged,
-          channel: channelFromVersion(app.getVersion()),
+          channel: DESKTOP_VARIANT.updateChannel,
         },
         readLanguage: () =>
           describeDesktopLanguage({
@@ -5210,7 +5215,7 @@ function registerIpcHandlers() {
       appState = s;
     },
     saveAppState,
-    getBuildChannel: () => channelFromVersion(app.getVersion()),
+    getBuildChannel: () => DESKTOP_VARIANT.updateChannel,
     getPendingSchemaIncompatibility,
     clearPendingSchemaIncompatibility,
   });
@@ -5781,9 +5786,12 @@ if (!app.isPackaged) {
   }
 }
 
-const instanceLabel = resolveInstanceLabel(app.getPath('userData'));
+const parallelInstanceLabel = resolveInstanceLabel(app.getPath('userData'));
+const instanceLabel = combineInstanceLabels(DESKTOP_VARIANT.instanceLabel, parallelInstanceLabel);
+if (parallelInstanceLabel) {
+  app.setName(formatInstanceAppName(app.getName(), parallelInstanceLabel));
+}
 if (instanceLabel) {
-  app.setName(formatInstanceAppName(app.getName(), instanceLabel));
   setWindowInstanceLabel(instanceLabel);
 }
 
@@ -6039,6 +6047,7 @@ function bootPrimaryInstance(): void {
   });
 
   const protocolControl = registerProtocolHandler({
+    protocolScheme: DESKTOP_VARIANT.protocolScheme,
     app: {
       on: (event, cb) => {
         app.on(event as Parameters<typeof app.on>[0], cb as Parameters<typeof app.on>[1]);
@@ -6479,6 +6488,7 @@ function bootPrimaryInstance(): void {
         },
         getAllWindows: () => BrowserWindow.getAllWindows(),
         getAppVersion: () => app.getVersion(),
+        buildChannel: DESKTOP_VARIANT.updateChannel,
         isPackaged: app.isPackaged,
         forceDevBypass: process.env.OK_UPDATER_FORCE_DEV === '1',
         feedUrl: process.env.OK_UPDATER_FEED_URL || undefined,

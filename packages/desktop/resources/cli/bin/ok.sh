@@ -24,7 +24,8 @@ if [ -z "$APP_PATH" ]; then
 fi
 
 CONTENTS="$APP_PATH/Contents"
-ELECTRON="$CONTENTS/MacOS/OpenKnowledge"
+APP_NAME="$(basename "$APP_PATH" .app)"
+ELECTRON="$CONTENTS/MacOS/$APP_NAME"
 CLI="$CONTENTS/Resources/cli/dist/cli.mjs"
 
 if [ ! -f "$CLI" ] || [ ! -x "$ELECTRON" ]; then
@@ -39,7 +40,7 @@ fi
 RUNTIME="$ELECTRON"
 case "$1" in
   mcp|start)
-    HELPER="$CONTENTS/Frameworks/OpenKnowledge Server.app/Contents/MacOS/OpenKnowledge Helper"
+    HELPER="$CONTENTS/Frameworks/$APP_NAME Server.app/Contents/MacOS/$APP_NAME Helper"
     if [ -x "$HELPER" ]; then
       RUNTIME="$HELPER"
     fi

@@ -928,6 +928,10 @@ msgstr "{label} activé"
 msgid "{label} problems"
 msgstr "{label} problèmes"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} utilise des données d’application isolées"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, one {Supprime # modification plus récente de ce fichier.} many {Supprime # modifications plus récentes de ce fichier.} other {Supprime # modifications plus récentes de ce fichier.}}"
@@ -2057,6 +2061,10 @@ msgstr "Vous souhaitez ajouter quelque chose ? (facultatif)"
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "Clé API définie"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "Instance de l’application : {label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5047,14 +5055,6 @@ msgstr "Projets OpenKnowledge détectés"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "Détection"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "Instance de développement : {label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "Instance de développement : {label} (isolée des autres worktrees)"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"

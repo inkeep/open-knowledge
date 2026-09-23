@@ -37,6 +37,26 @@ describe('detectInstallMethods', () => {
     }
   });
 
+  test('reports Stable and Beta app bundles separately on macOS', () => {
+    const home = '/Users/jane';
+    const installed = new Set([
+      '/Applications/OpenKnowledge.app',
+      join(home, 'Applications', 'OpenKnowledge Beta.app'),
+    ]);
+    const methods = detectInstallMethods(
+      home,
+      undefined,
+      () => null,
+      (path) => installed.has(path),
+      { platform: 'darwin' },
+    );
+    expect(methods).toHaveLength(2);
+    expect(methods.map((method) => method.label)).toEqual([
+      'OpenKnowledge (/Applications/OpenKnowledge.app)',
+      'OpenKnowledge Beta (/Users/jane/Applications/OpenKnowledge Beta.app)',
+    ]);
+  });
+
   test('detects the Windows NSIS install and points at Settings → Apps', () => {
     const localAppData = 'C:\\Users\\Jane\\AppData\\Local';
     const exe = join(
@@ -59,6 +79,26 @@ describe('detectInstallMethods', () => {
     expect(methods[0]?.instruction).toContain('Settings');
   });
 
+  test('reports Stable and Beta Windows installs separately', () => {
+    const localAppData = 'C:\\Users\\Jane\\AppData\\Local';
+    const installed = new Set([
+      join(localAppData, 'Programs', '@inkeepopen-knowledge-desktop', 'OpenKnowledge.exe'),
+      join(localAppData, 'Programs', 'openknowledge-beta-desktop', 'OpenKnowledge Beta.exe'),
+    ]);
+    const methods = detectInstallMethods(
+      'C:\\Users\\Jane',
+      undefined,
+      () => null,
+      (path) => installed.has(path),
+      { platform: 'win32', env: { LOCALAPPDATA: localAppData } },
+    );
+    expect(methods).toHaveLength(2);
+    expect(methods.map((method) => method.label)).toEqual([
+      expect.stringContaining('OpenKnowledge ('),
+      expect.stringContaining('OpenKnowledge Beta ('),
+    ]);
+  });
+
   test('detects the Linux deb/rpm install and names both package managers', () => {
     const methods = detectInstallMethods(
       '/home/jane',
@@ -70,6 +110,24 @@ describe('detectInstallMethods', () => {
     expect(methods.map((m) => m.method)).toEqual(['app']);
     expect(methods[0]?.instruction).toContain('apt remove openknowledge');
     expect(methods[0]?.instruction).toContain('dnf remove OpenKnowledge');
+  });
+
+  test('reports the Beta Linux install by product name', () => {
+    const methods = detectInstallMethods(
+      '/home/jane',
+      undefined,
+      () => null,
+      (path) => path === '/opt/OpenKnowledge Beta/openknowledge-beta',
+      { platform: 'linux' },
+    );
+    expect(methods).toEqual([
+      {
+        method: 'app',
+        label: 'OpenKnowledge Beta (/opt/OpenKnowledge Beta)',
+        instruction:
+          'Remove with your package manager: sudo apt remove openknowledge-beta-desktop (Debian/Ubuntu) or sudo dnf remove openknowledge-beta-desktop (Fedora/RHEL)',
+      },
+    ]);
   });
 
   test('returns nothing when no install is detected', () => {

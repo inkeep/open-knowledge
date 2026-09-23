@@ -928,6 +928,10 @@ msgstr "{label} 활성화됨"
 msgid "{label} problems"
 msgstr "문제 {label}개"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label}에서는 격리된 앱 데이터를 사용합니다"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, other {이 파일의 최신 편집 #개를 제거합니다.}}"
@@ -2057,6 +2061,10 @@ msgstr "추가할 내용이 있나요? (선택 사항)"
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "API 키 설정됨"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "앱 인스턴스: {label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5047,14 +5055,6 @@ msgstr "감지된 OpenKnowledge 프로젝트"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "감지 중"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "개발 인스턴스: {label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "개발 인스턴스: {label} (다른 워크트리와 격리됨)"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"

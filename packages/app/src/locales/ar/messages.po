@@ -928,6 +928,10 @@ msgstr "{label} مفعَّل"
 msgid "{label} problems"
 msgstr "{label} مشكلة"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "يستخدم {label} بيانات تطبيق معزولة"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, zero {يزيل # تعديل أحدث على هذا الملف.} one {يزيل تعديلًا واحدًا أحدث على هذا الملف.} two {يزيل تعديلين أحدث على هذا الملف.} few {يزيل # تعديلات أحدث على هذا الملف.} many {يزيل # تعديلًا أحدث على هذا الملف.} other {يزيل # تعديل أحدث على هذا الملف.}}"
@@ -2057,6 +2061,10 @@ msgstr "هل تودّ إضافة شيء؟ (اختياري)"
 #: src/components/settings/SearchSection.tsx
 msgid "API key set"
 msgstr "تم ضبط مفتاح API"
+
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "مثيل التطبيق: {label}"
 
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
@@ -5047,14 +5055,6 @@ msgstr "مشاريع OpenKnowledge المكتشفة"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "يجري الاكتشاف"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "نسخة التطوير: {label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "نسخة التطوير: {label} (معزولة عن أشجار العمل الأخرى)"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"
