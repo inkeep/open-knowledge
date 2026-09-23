@@ -1268,6 +1268,7 @@ export interface ApiExtensionOptions {
   flushGitCommit?: () => Promise<void>;
   flushContributors?: () => Promise<void>;
   getCurrentBranch?: () => string | null;
+  getReportedBranch?: () => string | null;
   getDiskAckSVs?: () => Record<string, string>;
   getCollabClientCount?: () => number;
   contentRoot?: string;
@@ -1443,6 +1444,7 @@ export function createApiExtension(
     flushGitCommit,
     flushContributors,
     getCurrentBranch,
+    getReportedBranch,
     getDiskAckSVs,
     getCollabClientCount,
     contentRoot,
@@ -4731,7 +4733,6 @@ export function createApiExtension(
     ephemeral,
     log,
     ready,
-    durabilityState,
     serverInstanceId,
     getDiskAckSVs,
     getCollabClientCount,
@@ -4749,6 +4750,7 @@ export function createApiExtension(
     getFileIndex,
     shadowRef,
     getCurrentBranch,
+    getReportedBranch,
     installedAgentsCache,
   });
   const lintRoutes = createLintRoutes({

@@ -489,6 +489,10 @@ export function createServer(options: ServerOptions): ServerInstance {
   } = options;
 
   const log = getLogger('server');
+  let headWatcher: HeadWatcherHandle | null = null;
+  const getStorageBranch = () => headWatcher?.getLastKnownBranch() ?? null;
+  const getReportedBranch = () =>
+    headWatcher ? headWatcher.getLastKnownBranch() : readProjectHeadState(projectDir).branch;
   const generatedIndexWarningScope = createGeneratedIndexWarningScope(resolve(contentDir));
   let cc1Broadcaster: CC1Broadcaster | null = null;
   const initialBranch = readProjectHeadState(projectDir).branch ?? 'main';
@@ -1729,7 +1733,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     maintenanceCoordinator = gitEnabled
       ? createMaintenanceCoordinator({
           getShadow: () => shadowRef.current ?? null,
-          getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
+          getCurrentBranch: getStorageBranch,
           contentRoot: contentRoot ?? '',
           projectGitDir: resolveGitDir(projectDir) ?? undefined,
           isWriterLive: (writerId) => {
@@ -1766,7 +1770,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       contentRoot,
       derivedDocumentIndex,
       configHomedirOverride,
-      getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
+      getCurrentBranch: getStorageBranch,
       resolveEmbed,
       resolveSize,
       getPrincipal: () => loadedPrincipal,
@@ -2139,7 +2143,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       shadowRef,
       flushGitCommit: () => persistence.flushPendingGitCommit(),
       flushContributors: () => persistence.flushContributors(),
-      getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
+      getCurrentBranch: getStorageBranch,
+      getReportedBranch,
       getDiskAckSVs: () => cc1Broadcaster?.getLatestDiskAckSVsAsBase64() ?? {},
       getCollabClientCount: options.getCollabClientCount,
       contentRoot,
@@ -2206,7 +2211,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       bridgeLossReporter = createBridgeDeriveLossReporter({
         shadow: () => shadowRef.current,
         ring: lossRing,
-        getBranch: () => headWatcher?.getLastKnownBranch() ?? 'main',
+        getBranch: () => getStorageBranch() ?? 'main',
         contentRoot: contentRoot ?? '',
       });
       sessionManager.attachBridgeLossReporter(bridgeLossReporter);
@@ -2218,7 +2223,7 @@ export function createServer(options: ServerOptions): ServerInstance {
         schema,
         shadowRef,
         contentRoot,
-        getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
+        getCurrentBranch: getStorageBranch,
         resolveEmbed,
         resolveSize,
         deferGuardEnabled,
@@ -2455,7 +2460,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   ): Promise<void> => {
     incrementDiskAuthoritativeIngest();
     const ours = serializeDoc(docName) ?? '';
-    const branch = headWatcher?.getLastKnownBranch() ?? 'main';
+    const branch = getStorageBranch() ?? 'main';
     const theirsH = contentHash(theirs).slice(0, 6);
     const liveOnlyContentAtRisk = ours !== '' && ours !== theirs;
     const rescue: 'not-needed' | 'rescued' | 'lost' = !liveOnlyContentAtRisk
@@ -2722,7 +2727,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           const isDirty = rescueUnflushedEditsBeforeTeardown(
             docName,
-            headWatcher?.getLastKnownBranch() ?? 'main',
+            getStorageBranch() ?? 'main',
             'delete',
             true,
           );
@@ -2763,11 +2768,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           };
           const loadedBeforeIndex = hocuspocus.documents.get(oldDocName);
           const isDirty = loadedBeforeIndex
-            ? rescueUnflushedEditsBeforeTeardown(
-                oldDocName,
-                headWatcher?.getLastKnownBranch() ?? 'main',
-                'rename',
-              )
+            ? rescueUnflushedEditsBeforeTeardown(oldDocName, getStorageBranch() ?? 'main', 'rename')
             : false;
           if (loadedBeforeIndex) freezeAsRenamed(loadedBeforeIndex);
 
@@ -2922,7 +2923,6 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   let watcher: WatcherHandle | null = null;
-  let headWatcher: HeadWatcherHandle | null = null;
   let syncEngine: SyncEngine | null = null;
   let inflightDestroy: Promise<void> | null = null;
 
@@ -3620,7 +3620,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     try {
       systemDocConnection = await hocuspocus.openDirectConnection(SYSTEM_DOC_NAME);
-      cc1Broadcaster?.emitServerInfo(serverInstanceId, getActiveBranch());
+      cc1Broadcaster?.emitServerInfo(serverInstanceId, getReportedBranch() ?? undefined);
     } catch (err) {
       log.error(
         { err },
