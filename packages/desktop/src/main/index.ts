@@ -133,6 +133,7 @@ import {
   BOOT_HEARTBEAT_EVENTS,
   BOOT_HEARTBEAT_MAX_BEATS,
   DESKTOP_BOOT_EVENT,
+  DESKTOP_OPEN_PROJECT_FAILED_EVENT,
   startupMarkLine,
 } from '../shared/boot-narration.ts';
 import type {
@@ -2092,7 +2093,7 @@ async function openProjectOrFallbackToNavigator(
       (err as Error & { holderIsOwnChild?: boolean }).holderIsOwnChild === true;
     getLogger('project').error(
       {
-        event: 'desktop-open-project-failed',
+        event: DESKTOP_OPEN_PROJECT_FAILED_EVENT,
         projectPath,
         entryPoint,
         kind,
