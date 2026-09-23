@@ -12,7 +12,6 @@ import { ProviderPool } from './provider-pool';
 import {
   __resetSyncPromiseCache,
   __syncPromiseCacheSize,
-  BridgeSetupError,
   PreSyncDisconnectError,
   syncPromise,
 } from './sync-promise';
@@ -589,83 +588,7 @@ describe('ProviderPool dispose', () => {
   });
 });
 
-describe('ProviderPool setupObservers init-throw recovery (S4)', () => {
-  test('init-time throw rejects held syncPromise with BridgeSetupError + leaves entry pool-resident', async () => {
-    pool = new ProviderPool(3, DUMMY_WS);
-
-    const entry = pool.open('doc1');
-    if (!entry) throw new Error('expected entry');
-    pool.setActive('doc1');
-
-    const consumerPromise = syncPromise('doc1', entry.provider);
-
-    const doc = entry.provider.document;
-    doc.getXmlFragment = () => {
-      throw new Error('synthetic getXmlFragment failure');
-    };
-
-    const errorSpy = vi.fn(() => {});
-    const origError = console.error;
-    console.error = errorSpy;
-
-    entry.provider.emit('synced', { state: true });
-
-    console.error = origError;
-
-    try {
-      await consumerPromise;
-      throw new Error('expected promise to reject');
-    } catch (err) {
-      expect(err).toBeInstanceOf(BridgeSetupError);
-      expect((err as BridgeSetupError).docName).toBe('doc1');
-      expect((err as BridgeSetupError).cause).toBeInstanceOf(Error);
-      expect(((err as BridgeSetupError).cause as Error).message).toContain(
-        'synthetic getXmlFragment failure',
-      );
-    }
-
-    expect(pool.has('doc1')).toBe(true);
-    expect(pool.entries.get('doc1')?.bridgeSetupFailed).toBe(true);
-    expect(pool.getActiveDocName()).toBe('doc1');
-    expect(pool.getActive()?.provider).toBe(entry.provider);
-
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    const loggedPrefix = errorSpy.mock.calls[0]?.[0] as string;
-    const loggedError = errorSpy.mock.calls[0]?.[1] as Error;
-    expect(loggedPrefix).toContain('[ProviderPool] setupObservers init failed for doc1:');
-    expect(loggedError).toBeInstanceOf(Error);
-    expect(loggedError.message).toContain('synthetic getXmlFragment failure');
-  });
-
-  test('pool.recycle on a bridge-setup-failed entry replaces it with a fresh provider', () => {
-    pool = new ProviderPool(3, DUMMY_WS);
-
-    const entry = pool.open('doc1');
-    if (!entry) throw new Error('expected entry');
-    pool.setActive('doc1');
-
-    entry.provider.document.getXmlFragment = () => {
-      throw new Error('synthetic init failure');
-    };
-    const errorSpy = vi.fn(() => {});
-    const origError = console.error;
-    console.error = errorSpy;
-    entry.provider.emit('synced', { state: true });
-    console.error = origError;
-
-    expect(pool.entries.get('doc1')?.bridgeSetupFailed).toBe(true);
-    const brokenProvider = entry.provider;
-
-    pool.recycle('doc1');
-
-    expect(pool.has('doc1')).toBe(true);
-    expect(pool.getActiveDocName()).toBe('doc1');
-    const newEntry = pool.entries.get('doc1');
-    expect(newEntry).toBeDefined();
-    expect(newEntry?.provider).not.toBe(brokenProvider);
-    expect(newEntry?.bridgeSetupFailed).toBe(false);
-  });
-
+describe('ProviderPool entry lifecycle', () => {
   test('contentless background doc disconnect triggers debounced destroy without re-open', async () => {
     pool = new ProviderPool(3, DUMMY_WS, { recycleDebounceMs: 50 });
     let onChangeCalls = 0;
@@ -2748,17 +2671,15 @@ describe('US-003 (cap-calibration-probes): observer-fire counter for M5', () => 
     expect(hasFireCountEntry('doc-disp-b')).toBe(false);
   });
 
-  test('existing setupObservers / bridge is NOT modified (regression guard)', () => {
+  test('a remote Y.Text update still increments the observer fire counter', () => {
     pool = new ProviderPool(3, DUMMY_WS);
     const entry = pool.open('doc-nomod');
     if (!entry) throw new Error('expected entry');
-    expect(entry.bridgeSetupFailed).toBe(false);
 
     const peer = new Y.Doc();
     peer.getText('source').insert(0, 'remote');
     Y.applyUpdate(entry.provider.document, Y.encodeStateAsUpdate(peer));
 
-    expect(entry.bridgeSetupFailed).toBe(false);
     expect(readFireCount('doc-nomod')).toBeGreaterThanOrEqual(1);
   });
 

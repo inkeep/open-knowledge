@@ -141,12 +141,12 @@ export default {
       entry: ['src/**/*.test.{ts,tsx}'],
     },
     'packages/server': {
-      entry: ['src/**/*.test.ts', 'src/parse-worker.ts'],
+      entry: ['src/**/*.test.ts'],
       project: 'src/**',
       ignoreDependencies: ['@types/shell-quote'],
     },
     'packages/cli': {
-      entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts', 'src/parse-worker.ts'],
+      entry: ['src/**/*.test.ts', 'scripts/*.ts', 'tests/**/*.ts'],
       ignoreDependencies: ['yjs'],
     },
     'packages/desktop': {

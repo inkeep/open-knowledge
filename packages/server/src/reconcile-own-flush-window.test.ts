@@ -21,19 +21,7 @@ const BROWSER_ORIGIN = {
 
 function replaceDocParagraphs(document: Y.Doc, texts: string[]): void {
   const body = `${texts.join('\n\n')}\n`;
-  const fragment = document.getXmlFragment('default');
   const ytext = document.getText('source');
-  if (fragment.length > 0) {
-    fragment.delete(0, fragment.length);
-  }
-  fragment.insert(
-    0,
-    texts.map((text) => {
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText(text)]);
-      return paragraph;
-    }),
-  );
   if (ytext.length > 0) {
     ytext.delete(0, ytext.length);
   }
@@ -118,8 +106,6 @@ async function drivePhantomDivergence(
         fakeHocuspocusWith(docName, document),
         docName,
         tmpDir,
-        undefined,
-        undefined,
         RECONCILE_TEST_CONFLICTS,
       );
       probe.conflictAfterGuard = isDocInConflict(document as never);
@@ -185,8 +171,6 @@ describe('reconcileDiskBeforeAgentWrite — own persistence flush is not foreign
       fakeHocuspocusWith(docName, document),
       docName,
       tmpDir,
-      undefined,
-      undefined,
       RECONCILE_TEST_CONFLICTS,
     );
     expect(laterGuard.reconciled).toBe(false);

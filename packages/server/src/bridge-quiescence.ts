@@ -8,6 +8,7 @@ interface DocQuiescenceCounters {
    * through this module so the bridge observer file stays clean of timer machinery.
    */
   lastUserTxAtMs: number | null;
+  lastExternalEditorChangeAtMs: number | null;
 }
 
 const counters = new WeakMap<Y.Doc, DocQuiescenceCounters>();
@@ -16,7 +17,12 @@ let globalCounter = 0;
 function getCounters(doc: Y.Doc): DocQuiescenceCounters {
   let c = counters.get(doc);
   if (!c) {
-    c = { lastUserTxGen: 0, settledGen: 0, lastUserTxAtMs: null };
+    c = {
+      lastUserTxGen: 0,
+      settledGen: 0,
+      lastUserTxAtMs: null,
+      lastExternalEditorChangeAtMs: null,
+    };
     counters.set(doc, c);
   }
   return c;
@@ -33,12 +39,23 @@ function isObserverSelfOrigin(origin: unknown): boolean {
   return ctx !== undefined && ctx !== null && ctx.origin === 'observer-sync';
 }
 
+function isConnectionOrigin(origin: unknown): boolean {
+  return (
+    origin !== null &&
+    typeof origin === 'object' &&
+    (origin as { source?: unknown }).source === 'connection'
+  );
+}
+
 export function attachQuiescenceTracker(doc: Y.Doc): () => void {
   const onAfterTransaction = (tx: Y.Transaction): void => {
     if (isObserverSelfOrigin(tx.origin)) return;
     const c = getCounters(doc);
     c.lastUserTxGen = ++globalCounter;
     c.lastUserTxAtMs = Date.now();
+    if (tx.changed.size > 0 && isConnectionOrigin(tx.origin)) {
+      c.lastExternalEditorChangeAtMs = c.lastUserTxAtMs;
+    }
   };
   const onAfterAllTransactions = (): void => {
     getCounters(doc).settledGen = ++globalCounter;
@@ -70,6 +87,10 @@ export function getMsSinceLastUserTx(doc: Y.Doc, nowMs: number = Date.now()): nu
   const c = counters.get(doc);
   if (!c || c.lastUserTxAtMs === null) return null;
   return Math.max(0, nowMs - c.lastUserTxAtMs);
+}
+
+export function getLastExternalEditorChangeMs(doc: Y.Doc): number | undefined {
+  return counters.get(doc)?.lastExternalEditorChangeAtMs ?? undefined;
 }
 
 export function getQuiescenceCountersForTests(doc: Y.Doc): DocQuiescenceCounters | undefined {

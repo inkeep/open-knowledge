@@ -1,5 +1,6 @@
+import type { EditorView } from '@codemirror/view';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
+import { PROJECTION_WRITE_ORIGIN } from '../../src/editor/shared-undo-manager';
 import { installDomGlobals } from '../../src/editor/walk-currency-test-harness';
 import {
   installCmMeasurementStubs,
@@ -8,6 +9,7 @@ import {
   typeInSource,
 } from './source-undo-rig.test-helper';
 import {
+  applyProjectionEdit,
   awaitDocQuiescence,
   createTestClient,
   createTestServer,
@@ -15,8 +17,6 @@ import {
   type TestServer,
   wait,
 } from './test-harness';
-
-const WYSIWYG_LOCAL_ORIGIN = Object.freeze({ kind: 'source-undo-flip-wysiwyg-local-edit' });
 
 let restoreDom: (() => void) | null = null;
 let server: TestServer;
@@ -43,21 +43,16 @@ async function pollUntil(predicate: () => boolean, label: string, timeoutMs = 80
   throw new Error(`pollUntil timed out: ${label}`);
 }
 
-function paragraphTexts(fragment: Y.XmlFragment): string[] {
-  return fragment
-    .toArray()
-    .filter((n): n is Y.XmlElement => n instanceof Y.XmlElement)
-    .map((el) => el.toString().replace(/<[^>]+>/g, ''));
-}
-
 interface Mounted {
   client: TestClient;
+  peer: TestClient;
   parent: HTMLElement;
   mounted: ReturnType<typeof mountSourceUndoEditor>;
 }
 
-async function mountProductionEditor(): Promise<Mounted> {
+async function mountWithPeer(): Promise<Mounted> {
   const client: TestClient = await createTestClient(server.port);
+  const peer: TestClient = await createTestClient(server.port, client.docName);
   const parent = globalThis.document.createElement('div');
   globalThis.document.body.appendChild(parent);
   const mounted = mountSourceUndoEditor({
@@ -66,77 +61,152 @@ async function mountProductionEditor(): Promise<Mounted> {
     wiring: 'production',
     parent,
   });
-  return { client, parent, mounted };
+  return { client, peer, parent, mounted };
 }
 
-async function teardown({ client, parent, mounted }: Mounted): Promise<void> {
+async function teardown({ client, peer, parent, mounted }: Mounted): Promise<void> {
   mounted.destroy();
   parent.remove();
+  peer.provider.destroy();
+  peer.doc.destroy();
   await client.cleanup();
 }
 
-describe('source undo after a mode flip (real server observers + real provider)', () => {
-  test('one source undo after an untracked WYSIWYG-derived rewrite must not destroy the pre-flip burst', {
+function deleteInSource(view: EditorView, from: number, to: number): void {
+  view.dispatch({ changes: { from, to }, userEvent: 'delete.backward' });
+}
+
+function rewriteWholeText(peer: TestClient, text: string): void {
+  peer.doc.transact(() => {
+    peer.ytext.delete(0, peer.ytext.length);
+    peer.ytext.insert(0, text);
+  });
+}
+
+describe('source undo across a mode flip (real server, real provider, shared manager)', () => {
+  test('a peer edit while source mode is away leaves your own edits undoable', {
     timeout: 60_000,
   }, async () => {
-    const rig = await mountProductionEditor();
-    const { client } = rig;
+    const rig = await mountWithPeer();
+    const { client, peer } = rig;
     const { view, undoManager, setSourceModeActive } = rig.mounted;
 
     try {
       setSourceModeActive(true);
-      typeInSource(view, 'hello bug\n');
-      typeInSource(view, '\n');
-      typeInSource(view, '\n');
-      typeInSource(view, 'hello bug');
-      expect(client.ytext.toString()).toBe('hello bug\n\n\nhello bug');
-      expect(undoManager.undoStack.length).toBe(1);
-
+      typeInSource(view, 'hello bug\n\nother paragraph');
       await pollUntil(
-        () => paragraphTexts(client.fragment).filter((t) => t.includes('hello bug')).length >= 2,
-        'Observer B derived the two paragraphs into the client fragment',
+        () => peer.ytext.toString() === 'hello bug\n\nother paragraph',
+        'the peer sees the source edit',
       );
-      await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
+      undoManager.stopCapturing();
 
       setSourceModeActive(false);
-
-      client.doc.transact(() => {
-        const p = new Y.XmlElement('paragraph');
-        const t = new Y.XmlText();
-        t.insert(0, 'oops');
-        p.insert(0, [t]);
-        client.fragment.insert(1, [p]);
-      }, WYSIWYG_LOCAL_ORIGIN);
-      await pollUntil(
-        () => client.ytext.toString().includes('oops'),
-        'Observer A wrote the inserted paragraph back into Y.Text',
+      applyProjectionEdit(
+        client,
+        (tr, doc) => tr.insertText(' visual', (doc.firstChild?.nodeSize ?? 2) - 1),
+        PROJECTION_WRITE_ORIGIN,
       );
-
-      client.doc.transact(() => {
-        const paras = client.fragment
-          .toArray()
-          .filter((n): n is Y.XmlElement => n instanceof Y.XmlElement);
-        const last = paras[paras.length - 1];
-        const textNode = last?.get(0);
-        if (!(textNode instanceof Y.XmlText)) throw new Error('expected XmlText in paragraph');
-        textNode.insert(textNode.length, ' oops');
-      }, WYSIWYG_LOCAL_ORIGIN);
       await pollUntil(
-        () => client.ytext.toString().includes('hello bug oops'),
-        'Observer A wrote the appended text back into Y.Text',
+        () => peer.ytext.toString().includes('visual'),
+        'the peer sees the visual edit',
+      );
+      undoManager.stopCapturing();
+
+      peer.doc.transact(() => {
+        const at = peer.ytext.toString().indexOf('other paragraph') + 'other paragraph'.length;
+        peer.ytext.insert(at, ' PEER');
+      });
+      await pollUntil(
+        () => client.ytext.toString().includes('other paragraph PEER'),
+        'the peer edit arrives',
       );
       await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
 
       setSourceModeActive(true);
+      expect(undoManager.undoStack.length).toBe(2);
 
-      const textBeforeUndo = client.ytext.toString();
-      expect(textBeforeUndo.match(/hello bug/g)?.length).toBe(2);
-      expect(textBeforeUndo).toContain('oops');
+      runSourceUndo(view, 'production');
+      expect(client.ytext.toString()).not.toContain('visual');
+      expect(client.ytext.toString()).toContain('hello bug\n\nother paragraph PEER');
+
+      runSourceUndo(view, 'production');
+      expect(client.ytext.toString()).not.toContain('hello bug');
+      expect(client.ytext.toString()).toContain('PEER');
+    } finally {
+      await teardown(rig);
+    }
+  });
+
+  test('after a whole-text rewrite while source mode is away, undo cannot resurrect what you deleted', {
+    timeout: 60_000,
+  }, async () => {
+    const rig = await mountWithPeer();
+    const { client, peer } = rig;
+    const { view, undoManager, setSourceModeActive } = rig.mounted;
+
+    try {
+      setSourceModeActive(true);
+      typeInSource(view, 'hello bug\n\n\nhello bug');
+      undoManager.stopCapturing();
+      deleteInSource(view, 0, 6);
+      await pollUntil(
+        () => peer.ytext.toString() === 'bug\n\n\nhello bug',
+        'the peer sees the deletion',
+      );
+
+      setSourceModeActive(false);
+      rewriteWholeText(peer, 'rewritten by an agent\n');
+      await pollUntil(
+        () => client.ytext.toString() === 'rewritten by an agent\n',
+        'the rewrite arrives',
+      );
+      await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
+
+      setSourceModeActive(true);
+      runSourceUndo(view, 'production');
+      await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
+      expect(client.ytext.toString()).toBe('rewritten by an agent\n');
 
       runSourceUndo(view, 'production');
       await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
+      expect(client.ytext.toString()).toBe('rewritten by an agent\n');
+      expect(undoManager.undoStack.length).toBe(0);
+    } finally {
+      await teardown(rig);
+    }
+  });
 
-      expect(client.ytext.toString()).toBe(textBeforeUndo);
+  test('after a whole-text rewrite while you sit in source mode, undo cannot resurrect what you deleted', {
+    timeout: 60_000,
+  }, async () => {
+    const rig = await mountWithPeer();
+    const { client, peer } = rig;
+    const { view, undoManager, setSourceModeActive } = rig.mounted;
+
+    try {
+      setSourceModeActive(true);
+      typeInSource(view, 'hello bug\n\n\nhello bug');
+      undoManager.stopCapturing();
+      deleteInSource(view, 0, 6);
+      await pollUntil(
+        () => peer.ytext.toString() === 'bug\n\n\nhello bug',
+        'the peer sees the deletion',
+      );
+
+      rewriteWholeText(peer, 'rewritten by an agent\n');
+      await pollUntil(
+        () => client.ytext.toString() === 'rewritten by an agent\n',
+        'the rewrite arrives',
+      );
+      await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
+
+      runSourceUndo(view, 'production');
+      await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
+      expect(client.ytext.toString()).toBe('rewritten by an agent\n');
+
+      runSourceUndo(view, 'production');
+      await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
+      expect(client.ytext.toString()).toBe('rewritten by an agent\n');
     } finally {
       await teardown(rig);
     }
@@ -145,7 +215,7 @@ describe('source undo after a mode flip (real server observers + real provider)'
   test('a flip round trip with no rewrite seals the capture window and preserves history', {
     timeout: 60_000,
   }, async () => {
-    const rig = await mountProductionEditor();
+    const rig = await mountWithPeer();
     const { client } = rig;
     const { view, undoManager, setSourceModeActive } = rig.mounted;
 
@@ -153,21 +223,14 @@ describe('source undo after a mode flip (real server observers + real provider)'
       setSourceModeActive(true);
       typeInSource(view, 'hello bug\n\n\nhello bug');
       expect(undoManager.undoStack.length).toBe(1);
-
-      await pollUntil(
-        () => paragraphTexts(client.fragment).filter((t) => t.includes('hello bug')).length >= 2,
-        'Observer B derived the two paragraphs into the client fragment',
-      );
       await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
 
       setSourceModeActive(false);
-
       await wait(250);
       await awaitDocQuiescence(client.doc, { timeoutMs: 5000 });
       expect(client.ytext.toString()).toBe('hello bug\n\n\nhello bug');
 
       setSourceModeActive(true);
-
       typeInSource(view, ' tail');
       expect(undoManager.undoStack.length).toBe(2);
 

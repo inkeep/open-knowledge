@@ -1,7 +1,9 @@
+import type { Node as PmNode } from '@tiptap/pm/model';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
+  appendProjectionParagraph,
+  applyProjectionEdit,
   awaitDocQuiescence,
   createTestClient,
   createTestServer,
@@ -11,12 +13,6 @@ import {
 } from './test-harness';
 
 const PARA = 'This is a pasted body paragraph.';
-
-function paragraph(text: string): Y.XmlElement {
-  const el = new Y.XmlElement('paragraph');
-  el.insert(0, [new Y.XmlText(text)]);
-  return el;
-}
 
 let server: TestServer;
 let client: TestClient;
@@ -31,19 +27,15 @@ afterAll(async () => {
 });
 
 test('a single client duplicating a paragraph forward-propagates both copies into Y.Text', async () => {
-  client = await createTestClient(server.port, undefined, { skipInvariantWatcher: true });
+  client = await createTestClient(server.port, undefined);
 
-  client.doc.transact(() => {
-    client.fragment.insert(client.fragment.length, [paragraph(PARA)]);
-  });
+  appendProjectionParagraph(client, PARA);
   await awaitDocQuiescence(client.doc, { timeoutMs: 10_000, idleTicks: 5 });
 
   const mid = getServerState(server, client.docName);
   expect(mid?.ytext.toString().match(/This is a pasted body paragraph\./g)?.length).toBe(1);
 
-  client.doc.transact(() => {
-    client.fragment.insert(client.fragment.length, [paragraph(PARA)]);
-  });
+  appendProjectionParagraph(client, PARA);
   await awaitDocQuiescence(client.doc, { timeoutMs: 15_000, idleTicks: 10 });
 
   const post = getServerState(server, client.docName);
@@ -52,8 +44,8 @@ test('a single client duplicating a paragraph forward-propagates both copies int
   expect(bytes.match(/This is a pasted body paragraph\./g)?.length ?? 0).toBe(2);
 }, 30_000);
 
-test('pasting a duplicate of a SERVER-DERIVED component block forward-propagates (shape agrees)', async () => {
-  const client3 = await createTestClient(server.port, undefined, { skipInvariantWatcher: true });
+test('pasting a duplicate of a component block forward-propagates (shape agrees)', async () => {
+  const client3 = await createTestClient(server.port, undefined);
   const steps = '<Steps>\n\n<Step>\n\nCloned step body content.\n\n</Step>\n\n</Steps>\n';
   try {
     client3.doc.transact(() => client3.ytext.insert(0, steps));
@@ -62,12 +54,13 @@ test('pasting a duplicate of a SERVER-DERIVED component block forward-propagates
     const seeded = getServerState(server, client3.docName);
     expect(seeded?.ytext.toString().match(/Cloned step body content\./g)?.length).toBe(1);
 
-    const component = client3.fragment
-      .toArray()
-      .find((child) => child instanceof Y.XmlElement && child.nodeName === 'jsxComponent');
-    expect(component).toBeInstanceOf(Y.XmlElement);
-    client3.doc.transact(() => {
-      client3.fragment.insert(client3.fragment.length, [(component as Y.XmlElement).clone()]);
+    applyProjectionEdit(client3, (tr, doc) => {
+      let component: PmNode | null = null;
+      doc.forEach((child) => {
+        if (component === null && child.type.name === 'jsxComponent') component = child;
+      });
+      if (component === null) throw new Error('no jsxComponent block in the projection');
+      return tr.insert(doc.content.size, component);
     });
     await awaitDocQuiescence(client3.doc, { timeoutMs: 15_000, idleTicks: 10 });
 
@@ -80,8 +73,8 @@ test('pasting a duplicate of a SERVER-DERIVED component block forward-propagates
   }
 }, 30_000);
 
-test('pasting a duplicate of SERVER-DERIVED content still forward-propagates (shape agrees)', async () => {
-  const client2 = await createTestClient(server.port, undefined, { skipInvariantWatcher: true });
+test('pasting a duplicate of source-authored content still forward-propagates', async () => {
+  const client2 = await createTestClient(server.port, undefined);
   const marker = 'This is a source-authored body paragraph.';
   try {
     client2.doc.transact(() => client2.ytext.insert(0, `${marker}\n`));
@@ -90,11 +83,7 @@ test('pasting a duplicate of SERVER-DERIVED content still forward-propagates (sh
     const seeded = getServerState(server, client2.docName);
     expect(seeded?.ytext.toString().match(/source-authored body paragraph/g)?.length).toBe(1);
 
-    client2.doc.transact(() => {
-      const el = new Y.XmlElement('paragraph');
-      el.insert(0, [new Y.XmlText(marker)]);
-      client2.fragment.insert(client2.fragment.length, [el]);
-    });
+    appendProjectionParagraph(client2, marker);
     await awaitDocQuiescence(client2.doc, { timeoutMs: 15_000, idleTicks: 10 });
 
     const post = getServerState(server, client2.docName);

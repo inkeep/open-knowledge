@@ -16,6 +16,7 @@ function isLoggableScalar(value: unknown): value is string | number | boolean | 
 export function emitDiagnosticBreadcrumb(
   event: string,
   fields?: Readonly<Record<string, unknown>>,
+  level: 'info' | 'warn' = 'info',
 ): void {
   try {
     const payload: Record<string, unknown> = { event };
@@ -38,10 +39,11 @@ export function emitDiagnosticBreadcrumb(
     if (droppedNonScalarFields > 0) payload.droppedNonScalarFields = droppedNonScalarFields;
     if (droppedReservedFields > 0) payload.droppedReservedFields = droppedReservedFields;
     const line = JSON.stringify(payload);
-    console.info(
+    const message =
       line.length <= MAX_BREADCRUMB_CHARS
         ? line
-        : JSON.stringify({ event, oversized: true, fieldCount: Object.keys(payload).length - 1 }),
-    );
+        : JSON.stringify({ event, oversized: true, fieldCount: Object.keys(payload).length - 1 });
+    if (level === 'warn') console.warn(message);
+    else console.info(message);
   } catch {}
 }

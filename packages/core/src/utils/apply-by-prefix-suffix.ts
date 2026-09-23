@@ -1,9 +1,5 @@
 import type * as Y from 'yjs';
 
-/**
- * Same semantics, one implementation. @see PRECEDENTS.md precedent #9 (minimize CRDT mutation in
- * sync bridges) @see PRECEDENTS.md precedent #10 (XmlFragment-authoritative, Y.Text mirrors)
- */
 export function applyByPrefixSuffix(ytext: Y.Text, currentText: string, newText: string): void {
   if (currentText === newText) return;
 

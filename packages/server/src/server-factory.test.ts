@@ -17,7 +17,6 @@ import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import {
-  BridgeMergeContentLossError,
   DEFAULT_LINTER_CONFIG,
   type LinterConfig,
   LOCAL_DIR,
@@ -29,7 +28,6 @@ import { parseCheckpoint } from '@inkeep/open-knowledge-core/shadow-repo-layout'
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { stringify as stringifyYaml } from 'yaml';
-import * as Y from 'yjs';
 import { MAX_AGENT_SESSIONS } from './agent-sessions.ts';
 import { BacklinkIndex } from './backlink-index.ts';
 import { getBootTimings, resetBootTimingsForTest, startBootTimings } from './boot-timings.ts';
@@ -469,10 +467,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('hello world')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'hello world\n');
     });
 
     const doc = server.hocuspocus.documents.get('test-doc');
@@ -512,10 +507,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-doc-2');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('commit me')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'commit me\n');
     });
 
     const doc = server.hocuspocus.documents.get('test-doc-2');
@@ -556,10 +548,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection(docName);
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('order-marker')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'order-marker\n');
     });
     const doc = server.hocuspocus.documents.get(docName);
     expect(doc).toBeDefined();
@@ -606,10 +595,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('pathological-doc');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('will not be flushed')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'will not be flushed\n');
     });
 
     const doc = server.hocuspocus.documents.get('pathological-doc');
@@ -687,10 +673,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
       const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Unflushed paragraph stranded at shutdown.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph stranded at shutdown.\n');
       });
       await executePendingStore(server, docName);
       await vi.waitFor(
@@ -768,10 +752,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
       const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Unflushed paragraph refused at runtime.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph refused at runtime.\n');
       });
       await executePendingStore(server, docName);
       await vi.waitFor(
@@ -811,10 +793,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
         { timeout: 5_000, interval: 25 },
       );
       await conn2.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Neighbor pending store paragraph.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nNeighbor pending store paragraph.\n');
       });
       serverDoc2.removeDirectConnection();
 
@@ -885,10 +865,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
       const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('First refused edit.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nFirst refused edit.\n');
       });
       await executePendingStore(server, docName);
       await vi.waitFor(
@@ -903,10 +881,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
       expect(readFileSync(rescuePath, 'utf-8')).toContain('First refused edit.');
 
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Second refused edit.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nSecond refused edit.\n');
       });
       await executePendingStore(server, docName);
       await vi.waitFor(
@@ -977,10 +953,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
       const refusalsBefore = getMetrics().persistenceDuplicationBaselineRefusals;
       const rescueBufferWriteFailuresBefore = getMetrics().rescueBufferWriteFailures;
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Unflushed paragraph the rescue cannot hold.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph the rescue cannot hold.\n');
       });
       await executePendingStore(server, docName);
       await vi.waitFor(
@@ -1067,10 +1041,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
       server.durabilityState.deleteReconciledBase(docName);
 
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Unflushed paragraph behind a hanging unload.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph behind a hanging unload.\n');
       });
       await executePendingStore(server, docName);
 
@@ -1171,10 +1143,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
         server.durabilityState.deleteReconciledBase(docName);
 
         await conn.transact((doc) => {
-          const xmlFragment = doc.getXmlFragment('default');
-          const paragraph = new Y.XmlElement('paragraph');
-          paragraph.insert(0, [new Y.XmlText(`Unflushed paragraph for ${docName}.`)]);
-          xmlFragment.insert(0, [paragraph]);
+          const source = doc.getText('source');
+          source.insert(source.length, `\nUnflushed paragraph for ${docName}.\n`);
         });
         await executePendingStore(server, docName);
         await vi.waitFor(() => expect(server.durabilityState.isStoreRefused(docName)).toBe(true), {
@@ -1249,12 +1219,8 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
       const failuresBefore = getMetrics().rescueBufferWriteFailures;
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [
-          new Y.XmlText('Unflushed paragraph the shadowless server cannot mint.'),
-        ]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph the shadowless server cannot mint.\n');
       });
       chmodSync(mintDocPath, 0o000);
       unlinkSync(mintDocPath);
@@ -1332,10 +1298,7 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
 
     const conn = await server.hocuspocus.openDirectConnection('test-idempotent');
     await conn.transact((doc) => {
-      const xmlFragment = doc.getXmlFragment('default');
-      const paragraph = new Y.XmlElement('paragraph');
-      paragraph.insert(0, [new Y.XmlText('idempotent content')]);
-      xmlFragment.insert(0, [paragraph]);
+      doc.getText('source').insert(0, 'idempotent content\n');
     });
     const doc = server.hocuspocus.documents.get('test-idempotent');
     expect(doc).toBeDefined();
@@ -1427,22 +1390,13 @@ describe('createServer().destroy() — graceful shutdown flush', () => {
     const conn3 = await server.hocuspocus.openDirectConnection('doc-c');
 
     await conn1.transact((doc) => {
-      const frag = doc.getXmlFragment('default');
-      const p = new Y.XmlElement('paragraph');
-      p.insert(0, [new Y.XmlText('content A')]);
-      frag.insert(0, [p]);
+      doc.getText('source').insert(0, 'content A\n');
     });
     await conn2.transact((doc) => {
-      const frag = doc.getXmlFragment('default');
-      const p = new Y.XmlElement('paragraph');
-      p.insert(0, [new Y.XmlText('content B')]);
-      frag.insert(0, [p]);
+      doc.getText('source').insert(0, 'content B\n');
     });
     await conn3.transact((doc) => {
-      const frag = doc.getXmlFragment('default');
-      const p = new Y.XmlElement('paragraph');
-      p.insert(0, [new Y.XmlText('content C')]);
-      frag.insert(0, [p]);
+      doc.getText('source').insert(0, 'content C\n');
     });
 
     for (const name of ['doc-a', 'doc-b', 'doc-c']) {
@@ -1694,36 +1648,6 @@ describe('createServer() — config-doc admission (US-005)', () => {
     expect(srv.hocuspocus.documents.has('__local__/project')).toBe(true);
     expect(srv.hocuspocus.documents.has('__user__/config.yml')).toBe(true);
     expect(srv.degraded.filter((s) => s.startsWith('config-doc:'))).toEqual([]);
-
-    await srv.destroy();
-  });
-
-  test('Y.Text mutation on a config doc does NOT engage the markdown bridge (D41)', async () => {
-    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
-    const srv = createServer({
-      contentDir,
-      projectDir: testProjectDir,
-      quiet: true,
-    });
-
-    await srv.ready;
-
-    const configDoc = srv.hocuspocus.documents.get('__config__/project');
-    expect(configDoc).toBeDefined();
-    if (!configDoc) return;
-
-    const ytext = configDoc.getText('source');
-    const xmlFragment = configDoc.getXmlFragment('default');
-    expect(xmlFragment.length).toBe(0);
-
-    configDoc.transact(() => {
-      ytext.insert(0, 'theme: dark\n');
-    });
-
-    await new Promise((r) => setTimeout(r, 50));
-
-    expect(ytext.toString()).toBe('theme: dark\n');
-    expect(xmlFragment.length).toBe(0);
 
     await srv.destroy();
   });
@@ -3670,10 +3594,7 @@ describe('createServer() — phantom-doc unload', () => {
       const docName = 'transient-with-content';
       const conn = await server.hocuspocus.openDirectConnection(docName);
       await conn.transact((doc) => {
-        const fragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('user-typed-content')]);
-        fragment.insert(0, [paragraph]);
+        doc.getText('source').insert(0, 'user-typed-content\n');
       });
       await conn.disconnect();
 
@@ -4922,7 +4843,7 @@ describe('createServer() — generated index wiring', () => {
     expect(readIndexAt('concepts')).not.toMatch(/^(<<<<<<<|=======|>>>>>>>)/m);
 
     await connection?.disconnect();
-  });
+  }, 30_000);
 
   test('a rebuild reaches an open document THROUGH the CRDT, not behind its back', async () => {
     const logCapture = captureAllLoggers();
@@ -5594,10 +5515,8 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
       );
 
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Unflushed paragraph only in the editor doc.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed paragraph only in the editor doc.\n');
       });
       await vi.waitFor(
         () =>
@@ -5740,10 +5659,8 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
       server.durabilityState.deleteReconciledBase(docName);
 
       await conn.transact((doc) => {
-        const xmlFragment = doc.getXmlFragment('default');
-        const paragraph = new Y.XmlElement('paragraph');
-        paragraph.insert(0, [new Y.XmlText('Unflushed WIP paragraph only in the editor.')]);
-        xmlFragment.insert(0, [paragraph]);
+        const source = doc.getText('source');
+        source.insert(source.length, '\nUnflushed WIP paragraph only in the editor.\n');
       });
       await vi.waitFor(
         () =>
@@ -5911,100 +5828,6 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
     }
   }, 30_000);
 
-  test('a failed disk-authoritative ingest keeps the live content, adopts the disk bytes as the base, and does not re-ingest on the next update', async () => {
-    rig = await setupReconcileRig('ok-reconcile-ingest-failure-');
-    const docName = 'ingest-failure-target';
-    const initial = '# Ingest failure target\n\nLive paragraph that exists only in the editor.\n';
-    const theirs = '# Ingest failure target\n\nBase paragraph from disk.\n';
-    const followUp =
-      '# Ingest failure target\n\nBase paragraph from disk.\n\nDisk addition after recovery.\n';
-    const docPath = join(rig.tmpDir, `${docName}.md`);
-    writeFileSync(docPath, initial, 'utf-8');
-
-    const server = createReconcileServer(rig);
-    try {
-      await server.ready;
-      const conn = await server.hocuspocus.openDirectConnection(docName);
-      const serverDoc = server.hocuspocus.documents.get(docName);
-      expect(serverDoc).toBeDefined();
-      if (!serverDoc) return;
-      await vi.waitFor(
-        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
-        { timeout: 5_000, interval: 25 },
-      );
-
-      server.durabilityState.deleteReconciledBase(docName);
-
-      const originalGetXmlFragment = serverDoc.getXmlFragment.bind(serverDoc);
-      const applyFailuresBefore = getMetrics().diskAuthoritativeIngestApplyFailures;
-      const ingestsBefore = getMetrics().diskAuthoritativeIngestCount;
-      serverDoc.getXmlFragment = () => {
-        throw new BridgeMergeContentLossError({
-          baseline: 'base',
-          userText: 'user',
-          agentText: 'agent',
-          result: 'merged',
-          lostSubstrings: ['lost-text'],
-          which: 'substring',
-          side: 'user',
-        });
-      };
-
-      try {
-        writeFileSync(docPath, theirs, 'utf-8');
-
-        await vi.waitFor(
-          () => expect(server.durabilityState.getReconciledBase(docName)).toBe(theirs),
-          { timeout: 10_000, interval: 25 },
-        );
-        expect(serverDoc.getText('source').toString()).toBe(initial);
-        expect(serverDoc.getMap('lifecycle').get('status')).toBeUndefined();
-        expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(applyFailuresBefore + 1);
-        expect(getMetrics().diskAuthoritativeIngestCount).toBe(ingestsBefore + 1);
-      } finally {
-        serverDoc.getXmlFragment = originalGetXmlFragment;
-      }
-
-      writeFileSync(docPath, followUp, 'utf-8');
-
-      await vi.waitFor(
-        () =>
-          expect(serverDoc.getText('source').toString()).toContain('Disk addition after recovery.'),
-        { timeout: 15_000, interval: 25 },
-      );
-      expect(serverDoc.getText('source').toString()).toContain(
-        'Live paragraph that exists only in the editor.',
-      );
-      await vi.waitFor(
-        async () => {
-          const rescues = await listRescueCheckpoints(rig.shadow, 'main');
-          expect(rescues.filter((r) => r.docName === docName)).toHaveLength(2);
-        },
-        { timeout: 10_000, interval: 50 },
-      );
-      const rescues = await listRescueCheckpoints(rig.shadow, 'main');
-      const docRescues = rescues.filter((r) => r.docName === docName);
-      expect(docRescues).toHaveLength(2);
-      expect(docRescues.map((r) => r.size).sort((a, b) => a - b)).toEqual(
-        [initial.length, theirs.length].sort((a, b) => a - b),
-      );
-      const sg = shadowGit(rig.shadow);
-      const mintKinds = new Set(
-        await Promise.all(
-          docRescues.map(async (r) => {
-            const body = (await sg.raw('log', '-1', '--format=%B', r.sha)).trim();
-            return parseCheckpoint(body)?.kind;
-          }),
-        ),
-      );
-      expect(mintKinds).toEqual(new Set(['external-change-rescue-disk-update']));
-
-      conn.disconnect();
-    } finally {
-      await server.destroy();
-    }
-  }, 45_000);
-
   test('the disk-authoritative ingest durably buffers live-only content before it adopts disk bytes', async () => {
     rig = await setupReconcileRig('ok-reconcile-ingest-rescue-order-');
     const docName = 'ingest-rescue-order-target';
@@ -6137,274 +5960,6 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
       conn.disconnect();
     } finally {
       warnSpy.mockRestore();
-      errorSpy.mockRestore();
-      await server.destroy();
-    }
-  }, 45_000);
-
-  test('an ingest that loses its rescue and then fails to apply is not counted as an unrescued clean ingest', async () => {
-    rig = await setupReconcileRig('ok-reconcile-compound-ingest-failure-');
-    const docName = 'compound-ingest-failure-target';
-    const initial =
-      '# Compound ingest failure target\n\nLive paragraph that exists only in the editor.\n';
-    const theirs =
-      '# Compound ingest failure target\n\nDisk-authoritative replacement paragraph.\n';
-    const docPath = join(rig.tmpDir, `${docName}.md`);
-    writeFileSync(docPath, initial, 'utf-8');
-
-    const server = createReconcileServer(rig);
-    const chmodEntries: Array<{ path: string; mode: number }> = [];
-    const warnSpy = vi.spyOn(getLogger('server'), 'warn');
-    const infoSpy = vi.spyOn(getLogger('server'), 'info');
-    const errorSpy = vi.spyOn(getLogger('server'), 'error');
-    try {
-      await server.ready;
-      const conn = await server.hocuspocus.openDirectConnection(docName);
-      const serverDoc = server.hocuspocus.documents.get(docName);
-      expect(serverDoc).toBeDefined();
-      if (!serverDoc) return;
-      await vi.waitFor(
-        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
-        { timeout: 5_000, interval: 25 },
-      );
-
-      server.durabilityState.deleteReconciledBase(docName);
-
-      const shadowGitDir = rig.shadow.gitDir;
-      const walk = (dir: string): void => {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-          const entryPath = join(dir, entry.name);
-          chmodEntries.push({ path: entryPath, mode: statSync(entryPath).mode & 0o777 });
-          if (entry.isDirectory()) walk(entryPath);
-        }
-      };
-      chmodEntries.push({ path: shadowGitDir, mode: statSync(shadowGitDir).mode & 0o777 });
-      walk(shadowGitDir);
-      for (const entry of chmodEntries) chmodSync(entry.path, 0o500);
-
-      const originalGetXmlFragment = serverDoc.getXmlFragment.bind(serverDoc);
-      const applyFailuresBefore = getMetrics().diskAuthoritativeIngestApplyFailures;
-      const unrescuedBefore = getMetrics().diskAuthoritativeIngestUnrescuedCount;
-      serverDoc.getXmlFragment = () => {
-        throw new BridgeMergeContentLossError({
-          baseline: 'base',
-          userText: 'user',
-          agentText: 'agent',
-          result: 'merged',
-          lostSubstrings: ['lost-text'],
-          which: 'substring',
-          side: 'user',
-        });
-      };
-
-      try {
-        writeFileSync(docPath, theirs, 'utf-8');
-
-        await vi.waitFor(
-          () =>
-            expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(applyFailuresBefore + 1),
-          { timeout: 10_000, interval: 25 },
-        );
-      } finally {
-        serverDoc.getXmlFragment = originalGetXmlFragment;
-        for (const entry of chmodEntries) {
-          if (!existsSync(entry.path)) continue;
-          chmodSync(entry.path, entry.mode);
-        }
-      }
-
-      expect(getMetrics().diskAuthoritativeIngestUnrescuedCount).toBe(unrescuedBefore);
-      expect(serverDoc.getText('source').toString()).toBe(initial);
-
-      const reconcileLines = [...warnSpy.mock.calls, ...infoSpy.mock.calls].filter(
-        (call) => (call[0] as { reason?: string } | undefined)?.reason === 'no-base',
-      );
-      expect(reconcileLines).toEqual([]);
-
-      const rescueFailure = errorSpy.mock.calls.find((call) =>
-        String(call[1]).startsWith('[rescue] failed to write rescue buffer'),
-      );
-      expect(rescueFailure?.[0]).toMatchObject({ docName, context: 'disk-authoritative-ingest' });
-
-      conn.disconnect();
-    } finally {
-      warnSpy.mockRestore();
-      infoSpy.mockRestore();
-      errorSpy.mockRestore();
-      await server.destroy();
-    }
-  }, 45_000);
-  test('an ingest that loses its rescue and then fails to apply after the live Y.Text is overwritten is reported as an unrescued loss', async () => {
-    rig = await setupReconcileRig('ok-reconcile-post-write-ingest-failure-');
-    const docName = 'post-write-ingest-failure-target';
-    const initial =
-      '# Post-write ingest failure target\n\nLive paragraph that exists only in the editor.\n';
-    const theirs =
-      '# Post-write ingest failure target\n\nDisk-authoritative replacement paragraph.\n';
-    const docPath = join(rig.tmpDir, `${docName}.md`);
-    writeFileSync(docPath, initial, 'utf-8');
-
-    const server = createReconcileServer(rig);
-    const chmodEntries: Array<{ path: string; mode: number }> = [];
-    const warnSpy = vi.spyOn(getLogger('server'), 'warn');
-    try {
-      await server.ready;
-      const conn = await server.hocuspocus.openDirectConnection(docName);
-      const serverDoc = server.hocuspocus.documents.get(docName);
-      expect(serverDoc).toBeDefined();
-      if (!serverDoc) return;
-      await vi.waitFor(
-        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
-        { timeout: 5_000, interval: 25 },
-      );
-
-      server.durabilityState.deleteReconciledBase(docName);
-
-      const shadowGitDir = rig.shadow.gitDir;
-      const walk = (dir: string): void => {
-        for (const entry of readdirSync(dir, { withFileTypes: true })) {
-          const entryPath = join(dir, entry.name);
-          chmodEntries.push({ path: entryPath, mode: statSync(entryPath).mode & 0o777 });
-          if (entry.isDirectory()) walk(entryPath);
-        }
-      };
-      chmodEntries.push({ path: shadowGitDir, mode: statSync(shadowGitDir).mode & 0o777 });
-      walk(shadowGitDir);
-      for (const entry of chmodEntries) chmodSync(entry.path, 0o500);
-
-      const originalGetXmlFragment = serverDoc.getXmlFragment.bind(serverDoc);
-      const applyFailuresBefore = getMetrics().diskAuthoritativeIngestApplyFailures;
-      const unrescuedBefore = getMetrics().diskAuthoritativeIngestUnrescuedCount;
-      serverDoc.getXmlFragment = (name?: string) =>
-        new Proxy(originalGetXmlFragment(name), {
-          get(target, prop) {
-            if (serverDoc.getText('source').toString() === theirs) {
-              throw new BridgeMergeContentLossError({
-                baseline: 'base',
-                userText: 'user',
-                agentText: 'agent',
-                result: 'merged',
-                lostSubstrings: ['lost-text'],
-                which: 'substring',
-                side: 'user',
-              });
-            }
-            return Reflect.get(target, prop, target);
-          },
-        });
-
-      try {
-        writeFileSync(docPath, theirs, 'utf-8');
-
-        await vi.waitFor(
-          () =>
-            expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(applyFailuresBefore + 1),
-          { timeout: 10_000, interval: 25 },
-        );
-      } finally {
-        serverDoc.getXmlFragment = originalGetXmlFragment;
-        for (const entry of chmodEntries) {
-          if (!existsSync(entry.path)) continue;
-          chmodSync(entry.path, entry.mode);
-        }
-      }
-
-      expect(serverDoc.getText('source').toString()).toBe(theirs);
-      expect(serverDoc.getText('source').toString()).not.toContain(
-        'Live paragraph that exists only in the editor.',
-      );
-      expect(existsSync(join(rig.shadow.gitDir, 'rescue', `${docName}.md`))).toBe(false);
-      expect(getMetrics().diskAuthoritativeIngestUnrescuedCount).toBe(unrescuedBefore + 1);
-
-      const ingestLog = warnSpy.mock.calls.find(
-        (call) => (call[0] as { reason?: string } | undefined)?.reason === 'no-base',
-      );
-      expect(ingestLog?.[0]).toMatchObject({ docName, result: 'clean-unrescued', rescue: 'lost' });
-
-      conn.disconnect();
-    } finally {
-      warnSpy.mockRestore();
-      await server.destroy();
-    }
-  }, 45_000);
-
-  test('an ingest whose apply fails after the live Y.Text is overwritten is not unrescued when the rescue buffer was written', async () => {
-    rig = await setupReconcileRig('ok-reconcile-post-write-ingest-rescued-');
-    const docName = 'post-write-ingest-rescued-target';
-    const initial =
-      '# Post-write ingest rescued target\n\nLive paragraph that exists only in the editor.\n';
-    const theirs =
-      '# Post-write ingest rescued target\n\nDisk-authoritative replacement paragraph.\n';
-    const docPath = join(rig.tmpDir, `${docName}.md`);
-    writeFileSync(docPath, initial, 'utf-8');
-
-    const server = createReconcileServer(rig);
-    const warnSpy = vi.spyOn(getLogger('server'), 'warn');
-    const infoSpy = vi.spyOn(getLogger('server'), 'info');
-    const errorSpy = vi.spyOn(getLogger('server'), 'error');
-    try {
-      await server.ready;
-      const conn = await server.hocuspocus.openDirectConnection(docName);
-      const serverDoc = server.hocuspocus.documents.get(docName);
-      expect(serverDoc).toBeDefined();
-      if (!serverDoc) return;
-      await vi.waitFor(
-        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(initial),
-        { timeout: 5_000, interval: 25 },
-      );
-
-      server.durabilityState.deleteReconciledBase(docName);
-
-      const originalGetXmlFragment = serverDoc.getXmlFragment.bind(serverDoc);
-      const applyFailuresBefore = getMetrics().diskAuthoritativeIngestApplyFailures;
-      const unrescuedBefore = getMetrics().diskAuthoritativeIngestUnrescuedCount;
-      serverDoc.getXmlFragment = (name?: string) =>
-        new Proxy(originalGetXmlFragment(name), {
-          get(target, prop) {
-            if (serverDoc.getText('source').toString() === theirs) {
-              throw new BridgeMergeContentLossError({
-                baseline: 'base',
-                userText: 'user',
-                agentText: 'agent',
-                result: 'merged',
-                lostSubstrings: ['lost-text'],
-                which: 'substring',
-                side: 'user',
-              });
-            }
-            return Reflect.get(target, prop, target);
-          },
-        });
-
-      try {
-        writeFileSync(docPath, theirs, 'utf-8');
-
-        await vi.waitFor(
-          () =>
-            expect(getMetrics().diskAuthoritativeIngestApplyFailures).toBe(applyFailuresBefore + 1),
-          { timeout: 10_000, interval: 25 },
-        );
-      } finally {
-        serverDoc.getXmlFragment = originalGetXmlFragment;
-      }
-
-      expect(serverDoc.getText('source').toString()).toBe(theirs);
-      expect(existsSync(join(rig.shadow.gitDir, 'rescue', `${docName}.md`))).toBe(true);
-      expect(getMetrics().diskAuthoritativeIngestUnrescuedCount).toBe(unrescuedBefore);
-      const loggedLines = [...warnSpy.mock.calls, ...infoSpy.mock.calls, ...errorSpy.mock.calls]
-        .map((call) => String(call[1] ?? ''))
-        .filter((message) => message.includes(docName));
-      expect(
-        loggedLines.filter((message) =>
-          message.includes('failed to apply disk-authoritative ingest'),
-        ),
-      ).toHaveLength(1);
-      expect(loggedLines.filter((message) => message.includes('clean-unrescued'))).toEqual([]);
-
-      conn.disconnect();
-    } finally {
-      warnSpy.mockRestore();
-      infoSpy.mockRestore();
       errorSpy.mockRestore();
       await server.destroy();
     }

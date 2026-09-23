@@ -251,7 +251,6 @@ describe('store/load round-trip', () => {
     const fresh = new Y.Doc();
     loadManagedArtifactDoc(fresh, projectDocName, ctx);
     expect(fresh.getText('source').toString()).toBe('');
-    expect(fresh.getXmlFragment('default').length).toBe(0);
   });
 
   test('__template__ synthetic doc is INERT in load + store (tombstone, never creates a file)', async () => {
@@ -265,7 +264,6 @@ describe('store/load round-trip', () => {
     const fresh = new Y.Doc();
     expect(() => loadManagedArtifactDoc(fresh, templateDocName, ctx)).not.toThrow();
     expect(fresh.getText('source').toString()).toBe('');
-    expect(fresh.getXmlFragment('default').length).toBe(0);
     expect(fresh.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).toBeUndefined();
 
     expect(existsSync(join(projectDir, '__template__', 'notes', 'daily.md'))).toBe(false);
@@ -280,7 +278,7 @@ describe('store/load round-trip', () => {
     expect(await storeManagedArtifactDoc(doc, docName, 'agent', ctx)).toBe('no-op');
   });
 
-  test('load seeds Y.Text + XmlFragment from disk (paired-write)', () => {
+  test('load seeds Y.Text from disk', () => {
     const ctx = makeCtx();
     const path = managedArtifactAbsPath(docName, ctx);
     mkdirSync(resolve(path, '..'), { recursive: true });
@@ -288,8 +286,36 @@ describe('store/load round-trip', () => {
     const doc = new Y.Doc();
     loadManagedArtifactDoc(doc, docName, ctx);
     expect(doc.getText('source').toString()).toBe(SRC);
-    expect(doc.getXmlFragment('default').length).toBeGreaterThan(0);
     expect(reconciled.get(docName)).toBe(SRC);
+  });
+
+  /**
+   * The emptiness test that decides whether to seed must consult Y.Text, not
+   * only the derived fragment. Y.Text is the source of truth (precedent #38),
+   * so a document already holding source bytes has content by definition —
+   * regardless of whether its fragment has been derived yet. Reading only the
+   * fragment would classify such a doc as empty and seed the file ON TOP of the
+   * live bytes, concatenating disk content into a populated document.
+   *
+   * Constructed directly rather than through a bridge path so the state under
+   * test is unambiguous: Y.Text populated, fragment untouched.
+   */
+  test('load refuses to seed a doc holding Y.Text bytes with an underived fragment', () => {
+    const ctx = makeCtx();
+    const path = managedArtifactAbsPath(docName, ctx);
+    mkdirSync(resolve(path, '..'), { recursive: true });
+    writeFileSync(path, SRC, 'utf-8');
+
+    const doc = new Y.Doc();
+    const live = '# live content typed in source mode\n';
+    doc.getText('source').insert(0, live);
+    expect(doc.getXmlFragment('default').length).toBe(0);
+
+    loadManagedArtifactDoc(doc, docName, ctx);
+
+    expect(doc.getText('source').toString()).toBe(live);
+    expect(doc.getXmlFragment('default').length).toBe(0);
+    expect(doc.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).toBeUndefined();
   });
 
   test('load is lazy — a missing file seeds nothing (no auto-create)', () => {

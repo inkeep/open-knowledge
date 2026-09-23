@@ -196,11 +196,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(projectStrict).toEqual([
       'autoSync.default',
       'bridge.backgroundThrottle.enabled',
-      'bridge.deferGuard.enabled',
-      'bridge.fixedPoint.enabled',
       'bridge.flushOnHide.enabled',
-      'bridge.lossDetector.enabled',
-      'bridge.preDrain.enabled',
       'content.attachmentFolderPath',
       'content.dir',
       'contentRules.frontmatter.enabled',

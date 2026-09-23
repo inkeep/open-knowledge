@@ -20,6 +20,7 @@ import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
 import { fetchDocumentListShared } from '@/lib/documents-fetch';
 import { HttpResponseParseError } from '../http-client';
+import { createSuggestionUndoWindow } from '../suggestion-undo-window';
 import { WikiLinkSuggestionMenu } from '../wiki-link-suggestion/WikiLinkSuggestionMenu';
 import { getEditorDocName } from './doc-context';
 import { suggestionAllow } from './suggestion-allow';
@@ -588,8 +589,13 @@ export function configureWikiLinkSuggestion(editor: Editor) {
         }
       };
 
+      let windowEditor: Editor | null = null;
+      const undoWindow = createSuggestionUndoWindow(() => windowEditor);
+
       return {
         onBeforeStart(props: SuggestionProps<WikiLinkSuggestionItem>) {
+          windowEditor = props.editor;
+          undoWindow.open();
           currentProps = props;
           selectedIndex = 0;
 
@@ -664,6 +670,7 @@ export function configureWikiLinkSuggestion(editor: Editor) {
         },
 
         onExit() {
+          undoWindow.close();
           destroySuggestionPopup(posState);
           doPosition = null;
           reveal = null;

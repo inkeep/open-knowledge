@@ -134,7 +134,6 @@
         "../../plugins/ok/**",
         "../app/src/editor/observers.ts",
         "../cli/src/**",
-        "../cli/tsdown.config.ts",
         "../desktop/src/main/**",
         "../*/package.json",
         "../../docs/content/**"

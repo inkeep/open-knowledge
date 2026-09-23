@@ -34,7 +34,7 @@ const isCI = !!process.env.CI;
 /**
  * Logical CPUs one worker occupies. Since the per-worker-server migration a
  * worker is not just a browser: it owns a Vite dev server, a Hocuspocus CRDT
- * server, a parse-worker pool, two filesystem watchers, AND its Chromium.
+ * server, two filesystem watchers, AND its Chromium.
  * Playwright's built-in default (`max(1, floor(os.cpus().length / 2))`) is
  * calibrated for the stock topology it ships with — many browser-only workers
  * sharing one `webServer` —

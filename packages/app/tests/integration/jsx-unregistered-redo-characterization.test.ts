@@ -2,13 +2,7 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
-import {
-  agentUndo,
-  agentWriteMd,
-  assertBridgeInvariant,
-  createTestServer,
-  type TestServer,
-} from './test-harness';
+import { agentUndo, agentWriteMd, createTestServer, type TestServer } from './test-harness';
 
 let server: TestServer;
 
@@ -86,7 +80,6 @@ describe('redo at the bridge rung on an unregistered-component doc', () => {
       const afterRedoAttempt = ytext.toString();
       expect(afterRedoAttempt).not.toContain('REDO-CHAR-EDIT');
       expect(normalizeBridge(afterRedoAttempt)).toBe(normalizeBridge(preEdit));
-      assertBridgeInvariant(ytext, sess.dc.document.getXmlFragment('default'));
     } finally {
       await sm.closeSession(docName, connectionId).catch(() => {});
     }

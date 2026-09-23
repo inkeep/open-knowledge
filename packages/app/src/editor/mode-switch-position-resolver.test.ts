@@ -18,7 +18,6 @@ import {
   type DocSnapshot,
   type ResolvedPosition,
 } from './mode-switch-position-resolver.ts';
-import { blockRangeToPositions } from './plugins/agent-insert-flash.ts';
 
 const md = new MarkdownManager({ extensions: sharedExtensions });
 const schema = getSchema(sharedExtensions);
@@ -73,6 +72,13 @@ describe('invalid-MDX resilience', () => {
     const { doc } = snap('Intro paragraph.\n\nSecond.');
     expect(() => resolver.resolveInSource(anchor, { source: invalid, doc })).not.toThrow();
     expect(() => resolver.resolveInWysiwyg(anchor, { source: invalid, doc })).not.toThrow();
+  });
+
+  test('with no block table there is no block-anchored landing, in either direction', () => {
+    const anchor: BlockAnchor = { blockIndex: 0, kind: 'paragraph', content: 'Intro paragraph.' };
+    const { doc } = snap('Intro paragraph.\n\nSecond.');
+    expect(resolver.resolveInSource(anchor, { source: invalid, doc })).toBeNull();
+    expect(resolver.resolveInWysiwyg(anchor, { source: invalid, doc })).toBeNull();
   });
 });
 
@@ -238,13 +244,28 @@ describe('offset normalization', () => {
     expect(anchor?.blockIndex).toBe(0);
   });
 
+  test('a blank block the source spells as an empty line still resolves inside itself', () => {
+    const source = '# Heading\n\nfirst\n\n\n\nlast\n';
+    const { doc } = snap(source);
+    const blocks = computeSourceBlocks(source, md).blocks;
+    const blank = blocks.findIndex((b) => b.text === '' && b.sourceStart === b.sourceEnd);
+    expect(blank).toBeGreaterThan(0);
+    expect(doc.child(blank).content.size).toBe(0);
+
+    const anchor: BlockAnchor = { blockIndex: blank, kind: 'paragraph', content: '' };
+    const resolved = present(resolver.resolveInWysiwyg(anchor, { source, doc }));
+    expect(doc.resolve(resolved.blockStart).index(0)).toBe(blank);
+    expect(doc.resolve(resolved.blockStart).parent.type.name).toBe('paragraph');
+    expect(resolved.blockEnd).toBe(resolved.blockStart);
+  });
+
   test('a WYSIWYG landing returns ProseMirror positions', () => {
     const source = '# Heading\n\nBody paragraph';
     const { doc } = snap(source);
     const anchor = present(resolver.captureFromSource(source, source.indexOf('Body')));
     const resolved = present(resolver.resolveInWysiwyg(anchor, { source, doc }));
-    const expected = present(blockRangeToPositions(doc, 1, 2));
-    expect(resolved.blockStart).toBe(expected.from);
+    expect(doc.resolve(resolved.blockStart).index(0)).toBe(1);
+    expect(doc.textBetween(resolved.blockStart, resolved.blockEnd)).toContain('Body paragraph');
   });
 });
 
@@ -332,7 +353,7 @@ describe('cross-mode consistency', () => {
       const fromSource = present(resolver.captureFromSource(source, inSource.blockStart));
       const inWysiwyg = present(resolver.resolveInWysiwyg(fromSource, { source, doc }));
       expect(inWysiwyg.confidence).toBe('exact');
-      expect(resolver.captureFromWysiwyg(doc, inWysiwyg.point + 1)?.blockIndex).toBe(b);
+      expect(resolver.captureFromWysiwyg(doc, inWysiwyg.point)?.blockIndex).toBe(b);
     }
   });
 });

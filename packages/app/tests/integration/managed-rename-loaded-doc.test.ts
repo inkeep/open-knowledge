@@ -49,7 +49,6 @@ describe('Managed rename — loaded-Y.Doc rewrite path (QA-040 / QA-008)', () =>
     if (!entry) throw new Error('pool[0] has no active entry');
     const doc = entry.provider.document;
     const ytext = doc.getText('source');
-    const fragment = doc.getXmlFragment('default');
 
     expect(ytext.toString()).toContain('[[old]]');
     expect(ytext.toString()).not.toContain('[[new]]');
@@ -75,9 +74,5 @@ describe('Managed rename — loaded-Y.Doc rewrite path (QA-040 / QA-008)', () =>
     const hostDisk = readFileSync(join(server.contentDir, 'host.md'), 'utf-8');
     expect(hostDisk).toContain('[[new]]');
     expect(hostDisk).not.toContain('[[old]]');
-
-    const fragmentText = fragment.toString();
-    expect(fragmentText).toContain('new');
-    expect(fragmentText).not.toContain('[[old]]');
   }, 30_000);
 });

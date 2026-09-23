@@ -167,6 +167,24 @@ describe('useSyncToasts — disconnect grace downgrade', () => {
     expect(last?.[1]?.action).toBeDefined();
   });
 
+  test('the connection-lost and server-stopped claims stay server-scoped and name no document', () => {
+    setBridge(true);
+    const { rerender } = renderHook(
+      ({ s }: { s: 'synced' | 'connected' | 'disconnected' }) => useSyncToasts(s, 'wedged-doc'),
+      { initialProps: { s: 'synced' as const } },
+    );
+    act(() => rerender({ s: 'disconnected' }));
+
+    const lost = messages(warning).filter((m) => m.includes('keep this tab open'));
+    expect(lost.length).toBeGreaterThan(0);
+    expect(lost.every((m) => !m.includes('wedged-doc'))).toBe(true);
+
+    act(() => vi.advanceTimersByTime(10_000));
+    const stopped = messages(warning).filter((m) => m.includes('server stopped'));
+    expect(stopped.length).toBeGreaterThan(0);
+    expect(stopped.every((m) => !m.includes('wedged-doc'))).toBe(true);
+  });
+
   test('a socket that reopens AFTER the grace and parks at connected still has a standing toast with a Restart button', () => {
     setBridge(true);
     const { rerender } = renderHook(

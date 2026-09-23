@@ -25,7 +25,6 @@ import { contentHash } from '../../../server/src/version-hash.ts';
 import {
   agentWriteMd,
   assertAllConverged,
-  assertBridgeInvariant,
   awaitConvergedServerText,
   createTestClients,
   createTestServer,
@@ -80,7 +79,7 @@ function markdownlintPlugin() {
 }
 
 describe('lint fix live-write preservation', () => {
-  test('fixes live source through the frozen session origin and converges peers, fragment and disk', async () => {
+  test('fixes live source through the frozen session origin and converges peers and disk', async () => {
     server = await createTestServer({
       markdownlintEnabled: true,
       debounce: 300_000,
@@ -139,7 +138,6 @@ describe('lint fix live-write preservation', () => {
       expect(settled).toContain('Live peer edit.');
       expect(settled).not.toContain('\t');
       expect(readFileSync(file, 'utf-8')).toBe(settled);
-      assertBridgeInvariant(state.ytext, state.fragment);
       expect(origins).toContain(session.origin);
       expect(Object.isFrozen(session.origin)).toBe(true);
       expect(Object.isFrozen(session.origin.context)).toBe(true);

@@ -1,9 +1,9 @@
 import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render } from '@testing-library/react';
-import { type Content, Editor } from '@tiptap/core';
-import Collaboration from '@tiptap/extension-collaboration';
+import { type Content, Editor, type JSONContent } from '@tiptap/core';
 import { afterEach, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
+import { mountProjectionEditorOn } from '../../editor/editor-rig.test-helper';
 import { BlockMover, blockMoveAnnouncementKey } from '../../editor/extensions/block-mover';
 import { BridgeIdPlugin } from '../../editor/extensions/bridge-id-plugin';
 import {
@@ -18,20 +18,26 @@ const disposers: (() => void)[] = [];
 function setup(content: Content = markdown.parse('- A\n- B\n- C\n- D\n'), withBridgeIds = true) {
   vi.useFakeTimers();
   const doc = new Y.Doc();
-  const editor = new Editor({
-    extensions: [
-      ...sharedExtensions,
-      BlockMover,
-      ...(withBridgeIds ? [BridgeIdPlugin] : []),
-      SelectionStatePlugin,
-      ...(withBridgeIds ? [Collaboration.configure({ document: doc })] : []),
-    ],
-    editorProps: { handleScrollToSelection: () => true },
-  });
-  editor.commands.setContent(content);
+  let editor: Editor;
+  let destroyEditor: () => void;
+  if (withBridgeIds) {
+    const ytext = doc.getText('source');
+    doc.transact(() => ytext.insert(0, markdown.serialize(content as JSONContent)), 'seed');
+    const rig = mountProjectionEditorOn(ytext, [BlockMover, BridgeIdPlugin, SelectionStatePlugin]);
+    editor = rig.editor;
+    editor.setOptions({ editorProps: { handleScrollToSelection: () => true } });
+    destroyEditor = rig.destroy;
+  } else {
+    editor = new Editor({
+      extensions: [...sharedExtensions, BlockMover, SelectionStatePlugin],
+      editorProps: { handleScrollToSelection: () => true },
+    });
+    editor.commands.setContent(content);
+    destroyEditor = () => editor.destroy();
+  }
   const result = render(<SelectionAnnouncer editor={editor} />);
   disposers.push(() => {
-    editor.destroy();
+    destroyEditor();
     doc.destroy();
   });
   const cursor = (text: string) => {
@@ -370,13 +376,10 @@ test.each(['preceding', 'selected'] as const)(
     const peer = new Y.Doc();
     disposers.push(() => peer.destroy());
     Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
-    const block = peer.getXmlFragment('default').get(target === 'preceding' ? 0 : 1);
-    if (!(block instanceof Y.XmlElement)) throw new Error('Expected a block');
-    const paragraph = target === 'preceding' ? block : block.get(0);
-    if (!(paragraph instanceof Y.XmlElement)) throw new Error('Expected a paragraph');
-    const text = paragraph.get(0);
-    if (!(text instanceof Y.XmlText)) throw new Error('Expected leading text');
-    text.insert(0, 'Remote ');
+    const source = peer.getText('source');
+    const at = source.toString().indexOf(target === 'preceding' ? 'Leading' : 'First');
+    if (at < 0) throw new Error('Expected the target paragraph in the source');
+    source.insert(at, 'Remote ');
     const observer = new MutationObserver(() => {});
     observer.observe(status, { childList: true, characterData: true, subtree: true });
     act(() => {

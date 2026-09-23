@@ -60,7 +60,6 @@ import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import { observeReadiness } from '../agent-registry-gate.ts';
 import {
   type AgentSessionManager,
-  agentWriteLossDetect,
   applyAgentMarkdownWrite,
   snapshotBlocks,
 } from '../agent-sessions.ts';
@@ -3027,23 +3026,11 @@ export class AcpThreadManager {
           clientName: record.info.agent.id,
         },
       );
-      const embedResolver =
-        this.opts.resolveEmbed !== undefined
-          ? { resolveEmbed: this.opts.resolveEmbed, sourcePath: target.rel }
-          : undefined;
       const suppliedWriterId = sessionWriterId(session);
       try {
         session.dc.document.transact(() => {
           const beforeBlocks = snapshotBlocks(session.dc.document);
-          applyAgentMarkdownWrite(
-            session.dc.document,
-            content,
-            'replace',
-            embedResolver,
-            undefined,
-            agentWriteLossDetect(session),
-            suppliedWriterId,
-          );
+          applyAgentMarkdownWrite(session.dc.document, content, 'replace', suppliedWriterId);
           const changedBlocks =
             changedBlockRange(beforeBlocks, snapshotBlocks(session.dc.document)) ?? undefined;
           const activityMap = session.dc.document.getMap('agent-flash');

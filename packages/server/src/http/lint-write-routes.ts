@@ -21,7 +21,6 @@ import type { AgentPresenceBroadcaster } from '../agent-presence.ts';
 import {
   AgentSessionCapacityError,
   type AgentSessionManager,
-  agentWriteLossDetect,
   applyAgentMarkdownWrite,
   iconFromClientName,
 } from '../agent-sessions.ts';
@@ -80,9 +79,6 @@ export interface LintWriteRouteDeps {
     stored: string | undefined;
   };
   sessionManager: AgentSessionManager;
-  options: {
-    resolveEmbed?: (basename: string, sourcePath: string) => string | null;
-  };
   agentPresenceBroadcaster: AgentPresenceBroadcaster | undefined;
   buildAgentActor: (args: {
     clientName: string | undefined;
@@ -125,7 +121,6 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
     resolveDocFilePath,
     summaryResponseFields,
     sessionManager,
-    options,
     agentPresenceBroadcaster,
     buildAgentActor,
     flushDiskAndDetectOutcome,
@@ -352,17 +347,7 @@ export function createLintWriteRoutes(deps: LintWriteRouteDeps): ApiRouteGroup {
             });
             const suppliedWriterId = sessionWriterId(session);
             session.dc.document.transact(() => {
-              applyAgentMarkdownWrite(
-                session.dc.document,
-                fixed,
-                'patch',
-                options.resolveEmbed
-                  ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-                  : undefined,
-                undefined,
-                agentWriteLossDetect(session),
-                suppliedWriterId,
-              );
+              applyAgentMarkdownWrite(session.dc.document, fixed, 'patch', suppliedWriterId);
             }, session.origin);
 
             if (actor.kind !== 'anonymous') {

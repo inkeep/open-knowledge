@@ -44,6 +44,7 @@ function isReplayOutboxSupported(): boolean {
 export interface ReplayOutboxEntry {
   readonly delta: Uint8Array;
   readonly fullState: Uint8Array;
+  readonly base?: string | undefined;
 }
 
 export interface ReplayOutboxKey {
@@ -92,7 +93,7 @@ export async function writeReplayOutboxEntry(
         await new Promise<void>((resolve, reject) => {
           const tx = db.transaction(ENTRY_STORE_NAME, 'readwrite');
           tx.objectStore(ENTRY_STORE_NAME).put(
-            { delta: entry.delta, fullState: entry.fullState },
+            { delta: entry.delta, fullState: entry.fullState, base: entry.base },
             ENTRY_KEY,
           );
           tx.oncomplete = () => resolve();
@@ -128,11 +129,15 @@ export async function readReplayOutboxEntry(
           get.onerror = () => reject(get.error);
         });
         if (value === undefined || value === null) return null;
-        const record = value as { delta?: unknown; fullState?: unknown };
+        const record = value as { delta?: unknown; fullState?: unknown; base?: unknown };
         if (!(record.delta instanceof Uint8Array) || !(record.fullState instanceof Uint8Array)) {
           return null;
         }
-        return { delta: record.delta, fullState: record.fullState };
+        return {
+          delta: record.delta,
+          fullState: record.fullState,
+          base: typeof record.base === 'string' ? record.base : undefined,
+        };
       } finally {
         db.close();
       }

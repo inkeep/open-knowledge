@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { createServer } from './server-factory.ts';
 
 interface Fixture {
@@ -66,7 +65,7 @@ describe('persistence onStoreDocument phantom-doc guard', () => {
     fixture.cleanup();
   });
 
-  test('opening a Y.Doc for a missing docName + empty transaction does NOT create a file', async () => {
+  test('a missing docName that receives only a blank line does NOT create a file', async () => {
     const ghostPath = join(fixture.contentDir, 'nonexistent-ghost.md');
     expect(existsSync(ghostPath)).toBe(false);
 
@@ -90,7 +89,7 @@ describe('persistence onStoreDocument phantom-doc guard', () => {
         connection: { context: { principalId: 'principal-test-phantom-guard' } },
       };
       serverDoc.transact(() => {
-        serverDoc.getXmlFragment('default').push([new Y.XmlElement('paragraph')]);
+        serverDoc.getText('source').insert(0, '\n');
       }, connectionOrigin);
 
       await expectFileAbsentFor(ghostPath, { durationMs: 800 });
@@ -132,10 +131,8 @@ describe('persistence onStoreDocument phantom-doc guard', () => {
         connection: { context: { principalId: 'principal-test-rm-after-load' } },
       };
       serverDoc.transact(() => {
-        const frag = serverDoc.getXmlFragment('default');
-        const para = new Y.XmlElement('paragraph');
-        para.insert(0, [new Y.XmlText('NEW content that would resurrect the file')]);
-        frag.push([para]);
+        const ytext = serverDoc.getText('source');
+        ytext.insert(ytext.length, '\nNEW content that would resurrect the file\n');
       }, connectionOrigin);
 
       await expectFileAbsentFor(docPath, { durationMs: 800 });
@@ -172,10 +169,7 @@ describe('persistence onStoreDocument phantom-doc guard', () => {
         connection: { context: { principalId: 'principal-test-real-content' } },
       };
       serverDoc.transact(() => {
-        const frag = serverDoc.getXmlFragment('default');
-        const para = new Y.XmlElement('paragraph');
-        para.insert(0, [new Y.XmlText('first content from a fresh doc')]);
-        frag.push([para]);
+        serverDoc.getText('source').insert(0, 'first content from a fresh doc\n');
       }, connectionOrigin);
 
       await waitForFileWithContent(newDocPath, 'first content from a fresh doc');

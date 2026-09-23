@@ -282,6 +282,18 @@ describe('mountMcpAndApi /mcp guard', () => {
     expect(calls).toBe(0);
   });
 
+  test('names the dropped upgrade instead of destroying the socket silently', async () => {
+    vi.mocked(log.warn).mockClear();
+    const { port } = await startMountedServer({ handle: async () => {}, close: async () => {} });
+
+    await expect(requestUnknownUpgrade(port)).resolves.toBe('');
+
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.objectContaining({ host: expect.stringContaining('127.0.0.1') }),
+      expect.stringContaining('upgrade dropped'),
+    );
+  });
+
   test('warns before closing a proxied unknown upgrade', async () => {
     vi.mocked(log.warn).mockClear();
     const { port } = await startMountedServer({ handle: async () => {}, close: async () => {} });

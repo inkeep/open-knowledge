@@ -1,11 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { updateYFragment } from '@tiptap/y-tiptap';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
+  applyProjectionDoc,
   assertAllConverged,
   awaitDocQuiescence,
   createTestClient,
@@ -49,13 +49,7 @@ afterAll(async () => {
 });
 
 function applyWysiwygEdit(client: TestClient, markdownAfterEdit: string): void {
-  const pmNode = schema.nodeFromJSON(mdManager.parse(markdownAfterEdit));
-  client.doc.transact(() => {
-    updateYFragment(client.doc, client.fragment, pmNode, {
-      mapping: new Map(),
-      isOMark: new Map(),
-    });
-  });
+  applyProjectionDoc(client, schema.nodeFromJSON(mdManager.parse(markdownAfterEdit)));
 }
 
 const INDENTED_STEP = /\n[ \t]+<\/?Step\b/;

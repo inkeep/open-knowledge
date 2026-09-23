@@ -1,70 +1,19 @@
-import { type MarkdownManager, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import {
+  computeSourceBlocks,
+  type MarkdownManager,
+  type Projection,
+} from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
+
+export {
+  canonicalBlockKind,
+  computeSourceBlocks,
+  type SourceBlock,
+} from '@inkeep/open-knowledge-core';
 
 export interface SourceBlockSpans {
   spans: { start: number; end: number }[];
   fmLineCount: number;
-}
-
-export interface SourceBlock {
-  start: number;
-  end: number;
-  kind: string;
-  text: string;
-}
-
-export function canonicalBlockKind(typeName: string): string {
-  switch (typeName) {
-    case 'bulletList':
-    case 'orderedList':
-    case 'taskList':
-    case 'list':
-      return 'list';
-    case 'codeBlock':
-    case 'code':
-      return 'code';
-    case 'horizontalRule':
-    case 'thematicBreak':
-      return 'thematicBreak';
-    case 'jsxComponent':
-    case 'mdxJsxFlowElement':
-    case 'mdxJsxTextElement':
-      return 'jsx';
-    case 'htmlBlock':
-    case 'html':
-      return 'html';
-    default:
-      return typeName;
-  }
-}
-
-function mdastText(node: unknown): string {
-  if (typeof node !== 'object' || node === null) return '';
-  if ('value' in node && typeof node.value === 'string') return node.value;
-  if ('children' in node && Array.isArray(node.children)) {
-    return node.children.map(mdastText).join('');
-  }
-  return '';
-}
-
-export function computeSourceBlocks(
-  source: string,
-  md: MarkdownManager,
-): { blocks: SourceBlock[]; fmLineCount: number } {
-  const { frontmatter, body } = stripFrontmatter(source);
-  const fmLineCount = frontmatter === '' ? 0 : frontmatter.split('\n').length - 1;
-  try {
-    const blocks = md.parseToEditorMdast(body).children.map((child) => ({
-      start: (child.position?.start.line ?? Number.POSITIVE_INFINITY) + fmLineCount,
-      end: (child.position?.end.line ?? Number.NEGATIVE_INFINITY) + fmLineCount,
-      kind: canonicalBlockKind(child.type),
-      text: mdastText(child),
-    }));
-    return { blocks, fmLineCount };
-  } catch {
-    performance.mark('ok/block-spans/parse-failed');
-    return { blocks: [], fmLineCount };
-  }
 }
 
 export function computeSourceBlockSpans(source: string, md: MarkdownManager): SourceBlockSpans {
@@ -90,6 +39,9 @@ export function blockIndexForLine(spans: SourceBlockSpans['spans'], line: number
   return candidate;
 }
 
+/* STOP: a tripwire, not a proof. serialize is non-injective at the top level, so equal counts
+   do not establish that ordinals align. When this disagrees with the block table, refuse the
+   pass or re-locate by content — never index a block ordinal across the boundary anyway. */
 export function comparableChildCount(doc: PmNode): number {
   let trailingEmpty = 0;
   for (let i = doc.childCount - 1; i >= 0; i--) {
@@ -98,27 +50,6 @@ export function comparableChildCount(doc: PmNode): number {
     trailingEmpty++;
   }
   return trailingEmpty === doc.childCount ? 0 : doc.childCount;
-}
-
-export function blockRangeToPositions(
-  doc: PmNode,
-  fromBlock: number,
-  toBlock: number,
-): { from: number; to: number } | null {
-  const childCount = doc.childCount;
-  const first = Math.max(0, Math.min(fromBlock, childCount));
-  const last = Math.max(first, Math.min(toBlock, childCount));
-  if (last <= first) return null;
-  let pos = 0;
-  for (let i = 0; i < first; i++) pos += doc.child(i).nodeSize;
-  const from = pos;
-  for (let i = first; i < last; i++) pos += doc.child(i).nodeSize;
-  const to = pos;
-  const size = doc.content.size;
-  const clampedFrom = Math.max(0, Math.min(from, size));
-  const clampedTo = Math.max(clampedFrom, Math.min(to, size));
-  if (clampedTo <= clampedFrom) return null;
-  return { from: clampedFrom, to: clampedTo };
 }
 
 export function lineStartOffsets(source: string): number[] {
@@ -149,4 +80,23 @@ export function offsetToLine(offsets: number[], offset: number): number {
     }
   }
   return line;
+}
+
+/* STOP: computeSourceBlockSpans reports no blocks for a source whose strict parse fails, and its
+   callers treat that as "decline this pass". A projection over such a source still has blocks,
+   from the fallback recovery; answering from them would decorate what the parse refuses, so
+   null sends the caller back to the parse. */
+export function projectionBlockSpans(projection: Projection): SourceBlockSpans | null {
+  const { source, bodyOffset, doc } = projection;
+  for (let i = 0; i < doc.childCount; i++) {
+    if (doc.child(i).type.name === 'rawMdxFallback') return null;
+  }
+  const frontmatter = source.slice(0, bodyOffset);
+  const fmLineCount = frontmatter === '' ? 0 : frontmatter.split('\n').length - 1;
+  const offsets = lineStartOffsets(source);
+  const spans = projection.map.blocks.map((block) => ({
+    start: offsetToLine(offsets, bodyOffset + block.sourceStart),
+    end: offsetToLine(offsets, bodyOffset + block.sourceEnd),
+  }));
+  return { spans, fmLineCount };
 }

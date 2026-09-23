@@ -264,6 +264,8 @@ const MENU_ACTION_BUFFER_POLICY: Record<OkMenuAction, MenuActionBufferPolicy> = 
   'move-to-trash': 'never-buffer',
   'close-active-tab-or-window': 'never-buffer',
   'kill-terminal': 'never-buffer',
+  undo: 'never-buffer',
+  redo: 'never-buffer',
 
   'toggle-sidebar': 'parity',
   'toggle-source': 'parity',

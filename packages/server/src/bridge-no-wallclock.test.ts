@@ -14,10 +14,7 @@ const repoRoot = join(here, '..', '..', '..');
  * Files guarded by precedent #13(b). Each must be free of the forbidden
  * patterns.
  */
-const GUARDED_FILES = [
-  'packages/server/src/server-observers.ts',
-  'packages/app/src/editor/observers.ts',
-] as const;
+const GUARDED_FILES = ['packages/app/src/editor/observers.ts'] as const;
 
 const FORBIDDEN: ReadonlyArray<{ name: string; regex: RegExp }> = [
   { name: 'setTimeout() call', regex: /\bsetTimeout\s*\(/ },

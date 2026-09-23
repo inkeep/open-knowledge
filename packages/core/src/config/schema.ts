@@ -663,66 +663,6 @@ export const ConfigSchema = z.looseObject({
             .default(true),
         })
         .default({ enabled: true }),
-      deferGuard: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                'Defer a drain-shaped Observer B re-derive when the WYSIWYG fragment holds an un-propagated keystroke Y.Text lacks, so the keystroke survives instead of being stomped. Default ON — disable only to isolate a suspected regression.',
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
-      lossDetector: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                'Detect content the bridge silently dropped at its reconciliation boundary (an Observer-A apply arm or a paired agent-undo derive) and write a recovery checkpoint plus a content-free loss event. Detection only — never blocks a write. Default ON — disable only to isolate a suspected regression.',
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
-      fixedPoint: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                'Bound the Y.Text→WYSIWYG re-derive loop with a drain-count backstop: a run of re-derive drains that never reaches a raw-byte fixed point freezes the re-derive loop and writes a recovery checkpoint plus a content-free loss event, instead of churning unbounded. Default ON — disable only to isolate a suspected regression.',
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
-      preDrain: z
-        .looseObject({
-          enabled: z
-            .boolean()
-            .register(fieldRegistry, {
-              scope: 'project',
-              agentSettable: false,
-              reload: 'live',
-              defaultScope: 'project',
-              description:
-                'Before an agent write or undo rebuilds the WYSIWYG fragment, flush an un-propagated keystroke that provably does not overlap the operation into Y.Text so the keystroke survives instead of needing recovery; overlapping or unmodellable cases fall back to the checkpoint floor. Scope: appending writes and single-frame undos — a write that replaces the whole body (replace / edit) overwrites the keystroke either way, so those always take the checkpoint floor. Default ON — disable only to isolate a suspected regression.',
-            })
-            .default(true),
-        })
-        .default({ enabled: true }),
       flushOnHide: z
         .looseObject({
           enabled: z
@@ -741,10 +681,6 @@ export const ConfigSchema = z.looseObject({
     })
     .default({
       backgroundThrottle: { enabled: true },
-      deferGuard: { enabled: true },
-      lossDetector: { enabled: true },
-      fixedPoint: { enabled: true },
-      preDrain: { enabled: true },
       flushOnHide: { enabled: true },
     }),
   search: z

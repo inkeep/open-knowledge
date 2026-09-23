@@ -1,8 +1,7 @@
 import type { EditorView } from '@tiptap/pm/view';
 import { afterAll, beforeAll, expect, test } from 'vitest';
-import * as Y from 'yjs';
-import { mountCollabEditor, readUndoManager } from './editor-rig.test-helper';
-import { dispatchAsOwnUndoStep } from './undo-isolation';
+import { mountProjectionEditor } from './editor-rig.test-helper';
+import { dispatchAsOwnUndoStep, dispatchClosingUndoStep } from './undo-isolation';
 import { installDomGlobals } from './walk-currency-test-harness';
 
 let restoreDomGlobals: (() => void) | null = null;
@@ -16,34 +15,54 @@ afterAll(() => {
   restoreDomGlobals = null;
 });
 
-test('a throwing dispatch still closes the capture (stopCapturing runs twice)', () => {
-  const ydoc = new Y.Doc();
-  const editor = mountCollabEditor(ydoc, []);
+test('a throwing dispatch still closes the capture on the projection binding’s manager (stopCapturing runs twice)', () => {
+  const rig = mountProjectionEditor('seed\n', []);
   try {
-    const undoManager = readUndoManager(editor);
-    expect(undoManager).not.toBeNull();
-    if (!undoManager) return;
-
     let stops = 0;
-    const originalStop = undoManager.stopCapturing.bind(undoManager);
-    undoManager.stopCapturing = () => {
+    const originalStop = rig.undoManager.stopCapturing.bind(rig.undoManager);
+    rig.undoManager.stopCapturing = () => {
       stops++;
       originalStop();
     };
 
     const throwingView = {
-      state: editor.state,
+      state: rig.editor.state,
       dispatch: () => {
         throw new Error('plugin hook exploded');
       },
     } as unknown as EditorView;
 
-    expect(() => dispatchAsOwnUndoStep(throwingView, editor.state.tr)).toThrow(
+    expect(() => dispatchAsOwnUndoStep(throwingView, rig.editor.state.tr)).toThrow(
       'plugin hook exploded',
     );
     expect(stops).toBe(2);
   } finally {
-    editor.destroy();
-    ydoc.destroy();
+    rig.destroy();
+  }
+});
+
+test('a closing dispatch leaves the capture open before and closes it after, even when dispatch throws', () => {
+  const rig = mountProjectionEditor('seed\n', []);
+  try {
+    let stops = 0;
+    const originalStop = rig.undoManager.stopCapturing.bind(rig.undoManager);
+    rig.undoManager.stopCapturing = () => {
+      stops++;
+      originalStop();
+    };
+
+    const throwingView = {
+      state: rig.editor.state,
+      dispatch: () => {
+        throw new Error('plugin hook exploded');
+      },
+    } as unknown as EditorView;
+
+    expect(() => dispatchClosingUndoStep(throwingView, rig.editor.state.tr)).toThrow(
+      'plugin hook exploded',
+    );
+    expect(stops).toBe(1);
+  } finally {
+    rig.destroy();
   }
 });
