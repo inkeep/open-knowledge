@@ -3,7 +3,7 @@
 import type { ShareFreshness } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CircleHelp, Share2 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { type Ref, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { CopyButton } from '@/components/CopyButton';
 import { Button } from '@/components/ui/button';
@@ -24,9 +24,10 @@ const COPY_SHORTCUT = { mac: '⌘ C', windowsLinux: 'Ctrl C' };
 export interface ShareButtonProps {
   input: ShareTargetInput | null;
   onClickWhenNoRemote: () => void;
+  triggerRef?: Ref<HTMLButtonElement>;
 }
 
-export function ShareButton({ input, onClickWhenNoRemote }: ShareButtonProps) {
+export function ShareButton({ input, onClickWhenNoRemote, triggerRef }: ShareButtonProps) {
   const { t } = useLingui();
   const { status } = useGitSyncStatusDetailed();
   const [busy, setBusy] = useState(false);
@@ -100,6 +101,7 @@ export function ShareButton({ input, onClickWhenNoRemote }: ShareButtonProps) {
       {}
       <PopoverAnchor asChild>
         <Button
+          ref={triggerRef}
           variant="ghost"
           size="sm"
           aria-label={input?.kind === 'folder' ? t`Share folder` : t`Share doc`}

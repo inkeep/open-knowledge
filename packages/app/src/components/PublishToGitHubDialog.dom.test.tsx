@@ -160,7 +160,9 @@ async function renderDialog() {
   const { PublishToGitHubDialog } = await import('./PublishToGitHubDialog');
   const onOpenChange = vi.fn((_open: boolean) => {});
   await act(async () => {
-    render(<PublishToGitHubDialog open={true} onOpenChange={onOpenChange} />);
+    render(
+      <PublishToGitHubDialog open={true} onOpenChange={onOpenChange} returnFocus={() => {}} />,
+    );
     await Promise.resolve();
   });
   return { onOpenChange };

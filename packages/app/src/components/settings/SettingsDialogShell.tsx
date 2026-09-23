@@ -144,7 +144,7 @@ export function SettingsDialogShell({
     if (tryFlash()) {
       observer.disconnect();
     } else {
-      giveUpTimer = setTimeout(() => observer?.disconnect(), 4000);
+      giveUpTimer = setTimeout(() => observer?.disconnect(), 15_000);
     }
 
     return () => {
