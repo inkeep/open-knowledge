@@ -8,6 +8,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
+import { type AuditBarrier, pauseAuditAtDocument } from './audit-barrier.test-helper.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   awaitBacklinkIndexed,
@@ -77,16 +78,15 @@ describe('GET /api/audit across a lint-config change', () => {
       const folder = join(server.contentDir, SCOPE);
       const nativeFile = join(server.contentDir, '.markdownlint.json');
       seedTabbedCorpus(folder);
+      let auditBarrier: AuditBarrier | undefined;
       try {
         const before = await fetch(api(`/api/audit?path=${SCOPE}%2Fdoc-0.md`));
         expect(before.status).toBe(200);
         expect(md010Count(await before.json())).toBeGreaterThan(0);
 
-        let firstSettled = false;
-        const first = auditScope().then((res) => {
-          firstSettled = true;
-          return res;
-        });
+        auditBarrier = pauseAuditAtDocument(`${SCOPE}/doc-1.md`);
+        const first = auditScope();
+        await auditBarrier.waitUntilStarted();
 
         const write = await fetch(api('/api/lint/markdownlint-config'), {
           method: 'POST',
@@ -94,7 +94,7 @@ describe('GET /api/audit across a lint-config change', () => {
           body: JSON.stringify({ ruleId: 'MD010', value: false }),
         });
         expect(write.status).toBe(200);
-        expect(firstSettled).toBe(false);
+        auditBarrier.release();
 
         const after = await auditScope();
         expect(after.status).toBe(200);
@@ -105,6 +105,7 @@ describe('GET /api/audit across a lint-config change', () => {
         const problem = (await firstRes.json()) as { type?: string };
         expect(problem.type).toBe('urn:ok:error:audit-superseded');
       } finally {
+        auditBarrier?.dispose();
         rmSync(folder, { recursive: true, force: true });
         rmSync(nativeFile, { force: true });
       }
@@ -128,6 +129,7 @@ describe('GET /api/audit across a lint-config change', () => {
         connect: true,
       });
       const binding = bindConfigDoc(provider, 'project');
+      let auditBarrier: AuditBarrier | undefined;
 
       try {
         await pollUntil(
@@ -149,7 +151,9 @@ describe('GET /api/audit across a lint-config change', () => {
           beforeBody.files.flatMap((file) => file.diagnostics).some((d) => d.code === 'dead-link'),
         ).toBe(false);
 
+        auditBarrier = pauseAuditAtDocument(`${SCOPE}/doc-1.md`);
         const first = auditScope();
+        await auditBarrier.waitUntilStarted();
 
         const patch = binding.patch({ validation: { suppressLogLinkAdvisories: false } });
         expect(patch.ok).toBe(true);
@@ -159,6 +163,7 @@ describe('GET /api/audit across a lint-config change', () => {
           25,
           'the project config change to reach disk',
         );
+        auditBarrier.release();
 
         const firstRes = await first;
         expect(firstRes.status).toBe(409);
@@ -190,6 +195,7 @@ describe('GET /api/audit across a lint-config change', () => {
             ?.diagnostics.some((diagnostic) => diagnostic.code === 'dead-link'),
         ).toBe(true);
       } finally {
+        auditBarrier?.dispose();
         binding.dispose();
         provider.destroy();
         ydoc.destroy();
@@ -208,12 +214,10 @@ describe('GET /api/audit across a lint-config change', () => {
       seedTabbedCorpus(folder);
       mkdirSync(join(server.contentDir, '.ok', 'schemas'), { recursive: true });
       writeFileSync(schemaPath, JSON.stringify({ type: 'object', properties: {} }), 'utf-8');
+      const auditBarrier = pauseAuditAtDocument(`${scope}/doc-1.md`);
       try {
-        let firstSettled = false;
-        const first = auditScope(scope).then((res) => {
-          firstSettled = true;
-          return res;
-        });
+        const first = auditScope(scope);
+        await auditBarrier.waitUntilStarted();
         const write = await fetch(api('/api/lint/frontmatter-schema'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -224,7 +228,7 @@ describe('GET /api/audit across a lint-config change', () => {
           }),
         });
         expect(write.status).toBe(200);
-        expect(firstSettled).toBe(false);
+        auditBarrier.release();
 
         const firstRes = await first;
         expect(firstRes.status).toBe(409);
@@ -245,6 +249,7 @@ describe('GET /api/audit across a lint-config change', () => {
             ),
         ).toBe(true);
       } finally {
+        auditBarrier.dispose();
         rmSync(folder, { recursive: true, force: true });
         rmSync(schemaPath, { force: true });
       }
@@ -261,12 +266,10 @@ describe('GET /api/audit across a lint-config change', () => {
       const brokenConfig = join(server.contentDir, '.markdownlint.json');
       const blockedSchemaParent = join(server.contentDir, 'blocked-schema-parent');
       seedTabbedCorpus(folder);
+      const auditBarrier = pauseAuditAtDocument(`${scope}/doc-1.md`);
       try {
-        let firstSettled = false;
-        const first = auditScope(scope).then((res) => {
-          firstSettled = true;
-          return res;
-        });
+        const first = auditScope(scope);
+        await auditBarrier.waitUntilStarted();
         writeFileSync(executableConfig, 'module.exports = { MD012: false };\n', 'utf-8');
         const declined = await fetch(api('/api/lint/markdownlint-config'), {
           method: 'POST',
@@ -298,11 +301,12 @@ describe('GET /api/audit across a lint-config change', () => {
           body: JSON.stringify({ file: 'blocked-schema-parent/failure.schema.json' }),
         });
         expect(failedFrontmatter.status).toBe(500);
-        expect(firstSettled).toBe(false);
+        auditBarrier.release();
 
         const firstRes = await first;
         expect(firstRes.status).toBe(200);
       } finally {
+        auditBarrier.dispose();
         rmSync(folder, { recursive: true, force: true });
         rmSync(executableConfig, { force: true });
         rmSync(brokenConfig, { recursive: true, force: true });

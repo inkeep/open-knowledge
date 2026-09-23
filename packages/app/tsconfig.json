@@ -72,11 +72,21 @@
   // `@playwright/test`, so its closure adds no other file to the program. The
   // `.e2e.ts` and `.dom.test.ts` consumers stay outside: the former would pull
   // the whole `_helpers` barrel in, and the latter is excluded as `*.test.ts`.
+  //
+  // `tests/integration/audit-barrier.test-helper.ts` is named for the same
+  // reason. `docName` is optional upstream, so pushing it unnarrowed into the
+  // barrier's `string[]` observation list fails as TS2345 rather than
+  // surfacing as an `undefined` at an assertion. The pin stops at the helper:
+  // all three files that import it are `*.test.ts` and stay excluded. It
+  // imports `@inkeep/open-knowledge-core`, `vitest` and
+  // `tests/integration/test-harness.ts`, all of which the entries above
+  // already pull in, so its closure adds no other file to the program.
   "include": [
     "src",
     "*.ts",
     "tests/stress/fixtures",
     "tests/half-open-forced-close.test-helper.ts",
+    "tests/integration/audit-barrier.test-helper.ts",
     "tests/stress/_helpers/acp-catalog.ts",
     "tests/stress/_helpers/editor-state.ts",
     "tests/stress/_helpers/image.ts",
