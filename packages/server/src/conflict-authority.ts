@@ -60,7 +60,8 @@ export type ConflictChange =
 export interface ConflictIo {
   gitRaw(args: string[]): Promise<string>;
   writeProjectFileUntracked(absPath: string, bytes: string): void;
-  unlinkProjectFile(absPath: string): void;
+  unlinkProjectFileUndeclared(absPath: string): void;
+  deleteResolvedContent(docName: string, absPath: string): void;
   applyResolvedContent(docName: string, absPath: string, bytes: string): Promise<void>;
   readLiveContent?(docName: string): string | null;
   finalizeReconcileResolution?(

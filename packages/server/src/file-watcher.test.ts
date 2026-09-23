@@ -1,8 +1,8 @@
-import { mkdirSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, realpathSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import type { DiskEvent } from './file-watcher';
 import {
@@ -10,17 +10,22 @@ import {
   contentHash,
   evictStaleTrackerEntries,
   handleRawEvents,
+  isSelfRemoval,
   isSelfWrite,
   lastKnownHash,
   pathToDocName,
   reconcileFileIndexAfterFilterRebuild,
+  registerRemoval,
   registerWrite,
+  removalTracker,
+  retractRemoval,
   startWatcher,
   toParcelIgnorePaths,
   updateFileIndex,
   updateLastKnownHash,
   writeTracker,
 } from './file-watcher';
+import { getLogger } from './logger.ts';
 
 describe('writeTracker', () => {
   beforeEach(() => {
@@ -182,6 +187,254 @@ describe('isSelfWrite', () => {
 
     expect(isSelfWrite(path, second)).toBe(true);
     expect(writeTracker.get(path)?.map((entry) => entry.hash)).toEqual([third]);
+  });
+});
+
+describe('isSelfRemoval', () => {
+  let removalDir: string;
+
+  beforeEach(async () => {
+    removalTracker.clear();
+    removalDir = await mkdtemp(resolve(tmpdir(), 'ok-removal-test-'));
+  });
+
+  afterEach(async () => {
+    await rm(removalDir, { recursive: true, force: true });
+  });
+
+  test('returns true and consumes the entry for a declared removal', () => {
+    const filePath = resolve(realpathSync(removalDir), 'declared.md');
+    writeFileSync(filePath, 'body\n', 'utf-8');
+    registerRemoval(filePath);
+
+    expect(isSelfRemoval(filePath)).toBe(true);
+    expect(isSelfRemoval(filePath)).toBe(false);
+    expect(removalTracker.has(filePath)).toBe(false);
+  });
+
+  test('returns false for a path that was never declared', () => {
+    expect(isSelfRemoval(resolve(realpathSync(removalDir), 'undeclared.md'))).toBe(false);
+  });
+
+  test('keys an aliased doc at the alias the watcher reports, not at its target', () => {
+    const canonicalDir = realpathSync(removalDir);
+    const target = resolve(canonicalDir, 'alias-target.md');
+    const alias = resolve(canonicalDir, 'alias.md');
+    writeFileSync(target, 'body\n', 'utf-8');
+    symlinkSync(target, alias);
+    registerRemoval(alias);
+
+    expect(isSelfRemoval(target)).toBe(false);
+    expect(isSelfRemoval(alias)).toBe(true);
+  });
+
+  test('canonicalises the declared directory so an uncanonical parent still matches', () => {
+    const filePath = resolve(removalDir, 'uncanonical.md');
+    writeFileSync(filePath, 'body\n', 'utf-8');
+    registerRemoval(filePath);
+
+    expect(isSelfRemoval(resolve(realpathSync(removalDir), 'uncanonical.md'))).toBe(true);
+  });
+
+  test('returns false once the declaration has aged past the TTL', () => {
+    const filePath = resolve(realpathSync(removalDir), 'stale.md');
+    removalTracker.set(filePath, Date.now() - 31_000);
+
+    expect(isSelfRemoval(filePath)).toBe(false);
+    expect(removalTracker.has(filePath)).toBe(false);
+  });
+
+  test('evicts a declaration older than the TTL and keeps a fresh one', () => {
+    removalTracker.set('/content/stale-removal.md', Date.now() - 31_000);
+    removalTracker.set('/content/fresh-removal.md', Date.now() - 2_000);
+
+    evictStaleTrackerEntries();
+    expect(removalTracker.has('/content/stale-removal.md')).toBe(false);
+    expect(removalTracker.has('/content/fresh-removal.md')).toBe(true);
+  });
+
+  test('a declaration still suppresses at an age the watcher is known to deliver at', () => {
+    const filePath = resolve(realpathSync(removalDir), 'late-delivery.md');
+    removalTracker.set(filePath, Date.now() - 12_000);
+
+    expect(isSelfRemoval(filePath)).toBe(true);
+  });
+
+  test('the eviction sweep keeps a removal declaration the write sweep would drop', () => {
+    removalTracker.set('/content/late-removal.md', Date.now() - 12_000);
+    writeTracker.set('/content/late-write.md', [{ hash: 'h', timestamp: Date.now() - 12_000 }]);
+
+    evictStaleTrackerEntries();
+    expect(removalTracker.has('/content/late-removal.md')).toBe(true);
+    expect(writeTracker.has('/content/late-write.md')).toBe(false);
+  });
+
+  test('a retracted declaration no longer consumes a deletion at that path', () => {
+    const filePath = resolve(realpathSync(removalDir), 'retracted.md');
+    writeFileSync(filePath, 'body\n', 'utf-8');
+    const declaration = registerRemoval(filePath);
+
+    retractRemoval(declaration);
+
+    expect(isSelfRemoval(filePath)).toBe(false);
+  });
+
+  test('retracting an uncanonical declaration removes the key the watcher would hit', () => {
+    const filePath = resolve(removalDir, 'retracted-uncanonical.md');
+    writeFileSync(filePath, 'body\n', 'utf-8');
+
+    retractRemoval(registerRemoval(filePath));
+
+    expect(isSelfRemoval(resolve(realpathSync(removalDir), 'retracted-uncanonical.md'))).toBe(
+      false,
+    );
+  });
+
+  test('an unresolvable removal key is surfaced with its errno instead of being swallowed', () => {
+    const canonicalDir = realpathSync(removalDir);
+    const loopA = resolve(canonicalDir, 'loop-a');
+    const loopB = resolve(canonicalDir, 'loop-b');
+    symlinkSync(loopB, loopA);
+    symlinkSync(loopA, loopB);
+    const underLoop = resolve(loopA, 'note.md');
+    const warnSpy = vi.spyOn(getLogger('file-watcher'), 'warn');
+    warnSpy.mockClear();
+
+    try {
+      registerRemoval(resolve(canonicalDir, 'unrelated.md'));
+
+      expect(isSelfRemoval(underLoop)).toBe(false);
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.objectContaining({ path: underLoop, code: 'ELOOP' }),
+        expect.stringContaining('ELOOP'),
+      );
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  test('a declaration keyed by the raw fallback is not matched once the directory resolves again', () => {
+    const canonicalDir = realpathSync(removalDir);
+    const loopA = resolve(canonicalDir, 'loop-a');
+    const loopB = resolve(canonicalDir, 'loop-b');
+    symlinkSync(loopB, loopA);
+    symlinkSync(loopA, loopB);
+    const underLoop = resolve(loopA, 'note.md');
+
+    registerRemoval(underLoop);
+    expect(removalTracker.has(underLoop)).toBe(true);
+
+    const realTarget = resolve(canonicalDir, 'real-target');
+    mkdirSync(realTarget);
+    unlinkSync(loopA);
+    symlinkSync(realTarget, loopA);
+
+    expect(isSelfRemoval(underLoop)).toBe(false);
+  });
+
+  test('a declared removal is recognised when the watcher reports it through an uncanonical parent', async () => {
+    const root = realpathSync(removalDir);
+    const realContent = resolve(root, 'content');
+    mkdirSync(realContent);
+    const aliasContent = resolve(root, 'alias');
+    symlinkSync(realContent, aliasContent);
+    const filePath = resolve(realContent, 'note.md');
+    writeFileSync(filePath, '# Note\n', 'utf-8');
+    registerRemoval(filePath);
+    await rm(filePath);
+
+    const dispatched: DiskEvent[] = [];
+    await handleRawEvents(
+      [{ type: 'delete', path: resolve(aliasContent, 'note.md') }],
+      aliasContent,
+      undefined,
+      new Map(),
+      new Map(),
+      async (event) => {
+        dispatched.push(event);
+      },
+    );
+
+    expect(dispatched).toEqual([]);
+  });
+
+  test('a create batch already in flight cannot void a declaration made after it arrived', async () => {
+    const contentDir = realpathSync(removalDir);
+    const filePath = resolve(contentDir, 'in-flight.md');
+    writeFileSync(filePath, '# In flight\n', 'utf-8');
+
+    const inFlight = handleRawEvents(
+      [{ type: 'create', path: filePath }],
+      contentDir,
+      undefined,
+      new Map(),
+      new Map(),
+      async () => {},
+    );
+    registerRemoval(filePath);
+    await inFlight;
+    unlinkSync(filePath);
+
+    const afterOwnRemoval: DiskEvent[] = [];
+    await handleRawEvents(
+      [{ type: 'delete', path: filePath }],
+      contentDir,
+      undefined,
+      new Map(),
+      new Map(),
+      async (event) => {
+        afterOwnRemoval.push(event);
+      },
+    );
+
+    expect(afterOwnRemoval).toEqual([]);
+  });
+
+  test('a declaration whose delete is paired into a rename cannot be spent on a later deletion', async () => {
+    const contentDir = realpathSync(removalDir);
+    const source = resolve(contentDir, 'paired-source.md');
+    const copy = resolve(contentDir, 'paired-copy.md');
+    const body = '# Paired\n\nBody the copy also carries.\n';
+    lastKnownHash.clear();
+    writeFileSync(source, body, 'utf-8');
+    updateLastKnownHash(source, contentHash(body));
+
+    registerRemoval(source);
+    unlinkSync(source);
+    writeFileSync(copy, body, 'utf-8');
+
+    const paired: DiskEvent[] = [];
+    await handleRawEvents(
+      [
+        { type: 'delete', path: source },
+        { type: 'create', path: copy },
+      ],
+      contentDir,
+      undefined,
+      new Map(),
+      new Map(),
+      async (event) => {
+        paired.push(event);
+      },
+    );
+    expect(paired.map((event) => event.kind)).toEqual(['rename']);
+
+    writeFileSync(source, '# Paired\n\nBody the user typed back.\n', 'utf-8');
+    unlinkSync(source);
+
+    const later: DiskEvent[] = [];
+    await handleRawEvents(
+      [{ type: 'delete', path: source }],
+      contentDir,
+      undefined,
+      new Map(),
+      new Map(),
+      async (event) => {
+        later.push(event);
+      },
+    );
+
+    expect(later.map((event) => event.kind)).toEqual(['delete']);
   });
 });
 

@@ -118,7 +118,10 @@ import {
   isRegisteredMarkdownDocName,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
-import { DocumentDurabilityState } from './document-durability-state.ts';
+import {
+  DocumentDurabilityState,
+  type StaleExternalWriteConflict,
+} from './document-durability-state.ts';
 import {
   type Embedder,
   type EmbeddingsKeyStore,
@@ -144,7 +147,9 @@ import {
   type DiskEvent,
   pathToDocName,
   reconcileFileIndexAfterFilterRebuild,
+  registerRemoval,
   registerWrite,
+  retractRemoval,
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
@@ -532,17 +537,36 @@ export function createServer(options: ServerOptions): ServerInstance {
       gitRaw: async (args) =>
         createGitInstance(projectDir, { credentialConfig: [], timeoutMs: 30_000 }).git.raw(args),
       writeProjectFileUntracked: (absPath, bytes) => tracedWriteFileSync(absPath, bytes, 'utf-8'),
-      unlinkProjectFile: (absPath) => tracedUnlinkSync(absPath),
+      unlinkProjectFileUndeclared: (absPath) => tracedUnlinkSync(absPath),
+      deleteResolvedContent: (docName, absPath) => {
+        const declaration = registerRemoval(absPath);
+        try {
+          tracedUnlinkSync(absPath);
+        } catch (cause) {
+          retractRemoval(declaration);
+          throw cause;
+        }
+        contentFilter.decrementMdDir(dirname(docName));
+      },
       applyResolvedContent: async (docName, absPath, bytes) => {
+        const absent = !existsSync(absPath);
         registerWrite(absPath, contentHash(bytes));
         await atomicWriteFile(absPath, bytes, { fs: tracedAtomicFs });
+        if (absent) contentFilter.incrementMdDir(dirname(docName));
         if (hocuspocus.documents.get(docName)) applyToDoc(docName, bytes);
         setReconciledBase(docName, bytes);
         await derivedDocumentIndex.recordDiskUpsert(docName, bytes);
       },
       readLiveContent: (docName) => serializeDoc(docName),
       finalizeReconcileResolution: async (entry, strategy, docName) => {
+        let priorStaleExternalWrite:
+          | { conflict: StaleExternalWriteConflict; branch: string }
+          | undefined;
         if (entry.reason === 'stale-external-write') {
+          const conflict = durabilityState.getStaleExternalWrite(docName);
+          if (conflict) {
+            priorStaleExternalWrite = { conflict, branch: durabilityState.getActiveBranch() };
+          }
           if (strategy === 'mine' || strategy === 'content') {
             durabilityState.recordDisplacedVersion(docName, entry.stages.theirs);
           } else {
@@ -553,14 +577,67 @@ export function createServer(options: ServerOptions): ServerInstance {
         const document = hocuspocus.documents.get(docName);
         const lifecycle = document?.getMap('lifecycle');
         if (strategy === 'delete') {
-          deleteReconciledBase(docName);
+          const isDirty = document
+            ? rescueUnflushedEditsBeforeTeardown(
+                docName,
+                headWatcher?.getLastKnownBranch() ?? 'main',
+                'delete',
+                true,
+              )
+            : false;
           await derivedDocumentIndex.recordDiskDelete(docName);
+          log.info(
+            { docName, isDirty, source: 'resolve-delete' },
+            `[reconcile] delete: ${docName} (dirty=${isDirty})`,
+          );
+          const priorLifecycle = lifecycle
+            ? {
+                status: lifecycle.get('status'),
+                reason: lifecycle.get('reason'),
+                detectedAt: lifecycle.get('detectedAt'),
+              }
+            : undefined;
           lifecycle?.set('status', 'deleted-upstream');
           lifecycle?.delete('reason');
           lifecycle?.delete('detectedAt');
-          if (document) hocuspocus.closeConnections(docName);
+          if (document) {
+            try {
+              hocuspocus.closeConnections(docName);
+              await forceUnloadDocument(document);
+            } catch (cause) {
+              if (lifecycle && priorLifecycle) {
+                for (const [key, value] of Object.entries(priorLifecycle)) {
+                  if (value === undefined) lifecycle.delete(key);
+                  else lifecycle.set(key, value);
+                }
+              }
+              if (priorStaleExternalWrite) {
+                try {
+                  durabilityState.restoreStaleExternalWrite(
+                    priorStaleExternalWrite.conflict,
+                    priorStaleExternalWrite.branch,
+                  );
+                } catch (rollbackFailure) {
+                  log.error(
+                    { err: rollbackFailure, docName },
+                    `[reconcile] stale-external-write rollback failed for ${docName}; the retry may not find the conflict`,
+                  );
+                }
+              }
+              throw cause;
+            }
+          }
+          deleteReconciledBase(docName);
           onUpstreamDelete(docName);
           scheduleIndexRegenerationAfterRemoval(docName);
+          console.info(
+            JSON.stringify({
+              event: 'recently-removed-docs-populate',
+              docName,
+              kind: 'deleted',
+              source: 'resolve-delete',
+            }),
+          );
         } else if (lifecycle?.get('reason') === entry.reason) {
           lifecycle.delete('status');
           lifecycle.delete('reason');
@@ -2655,7 +2732,10 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           deleteReconciledBase(docName);
           await derivedDocumentIndex.recordDiskDelete(docName);
-          log.info({ docName, isDirty }, `[reconcile] delete: ${docName} (dirty=${isDirty})`);
+          log.info(
+            { docName, isDirty, source: 'watcher-delete' },
+            `[reconcile] delete: ${docName} (dirty=${isDirty})`,
+          );
 
           hocuspocus.closeConnections(docName);
           await forceUnloadDocument(document);

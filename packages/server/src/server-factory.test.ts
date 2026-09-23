@@ -5450,6 +5450,18 @@ function createReconcileServer(rig: ReconcileRig): ServerInstance {
   });
 }
 
+function persistedStaleExternalWrite(
+  projectDir: string,
+  docName: string,
+): Record<string, unknown> | undefined {
+  const snapshot = join(projectDir, '.ok', LOCAL_DIR, 'stale-external-writes.json');
+  if (!existsSync(snapshot)) return undefined;
+  const parsed = JSON.parse(readFileSync(snapshot, 'utf-8')) as {
+    branches: Record<string, { docName: string; staleExternalWrite?: Record<string, unknown> }[]>;
+  };
+  return parsed.branches.main?.find((entry) => entry.docName === docName)?.staleExternalWrite;
+}
+
 async function expectAbsentDuring(
   read: () => Promise<string[]>,
   absent: string,
@@ -5572,6 +5584,461 @@ describe('createServer() — disk-event reconcile with an absent reconciled base
         await shadowGit(rig.shadow).raw('log', '-1', '--format=%B', rescue?.sha ?? '')
       ).trim();
       expect(parseCheckpoint(deleteRescueBody)?.kind).toBe('external-change-rescue');
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution rescues unflushed live edits now that the suppressed self-delete no longer routes that teardown through the watcher', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-rescue-');
+    const docName = 'resolve-delete-rescue-target';
+    const diskContent = '# Resolve delete rescue target\n\nOn-disk body.\n';
+    writeFileSync(join(rig.tmpDir, `${docName}.md`), diskContent, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      await conn.transact((doc) => {
+        const xmlFragment = doc.getXmlFragment('default');
+        const paragraph = new Y.XmlElement('paragraph');
+        paragraph.insert(0, [new Y.XmlText('Unflushed paragraph only in the editor doc.')]);
+        xmlFragment.insert(0, [paragraph]);
+      });
+      await vi.waitFor(
+        () =>
+          expect(server.hocuspocus.documents.get(docName)?.getText('source').toString()).toContain(
+            'Unflushed paragraph only in the editor doc.',
+          ),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.conflicts.raise({
+        kind: 'reconcile',
+        file: `${docName}.md`,
+        reason: 'stale-external-write',
+        stages: { base: diskContent, ours: diskContent, theirs: diskContent },
+      });
+      await server.conflicts.resolve(`${docName}.md`, 'delete');
+
+      expect(existsSync(join(rig.tmpDir, `${docName}.md`))).toBe(false);
+      let rescueSha = '';
+      await vi.waitFor(
+        async () => {
+          const rescues = await listRescueCheckpoints(rig.shadow, 'main');
+          const rescue = rescues.find((r) => r.docName === docName);
+          expect(rescue).toBeDefined();
+          rescueSha = rescue?.sha ?? '';
+        },
+        { timeout: 10_000, interval: 50 },
+      );
+      const resolveRescueBody = (
+        await shadowGit(rig.shadow).raw('log', '-1', '--format=%B', rescueSha)
+      ).trim();
+      expect(parseCheckpoint(resolveRescueBody)?.kind).toBe('external-change-rescue');
+      const rescuedContents = await shadowGit(rig.shadow).raw('show', `${rescueSha}:${docName}`);
+      expect(rescuedContents).toContain('Unflushed paragraph only in the editor doc.');
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution that fails after its rescue decision leaves the base the retry re-reads', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-retry-base-');
+    const docName = 'resolve-delete-retry-base';
+    const diskContent = '# Resolve delete retry base\n\nOn-disk body.\n';
+    writeFileSync(join(rig.tmpDir, `${docName}.md`), diskContent, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      const unloadDocument = server.hocuspocus.unloadDocument.bind(server.hocuspocus);
+      let failNextUnload = true;
+      server.hocuspocus.unloadDocument = async (document) => {
+        if (!failNextUnload) return unloadDocument(document);
+        failNextUnload = false;
+        throw new Error('injected unload failure');
+      };
+
+      server.conflicts.raise({
+        kind: 'reconcile',
+        file: `${docName}.md`,
+        reason: 'stale-external-write',
+        stages: { base: diskContent, ours: diskContent, theirs: diskContent },
+      });
+      await expect(server.conflicts.resolve(`${docName}.md`, 'delete')).rejects.toThrow(
+        'injected unload failure',
+      );
+
+      expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent);
+
+      await server.conflicts.resolve(`${docName}.md`, 'delete');
+      await expectAbsentDuring(
+        async () => (await listRescueCheckpoints(rig.shadow, 'main')).map((r) => r.docName),
+        docName,
+      );
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution whose file is already gone leaves the directory count its remaining markdown justifies', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-dircount-');
+    const notesDir = join(rig.tmpDir, 'notes');
+    mkdirSync(notesDir);
+    writeFileSync(join(notesDir, 'keep.md'), '# Keep\n', 'utf-8');
+    writeFileSync(join(notesDir, 'sibling.png'), 'png-bytes', 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(false);
+
+      server.conflicts.raise({
+        kind: 'reconcile',
+        file: 'notes/gone.md',
+        reason: 'stale-external-write',
+        stages: { base: '', ours: '', theirs: '' },
+      });
+      await server.conflicts.resolve('notes/gone.md', 'delete');
+
+      expect(existsSync(join(notesDir, 'keep.md'))).toBe(true);
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(false);
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution that unlinks then fails, retried with mine, leaves the directory count matching the file it put back', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-then-mine-dircount-');
+    const notesDir = join(rig.tmpDir, 'notes');
+    mkdirSync(notesDir);
+    const docName = 'notes/delete-then-mine';
+    const diskContent = '# Delete then mine\n\nOn-disk body.\n';
+    writeFileSync(join(notesDir, 'delete-then-mine.md'), diskContent, 'utf-8');
+    writeFileSync(join(notesDir, 'sibling.png'), 'png-bytes', 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent),
+        { timeout: 5_000, interval: 25 },
+      );
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(false);
+
+      const unloadDocument = server.hocuspocus.unloadDocument.bind(server.hocuspocus);
+      let failNextUnload = true;
+      server.hocuspocus.unloadDocument = async (document) => {
+        if (!failNextUnload) return unloadDocument(document);
+        failNextUnload = false;
+        throw new Error('injected unload failure');
+      };
+
+      server.conflicts.raise({
+        kind: 'reconcile',
+        file: `${docName}.md`,
+        reason: 'stale-external-write',
+        stages: { base: diskContent, ours: diskContent, theirs: diskContent },
+      });
+      await expect(server.conflicts.resolve(`${docName}.md`, 'delete')).rejects.toThrow(
+        'injected unload failure',
+      );
+      expect(existsSync(join(notesDir, 'delete-then-mine.md'))).toBe(false);
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(true);
+
+      await server.conflicts.resolve(`${docName}.md`, 'mine');
+
+      expect(existsSync(join(notesDir, 'delete-then-mine.md'))).toBe(true);
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(false);
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution that fails at unload leaves the lifecycle it found, so a later resolution clears the document', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-lifecycle-restore-');
+    const docName = 'resolve-delete-lifecycle-restore';
+    const diskContent = '# Resolve delete lifecycle restore\n\nOn-disk body.\n';
+    writeFileSync(join(rig.tmpDir, `${docName}.md`), diskContent, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(diskContent),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      const unloadDocument = server.hocuspocus.unloadDocument.bind(server.hocuspocus);
+      let failNextUnload = true;
+      server.hocuspocus.unloadDocument = async (document) => {
+        if (!failNextUnload) return unloadDocument(document);
+        failNextUnload = false;
+        throw new Error('injected unload failure');
+      };
+
+      server.conflicts.raise({
+        kind: 'reconcile',
+        file: `${docName}.md`,
+        reason: 'stale-external-write',
+        stages: { base: diskContent, ours: diskContent, theirs: diskContent },
+      });
+      await expect(server.conflicts.resolve(`${docName}.md`, 'delete')).rejects.toThrow(
+        'injected unload failure',
+      );
+
+      const afterFailure = server.hocuspocus.documents.get(docName);
+      expect(afterFailure).toBeDefined();
+      if (!afterFailure) throw new Error('expected the document to stay resident');
+      expect(server.conflicts.lifecycleOf(afterFailure, docName)).toEqual({
+        status: 'conflict',
+        kind: 'reconcile',
+        reason: 'stale-external-write',
+      });
+
+      await server.conflicts.resolve(`${docName}.md`, 'mine');
+
+      const afterRetry = server.hocuspocus.documents.get(docName);
+      expect(afterRetry).toBeDefined();
+      if (!afterRetry) throw new Error('expected the document to stay resident');
+      expect(server.conflicts.lifecycleOf(afterRetry, docName)).toBeNull();
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution that fails at unload leaves the stale-external-write record its rehydration re-reads', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-durable-restore-');
+    const docName = 'resolve-delete-durable-restore';
+    const file = `${docName}.md`;
+    const retained = '# Resolve delete durable restore\n\nAcknowledged body.\n';
+    const diskContent = '# Resolve delete durable restore\n\nRejected older save.\n';
+    writeFileSync(join(rig.tmpDir, file), retained, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(retained),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      const raised = server.durabilityState.recordStaleExternalWrite(
+        docName,
+        diskContent,
+        retained,
+      );
+      expect(server.durabilityState.listStaleExternalWrites().map((c) => c.docName)).toContain(
+        docName,
+      );
+      expect(server.conflicts.findByFile(file)).toMatchObject({
+        kind: 'reconcile',
+        reason: 'stale-external-write',
+      });
+
+      const unloadDocument = server.hocuspocus.unloadDocument.bind(server.hocuspocus);
+      let failNextUnload = true;
+      server.hocuspocus.unloadDocument = async (document) => {
+        if (!failNextUnload) return unloadDocument(document);
+        failNextUnload = false;
+        throw new Error('injected unload failure');
+      };
+
+      await expect(server.conflicts.resolve(file, 'delete')).rejects.toThrow(
+        'injected unload failure',
+      );
+
+      expect(server.durabilityState.getStaleExternalWrite(docName)).toMatchObject({
+        docName,
+        diskContent,
+        retainedContent: retained,
+        detectedAt: raised.detectedAt,
+      });
+      expect(server.durabilityState.listStaleExternalWrites().map((c) => c.docName)).toContain(
+        docName,
+      );
+      expect(persistedStaleExternalWrite(rig.tmpDir, docName)).toMatchObject({
+        docName,
+        diskContent,
+        detectedAt: raised.detectedAt,
+      });
+
+      await server.conflicts.resolve(file, 'mine');
+
+      expect(server.durabilityState.listStaleExternalWrites().map((c) => c.docName)).not.toContain(
+        docName,
+      );
+      expect(persistedStaleExternalWrite(rig.tmpDir, docName)).toBeUndefined();
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution whose teardown observed a newer external write rolls back to that newer record', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-durable-newer-');
+    const docName = 'resolve-delete-durable-newer';
+    const file = `${docName}.md`;
+    const retained = '# Resolve delete durable newer\n\nAcknowledged body.\n';
+    const olderDisk = '# Resolve delete durable newer\n\nFirst rejected save.\n';
+    const newerDisk = '# Resolve delete durable newer\n\nSecond rejected save.\n';
+    writeFileSync(join(rig.tmpDir, file), retained, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(retained),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      server.durabilityState.recordStaleExternalWrite(docName, olderDisk, retained);
+
+      const unloadDocument = server.hocuspocus.unloadDocument.bind(server.hocuspocus);
+      let failNextUnload = true;
+      server.hocuspocus.unloadDocument = async (document) => {
+        if (!failNextUnload) return unloadDocument(document);
+        failNextUnload = false;
+        server.durabilityState.recordStaleExternalWrite(docName, newerDisk, retained);
+        throw new Error('injected unload failure');
+      };
+
+      await expect(server.conflicts.resolve(file, 'delete')).rejects.toThrow(
+        'injected unload failure',
+      );
+
+      expect(server.durabilityState.getStaleExternalWrite(docName)).toMatchObject({
+        docName,
+        diskContent: newerDisk,
+      });
+      expect(persistedStaleExternalWrite(rig.tmpDir, docName)).toMatchObject({
+        docName,
+        diskContent: newerDisk,
+      });
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a delete resolution that fails at unload after a checkout restores the record to the branch it was cleared from', async () => {
+    rig = await setupReconcileRig('ok-resolve-delete-branch-moved-');
+    const docName = 'resolve-delete-branch-moved';
+    const file = `${docName}.md`;
+    const retained = '# Resolve delete branch moved\n\nAcknowledged body.\n';
+    const diskContent = '# Resolve delete branch moved\n\nRejected older save.\n';
+    writeFileSync(join(rig.tmpDir, file), retained, 'utf-8');
+
+    const server = createReconcileServer(rig);
+    try {
+      await server.ready;
+      const conn = await server.hocuspocus.openDirectConnection(docName);
+      await vi.waitFor(
+        () => expect(server.durabilityState.getReconciledBase(docName)).toBe(retained),
+        { timeout: 5_000, interval: 25 },
+      );
+
+      const raised = server.durabilityState.recordStaleExternalWrite(
+        docName,
+        diskContent,
+        retained,
+      );
+      expect(server.conflicts.findByFile(file)).toMatchObject({
+        kind: 'reconcile',
+        reason: 'stale-external-write',
+      });
+
+      const unloadDocument = server.hocuspocus.unloadDocument.bind(server.hocuspocus);
+      let failNextUnload = true;
+      server.hocuspocus.unloadDocument = async (document) => {
+        if (!failNextUnload) return unloadDocument(document);
+        failNextUnload = false;
+        server.durabilityState.switchReconciledBaseScope('feature');
+        server.conflicts.setBranch('feature');
+        throw new Error('injected unload failure');
+      };
+
+      await expect(server.conflicts.resolve(file, 'delete')).rejects.toThrow(
+        'injected unload failure',
+      );
+
+      expect(server.durabilityState.getActiveBranch()).toBe('feature');
+      expect(server.durabilityState.getStaleExternalWrite(docName)).toBeUndefined();
+      expect(server.durabilityState.listStaleExternalWrites()).toEqual([]);
+      expect(server.conflicts.findByFile(file)).toBeUndefined();
+
+      server.durabilityState.switchReconciledBaseScope('main');
+      server.conflicts.setBranch('main');
+
+      expect(server.durabilityState.getStaleExternalWrite(docName)).toMatchObject({
+        docName,
+        diskContent,
+        retainedContent: retained,
+        detectedAt: raised.detectedAt,
+      });
+      expect(persistedStaleExternalWrite(rig.tmpDir, docName)).toMatchObject({
+        docName,
+        diskContent,
+        detectedAt: raised.detectedAt,
+      });
+      conn.disconnect();
+    } finally {
+      await server.destroy();
+    }
+  }, 30_000);
+
+  test('a resolution that rewrites a file already on disk leaves the directory count where it found it', async () => {
+    rig = await setupReconcileRig('ok-resolve-mine-dircount-');
+    const notesDir = join(rig.tmpDir, 'notes');
+    mkdirSync(notesDir);
+    const docName = 'notes/rewritten-in-place';
+    const diskContent = '# Rewritten in place\n\nOn-disk body.\n';
+    writeFileSync(join(notesDir, 'rewritten-in-place.md'), diskContent, 'utf-8');
+    writeFileSync(join(notesDir, 'sibling.png'), 'png-bytes', 'utf-8');
+
+    const server = createReconcileServer(rig);
+    const raiseFor = (): void =>
+      server.conflicts.raise({
+        kind: 'reconcile',
+        file: `${docName}.md`,
+        reason: 'stale-external-write',
+        stages: { base: diskContent, ours: diskContent, theirs: diskContent },
+      });
+    try {
+      await server.ready;
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(false);
+
+      raiseFor();
+      await server.conflicts.resolve(`${docName}.md`, 'mine');
+
+      expect(existsSync(join(notesDir, 'rewritten-in-place.md'))).toBe(true);
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(false);
+
+      raiseFor();
+      await server.conflicts.resolve(`${docName}.md`, 'delete');
+
+      expect(existsSync(join(notesDir, 'rewritten-in-place.md'))).toBe(false);
+      expect(server.contentFilter.isExcluded('notes/sibling.png')).toBe(true);
     } finally {
       await server.destroy();
     }

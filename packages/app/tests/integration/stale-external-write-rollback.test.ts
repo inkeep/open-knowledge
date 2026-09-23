@@ -13,10 +13,15 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { basename, join } from 'node:path';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { DocumentDurabilityStateError } from '../../../server/src/document-durability-state';
-import { writeTracker } from '../../../server/src/file-watcher';
+import {
+  getWatcherDecisionRingSnapshot,
+  isSelfRemoval,
+  removalTracker,
+  writeTracker,
+} from '../../../server/src/file-watcher';
 import { contentHash } from '../../../server/src/version-hash';
 import {
   agentWriteMd,
@@ -108,6 +113,46 @@ function lifecycleOf(
   const document = target.instance.hocuspocus.documents.get(docName);
   if (!document) throw new Error(`document ${docName} not loaded`);
   return target.instance.conflicts.lifecycleOf(document, docName) ?? {};
+}
+
+function observeLifecycleStatuses(target: TestServer, docName: string): unknown[] {
+  const document = target.instance.hocuspocus.documents.get(docName);
+  if (!document) throw new Error(`document ${docName} not loaded`);
+  const lifecycle = document.getMap('lifecycle');
+  const seen: unknown[] = [];
+  lifecycle.observe(() => seen.push(lifecycle.get('status')));
+  return seen;
+}
+
+function lifecycleStatusOf(target: TestServer, docName: string): unknown {
+  const document = target.instance.hocuspocus.documents.get(docName);
+  if (!document) return 'document-unloaded';
+  return target.instance.conflicts.lifecycleOf(document, docName)?.status;
+}
+
+async function awaitWatcherObservationOfDoc(docName: string): Promise<void> {
+  await pollUntil(
+    () =>
+      getWatcherDecisionRingSnapshot().some((record) => basename(record.path) === `${docName}.md`),
+    15_000,
+    25,
+    `the file watcher to observe the creation of ${docName}.md, without which @parcel/watcher can coalesce that creation with the unlink the resolution issues next into one batch entry that its inotify backend drops outright`,
+  );
+}
+
+async function awaitWatcherDecisionForDoc(docName: string, ringOffset: number): Promise<void> {
+  await pollUntil(
+    () =>
+      getWatcherDecisionRingSnapshot()
+        .slice(ringOffset)
+        .some(
+          (record) =>
+            basename(record.path) === `${docName}.md` && record.decision === 'self-removal-skip',
+        ),
+    15_000,
+    25,
+    `the file watcher to classify the disk event this resolution produced for ${docName}.md as the server's own removal, without which the assertions after it race that event`,
+  );
 }
 
 describe('stale external write does not roll back an acknowledged agent write', () => {
@@ -204,12 +249,13 @@ describe('stale external write does not roll back an acknowledged agent write', 
       const docName = `resolve-${randomUUID()}`;
       const { stale } = await acknowledgeWrite(server, docName);
       await restoreStale(server, docName, stale);
+      const lifecycleStatuses = observeLifecycleStatuses(server, docName);
       expect((await resolveConflict(server, `${docName}.md`, strategy)).status).toBe(200);
       expect(server.instance.durabilityState.listStaleExternalWrites()).toEqual([]);
       expect(server.instance.durabilityState.isDisplacedVersion(docName, stale)).toBe(false);
       if (strategy === 'delete') {
         expect(existsSync(join(server.contentDir, `${docName}.md`))).toBe(false);
-        expect(lifecycleOf(server, docName).status).toBe('deleted-upstream');
+        expect(lifecycleStatuses).toContain('deleted-upstream');
         const tags = await (await fetch(`${server.baseUrl}/api/tags/stale-write-test`)).json();
         expect(tags.docs.map((entry: { docName: string }) => entry.docName)).not.toContain(docName);
       } else {
@@ -219,6 +265,21 @@ describe('stale external write does not roll back an acknowledged agent write', 
       }
     },
   );
+
+  test('a successful delete resolution leaves no resident document, so suppressing the self-delete must move that unload onto the resolution path', async () => {
+    server = await createTestServer({ debounce: 50, maxDebounce: 200 });
+    const docName = `unload-${randomUUID()}`;
+    const { stale } = await acknowledgeWrite(server, docName);
+    await restoreStale(server, docName, stale);
+    expect(server.instance.hocuspocus.documents.has(docName)).toBe(true);
+    expect((await resolveConflict(server, `${docName}.md`, 'delete')).status).toBe(200);
+    await pollUntil(
+      () => server?.instance.hocuspocus.documents.has(docName) === false,
+      15_000,
+      25,
+      `${docName} to be unloaded from hocuspocus.documents after its successful delete resolution`,
+    );
+  });
 
   test('an unloaded stale write is listed, and delete then restore starts fresh', async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
@@ -309,6 +370,24 @@ describe('stale external write does not roll back an acknowledged agent write', 
     expect(state.listStaleExternalWrites()).toEqual([]);
   });
 
+  test('a delete resolution removes an in-tree symlink at the alias and the watcher attributes it there, not at its target', async () => {
+    server = await createTestServer({ debounce: 50, maxDebounce: 200 });
+    const docName = `alias-delete-${randomUUID()}`;
+    const target = join(server.contentDir, `${docName}-target.md`);
+    const alias = join(server.contentDir, `${docName}.md`);
+    writeFileSync(target, 'stale\n');
+    symlinkSync(target, alias);
+    await awaitWatcherObservationOfDoc(docName);
+    const state = server.instance.durabilityState;
+    state.setReconciledBase(docName, 'acknowledged\n');
+    state.recordStaleExternalWrite(docName, 'stale\n');
+    const ringOffset = getWatcherDecisionRingSnapshot().length;
+    expect((await resolveConflict(server, `${docName}.md`, 'delete')).status).toBe(200);
+    expect(existsSync(alias)).toBe(false);
+    expect(readFileSync(target, 'utf-8')).toBe('stale\n');
+    await awaitWatcherDecisionForDoc(docName, ringOffset);
+  });
+
   test('a failed disk write leaves the acknowledged document and conflict unchanged', async () => {
     server = await createTestServer({ debounce: 50, maxDebounce: 200 });
     const docName = `directory-${randomUUID()}`;
@@ -327,6 +406,32 @@ describe('stale external write does not roll back an acknowledged agent write', 
     expect(readTestDoc(server.contentDir, docName)).toBe('acknowledged\n');
   });
 
+  test('a delete resolution whose unlink fails leaves no removal declared', async () => {
+    server = await createTestServer({ debounce: 50, maxDebounce: 200 });
+    const docName = `unlink-fail-${randomUUID()}`;
+    const file = join(server.contentDir, `${docName}.md`);
+    mkdirSync(file);
+    const state = server.instance.durabilityState;
+    state.setReconciledBase(docName, 'acknowledged\n');
+    state.recordStaleExternalWrite(docName, 'stale\n');
+
+    const declared = vi.spyOn(removalTracker, 'set');
+    try {
+      const failed = await resolveConflict(server, `${docName}.md`, 'delete');
+      expect(failed.status).toBe(500);
+      expect(lstatSync(file).isDirectory()).toBe(true);
+      expect(declared).toHaveBeenCalledWith(
+        join(realpathSync(server.contentDir), `${docName}.md`),
+        expect.any(Number),
+      );
+    } finally {
+      declared.mockRestore();
+    }
+    expect(isSelfRemoval(join(realpathSync(server.contentDir), `${docName}.md`))).toBe(false);
+
+    rmSync(file, { recursive: true });
+  });
+
   test.each(['mine', 'delete'])(
     'a durability filesystem failure during %s keeps the conflict retryable',
     async (strategy) => {
@@ -337,18 +442,23 @@ describe('stale external write does not roll back an acknowledged agent write', 
       const statePath = join(server.instance.lockDir, 'stale-external-writes.json');
       renameSync(statePath, `${statePath}.backup`);
       mkdirSync(statePath);
+      const ringOffset = getWatcherDecisionRingSnapshot().length;
       const failed = await resolveConflict(server, `${docName}.md`, strategy);
       expect(failed.status).toBe(500);
       expect((await failed.json()).detail).toBeTruthy();
-      expect(server.instance.durabilityState.getStaleExternalWrite(docName)).toBeDefined();
-      expect(lifecycleOf(server, docName).status).toBe('conflict');
-      if (strategy === 'mine') expect(readTestDoc(server.contentDir, docName)).toBe(acknowledged);
-      else expect(existsSync(join(server.contentDir, `${docName}.md`))).toBe(false);
+      if (strategy === 'delete') await awaitWatcherDecisionForDoc(docName, ringOffset);
+      expect.soft(server.instance.durabilityState.getStaleExternalWrite(docName)).toBeDefined();
+      expect.soft(lifecycleStatusOf(server, docName)).toBe('conflict');
+      if (strategy === 'mine')
+        expect.soft(readTestDoc(server.contentDir, docName)).toBe(acknowledged);
+      else expect.soft(existsSync(join(server.contentDir, `${docName}.md`))).toBe(false);
       rmSync(statePath, { recursive: true });
       renameSync(`${statePath}.backup`, statePath);
-      expect((await resolveConflict(server, `${docName}.md`, 'mine')).status).toBe(200);
+      const retry = await resolveConflict(server, `${docName}.md`, 'mine');
+      expect(retry.status).toBe(200);
+      expect(await retry.json()).toEqual({});
       expect(server.instance.durabilityState.getStaleExternalWrite(docName)).toBeUndefined();
-      expect(lifecycleOf(server, docName).status).toBeUndefined();
+      expect(lifecycleStatusOf(server, docName)).toBeUndefined();
     },
   );
 

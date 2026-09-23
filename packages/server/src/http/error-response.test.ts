@@ -279,6 +279,56 @@ describe('errorResponse — defense-in-depth branches', () => {
     expect(body.colliding).toEqual([{ existing: 'a.md', incoming: 'A.md', to: 'A.md' }]);
   });
 
+  test('extension members reach the structured log line under one key they cannot escape', () => {
+    const log = loggerFactory.getLogger('http');
+    const errorSpy = vi.spyOn(log, 'error');
+    errorSpy.mockClear();
+
+    const { res } = makeMockRes();
+    errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Failed to resolve conflict.', {
+      handler: 'sync-resolve-conflict',
+      detail: 'EISDIR',
+      extensions: {
+        file: 'notes/a.md',
+        strategy: 'delete',
+        handler: 'hostile-handler',
+        event: 'forged.event',
+        requestId: 'forged-request',
+        err: 'forged-err',
+        level: 'debug',
+        time: 0,
+        name: 'forged-logger',
+        trace_id: 'FORGED-TRACE',
+        span_id: 'FORGED-SPAN',
+        msg: 'forged message',
+        pid: -1,
+        hostname: 'forged-host',
+      },
+    });
+
+    const line = errorSpy.mock.calls.find(
+      ([arg]) => isObjLike(arg) && arg.event === 'api.error' && arg.status === 500,
+    )?.[0] as Record<string, unknown>;
+    expect(line).toBeDefined();
+    expect(line.extensions).toMatchObject({ file: 'notes/a.md', strategy: 'delete' });
+    expect(line.handler).toBe('sync-resolve-conflict');
+    expect(line.event).toBe('api.error');
+    expect(line.detail).toBe('EISDIR');
+    expect(Object.keys(line).sort()).toEqual([
+      'detail',
+      'err',
+      'event',
+      'extensions',
+      'handler',
+      'instance',
+      'requestId',
+      'status',
+      'type',
+    ]);
+
+    errorSpy.mockRestore();
+  });
+
   test('the :(literal) pathspec marker is scrubbed from title and detail', () => {
     const { res, endCalls } = makeMockRes();
     errorResponse(

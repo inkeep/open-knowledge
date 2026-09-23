@@ -46,6 +46,7 @@ interface FakeIo extends ConflictIo {
   gitCalls: string[][];
   writes: Array<{ absPath: string; bytes: string }>;
   unlinks: string[];
+  declaredDeletes: string[];
   applied: Array<{ docName: string; bytes: string }>;
 }
 
@@ -53,11 +54,13 @@ function makeIo(overrides: Partial<ConflictIo> = {}): FakeIo {
   const gitCalls: string[][] = [];
   const writes: Array<{ absPath: string; bytes: string }> = [];
   const unlinks: string[] = [];
+  const declaredDeletes: string[] = [];
   const applied: Array<{ docName: string; bytes: string }> = [];
   return {
     gitCalls,
     writes,
     unlinks,
+    declaredDeletes,
     applied,
     gitRaw: async (args) => {
       gitCalls.push(args);
@@ -67,7 +70,12 @@ function makeIo(overrides: Partial<ConflictIo> = {}): FakeIo {
       writes.push({ absPath, bytes });
       writeFileSync(absPath, bytes, 'utf-8');
     },
-    unlinkProjectFile: (absPath) => {
+    unlinkProjectFileUndeclared: (absPath) => {
+      unlinks.push(absPath);
+      rmSync(absPath, { force: true });
+    },
+    deleteResolvedContent: (_docName, absPath) => {
+      declaredDeletes.push(absPath);
       unlinks.push(absPath);
       rmSync(absPath, { force: true });
     },
@@ -901,7 +909,7 @@ describe('ConflictAuthority resolve', () => {
     expect(rig.io.gitCalls).toEqual([]);
   });
 
-  test("a reconcile 'delete' unlinks the file and clears the entry", async () => {
+  test("a reconcile 'delete' declares the unlink and clears the entry", async () => {
     const rig = makeAuthority();
     writeFileSync(join(projectDir, 'a.md'), 'markers\n', 'utf-8');
     rig.authority.raise({
@@ -913,6 +921,7 @@ describe('ConflictAuthority resolve', () => {
 
     await rig.authority.resolve('a.md', 'delete');
     expect(existsSync(join(projectDir, 'a.md'))).toBe(false);
+    expect(rig.io.declaredDeletes).toEqual([join(projectDir, 'a.md')]);
     expect(rig.authority.count()).toBe(0);
   });
 

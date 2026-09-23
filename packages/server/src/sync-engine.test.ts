@@ -90,7 +90,8 @@ function newAuthority(): ConflictAuthority {
     io: {
       gitRaw: (args) => simpleGit(projectDir).raw(args),
       writeProjectFileUntracked: (absPath, bytes) => writeFileSync(absPath, bytes, 'utf-8'),
-      unlinkProjectFile: (absPath) => rmSync(absPath, { force: true }),
+      unlinkProjectFileUndeclared: (absPath) => rmSync(absPath, { force: true }),
+      deleteResolvedContent: (_docName, absPath) => rmSync(absPath, { force: true }),
       applyResolvedContent: async (_docName, absPath, bytes) => {
         writeFileSync(absPath, bytes, 'utf-8');
       },

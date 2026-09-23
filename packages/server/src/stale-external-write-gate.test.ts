@@ -140,7 +140,8 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       io: {
         gitRaw: async () => '',
         writeProjectFileUntracked: () => undefined,
-        unlinkProjectFile: () => undefined,
+        unlinkProjectFileUndeclared: () => undefined,
+        deleteResolvedContent: () => undefined,
         applyResolvedContent: async () => undefined,
       },
     });
@@ -491,7 +492,8 @@ describe('reconcileDiskBeforeAgentWrite — stale external write gate', () => {
       io: {
         gitRaw: async () => '',
         writeProjectFileUntracked: () => undefined,
-        unlinkProjectFile: () => undefined,
+        unlinkProjectFileUndeclared: () => undefined,
+        deleteResolvedContent: () => undefined,
         applyResolvedContent: async () => undefined,
       },
     });

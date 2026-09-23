@@ -150,6 +150,7 @@ export function errorResponse(
       handler: options.handler,
       detail: options.detail,
       err: options.cause,
+      ...(options.extensions ? { extensions: options.extensions } : {}),
     },
     title,
   );
