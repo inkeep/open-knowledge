@@ -72,6 +72,7 @@
     "typecheck:test-helper-callers": "tsc --noEmit -p tsconfig.test-helper-callers.json"
   },
   "devDependencies": {
+    "@tiptap/core": "^3.22.3",
     "@types/node": "^24.7.0",
     "@types/shell-quote": "^1.7.5",
     "@types/ws": "^8.18.1",

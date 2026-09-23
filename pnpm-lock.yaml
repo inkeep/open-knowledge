@@ -1398,6 +1398,9 @@ importers:
         specifier: ^4.3.6
         version: 4.4.3
     devDependencies:
+      '@tiptap/core':
+        specifier: 3.22.3
+        version: 3.22.3(@tiptap/pm@3.22.4)
       '@types/node':
         specifier: ^24.7.0
         version: 24.13.3
