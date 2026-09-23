@@ -1,4 +1,4 @@
-import { basename, dirname } from 'node:path';
+import { basename, dirname, resolve } from 'node:path';
 import {
   formatRelativeAge,
   LOCAL_DIR,
@@ -16,6 +16,9 @@ import {
   processUsage,
 } from '../utils/process-scan.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
+import { type V1PsDocument, v1Result } from './supervision-json-v1.ts';
+import { addV1FormatOption, writeV1Document } from './supervision-json-v1-output.ts';
+import { projectV1LockState } from './supervision-lock-v1.ts';
 
 interface PsEntry {
   directory: string | null;
@@ -254,6 +257,41 @@ interface RunPsDeps {
   log?: (msg: string) => void;
 }
 
+export async function buildPsV1(
+  deps: Pick<RunPsDeps, 'discover' | 'inspect'> = {},
+): Promise<V1PsDocument> {
+  const discover = deps.discover ?? discoverLockDirs;
+  const inspect = deps.inspect ?? ((dir: string) => inspectLock(dir, 'server'));
+  const paths = new Map<string, string>();
+  let discovered: string[];
+  try {
+    discovered = await discover();
+  } catch (error) {
+    throw new PsV1DiscoveryError(error instanceof Error ? error.message : String(error));
+  }
+  for (const dir of discovered) {
+    const normalized = resolve(dir);
+    const path = resolve(normalized, 'server.lock');
+    if (!paths.has(path)) paths.set(path, normalized);
+  }
+  const servers = [...paths]
+    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+    .map(([, dir]) => ({
+      projectRoot: projectDirectoryForLockDir(dir),
+      ...projectV1LockState(inspect(dir)),
+    }));
+  return { schemaVersion: 1, command: 'ps', result: v1Result('ps', 'inventoried'), servers };
+}
+
+export class PsV1DiscoveryError extends Error {}
+
+export function psV1Failure(
+  code: 'discovery-failed' | 'operation-failed',
+  detail: string,
+): V1PsDocument {
+  return { schemaVersion: 1, command: 'ps', result: v1Result('ps', code, detail), servers: [] };
+}
+
 export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   const discover = deps.discover ?? discoverLockDirs;
   const inspect = deps.inspect ?? ((dir) => inspectLock(dir, 'server'));
@@ -299,14 +337,39 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   log(renderTable(filtered));
 }
 
-export function psCommand(): Command {
-  return new Command('ps')
-    .description('List all running open-knowledge servers')
-    .argument('[modifier]', '"all" to include stale (dead-pid) entries')
-    .option('--all', 'Include stale entries (foreign and unverified entries already show)')
-    .option('--json', 'Emit structured JSON (always includes all statuses)')
-    .action(async (modifier: string | undefined, opts: { all?: boolean; json?: boolean }) => {
+export function psCommand(getV1Failure?: () => string | null): Command {
+  return addV1FormatOption(
+    new Command('ps')
+      .description('List all running open-knowledge servers')
+      .argument('[modifier]', '"all" to include stale (dead-pid) entries')
+      .option('--all', 'Include stale entries (foreign and unverified entries already show)')
+      .option('--json', 'Emit structured JSON (always includes all statuses)'),
+    true,
+  ).action(
+    async (
+      modifier: string | undefined,
+      opts: { all?: boolean; json?: boolean; format?: string },
+    ) => {
+      if (opts.format === 'json-v1') {
+        const failure = getV1Failure?.();
+        if (failure) {
+          writeV1Document(psV1Failure('operation-failed', failure));
+          return;
+        }
+        try {
+          writeV1Document(await buildPsV1());
+        } catch (error) {
+          writeV1Document(
+            psV1Failure(
+              error instanceof PsV1DiscoveryError ? 'discovery-failed' : 'operation-failed',
+              error instanceof Error ? error.message : String(error),
+            ),
+          );
+        }
+        return;
+      }
       const all = opts.all === true || modifier === 'all';
       await runPs({ all, json: opts.json === true });
-    });
+    },
+  );
 }
