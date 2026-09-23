@@ -67,6 +67,7 @@ import {
 } from '@/lib/acp/thread-client';
 import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
 import type { OkDesktopBridge, OkTerminalRestartSnapshot } from '@/lib/desktop-bridge-types';
+import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import {
   type DockSessionOrder,
   type DockSurface,
@@ -345,6 +346,8 @@ function closeHistory(
   if (shouldRestoreFocus) queueMicrotask(() => toggleRef.current?.focus());
 }
 
+const MAX_HOST_STATE_REPORTS = 20;
+
 export function SessionsHost({
   bridge,
   terminalCapable = false,
@@ -388,9 +391,13 @@ export function SessionsHost({
     return el;
   });
 
+  const [attachedHostEl, setAttachedHostEl] = useState<HTMLDivElement | null>(null);
+  const hostStateReportsRef = useRef(0);
+
   useLayoutEffect(() => {
     if (hostEl == null || container == null) return;
     if (hostEl.parentElement !== container) container.appendChild(hostEl);
+    setAttachedHostEl(hostEl);
   }, [hostEl, container]);
 
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -1589,14 +1596,14 @@ export function SessionsHost({
   }, [isShowing, visible, onRequestEditorFocus]);
 
   useEffect(() => {
-    if (!isShowing || hostEl == null) return;
+    if (!isShowing || attachedHostEl == null) return;
     const focusOrigin = document.activeElement;
     const initialActive = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
     if (initialActive != null && focusSession(initialActive)) return;
-    let landed = focusInsideHost(hostEl);
+    let landed = focusInsideHost(attachedHostEl);
     let retryFrame: number | null = null;
     const recordLanding = (event: FocusEvent) => {
-      if (hostEl.contains(event.target as Node | null)) landed = true;
+      if (attachedHostEl.contains(event.target as Node | null)) landed = true;
     };
     const retryFocus = () => {
       retryFrame = null;
@@ -1612,7 +1619,7 @@ export function SessionsHost({
       )
         return;
       const preferred = focusSession(active);
-      landed = focusInsideHost(hostEl) || landed;
+      landed = focusInsideHost(attachedHostEl) || landed;
       if (preferred) observer.disconnect();
     };
     const scheduleRetry = () => {
@@ -1624,7 +1631,7 @@ export function SessionsHost({
       retryFocus();
       if (!landed) scheduleRetry();
     });
-    observer.observe(hostEl, { subtree: true, childList: true });
+    observer.observe(attachedHostEl, { subtree: true, childList: true });
     scheduleRetry();
     const deadline = window.setTimeout(() => {
       observer.disconnect();
@@ -1643,7 +1650,7 @@ export function SessionsHost({
       if (retryFrame != null) window.cancelAnimationFrame(retryFrame);
       window.clearTimeout(deadline);
     };
-  }, [isShowing, hostEl, hostThreads]);
+  }, [isShowing, attachedHostEl, hostThreads]);
 
   const activeThreadIdForView = (() => {
     const active = sessions.find((s) => s.id === activeSessionId);
@@ -1722,6 +1729,31 @@ export function SessionsHost({
   ) : null;
 
   const showStrip = sessions.length > 0 || (visible && !isWindow);
+
+  useEffect(() => {
+    if (!hostTerminals) return;
+    if (hostStateReportsRef.current >= MAX_HOST_STATE_REPORTS) return;
+    hostStateReportsRef.current += 1;
+    emitDiagnosticBreadcrumb('ok-terminal-sessions-host-state', {
+      surface,
+      sessions: sessions.length,
+      hostConnected: hostEl?.isConnected === true,
+      hasContainer: container != null,
+      attached: attachedHostEl != null,
+      terminalVisible: visible,
+      showStrip,
+      tabs: hostEl?.querySelectorAll('[role="tab"]').length ?? 0,
+    });
+  }, [
+    hostTerminals,
+    surface,
+    sessions.length,
+    hostEl,
+    container,
+    attachedHostEl,
+    visible,
+    showStrip,
+  ]);
   const emptyAgentStatePreview = readEmptyAgentStatePreview();
   const emptyAgentState =
     emptyAgentStatePreview ??
@@ -1883,7 +1915,7 @@ export function SessionsHost({
 
   return (
     <>
-      {hostEl != null
+      {attachedHostEl != null
         ? createPortal(
             <>
               {sessionViews}
@@ -1895,7 +1927,7 @@ export function SessionsHost({
                 data-testid="terminal-reorder-announcer"
               />
             </>,
-            hostEl,
+            attachedHostEl,
           )
         : null}
     </>
