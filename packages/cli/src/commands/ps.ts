@@ -283,7 +283,7 @@ export async function buildPsV1(
   return { schemaVersion: 1, command: 'ps', result: v1Result('ps', 'inventoried'), servers };
 }
 
-export class PsV1DiscoveryError extends Error {}
+class PsV1DiscoveryError extends Error {}
 
 export function psV1Failure(
   code: 'discovery-failed' | 'operation-failed',

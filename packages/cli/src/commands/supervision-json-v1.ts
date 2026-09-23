@@ -73,7 +73,7 @@ export function v1ExitCode(kind: V1ResultKind): 0 | 1 {
   return kind === 'success' || kind === 'no-op' ? 0 : 1;
 }
 
-export interface V1Envelope<C extends V1Command> {
+interface V1Envelope<C extends V1Command> {
   schemaVersion: 1;
   command: C;
   result: V1Result<C>;
@@ -84,7 +84,7 @@ export interface V1Project {
   resolution: 'enclosing-project' | 'cwd' | 'unavailable';
 }
 
-export type V1LockState =
+type V1LockState =
   | 'missing'
   | 'corrupt'
   | 'read-error'
@@ -112,7 +112,7 @@ export interface V1LockObservation {
   launchKind: 'interactive' | 'mcp-spawned' | null;
 }
 
-export type V1ReadinessStatus =
+type V1ReadinessStatus =
   | 'ready'
   | 'pending'
   | 'failed'
@@ -172,7 +172,7 @@ export interface V1StopDocument extends V1Envelope<'stop'> {
   targets: V1StopTargetRecord[];
 }
 
-export interface V1CleanTargetRecord {
+interface V1CleanTargetRecord {
   lockPath: string | null;
   code: V1CodeFor<'clean'>;
   detail: string | null;
