@@ -1,7 +1,9 @@
-import type {
-  ThreadAuthTerminalLaunch,
-  ThreadEvent,
-  ThreadInfo,
+import {
+  THREAD_EXIT_STDERR_WINDOW_LINES,
+  type ThreadAuthTerminalLaunch,
+  type ThreadEvent,
+  type ThreadExitDiagnosis,
+  type ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { i18n } from '@lingui/core';
 import {
@@ -3345,6 +3347,35 @@ describe('ThreadView retry', () => {
     expect(notices[0]?.textContent).not.toContain("couldn't start");
   });
 
+  test('a sign-in cut short by the agent stopping opens no toast, since the crash card explains it', async () => {
+    authenticateResult = Promise.reject(
+      Object.assign(new Error('connection closed'), { code: 'agent-exited' }),
+    );
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          text: '',
+          tone: 'info',
+          failure: {
+            reason: 'auth-required',
+            authMethods: [{ id: 'test_login', name: 'Test Login' }],
+          },
+          attempts: 1,
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ status: 'auth_required' })} />);
+
+    fireEvent.click(screen.getByTestId('agent-thread-auth-method'));
+
+    await vi.waitFor(() =>
+      expect(screen.getByTestId('agent-thread-auth-method').hasAttribute('disabled')).toBe(false),
+    );
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
   test('a refused sign-in surfaces the reason and leaves the button usable', async () => {
     authenticateResult = Promise.reject(new Error('wrong account'));
     model = makeModel({
@@ -5382,6 +5413,180 @@ describe('ThreadView start progress', () => {
       );
     },
   );
+
+  test('a crash after start shows a plain headline and summary, with the stderr behind Show details', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        {
+          kind: 'notice',
+          tone: 'error',
+          attempts: 1,
+          text: 'agent exited (127)',
+          failure: {
+            reason: 'exited',
+            exit: { exitCode: 127, signal: null, cause: 'command-not-found' },
+            machineDetail:
+              'npm warn deprecated node-domexception@1.0.0\nsh: cline: command not found',
+          },
+        },
+      ],
+    });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    const card = screen.getByTestId('agent-thread-notice');
+    expect(card.textContent).toContain('Claude stopped unexpectedly.');
+    expect(card.textContent).toContain('A command the agent needs was not found (exit code 127).');
+    expect(card.textContent).not.toContain('agent exited (127)');
+    expect(card.getAttribute('aria-live')).toBeNull();
+    const newChat = screen.getByTestId('agent-thread-auth-action');
+    expect(newChat.getAttribute('data-auth-offer-kind')).toBe('new-chat');
+    expect(newChat.textContent).toContain('New chat with Claude');
+    expect(screen.queryByTestId('agent-thread-notice-details')).toBeNull();
+    await userEvent.click(screen.getByTestId('agent-thread-notice-details-toggle'));
+    expect(screen.getByTestId('agent-thread-notice-details').textContent).toContain(
+      'sh: cline: command not found',
+    );
+  });
+
+  const crashNotice = (exit: ThreadExitDiagnosis, machineDetail: string): RenderedItem => ({
+    kind: 'notice',
+    tone: 'error',
+    attempts: 1,
+    text: 'agent exited',
+    failure: { reason: 'exited', exit, machineDetail },
+  });
+
+  test('a crash is announced through a region mounted before it, and opening details adds nothing to it', async () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'ready' })} />,
+    );
+    const region = screen.getByTestId('agent-thread-crash-status');
+    expect(region.getAttribute('role')).toBe('status');
+    expect(region.getAttribute('aria-live')).toBe('polite');
+    expect(region.textContent).toBe('');
+
+    model = makeModel({
+      turnActive: false,
+      items: [
+        crashNotice(
+          { exitCode: 127, signal: null, cause: 'command-not-found' },
+          'sh: cline: command not found',
+        ),
+      ],
+    });
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    expect(screen.getByTestId('agent-thread-crash-status')).toBe(region);
+    expect(region.textContent).toMatch(
+      /^Claude stopped unexpectedly\. A command the agent needs was not found \(exit code 127\)\./,
+    );
+    const announced = region.textContent;
+    await userEvent.click(screen.getByTestId('agent-thread-notice-details-toggle'));
+    expect(screen.getByTestId('agent-thread-notice-details').closest('[aria-live]')).toBeNull();
+    expect(region.textContent).toBe(announced);
+  });
+
+  test('a crash that ends a start is announced once, by the start region', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'spawning' })} />,
+    );
+    model = makeModel({
+      turnActive: false,
+      items: [
+        crashNotice(
+          { exitCode: 127, signal: null, cause: 'command-not-found' },
+          'sh: cline: command not found',
+        ),
+      ],
+    });
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    expect(screen.getByTestId('agent-thread-start-status').textContent).toBe(
+      "Claude couldn't start",
+    );
+    expect(screen.getByTestId('agent-thread-crash-status').textContent).toBe('');
+  });
+
+  test('a crash while waiting for sign-in leaves one card with an action and one announcement', () => {
+    const signIn: RenderedItem = {
+      kind: 'notice',
+      tone: 'info',
+      attempts: 1,
+      text: 'sign in required',
+      failure: { reason: 'auth-required', authMethods: [{ id: 'login', name: 'Login' }] },
+    };
+    model = makeModel({ turnActive: false, items: [signIn] });
+    const { rerender } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />,
+    );
+    model = makeModel({
+      turnActive: false,
+      items: [
+        signIn,
+        crashNotice(
+          { exitCode: 127, signal: null, cause: 'command-not-found' },
+          'sh: cline: command not found',
+        ),
+      ],
+    });
+    rerender(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+
+    const [signInCard, crashCard] = screen.getAllByTestId('agent-thread-notice');
+    expect(signInCard?.textContent).toContain('Claude needed you to sign in.');
+    expect(crashCard?.textContent).toContain('Claude stopped unexpectedly.');
+    const actions = screen.getAllByTestId('agent-thread-auth-action');
+    expect(actions).toHaveLength(1);
+    expect(crashCard?.contains(actions[0] ?? null)).toBe(true);
+    expect(actions[0]?.getAttribute('data-auth-offer-kind')).toBe('new-chat');
+    const announcements = [
+      screen.getByTestId('agent-thread-start-status').textContent,
+      screen.getByTestId('agent-thread-crash-status').textContent,
+    ].filter((text) => text !== '');
+    expect(announcements).toHaveLength(1);
+  });
+
+  test('a crash in a closed chat is not announced again', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [crashNotice({ exitCode: 1, signal: null, cause: 'unknown' }, 'boom')],
+    });
+    render(<ThreadView info={makeInfo({ archived: true, status: 'exited' })} />);
+    expect(screen.getByTestId('agent-thread-notice')).toBeDefined();
+    expect(screen.getByTestId('agent-thread-crash-status').textContent).toBe('');
+  });
+
+  test('the inline error line on a crash comes from the recent stderr the cause was read from', () => {
+    const recent = Array.from(
+      { length: THREAD_EXIT_STDERR_WINDOW_LINES },
+      (_, index) => `progress line ${index}`,
+    ).join('\n');
+    const outOfMemory: ThreadExitDiagnosis = {
+      exitCode: 134,
+      signal: null,
+      cause: 'out-of-memory',
+    };
+    model = makeModel({
+      turnActive: false,
+      items: [crashNotice(outOfMemory, `Error: retrying connection\n${recent}`)],
+    });
+    const { unmount } = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'exited' })} />,
+    );
+    expect(screen.queryByTestId('agent-thread-notice-root-cause')).toBeNull();
+    unmount();
+
+    model = makeModel({
+      turnActive: false,
+      items: [crashNotice(outOfMemory, `${recent}\nError: listen EADDRINUSE`)],
+    });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'exited' })} />);
+    expect(screen.getByTestId('agent-thread-notice-root-cause').textContent).toBe(
+      'Error: listen EADDRINUSE',
+    );
+  });
 
   test('a start that had already succeeded when the agent exited announces no failure', () => {
     model = makeModel({ turnActive: false, items: [] });

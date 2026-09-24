@@ -64,11 +64,35 @@ export interface ThreadAuthMethod {
   terminalLaunchAvailable?: true;
 }
 
+export type ThreadExitCause =
+  | 'killed'
+  | 'stopped'
+  | 'signal'
+  | 'out-of-memory'
+  | 'command-not-found'
+  | 'not-executable'
+  | 'missing-module'
+  | 'clean'
+  | 'unknown';
+
+export interface ThreadExitDiagnosis {
+  exitCode: number | null;
+  signal: string | null;
+  cause: ThreadExitCause;
+}
+
 export interface ThreadFailureDetail {
-  reason: 'auth-required' | 'connect' | 'session-setup' | 'prompt';
+  reason: 'auth-required' | 'connect' | 'session-setup' | 'prompt' | 'exited';
   agentMessage?: string;
   machineDetail?: string;
   authMethods?: ThreadAuthMethod[];
+  exit?: ThreadExitDiagnosis;
+}
+
+export const THREAD_EXIT_STDERR_WINDOW_LINES = 10;
+
+export function exitStderrWindow(tail: string): string {
+  return tail.split('\n').slice(-THREAD_EXIT_STDERR_WINDOW_LINES).join('\n');
 }
 
 export interface ThreadAgentInfo {
@@ -410,6 +434,7 @@ export type ThreadErrorCode =
   | 'agent-error'
   | 'not-ready'
   | 'resume-unsupported'
+  | 'agent-exited'
   | 'internal';
 
 const CLIENT_OPS = new Set([

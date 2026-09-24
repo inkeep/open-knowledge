@@ -65,6 +65,7 @@
       ["0"],
       ". Remova-os ou mova-os para fora da pasta e tente novamente."
     ],
+    "-rMxuf": ["O agente ficou sem memória."],
     "-slrNR": ["Liga ou desliga uma lista de tarefas."],
     "-uaQnI": ["Nenhum worktree ou ramo corresponde."],
     "-yOx8u": ["Salvando alterações…"],
@@ -271,6 +272,7 @@
     "1vn0CI": ["Resposta do servidor inválida"],
     "1xui0Q": ["Falha ao carregar os arquivos locais"],
     "2-3Mlu": ["Não foi possível desafixar ", ["name"]],
+    "20LVKb": ["Algo fora deste chat pediu ao processo do agente que parasse (", ["signal"], ")."],
     "2277Tu": ["Recolher o grafo"],
     "237hSL": ["Encerrado"],
     "253MN6": ["Não deu para enviar seus comentários — tente de novo."],
@@ -658,6 +660,9 @@
     "5ymuTA": [
       "Abre Configurações → Estúdio de habilidades, onde você vincula uma pasta inteira dentro de outra para que os dois agentes leiam as mesmas habilidades, e adiciona raízes de habilidades personalizadas."
     ],
+    "5ztrLM": [
+      "Faltam arquivos na instalação do agente (um módulo não foi encontrado). Reinstalar o agente costuma resolver."
+    ],
     "6-wLTJ": [["behind"], " atrás de origin"],
     "60vpJN": ["O que você estava fazendo?"],
     "61i3cO": ["Alternar linha de cabeçalho"],
@@ -933,6 +938,7 @@
     "8YymuQ": ["Nenhum agente foi configurado ainda — abrindo Configurar agentes."],
     "8Z_GCT": [["source"], " · fonte importada"],
     "8_brI5": ["O nome é obrigatório"],
+    "8aNpHG": ["O processo do agente terminou por conta própria."],
     "8bJRqt": [["mcpTool"], " do servidor MCP ", ["server"]],
     "8cS0nH": ["Compartilhamento de configuração indisponível: ", ["0"], "."],
     "8cpOa8": ["Não deu para desconectar — tente de novo."],
@@ -1451,6 +1457,9 @@
     "Dvwa0U": ["Criar um worktree a partir deste ramo"],
     "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Aproximar"],
+    "E-E3fL": [
+      "O processo do agente foi encerrado à força (SIGKILL). Isso costuma vir do sistema, por exemplo quando a memória acaba, ou de outro processo que o encerrou."
+    ],
     "E-G19G": [
       "A porta ",
       ["configuredPort"],
@@ -1930,6 +1939,7 @@
     "IRv9cH": [["repoName"], " clonado."],
     "IW2KMF": ["Não foi possível alterar a verificação ortográfica. Tente novamente."],
     "IWGfGF": ["Verificando sua conexão com o GitHub"],
+    "IWHol7": ["O processo do agente parou com o código de saída ", ["code"], "."],
     "IX7-sq": ["Algo deu errado ao abrir \"", ["docName"], "\"."],
     "IX_uXB": ["meu-recurso"],
     "IXiG0B": ["Automático (Pull e Push)"],
@@ -3225,6 +3235,7 @@
     ],
     "WG3MZ4": [["0"], " habilidades selecionadas"],
     "WGMoTY": ["Bugs, travamentos ou sensação de pouca confiabilidade"],
+    "WGxS7u": ["O processo do agente foi interrompido por um sinal ", ["signal"], "."],
     "WH3roC": [
       "Nenhum quadro selecionado. Insira o caminho de um documento .excalidraw nas propriedades deste bloco."
     ],
@@ -3575,6 +3586,11 @@
     "ZsGpr_": ["Colar link"],
     "ZscwQ0": ["Não deu para mudar para Somente eu"],
     "Zt7Ktx": ["O caminho não pode sair da habilidade (sem . ou ..)"],
+    "Zu8D_o": [
+      "Um comando de que o agente precisa não pôde ser executado (código de saída ",
+      ["code"],
+      "). Verifique se ele é executável e se você tem permissão para executá-lo."
+    ],
     "Zue_jx": ["Faltam escopos obrigatórios no seu token do GitHub. Tente entrar de novo."],
     "ZvzbDF": ["Adicione-o diretamente a este projeto."],
     "ZwpggY": ["OpenKnowledge leu as configurações do projeto"],
@@ -4033,6 +4049,11 @@
     "dVaXnv": ["As regras de conteúdo ainda não carregaram — tente de novo em instantes"],
     "dXCi3J": ["Algo quebrou"],
     "dXOolp": ["Sincronizando suas alterações"],
+    "dYJ1uD": [
+      "Um comando de que o agente precisa não foi encontrado (código de saída ",
+      ["code"],
+      "). Verifique se as dependências do agente estão instaladas e no seu PATH."
+    ],
     "da7Yfw": [
       "Isso exclui as entradas do servidor MCP e os arquivos de habilidades listados abaixo. O agente perderá o acesso aos seus documentos até que você o adicione novamente."
     ],
@@ -5512,6 +5533,7 @@
     "r3iaI0": ["Ainda não há chats."],
     "r4R7AZ": ["Erro de rede durante a limpeza"],
     "r51jLC": ["Arquivo salvo e app Claude Desktop aberto"],
+    "r57GiQ": [["agentName"], " parou inesperadamente."],
     "r6ncaO": ["Fechar aba"],
     "r6y-jM": ["Aviso"],
     "r7IaYp": ["Open Knowledge Format orientação"],
@@ -5840,6 +5862,7 @@
       ["trashNoun"],
       ". Deseja excluir permanentemente?"
     ],
+    "tvNbin": ["O processo do agente parou por um motivo desconhecido."],
     "txGF-X": [["agentName"], " não está em execução. Comece um novo chat para fazer login."],
     "txUHO8": [["localizedMessage"], " na linha ", ["displayLine"]],
     "txmRmK": ["Redimensionar o painel de Habilidades"],

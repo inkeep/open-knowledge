@@ -49,6 +49,7 @@
       ["0"],
       ". Hapus atau pindahkan entri tersebut dari folder, lalu coba lagi."
     ],
+    "-rMxuf": ["Agen kehabisan memori."],
     "-slrNR": ["Menyalakan atau mematikan daftar tugas."],
     "-uaQnI": ["Tidak ada worktree atau cabang yang cocok."],
     "-yOx8u": ["Menyimpan perubahan…"],
@@ -233,6 +234,7 @@
     "1vn0CI": ["Respons server tidak valid"],
     "1xui0Q": ["Gagal memuat berkas lokal"],
     "2-3Mlu": ["Tidak dapat melepas sematan ", ["name"]],
+    "20LVKb": ["Sesuatu di luar obrolan ini meminta proses agen berhenti (", ["signal"], ")."],
     "2277Tu": ["Ciutkan graf"],
     "237hSL": ["Berakhir"],
     "253MN6": ["Komentar Anda tidak bisa dikirim — silakan coba lagi."],
@@ -577,6 +579,9 @@
     "5ymuTA": [
       "Membuka Pengaturan → Studio Keterampilan, tempat Anda menautkan satu folder utuh ke folder lain agar kedua agen membaca keterampilan yang sama, dan menambahkan akar keterampilan khusus."
     ],
+    "5ztrLM": [
+      "Instalasi agen kehilangan beberapa berkas (sebuah modul tidak ditemukan). Memasang ulang agen biasanya memperbaikinya."
+    ],
     "6-wLTJ": [["behind"], " di belakang origin"],
     "60vpJN": ["Apa yang sedang Anda lakukan?"],
     "61i3cO": ["Alihkan baris header"],
@@ -816,6 +821,7 @@
     "8YymuQ": ["Belum ada agen yang disiapkan — membuka Atur agen."],
     "8Z_GCT": [["source"], " · sumber impor"],
     "8_brI5": ["Nama wajib diisi"],
+    "8aNpHG": ["Proses agen berakhir dengan sendirinya."],
     "8bJRqt": [["mcpTool"], " dari server MCP ", ["server"]],
     "8cS0nH": ["Berbagi konfigurasi tidak tersedia: ", ["0"], "."],
     "8cpOa8": ["Tidak bisa memutus koneksi — silakan coba lagi."],
@@ -1255,6 +1261,9 @@
     "Dvwa0U": ["Buat worktree dari cabang ini"],
     "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Perbesar"],
+    "E-E3fL": [
+      "Proses agen dihentikan paksa (SIGKILL). Biasanya ini berasal dari sistem, misalnya saat memori habis, atau dari proses lain yang mengakhirinya."
+    ],
     "E-G19G": [
       "Port ",
       ["configuredPort"],
@@ -1702,6 +1711,7 @@
     "IRv9cH": [["repoName"], " dikloning."],
     "IW2KMF": ["Tidak dapat mengubah pemeriksaan ejaan. Coba lagi."],
     "IWGfGF": ["Memeriksa koneksi GitHub Anda"],
+    "IWHol7": ["Proses agen berhenti dengan kode keluar ", ["code"], "."],
     "IX7-sq": ["Ada yang tidak beres saat membuka \"", ["docName"], "\"."],
     "IX_uXB": ["fitur-saya"],
     "IXiG0B": ["Otomatis (Pull dan Push)"],
@@ -2834,6 +2844,7 @@
     ],
     "WG3MZ4": [["0"], " keterampilan dipilih"],
     "WGMoTY": ["Bug, kegagalan, atau terasa tidak andal"],
+    "WGxS7u": ["Proses agen dihentikan oleh sinyal ", ["signal"], "."],
     "WH3roC": [
       "Belum ada papan yang dipilih. Masukkan path dokumen .excalidraw di properti blok ini."
     ],
@@ -3158,6 +3169,11 @@
     "ZsGpr_": ["Tempel tautan"],
     "ZscwQ0": ["Tidak bisa berpindah ke Hanya saya"],
     "Zt7Ktx": ["Jalur tidak boleh keluar dari skill (tanpa . atau ..)"],
+    "Zu8D_o": [
+      "Perintah yang dibutuhkan agen tidak dapat dijalankan (kode keluar ",
+      ["code"],
+      "). Pastikan perintah itu dapat dieksekusi dan Anda punya izin menjalankannya."
+    ],
     "Zue_jx": ["Token GitHub Anda kehilangan cakupan yang wajib. Coba masuk lagi."],
     "ZvzbDF": ["Tambahkan langsung ke proyek ini."],
     "ZwpggY": ["OpenKnowledge membaca pengaturan proyek"],
@@ -3573,6 +3589,11 @@
     "dVaXnv": ["Aturan konten belum dimuat — coba lagi sebentar"],
     "dXCi3J": ["Ada yang rusak"],
     "dXOolp": ["Menyinkronkan perubahan Anda"],
+    "dYJ1uD": [
+      "Perintah yang dibutuhkan agen tidak ditemukan (kode keluar ",
+      ["code"],
+      "). Pastikan dependensi agen sudah terpasang dan ada di PATH Anda."
+    ],
     "da7Yfw": [
       "Tindakan ini menghapus entri server MCP dan file keterampilan yang tercantum di bawah. Agen akan kehilangan akses ke dokumen Anda sampai Anda menambahkannya lagi."
     ],
@@ -4888,6 +4909,7 @@
     "r3iaI0": ["Belum ada chat."],
     "r4R7AZ": ["Galat jaringan saat pembersihan"],
     "r51jLC": ["Berkas tersimpan & aplikasi Claude Desktop terbuka"],
+    "r57GiQ": [["agentName"], " berhenti secara tak terduga."],
     "r6ncaO": ["Tutup tab"],
     "r6y-jM": ["Peringatan"],
     "r7IaYp": ["Open Knowledge Format bimbingan"],
@@ -5199,6 +5221,7 @@
       ["trashNoun"],
       ". Apakah Anda ingin menghapus permanen saja?"
     ],
+    "tvNbin": ["Proses agen berhenti karena alasan yang tidak diketahui."],
     "txGF-X": [["agentName"], " tidak berjalan. Mulai obrolan baru untuk masuk."],
     "txUHO8": [["localizedMessage"], " pada baris ", ["displayLine"]],
     "txmRmK": ["Ubah ukuran panel Keterampilan"],

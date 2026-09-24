@@ -88,6 +88,7 @@ import {
   redactDiagnostic,
 } from './diagnostics.ts';
 import { boundSessionUpdateForLog, coalesceChunkInto } from './event-log-bounds.ts';
+import { exitFailureDetail } from './exit-diagnosis.ts';
 import {
   AgentLaunchError,
   agentSpawnPath,
@@ -177,6 +178,11 @@ const DEFAULT_STEER_STALL_MS = 10_000;
 const DEFAULT_TURN_STALL_MS = 3 * 60 * 1000;
 const DEFAULT_AUTHENTICATE_TIMEOUT_MS = 5 * 60 * 1000;
 const STDERR_TAIL_LINES = 40;
+const CRASH_REPORT_STATUSES: ReadonlySet<ThreadStatus> = new Set([
+  'ready',
+  'auth_required',
+  'authenticating',
+]);
 const SIGN_IN_OUTPUT_LINES = 6;
 const RESUME_REPLAY_QUIESCENCE_MS = 300;
 const RESUME_REPLAY_MAX_WAIT_MS = 3_000;
@@ -255,7 +261,8 @@ export class ThreadOpError extends Error {
     | 'spawn-failed'
     | 'install-failed'
     | 'not-ready'
-    | 'resume-unsupported';
+    | 'resume-unsupported'
+    | 'agent-exited';
   constructor(code: ThreadOpError['code'], message: string) {
     super(message);
     this.name = 'ThreadOpError';
@@ -918,6 +925,7 @@ export class AcpThreadManager {
     });
     child.on('exit', (code, signal) => {
       if (record.child !== child) return;
+      const reportsCrash = CRASH_REPORT_STATUSES.has(record.info.status);
       record.child = null;
       this.failPendingPermissions(record);
       this.failPendingConsents(record);
@@ -947,7 +955,12 @@ export class AcpThreadManager {
             },
             '[acp-threads] agent exited unexpectedly',
           );
-          this.emitStatus(record, 'exited', joinMachineDetail({ primary: headline, tail }));
+          this.emitStatus(
+            record,
+            'exited',
+            headline,
+            reportsCrash ? exitFailureDetail({ exitCode: code, signal, tail }) : undefined,
+          );
           this.failPendingPermissions(record);
         })
         .catch((err: unknown) => {
@@ -2282,11 +2295,13 @@ export class AcpThreadManager {
       try {
         await this.requestAuthenticate(conn, methodId);
       } catch (err) {
+        await t.drainStderr?.();
         if (t.conn !== conn) throw threadRestartedDuringSignIn();
         const timedOut = err instanceof AuthenticateTimeoutError;
         const message = timedOut
           ? `the sign-in didn't complete in time — try again`
           : agentErrorMessage(err);
+        if (t.child === null) throw new ThreadOpError('agent-exited', message);
         this.emitStatus(t, 'auth_required', `sign-in failed: ${message}`, {
           reason: 'auth-required',
           agentMessage: message,

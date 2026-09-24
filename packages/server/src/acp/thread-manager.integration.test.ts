@@ -5142,7 +5142,7 @@ function capturingLog(sink: { obj: Record<string, unknown>; msg: string }[]): Pi
 function writeHeldStdioAgentEntry(
   localDir: string,
   id: string,
-  mode: 'ready' | 'auth' | 'session-setup' | 'prompt' | 'resume',
+  mode: 'ready' | 'auth' | 'connect' | 'session-setup' | 'prompt' | 'resume',
   dieFile: string,
   releaseFile: string,
 ): { diagnostic: string } {
@@ -5177,7 +5177,9 @@ function writeHeldStdioAgentEntry(
       while ((end = buffer.indexOf('\\n')) !== -1) {
         const msg = JSON.parse(buffer.slice(0, end));
         buffer = buffer.slice(end + 1);
-        if (msg.method === 'initialize') {
+        if (msg.method === 'initialize' && ${JSON.stringify(mode)} === 'connect') {
+          writeFileSync(${JSON.stringify(`${dieFile}.request`)}, 'initialize');
+        } else if (msg.method === 'initialize') {
           write({ jsonrpc: '2.0', id: msg.id, result: {
             protocolVersion: 1, agentCapabilities: { sessionCapabilities: { resume: {} } },
             authMethods: [{ id: 'login', name: 'Login' }],
@@ -5493,8 +5495,8 @@ describe('diagnostic stream lifetime', () => {
     ).toBe('invalid prompt');
   }, 30_000);
 
-  test.each(['session-setup', 'prompt'] as const)(
-    '%s failure waits for held unterminated stderr',
+  test.each(['connect', 'session-setup', 'prompt'] as const)(
+    '%s failure waits for held unterminated stderr and is the only failure reported',
     async (mode) => {
       const localDir = tmp();
       const id = 'held-agent';
@@ -5532,6 +5534,10 @@ describe('diagnostic stream lifetime', () => {
           ?.machineDetail;
         expect(detail).toContain(fixture.diagnostic);
         expect(detail).not.toContain('held-secret');
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(
+          statuses.flatMap((event) => (event.failure === undefined ? [] : [event.failure.reason])),
+        ).toEqual([mode]);
       } finally {
         child.stderr.resume();
         writeFileSync(releaseFile, 'release');
@@ -5743,6 +5749,101 @@ describe('diagnostic stream lifetime', () => {
     }
   }, 20_000);
 
+  test('an agent that dies while waiting for sign-in reports the crash', async () => {
+    const localDir = tmp();
+    const id = 'held-agent';
+    const dieFile = join(localDir, 'die');
+    const releaseFile = join(localDir, 'release-stdio');
+    writeHeldStdioAgentEntry(localDir, id, 'auth', dieFile, releaseFile);
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id } });
+    const statuses: StatusEvent[] = [];
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      5000,
+      'sign in',
+    );
+    const child = internals(manager).child(info.threadId);
+    if (child == null) throw new Error('child missing');
+    const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+    try {
+      writeFileSync(dieFile, 'exit');
+      writeFileSync(releaseFile, 'release');
+      await waitUntil(
+        () => statuses.some((event) => event.failure?.reason === 'exited'),
+        5000,
+        'the crash to be reported',
+      );
+      expect(statuses.find((event) => event.failure?.reason === 'exited')?.failure).toMatchObject({
+        exit: { exitCode: 7, signal: null },
+      });
+      expect(
+        statuses.flatMap((event) => (event.failure === undefined ? [] : [event.failure.reason])),
+      ).toEqual(['auth-required', 'exited']);
+    } finally {
+      writeFileSync(releaseFile, 'release');
+      await closed;
+    }
+  }, 20_000);
+
+  test.each(['eof-first', 'exit-first'] as const)(
+    'an agent that dies during a sign-in ends exited with one crash card when %s',
+    async (order) => {
+      const localDir = tmp();
+      const id = 'held-agent';
+      const dieFile = join(localDir, 'die');
+      const releaseFile = join(localDir, 'release-stdio');
+      writeHeldStdioAgentEntry(localDir, id, 'auth', dieFile, releaseFile);
+      const manager = makeManager(tmp(), localDir);
+      const info = await manager.createThread({ agent: { source: 'custom', id } });
+      const statuses: StatusEvent[] = [];
+      await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'auth_required',
+        5000,
+        'sign in',
+      );
+      const child = internals(manager).child(info.threadId);
+      if (child?.stdout == null) throw new Error('child stdout missing');
+      const closed = new Promise<void>((resolve) => child.once('close', () => resolve()));
+      try {
+        const signIn = manager
+          .authenticateThread(info.threadId, 'login')
+          .catch((error: unknown) => error);
+        await waitUntil(
+          () => manager.getInfo(info.threadId)?.status === 'authenticating',
+          5000,
+          'signing in',
+        );
+        if (order === 'eof-first') {
+          child.stdout.destroy();
+          await new Promise<void>((resolve) => setImmediate(resolve));
+        }
+        const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+        writeFileSync(dieFile, 'exit');
+        await exited;
+        writeFileSync(releaseFile, 'release');
+        await closed;
+        expect(await signIn).toMatchObject({ code: 'agent-exited' });
+        await waitUntil(
+          () => statuses.some((event) => event.failure?.reason === 'exited'),
+          5000,
+          'the crash to be reported',
+        );
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(
+          statuses.flatMap((event) => (event.failure === undefined ? [] : [event.failure.reason])),
+        ).toEqual(['auth-required', 'exited']);
+        expect(manager.getInfo(info.threadId)?.status).toBe('exited');
+      } finally {
+        writeFileSync(releaseFile, 'release');
+        await closed;
+      }
+    },
+    20_000,
+  );
+
   test('a drained old exit cannot replace the ready status or handle of a retried agent', async () => {
     const localDir = tmp();
     const id = 'held-agent';
@@ -5877,12 +5978,20 @@ describe('agent failures reach the server log', () => {
         5000,
         'the process exit status detail',
       );
-      const detail = statuses.find(
+      const exitEvent = statuses.find(
         (event) => event.status === 'exited' && event.detail?.startsWith('agent exited (7)'),
-      )?.detail;
-      expect(detail).toContain('ran out of memory');
-      expect(detail).not.toContain('fixture-exit-secret');
-      expect(detail?.length).toBeLessThanOrEqual(16_000);
+      );
+      expect(exitEvent?.detail).toBe('agent exited (7)');
+      expect(exitEvent?.failure?.reason).toBe('exited');
+      expect(exitEvent?.failure?.agentMessage).toBeUndefined();
+      expect(exitEvent?.failure?.exit).toEqual({
+        exitCode: 7,
+        signal: null,
+        cause: 'out-of-memory',
+      });
+      expect(exitEvent?.failure?.machineDetail).toContain('ran out of memory');
+      expect(exitEvent?.failure?.machineDetail).not.toContain('fixture-exit-secret');
+      expect(exitEvent?.failure?.machineDetail?.length).toBeLessThanOrEqual(16_000);
       const exitLine = lines.find((l) => l.msg.includes('agent exited unexpectedly'));
       expect(exitLine).toBeDefined();
       expect(exitLine?.obj.code).toBe(7);

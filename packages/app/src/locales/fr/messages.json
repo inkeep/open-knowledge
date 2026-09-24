@@ -67,6 +67,7 @@
       ["0"],
       ". Supprimez-les ou déplacez-les hors du dossier, puis réessayez."
     ],
+    "-rMxuf": ["L'agent a manqué de mémoire."],
     "-slrNR": ["Bascule une liste de tâches."],
     "-uaQnI": ["Aucun worktree ni branche correspondant."],
     "-yOx8u": ["Enregistrement des modifications…"],
@@ -285,6 +286,11 @@
     "1vn0CI": ["Réponse du serveur invalide"],
     "1xui0Q": ["Échec du chargement des fichiers locaux"],
     "2-3Mlu": ["Impossible de détacher ", ["name"]],
+    "20LVKb": [
+      "Quelque chose d'extérieur à ce chat a demandé au processus de l'agent de s'arrêter (",
+      ["signal"],
+      ")."
+    ],
     "2277Tu": ["Réduire le graphe"],
     "237hSL": ["Terminé"],
     "253MN6": ["Impossible d'envoyer vos commentaires — veuillez réessayer."],
@@ -685,6 +691,9 @@
     "5ymuTA": [
       "Ouvre Paramètres → Studio de compétences, où vous liez un dossier entier à un autre pour que les deux agents lisent les mêmes compétences, et où vous ajoutez des racines de compétences personnalisées."
     ],
+    "5ztrLM": [
+      "Il manque des fichiers à l'installation de l'agent (un module est introuvable). Réinstaller l'agent règle généralement le problème."
+    ],
     "6-wLTJ": [["behind"], " en retard sur origin"],
     "60vpJN": ["Que faisiez-vous ?"],
     "61i3cO": ["Activer/désactiver la ligne d'en-tête"],
@@ -968,6 +977,7 @@
     "8YymuQ": ["Aucun agent n'est encore configuré — ouverture de Configurer les agents."],
     "8Z_GCT": [["source"], " · source importée"],
     "8_brI5": ["Le nom est obligatoire"],
+    "8aNpHG": ["Le processus de l'agent s'est terminé de lui-même."],
     "8bJRqt": [["mcpTool"], " du serveur MCP ", ["server"]],
     "8cS0nH": ["Partage de configuration indisponible : ", ["0"], "."],
     "8cpOa8": ["Impossible de se déconnecter — veuillez réessayer."],
@@ -1506,6 +1516,9 @@
     "Dvwa0U": ["Créer un worktree à partir de cette branche"],
     "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Zoom avant"],
+    "E-E3fL": [
+      "Le processus de l'agent a été tué (SIGKILL). Cela vient généralement du système, par exemple quand la mémoire est épuisée, ou d'un autre processus qui l'a arrêté."
+    ],
     "E-G19G": [
       "Le port ",
       ["configuredPort"],
@@ -1985,6 +1998,7 @@
     "IRv9cH": [["repoName"], " cloné."],
     "IW2KMF": ["Impossible de modifier la vérification orthographique. Réessayez."],
     "IWGfGF": ["Vérification de votre connexion GitHub"],
+    "IWHol7": ["Le processus de l'agent s'est arrêté avec le code de sortie ", ["code"], "."],
     "IX7-sq": ["Une erreur s'est produite à l'ouverture de « ", ["docName"], " »."],
     "IX_uXB": ["my-feature"],
     "IXiG0B": ["Auto (Tirer et Pousser)"],
@@ -3322,6 +3336,7 @@
     ],
     "WG3MZ4": [["0"], " compétences sélectionnées"],
     "WGMoTY": ["Bugs, plantages, ou manque de fiabilité"],
+    "WGxS7u": ["Le processus de l'agent a été arrêté par un signal ", ["signal"], "."],
     "WH3roC": [
       "Aucun tableau sélectionné. Saisissez le chemin d'un document .excalidraw dans les propriétés de ce bloc."
     ],
@@ -3686,6 +3701,11 @@
     "ZsGpr_": ["Coller le lien"],
     "ZscwQ0": ["Impossible de passer à Moi uniquement"],
     "Zt7Ktx": ["Le chemin ne peut pas sortir de la compétence (pas de . ni ..)"],
+    "Zu8D_o": [
+      "Une commande dont l'agent a besoin n'a pas pu être exécutée (code de sortie ",
+      ["code"],
+      "). Vérifiez qu'elle est exécutable et que vous avez l'autorisation de la lancer."
+    ],
     "Zue_jx": [
       "Il manque des portées obligatoires à votre jeton GitHub. Essayez de vous reconnecter."
     ],
@@ -4168,6 +4188,11 @@
     "dVaXnv": ["Les règles de contenu ne sont pas encore chargées — réessayez dans un instant"],
     "dXCi3J": ["Quelque chose s'est cassé"],
     "dXOolp": ["Synchronisation de vos modifications"],
+    "dYJ1uD": [
+      "Une commande dont l'agent a besoin est introuvable (code de sortie ",
+      ["code"],
+      "). Vérifiez que les dépendances de l'agent sont installées et présentes dans votre PATH."
+    ],
     "da7Yfw": [
       "Cela supprime les entrées du serveur MCP et les fichiers de compétences ci-dessous. L'agent perdra l'accès à vos documents jusqu'à ce que vous l'ajoutiez à nouveau."
     ],
@@ -5693,6 +5718,7 @@
     "r3iaI0": ["Aucune discussion pour le moment."],
     "r4R7AZ": ["Erreur réseau pendant le nettoyage"],
     "r51jLC": ["Fichier enregistré et application Claude Desktop ouverte"],
+    "r57GiQ": [["agentName"], " s'est arrêté de manière inattendue."],
     "r6ncaO": ["Fermer l'onglet"],
     "r6y-jM": ["Avertissement"],
     "r7IaYp": ["Open Knowledge Format conseils"],
@@ -6021,6 +6047,7 @@
       ["trashNoun"],
       ". Voulez-vous le supprimer définitivement ?"
     ],
+    "tvNbin": ["Le processus de l'agent s'est arrêté pour une raison inconnue."],
     "txGF-X": [
       ["agentName"],
       " n'est pas en cours d'exécution. Démarrez un nouveau chat pour vous connecter."

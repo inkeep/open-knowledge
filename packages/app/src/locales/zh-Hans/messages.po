@@ -614,6 +614,10 @@ msgstr "{agentName} 需要你登录。"
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} 报告：{headline}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} stopped unexpectedly."
+msgstr "{agentName} 意外停止了。"
+
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} stopped with an error."
 msgstr "{agentName} 因错误已停止。"
@@ -1350,6 +1354,14 @@ msgstr "名为 {shareBranch} 的分支已存在。请从切换器中打开它的
 #: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "同名分支已存在。请从切换器中打开它的 worktree。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs could not be run (exit code {code}). Check that it is executable and that you have permission to run it."
+msgstr "无法运行智能体需要的命令（退出码 {code}）。请检查它是否可执行，以及你是否有权限运行它。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs was not found (exit code {code}). Check that the agent's dependencies are installed and on your PATH."
+msgstr "找不到智能体需要的命令（退出码 {code}）。请检查智能体的依赖项已安装并位于你的 PATH 中。"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
@@ -14329,6 +14341,38 @@ msgstr "智能体正在工作"
 #: src/components/acp/ThreadView.tsx
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "智能体没有停止。强制停止将关闭此对话并退出智能体。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process ended on its own."
+msgstr "智能体进程自行结束了。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped for an unknown reason."
+msgstr "智能体进程因未知原因停止了。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped with exit code {code}."
+msgstr "智能体进程已停止，退出码为 {code}。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+msgstr "智能体进程已被强制终止（SIGKILL）。这通常来自系统（例如内存耗尽），或来自结束它的另一个进程。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was stopped by a {signal} signal."
+msgstr "智能体进程被 {signal} 信号停止。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was told to stop ({signal}) by something outside this chat."
+msgstr "此对话之外的某个来源要求智能体进程停止（{signal}）。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent ran out of memory."
+msgstr "智能体内存不足。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
+msgstr "智能体的安装缺少文件（找不到某个模块）。重新安装智能体通常可以解决。"
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."

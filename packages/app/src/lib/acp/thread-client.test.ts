@@ -591,6 +591,22 @@ describe('retry and sign-in lifecycle', () => {
     await expect(pending).rejects.toThrow(/wrong account/);
   });
 
+  test('a sign-in cut short by the agent stopping rejects with that code', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.authenticateThread('t1', 'test_login');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'authenticate')?.reqId as string;
+
+    frame({
+      op: 'error',
+      code: 'agent-exited',
+      message: 'connection closed',
+      reqId,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toMatchObject({ code: 'agent-exited' });
+  });
+
   test('terminalAuthLaunch sends the method id and resolves with the launch the server composed', async () => {
     const { client, sent, frame } = makeWiredClient();
     const pending = client.terminalAuthLaunch('t1', 'cli-login');

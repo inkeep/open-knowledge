@@ -65,6 +65,7 @@
       ["0"],
       ". Elimínalos o sácalos de la carpeta y vuelve a intentarlo."
     ],
+    "-rMxuf": ["El agente se quedó sin memoria."],
     "-slrNR": ["Activa o desactiva una lista de tareas."],
     "-uaQnI": ["Ningún worktree ni rama coincide."],
     "-yOx8u": ["Guardando cambios…"],
@@ -271,6 +272,11 @@
     "1vn0CI": ["Respuesta del servidor no válida"],
     "1xui0Q": ["No se pudieron cargar los archivos locales"],
     "2-3Mlu": ["No se pudo dejar de fijar ", ["name"]],
+    "20LVKb": [
+      "Algo ajeno a este chat pidió al proceso del agente que se detuviera (",
+      ["signal"],
+      ")."
+    ],
     "2277Tu": ["Contraer el grafo"],
     "237hSL": ["Terminado"],
     "253MN6": ["No se pudieron enviar tus comentarios; inténtalo de nuevo."],
@@ -660,6 +666,9 @@
     "5ymuTA": [
       "Abre Ajustes → Estudio de habilidades, donde puedes enlazar una carpeta entera dentro de otra para que ambos agentes lean las mismas habilidades, y añadir raíces de habilidades personalizadas."
     ],
+    "5ztrLM": [
+      "A la instalación del agente le faltan archivos (no se encontró un módulo). Reinstalar el agente suele resolverlo."
+    ],
     "6-wLTJ": [["behind"], " por detrás de origin"],
     "60vpJN": ["¿Qué estabas haciendo?"],
     "61i3cO": ["Alternar fila de encabezado"],
@@ -939,6 +948,7 @@
     "8YymuQ": ["Todavía no hay ningún agente configurado: abriendo Configurar agentes."],
     "8Z_GCT": [["source"], " · fuente importada"],
     "8_brI5": ["El nombre es obligatorio"],
+    "8aNpHG": ["El proceso del agente terminó por sí solo."],
     "8bJRqt": [["mcpTool"], " del servidor MCP ", ["server"]],
     "8cS0nH": ["Compartir configuración no está disponible: ", ["0"], "."],
     "8cpOa8": ["No se pudo desconectar; inténtalo de nuevo."],
@@ -1473,6 +1483,9 @@
     "Dvwa0U": ["Crear un worktree desde esta rama"],
     "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Acercar"],
+    "E-E3fL": [
+      "El proceso del agente fue terminado a la fuerza (SIGKILL). Eso suele venir del sistema, por ejemplo cuando se agota la memoria, o de otro proceso que lo cerró."
+    ],
     "E-G19G": [
       "El puerto ",
       ["configuredPort"],
@@ -1953,6 +1966,7 @@
     "IRv9cH": ["Se clonó ", ["repoName"], "."],
     "IW2KMF": ["No se pudo cambiar la corrección ortográfica. Inténtalo de nuevo."],
     "IWGfGF": ["Comprobando tu conexión con GitHub"],
+    "IWHol7": ["El proceso del agente se detuvo con el código de salida ", ["code"], "."],
     "IX7-sq": ["Algo salió mal al abrir \"", ["docName"], "\"."],
     "IX_uXB": ["mi-funcion"],
     "IXiG0B": ["Automático (Pull y Push)"],
@@ -3274,6 +3288,7 @@
     ],
     "WG3MZ4": [["0"], " habilidades seleccionadas"],
     "WGMoTY": ["Errores, fallos o sensación de poca fiabilidad"],
+    "WGxS7u": ["El proceso del agente se detuvo por una señal ", ["signal"], "."],
     "WH3roC": [
       "No hay ninguna pizarra seleccionada. Introduce la ruta de un documento .excalidraw en las propiedades de este bloque."
     ],
@@ -3639,6 +3654,11 @@
     "ZsGpr_": ["Pegar enlace"],
     "ZscwQ0": ["No se pudo cambiar a Solo yo"],
     "Zt7Ktx": ["La ruta no puede salir de la habilidad (sin . ni ..)"],
+    "Zu8D_o": [
+      "No se pudo ejecutar un comando que el agente necesita (código de salida ",
+      ["code"],
+      "). Comprueba que sea ejecutable y que tengas permiso para ejecutarlo."
+    ],
     "Zue_jx": [
       "A tu token de GitHub le faltan ámbitos obligatorios. Prueba a iniciar sesión de nuevo."
     ],
@@ -4119,6 +4139,11 @@
     "dVaXnv": ["Las reglas de contenido aún no se han cargado; inténtalo de nuevo en un momento"],
     "dXCi3J": ["Algo se rompió"],
     "dXOolp": ["Sincronizando tus cambios"],
+    "dYJ1uD": [
+      "No se encontró un comando que el agente necesita (código de salida ",
+      ["code"],
+      "). Comprueba que las dependencias del agente estén instaladas y en tu PATH."
+    ],
     "da7Yfw": [
       "Esto elimina las entradas del servidor MCP y los archivos de habilidades que se indican abajo. El agente perderá el acceso a tus documentos hasta que vuelvas a añadirlo."
     ],
@@ -5630,6 +5655,7 @@
     "r3iaI0": ["Aún no hay chats."],
     "r4R7AZ": ["Error de red durante la limpieza"],
     "r51jLC": ["Archivo guardado y aplicación Claude Desktop abierta"],
+    "r57GiQ": [["agentName"], " se detuvo inesperadamente."],
     "r6ncaO": ["Cerrar pestaña"],
     "r6y-jM": ["Advertencia"],
     "r7IaYp": ["Guía de Open Knowledge Format"],
@@ -5956,6 +5982,7 @@
       ["trashNoun"],
       ". ¿Quieres eliminarlo permanentemente?"
     ],
+    "tvNbin": ["El proceso del agente se detuvo por un motivo desconocido."],
     "txGF-X": [["agentName"], " no está en ejecución. Empieza un chat nuevo para iniciar sesión."],
     "txUHO8": [["localizedMessage"], " en la línea ", ["displayLine"]],
     "txmRmK": ["Redimensionar el panel de Habilidades"],

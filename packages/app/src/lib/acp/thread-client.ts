@@ -80,6 +80,15 @@ export class ThreadResumeError extends Error {
   }
 }
 
+export class ThreadAuthenticateError extends Error {
+  readonly code: ThreadErrorCode | 'timeout';
+  constructor(code: ThreadErrorCode | 'timeout', message: string) {
+    super(message);
+    this.name = 'ThreadAuthenticateError';
+    this.code = code;
+  }
+}
+
 export class ThreadChannelUnavailableError extends Error {
   constructor() {
     super('agent-thread channel is not connected');
@@ -454,7 +463,7 @@ export class AgentThreadClient {
     const promise = new Promise<ThreadInfo>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pendingAuths.delete(reqId);
-        reject(new Error('sign-in timed out'));
+        reject(new ThreadAuthenticateError('timeout', 'sign-in timed out'));
       }, AUTHENTICATE_TIMEOUT_MS);
       this.pendingAuths.set(reqId, { resolve, reject, timer });
     });
@@ -767,7 +776,7 @@ export class AgentThreadClient {
           if (pendingAuth !== undefined) {
             this.pendingAuths.delete(frame.reqId);
             clearTimeout(pendingAuth.timer);
-            pendingAuth.reject(new Error(frame.message));
+            pendingAuth.reject(new ThreadAuthenticateError(frame.code, frame.message));
             return;
           }
           const pendingQueueEdit = this.pendingQueueEdits.get(frame.reqId);

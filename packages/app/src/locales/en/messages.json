@@ -55,6 +55,7 @@
       ["0"],
       ". Remove or move them from the folder and try again."
     ],
+    "-rMxuf": ["The agent ran out of memory."],
     "-slrNR": ["Toggle a task list."],
     "-uaQnI": ["No matching worktrees or branches."],
     "-yOx8u": ["Saving changes…"],
@@ -235,6 +236,11 @@
     "1vn0CI": ["Invalid server response"],
     "1xui0Q": ["Failed to load local files"],
     "2-3Mlu": ["Couldn't unpin ", ["name"]],
+    "20LVKb": [
+      "The agent process was told to stop (",
+      ["signal"],
+      ") by something outside this chat."
+    ],
     "2277Tu": ["Collapse graph"],
     "237hSL": ["Ended"],
     "253MN6": ["Couldn't send your comments — please try again."],
@@ -559,6 +565,9 @@
     "5ymuTA": [
       "Opens Settings → Skills Studio, where you link a whole folder into another so both agents read the same skills, and add custom skill roots."
     ],
+    "5ztrLM": [
+      "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
+    ],
     "6-wLTJ": [["behind"], " behind origin"],
     "60vpJN": ["What were you doing?"],
     "61i3cO": ["Toggle header row"],
@@ -799,6 +808,7 @@
     "8YymuQ": ["No agent is set up yet — opening Configure agents."],
     "8Z_GCT": [["source"], " · imported source"],
     "8_brI5": ["Name is required"],
+    "8aNpHG": ["The agent process ended on its own."],
     "8bJRqt": [["mcpTool"], " from the ", ["server"], " MCP server"],
     "8cS0nH": ["Config sharing unavailable: ", ["0"], "."],
     "8cpOa8": ["Couldn't disconnect — please try again."],
@@ -1249,6 +1259,9 @@
     "Dvwa0U": ["Create a worktree from this branch"],
     "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Zoom In"],
+    "E-E3fL": [
+      "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+    ],
     "E-G19G": [
       "Port ",
       ["configuredPort"],
@@ -1671,6 +1684,7 @@
     "IRv9cH": ["Cloned ", ["repoName"], "."],
     "IW2KMF": ["Couldn't change spell checking. Try again."],
     "IWGfGF": ["Checking your GitHub connection"],
+    "IWHol7": ["The agent process stopped with exit code ", ["code"], "."],
     "IX7-sq": ["Something went wrong opening \"", ["docName"], "\"."],
     "IX_uXB": ["my-feature"],
     "IXiG0B": ["Auto (Pull and Push)"],
@@ -2800,6 +2814,7 @@
     "WFEbV1": ["Flag common markdown issues in the editor. Powered by <0>markdownlint<1/></0>."],
     "WG3MZ4": [["0"], " skills selected"],
     "WGMoTY": ["Bugs, crashes, or it felt unreliable"],
+    "WGxS7u": ["The agent process was stopped by a ", ["signal"], " signal."],
     "WH3roC": [
       "No board selected. Enter the path to a .excalidraw doc in this block's properties."
     ],
@@ -3129,6 +3144,11 @@
     "ZsGpr_": ["Paste link"],
     "ZscwQ0": ["Couldn't switch to Only me"],
     "Zt7Ktx": ["The path can't leave the skill (no . or ..)"],
+    "Zu8D_o": [
+      "A command the agent needs could not be run (exit code ",
+      ["code"],
+      "). Check that it is executable and that you have permission to run it."
+    ],
     "Zue_jx": ["Your GitHub token is missing required scopes. Try signing in again."],
     "ZvzbDF": ["Add it directly to this project."],
     "ZwpggY": ["OpenKnowledge read the project settings"],
@@ -3546,6 +3566,11 @@
     "dVaXnv": ["Content rules not yet loaded — try again in a moment"],
     "dXCi3J": ["Something broke"],
     "dXOolp": ["Syncing your changes"],
+    "dYJ1uD": [
+      "A command the agent needs was not found (exit code ",
+      ["code"],
+      "). Check that the agent's dependencies are installed and on your PATH."
+    ],
     "da7Yfw": [
       "This deletes the MCP server entries and skill files listed below. The agent will lose access to your documents until you add it again."
     ],
@@ -4865,6 +4890,7 @@
     "r3iaI0": ["No chats yet."],
     "r4R7AZ": ["Network error during cleanup"],
     "r51jLC": ["File saved & Claude Desktop App opened"],
+    "r57GiQ": [["agentName"], " stopped unexpectedly."],
     "r6ncaO": ["Close tab"],
     "r6y-jM": ["Warning"],
     "r7IaYp": ["Open Knowledge Format guidance"],
@@ -5171,6 +5197,7 @@
       ["trashNoun"],
       ". Do you want to permanently delete instead?"
     ],
+    "tvNbin": ["The agent process stopped for an unknown reason."],
     "txGF-X": [["agentName"], " isn't running. Start a new chat to sign in."],
     "txUHO8": [["localizedMessage"], " at line ", ["displayLine"]],
     "txmRmK": ["Resize skills panel"],

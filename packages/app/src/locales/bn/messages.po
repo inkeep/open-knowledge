@@ -614,6 +614,10 @@ msgstr "{agentName}-এর জন্য আপনার সাইন ইন প�
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} জানিয়েছে: {headline}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} stopped unexpectedly."
+msgstr "{agentName} অপ্রত্যাশিতভাবে থেমে গেছে।"
+
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} stopped with an error."
 msgstr "{agentName} একটি ত্রুটি নিয়ে থেমে গেছে।"
@@ -1346,6 +1350,14 @@ msgstr "{shareBranch} নামে একটি ব্রাঞ্চ আগে 
 #: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "ওই নামে একটি ব্রাঞ্চ আগে থেকেই আছে। বদলে সুইচার থেকে এর ওয়ার্কট্রি খুলুন।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs could not be run (exit code {code}). Check that it is executable and that you have permission to run it."
+msgstr "এজেন্টের প্রয়োজনীয় একটি কমান্ড চালানো যায়নি (এক্সিট কোড {code})। এটি এক্সিকিউটেবল কি না এবং এটি চালানোর অনুমতি আপনার আছে কি না দেখুন।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs was not found (exit code {code}). Check that the agent's dependencies are installed and on your PATH."
+msgstr "এজেন্টের প্রয়োজনীয় একটি কমান্ড পাওয়া যায়নি (এক্সিট কোড {code})। এজেন্টের ডিপেন্ডেন্সিগুলো ইনস্টল করা আছে এবং আপনার PATH-এ আছে কি না দেখুন।"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
@@ -14325,6 +14337,38 @@ msgstr "এজেন্ট কাজ করছে"
 #: src/components/acp/ThreadView.tsx
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "এজেন্ট থামছে না। ফোর্স স্টপ এই চ্যাট বন্ধ করবে এবং এজেন্ট থেকে বেরিয়ে যাবে।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process ended on its own."
+msgstr "এজেন্ট প্রসেসটি নিজে থেকেই শেষ হয়ে গেছে।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped for an unknown reason."
+msgstr "এজেন্ট প্রসেসটি অজানা কারণে থেমে গেছে।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped with exit code {code}."
+msgstr "এজেন্ট প্রসেসটি এক্সিট কোড {code} সহ থেমে গেছে।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+msgstr "এজেন্ট প্রসেসটি বন্ধ করে দেওয়া হয়েছে (SIGKILL)। এটি সাধারণত সিস্টেম থেকে আসে, যেমন মেমরি ফুরিয়ে গেলে, অথবা অন্য কোনো প্রসেস এটি বন্ধ করলে।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was stopped by a {signal} signal."
+msgstr "এজেন্ট প্রসেসটি {signal} সিগন্যালের কারণে থেমে গেছে।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was told to stop ({signal}) by something outside this chat."
+msgstr "এই চ্যাটের বাইরের কিছু এজেন্ট প্রসেসটিকে থামতে বলেছে ({signal})।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent ran out of memory."
+msgstr "এজেন্টের মেমরি ফুরিয়ে গেছে।"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
+msgstr "এজেন্টের ইনস্টলেশনে ফাইল অনুপস্থিত (একটি মডিউল পাওয়া যায়নি)। এজেন্ট পুনরায় ইনস্টল করলে সাধারণত এটি ঠিক হয়ে যায়।"
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."

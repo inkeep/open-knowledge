@@ -614,6 +614,10 @@ msgstr "{agentName} needs you to sign in."
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} reported: {headline}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} stopped unexpectedly."
+msgstr "{agentName} stopped unexpectedly."
+
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} stopped with an error."
 msgstr "{agentName} stopped with an error."
@@ -1350,6 +1354,14 @@ msgstr "A branch named {shareBranch} already exists. Open its worktree from the 
 #: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "A branch with that name already exists. Open its worktree from the switcher instead."
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs could not be run (exit code {code}). Check that it is executable and that you have permission to run it."
+msgstr "A command the agent needs could not be run (exit code {code}). Check that it is executable and that you have permission to run it."
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs was not found (exit code {code}). Check that the agent's dependencies are installed and on your PATH."
+msgstr "A command the agent needs was not found (exit code {code}). Check that the agent's dependencies are installed and on your PATH."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
@@ -14329,6 +14341,38 @@ msgstr "The agent is working"
 #: src/components/acp/ThreadView.tsx
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "The agent isn't stopping. Force stop closes this chat and quits the agent."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process ended on its own."
+msgstr "The agent process ended on its own."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped for an unknown reason."
+msgstr "The agent process stopped for an unknown reason."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped with exit code {code}."
+msgstr "The agent process stopped with exit code {code}."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+msgstr "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was stopped by a {signal} signal."
+msgstr "The agent process was stopped by a {signal} signal."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was told to stop ({signal}) by something outside this chat."
+msgstr "The agent process was told to stop ({signal}) by something outside this chat."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent ran out of memory."
+msgstr "The agent ran out of memory."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
+msgstr "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."

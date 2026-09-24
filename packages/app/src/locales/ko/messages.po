@@ -614,6 +614,10 @@ msgstr "{agentName}에 로그인이 필요합니다."
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} 보고: {headline}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} stopped unexpectedly."
+msgstr "{agentName}이(가) 예기치 않게 중지되었습니다."
+
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} stopped with an error."
 msgstr "{agentName}이(가) 오류로 중지되었습니다."
@@ -1350,6 +1354,14 @@ msgstr "{shareBranch} 브랜치가 이미 있습니다. 대신 전환기에서 �
 #: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "해당 이름의 브랜치가 이미 있습니다. 대신 전환기에서 해당 워크트리를 여세요."
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs could not be run (exit code {code}). Check that it is executable and that you have permission to run it."
+msgstr "에이전트에 필요한 명령을 실행할 수 없습니다(종료 코드 {code}). 실행 가능한 파일인지, 실행 권한이 있는지 확인하세요."
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs was not found (exit code {code}). Check that the agent's dependencies are installed and on your PATH."
+msgstr "에이전트에 필요한 명령을 찾을 수 없습니다(종료 코드 {code}). 에이전트의 종속성이 설치되어 있고 PATH에 있는지 확인하세요."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
@@ -14329,6 +14341,38 @@ msgstr "에이전트 작업 중"
 #: src/components/acp/ThreadView.tsx
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "에이전트 중지 실패. 강제 중지 시 채팅 종료 및 에이전트 종료."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process ended on its own."
+msgstr "에이전트 프로세스가 스스로 종료되었습니다."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped for an unknown reason."
+msgstr "에이전트 프로세스가 알 수 없는 이유로 중지되었습니다."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped with exit code {code}."
+msgstr "에이전트 프로세스가 종료 코드 {code}(으)로 중지되었습니다."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+msgstr "에이전트 프로세스가 강제 종료되었습니다(SIGKILL). 보통 메모리가 부족할 때처럼 시스템에서 발생하거나, 다른 프로세스가 종료시킨 경우입니다."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was stopped by a {signal} signal."
+msgstr "에이전트 프로세스가 {signal} 신호로 중지되었습니다."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was told to stop ({signal}) by something outside this chat."
+msgstr "이 채팅 밖의 무언가가 에이전트 프로세스에 중지를 요청했습니다({signal})."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent ran out of memory."
+msgstr "에이전트의 메모리가 부족해졌습니다."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
+msgstr "에이전트 설치에 파일이 누락되었습니다(모듈을 찾을 수 없음). 에이전트를 다시 설치하면 보통 해결됩니다."
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."

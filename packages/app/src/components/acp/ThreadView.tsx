@@ -1,13 +1,15 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { deriveAgentPosture } from '@inkeep/open-knowledge-core/acp/agent-posture';
-import type {
-  AttachmentPart,
-  QueuedMessage,
-  SessionConfigOption,
-  ThreadAuthMethod,
-  ThreadFailureDetail,
-  ThreadInfo,
+import {
+  type AttachmentPart,
+  exitStderrWindow,
+  type QueuedMessage,
+  type SessionConfigOption,
+  type ThreadAuthMethod,
+  type ThreadExitDiagnosis,
+  type ThreadFailureDetail,
+  type ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { plural } from '@lingui/core/macro';
 import { Plural, useLingui } from '@lingui/react/macro';
@@ -128,6 +130,7 @@ import {
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
+import { exitSummary } from '@/lib/acp/exit-summary';
 import { terminalLaunchAvailable, useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
 import {
   attachmentBudgetKb,
@@ -253,6 +256,10 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function isAgentExitedError(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && err.code === 'agent-exited';
+}
+
 const RETRYABLE_FAILURE_REASONS: ReadonlySet<ThreadFailureDetail['reason']> = new Set([
   'connect',
   'session-setup',
@@ -317,6 +324,31 @@ function latestSignInNoticeIndex(items: readonly RenderedItem[]): number {
     }
   }
   return -1;
+}
+
+function latestOfferNoticeIndex(
+  items: readonly RenderedItem[],
+  offerKind: ThreadAuthOfferWithoutSignIn['kind'],
+): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind !== 'notice' || item.superseded === true) continue;
+    const reason = item.failure?.reason;
+    if (reason === 'auth-required') return index;
+    if (reason === 'exited' && offerKind === 'new-chat') return index;
+  }
+  return -1;
+}
+
+function latestCrashExit(items: readonly RenderedItem[]): ThreadExitDiagnosis | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind !== 'notice' || item.superseded === true) continue;
+    if (item.failure?.reason === 'exited' && item.failure.exit !== undefined) {
+      return item.failure.exit;
+    }
+  }
+  return null;
 }
 
 function strandedMessageBeforeSignIn(items: readonly RenderedItem[]): StrandedMessage | null {
@@ -1063,7 +1095,7 @@ export function ThreadView({
     terminalCli,
   });
   const authOfferNoticeIndex =
-    authOffer.actionLabel === null ? -1 : latestSignInNoticeIndex(visibleItems);
+    authOffer.actionLabel === null ? -1 : latestOfferNoticeIndex(visibleItems, authOffer.kind);
   let restoreNoticeIndex = -1;
   if (!archived && status !== 'exited') {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -1124,6 +1156,9 @@ export function ThreadView({
         : '';
 
   const newChatOfferInTranscript = authOffer.kind === 'new-chat' && authOfferNoticeIndex !== -1;
+  const crashExit = archived || startOutcome === 'failed' ? null : latestCrashExit(visibleItems);
+  const crashHeadline = t`${agentName} stopped unexpectedly.`;
+  const crashAnnouncement = crashExit === null ? '' : `${crashHeadline} ${exitSummary(crashExit)}`;
 
   const items = visibleItems;
   const mentionRecency: MentionRecency = {
@@ -1448,6 +1483,15 @@ export function ThreadView({
               data-testid="agent-thread-start-status"
             >
               {announcedStartStatus}
+            </span>
+            <span
+              className="sr-only"
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              data-testid="agent-thread-crash-status"
+            >
+              {crashAnnouncement}
             </span>
             {resumeFailureMessage !== '' && !newChatOfferInTranscript ? (
               <div
@@ -2548,6 +2592,7 @@ function ThreadAuthPrompt({
     setAuthPending(methodId);
     void onAuthenticate(methodId)
       .catch((err: unknown) => {
+        if (isAgentExitedError(err)) return;
         toast.error(t`Sign-in failed: ${errorText(err)}`);
       })
       .finally(() => setAuthPending(null));
@@ -2706,6 +2751,8 @@ function ThreadNotice({
         return t`${agentName} couldn't start a conversation.`;
       case 'prompt':
         return t`Your message didn't reach ${agentName}.`;
+      case 'exited':
+        return t`${agentName} stopped unexpectedly.`;
       default: {
         const exhaustive: never = reason;
         return String(exhaustive);
@@ -2715,7 +2762,11 @@ function ThreadNotice({
   const headline = failure === null ? null : failureHeadline(failure.reason);
   const rootCauseLine =
     failure?.machineDetail !== undefined && failure.machineDetail !== ''
-      ? extractRootCauseLine(failure.machineDetail)
+      ? extractRootCauseLine(
+          failure.reason === 'exited'
+            ? exitStderrWindow(failure.machineDetail)
+            : failure.machineDetail,
+        )
       : null;
   return (
     <div
@@ -2742,6 +2793,11 @@ function ThreadNotice({
           </p>
           {failure.agentMessage !== undefined && failure.agentMessage !== '' ? (
             <p className="mt-1 opacity-80">{failure.agentMessage}</p>
+          ) : null}
+          {failure.reason === 'exited' && failure.exit !== undefined ? (
+            <p className="mt-1 opacity-80" data-testid="agent-thread-notice-exit-summary">
+              {exitSummary(failure.exit)}
+            </p>
           ) : null}
           {rootCauseLine !== null ? (
             <p
@@ -2774,7 +2830,8 @@ function ThreadNotice({
               ) : null}
             </>
           ) : null}
-          {failure.reason === 'auth-required' && !showRetry ? (
+          {(failure.reason === 'auth-required' && !showRetry) ||
+          (failure.reason === 'exited' && authOffer.kind === 'new-chat') ? (
             <div className="mt-1.5">
               <ThreadAuthOfferButton
                 offer={authOffer}
