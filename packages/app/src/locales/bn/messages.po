@@ -689,6 +689,10 @@ msgstr "{count, plural, one {# মন্তব্য} other {# মন্তব�
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, one {# টি নথি} other {# টি নথি}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, one {#টি ছবি সংযুক্ত হয়েছে} other {#টি ছবি সংযুক্ত হয়েছে}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, one {# টি আইটেম {trashNoun}-এ পাঠানো যায়নি। এর বদলে কি স্থায়ীভাবে মুছে ফেলতে চান?} other {# টি আইটেম {trashNoun}-এ পাঠানো যায়নি। এর বদলে কি স্থায়ীভাবে মুছে ফেলতে চান?}}"
@@ -2262,7 +2266,6 @@ msgid "Attach files"
 msgstr "ফাইল সংযুক্ত করুন"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "ছবি সংযুক্ত করুন"
 
@@ -2580,10 +2583,6 @@ msgstr "ভাঙা লিংক"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "ব্রাউজ করুন"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "ফাইল বেছে নিন"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5343,9 +5342,9 @@ msgstr "ক্রম বদলাতে আইটেম {0} টেনে আন�
 msgid "Drop a file to attach"
 msgstr "সংযুক্ত করতে একটি ফাইল ফেলুন"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "এখানে ছবি ছেড়ে দিন"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "সর্বোচ্চ {MAX_ATTACHMENTS}টি ছবি ছেড়ে দিন, পেস্ট করুন বা সংযুক্ত করুন।"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5775,10 +5774,6 @@ msgstr "এন্ডপয়েন্ট"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "ইঞ্জিনিয়ারিং স্পেক"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "বড় করুন"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7390,7 +7385,7 @@ msgstr "ছবির লক্ষ্য \"{shown}\"-কে প্রকল্প
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "ছবির লক্ষ্য \"{shown}\" কোনো বিদ্যমান ফাইলকে নির্দেশ করে না।"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "ছবির সংবেদনশীল তথ্য আড়াল করা হয় না।"
 
@@ -9391,7 +9386,7 @@ msgstr "এখনও কোনো হাব পাতা নেই। পাত�
 msgid "No icons match."
 msgstr "কোনো আইকন মেলেনি।"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "কোনো ছবি যোগ করা হয়নি।"
 
@@ -15759,10 +15754,6 @@ msgstr "শিরোনামহীন রিপোর্ট"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "ট্র্যাক করা হয়নি"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "সর্বোচ্চ ৩টি স্ক্রিনশট বা ছবি"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

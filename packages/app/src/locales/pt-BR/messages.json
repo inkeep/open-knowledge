@@ -2002,7 +2002,6 @@
     "JOhCT9": ["O Push inclui"],
     "JReD69": ["Os arquivos do OpenKnowledge foram removidos"],
     "JWsZlx": ["Abra um projeto para editar."],
-    "JYj5R2": ["Procurar arquivos"],
     "JZ8cO6": ["Claro, escuro ou seguir o sistema."],
     "J_jZ5z": [
       "Cada ferramenta de IA lê as habilidades da sua própria pasta. Aponte uma pasta para outra e as duas ferramentas verão as mesmas habilidades: adicione uma habilidade uma vez em vez de copiá-la para cada ferramenta."
@@ -2129,6 +2128,17 @@
     "L-rMC9": ["Redefinir para o padrão"],
     "L1BQTH": [["0"], " ainda não está instalado — abrindo sua página de download."],
     "L1ZE3M": ["Estatísticas do documento"],
+    "L2Bye8": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["#", " imagem anexada"],
+          "many": ["#", " imagens anexadas"],
+          "other": ["#", " imagens anexadas"]
+        }
+      ]
+    ],
     "L3BcJ4": [
       "Este precisa ver seus arquivos, não apenas o documento aberto, para que apareça quando você executa uma auditoria de projeto, e não enquanto você digita."
     ],
@@ -3331,7 +3341,6 @@
       "Nenhuma habilidade encontrada nessa fonte. Se você continuar, a importação vai dizer por quê."
     ],
     "XgsZ2F": ["Copiar o código ", ["code"]],
-    "XhVmAh": ["Ampliar"],
     "Xhm7gG": ["Sugestões de recursos"],
     "Xisk4u": ["Editado ", ["editedAgo"]],
     "XjqA8x": ["Alterna o padrão ", ["0"], "/**"],
@@ -4180,6 +4189,7 @@
     "epuNYK": [
       "Marca um bloco como fonte da verdade. Os espelhos em outros lugares se atualizam ao vivo enquanto você o edita."
     ],
+    "eqSy2M": ["Solte, cole ou anexe até ", ["MAX_ATTACHMENTS"], " imagens."],
     "erenF-": ["Não é possível excluir arquivos com conflitos não resolvidos"],
     "euGaS0": ["Não foi possível ler ", ["fileName"], "."],
     "euc6Ns": ["Duplicar"],
@@ -4513,7 +4523,6 @@
     "haHgQj": ["Caminho relativo copiado"],
     "habOU_": ["Falha ao atualizar a configuração de aprovação automática — ", ["detail"]],
     "hadECI": [["0"], " precisa ser substituído"],
-    "hcBdO4": ["Até 3 capturas de tela ou fotos"],
     "he3ygx": ["Copiar"],
     "heV8si": [
       "Isto remove permanentemente ",
@@ -5149,7 +5158,6 @@
     "nP-KFo": ["Novo chat do ", ["0"]],
     "nTM8ab": ["Dê um nome antes de editar as cores."],
     "nTwL53": ["Abra um documento para compartilhar a URL dele."],
-    "nVGRwu": ["Solte imagens aqui"],
     "nWMRxa": ["Desafixar"],
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gerencie os arquivos ocultos em Configurações → Padrões de exclusão."],

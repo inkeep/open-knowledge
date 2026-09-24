@@ -689,6 +689,10 @@ msgstr "{count, plural, other {# komentar}} di {0, plural, other {# berkas}}"
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, other {# dokumen}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, other {# gambar dilampirkan}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, other {# item tidak dapat dipindahkan ke {trashNoun}. Apakah Anda ingin menghapus permanen saja?}}"
@@ -2262,7 +2266,6 @@ msgid "Attach files"
 msgstr "Lampirkan berkas"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "Lampirkan gambar"
 
@@ -2580,10 +2583,6 @@ msgstr "Tautan rusak"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "Telusuri"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "Pilih file"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5343,9 +5342,9 @@ msgstr "Seret item {0} untuk menata ulang"
 msgid "Drop a file to attach"
 msgstr "Lepaskan berkas untuk melampirkan"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "Letakkan gambar di sini"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "Letakkan, tempel, atau lampirkan hingga {MAX_ATTACHMENTS} gambar."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5775,10 +5774,6 @@ msgstr "Endpoint"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "Spesifikasi teknik"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "Perbesar"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7390,7 +7385,7 @@ msgstr "Target gambar \"{shown}\" tidak dapat dicocokkan dengan file lokal proye
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "Target gambar \"{shown}\" tidak merujuk ke file yang ada."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Gambar tidak disamarkan."
 
@@ -9391,7 +9386,7 @@ msgstr "Belum ada halaman pusat. Pusat muncul begitu halaman mengumpulkan tautan
 msgid "No icons match."
 msgstr "Tidak ada ikon yang cocok."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "Tidak ada gambar yang ditambahkan."
 
@@ -15759,10 +15754,6 @@ msgstr "Laporan tanpa judul"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "Tidak dilacak"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "Hingga 3 tangkapan layar atau foto"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

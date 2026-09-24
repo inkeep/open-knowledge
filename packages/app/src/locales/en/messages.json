@@ -1729,7 +1729,6 @@
     "JOhCT9": ["Push includes"],
     "JReD69": ["OpenKnowledge files were removed"],
     "JWsZlx": ["Open a project to edit."],
-    "JYj5R2": ["Browse files"],
     "JZ8cO6": ["Light, dark, or follow the OS."],
     "J_jZ5z": [
       "Each AI tool reads skills from its own folder. Point one folder at another and both tools see the same skills — add a skill once instead of copying it into every tool."
@@ -1850,6 +1849,9 @@
     "L-rMC9": ["Reset to default"],
     "L1BQTH": [["0"], " isn't installed yet — opening its download page."],
     "L1ZE3M": ["Document statistics"],
+    "L2Bye8": [
+      ["count", "plural", { "one": ["#", " image attached"], "other": ["#", " images attached"] }]
+    ],
     "L3BcJ4": [
       "This one needs to see your files, not just the open document, so it appears when you run a project audit rather than while you type."
     ],
@@ -2909,7 +2911,6 @@
     "Xg-Ntj": ["The token needs the repo and read:user scopes."],
     "XgqUOy": ["No skill found at that source. Import will report why if you continue."],
     "XgsZ2F": ["Copy the code ", ["code"]],
-    "XhVmAh": ["Enlarge"],
     "Xhm7gG": ["Asset suggestions"],
     "Xisk4u": ["Edited ", ["editedAgo"]],
     "XjqA8x": ["Toggles the pattern ", ["0"], "/**"],
@@ -3664,6 +3665,7 @@
     "epuNYK": [
       "Mark a block as the source of truth. Mirrors elsewhere update live as you edit it."
     ],
+    "eqSy2M": ["Drop, paste, or attach up to ", ["MAX_ATTACHMENTS"], " images."],
     "erenF-": ["Cannot delete files with unresolved conflicts"],
     "euGaS0": ["Couldn't read ", ["fileName"], "."],
     "euc6Ns": ["Duplicate"],
@@ -3961,7 +3963,6 @@
     "haHgQj": ["Copied relative path"],
     "habOU_": ["Failed to update the auto-approve setting — ", ["detail"]],
     "hadECI": [["0"], " needs replacing"],
-    "hcBdO4": ["Up to 3 screenshots or photos"],
     "he3ygx": ["Copy"],
     "heV8si": [
       "This permanently removes ",
@@ -4544,7 +4545,6 @@
     "nP-KFo": ["New ", ["0"], " chat"],
     "nTM8ab": ["Give it a name before editing its colors."],
     "nTwL53": ["Open a doc to share its URL."],
-    "nVGRwu": ["Drop images here"],
     "nWMRxa": ["Unpin"],
     "nWS2gQ": ["Published by ", ["publisher"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],

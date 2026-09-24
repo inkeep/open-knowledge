@@ -689,6 +689,10 @@ msgstr "{count, plural, one {# commentaire} many {# commentaires} other {# comme
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, one {# document} many {# documents} other {# documents}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, one {# image jointe} many {# images jointes} other {# images jointes}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, one {# élément n'a pas pu être mis à la {trashNoun}. Voulez-vous le supprimer définitivement ?} many {# éléments n'ont pas pu être mis à la {trashNoun}. Voulez-vous les supprimer définitivement ?} other {# éléments n'ont pas pu être mis à la {trashNoun}. Voulez-vous les supprimer définitivement ?}}"
@@ -2266,7 +2270,6 @@ msgid "Attach files"
 msgstr "Joindre des fichiers"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "Joindre des images"
 
@@ -2584,10 +2587,6 @@ msgstr "Lien cassé"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "Parcourir"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "Parcourir les fichiers"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5347,9 +5346,9 @@ msgstr "Faites glisser l'élément {0} pour réorganiser"
 msgid "Drop a file to attach"
 msgstr "Déposez un fichier pour le joindre"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "Déposer des images ici"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "Déposez, collez ou joignez jusqu'à {MAX_ATTACHMENTS} images."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5779,10 +5778,6 @@ msgstr "Point de terminaison"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "Spécifications techniques"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "Agrandir"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7394,7 +7389,7 @@ msgstr "La cible de l’image « {shown} » n’a pas pu être résolue en tan
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "La cible de l’image « {shown} » ne correspond à aucun fichier existant."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Les images ne sont pas expurgées."
 
@@ -9395,7 +9390,7 @@ msgstr "Pas encore de pages pivots. Les pivots apparaissent une fois que les pag
 msgid "No icons match."
 msgstr "Aucune icône ne correspond."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "Aucune image ajoutée."
 
@@ -15763,10 +15758,6 @@ msgstr "Rapport sans titre"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "Non suivi"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "Jusqu’à 3 captures d’écran ou photos"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

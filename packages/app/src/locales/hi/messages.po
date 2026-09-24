@@ -689,6 +689,10 @@ msgstr "{count, plural, one {# टिप्पणी} other {# टिप्प�
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, one {# दस्तावेज़} other {# दस्तावेज़}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, one {# छवि संलग्न की गई} other {# छवियाँ संलग्न की गईं}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, one {# आइटम को {trashNoun} में नहीं ले जाया जा सका। क्या आप इसके बजाय स्थायी रूप से हटाना चाहते हैं?} other {# आइटम को {trashNoun} में नहीं ले जाया जा सका। क्या आप इसके बजाय स्थायी रूप से हटाना चाहते हैं?}}"
@@ -2262,7 +2266,6 @@ msgid "Attach files"
 msgstr "फ़ाइलें संलग्न करें"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "छवियाँ संलग्न करें"
 
@@ -2580,10 +2583,6 @@ msgstr "टूटा हुआ लिंक"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "ब्राउज़ करें"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "फ़ाइलें चुनें"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5343,9 +5342,9 @@ msgstr "क्रम बदलने के लिए आइटम {0} खीं
 msgid "Drop a file to attach"
 msgstr "संलग्न करने के लिए फ़ाइल छोड़ें"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "चित्र यहाँ छोड़ें"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "अधिकतम {MAX_ATTACHMENTS} चित्र छोड़ें, पेस्ट करें या संलग्न करें।"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5775,10 +5774,6 @@ msgstr "एंडपॉइंट"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "इंजीनियरिंग स्पेक"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "बड़ा करें"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7390,7 +7385,7 @@ msgstr "चित्र लक्ष्य \"{shown}\" को प्रोजे
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "चित्र लक्ष्य \"{shown}\" किसी मौजूदा फ़ाइल पर हल नहीं होता।"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "चित्रों की संवेदनशील जानकारी नहीं छिपाई जाती।"
 
@@ -9391,7 +9386,7 @@ msgstr "अभी कोई हब पेज नहीं। पेजों प
 msgid "No icons match."
 msgstr "कोई आइकन मेल नहीं खाता।"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "कोई इमेज नहीं जोड़ी गई।"
 
@@ -15759,10 +15754,6 @@ msgstr "बिना शीर्षक रिपोर्ट"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "ट्रैक नहीं किया गया"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "अधिकतम 3 स्क्रीनशॉट या फ़ोटो"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

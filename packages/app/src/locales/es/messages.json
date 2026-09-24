@@ -2023,7 +2023,6 @@
     "JOhCT9": ["Push incluye"],
     "JReD69": ["Se eliminaron los archivos de OpenKnowledge"],
     "JWsZlx": ["Abre un proyecto para editarlo."],
-    "JYj5R2": ["Examinar archivos"],
     "JZ8cO6": ["Claro, oscuro o seguir al sistema."],
     "J_jZ5z": [
       "Cada herramienta de IA lee las habilidades desde su propia carpeta. Apunta una carpeta a otra y ambas herramientas verán las mismas habilidades: añade una habilidad una sola vez en lugar de copiarla en cada herramienta."
@@ -2152,6 +2151,17 @@
     "L-rMC9": ["Restablecer al valor por defecto"],
     "L1BQTH": [["0"], " todavía no está instalado: abriendo su página de descarga."],
     "L1ZE3M": ["Estadísticas del documento"],
+    "L2Bye8": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["#", " imagen adjunta"],
+          "many": ["#", " imágenes adjuntas"],
+          "other": ["#", " imágenes adjuntas"]
+        }
+      ]
+    ],
     "L3BcJ4": [
       "Esta regla necesita ver tus archivos, no solo el documento abierto, por lo que aparece al ejecutar una auditoría del proyecto y no mientras escribes."
     ],
@@ -3382,7 +3392,6 @@
       "No se encontró ninguna habilidad en ese origen. Si continúas, la importación te dirá por qué."
     ],
     "XgsZ2F": ["Copiar el código ", ["code"]],
-    "XhVmAh": ["Ampliar"],
     "Xhm7gG": ["Sugerencias de recursos"],
     "Xisk4u": ["Editado ", ["editedAgo"]],
     "XjqA8x": ["Alterna el patrón ", ["0"], "/**"],
@@ -4272,6 +4281,7 @@
     "epuNYK": [
       "Marca un bloque como fuente de verdad. Los espejos de otros sitios se actualizan en vivo mientras lo editas."
     ],
+    "eqSy2M": ["Arrastra, pega o adjunta hasta ", ["MAX_ATTACHMENTS"], " imágenes."],
     "erenF-": ["No se pueden eliminar archivos con conflictos sin resolver"],
     "euGaS0": ["No se pudo leer ", ["fileName"], "."],
     "euc6Ns": ["Duplicar"],
@@ -4611,7 +4621,6 @@
     "haHgQj": ["Ruta relativa copiada"],
     "habOU_": ["No se pudo actualizar el ajuste de aprobación automática — ", ["detail"]],
     "hadECI": [["0"], " necesita reemplazo"],
-    "hcBdO4": ["Hasta 3 capturas de pantalla o fotos"],
     "he3ygx": ["Copiar"],
     "heV8si": [
       "Esto elimina permanentemente ",
@@ -5259,7 +5268,6 @@
     "nP-KFo": ["Nuevo chat de ", ["0"]],
     "nTM8ab": ["Ponle un nombre antes de editar sus colores."],
     "nTwL53": ["Abre un documento para compartir su URL."],
-    "nVGRwu": ["Arrastra imágenes aquí"],
     "nWMRxa": ["Dejar de fijar"],
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gestiona los archivos ocultos en Ajustes → Patrones de exclusión."],

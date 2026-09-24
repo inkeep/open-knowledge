@@ -689,6 +689,10 @@ msgstr "{count, plural, other {# 条评论}}，分布在 {0, plural, other {# �
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, other {# 个文档}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, other {已附加 # 张图片}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, other {# 个项目无法移到{trashNoun}。是否要改为永久删除？}}"
@@ -2266,7 +2270,6 @@ msgid "Attach files"
 msgstr "附加文件"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "附加图片"
 
@@ -2584,10 +2587,6 @@ msgstr "失效链接"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "浏览"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "浏览文件"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5347,9 +5346,9 @@ msgstr "拖动项目 {0} 以重新排序"
 msgid "Drop a file to attach"
 msgstr "拖放文件以附加"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "将图片拖放到此处"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "拖放、粘贴或附加最多 {MAX_ATTACHMENTS} 张图片。"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5779,10 +5778,6 @@ msgstr "端点"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "工程规格"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "放大"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7394,7 +7389,7 @@ msgstr "无法将图片目标“{shown}”解析为项目本地文件。"
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "图片目标“{shown}”未指向现有文件。"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "图片不会进行脱敏处理。"
 
@@ -9395,7 +9390,7 @@ msgstr "还没有中枢页面。当页面积累起入链后，中枢页就会出
 msgid "No icons match."
 msgstr "没有匹配的图标。"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "未添加任何图片。"
 
@@ -15763,10 +15758,6 @@ msgstr "未命名报告"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "未跟踪"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "最多 3 张屏幕截图或照片"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

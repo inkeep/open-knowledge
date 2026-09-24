@@ -689,6 +689,10 @@ msgstr "{count, plural, other {댓글 #개, {0, plural, other {파일 #개}}}}"
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, other {#개 문서}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, other {이미지 #개 첨부됨}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, other {이동하지 못한 항목 #개를 {trashNoun}로 이동할 수 없습니다. 대신 영구 삭제하시겠습니까?}}"
@@ -2266,7 +2270,6 @@ msgid "Attach files"
 msgstr "파일 첨부"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "이미지 첨부"
 
@@ -2584,10 +2587,6 @@ msgstr "끊어진 링크"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "찾아보기"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "파일 찾아보기"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5347,9 +5346,9 @@ msgstr "항목 {0}을 드래그하여 순서 변경"
 msgid "Drop a file to attach"
 msgstr "첨부할 파일 드롭"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "여기에 이미지 놓기"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "이미지를 최대 {MAX_ATTACHMENTS}개까지 놓거나 붙여넣거나 첨부하세요."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5779,10 +5778,6 @@ msgstr "엔드포인트"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "엔지니어링 사양"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "확대"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7394,7 +7389,7 @@ msgstr "이미지 대상 \"{shown}\"을 프로젝트 로컬 파일로 확인할 
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "이미지 대상 \"{shown}\"이 존재하는 파일로 확인되지 않습니다."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "이미지는 민감 정보가 가려지지 않습니다."
 
@@ -9395,7 +9390,7 @@ msgstr "아직 허브 페이지가 없습니다. 페이지에 들어오는 그�
 msgid "No icons match."
 msgstr "일치하는 아이콘이 없습니다."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "추가된 이미지가 없습니다."
 
@@ -15763,10 +15758,6 @@ msgstr "제목 없는 보고서"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "추적 안 됨"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "스크린샷 또는 사진 최대 3개"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

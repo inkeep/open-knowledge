@@ -6,12 +6,13 @@ import type {
   ReportBundleSummary,
 } from '@inkeep/open-knowledge-core';
 import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-bridge';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { makeFilesDataTransfer } from '@/editor/composer-drop.test-helper';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { contactEmailStore } from '@/lib/contact-email-store';
 import { installPointerPositionTracker } from '@/lib/pointer-position';
@@ -861,6 +862,47 @@ describe('ReportBugDialog', () => {
     expect(log.createCalls).toEqual([{ level: 'standard', includeScreenshot: true }]);
   });
 
+  test('an image pasted into the note attaches and is announced', async () => {
+    installBridge();
+    await renderDialog();
+    const note = screen.getByRole('textbox', { name: /what happened/i });
+    const event = createEvent.paste(note, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(note, event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(await screen.findByText('image.png')).not.toBeNull();
+    expect(screen.getByText('1 image attached')).not.toBeNull();
+  });
+
+  test('an image pasted while the screenshot preview is open does not attach behind it', async () => {
+    installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Enlarge screenshot' }));
+    const preview = await screen.findByRole('dialog', { name: 'Screenshot preview' });
+    const event = createEvent.paste(preview, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(preview, event);
+    expect(event.defaultPrevented).toBe(false);
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByText('image.png')).toBeNull();
+  });
+
+  test('an image pasted on the review step is not attached behind it', async () => {
+    installBridge();
+    await renderDialog();
+    await createReport();
+    const review = screen.getByRole('dialog');
+    const event = createEvent.paste(review, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(review, event);
+    expect(event.defaultPrevented).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.queryByText('image.png')).toBeNull();
+  });
+
   test('unchecking the screenshot keeps it out of create', async () => {
     const log = installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
     await renderDialog();
@@ -1313,7 +1355,9 @@ describe('ReportBugDialog — reporter attachments', () => {
     installBridge();
     await renderDialog();
 
-    expect(screen.getByText('Drop images here')).not.toBeNull();
+    expect(
+      screen.getByText("Drop, paste, or attach up to 3 images. Images aren't redacted."),
+    ).not.toBeNull();
     expect(screen.getByText(/aren't redacted/)).not.toBeNull();
   });
 
@@ -1377,6 +1421,55 @@ describe('ReportBugDialog — reporter attachments', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
     expect(log.createCalls[0]?.attachments).toHaveLength(2);
+  });
+
+  test('a rejected addition does not come back after Create and Back', async () => {
+    installBridge();
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    expect(screen.getByText('No images added.')).not.toBeNull();
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.queryByText('No images added.')).toBeNull();
+  });
+
+  test('a rejected addition stays visible when Create stops on an invalid email', async () => {
+    const log = installBridge();
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Share your email for followups' }));
+    await userEvent.type(screen.getByPlaceholderText('you@company.com'), 'nope');
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    expect(screen.getByText('Please enter a valid email.')).not.toBeNull();
+    expect(screen.getByText('No images added.')).not.toBeNull();
+    expect(log.createCalls).toHaveLength(0);
+  });
+
+  test('a rejected addition stays visible when Create fails', async () => {
+    installBridge({
+      create: () => Promise.resolve({ ok: false, error: 'zip destination not writable' }),
+    });
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    expect(await screen.findByText("Couldn't create the report")).not.toBeNull();
+    expect(screen.getByText('No images added.')).not.toBeNull();
+  });
+
+  test('an image pasted while the report is being created is not attached', async () => {
+    installBridge({ create: () => new Promise(() => {}) });
+    await renderDialog();
+    const note = screen.getByRole('textbox', { name: /what happened/i });
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    const event = createEvent.paste(note, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(note, event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByText('image.png')).toBeNull();
   });
 
   test('a report with no attachments sends includeAttachments false', async () => {

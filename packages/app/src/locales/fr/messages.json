@@ -2055,7 +2055,6 @@
     "JOhCT9": ["Pousser inclut"],
     "JReD69": ["Les fichiers OpenKnowledge ont été supprimés"],
     "JWsZlx": ["Ouvrez un projet pour le modifier."],
-    "JYj5R2": ["Parcourir les fichiers"],
     "JZ8cO6": ["Clair, sombre, ou suivre le système."],
     "J_jZ5z": [
       "Chaque outil IA lit les compétences depuis son propre dossier. Pointez un dossier vers un autre et les deux outils verront les mêmes compétences : ajoutez une compétence une seule fois au lieu de la copier dans chaque outil."
@@ -2193,6 +2192,17 @@
     "L-rMC9": ["Réinitialiser à la valeur par défaut"],
     "L1BQTH": [["0"], " n'est pas encore installé — ouverture de sa page de téléchargement."],
     "L1ZE3M": ["Statistiques du document"],
+    "L2Bye8": [
+      [
+        "count",
+        "plural",
+        {
+          "one": ["#", " image jointe"],
+          "many": ["#", " images jointes"],
+          "other": ["#", " images jointes"]
+        }
+      ]
+    ],
     "L3BcJ4": [
       "Celui-ci doit voir vos fichiers, pas seulement le document ouvert, afin qu'il apparaisse lorsque vous exécutez un audit de projet plutôt que pendant que vous tapez."
     ],
@@ -3430,7 +3440,6 @@
       "Aucune compétence trouvée à cette source. L'importation en indiquera la raison si vous continuez."
     ],
     "XgsZ2F": ["Copier le code ", ["code"]],
-    "XhVmAh": ["Agrandir"],
     "Xhm7gG": ["Suggestions de ressources"],
     "Xisk4u": ["Modifié ", ["editedAgo"]],
     "XjqA8x": ["Active ou désactive le motif ", ["0"], "/**"],
@@ -4313,6 +4322,7 @@
     "epuNYK": [
       "Marque un bloc comme source de vérité. Les miroirs situés ailleurs se mettent à jour en direct pendant que vous le modifiez."
     ],
+    "eqSy2M": ["Déposez, collez ou joignez jusqu'à ", ["MAX_ATTACHMENTS"], " images."],
     "erenF-": ["Impossible de supprimer des fichiers dont les conflits ne sont pas résolus"],
     "euGaS0": ["Impossible de lire ", ["fileName"], "."],
     "euc6Ns": ["Dupliquer"],
@@ -4646,7 +4656,6 @@
     "haHgQj": ["Chemin relatif copié"],
     "habOU_": ["Échec de la mise à jour du réglage d'approbation automatique — ", ["detail"]],
     "hadECI": [["0"], " doit être remplacé"],
-    "hcBdO4": ["Jusqu’à 3 captures d’écran ou photos"],
     "he3ygx": ["Copier"],
     "heV8si": [
       "Cela supprime définitivement ",
@@ -5302,7 +5311,6 @@
     "nP-KFo": ["Nouvelle discussion ", ["0"]],
     "nTM8ab": ["Donnez-lui un nom avant de modifier ses couleurs."],
     "nTwL53": ["Ouvrez un document pour partager son URL."],
-    "nVGRwu": ["Déposer des images ici"],
     "nWMRxa": ["Détacher"],
     "nWS2gQ": ["Publié par ", ["publisher"]],
     "nWv1ja": ["Gérez les fichiers masqués dans Paramètres → Motifs d'exclusion."],

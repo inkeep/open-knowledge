@@ -689,6 +689,10 @@ msgstr "{count, plural, one {# comentario} many {# comentarios} other {# comenta
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, one {# documento} many {# documentos} other {# documentos}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, one {# imagen adjunta} many {# imágenes adjuntas} other {# imágenes adjuntas}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, one {No se pudo mover # elemento a la {trashNoun}. ¿Quieres eliminarlo permanentemente?} many {No se pudieron mover # elementos a la {trashNoun}. ¿Quieres eliminarlos permanentemente?} other {No se pudieron mover # elementos a la {trashNoun}. ¿Quieres eliminarlos permanentemente?}}"
@@ -2266,7 +2270,6 @@ msgid "Attach files"
 msgstr "Adjuntar archivos"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "Adjuntar imágenes"
 
@@ -2584,10 +2587,6 @@ msgstr "Enlace roto"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "Examinar"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "Examinar archivos"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5347,9 +5346,9 @@ msgstr "Arrastra el elemento {0} para reordenar"
 msgid "Drop a file to attach"
 msgstr "Suelta un archivo para adjuntarlo"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "Arrastra imágenes aquí"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "Arrastra, pega o adjunta hasta {MAX_ATTACHMENTS} imágenes."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5779,10 +5778,6 @@ msgstr "Endpoint"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "Especificaciones de ingeniería"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "Ampliar"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7394,7 +7389,7 @@ msgstr "El destino de la imagen «{shown}» no se pudo resolver como un archivo 
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "El destino de la imagen «{shown}» no corresponde a un archivo existente."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Las imágenes no se censuran."
 
@@ -9395,7 +9390,7 @@ msgstr "Todavía no hay páginas índice. Los índices aparecen cuando las pági
 msgid "No icons match."
 msgstr "Ningún icono coincide."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "No se ha añadido ninguna imagen."
 
@@ -15763,10 +15758,6 @@ msgstr "Informe sin título"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "Sin seguimiento"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "Hasta 3 capturas de pantalla o fotos"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

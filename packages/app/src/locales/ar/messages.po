@@ -689,6 +689,10 @@ msgstr "{count, plural, zero {# تعليق} one {تعليق واحد} two {تع�
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, zero {لا مستندات} one {مستند واحد} two {مستندان} few {# مستندات} many {# مستندًا} other {# مستند}}"
 
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, zero {تم إرفاق # صورة} one {تم إرفاق # صورة} two {تم إرفاق # صورتين} few {تم إرفاق # صور} many {تم إرفاق # صورة} other {تم إرفاق # صورة}}"
+
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
 msgstr "{count, plural, zero {تعذّر نقل # عنصر إلى {trashNoun}. هل تريد الحذف نهائيًا بدلاً من ذلك؟} one {تعذّر نقل عنصر واحد إلى {trashNoun}. هل تريد الحذف نهائيًا بدلاً من ذلك؟} two {تعذّر نقل عنصرين إلى {trashNoun}. هل تريد الحذف نهائيًا بدلاً من ذلك؟} few {تعذّر نقل # عناصر إلى {trashNoun}. هل تريد الحذف نهائيًا بدلاً من ذلك؟} many {تعذّر نقل # عنصرًا إلى {trashNoun}. هل تريد الحذف نهائيًا بدلاً من ذلك؟} other {تعذّر نقل # عنصر إلى {trashNoun}. هل تريد الحذف نهائيًا بدلاً من ذلك؟}}"
@@ -2266,7 +2270,6 @@ msgid "Attach files"
 msgstr "إرفاق الملفات"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "إرفاق صور"
 
@@ -2584,10 +2587,6 @@ msgstr "رابط معطل"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "استعراض"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "تصفح الملفات"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -5347,9 +5346,9 @@ msgstr "اسحب العنصر {0} لإعادة الترتيب"
 msgid "Drop a file to attach"
 msgstr "أفلت ملفًا لإرفاقه"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "أفلت الصور هنا"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "أفلت الصور أو الصقها أو أرفقها، حتى {MAX_ATTACHMENTS} صور."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5779,10 +5778,6 @@ msgstr "نقطة النهاية"
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Eng specs"
 msgstr "مواصفات هندسية"
-
-#: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "تكبير"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
@@ -7394,7 +7389,7 @@ msgstr "تعذّر تحويل هدف الصورة \"{shown}\" إلى ملف مح
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "هدف الصورة \"{shown}\" لا يشير إلى ملف موجود."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "لا تُحجب المعلومات الحساسة في الصور."
 
@@ -9395,7 +9390,7 @@ msgstr "لا توجد صفحات محورية بعد. تظهر المحاور ع
 msgid "No icons match."
 msgstr "لا توجد أيقونات مطابقة."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "لم تتم إضافة أي صور."
 
@@ -15763,10 +15758,6 @@ msgstr "تقرير بلا عنوان"
 #: src/components/SyncStatusBadge.tsx
 msgid "Untracked"
 msgstr "غير متتبَّع"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "حتى 3 لقطات شاشة أو صور"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"

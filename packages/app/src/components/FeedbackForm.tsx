@@ -17,12 +17,11 @@ import {
   MAX_IMAGE_ATTACHMENTS_TOTAL_BYTES,
 } from '@/lib/image-attachments';
 import { cn } from '@/lib/utils';
-import { ImageAttachmentList, ImageAttachmentPicker } from './ImageAttachments';
+import { ImageAttachmentTextarea, useImageAttachmentIntake } from './ImageAttachments';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from './ui/form';
 import { Input } from './ui/input';
-import { Textarea } from './ui/textarea';
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group';
 
 const REASONS: { value: string; label: MessageDescriptor }[] = [
@@ -107,6 +106,11 @@ export const FeedbackForm = ({
   const attachmentsError = form.formState.errors.attachments;
   const setAttachments = (files: File[]) =>
     form.setValue('attachments', files, { shouldValidate: true });
+  const attachmentIntake = useImageAttachmentIntake({
+    files: attachments,
+    onChange: setAttachments,
+    disabled: form.formState.isSubmitting,
+  });
 
   const onSubmit = async (data: z.infer<typeof schema>) => {
     try {
@@ -153,6 +157,7 @@ export const FeedbackForm = ({
     <Form {...form}>
       <form
         onSubmit={form.handleSubmit(onSubmit)}
+        onPaste={attachmentIntake.onPaste}
         className={cn(compact ? 'space-y-3' : 'space-y-5', className)}
       >
         {(title || onDismiss) && (
@@ -259,36 +264,21 @@ export const FeedbackForm = ({
               )}
 
               {}
-              <div className="space-y-2">
-                <FormField
-                  control={form.control}
-                  name="message"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormControl>
-                        <div className="relative">
-                          <Textarea
-                            {...field}
-                            placeholder={t`Tell us more (optional)`}
-                            className={cn('resize-none pb-9', compact ? 'min-h-16' : 'min-h-20')}
-                          />
-                          <ImageAttachmentPicker
-                            files={attachments}
-                            onChange={setAttachments}
-                            className="absolute bottom-1.5 left-1.5"
-                          />
-                        </div>
-                      </FormControl>
-                    </FormItem>
-                  )}
-                />
-
-                <ImageAttachmentList
-                  files={attachments}
-                  onChange={setAttachments}
-                  error={attachmentsError?.message ?? null}
-                />
-              </div>
+              <FormField
+                control={form.control}
+                name="message"
+                render={({ field }) => (
+                  <FormItem>
+                    <ImageAttachmentTextarea
+                      {...field}
+                      intake={attachmentIntake}
+                      error={attachmentsError?.message ?? null}
+                      placeholder={t`Tell us more (optional)`}
+                      className={compact ? 'min-h-16' : 'min-h-20'}
+                    />
+                  </FormItem>
+                )}
+              />
             </div>
             <div className="space-y-2">
               {}

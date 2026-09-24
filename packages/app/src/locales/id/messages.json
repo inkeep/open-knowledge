@@ -1762,7 +1762,6 @@
     "JOhCT9": ["Push menyertakan"],
     "JReD69": ["File OpenKnowledge telah dihapus"],
     "JWsZlx": ["Buka sebuah proyek untuk menyunting."],
-    "JYj5R2": ["Pilih file"],
     "JZ8cO6": ["Terang, gelap, atau ikuti sistem."],
     "J_jZ5z": [
       "Setiap alat AI membaca keterampilan dari foldernya sendiri. Arahkan satu folder ke folder lain dan kedua alat akan melihat keterampilan yang sama — tambahkan keterampilan sekali saja alih-alih menyalinnya ke setiap alat."
@@ -1889,6 +1888,7 @@
     "L-rMC9": ["Setel ulang ke bawaan"],
     "L1BQTH": [["0"], " belum terpasang — membuka halaman unduhannya."],
     "L1ZE3M": ["Statistik dokumen"],
+    "L2Bye8": [["count", "plural", { "other": ["#", " gambar dilampirkan"] }]],
     "L3BcJ4": [
       "Yang ini perlu melihat file Anda, bukan hanya dokumen yang terbuka, sehingga muncul saat Anda menjalankan audit proyek, bukan saat Anda mengetik."
     ],
@@ -2950,7 +2950,6 @@
       "Tidak ada keterampilan yang ditemukan di sumber itu. Jika Anda melanjutkan, impor akan melaporkan alasannya."
     ],
     "XgsZ2F": ["Salin kode ", ["code"]],
-    "XhVmAh": ["Perbesar"],
     "Xhm7gG": ["Saran aset"],
     "Xisk4u": ["Disunting ", ["editedAgo"]],
     "XjqA8x": ["Mengaktifkan atau menonaktifkan pola ", ["0"], "/**"],
@@ -3694,6 +3693,7 @@
     "epuNYK": [
       "Menandai sebuah blok sebagai sumber kebenaran. Cermin di tempat lain diperbarui langsung saat Anda menyuntingnya."
     ],
+    "eqSy2M": ["Letakkan, tempel, atau lampirkan hingga ", ["MAX_ATTACHMENTS"], " gambar."],
     "erenF-": ["Tidak dapat menghapus berkas yang konfliknya belum diselesaikan"],
     "euGaS0": ["Tidak dapat membaca ", ["fileName"], "."],
     "euc6Ns": ["Gandakan"],
@@ -3993,7 +3993,6 @@
     "haHgQj": ["Jalur relatif disalin"],
     "habOU_": ["Gagal memperbarui pengaturan persetujuan otomatis — ", ["detail"]],
     "hadECI": [["0"], " perlu diganti"],
-    "hcBdO4": ["Hingga 3 tangkapan layar atau foto"],
     "he3ygx": ["Salin"],
     "heV8si": [
       "Ini menghapus ",
@@ -4581,7 +4580,6 @@
     "nP-KFo": ["Obrolan ", ["0"], " baru"],
     "nTM8ab": ["Beri nama sebelum menyunting warnanya."],
     "nTwL53": ["Buka sebuah dokumen untuk membagikan URL-nya."],
-    "nVGRwu": ["Letakkan gambar di sini"],
     "nWMRxa": ["Lepas sematan"],
     "nWS2gQ": ["Diterbitkan oleh ", ["publisher"]],
     "nWv1ja": ["Kelola berkas tersembunyi di Pengaturan → Pola abaikan."],
