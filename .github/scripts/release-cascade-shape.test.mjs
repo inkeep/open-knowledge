@@ -885,7 +885,7 @@ describe('public desktop product variants stay independently buildable', () => {
       expect(desktopRelease).toContain(pair[1]);
     }
     expect(desktopRelease).toContain('ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}');
-    expect(desktopRelease).toContain('${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip');
+    expect(desktopRelease).toContain('${artifact}-${VERSION}-arm64-mac.zip');
   });
 
   test('signed Beta builds require their own provisioning profile', () => {

@@ -6,13 +6,14 @@ export const dynamic = 'force-dynamic';
 const RELEASES_BASE = 'https://github.com/inkeep/open-knowledge/releases';
 const CHANNELS = {
   stable: { manifestPrefix: 'latest', productPrefix: 'OpenKnowledge-' },
-  beta: { manifestPrefix: 'beta', productPrefix: 'OpenKnowledge-Beta-' },
+  beta: { manifestPrefix: 'beta', productPrefix: 'OpenKnowledge-' },
+  'beta-product': { manifestPrefix: 'beta-product', productPrefix: 'OpenKnowledge-Beta-' },
 } as const;
 type UpdateChannel = keyof typeof CHANNELS;
 const SAFE_FILENAME = /^[A-Za-z0-9._-]+$/;
 const ARTIFACT_VERSION =
   /-(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)-(?:arm64|x64|universal)-mac\.zip(?:\.blockmap)?$/;
-const MANIFEST = /^(?:latest|beta)(?:-mac|-linux(?:-arm64)?)?\.yml$/;
+const MANIFEST = /^(?:latest|beta|beta-product)(?:-mac|-linux(?:-arm64)?)?\.yml$/;
 const TAG_FROM_URL = /\/releases\/download\/([^/]+)\//;
 const HEADER_VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?$/;
 
@@ -22,7 +23,14 @@ function headerVersion(request: Request, name: string): string | undefined {
 }
 const VERSION_FROM_TAG = /^v(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)$/;
 
-const resolveBeta = createBetaResolver();
+const betaResolvers = new Map(
+  ['beta', 'beta-product'].flatMap((prefix) =>
+    ['.yml', '-mac.yml', '-linux.yml', '-linux-arm64.yml'].map((suffix) => {
+      const assetName = `${prefix}${suffix}`;
+      return [assetName, createBetaResolver({ assetName })] as const;
+    }),
+  ),
+);
 
 type ArtifactType = 'manifest' | 'zip' | 'blockmap' | 'dmg' | 'exe' | 'deb' | 'rpm' | 'other';
 
@@ -71,8 +79,22 @@ function errorResponse(status: number): Response {
   return new Response(null, { status, headers: { 'cache-control': 'no-store' } });
 }
 
-async function latestBetaTag(): Promise<string | null> {
-  const redirect = await resolveBeta();
+async function latestBetaTag(
+  channel: 'beta' | 'beta-product',
+  filename: string,
+  type: ArtifactType,
+): Promise<string | null> {
+  const manifest =
+    type === 'manifest'
+      ? filename
+      : type === 'exe'
+        ? `${channel}.yml`
+        : type === 'deb' || type === 'rpm'
+          ? `${channel}-linux${archOf(filename) === 'arm64' ? '-arm64' : ''}.yml`
+          : `${channel}-mac.yml`;
+  const resolve = betaResolvers.get(manifest);
+  if (!resolve) return null;
+  const redirect = await resolve();
   if (redirect.kind === 'stale-lkg') {
     console.warn(
       `[updates/beta] serving stale LKG tag after refresh failure: ${redirect.refreshError}`,
@@ -93,13 +115,12 @@ function matchesChannelIdentity(
 ): boolean {
   const config = CHANNELS[channel];
   if (type === 'manifest') {
-    return (
-      filename.startsWith(`${config.manifestPrefix}-`) ||
-      filename === `${config.manifestPrefix}.yml`
+    return ['.yml', '-mac.yml', '-linux.yml', '-linux-arm64.yml'].some(
+      (suffix) => filename === `${config.manifestPrefix}${suffix}`,
     );
   }
   if (!filename.startsWith(config.productPrefix)) return false;
-  return channel !== 'stable' || !filename.startsWith(CHANNELS.beta.productPrefix);
+  return channel === 'beta-product' || !filename.startsWith(CHANNELS['beta-product'].productPrefix);
 }
 
 export async function GET(
@@ -118,6 +139,9 @@ export async function GET(
   }
 
   const version = ARTIFACT_VERSION.exec(filename)?.[1];
+  if (version && (channel === 'stable' ? version.includes('-') : !/-beta\.\d+$/.test(version))) {
+    return errorResponse(404);
+  }
 
   let target: string;
   let resolvedTagVersion: string | undefined;
@@ -126,7 +150,7 @@ export async function GET(
   } else if (channel === 'stable') {
     target = `${RELEASES_BASE}/latest/download/${filename}`;
   } else {
-    const tag = await latestBetaTag();
+    const tag = await latestBetaTag(channel, filename, type);
     if (!tag) {
       return errorResponse(503);
     }

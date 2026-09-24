@@ -75,6 +75,30 @@ const platformArtifact = (name: string): string => `${name}-${token('arch')}.${t
 const nsisArtifact = (name: string): string => `${name}-Setup-${token('arch')}.${token('ext')}`;
 
 describe('desktop variant builder config', () => {
+  test('legacy Beta preserves the installed identity, CLI wrappers and old manifest names', () => {
+    const stable = createVariantBuilderConfig(
+      parseBuilderConfig(configSource),
+      'stable',
+      paths,
+      '0.78.0-beta.6',
+    );
+    const legacy = createVariantBuilderConfig(
+      parseBuilderConfig(configSource),
+      'legacy-beta',
+      paths,
+      '0.78.0-beta.6',
+    );
+    expect(legacy).toEqual({
+      ...stable,
+      extraMetadata: {
+        ...stable.extraMetadata,
+        okDesktopVariant: 'legacy-beta',
+        version: '0.78.0-beta.6',
+      },
+      publish: stable.publish.map((entry) => ({ ...entry, channel: 'beta' })),
+    });
+  });
+
   test('preserves Stable identity', () => {
     const config = createVariantBuilderConfig(
       parseBuilderConfig(configSource),
@@ -127,7 +151,7 @@ describe('desktop variant builder config', () => {
       appId: 'com.inkeep.open-knowledge.beta',
       productName: 'OpenKnowledge Beta',
       protocols: [{ schemes: ['openknowledge-beta'] }],
-      publish: [{ channel: 'beta' }],
+      publish: [{ channel: 'beta-product' }],
       extraMetadata: {
         name: 'openknowledge-beta-desktop',
         productName: 'OpenKnowledge Beta',

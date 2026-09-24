@@ -95,17 +95,17 @@ export function createVariantBuilderConfig(
   config.productName = variant.productName;
   config.extraMetadata = {
     ...config.extraMetadata,
-    okDesktopVariant: variant.name,
+    okDesktopVariant: variantName,
     productName: variant.productName,
     ...(variant.name === 'stable' ? {} : { name: variant.packageName }),
-    ...(variant.name === 'beta' ? { version: betaBuildVersion(sourceVersion) } : {}),
+    ...(variant.updateChannel === 'beta' ? { version: betaBuildVersion(sourceVersion) } : {}),
   };
   config.protocols = [
     { name: `${variant.productName} URL`, schemes: [variant.protocolScheme], role: 'Editor' },
   ];
   config.publish = config.publish.map((entry) => ({
     ...entry,
-    channel: variant.updateChannel,
+    channel: variant.feedChannel,
   }));
   config.mac.icon = variant.name === 'stable' ? config.mac.icon : variant.iconPath;
   config.mac.artifactName = `${variant.artifactName}-\${version}-\${arch}-mac.\${ext}`;

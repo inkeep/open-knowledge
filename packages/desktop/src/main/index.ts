@@ -6625,6 +6625,7 @@ function bootPrimaryInstance(): void {
         proxyFeed: {
           base: 'https://openknowledge.ai/updates',
           channels: new Set<UpdateChannel>(['beta', 'latest']),
+          betaChannel: DESKTOP_VARIANT.name === 'beta' ? 'beta-product' : 'beta',
         },
         whenRendererReady: (fn) => {
           const tryFire = (win: BrowserWindow): void => {

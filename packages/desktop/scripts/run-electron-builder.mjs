@@ -19,8 +19,8 @@ const variantName = parseDesktopVariantName(process.env.OK_DESKTOP_VARIANT);
 const variant = DESKTOP_VARIANTS[variantName];
 const args = process.argv.slice(2);
 const buildDir = join(process.cwd(), '.variant-build');
-const profilePath = join(process.cwd(), `build/embedded.${variantName}.provisionprofile`);
-const profileAvailable = variantName === 'stable' || existsSync(profilePath);
+const profilePath = join(process.cwd(), `build/embedded.${variant.name}.provisionprofile`);
+const profileAvailable = variant.name === 'stable' || existsSync(profilePath);
 const packagingMac = args.includes('--mac') || args.includes('--dir');
 const signingRequested = Boolean(process.env.CSC_LINK || process.env.CSC_KEYCHAIN);
 

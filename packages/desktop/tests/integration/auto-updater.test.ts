@@ -196,7 +196,11 @@ function makeRig(
     platform?: NodeJS.Platform;
     forceDevBypass?: boolean;
     feedUrl?: string;
-    proxyFeed?: { base: string; channels: ReadonlySet<'latest' | 'beta'> };
+    proxyFeed?: {
+      base: string;
+      channels: ReadonlySet<'latest' | 'beta'>;
+      betaChannel?: 'beta' | 'beta-product';
+    };
     updaterSetup?: (u: FakeUpdater) => void;
     extraWindowCount?: number;
     prepareForRelaunch?: () => void;
@@ -432,6 +436,30 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       'x-ok-from-version': '0.4.0-beta.7',
       'x-ok-channel': 'beta',
     });
+  });
+
+  test('separate Beta uses its own feed and manifest without enabling downgrades', () => {
+    const { rig } = makeRig({
+      appVersion: '0.78.0-beta.6',
+      updaterSetup: (updater) => {
+        let channel: string | null = null;
+        Object.defineProperty(updater, 'channel', {
+          get: () => channel,
+          set: (value: string) => {
+            channel = value;
+            updater.allowDowngrade = true;
+          },
+        });
+      },
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['beta']), betaChannel: 'beta-product' },
+    });
+    expect(rig.updater.setFeedURL).toHaveBeenCalledWith({
+      provider: 'generic',
+      url: `${PROXY_BASE}/beta-product`,
+    });
+    expect(rig.updater.channel).toBe('beta-product');
+    expect(rig.updater.allowPrerelease).toBe(true);
+    expect(rig.updater.allowDowngrade).toBe(false);
   });
 
   test('proxyFeed: stable build maps the latest channel to the proxy /stable path', () => {

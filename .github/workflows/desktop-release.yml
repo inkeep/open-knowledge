@@ -500,6 +500,12 @@ jobs:
   # runtime to every cut. It re-runs the cheap channel detection itself; the
   # two copies of that step live in one file and must stay in lockstep.
   build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
+    env:
+      OK_DESKTOP_VARIANT: ${{ matrix.variant }}
     # macos-26 = Apple Silicon (Tahoe) with Xcode 26.x preinstalled. Apple
     # Silicon is required for the Universal DMG lipo merge (arm64 + x64 →
     # universal) per parent SPEC D29. Xcode 26+ is required because
@@ -549,7 +555,10 @@ jobs:
               echo "variant=beta"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
-            echo "OK_DESKTOP_VARIANT=beta" >> "$GITHUB_ENV"
+            if [[ "$OK_DESKTOP_VARIANT" == "beta" ]]; then
+              echo "channel=beta-product" >> "$GITHUB_OUTPUT"
+            fi
+            echo "variant=$OK_DESKTOP_VARIANT" >> "$GITHUB_OUTPUT"
           elif [[ "$VERSION" == *-* ]]; then
             echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — this public publisher accepts only -beta.N (prepare's twin step carries the full diagnostics)."
             exit 1
@@ -559,7 +568,6 @@ jobs:
               echo "variant=stable"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
-            echo "OK_DESKTOP_VARIANT=stable" >> "$GITHUB_ENV"
           fi
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -810,7 +818,7 @@ jobs:
         run: pnpm run build:desktop
 
       - name: Validate variant provisioning profile
-        if: steps.channel.outputs.variant != 'stable'
+        if: steps.channel.outputs.variant == 'beta'
         working-directory: packages/desktop
         run: |
           set -euo pipefail
@@ -945,6 +953,18 @@ jobs:
           fi
           echo "Attested $FOUND signed, notarized, stapled app bundle(s)."
 
+      - name: Verify a historical app can update in place
+        if: matrix.variant != 'beta'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ matrix.variant == 'legacy-beta' && 'v0.77.9-beta.0' || 'v0.77.8' }}
+          UPDATER_CHANNEL: ${{ matrix.variant == 'legacy-beta' && 'beta' || 'latest' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/historical-upgrade"
+          gh release download "$SOURCE_TAG" --pattern 'OpenKnowledge-arm64.dmg' --dir "$RUNNER_TEMP/historical-upgrade"
+          node .github/scripts/smoke-historical-upgrade.mjs "$RUNNER_TEMP/historical-upgrade/OpenKnowledge-arm64.dmg" "$UPDATER_CHANNEL"
+
       # FR5b — smoke the signed DMG before anything about this release becomes
       # visible or installable. Under the fan-in topology this job failing on
       # a smoke verdict means publish-assets never runs: no asset reaches the
@@ -1023,7 +1043,7 @@ jobs:
       - name: Upload macOS release assets for the fan-in publisher
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: macos-release-assets
+          name: macos-${{ matrix.variant }}-release-assets
           path: |
             packages/desktop/dist-desktop/*.dmg
             packages/desktop/dist-desktop/*.dmg.blockmap
@@ -1035,11 +1055,16 @@ jobs:
 
   build-windows:
     needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
     runs-on: windows-latest
     timeout-minutes: 45
     env:
-      OK_DESKTOP_VARIANT: ${{ needs.prepare.outputs.variant }}
-      OK_DESKTOP_PRODUCT_NAME: ${{ needs.prepare.outputs.product_name }}
+      OK_DESKTOP_VARIANT: ${{ matrix.variant }}
+      OK_DESKTOP_PRODUCT_NAME: ${{ matrix.variant == 'beta' && 'OpenKnowledge Beta' || 'OpenKnowledge' }}
+      UPDATER_CHANNEL: ${{ matrix.variant == 'beta' && 'beta-product' || needs.prepare.outputs.channel }}
     permissions:
       # See build-macos — packaging jobs are read-only by design.
       contents: read
@@ -1155,7 +1180,7 @@ jobs:
           AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
           AZURE_SIGNING_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
           BUILD_VERSION: ${{ needs.prepare.outputs.version }}
-          BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
+          BUILD_CHANNEL: ${{ env.UPDATER_CHANNEL }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
           PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
         run: |
@@ -1314,7 +1339,7 @@ jobs:
       - name: Assert app-update.yml is present and channel-correct
         working-directory: packages/desktop
         env:
-          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          CHANNEL: ${{ env.UPDATER_CHANNEL }}
         run: |
           set -euo pipefail
           for dir in dist-desktop/win-unpacked dist-desktop/win-arm64-unpacked; do
@@ -1338,11 +1363,11 @@ jobs:
       - name: Upload Windows release assets for the fan-in publisher
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: windows-release-assets
+          name: windows-${{ matrix.variant }}-release-assets
           path: |
             packages/desktop/dist-desktop/*Setup-x64.exe
             packages/desktop/dist-desktop/*Setup-arm64.exe
-            packages/desktop/dist-desktop/${{ needs.prepare.outputs.channel }}.yml
+            packages/desktop/dist-desktop/${{ env.UPDATER_CHANNEL }}.yml
           retention-days: 14
           if-no-files-found: error
 
@@ -1357,7 +1382,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
     env:
-      OK_DESKTOP_VARIANT: ${{ needs.prepare.outputs.variant }}
+      OK_DESKTOP_VARIANT: ${{ matrix.variant }}
+      UPDATER_CHANNEL: ${{ matrix.variant == 'beta' && 'beta-product' || needs.prepare.outputs.channel }}
     permissions:
       # See build-macos — packaging jobs are read-only by design.
       contents: read
@@ -1370,6 +1396,8 @@ jobs:
       # to repeat the arch that failed. publish-assets still requires BOTH.
       fail-fast: false
       matrix:
+        variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
         include:
           - runner: ubuntu-latest
             arch: x64
@@ -1523,7 +1551,7 @@ jobs:
       - name: Assert app-update.yml + package-type are present and channel-correct
         working-directory: packages/desktop
         env:
-          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          CHANNEL: ${{ env.UPDATER_CHANNEL }}
           UNPACKED_DIR: ${{ matrix.unpacked_dir }}
         run: |
           set -euo pipefail
@@ -1554,11 +1582,11 @@ jobs:
       - name: Upload Linux ${{ matrix.arch }} release assets for the fan-in publisher
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: linux-${{ matrix.arch }}-release-assets
+          name: linux-${{ matrix.arch }}-${{ matrix.variant }}-release-assets
           path: |
             packages/desktop/dist-desktop/*.deb
             packages/desktop/dist-desktop/*.rpm
-            packages/desktop/dist-desktop/${{ needs.prepare.outputs.channel }}-linux*.yml
+            packages/desktop/dist-desktop/${{ env.UPDATER_CHANNEL }}-linux*.yml
           retention-days: 14
           if-no-files-found: error
 
@@ -1627,55 +1655,42 @@ jobs:
       - name: Define the expected asset inventory
         run: |
           set -euo pipefail
-          # Two lists with different jobs:
-          #   EXPECTED_ASSETS — the MUST-HAVE set: the full group for every
-          #     REQUIRED platform. Missing any of these blocks publication.
-          #   ALLOWED_ASSETS — the full known-name universe across ALL
-          #     platforms. The no-extras check validates present files against
-          #     THIS list, so a healthy non-required platform's assets (even a
-          #     partial set from one surviving matrix cell — each Linux arch
-          #     uploads independently under fail-fast: false) still ship,
-          #     while a stray builder-debug.yml still fails. Anything a
-          #     non-required job uploaded already passed that job's own
-          #     app-update/package-type asserts.
+          inventory() {
+            local platforms="$1"
+            local family
+            local families=("${ARTIFACT_NAME}:${CHANNEL}")
+            if [[ "$CHANNEL" == "beta" ]]; then
+              families=("OpenKnowledge:beta" "OpenKnowledge-Beta:beta-product")
+            fi
+            for family in "${families[@]}"; do
+              local artifact="${family%:*}"
+              local manifest="${family#*:}"
+              echo "${artifact}-arm64.dmg"
+              echo "${artifact}-arm64.dmg.blockmap"
+              echo "${artifact}-${VERSION}-arm64-mac.zip"
+              echo "${artifact}-${VERSION}-arm64-mac.zip.blockmap"
+              echo "${manifest}-mac.yml"
+              if [[ "$platforms" == *windows* ]]; then
+                echo "${artifact}-Setup-x64.exe"
+                echo "${artifact}-Setup-arm64.exe"
+                echo "${manifest}.yml"
+              fi
+              if [[ "$platforms" == *linux* ]]; then
+                echo "${artifact}-amd64.deb"
+                echo "${artifact}-arm64.deb"
+                echo "${artifact}-x86_64.rpm"
+                echo "${artifact}-aarch64.rpm"
+                echo "${manifest}-linux.yml"
+                echo "${manifest}-linux-arm64.yml"
+              fi
+            done
+          }
           {
             echo "EXPECTED_ASSETS<<OK_INVENTORY_EOF"
-            echo "${ARTIFACT_NAME}-arm64.dmg"
-            echo "${ARTIFACT_NAME}-arm64.dmg.blockmap"
-            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip"
-            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip.blockmap"
-            echo "${CHANNEL}-mac.yml"
-            if [[ "$REQUIRED" == *windows* ]]; then
-              echo "${ARTIFACT_NAME}-Setup-x64.exe"
-              echo "${ARTIFACT_NAME}-Setup-arm64.exe"
-              echo "${CHANNEL}.yml"
-            fi
-            if [[ "$REQUIRED" == *linux* ]]; then
-              echo "${ARTIFACT_NAME}-amd64.deb"
-              echo "${ARTIFACT_NAME}-arm64.deb"
-              echo "${ARTIFACT_NAME}-x86_64.rpm"
-              echo "${ARTIFACT_NAME}-aarch64.rpm"
-              echo "${CHANNEL}-linux.yml"
-              echo "${CHANNEL}-linux-arm64.yml"
-            fi
-            # GITHUB_ENV's multiline syntax REQUIRES the closing delimiter
-            # line — without it the runner rejects the whole env file.
+            inventory "$REQUIRED"
             echo "OK_INVENTORY_EOF"
             echo "ALLOWED_ASSETS<<OK_ALLOWED_EOF"
-            echo "${ARTIFACT_NAME}-arm64.dmg"
-            echo "${ARTIFACT_NAME}-arm64.dmg.blockmap"
-            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip"
-            echo "${ARTIFACT_NAME}-${VERSION}-arm64-mac.zip.blockmap"
-            echo "${CHANNEL}-mac.yml"
-            echo "${ARTIFACT_NAME}-Setup-x64.exe"
-            echo "${ARTIFACT_NAME}-Setup-arm64.exe"
-            echo "${CHANNEL}.yml"
-            echo "${ARTIFACT_NAME}-amd64.deb"
-            echo "${ARTIFACT_NAME}-arm64.deb"
-            echo "${ARTIFACT_NAME}-x86_64.rpm"
-            echo "${ARTIFACT_NAME}-aarch64.rpm"
-            echo "${CHANNEL}-linux.yml"
-            echo "${CHANNEL}-linux-arm64.yml"
+            inventory "mac,windows,linux"
             echo "OK_ALLOWED_EOF"
           } >> "$GITHUB_ENV"
 

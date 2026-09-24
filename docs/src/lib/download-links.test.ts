@@ -4,7 +4,7 @@ import {
   createBetaResolver,
   DMG_ASSET_NAME,
   FALLBACK_CACHE_CONTROL,
-  pickLatestBetaDmgUrl,
+  pickLatestBetaAssetUrl,
   RELEASES_PAGE_URL,
   STABLE_DMG_URL,
   SUCCESS_CACHE_CONTROL,
@@ -40,9 +40,34 @@ function jsonResponse(payload: unknown, status = 200) {
   return new Response(JSON.stringify(payload), { status });
 }
 
-describe('pickLatestBetaDmgUrl', () => {
+describe('pickLatestBetaAssetUrl', () => {
+  test('keeps a platform on its latest available release when a newer release omits it', () => {
+    const releases = [
+      release('v0.78.0-beta.7', { assetNames: ['beta-mac.yml', DMG_ASSET_NAME] }),
+      release('v0.78.0-beta.6', { assetNames: ['beta.yml', 'beta-linux-arm64.yml'] }),
+    ];
+    expect(pickLatestBetaAssetUrl(releases, 'beta.yml')).toBe(dmgUrl('v0.78.0-beta.6', 'beta.yml'));
+    expect(pickLatestBetaAssetUrl(releases, 'beta-linux-arm64.yml')).toBe(
+      dmgUrl('v0.78.0-beta.6', 'beta-linux-arm64.yml'),
+    );
+    expect(pickLatestBetaAssetUrl(releases, 'beta-mac.yml')).toBe(
+      dmgUrl('v0.78.0-beta.7', 'beta-mac.yml'),
+    );
+  });
+
+  test('resolves legacy and separate Beta independently from the same release list', () => {
+    const releases = [
+      release('v0.78.0-beta.6', { assetNames: [DMG_ASSET_NAME, BETA_DMG_ASSET_NAME] }),
+      release('v0.78.0-beta.7', { assetNames: [BETA_DMG_ASSET_NAME] }),
+    ];
+    expect(pickLatestBetaAssetUrl(releases, DMG_ASSET_NAME)).toBe(
+      dmgUrl('v0.78.0-beta.6', DMG_ASSET_NAME),
+    );
+    expect(pickLatestBetaAssetUrl(releases)).toBe(dmgUrl('v0.78.0-beta.7'));
+  });
+
   test('picks the highest-versioned published beta', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.12.0-beta.7'),
       release('v0.12.0-beta.6'),
       release('v0.11.0', { prerelease: false }),
@@ -51,7 +76,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('ranks by version, not the array order GitHub returns (older beta listed first)', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.20.0-beta.9'),
       release('v0.20.0-beta.8'),
       release('v0.20.0-beta.13'),
@@ -62,12 +87,12 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('beta.10 outranks beta.9 (no lexical tag compare)', () => {
-    const url = pickLatestBetaDmgUrl([release('v0.20.0-beta.9'), release('v0.20.0-beta.10')]);
+    const url = pickLatestBetaAssetUrl([release('v0.20.0-beta.9'), release('v0.20.0-beta.10')]);
     expect(url).toBe(dmgUrl('v0.20.0-beta.10'));
   });
 
   test('ranks across base versions (minor/patch), not just the beta counter', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.20.0-beta.99'),
       release('v0.21.0-beta.1'),
       release('v0.20.1-beta.2'),
@@ -76,7 +101,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('skips the newest beta when its DMG is missing, ranking the next-newest', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.20.0-beta.13', { assetNames: ['beta-mac.yml'] }),
       release('v0.20.0-beta.12'),
       release('v0.20.0-beta.9'),
@@ -85,7 +110,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('skips stable releases even when they appear first', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.11.0', { prerelease: false }),
       release('v0.11.0-beta.3'),
     ]);
@@ -93,7 +118,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('skips a beta whose DMG never uploaded and falls back to the previous one', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.12.0-beta.7', { assetNames: ['beta-mac.yml'] }),
       release('v0.12.0-beta.6'),
     ]);
@@ -101,7 +126,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('skips drafts', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.12.0-beta.7', { draft: true }),
       release('v0.12.0-beta.6'),
     ]);
@@ -109,7 +134,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('skips prereleases that are not -beta.N tags', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.12.0-rc.1'),
       release('beta-latest'),
       release('v0.12.0-beta'),
@@ -119,7 +144,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('skips legacy shared-identity beta artifacts', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.12.0-beta.8', { assetNames: [DMG_ASSET_NAME] }),
       release('v0.12.0-beta.7'),
     ]);
@@ -127,7 +152,7 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('rejects asset URLs outside our release-download prefix', () => {
-    const url = pickLatestBetaDmgUrl([
+    const url = pickLatestBetaAssetUrl([
       release('v0.12.0-beta.7', { assetHost: 'https://evil.example.com/releases/download' }),
       release('v0.12.0-beta.6'),
     ]);
@@ -135,14 +160,14 @@ describe('pickLatestBetaDmgUrl', () => {
   });
 
   test('returns null when no published beta carries the DMG', () => {
-    expect(pickLatestBetaDmgUrl([release('v0.11.0', { prerelease: false })])).toBeNull();
-    expect(pickLatestBetaDmgUrl([])).toBeNull();
+    expect(pickLatestBetaAssetUrl([release('v0.11.0', { prerelease: false })])).toBeNull();
+    expect(pickLatestBetaAssetUrl([])).toBeNull();
   });
 
   test('returns null on malformed payloads instead of throwing', () => {
-    expect(pickLatestBetaDmgUrl(null)).toBeNull();
-    expect(pickLatestBetaDmgUrl({ message: 'API rate limit exceeded' })).toBeNull();
-    expect(pickLatestBetaDmgUrl([{ tag_name: 42 }])).toBeNull();
+    expect(pickLatestBetaAssetUrl(null)).toBeNull();
+    expect(pickLatestBetaAssetUrl({ message: 'API rate limit exceeded' })).toBeNull();
+    expect(pickLatestBetaAssetUrl([{ tag_name: 42 }])).toBeNull();
   });
 });
 

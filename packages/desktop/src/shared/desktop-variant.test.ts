@@ -18,7 +18,7 @@ describe('desktop variant identities', () => {
   });
 
   test('gives every variant a disjoint persistent identity', () => {
-    const identities = Object.values(DESKTOP_VARIANTS);
+    const identities = [DESKTOP_VARIANTS.stable, DESKTOP_VARIANTS.beta];
     const keys: Array<keyof (typeof identities)[number]> = [
       'appId',
       'productName',
@@ -34,10 +34,20 @@ describe('desktop variant identities', () => {
     expect(new Set(identities.flatMap((identity) => identity.cliCommandNames)).size).toBe(4);
   });
 
+  test('keeps legacy Beta on the original identity and manifest contract', () => {
+    expect(DESKTOP_VARIANTS['legacy-beta']).toEqual({
+      ...DESKTOP_VARIANTS.stable,
+      updateChannel: 'beta',
+      feedChannel: 'beta',
+    });
+    expect(DESKTOP_VARIANTS.beta.feedChannel).toBe('beta-product');
+  });
+
   test.each<[string | undefined, DesktopVariantName]>([
     [undefined, 'stable'],
     ['', 'stable'],
     [' BETA ', 'beta'],
+    ['legacy-beta', 'legacy-beta'],
   ])('parses %j as %s', (raw, expected) => {
     expect(parseDesktopVariantName(raw)).toBe(expected);
   });

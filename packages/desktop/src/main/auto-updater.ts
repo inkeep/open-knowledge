@@ -106,7 +106,11 @@ interface StartAutoUpdaterOpts {
   platform?: NodeJS.Platform;
   forceDevBypass?: boolean;
   feedUrl?: string;
-  proxyFeed?: { base: string; channels: ReadonlySet<UpdateChannel> };
+  proxyFeed?: {
+    base: string;
+    channels: ReadonlySet<UpdateChannel>;
+    betaChannel?: 'beta' | 'beta-product';
+  };
   whenRendererReady?: (fn: () => void) => void;
   prepareForRelaunch?: () => void | Promise<void>;
   sweepUpdateSurvivors?: () => WindowsUpdateSurvivorSweepResult | undefined;
@@ -404,7 +408,11 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   applyChannelSettings(updater, buildChannel);
 
   updater.forceDevUpdateConfig = forceDevBypass;
-  const proxyChannelPath = buildChannel === 'beta' ? 'beta' : 'stable';
+  const proxyChannelPath = buildChannel === 'beta' ? (proxyFeed?.betaChannel ?? 'beta') : 'stable';
+  if (buildChannel === 'beta' && proxyFeed?.betaChannel) {
+    updater.channel = proxyFeed.betaChannel;
+    updater.allowDowngrade = false;
+  }
   const configuredProxyFeed =
     !feedUrl && proxyFeed?.channels.has(buildChannel)
       ? {

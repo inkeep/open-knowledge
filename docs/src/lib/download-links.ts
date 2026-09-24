@@ -46,7 +46,10 @@ const releasesSchema = z.array(
   }),
 );
 
-export function pickLatestBetaDmgUrl(payload: unknown): string | null {
+export function pickLatestBetaAssetUrl(
+  payload: unknown,
+  assetName = BETA_DMG_ASSET_NAME,
+): string | null {
   const parsed = releasesSchema.safeParse(payload);
   if (!parsed.success) {
     console.warn(
@@ -62,8 +65,7 @@ export function pickLatestBetaDmgUrl(payload: unknown): string | null {
     if (!parts) continue;
     const dmg = release.assets.find(
       (asset) =>
-        asset.name === BETA_DMG_ASSET_NAME &&
-        asset.browser_download_url.startsWith(ASSET_URL_PREFIX),
+        asset.name === assetName && asset.browser_download_url.startsWith(ASSET_URL_PREFIX),
     );
     if (!dmg) continue;
     const rank: PrereleaseRank = [
@@ -92,7 +94,7 @@ function describeError(err: unknown): string {
 }
 
 export function createBetaResolver(
-  deps: { fetchImpl?: typeof fetch; now?: () => number } = {},
+  deps: { fetchImpl?: typeof fetch; now?: () => number; assetName?: string } = {},
 ): () => Promise<PrereleaseRedirect> {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now ?? Date.now;
@@ -121,9 +123,11 @@ export function createBetaResolver(
           cause: parseErr,
         });
       }
-      const url = pickLatestBetaDmgUrl(payload);
+      const url = pickLatestBetaAssetUrl(payload, deps.assetName);
       if (!url) {
-        throw new Error('no published beta release carries the Beta DMG asset');
+        throw new Error(
+          `no published beta release carries ${deps.assetName ?? BETA_DMG_ASSET_NAME}`,
+        );
       }
       lkg = { url, fetchedAt: now() };
       return { kind: 'fresh', url };
