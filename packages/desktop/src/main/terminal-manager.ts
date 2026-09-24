@@ -295,8 +295,13 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
           ? (raw as PtyHostOutgoingMessage)
           : null;
       case 'spawn-error':
-        return (typeof m.message === 'string' && m.launchFailure === undefined) ||
-          (m.message === undefined && isWindowsShellLaunchFailureReason(m.launchFailure))
+        return (m.shellNeverAttached === undefined &&
+          ((typeof m.message === 'string' && m.launchFailure === undefined) ||
+            (m.message === undefined && isWindowsShellLaunchFailureReason(m.launchFailure)))) ||
+          (m.shellNeverAttached === true &&
+            m.message === undefined &&
+            m.launchFailure === undefined &&
+            (m.exitCode === undefined || typeof m.exitCode === 'number'))
           ? (raw as PtyHostOutgoingMessage)
           : null;
       case 'shell-notice':
@@ -371,6 +376,22 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
         const { ptyId } = message;
         clearSessionTimers(session);
         handle.sessions.delete(ptyId);
+        const elapsedMs =
+          session.spawnedAt === null ? null : Math.max(0, Date.now() - session.spawnedAt);
+        const killRequested = session.killRequested;
+        if (message.shellNeverAttached === true) {
+          deps.logger?.warn({
+            event: 'terminal-manager-spawn-error',
+            windowId,
+            ptyId,
+            shellNeverAttached: true,
+            exitCode: message.exitCode ?? null,
+            elapsedMs,
+            killRequested,
+          });
+          pushExit(handle, { ptyId, neverStarted: true });
+          break;
+        }
         deps.logger?.warn({
           event: 'terminal-manager-spawn-error',
           windowId,
@@ -378,6 +399,8 @@ export function createTerminalManager(deps: TerminalManagerDeps): TerminalManage
           ...(message.launchFailure === undefined
             ? { message: message.message }
             : { launchFailure: message.launchFailure }),
+          elapsedMs,
+          killRequested,
         });
         pushExit(
           handle,

@@ -41,7 +41,12 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
         else if (msg.type === 'exit')
           exits.set(msg.ptyId, { exitCode: msg.exitCode, signal: msg.signal });
         else if (msg.type === 'spawn-error')
-          errors.set(msg.ptyId, msg.message ?? msg.launchFailure);
+          errors.set(
+            msg.ptyId,
+            msg.shellNeverAttached === true
+              ? `shell never attached (exit code ${msg.exitCode ?? 'none'})`
+              : (msg.message ?? msg.launchFailure),
+          );
       },
     },
     spawn: options.spawn,
@@ -148,12 +153,15 @@ export async function waitForCondition(
 ): Promise<void> {
   const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
   const timeoutMs = requireDuration(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 'timeout', label);
-  const deadline = performance.now() + timeoutMs;
+  const startedAt = performance.now();
+  const deadline = startedAt + timeoutMs;
   for (;;) {
     if (predicate()) return;
     const failure = stream.failure();
     if (failure !== null) {
-      throw new Error(`shell failed before ${label}: ${failure}`);
+      throw new Error(
+        `shell failed before ${label}: ${failure} (after ${Math.round(performance.now() - startedAt)}ms, received ${describeReceived(stream.read())})`,
+      );
     }
     if (performance.now() >= deadline) {
       throw new Error(
@@ -312,7 +320,7 @@ async function waitForShellFirstOutput(
     const failure = stream.failure();
     if (failure !== null) {
       throw new Error(
-        `shell died before producing output for ${label}, probe unwritten: ${failure}`,
+        `shell died before producing output for ${label}, probe unwritten: ${failure} (after ${Math.round(performance.now() - startedAt)}ms, received ${describeReceived(stream.read())})`,
       );
     }
     if (performance.now() >= deadline) {

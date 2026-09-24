@@ -516,6 +516,53 @@ describe('setupPtyHost — exit', () => {
   });
 });
 
+describe('setupPtyHost — Windows session that ends before its shell attached', () => {
+  const WINDOWS_HOST = {
+    platform: 'win32',
+    env: { SystemRoot: 'C:\\Windows' },
+    shellExists: () => false,
+    pathProbe: () => null,
+  } as const;
+  const endings = (posted: PtyHostOutgoingMessage[]) =>
+    posted.filter((message) => message.type === 'exit' || message.type === 'spawn-error');
+
+  test('a pty that exits while still reporting pid 0 is reported as never started', () => {
+    const pty = Object.assign(makeFakePty(), { pid: 0 });
+    const h = makeHarness({ pty, ...WINDOWS_HOST });
+    h.fire(CREATE({ ptyId: 'unattached', cwd: 'C:\\project' }));
+    pty.emitExit({ exitCode: -1, signal: undefined });
+
+    expect(endings(h.posted)).toEqual([
+      { type: 'spawn-error', ptyId: 'unattached', shellNeverAttached: true, exitCode: -1 },
+    ]);
+  });
+
+  test('a pty whose shell attached and then exited -1 without output is still a shell exit', () => {
+    const pty = makeFakePty();
+    const h = makeHarness({ pty, ...WINDOWS_HOST });
+    h.fire(CREATE({ ptyId: 'attached', cwd: 'C:\\project' }));
+    pty.emitExit({ exitCode: -1, signal: undefined });
+
+    expect(endings(h.posted)).toEqual([
+      { type: 'exit', ptyId: 'attached', exitCode: -1, signal: null },
+    ]);
+  });
+
+  test('a never-attached pty that ends during shutdown still lets the host exit', () => {
+    const pty = Object.assign(makeFakePty(), { pid: 0 });
+    const exitHost = vi.fn();
+    const h = makeHarness({ pty, exitHost, ...WINDOWS_HOST });
+    h.fire(CREATE({ ptyId: 'unattached', cwd: 'C:\\project' }));
+    h.fire({ type: 'shutdown' });
+    expect(exitHost).not.toHaveBeenCalled();
+
+    pty.emitExit({ exitCode: -1, signal: undefined });
+
+    expect(exitHost).toHaveBeenCalledTimes(1);
+    expect(exitHost).toHaveBeenCalledWith(0);
+  });
+});
+
 describe('setupPtyHost — containment (AC5: host survives a PTY failure)', () => {
   test.each([
     'Cannot find conpty.dll beside conpty.node',

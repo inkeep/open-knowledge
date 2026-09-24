@@ -101,12 +101,22 @@ type PtySpawnErrorMessage =
       ptyId: string;
       message: string;
       launchFailure?: undefined;
+      shellNeverAttached?: undefined;
     }
   | {
       type: 'spawn-error';
       ptyId: string;
       message?: undefined;
       launchFailure: WindowsShellLaunchFailureReason;
+      shellNeverAttached?: undefined;
+    }
+  | {
+      type: 'spawn-error';
+      ptyId: string;
+      message?: undefined;
+      launchFailure?: undefined;
+      shellNeverAttached: true;
+      exitCode: number | undefined;
     };
 type PtyShellNoticeMessage =
   | {
@@ -562,6 +572,17 @@ function conptyDllLoadFailureReason(
   return prefix === undefined ? null : CONPTY_DLL_LOAD_ERROR_PREFIXES[prefix];
 }
 
+function classifyNodePtyEnding(
+  ptyId: string,
+  pidAtExit: number,
+  { exitCode, signal }: { exitCode: number | undefined; signal?: number },
+): PtyExitMessage | Extract<PtySpawnErrorMessage, { shellNeverAttached: true }> {
+  if (pidAtExit === 0) {
+    return { type: 'spawn-error', ptyId, shellNeverAttached: true, exitCode };
+  }
+  return { type: 'exit', ptyId, exitCode, signal: signal ?? null };
+}
+
 export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   const env = deps.env ?? (process.env as Record<string, string | undefined>);
   const platform = deps.platform ?? process.platform;
@@ -768,10 +789,10 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     pty.onData((data) => {
       if (sessions.get(ptyId) === pty) post({ type: 'data', ptyId, data });
     });
-    pty.onExit(({ exitCode, signal }) => {
+    pty.onExit((event) => {
       clearKillEscalate(ptyId);
       if (sessions.get(ptyId) === pty) sessions.delete(ptyId);
-      post({ type: 'exit', ptyId, exitCode, signal: signal ?? null });
+      post(classifyNodePtyEnding(ptyId, pty.pid, event));
       if (shuttingDown && sessions.size === 0) finishShutdown();
     });
   }
