@@ -49,11 +49,19 @@ export type PiBridgeThreadState =
   | 'bridge-failed'
   | 'trust-failed';
 
+export interface ThreadAuthTerminalLaunch {
+  executable: string;
+  args: string[];
+  env: Record<string, string>;
+  pathPrepend: string[];
+}
+
 export interface ThreadAuthMethod {
   id: string;
   name: string;
   description?: string;
   kind?: string;
+  terminalLaunchAvailable?: true;
 }
 
 export interface ThreadFailureDetail {
@@ -345,6 +353,12 @@ export type ThreadClientFrame =
       reqId: string;
     }
   | {
+      op: 'terminal_auth_launch';
+      threadId: string;
+      reqId: string;
+      methodId: string;
+    }
+  | {
       op: 'authenticate';
       threadId: string;
       reqId: string;
@@ -360,6 +374,7 @@ export type ThreadServerFrame =
   | { op: 'created'; reqId: string; info: ThreadInfo }
   | { op: 'resumed'; reqId: string; info: ThreadInfo }
   | { op: 'retried'; reqId: string; info: ThreadInfo }
+  | { op: 'terminal_auth_launch_ready'; reqId: string; launch: ThreadAuthTerminalLaunch }
   | { op: 'context_window_set'; reqId: string; info: ThreadInfo }
   | { op: 'authenticated'; reqId: string; info: ThreadInfo }
   | { op: 'subscribed'; threadId: string; fromSeq: number; info: ThreadInfo }
@@ -419,6 +434,7 @@ const CLIENT_OPS = new Set([
   'rename',
   'resume',
   'retry',
+  'terminal_auth_launch',
   'authenticate',
   'delete',
   'list',
@@ -582,6 +598,9 @@ export function parseThreadClientFrame(raw: string): ThreadClientFrame | null {
       return frame as unknown as ThreadClientFrame;
     case 'retry':
       if (!str('threadId') || !str('reqId')) return null;
+      return frame as unknown as ThreadClientFrame;
+    case 'terminal_auth_launch':
+      if (!str('threadId') || !str('reqId') || !str('methodId')) return null;
       return frame as unknown as ThreadClientFrame;
     case 'authenticate':
       if (!str('threadId') || !str('reqId') || !str('methodId')) return null;

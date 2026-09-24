@@ -181,6 +181,7 @@ function buildEnv(): TestEnv {
       },
       utilityEntryPath: '/fake/utility-entry.js',
       rendererEntryPath: '/fake/renderer/index.html',
+      terminalAuthAvailable: true,
       appVersion: '9.9.9-test',
       setTimeout: (cb, ms) => {
         timers.push({ cb, ms });
@@ -272,6 +273,7 @@ describe('WindowManager', () => {
         didEnsureGit: false,
         consentVersion: 1,
         reactShellDistDir: '/fake/renderer',
+        terminalAuthAvailable: true,
       },
     });
 
@@ -335,6 +337,25 @@ describe('WindowManager', () => {
     await promise;
   });
 
+  test('createProjectWindow tells the server when this host has no terminal to sign in with', async () => {
+    const noPtyEnv = buildEnv();
+    noPtyEnv.deps.terminalAuthAvailable = false;
+    const wm = new WindowManager(noPtyEnv.deps);
+    const promise = wm.createProjectWindow({ projectPath: '/tmp/no-pty-project' });
+
+    const utility = noPtyEnv.utilities[0];
+    if (!utility) throw new Error('utility not forked');
+    expect(utility.postMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'init',
+        opts: expect.objectContaining({ terminalAuthAvailable: false }),
+      }),
+    );
+
+    utility.fire({ type: 'ready', port: 51237, apiOrigin: 'http://localhost:51237' });
+    await promise;
+  });
+
   test('createProjectWindow OMITS reactShellDistDir in dev mode (rendererDevUrl set)', async () => {
     const devEnv = buildEnv();
     devEnv.deps.rendererDevUrl = 'http://localhost:5173/';
@@ -353,6 +374,7 @@ describe('WindowManager', () => {
         host: '127.0.0.1',
         didEnsureGit: false,
         consentVersion: 1,
+        terminalAuthAvailable: true,
       },
     });
 

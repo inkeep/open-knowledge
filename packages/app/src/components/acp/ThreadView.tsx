@@ -5,6 +5,7 @@ import type {
   AttachmentPart,
   QueuedMessage,
   SessionConfigOption,
+  ThreadAuthMethod,
   ThreadFailureDetail,
   ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
@@ -74,7 +75,11 @@ import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { CopyButton } from '@/components/CopyButton';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
-import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
+import { subscribeToSignInTerminalExits } from '@/components/handoff/sign-in-terminal-events';
+import {
+  requestTerminalCommandLaunch,
+  requestTerminalLaunch,
+} from '@/components/handoff/terminal-launch-events';
 import { useOptionalPageList } from '@/components/PageListContext';
 import { RotatingComposerPlaceholder } from '@/components/RotatingComposerPlaceholder';
 import { Badge } from '@/components/ui/badge';
@@ -123,7 +128,7 @@ import {
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
-import { useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
+import { terminalLaunchAvailable, useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
 import {
   attachmentBudgetKb,
   collectAllFiles,
@@ -209,6 +214,7 @@ import {
   type ThreadAuthActionKind,
   type ThreadAuthOffer,
   type ThreadAuthOfferWithoutSignIn,
+  terminalAuthMethods,
   threadAuthHistoryOffer,
   threadAuthOffer,
   threadAuthOfferWithoutSignInMethods,
@@ -290,6 +296,56 @@ function highlightStderr(machineDetail: string): ReactNode {
 
 function isSignInWaitingStatus(status: ThreadInfo['status']): boolean {
   return status === 'auth_required' || status === 'authenticating';
+}
+
+interface StrandedMessage {
+  readonly messageId: string;
+  readonly text: string;
+  readonly attachments: readonly AttachmentPart[];
+  readonly foldedIndex: number;
+}
+
+function latestSignInNoticeIndex(items: readonly RenderedItem[]): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (
+      item?.kind === 'notice' &&
+      item.superseded !== true &&
+      item.failure?.reason === 'auth-required'
+    ) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function strandedMessageBeforeSignIn(items: readonly RenderedItem[]): StrandedMessage | null {
+  const noticeIndex = latestSignInNoticeIndex(items);
+  if (noticeIndex === -1) return null;
+  for (let index = noticeIndex - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind !== 'message' || item.role !== 'user') continue;
+    let foldedIndex = 0;
+    for (let before = 0; before < index; before += 1) {
+      const earlier = items[before];
+      if (earlier?.kind === 'notice' && earlier.superseded === true) continue;
+      foldedIndex += 1;
+    }
+    return {
+      messageId: item.messageId,
+      text: item.text,
+      attachments: item.attachments ?? [],
+      foldedIndex,
+    };
+  }
+  return null;
+}
+
+function latestTerminalAuthMethod(items: readonly RenderedItem[]): ThreadAuthMethod | null {
+  const noticeIndex = latestSignInNoticeIndex(items);
+  const item = noticeIndex === -1 ? undefined : items[noticeIndex];
+  const methods = item?.kind === 'notice' ? (item.failure?.authMethods ?? []) : [];
+  return terminalAuthMethods(methods)[0] ?? null;
 }
 
 function isStartingStatus(status: ThreadInfo['status']): boolean {
@@ -585,6 +641,7 @@ export function ThreadView({
   const awaitingSignIn = isSignInWaitingStatus(status);
   const canRetry = !archived && (status === 'error' || awaitingSignIn);
   const terminalCli = useHarnessTerminalCli(info.agent.id);
+  const terminalAvailable = terminalLaunchAvailable();
   const [retryPending, setRetryPending] = useState(false);
   const [revertedPositions, setRevertedPositions] = useState<ReadonlySet<number>>(new Set());
   const canQueue = !archived && turnActive;
@@ -837,14 +894,33 @@ export function ThreadView({
   }, [info.threadId]);
 
   const retryThread = (): void => {
+    const stranded =
+      awaitingSignIn && model !== null ? strandedMessageBeforeSignIn(model.items) : null;
     setRetryPending(true);
     void client
       .retryThread(info.threadId)
+      .then((next) => {
+        if (stranded === null || next.status !== 'ready') return;
+        setRevertedPositions((prev) => new Set(prev).add(stranded.foldedIndex));
+        void sendText(stranded.text, stranded.text, stranded.attachments);
+      })
       .catch((err: unknown) => {
         toast.error(t`Couldn't start ${agentName}: ${errorText(err)}`);
       })
       .finally(() => setRetryPending(false));
   };
+
+  const retryAfterSignInTerminal = useEffectEvent(() => {
+    if (!awaitingSignIn || retryPending) return;
+    retryThread();
+  });
+  useEffect(
+    () =>
+      subscribeToSignInTerminalExits((threadId) => {
+        if (threadId === info.threadId) retryAfterSignInTerminal();
+      }),
+    [info.threadId],
+  );
 
   const authenticateThread = async (methodId: string): Promise<void> => {
     await client.authenticateThread(info.threadId, methodId);
@@ -911,9 +987,27 @@ export function ThreadView({
       case 'new-chat':
         startFreshThread();
         return;
-      case 'terminal-sign-in':
-        if (terminalCli !== null) requestTerminalLaunch('', terminalCli);
+      case 'terminal-sign-in': {
+        const method =
+          terminalAvailable && model !== null ? latestTerminalAuthMethod(model.items) : null;
+        if (method !== null) {
+          void client
+            .terminalAuthLaunch(info.threadId, method.id)
+            .then((launch) => {
+              requestTerminalCommandLaunch({
+                label: method.name,
+                command: launch,
+                signInThreadId: info.threadId,
+              });
+            })
+            .catch((err: unknown) => {
+              toast.error(t`Sign-in failed: ${errorText(err)}`);
+            });
+        } else if (terminalCli !== null) {
+          requestTerminalLaunch('', terminalCli, { signInThreadId: info.threadId });
+        }
         return;
+      }
       default: {
         const exhaustive: never = kind;
         void exhaustive;
@@ -968,16 +1062,8 @@ export function ThreadView({
     agentName,
     terminalCli,
   });
-  let authOfferNoticeIndex = -1;
-  if (authOffer.actionLabel !== null) {
-    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
-      const item = visibleItems[index];
-      if (item?.kind === 'notice' && item.failure?.reason === 'auth-required') {
-        authOfferNoticeIndex = index;
-        break;
-      }
-    }
-  }
+  const authOfferNoticeIndex =
+    authOffer.actionLabel === null ? -1 : latestSignInNoticeIndex(visibleItems);
   let restoreNoticeIndex = -1;
   if (!archived && status !== 'exited') {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -1037,21 +1123,17 @@ export function ThreadView({
         ? t`Couldn't resume this chat: ${resumeError.message}`
         : '';
 
+  const newChatOfferInTranscript = authOffer.kind === 'new-chat' && authOfferNoticeIndex !== -1;
+
   const items = visibleItems;
   const mentionRecency: MentionRecency = {
     currentDocName: activeDocName,
     recentPaths: threadAttachmentPaths(items),
   };
-  let authPrompt: ThreadFailureDetail | null = null;
-  if (awaitingSignIn && !archived) {
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const item = items[index];
-      if (item?.kind === 'notice' && item.failure?.reason === 'auth-required') {
-        authPrompt = item.failure;
-        break;
-      }
-    }
-  }
+  const signInNoticeIndex = awaitingSignIn && !archived ? latestSignInNoticeIndex(items) : -1;
+  const signInNotice = signInNoticeIndex === -1 ? undefined : items[signInNoticeIndex];
+  const authPrompt: ThreadFailureDetail | null =
+    signInNotice?.kind === 'notice' ? signInNotice.failure : null;
 
   return (
     <MentionRecencyContext value={mentionRecency}>
@@ -1149,6 +1231,7 @@ export function ThreadView({
                         authMethods: authPrompt.authMethods ?? [],
                         agentName,
                         terminalCli,
+                        terminalAvailable,
                       })}
                       agent={info.agent}
                       agentName={agentName}
@@ -1366,7 +1449,7 @@ export function ThreadView({
             >
               {announcedStartStatus}
             </span>
-            {resumeFailureMessage !== '' ? (
+            {resumeFailureMessage !== '' && !newChatOfferInTranscript ? (
               <div
                 className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
                 data-testid="agent-thread-resume-failed"

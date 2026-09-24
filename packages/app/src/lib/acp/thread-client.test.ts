@@ -590,6 +590,44 @@ describe('retry and sign-in lifecycle', () => {
     frame({ op: 'error', code: 'not-ready', message: 'wrong account', reqId, threadId: 't1' });
     await expect(pending).rejects.toThrow(/wrong account/);
   });
+
+  test('terminalAuthLaunch sends the method id and resolves with the launch the server composed', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.terminalAuthLaunch('t1', 'cli-login');
+    await flush();
+    const request = sent.find((f) => f.op === 'terminal_auth_launch');
+    expect(request).toMatchObject({
+      op: 'terminal_auth_launch',
+      threadId: 't1',
+      methodId: 'cli-login',
+    });
+    expect(String(request?.reqId)).toMatch(/^terminal-auth-/);
+
+    const launch = {
+      executable: 'auggie',
+      args: ['--acp', 'login'],
+      env: { AUGGIE_LOGIN_FLOW: 'terminal' },
+      pathPrepend: [],
+    };
+    frame({ op: 'terminal_auth_launch_ready', reqId: request?.reqId as string, launch });
+    await expect(pending).resolves.toEqual(launch);
+  });
+
+  test('a terminal launch the server refuses rejects with its reason', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.terminalAuthLaunch('t1', 'missing');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'terminal_auth_launch')?.reqId as string;
+
+    frame({
+      op: 'error',
+      code: 'not-ready',
+      message: 'this agent offers no terminal sign-in by that name',
+      reqId,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toThrow(/no terminal sign-in by that name/);
+  });
 });
 
 describe('createThread channel wait', () => {

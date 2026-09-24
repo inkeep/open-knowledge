@@ -102,6 +102,7 @@ function makeManager(
     log?: PinoLogger;
     projectSkillSourceDir?: string | null;
     autoApproveOkTools?: () => boolean;
+    terminalAuthAvailable?: boolean;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -7222,4 +7223,114 @@ describe('launch failure diagnostics and npx cache recovery', () => {
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(existsSync(join(localDir, ACP_LAUNCH_FAILURE_LOG))).toBe(false);
   }, 30_000);
+});
+
+function writeTerminalAuthAgentEntry(
+  localDir: string,
+  id: string,
+  env: Record<string, string>,
+  capsFile: string,
+): string {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `
+import { writeFileSync } from 'node:fs';
+const write = (msg) => process.stdout.write(JSON.stringify(msg) + '\\n');
+let buffer = '';
+process.stdin.setEncoding('utf8');
+process.stdin.on('data', (chunk) => {
+  buffer += chunk;
+  let idx = buffer.indexOf('\\n');
+  while (idx !== -1) {
+    const line = buffer.slice(0, idx);
+    buffer = buffer.slice(idx + 1);
+    idx = buffer.indexOf('\\n');
+    if (line.trim() === '') continue;
+    const msg = JSON.parse(line);
+    if (msg.method === 'initialize') {
+      writeFileSync(${JSON.stringify(capsFile)}, JSON.stringify(msg.params.clientCapabilities ?? {}));
+      write({
+        jsonrpc: '2.0',
+        id: msg.id,
+        result: {
+          protocolVersion: 1,
+          agentCapabilities: {},
+          authMethods: [
+            { type: 'terminal', id: 'cli-login', name: 'CLI login', args: ['login'], env: { FROM_METHOD: '1' } },
+          ],
+        },
+      });
+    } else if (msg.method === 'session/new') {
+      write({ jsonrpc: '2.0', id: msg.id, error: { code: -32000, message: 'sign in required' } });
+    } else if (msg.id !== undefined) {
+      write({ jsonrpc: '2.0', id: msg.id, result: {} });
+    }
+  }
+});
+`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath], env }]),
+  );
+  return agentPath;
+}
+
+describe('terminal sign-in methods', () => {
+  test('the persisted method only flags the launch, and the live launch carries the env', async () => {
+    const localDir = tmp();
+    const capsFile = join(localDir, 'caps.json');
+    const agentPath = writeTerminalAuthAgentEntry(
+      localDir,
+      'term-auth',
+      { FIXTURE_HOME: '/tmp/fixture-home' },
+      capsFile,
+    );
+    const manager = makeManager(tmp(), localDir, { terminalAuthAvailable: true });
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'term-auth' } });
+    const statuses: StatusEvent[] = [];
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(
+      () => statuses.some((event) => event.status === 'auth_required'),
+      15_000,
+      'sign in',
+    );
+    const failure = [...statuses]
+      .reverse()
+      .find((event) => event.status === 'auth_required')?.failure;
+    expect(failure?.authMethods).toEqual([
+      {
+        id: 'cli-login',
+        name: 'CLI login',
+        kind: 'terminal',
+        terminalLaunchAvailable: true,
+      },
+    ]);
+    expect(JSON.stringify(failure)).not.toContain('fixture-home');
+    expect(manager.terminalAuthLaunch(info.threadId, 'cli-login')).toEqual({
+      executable: 'node',
+      args: [agentPath, 'login'],
+      env: { FIXTURE_HOME: '/tmp/fixture-home', FROM_METHOD: '1' },
+      pathPrepend: [],
+    });
+    expect(() => manager.terminalAuthLaunch(info.threadId, 'missing')).toThrow(
+      'no terminal sign-in',
+    );
+    expect(JSON.parse(readFileSync(capsFile, 'utf8'))).toMatchObject({ auth: { terminal: true } });
+  }, 20_000);
+
+  test('a host without a terminal does not advertise terminal sign-in', async () => {
+    const localDir = tmp();
+    const capsFile = join(localDir, 'caps.json');
+    writeTerminalAuthAgentEntry(localDir, 'term-auth', {}, capsFile);
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'term-auth' } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'auth_required',
+      15_000,
+      'sign in',
+    );
+    expect(JSON.parse(readFileSync(capsFile, 'utf8'))).not.toHaveProperty('auth');
+  }, 20_000);
 });

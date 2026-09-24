@@ -27,6 +27,7 @@ export interface ThreadAuthOfferInput {
   readonly authMethods: readonly ThreadAuthMethod[];
   readonly agentName: string;
   readonly terminalCli: TerminalCli | null;
+  readonly terminalAvailable: boolean;
 }
 
 export function isThreadResumable(info: Pick<ThreadInfo, 'resumable'>): boolean {
@@ -34,7 +35,11 @@ export function isThreadResumable(info: Pick<ThreadInfo, 'resumable'>): boolean 
 }
 
 function isClickable(method: ThreadAuthMethod): boolean {
-  return method.kind !== 'terminal' && method.kind !== 'env_var';
+  return (
+    method.kind !== 'terminal' &&
+    method.kind !== 'env_var' &&
+    method.terminalLaunchAvailable !== true
+  );
 }
 
 export function clickableAuthMethods(
@@ -47,6 +52,12 @@ export function manualAuthMethods(
   methods: readonly ThreadAuthMethod[],
 ): readonly ThreadAuthMethod[] {
   return methods.filter((method) => !isClickable(method));
+}
+
+export function terminalAuthMethods(
+  methods: readonly ThreadAuthMethod[],
+): readonly ThreadAuthMethod[] {
+  return methods.filter((method) => method.terminalLaunchAvailable === true);
 }
 
 export function threadAuthHistoryOffer(agentName: string): ThreadAuthOfferWithoutSignIn {
@@ -91,7 +102,7 @@ export function threadAuthOfferWithoutSignInMethods({
   status,
   agentName,
   terminalCli,
-}: Omit<ThreadAuthOfferInput, 'authMethods'>): ThreadAuthOfferWithoutSignIn {
+}: Omit<ThreadAuthOfferInput, 'authMethods' | 'terminalAvailable'>): ThreadAuthOfferWithoutSignIn {
   if (archived) {
     if (!resumable) {
       return threadAuthNewChatOffer(agentName);
@@ -133,13 +144,20 @@ export function threadAuthOffer({
   authMethods,
   agentName,
   terminalCli,
-}: Pick<ThreadAuthOfferInput, 'authMethods' | 'agentName' | 'terminalCli'>): ThreadAuthOffer {
+  terminalAvailable,
+}: Pick<
+  ThreadAuthOfferInput,
+  'authMethods' | 'agentName' | 'terminalCli' | 'terminalAvailable'
+>): ThreadAuthOffer {
   if (clickableAuthMethods(authMethods).length > 0) {
     return {
       kind: 'sign-in',
       headline: t`Sign in to ${agentName} to continue.`,
       actionLabel: t`Sign in`,
     };
+  }
+  if (terminalAvailable && terminalAuthMethods(authMethods).length > 0) {
+    return threadAuthTerminalOffer(agentName);
   }
   if (manualAuthMethods(authMethods).length > 0) {
     if (terminalCli != null) return threadAuthTerminalOffer(agentName);

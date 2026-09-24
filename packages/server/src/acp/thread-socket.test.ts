@@ -62,7 +62,10 @@ process.stdin.on('data', (chunk) => {
     if (msg.method === 'initialize') {
       const agentCapabilities = {};
       if (caps.includes('resume')) agentCapabilities.sessionCapabilities = { resume: {} };
-      reply({ protocolVersion: 1, agentCapabilities });
+      const authMethods = caps.includes('terminal-login')
+        ? [{ id: 'cli-login', name: 'CLI login', type: 'terminal', args: ['login'], env: { FROM_METHOD: '1' } }]
+        : undefined;
+      reply({ protocolVersion: 1, agentCapabilities, ...(authMethods ? { authMethods } : {}) });
     } else if (msg.method === 'session/new') {
       reply({ sessionId: 'sess-fixed' });
     } else if (msg.method === 'session/prompt') {
@@ -367,6 +370,41 @@ describe('/collab/thread socket — history ops', () => {
     const err = await socket.awaitFrame('error');
     expect(err.code).toBe('not-ready');
     expect(err.reqId).toBe('au1');
+    socket.close();
+  }, 45_000);
+
+  test('terminal_auth_launch answers the reqId with the composed launch, and refuses an unknown method', async () => {
+    const localDir = tmp();
+    writeFixtureAgent(localDir, 'terminal-login');
+    const manager = makeManager(tmp(), localDir);
+    await manager.init();
+    const socket = attachFakeSocket(manager);
+
+    socket.emit(
+      JSON.stringify({ op: 'create', reqId: 'c1', agent: { source: 'custom', id: 'fixture' } }),
+    );
+    const created = await socket.awaitFrame('created');
+    const threadId = created.info.threadId;
+    await waitStatus(manager, threadId, 'ready');
+
+    socket.emit(
+      JSON.stringify({ op: 'terminal_auth_launch', threadId, reqId: 'tl1', methodId: 'cli-login' }),
+    );
+    const ready = await socket.awaitFrame('terminal_auth_launch_ready');
+    expect(ready.reqId).toBe('tl1');
+    expect(ready.launch).toMatchObject({
+      executable: 'node',
+      args: [join(localDir, 'fixture-agent.mjs'), 'login'],
+      env: { FAKE_CAPS: 'terminal-login', FROM_METHOD: '1' },
+      pathPrepend: [],
+    });
+
+    socket.emit(
+      JSON.stringify({ op: 'terminal_auth_launch', threadId, reqId: 'tl2', methodId: 'missing' }),
+    );
+    const err = await socket.awaitFrame('error');
+    expect(err.code).toBe('not-ready');
+    expect(err.reqId).toBe('tl2');
     socket.close();
   }, 45_000);
 

@@ -14,7 +14,10 @@ export interface ResolveDetachedSpawnArgsInput {
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly singleFile?: string;
   readonly projectDir?: string;
+  readonly terminalAuthAvailable?: boolean;
 }
+
+export const TERMINAL_AUTH_ARG = '--terminal-auth';
 
 export interface ResolvedDetachedSpawnArgs {
   readonly file: string;
@@ -77,6 +80,7 @@ export function resolveDetachedSpawnArgs(
     env,
     singleFile,
     projectDir,
+    terminalAuthAvailable,
   } = input;
 
   const file =
@@ -94,6 +98,7 @@ export function resolveDetachedSpawnArgs(
     ...(singleFile !== undefined
       ? ['--single-file', singleFile, '--project-dir', projectRoot]
       : []),
+    ...(terminalAuthAvailable === true ? [TERMINAL_AUTH_ARG] : []),
   ];
 
   const inheritedPath = readEnvPath(env);

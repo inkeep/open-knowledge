@@ -15,6 +15,7 @@ vi.mock('node:os', async (importOriginal) => {
 
 import { isTerminalPlatform } from '../../src/shared/terminal-platform.ts';
 import {
+  buildLaunchEnv,
   buildShellArgs,
   buildShellEnv,
   type HostReapProcess,
@@ -953,6 +954,88 @@ describe('setupPtyHost — incoming message validation (asIncomingMessage guard)
     ]);
   });
 
+  test('accepts a structured POSIX launch, quotes its argv and hands its env to the login alone', () => {
+    const h = makeHarness();
+    h.fireRaw({
+      type: 'create',
+      ptyId: 'p1',
+      cwd: '/x',
+      cols: 80,
+      rows: 24,
+      launchCommand: {
+        executable: '/rt/bin/npx',
+        args: ['-y', '@augmentcode/auggie@1.2.3', '--acp', 'login'],
+        env: { AUGGIE_LOGIN_FLOW: 'terminal' },
+        pathPrepend: ['/rt/bin'],
+      },
+    });
+    expect(h.spawnCalls).toHaveLength(1);
+    const [managedBinDir] = buildShellEnv({}, { platform: 'darwin' }).managedBinDirs;
+    expect(h.spawnCalls[0]?.args).toEqual([
+      '-l',
+      '-i',
+      '-c',
+      `case ":$PATH:" in *:'${managedBinDir}':*) ;; *) PATH='${managedBinDir}'"\${PATH:+:$PATH}" ;; esac; case ":$PATH:" in *:'/rt/bin':*) ;; *) PATH='/rt/bin'"\${PATH:+:$PATH}" ;; esac; export PATH; (export AUGGIE_LOGIN_FLOW="$OK_TERMINAL_LAUNCH_ENV_0"; exec '/rt/bin/npx' '-y' '@augmentcode/auggie@1.2.3' '--acp' 'login'); unset OK_TERMINAL_LAUNCH_ENV_0; exec '/bin/zsh' -l -i`,
+    ]);
+    expect(h.spawnCalls[0]?.options.env?.OK_TERMINAL_LAUNCH_ENV_0).toBe('terminal');
+    expect(h.spawnCalls[0]?.options.env).not.toHaveProperty('AUGGIE_LOGIN_FLOW');
+    expect(h.spawnCalls[0]?.args).not.toContain('terminal');
+    expect(h.spawnCalls[0]?.options.env?.PATH).not.toContain('/rt/bin');
+  });
+
+  test('drops a structured launch whose env names, values or PATH dirs are malformed', () => {
+    const h = makeHarness();
+    h.fireRaw({
+      type: 'create',
+      ptyId: 'p1',
+      cwd: '/x',
+      cols: 80,
+      rows: 24,
+      launchCommand: { executable: 'agent', args: ['login'], env: { A: 1 } },
+    });
+    h.fireRaw({
+      type: 'create',
+      ptyId: 'p3',
+      cwd: '/x',
+      cols: 80,
+      rows: 24,
+      launchCommand: { executable: 'agent', args: ['login'], env: { '--split-string': 'x' } },
+    });
+    h.fireRaw({
+      type: 'create',
+      ptyId: 'p5',
+      cwd: '/x',
+      cols: 80,
+      rows: 24,
+      launchCommand: {
+        executable: 'agent',
+        args: ['login'],
+        env: { OK_TERMINAL_LAUNCH_ENV_0: 'the slot the launch itself uses' },
+      },
+    });
+    h.fireRaw({
+      type: 'create',
+      ptyId: 'p4',
+      cwd: '/x',
+      cols: 80,
+      rows: 24,
+      launchCommand: {
+        executable: 'agent',
+        args: ['login'],
+        env: { OK: `a${String.fromCharCode(0)}b` },
+      },
+    });
+    h.fireRaw({
+      type: 'create',
+      ptyId: 'p2',
+      cwd: '/x',
+      cols: 80,
+      rows: 24,
+      launchCommand: { executable: 'agent', args: ['login'], pathPrepend: [''] },
+    });
+    expect(h.spawnCalls).toHaveLength(0);
+  });
+
   test('accepts a structured Windows launch and composes it after shell resolution', () => {
     const h = makeHarness({
       platform: 'win32',
@@ -1177,6 +1260,68 @@ describe('buildShellArgs', () => {
       '-c',
       // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion in an expected command string, not a JS template placeholder
       "case \":$PATH:\" in *:'/managed/bin':*) ;; *) PATH='/managed/bin'\"${PATH:+:$PATH}\" ;; esac; export PATH; claude; exec '/bin/bash' -i",
+    ]);
+  });
+
+  test('a structured POSIX launch reasserts its own dirs ahead of the managed ones', () => {
+    expect(
+      buildShellArgs(
+        'linux',
+        '/bin/bash',
+        { executable: '/rt/bin/npx', args: ['-y', 'pkg@1', 'login'], pathPrepend: ['/rt/bin'] },
+        ['/managed/bin'],
+      ),
+    ).toEqual([
+      '-i',
+      '-c',
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: shell parameter expansion in an expected command string, not a JS template placeholder
+      "case \":$PATH:\" in *:'/managed/bin':*) ;; *) PATH='/managed/bin'\"${PATH:+:$PATH}\" ;; esac; case \":$PATH:\" in *:'/rt/bin':*) ;; *) PATH='/rt/bin'\"${PATH:+:$PATH}\" ;; esac; export PATH; '/rt/bin/npx' '-y' 'pkg@1' 'login'; exec '/bin/bash' -i",
+    ]);
+  });
+
+  test('several env values map each slot onto the same name in the script and in the spawn env', () => {
+    const h = makeHarness();
+    const env = { ZDOTDIR: '/agent/zdot', AUGGIE_HOME: '/agent/home' };
+    h.fireRaw({
+      type: 'create',
+      ptyId: 'p1',
+      cwd: '/x',
+      cols: 80,
+      rows: 24,
+      launchCommand: { executable: 'agent', args: ['login'], env },
+    });
+    const call = h.spawnCalls[0];
+    if (!call) throw new Error('no spawn');
+    const script = call.args[3] ?? '';
+    expect(script).toContain(
+      `(export ZDOTDIR="$OK_TERMINAL_LAUNCH_ENV_0" AUGGIE_HOME="$OK_TERMINAL_LAUNCH_ENV_1"; exec 'agent' 'login'); unset OK_TERMINAL_LAUNCH_ENV_0 OK_TERMINAL_LAUNCH_ENV_1; exec`,
+    );
+    const pairs = [...script.matchAll(/(\w+)="\$(OK_TERMINAL_LAUNCH_ENV_\d+)"/g)].map((match) => [
+      match[1] ?? '',
+      match[2] ?? '',
+    ]);
+    expect(pairs).toEqual([
+      ['ZDOTDIR', 'OK_TERMINAL_LAUNCH_ENV_0'],
+      ['AUGGIE_HOME', 'OK_TERMINAL_LAUNCH_ENV_1'],
+    ]);
+    for (const [name, slot] of pairs) {
+      expect(call.options.env?.[slot]).toBe(env[name as keyof typeof env]);
+      expect(call.options.env).not.toHaveProperty(name);
+    }
+  });
+
+  test('a structured launch under fish uses fish quoting for every token', () => {
+    expect(
+      buildShellArgs(
+        'linux',
+        '/usr/bin/fish',
+        { executable: 'agent', args: ["it\\'s", 'trailing\\'], env: { A: "x'y" } },
+        [],
+      ),
+    ).toEqual([
+      '-i',
+      '-c',
+      `begin; set -lx A "$OK_TERMINAL_LAUNCH_ENV_0"; 'agent' 'it\\\\\\'s' 'trailing\\\\'; end; set -e OK_TERMINAL_LAUNCH_ENV_0; exec '/usr/bin/fish' -i`,
     ]);
   });
 
@@ -1916,5 +2061,53 @@ describe('installHostReaping', () => {
     proc.emit('SIGINT');
     expect(killCount()).toBe(1);
     expect(proc.exitCodes).toEqual([0, 0]);
+  });
+});
+
+describe('buildLaunchEnv', () => {
+  test('a string launch keeps the shell env as is', () => {
+    const env = { PATH: '/usr/bin', A: '1' };
+    expect(buildLaunchEnv('darwin', env, "codex 'hi'")).toBe(env);
+  });
+
+  test('a structured launch parks its env in slot variables and leaves PATH to the command on POSIX', () => {
+    expect(
+      buildLaunchEnv(
+        'darwin',
+        { PATH: '/usr/bin', A: '1' },
+        { executable: 'x', args: [], env: { B: '2' }, pathPrepend: ['/rt/bin'] },
+      ),
+    ).toEqual({ PATH: '/usr/bin', A: '1', OK_TERMINAL_LAUNCH_ENV_0: '2' });
+  });
+
+  test("a method env name never reaches the shell's startup environment", () => {
+    const env = buildLaunchEnv(
+      'darwin',
+      { PATH: '/usr/bin', HOME: '/Users/me' },
+      {
+        executable: 'agent',
+        args: ['login'],
+        env: { ZDOTDIR: '/tmp/agent-owned', HOME: '/tmp/agent-owned', BASH_ENV: '/tmp/x.sh' },
+      },
+    );
+    expect(env).toEqual({
+      PATH: '/usr/bin',
+      HOME: '/Users/me',
+      OK_TERMINAL_LAUNCH_ENV_0: '/tmp/agent-owned',
+      OK_TERMINAL_LAUNCH_ENV_1: '/tmp/agent-owned',
+      OK_TERMINAL_LAUNCH_ENV_2: '/tmp/x.sh',
+    });
+    expect(env).not.toHaveProperty('ZDOTDIR');
+    expect(env).not.toHaveProperty('BASH_ENV');
+  });
+
+  test('a structured launch puts its PATH dirs first on Windows', () => {
+    expect(
+      buildLaunchEnv(
+        'win32',
+        { Path: 'C:\\Windows', A: '1' },
+        { executable: 'x', args: [], pathPrepend: ['C:\\rt\\bin'] },
+      ),
+    ).toEqual({ Path: 'C:\\rt\\bin;C:\\Windows', A: '1' });
   });
 });

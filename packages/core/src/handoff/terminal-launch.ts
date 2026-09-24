@@ -8,6 +8,8 @@ export function shellSingleQuote(s: string): string {
 export interface TerminalLaunchCommand {
   readonly executable: string;
   readonly args: readonly string[];
+  readonly env?: Readonly<Record<string, string>>;
+  readonly pathPrepend?: readonly string[];
   readonly supportFile?: {
     readonly kind: 'claude-settings';
     readonly relativePath: string;
@@ -21,7 +23,8 @@ function claudeSettingsFileArgs(relativePath: string): readonly string[] {
 
 export function launchWithoutSupportFile(launch: TerminalLaunchCommand): TerminalLaunchCommand {
   if (launch.supportFile === undefined) return launch;
-  return { executable: launch.executable, args: [] };
+  const { supportFile: _supportFile, ...rest } = launch;
+  return { ...rest, args: [] };
 }
 
 const WINDOWS_SHELL_FAMILY_VOCABULARY = ['powershell', 'cmd', 'bash'] as const;
@@ -47,9 +50,41 @@ function encodeUtf8Base64(value: string): string {
   return btoa(binary);
 }
 
+const TERMINAL_LAUNCH_ENV_SLOT_PREFIX = 'OK_TERMINAL_LAUNCH_ENV_';
+
+export interface TerminalLaunchEnvSlot {
+  readonly name: string;
+  readonly slot: string;
+  readonly value: string;
+}
+
+export function terminalLaunchEnvSlots(
+  env: Readonly<Record<string, string>> | undefined,
+): TerminalLaunchEnvSlot[] {
+  return Object.entries(env ?? {}).map(([name, value], index) => ({
+    name,
+    slot: `${TERMINAL_LAUNCH_ENV_SLOT_PREFIX}${index}`,
+    value,
+  }));
+}
+
 const BASH_STRUCTURED_LAUNCH_SCRIPT =
   `mapfile -d '' -t __ok_argv < <(printf '%s' "$1" | base64 -d); ` +
-  `((\${#__ok_argv[@]})) || exit 1; "\${__ok_argv[@]}"; exec "$BASH" --login -i`;
+  `((\${#__ok_argv[@]})) || exit 1; ` +
+  `mapfile -d '' -t __ok_env < <(printf '%s' "$2" | base64 -d); ` +
+  `(for ((__ok_i = 0; __ok_i < \${#__ok_env[@]}; __ok_i += 2)); do __ok_slot="\${__ok_env[__ok_i + 1]}"; ` +
+  `export "\${__ok_env[__ok_i]}=\${!__ok_slot}"; done; exec "\${__ok_argv[@]}"); ` +
+  `for ((__ok_i = 1; __ok_i < \${#__ok_env[@]}; __ok_i += 2)); do unset "\${__ok_env[__ok_i]}"; done; ` +
+  `exec "$BASH" --login -i`;
+
+const TERMINAL_LAUNCH_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+export function isTerminalLaunchEnvName(name: string): boolean {
+  return (
+    TERMINAL_LAUNCH_ENV_NAME.test(name) &&
+    !name.toUpperCase().startsWith(TERMINAL_LAUNCH_ENV_SLOT_PREFIX)
+  );
+}
 
 export function encodePowerShellCommand(script: string): string {
   let binary = '';
@@ -73,6 +108,10 @@ export function resolveWindowsShellFamily(shell: string): WindowsShellFamily | n
   if (base === 'cmd' || base === 'cmd.exe') return 'cmd';
   if (base === 'bash' || base === 'bash.exe') return 'bash';
   return null;
+}
+
+function isCmdSafeEnvValue(value: string): boolean {
+  return !Array.from(value).some((ch) => ch.charCodeAt(0) < 0x20) && !/["%!&|<>^()]/u.test(value);
 }
 
 function isCmdSafeToken(value: string): boolean {
@@ -128,14 +167,29 @@ export function composeWindowsShellLaunchArgs(
   ) {
     throw new WindowsShellLaunchError('invalid-launch');
   }
+  const NUL = String.fromCharCode(0);
+  const envEntries = Object.entries(launch.env ?? {});
+  if (envEntries.some(([key, value]) => !isTerminalLaunchEnvName(key) || value.includes(NUL))) {
+    throw new WindowsShellLaunchError('invalid-launch');
+  }
+  const loweredNames = new Set<string>();
+  for (const [key] of envEntries) {
+    const lowered = key.toLowerCase();
+    if (loweredNames.has(lowered)) throw new WindowsShellLaunchError('invalid-launch');
+    loweredNames.add(lowered);
+  }
+  const slots = terminalLaunchEnvSlots(launch.env);
   if (family === 'bash') {
+    const argv = [launch.executable, ...launch.args];
+    const pairs = slots.flatMap(({ name, slot }) => [name, slot]);
     return [
       '--login',
       '-i',
       '-c',
       BASH_STRUCTURED_LAUNCH_SCRIPT,
       'bash',
-      encodeUtf8Base64(`${[launch.executable, ...launch.args].join('\u0000')}\u0000`),
+      encodeUtf8Base64(`${argv.join(NUL)}${NUL}`),
+      ...(pairs.length === 0 ? [] : [encodeUtf8Base64(`${pairs.join(NUL)}${NUL}`)]),
     ];
   }
   const batchTarget = /\.(?:cmd|bat)$/iu.test(launch.executable);
@@ -144,11 +198,35 @@ export function composeWindowsShellLaunchArgs(
     if (tokens.some((token) => !isCmdSafeToken(token))) {
       throw new WindowsShellLaunchError('unsafe-argument');
     }
-    if (family === 'cmd') return `/K ${tokens.join(' ')}`;
+    if (family === 'cmd') {
+      if (slots.some(({ value }) => !isCmdSafeEnvValue(value))) {
+        throw new WindowsShellLaunchError('unsafe-argument');
+      }
+      const command = tokens.join(' ');
+      if (slots.length === 0) return `/K ${command}`;
+      const assign = slots.map(({ name, slot }) => `set "${name}=!${slot}!" & `).join('');
+      const clear = slots.map(({ slot }) => ` & set "${slot}="`).join('');
+      return `/K cmd /d /v:on /c "${assign}${command}"${clear}`;
+    }
   }
-  const script = `& ${psQuoteArg(launch.executable)}${launch.args
+  const command = `& ${psQuoteArg(launch.executable)}${launch.args
     .map((arg) => ` ${psQuoteArg(arg)}`)
     .join('')}`;
+  if (slots.length === 0) {
+    return ['-NoExit', '-EncodedCommand', encodePowerShellCommand(command)];
+  }
+  const names = slots.map(({ name }) => psQuoteArg(name)).join(', ');
+  const slotNames = slots.map(({ slot }) => psQuoteArg(slot)).join(', ');
+  const script =
+    `$__ok_names = @(${names}); $__ok_slots = @(${slotNames}); $__ok_prev = @{}; ` +
+    'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+    '$__ok_prev[$__ok_names[$__ok_i]] = [Environment]::GetEnvironmentVariable($__ok_names[$__ok_i]); ' +
+    "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], [Environment]::GetEnvironmentVariable($__ok_slots[$__ok_i]), 'Process') }; " +
+    `try { ${command} } finally { ` +
+    'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+    "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], $__ok_prev[$__ok_names[$__ok_i]], 'Process'); " +
+    "[Environment]::SetEnvironmentVariable($__ok_slots[$__ok_i], $null, 'Process') }; " +
+    'Remove-Variable __ok_names, __ok_slots, __ok_prev, __ok_i -ErrorAction SilentlyContinue }';
   return ['-NoExit', '-EncodedCommand', encodePowerShellCommand(script)];
 }
 

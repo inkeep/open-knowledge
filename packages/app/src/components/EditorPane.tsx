@@ -2,6 +2,7 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   isEditableTextDocFile,
   type TerminalCli,
+  type TerminalLaunchCommand,
   type TerminalPlacement,
 } from '@inkeep/open-knowledge-core';
 import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
@@ -72,12 +73,26 @@ const SessionsHost = lazy(() =>
   import('./SessionsHost').then((mod) => ({ default: mod.SessionsHost })),
 );
 
-export interface TerminalLaunchIntent {
+export interface TerminalCliLaunchIntent {
   readonly prompt: string | null;
   readonly cli: TerminalCli;
   readonly nonce: number;
   readonly stagePaste?: string;
+  readonly command?: undefined;
+  readonly signInThreadId?: string;
 }
+
+interface TerminalCommandLaunchIntent {
+  readonly prompt: null;
+  readonly cli: null;
+  readonly nonce: number;
+  readonly command: TerminalLaunchCommand;
+  readonly label: string;
+  readonly stagePaste?: undefined;
+  readonly signInThreadId?: string;
+}
+
+export type TerminalLaunchIntent = TerminalCliLaunchIntent | TerminalCommandLaunchIntent;
 
 export interface ThreadLaunchIntent {
   readonly agentSource: 'registry' | 'custom';
@@ -327,15 +342,30 @@ export function EditorPane({ onOpenSearch }: EditorPaneProps = {}) {
   }, []);
 
   useEffect(() => {
-    return subscribeToTerminalLaunchRequests((text, cli, { stage }) => {
+    return subscribeToTerminalLaunchRequests((request) => {
       setTerminalVisible(true);
       launchNonceRef.current += 1;
-      setTerminalLaunch({
-        prompt: stage ? null : text,
-        cli,
-        nonce: launchNonceRef.current,
-        stagePaste: stage ? text : undefined,
-      });
+      const nonce = launchNonceRef.current;
+      const signIn =
+        request.signInThreadId === undefined ? {} : { signInThreadId: request.signInThreadId };
+      setTerminalLaunch(
+        request.kind === 'command'
+          ? {
+              prompt: null,
+              cli: null,
+              command: request.command,
+              label: request.label,
+              nonce,
+              ...signIn,
+            }
+          : {
+              prompt: request.stage ? null : request.prompt,
+              cli: request.cli,
+              nonce,
+              stagePaste: request.stage ? request.prompt : undefined,
+              ...signIn,
+            },
+      );
     });
   }, []);
 

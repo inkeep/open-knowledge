@@ -165,6 +165,22 @@ describe('Windows launch composition', () => {
     ).toEqual({ executable: 'claude', args: [] });
   });
 
+  it('keeps the env and PATH dirs of a support-file launch while dropping its arguments', () => {
+    expect(
+      launchWithoutSupportFile({
+        executable: 'claude',
+        args: ['--settings', 'x.json'],
+        env: { A: '1' },
+        pathPrepend: ['/rt/bin'],
+        supportFile: {
+          kind: 'claude-settings',
+          relativePath: '.ok/local/terminal/claude-settings-mcp.json',
+          contents: '{}',
+        },
+      }),
+    ).toEqual({ executable: 'claude', args: [], env: { A: '1' }, pathPrepend: ['/rt/bin'] });
+  });
+
   it('composes PowerShell as -NoExit -EncodedCommand with quoted structured args', () => {
     const args = composeWindowsShellLaunchArgs('C:\\Program Files\\PowerShell\\7\\pwsh.exe', {
       executable: 'native.exe',
@@ -734,5 +750,152 @@ describe('isWindowsShellFamily', () => {
     expect(isWindowsShellFamily(false)).toBe(false);
     expect(isWindowsShellFamily({})).toBe(false);
     expect(isWindowsShellFamily(['cmd'])).toBe(false);
+  });
+});
+
+describe('composeWindowsShellLaunchArgs with a launch env', () => {
+  const NUL = String.fromCharCode(0);
+  const launch = {
+    executable: 'auggie',
+    args: ['--acp', 'login'],
+    env: { AUGGIE_HOME: 'C:\\Users\\me\\.auggie', AUGGIE_LOGIN_FLOW: 'terminal' },
+  };
+  const decodeArgv = (encoded: string) =>
+    Buffer.from(encoded, 'base64').toString('utf8').split(NUL).filter(Boolean);
+
+  it('bash hands name and slot pairs to a subshell around the login, then drops the slots', () => {
+    const args = composeWindowsShellLaunchArgs(
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+      launch,
+    ) as string[];
+    expect(decodeArgv(args[5] ?? '')).toEqual(['auggie', '--acp', 'login']);
+    expect(decodeArgv(args[6] ?? '')).toEqual([
+      'AUGGIE_HOME',
+      'OK_TERMINAL_LAUNCH_ENV_0',
+      'AUGGIE_LOGIN_FLOW',
+      'OK_TERMINAL_LAUNCH_ENV_1',
+    ]);
+    expect(args[3]).toContain(
+      `(for ((__ok_i = 0; __ok_i < \${#__ok_env[@]}; __ok_i += 2)); do __ok_slot="\${__ok_env[__ok_i + 1]}"; export "\${__ok_env[__ok_i]}=\${!__ok_slot}"; done; exec "\${__ok_argv[@]}"); `,
+    );
+    expect(args[3]).toContain(
+      `for ((__ok_i = 1; __ok_i < \${#__ok_env[@]}; __ok_i += 2)); do unset "\${__ok_env[__ok_i]}"; done; exec "$BASH" --login -i`,
+    );
+    expect(args.join(' ')).not.toContain('.auggie');
+  });
+
+  it('PowerShell saves what each name held, assigns the slots for the login, and puts the old values back in a finally block', () => {
+    const args = composeWindowsShellLaunchArgs('pwsh.exe', launch) as string[];
+    const script = Buffer.from(args[2] ?? '', 'base64').toString('utf16le');
+    expect(script).toBe(
+      "$__ok_names = @('AUGGIE_HOME', 'AUGGIE_LOGIN_FLOW'); $__ok_slots = @('OK_TERMINAL_LAUNCH_ENV_0', 'OK_TERMINAL_LAUNCH_ENV_1'); $__ok_prev = @{}; " +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        '$__ok_prev[$__ok_names[$__ok_i]] = [Environment]::GetEnvironmentVariable($__ok_names[$__ok_i]); ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], [Environment]::GetEnvironmentVariable($__ok_slots[$__ok_i]), 'Process') }; " +
+        "try { & 'auggie' '--acp' 'login' } finally { " +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], $__ok_prev[$__ok_names[$__ok_i]], 'Process'); " +
+        "[Environment]::SetEnvironmentVariable($__ok_slots[$__ok_i], $null, 'Process') }; " +
+        'Remove-Variable __ok_names, __ok_slots, __ok_prev, __ok_i -ErrorAction SilentlyContinue }',
+    );
+    expect(script).not.toContain('.auggie');
+    const plain = composeWindowsShellLaunchArgs('pwsh.exe', {
+      executable: 'auggie',
+      args: ['login'],
+    }) as string[];
+    expect(Buffer.from(plain[2] ?? '', 'base64').toString('utf16le')).toBe("& 'auggie' 'login'");
+  });
+
+  it('cmd runs the login in a child cmd that expands the slots itself, so the tab never holds the names', () => {
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', {
+        executable: 'auggie',
+        args: ['login'],
+        env: { AUGGIE_LOGIN_FLOW: 'terminal' },
+      }),
+    ).toBe(
+      '/K cmd /d /v:on /c "set "AUGGIE_LOGIN_FLOW=!OK_TERMINAL_LAUNCH_ENV_0!" & auggie login" & set "OK_TERMINAL_LAUNCH_ENV_0="',
+    );
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', {
+        executable: 'auggie',
+        args: ['login'],
+        env: { AUGGIE_HOME: 'C:\\auggie', AUGGIE_LOGIN_FLOW: 'terminal' },
+      }),
+    ).toBe(
+      '/K cmd /d /v:on /c "set "AUGGIE_HOME=!OK_TERMINAL_LAUNCH_ENV_0!" & set "AUGGIE_LOGIN_FLOW=!OK_TERMINAL_LAUNCH_ENV_1!" & auggie login" & set "OK_TERMINAL_LAUNCH_ENV_0=" & set "OK_TERMINAL_LAUNCH_ENV_1="',
+    );
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', { executable: 'auggie', args: ['login'] }),
+    ).toBe('/K auggie login');
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', {
+        executable: 'auggie',
+        args: ['login'],
+        env: { AUGGIE_HOME: 'C:\\Users\\me space\\.auggie', AUGGIE_LOGIN_FLOW: 'terminal=yes' },
+      }),
+    ).toBe(
+      '/K cmd /d /v:on /c "set "AUGGIE_HOME=!OK_TERMINAL_LAUNCH_ENV_0!" & set "AUGGIE_LOGIN_FLOW=!OK_TERMINAL_LAUNCH_ENV_1!" & auggie login" & set "OK_TERMINAL_LAUNCH_ENV_0=" & set "OK_TERMINAL_LAUNCH_ENV_1="',
+    );
+    for (const value of [
+      'say "hi"',
+      'x" & calc & rem "',
+      'a & calc',
+      'pipe | more',
+      'to > file',
+      'from < file',
+      'group (x)',
+      'caret ^x',
+      '%TEMP%',
+      '!OK_TERMINAL_LAUNCH_ENV_0!',
+      'two\nlines',
+      'cr\rhere',
+    ]) {
+      expect(() =>
+        composeWindowsShellLaunchArgs('cmd.exe', {
+          executable: 'auggie',
+          args: ['login'],
+          env: { AUGGIE_LOGIN_FLOW: value },
+        }),
+      ).toThrow(
+        expect.objectContaining({ name: 'WindowsShellLaunchError', reason: 'unsafe-argument' }),
+      );
+    }
+  });
+
+  it.each([
+    ['bash', 'C:\\Program Files\\Git\\bin\\bash.exe'],
+    ['PowerShell', 'pwsh.exe'],
+    ['cmd', 'cmd.exe'],
+  ])('%s refuses env names that differ only in case', (_family, shell) => {
+    expect(() =>
+      composeWindowsShellLaunchArgs(shell, {
+        executable: 'auggie',
+        args: ['login'],
+        env: { Path: 'C:\\agent', PATH: 'C:\\other' },
+      }),
+    ).toThrow(
+      expect.objectContaining({ name: 'WindowsShellLaunchError', reason: 'invalid-launch' }),
+    );
+  });
+
+  it.each([
+    ['bash', 'C:\\Program Files\\Git\\bin\\bash.exe'],
+    ['PowerShell', 'pwsh.exe'],
+    ['cmd', 'cmd.exe'],
+  ])('%s refuses env names that are not identifiers and values with NUL', (_family, shell) => {
+    for (const env of [
+      { 'X; Start-Process calc; $y': '1' },
+      { '--split-string': 'evil' },
+      { 'A B': '1' },
+      { '1ABC': '1' },
+      { OK_TERMINAL_LAUNCH_ENV_0: 'reserved for the slot the launch itself uses' },
+      { ok_terminal_launch_env_0: 'the same slot on a case-folding shell' },
+      { OK: `a${NUL}b` },
+    ]) {
+      expect(() =>
+        composeWindowsShellLaunchArgs(shell, { executable: 'auggie', args: ['login'], env }),
+      ).toThrow(WindowsShellLaunchError);
+    }
   });
 });

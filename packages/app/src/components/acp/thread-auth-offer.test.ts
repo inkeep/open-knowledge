@@ -8,6 +8,7 @@ import {
   isThreadResumable,
   manualAuthMethods,
   type ThreadAuthOffer,
+  terminalAuthMethods,
   threadAuthOffer,
   threadAuthOfferWithoutSignInMethods,
 } from './thread-auth-offer';
@@ -40,7 +41,12 @@ function everyOffer(): {
       clickableMethodCount: clickableAuthMethods(authMethods).length,
       manualMethodCount: manualAuthMethods(authMethods).length,
     },
-    offer: threadAuthOffer({ authMethods, agentName: 'Claude', terminalCli: null }),
+    offer: threadAuthOffer({
+      authMethods,
+      agentName: 'Claude',
+      terminalCli: null,
+      terminalAvailable: false,
+    }),
   }));
 }
 
@@ -100,7 +106,12 @@ describe('threadAuthOffer', () => {
   });
 
   test('a live thread awaiting sign-in with no method at all offers retry', () => {
-    const offer = threadAuthOffer({ authMethods: [], agentName: 'Claude', terminalCli: null });
+    const offer = threadAuthOffer({
+      authMethods: [],
+      agentName: 'Claude',
+      terminalCli: null,
+      terminalAvailable: false,
+    });
     expect(offer.kind).toBe('retry');
     expect(offer.headline).toBe('Claude needs you to sign in.');
   });
@@ -110,6 +121,7 @@ describe('threadAuthOffer', () => {
       authMethods: MANUAL_ONLY,
       agentName: 'Claude',
       terminalCli: 'claude',
+      terminalAvailable: true,
     });
     expect(offer.kind).toBe('terminal-sign-in');
     expect(offer.actionLabel).toBe('Open terminal to sign in');
@@ -128,6 +140,7 @@ describe('threadAuthOffer', () => {
       authMethods: MANUAL_ONLY,
       agentName: 'Claude',
       terminalCli: null,
+      terminalAvailable: false,
     });
     expect(offer.kind).toBe('none');
     expect(offer.headline).toBe('Claude needed you to sign in.');
@@ -139,6 +152,7 @@ describe('threadAuthOffer', () => {
       authMethods: CLICKABLE,
       agentName: 'Claude',
       terminalCli: null,
+      terminalAvailable: false,
     });
     expect(offer.kind).toBe('sign-in');
     expect(offer.headline).toBe('Sign in to Claude to continue.');
@@ -381,5 +395,53 @@ describe('threadAuthOfferWithoutSignInMethods', () => {
         }
       }
     }
+  });
+});
+
+describe('terminal auth methods that carry a command', () => {
+  const LAUNCHABLE: readonly ThreadAuthMethod[] = [
+    {
+      id: 'auggie-login',
+      name: 'Log in with Auggie',
+      kind: 'terminal',
+      terminalLaunchAvailable: true,
+    },
+  ];
+
+  test('only methods with a launch count as terminal methods', () => {
+    expect(terminalAuthMethods([...LAUNCHABLE, ...MANUAL_ONLY, ...CLICKABLE])).toEqual(LAUNCHABLE);
+  });
+
+  test('a launchable method opens the terminal even when no harness CLI is installed', () => {
+    const offer = threadAuthOffer({
+      authMethods: LAUNCHABLE,
+      agentName: 'Auggie',
+      terminalCli: null,
+      terminalAvailable: true,
+    });
+    expect(offer.kind).toBe('terminal-sign-in');
+    expect(offer.actionLabel).toBe('Open terminal to sign in');
+    expect(offer.headline).toBe('Auggie needs you to sign in.');
+  });
+
+  test('without a terminal the launchable method is only described', () => {
+    const offer = threadAuthOffer({
+      authMethods: LAUNCHABLE,
+      agentName: 'Auggie',
+      terminalCli: null,
+      terminalAvailable: false,
+    });
+    expect(offer.kind).toBe('none');
+    expect(offer.actionLabel).toBeNull();
+  });
+
+  test('a clickable method still wins over a launchable one', () => {
+    const offer = threadAuthOffer({
+      authMethods: [...LAUNCHABLE, ...CLICKABLE],
+      agentName: 'Auggie',
+      terminalCli: null,
+      terminalAvailable: true,
+    });
+    expect(offer.kind).toBe('sign-in');
   });
 });

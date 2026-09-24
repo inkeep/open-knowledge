@@ -4,11 +4,13 @@ import { userInfo } from 'node:os';
 import { basename, win32 } from 'node:path';
 import {
   composeWindowsShellLaunchArgs,
+  isTerminalLaunchEnvName,
   launchWithoutSupportFile,
   OK_DESKTOP_TERMINAL_ENV,
   resolveWindowsShellFamily,
   shellSingleQuote,
   type TerminalLaunchCommand,
+  terminalLaunchEnvSlots,
   type WindowsShellFamily,
   WindowsShellLaunchError,
   type WindowsShellLaunchFailureReason,
@@ -28,9 +30,10 @@ import {
 import {
   commandWithManagedPath,
   interactiveShellArgs,
+  quoteShellArg,
   shellCommandFamily,
 } from '../shared/terminal-shell.ts';
-import { getWindowsEnvValue, windowsWherePathArgs } from '../shared/windows-env.ts';
+import { getWindowsEnvValue, windowsPathKey, windowsWherePathArgs } from '../shared/windows-env.ts';
 import {
   materializeSupportFileSync,
   TERMINAL_SUPPORT_FILE_ESCAPE_CODE,
@@ -239,6 +242,29 @@ function asIncomingMessage(raw: unknown): PtyHostIncomingMessage | null {
           typeof (supportFile as Record<string, unknown>).contents === 'string' &&
           ((supportFile as Record<string, unknown>).contents as string).length <= 16_384 &&
           (launch as Record<string, unknown>).executable === 'claude');
+      const launchEnv =
+        typeof launch === 'object' && launch !== null
+          ? (launch as Record<string, unknown>).env
+          : undefined;
+      const launchEnvValid =
+        launchEnv === undefined ||
+        (typeof launchEnv === 'object' &&
+          launchEnv !== null &&
+          !Array.isArray(launchEnv) &&
+          Object.entries(launchEnv as Record<string, unknown>).every(
+            ([key, value]) =>
+              isTerminalLaunchEnvName(key) &&
+              typeof value === 'string' &&
+              !value.includes(String.fromCharCode(0)),
+          ));
+      const launchPathPrepend =
+        typeof launch === 'object' && launch !== null
+          ? (launch as Record<string, unknown>).pathPrepend
+          : undefined;
+      const launchPathPrependValid =
+        launchPathPrepend === undefined ||
+        (Array.isArray(launchPathPrepend) &&
+          launchPathPrepend.every((dir) => typeof dir === 'string' && dir.length > 0));
       const launchValid =
         launch === undefined ||
         typeof launch === 'string' ||
@@ -249,6 +275,8 @@ function asIncomingMessage(raw: unknown): PtyHostIncomingMessage | null {
           ((launch as Record<string, unknown>).args as unknown[]).every(
             (arg) => typeof arg === 'string',
           ) &&
+          launchEnvValid &&
+          launchPathPrependValid &&
           supportFileValid);
       return typeof m.cwd === 'string' &&
         typeof m.cols === 'number' &&
@@ -522,17 +550,72 @@ export function buildShellArgs(
       : [];
   }
   const interactiveArgs = [...interactiveShellArgs(platform)];
-  if (typeof launchCommand !== 'string' || launchCommand.length === 0) return interactiveArgs;
+  const command =
+    typeof launchCommand === 'object'
+      ? composeStructuredLaunch(shell, launchCommand)
+      : launchCommand;
+  if (typeof command !== 'string' || command.length === 0) return interactiveArgs;
+  const binDirs =
+    typeof launchCommand === 'object'
+      ? [...(launchCommand.pathPrepend ?? []), ...managedBinDirs]
+      : managedBinDirs;
+  const unsetStep =
+    typeof launchCommand === 'object'
+      ? unsetEnvStep(
+          shell,
+          terminalLaunchEnvSlots(launchCommand.env).map(({ slot }) => slot),
+        )
+      : '';
   const quotedShell = shellSingleQuote(shell);
   return [
     ...interactiveArgs,
     '-c',
     commandWithManagedPath(
       shell,
-      `${launchCommand}; exec ${quotedShell} ${interactiveArgs.join(' ')}`,
-      managedBinDirs,
+      `${command}; ${unsetStep}exec ${quotedShell} ${interactiveArgs.join(' ')}`,
+      binDirs,
     ),
   ];
+}
+
+function unsetEnvStep(shell: string, names: readonly string[]): string {
+  if (names.length === 0) return '';
+  return shellCommandFamily(shell) === 'fish'
+    ? `set -e ${names.join(' ')}; `
+    : `unset ${names.join(' ')}; `;
+}
+
+function composeStructuredLaunch(shell: string, launch: TerminalLaunchCommand): string {
+  const command = [launch.executable, ...launch.args]
+    .map((token) => quoteShellArg(shell, token))
+    .join(' ');
+  const slots = terminalLaunchEnvSlots(launch.env);
+  if (slots.length === 0) return command;
+  if (shellCommandFamily(shell) === 'fish') {
+    const assigns = slots.map(({ name, slot }) => `set -lx ${name} "$${slot}"; `).join('');
+    return `begin; ${assigns}${command}; end`;
+  }
+  const assigns = slots.map(({ name, slot }) => `${name}="$${slot}"`).join(' ');
+  return `(export ${assigns}; exec ${command})`;
+}
+
+export function buildLaunchEnv(
+  platform: NodeJS.Platform,
+  shellEnv: Record<string, string>,
+  launchCommand: string | TerminalLaunchCommand | undefined,
+): Record<string, string> {
+  if (typeof launchCommand !== 'object') return shellEnv;
+  const env = { ...shellEnv };
+  for (const { slot, value } of terminalLaunchEnvSlots(launchCommand.env)) env[slot] = value;
+  const pathPrepend = launchCommand.pathPrepend ?? [];
+  if (platform !== 'win32' || pathPrepend.length === 0) return env;
+  const key = windowsPathKey(env);
+  const existing = env[key];
+  env[key] = [
+    ...pathPrepend,
+    ...(existing === undefined || existing === '' ? [] : [existing]),
+  ].join(';');
+  return env;
 }
 
 export function buildShellEnv(
@@ -755,7 +838,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       cols: message.cols,
       rows: message.rows,
       cwd: message.cwd,
-      env: shellEnv,
+      env: buildLaunchEnv(platform, shellEnv, launchCommand),
       encoding: 'utf8',
     };
     let pty: PtyProcessLike;

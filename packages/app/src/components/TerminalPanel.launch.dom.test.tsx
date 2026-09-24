@@ -233,6 +233,29 @@ describe('TerminalPanel "Open in terminal" launch (baked into the PTY spawn)', (
     expect(launchInputWrites(terminal.input)).toEqual([]);
   });
 
+  test('a command launch hands the structured command to create without any CLI preflight', async () => {
+    const { bridge, terminal } = makeBridge(WIRED);
+    const command: TerminalLaunchCommand = {
+      executable: '/rt/bin/npx',
+      args: ['-y', '@augmentcode/auggie@1.2.3', '--acp', 'login'],
+      env: { AUGGIE_LOGIN_FLOW: 'terminal' },
+      pathPrepend: ['/rt/bin'],
+    };
+    render(
+      <TerminalPanel
+        bridge={bridge}
+        launch={{ prompt: null, cli: null, command, label: 'Log in with Auggie', nonce: 1 }}
+      />,
+    );
+
+    await waitFor(() => expect(terminal.create).toHaveBeenCalledTimes(1));
+    expect(bakedLaunch(terminal.create)).toEqual(command);
+    expect(terminal.create.mock.calls[0]?.[0]).toMatchObject({ launchCli: undefined });
+    expect(terminal.claudePreflight).not.toHaveBeenCalled();
+    expect(terminal.cliPreflight).not.toHaveBeenCalled();
+    expect(launchInputWrites(terminal.input)).toEqual([]);
+  });
+
   test('Windows keeps the CLI structured and bracketed-pastes the prompt after readiness', async () => {
     const { bridge, terminal, pushData } = makeBridge(WIRED, ON_PATH, 'win32');
     const prompt = 'review {"quoted":"JSON"}; & calc';

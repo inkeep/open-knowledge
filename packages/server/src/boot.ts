@@ -152,6 +152,7 @@ export interface BootServerOptions
   probeHarnessManagedMcpEntry?: AcpThreadManagerOptions['probeHarnessManagedMcpEntry'];
   probePiAcpBridge?: AcpThreadManagerOptions['probePiAcpBridge'];
   ensurePiAcpBridge?: AcpThreadManagerOptions['ensurePiAcpBridge'];
+  terminalAuthAvailable?: boolean;
   idleShutdownMs?: number | null;
   serveContentAssets?: boolean;
   reactShellDistDir?: string;
@@ -478,6 +479,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
         probePiAcpBridge: opts.probePiAcpBridge,
         ensurePiAcpBridge: opts.ensurePiAcpBridge,
+        terminalAuthAvailable: opts.terminalAuthAvailable === true,
         hostSnapshot: () =>
           collectServerHostSnapshot({ env: 'local-web', resolve: opts.agentIntegrations?.probe }),
         autoApproveOkTools: () =>

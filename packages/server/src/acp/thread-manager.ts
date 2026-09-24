@@ -48,7 +48,7 @@ import type {
   QueuedMessage,
   SteerMessage,
   ThreadAgentInfo,
-  ThreadAuthMethod,
+  ThreadAuthTerminalLaunch,
   ThreadChatGrant,
   ThreadEvent,
   ThreadFailureDetail,
@@ -147,6 +147,12 @@ import {
   loadCustomAgents,
   registryPlatformKey,
 } from './registry.ts';
+import {
+  type TerminalAuthBase,
+  terminalAuthBaseFor,
+  terminalAuthLaunch,
+  threadAuthMethods,
+} from './terminal-auth.ts';
 import { AcpTerminalSet } from './terminals.ts';
 import { type PersistedThreadMeta, ThreadPersistenceStore } from './thread-persistence.ts';
 import { clampThreadTitle, deriveThreadTitle } from './thread-title.ts';
@@ -305,6 +311,7 @@ interface ThreadRecord {
   child: ChildProcess | null;
   conn: ClientConnection | null;
   lastInit: InitializeResponse | null;
+  terminalAuthBase: TerminalAuthBase | null;
   sessionId: string | null;
   agentSessionId: string;
   events: ThreadEvent[];
@@ -414,6 +421,7 @@ export interface AcpThreadManagerOptions {
   };
   resolveLoginShellPath?: () => Promise<string | null>;
   projectSkillSourceDir?: string | null;
+  terminalAuthAvailable?: boolean;
   log: PinoLogger;
   maxThreads?: number;
   idleReapMs?: number;
@@ -649,6 +657,7 @@ export class AcpThreadManager {
       child: null,
       conn: null,
       lastInit: null,
+      terminalAuthBase: null,
       sessionId: null,
       agentSessionId: `acp-${threadId}`,
       events: [],
@@ -826,6 +835,7 @@ export class AcpThreadManager {
       loginShellPath,
     });
 
+    record.terminalAuthBase = terminalAuthBaseFor(launch);
     launch = applyLaunchContextWindow(
       launch,
       record.agentRef.id,
@@ -1059,6 +1069,7 @@ export class AcpThreadManager {
         clientCapabilities: {
           fs: { readTextFile: true, writeTextFile: true },
           terminal: true,
+          ...(this.opts.terminalAuthAvailable === true ? { auth: { terminal: true } } : {}),
           session: { configOptions: { boolean: {} } },
         },
       });
@@ -1924,7 +1935,7 @@ export class AcpThreadManager {
           reason: 'auth-required',
           agentMessage: agentErrorMessage(err),
           machineDetail: authMachineDetail(err, record),
-          authMethods: threadAuthMethods(init.authMethods),
+          authMethods: threadAuthMethods(init.authMethods, record.terminalAuthBase),
         });
       } else {
         const tail = await stderrTailDetail(record);
@@ -2231,6 +2242,15 @@ export class AcpThreadManager {
     }
   }
 
+  terminalAuthLaunch(threadId: string, methodId: string): ThreadAuthTerminalLaunch {
+    const t = this.mustGet(threadId);
+    const launch = terminalAuthLaunch(t.lastInit?.authMethods, t.terminalAuthBase, methodId);
+    if (launch === null) {
+      throw new ThreadOpError('not-ready', 'this agent offers no terminal sign-in by that name');
+    }
+    return launch;
+  }
+
   async authenticateThread(threadId: string, methodId: string): Promise<ThreadInfo> {
     if (this.destroyed) throw new ThreadOpError('capacity', 'server is shutting down');
     const t = this.mustGet(threadId);
@@ -2271,7 +2291,7 @@ export class AcpThreadManager {
           reason: 'auth-required',
           agentMessage: message,
           machineDetail: authMachineDetail(err, t),
-          authMethods: threadAuthMethods(init.authMethods),
+          authMethods: threadAuthMethods(init.authMethods, t.terminalAuthBase),
         });
         throw new ThreadOpError('not-ready', message);
       }
@@ -2299,7 +2319,7 @@ export class AcpThreadManager {
               reason: 'auth-required',
               agentMessage: agentErrorMessage(err),
               machineDetail: authMachineDetail(err, t),
-              authMethods: threadAuthMethods(init.authMethods),
+              authMethods: threadAuthMethods(init.authMethods, t.terminalAuthBase),
             });
           }
           throw err;
@@ -2774,7 +2794,7 @@ export class AcpThreadManager {
             reason: 'auth-required',
             agentMessage: agentErrorMessage(err),
             machineDetail: authMachineDetail(err, t),
-            authMethods: threadAuthMethods(t.lastInit?.authMethods),
+            authMethods: threadAuthMethods(t.lastInit?.authMethods, t.terminalAuthBase),
           });
           return;
         }
@@ -3655,6 +3675,7 @@ function rehydratedRecord(meta: PersistedThreadMeta): ThreadRecord {
     child: null,
     conn: null,
     lastInit: null,
+    terminalAuthBase: null,
     sessionId: meta.sessionId,
     agentSessionId: `acp-${meta.info.threadId}`,
     events: [],
@@ -3827,25 +3848,4 @@ function authMachineDetail(err: unknown, t: ThreadRecord): string | undefined {
 function resumableFromCapabilities(init: InitializeResponse): boolean {
   const caps = init.agentCapabilities;
   return caps?.sessionCapabilities?.resume != null || caps?.loadSession === true;
-}
-
-function threadAuthMethods(methods: InitializeResponse['authMethods']): ThreadAuthMethod[] {
-  return (methods ?? []).flatMap((m) => {
-    if (typeof m !== 'object' || m === null) return [];
-    const { id, name, description, type } = m as {
-      id?: unknown;
-      name?: unknown;
-      description?: unknown;
-      type?: unknown;
-    };
-    if (typeof id !== 'string' || typeof name !== 'string') return [];
-    return [
-      {
-        id,
-        name,
-        ...(typeof description === 'string' ? { description } : {}),
-        ...(typeof type === 'string' ? { kind: type } : {}),
-      },
-    ];
-  });
 }

@@ -2256,9 +2256,11 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     test('an Ask AI instruction RUNS on a new thread (never a CLI)', async () => {
       mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
       const launches: unknown[] = [];
-      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
-        launches.push({ prompt, cli, ...opts }),
-      );
+      const stopLaunch = subscribeToTerminalLaunchRequests((request) => {
+        if (request.kind === 'cli') {
+          launches.push({ prompt: request.prompt, cli: request.cli, stage: request.stage });
+        }
+      });
       render(<Harness />);
       await screen.findByTestId('terminal-new-chat');
 
@@ -2467,9 +2469,11 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       { submit: false, label: 'a selection send' },
     ])('with NO agent set up, $label is left to the terminal dock', async ({ submit }) => {
       const launches: unknown[] = [];
-      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
-        launches.push({ prompt, cli, ...opts }),
-      );
+      const stopLaunch = subscribeToTerminalLaunchRequests((request) => {
+        if (request.kind === 'cli') {
+          launches.push({ prompt: request.prompt, cli: request.cli, stage: request.stage });
+        }
+      });
       const onVisibleChange = vi.fn((_v: boolean) => {});
       render(<Harness bridge={makeTerminalBridge()} onVisibleChange={onVisibleChange} />);
       await screen.findByTestId('terminal-new-chat');

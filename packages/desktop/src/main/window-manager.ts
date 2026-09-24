@@ -250,6 +250,7 @@ export interface WindowManagerDeps {
   createKeepalive?(opts: { lockDir: string }): KeepaliveHandle;
   rendererEntryPath: string;
   rendererDevUrl?: string | null;
+  terminalAuthAvailable: boolean;
   appVersion: string;
   selfProtocolVersion?: number;
   selfRuntimeVersion?: string;
@@ -1293,6 +1294,7 @@ export class WindowManager {
         consentVersion: opts.consentVersion ?? 1,
         ...(reactShellDistDir !== null ? { reactShellDistDir } : {}),
         ...(localOpCliArgs ? { localOpCliArgs } : {}),
+        terminalAuthAvailable: this.deps.terminalAuthAvailable,
       },
     });
 

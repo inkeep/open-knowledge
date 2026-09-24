@@ -1369,6 +1369,7 @@ function ensureWindowManager() {
       } as unknown as Parameters<typeof utilityProcess.fork>[2]);
       return child as unknown as UtilityProcessLike;
     },
+    terminalAuthAvailable: isTerminalAvailable(),
     utilityEntryPath,
     ...(bundleCliMjsPath !== null
       ? {
@@ -1429,6 +1430,7 @@ function ensureWindowManager() {
                 otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
               }),
               ...(singleFile !== undefined ? { singleFile, projectDir } : {}),
+              terminalAuthAvailable: isTerminalAvailable(),
             });
             let childRef: ReturnType<typeof spawn>;
             startupWaterfall.mark('serverSpawned');

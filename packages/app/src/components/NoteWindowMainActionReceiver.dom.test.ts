@@ -17,10 +17,11 @@ describe('dispatchNoteWindowMainAction', () => {
     const unsubscribe = [
       subscribeToActiveTerminalInput((detail) => received.push(detail), target),
       subscribeToAgentThreadLaunchRequests((detail) => received.push(detail), target),
-      subscribeToTerminalLaunchRequests(
-        (prompt, cli, options) => received.push({ prompt, cli, ...options }),
-        target,
-      ),
+      subscribeToTerminalLaunchRequests((request) => {
+        if (request.kind === 'cli') {
+          received.push({ prompt: request.prompt, cli: request.cli, stage: request.stage });
+        }
+      }, target),
     ];
 
     dispatchNoteWindowMainAction(

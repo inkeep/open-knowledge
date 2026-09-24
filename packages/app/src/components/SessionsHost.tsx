@@ -106,6 +106,7 @@ const ThreadView = lazy(() =>
 
 import { sendQueuedCommentsInThread, subscribeSendToOpenChat } from '@/comments/open-chat-send';
 import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
+import { notifySignInTerminalExited } from './handoff/sign-in-terminal-events';
 import type { TerminalCommandId } from './handoff/terminal-command-events';
 import {
   type ActiveTerminalInputDetail,
@@ -1078,6 +1079,7 @@ export function SessionsHost({
     if (index === -1) return;
     noteUserArrangement();
     const session = current[index];
+    notifySignInExitOnce(session);
     const isLast = current.length === 1;
     pendingActiveKeyRef.current = null;
     if (id === activeSessionIdRef.current) {
@@ -1097,6 +1099,14 @@ export function SessionsHost({
     }
   }
   const closeActiveRef = useRef(() => {});
+  const signInExitNotifiedRef = useRef(new Set<string>());
+  function notifySignInExitOnce(session: (typeof sessionsRef.current)[number] | undefined) {
+    if (session == null || session.kind !== 'terminal') return;
+    const threadId = session.launch?.signInThreadId;
+    if (threadId === undefined || signInExitNotifiedRef.current.has(session.id)) return;
+    signInExitNotifiedRef.current.add(session.id);
+    notifySignInTerminalExited(threadId);
+  }
   const [switchingThreads, setSwitchingThreads] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
@@ -1926,6 +1936,11 @@ export function SessionsHost({
               commandId={session.commandId}
               adoptPtyId={session.adoptPtyId}
               onPtyId={(ptyId) => setSessionPtyId(session.id, ptyId)}
+              onExit={
+                session.launch?.signInThreadId === undefined
+                  ? undefined
+                  : () => notifySignInExitOnce(session)
+              }
               onTitleChange={(title) => setSessionTitle(session.id, title)}
               onClose={() => closeSession(session.id)}
             />

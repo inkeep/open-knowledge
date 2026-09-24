@@ -82,6 +82,11 @@ export function attachAcpThreadSocket(
             send({ op: 'retried', reqId: frame.reqId, info });
             return;
           }
+          case 'terminal_auth_launch': {
+            const launch = manager.terminalAuthLaunch(frame.threadId, frame.methodId);
+            send({ op: 'terminal_auth_launch_ready', reqId: frame.reqId, launch });
+            return;
+          }
           case 'authenticate': {
             const info = await manager.authenticateThread(frame.threadId, frame.methodId);
             send({ op: 'authenticated', reqId: frame.reqId, info });

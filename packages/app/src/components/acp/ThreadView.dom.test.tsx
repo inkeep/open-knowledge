@@ -1,4 +1,8 @@
-import type { ThreadEvent, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type {
+  ThreadAuthTerminalLaunch,
+  ThreadEvent,
+  ThreadInfo,
+} from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { i18n } from '@lingui/core';
 import {
   act,
@@ -12,6 +16,7 @@ import {
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { notifySignInTerminalExited } from '@/components/handoff/sign-in-terminal-events';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
@@ -53,7 +58,19 @@ const sendQueuedNow = vi.fn((_threadId: string, _id: string) => {});
 const setChatGrant = vi.fn((_threadId: string, _grant: string, _enabled: boolean) => {});
 const toastError = vi.fn((_message: string) => {});
 const cancel = vi.fn((_threadId: string) => {});
-const retryThread = vi.fn(async (_threadId: string) => {});
+const retryThread = vi.fn(
+  async (_threadId: string): Promise<ThreadInfo> => makeInfo({ status: 'ready' }),
+);
+const FIXTURE_TERMINAL_LAUNCH: ThreadAuthTerminalLaunch = {
+  executable: '/rt/bin/npx',
+  args: ['-y', '@augmentcode/auggie@1.2.3', '--acp', 'login'],
+  env: { AUGGIE_LOGIN_FLOW: 'terminal' },
+  pathPrepend: ['/rt/bin'],
+};
+const terminalAuthLaunch = vi.fn(
+  async (_threadId: string, _methodId: string): Promise<ThreadAuthTerminalLaunch> =>
+    FIXTURE_TERMINAL_LAUNCH,
+);
 const createThread = vi.fn(
   async (_params: unknown): Promise<unknown> => ({
     threadId: 'thread-2',
@@ -84,6 +101,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     createThread,
     resumeThread,
     retryThread,
+    terminalAuthLaunch,
     authenticateThread,
     getThread: () => null,
     subscribe: () => () => {},
@@ -508,6 +526,7 @@ afterEach(() => {
   toastError.mockClear();
   cancel.mockClear();
   retryThread.mockClear();
+  terminalAuthLaunch.mockClear();
   createThread.mockClear();
   resumeThread.mockClear();
   resetStagedThreadDrafts();
@@ -4792,6 +4811,257 @@ describe('ThreadView auth-required dead ends', () => {
       window.removeEventListener('open-knowledge:terminal-launch', onLaunch);
       Reflect.deleteProperty(window, 'okDesktop');
     }
+  });
+
+  test('an agent whose sign-in is a terminal command runs that command in the terminal', async () => {
+    const launches: unknown[] = [];
+    const onLaunch = (event: Event) => launches.push((event as CustomEvent).detail);
+    window.addEventListener('open-knowledge:terminal-launch', onLaunch);
+    Object.assign(window, {
+      okDesktop: {
+        config: { ptyAvailable: true },
+        terminal: { cliInstalledMap: () => Promise.resolve({}) },
+      },
+    });
+    try {
+      model = makeModel({
+        turnActive: false,
+        items: [
+          authNotice({
+            authMethods: [
+              {
+                id: 'auggie-login',
+                name: 'Log in with Auggie',
+                kind: 'terminal',
+                terminalLaunchAvailable: true,
+              },
+            ],
+          }),
+        ],
+      });
+      render(
+        <ThreadView
+          info={makeInfo({
+            archived: false,
+            status: 'auth_required',
+            agent: { id: 'auggie', name: 'Auggie', source: 'custom' },
+          })}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('terminal-sign-in'),
+      );
+      expect(authSurface().textContent).toContain('Log in with Auggie');
+
+      await userEvent.click(offerButton());
+      await waitFor(() =>
+        expect(launches).toEqual([
+          {
+            kind: 'command',
+            label: 'Log in with Auggie',
+            command: FIXTURE_TERMINAL_LAUNCH,
+            signInThreadId: 'thread-1',
+          },
+        ]),
+      );
+      expect(terminalAuthLaunch).toHaveBeenCalledWith('thread-1', 'auggie-login');
+      expect(retryThread).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('open-knowledge:terminal-launch', onLaunch);
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('a sign-in launch the server refuses becomes a toast, never a terminal', async () => {
+    const launches: unknown[] = [];
+    const onLaunch = (event: Event) => launches.push((event as CustomEvent).detail);
+    window.addEventListener('open-knowledge:terminal-launch', onLaunch);
+    Object.assign(window, {
+      okDesktop: {
+        config: { ptyAvailable: true },
+        terminal: { cliInstalledMap: () => Promise.resolve({}) },
+      },
+    });
+    terminalAuthLaunch.mockRejectedValueOnce(
+      new Error('this agent offers no terminal sign-in by that name'),
+    );
+    try {
+      model = makeModel({
+        turnActive: false,
+        items: [
+          authNotice({
+            authMethods: [
+              {
+                id: 'auggie-login',
+                name: 'Log in with Auggie',
+                kind: 'terminal',
+                terminalLaunchAvailable: true,
+              },
+            ],
+          }),
+        ],
+      });
+      render(
+        <ThreadView
+          info={makeInfo({
+            archived: false,
+            status: 'auth_required',
+            agent: { id: 'auggie', name: 'Auggie', source: 'custom' },
+          })}
+        />,
+      );
+
+      await waitFor(() =>
+        expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('terminal-sign-in'),
+      );
+      await userEvent.click(offerButton());
+      await waitFor(() =>
+        expect(toastError).toHaveBeenCalledWith(
+          'Sign-in failed: this agent offers no terminal sign-in by that name',
+        ),
+      );
+      expect(launches).toEqual([]);
+      expect(retryThread).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('open-knowledge:terminal-launch', onLaunch);
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('a harness CLI sign-in names the chat that opened the terminal', async () => {
+    const launches: unknown[] = [];
+    const onLaunch = (event: Event) => launches.push((event as CustomEvent).detail);
+    window.addEventListener('open-knowledge:terminal-launch', onLaunch);
+    Object.assign(window, {
+      okDesktop: {
+        config: { ptyAvailable: true },
+        terminal: { cliInstalledMap: () => Promise.resolve({ claude: true }) },
+      },
+    });
+    try {
+      model = makeModel({ turnActive: false, items: [] });
+      render(
+        <ThreadView
+          info={makeInfo({
+            archived: false,
+            status: 'auth_required',
+            agent: { id: 'claude-acp', name: 'Claude Agent', source: 'registry' },
+          })}
+        />,
+      );
+      await waitFor(() =>
+        expect(offerButton().getAttribute('data-auth-offer-kind')).toBe('terminal-sign-in'),
+      );
+      await userEvent.click(offerButton());
+      expect(launches).toEqual([
+        { kind: 'cli', prompt: '', cli: 'claude', stage: false, signInThreadId: 'thread-1' },
+      ]);
+    } finally {
+      window.removeEventListener('open-knowledge:terminal-launch', onLaunch);
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('closing the sign-in terminal retries the chat and re-sends the message it held back', async () => {
+    retryThread.mockResolvedValueOnce(makeInfo({ status: 'ready' }));
+    const agent = { id: 'claude-acp', name: 'Claude Agent', source: 'registry' as const };
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' },
+        authNotice({ authMethods: undefined }),
+      ],
+    });
+    const view = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'auth_required', agent })} />,
+    );
+    await screen.findByTestId('agent-thread-auth-status');
+
+    act(() => {
+      notifySignInTerminalExited('thread-1');
+    });
+    await waitFor(() => expect(retryThread).toHaveBeenCalledWith('thread-1'));
+    await waitFor(() =>
+      expect(prompt).toHaveBeenCalledWith('thread-1', 'summarise the standup', undefined),
+    );
+
+    view.rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready', agent })} />);
+    expect(screen.queryByTestId('agent-thread-user-message')).toBeNull();
+  });
+
+  test('a sign-in terminal closing for another chat, or after recovery, retries nothing', async () => {
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' },
+        authNotice({ authMethods: undefined }),
+      ],
+    });
+    const view = render(
+      <ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />,
+    );
+    await screen.findByTestId('agent-thread-auth-status');
+    act(() => {
+      notifySignInTerminalExited('thread-2');
+    });
+    expect(retryThread).not.toHaveBeenCalled();
+
+    view.rerender(<ThreadView info={makeInfo({ archived: false, status: 'ready' })} />);
+    act(() => {
+      notifySignInTerminalExited('thread-1');
+    });
+    expect(retryThread).not.toHaveBeenCalled();
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
+  test('Already signed in? Retry re-sends the held message once the agent is ready', async () => {
+    retryThread.mockResolvedValueOnce(makeInfo({ status: 'ready' }));
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' },
+        authNotice({ authMethods: undefined }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    await userEvent.click(within(authSurface()).getByTestId('agent-thread-retry'));
+    await waitFor(() =>
+      expect(prompt).toHaveBeenCalledWith('thread-1', 'summarise the standup', undefined),
+    );
+  });
+
+  test('a retry that leaves the agent signed out re-sends nothing', async () => {
+    retryThread.mockResolvedValueOnce(makeInfo({ status: 'auth_required' }));
+    model = makeModel({
+      turnActive: false,
+      items: [
+        { kind: 'message', role: 'user', text: 'summarise the standup', messageId: 'u1' },
+        authNotice({ authMethods: undefined }),
+      ],
+    });
+    render(<ThreadView info={makeInfo({ archived: false, status: 'auth_required' })} />);
+
+    await userEvent.click(within(authSurface()).getByTestId('agent-thread-retry'));
+    await waitFor(() => expect(retryThread).toHaveBeenCalledWith('thread-1'));
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(prompt).not.toHaveBeenCalled();
+  });
+
+  test('a refused resume shows New chat once when the sign-in notice already offers it', () => {
+    model = makeModel({ turnActive: false, items: [authNotice({ authMethods: undefined })] });
+    render(<ThreadView info={makeInfo({ archived: true, resumable: false, status: 'exited' })} />);
+    expect(screen.queryByTestId('agent-thread-resume-failed')).toBeNull();
+    expect(screen.getAllByRole('button', { name: 'New chat with Claude' })).toHaveLength(1);
+  });
+
+  test('a refused resume without a sign-in notice keeps the banner as the way out', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ archived: true, resumable: false, status: 'exited' })} />);
+    expect(screen.getByTestId('agent-thread-resume-failed')).toBeDefined();
   });
 
   test('a clickable sign-in method still wins over the terminal fallback', async () => {

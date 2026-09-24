@@ -1,5 +1,6 @@
 import type {
   AttachmentPart,
+  ThreadAuthTerminalLaunch,
   ThreadChatGrant,
   ThreadClientFrame,
   ThreadErrorCode,
@@ -30,6 +31,12 @@ export type ThreadConnectionStatus = 'idle' | 'connecting' | 'open' | 'closed';
 
 interface PendingCreate {
   resolve: (info: ThreadInfo) => void;
+  reject: (err: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+}
+
+interface PendingTerminalAuthLaunch {
+  resolve: (launch: ThreadAuthTerminalLaunch) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -90,6 +97,7 @@ export class AgentThreadClient {
   private pendingCreates = new Map<string, PendingCreate>();
   private pendingResumes = new Map<string, PendingCreate>();
   private pendingRetries = new Map<string, PendingCreate>();
+  private pendingTerminalAuthLaunches = new Map<string, PendingTerminalAuthLaunch>();
   private pendingContextWindows = new Map<string, PendingCreate>();
   private pendingAuths = new Map<string, PendingCreate>();
   private pendingQueueEdits = new Map<string, PendingQueueEdit>();
@@ -422,6 +430,22 @@ export class AgentThreadClient {
     return promise;
   }
 
+  async terminalAuthLaunch(threadId: string, methodId: string): Promise<ThreadAuthTerminalLaunch> {
+    this.connectNow();
+    await this.waitForOpen(CHANNEL_WAIT_MS);
+    this.reqCounter += 1;
+    const reqId = `terminal-auth-${this.reqCounter}`;
+    const promise = new Promise<ThreadAuthTerminalLaunch>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.pendingTerminalAuthLaunches.delete(reqId);
+        reject(new Error('the sign-in terminal request timed out'));
+      }, RETRY_TIMEOUT_MS);
+      this.pendingTerminalAuthLaunches.set(reqId, { resolve, reject, timer });
+    });
+    this.send({ op: 'terminal_auth_launch', threadId, reqId, methodId });
+    return promise;
+  }
+
   async authenticateThread(threadId: string, methodId: string): Promise<ThreadInfo> {
     this.connectNow();
     await this.waitForOpen(CHANNEL_WAIT_MS);
@@ -520,6 +544,11 @@ export class AgentThreadClient {
       pending.reject(new ThreadChannelUnavailableError());
     }
     this.pendingRetries.clear();
+    for (const pending of this.pendingTerminalAuthLaunches.values()) {
+      clearTimeout(pending.timer);
+      pending.reject(new ThreadChannelUnavailableError());
+    }
+    this.pendingTerminalAuthLaunches.clear();
     for (const pending of this.pendingContextWindows.values()) {
       clearTimeout(pending.timer);
       pending.reject(new ThreadChannelUnavailableError());
@@ -635,6 +664,15 @@ export class AgentThreadClient {
         this.upsertInfo(frame.info);
         return;
       }
+      case 'terminal_auth_launch_ready': {
+        const pending = this.pendingTerminalAuthLaunches.get(frame.reqId);
+        if (pending !== undefined) {
+          this.pendingTerminalAuthLaunches.delete(frame.reqId);
+          clearTimeout(pending.timer);
+          pending.resolve(frame.launch);
+        }
+        return;
+      }
       case 'context_window_set': {
         const pending = this.pendingContextWindows.get(frame.reqId);
         if (pending !== undefined) {
@@ -709,6 +747,13 @@ export class AgentThreadClient {
             this.pendingRetries.delete(frame.reqId);
             clearTimeout(pendingRetry.timer);
             pendingRetry.reject(new Error(frame.message));
+            return;
+          }
+          const pendingTerminalAuth = this.pendingTerminalAuthLaunches.get(frame.reqId);
+          if (pendingTerminalAuth !== undefined) {
+            this.pendingTerminalAuthLaunches.delete(frame.reqId);
+            clearTimeout(pendingTerminalAuth.timer);
+            pendingTerminalAuth.reject(new Error(frame.message));
             return;
           }
           const pendingWindow = this.pendingContextWindows.get(frame.reqId);

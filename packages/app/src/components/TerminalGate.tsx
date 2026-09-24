@@ -17,6 +17,7 @@ const TerminalPanel = lazyWithPreload(() =>
 interface TerminalGateProps {
   readonly bridge: OkDesktopBridge;
   readonly onClose?: () => void;
+  readonly onExit?: (info: { readonly exitCode: number; readonly signal: number | null }) => void;
   readonly onTitleChange?: (title: string) => void;
   readonly launch?: TerminalLaunchIntent | null;
   readonly commandId?: TerminalCommandId | null;
@@ -27,6 +28,7 @@ interface TerminalGateProps {
 export function TerminalGate({
   bridge,
   onClose,
+  onExit,
   onTitleChange,
   launch = null,
   commandId = null,
@@ -83,6 +85,7 @@ export function TerminalGate({
             bridge={bridge}
             className="h-full"
             onClose={onClose}
+            onExit={onExit}
             onTitleChange={onTitleChange}
             launch={launch}
             commandId={commandId}

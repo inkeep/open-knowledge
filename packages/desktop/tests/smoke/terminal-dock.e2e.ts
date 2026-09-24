@@ -982,7 +982,7 @@ test.describe('Docked terminal — live Electron', () => {
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent('open-knowledge:terminal-launch', {
-          detail: { prompt: '', cli: 'claude', stage: false },
+          detail: { kind: 'cli', prompt: '', cli: 'claude', stage: false },
         }),
       );
     });
@@ -1015,7 +1015,7 @@ test.describe('Docked terminal — live Electron', () => {
     await page.evaluate(() => {
       window.dispatchEvent(
         new CustomEvent('open-knowledge:terminal-launch', {
-          detail: { prompt: '', cli: 'claude', stage: false },
+          detail: { kind: 'cli', prompt: '', cli: 'claude', stage: false },
         }),
       );
     });
@@ -1089,7 +1089,7 @@ test.describe('Docked terminal — live Electron', () => {
       await page.evaluate(() => {
         window.dispatchEvent(
           new CustomEvent('open-knowledge:terminal-launch', {
-            detail: { prompt: '', cli: 'claude', stage: false },
+            detail: { kind: 'cli', prompt: '', cli: 'claude', stage: false },
           }),
         );
       });

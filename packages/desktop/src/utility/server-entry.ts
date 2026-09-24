@@ -23,6 +23,7 @@ export interface UtilityInitMessage {
     | 'maxDebounce'
     | 'localOpCliArgs'
     | 'reactShellDistDir'
+    | 'terminalAuthAvailable'
   > & {
     didEnsureGit?: boolean;
     consentVersion?: number;
@@ -236,6 +237,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
         ensurePiAcpBridge: (agentCwd, approvedCanonicalCwd) =>
           ensurePiBridge(agentCwd, undefined, undefined, undefined, approvedCanonicalCwd),
         serveContentAssets: true,
+        terminalAuthAvailable: msg.opts.terminalAuthAvailable === true,
         ...(msg.opts.reactShellDistDir ? { reactShellDistDir: msg.opts.reactShellDistDir } : {}),
       };
 

@@ -209,7 +209,14 @@ vi.doMock('./SessionsHost', () => ({
     reserveRightRevealTabGutter?: boolean;
     visible?: boolean;
     onVisibleChange?: (visible: boolean) => void;
-    launch?: { nonce: number; stagePaste?: string } | null;
+    launch?: {
+      nonce: number;
+      stagePaste?: string;
+      cli?: string | null;
+      command?: { executable: string; args: readonly string[] };
+      label?: string;
+      signInThreadId?: string;
+    } | null;
     threadLaunch?: { nonce: number; agentId?: string; prompt?: string | null } | null;
   }) => {
     return (
@@ -222,6 +229,10 @@ vi.doMock('./SessionsHost', () => ({
         data-visible={String(visible)}
         data-launch-nonce={launch ? String(launch.nonce) : 'none'}
         data-launch-stage={launch?.stagePaste ?? 'none'}
+        data-launch-cli={launch?.cli ?? 'none'}
+        data-launch-command={launch?.command ? JSON.stringify(launch.command) : 'none'}
+        data-launch-label={launch?.label ?? 'none'}
+        data-launch-sign-in={launch?.signInThreadId ?? 'none'}
         data-thread-launch-nonce={threadLaunch ? String(threadLaunch.nonce) : 'none'}
         data-thread-launch-agent={threadLaunch?.agentId ?? 'none'}
         data-thread-launch-image-parts={String(collectImageParts(threadLaunch).length)}
@@ -649,6 +660,38 @@ describe('EditorPane session-panel wiring', () => {
     act(() => desk.dispatchMenuAction('new-terminal'));
     expect(dock().getAttribute('data-visible')).toBe('true');
     expect(dock().getAttribute('data-launch-nonce')).toBe('none');
+  });
+
+  test('desktop: a command launch and a sign-in CLI launch reach the dock with their command, label and chat', async () => {
+    const desk = makeOkDesktopStub();
+    (window as { okDesktop?: unknown }).okDesktop = desk.stub;
+    const { requestTerminalCommandLaunch, requestTerminalLaunch } = await import(
+      './handoff/terminal-launch-events'
+    );
+    await renderEditorPane();
+    const dock = () => screen.getByTestId('terminal-dock');
+
+    act(() =>
+      requestTerminalCommandLaunch({
+        label: 'Log in with Auggie',
+        command: { executable: 'auggie', args: ['--acp', 'login'] },
+        signInThreadId: 'thread-9',
+      }),
+    );
+    expect(dock().getAttribute('data-visible')).toBe('true');
+    expect(dock().getAttribute('data-launch-nonce')).toBe('1');
+    expect(dock().getAttribute('data-launch-cli')).toBe('none');
+    expect(dock().getAttribute('data-launch-command')).toBe(
+      JSON.stringify({ executable: 'auggie', args: ['--acp', 'login'] }),
+    );
+    expect(dock().getAttribute('data-launch-label')).toBe('Log in with Auggie');
+    expect(dock().getAttribute('data-launch-sign-in')).toBe('thread-9');
+
+    act(() => requestTerminalLaunch('', 'claude', { signInThreadId: 'thread-9' }));
+    expect(dock().getAttribute('data-launch-nonce')).toBe('2');
+    expect(dock().getAttribute('data-launch-cli')).toBe('claude');
+    expect(dock().getAttribute('data-launch-command')).toBe('none');
+    expect(dock().getAttribute('data-launch-sign-in')).toBe('thread-9');
   });
 
   test('desktop: a distinct Open-in-terminal after a hide gets a fresh, monotonic nonce', async () => {
