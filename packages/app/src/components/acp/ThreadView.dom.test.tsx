@@ -137,9 +137,12 @@ vi.doMock('@/lib/acp/model-candidates', async () => {
 });
 
 const { ThreadView } = await import('./ThreadView');
-const { resetStagedThreadDrafts, subscribeStagedThreadDraft } = await import(
-  '@/lib/acp/thread-draft-staging'
-);
+const {
+  readThreadDraft,
+  resetStagedThreadDrafts,
+  stageThreadDraftContent,
+  subscribeStagedThreadDraft,
+} = await import('@/lib/acp/thread-draft-staging');
 const { launchAgentThread } = await import('@/lib/acp/launch-agent-thread');
 const { ThreadContextWindowError, ThreadResumeError } = await import('@/lib/acp/thread-client');
 const { buildThreadRenderModel } = await import('@/lib/acp/thread-event-model');
@@ -1668,6 +1671,12 @@ describe('ThreadView tool-call status', () => {
     const tooltip = await screen.findByRole('tooltip');
     expect(tooltip.textContent).toContain('read-only shell commands');
     expect(tooltip.textContent).toContain('mcp__open-knowledge__exec');
+    const surface = screen.getByTestId('agent-thread-tool-tooltip');
+    expect(surface.className).toContain('bg-popover');
+    expect(surface.className).toContain('text-popover-foreground');
+    expect(surface.className).not.toContain('bg-foreground');
+    expect(surface.className).not.toContain('text-background');
+    expect(surface.querySelector('svg')).toBeNull();
   });
 
   test('a tool with nothing to add gets no tooltip wrapper at all', async () => {
@@ -4226,6 +4235,63 @@ describe('ThreadView auth-required dead ends', () => {
     await waitFor(() => expect(staged.text).toBe('finish the migration'));
   });
 
+  test('registers a draft reader for its composer while mounted', () => {
+    model = makeModel({ turnActive: false, items: [] });
+    const view = render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    fireEvent.change(composer, { target: { value: '  typed so far  ' } });
+    const draft = readThreadDraft('thread-1');
+    expect(draft?.text).toBe('typed so far');
+    expect(draft?.doc).toEqual({
+      type: 'doc',
+      content: [{ type: 'paragraph', content: [{ type: 'text', text: '  typed so far  ' }] }],
+    });
+    expect(draft?.attachments).toEqual([]);
+    expect(draft?.uploadsPending).toBe(false);
+    view.unmount();
+    expect(readThreadDraft('thread-1')).toBeNull();
+  });
+
+  test('images carried into an agent that does not accept them are dropped with a notice', async () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: false } })} />,
+    );
+    await act(async () => {
+      stageThreadDraftContent('thread-1', {
+        doc: {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'carried over' }] }],
+        },
+        attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGk=', name: 'a.png' }],
+      });
+    });
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    expect(composer.value).toBe('carried over');
+    await waitFor(() =>
+      expect(screen.queryByTestId('agent-thread-pending-image-preview')).toBeNull(),
+    );
+    expect(toastError).toHaveBeenCalledWith("Claude doesn't accept image attachments.");
+  });
+
+  test('staged draft content fills the composer and queues its attachments', async () => {
+    model = makeModel({ turnActive: false, items: [] });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    await act(async () => {
+      stageThreadDraftContent('thread-1', {
+        doc: {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: 'carried over' }] }],
+        },
+        attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGk=', name: 'a.png' }],
+      });
+    });
+    const composer = screen.getByTestId('agent-thread-composer') as HTMLTextAreaElement;
+    expect(composer.value).toBe('carried over');
+    expect(screen.getByTestId('agent-thread-pending-images')).toBeTruthy();
+    expect(screen.getAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1);
+  });
+
   const IN_FLIGHT_CASES = [
     {
       kind: 'new-chat',
@@ -5296,6 +5362,28 @@ describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
       expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1),
     );
     expect(screen.getByTestId('agent-thread-send')).toHaveProperty('disabled', false);
+  });
+
+  test('the draft reader reports an in-flight read and clears it once the read settles', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+    const composer = screen.getByTestId('agent-thread-composer');
+    fireEvent.change(composer, { target: { value: 'describe the screenshot' } });
+
+    fireDrop([smallPng('shot.png')]);
+
+    expect(screen.queryAllByTestId('agent-thread-pending-upload')).toHaveLength(1);
+    expect(readThreadDraft('thread-1')?.uploadsPending).toBe(true);
+    await waitFor(() =>
+      expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1),
+    );
+    const settled = readThreadDraft('thread-1');
+    expect(settled?.uploadsPending).toBe(false);
+    expect(settled?.attachments).toEqual([
+      expect.objectContaining({ kind: 'image', name: 'shot.png' }),
+    ]);
   });
 
   test('the drop highlight survives a dragleave that bubbles from a child', async () => {

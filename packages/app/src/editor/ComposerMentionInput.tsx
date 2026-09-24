@@ -18,6 +18,7 @@ import {
   composerFirstLineText,
   composerSlashSuggestionKey,
   getSlashCommands,
+  reconcileCommandNodes,
   resolveSlashTokenHint,
   type SlashCommandItem,
   type SlashTokenHint,
@@ -51,6 +52,8 @@ export interface ComposerMentionInputHandle {
   clear: () => void;
   setText: (text: string) => void;
   appendText: (text: string) => void;
+  getDoc: () => JSONContent | null;
+  setDoc: (doc: JSONContent) => void;
   getContent: () => {
     instruction: string;
     mentions: string[];
@@ -206,6 +209,7 @@ export function ComposerMentionInput({
     if (setSlashCommands(editor, slashCommands ?? null)) {
       const view = (editor as unknown as { editorView?: ComposerEditorView }).editorView;
       if (view) view.dispatch(editor.state.tr.setMeta('addToHistory', false));
+      reconcileCommandNodes(editor);
     }
     setSlashHint(resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)));
   }, [editor, slashCommands]);
@@ -226,9 +230,15 @@ export function ComposerMentionInput({
     onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
   }, [editor]);
 
-  useImperativeHandle(
-    ref,
-    () => ({
+  useImperativeHandle(ref, () => {
+    const notifyContentMutation = (): void => {
+      if (!editor) return;
+      onEmptyChangeRef.current(isComposerEmpty(editor));
+      onContentChangeRef.current?.(editor.getJSON());
+      onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
+      setSlashHint(resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)));
+    };
+    return {
       focus: () => editor?.commands.focus(),
       refuseDrop: (reason: string) => {
         dropRefusalIdRef.current += 1;
@@ -240,12 +250,7 @@ export function ComposerMentionInput({
       setText: (text: string) => {
         if (!editor) return;
         editor.commands.setContent(textToParagraphs(text));
-        onEmptyChangeRef.current(isComposerEmpty(editor));
-        onContentChangeRef.current?.(editor.getJSON());
-        onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
-        setSlashHint(
-          resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)),
-        );
+        notifyContentMutation();
       },
       appendText: (text: string) => {
         if (!editor || text === '') return;
@@ -257,12 +262,14 @@ export function ComposerMentionInput({
             ...textToParagraphs(text),
           ]);
         }
-        onEmptyChangeRef.current(isComposerEmpty(editor));
-        onContentChangeRef.current?.(editor.getJSON());
-        onMentionsChangeRef.current?.(serializeComposerContent(editor).mentions);
-        setSlashHint(
-          resolveSlashTokenHint(composerFirstLineText(editor), getSlashCommands(editor)),
-        );
+        notifyContentMutation();
+      },
+      getDoc: () => (editor ? editor.getJSON() : null),
+      setDoc: (doc: JSONContent) => {
+        if (!editor) return;
+        editor.commands.setContent(doc);
+        reconcileCommandNodes(editor);
+        notifyContentMutation();
       },
       getContent: () =>
         editor
@@ -277,9 +284,8 @@ export function ComposerMentionInput({
           return;
         editor.chain().focus().insertContent('/').run();
       },
-    }),
-    [editor],
-  );
+    };
+  }, [editor]);
 
   const dropPolicy = attachmentDrop;
   const dropSurfaceProps =

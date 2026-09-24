@@ -148,7 +148,11 @@ import {
   useAgentThread,
   useAgentThreadModel,
 } from '@/lib/acp/thread-client';
-import { subscribeStagedThreadDraft } from '@/lib/acp/thread-draft-staging';
+import {
+  registerThreadDraftReader,
+  subscribeStagedThreadDraft,
+  subscribeStagedThreadDraftContent,
+} from '@/lib/acp/thread-draft-staging';
 import {
   type PermissionOutcome,
   type RenderedItem,
@@ -156,6 +160,7 @@ import {
   type RenderedTerminal,
   type RenderedToolCall,
   resolvePermissionOutcome,
+  threadHasUserMessage,
 } from '@/lib/acp/thread-event-model';
 import {
   describeToolCall,
@@ -322,6 +327,10 @@ function nextStartOutcome(
   }
 }
 
+function composerInstruction(handle: ComposerMentionInputHandle | null): string {
+  return handle?.getContent().instruction.trim() ?? '';
+}
+
 export function ThreadView({
   info,
   active = true,
@@ -366,7 +375,7 @@ export function ThreadView({
   }, [dropNotice]);
   const imagesAccepted = info.promptCapabilities?.image === true;
   const uploadsPending = pendingUploads.length > 0;
-  const composerText = (): string => composerRef.current?.getContent().instruction.trim() ?? '';
+  const composerText = (): string => composerInstruction(composerRef.current);
   const composerAttachments = (): readonly AttachmentPart[] => {
     const chips = composerRef.current?.getContent().attachments ?? [];
     return [...chips, ...pendingAttachments];
@@ -490,10 +499,40 @@ export function ThreadView({
   const prevTurnActiveRef = useRef(false);
 
   useEffect(() => {
-    return subscribeStagedThreadDraft(info.threadId, (text) => {
+    return registerThreadDraftReader(info.threadId, () => ({
+      text: composerInstruction(composerRef.current),
+      doc: composerRef.current?.getDoc() ?? null,
+      attachments: attachmentsRef.current,
+      uploadsPending,
+    }));
+  }, [info.threadId, uploadsPending]);
+
+  useEffect(() => {
+    const stopStaging = subscribeStagedThreadDraft(info.threadId, (text) => {
       composerRef.current?.appendText(text);
     });
+    const stopStagingContent = subscribeStagedThreadDraftContent(info.threadId, (content) => {
+      composerRef.current?.setDoc(content.doc);
+      if (content.attachments.length > 0) {
+        attachmentsRef.current = [...attachmentsRef.current, ...content.attachments];
+        setPendingAttachments(attachmentsRef.current);
+      }
+    });
+    return () => {
+      stopStagingContent();
+      stopStaging();
+    };
   }, [info.threadId]);
+
+  useEffect(() => {
+    if (info.promptCapabilities == null || imagesAccepted) return;
+    const kept = pendingAttachments.filter((part) => part.kind !== 'image');
+    if (kept.length === pendingAttachments.length) return;
+    attachmentsRef.current = kept;
+    setPendingAttachments(kept);
+    const agentName = agentDisplayName(info.agent.name);
+    toast.error(t`${agentName} doesn't accept image attachments.`);
+  }, [info.promptCapabilities, imagesAccepted, pendingAttachments, info.agent.name, t]);
 
   const model = useAgentThreadModel(info.threadId);
   const status = info.status;
@@ -1352,7 +1391,7 @@ export function ThreadView({
             ) : null}
             <ThreadComposer
               info={info}
-              hasStartedWork={items.some((item) => item.kind === 'message' && item.role === 'user')}
+              hasStartedWork={threadHasUserMessage({ items })}
               onNewChat={startFreshThread}
               composerRef={composerRef}
               mentionRecency={mentionRecency}
@@ -2942,9 +2981,16 @@ function toolTitleText(text: ToolTooltipText | null): string | undefined {
 
 function ToolTooltipContent({ text }: { text: ToolTooltipText }): ReactNode {
   return (
-    <TooltipContent side="top" align="start" className="max-w-72">
+    <TooltipContent
+      side="top"
+      align="start"
+      sideOffset={6}
+      arrow={false}
+      className="max-w-72 border border-border bg-popover text-popover-foreground shadow-md"
+      data-testid="agent-thread-tool-tooltip"
+    >
       {text.purpose !== null ? <span className="block">{text.purpose}</span> : null}
-      <span className="block font-mono text-[10px] opacity-70" dir="ltr">
+      <span className="block font-mono text-[10px] text-muted-foreground" dir="ltr">
         {text.id}
       </span>
     </TooltipContent>

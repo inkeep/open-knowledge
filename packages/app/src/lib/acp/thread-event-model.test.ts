@@ -4,6 +4,7 @@ import {
   buildThreadRenderModel,
   type RenderedItem,
   resolvePermissionOutcome,
+  threadHasUserMessage,
 } from './thread-event-model';
 
 function ev(event: ThreadEvent): ThreadEvent {
@@ -934,5 +935,24 @@ describe('sent-message timestamps', () => {
     const message = model.items[0];
     if (message?.kind !== 'message') throw new Error('unreachable');
     expect(message.sentAt).toBeUndefined();
+  });
+});
+
+describe('threadHasUserMessage', () => {
+  test('is true only once a user message is in the transcript', () => {
+    expect(threadHasUserMessage({ items: [] })).toBe(false);
+    expect(
+      threadHasUserMessage({
+        items: [{ kind: 'message', role: 'agent', text: 'hello', messageId: 'a1' }],
+      }),
+    ).toBe(false);
+    expect(
+      threadHasUserMessage({
+        items: [
+          { kind: 'message', role: 'agent', text: 'hello', messageId: 'a1' },
+          { kind: 'message', role: 'user', text: 'hi', messageId: 'u1' },
+        ],
+      }),
+    ).toBe(true);
   });
 });

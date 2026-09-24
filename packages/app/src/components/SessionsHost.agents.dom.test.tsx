@@ -11,7 +11,12 @@ import {
   reloadEnabledAgentsFromStorage,
   setAgentEnabled,
 } from '@/lib/acp/enabled-agents';
-import { subscribeStagedThreadDraft } from '@/lib/acp/thread-draft-staging';
+import {
+  registerThreadDraftReader,
+  resetStagedThreadDrafts,
+  subscribeStagedThreadDraft,
+} from '@/lib/acp/thread-draft-staging';
+import type { ThreadRenderModel } from '@/lib/acp/thread-event-model';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import type { ThreadLaunchIntent } from './EditorPane';
 import { requestPreferredSession } from './handoff/preferred-session-events';
@@ -69,6 +74,21 @@ const deleteThread = vi.fn((id: string) => {
   setArchivedThreads(archivedThreads.filter((t) => t.threadId !== id));
 });
 const markThreadViewed = vi.fn((_id: string) => {});
+const threadModels = new Map<string, ThreadRenderModel>();
+function setThreadModel(threadId: string, model: ThreadRenderModel | null) {
+  if (model === null) threadModels.delete(threadId);
+  else threadModels.set(threadId, model);
+}
+function emptyThreadModel(items: ThreadRenderModel['items'] = []): ThreadRenderModel {
+  return {
+    items,
+    plan: [],
+    turnActive: false,
+    tokenUsage: null,
+    terminals: {},
+    permissionsByToolCall: {},
+  };
+}
 
 let connectionStatus: 'idle' | 'connecting' | 'open' | 'closed' = 'open';
 function setConnectionStatus(next: typeof connectionStatus) {
@@ -119,6 +139,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
     openArchivedThread,
     deleteThread,
     markThreadViewed,
+    getThreadModel: (threadId: string) => threadModels.get(threadId) ?? null,
   }),
   ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
 }));
@@ -146,6 +167,7 @@ type MockAgent = {
 };
 
 let mockRegisteredAgent: MockAgent | null = null;
+let mockExtraAgents: MockAgent[] = [];
 let mockPersistedDefaultAgent: MockAgent | null = null;
 const registerAgent = vi.fn((_agent: MockAgent) => {});
 
@@ -154,7 +176,7 @@ const { pickEffectiveDefaultAgent } = await vi.importActual<
 >('@/lib/acp/registered-agents');
 
 function presentedAgents(): MockAgent[] {
-  const list = mockRegisteredAgent === null ? [] : [mockRegisteredAgent];
+  const list = mockRegisteredAgent === null ? [] : [mockRegisteredAgent, ...mockExtraAgents];
   const persisted = mockPersistedDefaultAgent;
   if (
     persisted !== null &&
@@ -175,9 +197,10 @@ vi.doMock('@/lib/acp/registered-agents', () => ({
 
 let mockInflightLaunch = false;
 let mockLaunchOutcome: 'started' | 'deduped' | 'failed' = 'started';
+let mockLaunchGate: Promise<'started' | 'deduped' | 'failed'> | null = null;
 const launchAgentThread = vi.fn(() => {
   mockInflightLaunch = true;
-  return Promise.resolve(mockLaunchOutcome);
+  return mockLaunchGate ?? Promise.resolve(mockLaunchOutcome);
 });
 const toastError = vi.fn((_message: string) => {});
 vi.doMock('sonner', () => ({
@@ -904,7 +927,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     catalogError = null;
     refetchCatalog.mockClear();
     mockRegisteredAgent = null;
+    mockExtraAgents = [];
     mockPersistedDefaultAgent = null;
+    threadModels.clear();
+    resetStagedThreadDrafts();
     initialRosterIds = null;
     localStorage.clear();
     reloadEnabledAgentsFromStorage();
@@ -2987,5 +3013,226 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     setConnectionStatus('open');
     await waitFor(() => expect(screen.queryByTestId('agent-thread-reconnecting')).toBeNull());
+  });
+});
+
+describe('switching the agent of an unsent chat', () => {
+  const CURRENT: MockAgent = { source: 'registry', id: 'a', name: 'Agent' };
+  const OTHER: MockAgent = { source: 'registry', id: 'codex-acp', name: 'Codex' };
+  const DRAFT_DOC = {
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'quoted passage' }] }],
+  };
+  const DRAFT_IMAGE = {
+    kind: 'image',
+    mimeType: 'image/png',
+    data: 'aGk=',
+    name: 'a.png',
+  } as const;
+
+  beforeEach(() => {
+    closeThread.mockClear();
+    launchAgentThread.mockClear();
+    registerAgent.mockClear();
+    mockLaunchOutcome = 'started';
+    mockInflightLaunch = false;
+    mockRegisteredAgent = null;
+    mockExtraAgents = [];
+    mockPersistedDefaultAgent = null;
+    mockLaunchGate = null;
+    threadModels.clear();
+    resetStagedThreadDrafts();
+    setOpenThreads([]);
+    localStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+  });
+
+  async function pickFromHeaderMenu(name: string) {
+    const user = userEvent.setup();
+    const [trigger] = screen.getAllByRole('button', {
+      name: /Choose what a new (tab|chat) starts/,
+    });
+    if (trigger === undefined) throw new Error('header picker trigger missing');
+    await user.click(trigger);
+    await user.click(await screen.findByRole('menuitem', { name }));
+  }
+
+  test('picking another agent while the open chat is unsent switches it and carries the draft', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'quoted passage',
+      doc: DRAFT_DOC,
+      attachments: [DRAFT_IMAGE],
+      uploadsPending: false,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    stopReading();
+
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]).toEqual([
+      { source: 'registry', id: 'codex-acp' },
+      null,
+      null,
+      null,
+      { doc: DRAFT_DOC, attachments: [DRAFT_IMAGE] },
+      undefined,
+    ]);
+    await waitFor(() => expect(closeThread).toHaveBeenCalledWith('t1'));
+  });
+
+  test.each(['failed', 'deduped'] as const)(
+    'a replacement launch that ends %s leaves the unsent chat and its draft in place',
+    async (outcome) => {
+      mockRegisteredAgent = CURRENT;
+      mockExtraAgents = [OTHER];
+      mockLaunchOutcome = outcome;
+      render(<Harness />);
+      setOpenThreads([makeThread({ threadId: 't1' })]);
+      await screen.findByTestId('thread-view');
+      setThreadModel('t1', emptyThreadModel());
+      const stopReading = registerThreadDraftReader('t1', () => ({
+        text: 'quoted passage',
+        doc: DRAFT_DOC,
+        attachments: [],
+      }));
+
+      await pickFromHeaderMenu('Codex');
+      await waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      stopReading();
+
+      expect(closeThread).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a chat that already has a message keeps its agent and the pick opens a new chat', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel(
+      't1',
+      emptyThreadModel([{ kind: 'message', role: 'user', text: 'hello', messageId: 'm1' }]),
+    );
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'a follow-up',
+      doc: DRAFT_DOC,
+      attachments: [],
+      uploadsPending: false,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    stopReading();
+
+    expect(closeThread).not.toHaveBeenCalled();
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]).toEqual([
+      { source: 'registry', id: 'codex-acp' },
+      null,
+      null,
+      null,
+      null,
+      undefined,
+    ]);
+  });
+
+  test('the agent list is unavailable until a switch has settled', async () => {
+    const THIRD: MockAgent = { source: 'registry', id: 'cursor', name: 'Cursor' };
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER, THIRD];
+    const gate = Promise.withResolvers<'started' | 'deduped' | 'failed'>();
+    mockLaunchGate = gate.promise;
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'quoted passage',
+      doc: DRAFT_DOC,
+      attachments: [],
+      uploadsPending: false,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]?.[4]).toEqual({ doc: DRAFT_DOC, attachments: [] });
+
+    const user = userEvent.setup();
+    const [trigger] = screen.getAllByRole('button', {
+      name: /Choose what a new (tab|chat) starts/,
+    });
+    if (trigger === undefined) throw new Error('header picker trigger missing');
+    await user.click(trigger);
+    const cursorItem = await screen.findByRole('menuitem', { name: 'Cursor' });
+    expect(cursorItem.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('menuitem', { name: 'Codex' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    await user.click(cursorItem);
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(closeThread).not.toHaveBeenCalled();
+    await user.keyboard('{Escape}');
+
+    await act(async () => {
+      gate.resolve('started');
+      await gate.promise;
+    });
+    stopReading();
+    await waitFor(() => expect(closeThread).toHaveBeenCalledWith('t1'));
+
+    await user.click(trigger);
+    const cursorAgain = await screen.findByRole('menuitem', { name: 'Cursor' });
+    expect(cursorAgain.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  test('a chat with a file still being read is not switched', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'quoted passage',
+      doc: DRAFT_DOC,
+      attachments: [],
+      uploadsPending: true,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    stopReading();
+
+    expect(closeThread).not.toHaveBeenCalled();
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]?.[4]).toBeNull();
+  });
+
+  test('picking the agent the unsent chat already uses opens a new chat as before', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+
+    await pickFromHeaderMenu('Agent');
+
+    expect(closeThread).not.toHaveBeenCalled();
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]?.[0]).toEqual({ source: 'registry', id: 'a' });
   });
 });

@@ -615,6 +615,10 @@ export class ThreadRenderModelBuilder {
   }
 }
 
+export function threadHasUserMessage(model: Pick<ThreadRenderModel, 'items'>): boolean {
+  return model.items.some((item) => item.kind === 'message' && item.role === 'user');
+}
+
 export function buildThreadRenderModel(
   events: readonly ThreadEvent[],
   agent: CodexLegacyAgentIdentity | null,

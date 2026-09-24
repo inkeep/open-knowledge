@@ -3,6 +3,24 @@ import { type Ref, useImperativeHandle, useRef } from 'react';
 import type { ComposerMentionInputHandle } from '@/editor/ComposerMentionInput';
 import type { MentionRecency } from '@/editor/composer-mention/composer-mention';
 
+function docPlainText(doc: {
+  content?: readonly { content?: readonly Record<string, unknown>[] }[];
+}): string {
+  return (doc.content ?? [])
+    .map((paragraph) =>
+      (paragraph.content ?? [])
+        .map((node) => {
+          if (node.type === 'text') return String(node.text ?? '');
+          const attrs = (node.attrs ?? {}) as Record<string, unknown>;
+          if (node.type === 'composerMention') return `@${String(attrs.path ?? '')}`;
+          if (node.type === 'composerCommand') return `/${String(attrs.name ?? '')}`;
+          return '';
+        })
+        .join(''),
+    )
+    .join('\n');
+}
+
 export function mentionRecencyAttribute(recency: MentionRecency | undefined): string | undefined {
   return recency === undefined ? undefined : JSON.stringify(recency);
 }
@@ -69,6 +87,20 @@ export function MockComposerMentionInput({
       const el = localRef.current;
       if (!el || text === '') return;
       el.value = el.value.trim() === '' ? text : `${el.value.replace(/\s+$/, '')}\n\n${text}`;
+      notify();
+    },
+    getDoc: () => ({
+      type: 'doc',
+      content: (localRef.current?.value ?? '')
+        .split('\n')
+        .map((line) =>
+          line === ''
+            ? { type: 'paragraph' }
+            : { type: 'paragraph', content: [{ type: 'text', text: line }] },
+        ),
+    }),
+    setDoc: (doc) => {
+      if (localRef.current) localRef.current.value = docPlainText(doc);
       notify();
     },
     getContent: () => ({

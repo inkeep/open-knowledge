@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
+  isEmptyThreadDraft,
+  readThreadDraft,
+  registerThreadDraftReader,
   resetStagedThreadDrafts,
   stageThreadDraft,
+  stageThreadDraftContent,
   subscribeStagedThreadDraft,
+  subscribeStagedThreadDraftContent,
 } from './thread-draft-staging';
 
 afterEach(() => {
@@ -70,5 +75,71 @@ describe('thread draft staging', () => {
     stageThreadDraft('thread-1', 'after remount');
     expect(newer).toHaveBeenCalledWith('after remount');
     expect(older).not.toHaveBeenCalled();
+  });
+});
+
+describe('thread draft readers', () => {
+  const snapshot = (text: string) => ({
+    text,
+    doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text }] }] },
+    attachments: [],
+    uploadsPending: false,
+  });
+
+  test('reads the live draft through the registered reader and nothing once it unregisters', () => {
+    expect(readThreadDraft('t1')).toBeNull();
+    const stop = registerThreadDraftReader('t1', () => snapshot('typed so far'));
+    expect(readThreadDraft('t1')?.text).toBe('typed so far');
+    stop();
+    expect(readThreadDraft('t1')).toBeNull();
+  });
+
+  test('a stale unregister does not remove a newer reader', () => {
+    const stopFirst = registerThreadDraftReader('t2', () => snapshot('first'));
+    registerThreadDraftReader('t2', () => snapshot('second'));
+    stopFirst();
+    expect(readThreadDraft('t2')?.text).toBe('second');
+  });
+
+  test('a draft with no text and no attachments is empty', () => {
+    expect(
+      isEmptyThreadDraft({ text: '', doc: null, attachments: [], uploadsPending: false }),
+    ).toBe(true);
+    expect(isEmptyThreadDraft(snapshot('x'))).toBe(false);
+    expect(
+      isEmptyThreadDraft({
+        text: '',
+        doc: null,
+        attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGk=', name: 'a.png' }],
+        uploadsPending: false,
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('thread draft content staging', () => {
+  const content = {
+    doc: { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'hi' }] }] },
+    attachments: [{ kind: 'image', mimeType: 'image/png', data: 'aGk=', name: 'a.png' }],
+  } as const;
+
+  test('holds content until a subscriber arrives, then delivers it once', () => {
+    stageThreadDraftContent('t3', content);
+    const seen: unknown[] = [];
+    const stop = subscribeStagedThreadDraftContent('t3', (c) => seen.push(c));
+    expect(seen).toEqual([content]);
+    stop();
+    const later: unknown[] = [];
+    const stopLater = subscribeStagedThreadDraftContent('t3', (c) => later.push(c));
+    expect(later).toEqual([]);
+    stopLater();
+  });
+
+  test('delivers straight to a live subscriber', () => {
+    const seen: unknown[] = [];
+    const stop = subscribeStagedThreadDraftContent('t4', (c) => seen.push(c));
+    stageThreadDraftContent('t4', content);
+    expect(seen).toEqual([content]);
+    stop();
   });
 });

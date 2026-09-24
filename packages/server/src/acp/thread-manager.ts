@@ -1025,29 +1025,30 @@ export class AcpThreadManager {
       )
       .connect(stream);
     record.conn = conn;
-    conn.closed.then(
-      async () => {
-        await drainStderr();
-        if (record.conn !== conn || launchStatusMuted()) return;
-        if (record.info.status !== 'exited' && record.info.status !== 'error') {
-          this.emitStatus(record, 'exited', 'agent connection closed');
-        }
-      },
-      async (err: unknown) => {
-        await drainStderr();
-        if (record.conn !== conn || launchStatusMuted()) return;
+    const settleClosedConnection = async (failure: { err: unknown } | null): Promise<void> => {
+      await drainStderr();
+      if (record.conn !== conn || launchStatusMuted()) return;
+      if (failure !== null) {
         this.opts.log.warn(
-          { err, threadId: record.info.threadId },
+          { err: failure.err, threadId: record.info.threadId },
           '[acp-threads] agent connection closed with error',
         );
-        if (record.info.status !== 'exited' && record.info.status !== 'error') {
-          this.emitStatus(
-            record,
-            'error',
-            `agent connection failed: ${err instanceof Error ? err.message : String(err)}`,
-          );
-        }
-      },
+      }
+      if (record.info.status === 'exited' || record.info.status === 'error') return;
+      if (failure === null) {
+        this.emitStatus(record, 'exited', 'agent connection closed');
+        return;
+      }
+      const { err } = failure;
+      this.emitStatus(
+        record,
+        'error',
+        `agent connection failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    };
+    conn.closed.then(
+      () => settleClosedConnection(null),
+      (err: unknown) => settleClosedConnection({ err }),
     );
 
     let init: InitializeResponse;

@@ -65,7 +65,13 @@ import {
   useInitialRosterThreadIds,
   useOpenAgentThreadTabs,
 } from '@/lib/acp/thread-client';
-import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
+import {
+  isEmptyThreadDraft,
+  readThreadDraft,
+  stageThreadDraft,
+  type ThreadDraftContent,
+} from '@/lib/acp/thread-draft-staging';
+import { threadHasUserMessage } from '@/lib/acp/thread-event-model';
 import type { OkDesktopBridge, OkTerminalRestartSnapshot } from '@/lib/desktop-bridge-types';
 import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import {
@@ -141,7 +147,7 @@ type AgentPaneLaunchRequest = {
   readonly attachments?: readonly AttachmentPart[];
 } & (
   | { readonly prompt?: string | null; readonly stageDraft?: never }
-  | { readonly prompt?: never; readonly stageDraft: string }
+  | { readonly prompt?: never; readonly stageDraft: string | ThreadDraftContent }
 );
 
 type EmptyAgentLaunchState = 'idle' | 'launching' | 'deduped' | 'failed';
@@ -929,12 +935,48 @@ export function SessionsHost({
     openSession(null, null, 'user');
   }
 
+  function unsentActiveThread(): { threadId: string; agent: ThreadInfo['agent'] } | null {
+    const active = sessionsRef.current.find((session) => session.id === activeSessionIdRef.current);
+    if (active == null || active.kind !== 'thread') return null;
+    const info = threadInfoById.get(active.threadId);
+    if (info === undefined || info.archived === true) return null;
+    const model = getAgentThreadClient().getThreadModel(active.threadId);
+    if (model === null) return null;
+    if (threadHasUserMessage(model)) return null;
+    return { threadId: active.threadId, agent: info.agent };
+  }
+
   function pickNewChatAgent(agent: RegisteredAgent) {
+    const unsent = unsentActiveThread();
+    if (unsent !== null && switchingThreads.has(unsent.threadId)) return;
     dismissCoveringHistory();
     registerAgent(agent);
     writePreferBareTerminal(false);
     saveStickyAgent(threadAgentId(agent));
-    void launchAgentForPane({ agent });
+    if (unsent === null || (unsent.agent.source === agent.source && unsent.agent.id === agent.id)) {
+      void launchAgentForPane({ agent });
+      return;
+    }
+    const draft = readThreadDraft(unsent.threadId);
+    if (draft?.uploadsPending === true) {
+      void launchAgentForPane({ agent });
+      return;
+    }
+    const request: AgentPaneLaunchRequest =
+      draft !== null && !isEmptyThreadDraft(draft) && draft.doc !== null
+        ? { agent, stageDraft: { doc: draft.doc, attachments: draft.attachments } }
+        : { agent };
+    const switchingFrom = unsent.threadId;
+    setSwitchingThreads((previous) => new Set(previous).add(switchingFrom));
+    void launchAgentForPane(request).then((outcome) => {
+      setSwitchingThreads((previous) => {
+        if (!previous.has(switchingFrom)) return previous;
+        const next = new Set(previous);
+        next.delete(switchingFrom);
+        return next;
+      });
+      if (outcome === 'started') getAgentThreadClient().closeThread(switchingFrom);
+    });
   }
 
   function setSessionTitle(id: string, title: string) {
@@ -1055,6 +1097,7 @@ export function SessionsHost({
     }
   }
   const closeActiveRef = useRef(() => {});
+  const [switchingThreads, setSwitchingThreads] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     persistSuppressedRef.current = dockPersistSuppressed;
@@ -1759,6 +1802,13 @@ export function SessionsHost({
 
   const panelSessions = [...sessions].sort((a, b) => a.ordinal - b.ordinal);
 
+  const agentPickPending = sessions.some(
+    (session) =>
+      session.id === activeSessionId &&
+      session.kind === 'thread' &&
+      switchingThreads.has(session.threadId),
+  );
+
   const newButton = (
     <TerminalNewChatButton
       selected={newSessionChoice}
@@ -1766,6 +1816,7 @@ export function SessionsHost({
       showAgents={hostThreads}
       registeredAgents={enabledRegisteredAgents}
       onPickAgent={pickNewChatAgent}
+      agentPickPending={agentPickPending}
       onOpenSettings={openAgentSettings}
       liveThreadCount={liveThreadCount}
       showClis={terminalAvailable}
@@ -1782,6 +1833,7 @@ export function SessionsHost({
       showAgents
       registeredAgents={enabledRegisteredAgents}
       onPickAgent={pickNewChatAgent}
+      agentPickPending={agentPickPending}
       onOpenSettings={openAgentSettings}
       liveThreadCount={liveThreadCount}
       showClis={terminalAvailable}
