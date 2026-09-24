@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { ElectronApplication, ElementHandle, Page } from '@playwright/test';
+import type { ElectronApplication, ElementHandle, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import {
@@ -19,6 +19,11 @@ import {
 } from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
+import {
+  numberedScrollLine,
+  readScrollbackUpward,
+  type ScrollbackExpectation,
+} from './_helpers/terminal-scrollback';
 import {
   seedTerminalShellProfiles,
   terminalSmokeEnvironment,
@@ -38,6 +43,8 @@ const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
 const SHELL_COMMANDS = terminalSmokeShellCommands();
+const SCROLLBACK_PAGE_LIMIT = 40;
+const SCROLL_SETTLE_FRAME_LIMIT = 60;
 
 type TerminalHome = 'bottom' | 'right';
 
@@ -297,36 +304,45 @@ async function readActiveTerminal(page: Page): Promise<string> {
   });
 }
 
-async function expectScrollbackRetains(page: Page, ...markers: string[]): Promise<void> {
+async function expectScrollbackRetains(
+  page: Page,
+  expectation: ScrollbackExpectation,
+): Promise<void> {
   await visibleTerminal(page).locator('.xterm-helper-textarea').focus();
-  let text = await readTerminalRows(page);
-  for (let step = 0; step < 40 && !markers.every((marker) => text.includes(marker)); step += 1) {
-    await page.keyboard.press('Shift+PageUp');
-    await page.evaluate(
-      () =>
-        new Promise<void>((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-        ),
-    );
-    text = await readTerminalRows(page);
-  }
-  for (const marker of markers) {
-    expect(text, `terminal scrollback is missing ${marker}`).toContain(marker);
-  }
-  await settleScrollPosition(page);
+  const verdict = await readScrollbackUpward(
+    {
+      readSettledView: () => settleScrollPosition(page),
+      pageUpFrom: async (settledView) => {
+        await page.keyboard.press('Shift+PageUp');
+        return settleScrollPosition(page, settledView);
+      },
+      pageDownFrom: async (settledView) => {
+        await page.keyboard.press('Shift+PageDown');
+        return settleScrollPosition(page, settledView);
+      },
+    },
+    expectation,
+    SCROLLBACK_PAGE_LIMIT,
+  );
+  expect(verdict, 'terminal scrollback no longer holds every line the shell printed').toEqual({
+    kind: 'complete',
+  });
 }
 
-async function settleScrollPosition(page: Page): Promise<void> {
+async function settleScrollPosition(page: Page, departFrom?: string): Promise<string> {
   let previous = '';
   let stable = 0;
-  for (let step = 0; step < 60 && stable < 2; step += 1) {
+  let departed = departFrom === undefined;
+  for (let step = 0; step < SCROLL_SETTLE_FRAME_LIMIT && !(departed && stable >= 2); step += 1) {
     await page.evaluate(
       () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
     );
     const current = await readTerminalRows(page);
+    departed ||= current !== departFrom;
     stable = current === previous ? stable + 1 : 0;
     previous = current;
   }
+  return previous;
 }
 
 function waitForTerminalHome(page: Page, home: TerminalHome): Promise<void> {
@@ -399,6 +415,44 @@ async function expectTerminalMovedNotRebuilt(
     connected: true,
     atHome: true,
   });
+}
+
+interface MenuActionTally {
+  count: number;
+  stop: () => void;
+}
+
+function tallyMenuActionDeliveries(
+  page: Page,
+  action: 'move-terminal',
+): Promise<JSHandle<MenuActionTally>> {
+  return page.evaluateHandle((counted) => {
+    const bridge = window.okDesktop;
+    if (!bridge) throw new Error('renderer desktop bridge is unavailable');
+    const tally: MenuActionTally = { count: 0, stop: () => {} };
+    tally.stop = bridge.onMenuAction((delivered) => {
+      if (delivered === counted) tally.count += 1;
+    });
+    return tally;
+  }, action);
+}
+
+function readBurstOutcome(
+  surface: ElementHandle<Element>,
+  deliveries: JSHandle<MenuActionTally>,
+  home: TerminalHome,
+) {
+  return surface.evaluate(
+    (element, { tally, containerId }) => ({
+      delivered: tally.count,
+      connected: element.isConnected,
+      atHome: element.closest(`#${containerId}`) !== null,
+    }),
+    {
+      tally: deliveries,
+      containerId: home === 'right' ? 'terminal-column' : 'terminal-dock-panel',
+    },
+  );
 }
 
 async function readShellPid(page: Page, marker: string): Promise<number> {
@@ -478,43 +532,56 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const processMarker = `PROCESS_${token}`;
     const sentinel = `SENTINEL_${token}`;
     const scrollStart = `SCROLL_START_${token}`;
+    const scrollback: ScrollbackExpectation = {
+      markers: [sentinel, scrollStart],
+      linePrefix: `SCROLL_${token}_`,
+      lineCount: 120,
+    };
+    const newestScrollLine = numberedScrollLine(scrollback.linePrefix, scrollback.lineCount);
     const processId = await readShellPid(page, processMarker);
     await typeInActiveTerminal(
       page,
-      `${SHELL_COMMANDS.scroll(sentinel, scrollStart, `SCROLL_${token}_`, 120)}\r`,
+      `${SHELL_COMMANDS.scroll(sentinel, scrollStart, scrollback.linePrefix, scrollback.lineCount)}\r`,
     );
     await expect
       .poll(() => readActiveTerminal(page), { timeout: 15_000 })
-      .toContain(`SCROLL_${token}_120`);
-    await expectScrollbackRetains(page, sentinel, scrollStart);
+      .toContain(newestScrollLine);
+    await expectScrollbackRetains(page, scrollback);
 
     const liveSurface = await captureLiveTerminal(page);
     await moveTerminal(app, page, 'right');
     await expectTerminalMovedNotRebuilt(liveSurface, 'right');
-    await expectStillScrolledBack(page, `SCROLL_${token}_120`);
+    await expectStillScrolledBack(page, newestScrollLine);
     await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
     await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
-    await expectScrollbackRetains(page, sentinel, scrollStart);
+    await expectScrollbackRetains(page, scrollback);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const rightOutput = `RIGHT_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(rightOutput)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rightOutput);
 
-    await expectScrollbackRetains(page, sentinel, scrollStart);
+    await expectScrollbackRetains(page, scrollback);
     await moveTerminal(app, page, 'bottom');
     await expectTerminalMovedNotRebuilt(liveSurface, 'bottom');
-    await expectStillScrolledBack(page, `SCROLL_${token}_120`);
+    await expectStillScrolledBack(page, newestScrollLine);
     await expectTerminalTabOrder(page, [firstTabId, secondTabId]);
     await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
-    await expectScrollbackRetains(page, sentinel, scrollStart);
+    await expectScrollbackRetains(page, scrollback);
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const bottomOutput = `BOTTOM_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(bottomOutput)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(bottomOutput);
 
-    const rapidSettlement = waitForTerminalHome(page, 'right');
-    await clickTerminalPlacementItemRapidly(app, 7, page);
-    await rapidSettlement;
+    const rapidToggles = 7;
+    const rapidDeliveries = await tallyMenuActionDeliveries(page, 'move-terminal');
+    await clickTerminalPlacementItemRapidly(app, rapidToggles, page);
+    await expect
+      .poll(() => readBurstOutcome(liveSurface, rapidDeliveries, 'right'), {
+        message: 'the rapid placement burst never settled at its final placement',
+      })
+      .toEqual({ delivered: rapidToggles, connected: true, atHome: true });
+    await rapidDeliveries.evaluate((tally) => tally.stop());
+    await rapidDeliveries.dispose();
     await expectTerminalMovedNotRebuilt(liveSurface, 'right');
     await expect(page.locator('section[aria-label="Terminal"]')).toHaveCount(2);
     await expect(visibleTerminal(page)).toHaveCount(1);
@@ -528,7 +595,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     const rapidOutput = `RAPID_OUTPUT_${token}`;
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(rapidOutput)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(rapidOutput);
-    await expectScrollbackRetains(page, sentinel, scrollStart);
+    await expectScrollbackRetains(page, scrollback);
   });
 
   test('renderer restart restores the right layout and its live active terminal', async ({

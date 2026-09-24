@@ -250,6 +250,7 @@ function TerminalSession({
       scrollback: 10000,
       smoothScrollDuration: 125,
       scrollSensitivity: 3,
+      windowsPty: bridge.platform === 'win32' ? { backend: 'conpty' } : undefined,
       linkHandler: {
         activate: (_event, uri) => openUrl(uri),
       },
