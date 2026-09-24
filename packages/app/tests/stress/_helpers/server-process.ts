@@ -101,7 +101,6 @@ export async function checkCollabSync(
     url: `ws://${loopbackHost === '::1' ? '[::1]' : '127.0.0.1'}:${port}/collab`,
     name: SYSTEM_DOC_NAME,
     document: doc,
-    connect: false,
   });
   try {
     await new Promise<void>((resolve, reject) => {

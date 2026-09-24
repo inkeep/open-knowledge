@@ -1659,6 +1659,40 @@ function drainGuardFindings(source: string): string[] {
   return findings;
 }
 
+const SETUP_NON_RESULT_DECLARER = 'declareSetupNonResult';
+const SETUP_NON_RESULT_DECLARATION = '        declareSetupNonResult(base.info(), reason);\n';
+const DRAIN_BLOCK_OPENER = '        let drainFailure: string | undefined;\n';
+
+function setupNonResultDeclarationFindings(source: string): string[] {
+  const sourceFile = parseBudgetSource(source);
+  const body = workerServerFixtureBody(sourceFile);
+  if (body === undefined) return ['scope-missing'];
+  const drains = budgetCallsWithin(body, DRAIN_CALLEE);
+  if (drains.length !== 1) return ['drain-call-count'];
+  const drain = drains[0] as CallExpression;
+  const thrown = body
+    .getDescendantsOfKind(SyntaxKind.ThrowStatement)
+    .find((statement) => statement.getStart() > drain.getStart());
+  if (thrown === undefined) return ['drain-rethrow-missing'];
+
+  const declarations = budgetCallsWithin(body, SETUP_NON_RESULT_DECLARER);
+  if (declarations.length === 0) return ['declaration-missing'];
+  const findings = declarations.length === 1 ? [] : ['declaration-count'];
+  for (const declaration of declarations) {
+    if (declaration.getStart() < drain.getEnd()) {
+      findings.push('declaration-before-drain');
+    } else if (declaration.getEnd() > thrown.getStart()) {
+      findings.push('declaration-after-throw');
+    } else if (
+      declaration.getParentIfKind(SyntaxKind.ExpressionStatement)?.getParent() !==
+      thrown.getParent()
+    ) {
+      findings.push('declaration-off-the-rethrow-path');
+    }
+  }
+  return findings;
+}
+
 function checkBudgetWiringSite(
   sourceFile: SourceFile,
   spec: BudgetWiringSite,
@@ -2159,6 +2193,37 @@ describe('worker-server fixture budget wiring', () => {
       ),
       'composing the throw so the drain failure replaces the other three parts must red, since that is the substitution rather than the omission',
     ).toEqual(expect.arrayContaining(['drain-drops-reason', 'drain-drops-tail']));
+  });
+
+  test('the setup non-result is declared once, after the drain and unconditionally on the rethrow path', () => {
+    expect(
+      setupNonResultDeclarationFindings(fixtureSource()),
+      'the shipped fixture must declare the setup non-result exactly once, after the drain and as a statement beside the rethrow, or the controls below prove nothing',
+    ).toEqual([]);
+
+    const undeclared = mutatedFixtureSource(SETUP_NON_RESULT_DECLARATION, '');
+    const declaredBeforeDrain = undeclared.replace(
+      DRAIN_BLOCK_OPENER,
+      `${SETUP_NON_RESULT_DECLARATION}${DRAIN_BLOCK_OPENER}`,
+    );
+    expect(
+      declaredBeforeDrain,
+      `this control's drain anchor no longer matches ${FIXTURE_SOURCE_PATH}, so the assertion below would report the ordering it guards as broken when what actually went stale is the anchor`,
+    ).not.toBe(undeclared);
+    expect(
+      setupNonResultDeclarationFindings(declaredBeforeDrain),
+      'declaring before the drain lets base.info() throw where no TestInfo is current, once Playwright has already timed out the fixture slot, and skip the reap of the detached dev server and the removal of its dirs',
+    ).toEqual(['declaration-before-drain']);
+
+    expect(
+      setupNonResultDeclarationFindings(
+        mutatedFixtureSource(
+          SETUP_NON_RESULT_DECLARATION,
+          '        if (openedServerLog !== undefined) declareSetupNonResult(base.info(), reason);\n',
+        ),
+      ),
+      'a declaration some setup branches skip leaves those failures declared as executed assertion failures while the readiness branch the runtime check drives stays green',
+    ).toEqual(['declaration-off-the-rethrow-path']);
   });
 
   test('the seed-copy catch calls the rollback and still re-raises the copy failure itself', () => {

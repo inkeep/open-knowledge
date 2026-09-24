@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
+import { SETUP_NON_RESULT_REPORTER } from './tests/stress/_helpers/setup-non-result-reporter.ts';
 
 /**
  * Per-worker server isolation: there is no `webServer` block — instead a
@@ -125,6 +126,7 @@ export default defineConfig({
   reporter: [
     ['html', { open: 'never' }],
     ['list'],
+    [SETUP_NON_RESULT_REPORTER],
     ...(isCI
       ? [
           ['github'] as const,

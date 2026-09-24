@@ -18,6 +18,7 @@ import {
   tailServerLog,
   waitForHttpReady,
 } from './server-process.ts';
+import { declareSetupNonResult } from './setup-non-result.ts';
 import { removeAllDuringTeardown, runTeardownPhases } from './teardown-fs.ts';
 
 interface ProblemError extends Error {
@@ -436,6 +437,7 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
           openedServerLog === undefined
             ? '--- no dev server log was open when this failure ended the setup ---'
             : `--- dev server log tail (${openedServerLog.path}) ---\n${tailServerLog(openedServerLog)}`;
+        declareSetupNonResult(base.info(), reason);
         throw new Error(
           `${reason}${borrowed === undefined ? '' : `\n${borrowed}`}${drainFailure === undefined ? '' : `\n${drainFailure}`}\n${tail}`,
         );
