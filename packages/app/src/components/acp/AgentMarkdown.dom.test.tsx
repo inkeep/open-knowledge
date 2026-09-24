@@ -136,6 +136,27 @@ describe('AgentMarkdown doc-path links', () => {
     expect(container.textContent).not.toContain('[blocked]');
   });
 
+  test('a section link written as ./path.md#slug, the form the project skill prescribes, opens the doc at that heading in-app', () => {
+    const { container } = renderWithResolver(
+      'The schema is under [Data model](./reports/foo/REPORT.md#data-model).',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT#data-model');
+    expect(anchor?.getAttribute('target')).toBeNull();
+    expect(container.textContent).not.toContain('[blocked]');
+  });
+
+  test('a section link written as /path.md#slug, the content-root form, opens the doc at that heading in-app', () => {
+    const { container } = renderWithResolver(
+      'The schema is under [Data model](/reports/foo/REPORT.md#data-model).',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT#data-model');
+    expect(anchor?.getAttribute('target')).toBeNull();
+  });
+
   test('a markdown link to a file: URL of a workspace doc opens in-app too', () => {
     const { container } = renderWithResolver(
       '[the report](file:///Users/abraham/repo/public/open-knowledge/reports/foo/REPORT.md)',

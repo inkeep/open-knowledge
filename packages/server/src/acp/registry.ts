@@ -216,37 +216,83 @@ export async function loadCustomAgents(
   try {
     parsed = JSON.parse(text);
   } catch (err) {
-    log.warn({ err }, `[acp-registry] ${CUSTOM_AGENTS_FILE} is not valid JSON — ignoring`);
+    log.warn(
+      { error: err instanceof Error ? err.name : 'unknown', position: jsonErrorPosition(err) },
+      `[acp-registry] ${CUSTOM_AGENTS_FILE} is not valid JSON — ignoring`,
+    );
     return [];
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) {
+    log.warn(
+      { topLevel: parsed === null ? 'null' : typeof parsed },
+      `[acp-registry] ${CUSTOM_AGENTS_FILE} must be a JSON array of agents — ignoring`,
+    );
+    return [];
+  }
   const valid: CustomAgentEntry[] = [];
-  for (const entry of parsed) {
-    const e = entry as Record<string, unknown>;
-    if (
-      typeof e?.id === 'string' &&
-      /^[a-zA-Z0-9_-]+$/.test(e.id) &&
-      typeof e.name === 'string' &&
-      typeof e.command === 'string' &&
-      e.command.length > 0 &&
-      (e.args === undefined ||
-        (Array.isArray(e.args) && e.args.every((a) => typeof a === 'string'))) &&
-      (e.env === undefined ||
-        (typeof e.env === 'object' &&
-          e.env !== null &&
-          !Array.isArray(e.env) &&
-          Object.values(e.env).every((v) => typeof v === 'string')))
-    ) {
-      valid.push({
-        id: e.id,
-        name: e.name,
-        command: e.command,
-        args: e.args as string[] | undefined,
-        env: (e.env as Record<string, string> | undefined) ?? undefined,
-      });
+  for (const [index, raw] of parsed.entries()) {
+    const result = parseCustomAgentEntry(raw);
+    if (result.ok) {
+      valid.push(result.entry);
     } else {
-      log.warn({ entry }, `[acp-registry] dropping malformed ${CUSTOM_AGENTS_FILE} entry`);
+      log.warn(
+        { index, id: result.id, problem: result.problem },
+        `[acp-registry] dropping malformed ${CUSTOM_AGENTS_FILE} entry`,
+      );
     }
   }
   return valid;
+}
+
+function jsonErrorPosition(err: unknown): number | undefined {
+  if (!(err instanceof Error)) return undefined;
+  const match = /at position (\d+)/.exec(err.message);
+  return match === null ? undefined : Number(match[1]);
+}
+
+type ParsedCustomAgentEntry =
+  | { ok: true; entry: CustomAgentEntry }
+  | { ok: false; id: string | undefined; problem: string };
+
+function parseCustomAgentEntry(raw: unknown): ParsedCustomAgentEntry {
+  const e = (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}) as Record<
+    string,
+    unknown
+  >;
+  const id = typeof e.id === 'string' ? e.id : undefined;
+  const reject = (problem: string): ParsedCustomAgentEntry => ({ ok: false, id, problem });
+  if (id === undefined || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    return reject('id must use only letters, digits, _ and -');
+  }
+  if (typeof e.name !== 'string') return reject('name must be a string');
+  if (typeof e.command !== 'string' || e.command.length === 0) {
+    return reject('command must be a non-empty string');
+  }
+  if (
+    e.args !== undefined &&
+    !(Array.isArray(e.args) && e.args.every((a) => typeof a === 'string'))
+  ) {
+    return reject('args must be an array of strings');
+  }
+  if (
+    e.env !== undefined &&
+    !(
+      typeof e.env === 'object' &&
+      e.env !== null &&
+      !Array.isArray(e.env) &&
+      Object.values(e.env).every((v) => typeof v === 'string')
+    )
+  ) {
+    return reject('env must be an object of string values');
+  }
+  return {
+    ok: true,
+    entry: {
+      id,
+      name: e.name,
+      command: e.command,
+      args: e.args as string[] | undefined,
+      env: (e.env as Record<string, string> | undefined) ?? undefined,
+    },
+  };
 }

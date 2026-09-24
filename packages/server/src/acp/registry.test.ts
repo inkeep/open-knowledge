@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getLogger } from '../logger.ts';
 import {
   ACP_AGENT_EDITOR_IDS,
@@ -151,6 +151,10 @@ describe('normalizeAgentDisplayName', () => {
 });
 
 describe('loadCustomAgents', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   test('returns valid entries, drops malformed ones, tolerates a missing file', async () => {
     const localDir = tmp();
     expect(await loadCustomAgents(localDir, log)).toEqual([]);
@@ -165,6 +169,76 @@ describe('loadCustomAgents', () => {
     const agents = await loadCustomAgents(localDir, log);
     expect(agents).toHaveLength(1);
     expect(agents[0]?.id).toBe('my-agent');
+  });
+
+  test('a rejected entry is logged by index, id and reason, never with its env values', async () => {
+    const localDir = tmp();
+    const warn = vi.spyOn(log, 'warn');
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'bad id!', name: 'Nope', command: 'x', env: { OPENAI_API_KEY: 'sk-live-secret' } },
+      ]),
+    );
+    expect(await loadCustomAgents(localDir, log)).toEqual([]);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toEqual({
+      index: 0,
+      id: 'bad id!',
+      problem: expect.stringContaining('id'),
+    });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('sk-live-secret');
+  });
+
+  test('each field rule rejects on its own and names itself as the reason', async () => {
+    const localDir = tmp();
+    const warn = vi.spyOn(log, 'warn');
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify([
+        { id: 'bad-name', name: 5, command: 'x' },
+        { id: 'bad-command', name: 'n', command: '' },
+        { id: 'bad-args', name: 'n', command: 'x', args: ['a', 1] },
+        { id: 'bad-env', name: 'n', command: 'x', env: { KEY: 1 } },
+        { id: 'fine', name: 'n', command: 'x', args: ['a'], env: { KEY: 'v' } },
+      ]),
+    );
+    const agents = await loadCustomAgents(localDir, log);
+    expect(agents.map((a) => a.id)).toEqual(['fine']);
+    expect(warn.mock.calls.map((call) => call[0])).toEqual([
+      { index: 0, id: 'bad-name', problem: expect.stringContaining('name') },
+      { index: 1, id: 'bad-command', problem: expect.stringContaining('command') },
+      { index: 2, id: 'bad-args', problem: expect.stringContaining('args') },
+      { index: 3, id: 'bad-env', problem: expect.stringContaining('env') },
+    ]);
+  });
+
+  test('a parse failure is logged without any text from the file', async () => {
+    const localDir = tmp();
+    const warn = vi.spyOn(log, 'warn');
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      '[{"id":"x","name":"x","command":"x","env":{"OPENAI_API_KEY":"sk-live-secret"} oops}]',
+    );
+    expect(await loadCustomAgents(localDir, log)).toEqual([]);
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toEqual({ error: 'SyntaxError', position: expect.any(Number) });
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('sk-live-secret');
+  });
+
+  test('a file whose top level is not an array is ignored with a warning, like invalid JSON', async () => {
+    const localDir = tmp();
+    const warn = vi.spyOn(log, 'warn');
+    writeFileSync(
+      join(localDir, 'acp-agents.json'),
+      JSON.stringify({ id: 'solo', name: 'Solo', command: 'solo' }),
+    );
+    expect(await loadCustomAgents(localDir, log)).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('JSON array'));
+    warn.mockClear();
+    writeFileSync(join(localDir, 'acp-agents.json'), '{not json');
+    expect(await loadCustomAgents(localDir, log)).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('not valid JSON'));
   });
 });
 

@@ -96,6 +96,7 @@ Links work the way they do in the editors you already know:
 - **Type a URL, then press space or enter.** A full URL (`https://…`, `www.…`, or an email address) becomes a link when you press space or enter after it. Plain words and filenames like `AGENTS.md` are left alone, and one `Cmd+Z` turns a conversion back into plain text.
 - **Paste or drag in a URL.** Pasted (or dropped) on its own, it becomes a link. Pasted over selected text, it links that text instead — the text stays, the URL becomes its destination. `Cmd+Shift+V` pastes plain, with no linking.
 - **Type `[text](url)`.** Closing the parenthesis converts the markdown shorthand into a real link; `Cmd+Z` restores the literal text.
+- **Link to a section.** Append `#` and the heading's slug to a doc link — `[text](./spec.md#data-model-v2)` — and the WYSIWYG editor opens the doc scrolled to that heading (the source editor ignores the fragment and opens at the top). The slug is the heading text in lowercase with accents dropped, every run of characters that aren't letters or digits replaced by one hyphen, and hyphens trimmed from both ends: `## Data model: v2` becomes `data-model-v2`, `## FAQ:` becomes `faq`, and a second identical heading in the same doc gets `-1`. Agents write the same form in chat, so a reply about one part of a long spec can take you straight to it.
 - **Press `Cmd+K` with text selected.** The link popover opens with the URL field focused, pre-filled from your clipboard when it holds a URL. With the cursor inside an existing link, `Cmd+K` opens that link for editing. With no selection, `Cmd+K` keeps opening the command palette, as everywhere else. To reach the command palette while text is selected, use `Cmd+P` (`Ctrl+P` on Windows / Linux), which always opens it.
 
 ## Right-click menu and spell check
@@ -145,6 +146,28 @@ When an in-app agent needs you to sign in, the chat says so and offers what the 
 When a catalog-managed agent that OpenKnowledge launches through npx fails because npm reports that the entry in its npx cache is missing its `package.json`, OpenKnowledge deletes that one `_npx/<hash>` directory from npm's cache and relaunches the adapter once before reporting a failure. Custom agent commands and uv-managed adapters are never retried this way. Every launch that does fail, whatever its kind, is recorded with the last lines the adapter printed in [`.ok/local/acp-launch-failures.log`](../reference/what-open-knowledge-writes.mdx#while-a-project-is-open), which bug reports include.
 
 A startup error ending with "Try again after an allowed release becomes available." means the requested adapter has no eligible release under that policy. Retry after one becomes eligible; OpenKnowledge does not disable your cooldown. Acquisition contacts your configured package registry or Python index; see [network requests](../reference/what-open-knowledge-writes.mdx#what-leaves-your-machine).
+
+### Add your own in-app agent
+
+In-app agents speak the [Agent Client Protocol](https://agentclientprotocol.com) (ACP): OpenKnowledge starts the agent as a subprocess, hands it the project's MCP tools and the [project skill](./skills/built-in-skills.mdx#project-scope), and gates its permission requests in the chat. The catalog lists the agents published to the ACP registry, and any other agent that speaks ACP over stdio can join it on your machine.
+
+Create `.ok/local/acp-agents.json` inside the project, a JSON array with one entry per agent:
+
+```json
+[
+  { "id": "omp", "name": "oh-my-pi", "command": "omp", "args": ["acp"] }
+]
+```
+
+`id` may only use letters, digits, `_` and `-`; `name` is what the launcher shows; `command` plus the optional `args` are what OpenKnowledge spawns, and an optional `env` object of string values is added to the agent's environment. A bare command name is looked up on the PATH of the process that runs the OpenKnowledge server; on macOS and Linux, OpenKnowledge also asks your login shell for its PATH and merges that in, so a command that only your shell can see is still found from a desktop app launched from the Dock or Finder. That merge is skipped when the entry's `env` sets `PATH` itself, and it does not exist on Windows, so in those cases either install the command in a standard location or give its absolute path. A `command` written as a path (it contains a `/`, or a `\` on Windows) is never looked up and is used exactly as written. An entry that breaks those rules is dropped with a warning in the [server log](../reference/what-open-knowledge-writes.mdx#while-a-project-is-open), and a file that is not valid JSON, or whose top level is not an array, is ignored as a whole with the same kind of warning. The file lives under `.ok/local/`, which the project's [`.ok/.gitignore`](../reference/what-open-knowledge-writes.mdx#setting-up-a-project) keeps out of your commits, so each machine normally keeps its own list.
+
+<Callout type="warn">
+  **Review a committed `acp-agents.json` before you open the Agents panel.** For a project you did not set up, read the file's `command`, `args` and `env` first. The ignore rule only keeps your own copy out of your commits; it does not vet a file someone else committed. An entry that is switched on runs its command exactly as written, and the switch is stored by agent id rather than per project, so an id you turned on elsewhere is already on in that clone. A chat starts the agent's command as soon as its thread is created, and an Agents panel that opens empty starts a thread by itself with your default agent, or the first enabled one.
+</Callout>
+
+OpenKnowledge reads the file every time it builds the agent catalog, so once it is saved, open **Settings → Agent connections** (the **Configure agents** row in the launcher menus goes there too). A new custom agent starts folded under **In app**, because nothing has turned it on yet: expand the **Show more** button there (its label counts the folded entries) or type the agent's name in the search box, then turn it on. The agent then appears in the **In app** section of the [Open with AI](#open-with-ai) menu and the **Ask AI** agent picker, and its conversations run in the Agents panel like any other, with the same MCP tools and permission prompts. The npx cache retry described above applies only to catalog-managed agents; a custom command is launched exactly as written.
+
+To make an agent appear for everyone without per-machine configuration, publish its manifest to the ACP registry; it then flows into the catalog on its own.
 
 ### From a text selection
 

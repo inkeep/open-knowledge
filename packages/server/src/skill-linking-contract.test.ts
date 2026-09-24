@@ -25,6 +25,12 @@ describe('bundled project skill — link-authoring contract', () => {
     expect(skill).toContain('references/linking.md');
   });
 
+  test('core and linking reference carry the section-link form', () => {
+    expect(skill).toContain('#heading-slug');
+    expect(linking).toContain('#heading-slug');
+    expect(linking).toContain('in chat replies');
+  });
+
   test('linking reference states relative is the recommended default + the no-hybrid rule', () => {
     expect(linking).toContain('the recommended default');
     expect(linking).toContain('Never glue `./` onto a content-root path');
