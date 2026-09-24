@@ -155,6 +155,11 @@ describe('collectBundle — file inventory', () => {
     writeAt(projectDir, '.ok/local/telemetry/spans-current.jsonl', realSpans);
     writeAt(projectDir, '.ok/local/logs/server-current.jsonl', '{"level":30,"msg":"x"}\n');
     writeAt(projectDir, '.ok/local/server.lock', JSON.stringify({ port: 6111 }));
+    writeAt(
+      projectDir,
+      '.ok/local/acp-launch-failures.log',
+      '=== acp launch failure 2026-09-23T12:00:00.000Z thread=t agent=codex-acp source=registry reason=connect ===\n',
+    );
     writeAt(contentDir, '.ok/local/telemetry/spans-current.jsonl', '{"resourceSpans":["DECOY"]}\n');
 
     const collected = await collectBundle({
@@ -167,6 +172,7 @@ describe('collectBundle — file inventory', () => {
     expect(paths).toContain('telemetry/spans-current.jsonl');
     expect(paths).toContain('logs/server-current.jsonl');
     expect(paths).toContain('state/server.lock');
+    expect(paths).toContain('state/acp-launch-failures.log');
     const staged = readFileSync(
       join(collected.stagingDir, 'telemetry', 'spans-current.jsonl'),
       'utf-8',

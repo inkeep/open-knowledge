@@ -8,6 +8,8 @@ export const SPAWN_ERROR_LOG_MAX_BYTES = 256 * 1024;
 
 export const SPAWN_ATTEMPT_MARKER = '=== spawn attempt ';
 
+export const ACP_LAUNCH_FAILURE_LOG = 'acp-launch-failures.log';
+
 export function spawnErrorLogOpenMode(currentSizeBytes: number | undefined): 'a' | 'w' {
   if (currentSizeBytes === undefined) return 'a';
   return currentSizeBytes >= SPAWN_ERROR_LOG_MAX_BYTES ? 'w' : 'a';

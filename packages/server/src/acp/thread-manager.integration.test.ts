@@ -11,6 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { ACP_LAUNCH_FAILURE_LOG } from '@inkeep/open-knowledge-core';
 import type {
   ThreadEvent,
   ThreadInfo,
@@ -6910,4 +6911,288 @@ describe('registry adapter acquisition probe scope across thread opens', () => {
       ]);
     });
   }, 90_000);
+});
+
+const NPX_ENTRY_HASH = '4142609e2aa780f6';
+const NPX_RELAUNCH_LOG = '[acp-threads] cleared a stale npx cache entry; relaunching the agent';
+const NPX_JOIN_LOG =
+  '[acp-threads] npx cache entry was cleared by another launch moments ago; relaunching without clearing it again';
+
+type NpxEnoentMode = 'while-entry-exists' | 'always' | 'stderr-after-stdout-eof';
+
+function npmEnoentSource(entryDir: string, mode: NpxEnoentMode): string {
+  const fail =
+    mode === 'stderr-after-stdout-eof'
+      ? `process.stdout.end(() => setTimeout(() => process.stderr.write(lines.join('\\n'), () => process.exit(254)), 150));`
+      : `process.stderr.write(lines.join('\\n'), () => process.exit(254));`;
+  return `
+const entry = ${JSON.stringify(entryDir)};
+if (${mode === 'always' ? 'true' : 'existsSync(entry)'}) {
+  const lines = [
+    'npm error code ENOENT',
+    'npm error syscall open',
+    'npm error path ' + entry + '/package.json',
+    'npm error errno -2',
+    "npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '" + entry + "/package.json'",
+    'npm error enoent This is related to npm not being able to find a file.',
+    '',
+  ];
+  ${fail}
+} else {
+  import(${JSON.stringify(pathToFileURL(EXAMPLE_AGENT).href)});
+}
+`;
+}
+
+function writeNpxCacheFailingAgentEntry(
+  localDir: string,
+  id: string,
+  entryDir: string,
+  mode: NpxEnoentMode,
+): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeFileSync(
+    agentPath,
+    `import { existsSync } from 'node:fs';\n${npmEnoentSource(entryDir, mode)}`,
+  );
+  writeFileSync(
+    join(localDir, 'acp-agents.json'),
+    JSON.stringify([{ id, name: 'npx cache fixture', command: 'node', args: [agentPath] }]),
+  );
+}
+
+function logCount(warn: ReturnType<typeof vi.spyOn>, message: string): number {
+  return warn.mock.calls.filter((call) => call[1] === message).length;
+}
+
+async function withNpxLaunchFixture(
+  mode: NpxEnoentMode,
+  run: (fixture: {
+    manager: AcpThreadManager;
+    agentId: string;
+    entryDir: string;
+    localDir: string;
+    warn: ReturnType<typeof vi.spyOn>;
+  }) => Promise<void>,
+): Promise<void> {
+  await withAcquisitionHome(async (home) => {
+    const localDir = tmp();
+    const bin = join(home, 'bin');
+    mkdirSync(bin);
+    installNodeFixture(bin);
+    writeRecordingNpm(bin, join(home, 'npm-probes.log'));
+    const entryDir = join(home, 'npm-cache', '_npx', NPX_ENTRY_HASH);
+    writeExecutable(
+      join(bin, 'npx'),
+      `const { existsSync } = require('node:fs');
+if (process.argv.includes('--version')) {
+  process.stdout.write('11.17.0\\n');
+  process.exit(0);
+}
+${npmEnoentSource(entryDir, mode)}`,
+    );
+    const env = { PATH: [bin, process.env.PATH ?? ''].join(delimiter) };
+    const agent = registryPackage('fixture-bootstrap', 'npx', env);
+    agent.distribution.npx = { package: 'fixture-bootstrap', env };
+    const registry = new AcpRegistry({
+      localDir,
+      log,
+      ttlMs: 0,
+      fetchImpl: async () => new Response(JSON.stringify({ agents: [agent] })),
+    });
+    const warn = vi.spyOn(log, 'warn');
+    const manager = makeManager(home, localDir, { registry });
+    await manager.init();
+    try {
+      await run({ manager, agentId: agent.id, entryDir, localDir, warn });
+    } finally {
+      await manager.destroy();
+    }
+  });
+}
+
+describe('launch failure diagnostics and npx cache recovery', () => {
+  test('a stale npx cache entry is cleared and the launch retried once', async () => {
+    await withNpxLaunchFixture(
+      'while-entry-exists',
+      async ({ manager, agentId, entryDir, localDir, warn }) => {
+        mkdirSync(entryDir, { recursive: true });
+        const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(info.threadId)?.status === 'ready',
+          20_000,
+          'agent ready after relaunch',
+        );
+        expect(existsSync(entryDir)).toBe(false);
+        expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(1);
+        const statuses = await statusesOf(manager, info.threadId);
+        expect(statuses).not.toContain('error');
+        expect(statuses).not.toContain('exited');
+        expect(existsSync(join(localDir, ACP_LAUNCH_FAILURE_LOG))).toBe(false);
+      },
+    );
+  }, 40_000);
+
+  test('the relaunch stays silent when the npm error lands after stdout closes', async () => {
+    await withNpxLaunchFixture(
+      'stderr-after-stdout-eof',
+      async ({ manager, agentId, entryDir, warn }) => {
+        mkdirSync(entryDir, { recursive: true });
+        const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(info.threadId)?.status === 'ready',
+          20_000,
+          'agent ready after relaunch',
+        );
+        expect(existsSync(entryDir)).toBe(false);
+        expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(1);
+        const statuses = await statusesOf(manager, info.threadId);
+        expect(statuses).not.toContain('exited');
+        expect(statuses).not.toContain('error');
+      },
+    );
+  }, 40_000);
+
+  test('a launch that keeps failing on the npx cache is reported after one retry', async () => {
+    await withNpxLaunchFixture('always', async ({ manager, agentId, entryDir, localDir, warn }) => {
+      mkdirSync(entryDir, { recursive: true });
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      await waitUntil(
+        () => manager.getInfo(info.threadId)?.status === 'error',
+        20_000,
+        'launch failure',
+      );
+      expect(existsSync(entryDir)).toBe(false);
+      expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(1);
+      const statuses = await statusesOf(manager, info.threadId);
+      expect(statuses.filter((status) => status === 'error')).toHaveLength(1);
+      const logPath = join(localDir, ACP_LAUNCH_FAILURE_LOG);
+      await waitUntil(() => existsSync(logPath), 5_000, 'launch failure log');
+      const logText = readFileSync(logPath, 'utf8');
+      expect(logText.match(/=== acp launch failure /g)).toHaveLength(1);
+      expect(logText).toContain(
+        `thread=${info.threadId} agent=${agentId} source=registry reason=connect ===\ninitialize failed:`,
+      );
+      expect(logText).toContain('--- stderr tail ---');
+      expect(logText).toContain('npm error code ENOENT');
+    });
+  }, 40_000);
+
+  test.each(['package.json', 'concurrency.lock'])(
+    'an npx cache entry that still holds %s is left alone',
+    async (file) => {
+      await withNpxLaunchFixture(
+        'while-entry-exists',
+        async ({ manager, agentId, entryDir, warn }) => {
+          mkdirSync(entryDir, { recursive: true });
+          writeFileSync(join(entryDir, file), '');
+          const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+          await waitUntil(
+            () => manager.getInfo(info.threadId)?.status === 'error',
+            20_000,
+            'launch failure',
+          );
+          expect(existsSync(join(entryDir, file))).toBe(true);
+          expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(0);
+        },
+      );
+    },
+    40_000,
+  );
+
+  test('a second launch does not delete an entry another launch just cleared', async () => {
+    await withNpxLaunchFixture(
+      'while-entry-exists',
+      async ({ manager, agentId, entryDir, warn }) => {
+        mkdirSync(entryDir, { recursive: true });
+        const first = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(first.threadId)?.status === 'ready',
+          20_000,
+          'first launch ready',
+        );
+        expect(existsSync(entryDir)).toBe(false);
+        mkdirSync(entryDir, { recursive: true });
+        const second = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(second.threadId)?.status === 'error',
+          20_000,
+          'second launch failure',
+        );
+        expect(existsSync(entryDir)).toBe(true);
+        expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(1);
+        expect(logCount(warn, NPX_JOIN_LOG)).toBe(1);
+      },
+    );
+  }, 60_000);
+
+  test('a custom agent that prints the npx cache signature is not retried', async () => {
+    const localDir = tmp();
+    const entryDir = join(tmp(), '_npx', NPX_ENTRY_HASH);
+    mkdirSync(entryDir, { recursive: true });
+    writeNpxCacheFailingAgentEntry(localDir, 'npx-cache', entryDir, 'while-entry-exists');
+    const warn = vi.spyOn(log, 'warn');
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'npx-cache' } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      20_000,
+      'launch failure',
+    );
+    expect(existsSync(entryDir)).toBe(true);
+    expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(0);
+    const logPath = join(localDir, ACP_LAUNCH_FAILURE_LOG);
+    await waitUntil(() => existsSync(logPath), 5_000, 'launch failure log');
+    const logText = readFileSync(logPath, 'utf8');
+    expect(logText).toContain(
+      `thread=${info.threadId} agent=npx-cache source=custom reason=connect ===`,
+    );
+    expect(logText).toContain('npm error code ENOENT');
+  }, 30_000);
+
+  test('a session setup failure is recorded with its reason', async () => {
+    const localDir = tmp();
+    writeSessionFailingAgentEntry(
+      localDir,
+      'broken-agent',
+      { code: -32603, message: 'Failed to initialize session services' },
+      'boot: loading services',
+    );
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'broken-agent' } });
+    await waitUntil(
+      () => manager.getInfo(info.threadId)?.status === 'error',
+      15_000,
+      'session setup failure',
+    );
+    const logPath = join(localDir, ACP_LAUNCH_FAILURE_LOG);
+    await waitUntil(() => existsSync(logPath), 5_000, 'launch failure log');
+    const logText = readFileSync(logPath, 'utf8');
+    expect(logText).toContain(
+      `thread=${info.threadId} agent=broken-agent source=custom reason=session-setup ===\nsession setup failed: Failed to initialize session services`,
+    );
+    expect(logText).toContain('boot: loading services');
+  }, 30_000);
+
+  test('a prompt failure is not a launch failure and stays out of the log', async () => {
+    const localDir = tmp();
+    writeRequestingAgentEntry(
+      localDir,
+      'prompt-failure',
+      "write({ jsonrpc: '2.0', id: msg.id, error: { code: -32603, message: 'prompt failed' } });",
+    );
+    const manager = makeManager(tmp(), localDir);
+    const info = await manager.createThread({ agent: { source: 'custom', id: 'prompt-failure' } });
+    const statuses: StatusEvent[] = [];
+    await manager.subscribe(info.threadId, 0, collectStatuses(statuses));
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    manager.sendPrompt(info.threadId, 'edit');
+    await waitUntil(
+      () => statuses.some((event) => event.failure?.reason === 'prompt'),
+      5_000,
+      'prompt failure',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(existsSync(join(localDir, ACP_LAUNCH_FAILURE_LOG))).toBe(false);
+  }, 30_000);
 });

@@ -6,7 +6,10 @@ export function redactDiagnostic(text: string): string {
   return scrubSecrets(text.replace(/(https?:\/\/)[^\s/]+@/gi, '$1***@'));
 }
 
-export function createDiagnosticStderrCapture(consume: (line: string) => void): {
+export function createDiagnosticStderrCapture(
+  consume: (line: string) => void,
+  inspectRaw?: (line: string) => void,
+): {
   write: (chunk: string) => void;
   end: () => void;
 } {
@@ -14,7 +17,10 @@ export function createDiagnosticStderrCapture(consume: (line: string) => void): 
   let dropping = false;
   const flush = (): void => {
     if (dropping) consume('[oversized diagnostic line omitted]');
-    else if (pending !== '') consume(redactDiagnostic(pending));
+    else if (pending !== '') {
+      inspectRaw?.(pending);
+      consume(redactDiagnostic(pending));
+    }
     pending = '';
     dropping = false;
   };

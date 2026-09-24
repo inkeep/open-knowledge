@@ -16,6 +16,7 @@ import { arch as osArch, platform as osPlatform, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { BundleRedaction as SecretScrubEntry } from '@inkeep/open-knowledge-core';
 import {
+  ACP_LAUNCH_FAILURE_LOG,
   REPORT_SIDECAR_BUNDLE_DIR,
   SERVER_CRASH_LOG,
   SERVER_EXIT_LOG,
@@ -584,6 +585,11 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     stageFileIfPresent(
       join(lockDir, SERVER_CRASH_LOG),
       join(stagingDir, 'state', SERVER_CRASH_LOG),
+    );
+
+    stageFileIfPresent(
+      join(lockDir, ACP_LAUNCH_FAILURE_LOG),
+      join(stagingDir, 'state', ACP_LAUNCH_FAILURE_LOG),
     );
 
     const runtime = readRuntime();

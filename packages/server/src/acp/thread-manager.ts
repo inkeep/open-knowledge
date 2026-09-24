@@ -5,7 +5,7 @@
  */
 
 import type { ChildProcess } from 'node:child_process';
-import { readFile, realpath } from 'node:fs/promises';
+import { readFile, realpath, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join, normalize, relative, resolve, sep } from 'node:path';
 import { Readable, Writable } from 'node:stream';
 import { pathToFileURL } from 'node:url';
@@ -75,6 +75,7 @@ import {
   ConcurrentOverwriteRefusedError,
   logConcurrentOverwriteRefusal,
 } from '../concurrent-overwrite-refused-error.ts';
+import { tracedRm } from '../fs-traced.ts';
 import { resolveOnPath } from '../git-preflight.ts';
 import type { PinoLogger } from '../logger.ts';
 import { MCP_HOSTED_AGENT_HEADER } from '../mcp/agent-identity.ts';
@@ -108,12 +109,14 @@ import {
   resolveRegistryLaunch,
   rewriteLaunchToManagedRuntime,
   spawnAcpAgent,
+  staleNpxCacheEntry,
   terminateAgentTree,
   undeletableManagedRuntimeHint,
   unrepairableManagedRuntimeHint,
   withLoginShellPath,
   withPreferredLoginShellPath,
 } from './launch.ts';
+import { isAcpLaunchFailureReason, recordAcpLaunchFailure } from './launch-failure-log.ts';
 import {
   getSharedLoginShellPathProvider,
   resetSharedLoginShellPathProvider,
@@ -175,6 +178,10 @@ const AUTH_REQUIRED_CODE = -32000;
 const CONCURRENT_OVERWRITE_REFUSED_CODE = -32009;
 
 type AcquisitionPolicy = 'reuse' | 'reacquire';
+
+type NpxCacheRecovery = 'available' | 'spent';
+
+const NPX_CACHE_CLEAR_COOLDOWN_MS = 5 * 60 * 1000;
 
 export const ACP_ENVIRONMENT_NOTE =
   'Note on your environment: you are running inside the OpenKnowledge app, ' +
@@ -462,6 +469,7 @@ export class AcpThreadManager {
   private readonly unwatchedTurnKillMs: number;
   private readonly turnStallMs: number;
   private readonly persistence: ThreadPersistenceStore;
+  private readonly npxCacheClears = new Map<string, number>();
   private readonly resolveLoginShellPath: () => Promise<string | null>;
   private readonly healthyInterpreters = new Set<string>();
   private projectSkillStaging: Promise<string> | null = null;
@@ -771,6 +779,7 @@ export class AcpThreadManager {
     custom: CustomAgentEntry | null,
     acquisition: AcquisitionPolicy = 'reuse',
     consentBudgetMs: number,
+    npxCacheRecovery: NpxCacheRecovery = 'available',
   ): Promise<{ conn: ClientConnection; init: InitializeResponse; launch: ResolvedLaunch } | null> {
     let launch: ResolvedLaunch | null;
     if (custom !== null) {
@@ -852,14 +861,29 @@ export class AcpThreadManager {
     };
     record.drainStderr = drainStderr;
     let startupStderr = '';
+    let rawStartupStderr = '';
     let capturingStartup = true;
-    const diagnosticCapture = createDiagnosticStderrCapture((line) => {
-      if (capturingStartup)
-        startupStderr = `${startupStderr}${line}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
-      if (line.trim() === '') return;
-      record.stderrTail.push(line.slice(0, 500));
-      if (record.stderrTail.length > STDERR_TAIL_LINES) record.stderrTail.shift();
-    });
+    const diagnosticCapture = createDiagnosticStderrCapture(
+      (line) => {
+        if (capturingStartup)
+          startupStderr = `${startupStderr}${line}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
+        if (line.trim() === '') return;
+        record.stderrTail.push(line.slice(0, 500));
+        if (record.stderrTail.length > STDERR_TAIL_LINES) record.stderrTail.shift();
+      },
+      (rawLine) => {
+        if (capturingStartup)
+          rawStartupStderr = `${rawStartupStderr}${rawLine}\n`.slice(-ACQUISITION_DETAIL_MAX_CHARS);
+      },
+    );
+    const launchKind = launch.kind;
+    let launchSuperseded = false;
+    const staleNpxCacheRecoveryPending = (): boolean =>
+      launchKind === 'npx' &&
+      capturingStartup &&
+      npxCacheRecovery === 'available' &&
+      staleNpxCacheEntry(rawStartupStderr) !== null;
+    const launchStatusMuted = (): boolean => launchSuperseded || staleNpxCacheRecoveryPending();
 
     child.stderr?.setEncoding('utf8');
     child.stderr?.on('data', diagnosticCapture.write);
@@ -876,6 +900,7 @@ export class AcpThreadManager {
       }
     });
     child.on('error', (err) => {
+      if (launchStatusMuted()) return;
       this.emitStatus(record, 'error', `agent failed to start: ${err.message}`, {
         reason: 'connect',
         agentMessage: err.message,
@@ -896,6 +921,7 @@ export class AcpThreadManager {
         .then((tail) => {
           if (record.terminals !== terminals) return;
           if (isThreadClosed(record)) return;
+          if (launchStatusMuted()) return;
           if (record.info.status === 'error') {
             this.failPendingPermissions(record);
             return;
@@ -1000,12 +1026,16 @@ export class AcpThreadManager {
       .connect(stream);
     record.conn = conn;
     conn.closed.then(
-      () => {
+      async () => {
+        await drainStderr();
+        if (launchStatusMuted()) return;
         if (record.info.status !== 'exited' && record.info.status !== 'error') {
           this.emitStatus(record, 'exited', 'agent connection closed');
         }
       },
-      (err: unknown) => {
+      async (err: unknown) => {
+        await drainStderr();
+        if (launchStatusMuted()) return;
         this.opts.log.warn(
           { err, threadId: record.info.threadId },
           '[acp-threads] agent connection closed with error',
@@ -1041,16 +1071,95 @@ export class AcpThreadManager {
         const acquisitionFailure = packageAcquisitionFailure(launch, startupStderr, err);
         if (acquisitionFailure !== null) throw acquisitionFailure;
       }
+      const staleEntry =
+        launchKind === 'npx' && npxCacheRecovery === 'available'
+          ? staleNpxCacheEntry(rawStartupStderr)
+          : null;
+      if (staleEntry !== null && (await this.clearStaleNpxCacheEntry(record, staleEntry))) {
+        launchSuperseded = true;
+        return this.connectAgent(record, custom, acquisition, consentBudgetMs, 'spent');
+      }
       throw new ThreadOpError('spawn-failed', `initialize failed: ${agentErrorMessage(err)}`);
     } finally {
       capturingStartup = false;
       startupStderr = '';
+      rawStartupStderr = '';
     }
     if (record.closed) return null;
     record.lastInit = init;
     record.info.promptCapabilities = init.agentCapabilities?.promptCapabilities ?? {};
     this.emitInfo(record);
     return { conn, init, launch };
+  }
+
+  private async clearStaleNpxCacheEntry(record: ThreadRecord, entryDir: string): Promise<boolean> {
+    const logContext = {
+      threadId: record.info.threadId,
+      agentId: record.info.agent.id,
+      npxCacheEntry: redactDiagnostic(entryDir),
+    };
+    const clearedAt = this.npxCacheClears.get(entryDir);
+    if (clearedAt !== undefined && Date.now() - clearedAt < NPX_CACHE_CLEAR_COOLDOWN_MS) {
+      this.opts.log.warn(
+        logContext,
+        '[acp-threads] npx cache entry was cleared by another launch moments ago; relaunching without clearing it again',
+      );
+      await this.discardFailedLaunch(record);
+      return !isThreadClosed(record);
+    }
+    this.npxCacheClears.set(entryDir, Date.now());
+    for (const file of ['package.json', 'concurrency.lock']) {
+      const code = await stat(join(entryDir, file)).then(
+        () => 'present',
+        (err: NodeJS.ErrnoException) => err.code ?? 'unknown',
+      );
+      if (code !== 'ENOENT') {
+        this.opts.log.warn(
+          { ...logContext, file, code },
+          '[acp-threads] leaving an npx cache entry alone',
+        );
+        return false;
+      }
+    }
+    try {
+      await tracedRm(entryDir, { recursive: true, force: true });
+    } catch (err) {
+      this.opts.log.warn(
+        { err, ...logContext },
+        '[acp-threads] stale npx cache entry could not be cleared',
+      );
+      return false;
+    }
+    this.opts.log.warn(
+      logContext,
+      '[acp-threads] cleared a stale npx cache entry; relaunching the agent',
+    );
+    await this.discardFailedLaunch(record);
+    return !isThreadClosed(record);
+  }
+
+  private async discardFailedLaunch(t: ThreadRecord): Promise<void> {
+    t.drainStderr = null;
+    t.stderrTail = [];
+    await this.stopAgentProcess(t, '[acp-threads] terminal cleanup before relaunch failed');
+  }
+
+  private async stopAgentProcess(t: ThreadRecord, terminalCleanupWarning: string): Promise<void> {
+    const child = t.child;
+    const conn = t.conn;
+    const terminals = t.terminals;
+    t.child = null;
+    t.conn = null;
+    t.terminals = null;
+    try {
+      conn?.close();
+    } catch {}
+    await terminals?.disposeAll().catch((err: unknown) => {
+      this.opts.log.warn({ err, threadId: t.info.threadId }, terminalCleanupWarning);
+    });
+    if (child !== null) {
+      await terminateAgentTree(child, { graceMs: KILL_GRACE_MS });
+    }
   }
 
   private async ensureLaunchable(
@@ -3314,6 +3423,22 @@ export class AcpThreadManager {
         '[acp-threads] thread failure status',
       );
     }
+    if (status === 'error' && failure !== undefined && isAcpLaunchFailureReason(failure.reason)) {
+      void recordAcpLaunchFailure(this.opts.localDir, {
+        at: new Date(),
+        threadId: t.info.threadId,
+        agentId: t.info.agent.id,
+        agentSource: t.info.agent.source,
+        reason: failure.reason,
+        detail,
+        machineDetail: failure.machineDetail,
+      }).catch((err: unknown) => {
+        this.opts.log.warn(
+          { err, threadId: t.info.threadId },
+          '[acp-threads] launch failure log write failed',
+        );
+      });
+    }
     this.appendEvent(t, {
       kind: 'status',
       status,
@@ -3327,27 +3452,13 @@ export class AcpThreadManager {
   private async teardownFailedAgent(t: ThreadRecord): Promise<void> {
     this.failPendingPermissions(t);
     this.failPendingConsents(t);
-    const child = t.child;
-    const conn = t.conn;
-    const terminals = t.terminals;
-    t.child = null;
-    t.conn = null;
     t.lastInit = null;
-    t.terminals = null;
     t.sessionId = null;
     t.info.contextWindow = null;
-    try {
-      conn?.close();
-    } catch {}
-    await terminals?.disposeAll().catch((err: unknown) => {
-      this.opts.log.warn(
-        { err, threadId: t.info.threadId },
-        '[acp-threads] terminal cleanup on failed-agent teardown failed',
-      );
-    });
-    if (child !== null) {
-      await terminateAgentTree(child, { graceMs: KILL_GRACE_MS });
-    }
+    await this.stopAgentProcess(
+      t,
+      '[acp-threads] terminal cleanup on failed-agent teardown failed',
+    );
   }
 
   private emitInfo(t: ThreadRecord): void {

@@ -445,6 +445,7 @@ export {
 } from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
 export {
+  ACP_LAUNCH_FAILURE_LOG,
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
   formatSpawnAttemptHeader,
