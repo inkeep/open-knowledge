@@ -47,6 +47,10 @@ pnpm run dev
 - `packages/server` - local collaboration server
 - `docs` - documentation site
 
+## Process safety
+
+Never signal a pid you did not spawn. No literal `0`, `1`, or `-1`, numeric fallback, or unvalidated parsed number may reach `process.kill` or the reaper. Validate lock-file PIDs with `isValidLockPid()`. Gate: `ok/no-sentinel-signal-target`.
+
 ## Comment policy
 
 **Write no comments.** Explanation belongs in names, types, tests, the commit message, the PR body, or a doc — a comment is the one place it rots unseen. This inverts the usual open-source norm, so it surprises people; it is deliberate, and `pnpm run lint` enforces it.

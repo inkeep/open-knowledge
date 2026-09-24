@@ -134,6 +134,19 @@ jobs:
 
       - uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v5
 
+      - name: Setup uv for ACP package acquisition tests
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          version: '0.11.28'
+          enable-cache: false
+
+      - name: Verify ACP package acquisition prerequisites
+        run: |
+          uv --version
+          uvx --version
+          curl --version
+          python3 --version
+
       - name: Verify the synthetic tree (cherry-pick + fast test tiers)
         id: verify
         env:
@@ -609,37 +622,6 @@ jobs:
       # qualify, so the signature moves and the lane re-pages -- and the page
       # itself tells the reader to check recent runs rather than wait.
       #
-      # A refusal is a STANDING ANSWER, not an event. The refused ref stays in
-      # the pending pile and re-qualifies and re-conflicts on every tick, so a
-      # page-per-tick turns one durable fact into a message every 20 minutes
-      # until the cycle's stable consumes it — ~70 identical pages, which is
-      # how a channel gets muted.
-      #
-      # Page once per DISTINCT refusal instead. The signature is the verdict
-      # plus the refs it is about, so a genuinely new refusal — a different
-      # ref, or the same ref reaching a different verdict — still pages at
-      # once. That list is the WHOLE signature: `VERDICT|FIX_REFS|SURVIVING_REFS`
-      # and nothing else. Everything else the page renders — which tests went
-      # red, the stable tag, which refs were dropped and what they collided
-      # with, the tickets that qualified them — is deliberately outside it, so
-      # a second refusal that differs only in those stays quiet. The reasoning
-      # is split between the stable-tag paragraph and the comment above the
-      # `sig=` printf; stating what IS hashed rather than listing what is not
-      # is what keeps this accurate as the page grows.
-      # The cache is only a "have I said this already" marker; if it misses
-      # (eviction, or a tick cancelled between paging and saving) the lane
-      # re-pages, which is the safe direction to fail.
-      #
-      # The stable tag is DELIBERATELY not in the signature, so a refusal that
-      # survives a stable roll stays quiet rather than re-paging against the
-      # new stable. Two reasons. The operator's move does not change when the
-      # stable does — it is still "wait for the cycle, or point-release by
-      # hand" — and stables currently roll several times a day, so including it
-      # would restore a good fraction of the flood for a fact already reported.
-      # The suppression is bounded either way: a refused ref keeps its
-      # changeset pending only until a cut that DOES contain it ships, which
-      # the ordinary beta-to-stable cadence guarantees within a cycle. If that
-      # ever stops being true, put "$STABLE" back in the printf below.
       - name: Refusal signature
         id: refusal
         if: env.BUG_LANE_ARMED == 'true' && (steps.verify.outputs.verdict == 'conflict' || steps.verify.outputs.verdict == 'fail' || steps.verify.outputs.verdict == 'could-not-verify')
@@ -647,23 +629,15 @@ jobs:
           VERDICT: ${{ steps.verify.outputs.verdict }}
           FIX_REFS: ${{ inputs.fix_refs }}
           SURVIVING_REFS: ${{ steps.verify.outputs.surviving_refs }}
+          STABLE: ${{ inputs.stable }}
+          FAILURES: ${{ steps.verify.outputs.failures }}
         run: |
           set -euo pipefail
-          # The failure list is deliberately OUTSIDE this signature, for the
-          # same reason the stable is: it is the churniest input the page has.
-          # A red tier is usually red for many tests at once, and a name that
-          # differs by a shard index, a temp path or one flaky sibling would
-          # mint a fresh signature every tick and restore the flood this
-          # suppression exists to stop. The cost is real and bounded: if the
-          # same batch keeps refusing while the CAUSE moves, only the first
-          # cause is paged. That is the right trade — the first page already
-          # tells an operator the lane is refusing and hands them the run log,
-          # which carries every subsequent cause.
-          #
-          # `could-not-verify` is its own verdict, so it distinguishes itself
-          # here for free: a tick that could not verify can no longer suppress
-          # the genuinely red tick behind it for the same ref set.
-          sig="$(printf '%s|%s|%s' "$VERDICT" "$FIX_REFS" "$SURVIVING_REFS" | sha256sum | cut -c1-32)"
+          if ! git show "${GITHUB_SHA}:.github/scripts/bug-lane-refusal-key.mjs" > "${RUNNER_TEMP}/bug-lane-refusal-key.mjs" \
+            || ! sig="$(node "${RUNNER_TEMP}/bug-lane-refusal-key.mjs")"; then
+            echo "::warning::Could not group the refusal; retaining batch-based paging."
+            sig="$(printf '%s|%s|%s' "$VERDICT" "$FIX_REFS" "$SURVIVING_REFS" | sha256sum | cut -c1-32)"
+          fi
           echo "sig=${sig}" >> "$GITHUB_OUTPUT"
           echo "marker=${RUNNER_TEMP}/bug-lane-refusal-marker" >> "$GITHUB_OUTPUT"
 
@@ -691,7 +665,7 @@ jobs:
           {
             echo "### Bug lane — refusal still standing, page suppressed"
             echo "Verdict \`${VERDICT}\`, signature \`${SIG}\`, already paged on an earlier tick."
-            echo "The channel stays quiet by design; this refusal re-pages only if it changes."
+            echo "For named verification failures, grouping is per stable and failing suite for the UTC day. Conflicts, timeouts and unnamed failures use verdict and batch identity. Batch details remain in each run."
           } >> "$GITHUB_STEP_SUMMARY"
           echo "::notice::bug-lane: refusal ${SIG} already paged; suppressing the duplicate page."
 

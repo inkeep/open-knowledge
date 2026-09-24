@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
+  alarmObservation,
   buildHistory,
   CONSECUTIVE_NON_PASS_THRESHOLD,
   classifyHistoryFailure,
@@ -26,11 +27,46 @@ const notQualified = (over = {}) =>
 
 const run = (history) => evaluateAlarm({ history, nowMs: NOW });
 
+describe('incident reporter observations', () => {
+  test('an armed failure supplies a stable incident identity', () => {
+    expect(
+      alarmObservation({ history: [cut({ failureStage: 'Download' })], nowMs: NOW, armed: true }),
+    ).toMatchObject({ observed: true, alarm: true, incident: 'Download' });
+  });
+
+  test('an observed successful dispatch can announce recovery', () => {
+    expect(alarmObservation({ history: [passing()], nowMs: NOW, armed: true })).toMatchObject({
+      observed: true,
+      alarm: false,
+      incident: '',
+    });
+  });
+
+  test.each([[], [notQualified()], [passing()], [cut()]])(
+    'disarming never clears an acknowledgement: %j',
+    (...history) => {
+      expect(alarmObservation({ history, nowMs: NOW, armed: false }).observed).toBe(false);
+    },
+  );
+
+  test('no qualifying evidence cannot announce recovery', () => {
+    for (const history of [[], [notQualified()]]) {
+      expect(alarmObservation({ history, nowMs: NOW, armed: true }).observed).toBe(false);
+    }
+  });
+
+  test('a below-threshold refusal is not evidence of recovery', () => {
+    expect(
+      alarmObservation({ history: [cut(), passing()], nowMs: NOW, armed: true }).observed,
+    ).toBe(false);
+  });
+});
+
 describe('condition 1 — consecutive non-pass verdicts', () => {
   test('fires at exactly the threshold', () => {
     const r = run([cut({ at: daysAgo(1) }), cut({ at: daysAgo(2) }), cut({ at: daysAgo(3) })]);
     expect(r.alarm).toBe(true);
-    expect(r.reasons.join(' ')).toContain('3 consecutive fast-tier candidates');
+    expect(r.reasons.join(' ')).toContain('3 consecutive fast-tier attempts');
     expect(CONSECUTIVE_NON_PASS_THRESHOLD).toBe(3);
   });
 
@@ -66,7 +102,7 @@ describe('condition 2 — armed but never promoting', () => {
   test('fires when a qualifying cut sits inside the window with no promotion', () => {
     const r = run([cut({ at: daysAgo(3) })]);
     expect(r.alarm).toBe(true);
-    expect(r.reasons.join(' ')).toContain('armed and reaching nothing');
+    expect(r.reasons.join(' ')).toContain('no successful fast-tier dispatch observed');
   });
 
   test('stays silent when a promotion happened inside the window', () => {
@@ -85,7 +121,7 @@ describe('condition 2 — armed but never promoting', () => {
   test('a promotion that has aged out of the window no longer counts as healthy', () => {
     const r = run([cut({ at: daysAgo(2) }), passing({ at: daysAgo(20) })]);
     expect(r.alarm).toBe(true);
-    expect(r.reasons.join(' ')).toContain('armed and reaching nothing');
+    expect(r.reasons.join(' ')).toContain('no successful fast-tier dispatch observed');
   });
 });
 
@@ -257,6 +293,63 @@ describe('classifyHistoryFailure', () => {
 });
 
 describe('buildHistory run-id fallback', () => {
+  test('a successful no-op dispatch step is not a promotion receipt', () => {
+    const history = buildHistory({
+      runs: [{ id: 42, createdAt: daysAgo(1) }],
+      jobsForRun: () => [
+        {
+          name: "Smoke the fast-tier candidate's DMG",
+          status: 'completed',
+          conclusion: 'success',
+          steps: [
+            {
+              name: 'Dispatch promote-stable for the smoke-proven candidate',
+              conclusion: 'success',
+            },
+            { name: 'Record a successful fast-tier dispatch', conclusion: 'skipped' },
+          ],
+        },
+      ],
+    });
+    expect(history[0].promoted).toBe(false);
+    expect(run([...history, ...history, ...history]).alarm).toBe(false);
+  });
+
+  test('an in-progress smoke is not a failed attempt', () => {
+    const history = buildHistory({
+      runs: [{ id: 42, createdAt: daysAgo(1) }],
+      jobsForRun: () => [
+        { name: "Smoke the fast-tier candidate's DMG", status: 'in_progress', conclusion: null },
+      ],
+    });
+    expect(history[0].qualified).toBe(false);
+  });
+
+  test('download failure is identified without claiming an executed smoke failure', () => {
+    const history = buildHistory({
+      runs: [{ id: 42, createdAt: daysAgo(1) }],
+      jobsForRun: () => [
+        {
+          name: "Smoke the fast-tier candidate's DMG",
+          status: 'completed',
+          conclusion: 'failure',
+          steps: [
+            { name: "Download the candidate's DMG", conclusion: 'failure' },
+            { name: 'Smoke the DMG', conclusion: 'skipped' },
+          ],
+        },
+      ],
+    });
+    expect(history[0]).toMatchObject({
+      qualified: true,
+      promoted: false,
+      failureStage: "Download the candidate's DMG",
+    });
+    expect(run([...history, ...history, ...history]).reasons[0]).toContain(
+      "Download the candidate's DMG",
+    );
+  });
+
   test('falls back to run.id when databaseId is absent', () => {
     const seen = [];
     buildHistory({

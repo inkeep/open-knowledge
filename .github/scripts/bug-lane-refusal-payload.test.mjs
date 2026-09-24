@@ -1,7 +1,9 @@
+// biome-ignore-all lint/suspicious/noTemplateCurlyInString: shell and GitHub expression fixtures must remain literal.
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+
 import {
   actionLine,
   buildHeadline,
@@ -413,6 +415,27 @@ describe('buildSlackPayload', () => {
     const body = buildSlackPayload({ verdict: 'conflict', stable: 'v1', refs, runUrl: '' })
       .blocks[0].text.text;
     expect(body).toMatch(/Further identical refusals stay silent/);
+  });
+
+  test('the footer describes the suppression rule for the actual verdict', () => {
+    for (const verdict of ['conflict', 'could-not-verify', 'fail']) {
+      const text = JSON.stringify(
+        buildSlackPayload({ verdict, stable: 'v1.0.0', refs: [], runUrl: '', failures: [] }),
+      );
+      expect(text).toContain('queued/surviving batch pages again');
+      expect(text).not.toContain('grouped by stable');
+    }
+    expect(
+      JSON.stringify(
+        buildSlackPayload({
+          verdict: 'fail',
+          stable: 'v1.0.0',
+          refs: [],
+          runUrl: '',
+          failures: ['src/test.ts > case'],
+        }),
+      ),
+    ).toContain('grouped by stable and failing suite');
   });
 
   test('has no emoji and no header block', () => {

@@ -206,7 +206,9 @@ export function buildSlackPayload({ verdict, stable, refs, runUrl, failures = []
     actionLine({ verdict, refs }),
     '',
     ...(runUrl ? [`<${runUrl}|Run log>`] : []),
-    '_Further identical refusals stay silent; the lane pages again only if the refusal changes._',
+    verdict === 'fail' && failures.length > 0
+      ? '_Further identical refusals stay silent. Named verification failures are grouped by stable and failing suite for the UTC day, even when the queued fixes change._'
+      : '_Further identical refusals stay silent; a changed verdict or queued/surviving batch pages again._',
   ].join('\n');
 
   return {

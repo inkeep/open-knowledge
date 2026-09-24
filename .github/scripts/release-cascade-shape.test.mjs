@@ -1,11 +1,12 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: shell and GitHub expression fixtures must remain literal.
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, describe, expect, test } from 'vitest';
-import { DESKTOP_VARIANTS } from '../../packages/desktop/src/shared/desktop-variant.ts';
 import { buildSlackPayload } from './build-smoke-alert-payload.mjs';
 import { selectPromotion } from './select-beta-to-promote.mjs';
 import { smokePackagedDmg, VERDICT } from './smoke-packaged-dmg.mjs';
@@ -623,7 +624,8 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(sigFrom).toBeGreaterThan(-1);
     expect(sigTo).toBeGreaterThan(sigFrom);
     const sig = bugLaneVerify.slice(sigFrom, sigTo);
-    expect(sig).toContain('"$VERDICT"');
+    expect(sig).toContain('VERDICT: ${{ steps.verify.outputs.verdict }}');
+    expect(sig).toContain('bug-lane-refusal-key.mjs');
     expect(verify).toContain('TIER_VERDICT=could-not-verify');
     expect(bugLaneVerify).not.toContain('budget_blown');
   });
@@ -636,6 +638,35 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(page).toContain("steps.paged_before.outputs.cache-hit != 'true'");
     expect(bugLaneVerify).toContain('actions/cache/save@');
     expect(bugLaneVerify).toContain('actions/cache/restore@');
+  });
+
+  test('a missing grouping helper still emits a usable batch-based paging key', () => {
+    const scratch = mkdtempSync(join(tmpdir(), 'ok-refusal-key-'));
+    try {
+      const output = join(scratch, 'output');
+      const script = bugLaneVerifyStep('Refusal signature')
+        .split('run: |')[1]
+        .split('\n')
+        .map((line) => line.replace(/^ {10}/, ''))
+        .join('\n');
+      const stdout = execFileSync('bash', ['-c', script], {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          RUNNER_TEMP: scratch,
+          GITHUB_OUTPUT: output,
+          GITHUB_SHA: '0000000000000000000000000000000000000000',
+          VERDICT: 'fail',
+          FIX_REFS: 'a,b',
+          SURVIVING_REFS: 'a',
+        },
+      });
+      const expected = createHash('sha256').update('fail|a,b|a').digest('hex').slice(0, 32);
+      expect(stdout).toContain('retaining batch-based paging');
+      expect(readFileSync(output, 'utf8')).toContain(`sig=${expected}`);
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 
   test('the marker is gated on DELIVERY, not on the page step succeeding', () => {
@@ -771,10 +802,6 @@ describe('every release-pipeline post prefers the releases webhook', () => {
       step: () => stepAfter(bugLaneVerify, 'Notify on a partial drop', 'Page on a refusal'),
     },
     {
-      label: 'the fast-tier refusal',
-      step: () => stepAfter(selectBeta, 'Record a fast-tier refusal'),
-    },
-    {
       label: "the Linear stamp's failure page",
       step: () => stepAfter(linearRelease, 'Alert on failed stamping'),
     },
@@ -794,8 +821,39 @@ describe('every release-pipeline post prefers the releases webhook', () => {
     expect(alarm).toContain(
       'SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}',
     );
-    expect(alarm).toContain('post "${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}" Slack');
-    expect(alarm).not.toContain('post "${SLACK_WEBHOOK_URL:-}" Slack');
+    expect(alarm).toContain('node .github/scripts/release-alert-state.mjs');
+    const reporter = readFileSync(
+      join(WORKFLOWS, '..', 'scripts', 'release-alert-state.mjs'),
+      'utf8',
+    );
+    expect(reporter).toContain(
+      'process.env.SLACK_RELEASES_WEBHOOK_URL || process.env.SLACK_WEBHOOK_URL',
+    );
+  });
+
+  test('fast-tier attempts have one incident reporter and save only successful acknowledgements', () => {
+    const refusal = workflowStep(
+      selectBeta,
+      'select-beta-to-promote.yml',
+      'Record a fast-tier refusal',
+    );
+    expect(refusal).not.toContain('curl');
+    expect(refusal).not.toContain('SLACK_WEBHOOK_URL');
+    expect(stepAfter(selectBeta, 'Page the release channel')).toContain(
+      "if: steps.alarm.outputs.observed == 'true'",
+    );
+    expect(stepAfter(selectBeta, 'Remember the smoke incident acknowledgement')).toContain(
+      "if: steps.page.outcome == 'success' && steps.page.outputs.notified == 'true'",
+    );
+  });
+
+  test('bug verification provisions the native runtime before testing the stable tree', () => {
+    const setup = bugLaneVerify.indexOf('- name: Setup uv for ACP package acquisition tests');
+    expect(setup).toBeGreaterThan(-1);
+    expect(setup).toBeLessThan(bugLaneVerify.indexOf('- name: Verify the synthetic tree'));
+    expect(bugLaneVerifyStep('Verify ACP package acquisition prerequisites')).toContain(
+      'uvx --version',
+    );
   });
 });
 
@@ -895,8 +953,10 @@ describe('public desktop product variants stay independently buildable', () => {
     }
   });
 
-  test('the fast-tier smoke downloads the Beta product artifact', () => {
-    expect(selectBeta).toContain(`--pattern '${DESKTOP_VARIANTS.beta.artifactName}-*.dmg'`);
+  test('the fast-tier smoke resolves the candidate inventory, including legacy Beta artifacts', () => {
+    expect(selectBeta).toContain('node .github/scripts/download-candidate-dmg.mjs');
+    expect(selectBeta).toContain('DMG: ${{ steps.download.outputs.dmg_path }}');
+    expect(selectBeta).not.toContain("--pattern 'OpenKnowledge-Beta-*.dmg'");
   });
 });
 
