@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SPAWN_ERROR_LOG_MAX_BYTES } from '@inkeep/open-knowledge-core';
@@ -74,6 +74,30 @@ test('starts over once the log reaches its size bound', async () => {
   const text = readFileSync(acpLaunchFailureLogPath(localDir), 'utf8');
   expect(text.startsWith('=== acp launch failure')).toBe(true);
   expect(text).not.toContain('xxxx');
+});
+
+test('a write that fails rejects only its own promise and leaves no unhandled rejection', async () => {
+  const localDir = tmp();
+  mkdirSync(acpLaunchFailureLogPath(localDir));
+  const unhandled: unknown[] = [];
+  const onUnhandled = (reason: unknown): void => {
+    unhandled.push(reason);
+  };
+  process.on('unhandledRejection', onUnhandled);
+  try {
+    const outcomes = await Promise.allSettled([
+      recordAcpLaunchFailure(localDir, entry()),
+      recordAcpLaunchFailure(localDir, entry({ threadId: 'thread-2' })),
+    ]);
+    expect(outcomes.map((outcome) => outcome.status)).toEqual(['rejected', 'rejected']);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(unhandled).toEqual([]);
+  } finally {
+    process.off('unhandledRejection', onUnhandled);
+  }
+  rmSync(acpLaunchFailureLogPath(localDir), { recursive: true, force: true });
+  await recordAcpLaunchFailure(localDir, entry({ threadId: 'thread-3' }));
+  expect(readFileSync(acpLaunchFailureLogPath(localDir), 'utf8')).toContain('thread=thread-3');
 });
 
 test('concurrent writes at the bound keep every entry', async () => {

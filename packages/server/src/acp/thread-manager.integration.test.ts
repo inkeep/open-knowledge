@@ -7100,6 +7100,33 @@ describe('launch failure diagnostics and npx cache recovery', () => {
     40_000,
   );
 
+  test('an entry left alone is probed again by the next launch, not treated as cleared', async () => {
+    await withNpxLaunchFixture(
+      'while-entry-exists',
+      async ({ manager, agentId, entryDir, warn }) => {
+        mkdirSync(entryDir, { recursive: true });
+        writeFileSync(join(entryDir, 'concurrency.lock'), '');
+        const held = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(held.threadId)?.status === 'error',
+          20_000,
+          'launch failure while the lock is held',
+        );
+        expect(existsSync(join(entryDir, 'concurrency.lock'))).toBe(true);
+        rmSync(join(entryDir, 'concurrency.lock'));
+        const retried = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+        await waitUntil(
+          () => manager.getInfo(retried.threadId)?.status === 'ready',
+          20_000,
+          'second launch ready',
+        );
+        expect(existsSync(entryDir)).toBe(false);
+        expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(1);
+        expect(logCount(warn, NPX_JOIN_LOG)).toBe(0);
+      },
+    );
+  }, 60_000);
+
   test('a second launch does not delete an entry another launch just cleared', async () => {
     await withNpxLaunchFixture(
       'while-entry-exists',

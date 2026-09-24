@@ -1028,14 +1028,14 @@ export class AcpThreadManager {
     conn.closed.then(
       async () => {
         await drainStderr();
-        if (launchStatusMuted()) return;
+        if (record.conn !== conn || launchStatusMuted()) return;
         if (record.info.status !== 'exited' && record.info.status !== 'error') {
           this.emitStatus(record, 'exited', 'agent connection closed');
         }
       },
       async (err: unknown) => {
         await drainStderr();
-        if (launchStatusMuted()) return;
+        if (record.conn !== conn || launchStatusMuted()) return;
         this.opts.log.warn(
           { err, threadId: record.info.threadId },
           '[acp-threads] agent connection closed with error',
@@ -1107,7 +1107,11 @@ export class AcpThreadManager {
       await this.discardFailedLaunch(record);
       return !isThreadClosed(record);
     }
-    this.npxCacheClears.set(entryDir, Date.now());
+    const claimedAt = Date.now();
+    this.npxCacheClears.set(entryDir, claimedAt);
+    const releaseClaim = (): void => {
+      if (this.npxCacheClears.get(entryDir) === claimedAt) this.npxCacheClears.delete(entryDir);
+    };
     for (const file of ['package.json', 'concurrency.lock']) {
       const code = await stat(join(entryDir, file)).then(
         () => 'present',
@@ -1118,6 +1122,7 @@ export class AcpThreadManager {
           { ...logContext, file, code },
           '[acp-threads] leaving an npx cache entry alone',
         );
+        releaseClaim();
         return false;
       }
     }
@@ -1128,6 +1133,7 @@ export class AcpThreadManager {
         { err, ...logContext },
         '[acp-threads] stale npx cache entry could not be cleared',
       );
+      releaseClaim();
       return false;
     }
     this.opts.log.warn(

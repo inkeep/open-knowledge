@@ -50,19 +50,21 @@ export function recordAcpLaunchFailure(
   const path = acpLaunchFailureLogPath(localDir);
   const text = formatAcpLaunchFailureEntry(entry);
   const previous = pendingWrites.get(path) ?? Promise.resolve();
-  const write = previous
-    .catch(() => undefined)
-    .then(async () => {
-      const currentSize = await stat(path).then(
-        (stats) => stats.size,
-        () => undefined,
-      );
-      if (spawnErrorLogOpenMode(currentSize) === 'w') await tracedWriteFile(path, text);
-      else await tracedAppendFile(path, text);
-    });
-  pendingWrites.set(path, write);
-  void write.finally(() => {
-    if (pendingWrites.get(path) === write) pendingWrites.delete(path);
+  const write = previous.then(async () => {
+    const currentSize = await stat(path).then(
+      (stats) => stats.size,
+      () => undefined,
+    );
+    if (spawnErrorLogOpenMode(currentSize) === 'w') await tracedWriteFile(path, text);
+    else await tracedAppendFile(path, text);
+  });
+  const settled = write.then(
+    () => undefined,
+    () => undefined,
+  );
+  pendingWrites.set(path, settled);
+  void settled.then(() => {
+    if (pendingWrites.get(path) === settled) pendingWrites.delete(path);
   });
   return write;
 }
