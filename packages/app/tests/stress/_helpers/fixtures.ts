@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import type { ProblemType } from '@inkeep/open-knowledge-core';
 import { test as base } from '@playwright/test';
 import { resetContentToFixtureBaseline } from './content-reset.ts';
+import { gotoWhileLoadProgresses, requireDeadlineAt } from './load-progress.ts';
 import {
   APP_PACKAGE_ROOT,
   checkCollabSync,
@@ -132,6 +133,12 @@ export function resolveReadinessBudgetMs(
   return readinessMs;
 }
 
+const FIRST_LOAD_STALL_SHARE_OF_NAVIGATION = 3 / 4;
+
+export function resolveFirstLoadStallMs(navigationShareMs: number): number {
+  return navigationShareMs * FIRST_LOAD_STALL_SHARE_OF_NAVIGATION;
+}
+
 export interface BudgetPhase {
   readonly name: string;
   readonly reserveMs: number;
@@ -173,13 +180,19 @@ export const PHASES_LEFT_AFTER_SETUP: readonly BudgetReserveKey[] = (
   Object.keys(WORKER_SERVER_BUDGET_RESERVES) as BudgetReserveKey[]
 ).filter((key) => !(PHASES_SPENT_BY_SETUP as readonly string[]).includes(key));
 
+const RESERVED_AFTER_SETUP_MS = PHASES_LEFT_AFTER_SETUP.reduce(
+  (sum, key) => sum + WORKER_SERVER_BUDGET_RESERVES[key],
+  0,
+);
+
+export const WORKER_SERVER_SETUP_STARVATION_LINE_MS =
+  WORKER_SERVER_BUDGET_TOTAL_MS - RESERVED_AFTER_SETUP_MS;
+
+const SETUP_STARVATION_LINE_NAME = `the worker-server fixture's ${WORKER_SERVER_SETUP_STARVATION_LINE_MS}ms setup starvation line, which keeps the last ${RESERVED_AFTER_SETUP_MS}ms of its ${WORKER_SERVER_BUDGET_TOTAL_MS}ms slot for the ${PHASES_LEFT_AFTER_SETUP.join(' and ')} phases`;
+
 function budgetSlotStarvationMessage(elapsedMs: number, residue: string): string | undefined {
-  const unrunMs = PHASES_LEFT_AFTER_SETUP.reduce(
-    (sum, key) => sum + WORKER_SERVER_BUDGET_RESERVES[key],
-    0,
-  );
-  if (elapsedMs + unrunMs <= WORKER_SERVER_BUDGET_TOTAL_MS) return undefined;
-  return `worker-server fixture setup reached ${elapsedMs}ms of the ${WORKER_SERVER_BUDGET_TOTAL_MS}ms slot, which leaves less than the ${unrunMs}ms the ${PHASES_LEFT_AFTER_SETUP.join(' and ')} phases it has not run yet reserve between them: ${residue}`;
+  if (elapsedMs <= WORKER_SERVER_SETUP_STARVATION_LINE_MS) return undefined;
+  return `worker-server fixture setup reached ${elapsedMs}ms of the ${WORKER_SERVER_BUDGET_TOTAL_MS}ms slot, which leaves less than the ${RESERVED_AFTER_SETUP_MS}ms the ${PHASES_LEFT_AFTER_SETUP.join(' and ')} phases it has not run yet reserve between them: ${residue}`;
 }
 
 export function reportBudgetOverrun(
@@ -253,20 +266,94 @@ async function waitForServerReady(
   await checkCollabSync(port, WORKER_SERVER_BUDGET_RESERVES.collabSync);
 }
 
-async function warmupAppFirstLoad(
+async function settleBeforeDeadline<T>(
+  deadlineAt: number,
+  leg: string,
+  work: () => Promise<T>,
+  releaseAbandoned?: (abandoned: T) => Promise<void>,
+): Promise<T> {
+  const remainingMs = deadlineAt - Date.now();
+  if (!(remainingMs > 0)) {
+    throw new Error(
+      `${leg} was not started, because the warmup had already reached ${SETUP_STARVATION_LINE_NAME}`,
+    );
+  }
+  const working = work();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      reject(
+        new Error(`${leg} had not settled when the warmup reached ${SETUP_STARVATION_LINE_NAME}`),
+      );
+      if (releaseAbandoned !== undefined) void working.then(releaseAbandoned, () => {});
+    }, remainingMs);
+  });
+  try {
+    return await Promise.race([working, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function closeReportingFailure(context: import('@playwright/test').BrowserContext): Promise<void> {
+  return context.close().catch((err: unknown) => {
+    console.warn(
+      `[e2e warmup] closing the first-load browser context failed, so it may stay open until the worker's browser closes; the warmup's own result stands: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  });
+}
+
+async function closeBeforeDeadline(
+  context: import('@playwright/test').BrowserContext,
+  deadlineAt: number,
+): Promise<void> {
+  const closing = closeReportingFailure(context);
+  const remainingMs = deadlineAt - Date.now();
+  if (!(remainingMs > 0)) return;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expired = new Promise<void>((resolve) => {
+    timer = setTimeout(resolve, remainingMs);
+  });
+  try {
+    await Promise.race([closing, expired]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function warmupAppFirstLoad(
   browser: import('@playwright/test').Browser,
   baseURL: string,
   overhead: BudgetPhase,
+  deadlineAt: number,
 ): Promise<void> {
-  const context = await spendOnBudgetPhase(overhead, () => browser.newContext());
+  requireDeadlineAt(deadlineAt, 'warmupAppFirstLoad');
+  const context = await spendOnBudgetPhase(overhead, () =>
+    settleBeforeDeadline(
+      deadlineAt,
+      'browser.newContext',
+      () => browser.newContext(),
+      closeReportingFailure,
+    ),
+  );
   try {
-    const page = await spendOnBudgetPhase(overhead, () => context.newPage());
-    await page.goto(`${baseURL}/`, { timeout: WORKER_SERVER_BUDGET_RESERVES.warmupGoto });
-    await page
-      .getByRole('treeitem', { name: REQUIRED_FIXTURE_ENTRY_NAMES[0], exact: true })
-      .waitFor({ state: 'visible', timeout: WORKER_SERVER_BUDGET_RESERVES.warmupVisible });
+    const page = await spendOnBudgetPhase(overhead, () =>
+      settleBeforeDeadline(deadlineAt, 'context.newPage', () => context.newPage()),
+    );
+    await gotoWhileLoadProgresses(
+      page,
+      `${baseURL}/`,
+      resolveFirstLoadStallMs(WORKER_SERVER_BUDGET_RESERVES.warmupGoto),
+      deadlineAt,
+      SETUP_STARVATION_LINE_NAME,
+    );
+    await settleBeforeDeadline(deadlineAt, 'the tree wait', () =>
+      page
+        .getByRole('treeitem', { name: REQUIRED_FIXTURE_ENTRY_NAMES[0], exact: true })
+        .waitFor({ state: 'visible', timeout: WORKER_SERVER_BUDGET_RESERVES.warmupVisible }),
+    );
   } finally {
-    await spendOnBudgetPhase(overhead, () => context.close());
+    await spendOnBudgetPhase(overhead, () => closeBeforeDeadline(context, deadlineAt));
   }
 }
 
@@ -418,7 +505,12 @@ export const test = base.extend<TestFixtures, WorkerFixtures>({
         reportBudgetOverrun(setupOverhead, workerInfo.workerIndex, residue);
 
         await waitForServerReady(started.baseURL, started.port, started.proc);
-        await warmupAppFirstLoad(browser, started.baseURL, setupOverhead);
+        await warmupAppFirstLoad(
+          browser,
+          started.baseURL,
+          setupOverhead,
+          fixtureStartedAt + WORKER_SERVER_SETUP_STARVATION_LINE_MS,
+        );
         reportBudgetOverrun(setupOverhead, workerInfo.workerIndex, residue);
         refuseStarvedBudgetSlot(setupOverhead, Date.now() - fixtureStartedAt, residue);
       } catch (err) {

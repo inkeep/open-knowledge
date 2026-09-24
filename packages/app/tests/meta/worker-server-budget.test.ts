@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
+import { errors } from '@playwright/test';
 import { type CallExpression, type Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getFreePort } from '../free-port.test-helper.ts';
@@ -20,6 +21,7 @@ const FIXTURE_MODULE = '../stress/_helpers/fixtures.ts';
 const DECLARED_TOTAL_EXPORT = 'WORKER_SERVER_BUDGET_TOTAL_MS';
 const DECLARED_RESERVES_EXPORT = 'WORKER_SERVER_BUDGET_RESERVES';
 const RESOLVE_READINESS_EXPORT = 'resolveReadinessBudgetMs';
+const RESOLVE_FIRST_LOAD_STALL_EXPORT = 'resolveFirstLoadStallMs';
 const IS_RESERVE_TABLE_EXPORT = 'isReserveTable';
 const TEARDOWN_RESERVE_KEY = 'teardown';
 const SETUP_OVERHEAD_RESERVE_KEY = 'setupOverhead';
@@ -1058,9 +1060,11 @@ describe('worker-server fixture budget guards', () => {
 
     const withoutPostWarmupReport = budgetEnforcementCounts(
       mutatedFixtureSource(
-        `        await warmupAppFirstLoad(browser, started.baseURL, setupOverhead);
+        `          fixtureStartedAt + WORKER_SERVER_SETUP_STARVATION_LINE_MS,
+        );
         reportBudgetOverrun(setupOverhead, workerInfo.workerIndex, residue);`,
-        '        await warmupAppFirstLoad(browser, started.baseURL, setupOverhead);',
+        `          fixtureStartedAt + WORKER_SERVER_SETUP_STARVATION_LINE_MS,
+        );`,
       ),
     );
     expect(
@@ -1070,8 +1074,8 @@ describe('worker-server fixture budget guards', () => {
 
     const withoutContextCloseWrap = budgetEnforcementCounts(
       mutatedFixtureSource(
-        'await spendOnBudgetPhase(overhead, () => context.close());',
-        'await context.close();',
+        'await spendOnBudgetPhase(overhead, () => closeBeforeDeadline(context, deadlineAt));',
+        'await closeBeforeDeadline(context, deadlineAt);',
       ),
       { kind: 'function', name: 'warmupAppFirstLoad' },
     );
@@ -1302,7 +1306,7 @@ const SERVER_PROCESS_SOURCE_PATH = join(
 );
 
 const READINESS_BOUND_SITE = 'waitForServerReady -> waitForHttpReady readiness bound';
-const WARMUP_GOTO_SITE = 'warmupAppFirstLoad -> page.goto navigation bound';
+const WARMUP_NAVIGATION_STALL_SITE = 'warmupAppFirstLoad -> gotoWhileLoadProgresses stall window';
 const WARMUP_VISIBLE_SITE = 'warmupAppFirstLoad -> locator.waitFor visibility bound';
 const DEV_SERVER_REAP_SITE = 'workerServer fixture body -> killGracefully reap bound';
 const STARVATION_ELAPSED_SITE =
@@ -1321,6 +1325,7 @@ const BUDGET_EXPORT_NAMES: ReadonlySet<string> = new Set([
   DECLARED_TOTAL_EXPORT,
   DECLARED_RESERVES_EXPORT,
   RESOLVE_READINESS_EXPORT,
+  RESOLVE_FIRST_LOAD_STALL_EXPORT,
 ]);
 
 type BudgetScope = { kind: 'function'; name: string } | { kind: 'worker-server-fixture-body' };
@@ -1328,7 +1333,7 @@ type BudgetScope = { kind: 'function'; name: string } | { kind: 'worker-server-f
 type BudgetArgument = { kind: 'positional'; index: number } | { kind: 'option'; name: string };
 
 type BudgetRequirement =
-  | { kind: 'derived-readiness' }
+  | { kind: 'derived'; root: string; key?: string }
   | { kind: 'reserve'; key: string }
   | { kind: 'elapsed-since'; start: string };
 
@@ -1351,15 +1356,19 @@ const BUDGET_WIRING_SITES: readonly BudgetWiringSite[] = [
     callee: 'waitForHttpReady',
     calls: 1,
     argument: { kind: 'positional', index: 1 },
-    requires: { kind: 'derived-readiness' },
+    requires: { kind: 'derived', root: RESOLVE_READINESS_EXPORT },
   },
   {
-    site: WARMUP_GOTO_SITE,
+    site: WARMUP_NAVIGATION_STALL_SITE,
     scope: { kind: 'function', name: 'warmupAppFirstLoad' },
-    callee: 'goto',
+    callee: 'gotoWhileLoadProgresses',
     calls: 1,
-    argument: { kind: 'option', name: 'timeout' },
-    requires: { kind: 'reserve', key: WARMUP_GOTO_RESERVE_KEY },
+    argument: { kind: 'positional', index: 2 },
+    requires: {
+      kind: 'derived',
+      root: RESOLVE_FIRST_LOAD_STALL_EXPORT,
+      key: WARMUP_GOTO_RESERVE_KEY,
+    },
   },
   {
     site: WARMUP_VISIBLE_SITE,
@@ -1525,7 +1534,9 @@ function resolveBudgetUse(
 
     if (node.isKind(SyntaxKind.CallExpression)) {
       const callee = calleeName(node);
-      if (BUDGET_EXPORT_NAMES.has(callee)) budgetRoots.add(callee);
+      if (!BUDGET_EXPORT_NAMES.has(callee)) return;
+      budgetRoots.add(callee);
+      for (const argument of node.getArguments()) visit(argument);
       return;
     }
 
@@ -1725,9 +1736,21 @@ function checkBudgetWiringSite(
       findings.push({ site: spec.site, line, reason: 'free-literal', literals: use.literals });
       continue;
     }
-    if (spec.requires.kind === 'derived-readiness') {
-      if (!use.budgetRoots.includes(RESOLVE_READINESS_EXPORT)) {
+    if (spec.requires.kind === 'derived') {
+      const { root, key } = spec.requires;
+      if (!use.budgetRoots.includes(root)) {
         findings.push({ site: spec.site, line, reason: 'unlinked', text: excerptOf(argument) });
+      } else if (
+        key !== undefined &&
+        !(use.reserveKeys.length === 1 && use.reserveKeys[0] === key)
+      ) {
+        findings.push({
+          site: spec.site,
+          line,
+          reason: 'wrong-reserve',
+          expected: key,
+          found: use.reserveKeys,
+        });
       }
       continue;
     }
@@ -1959,11 +1982,15 @@ const PLANTED_BUDGET_BLOCK = [
   '  return totalMs - Object.values(reserves).reduce((sum, ms) => sum + ms, 0);',
   '}',
   `const DERIVED_READINESS_MS = ${RESOLVE_READINESS_EXPORT}(${DECLARED_TOTAL_EXPORT}, ${DECLARED_RESERVES_EXPORT});`,
+  `export function ${RESOLVE_FIRST_LOAD_STALL_EXPORT}(navigationShareMs) {`,
+  '  return navigationShareMs * 3 / 4;',
+  '}',
   "const REQUIRED_FIXTURE_ENTRY_NAMES = ['test-doc.md'];",
 ].join('\n');
 
 const COMPLIANT_READINESS_ARGUMENT = 'DERIVED_READINESS_MS';
-const COMPLIANT_GOTO_ARGUMENT = `${DECLARED_RESERVES_EXPORT}.${WARMUP_GOTO_RESERVE_KEY}`;
+const COMPLIANT_GOTO_SHARE_ARGUMENT = `${DECLARED_RESERVES_EXPORT}.${WARMUP_GOTO_RESERVE_KEY}`;
+const COMPLIANT_STALL_ARGUMENT = `${RESOLVE_FIRST_LOAD_STALL_EXPORT}(${COMPLIANT_GOTO_SHARE_ARGUMENT})`;
 const COMPLIANT_VISIBLE_ARGUMENT = `${DECLARED_RESERVES_EXPORT}.${WARMUP_VISIBLE_RESERVE_KEY}`;
 const COMPLIANT_REAP_ARGUMENT = `proc, ${DECLARED_RESERVES_EXPORT}.${DEV_SERVER_REAP_RESERVE_KEY}`;
 const COMPLIANT_API_CONFIG_ARGUMENTS = `baseURL, ${DECLARED_RESERVES_EXPORT}.${API_CONFIG_RESERVE_KEY}`;
@@ -2005,7 +2032,7 @@ const OUT_OF_SCOPE_PROBE_CALL_SITES = [
 
 function plantedFixtureSource(overrides: {
   readinessArgument?: string;
-  gotoArgument?: string;
+  stallArgument?: string;
   visibleArgument?: string;
   reapArguments?: readonly [string, string];
   apiConfigArguments?: string;
@@ -2017,7 +2044,7 @@ function plantedFixtureSource(overrides: {
   extraSource?: string;
 }): string {
   const readiness = overrides.readinessArgument ?? COMPLIANT_READINESS_ARGUMENT;
-  const goto = overrides.gotoArgument ?? COMPLIANT_GOTO_ARGUMENT;
+  const stall = overrides.stallArgument ?? COMPLIANT_STALL_ARGUMENT;
   const visible = overrides.visibleArgument ?? COMPLIANT_VISIBLE_ARGUMENT;
   const reap = overrides.reapArguments ?? [COMPLIANT_REAP_ARGUMENT, COMPLIANT_REAP_ARGUMENT];
   const apiConfig = overrides.apiConfigArguments ?? COMPLIANT_API_CONFIG_ARGUMENTS;
@@ -2039,7 +2066,7 @@ function plantedFixtureSource(overrides: {
     'async function warmupAppFirstLoad(browser, baseURL, overhead) {',
     '  const context = await spendOnBudgetPhase(overhead, () => browser.newContext());',
     '  const page = await spendOnBudgetPhase(overhead, () => context.newPage());',
-    `  await page.goto(\`\${baseURL}/\`, { timeout: ${goto} });`,
+    `  await gotoWhileLoadProgresses(page, \`\${baseURL}/\`, ${stall});`,
     '  await page',
     "    .getByRole('treeitem', { name: REQUIRED_FIXTURE_ENTRY_NAMES[0], exact: true })",
     `    .waitFor({ state: 'visible', timeout: ${visible} });`,
@@ -2090,14 +2117,14 @@ describe('worker-server fixture budget wiring', () => {
     ).toEqual([]);
   });
 
-  test('the warmup legs spend the reserves the manifest declares for them', () => {
+  test('the warmup legs spend the bounds the manifest declares for them', () => {
     const source = fixtureSource();
     const findings = scanBudgetWiring(source);
     const resolved = resolvedBudgetCalls(source);
 
     expect(
-      resolved.filter((call) => call.site === WARMUP_GOTO_SITE).length,
-      'the warmup navigation call was not found, so nothing about its bound was checked',
+      resolved.filter((call) => call.site === WARMUP_NAVIGATION_STALL_SITE).length,
+      "the warmup's progress-bounded navigation was not found, so nothing about its stall window was checked",
     ).toBe(1);
     expect(
       resolved.filter((call) => call.site === WARMUP_VISIBLE_SITE).length,
@@ -2105,8 +2132,8 @@ describe('worker-server fixture budget wiring', () => {
     ).toBe(1);
 
     expect(
-      findingsAt(findings, WARMUP_GOTO_SITE),
-      `the warmup navigation must spend ${DECLARED_RESERVES_EXPORT}.${WARMUP_GOTO_RESERVE_KEY}. Playwright supplies its own default when the option is dropped, so the reserve table would silently over-state what the fixture spends`,
+      findingsAt(findings, WARMUP_NAVIGATION_STALL_SITE),
+      `the warmup navigation must spend the stall window ${RESOLVE_FIRST_LOAD_STALL_EXPORT} derives from ${DECLARED_RESERVES_EXPORT}.${WARMUP_GOTO_RESERVE_KEY} and carry no Playwright total of its own. Playwright supplies its own default when a bound is dropped, so a window written at the call site, a share passed undivided or a dropped argument would leave the reserve table describing a bound the fixture does not spend`,
     ).toEqual([]);
     expect(
       findingsAt(findings, WARMUP_VISIBLE_SITE),
@@ -2280,17 +2307,30 @@ describe('worker-server fixture budget wiring', () => {
         DEV_SERVER_REAP_SITE,
         READINESS_BOUND_SITE,
         STARVATION_ELAPSED_SITE,
-        WARMUP_GOTO_SITE,
+        WARMUP_NAVIGATION_STALL_SITE,
         WARMUP_VISIBLE_SITE,
       ].sort(),
     );
 
     for (const spec of BUDGET_WIRING_SITES) {
-      if (spec.requires.kind !== 'reserve') continue;
+      const key =
+        spec.requires.kind === 'reserve' || spec.requires.kind === 'derived'
+          ? spec.requires.key
+          : undefined;
+      if (key === undefined) continue;
       expect(
-        table[spec.requires.key],
-        `${spec.site} spends the reserve ${spec.requires.key}, which the live ${DECLARED_RESERVES_EXPORT} does not declare`,
+        table[key],
+        `${spec.site} spends the reserve ${key}, which the live ${DECLARED_RESERVES_EXPORT} does not declare`,
       ).toBeGreaterThan(0);
+    }
+
+    const exports = await fixtureExports();
+    for (const spec of BUDGET_WIRING_SITES) {
+      if (spec.requires.kind !== 'derived') continue;
+      expect(
+        typeof exports[spec.requires.root],
+        `${spec.site} derives its bound through ${spec.requires.root}: a site whose bound is derived through a root the live manifest no longer exports is pinned against nothing`,
+      ).toBe('function');
     }
 
     const scan = scanBudgetScopeBounds(fixtureSource());
@@ -2442,15 +2482,40 @@ describe('worker-server fixture budget wiring', () => {
     expect(bareReap[0]?.site).toBe(DEV_SERVER_REAP_SITE);
 
     const swappedReserve = scanBudgetWiring(
-      plantedFixtureSource({ gotoArgument: COMPLIANT_VISIBLE_ARGUMENT }),
+      plantedFixtureSource({
+        stallArgument: `${RESOLVE_FIRST_LOAD_STALL_EXPORT}(${COMPLIANT_VISIBLE_ARGUMENT})`,
+      }),
     );
     expect(reasonsOf(swappedReserve)).toEqual(['wrong-reserve']);
-    expect(swappedReserve[0]?.site).toBe(WARMUP_GOTO_SITE);
+    expect(swappedReserve[0]?.site).toBe(WARMUP_NAVIGATION_STALL_SITE);
 
-    const droppedGotoOption = scanBudgetWiring(
-      plantedFixtureSource({}).replace(`, { timeout: ${COMPLIANT_GOTO_ARGUMENT} }`, ''),
+    const droppedStallArgument = scanBudgetWiring(
+      replacedOnce(plantedFixtureSource({}), `, ${COMPLIANT_STALL_ARGUMENT}`, ''),
     );
-    expect(reasonsOf(droppedGotoOption)).toEqual(['argument-missing']);
+    expect(reasonsOf(droppedStallArgument)).toEqual(['argument-missing']);
+    expect(droppedStallArgument[0]?.site).toBe(WARMUP_NAVIGATION_STALL_SITE);
+
+    const undividedShare = scanBudgetWiring(
+      plantedFixtureSource({ stallArgument: COMPLIANT_GOTO_SHARE_ARGUMENT }),
+    );
+    expect(
+      reasonsOf(undividedShare),
+      'handing the progress-bounded navigation the whole navigation share makes its stall window as long as the fixed total it replaced, so a hung load is refused no sooner than before',
+    ).toEqual(['unlinked']);
+    expect(undividedShare[0]?.site).toBe(WARMUP_NAVIGATION_STALL_SITE);
+
+    const literalThroughResolver = scanBudgetWiring(
+      plantedFixtureSource({ stallArgument: `${RESOLVE_FIRST_LOAD_STALL_EXPORT}(30_000)` }),
+    );
+    expect(
+      reasonsOf(literalThroughResolver),
+      'a number handed to the resolver is a stall window written at the call site, however the call is spelled',
+    ).toEqual(['free-literal']);
+    expect(literalThroughResolver[0]?.site).toBe(WARMUP_NAVIGATION_STALL_SITE);
+
+    const literalStallWindow = scanBudgetWiring(plantedFixtureSource({ stallArgument: '30_000' }));
+    expect(reasonsOf(literalStallWindow)).toEqual(['free-literal']);
+    expect(literalStallWindow[0]?.site).toBe(WARMUP_NAVIGATION_STALL_SITE);
 
     const thirdReapCall = scanBudgetWiring(
       plantedFixtureSource({}).replace(
@@ -2469,7 +2534,7 @@ describe('worker-server fixture budget wiring', () => {
       reasonsOf(
         scanBudgetWiring(
           plantedFixtureSource({
-            gotoArgument: `RESERVE_ALIAS.${WARMUP_GOTO_RESERVE_KEY}`,
+            stallArgument: `${RESOLVE_FIRST_LOAD_STALL_EXPORT}(RESERVE_ALIAS.${WARMUP_GOTO_RESERVE_KEY})`,
             extraSource: `const RESERVE_ALIAS = ${DECLARED_RESERVES_EXPORT};`,
           }),
         ),
@@ -2561,5 +2626,3397 @@ describe('worker-server fixture budget wiring', () => {
       findingsAt(findings, COLLAB_SYNC_PROBE_SITE),
       `the collab-sync probe must spend ${DECLARED_RESERVES_EXPORT}.${COLLAB_SYNC_RESERVE_KEY}, for the same reason as the /api/config probe. Its two stress-spec callers pass a bound of their own, so a bound omitted here is invisible to them as well`,
     ).toEqual([]);
+  });
+
+  test('the warmup wiring scan fires on every way the fixture body can bypass the warmup, and stays quiet on navigations it does not govern', () => {
+    const compliant = plantedWarmupWiringSource();
+    expect(
+      warmupWiringFindings(compliant),
+      'the must-not-fire control: an exported warmup that the fixture body awaits exactly once, whose own navigation lives inside the warmup, is the shape every mutation below departs from',
+    ).toEqual([]);
+
+    expect(
+      warmupWiringFindings(plantedFixtureSource({})),
+      'a warmup the module does not export is one the liveness tests cannot drive, so the path they prove progress-bounded would not be the path the fixture spends',
+    ).toEqual(['warmup-not-exported']);
+
+    expect(
+      warmupWiringFindings(
+        replacedOnce(compliant, PLANTED_WARMUP_CALL, inlineBareNavigation(PLANTED_BASE_URL)),
+      ),
+      'inlining a bare page.goto where the warmup call was keeps a fixed-total navigation in the fixture while every liveness test stays green against a warmup nothing calls',
+    ).toEqual(['warmup-call-count', 'navigation-bypasses-warmup']);
+
+    expect(
+      warmupWiringFindings(
+        replacedOnce(
+          compliant,
+          PLANTED_WARMUP_CALL,
+          `${PLANTED_WARMUP_CALL}\n${bareNavigation(PLANTED_BASE_URL)}`,
+        ),
+      ),
+      'the adjacent must-fire: a second navigation beside a warmup call that is still present must red on its own, not only when the call goes missing',
+    ).toEqual(['navigation-bypasses-warmup']);
+
+    expect(
+      warmupWiringFindings(
+        replacedOnce(
+          compliant,
+          PLANTED_WARMUP_CALL,
+          PLANTED_WARMUP_CALL.replace('await ', 'void '),
+        ),
+      ),
+      'a warmup the setup does not await lets the fixture hand tests a server whose first load has not finished, and turns a refused load into an unhandled rejection',
+    ).toEqual(['warmup-not-awaited']);
+
+    expect(
+      warmupWiringFindings(
+        replacedOnce(
+          compliant,
+          PLANTED_WARMUP_CALL,
+          `${PLANTED_WARMUP_CALL}\n${PLANTED_WARMUP_CALL}`,
+        ),
+      ),
+    ).toEqual(['warmup-call-count']);
+
+    expect(
+      warmupWiringFindings(
+        replacedOnce(compliant, `export ${PLANTED_WARMUP_DECLARATION}`, RENAMED_WARMUP_DECLARATION),
+      ),
+      'a call to a warmup the module no longer declares is named rather than read as a compliant call',
+    ).toEqual(['warmup-missing']);
+
+    expect(
+      warmupWiringFindings(replacedOnce(compliant, 'workerServer: [', 'otherServer: [')),
+      'losing the fixture body must be reported, or a scan that found nothing to check reads as a compliant one',
+    ).toEqual(['scope-missing']);
+
+    expect(
+      warmupWiringFindings(plantedWarmupWiringSource(NAVIGATIONS_OUTSIDE_THE_FIXTURE_BODY)),
+      'the adjacent must-not-fire control: a navigation inside a test body or another fixture is bounded by that test, not by this fixture, so a rule that keys off the callee name instead of the enclosing fixture body reds code it does not govern',
+    ).toEqual([]);
+  });
+
+  test('the fixture runs its first load through the exported warmup the liveness tests drive, awaited once, with no navigation beside it', () => {
+    expect(
+      warmupWiringFindings(
+        mutatedFixtureSource(LIVE_WARMUP_CALL, inlineBareNavigation(LIVE_BASE_URL)),
+      ),
+      'the live-drift control: the same bypass planted into the shipped fixture must red, so the scan reaches the fixture as it is spelled rather than only the planted copy',
+    ).toEqual(expect.arrayContaining(['warmup-call-count', 'navigation-bypasses-warmup']));
+
+    expect(
+      warmupWiringFindings(fixtureSource()),
+      `the workerServer fixture body must await ${WARMUP_FIRST_LOAD_EXPORT} exactly once and navigate nowhere else, and ${FIXTURE_MODULE} must export that same ${WARMUP_FIRST_LOAD_EXPORT}. The liveness tests prove the exported warmup refuses only a stalled first load; that proof covers the fixture only if the fixture's first load is that warmup`,
+    ).toEqual([]);
+  });
+});
+
+const WARMUP_FIRST_LOAD_EXPORT = 'warmupAppFirstLoad';
+const REQUIRED_ENTRY_NAMES_EXPORT = 'REQUIRED_FIXTURE_ENTRY_NAMES';
+const OPEN_BUDGET_PHASE_EXPORT = 'openBudgetPhase';
+const WARMUP_BYPASS_NAVIGATION_CALLEE = 'goto';
+
+const LIVE_BASE_URL = 'started.baseURL';
+const LIVE_WARMUP_CALL = [
+  `        await ${WARMUP_FIRST_LOAD_EXPORT}(`,
+  '          browser,',
+  `          ${LIVE_BASE_URL},`,
+  '          setupOverhead,',
+  `          ${FIXTURE_START_IDENTIFIER} + WORKER_SERVER_SETUP_STARVATION_LINE_MS,`,
+  '        );',
+].join('\n');
+const PLANTED_BASE_URL = 'baseURL';
+const PLANTED_WARMUP_CALL = `        await ${WARMUP_FIRST_LOAD_EXPORT}(browser, ${PLANTED_BASE_URL}, setupOverhead);`;
+const PLANTED_WARMUP_DECLARATION = `async function ${WARMUP_FIRST_LOAD_EXPORT}(browser, baseURL, overhead) {`;
+const RENAMED_WARMUP_DECLARATION =
+  'export async function firstLoadOnce(browser, baseURL, overhead) {';
+
+const NAVIGATIONS_OUTSIDE_THE_FIXTURE_BODY = [
+  'async function navigateInsideATestBody(page, baseURL) {',
+  `  await page.goto(\`\${baseURL}/\`, { timeout: ${REINTRODUCED_LITERAL} });`,
+  '}',
+  'export const sibling = base.extend({',
+  '  ephemeral: async ({ page }, use) => {',
+  "    await page.goto('/');",
+  '    await use({});',
+  '  },',
+  '});',
+].join('\n');
+
+function bareNavigation(baseURLExpression: string): string {
+  return `        await warmupPage.goto(\`\${${baseURLExpression}}/\`, { timeout: ${DECLARED_RESERVES_EXPORT}.${WARMUP_GOTO_RESERVE_KEY} });`;
+}
+
+function inlineBareNavigation(baseURLExpression: string): string {
+  return [
+    '        const warmupContext = await browser.newContext();',
+    '        const warmupPage = await warmupContext.newPage();',
+    bareNavigation(baseURLExpression),
+  ].join('\n');
+}
+
+function replacedOnce(source: string, from: string, to: string): string {
+  const replaced = source.replace(from, to);
+  expect(
+    replaced,
+    `the planted mutation literal ${JSON.stringify(from)} no longer matches the source it mutates, so the control built on it would scan the unmutated shape`,
+  ).not.toBe(source);
+  return replaced;
+}
+
+function plantedWarmupWiringSource(extraSource?: string): string {
+  return replacedOnce(
+    plantedFixtureSource(extraSource === undefined ? {} : { extraSource }),
+    PLANTED_WARMUP_DECLARATION,
+    `export ${PLANTED_WARMUP_DECLARATION}`,
+  );
+}
+
+function warmupWiringFindings(source: string): string[] {
+  const sourceFile = parseBudgetSource(source);
+  const findings: string[] = [];
+  const declared = sourceFile.getFunction(WARMUP_FIRST_LOAD_EXPORT);
+  if (declared === undefined) findings.push('warmup-missing');
+  else if (!declared.isExported()) findings.push('warmup-not-exported');
+
+  const body = workerServerFixtureBody(sourceFile);
+  if (body === undefined) return [...findings, 'scope-missing'];
+
+  const calls = budgetCallsWithin(body, WARMUP_FIRST_LOAD_EXPORT);
+  if (calls.length !== 1) findings.push('warmup-call-count');
+  if (calls.some((call) => call.getParent()?.getKind() !== SyntaxKind.AwaitExpression)) {
+    findings.push('warmup-not-awaited');
+  }
+  if (budgetCallsWithin(body, WARMUP_BYPASS_NAVIGATION_CALLEE).length > 0) {
+    findings.push('navigation-bypasses-warmup');
+  }
+  return findings;
+}
+
+type WarmupFirstLoad = (browser: unknown, baseURL: string, overhead: unknown) => Promise<void>;
+
+type WarmupFirstLoadBefore = (
+  browser: unknown,
+  baseURL: string,
+  overhead: unknown,
+  deadlineAt: number,
+) => Promise<void>;
+
+interface DeclaredFirstLoadBudget {
+  warmup: WarmupFirstLoad;
+  warmupBefore: WarmupFirstLoadBefore;
+  openPhase: (name: string, reserveMs: number) => unknown;
+  totalMs: number;
+  navigationReserveMs: number;
+  visibleReserveMs: number;
+  setupOverheadReserveMs: number;
+  starvationLineMs: number;
+  renderedEntryNames: readonly string[];
+}
+
+const PHASES_LEFT_AFTER_SETUP_EXPORT = 'PHASES_LEFT_AFTER_SETUP';
+const REFUSE_STARVED_BUDGET_SLOT_EXPORT = 'refuseStarvedBudgetSlot';
+const STARVATION_LINE_PROBE_RESIDUE = 'starvation-line probe residue';
+
+function declaredStarvationLineMs(
+  exports: Record<string, unknown>,
+  table: ReserveTable,
+  totalMs: number,
+  withinReserve: unknown,
+): number {
+  const leftAfterSetup = exports[PHASES_LEFT_AFTER_SETUP_EXPORT];
+  expect(
+    Array.isArray(leftAfterSetup),
+    `${FIXTURE_MODULE} must export ${PHASES_LEFT_AFTER_SETUP_EXPORT}, the phases whose reserves its starvation refusal holds the end of the slot for`,
+  ).toBe(true);
+  const unrunShares = (leftAfterSetup as readonly unknown[]).map((key) => table[String(key)]);
+  expect(
+    unrunShares,
+    'every phase the starvation refusal protects must be a share the live reserve table declares, or the line below is drawn against nothing',
+  ).not.toContain(undefined);
+  const lineMs = totalMs - unrunShares.reduce<number>((sum, ms) => sum + (ms as number), 0);
+  expect(
+    lineMs,
+    `the starvation line inside the ${totalMs}ms slot must be positive`,
+  ).toBeGreaterThan(0);
+
+  const refuse = exports[REFUSE_STARVED_BUDGET_SLOT_EXPORT];
+  expect(typeof refuse, `${FIXTURE_MODULE} must export ${REFUSE_STARVED_BUDGET_SLOT_EXPORT}`).toBe(
+    'function',
+  );
+  const refuseAt = (elapsedMs: number) => () =>
+    (refuse as (phase: unknown, elapsedMs: number, residue: string) => void)(
+      withinReserve,
+      elapsedMs,
+      STARVATION_LINE_PROBE_RESIDUE,
+    );
+  expect(
+    refuseAt(lineMs),
+    `${lineMs}ms is read here as the fixture's starvation line, so its own ${REFUSE_STARVED_BUDGET_SLOT_EXPORT} must still admit a setup that reached exactly that far`,
+  ).not.toThrow();
+  expect(
+    refuseAt(lineMs + 1),
+    `and must refuse one that reached a millisecond past it, or the line these liveness tests hold the warmup to is not the one the fixture refuses at`,
+  ).toThrow(STARVATION_LINE_PROBE_RESIDUE);
+  return lineMs;
+}
+
+async function declaredFirstLoadBudget(): Promise<DeclaredFirstLoadBudget> {
+  const exports = await fixtureExports();
+  const warmup = exports[WARMUP_FIRST_LOAD_EXPORT];
+  expect(
+    typeof warmup,
+    `${FIXTURE_MODULE} must export ${WARMUP_FIRST_LOAD_EXPORT}, the first-load warmup its workerServer fixture runs, so the warmup's liveness is driven against a page whose progress this suite controls rather than asserted from its source text`,
+  ).toBe('function');
+  const openPhase = exports[OPEN_BUDGET_PHASE_EXPORT];
+  expect(typeof openPhase, `${FIXTURE_MODULE} must export ${OPEN_BUDGET_PHASE_EXPORT}`).toBe(
+    'function',
+  );
+
+  const table = await expectDeclaredReserveTable(await declaredReserves());
+  const total = await declaredTotalMs();
+  expect(typeof total, `${FIXTURE_MODULE} must export ${DECLARED_TOTAL_EXPORT}`).toBe('number');
+  const navigationReserveMs = table[WARMUP_GOTO_RESERVE_KEY];
+  expect(
+    navigationReserveMs,
+    `${DECLARED_RESERVES_EXPORT}.${WARMUP_GOTO_RESERVE_KEY} is the navigation's declared share, and a stalled first load must be refused sooner than it. A change that renames or retires that key re-aims this read at the key that now declares the navigation's share, never at the stall window itself`,
+  ).toBeGreaterThan(0);
+  const visibleReserveMs = table[WARMUP_VISIBLE_RESERVE_KEY];
+  expect(visibleReserveMs).toBeGreaterThan(0);
+  const setupOverheadReserveMs = table[SETUP_OVERHEAD_RESERVE_KEY];
+  expect(setupOverheadReserveMs).toBeGreaterThan(0);
+
+  const renderedEntryNames = exports[REQUIRED_ENTRY_NAMES_EXPORT];
+  expect(
+    Array.isArray(renderedEntryNames) && renderedEntryNames.length > 0,
+    `${FIXTURE_MODULE} must export ${REQUIRED_ENTRY_NAMES_EXPORT}, the tree entries the warmup waits to see rendered`,
+  ).toBe(true);
+
+  const warmupBefore = warmup as WarmupFirstLoadBefore;
+  const openBudgetPhase = openPhase as (name: string, reserveMs: number) => unknown;
+  const starvationLineMs = declaredStarvationLineMs(
+    exports,
+    table,
+    total as number,
+    openBudgetPhase(FIRST_LOAD_PHASE_NAME, setupOverheadReserveMs as number),
+  );
+  return {
+    warmup: (browser, baseURL, overhead) =>
+      warmupBefore(browser, baseURL, overhead, Date.now() + starvationLineMs),
+    warmupBefore,
+    openPhase: openBudgetPhase,
+    totalMs: total as number,
+    navigationReserveMs: navigationReserveMs as number,
+    visibleReserveMs: visibleReserveMs as number,
+    setupOverheadReserveMs: setupOverheadReserveMs as number,
+    starvationLineMs,
+    renderedEntryNames: renderedEntryNames as readonly string[],
+  };
+}
+
+const OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS = 1_481;
+const PROGRESS_PAST_RESERVE_FACTOR = 2;
+const FAKE_FIRST_LOAD_BASE_URL = 'http://first-load.invalid';
+const FAKE_FIRST_LOAD_URL = `${FAKE_FIRST_LOAD_BASE_URL}/`;
+const FIRST_LOAD_PHASE_NAME = 'setup overhead';
+const FAKE_RENDERED_ROLE = 'treeitem';
+const FAKE_RESPONSE_STATUS = 200;
+const FAKE_REQUEST_FAILURE_TEXT = 'net::ERR_FAILED';
+
+const FAKE_SELF_TEST_REQUESTS = 2;
+const FAKE_SELF_TEST_SPACING_MS = 400;
+const FAKE_SELF_TEST_BOUND_MS = 500;
+const FAKE_SELF_TEST_ENTRY = 'self-test-entry';
+const FAKE_SELF_TEST_UNMODELLED_MEMBER = 'waitForEvent';
+
+const FAKE_DOCUMENT_RESOURCE_TYPE = 'document';
+const FAKE_SCRIPT_RESOURCE_TYPE = 'script';
+
+function fakeModuleUrl(navigatedUrl: string, index: number): string {
+  return `${navigatedUrl}src/module-${index}.tsx`;
+}
+
+const PLANTED_UNREAL_MEMBER = 'waitForFirstLoadProgress';
+const PLANTED_UNREAL_EVENT = 'requestprogress';
+
+const FAKE_EMITTER_MEMBERS = [
+  'on',
+  'once',
+  'off',
+  'addListener',
+  'removeListener',
+  'removeAllListeners',
+] as const;
+
+const FAKE_MODELLED_MEMBERS = {
+  Browser: ['newContext'],
+  BrowserContext: ['newPage', 'pages', 'close', ...FAKE_EMITTER_MEMBERS],
+  Page: [
+    'goto',
+    'waitForLoadState',
+    'getByRole',
+    'url',
+    'context',
+    'isClosed',
+    'close',
+    ...FAKE_EMITTER_MEMBERS,
+  ],
+  Locator: ['waitFor'],
+  Request: ['url', 'method', 'resourceType', 'failure', 'response'],
+  Response: ['url', 'status', 'ok', 'request'],
+} as const satisfies Record<string, readonly string[]>;
+
+type FakeOwner = keyof typeof FAKE_MODELLED_MEMBERS;
+
+const FAKE_PAGE_EVENTS = [
+  'request',
+  'response',
+  'requestfinished',
+  'requestfailed',
+  'domcontentloaded',
+  'load',
+  'close',
+] as const;
+const FAKE_CONTEXT_EVENTS = [
+  'request',
+  'response',
+  'requestfinished',
+  'requestfailed',
+  'close',
+] as const;
+type FakePageEvent = (typeof FAKE_PAGE_EVENTS)[number];
+type FakeContextEvent = (typeof FAKE_CONTEXT_EVENTS)[number];
+
+const FAKE_NAVIGATION_STATES = ['commit', 'domcontentloaded', 'load'] as const;
+const FAKE_LOAD_STATES = ['domcontentloaded', 'load'] as const;
+type FakeNavigationState = (typeof FAKE_NAVIGATION_STATES)[number];
+
+type FakeListener = (payload: unknown) => void;
+
+interface FakeEmitter<Event extends string> {
+  on(event: Event, listener: FakeListener): unknown;
+  off(event: Event, listener: FakeListener): unknown;
+}
+
+interface FakeWaitOptions {
+  timeout?: unknown;
+  waitUntil?: unknown;
+  state?: unknown;
+}
+
+interface FakePage extends FakeEmitter<FakePageEvent> {
+  goto(url: string, options?: FakeWaitOptions): Promise<unknown>;
+  getByRole(
+    role: string,
+    options?: { name?: unknown },
+  ): { waitFor(options?: FakeWaitOptions): Promise<void> };
+  close(): Promise<void>;
+}
+
+interface FakeContext extends FakeEmitter<FakeContextEvent> {
+  newPage(): Promise<FakePage>;
+  close(): Promise<void>;
+}
+
+interface FakeBrowser {
+  newContext(options?: unknown): Promise<FakeContext>;
+}
+
+type RecordedRequestTiming = readonly [issuedAtMs: number, settledAtMs: number];
+
+interface FirstLoadTimeline {
+  loadAtMs: number;
+  document: RecordedRequestTiming;
+  requests: readonly RecordedRequestTiming[];
+}
+
+interface SpacedFirstLoadScript {
+  requests: number;
+  completionSpacingMs: number;
+  completing: number;
+  failing?: number;
+  timeline?: never;
+}
+
+interface RecordedFirstLoadScript {
+  timeline: FirstLoadTimeline;
+  requests?: never;
+  completionSpacingMs?: never;
+  completing?: never;
+  failing?: never;
+}
+
+type FirstLoadScript = SpacedFirstLoadScript | RecordedFirstLoadScript;
+
+interface FirstLoadRecord {
+  navigations: string[];
+  requestsIssued: number;
+  requestsCompleted: number;
+  requestsFailed: number;
+  lastProgressAt: number | undefined;
+  loadedAt: number | undefined;
+  visibleWaits: string[];
+  contextsOpened: number;
+  contextsClosed: number;
+  listeningAtGoto: string[][];
+  listeningAtVisibleWait: string[][];
+  listeningAtContextClose: string[][];
+  timersBeyondPagesAtVisibleWait: Array<number | undefined>;
+}
+
+interface FakeRequestPair {
+  url: string;
+  resourceType: string;
+  completed: boolean;
+  failed: boolean;
+  request: unknown;
+  response: unknown;
+}
+
+interface FakeRequestSnapshot {
+  url: string;
+  resourceType: string;
+  completed: boolean;
+}
+
+interface FakePageProbe {
+  listening(): string[];
+  pendingTimers(): number;
+  requests(): FakeRequestSnapshot[];
+}
+
+interface FakeProbes {
+  contexts: FakeContext[];
+  pages: FakePageProbe[];
+}
+
+interface FirstLoadObserver {
+  contexts: readonly FakeContext[];
+  listening(): string[][];
+  timersBeyondPages(): number;
+  requests(): FakeRequestSnapshot[];
+  held(): string[];
+  releaseHeld(): void;
+}
+
+interface FakeHolds {
+  newContext?: 'rejected-when-released' | 'handed-back-when-released';
+  newPage?: true;
+  contextClose?: true;
+}
+
+const HELD_NEW_CONTEXT = 'browser.newContext';
+const HELD_NEW_PAGE = 'browserContext.newPage';
+const HELD_CONTEXT_CLOSE = 'browserContext.close';
+
+interface FakeParkingLot {
+  park<T>(call: string, settle: () => T): { settled: Promise<T>; release: () => void };
+  held(): string[];
+  releaseAll(): void;
+}
+
+function fakeParkingLot(): FakeParkingLot {
+  const parked = new Set<{ call: string; release: () => void }>();
+  return {
+    park<T>(call: string, settle: () => T) {
+      let release = (): void => {};
+      const settled = new Promise<T>((resolve, reject) => {
+        const entry = {
+          call,
+          release: () => {
+            if (!parked.delete(entry)) return;
+            try {
+              resolve(settle());
+            } catch (err) {
+              reject(err);
+            }
+          },
+        };
+        parked.add(entry);
+        release = entry.release;
+      });
+      return { settled, release };
+    },
+    held: () => [...parked].map((entry) => entry.call),
+    releaseAll: () => {
+      for (const entry of parked) entry.release();
+    },
+  };
+}
+
+function timersBeyondFakePages(probes: FakeProbes): number {
+  const owned = probes.pages.reduce((sum, page) => sum + page.pendingTimers(), 0);
+  return vi.getTimerCount() - owned;
+}
+
+function modelled<T>(owner: FakeOwner, members: Record<string, unknown>): T {
+  const declared = [...FAKE_MODELLED_MEMBERS[owner]].sort();
+  const built = Object.keys(members).sort();
+  if (built.join(',') !== declared.join(',')) {
+    throw new Error(
+      `the fake ${owner} builds [${built.join(', ')}] while FAKE_MODELLED_MEMBERS declares [${declared.join(', ')}], so the drift canary would check a different surface than the warmup runs against`,
+    );
+  }
+  return new Proxy(members, {
+    get(target, key, receiver) {
+      if (typeof key === 'symbol' || Object.hasOwn(target, key)) {
+        return Reflect.get(target, key, receiver);
+      }
+      if (key === 'then') return undefined;
+      throw new Error(
+        `the fake first-load ${owner} does not model ${owner}#${key}, so a warmup reaching for it would run against behaviour nothing in this suite stands in for. Model it, add it to FAKE_MODELLED_MEMBERS so the drift canary checks it against the installed playwright client, and extend the fake's conformance test`,
+      );
+    },
+  }) as T;
+}
+
+function fakeEmitter<Event extends string>(self: () => unknown) {
+  const listeners = new Map<string, Array<{ listener: FakeListener; once: boolean }>>();
+  const add = (once: boolean) => (event: string, listener: FakeListener) => {
+    listeners.set(event, [...(listeners.get(event) ?? []), { listener, once }]);
+    return self();
+  };
+  const remove = (event: string, listener: FakeListener) => {
+    listeners.set(
+      event,
+      (listeners.get(event) ?? []).filter((entry) => entry.listener !== listener),
+    );
+    return self();
+  };
+  return {
+    members: {
+      on: add(false),
+      addListener: add(false),
+      once: add(true),
+      off: remove,
+      removeListener: remove,
+      removeAllListeners: (event?: string) => {
+        if (event === undefined) listeners.clear();
+        else listeners.delete(event);
+        return self();
+      },
+    },
+    emit(event: Event, payload: unknown): void {
+      const current = listeners.get(event) ?? [];
+      listeners.set(
+        event,
+        current.filter((entry) => !entry.once),
+      );
+      for (const entry of current) entry.listener(payload);
+    },
+    listening(): string[] {
+      return [...listeners]
+        .filter(([, entries]) => entries.length > 0)
+        .map(([event]) => event)
+        .sort();
+    },
+  };
+}
+
+function fakeTimeoutError(call: string, timeoutMs: number): Error {
+  return new errors.TimeoutError(`${call}: Timeout ${timeoutMs}ms exceeded.`);
+}
+
+function fakeClosedError(call: string): Error {
+  return new Error(`${call}: Target page, context or browser has been closed`);
+}
+
+function explicitTimeoutOf(call: string, options: FakeWaitOptions | undefined): number {
+  const timeout = options?.timeout;
+  if (typeof timeout === 'number' && Number.isFinite(timeout) && timeout >= 0) return timeout;
+  throw new Error(
+    `${call} was called with timeout ${String(timeout)}. The fake first-load page models an explicit bound only: playwright-core resolves an omitted one through the context default, which the runner sets from navigationTimeout only while its test-scoped context-options fixture is live and which otherwise falls back to the library default, so which of the two a worker-scoped warmup inherits is not something this fake can know. Pass the bound explicitly, 0 for none`,
+  );
+}
+
+function waitStateOf<State extends string>(
+  call: string,
+  value: unknown,
+  supported: readonly State[],
+): State {
+  const state = value ?? 'load';
+  if ((supported as readonly unknown[]).includes(state)) return state as State;
+  throw new Error(
+    `${call} was asked to wait for "${String(state)}", which the fake first-load page does not model; it reaches ${supported.join(', ')} only`,
+  );
+}
+
+function fakeRequestPair(url: string, resourceType: string): FakeRequestPair {
+  const pair: FakeRequestPair = {
+    url,
+    resourceType,
+    completed: false,
+    failed: false,
+    request: undefined,
+    response: undefined,
+  };
+  pair.request = modelled('Request', {
+    url: () => url,
+    method: () => 'GET',
+    resourceType: () => resourceType,
+    failure: () => (pair.failed ? { errorText: FAKE_REQUEST_FAILURE_TEXT } : null),
+    response: async () => (pair.completed ? pair.response : null),
+  });
+  pair.response = modelled('Response', {
+    url: () => url,
+    status: () => FAKE_RESPONSE_STATUS,
+    ok: () => true,
+    request: () => pair.request,
+  });
+  return pair;
+}
+
+function fakeFirstLoadPage(
+  script: FirstLoadScript,
+  renderedEntryNames: readonly string[],
+  record: FirstLoadRecord,
+  context: () => unknown,
+  emitOnContext: (event: FakeContextEvent, payload: unknown) => void,
+  probes: FakeProbes,
+): { handle: FakePage; close: () => void; probe: FakePageProbe } {
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const rejectOnClose = new Set<() => void>();
+  const waiters = new Set<{ state: FakeNavigationState; done: () => void }>();
+  const reached = new Set<FakeNavigationState>();
+  const issued: FakeRequestPair[] = [];
+  let closed = false;
+  let navigatedTo: string | undefined;
+  const emitter = fakeEmitter<FakePageEvent>(() => handle);
+
+  const schedule = (delayMs: number, run: () => void): void => {
+    const timer = setTimeout(() => {
+      timers.delete(timer);
+      run();
+    }, delayMs);
+    timers.add(timer);
+  };
+
+  const reach = (state: FakeNavigationState): void => {
+    reached.add(state);
+    for (const waiter of waiters) if (waiter.state === state) waiter.done();
+  };
+
+  const settleWhen = (
+    call: string,
+    state: FakeNavigationState | undefined,
+    timeoutMs: number,
+  ): Promise<void> => {
+    if (closed) return Promise.reject(fakeClosedError(call));
+    if (state !== undefined && reached.has(state)) return Promise.resolve();
+    return new Promise<void>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const finish = (): void => {
+        if (timer !== undefined) {
+          clearTimeout(timer);
+          timers.delete(timer);
+        }
+        rejectOnClose.delete(failClosed);
+        waiters.delete(waiter);
+      };
+      const failClosed = (): void => {
+        finish();
+        reject(fakeClosedError(call));
+      };
+      const waiter = {
+        state: state ?? 'load',
+        done: () => {
+          finish();
+          resolve();
+        },
+      };
+      rejectOnClose.add(failClosed);
+      if (state !== undefined) waiters.add(waiter);
+      if (timeoutMs > 0) {
+        timer = setTimeout(() => {
+          finish();
+          reject(fakeTimeoutError(call, timeoutMs));
+        }, timeoutMs);
+        timers.add(timer);
+      }
+    });
+  };
+
+  const issue = (pair: FakeRequestPair, countsAsScript: boolean): void => {
+    issued.push(pair);
+    if (countsAsScript) record.requestsIssued += 1;
+    record.lastProgressAt = Date.now();
+    emitter.emit('request', pair.request);
+    emitOnContext('request', pair.request);
+  };
+
+  const complete = (pair: FakeRequestPair, countsAsScript: boolean): void => {
+    pair.completed = true;
+    if (countsAsScript) record.requestsCompleted += 1;
+    record.lastProgressAt = Date.now();
+    emitter.emit('response', pair.response);
+    emitOnContext('response', pair.response);
+    emitter.emit('requestfinished', pair.request);
+    emitOnContext('requestfinished', pair.request);
+  };
+
+  const fail = (pair: FakeRequestPair): void => {
+    pair.failed = true;
+    record.requestsFailed += 1;
+    record.lastProgressAt = Date.now();
+    emitter.emit('requestfailed', pair.request);
+    emitOnContext('requestfailed', pair.request);
+  };
+
+  const replay = (timeline: FirstLoadTimeline, url: string, document: FakeRequestPair): void => {
+    const [documentIssuedAtMs, documentSettledAtMs] = timeline.document;
+    schedule(documentIssuedAtMs, () => issue(document, false));
+    schedule(documentSettledAtMs, () => {
+      complete(document, false);
+      reach('commit');
+    });
+    for (const [index, [issuedAtMs, settledAtMs]] of timeline.requests.entries()) {
+      const pair = fakeRequestPair(fakeModuleUrl(url, index), FAKE_SCRIPT_RESOURCE_TYPE);
+      schedule(issuedAtMs, () => issue(pair, true));
+      schedule(settledAtMs, () => complete(pair, true));
+    }
+    schedule(timeline.loadAtMs, () => {
+      record.loadedAt = Date.now();
+      reach('domcontentloaded');
+      emitter.emit('domcontentloaded', handle);
+      reach('load');
+      emitter.emit('load', handle);
+    });
+  };
+
+  const close = (): void => {
+    if (closed) return;
+    closed = true;
+    for (const timer of timers) clearTimeout(timer);
+    timers.clear();
+    for (const failClosed of rejectOnClose) failClosed();
+    emitter.emit('close', handle);
+  };
+
+  const handle: FakePage = modelled<FakePage>('Page', {
+    ...emitter.members,
+    goto: async (url: string, options?: FakeWaitOptions) => {
+      record.listeningAtGoto.push(emitter.listening());
+      const timeoutMs = explicitTimeoutOf('page.goto', options);
+      const waitUntil = waitStateOf('page.goto', options?.waitUntil, FAKE_NAVIGATION_STATES);
+      if (closed) throw fakeClosedError('page.goto');
+      if (navigatedTo !== undefined) {
+        throw new Error(
+          `the fake first-load page models one navigation per page and was already navigated to ${navigatedTo}`,
+        );
+      }
+      navigatedTo = url;
+      record.navigations.push(url);
+      const document = fakeRequestPair(url, FAKE_DOCUMENT_RESOURCE_TYPE);
+      if (script.timeline !== undefined) {
+        replay(script.timeline, url, document);
+        await settleWhen('page.goto', waitUntil, timeoutMs);
+        return document.response;
+      }
+      const scripts = Array.from({ length: script.requests }, (_, index) =>
+        fakeRequestPair(fakeModuleUrl(url, index), FAKE_SCRIPT_RESOURCE_TYPE),
+      );
+      schedule(0, () => {
+        issue(document, false);
+        complete(document, false);
+        reach('commit');
+        for (const pair of scripts) issue(pair, true);
+      });
+      const failing = script.failing ?? 0;
+      for (const [index, pair] of scripts.slice(0, script.completing).entries()) {
+        schedule((index + 1) * script.completionSpacingMs, () =>
+          index < failing ? fail(pair) : complete(pair, true),
+        );
+      }
+      if (script.completing === script.requests) {
+        schedule(script.requests * script.completionSpacingMs, () => {
+          record.loadedAt = Date.now();
+          reach('domcontentloaded');
+          emitter.emit('domcontentloaded', handle);
+          reach('load');
+          emitter.emit('load', handle);
+        });
+      }
+      await settleWhen('page.goto', waitUntil, timeoutMs);
+      return document.response;
+    },
+    waitForLoadState: async (state?: unknown, options?: FakeWaitOptions) => {
+      const timeoutMs = explicitTimeoutOf('page.waitForLoadState', options);
+      const loadState = waitStateOf('page.waitForLoadState', state, FAKE_LOAD_STATES);
+      await settleWhen('page.waitForLoadState', loadState, timeoutMs);
+    },
+    getByRole: (role: string, options?: { name?: unknown }) => {
+      if (role !== FAKE_RENDERED_ROLE) {
+        throw new Error(
+          `the fake first-load page renders ${FAKE_RENDERED_ROLE} entries only and was asked for role "${role}"`,
+        );
+      }
+      const name = options?.name;
+      return modelled('Locator', {
+        waitFor: async (waitOptions?: FakeWaitOptions) => {
+          record.listeningAtVisibleWait.push(emitter.listening());
+          record.timersBeyondPagesAtVisibleWait.push(
+            vi.isFakeTimers() ? timersBeyondFakePages(probes) : undefined,
+          );
+          const timeoutMs = explicitTimeoutOf('locator.waitFor', waitOptions);
+          waitStateOf('locator.waitFor', waitOptions?.state ?? 'visible', ['visible']);
+          record.visibleWaits.push(String(name));
+          const rendered = typeof name === 'string' && renderedEntryNames.includes(name);
+          await settleWhen('locator.waitFor', rendered ? 'load' : undefined, timeoutMs);
+        },
+      });
+    },
+    url: () => navigatedTo ?? 'about:blank',
+    context,
+    isClosed: () => closed,
+    close: async () => close(),
+  });
+
+  const probe: FakePageProbe = {
+    listening: () => emitter.listening(),
+    pendingTimers: () => timers.size,
+    requests: () =>
+      issued.map((pair) => ({
+        url: pair.url,
+        resourceType: pair.resourceType,
+        completed: pair.completed,
+      })),
+  };
+  return { handle, close, probe };
+}
+
+function fakeFirstLoadContext(
+  script: FirstLoadScript,
+  renderedEntryNames: readonly string[],
+  record: FirstLoadRecord,
+  probes: FakeProbes,
+  holds: FakeHolds,
+  lot: FakeParkingLot,
+): FakeContext {
+  const emitter = fakeEmitter<FakeContextEvent>(() => handle);
+  const pages: FakePage[] = [];
+  const pageProbes: FakePageProbe[] = [];
+  const closers: Array<() => void> = [];
+  let closed = false;
+  let closeParked = false;
+  const finishClose = (): void => {
+    if (closed) return;
+    closed = true;
+    for (const close of closers) close();
+    record.contextsClosed += 1;
+    emitter.emit('close', handle);
+  };
+  const handle: FakeContext = modelled<FakeContext>('BrowserContext', {
+    ...emitter.members,
+    newPage: async () => {
+      if (closed) throw fakeClosedError('browserContext.newPage');
+      if (holds.newPage === true) {
+        const parkedPage = lot.park<FakePage>(HELD_NEW_PAGE, () => {
+          throw fakeClosedError(HELD_NEW_PAGE);
+        });
+        closers.push(parkedPage.release);
+        return parkedPage.settled;
+      }
+      const page = fakeFirstLoadPage(
+        script,
+        renderedEntryNames,
+        record,
+        () => handle,
+        (event, payload) => emitter.emit(event, payload),
+        probes,
+      );
+      pages.push(page.handle);
+      pageProbes.push(page.probe);
+      probes.pages.push(page.probe);
+      closers.push(page.close);
+      return page.handle;
+    },
+    pages: () => [...pages],
+    close: async () => {
+      if (closed) return;
+      for (const probe of pageProbes) record.listeningAtContextClose.push(probe.listening());
+      if (holds.contextClose === true && !closeParked) {
+        closeParked = true;
+        return lot.park(HELD_CONTEXT_CLOSE, finishClose).settled;
+      }
+      finishClose();
+    },
+  });
+  return handle;
+}
+
+function fakeFirstLoadBrowser(
+  script: FirstLoadScript,
+  renderedEntryNames: readonly string[],
+  holds: FakeHolds = {},
+): { browser: FakeBrowser; record: FirstLoadRecord; observe: FirstLoadObserver } {
+  const record: FirstLoadRecord = {
+    navigations: [],
+    requestsIssued: 0,
+    requestsCompleted: 0,
+    requestsFailed: 0,
+    lastProgressAt: undefined,
+    loadedAt: undefined,
+    visibleWaits: [],
+    contextsOpened: 0,
+    contextsClosed: 0,
+    listeningAtGoto: [],
+    listeningAtVisibleWait: [],
+    listeningAtContextClose: [],
+    timersBeyondPagesAtVisibleWait: [],
+  };
+  const probes: FakeProbes = { contexts: [], pages: [] };
+  const lot = fakeParkingLot();
+  const openContext = (): FakeContext => {
+    const context = fakeFirstLoadContext(script, renderedEntryNames, record, probes, holds, lot);
+    probes.contexts.push(context);
+    return context;
+  };
+  const browser = modelled<FakeBrowser>('Browser', {
+    newContext: async () => {
+      record.contextsOpened += 1;
+      if (holds.newContext === 'rejected-when-released') {
+        return lot.park<FakeContext>(HELD_NEW_CONTEXT, () => {
+          throw fakeClosedError(HELD_NEW_CONTEXT);
+        }).settled;
+      }
+      if (holds.newContext === 'handed-back-when-released') {
+        return lot.park(HELD_NEW_CONTEXT, openContext).settled;
+      }
+      return openContext();
+    },
+  });
+  const observe: FirstLoadObserver = {
+    contexts: probes.contexts,
+    listening: () => probes.pages.map((page) => page.listening()),
+    timersBeyondPages: () => timersBeyondFakePages(probes),
+    requests: () => probes.pages.flatMap((page) => page.requests()),
+    held: () => lot.held(),
+    releaseHeld: () => lot.releaseAll(),
+  };
+  return { browser, record, observe };
+}
+
+interface Settlement {
+  state: 'pending' | 'resolved' | 'rejected';
+  at: number | undefined;
+  reason: unknown;
+}
+
+function settlementOf(run: Promise<unknown>): Settlement {
+  const settlement: Settlement = { state: 'pending', at: undefined, reason: undefined };
+  void run.then(
+    () => {
+      settlement.state = 'resolved';
+      settlement.at = Date.now();
+    },
+    (reason: unknown) => {
+      settlement.state = 'rejected';
+      settlement.at = Date.now();
+      settlement.reason = reason;
+    },
+  );
+  return settlement;
+}
+
+function describeSettlement(settlement: Settlement, startedAt: number): string {
+  if (settlement.at === undefined) return 'still pending';
+  const reason = settlement.reason instanceof Error ? `: ${settlement.reason.message}` : '';
+  return `${settlement.state} ${settlement.at - startedAt}ms of fake time after the warmup started${reason}`;
+}
+
+function spacingOutlasting(outlastMs: number): number {
+  return Math.ceil(outlastMs / OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS);
+}
+
+function spacingSettlingBefore(settleByMs: number): number {
+  return Math.floor((settleByMs - 1) / OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS);
+}
+
+const PLAYWRIGHT_CLIENT_MODULES = {
+  events: './lib/client/events.js',
+  Browser: './lib/client/browser.js',
+  BrowserContext: './lib/client/browserContext.js',
+  Page: './lib/client/page.js',
+  Locator: './lib/client/locator.js',
+  network: './lib/client/network.js',
+} as const;
+
+interface PlaywrightClientSurface {
+  version: string;
+  prototypes: Partial<Record<FakeOwner, object>>;
+  pageEvents: readonly string[];
+  contextEvents: readonly string[];
+}
+
+function playwrightClientSurface(): PlaywrightClientSurface {
+  const fromHere = createRequire(import.meta.url);
+  const fromPlaywrightTest = createRequire(fromHere.resolve('@playwright/test'));
+  const fromPlaywright = createRequire(fromPlaywrightTest.resolve('playwright/package.json'));
+  const corePackageJson = fromPlaywright.resolve('playwright-core/package.json');
+  const fromCore = createRequire(corePackageJson);
+  const load = (path: string): Record<string, unknown> => {
+    try {
+      return fromCore(path) as Record<string, unknown>;
+    } catch (err) {
+      throw new Error(
+        `the fake first-load page's drift canary reads playwright-core's client module ${path}, which the resolved playwright-core no longer ships at that path. Re-verify the fake against this release and move the path, or replace the canary`,
+        { cause: err },
+      );
+    }
+  };
+  const prototypeOf = (value: unknown): object | undefined =>
+    typeof value === 'function' ? (value as { prototype: object }).prototype : undefined;
+  const events = load(PLAYWRIGHT_CLIENT_MODULES.events).Events as
+    | { Page?: Record<string, string>; BrowserContext?: Record<string, string> }
+    | undefined;
+  const network = load(PLAYWRIGHT_CLIENT_MODULES.network);
+  return {
+    version: resolvedPackageVersion(corePackageJson),
+    prototypes: {
+      Browser: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.Browser).Browser),
+      BrowserContext: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.BrowserContext).BrowserContext),
+      Page: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.Page).Page),
+      Locator: prototypeOf(load(PLAYWRIGHT_CLIENT_MODULES.Locator).Locator),
+      Request: prototypeOf(network.Request),
+      Response: prototypeOf(network.Response),
+    },
+    pageEvents: Object.values(events?.Page ?? {}),
+    contextEvents: Object.values(events?.BrowserContext ?? {}),
+  };
+}
+
+function unmatchedFakeMembers(
+  prototypes: Partial<Record<string, object>>,
+  modelledMembers: Readonly<Record<string, readonly string[]>>,
+): string[] {
+  const unmatched: string[] = [];
+  for (const [owner, members] of Object.entries(modelledMembers)) {
+    const prototype = prototypes[owner] as Record<string, unknown> | undefined;
+    for (const member of members) {
+      if (typeof prototype?.[member] !== 'function') unmatched.push(`${owner}#${member}`);
+    }
+  }
+  return unmatched;
+}
+
+function unmatchedFakeEvents(real: readonly string[], emitted: readonly string[]): string[] {
+  return emitted.filter((event) => !real.includes(event));
+}
+
+describe('worker-server fixture first-load warmup liveness', () => {
+  test('the fake first-load page models only members and events the installed playwright client exposes', () => {
+    const client = playwrightClientSurface();
+    expect(
+      client.version,
+      `the client modules this canary reads ship in the playwright-core the worker-internals pin names, so a release that moves them is caught by the same re-verification`,
+    ).toBe(PLAYWRIGHT_WORKER_INTERNALS_VERIFIED_AT);
+
+    expect(
+      unmatchedFakeMembers(client.prototypes, FAKE_MODELLED_MEMBERS),
+      'every member the fake exposes must exist on the real playwright client class it stands in for, or a warmup written against the fake calls something production does not have',
+    ).toEqual([]);
+    expect(
+      unmatchedFakeEvents(client.pageEvents, FAKE_PAGE_EVENTS),
+      'every page event the fake emits must be one the real Page emits, or a progress watcher keyed on it would hear the fake and never production',
+    ).toEqual([]);
+    expect(unmatchedFakeEvents(client.contextEvents, FAKE_CONTEXT_EVENTS)).toEqual([]);
+
+    expect(
+      unmatchedFakeMembers(client.prototypes, {
+        Page: [...FAKE_MODELLED_MEMBERS.Page, PLANTED_UNREAL_MEMBER],
+      }),
+      'the must-fire control: a member the real Page lacks is named rather than admitted',
+    ).toEqual([`Page#${PLANTED_UNREAL_MEMBER}`]);
+    expect(
+      unmatchedFakeMembers({}, { Locator: FAKE_MODELLED_MEMBERS.Locator }),
+      'a class the loader could not reach is named rather than read as a surface with nothing missing',
+    ).toEqual(FAKE_MODELLED_MEMBERS.Locator.map((member) => `Locator#${member}`));
+    expect(
+      unmatchedFakeEvents(client.pageEvents, [PLANTED_UNREAL_EVENT]),
+      'the must-fire control: an event the real Page never emits is named rather than admitted',
+    ).toEqual([PLANTED_UNREAL_EVENT]);
+  });
+
+  test('the fake first-load page honours a navigation bound while the load it bounds keeps running behind it', async () => {
+    vi.useFakeTimers();
+    try {
+      const stalled = fakeFirstLoadBrowser(
+        {
+          requests: FAKE_SELF_TEST_REQUESTS,
+          completionSpacingMs: FAKE_SELF_TEST_SPACING_MS,
+          completing: 0,
+        },
+        [FAKE_SELF_TEST_ENTRY],
+      );
+      const stalledPage = await (await stalled.browser.newContext()).newPage();
+      const bounded = settlementOf(
+        stalledPage.goto(FAKE_FIRST_LOAD_URL, { timeout: FAKE_SELF_TEST_BOUND_MS }),
+      );
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_BOUND_MS - 1);
+      expect(bounded.state, 'a navigation is not refused before the bound it was handed').toBe(
+        'pending',
+      );
+      await vi.advanceTimersByTimeAsync(1);
+      expect(
+        bounded.state,
+        'playwright rejects a navigation whose load has not fired when its explicit bound elapses, and the liveness tests below red the fixed bound only because the fake keeps that contract',
+      ).toBe('rejected');
+      expect(bounded.reason).toBeInstanceOf(errors.TimeoutError);
+
+      const unboundedPage = await (await stalled.browser.newContext()).newPage();
+      const unbounded = settlementOf(unboundedPage.goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }));
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_BOUND_MS * FAKE_SELF_TEST_SPACING_MS);
+      expect(unbounded.state, 'a bound of 0 disables the navigation timeout').toBe('pending');
+      await unboundedPage.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(unbounded.state, 'closing the page rejects the navigation still pending on it').toBe(
+        'rejected',
+      );
+
+      const omittedPage = await (await stalled.browser.newContext()).newPage();
+      const omitted = settlementOf(omittedPage.goto(FAKE_FIRST_LOAD_URL));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        omitted.state,
+        'an omitted bound is outside the slice this fake can stand in for, so it is refused at once rather than defaulted to a bound the fake would have to guess',
+      ).toBe('rejected');
+      expect(String((omitted.reason as Error | undefined)?.message)).toMatch(
+        /models an explicit bound only/,
+      );
+      expect(
+        () => (omittedPage as unknown as Record<string, unknown>)[FAKE_SELF_TEST_UNMODELLED_MEMBER],
+        'a member the fake does not model is refused by name rather than read as undefined',
+      ).toThrow(new RegExp(`does not model Page#${FAKE_SELF_TEST_UNMODELLED_MEMBER}`));
+
+      const progressing = fakeFirstLoadBrowser(
+        {
+          requests: FAKE_SELF_TEST_REQUESTS,
+          completionSpacingMs: FAKE_SELF_TEST_SPACING_MS,
+          completing: FAKE_SELF_TEST_REQUESTS,
+        },
+        [FAKE_SELF_TEST_ENTRY],
+      );
+      const context = await progressing.browser.newContext();
+      const page = await context.newPage();
+      const pageEvents: string[] = [];
+      const contextEvents: string[] = [];
+      for (const event of FAKE_PAGE_EVENTS) page.on(event, () => pageEvents.push(event));
+      for (const event of FAKE_CONTEXT_EVENTS) context.on(event, () => contextEvents.push(event));
+      const outrun = settlementOf(
+        page.goto(FAKE_FIRST_LOAD_URL, { timeout: FAKE_SELF_TEST_BOUND_MS }),
+      );
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_REQUESTS * FAKE_SELF_TEST_SPACING_MS);
+      expect(outrun.state).toBe('rejected');
+      expect(outrun.reason).toBeInstanceOf(errors.TimeoutError);
+      expect(
+        progressing.record.requestsCompleted,
+        'a navigation whose bound elapsed keeps loading in the browser; the bound refuses the wait, not the load',
+      ).toBe(FAKE_SELF_TEST_REQUESTS);
+      expect(
+        pageEvents,
+        'the document commits first, the module requests are issued before any completes, each completion is a response then a requestfinished, and the load events follow the last completion',
+      ).toEqual([
+        'request',
+        'response',
+        'requestfinished',
+        'request',
+        'request',
+        'response',
+        'requestfinished',
+        'response',
+        'requestfinished',
+        'domcontentloaded',
+        'load',
+      ]);
+      expect(
+        contextEvents,
+        'the context hears every network event its page emits, and no page lifecycle event',
+      ).toEqual([
+        'request',
+        'response',
+        'requestfinished',
+        'request',
+        'request',
+        'response',
+        'requestfinished',
+        'response',
+        'requestfinished',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a first load that keeps completing requests is admitted, however far past the navigation reserve it runs, up to the fixture's starvation line", async () => {
+    const budget = await declaredFirstLoadBudget();
+    const spacingMs = spacingSettlingBefore(budget.starvationLineMs);
+    const { browser, record } = fakeFirstLoadBrowser(
+      {
+        requests: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+        completionSpacingMs: spacingMs,
+        completing: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+      },
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      const settlement = settlementOf(
+        budget.warmup(
+          browser,
+          FAKE_FIRST_LOAD_BASE_URL,
+          budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(
+        OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS * spacingMs + budget.visibleReserveMs,
+      );
+
+      expect(
+        record.navigations,
+        'the warmup must navigate the fake page to the app root, or nothing below observed a first load',
+      ).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        settlement.state,
+        `the warmup's own bound refused a first load that was still completing a request every ${spacingMs}ms (${describeSettlement(settlement, startedAt)}). A bound on a load that is still making progress is a throughput threshold, and it fails a healthy cold load whenever the dev server gets less of a core. Before the fixture's ${budget.starvationLineMs}ms starvation line the warmup must refuse only a load that has stopped making progress`,
+      ).toBe('resolved');
+      expect(
+        record.requestsCompleted,
+        'the admitted load must be the whole scripted load, or the scenario did not run as long as this test claims',
+      ).toBe(OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS);
+      const loadedAfterMs = (record.loadedAt as number) - startedAt;
+      expect(
+        loadedAfterMs,
+        `the scenario's load must outlast the ${budget.navigationReserveMs}ms navigation reserve, so a fixed navigation total of that reserve refuses it`,
+      ).toBeGreaterThan(budget.navigationReserveMs);
+      expect(
+        loadedAfterMs,
+        `and must reach its load before the ${budget.starvationLineMs}ms starvation line, where the fixture refuses a setup that has not finished, so admitting it is owed`,
+      ).toBeLessThan(budget.starvationLineMs);
+      expect(
+        record.visibleWaits,
+        'the warmup must still wait for the seeded tree entry once the load completes',
+      ).toEqual([budget.renderedEntryNames[0]]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a first load that never completes a request is refused sooner than the navigation reserve would have refused it', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const { browser, record } = fakeFirstLoadBrowser(
+      {
+        requests: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+        completionSpacingMs: spacingOutlasting(budget.totalMs + budget.navigationReserveMs),
+        completing: 0,
+      },
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      const settlement = settlementOf(
+        budget.warmup(
+          browser,
+          FAKE_FIRST_LOAD_BASE_URL,
+          budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(budget.navigationReserveMs - 1);
+
+      expect(record.navigations).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        record.requestsIssued,
+        'the stall under test is a load whose requests are all outstanding, not a navigation that never started',
+      ).toBe(OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS);
+      expect(record.requestsCompleted).toBe(0);
+      expect(
+        settlement.state,
+        `a first load that completed none of its ${OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS} requests was ${describeSettlement(settlement, startedAt)} one millisecond before the ${budget.navigationReserveMs}ms navigation reserve elapsed. A load that has stopped making progress must be refused by a bound that watches progress, sooner than a fixed total spends on it. If a progress watcher exists and this still reds, check that its clock is one vitest fake timers advance (global setTimeout, setInterval, Date or performance), not node:timers/promises or AbortSignal.timeout`,
+      ).toBe('rejected');
+      expect(
+        record.contextsClosed,
+        'a refused first load must be torn down with its browser context, not left navigating behind the refusal',
+      ).toBe(record.contextsOpened);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a first load that stops completing requests after outrunning the navigation reserve is refused once it stops, not while it progresses', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const spacingMs = spacingOutlasting(budget.totalMs + budget.navigationReserveMs);
+    const completing = Math.ceil(
+      (budget.navigationReserveMs * PROGRESS_PAST_RESERVE_FACTOR) / spacingMs,
+    );
+    expect(completing).toBeLessThan(OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS);
+    const { browser, record } = fakeFirstLoadBrowser(
+      {
+        requests: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+        completionSpacingMs: spacingMs,
+        completing,
+      },
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      const settlement = settlementOf(
+        budget.warmup(
+          browser,
+          FAKE_FIRST_LOAD_BASE_URL,
+          budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(completing * spacingMs);
+
+      expect(record.navigations).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        settlement.state,
+        `the warmup was ${describeSettlement(settlement, startedAt)}, while the load was still completing a request every ${spacingMs}ms and had not yet stopped. Progress past the ${budget.navigationReserveMs}ms navigation reserve is still progress`,
+      ).toBe('pending');
+      expect(
+        record.requestsCompleted,
+        'the load must have progressed right up to the point this test calls its stall',
+      ).toBe(completing);
+      const stalledAt = record.lastProgressAt as number;
+      expect(stalledAt - startedAt).toBeGreaterThan(budget.navigationReserveMs);
+
+      await vi.advanceTimersByTimeAsync(budget.navigationReserveMs - 1);
+      expect(
+        settlement.state,
+        `a first load that stopped completing requests ${stalledAt - startedAt}ms in was ${describeSettlement(settlement, startedAt)}, one millisecond short of a full ${budget.navigationReserveMs}ms navigation reserve after it stopped. Its stall must be refused sooner than that`,
+      ).toBe('rejected');
+      expect(record.contextsClosed).toBe(record.contextsOpened);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+const LOAD_PROGRESS_MODULE = '../stress/_helpers/load-progress.ts';
+const GOTO_WHILE_LOAD_PROGRESSES_EXPORT = 'gotoWhileLoadProgresses';
+const REQUEST_COMPLETION_EVENTS = ['response', 'requestfinished', 'requestfailed'] as const;
+const MISSING_STALL_WINDOWS = [undefined, Number.NaN, 0] as const;
+const UNUSABLE_DEADLINES = [Number.NaN, Number.POSITIVE_INFINITY, 0] as const;
+
+type GotoWhileLoadProgresses = (
+  page: unknown,
+  url: string,
+  stallMs: number,
+  deadlineAt?: number,
+) => Promise<void>;
+
+const SELF_TEST_FIRST_LOAD: SpacedFirstLoadScript = {
+  requests: FAKE_SELF_TEST_REQUESTS,
+  completionSpacingMs: FAKE_SELF_TEST_SPACING_MS,
+  completing: FAKE_SELF_TEST_REQUESTS,
+};
+
+async function declaredFirstLoadStallMs(navigationReserveMs: number): Promise<number> {
+  const resolve = (await fixtureExports())[RESOLVE_FIRST_LOAD_STALL_EXPORT];
+  expect(
+    typeof resolve,
+    `${FIXTURE_MODULE} must export ${RESOLVE_FIRST_LOAD_STALL_EXPORT}, the resolver that derives the first load's stall window from ${DECLARED_RESERVES_EXPORT}.${WARMUP_GOTO_RESERVE_KEY}, so a stall refusal is checked against the window the fixture spends rather than a number this suite restates`,
+  ).toBe('function');
+  const stallMs = (resolve as (navigationShareMs: number) => unknown)(navigationReserveMs);
+  expect(
+    typeof stallMs === 'number' && Number.isFinite(stallMs) && stallMs > 0,
+    `${RESOLVE_FIRST_LOAD_STALL_EXPORT}(${navigationReserveMs}) must be a positive finite millisecond count, and returned ${String(stallMs)}`,
+  ).toBe(true);
+  return stallMs as number;
+}
+
+async function progressBoundedNavigation(): Promise<GotoWhileLoadProgresses> {
+  let loaded: Record<string, unknown> = {};
+  let loadFailure: unknown;
+  try {
+    loaded = (await import(LOAD_PROGRESS_MODULE)) as Record<string, unknown>;
+  } catch (err) {
+    loadFailure = err;
+  }
+  const notLoaded =
+    loadFailure === undefined
+      ? ''
+      : ` The module did not load: ${loadFailure instanceof Error ? loadFailure.message : String(loadFailure)}`;
+  const exported = loaded[GOTO_WHILE_LOAD_PROGRESSES_EXPORT];
+  expect(
+    typeof exported,
+    `${LOAD_PROGRESS_MODULE} must export ${GOTO_WHILE_LOAD_PROGRESSES_EXPORT}(page, url, stallMs), the navigation the warmup bounds by forward progress rather than by a total.${notLoaded}`,
+  ).toBe('function');
+  return exported as GotoWhileLoadProgresses;
+}
+
+function firstLoadCompleting(
+  budget: DeclaredFirstLoadBudget,
+  completing: number,
+): SpacedFirstLoadScript {
+  return {
+    requests: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+    completionSpacingMs: spacingSettlingBefore(budget.starvationLineMs),
+    completing,
+  };
+}
+
+function startedWarmup(
+  budget: DeclaredFirstLoadBudget,
+  browser: FakeBrowser,
+): { startedAt: number; settlement: Settlement } {
+  const startedAt = Date.now();
+  const settlement = settlementOf(
+    budget.warmup(
+      browser,
+      FAKE_FIRST_LOAD_BASE_URL,
+      budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+    ),
+  );
+  return { startedAt, settlement };
+}
+
+function completionEventsAmong(events: readonly string[] | undefined): string[] {
+  return (events ?? []).filter((event) =>
+    (REQUEST_COMPLETION_EVENTS as readonly string[]).includes(event),
+  );
+}
+
+function expectNavigationHearsCompletionsFromTheStart(record: FirstLoadRecord): void {
+  expect(
+    record.listeningAtGoto.length,
+    'the warmup must have issued exactly one navigation, or nothing below observed what it listened to when it navigated',
+  ).toBe(1);
+  expect(
+    completionEventsAmong(record.listeningAtGoto[0]),
+    `when the warmup issued its navigation the page was listening to [${(record.listeningAtGoto[0] ?? []).join(', ')}], none of it a request completion (${REQUEST_COMPLETION_EVENTS.join(', ')}). A bound that watches progress must be subscribed before the navigation is sent, because playwright delivers a page's network events only once something listens; without it the release checks that follow would pass for a watcher that never existed`,
+  ).not.toEqual([]);
+}
+
+function standaloneNumber(value: number): RegExp {
+  return new RegExp(`(?<![\\d.\\-])${String(value).replaceAll('.', '\\.')}(?!\\d)`);
+}
+
+async function closeEveryContext(observe: FirstLoadObserver): Promise<void> {
+  for (const context of observe.contexts) await context.close();
+}
+
+describe('worker-server fixture first-load warmup liveness releases and reports', () => {
+  test('the fake first-load page records what is listening, which timers it does not own and which requests are outstanding, at the moments the release pins read them', async () => {
+    vi.useFakeTimers();
+    try {
+      const heard = (): void => {};
+      const loading = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [FAKE_SELF_TEST_ENTRY]);
+      const page = await (await loading.browser.newContext()).newPage();
+      page.on('requestfinished', heard);
+      settlementOf(page.goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }));
+      page.on('response', heard);
+      expect(
+        loading.record.listeningAtGoto,
+        'a listener attached before the navigation is seen at it, and one attached after it is not',
+      ).toEqual([['requestfinished']]);
+      expect(
+        loading.observe.listening(),
+        'the live read sees every listener still attached',
+      ).toEqual([['requestfinished', 'response']]);
+      page.off('requestfinished', heard);
+      page.off('response', heard);
+      expect(
+        loading.observe.listening(),
+        'a removed listener is not read as still attached',
+      ).toEqual([[]]);
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        vi.getTimerCount(),
+        'the page must still own pending load timers here, or the exclusion checked next is vacuous',
+      ).toBeGreaterThan(0);
+      expect(
+        loading.observe.requests(),
+        'once issued, the completed document is not outstanding and every module request is',
+      ).toEqual([
+        { url: FAKE_FIRST_LOAD_URL, resourceType: FAKE_DOCUMENT_RESOURCE_TYPE, completed: true },
+        {
+          url: fakeModuleUrl(FAKE_FIRST_LOAD_URL, 0),
+          resourceType: FAKE_SCRIPT_RESOURCE_TYPE,
+          completed: false,
+        },
+        {
+          url: fakeModuleUrl(FAKE_FIRST_LOAD_URL, 1),
+          resourceType: FAKE_SCRIPT_RESOURCE_TYPE,
+          completed: false,
+        },
+      ]);
+
+      const tree = page.getByRole(FAKE_RENDERED_ROLE, { name: FAKE_SELF_TEST_ENTRY });
+      settlementOf(tree.waitFor({ timeout: 0 }));
+      const planted = setTimeout(heard, FAKE_SELF_TEST_BOUND_MS);
+      page.on('request', heard);
+      expect(
+        loading.observe.timersBeyondPages(),
+        'a pending timer the page does not own is counted by the live read',
+      ).toBe(1);
+      settlementOf(tree.waitFor({ timeout: 0 }));
+      clearTimeout(planted);
+      page.off('request', heard);
+      expect(
+        loading.observe.timersBeyondPages(),
+        "the page's own pending load timers are not counted by the live read",
+      ).toBe(0);
+      expect(
+        loading.record.listeningAtVisibleWait,
+        'a listener still attached when the tree wait is called is seen at it, and none is seen once removed',
+      ).toEqual([[], ['request']]);
+      expect(
+        loading.record.timersBeyondPagesAtVisibleWait,
+        "the page's own pending load timers are not counted at the tree wait, and a timer it does not own is",
+      ).toEqual([0, 1]);
+
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_SPACING_MS);
+      expect(
+        loading.observe
+          .requests()
+          .filter((request) => !request.completed)
+          .map((request) => request.url),
+        'a module request that has completed is no longer outstanding',
+      ).toEqual([fakeModuleUrl(FAKE_FIRST_LOAD_URL, 1)]);
+
+      const closing = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [FAKE_SELF_TEST_ENTRY]);
+      const leakyContext = await closing.browser.newContext();
+      (await leakyContext.newPage()).on('response', heard);
+      await leakyContext.close();
+      const tidyContext = await closing.browser.newContext();
+      const tidyPage = await tidyContext.newPage();
+      tidyPage.on('response', heard);
+      tidyPage.off('response', heard);
+      await tidyContext.close();
+      expect(
+        closing.record.listeningAtContextClose,
+        'a listener still attached when its context closes is seen at the close, and one removed before it is not',
+      ).toEqual([['response'], []]);
+
+      const handles = fakeFirstLoadBrowser({ ...SELF_TEST_FIRST_LOAD, completing: 0 }, [
+        FAKE_SELF_TEST_ENTRY,
+      ]);
+      const first = await handles.browser.newContext();
+      const second = await handles.browser.newContext();
+      const firstNavigation = settlementOf(
+        (await first.newPage()).goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }),
+      );
+      const secondNavigation = settlementOf(
+        (await second.newPage()).goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }),
+      );
+      expect(
+        [handles.observe.contexts.indexOf(first), handles.observe.contexts.indexOf(second)],
+        'the observer hands back every context the browser opened, in the order it opened them',
+      ).toEqual([0, 1]);
+      await handles.observe.contexts[0]?.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        firstNavigation.state,
+        "closing a context through the observer's handle rejects the navigation pending in it",
+      ).toBe('rejected');
+      expect(secondNavigation.state, 'and leaves a context it did not close still navigating').toBe(
+        'pending',
+      );
+      await second.close();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the first-load navigation is already listening for request completions when it is issued, and only to events the installed playwright Page emits', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      firstLoadCompleting(budget, OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS),
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      startedWarmup(budget, browser);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(record.navigations).toEqual([FAKE_FIRST_LOAD_URL]);
+      expectNavigationHearsCompletionsFromTheStart(record);
+
+      const client = playwrightClientSurface();
+      expect(
+        unmatchedFakeEvents(client.pageEvents, REQUEST_COMPLETION_EVENTS),
+        'the completion events this suite accepts as progress are themselves events the real Page emits',
+      ).toEqual([]);
+      const listened = record.listeningAtGoto[0] ?? [];
+      expect(
+        unmatchedFakeEvents(client.pageEvents, listened),
+        `the navigation listens to [${listened.join(', ')}], and every one must be an event the installed playwright Page emits. A listener on a misspelt event hears nothing in production, and the fake cannot show it because it never emits that event either`,
+      ).toEqual([]);
+      expect(
+        unmatchedFakeEvents(client.pageEvents, [...listened, PLANTED_UNREAL_EVENT]),
+        'the must-fire control: an event the real Page never emits, listened to beside the real ones, is named',
+      ).toEqual([PLANTED_UNREAL_EVENT]);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+
+  test('a first load the warmup admits has released its stall timer and every listener before the warmup waits for the tree', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const script = firstLoadCompleting(budget, OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS);
+    const { browser, record, observe } = fakeFirstLoadBrowser(script, budget.renderedEntryNames);
+
+    vi.useFakeTimers();
+    try {
+      startedWarmup(budget, browser);
+      await vi.advanceTimersByTimeAsync(
+        OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS * script.completionSpacingMs + budget.visibleReserveMs,
+      );
+
+      expectNavigationHearsCompletionsFromTheStart(record);
+      expect(
+        record.listeningAtVisibleWait.length,
+        'the warmup must have reached its tree wait once, or nothing below observed what the navigation left behind',
+      ).toBe(1);
+      expect(
+        record.listeningAtVisibleWait,
+        `when the warmup moved on to the tree wait its page was listening to ${JSON.stringify(record.listeningAtVisibleWait)}. The navigation must release every listener it attached once the load settles; the page is private to the warmup, so anything still listening here was left behind by the navigation`,
+      ).toEqual([[]]);
+      expect(
+        record.timersBeyondPagesAtVisibleWait,
+        `when the warmup moved on to the tree wait, timers the fake page does not own were pending: ${JSON.stringify(record.timersBeyondPagesAtVisibleWait)}. The navigation's stall timer must be cleared once the load it watches settles, or it outlives the navigation and fires into a warmup that has moved on`,
+      ).toEqual([0]);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+
+  test('a first load refused as stalled has released its stall timer and every listener by the time the warmup closes its context', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      firstLoadCompleting(budget, 0),
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const { startedAt, settlement } = startedWarmup(budget, browser);
+      await vi.advanceTimersByTimeAsync(budget.navigationReserveMs - 1);
+
+      expectNavigationHearsCompletionsFromTheStart(record);
+      expect(
+        settlement.state,
+        `the stalled first load was ${describeSettlement(settlement, startedAt)}, so there is no refusal whose release this test can check`,
+      ).toBe('rejected');
+      expect(
+        record.listeningAtContextClose.length,
+        'the warmup must have closed its context once after the refusal, or nothing below observed what the navigation left behind',
+      ).toBe(1);
+      expect(
+        record.listeningAtContextClose,
+        `when the warmup closed its context after the stall refusal, its page was listening to ${JSON.stringify(record.listeningAtContextClose)}. The refused navigation must release every listener it attached before the refusal reaches the warmup`,
+      ).toEqual([[]]);
+      expect(
+        observe.timersBeyondPages(),
+        'a timer the fake page does not own was still pending after the stall refusal settled. A watchdog left running once the navigation it watches has settled keeps firing into a warmup that has already failed',
+      ).toBe(0);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+
+  test('a first load whose context is closed under it while it still progresses is rejected at once, and leaves no listener or timer behind', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      firstLoadCompleting(budget, OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS),
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const { startedAt, settlement } = startedWarmup(budget, browser);
+      await vi.advanceTimersByTimeAsync(budget.navigationReserveMs * PROGRESS_PAST_RESERVE_FACTOR);
+
+      expectNavigationHearsCompletionsFromTheStart(record);
+      expect(
+        settlement.state,
+        `the progressing first load was ${describeSettlement(settlement, startedAt)} before this test closed its context, so the close would not be what ends it`,
+      ).toBe('pending');
+      expect(record.requestsCompleted, 'the load must have made progress').toBeGreaterThan(0);
+      expect(observe.contexts.length, 'the warmup opens exactly one context').toBe(1);
+
+      await observe.contexts[0]?.close();
+      expect(
+        completionEventsAmong(record.listeningAtContextClose[0]),
+        'the navigation must still be listening when its context is closed under it, or the release checked below proves nothing',
+      ).not.toEqual([]);
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(
+        settlement.state,
+        `closing the warmup's context mid-load, as the browser fixture's teardown does once the registered slot preempts setup, left the warmup ${describeSettlement(settlement, startedAt)} with no fake time elapsed since the close. The navigation's rejection must end the warmup at once rather than wait out a stall window on a page that no longer exists`,
+      ).toBe('rejected');
+      expect(
+        observe.listening(),
+        'a navigation ended by its context closing must release every listener it attached',
+      ).toEqual([[]]);
+      expect(
+        observe.timersBeyondPages(),
+        'a navigation ended by its context closing must clear its stall timer rather than leave it to fire',
+      ).toBe(0);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+
+  test('a stall refusal names how many requests are still outstanding, which ones, and the stall window the manifest derives', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const stallMs = await declaredFirstLoadStallMs(budget.navigationReserveMs);
+    const spacingMs = firstLoadCompleting(budget, 0).completionSpacingMs;
+    const progressedBeforeStall = Math.ceil(
+      (budget.navigationReserveMs * PROGRESS_PAST_RESERVE_FACTOR) / spacingMs,
+    );
+    const scenarios = [
+      { completing: 0, refusedWithinMs: budget.navigationReserveMs - 1 },
+      {
+        completing: progressedBeforeStall,
+        refusedWithinMs: progressedBeforeStall * spacingMs + budget.navigationReserveMs - 1,
+      },
+    ];
+
+    for (const { completing, refusedWithinMs } of scenarios) {
+      const { browser, observe } = fakeFirstLoadBrowser(
+        firstLoadCompleting(budget, completing),
+        budget.renderedEntryNames,
+      );
+      vi.useFakeTimers();
+      try {
+        const { startedAt, settlement } = startedWarmup(budget, browser);
+        await vi.advanceTimersByTimeAsync(refusedWithinMs);
+
+        expect(
+          settlement.state,
+          `the first load that stalled after ${completing} completions was ${describeSettlement(settlement, startedAt)}, so there is no refusal whose reason this test can read`,
+        ).toBe('rejected');
+        const reason =
+          settlement.reason instanceof Error
+            ? settlement.reason.message
+            : String(settlement.reason);
+        const outstanding = observe.requests().filter((request) => !request.completed);
+        const completedModules = observe
+          .requests()
+          .filter(
+            (request) => request.completed && request.resourceType === FAKE_SCRIPT_RESOURCE_TYPE,
+          );
+        expect(
+          outstanding.length,
+          'the scenario must leave every module request it did not complete outstanding',
+        ).toBe(OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS - completing);
+        expect(
+          completedModules.length,
+          'the scenario must have completed exactly the module requests it scripted',
+        ).toBe(completing);
+
+        expect(
+          reason,
+          `a stall refusal must say how many requests were still outstanding (${outstanding.length} after ${completing} completions), not how many were issued or finished, so a refused warmup says what it was waiting on`,
+        ).toMatch(standaloneNumber(outstanding.length));
+        expect(
+          outstanding.filter((request) => reason.includes(request.url)).length,
+          `a stall refusal must name at least one request still outstanding, and this one names none: ${reason}`,
+        ).toBeGreaterThan(0);
+        expect(
+          completedModules
+            .filter((request) => reason.includes(request.url))
+            .map((request) => request.url),
+          'a request that completed is not named as one the load was still waiting on',
+        ).toEqual([]);
+        expect(
+          reason,
+          `a stall refusal must name the ${stallMs}ms stall window ${RESOLVE_FIRST_LOAD_STALL_EXPORT} derives from the ${budget.navigationReserveMs}ms navigation share, so whoever reads it knows how long the load went without progress`,
+        ).toMatch(standaloneNumber(stallMs));
+      } finally {
+        await closeEveryContext(observe);
+        vi.useRealTimers();
+      }
+    }
+  });
+
+  test('the progress-bounded navigation refuses a missing, non-finite or zero stall window before it navigates, and navigates on a real one', async () => {
+    const gotoWhileLoadProgresses = await progressBoundedNavigation();
+
+    vi.useFakeTimers();
+    try {
+      for (const stallMs of MISSING_STALL_WINDOWS) {
+        const { browser, record, observe } = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [
+          FAKE_SELF_TEST_ENTRY,
+        ]);
+        const page = await (await browser.newContext()).newPage();
+        let thrown: unknown;
+        let returned: Promise<void> | undefined;
+        try {
+          returned = gotoWhileLoadProgresses(page, FAKE_FIRST_LOAD_URL, stallMs as number);
+        } catch (err) {
+          thrown = err;
+        }
+        expect(
+          thrown,
+          `a stall window of ${String(stallMs)} must be refused through the promise ${GOTO_WHILE_LOAD_PROGRESSES_EXPORT} returns, not thrown before it returns one`,
+        ).toBeUndefined();
+        const refused = settlementOf(returned ?? Promise.resolve());
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(
+          refused.state,
+          `a stall window of ${String(stallMs)} must be refused at once, not armed as a timer that fires in about a millisecond and reads as an instant stall`,
+        ).toBe('rejected');
+        expect(refused.reason).toBeInstanceOf(TypeError);
+        const message = refused.reason instanceof Error ? refused.reason.message : '';
+        expect(message).toMatch(new RegExp(GOTO_WHILE_LOAD_PROGRESSES_EXPORT));
+        expect(message).toMatch(/millisecond bound/);
+        expect(
+          record.navigations,
+          'a navigation refused for its missing stall window must not have been issued',
+        ).toEqual([]);
+        expect(observe.listening(), 'and leaves nothing subscribed on the page').toEqual([[]]);
+        await closeEveryContext(observe);
+      }
+
+      const { browser, record, observe } = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [
+        FAKE_SELF_TEST_ENTRY,
+      ]);
+      const page = await (await browser.newContext()).newPage();
+      const admitted = settlementOf(
+        gotoWhileLoadProgresses(page, FAKE_FIRST_LOAD_URL, FAKE_SELF_TEST_BOUND_MS),
+      );
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_REQUESTS * FAKE_SELF_TEST_SPACING_MS);
+      expect(
+        admitted.state,
+        'the adjacent control: a positive stall window longer than the gap between completions navigates and settles with the load',
+      ).toBe('resolved');
+      expect(
+        record.navigations,
+        'the admitted navigation must have navigated the page, not settled without it',
+      ).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        observe.listening(),
+        'an admitted navigation must release every listener it attached',
+      ).toEqual([[]]);
+      expect(observe.timersBeyondPages(), 'an admitted navigation must clear its stall timer').toBe(
+        0,
+      );
+      await closeEveryContext(observe);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the progress-bounded navigation refuses a non-finite or non-positive deadline before it navigates, and navigates up to a real one', async () => {
+    const gotoWhileLoadProgresses = await progressBoundedNavigation();
+
+    vi.useFakeTimers();
+    try {
+      for (const deadlineAt of UNUSABLE_DEADLINES) {
+        const { browser, record, observe } = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [
+          FAKE_SELF_TEST_ENTRY,
+        ]);
+        const page = await (await browser.newContext()).newPage();
+        const refused = settlementOf(
+          gotoWhileLoadProgresses(page, FAKE_FIRST_LOAD_URL, FAKE_SELF_TEST_BOUND_MS, deadlineAt),
+        );
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(
+          refused.state,
+          `a deadline of ${String(deadlineAt)} must be refused at once, not armed as a timer Node sets to a millisecond, which reads as a load that ran out of time`,
+        ).toBe('rejected');
+        expect(refused.reason).toBeInstanceOf(TypeError);
+        expect(
+          settledReason(refused),
+          'the refusal must name the deadline as the instant the caller has to finish by, not as a bound it spends',
+        ).toMatch(
+          new RegExp(`${GOTO_WHILE_LOAD_PROGRESSES_EXPORT} needs its caller to name the instant`),
+        );
+        expect(
+          record.navigations,
+          'a navigation refused for its unusable deadline must not have been issued',
+        ).toEqual([]);
+        expect(observe.listening(), 'and leaves nothing subscribed on the page').toEqual([[]]);
+        await closeEveryContext(observe);
+      }
+
+      const { browser, record, observe } = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [
+        FAKE_SELF_TEST_ENTRY,
+      ]);
+      const page = await (await browser.newContext()).newPage();
+      const admitted = settlementOf(
+        gotoWhileLoadProgresses(
+          page,
+          FAKE_FIRST_LOAD_URL,
+          FAKE_SELF_TEST_BOUND_MS,
+          Date.now() + FAKE_SELF_TEST_BOUND_MS * FAKE_SELF_TEST_SPACING_MS,
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_REQUESTS * FAKE_SELF_TEST_SPACING_MS);
+      expect(
+        admitted.state,
+        'the adjacent control: a finite deadline the load finishes well inside navigates and settles with the load',
+      ).toBe('resolved');
+      expect(record.navigations).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        observe.timersBeyondPages(),
+        'a navigation that finished before its deadline must clear the deadline timer with the stall timer',
+      ).toBe(0);
+      await closeEveryContext(observe);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the progress-bounded navigation handed a deadline that has already passed does not navigate, and says the first load was not started', async () => {
+    const gotoWhileLoadProgresses = await progressBoundedNavigation();
+
+    vi.useFakeTimers();
+    try {
+      for (const [deadline, behindMs] of [
+        ['a millisecond behind the clock', 1],
+        ['equal to the clock', 0],
+      ] as const) {
+        const { browser, record, observe } = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [
+          FAKE_SELF_TEST_ENTRY,
+        ]);
+        const page = await (await browser.newContext()).newPage();
+        const refused = settlementOf(
+          gotoWhileLoadProgresses(
+            page,
+            FAKE_FIRST_LOAD_URL,
+            FAKE_SELF_TEST_BOUND_MS,
+            Date.now() - behindMs,
+          ),
+        );
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(
+          refused.state,
+          `a deadline ${deadline} leaves the first load no time, so the navigation must be refused at once`,
+        ).toBe('rejected');
+        const reason = settledReason(refused);
+        expect(
+          reason,
+          `a deadline ${deadline} must be reported as a first load that was not started, not as one that ran out of time, or the failure describes browser work that never ran: ${reason}`,
+        ).toContain(`first load of ${FAKE_FIRST_LOAD_URL} was not started`);
+        expect(
+          reason,
+          `a first load that was not started neither made network progress nor stalled, so its refusal must say nothing about network progress: ${reason}`,
+        ).not.toMatch(/network progress/);
+        expect(
+          record.navigations,
+          `a deadline ${deadline} must not have issued the navigation it left no time for`,
+        ).toEqual([]);
+        expect(observe.listening(), 'and leaves nothing subscribed on the page').toEqual([[]]);
+        expect(
+          observe.timersBeyondPages(),
+          'and leaves no stall or deadline timer armed behind the refusal',
+        ).toBe(0);
+        await closeEveryContext(observe);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the progress-bounded navigation that reaches its deadline before the page has issued any request does not claim network progress it never observed', async () => {
+    const gotoWhileLoadProgresses = await progressBoundedNavigation();
+    const deadlineInMs = FAKE_SELF_TEST_BOUND_MS - 1;
+    const firstRequestAtMs = deadlineInMs + 1;
+    const quietPastTheDeadline: FirstLoadTimeline = {
+      loadAtMs: firstRequestAtMs + 1,
+      document: [firstRequestAtMs, firstRequestAtMs],
+      requests: [[firstRequestAtMs, firstRequestAtMs]],
+    };
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      recordedFirstLoad(quietPastTheDeadline),
+      [FAKE_SELF_TEST_ENTRY],
+    );
+
+    vi.useFakeTimers();
+    try {
+      const page = await (await browser.newContext()).newPage();
+      const refused = settlementOf(
+        gotoWhileLoadProgresses(
+          page,
+          FAKE_FIRST_LOAD_URL,
+          FAKE_SELF_TEST_BOUND_MS,
+          Date.now() + deadlineInMs,
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(deadlineInMs - 1);
+      expect(
+        refused.state,
+        'a navigation still inside both its stall window and its deadline is left running',
+      ).toBe('pending');
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(
+        refused.state,
+        `a deadline ${deadlineInMs}ms away, inside the ${FAKE_SELF_TEST_BOUND_MS}ms stall window, must be what refuses the navigation`,
+      ).toBe('rejected');
+      expect(
+        record.navigations,
+        'the navigation was issued, so what the deadline ended is a first load that had begun',
+      ).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        observe.requests(),
+        'and the page had issued no request by the time the deadline arrived',
+      ).toEqual([]);
+      const reason = settledReason(refused);
+      expect(
+        reason,
+        `the refusal must report the first load as one that had begun and not finished: ${reason}`,
+      ).toContain(`first load of ${FAKE_FIRST_LOAD_URL} had not finished`);
+      expect(
+        reason,
+        `a first load that had issued no request made no network progress, so its refusal at the deadline must not claim it was still making some: ${reason}`,
+      ).not.toMatch(/making network progress/);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+
+  test('the fake first-load page settles a failing request with a requestfailed alone, on the page and its context, and reports the failure on it', async () => {
+    vi.useFakeTimers();
+    try {
+      const failingFirst = fakeFirstLoadBrowser({ ...SELF_TEST_FIRST_LOAD, failing: 1 }, [
+        FAKE_SELF_TEST_ENTRY,
+      ]);
+      const context = await failingFirst.browser.newContext();
+      const page = await context.newPage();
+      const pageEvents: string[] = [];
+      const contextEvents: string[] = [];
+      const failedRequests: unknown[] = [];
+      const finishedRequests: unknown[] = [];
+      for (const event of FAKE_PAGE_EVENTS) page.on(event, () => pageEvents.push(event));
+      for (const event of FAKE_CONTEXT_EVENTS) context.on(event, () => contextEvents.push(event));
+      page.on('requestfailed', (request) => failedRequests.push(request));
+      page.on('requestfinished', (request) => finishedRequests.push(request));
+      const loaded = settlementOf(page.goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }));
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_REQUESTS * FAKE_SELF_TEST_SPACING_MS);
+
+      expect(
+        loaded.state,
+        'a load whose failed request settled still reaches load once every request has settled',
+      ).toBe('resolved');
+      expect(
+        pageEvents,
+        'a failing request is issued like any other and settles with a requestfailed, with no response and no requestfinished, while the next one completes as before',
+      ).toEqual([
+        'request',
+        'response',
+        'requestfinished',
+        'request',
+        'request',
+        'requestfailed',
+        'response',
+        'requestfinished',
+        'domcontentloaded',
+        'load',
+      ]);
+      expect(contextEvents, 'the context hears the requestfailed its page emits').toEqual([
+        'request',
+        'response',
+        'requestfinished',
+        'request',
+        'request',
+        'requestfailed',
+        'response',
+        'requestfinished',
+      ]);
+      expect(failingFirst.record.requestsFailed).toBe(1);
+      expect(failingFirst.record.requestsCompleted).toBe(FAKE_SELF_TEST_REQUESTS - 1);
+
+      const [failed] = failedRequests as Array<{
+        url(): string;
+        failure(): unknown;
+        response(): Promise<unknown>;
+      }>;
+      expect(failed?.url(), 'the request that failed is the first module request').toBe(
+        fakeModuleUrl(FAKE_FIRST_LOAD_URL, 0),
+      );
+      expect(
+        failed?.failure(),
+        "a request playwright reports as failed carries its failure's error text",
+      ).toEqual({ errorText: FAKE_REQUEST_FAILURE_TEXT });
+      expect(await failed?.response(), 'and has no response to return').toBeNull();
+      expect(
+        (finishedRequests as Array<{ failure(): unknown }>).map((request) => request.failure()),
+        'the adjacent must-not-fire: a request that finished reports no failure',
+      ).toEqual([null, null]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a first load whose requests keep failing is still progressing, and its stall refusal counts the failures and names none of them as outstanding', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const spacingMs = firstLoadCompleting(budget, 0).completionSpacingMs;
+    const failing = Math.ceil(
+      (budget.navigationReserveMs * PROGRESS_PAST_RESERVE_FACTOR) / spacingMs,
+    );
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      { ...firstLoadCompleting(budget, failing), failing },
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const { startedAt, settlement } = startedWarmup(budget, browser);
+      await vi.advanceTimersByTimeAsync(failing * spacingMs);
+
+      expect(
+        settlement.state,
+        `the warmup was ${describeSettlement(settlement, startedAt)} while its load was still failing a request every ${spacingMs}ms. A failed request has settled, so a load that keeps settling requests is still making progress`,
+      ).toBe('pending');
+      expect(
+        record.requestsFailed,
+        'the load must have failed every request it scripted to fail',
+      ).toBe(failing);
+      expect(
+        record.requestsCompleted,
+        'and completed none, so failures were its only progress',
+      ).toBe(0);
+
+      await vi.advanceTimersByTimeAsync(budget.navigationReserveMs - 1);
+      expect(
+        settlement.state,
+        `the first load that stopped after ${failing} failures was ${describeSettlement(settlement, startedAt)}, so there is no refusal whose reason this test can read`,
+      ).toBe('rejected');
+      const reason =
+        settlement.reason instanceof Error ? settlement.reason.message : String(settlement.reason);
+      const moduleUrls = Array.from({ length: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS }, (_, index) =>
+        fakeModuleUrl(FAKE_FIRST_LOAD_URL, index),
+      );
+      const failedUrls = moduleUrls.slice(0, failing);
+      const outstandingUrls = moduleUrls.slice(failing);
+
+      expect(
+        reason,
+        `a stall refusal must count the ${failing} requests that failed, so a refused warmup says how its load settled: ${reason}`,
+      ).toMatch(standaloneNumber(failing));
+      expect(
+        reason,
+        `a failed request has settled, so a stall refusal must count only the ${outstandingUrls.length} requests still outstanding: ${reason}`,
+      ).toMatch(standaloneNumber(outstandingUrls.length));
+      expect(
+        outstandingUrls.filter((url) => reason.includes(url)).length,
+        `a stall refusal must name at least one request still outstanding, and this one names none: ${reason}`,
+      ).toBeGreaterThan(0);
+      expect(
+        failedUrls.filter((url) => reason.includes(url)),
+        'a request that failed is not named as one the load was still waiting on',
+      ).toEqual([]);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+});
+
+const RECORDED_CROSSING_TIMELINE_PATH = join(
+  dirname(import.meta.filename),
+  'fixtures',
+  'first-load-crossing-timeline.json',
+);
+
+const CONFORMANCE_TIMELINE: FirstLoadTimeline = {
+  loadAtMs: 300,
+  document: [0, 10],
+  requests: [
+    [20, 100],
+    [30, 500],
+  ],
+};
+
+function isRequestTiming(value: unknown): value is RecordedRequestTiming {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    value.every((ms) => typeof ms === 'number' && Number.isFinite(ms) && ms >= 0)
+  );
+}
+
+function firstLoadTimeline(value: unknown): FirstLoadTimeline {
+  const candidate = value as Partial<Record<keyof FirstLoadTimeline, unknown>> | null;
+  const loadAtMs = candidate?.loadAtMs;
+  if (typeof loadAtMs !== 'number' || !Number.isFinite(loadAtMs) || loadAtMs <= 0) {
+    throw new Error(
+      `a recorded first-load timeline needs a positive loadAtMs, not ${String(loadAtMs)}`,
+    );
+  }
+  const rows = [
+    candidate?.document,
+    ...(Array.isArray(candidate?.requests) ? candidate.requests : []),
+  ];
+  if (!Array.isArray(candidate?.requests) || candidate.requests.length === 0) {
+    throw new Error('a recorded first-load timeline must carry at least one subresource request');
+  }
+  for (const [index, row] of rows.entries()) {
+    const label = index === 0 ? 'the document' : `request ${index - 1}`;
+    if (!isRequestTiming(row)) {
+      throw new Error(
+        `${label} of the recorded first-load timeline is not an [issuedAtMs, settledAtMs] pair of non-negative millisecond offsets: ${JSON.stringify(row)}`,
+      );
+    }
+    const [issuedAtMs, settledAtMs] = row;
+    if (settledAtMs < issuedAtMs) {
+      throw new Error(
+        `${label} of the recorded first-load timeline settles before it is issued (${issuedAtMs}ms, then ${settledAtMs}ms), so the recording was extracted wrongly`,
+      );
+    }
+    if (issuedAtMs >= loadAtMs) {
+      throw new Error(
+        `${label} of the recorded first-load timeline is issued at ${issuedAtMs}ms, at or after the ${loadAtMs}ms load it is meant to precede`,
+      );
+    }
+  }
+  return {
+    loadAtMs,
+    document: candidate?.document as RecordedRequestTiming,
+    requests: candidate.requests as RecordedRequestTiming[],
+  };
+}
+
+function recordedFirstLoad(timeline: FirstLoadTimeline): RecordedFirstLoadScript {
+  return { timeline };
+}
+
+describe('worker-server fixture first-load warmup liveness against a recorded load', () => {
+  test('the fake replays a recorded first-load timeline in recorded order and fires load at its recorded instant, whatever settles after it', async () => {
+    vi.useFakeTimers();
+    try {
+      const recorded = fakeFirstLoadBrowser(recordedFirstLoad(CONFORMANCE_TIMELINE), [
+        FAKE_SELF_TEST_ENTRY,
+      ]);
+      const page = await (await recorded.browser.newContext()).newPage();
+      const pageEvents: string[] = [];
+      for (const event of FAKE_PAGE_EVENTS) page.on(event, () => pageEvents.push(event));
+      const startedAt = Date.now();
+      const replayed = settlementOf(page.goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }));
+      await vi.advanceTimersByTimeAsync(CONFORMANCE_TIMELINE.loadAtMs - 1);
+      expect(replayed.state, 'a replayed load has not fired before its recorded load instant').toBe(
+        'pending',
+      );
+      await vi.advanceTimersByTimeAsync(1);
+      expect(
+        replayed.state,
+        'a replayed load fires at its recorded load instant even while a request it recorded is still outstanding',
+      ).toBe('resolved');
+      expect(recorded.record.loadedAt).toBe(startedAt + CONFORMANCE_TIMELINE.loadAtMs);
+      expect(
+        pageEvents,
+        'each recorded request is issued at its issue offset and completes as a response then a requestfinished at its settle offset, and the load events fall at the recorded load instant',
+      ).toEqual([
+        'request',
+        'response',
+        'requestfinished',
+        'request',
+        'request',
+        'response',
+        'requestfinished',
+        'domcontentloaded',
+        'load',
+      ]);
+      const [, lateSettleMs] = CONFORMANCE_TIMELINE.requests[1] as RecordedRequestTiming;
+      await vi.advanceTimersByTimeAsync(lateSettleMs - CONFORMANCE_TIMELINE.loadAtMs);
+      expect(
+        pageEvents.slice(-2),
+        'a request the recording settled after load still settles, at its own recorded offset',
+      ).toEqual(['response', 'requestfinished']);
+      expect(recorded.record.requestsCompleted).toBe(CONFORMANCE_TIMELINE.requests.length);
+
+      const settledEarly: FirstLoadTimeline = {
+        ...CONFORMANCE_TIMELINE,
+        requests: [
+          [20, 100],
+          [30, 120],
+        ],
+      };
+      const early = fakeFirstLoadBrowser(recordedFirstLoad(settledEarly), [FAKE_SELF_TEST_ENTRY]);
+      const earlyPage = await (await early.browser.newContext()).newPage();
+      const earlyLoad = settlementOf(earlyPage.goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }));
+      await vi.advanceTimersByTimeAsync(settledEarly.loadAtMs - 1);
+      expect(
+        early.record.requestsCompleted,
+        'the adjacent control has settled every request it recorded well before load',
+      ).toBe(settledEarly.requests.length);
+      expect(
+        earlyLoad.state,
+        'the adjacent must-not-fire: a replay whose requests all settled early still does not fire load before its recorded instant',
+      ).toBe('pending');
+      await vi.advanceTimersByTimeAsync(1);
+      expect(earlyLoad.state).toBe('resolved');
+
+      expect(
+        firstLoadTimeline(CONFORMANCE_TIMELINE),
+        'the must-not-fire control: a well-formed timeline loads unchanged',
+      ).toEqual(CONFORMANCE_TIMELINE);
+      expect(
+        firstLoadTimeline({ ...CONFORMANCE_TIMELINE, requests: [[50, 50]] }).requests,
+        'the adjacent must-not-fire: a request settling in the millisecond it was issued is a real recording',
+      ).toEqual([[50, 50]]);
+      expect(
+        () => firstLoadTimeline({ ...CONFORMANCE_TIMELINE, requests: [[50, 49]] }),
+        'the planted drift: a row that settles before it is issued is refused by name',
+      ).toThrow(/settles before it is issued/);
+      expect(
+        () =>
+          firstLoadTimeline({
+            ...CONFORMANCE_TIMELINE,
+            requests: [[CONFORMANCE_TIMELINE.loadAtMs, CONFORMANCE_TIMELINE.loadAtMs]],
+          }),
+        'a row issued at the load instant is outside the window the recording was extracted from',
+      ).toThrow(/at or after the/);
+      expect(
+        () => firstLoadTimeline({ ...CONFORMANCE_TIMELINE, requests: [] }),
+        'a timeline with no subresource requests replays nothing a stall window could be judged against',
+      ).toThrow(/at least one subresource request/);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('the recorded first load that crossed the fixed navigation bound is admitted by the stall window', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const timeline = firstLoadTimeline(
+      JSON.parse(readFileSync(RECORDED_CROSSING_TIMELINE_PATH, 'utf-8')),
+    );
+    expect(
+      timeline.loadAtMs,
+      `the replayed recording must be a first load that outran the ${budget.navigationReserveMs}ms navigation share, or admitting it would not show the stall window admits what the fixed bound refused`,
+    ).toBeGreaterThan(budget.navigationReserveMs);
+    const settledByLoad = timeline.requests.filter(
+      ([, settledAtMs]) => settledAtMs <= timeline.loadAtMs,
+    ).length;
+    const { browser, record } = fakeFirstLoadBrowser(
+      recordedFirstLoad(timeline),
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const startedAt = Date.now();
+      const settlement = settlementOf(
+        budget.warmup(
+          browser,
+          FAKE_FIRST_LOAD_BASE_URL,
+          budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(timeline.loadAtMs + budget.visibleReserveMs);
+
+      expect(record.navigations).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        settlement.state,
+        `the recorded first load that crossed the fixed bound was ${describeSettlement(settlement, startedAt)}. It kept making network progress until its load at ${timeline.loadAtMs}ms, so a bound that refuses only a stalled load must admit it`,
+      ).toBe('resolved');
+      expect(
+        record.loadedAt === undefined ? undefined : record.loadedAt - startedAt,
+        'the replay must reach load at the load offset the recording carries, or it replayed a different load than the one recorded',
+      ).toBe(timeline.loadAtMs);
+      expect(record.requestsIssued).toBe(timeline.requests.length);
+      expect(
+        record.requestsCompleted,
+        'every request the recording settled by its load had settled when the warmup was admitted',
+      ).toBe(settledByLoad);
+      expect(record.visibleWaits).toHaveLength(1);
+      expect(record.contextsClosed).toBe(record.contextsOpened);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a stall refusal while nothing is outstanding reads as complete, without introducing a list of outstanding requests it cannot give', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const stallMs = await declaredFirstLoadStallMs(budget.navigationReserveMs);
+    const lastSettledAtMs = Math.max(
+      ...CONFORMANCE_TIMELINE.requests.map(([, settledAtMs]) => settledAtMs),
+    );
+    const heldLoad: FirstLoadTimeline = {
+      ...CONFORMANCE_TIMELINE,
+      loadAtMs: lastSettledAtMs + budget.navigationReserveMs,
+    };
+    const { browser, observe } = fakeFirstLoadBrowser(
+      recordedFirstLoad(heldLoad),
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const { startedAt, settlement } = startedWarmup(budget, browser);
+      await vi.advanceTimersByTimeAsync(heldLoad.loadAtMs - 1);
+
+      expect(
+        settlement.state,
+        `a load that settled every request and then went ${budget.navigationReserveMs}ms without firing load was ${describeSettlement(settlement, startedAt)}, so there is no refusal whose reason this test can read`,
+      ).toBe('rejected');
+      expect(
+        observe.requests().filter((request) => !request.completed),
+        'the stall under test is one with every request settled and nothing outstanding',
+      ).toEqual([]);
+      const reason =
+        settlement.reason instanceof Error ? settlement.reason.message : String(settlement.reason);
+      expect(
+        reason,
+        `the refusal read here must be the stall refusal, naming the ${stallMs}ms window it waited: ${reason}`,
+      ).toMatch(standaloneNumber(stallMs));
+      expect(
+        reason,
+        `a stall refusal with nothing outstanding must not trail off into a list of outstanding requests it cannot give: ${reason}`,
+      ).not.toMatch(/including\s*$/);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+});
+
+const MISSING_DEADLINES = [undefined, Number.NaN, Number.POSITIVE_INFINITY] as const;
+
+function settledReason(settlement: Settlement): string {
+  return settlement.reason instanceof Error ? settlement.reason.message : String(settlement.reason);
+}
+
+function refusalWording(reason: string): string {
+  return reason.replaceAll(FAKE_FIRST_LOAD_BASE_URL, '<origin>').replace(/\d+/g, '<n>');
+}
+
+function expectRefusalNamesStarvationLine(
+  reason: string,
+  budget: DeclaredFirstLoadBudget,
+  refused: string,
+): void {
+  expect(
+    reason,
+    `${refused} must say the deadline that ended it is the fixture's ${budget.starvationLineMs}ms setup starvation line, or whoever reads the failure has to find in the fixture's source what the deadline was: ${reason}`,
+  ).toMatch(new RegExp(`${budget.starvationLineMs}ms setup starvation line`));
+  expect(
+    reason,
+    `${refused} must place that line in the fixture's ${budget.totalMs}ms slot, as the fixture's own starvation refusal does: ${reason}`,
+  ).toMatch(standaloneNumber(budget.totalMs));
+}
+
+const CONTEXT_CLOSE_FAILURE =
+  'browserContext.close: the context this scenario asked to close reported a failure';
+
+function closeFailingBrowser(browser: FakeBrowser): FakeBrowser {
+  return {
+    newContext: async (options?: unknown) => {
+      const context = await browser.newContext(options);
+      return new Proxy(context, {
+        get: (target, key, receiver) =>
+          key === 'close'
+            ? async () => {
+                await target.close();
+                throw new Error(CONTEXT_CLOSE_FAILURE);
+              }
+            : Reflect.get(target, key, receiver),
+      });
+    },
+  };
+}
+
+interface DeadlineLegScene {
+  budget: DeclaredFirstLoadBudget;
+  record: FirstLoadRecord;
+  observe: FirstLoadObserver;
+  startedAt: number;
+}
+
+interface DeadlineLeg {
+  leg: string;
+  holds: FakeHolds;
+  rendersTree: boolean;
+  settlesAs: readonly Settlement['state'][];
+  expectReached(scene: DeadlineLegScene): void;
+  expectReleased?(scene: DeadlineLegScene): void;
+}
+
+function expectWaitingOnTheHeldContext({ record, observe }: DeadlineLegScene): void {
+  expect(
+    observe.held(),
+    'the warmup must be waiting on the browser context this scenario holds, or something other than the held leg is what the line ends',
+  ).toEqual([HELD_NEW_CONTEXT]);
+  expect(record.navigations, 'and must not have got as far as navigating').toEqual([]);
+}
+
+const DEADLINE_LEGS: readonly DeadlineLeg[] = [
+  {
+    leg: 'a browser context it asks for and never gets',
+    holds: { newContext: 'rejected-when-released' },
+    rendersTree: true,
+    settlesAs: ['rejected'],
+    expectReached: expectWaitingOnTheHeldContext,
+  },
+  {
+    leg: 'a browser context it asks for and is handed only after the line',
+    holds: { newContext: 'handed-back-when-released' },
+    rendersTree: true,
+    settlesAs: ['rejected'],
+    expectReached: expectWaitingOnTheHeldContext,
+    expectReleased: ({ record, observe }) => {
+      expect(
+        observe.contexts.length,
+        'releasing the held call must hand back the context the warmup asked for, or there is no late context whose fate this leg can read',
+      ).toBe(1);
+      expect(record.contextsOpened, 'the one context the warmup asked the browser for').toBe(1);
+      expect(
+        record.contextsClosed,
+        "a context the browser hands back after the warmup was refused at the line must be closed by the warmup that asked for it, before anything else closes one, or it stays open on the worker's browser until the worker shuts down",
+      ).toBe(1);
+    },
+  },
+  {
+    leg: 'a page it asks for and never gets',
+    holds: { newPage: true },
+    rendersTree: true,
+    settlesAs: ['rejected'],
+    expectReached: ({ record, observe }) => {
+      expect(
+        observe.held(),
+        'the warmup must be waiting on the page this scenario holds, or something other than the held leg is what the line ends',
+      ).toEqual([HELD_NEW_PAGE]);
+      expect(record.navigations, 'and must not have got as far as navigating').toEqual([]);
+    },
+  },
+  {
+    leg: 'a tree wait whose own bound runs past the line',
+    holds: {},
+    rendersTree: false,
+    settlesAs: ['rejected'],
+    expectReached: ({ budget, record, startedAt }) => {
+      expect(
+        record.visibleWaits,
+        'the warmup must be waiting for the tree entry this load never renders',
+      ).toEqual([budget.renderedEntryNames[0]]);
+      const loadedAfterMs = (record.loadedAt as number) - startedAt;
+      expect(
+        loadedAfterMs + budget.visibleReserveMs,
+        `the tree wait began ${loadedAfterMs}ms in, so its own ${budget.visibleReserveMs}ms bound runs past the ${budget.starvationLineMs}ms line and only the line can end it there`,
+      ).toBeGreaterThan(budget.starvationLineMs);
+    },
+  },
+  {
+    leg: 'a context close that never returns',
+    holds: { contextClose: true },
+    rendersTree: true,
+    settlesAs: ['resolved', 'rejected'],
+    expectReached: ({ budget, record, observe }) => {
+      expect(
+        record.visibleWaits,
+        'the load must have been admitted and its tree waited for before the close',
+      ).toEqual([budget.renderedEntryNames[0]]);
+      expect(
+        observe.held(),
+        'the warmup must be waiting on the context close this scenario holds, or something other than the held leg is what the line ends',
+      ).toEqual([HELD_CONTEXT_CLOSE]);
+    },
+  },
+];
+
+describe('worker-server fixture first-load warmup liveness up to the starvation line', () => {
+  test('the fake first-load browser holds exactly the calls it is told to hold, until they are released or their context closes', async () => {
+    vi.useFakeTimers();
+    try {
+      const free = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [FAKE_SELF_TEST_ENTRY]);
+      const freeContext = settlementOf(free.browser.newContext());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        freeContext.state,
+        'the must-not-fire control: a browser told to hold nothing hands back its context',
+      ).toBe('resolved');
+      expect(free.observe.held()).toEqual([]);
+
+      const heldContext = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [FAKE_SELF_TEST_ENTRY], {
+        newContext: 'rejected-when-released',
+      });
+      const asked = settlementOf(heldContext.browser.newContext());
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_BOUND_MS * FAKE_SELF_TEST_SPACING_MS);
+      expect(asked.state, 'a held context is never handed back, however far the clock runs').toBe(
+        'pending',
+      );
+      expect(
+        heldContext.record.contextsOpened,
+        'the held call is still recorded as asked for',
+      ).toBe(1);
+      expect(heldContext.observe.held()).toEqual([HELD_NEW_CONTEXT]);
+      heldContext.observe.releaseHeld();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        asked.state,
+        'releasing a held context rejects it, as a browser that goes away would',
+      ).toBe('rejected');
+      expect(heldContext.observe.held()).toEqual([]);
+      expect(
+        heldContext.observe.contexts.length,
+        'and a context it rejects is never registered as one the browser handed back',
+      ).toBe(0);
+
+      const lateContext = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [FAKE_SELF_TEST_ENTRY], {
+        newContext: 'handed-back-when-released',
+      });
+      const askedLate = lateContext.browser.newContext();
+      const late = settlementOf(askedLate);
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_BOUND_MS * FAKE_SELF_TEST_SPACING_MS);
+      expect(
+        late.state,
+        'a context held to be handed back late is not handed back before its release, however far the clock runs',
+      ).toBe('pending');
+      expect(
+        lateContext.observe.contexts.length,
+        'and is not registered as a live context before then',
+      ).toBe(0);
+      expect(lateContext.observe.held()).toEqual([HELD_NEW_CONTEXT]);
+      lateContext.observe.releaseHeld();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        late.state,
+        'releasing it hands the context back, as a browser that was only slow would',
+      ).toBe('resolved');
+      expect(lateContext.observe.held()).toEqual([]);
+      const handedBack = await askedLate;
+      expect(
+        lateContext.observe.contexts.length === 1 && lateContext.observe.contexts[0] === handedBack,
+        'the context handed back late is registered like one handed back at once',
+      ).toBe(true);
+      expect(
+        lateContext.record.contextsOpened,
+        'the late call is recorded once, as asked for',
+      ).toBe(1);
+      await handedBack.close();
+      expect(
+        lateContext.record.contextsClosed,
+        'and it is a live context, whose close is recorded like any other',
+      ).toBe(1);
+
+      const heldPage = fakeFirstLoadBrowser(SELF_TEST_FIRST_LOAD, [FAKE_SELF_TEST_ENTRY], {
+        newPage: true,
+      });
+      const pageContext = settlementOf(heldPage.browser.newContext());
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        pageContext.state,
+        'the adjacent must-not-fire control: holding pages does not hold the context they open in',
+      ).toBe('resolved');
+      const context = heldPage.observe.contexts[0] as FakeContext;
+      const page = settlementOf(context.newPage());
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_BOUND_MS * FAKE_SELF_TEST_SPACING_MS);
+      expect(page.state, 'a held page is never handed back, however far the clock runs').toBe(
+        'pending',
+      );
+      expect(heldPage.observe.held()).toEqual([HELD_NEW_PAGE]);
+      await context.close();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        page.state,
+        'closing the context rejects the page still pending in it, as playwright does, so a warmup that ends a held page by closing its context is not failed by the fake',
+      ).toBe('rejected');
+      expect(heldPage.observe.held()).toEqual([]);
+
+      const heldClose = fakeFirstLoadBrowser(
+        { ...SELF_TEST_FIRST_LOAD, completing: 0 },
+        [FAKE_SELF_TEST_ENTRY],
+        { contextClose: true },
+      );
+      const closingContext = await heldClose.browser.newContext();
+      const pageRequest = closingContext.newPage();
+      const closingPage = settlementOf(pageRequest);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        closingPage.state,
+        'the adjacent must-not-fire control: holding the close does not hold the page',
+      ).toBe('resolved');
+      const navigation = settlementOf(
+        (await pageRequest).goto(FAKE_FIRST_LOAD_URL, { timeout: 0 }),
+      );
+      const closing = settlementOf(closingContext.close());
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_BOUND_MS * FAKE_SELF_TEST_SPACING_MS);
+      expect(closing.state, 'a held close never returns, however far the clock runs').toBe(
+        'pending',
+      );
+      expect(
+        heldClose.record.listeningAtContextClose.length,
+        'the held close is still recorded as asked for',
+      ).toBe(1);
+      expect(heldClose.record.contextsClosed, 'and leaves its context open').toBe(0);
+      expect(navigation.state, 'so a navigation inside it keeps running').toBe('pending');
+      expect(heldClose.observe.held()).toEqual([HELD_CONTEXT_CLOSE]);
+      heldClose.observe.releaseHeld();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(closing.state, 'releasing a held close completes it').toBe('resolved');
+      expect(heldClose.record.contextsClosed).toBe(1);
+      expect(navigation.state, 'and ends the navigation inside it').toBe('rejected');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a first load still making progress at the fixture's starvation line is refused there by the warmup, naming what it was still waiting on", async () => {
+    const budget = await declaredFirstLoadBudget();
+    const spacingMs = spacingOutlasting(budget.totalMs + budget.navigationReserveMs);
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      {
+        requests: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+        completionSpacingMs: spacingMs,
+        completing: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+      },
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const { startedAt, settlement } = startedWarmup(budget, browser);
+      await vi.advanceTimersByTimeAsync(budget.starvationLineMs - 1);
+
+      expect(record.navigations).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(
+        settlement.state,
+        `a first load still completing a request every ${spacingMs}ms was ${describeSettlement(settlement, startedAt)} one millisecond before the fixture's ${budget.starvationLineMs}ms starvation line. Up to the line a load that is making progress is admitted`,
+      ).toBe('pending');
+      const progressedToMs = (record.lastProgressAt as number) - startedAt;
+      expect(
+        progressedToMs,
+        `the load must have kept making progress past the ${budget.navigationReserveMs}ms navigation share`,
+      ).toBeGreaterThan(budget.navigationReserveMs);
+      expect(
+        budget.starvationLineMs - 1 - progressedToMs,
+        `and must still be making progress at the line, its last completion less than one ${spacingMs}ms gap before it`,
+      ).toBeLessThan(spacingMs);
+      expect(record.requestsCompleted, 'with requests of its load still outstanding').toBeLessThan(
+        OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+      );
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(
+        settlement.state,
+        `a first load still completing a request every ${spacingMs}ms reached the fixture's ${budget.starvationLineMs}ms starvation line and was ${describeSettlement(settlement, startedAt)}. The warmup must refuse it there, so the failure reaches the fixture's own catch, which reaps the detached dev server and removes its dirs while setup is still live. Left running, it is ended by the registered ${budget.totalMs}ms slot instead, which skips the fixture's teardown and never awaits that reap`,
+      ).toBe('rejected');
+      const reason = settledReason(settlement);
+      const outstanding = observe.requests().filter((request) => !request.completed);
+      const completedModules = observe
+        .requests()
+        .filter(
+          (request) => request.completed && request.resourceType === FAKE_SCRIPT_RESOURCE_TYPE,
+        );
+      expect(
+        outstanding.length,
+        'every module request the load had not completed by the line is outstanding',
+      ).toBe(OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS - record.requestsCompleted);
+      expect(
+        reason,
+        `a first load refused at the line must say how many requests were still outstanding (${outstanding.length}), as a stall refusal does, so the failure the fixture reports says what the load was still waiting on: ${reason}`,
+      ).toMatch(standaloneNumber(outstanding.length));
+      expect(
+        outstanding.filter((request) => reason.includes(request.url)).length,
+        `a first load refused at the line must name at least one request still outstanding, and this one names none: ${reason}`,
+      ).toBeGreaterThan(0);
+      expect(
+        completedModules
+          .filter((request) => reason.includes(request.url))
+          .map((request) => request.url),
+        'a request that completed is not named as one the load was still waiting on',
+      ).toEqual([]);
+      expectRefusalNamesStarvationLine(reason, budget, 'a first load refused at the line');
+      expect(
+        record.listeningAtContextClose.length,
+        'the warmup must have asked to close its context once after the refusal, or the browser keeps loading from a dev server the catch is about to reap',
+      ).toBe(1);
+      expect(
+        record.listeningAtContextClose,
+        'with nothing the navigation attached still listening',
+      ).toEqual([[]]);
+      expect(
+        observe.timersBeyondPages(),
+        'a refusal at the line must leave nothing armed behind it, or that timer fires into a fixture that has already failed',
+      ).toBe(0);
+
+      const stalled = fakeFirstLoadBrowser(
+        firstLoadCompleting(budget, 0),
+        budget.renderedEntryNames,
+      );
+      const stall = startedWarmup(budget, stalled.browser);
+      await vi.advanceTimersByTimeAsync(budget.navigationReserveMs - 1);
+      expect(
+        stall.settlement.state,
+        'the comparison load, which never completes a request, must have been refused as stalled',
+      ).toBe('rejected');
+      expect(
+        refusalWording(reason),
+        `a first load refused at the line while it was still making progress must not be reported in the words the same warmup uses for a stall, or the failure blames a load that never went quiet: ${reason}`,
+      ).not.toBe(refusalWording(settledReason(stall.settlement)));
+      await closeEveryContext(stalled.observe);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+
+  for (const leg of DEADLINE_LEGS) {
+    test(`no leg of the warmup runs past the fixture's starvation line: ${leg.leg} is ended there`, async () => {
+      const budget = await declaredFirstLoadBudget();
+      const { browser, record, observe } = fakeFirstLoadBrowser(
+        firstLoadCompleting(budget, OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS),
+        leg.rendersTree ? budget.renderedEntryNames : [],
+        leg.holds,
+      );
+
+      vi.useFakeTimers();
+      try {
+        const { startedAt, settlement } = startedWarmup(budget, browser);
+        await vi.advanceTimersByTimeAsync(budget.starvationLineMs - 1);
+        leg.expectReached({ budget, record, observe, startedAt });
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(
+          leg.settlesAs,
+          `with ${leg.leg}, the warmup was ${describeSettlement(settlement, startedAt)} when the fixture's ${budget.starvationLineMs}ms starvation line arrived. Every leg of the warmup must be over by the line, so the fixture's own catch runs while setup is still live rather than the registered ${budget.totalMs}ms slot ending a fixture whose cleanup nothing then awaits`,
+        ).toContain(settlement.state);
+        if (settlement.state === 'rejected') {
+          expectRefusalNamesStarvationLine(
+            settledReason(settlement),
+            budget,
+            `a warmup refused at the line with ${leg.leg}`,
+          );
+        }
+
+        observe.releaseHeld();
+        await vi.advanceTimersByTimeAsync(0);
+        leg.expectReleased?.({ budget, record, observe, startedAt });
+      } finally {
+        observe.releaseHeld();
+        await closeEveryContext(observe);
+        vi.useRealTimers();
+      }
+    });
+  }
+
+  test('the warmup refuses a missing or unbounded deadline before it asks for a context, and runs to completion before a real one', async () => {
+    const budget = await declaredFirstLoadBudget();
+
+    vi.useFakeTimers();
+    try {
+      for (const deadlineAt of MISSING_DEADLINES) {
+        const { browser, record, observe } = fakeFirstLoadBrowser(
+          SELF_TEST_FIRST_LOAD,
+          budget.renderedEntryNames,
+        );
+        let thrown: unknown;
+        let returned: Promise<void> | undefined;
+        try {
+          returned = budget.warmupBefore(
+            browser,
+            FAKE_FIRST_LOAD_BASE_URL,
+            budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+            deadlineAt as number,
+          );
+        } catch (err) {
+          thrown = err;
+        }
+        expect(
+          thrown,
+          `a deadline of ${String(deadlineAt)} must be refused through the promise ${WARMUP_FIRST_LOAD_EXPORT} returns, not thrown before it returns one`,
+        ).toBeUndefined();
+        const refused = settlementOf(returned ?? Promise.resolve());
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(
+          refused.state,
+          `a deadline of ${String(deadlineAt)} must be refused at once. A required deadline leaves the warmup no unbounded mode, and one that runs without it is a first load the fixture's catch cannot end before the registered slot does`,
+        ).toBe('rejected');
+        expect(refused.reason).toBeInstanceOf(TypeError);
+        expect(settledReason(refused)).toMatch(new RegExp(WARMUP_FIRST_LOAD_EXPORT));
+        expect(
+          settledReason(refused),
+          `a deadline is the instant ${WARMUP_FIRST_LOAD_EXPORT} has to finish by, not a bound it spends, so its refusal must name it as one or a caller who passed a duration reads that it passed the right kind of value`,
+        ).toMatch(new RegExp(`${WARMUP_FIRST_LOAD_EXPORT} needs its caller to name the instant`));
+        expect(
+          record.contextsOpened,
+          'a warmup refused for its missing deadline must not have asked the browser for a context',
+        ).toBe(0);
+        observe.releaseHeld();
+        await closeEveryContext(observe);
+      }
+
+      const { browser, record, observe } = fakeFirstLoadBrowser(
+        SELF_TEST_FIRST_LOAD,
+        budget.renderedEntryNames,
+      );
+      const admitted = settlementOf(
+        budget.warmupBefore(
+          browser,
+          FAKE_FIRST_LOAD_BASE_URL,
+          budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+          Date.now() + budget.starvationLineMs,
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(FAKE_SELF_TEST_REQUESTS * FAKE_SELF_TEST_SPACING_MS);
+      expect(
+        admitted.state,
+        'the adjacent control: a finite deadline the load finishes well inside is run to completion',
+      ).toBe('resolved');
+      expect(record.navigations).toEqual([FAKE_FIRST_LOAD_URL]);
+      expect(record.visibleWaits).toEqual([budget.renderedEntryNames[0]]);
+      expect(record.contextsClosed).toBe(1);
+      expect(
+        observe.listening(),
+        'an admitted warmup must release every listener it attached',
+      ).toEqual([[]]);
+      expect(
+        observe.timersBeyondPages(),
+        'a warmup that finished before its deadline must leave nothing armed against it, or that timer fires into a fixture that has moved on',
+      ).toBe(0);
+      await closeEveryContext(observe);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('a warmup handed a deadline that has already passed asks for no browser context, and says the leg it would have started was not started', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      SELF_TEST_FIRST_LOAD,
+      budget.renderedEntryNames,
+    );
+
+    vi.useFakeTimers();
+    try {
+      const refused = settlementOf(
+        budget.warmupBefore(
+          browser,
+          FAKE_FIRST_LOAD_BASE_URL,
+          budget.openPhase(FIRST_LOAD_PHASE_NAME, budget.setupOverheadReserveMs),
+          Date.now() - 1,
+        ),
+      );
+      await vi.advanceTimersByTimeAsync(0);
+
+      expect(
+        refused.state,
+        'a deadline a millisecond behind the clock is a real instant that has passed, so the warmup must refuse at once rather than start its first leg',
+      ).toBe('rejected');
+      const reason = settledReason(refused);
+      expect(
+        reason,
+        `the refusal must name the leg it did not start and say it was not started, not that it did not settle, or it reports browser work that never ran: ${reason}`,
+      ).toMatch(/browser\.newContext was not started/);
+      expectRefusalNamesStarvationLine(reason, budget, 'a warmup that began past its deadline');
+      expect(
+        record.contextsOpened,
+        'a warmup whose deadline had already passed must not have asked the browser for a context, which nothing would then close',
+      ).toBe(0);
+    } finally {
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+
+  test('a context close that fails after the warmup was refused neither replaces the refusal nor goes unreported, before the line or at it', async () => {
+    const budget = await declaredFirstLoadBudget();
+    const scenarios = [
+      {
+        refusal: 'a stall',
+        script: firstLoadCompleting(budget, 0),
+        refusedWithinMs: budget.navigationReserveMs - 1,
+      },
+      {
+        refusal: "the fixture's starvation line",
+        script: {
+          requests: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+          completionSpacingMs: spacingOutlasting(budget.totalMs + budget.navigationReserveMs),
+          completing: OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS,
+        },
+        refusedWithinMs: budget.starvationLineMs,
+      },
+    ];
+
+    for (const { refusal, script, refusedWithinMs } of scenarios) {
+      const { browser, record, observe } = fakeFirstLoadBrowser(script, budget.renderedEntryNames);
+      const warned: string[] = [];
+      const spy = vi.spyOn(console, 'warn').mockImplementation((line: unknown) => {
+        warned.push(String(line));
+      });
+      vi.useFakeTimers();
+      try {
+        const { startedAt, settlement } = startedWarmup(budget, closeFailingBrowser(browser));
+        await vi.advanceTimersByTimeAsync(refusedWithinMs);
+        await vi.advanceTimersByTimeAsync(0);
+
+        expect(
+          settlement.state,
+          `the first load refused by ${refusal} was ${describeSettlement(settlement, startedAt)}, so there is no refusal whose fate this test can read`,
+        ).toBe('rejected');
+        expect(
+          record.listeningAtContextClose.length,
+          `after ${refusal} the warmup must have asked to close its context once, or there was no close to fail`,
+        ).toBe(1);
+        const reason = settledReason(settlement);
+        const outstanding = observe.requests().filter((request) => !request.completed).length;
+        expect(
+          reason,
+          `the warmup's failure after ${refusal} must still be that refusal, naming the ${outstanding} requests the load was waiting on, and not the context close that failed after it: ${reason}`,
+        ).toMatch(standaloneNumber(outstanding));
+        expect(reason).not.toContain(CONTEXT_CLOSE_FAILURE);
+        expect(
+          warned.filter((line) => line.includes(CONTEXT_CLOSE_FAILURE)),
+          `a context close that failed after ${refusal} must leave a trace, or a context the browser may still hold open drops out of the record`,
+        ).toHaveLength(1);
+      } finally {
+        spy.mockRestore();
+        await closeEveryContext(observe);
+        vi.useRealTimers();
+      }
+    }
+  });
+
+  test("a context the browser hands back after the warmup was refused at the fixture's starvation line, whose close then fails, is reported rather than dropped", async () => {
+    const budget = await declaredFirstLoadBudget();
+    const { browser, record, observe } = fakeFirstLoadBrowser(
+      firstLoadCompleting(budget, OBSERVED_FIRST_LOAD_SCRIPT_REQUESTS),
+      budget.renderedEntryNames,
+      { newContext: 'handed-back-when-released' },
+    );
+    const warned: string[] = [];
+    const spy = vi.spyOn(console, 'warn').mockImplementation((line: unknown) => {
+      warned.push(String(line));
+    });
+    vi.useFakeTimers();
+    try {
+      const { startedAt, settlement } = startedWarmup(budget, closeFailingBrowser(browser));
+      await vi.advanceTimersByTimeAsync(budget.starvationLineMs);
+      expect(
+        settlement.state,
+        `the warmup still waiting on its browser context at the line was ${describeSettlement(settlement, startedAt)}, so there is no refusal after which a late context can arrive`,
+      ).toBe('rejected');
+      expect(warned, 'nothing has been closed yet, so nothing has failed to close').toEqual([]);
+
+      observe.releaseHeld();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(
+        record.contextsClosed,
+        'the context handed back after the line must have been closed by the warmup, or there was no close to fail',
+      ).toBe(1);
+      expect(
+        warned.filter((line) => line.includes(CONTEXT_CLOSE_FAILURE)),
+        'a late context whose close failed must leave a trace, or a context the browser may still hold open drops out of the record',
+      ).toHaveLength(1);
+    } finally {
+      spy.mockRestore();
+      observe.releaseHeld();
+      await closeEveryContext(observe);
+      vi.useRealTimers();
+    }
+  });
+});
+
+const WARMUP_DEADLINE_ARGUMENT_INDEX = 3;
+
+type WarmupDeadlineOffset =
+  | { kind: 'value'; name: string }
+  | { kind: 'call'; name: string; args: readonly string[] };
+
+interface WarmupDeadlineWiring {
+  findings: string[];
+  offset: WarmupDeadlineOffset | undefined;
+}
+
+function unwrappedExpression(node: Node): Node {
+  let current = node;
+  while (
+    current.isKind(SyntaxKind.ParenthesizedExpression) ||
+    current.isKind(SyntaxKind.AsExpression) ||
+    current.isKind(SyntaxKind.NonNullExpression) ||
+    current.isKind(SyntaxKind.SatisfiesExpression)
+  ) {
+    current = current.getExpression();
+  }
+  return current;
+}
+
+function followedAlias(node: Node, sourceFile: SourceFile, kept: ReadonlySet<string>): Node {
+  let current = unwrappedExpression(node);
+  const followed = new Set<string>();
+  while (current.isKind(SyntaxKind.Identifier)) {
+    const name = current.getText();
+    if (kept.has(name) || followed.has(name)) break;
+    followed.add(name);
+    const initializer = namedValueInitializer(sourceFile, name);
+    if (initializer === undefined) break;
+    current = unwrappedExpression(initializer);
+  }
+  return current;
+}
+
+function readableDeadlineOffset(
+  node: Node,
+  exported: ReadonlySet<string>,
+): WarmupDeadlineOffset | undefined {
+  if (node.isKind(SyntaxKind.Identifier)) {
+    return exported.has(node.getText()) ? { kind: 'value', name: node.getText() } : undefined;
+  }
+  if (!node.isKind(SyntaxKind.CallExpression)) return undefined;
+  const callee = node.getExpression();
+  if (!callee.isKind(SyntaxKind.Identifier) || !exported.has(callee.getText())) return undefined;
+  const args = node.getArguments().map(unwrappedExpression);
+  if (!args.every((arg) => arg.isKind(SyntaxKind.Identifier) && exported.has(arg.getText()))) {
+    return undefined;
+  }
+  return { kind: 'call', name: callee.getText(), args: args.map((arg) => arg.getText()) };
+}
+
+function warmupDeadlineWiring(source: string): WarmupDeadlineWiring {
+  const sourceFile = parseBudgetSource(source);
+  const body = workerServerFixtureBody(sourceFile);
+  if (body === undefined) return { findings: ['scope-missing'], offset: undefined };
+  const calls = budgetCallsWithin(body, WARMUP_FIRST_LOAD_EXPORT);
+  if (calls.length !== 1) return { findings: ['warmup-call-count'], offset: undefined };
+  const call = calls[0] as CallExpression;
+
+  const findings: string[] = [];
+  const setupTry = call.getFirstAncestorByKind(SyntaxKind.TryStatement);
+  const insideSetupTry =
+    setupTry !== undefined &&
+    setupTry.getStart() >= body.getStart() &&
+    setupTry.getCatchClause() !== undefined &&
+    setupTry.getTryBlock().getStart() <= call.getStart() &&
+    setupTry.getTryBlock().getEnd() >= call.getEnd();
+  if (!insideSetupTry) findings.push('warmup-outside-setup-catch');
+
+  const deadline = call.getArguments()[WARMUP_DEADLINE_ARGUMENT_INDEX];
+  if (deadline === undefined)
+    return { findings: [...findings, 'deadline-missing'], offset: undefined };
+
+  const exported = new Set(sourceFile.getExportedDeclarations().keys());
+  const kept = new Set([...exported, FIXTURE_START_IDENTIFIER]);
+  const sum = followedAlias(deadline, sourceFile, kept).asKind(SyntaxKind.BinaryExpression);
+  const operands =
+    sum !== undefined && sum.getOperatorToken().getKind() === SyntaxKind.PlusToken
+      ? [sum.getLeft(), sum.getRight()].map((operand) => followedAlias(operand, sourceFile, kept))
+      : [];
+  const anchorAt = operands.findIndex(
+    (operand) =>
+      operand.isKind(SyntaxKind.Identifier) && operand.getText() === FIXTURE_START_IDENTIFIER,
+  );
+  if (anchorAt === -1) {
+    return { findings: [...findings, 'deadline-not-from-fixture-start'], offset: undefined };
+  }
+  const offset = readableDeadlineOffset(operands[1 - anchorAt] as Node, exported);
+  if (offset === undefined) findings.push('deadline-offset-unreadable');
+  return { findings, offset };
+}
+
+function deadlineOffsetValue(
+  offset: WarmupDeadlineOffset | undefined,
+  exports: Record<string, unknown>,
+): unknown {
+  if (offset === undefined) return undefined;
+  if (offset.kind === 'value') return exports[offset.name];
+  const resolve = exports[offset.name];
+  if (typeof resolve !== 'function') return undefined;
+  return (resolve as (...args: unknown[]) => unknown)(...offset.args.map((name) => exports[name]));
+}
+
+function withoutLiveWarmupDeadline(source: string): string {
+  const sourceFile = parseBudgetSource(source);
+  const body = workerServerFixtureBody(sourceFile);
+  const call =
+    body === undefined ? undefined : budgetCallsWithin(body, WARMUP_FIRST_LOAD_EXPORT)[0];
+  expect(
+    call?.getArguments().length,
+    'the live-drift control drops the deadline from the shipped warmup call, so that call must carry one',
+  ).toBeGreaterThan(WARMUP_DEADLINE_ARGUMENT_INDEX);
+  call?.removeArgument(WARMUP_DEADLINE_ARGUMENT_INDEX);
+  return sourceFile.getFullText();
+}
+
+const PLANTED_LINE_EXPORT = 'PLANTED_SETUP_STARVATION_LINE_MS';
+const PLANTED_LINE_RESOLVER_EXPORT = 'resolvePlantedSetupStarvationLineMs';
+const PLANTED_UNEXPORTED_LINE = 'plantedUnexportedStarvationLineMs';
+const PLANTED_UNEXPORTED_RESOLVER = 'plantedUnexportedStarvationLineResolver';
+const PLANTED_LINE_ALIAS = 'plantedStarvationLineAlias';
+const PLANTED_DEADLINE_ALIAS = 'setupDeadlineAt';
+
+const PLANTED_LINE_DECLARATIONS = [
+  `export const ${PLANTED_LINE_EXPORT} = ${DECLARED_TOTAL_EXPORT} - ${DECLARED_RESERVES_EXPORT}.${TEARDOWN_RESERVE_KEY};`,
+  `export function ${PLANTED_LINE_RESOLVER_EXPORT}(totalMs) {`,
+  `  return totalMs - ${DECLARED_RESERVES_EXPORT}.${TEARDOWN_RESERVE_KEY};`,
+  '}',
+  `const ${PLANTED_UNEXPORTED_LINE} = ${DECLARED_TOTAL_EXPORT} - ${DECLARED_RESERVES_EXPORT}.${TEARDOWN_RESERVE_KEY};`,
+  `function ${PLANTED_UNEXPORTED_RESOLVER}(totalMs) {`,
+  `  return totalMs - ${DECLARED_RESERVES_EXPORT}.${TEARDOWN_RESERVE_KEY};`,
+  '}',
+  `const ${PLANTED_LINE_ALIAS} = ${PLANTED_LINE_EXPORT};`,
+].join('\n');
+
+const COMPLIANT_DEADLINE = `${FIXTURE_START_IDENTIFIER} + ${PLANTED_LINE_EXPORT}`;
+const PLANTED_USE_STATEMENT = '      await use({ port, baseURL, contentDir });';
+
+function plantedDeadlineCall(deadline: string): string {
+  return `        await ${WARMUP_FIRST_LOAD_EXPORT}(browser, ${PLANTED_BASE_URL}, setupOverhead, ${deadline});`;
+}
+
+function plantedDeadlineSource(deadline?: string): string {
+  const withoutDeadline = plantedWarmupWiringSource(PLANTED_LINE_DECLARATIONS);
+  if (deadline === undefined) return withoutDeadline;
+  return replacedOnce(withoutDeadline, PLANTED_WARMUP_CALL, plantedDeadlineCall(deadline));
+}
+
+describe('worker-server fixture first-load warmup liveness wired to the starvation line', () => {
+  test('the warmup deadline scan fires on every way the fixture can hand its warmup a deadline other than its starvation line from its start, and stays quiet on the spellings that are one', () => {
+    const compliant = warmupDeadlineWiring(plantedDeadlineSource(COMPLIANT_DEADLINE));
+    expect(
+      compliant,
+      'the must-not-fire control: the fixture start plus an exported line, passed to the warmup inside the setup try, is the shape every mutation below departs from',
+    ).toEqual({ findings: [], offset: { kind: 'value', name: PLANTED_LINE_EXPORT } });
+
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(`${PLANTED_LINE_EXPORT} + ${FIXTURE_START_IDENTIFIER}`),
+      ).findings,
+      'the adjacent must-not-fire control: the same sum with its operands swapped',
+    ).toEqual([]);
+    expect(
+      warmupDeadlineWiring(
+        replacedOnce(
+          plantedDeadlineSource(PLANTED_DEADLINE_ALIAS),
+          plantedDeadlineCall(PLANTED_DEADLINE_ALIAS),
+          `        const ${PLANTED_DEADLINE_ALIAS} = ${COMPLIANT_DEADLINE};\n${plantedDeadlineCall(PLANTED_DEADLINE_ALIAS)}`,
+        ),
+      ).findings,
+      'the adjacent must-not-fire control: the deadline named once in the setup and passed by that name',
+    ).toEqual([]);
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(`${FIXTURE_START_IDENTIFIER} + ${PLANTED_LINE_ALIAS}`),
+      ),
+      'the adjacent must-not-fire control: a local alias of the exported line is read through to the export',
+    ).toEqual({ findings: [], offset: { kind: 'value', name: PLANTED_LINE_EXPORT } });
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(
+          `${FIXTURE_START_IDENTIFIER} + ${PLANTED_LINE_RESOLVER_EXPORT}(${DECLARED_TOTAL_EXPORT})`,
+        ),
+      ),
+      'the adjacent must-not-fire control: an exported resolver called with exported inputs is a line this suite can read',
+    ).toEqual({
+      findings: [],
+      offset: { kind: 'call', name: PLANTED_LINE_RESOLVER_EXPORT, args: [DECLARED_TOTAL_EXPORT] },
+    });
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(`${FIXTURE_START_IDENTIFIER} + ${DECLARED_TOTAL_EXPORT}`),
+      ),
+      'the scan reads the offset and leaves its value to the live test: the whole slot passes here and is refused there, where the offset is compared with the starvation line',
+    ).toEqual({ findings: [], offset: { kind: 'value', name: DECLARED_TOTAL_EXPORT } });
+
+    expect(
+      warmupDeadlineWiring(plantedDeadlineSource()).findings,
+      'a warmup called without a deadline is the unbounded first load this pin exists to refuse',
+    ).toEqual(['deadline-missing']);
+    expect(
+      warmupDeadlineWiring(plantedDeadlineSource(`Date.now() + ${PLANTED_LINE_EXPORT}`)).findings,
+      'a deadline measured from the warmup call rather than from the fixture start gives the warmup the whole line again after readiness has already spent part of it',
+    ).toEqual(['deadline-not-from-fixture-start']);
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(`${FIXTURE_START_IDENTIFIER} - ${PLANTED_LINE_EXPORT}`),
+      ).findings,
+      'the adjacent must-fire: the same operands under the wrong operator',
+    ).toEqual(['deadline-not-from-fixture-start']);
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(`${FIXTURE_START_IDENTIFIER} + ${REINTRODUCED_LITERAL}`),
+      ).findings,
+      'a line written at the call site is a number the manifest does not declare',
+    ).toEqual(['deadline-offset-unreadable']);
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(`${FIXTURE_START_IDENTIFIER} + ${PLANTED_UNEXPORTED_LINE}`),
+      ).findings,
+      'a line derived where this suite cannot read it is a line it cannot compare with the one the starvation refusal draws',
+    ).toEqual(['deadline-offset-unreadable']);
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(
+          `${FIXTURE_START_IDENTIFIER} + ${PLANTED_LINE_RESOLVER_EXPORT}(${REINTRODUCED_LITERAL})`,
+        ),
+      ).findings,
+      'the adjacent must-fire: the exported resolver fed a number written at the call site',
+    ).toEqual(['deadline-offset-unreadable']);
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(
+          `${FIXTURE_START_IDENTIFIER} + ${PLANTED_UNEXPORTED_RESOLVER}(${DECLARED_TOTAL_EXPORT})`,
+        ),
+      ).findings,
+      'the adjacent must-fire: the same call to a resolver the module does not export',
+    ).toEqual(['deadline-offset-unreadable']);
+    expect(
+      warmupDeadlineWiring(
+        plantedDeadlineSource(`${FIXTURE_START_IDENTIFIER} + ${FIXTURE_START_IDENTIFIER}`),
+      ).findings,
+      'the adjacent must-fire: an offset that is a name but not an exported one, here the fixture start itself, is no line at all',
+    ).toEqual(['deadline-offset-unreadable']);
+
+    const deadlineCall = plantedDeadlineCall(COMPLIANT_DEADLINE);
+    const outsideTheTry = replacedOnce(
+      replacedOnce(plantedDeadlineSource(COMPLIANT_DEADLINE), `${deadlineCall}\n`, ''),
+      PLANTED_USE_STATEMENT,
+      `${deadlineCall.slice(2)}\n${PLANTED_USE_STATEMENT}`,
+    );
+    expect(
+      warmupDeadlineWiring(outsideTheTry).findings,
+      "a warmup awaited after the setup try refuses at the line into nothing that reaps the dev server, so its refusal never reaches the fixture's own catch",
+    ).toEqual(['warmup-outside-setup-catch']);
+    expect(
+      warmupDeadlineWiring(
+        replacedOnce(
+          plantedDeadlineSource(COMPLIANT_DEADLINE),
+          'workerServer: [',
+          'otherServer: [',
+        ),
+      ).findings,
+      'losing the fixture body must be reported, or a scan that found nothing to check reads as a compliant one',
+    ).toEqual(['scope-missing']);
+    expect(
+      warmupDeadlineWiring(
+        replacedOnce(
+          plantedDeadlineSource(COMPLIANT_DEADLINE),
+          deadlineCall,
+          `${deadlineCall}\n${deadlineCall}`,
+        ),
+      ).findings,
+    ).toEqual(['warmup-call-count']);
+  });
+
+  test("the fixture hands its warmup a deadline at its own starvation line, measured from the fixture's start, inside the try whose catch reaps", async () => {
+    const budget = await declaredFirstLoadBudget();
+    const wiring = warmupDeadlineWiring(fixtureSource());
+    expect(
+      wiring.findings,
+      `the workerServer fixture body must pass ${WARMUP_FIRST_LOAD_EXPORT} a deadline of ${FIXTURE_START_IDENTIFIER} plus the starvation line its module exports, from inside the try whose catch reaps the dev server. The liveness tests prove the exported warmup ends a still-running first load at the deadline it is handed; that covers the fixture only if the deadline it hands over is its own line, and a first load that keeps progressing past it is otherwise ended by the registered ${budget.totalMs}ms slot, which never awaits the reap`,
+    ).toEqual([]);
+
+    expect(
+      warmupDeadlineWiring(withoutLiveWarmupDeadline(fixtureSource())).findings,
+      'the live-drift control: dropping the deadline from the shipped call must red, so the scan reads the fixture as it is spelled rather than only the planted copy',
+    ).toContain('deadline-missing');
+
+    const offsetMs = deadlineOffsetValue(wiring.offset, await fixtureExports());
+    expect(
+      offsetMs,
+      `the deadline must sit exactly the ${budget.starvationLineMs}ms starvation line after the fixture starts, the last elapsed its own ${REFUSE_STARVED_BUDGET_SLOT_EXPORT} admits. It sits ${String(offsetMs)}ms after it`,
+    ).toBe(budget.starvationLineMs);
   });
 });
