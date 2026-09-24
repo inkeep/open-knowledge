@@ -25,6 +25,12 @@ import {
   PTY_PLATFORM_SUPPORTED,
   userDataDirFor,
 } from './_helpers/platform-gate';
+import { expectCollapsedRailColumn } from './_helpers/rail-column';
+import {
+  expectSettledReading,
+  RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+  settleBudget,
+} from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 import {
@@ -34,6 +40,7 @@ import {
   terminalSmokeShellCommands,
   writeFakeClaudeShim,
 } from './_helpers/terminal-smoke-shell';
+import { expectNoticeFromTrigger, transientNoticeObservation } from './_helpers/transient-notice';
 
 const TARGET = resolveDesktopTarget();
 
@@ -321,14 +328,6 @@ async function revealTerminalSurface(app: ElectronApplication, target: Locator):
     await clickViewTerminalItem(app);
     await expect(target).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 15_000 });
-}
-
-async function expectCollapsedRailColumn(page: Page, selector: string): Promise<void> {
-  const column = page.locator(selector);
-  await expect(column).toHaveCount(1);
-  await expect
-    .poll(() => column.evaluate((element) => element.getBoundingClientRect().width))
-    .toBe(0);
 }
 
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
@@ -625,21 +624,40 @@ test.describe('Docked terminal — live Electron', () => {
     expect(Number(columns)).toBeGreaterThanOrEqual(92);
 
     const editorWindow = await app.browserWindow(page);
-    await editorWindow.evaluate((win: unknown) => {
-      const target = win as { setSize: (width: number, height: number, animate: boolean) => void };
-      target.setSize(900, 900, false);
+    const shrink = settleBudget('rail admission after the window narrows to 900 px', {
+      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
     });
-    // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.
-    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible();
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThan(1000);
-    await expectCollapsedRailColumn(page, '#agents-column');
+    await expectNoticeFromTrigger(
+      'Agent panel closed to keep Terminal readable.',
+      transientNoticeObservation(page, {
+        document: 'current',
+        trigger: async () => {
+          await editorWindow.evaluate((win: unknown) => {
+            const target = win as {
+              setSize: (width: number, height: number, animate: boolean) => void;
+            };
+            target.setSize(900, 900, false);
+          });
+        },
+      }),
+      { timeout: shrink.remainingMs() },
+    );
+    await expectSettledReading(
+      () => page.evaluate(() => window.innerWidth),
+      (width) => expect(width).toBeLessThan(1000),
+      { reading: 'innerWidth', of: 'the editor window', budget: shrink },
+    );
+    await expectCollapsedRailColumn(page, '#agents-column', { budget: shrink });
     await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible();
 
-    await clickViewAgentsItem(app);
-    // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.
-    await expect(page.getByText('Terminal closed to make room for the agent panel.')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expectNoticeFromTrigger(
+      'Terminal closed to make room for the agent panel.',
+      transientNoticeObservation(page, {
+        document: 'current',
+        trigger: () => clickViewAgentsItem(app),
+      }),
+      { timeout: 10_000 },
+    );
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     await expectCollapsedRailColumn(page, '#terminal-column');
 

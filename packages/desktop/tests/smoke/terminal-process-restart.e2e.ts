@@ -10,6 +10,12 @@ import {
   PTY_PLATFORM_SUPPORTED,
   userDataDirFor,
 } from './_helpers/platform-gate';
+import { readRailColumnWidth } from './_helpers/rail-column';
+import {
+  expectSettledReading,
+  RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+  settleBudget,
+} from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
 import {
   seedTerminalShellProfiles,
@@ -157,16 +163,14 @@ async function applyPersistedRightTerminalWidth(page: Page, width: number): Prom
     localStorage.setItem('ok-terminal-right-width-v1', String(nextWidth));
   }, width);
   await page.reload({ waitUntil: 'domcontentloaded' });
+  const restore = settleBudget('restored right Terminal width', { timeout: 20_000 });
   const column = page.locator('#terminal-column');
-  await expect(column).toBeVisible({ timeout: 20_000 });
-  await expect
-    .poll(async () => {
-      const renderedWidth = await column.evaluate(
-        (element) => element.getBoundingClientRect().width,
-      );
-      return Math.abs(renderedWidth - width);
-    })
-    .toBeLessThan(20);
+  await expect(column).toBeVisible({ timeout: restore.remainingMs() });
+  await expectSettledReading(
+    () => readRailColumnWidth(page, '#terminal-column'),
+    (renderedWidth) => expect(Math.abs(renderedWidth - width)).toBeLessThan(20),
+    { reading: 'width', of: '#terminal-column', budget: restore },
+  );
   return column.evaluate((element) => element.getBoundingClientRect().width);
 }
 
@@ -245,17 +249,18 @@ test.describe('terminal process restart', () => {
     await expect(terminalTabs(secondPage)).toHaveText([secondLabel, 'process first'], {
       timeout: 25_000,
     });
+    const restoredTail = settleBudget('restored active tab and right Terminal width', {
+      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+    });
     await expect(secondPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(
       'aria-selected',
       'true',
+      { timeout: restoredTail.remainingMs() },
     );
-    await expect
-      .poll(async () => {
-        const width = await secondPage
-          .locator('#terminal-column')
-          .evaluate((element) => element.getBoundingClientRect().width);
-        return Math.abs(width - retainedWidth);
-      })
-      .toBeLessThan(20);
+    await expectSettledReading(
+      () => readRailColumnWidth(secondPage, '#terminal-column'),
+      (width) => expect(Math.abs(width - retainedWidth)).toBeLessThan(20),
+      { reading: 'width', of: '#terminal-column', budget: restoredTail },
+    );
   });
 });

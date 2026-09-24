@@ -10,6 +10,13 @@ import {
   PTY_PLATFORM_SUPPORTED,
   userDataDirFor,
 } from './_helpers/platform-gate';
+import { expectCollapsedRailColumn, readRailColumnWidth } from './_helpers/rail-column';
+import {
+  expectSettledReading,
+  RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+  type SettleBudget,
+  settleBudget,
+} from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
 import { waitForShellReady } from './_helpers/terminal-ready';
 import {
@@ -25,6 +32,7 @@ import {
   terminalTabIds,
   terminalTabs,
 } from './_helpers/terminal-tabs.test-helper';
+import { expectNoticeFromTrigger, transientNoticeObservation } from './_helpers/transient-notice';
 
 const TARGET = resolveDesktopTarget();
 const SMOKE_ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
@@ -410,7 +418,10 @@ async function readShellPid(page: Page, marker: string): Promise<number> {
   return processId;
 }
 
-async function growRightTerminal(page: Page, deltaPx: number): Promise<number> {
+async function growRightTerminal(
+  page: Page,
+  deltaPx: number,
+): Promise<{ width: number; settle: SettleBudget }> {
   const column = page.locator('#terminal-column');
   const before = await column.evaluate((element) => element.getBoundingClientRect().width);
   const handle = await column.evaluate((element) => {
@@ -422,18 +433,16 @@ async function growRightTerminal(page: Page, deltaPx: number): Promise<number> {
   await page.mouse.down();
   await page.mouse.move(handle.x - deltaPx, handle.y + handle.height / 2, { steps: 12 });
   await page.mouse.up();
-  await expect
-    .poll(() => column.evaluate((element) => element.getBoundingClientRect().width))
-    .toBeGreaterThan(before + deltaPx / 2);
-  return column.evaluate((element) => element.getBoundingClientRect().width);
-}
-
-async function expectCollapsedRailColumn(page: Page, selector: string): Promise<void> {
-  const column = page.locator(selector);
-  await expect(column).toHaveCount(1);
-  await expect
-    .poll(() => column.evaluate((element) => element.getBoundingClientRect().width))
-    .toBe(0);
+  const settle = settleBudget('right Terminal resize and its persisted layout', {
+    timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+  });
+  await expectSettledReading(
+    () => readRailColumnWidth(page, '#terminal-column'),
+    (width) => expect(width).toBeGreaterThan(before + deltaPx / 2),
+    { reading: 'width', of: '#terminal-column', budget: settle },
+  );
+  const width = await column.evaluate((element) => element.getBoundingClientRect().width);
+  return { width, settle };
 }
 
 async function expectStillScrolledBack(page: Page, newestLine: string): Promise<void> {
@@ -557,21 +566,18 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
     await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
     await moveTerminal(app, page, 'right');
-    const restoredWidth = await growRightTerminal(page, 120);
+    const { width: restoredWidth, settle: railResize } = await growRightTerminal(page, 120);
 
-    await expect
-      .poll(async () => {
-        return page.evaluate(() => localStorage.getItem('ok-terminal-placement-v1'));
-      })
-      .toBe('right');
-    await expect
-      .poll(async () => {
-        const retainedWidth = await page.evaluate(() =>
-          Number(localStorage.getItem('ok-terminal-right-width-v1')),
-        );
-        return Math.abs(retainedWidth - restoredWidth);
-      })
-      .toBeLessThan(20);
+    await expectSettledReading(
+      () => page.evaluate(() => localStorage.getItem('ok-terminal-placement-v1')),
+      (placement) => expect(placement).toBe('right'),
+      { reading: 'placement', of: 'localStorage ok-terminal-placement-v1', budget: railResize },
+    );
+    await expectSettledReading(
+      () => page.evaluate(() => Number(localStorage.getItem('ok-terminal-right-width-v1'))),
+      (retainedWidth) => expect(Math.abs(retainedWidth - restoredWidth)).toBeLessThan(20),
+      { reading: 'width', of: 'localStorage ok-terminal-right-width-v1', budget: railResize },
+    );
     await page.reload({ waitUntil: 'domcontentloaded' });
 
     await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 20_000 });
@@ -579,18 +585,19 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await expect(terminalTabs(page)).toHaveText([secondLabel, 'restart first'], {
       timeout: 25_000,
     });
+    const restoredTail = settleBudget('restored active tab and right Terminal width', {
+      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+    });
     await expect(page.getByRole('tab', { name: secondLabel })).toHaveAttribute(
       'aria-selected',
       'true',
+      { timeout: restoredTail.remainingMs() },
     );
-    await expect
-      .poll(async () => {
-        const width = await page
-          .locator('#terminal-column')
-          .evaluate((element) => element.getBoundingClientRect().width);
-        return Math.abs(width - restoredWidth);
-      })
-      .toBeLessThan(20);
+    await expectSettledReading(
+      () => readRailColumnWidth(page, '#terminal-column'),
+      (width) => expect(Math.abs(width - restoredWidth)).toBeLessThan(20),
+      { reading: 'width', of: '#terminal-column', budget: restoredTail },
+    );
     expect(await readShellPid(page, processMarker)).toBe(processId);
     const afterRestart = `AFTER_RESTART_${token}`;
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(afterRestart)}\r`);
@@ -605,8 +612,15 @@ test.describe('Terminal placement continuity — live Electron', () => {
       };
       target.setSize(900, 900, false);
     });
-    await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThan(1000);
-    await expectCollapsedRailColumn(page, '#agents-column');
+    const shrink = settleBudget('rail admission after the window narrows to 900 px', {
+      timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
+    });
+    await expectSettledReading(
+      () => page.evaluate(() => window.innerWidth),
+      (width) => expect(width).toBeLessThan(1000),
+      { reading: 'innerWidth', of: 'the editor window', budget: shrink },
+    );
+    await expectCollapsedRailColumn(page, '#agents-column', { budget: shrink });
     await page.evaluate(() => {
       window.okDesktop?.editor.notifyViewMenuStateChanged({ agentPanelVisible: true });
     });
@@ -619,12 +633,16 @@ test.describe('Terminal placement continuity — live Electron', () => {
         { timeout: 10_000 },
       )
       .toBe(true);
-    await page.reload({ waitUntil: 'domcontentloaded' });
-
-    // STOP: this notice auto-dismisses 4s after firing (sonner TOAST_LIFETIME; <Toaster> sets no duration), so assert it before slower waits.
-    await expect(page.getByText('Agent panel closed to keep Terminal readable.')).toBeVisible({
-      timeout: 20_000,
-    });
+    await expectNoticeFromTrigger(
+      'Agent panel closed to keep Terminal readable.',
+      transientNoticeObservation(page, {
+        document: 'next',
+        trigger: async () => {
+          await page.reload({ waitUntil: 'domcontentloaded' });
+        },
+      }),
+      { timeout: 20_000 },
+    );
     await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
     await expectCollapsedRailColumn(page, '#agents-column');
     await editorWindow.evaluate((windowHandle: unknown) => {
