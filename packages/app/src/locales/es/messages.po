@@ -1343,7 +1343,7 @@ msgstr "La etiqueta <0>Modificada</0> marca las reglas que tu configuración def
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr "Ya existe una rama llamada {shareBranch}. Abre su worktree desde el selector."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "Ya existe una rama con ese nombre. Abre su worktree desde el selector."
 
@@ -1393,8 +1393,8 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "Una línea con una nota al pie<0><1>[1]</1></0> y una definición que se muestra abajo."
 
 #: src/components/RecentProjectsMenu.tsx
-msgid "A linked worktree of this repository"
-msgstr "Un worktree vinculado de este repositorio"
+msgid "A linked worktree whose location could not be loaded"
+msgstr "Un árbol de trabajo vinculado cuya ubicación no se pudo cargar"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
@@ -1511,7 +1511,7 @@ msgstr "Un título, una descripción, etiquetas: cualquier cosa que describa est
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Ya existe una carpeta de worktree para {shareBranch}."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A worktree folder for that branch already exists."
 msgstr "Ya existe una carpeta de worktree para esa rama."
 
@@ -4072,7 +4072,7 @@ msgstr "No se pudo crear la plantilla: {error}"
 msgid "Couldn't create the report"
 msgstr "No se pudo crear el informe"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "No se pudo crear el worktree. Prueba con otro nombre."
 
@@ -4201,6 +4201,10 @@ msgstr "No se pudieron cargar las habilidades de OpenKnowledge. Inténtalo de nu
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "No se pudo cargar la vista previa de la versión. Aun así puedes elegir abajo cómo resolverlo."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Couldn't load worktrees."
+msgstr "No se pudieron cargar los árboles de trabajo."
+
 #: src/components/SessionsHost.tsx
 msgid "Couldn't load your agents."
 msgstr "No se pudieron cargar tus agentes."
@@ -4243,10 +4247,6 @@ msgstr "No se pudo abrir \"{name}\": {0}"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Couldn't open {0} for editing: {1}"
 msgstr "No se pudo abrir {0} para editarlo: {1}"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Couldn't open a worktree for that branch."
-msgstr "No se pudo abrir un worktree para esa rama."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Couldn't open document"
@@ -5034,6 +5034,11 @@ msgstr "tokens de descripción"
 msgid "Design"
 msgstr "Diseño"
 
+#. placeholder {0}: entry.headSha.slice(0, 8)
+#: src/components/RecentProjectsMenu.tsx
+msgid "Detached at {0}"
+msgstr "Desconectado en {0}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "detached HEAD"
 msgstr "HEAD desacoplado"
@@ -5812,7 +5817,7 @@ msgstr "Escribe una URL de repositorio o propietario/repositorio"
 msgid "Enter a title for this template."
 msgstr "Escribe un título para esta plantilla."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "Escribe un nombre de rama válido (sin espacios, sin punto inicial, sin \"..\")."
 
@@ -5984,6 +5989,10 @@ msgstr "¿Exponer este proyecto a la red?"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
 msgstr "Exponer fija un puerto para que el destino del túnel permanezca estable entre reinicios."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "external"
+msgstr "externo"
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6775,9 +6784,17 @@ msgstr "Git y PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git no puede seguir esta carpeta: está vacía o solo contiene archivos ignorados. El enlace no funcionará hasta que añadas un documento seguido por git."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git has locked this worktree, but it can still be opened."
+msgstr "Git ha bloqueado este worktree, pero aún se puede abrir."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "No has definido tu identidad de git: los commits usan un autor por defecto. Define la tuya para que tus compañeros vean tu nombre."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git marks this worktree as prunable."
+msgstr "Git marca este worktree como eliminable."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Git merge rule"
@@ -6787,7 +6804,7 @@ msgstr "Regla de combinación de Git"
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git necesita {tool} para este repositorio, pero no está instalado o no se ha encontrado. Instálalo y vuelve a intentarlo."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git necesita una herramienta auxiliar (como git-lfs) que no está instalada o no se ha encontrado. Instálala y vuelve a intentarlo."
 
@@ -7580,6 +7597,10 @@ msgstr "Insertar fila debajo"
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
 msgstr "Inserta, elimina, mueve, copia y sangra líneas del editor de código con el mapa de teclas por defecto de CodeMirror."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Inside this repository's OpenKnowledge worktrees folder"
+msgstr "Dentro de la carpeta de árboles de trabajo de OpenKnowledge de este repositorio"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
@@ -7774,6 +7795,10 @@ msgstr "Instrucción para la IA"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Integrations"
 msgstr "Integraciones"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "internal"
+msgstr "interno"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid color value"
@@ -8292,6 +8317,10 @@ msgstr "Cargando el chat"
 msgid "Loading timeline history"
 msgstr "Cargando el historial de la cronología"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Loading worktrees…"
+msgstr "Cargando worktrees…"
+
 #: src/components/BugReportHistory.tsx
 msgid "Loading your reports"
 msgstr "Cargando tus informes"
@@ -8343,6 +8372,10 @@ msgstr "Se pidió solo local, pero no se creó ningún repositorio de git. Puede
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
 msgstr "Ubicación"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "locked"
+msgstr "bloqueado"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Logs & system info"
@@ -9520,6 +9553,10 @@ msgstr "Todavía no hay plantillas. Añade una para dar a los documentos nuevos 
 msgid "No workspace"
 msgstr "Sin espacio de trabajo"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "No worktrees found."
+msgstr "No se encontraron árboles de trabajo."
+
 #: src/components/settings/SyncSection.tsx
 msgid "None"
 msgstr "Ninguno"
@@ -10178,6 +10215,10 @@ msgstr "OpenKnowledge revisó el proyecto"
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge no encontró este agente en este equipo."
 
+#: src/lib/worktree-create-error.ts
+msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+msgstr "OpenKnowledge no pudo terminar de configurar este proyecto. El worktree se creó, pero no se abrió."
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge no pudo leer terminal.shell en .ok/local/config.yml. Se usará un shell de Windows disponible."
@@ -10491,6 +10532,10 @@ msgstr "Esquema"
 msgid "Outside any block"
 msgstr "Fuera de cualquier bloque"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Outside this repository's OpenKnowledge worktrees folder"
+msgstr "Fuera de la carpeta de árboles de trabajo de OpenKnowledge de este repositorio"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
 msgstr "Fuera de lo que confirma Open Knowledge."
@@ -10688,6 +10733,10 @@ msgstr "La ruta apunta fuera del proyecto"
 #: src/editor/link-path-suggestions.tsx
 msgid "Path suggestions"
 msgstr "Sugerencias de rutas"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "path unreadable"
+msgstr "ruta ilegible"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Pattern (regex)"
@@ -11013,6 +11062,10 @@ msgstr "Se creó la carpeta del proyecto, pero falló git init. Inténtalo de nu
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "Servidor MCP del proyecto"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "project missing"
+msgstr "falta el proyecto"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -13548,6 +13601,10 @@ msgstr "Dividir el elemento de lista"
 msgid "Stage the selected passage in the agents panel, ready to extend and send."
 msgstr "Prepara el fragmento seleccionado en el panel de agentes, listo para ampliar y enviar."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "stale Git entry"
+msgstr "entrada de Git obsoleta"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Danos una estrella en GitHub"
@@ -14133,8 +14190,8 @@ msgstr "¡Gracias por tus comentarios!"
 msgid "Thanks for the report!"
 msgstr "¡Gracias por el informe!"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "That branch is already open in another worktree."
 msgstr "Esa rama ya está abierta en otro worktree."
 
@@ -14330,6 +14387,18 @@ msgstr "El id del modelo que sirve tu endpoint. El tamaño de su vector se detec
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "el agente abierto"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "The OpenKnowledge project is missing at this checkout path."
+msgstr "Falta el proyecto de OpenKnowledge en esta ruta de checkout."
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch cannot be read. The worktree was created but not opened."
+msgstr "No se puede leer la ruta del proyecto de OpenKnowledge en esta rama. El worktree se creó, pero no se abrió."
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
+msgstr "La ruta del proyecto de OpenKnowledge en esta rama sale del worktree. El worktree se creó, pero no se abrió."
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
@@ -14694,13 +14763,25 @@ msgstr "Este agente funciona con {0}, que no está instalado. Open Knowledge pue
 msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
 msgstr "Esto también instala {packSkillCount, plural, one {# habilidad} many {# habilidades} other {# habilidades}} del paquete."
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch does not contain this OpenKnowledge project. The worktree was created but not opened."
+msgstr "Esta rama no contiene este proyecto de OpenKnowledge. El worktree se creó, pero no se abrió."
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
 msgstr "Esta rama está extraída en:"
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
+msgstr "Esta rama redirige una ruta de configuración de OpenKnowledge fuera del worktree. El worktree se creó, pero no se abrió."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Esto se puede configurar en Ajustes > Herramientas de IA y CLI"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This checkout path cannot be read."
+msgstr "No se puede leer esta ruta de checkout."
 
 #: src/components/acp/ThreadView.tsx
 msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -14990,8 +15071,8 @@ msgstr "Esto elimina definitivamente {path}. Los agentes que hagan referencia a 
 msgid "This project"
 msgstr "Este proyecto"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
 msgstr "Este proyecto aún no tiene commits, así que no hay ninguna rama en la que basar un worktree. Haz un primer commit y vuelve a intentarlo."
 
@@ -15014,8 +15095,8 @@ msgstr "Este proyecto está ejecutando una compilación de OpenKnowledge distint
 msgid "This project is running an older version of OpenKnowledge (v{0}) than this app (v{1})."
 msgstr "Este proyecto está ejecutando una versión de OpenKnowledge (v{0}) más antigua que la de esta aplicación (v{1})."
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr "Este proyecto no es un repositorio de git, así que los worktrees no están disponibles."
 
@@ -15121,6 +15202,10 @@ msgstr "Esto suele significar una de estas cosas:"
 #: src/components/AuthModal.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "Esta ventana no puede guardar un token: abre Ajustes desde la ventana principal de la aplicación."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This worktree is no longer available."
+msgstr "Este árbol de trabajo ya no está disponible."
 
 #: src/components/acp/working-status.ts
 msgid "Tidying up…"

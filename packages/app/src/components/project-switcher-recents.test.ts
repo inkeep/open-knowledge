@@ -1,4 +1,4 @@
-import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
+import type { WorktreeInventoryModel, WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import type { RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import {
@@ -8,267 +8,191 @@ import {
   rowLocation,
 } from './project-switcher-recents.ts';
 
-function main(path: string, commonDir: string, branch = 'main'): RecentProjectEntry {
+function recent(input: {
+  path: string;
+  commonDir?: string;
+  mainRoot?: string;
+  checkoutRoot?: string;
+  projectSubPath?: string;
+  linked?: boolean;
+  branch?: string;
+  opened?: string;
+}): RecentProjectEntry {
   return {
-    path,
-    name: path.split('/').pop() ?? path,
-    lastOpenedAt: '2026-07-01',
-    gitCommonDir: commonDir,
-    mainRoot: path,
-    isLinkedWorktree: false,
-    branch,
+    path: input.path,
+    name: basenameOf(input.path),
+    lastOpenedAt: input.opened ?? '2026-07-01',
+    ...(input.commonDir === undefined ? {} : { gitCommonDir: input.commonDir }),
+    ...(input.mainRoot === undefined ? {} : { mainRoot: input.mainRoot }),
+    ...(input.checkoutRoot === undefined ? {} : { checkoutRoot: input.checkoutRoot }),
+    ...(input.projectSubPath === undefined ? {} : { projectSubPath: input.projectSubPath }),
+    ...(input.linked === undefined ? {} : { isLinkedWorktree: input.linked }),
+    ...(input.branch === undefined ? {} : { branch: input.branch }),
   };
-}
-function worktree(
-  path: string,
-  commonDir: string,
-  mainRoot: string,
-  branch: string,
-  lastOpenedAt = '2026-07-01',
-): RecentProjectEntry {
-  return {
-    path,
-    name: path.split('/').pop() ?? path,
-    lastOpenedAt,
-    gitCommonDir: commonDir,
-    mainRoot,
-    isLinkedWorktree: true,
-    branch,
-  };
-}
-function nonGit(path: string): RecentProjectEntry {
-  return { path, name: path.split('/').pop() ?? path, lastOpenedAt: '2026-07-01' };
 }
 
-function model(
-  entries: WorktreeSelectorModel['entries'],
-  mainRoot = '/repo',
-): WorktreeSelectorModel {
-  return { mainRoot, currentBranch: 'main', entries, remoteBranches: [] };
+function repoRecent(
+  path: string,
+  checkoutRoot: string,
+  branch: string,
+  options: { linked?: boolean; projectSubPath?: string; opened?: string } = {},
+): RecentProjectEntry {
+  const projectSubPath = options.projectSubPath ?? '';
+  return recent({
+    path,
+    commonDir: '/repo/.git',
+    mainRoot: '/repo',
+    checkoutRoot,
+    projectSubPath,
+    linked: options.linked ?? checkoutRoot !== '/repo',
+    branch,
+    opened: options.opened,
+  });
+}
+
+function inventory(projectSubPath = ''): WorktreeInventoryModel {
+  const suffix = projectSubPath === '' ? '' : `/${projectSubPath}`;
+  return {
+    gitCommonDir: '/repo/.git',
+    primaryCheckoutRoot: '/repo',
+    projectSubPath,
+    entries: [
+      {
+        checkoutRoot: '/repo',
+        projectPath: `/repo${suffix}`,
+        branch: 'main',
+        headSha: '11111111',
+        location: 'primary',
+        availability: 'available',
+        locked: false,
+        prunable: false,
+      },
+      {
+        checkoutRoot: '/repo/.ok/worktrees/dev',
+        projectPath: `/repo/.ok/worktrees/dev${suffix}`,
+        branch: 'dev',
+        headSha: '22222222',
+        location: 'internal',
+        availability: 'available',
+        locked: true,
+        prunable: false,
+      },
+      {
+        checkoutRoot: '/external/repo-feat',
+        projectPath: `/external/repo-feat${suffix}`,
+        branch: null,
+        headSha: '33333333',
+        location: 'external',
+        availability: 'missing',
+        locked: false,
+        prunable: true,
+      },
+    ],
+  };
+}
+
+function selector(entries: WorktreeSelectorModel['entries']): WorktreeSelectorModel {
+  return { mainRoot: '/repo', currentBranch: 'main', entries, remoteBranches: [] };
 }
 
 describe('basenameOf', () => {
-  test('handles / and \\ and trailing slashes', () => {
-    expect(basenameOf('/a/b/test')).toBe('test');
+  test('handles platform separators and trailing slashes', () => {
     expect(basenameOf('/a/b/test/')).toBe('test');
     expect(basenameOf('C:\\a\\b\\test')).toBe('test');
-    expect(basenameOf('solo')).toBe('solo');
   });
 });
 
 describe('groupRecentsByRepo', () => {
-  test('groups a repo main + its linked worktrees under one group', () => {
+  test('groups by repository identity plus project-relative root', () => {
     const groups = groupRecentsByRepo([
-      main('/repo', '/repo/.git'),
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
-      worktree('/repo/.ok/worktrees/feat', '/repo/.git', '/repo', 'feat'),
-    ]);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.project.path).toBe('/repo');
-    expect(groups[0]?.projectSynthesized).toBe(false);
-    expect(groups[0]?.worktrees.map((w) => w.branch)).toEqual(['dev', 'feat']);
-  });
-
-  test('non-git recents become singleton groups with no worktrees', () => {
-    const groups = groupRecentsByRepo([nonGit('/notes'), nonGit('/scratch')]);
-    expect(groups).toHaveLength(2);
-    expect(groups.every((g) => g.worktrees.length === 0)).toBe(true);
-    expect(groups.map((g) => g.project.path)).toEqual(['/notes', '/scratch']);
-  });
-
-  test('synthesizes the project row when only a worktree is in recents', () => {
-    const groups = groupRecentsByRepo([
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
-    ]);
-    expect(groups).toHaveLength(1);
-    expect(groups[0]?.project.path).toBe('/repo');
-    expect(groups[0]?.project.name).toBe('repo');
-    expect(groups[0]?.projectSynthesized).toBe(true);
-    expect(groups[0]?.worktrees).toHaveLength(1);
-  });
-
-  test('preserves recents order across groups', () => {
-    const groups = groupRecentsByRepo([
-      main('/alpha', '/alpha/.git'),
-      nonGit('/notes'),
-      main('/beta', '/beta/.git'),
-      worktree('/alpha/.ok/worktrees/x', '/alpha/.git', '/alpha', 'x'),
-    ]);
-    expect(groups.map((g) => g.project.path)).toEqual(['/alpha', '/notes', '/beta']);
-    expect(groups[0]?.worktrees).toHaveLength(1);
-  });
-
-  test('two different repos stay separate', () => {
-    const groups = groupRecentsByRepo([
-      main('/a', '/a/.git'),
-      worktree('/a/.ok/worktrees/x', '/a/.git', '/a', 'x'),
-      main('/b', '/b/.git'),
+      repoRecent('/repo', '/repo', 'main'),
+      repoRecent('/repo/.ok/worktrees/dev', '/repo/.ok/worktrees/dev', 'dev'),
+      repoRecent('/repo/packages/docs', '/repo', 'main', { projectSubPath: 'packages/docs' }),
+      repoRecent('/external/repo-docs/packages/docs', '/external/repo-docs', 'docs', {
+        linked: true,
+        projectSubPath: 'packages/docs',
+      }),
     ]);
     expect(groups).toHaveLength(2);
+    expect(groups.map((group) => group.projectSubPath)).toEqual(['', 'packages/docs']);
+    expect(groups[0]?.worktrees.map((entry) => entry.branch)).toEqual(['dev']);
+    expect(groups[1]?.worktrees.map((entry) => entry.branch)).toEqual(['docs']);
+  });
+
+  test('linked-only history keeps repository identity without fabricating a primary path', () => {
+    const linked = repoRecent('/external/repo-feat', '/external/repo-feat', 'feat');
+    const [group] = groupRecentsByRepo([linked]);
+    expect(group?.gitCommonDir).toBe('/repo/.git');
+    expect(group?.repositoryName).toBe('repo');
+    expect(group?.primaryProject).toBeNull();
+    expect(group?.project.path).toBe(linked.path);
+    expect(group?.inventoryAnchorPath).toBe(linked.path);
+  });
+
+  test('non-Git recents remain independent project groups', () => {
+    const groups = groupRecentsByRepo([recent({ path: '/notes' }), recent({ path: '/scratch' })]);
+    expect(groups.map((group) => group.project.path)).toEqual(['/notes', '/scratch']);
+    expect(groups.every((group) => group.gitCommonDir === null)).toBe(true);
   });
 });
 
 describe('buildWorktreeFlyoutEntries', () => {
-  test('pins main first, then opened worktrees by recency (newest first)', () => {
+  test('a linked-only recent receives the full selected-scope inventory', () => {
     const [group] = groupRecentsByRepo([
-      main('/repo', '/repo/.git'),
-      worktree('/repo/.ok/worktrees/older', '/repo/.git', '/repo', 'older', '2026-06-01'),
-      worktree('/repo/.ok/worktrees/newer', '/repo/.git', '/repo', 'newer', '2026-06-30'),
+      repoRecent('/repo/.ok/worktrees/dev', '/repo/.ok/worktrees/dev', 'dev'),
     ]);
-    if (group === undefined) throw new Error('group');
-    const entries = buildWorktreeFlyoutEntries(group, null, '/other');
-    expect(entries.map((e) => e.path)).toEqual([
+    if (group === undefined) throw new Error('missing group');
+    const entries = buildWorktreeFlyoutEntries(group, inventory(), null, '/elsewhere');
+    expect(entries.map((entry) => entry.path)).toEqual([
       '/repo',
-      '/repo/.ok/worktrees/newer',
-      '/repo/.ok/worktrees/older',
+      '/repo/.ok/worktrees/dev',
+      '/external/repo-feat',
     ]);
-    expect(entries[0]?.isMain).toBe(true);
-    expect(entries[0]?.branch).toBe('main');
+    expect(entries.map(rowLocation)).toEqual(['primary', 'internal', 'external']);
+    expect(entries[1]).toMatchObject({ locked: true, availability: 'available' });
+    expect(entries[2]).toMatchObject({ prunable: true, availability: 'missing' });
   });
 
-  test('flags the current entry', () => {
+  test('nested project inventory keeps the projected project path as open identity', () => {
     const [group] = groupRecentsByRepo([
-      main('/repo', '/repo/.git'),
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
+      repoRecent('/repo/packages/docs', '/repo', 'main', { projectSubPath: 'packages/docs' }),
     ]);
-    if (group === undefined) throw new Error('group');
-    const entries = buildWorktreeFlyoutEntries(group, null, '/repo/.ok/worktrees/dev');
-    expect(entries.find((e) => e.path === '/repo/.ok/worktrees/dev')?.isCurrent).toBe(true);
-    expect(entries.find((e) => e.isMain)?.isCurrent).toBe(false);
-  });
-
-  test('a synthesized project row contributes no pinned main entry', () => {
-    const [group] = groupRecentsByRepo([
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
-    ]);
-    if (group === undefined) throw new Error('group');
-    const entries = buildWorktreeFlyoutEntries(group, null, '/other');
-    expect(entries.some((e) => e.isMain)).toBe(false);
-    expect(entries.map((e) => e.path)).toEqual(['/repo/.ok/worktrees/dev']);
-  });
-
-  test('merges the current project’s un-opened branches (create-on-demand) after opened worktrees', () => {
-    const [group] = groupRecentsByRepo([
-      main('/repo', '/repo/.git'),
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
-    ]);
-    if (group === undefined) throw new Error('group');
+    if (group === undefined) throw new Error('missing group');
     const entries = buildWorktreeFlyoutEntries(
       group,
-      model([
-        { branch: 'main', worktreePath: '/repo', isCurrent: false, isMain: true, locked: false },
-        {
-          branch: 'dev',
-          worktreePath: '/repo/.ok/worktrees/dev',
-          isCurrent: false,
-          isMain: false,
-          locked: false,
-        },
-        { branch: 'zeta', worktreePath: null, isCurrent: false, isMain: false, locked: false },
-        { branch: 'alpha', worktreePath: null, isCurrent: false, isMain: false, locked: false },
-      ]),
-      '/other',
+      inventory('packages/docs'),
+      null,
+      '/repo/packages/docs',
     );
-    expect(entries.map((e) => e.branch)).toEqual(['main', 'dev', 'alpha', 'zeta']);
-    const alpha = entries.find((e) => e.branch === 'alpha');
-    expect(alpha?.opened).toBe(false);
-    expect(alpha?.path).toBeNull();
+    expect(entries.find((entry) => entry.location === 'internal')).toMatchObject({
+      path: '/repo/.ok/worktrees/dev/packages/docs',
+      checkoutRoot: '/repo/.ok/worktrees/dev',
+      isCurrent: false,
+      inventoryOpenRequest: {
+        projectSubPath: 'packages/docs',
+        projectPath: '/repo/.ok/worktrees/dev/packages/docs',
+      },
+    });
   });
 
-  test('does not merge a branch model belonging to a different project', () => {
-    const [group] = groupRecentsByRepo([
-      main('/repo', '/repo/.git'),
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
+  test('branch creation entries appear only for the active project scope', () => {
+    const [active] = groupRecentsByRepo([repoRecent('/repo', '/repo', 'main')]);
+    const [inactive] = groupRecentsByRepo([
+      repoRecent('/repo/packages/docs', '/repo', 'main', { projectSubPath: 'packages/docs' }),
     ]);
-    if (group === undefined) throw new Error('group');
-    const entries = buildWorktreeFlyoutEntries(
-      group,
-      model(
-        [{ branch: 'leak', worktreePath: null, isCurrent: false, isMain: false, locked: false }],
-        '/elsewhere',
+    if (active === undefined || inactive === undefined) throw new Error('missing group');
+    const branchModel = selector([
+      { branch: 'new-branch', worktreePath: null, isCurrent: false, isMain: false, locked: false },
+    ]);
+    expect(
+      buildWorktreeFlyoutEntries(active, inventory(), branchModel, '/repo').map(
+        (entry) => entry.branch,
       ),
-      '/other',
-    );
-    expect(entries.some((e) => e.branch === 'leak')).toBe(false);
-  });
-
-  test('does not double-list a branch already present as an opened worktree', () => {
-    const [group] = groupRecentsByRepo([
-      main('/repo', '/repo/.git'),
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
-    ]);
-    if (group === undefined) throw new Error('group');
-    const entries = buildWorktreeFlyoutEntries(
-      group,
-      model([
-        {
-          branch: 'dev',
-          worktreePath: '/repo/.ok/worktrees/dev',
-          isCurrent: false,
-          isMain: false,
-          locked: false,
-        },
-      ]),
-      '/other',
-    );
-    expect(entries.filter((e) => e.branch === 'dev')).toHaveLength(1);
-  });
-});
-
-describe('rowLocation', () => {
-  test('classifies each row into exactly one location', () => {
-    expect(rowLocation({ isMain: true, opened: true })).toBe('primary');
-    expect(rowLocation({ isMain: false, opened: true })).toBe('worktree');
-    expect(rowLocation({ isMain: false, opened: false })).toBe('none');
-  });
-
-  test('a row with no worktree keeps its creation affordance even when flagged as the original clone', () => {
-    expect(rowLocation({ isMain: true, opened: false })).toBe('none');
-  });
-
-  test('every combination of the two inputs yields the expected location', () => {
-    const locations = [true, false].flatMap((isMain) =>
-      [true, false].map((opened) => rowLocation({ isMain, opened })),
-    );
-    expect(locations).toEqual(['primary', 'none', 'worktree', 'none']);
-  });
-});
-
-describe('the original clone is identified by directory, not by branch (PRD-7330)', () => {
-  function group(rootBranch: string) {
-    const [g] = groupRecentsByRepo([
-      main('/repo', '/repo/.git', rootBranch),
-      worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev'),
-    ]);
-    if (g === undefined) throw new Error('group');
-    return g;
-  }
-
-  test('the original clone is `primary` whatever branch is checked out there', () => {
-    for (const rootBranch of ['main', 'feat/login', 'fix/crash']) {
-      const entries = buildWorktreeFlyoutEntries(group(rootBranch), null, '/repo');
-      const primary = entries.filter((e) => rowLocation(e) === 'primary');
-      expect(primary).toHaveLength(1);
-      expect(primary[0]?.branch).toBe(rootBranch);
-    }
-  });
-
-  test('the repository default branch is not badged `primary` when the original clone is elsewhere', () => {
-    const entries = buildWorktreeFlyoutEntries(
-      group('feat/login'),
-      model([
-        { branch: 'main', worktreePath: null, isCurrent: false, isMain: false, locked: false },
-      ]),
-      '/repo',
-    );
-    const mainRow = entries.find((e) => e.branch === 'main');
-    if (mainRow === undefined) throw new Error('expected a row for the default branch');
-    expect(rowLocation(mainRow)).toBe('none');
-  });
-
-  test('linked worktrees are badged `worktree`, so neither category is inferred from absence', () => {
-    const entries = buildWorktreeFlyoutEntries(group('feat/login'), null, '/repo');
-    expect(entries.map((e) => rowLocation(e)).filter((l) => l === 'worktree')).toHaveLength(1);
-    expect(entries.map((e) => rowLocation(e))).toHaveLength(entries.length);
+    ).toContain('new-branch');
+    expect(
+      buildWorktreeFlyoutEntries(inactive, inventory('packages/docs'), branchModel, '/repo').map(
+        (entry) => entry.branch,
+      ),
+    ).not.toContain('new-branch');
   });
 });

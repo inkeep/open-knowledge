@@ -78,6 +78,25 @@ describe('classifyRecentGit', () => {
     expect(main.gitCommonDir).toBe(linked.gitCommonDir);
   });
 
+  test('records checkout root and project-relative path for nested project scopes', async () => {
+    handle = await makeRepoWithWorktree();
+    const nestedMain = join(handle.mainRepo, 'packages', 'docs');
+    const nestedLinked = join(handle.worktree, 'packages', 'docs');
+    mkdirSync(nestedMain, { recursive: true });
+    mkdirSync(nestedLinked, { recursive: true });
+    const main = classifyRecentGit(nestedMain);
+    const linked = classifyRecentGit(nestedLinked);
+    expect(main).toMatchObject({
+      checkoutRoot: handle.mainRepo,
+      projectSubPath: join('packages', 'docs'),
+    });
+    expect(linked).toMatchObject({
+      checkoutRoot: handle.worktree,
+      projectSubPath: join('packages', 'docs'),
+    });
+    expect(main.gitCommonDir).toBe(linked.gitCommonDir);
+  });
+
   test('non-git dir → empty classification', () => {
     const tmp = realpathSync(mkdtempSync(join(tmpdir(), 'wt-recents-nogit-')));
     try {

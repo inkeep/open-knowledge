@@ -249,6 +249,7 @@
     "2CHoQv": ["Force Reload"],
     "2Ce6hp": ["Move across"],
     "2D1x3Y": ["Apply and restart project server"],
+    "2EcUjH": ["internal"],
     "2FYpfJ": ["More"],
     "2G-56b": ["Failed to update markdownlint rules"],
     "2GT3Hf": ["Global"],
@@ -303,6 +304,7 @@
     "3-1BY2": ["This terminal session is no longer available."],
     "322lyb": ["Highlight tips, warnings, and notes."],
     "32TTpa": ["Email support about this report"],
+    "33FYnv": ["path unreadable"],
     "34qyH5": ["Could not reach server"],
     "36WXSC": ["Couldn't delete template: ", ["error"]],
     "36aWJD": ["Join us on Discord"],
@@ -351,7 +353,6 @@
     "3SZrdj": ["Check for updates…"],
     "3TSz9S": ["Minimize"],
     "3Uuuft": ["Report from ", ["0"]],
-    "3UzaS-": ["A linked worktree of this repository"],
     "3V94ia": ["Couldn't send your comments — the workspace isn't ready."],
     "3VbwPp": ["Open ", ["keyName"], " in browser"],
     "3VsNTI": ["Loading document"],
@@ -564,6 +565,7 @@
     "636K3K": ["Delete adjacent chip"],
     "64sesb": ["Callouts draw attention to key information."],
     "65Ea2s": ["Exposing pins a fixed port so the tunnel's target stays stable across restarts."],
+    "66JlOb": ["A linked worktree whose location could not be loaded"],
     "67Dpmh": ["Slash command suggestions"],
     "67f-3g": ["Duplicate succeeded but the sidebar may be out of date — refresh to resync"],
     "69E1Pq": [
@@ -665,6 +667,9 @@
     ],
     "7Ag-Xu": ["Ask ", ["agentName"], ", ", ["hint"]],
     "7Bj3x9": ["Failed"],
+    "7C9JcA": [
+      "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
+    ],
     "7FA2iI": ["Couldn't read the comments waiting to send — nothing was sent."],
     "7FamGZ": ["Go to line"],
     "7Fkcej": ["+ Add ", ["addChildName"]],
@@ -1079,6 +1084,7 @@
     "C0Ciaj": ["Imported as \"", ["0"], "\" — the name \"", ["1"], "\" was taken."],
     "C0hoX6": ["Always included"],
     "C2abof": ["Untracked"],
+    "C37ssn": ["Loading worktrees…"],
     "C3Zc44": ["Explore skills"],
     "C62P6b": ["Editor selection"],
     "C7PKTv": ["Send checked comments to chat"],
@@ -1252,6 +1258,7 @@
       "Manage the GitHub account OpenKnowledge uses to browse and sync your repositories."
     ],
     "E7BhZn": ["Blank note"],
+    "E8NbNG": ["Couldn't load worktrees."],
     "E91VZY": ["Open in New Window"],
     "E9bKSA": ["Creating"],
     "E9gh86": ["You can attach up to ", ["MAX_ATTACHMENTS"], " images."],
@@ -1374,6 +1381,7 @@
     ],
     "FCKppt": ["Endpoint"],
     "FCMaBz": ["Which skill"],
+    "FCS8de": ["external"],
     "FCxvG5": ["First item"],
     "FDBwmS": ["Open folder…"],
     "FEK4oC": [
@@ -1636,6 +1644,7 @@
     "ICoNYz": ["You can also manage this in Settings."],
     "IFALcX": ["Description for ", ["field"]],
     "IFezUv": ["The audit could not be completed. Try again."],
+    "IIgshV": ["locked"],
     "IInnZo": ["Conflict"],
     "IKoTAC": ["Keep disabled"],
     "IMLUBh": ["Invalid color value"],
@@ -2223,6 +2232,9 @@
     "PVSwOe": ["Steering — waiting for the current run to stop…"],
     "PVUn_c": ["Open folder"],
     "PVggyD": ["Frontmatter schemas"],
+    "PW-5kK": [
+      "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
+    ],
     "PWh9Ii": ["Apply changes"],
     "PWqtgd": ["Loading the chat"],
     "PXaT32": ["Server returned an incomplete skill-targets response."],
@@ -2303,6 +2315,9 @@
     "QQghPu": ["Install in Claude Desktop"],
     "QR5SP1": ["created template"],
     "QRSdsO": ["Indexing request timeout (seconds)"],
+    "QSH_Sn": [
+      "This branch does not contain this OpenKnowledge project. The worktree was created but not opened."
+    ],
     "QVk3SK": ["This file was deleted on the incoming branch (modify-delete conflict)."],
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
@@ -3279,6 +3294,7 @@
     "bGa3Fk": ["Uploading file"],
     "bH382I": ["Edit this HTML — the preview updates live."],
     "bKt9Jk": ["No active or recent OpenKnowledge projects were found."],
+    "bRyLwy": ["Detached at ", ["0"]],
     "bSD4im": ["Search worktrees and branches"],
     "bS_boY": ["Replace current match"],
     "bUUVED": ["Asset"],
@@ -3886,6 +3902,7 @@
     "hDEaQu": ["Connect OpenKnowledge to other tools you use."],
     "hDKtoF": [["diffHrs"], "h ago"],
     "hDoLrm": ["Remove ", ["projectName"], " from recent projects"],
+    "hE33RG": ["No worktrees found."],
     "hFmYGU": ["Linked theme files aren’t supported"],
     "hGmuTc": ["Docs tagged #", ["tagDocsName"]],
     "hHMv6l": ["Delete block"],
@@ -4039,6 +4056,7 @@
     "ij-Elv": ["Image preview"],
     "ijLc3m": ["Bullet list"],
     "ikSw6W": ["Moved down."],
+    "ikk3no": ["Outside this repository's OpenKnowledge worktrees folder"],
     "ilodsp": ["Let agents use OpenKnowledge without asking"],
     "inJhKB": ["Replace and save"],
     "ioMn4Z": ["New from Template…"],
@@ -4097,6 +4115,9 @@
     "jKeGuZ": ["Deletes a document, folder, template, skill, or asset"],
     "jL3gox": ["Select a value"],
     "jLOL1H": ["Switch to a branch to share."],
+    "jMb2SQ": [
+      "The OpenKnowledge project path on this branch cannot be read. The worktree was created but not opened."
+    ],
     "jO18NZ": ["I'm switching to another tool"],
     "jPUPvG": ["Couldn't resolve the conflict for ", ["filePath"], "."],
     "jRAGrQ": ["Configure agents"],
@@ -4244,6 +4265,7 @@
     "kpqWwG": ["This ", ["targetNoun"], " was removed from branch <0>", ["branch"], "</0>."],
     "ktspdq": ["Tint and badge files that have lint or link problems, without opening them."],
     "ku0yLQ": ["Pages are embedded the first time a search needs them."],
+    "kvWZ9R": ["stale Git entry"],
     "kwNS82": ["This theme can’t be used until the file is fixed."],
     "ky9Tuc": ["Edit ", ["0"], " source"],
     "kzpkcn": ["Couldn't save that edit."],
@@ -4583,11 +4605,13 @@
     "oCZkaG": ["Copy path"],
     "oJl7eO": ["Unknown component: ", ["componentName"], " — source editable below"],
     "oKBnk5": ["More requests were blocked."],
+    "oKE6QZ": ["Git has locked this worktree, but it can still be opened."],
     "oLyLo6": ["The terminal background service isn't running."],
     "oP-FQW": ["Use a relative path inside the skill"],
     "oPU_4D": ["Send when the agent is free"],
     "oPbSBQ": ["Builds a shareable link to a document or folder"],
     "oQA-cA": ["Full path"],
+    "oQubcL": ["Inside this repository's OpenKnowledge worktrees folder"],
     "oS1YpJ": ["Open the Project Navigator."],
     "oVW7VD": ["Installs into this project"],
     "oWsZk8": ["Create missing page ", ["target"]],
@@ -4653,6 +4677,7 @@
     "pMPnZv": ["Deleted ", ["deleted"], " skills"],
     "pOo4Aa": ["Plain text"],
     "pPiV8s": ["Enable Auto (Pull and Push)"],
+    "pSF7TJ": ["This checkout path cannot be read."],
     "pSimwP": ["New name for the ", ["editor"], " version"],
     "pTPqMK": ["Toggle a fenced code block."],
     "pTyA_t": ["tags"],
@@ -4972,6 +4997,9 @@
     "snrVQ7": ["probe failed"],
     "sq4WQH": ["Use ", ["0"], " as the light theme"],
     "sqUrlK": ["Musing…"],
+    "sqgz2k": [
+      "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+    ],
     "srdlOs": [
       "Auto-sync is paused — you don't have permission to push to this repo. Switch to Auto (Pull only) to keep receiving updates."
     ],
@@ -5034,7 +5062,6 @@
     "t_YqKh": ["Remove"],
     "tc65fD": ["Most installed"],
     "tcjTlU": ["Starter packs"],
-    "teD0H9": ["Couldn't open a worktree for that branch."],
     "teFjfG": ["No agent is set up yet — pick one from the send menu."],
     "ten9en": ["Recent project"],
     "tfDRzk": ["Save"],
@@ -5137,6 +5164,7 @@
     "uAQUqI": ["Status"],
     "uA_jXp": ["Switch and update branch"],
     "uBAxNB": ["Editor"],
+    "uCZNXY": ["This worktree is no longer available."],
     "uCaIdy": ["GitHub sign-in is missing or expired. Reconnect to resume syncing."],
     "uDlyqd": [
       "Document the architecture of this repo: create an overview page that links to a page per major module describing its responsibilities and entry points."
@@ -5337,6 +5365,7 @@
     "wHZ58m": ["Open with AI ", ["displayName"], " Desktop"],
     "wJijgU": ["Location"],
     "wJo9oS": ["Close find"],
+    "wKJo7h": ["The OpenKnowledge project is missing at this checkout path."],
     "wQp1V3": ["Mirror of <0>", ["src"], "</0>"],
     "wQvvZY": ["New skill file"],
     "wRni1Z": ["Disable Slidev"],
@@ -5364,6 +5393,7 @@
     "wbpoGe": ["Couldn't install OpenKnowledge skill — ", ["message"]],
     "wbv9xO": ["Create new project"],
     "wc54KE": ["Trying it out…"],
+    "wcZNHh": ["Git marks this worktree as prunable."],
     "wcfO9r": ["No bug reports yet."],
     "wckWOP": ["Manage"],
     "wdRxTD": ["Applying…"],
@@ -5384,6 +5414,7 @@
     ],
     "wndeIl": ["Project-level pages with neither incoming nor outgoing graph edges."],
     "wqD3pI": [["failed"], " of ", ["0"], " comments could not be updated."],
+    "wrdxmT": ["project missing"],
     "ws5o1F": ["Checked by: ", ["0"]],
     "wsLj3t": [
       "That folder already holds code Open Knowledge didn't write, which the same trust would let ",

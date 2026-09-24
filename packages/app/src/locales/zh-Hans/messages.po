@@ -995,7 +995,7 @@ msgstr "{omitted, plural, other {另有 # 处属性改动未显示}}"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
-msgstr "{openedWorktreeCount, plural, other {worktree}}"
+msgstr "{openedWorktreeCount, plural, one {worktree} other {worktree}}"
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -1343,7 +1343,7 @@ msgstr "<0>已修改</0>标记表示你的配置显式设置过的规则——�
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr "名为 {shareBranch} 的分支已存在。请从切换器中打开它的 worktree。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "同名分支已存在。请从切换器中打开它的 worktree。"
 
@@ -1393,8 +1393,8 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "一行带脚注<0><1>[1]</1></0>的文字，定义显示在下方。"
 
 #: src/components/RecentProjectsMenu.tsx
-msgid "A linked worktree of this repository"
-msgstr "此仓库的一个链接 worktree"
+msgid "A linked worktree whose location could not be loaded"
+msgstr "无法加载位置的链接工作树"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
@@ -1511,7 +1511,7 @@ msgstr "标题、描述、标签——任何能描述这个文件夹的信息。
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch} 的 worktree 文件夹已存在。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A worktree folder for that branch already exists."
 msgstr "该分支的 worktree 文件夹已存在。"
 
@@ -4072,7 +4072,7 @@ msgstr "无法创建模板：{error}"
 msgid "Couldn't create the report"
 msgstr "无法生成报告"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "无法创建 worktree。请换一个名字。"
 
@@ -4201,6 +4201,10 @@ msgstr "无法加载 OpenKnowledge 技能。请重试。"
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "无法加载该版本的预览。你仍然可以在下方选择如何解决。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Couldn't load worktrees."
+msgstr "无法加载工作树。"
+
 #: src/components/SessionsHost.tsx
 msgid "Couldn't load your agents."
 msgstr "无法加载你的智能体。"
@@ -4243,10 +4247,6 @@ msgstr "无法打开“{name}”：{0}"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Couldn't open {0} for editing: {1}"
 msgstr "无法打开 {0} 进行编辑：{1}"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Couldn't open a worktree for that branch."
-msgstr "无法为该分支打开 worktree。"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Couldn't open document"
@@ -5034,6 +5034,11 @@ msgstr "描述 token"
 msgid "Design"
 msgstr "设计"
 
+#. placeholder {0}: entry.headSha.slice(0, 8)
+#: src/components/RecentProjectsMenu.tsx
+msgid "Detached at {0}"
+msgstr "在 {0} 处分离"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "detached HEAD"
 msgstr "分离的 HEAD"
@@ -5812,7 +5817,7 @@ msgstr "请输入仓库 URL 或 owner/repo"
 msgid "Enter a title for this template."
 msgstr "请为这个模板输入标题。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "请输入有效的分支名（不能有空格、不能以点开头、不能包含 \"..\"）。"
 
@@ -5984,6 +5989,10 @@ msgstr "要将此项目公开到网络吗？"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
 msgstr "公开时会固定一个端口，使隧道的目标在重启后保持稳定。"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "external"
+msgstr "外部"
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6775,9 +6784,17 @@ msgstr "Git 与 PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git 无法跟踪这个文件夹——它是空的，或者只包含被忽略的文件。在你添加一个受跟踪的文档之前，链接不会生效。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git has locked this worktree, but it can still be opened."
+msgstr "Git 已锁定此工作树，但仍可打开。"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "尚未设置 git 身份——提交会使用默认作者。设置你自己的身份，队友才能看到你的名字。"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git marks this worktree as prunable."
+msgstr "Git 将此工作树标记为可清理。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Git merge rule"
@@ -6787,7 +6804,7 @@ msgstr "Git 合并规则"
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git 在这个仓库中需要 {tool}，但它未安装或找不到。请先安装再重试。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git 需要一个辅助工具（例如 git-lfs），但它未安装或找不到。请先安装再重试。"
 
@@ -7580,6 +7597,10 @@ msgstr "在下方插入行"
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
 msgstr "通过 CodeMirror 的默认按键映射，在源码编辑器中插入、删除、移动、复制和缩进行。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Inside this repository's OpenKnowledge worktrees folder"
+msgstr "位于此仓库的 OpenKnowledge 工作树文件夹内"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
@@ -7774,6 +7795,10 @@ msgstr "给 AI 的指令"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Integrations"
 msgstr "集成"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "internal"
+msgstr "内部"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid color value"
@@ -8292,6 +8317,10 @@ msgstr "正在加载对话"
 msgid "Loading timeline history"
 msgstr "正在加载时间线历史"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Loading worktrees…"
+msgstr "正在加载工作树…"
+
 #: src/components/BugReportHistory.tsx
 msgid "Loading your reports"
 msgstr "正在加载你的报告"
@@ -8343,6 +8372,10 @@ msgstr "已请求仅本地，但未创建 git 仓库。等项目位于 git 仓�
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
 msgstr "位置"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "locked"
+msgstr "已锁定"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Logs & system info"
@@ -9520,6 +9553,10 @@ msgstr "还没有模板。添加一个，让这个文件夹中的新文档有个
 msgid "No workspace"
 msgstr "无工作区"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "No worktrees found."
+msgstr "未找到工作树。"
+
 #: src/components/settings/SyncSection.tsx
 msgid "None"
 msgstr "无"
@@ -10178,6 +10215,10 @@ msgstr "OpenKnowledge 检查了项目"
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge 未在此设备上找到该智能体。"
 
+#: src/lib/worktree-create-error.ts
+msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+msgstr "OpenKnowledge 无法完成此项目的设置。工作树已创建，但未打开。"
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge 无法读取 .ok/local/config.yml 中的 terminal.shell，将改用可用的 Windows shell。"
@@ -10491,6 +10532,10 @@ msgstr "大纲"
 msgid "Outside any block"
 msgstr "不在任何块内"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Outside this repository's OpenKnowledge worktrees folder"
+msgstr "位于此仓库的 OpenKnowledge 工作树文件夹外"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
 msgstr "不在 Open Knowledge 的提交范围内。"
@@ -10688,6 +10733,10 @@ msgstr "路径解析结果在项目之外"
 #: src/editor/link-path-suggestions.tsx
 msgid "Path suggestions"
 msgstr "路径建议"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "path unreadable"
+msgstr "路径无法读取"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Pattern (regex)"
@@ -11013,6 +11062,10 @@ msgstr "项目文件夹已创建，但 git init 失败。请重试。"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "项目 MCP 服务器"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "project missing"
+msgstr "项目缺失"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -13548,6 +13601,10 @@ msgstr "拆分列表项"
 msgid "Stage the selected passage in the agents panel, ready to extend and send."
 msgstr "把选中的内容放入智能体面板，随时可以补充并发送。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "stale Git entry"
+msgstr "过期的 Git 条目"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "在 GitHub 上给我们点个星"
@@ -14133,8 +14190,8 @@ msgstr "感谢你的反馈！"
 msgid "Thanks for the report!"
 msgstr "感谢你的报告！"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "That branch is already open in another worktree."
 msgstr "那个分支已经在另一个 worktree 中打开了。"
 
@@ -14330,6 +14387,18 @@ msgstr "你的端点提供的模型 id。它的向量维度会自动检测——
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "已打开的智能体"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "The OpenKnowledge project is missing at this checkout path."
+msgstr "此检出路径中缺少 OpenKnowledge 项目。"
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch cannot be read. The worktree was created but not opened."
+msgstr "无法读取此分支中的 OpenKnowledge 项目路径。工作树已创建，但未打开。"
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
+msgstr "此分支中的 OpenKnowledge 项目路径位于工作树之外。工作树已创建，但未打开。"
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
@@ -14694,13 +14763,25 @@ msgstr "这个智能体通过 {0} 运行，但它没有安装。Open Knowledge �
 msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
 msgstr "这还会安装此入门包的 {packSkillCount, plural, one {# 项技能} other {# 项技能}}。"
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch does not contain this OpenKnowledge project. The worktree was created but not opened."
+msgstr "此分支不包含这个 OpenKnowledge 项目。工作树已创建，但未打开。"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
 msgstr "这个分支已在以下位置检出："
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
+msgstr "此分支将 OpenKnowledge 设置路径重定向到工作树之外。工作树已创建，但未打开。"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "这可以在「设置 > AI 工具与 CLI」中配置"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This checkout path cannot be read."
+msgstr "无法读取此检出路径。"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -14990,8 +15071,8 @@ msgstr "这会永久移除 {path}。在重新创建它，或者由上级文件�
 msgid "This project"
 msgstr "本项目"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
 msgstr "此项目还没有任何提交，因此没有可作为 worktree 基础的分支。请先创建第一个提交，然后重试。"
 
@@ -15014,8 +15095,8 @@ msgstr "这个项目运行的 OpenKnowledge 版本与这个应用（v{0}）不�
 msgid "This project is running an older version of OpenKnowledge (v{0}) than this app (v{1})."
 msgstr "这个项目运行的 OpenKnowledge 版本（v{0}）比这个应用（v{1}）旧。"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr "这个项目不是 git 仓库，因此无法使用 worktree。"
 
@@ -15121,6 +15202,10 @@ msgstr "这通常意味着以下之一："
 #: src/components/AuthModal.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "这个窗口无法保存令牌——请从应用主窗口打开「设置」。"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This worktree is no longer available."
+msgstr "此工作树已不可用。"
 
 #: src/components/acp/working-status.ts
 msgid "Tidying up…"

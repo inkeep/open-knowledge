@@ -1,6 +1,17 @@
 import { existsSync, readFileSync } from 'node:fs';
-import { EDITOR_TARGETS, writeProjectAiIntegrations } from '@inkeep/open-knowledge';
-import { ALL_EDITOR_IDS, type EditorId } from '@inkeep/open-knowledge-core';
+import { join } from 'node:path';
+import {
+  assertProjectPathSafe,
+  EDITOR_TARGETS,
+  ProjectPathSafetyError,
+  writeProjectAiIntegrations,
+} from '@inkeep/open-knowledge';
+import {
+  AGENTS_SKILLS_ROOT,
+  ALL_EDITOR_IDS,
+  type EditorId,
+  RESERVED_PROJECT_SKILL_NAME,
+} from '@inkeep/open-knowledge-core';
 import { initContent } from '@inkeep/open-knowledge-server';
 import { parse as parseYaml } from 'yaml';
 import { getLogger } from './desktop-logger.ts';
@@ -49,28 +60,80 @@ export function detectRootWiredEditors(mainRoot: string): EditorId[] {
   return wired;
 }
 
-export function seedWorktreeProjectSetup(worktreePath: string, mainRoot: string): void {
+export function seedWorktreeProjectSetup(
+  worktreeProjectPath: string,
+  sourceProjectPath: string,
+): void {
   const logger = getLogger('worktree-setup');
+  const editors = assertWorktreeProjectSetupSafe(worktreeProjectPath, sourceProjectPath);
 
   try {
-    initContent(worktreePath, { contentDir: readRootContentDir(mainRoot) });
+    initContent(worktreeProjectPath, { contentDir: readRootContentDir(sourceProjectPath) });
   } catch (err) {
-    logger.warn({ worktreePath, err }, 'failed to seed inherited .ok/ scaffold');
+    logger.warn({ worktreeProjectPath, err }, 'failed to seed inherited .ok/ scaffold');
   }
 
   try {
-    const editors = detectRootWiredEditors(mainRoot);
     if (editors.length > 0) {
-      const result = writeProjectAiIntegrations(worktreePath, editors);
+      const result = writeProjectAiIntegrations(worktreeProjectPath, editors);
       const failed = result.integrations.filter((o) => o.action === 'failed');
       if (failed.length > 0) {
         logger.warn(
-          { worktreePath, editors, failed: failed.map((o) => `${o.editorId}:${o.integration}`) },
+          {
+            worktreeProjectPath,
+            editors,
+            failed: failed.map((o) => `${o.editorId}:${o.integration}`),
+          },
           'some inherited editor integrations failed to seed',
         );
       }
     }
   } catch (err) {
-    logger.warn({ worktreePath, err }, 'failed to seed inherited editor integrations');
+    logger.warn({ worktreeProjectPath, err }, 'failed to seed inherited editor integrations');
+  }
+}
+
+export function assertWorktreeProjectSetupSafe(
+  worktreeProjectPath: string,
+  sourceProjectPath: string,
+): EditorId[] {
+  const editors = detectRootWiredEditors(sourceProjectPath);
+  const writeTargets = [
+    join(worktreeProjectPath, '.ok', 'config.yml'),
+    join(worktreeProjectPath, '.ok', 'local', 'config.yml'),
+    join(worktreeProjectPath, '.okignore'),
+  ];
+  if (editors.length > 0) {
+    writeTargets.push(
+      join(worktreeProjectPath, AGENTS_SKILLS_ROOT, RESERVED_PROJECT_SKILL_NAME, 'SKILL.md'),
+    );
+  }
+  for (const editor of editors) {
+    const target = EDITOR_TARGETS[editor];
+    const configPath = target.projectConfigPath?.(worktreeProjectPath);
+    const skillPath = target.projectSkillPath?.(worktreeProjectPath);
+    if (configPath !== undefined) writeTargets.push(configPath);
+    if (skillPath !== undefined) writeTargets.push(skillPath);
+  }
+  for (const target of writeTargets) {
+    try {
+      assertProjectPathSafe(target, worktreeProjectPath);
+    } catch (error) {
+      if (error instanceof ProjectPathSafetyError) {
+        throw new WorktreeSetupPathSafetyError(error);
+      }
+      throw error;
+    }
+  }
+  return editors;
+}
+
+export class WorktreeSetupPathSafetyError extends Error {
+  override readonly name = 'WorktreeSetupPathSafetyError';
+  override readonly cause: unknown;
+
+  constructor(cause: unknown) {
+    super('A project setup path resolves outside the worktree');
+    this.cause = cause;
   }
 }

@@ -147,7 +147,11 @@ Another app can also save an exact older copy over an edit OpenKnowledge already
 
 ## Work on multiple branches
 
-In the desktop app you can open several branches of the same project at once, each in its own window. Click your project name in the bottom left and pick a branch or worktree from the project switcher (open worktrees also appear in the Command Palette); **New worktree** starts a fresh branch or checks out an existing one. Opening a branch that has no worktree yet creates one on demand under `.ok/worktrees/`, kept out of `git status`, so each window runs its own editor and server without touching your main working copy.
+In the desktop app you can open several branches of the same project at once, each in its own window. Click your project name in the bottom left and pick a branch or worktree from the project switcher (open worktrees also appear in the Command Palette); **New worktree** starts a fresh branch or checks out an existing one. The switcher discovers Git's complete local worktree list when you open a repository, including checkouts that have never been opened in OpenKnowledge. Each checkout shows its path and a location label: **primary** is the original clone, **internal** is beneath that clone's `.ok/worktrees/` directory, and **external** is anywhere else. A generic **worktree** label means the location could not be resolved yet, such as a recent checkout shown before its inventory loads or a checkout whose directory is unavailable. These labels describe location only.
+
+Opening a branch that has no worktree yet creates one on demand under `.ok/worktrees/`, kept out of `git status`, so each window runs its own editor and server without touching your main working copy. Detached and Git-locked worktrees remain available. A row marked **project missing**, **path unreadable**, or **stale Git entry** is shown for diagnosis but cannot be opened until its filesystem or Git state is repaired.
+
+If the matching OpenKnowledge project cannot be opened safely, or its local setup fails, the checkout is still created under `.ok/worktrees/` and appears in the switcher. It is labelled **project missing** or **path unreadable** when its project folder or `.ok/config.yml` is absent or unreadable; otherwise it appears as an ordinary checkout.
 
 ## Common failure modes
 

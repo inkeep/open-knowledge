@@ -1,6 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import type { BridgeWorktreeEntry } from './worktree-list-parser.ts';
-import { buildWorktreeSelectorModel } from './worktree-selector-model.ts';
+import {
+  buildWorktreeSelectorModel,
+  projectWorktreeCreateResult,
+} from './worktree-selector-model.ts';
 
 function wt(partial: Partial<BridgeWorktreeEntry> & { path: string }): BridgeWorktreeEntry {
   return {
@@ -136,5 +139,38 @@ describe('buildWorktreeSelectorModel', () => {
     expect(byBranch.get('dev')?.behind).toBe(0);
     expect(byBranch.get('no-upstream')?.behind).toBeUndefined();
     expect('behind' in (byBranch.get('no-upstream') ?? {})).toBe(false);
+  });
+});
+
+describe('projectWorktreeCreateResult', () => {
+  test('projects a created checkout onto the active nested project root', () => {
+    expect(
+      projectWorktreeCreateResult(
+        { ok: true, path: '/repo/.ok/worktrees/feature', created: true },
+        'packages/docs',
+      ),
+    ).toEqual({
+      ok: true,
+      path: '/repo/.ok/worktrees/feature/packages/docs',
+      created: true,
+    });
+  });
+
+  test('preserves root-scoped and failed results', () => {
+    const success = { ok: true, path: '/repo/.ok/worktrees/feature', created: false } as const;
+    const failure = { ok: false, reason: 'no-git' } as const;
+    expect(projectWorktreeCreateResult(success, '')).toBe(success);
+    expect(projectWorktreeCreateResult(failure, 'packages/docs')).toBe(failure);
+  });
+
+  test('never projects a created worktree whose project scope was rejected', () => {
+    const failure = {
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'outside-worktree',
+      path: '/repo/.ok/worktrees/feature',
+      created: true,
+    } as const;
+    expect(projectWorktreeCreateResult(failure, 'packages/docs')).toBe(failure);
   });
 });

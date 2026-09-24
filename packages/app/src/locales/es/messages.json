@@ -287,6 +287,7 @@
     "2CHoQv": ["Recargar a la fuerza"],
     "2Ce6hp": ["Se trasladan"],
     "2D1x3Y": ["Aplicar y reiniciar el servidor del proyecto"],
+    "2EcUjH": ["interno"],
     "2FYpfJ": ["Más"],
     "2G-56b": ["No se pudieron actualizar las reglas de markdownlint"],
     "2GT3Hf": ["Global"],
@@ -343,6 +344,7 @@
     "3-1BY2": ["Esta sesión de terminal ya no está disponible."],
     "322lyb": ["Resalta consejos, advertencias y notas."],
     "32TTpa": ["Escribir a soporte sobre este informe"],
+    "33FYnv": ["ruta ilegible"],
     "34qyH5": ["No se pudo contactar con el servidor"],
     "36WXSC": ["No se pudo eliminar la plantilla: ", ["error"]],
     "36aWJD": ["Únete a nosotros en Discord"],
@@ -404,7 +406,6 @@
     "3SZrdj": ["Buscar actualizaciones…"],
     "3TSz9S": ["Minimizar"],
     "3Uuuft": ["Informe de ", ["0"]],
-    "3UzaS-": ["Un worktree vinculado de este repositorio"],
     "3V94ia": ["No se pudieron enviar tus comentarios: el espacio de trabajo no está listo."],
     "3VbwPp": ["Abrir ", ["keyName"], " en el navegador"],
     "3VsNTI": ["Cargando el documento"],
@@ -667,6 +668,7 @@
     "65Ea2s": [
       "Exponer fija un puerto para que el destino del túnel permanezca estable entre reinicios."
     ],
+    "66JlOb": ["Un árbol de trabajo vinculado cuya ubicación no se pudo cargar"],
     "67Dpmh": ["Sugerencias de comandos de barra"],
     "67f-3g": [
       "Se duplicó correctamente, pero puede que la barra lateral esté desactualizada; actualízala para resincronizar"
@@ -797,6 +799,9 @@
     ],
     "7Ag-Xu": ["Preguntar a ", ["agentName"], ", ", ["hint"]],
     "7Bj3x9": ["Falló"],
+    "7C9JcA": [
+      "La ruta del proyecto de OpenKnowledge en esta rama sale del worktree. El worktree se creó, pero no se abrió."
+    ],
     "7FA2iI": ["No se pudieron leer los comentarios pendientes de envío; no se envió nada."],
     "7FamGZ": ["Ir a la línea"],
     "7Fkcej": ["+ Añadir ", ["addChildName"]],
@@ -1272,6 +1277,7 @@
     "C0Ciaj": ["Se importó como \"", ["0"], "\": el nombre \"", ["1"], "\" ya estaba ocupado."],
     "C0hoX6": ["Siempre incluido"],
     "C2abof": ["Sin seguimiento"],
+    "C37ssn": ["Cargando worktrees…"],
     "C3Zc44": ["Explorar habilidades"],
     "C62P6b": ["Selección del editor"],
     "C7PKTv": ["Enviar los comentarios marcados al chat"],
@@ -1476,6 +1482,7 @@
       "Gestiona la cuenta de GitHub que usa OpenKnowledge para explorar y sincronizar tus repositorios."
     ],
     "E7BhZn": ["Nota en blanco"],
+    "E8NbNG": ["No se pudieron cargar los árboles de trabajo."],
     "E91VZY": ["Abrir en una ventana nueva"],
     "E9bKSA": ["Creando"],
     "E9gh86": ["Puedes adjuntar hasta ", ["MAX_ATTACHMENTS"], " imágenes."],
@@ -1604,6 +1611,7 @@
     ],
     "FCKppt": ["Endpoint"],
     "FCMaBz": ["Qué habilidad"],
+    "FCS8de": ["externo"],
     "FCxvG5": ["Primer elemento"],
     "FDBwmS": ["Abrir carpeta…"],
     "FEK4oC": [
@@ -1916,6 +1924,7 @@
     "ICoNYz": ["También puedes gestionar esto en Ajustes."],
     "IFALcX": ["Descripción de ", ["field"]],
     "IFezUv": ["No se pudo completar la auditoría. Inténtalo de nuevo."],
+    "IIgshV": ["bloqueado"],
     "IInnZo": ["Conflicto"],
     "IKoTAC": ["Dejarlo desactivado"],
     "IMLUBh": ["Valor de color no válido"],
@@ -2564,6 +2573,9 @@
     "PVSwOe": ["Redirigiendo: esperando a que se detenga la ejecución actual…"],
     "PVUn_c": ["Abrir carpeta"],
     "PVggyD": ["Esquemas de frontmatter"],
+    "PW-5kK": [
+      "Esta rama redirige una ruta de configuración de OpenKnowledge fuera del worktree. El worktree se creó, pero no se abrió."
+    ],
     "PWh9Ii": ["Aplicar cambios"],
     "PWqtgd": ["Cargando el chat"],
     "PXaT32": ["El servidor devolvió una respuesta de destinos de habilidades incompleta."],
@@ -2657,6 +2669,9 @@
     "QQghPu": ["Instalar en Claude Desktop"],
     "QR5SP1": ["plantilla creada"],
     "QRSdsO": ["Tiempo de espera de la solicitud de indexación (segundos)"],
+    "QSH_Sn": [
+      "Esta rama no contiene este proyecto de OpenKnowledge. El worktree se creó, pero no se abrió."
+    ],
     "QVk3SK": ["Este archivo se eliminó en la rama entrante (conflicto modify-delete)."],
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Puedes cambiarlo más adelante en <0>Ajustes → Sincronización</0>."],
@@ -3802,6 +3817,7 @@
     "bGa3Fk": ["Subiendo el archivo"],
     "bH382I": ["Edita este HTML: la vista previa se actualiza en vivo."],
     "bKt9Jk": ["No se encontró ningún proyecto de OpenKnowledge activo ni reciente."],
+    "bRyLwy": ["Desconectado en ", ["0"]],
     "bSD4im": ["Buscar worktrees y ramas"],
     "bS_boY": ["Reemplazar la coincidencia actual"],
     "bUUVED": ["Recurso"],
@@ -4534,6 +4550,7 @@
     "hDEaQu": ["Conecta OpenKnowledge con las demás herramientas que usas."],
     "hDKtoF": ["hace ", ["diffHrs"], " h"],
     "hDoLrm": ["Quitar ", ["projectName"], " de los proyectos recientes"],
+    "hE33RG": ["No se encontraron árboles de trabajo."],
     "hFmYGU": ["No se admiten archivos de tema vinculados"],
     "hGmuTc": ["Documentos etiquetados con #", ["tagDocsName"]],
     "hHMv6l": ["Eliminar el bloque"],
@@ -4705,6 +4722,7 @@
     "ij-Elv": ["Vista previa de imagen"],
     "ijLc3m": ["Lista con viñetas"],
     "ikSw6W": ["Se movió hacia abajo."],
+    "ikk3no": ["Fuera de la carpeta de árboles de trabajo de OpenKnowledge de este repositorio"],
     "ilodsp": ["Dejar que los agentes usen OpenKnowledge sin preguntar"],
     "inJhKB": ["Reemplazar y guardar"],
     "ioMn4Z": ["Nuevo desde plantilla…"],
@@ -4763,6 +4781,9 @@
     "jKeGuZ": ["Elimina un documento, carpeta, plantilla, habilidad o recurso"],
     "jL3gox": ["Selecciona un valor"],
     "jLOL1H": ["Cambia a una rama para compartir."],
+    "jMb2SQ": [
+      "No se puede leer la ruta del proyecto de OpenKnowledge en esta rama. El worktree se creó, pero no se abrió."
+    ],
     "jO18NZ": ["Me paso a otra herramienta"],
     "jPUPvG": ["No se pudo resolver el conflicto de ", ["filePath"], "."],
     "jRAGrQ": ["Configurar agentes"],
@@ -4923,6 +4944,7 @@
     "ku0yLQ": [
       "Las páginas se convierten en embeddings la primera vez que una búsqueda las necesita."
     ],
+    "kvWZ9R": ["entrada de Git obsoleta"],
     "kwNS82": ["Este tema no se puede usar hasta que se corrija el archivo."],
     "ky9Tuc": ["Editar el código de ", ["0"]],
     "kzpkcn": ["No se pudo guardar esa edición."],
@@ -5301,11 +5323,13 @@
     "oCZkaG": ["Copiar ruta"],
     "oJl7eO": ["Componente desconocido: ", ["componentName"], "; el código se puede editar abajo"],
     "oKBnk5": ["Se bloquearon más solicitudes."],
+    "oKE6QZ": ["Git ha bloqueado este worktree, pero aún se puede abrir."],
     "oLyLo6": ["El servicio en segundo plano de la terminal no está en ejecución."],
     "oP-FQW": ["Usa una ruta relativa dentro de la habilidad"],
     "oPU_4D": ["Enviar cuando el agente esté libre"],
     "oPbSBQ": ["Crea un enlace compartible a un documento o carpeta"],
     "oQA-cA": ["Ruta completa"],
+    "oQubcL": ["Dentro de la carpeta de árboles de trabajo de OpenKnowledge de este repositorio"],
     "oS1YpJ": ["Abre el Navegador de proyectos."],
     "oVW7VD": ["Se instala en este proyecto"],
     "oWsZk8": ["Crear la página inexistente ", ["target"]],
@@ -5377,6 +5401,7 @@
     "pMPnZv": [["deleted"], " habilidades eliminadas"],
     "pOo4Aa": ["Texto sin formato"],
     "pPiV8s": ["Activar Automático (Pull y Push)"],
+    "pSF7TJ": ["No se puede leer esta ruta de checkout."],
     "pSimwP": ["Nombre nuevo para la versión de ", ["editor"]],
     "pTPqMK": ["Activa o desactiva un bloque de código delimitado."],
     "pTyA_t": ["etiquetas"],
@@ -5744,6 +5769,9 @@
     "snrVQ7": ["falló la comprobación"],
     "sq4WQH": ["Usar ", ["0"], " como tema claro"],
     "sqUrlK": ["Cavilando…"],
+    "sqgz2k": [
+      "OpenKnowledge no pudo terminar de configurar este proyecto. El worktree se creó, pero no se abrió."
+    ],
     "srdlOs": [
       "La sincronización automática está en pausa: no tienes permiso para hacer push en este repositorio. Cambia a Automático (solo Pull) para seguir recibiendo actualizaciones."
     ],
@@ -5810,7 +5838,6 @@
     "t_YqKh": ["Quitar"],
     "tc65fD": ["Las más instaladas"],
     "tcjTlU": ["Paquetes iniciales"],
-    "teD0H9": ["No se pudo abrir un worktree para esa rama."],
     "teFjfG": ["Todavía no hay ningún agente configurado: elige uno en el menú de envío."],
     "ten9en": ["Proyecto reciente"],
     "tfDRzk": ["Guardar"],
@@ -5920,6 +5947,7 @@
     "uAQUqI": ["Estado"],
     "uA_jXp": ["Cambiar de rama y actualizar"],
     "uBAxNB": ["Editor"],
+    "uCZNXY": ["Este árbol de trabajo ya no está disponible."],
     "uCaIdy": [
       "Falta la sesión de GitHub o ha caducado. Vuelve a conectarte para reanudar la sincronización."
     ],
@@ -6162,6 +6190,7 @@
     "wHZ58m": ["Abrir con la IA ", ["displayName"], " Desktop"],
     "wJijgU": ["Ubicación"],
     "wJo9oS": ["Cerrar búsqueda"],
+    "wKJo7h": ["Falta el proyecto de OpenKnowledge en esta ruta de checkout."],
     "wQp1V3": ["Espejo de <0>", ["src"], "</0>"],
     "wQvvZY": ["Archivo de habilidad nuevo"],
     "wRni1Z": ["Desactivar Slidev"],
@@ -6189,6 +6218,7 @@
     "wbpoGe": ["No se pudo instalar la habilidad de OpenKnowledge: ", ["message"]],
     "wbv9xO": ["Crear proyecto"],
     "wc54KE": ["Probándolo…"],
+    "wcZNHh": ["Git marca este worktree como eliminable."],
     "wcfO9r": ["Todavía no hay informes de error."],
     "wckWOP": ["Gestionar"],
     "wdRxTD": ["Aplicando…"],
@@ -6209,6 +6239,7 @@
     ],
     "wndeIl": ["Páginas de todo el proyecto sin aristas entrantes ni salientes en el grafo."],
     "wqD3pI": ["No se pudieron actualizar ", ["failed"], " de ", ["0"], " comentarios."],
+    "wrdxmT": ["falta el proyecto"],
     "ws5o1F": ["Comprobado por: ", ["0"]],
     "wsLj3t": [
       "Esa carpeta ya contiene código que Open Knowledge no escribió y que esa misma confianza permitiría ejecutar a ",

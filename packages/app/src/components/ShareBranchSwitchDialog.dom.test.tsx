@@ -1104,6 +1104,34 @@ describe('ShareBranchSwitchDialog — worktree leg', () => {
     expect(calls.open).not.toHaveBeenCalled();
   });
 
+  test('a rejected project scope shows its exact cause, refreshes, and never opens', async () => {
+    const store = createShareReceiveStore();
+    const { bridge, calls } = makeBridge({
+      checkout: vi.fn(async () => ({
+        ok: false as const,
+        reason: 'project-scope-unavailable' as const,
+        issue: 'unsafe-setup-path' as const,
+        path: '/repo/.ok/worktrees/feat-branch-x',
+        created: true as const,
+      })),
+    });
+    renderDialog(bridge, store);
+
+    const worktreeBtn = await findEnabledWorktreeButton();
+    await act(async () => {
+      fireEvent.click(worktreeBtn);
+      await Promise.resolve();
+    });
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        'This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened.',
+      ),
+    );
+    expect(refreshWorktrees).toHaveBeenCalledTimes(1);
+    expect(calls.open).not.toHaveBeenCalled();
+  });
+
   test('a not-found fetch failure shows the not-found copy, not the connection toast', async () => {
     const store = createShareReceiveStore();
     const { bridge } = makeBridge({

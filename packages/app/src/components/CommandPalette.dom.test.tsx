@@ -8,6 +8,11 @@ import {
 import { __resetViewMenuStateForTests, setViewMenuState } from '@/lib/view-menu-state-store';
 import { renderLinguiTemplate } from '@/test-utils/lingui-mock';
 
+const toastError = vi.fn((_message: string) => {});
+vi.doMock('sonner', () => ({
+  toast: { error: toastError, info: vi.fn(() => {}), success: vi.fn(() => {}) },
+}));
+
 type CommandDialogProps = {
   children?: ReactNode;
   open?: boolean;
@@ -332,6 +337,7 @@ describe('CommandPalette DOM behavior', () => {
     refreshInstallStatesCalls = 0;
     worktreeModelMock = null;
     refreshWorktreesMock.mockClear();
+    toastError.mockClear();
     window.location.hash = '';
     globalThis.fetch = vi.fn(() =>
       Promise.resolve(new Response(JSON.stringify({ results: [] }), { status: 200 })),
@@ -820,6 +826,7 @@ describe('CommandPalette DOM behavior', () => {
         path: '/projects/current/.ok/worktrees/feature-x',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     });
     expect(refreshWorktreesMock).toHaveBeenCalled();
@@ -840,6 +847,41 @@ describe('CommandPalette DOM behavior', () => {
 
     await setQuery('report zzzznomatch');
     expect(screen.queryByTestId('command-palette-report-bug')).toBeNull();
+  });
+
+  test('a rejected worktree scope shows its cause, refreshes, and never opens', async () => {
+    worktreeModelMock = {
+      mainRoot: '/projects/current',
+      currentBranch: 'main',
+      remoteBranches: [],
+      entries: [
+        {
+          branch: 'feature-x',
+          worktreePath: null,
+          isCurrent: false,
+          isMain: false,
+          locked: false,
+        },
+      ],
+    };
+    const bridge = createBridge();
+    bridge.worktree.create = vi.fn(async () => ({
+      ok: false as const,
+      reason: 'project-scope-unavailable' as const,
+      issue: 'unsafe-setup-path' as const,
+      path: '/projects/current/.ok/worktrees/feature-x',
+      created: true as const,
+    }));
+    await renderPalette({ bridge });
+
+    fireEvent.click(screen.getByTestId('command-palette-worktree-feature-x'));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        'This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened.',
+      ),
+    );
+    expect(refreshWorktreesMock).toHaveBeenCalledTimes(1);
+    expect(bridge.project.open).not.toHaveBeenCalled();
   });
 
   test('recent-project rows match multi-word queries spanning the name and the path', async () => {

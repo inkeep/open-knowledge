@@ -995,7 +995,7 @@ msgstr "{omitted, plural, other {# perubahan properti lainnya tidak ditampilkan}
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
-msgstr "{openedWorktreeCount, plural, other {worktree}}"
+msgstr "{openedWorktreeCount, plural, one {worktree} other {worktree}}"
 
 #: src/components/acp/ThreadView.tsx
 #: src/editor/use-composer-attachments.ts
@@ -1339,7 +1339,7 @@ msgstr "Lencana <0>Diubah</0> menandai aturan yang disetel konfigurasi Anda seca
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr "Cabang bernama {shareBranch} sudah ada. Buka worktree-nya dari pengalih saja."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "Cabang dengan nama itu sudah ada. Buka worktree-nya dari pengalih saja."
 
@@ -1389,8 +1389,8 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "Sebuah baris dengan catatan kaki<0><1>[1]</1></0> dan definisi yang ditampilkan di bawah."
 
 #: src/components/RecentProjectsMenu.tsx
-msgid "A linked worktree of this repository"
-msgstr "Worktree tertaut dari repositori ini"
+msgid "A linked worktree whose location could not be loaded"
+msgstr "Worktree tertaut yang lokasinya tidak dapat dimuat"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
@@ -1507,7 +1507,7 @@ msgstr "Judul, deskripsi, tag — apa saja yang menggambarkan folder ini."
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Folder worktree untuk {shareBranch} sudah ada."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A worktree folder for that branch already exists."
 msgstr "Folder worktree untuk cabang itu sudah ada."
 
@@ -4068,7 +4068,7 @@ msgstr "Templat tidak bisa dibuat: {error}"
 msgid "Couldn't create the report"
 msgstr "Laporannya tidak bisa dibuat"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "Worktree-nya tidak bisa dibuat. Coba nama lain."
 
@@ -4197,6 +4197,10 @@ msgstr "Keterampilan OpenKnowledge tidak dapat dimuat. Coba lagi."
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "Pratinjau versinya tidak bisa dimuat. Anda tetap bisa memilih cara menyelesaikannya di bawah."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Couldn't load worktrees."
+msgstr "Worktree tidak dapat dimuat."
+
 #: src/components/SessionsHost.tsx
 msgid "Couldn't load your agents."
 msgstr "Agen Anda tidak bisa dimuat."
@@ -4239,10 +4243,6 @@ msgstr "\"{name}\" tidak bisa dibuka: {0}"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Couldn't open {0} for editing: {1}"
 msgstr "{0} tidak bisa dibuka untuk disunting: {1}"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Couldn't open a worktree for that branch."
-msgstr "Worktree untuk cabang itu tidak bisa dibuka."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Couldn't open document"
@@ -5030,6 +5030,11 @@ msgstr "token deskripsi"
 msgid "Design"
 msgstr "Desain"
 
+#. placeholder {0}: entry.headSha.slice(0, 8)
+#: src/components/RecentProjectsMenu.tsx
+msgid "Detached at {0}"
+msgstr "Terlepas pada {0}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "detached HEAD"
 msgstr "HEAD terlepas"
@@ -5808,7 +5813,7 @@ msgstr "Masukkan URL repositori atau pemilik/repo"
 msgid "Enter a title for this template."
 msgstr "Masukkan judul untuk templat ini."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "Masukkan nama cabang yang valid (tanpa spasi, tanpa titik di awal, tanpa \"..\")."
 
@@ -5980,6 +5985,10 @@ msgstr "Ekspos proyek ini ke jaringan?"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
 msgstr "Mengekspos akan menetapkan port tetap agar target tunnel tetap stabil di seluruh mulai ulang."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "external"
+msgstr "eksternal"
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6771,9 +6780,17 @@ msgstr "Git & PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git tidak bisa melacak folder ini — folder ini kosong atau hanya berisi berkas yang diabaikan. Tautannya tidak akan berfungsi sampai Anda menambahkan dokumen yang dilacak."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git has locked this worktree, but it can still be opened."
+msgstr "Git telah mengunci worktree ini, tetapi masih dapat dibuka."
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Identitas git belum disetel — commit memakai penulis bawaan. Setel milik Anda agar rekan tim melihat nama Anda."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git marks this worktree as prunable."
+msgstr "Git menandai worktree ini sebagai dapat dipangkas."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Git merge rule"
@@ -6783,7 +6800,7 @@ msgstr "Git aturan penggabungan"
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git membutuhkan {tool} untuk repositori ini, tetapi ia belum terpasang atau tidak ditemukan. Pasang dulu, lalu coba lagi."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git membutuhkan alat bantu (seperti git-lfs) yang belum terpasang atau tidak ditemukan. Pasang dulu, lalu coba lagi."
 
@@ -7576,6 +7593,10 @@ msgstr "Sisipkan baris di bawah"
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
 msgstr "Menyisipkan, menghapus, memindahkan, menyalin, dan mengindentasi baris penyunting sumber lewat peta tombol bawaan CodeMirror."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Inside this repository's OpenKnowledge worktrees folder"
+msgstr "Di dalam folder worktree OpenKnowledge repositori ini"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
@@ -7770,6 +7791,10 @@ msgstr "Instruksi untuk AI"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Integrations"
 msgstr "Integrasi"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "internal"
+msgstr "internal"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid color value"
@@ -8288,6 +8313,10 @@ msgstr "Memuat obrolan"
 msgid "Loading timeline history"
 msgstr "Memuat riwayat lini masa"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Loading worktrees…"
+msgstr "Memuat worktree…"
+
 #: src/components/BugReportHistory.tsx
 msgid "Loading your reports"
 msgstr "Memuat laporan Anda"
@@ -8339,6 +8368,10 @@ msgstr "Mode hanya lokal diminta, tetapi tidak ada repositori git yang dibuat. A
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
 msgstr "Lokasi"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "locked"
+msgstr "terkunci"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Logs & system info"
@@ -9516,6 +9549,10 @@ msgstr "Belum ada templat. Tambahkan satu agar dokumen baru di folder ini punya 
 msgid "No workspace"
 msgstr "Tanpa ruang kerja"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "No worktrees found."
+msgstr "Tidak ada worktree yang ditemukan."
+
 #: src/components/settings/SyncSection.tsx
 msgid "None"
 msgstr "Tidak ada"
@@ -10174,6 +10211,10 @@ msgstr "OpenKnowledge memeriksa proyek"
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge tidak menemukan agen ini di mesin ini."
 
+#: src/lib/worktree-create-error.ts
+msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+msgstr "OpenKnowledge tidak dapat menyelesaikan penyiapan proyek ini. Worktree dibuat, tetapi tidak dibuka."
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge tidak dapat membaca terminal.shell di .ok/local/config.yml. Shell Windows yang tersedia akan digunakan sebagai gantinya."
@@ -10487,6 +10528,10 @@ msgstr "Kerangka"
 msgid "Outside any block"
 msgstr "Di luar blok mana pun"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Outside this repository's OpenKnowledge worktrees folder"
+msgstr "Di luar folder worktree OpenKnowledge repositori ini"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
 msgstr "Di luar cakupan commit Open Knowledge."
@@ -10684,6 +10729,10 @@ msgstr "Jalur mengarah ke luar proyek"
 #: src/editor/link-path-suggestions.tsx
 msgid "Path suggestions"
 msgstr "Saran jalur"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "path unreadable"
+msgstr "jalur tidak dapat dibaca"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Pattern (regex)"
@@ -11009,6 +11058,10 @@ msgstr "Folder proyek dibuat, tetapi git init gagal. Coba lagi."
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "Server MCP proyek"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "project missing"
+msgstr "proyek tidak ada"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -13544,6 +13597,10 @@ msgstr "Pisahkan item daftar"
 msgid "Stage the selected passage in the agents panel, ready to extend and send."
 msgstr "Siapkan bagian yang dipilih di panel agen, siap dilengkapi dan dikirim."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "stale Git entry"
+msgstr "entri Git usang"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Beri kami bintang di GitHub"
@@ -14129,8 +14186,8 @@ msgstr "Terima kasih atas masukannya!"
 msgid "Thanks for the report!"
 msgstr "Terima kasih atas laporannya!"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "That branch is already open in another worktree."
 msgstr "Cabang itu sudah terbuka di worktree lain."
 
@@ -14326,6 +14383,18 @@ msgstr "Id model yang dilayani endpoint Anda. Ukuran vektornya terdeteksi otomat
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "agen yang terbuka"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "The OpenKnowledge project is missing at this checkout path."
+msgstr "Proyek OpenKnowledge tidak ada di jalur checkout ini."
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch cannot be read. The worktree was created but not opened."
+msgstr "Jalur proyek OpenKnowledge pada branch ini tidak dapat dibaca. Worktree dibuat, tetapi tidak dibuka."
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
+msgstr "Jalur proyek OpenKnowledge pada branch ini keluar dari worktree. Worktree dibuat, tetapi tidak dibuka."
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
@@ -14690,13 +14759,25 @@ msgstr "Agen ini berjalan lewat {0}, yang belum terpasang. Open Knowledge bisa m
 msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
 msgstr "Ini juga memasang {packSkillCount, plural, one {# skill} other {# skill}} dari paket."
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch does not contain this OpenKnowledge project. The worktree was created but not opened."
+msgstr "Branch ini tidak berisi proyek OpenKnowledge ini. Worktree dibuat, tetapi tidak dibuka."
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
 msgstr "Cabang ini sedang dipakai di:"
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
+msgstr "Branch ini mengarahkan jalur penyiapan OpenKnowledge ke luar worktree. Worktree dibuat, tetapi tidak dibuka."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Ini bisa diatur di Pengaturan > Alat AI & CLI"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This checkout path cannot be read."
+msgstr "Jalur checkout ini tidak dapat dibaca."
 
 #: src/components/acp/ThreadView.tsx
 msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -14986,8 +15067,8 @@ msgstr "Ini menghapus {path} secara permanen. Agen yang merujuk templat ini berd
 msgid "This project"
 msgstr "Proyek ini"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
 msgstr "Proyek ini belum memiliki commit, jadi tidak ada cabang untuk dijadikan dasar worktree. Buat commit pertama, lalu coba lagi."
 
@@ -15010,8 +15091,8 @@ msgstr "Proyek ini menjalankan build OpenKnowledge yang berbeda dan tidak kompat
 msgid "This project is running an older version of OpenKnowledge (v{0}) than this app (v{1})."
 msgstr "Proyek ini menjalankan versi OpenKnowledge (v{0}) yang lebih lama daripada aplikasi ini (v{1})."
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr "Proyek ini bukan repositori git, jadi worktree tidak tersedia."
 
@@ -15117,6 +15198,10 @@ msgstr "Biasanya ini berarti salah satu dari:"
 #: src/components/AuthModal.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "Jendela ini tidak bisa menyimpan token — buka Pengaturan dari jendela utama aplikasi."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This worktree is no longer available."
+msgstr "Worktree ini tidak lagi tersedia."
 
 #: src/components/acp/working-status.ts
 msgid "Tidying up…"

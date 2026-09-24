@@ -39,11 +39,12 @@ import {
   selectBranchSwitchVariant,
   shouldProbeTargetStatus,
   type VerdictCellKind,
-  type WorktreeCheckoutSideEffectReason,
+  type WorktreeCheckoutSideEffect,
 } from '@/lib/share/branch-switch-flow';
 import { missDialogStore } from '@/lib/share/miss-dialog-store';
 import { formatReceiveLog } from '@/lib/share/receive-flow';
 import { type ShareReceiveStore, shareReceiveStore } from '@/lib/share/receive-store';
+import { worktreeCreateErrorCopy } from '@/lib/worktree-create-error';
 import { refreshWorktrees } from '@/lib/worktree-store';
 
 export interface ShareBranchSwitchDialogProps {
@@ -368,14 +369,12 @@ export function ShareBranchSwitchDialog({
     store.dismiss();
   }
 
-  function showWorktreeFailureToast(
-    reason: WorktreeCheckoutSideEffectReason,
-    {
-      helper,
-      authFailed,
-      notFoundAsIdentity,
-    }: { helper?: string; authFailed?: true; notFoundAsIdentity?: true } = {},
-  ): void {
+  function showWorktreeFailureToast(failure: WorktreeCheckoutSideEffect): void {
+    const { reason } = failure;
+    const helper = 'helper' in failure ? failure.helper : undefined;
+    const authFailed = 'authFailed' in failure ? failure.authFailed : undefined;
+    const notFoundAsIdentity =
+      'notFoundAsIdentity' in failure ? failure.notFoundAsIdentity : undefined;
     if (reason === 'fetch-failed' && notFoundAsIdentity) {
       toast.error(
         t`Repository not found — it may not exist, or the account used may not have access.`,
@@ -427,6 +426,16 @@ export function ShareBranchSwitchDialog({
       case 'invalid-branch':
         toast.error(t`${shareBranch} isn't a valid branch name.`);
         return;
+      case 'project-scope-unavailable':
+        toast.error(
+          t(
+            worktreeCreateErrorCopy({
+              reason,
+              issue: failure.projectScopeIssue,
+            }),
+          ),
+        );
+        return;
       case 'proxy-null':
       case 'error':
         toast.error(t`Could not open ${shareBranch} in a worktree. Try again.`);
@@ -439,19 +448,16 @@ export function ShareBranchSwitchDialog({
   }
 
   function applyWorktreeOutcome(result: WorktreeCreateResult | null): void {
-    let failureReason: WorktreeCheckoutSideEffectReason | null = null;
-    let failureHelper: string | undefined;
-    let failureAuth: true | undefined;
-    let failureNotFoundAsIdentity: true | undefined;
+    if (result?.ok === false && result.reason === 'project-scope-unavailable') {
+      refreshWorktrees();
+    }
+    let failureSideEffect: WorktreeCheckoutSideEffect | undefined;
     let shouldDismiss = false;
     let openPath: string | null = null;
     setBranchSwitchState((prev) => {
       const { state: next, sideEffect } = applyWorktreeCheckoutOutcome(prev, result);
       if (sideEffect) {
-        failureReason = sideEffect.reason;
-        failureHelper = sideEffect.helper;
-        failureAuth = sideEffect.authFailed;
-        failureNotFoundAsIdentity = sideEffect.notFoundAsIdentity;
+        failureSideEffect = sideEffect;
         shouldDismiss = next.phase === 'dismissed';
       }
       if (next.phase === 'opening-worktree') {
@@ -459,18 +465,14 @@ export function ShareBranchSwitchDialog({
       }
       return next;
     });
-    if (failureReason !== null) {
+    if (failureSideEffect !== undefined) {
       console.log(
         formatReceiveLog({
-          branch_dialog_action: `open-worktree-failed:${failureReason}`,
+          branch_dialog_action: `open-worktree-failed:${failureSideEffect.reason}`,
           branch: shareBranch,
         }),
       );
-      showWorktreeFailureToast(failureReason, {
-        helper: failureHelper,
-        authFailed: failureAuth,
-        notFoundAsIdentity: failureNotFoundAsIdentity,
-      });
+      showWorktreeFailureToast(failureSideEffect);
     }
     if (openPath !== null) {
       refreshWorktrees();

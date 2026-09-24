@@ -1339,7 +1339,7 @@ msgstr "<0>संशोधित</0> बैज उन नियमों को 
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr "{shareBranch} नाम की एक ब्रांच पहले से मौजूद है। इसके बजाय स्विचर से इसका वर्कट्री खोलें।"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "उस नाम की एक ब्रांच पहले से मौजूद है। इसके बजाय स्विचर से इसका वर्कट्री खोलें।"
 
@@ -1389,8 +1389,8 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "फ़ुटनोट<0><1>[1]</1></0> वाली एक पंक्ति और नीचे दिखाई गई परिभाषा।"
 
 #: src/components/RecentProjectsMenu.tsx
-msgid "A linked worktree of this repository"
-msgstr "इस रिपॉज़िटरी की एक लिंक्ड वर्कट्री"
+msgid "A linked worktree whose location could not be loaded"
+msgstr "एक लिंक किया गया वर्कट्री जिसका स्थान लोड नहीं किया जा सका"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
@@ -1507,7 +1507,7 @@ msgstr "एक शीर्षक, विवरण, टैग — कुछ भ�
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch} के लिए एक वर्कट्री फ़ोल्डर पहले से मौजूद है।"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A worktree folder for that branch already exists."
 msgstr "उस ब्रांच के लिए एक वर्कट्री फ़ोल्डर पहले से मौजूद है।"
 
@@ -4068,7 +4068,7 @@ msgstr "टेम्पलेट नहीं बनाया जा सका: 
 msgid "Couldn't create the report"
 msgstr "रिपोर्ट नहीं बनाई जा सकी"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "वर्कट्री नहीं बनाया जा सका। कोई दूसरा नाम आज़माएँ।"
 
@@ -4197,6 +4197,10 @@ msgstr "OpenKnowledge स्किल लोड नहीं हो सकीं
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "संस्करण पूर्वावलोकन लोड नहीं हो सका। आप फिर भी नीचे तय कर सकते हैं कि इसे कैसे सुलझाना है।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Couldn't load worktrees."
+msgstr "वर्कट्री लोड नहीं किए जा सके।"
+
 #: src/components/SessionsHost.tsx
 msgid "Couldn't load your agents."
 msgstr "आपके एजेंट लोड नहीं हो सके।"
@@ -4239,10 +4243,6 @@ msgstr "\"{name}\" नहीं खोली जा सकी: {0}"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Couldn't open {0} for editing: {1}"
 msgstr "{0} संपादन के लिए नहीं खोली जा सकी: {1}"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Couldn't open a worktree for that branch."
-msgstr "उस ब्रांच के लिए वर्कट्री नहीं खोला जा सका।"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Couldn't open document"
@@ -5030,6 +5030,11 @@ msgstr "विवरण टोकन"
 msgid "Design"
 msgstr "डिज़ाइन"
 
+#. placeholder {0}: entry.headSha.slice(0, 8)
+#: src/components/RecentProjectsMenu.tsx
+msgid "Detached at {0}"
+msgstr "{0} पर डिटैच किया गया"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "detached HEAD"
 msgstr "अलग किया गया HEAD"
@@ -5808,7 +5813,7 @@ msgstr "एक रिपॉज़िटरी URL या owner/repo डाले
 msgid "Enter a title for this template."
 msgstr "इस टेम्पलेट के लिए एक शीर्षक डालें।"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "एक मान्य ब्रांच नाम डालें (कोई रिक्त स्थान नहीं, शुरू में बिंदु नहीं, \"..\" नहीं)।"
 
@@ -5980,6 +5985,10 @@ msgstr "क्या इस प्रोजेक्ट को नेटवर�
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
 msgstr "एक्सपोज़ करने पर एक निश्चित port पिन हो जाता है ताकि tunnel का target पुनः प्रारंभ के बीच स्थिर रहे।"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "external"
+msgstr "बाहरी"
 
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
@@ -6771,9 +6780,17 @@ msgstr "Git और PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git इस फ़ोल्डर पर नज़र नहीं रख सकता — यह खाली है या इसमें केवल अनदेखी की गई फ़ाइलें हैं। जब तक आप कोई ट्रैक की गई दस्तावेज़ नहीं जोड़ते तब तक लिंक काम नहीं करेगा।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git has locked this worktree, but it can still be opened."
+msgstr "Git ने इस वर्कट्री को लॉक किया है, लेकिन इसे अभी भी खोला जा सकता है।"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "Git पहचान सेट नहीं है — कमिट एक डिफ़ॉल्ट लेखक का उपयोग करते हैं। अपनी पहचान सेट करें ताकि सहकर्मी आपका नाम देख सकें।"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git marks this worktree as prunable."
+msgstr "Git ने इस वर्कट्री को हटाने योग्य चिह्नित किया है।"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Git merge rule"
@@ -6783,7 +6800,7 @@ msgstr "Git मर्ज नियम"
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git को इस रिपॉज़िटरी के लिए {tool} चाहिए, पर वह इंस्टॉल नहीं है या मिला नहीं। इसे इंस्टॉल करें, फिर कोशिश करें।"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git को एक सहायक टूल (जैसे git-lfs) चाहिए जो इंस्टॉल नहीं है या मिला नहीं। इसे इंस्टॉल करें, फिर कोशिश करें।"
 
@@ -7576,6 +7593,10 @@ msgstr "नीचे पंक्ति जोड़ें"
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
 msgstr "CodeMirror के डिफ़ॉल्ट कीमैप से स्रोत संपादक की पंक्तियाँ डालें, हटाएँ, हिलाएँ, कॉपी करें और अंदर करें।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Inside this repository's OpenKnowledge worktrees folder"
+msgstr "इस रिपॉज़िटरी के OpenKnowledge वर्कट्री फ़ोल्डर के अंदर"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
 #: src/components/settings/IntegrationsSection.tsx
@@ -7770,6 +7791,10 @@ msgstr "AI के लिए निर्देश"
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Integrations"
 msgstr "एकीकरण"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "internal"
+msgstr "आंतरिक"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid color value"
@@ -8288,6 +8313,10 @@ msgstr "चैट लोड हो रही है"
 msgid "Loading timeline history"
 msgstr "समयरेखा का इतिहास लोड हो रहा है"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Loading worktrees…"
+msgstr "वर्कट्री लोड हो रहे हैं…"
+
 #: src/components/BugReportHistory.tsx
 msgid "Loading your reports"
 msgstr "आपकी रिपोर्ट लोड हो रही हैं"
@@ -8339,6 +8368,10 @@ msgstr "केवल-स्थानीय का अनुरोध किय�
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
 msgstr "स्थान"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "locked"
+msgstr "लॉक किया गया"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Logs & system info"
@@ -9516,6 +9549,10 @@ msgstr "अभी कोई टेम्पलेट नहीं। इस फ�
 msgid "No workspace"
 msgstr "कोई कार्यक्षेत्र नहीं"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "No worktrees found."
+msgstr "कोई वर्कट्री नहीं मिला।"
+
 #: src/components/settings/SyncSection.tsx
 msgid "None"
 msgstr "कोई नहीं"
@@ -10174,6 +10211,10 @@ msgstr "OpenKnowledge ने प्रोजेक्ट की जाँच क
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge को इस मशीन पर यह एजेंट नहीं मिला।"
 
+#: src/lib/worktree-create-error.ts
+msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+msgstr "OpenKnowledge इस प्रोजेक्ट का सेटअप पूरा नहीं कर सका। वर्कट्री बनाई गई, लेकिन खोली नहीं गई।"
+
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
 msgstr "OpenKnowledge .ok/local/config.yml में terminal.shell नहीं पढ़ सका। इसके बजाय उपलब्ध Windows शेल का उपयोग किया जा रहा है।"
@@ -10487,6 +10528,10 @@ msgstr "रूपरेखा"
 msgid "Outside any block"
 msgstr "किसी भी ब्लॉक के बाहर"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Outside this repository's OpenKnowledge worktrees folder"
+msgstr "इस रिपॉज़िटरी के OpenKnowledge वर्कट्री फ़ोल्डर के बाहर"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
 msgstr "Open Knowledge जो कमिट करता है उसके दायरे से बाहर।"
@@ -10684,6 +10729,10 @@ msgstr "पथ प्रोजेक्ट के बाहर पहुँच�
 #: src/editor/link-path-suggestions.tsx
 msgid "Path suggestions"
 msgstr "पथ सुझाव"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "path unreadable"
+msgstr "पथ पढ़ा नहीं जा सकता"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Pattern (regex)"
@@ -11009,6 +11058,10 @@ msgstr "प्रोजेक्ट फ़ोल्डर बन गया, प�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "Project MCP server"
 msgstr "परियोजना MCP सर्वर"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "project missing"
+msgstr "प्रोजेक्ट मौजूद नहीं है"
 
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
@@ -13544,6 +13597,10 @@ msgstr "सूची आइटम बाँटें"
 msgid "Stage the selected passage in the agents panel, ready to extend and send."
 msgstr "चयनित अंश को एजेंट पैनल में तैयार रखें, जोड़कर भेजने के लिए तैयार।"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "stale Git entry"
+msgstr "पुरानी Git एंट्री"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "GitHub पर हमें स्टार दें"
@@ -14129,8 +14186,8 @@ msgstr "प्रतिक्रिया के लिए धन्यवाद
 msgid "Thanks for the report!"
 msgstr "रिपोर्ट के लिए धन्यवाद!"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "That branch is already open in another worktree."
 msgstr "वह ब्रांच पहले से किसी दूसरे वर्कट्री में खुली है।"
 
@@ -14326,6 +14383,18 @@ msgstr "वह मॉडल id जो आपका एंडपॉइंट द�
 #: src/components/SessionsHost.tsx
 msgid "the open agent"
 msgstr "खुला हुआ एजेंट"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "The OpenKnowledge project is missing at this checkout path."
+msgstr "इस चेकआउट पथ पर OpenKnowledge प्रोजेक्ट मौजूद नहीं है।"
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch cannot be read. The worktree was created but not opened."
+msgstr "इस ब्रांच पर OpenKnowledge प्रोजेक्ट का पथ पढ़ा नहीं जा सकता। वर्कट्री बनाई गई, लेकिन खोली नहीं गई।"
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
+msgstr "इस ब्रांच पर OpenKnowledge प्रोजेक्ट का पथ वर्कट्री से बाहर जाता है। वर्कट्री बनाई गई, लेकिन खोली नहीं गई।"
 
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
@@ -14690,13 +14759,25 @@ msgstr "यह एजेंट {0} के ज़रिए चलता है, �
 msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
 msgstr "यह पैक के {packSkillCount, plural, one {# स्किल} other {# स्किल}} भी इंस्टॉल करता है।"
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch does not contain this OpenKnowledge project. The worktree was created but not opened."
+msgstr "इस ब्रांच में यह OpenKnowledge प्रोजेक्ट नहीं है। वर्कट्री बनाई गई, लेकिन खोली नहीं गई।"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
 msgstr "यह ब्रांच यहाँ चेक आउट है:"
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
+msgstr "यह ब्रांच OpenKnowledge सेटअप पथ को वर्कट्री से बाहर भेजती है। वर्कट्री बनाई गई, लेकिन खोली नहीं गई।"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "इसे Settings > AI tools & CLI में कॉन्फ़िगर किया जा सकता है"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This checkout path cannot be read."
+msgstr "इस चेकआउट पथ को पढ़ा नहीं जा सकता।"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -14986,8 +15067,8 @@ msgstr "यह {path} को स्थायी रूप से हटा द�
 msgid "This project"
 msgstr "यह प्रोजेक्ट"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
 msgstr "इस प्रोजेक्ट में अभी तक कोई कमिट नहीं है, इसलिए worktree को आधार देने के लिए कोई ब्रांच नहीं है। पहला कमिट करें, फिर दोबारा कोशिश करें।"
 
@@ -15010,8 +15091,8 @@ msgstr "यह प्रोजेक्ट OpenKnowledge का एक अलग
 msgid "This project is running an older version of OpenKnowledge (v{0}) than this app (v{1})."
 msgstr "यह प्रोजेक्ट OpenKnowledge का एक पुराना संस्करण (v{0}) चला रहा है, जबकि यह ऐप v{1} है।"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr "यह प्रोजेक्ट एक git रिपॉज़िटरी नहीं है, इसलिए वर्कट्री उपलब्ध नहीं हैं।"
 
@@ -15117,6 +15198,10 @@ msgstr "इसका आमतौर पर मतलब इनमें से 
 #: src/components/AuthModal.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "यह विंडो कोई टोकन नहीं सहेज सकती — मुख्य ऐप विंडो से Settings खोलें।"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This worktree is no longer available."
+msgstr "यह वर्कट्री अब उपलब्ध नहीं है।"
 
 #: src/components/acp/working-status.ts
 msgid "Tidying up…"

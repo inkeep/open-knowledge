@@ -93,6 +93,14 @@ export type DiscoverProjectResult =
     }
   | { readonly kind: 'rejected'; readonly reason: RejectionReason };
 
+export function isExactManagedProject(discovery: DiscoverProjectResult): boolean {
+  return (
+    discovery.kind === 'managed' &&
+    discovery.projectDir === discovery.pickedPath &&
+    !discovery.ancestorPromoted
+  );
+}
+
 export interface DiscoverProjectOptions {
   homeDir?: string;
   gitTopLevel?: (cwd: string) => Promise<string | null>;

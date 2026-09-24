@@ -119,6 +119,7 @@ export {
 } from './integrations/write-project-ai-integrations.ts';
 export {
   assertProjectPathSafe,
+  ProjectPathSafetyError,
   type ProjectSkillRemoveResult,
   type ProjectSkillResult,
   removeProjectSkill,

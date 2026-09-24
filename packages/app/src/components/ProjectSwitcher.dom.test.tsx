@@ -216,6 +216,8 @@ function createBridge() {
     },
     worktree: {
       list: vi.fn(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
+      inventory: vi.fn(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
+      openInventory: vi.fn(() => Promise.resolve({ ok: true as const })),
       create: vi.fn(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
     },
     onMenuAction: vi.fn(() => () => {}),
@@ -249,7 +251,8 @@ describe('ProjectSwitcher dropdown behavior', () => {
     const bridge = createBridge();
     render(<ProjectSwitcher bridge={bridge as never} />);
 
-    expect(screen.getByTestId('project-switcher-trigger').textContent).toContain('Current Project');
+    expect(screen.getByTestId('project-switcher-trigger').textContent).toContain('current');
+    expect(screen.getByTestId('project-switcher-trigger').textContent).toContain('main');
 
     await openMenu();
 
@@ -303,6 +306,16 @@ describe('ProjectSwitcher dropdown behavior', () => {
     expect(createDialogProps.at(-1)?.bridge).toBe(bridge);
   });
 
+  test('keeps a nested project name visible alongside its repository and branch', () => {
+    const bridge = createBridge();
+    bridge.config.projectName = 'docs';
+    render(<ProjectSwitcher bridge={bridge as never} />);
+    const trigger = screen.getByTestId('project-switcher-trigger');
+    expect(trigger.textContent).toContain('current');
+    expect(trigger.textContent).toContain('docs');
+    expect(trigger.textContent).toContain('main');
+  });
+
   test('the per-row × removes a recent from the list without opening it', async () => {
     const bridge = createBridge();
     bridge.project.removeRecent = vi.fn(() => Promise.resolve());
@@ -319,7 +332,7 @@ describe('ProjectSwitcher dropdown behavior', () => {
     });
   });
 
-  test('search matches projects only (not worktrees/branches), announces empty results, stops typeahead bubbling, and clears on close', async () => {
+  test('search includes linked recents, announces empty results, stops typeahead bubbling, and clears on close', async () => {
     const bridge = createBridge();
     render(<ProjectSwitcher bridge={bridge as never} />);
 
@@ -338,8 +351,8 @@ describe('ProjectSwitcher dropdown behavior', () => {
       expect(screen.getByTestId('project-switcher-recent-/archive/omega-project')).not.toBeNull();
     });
     expect(screen.queryByTestId('project-switcher-recent-/projects/project-1')).toBeNull();
-    expect(screen.queryByTestId('project-switcher-worktree-/archive/omega-wt')).toBeNull();
-    expect(screen.queryByTestId('project-switcher-branch-omega-branch')).toBeNull();
+    expect(screen.getByTestId('project-switcher-worktree-/archive/omega-wt')).not.toBeNull();
+    expect(screen.getByTestId('project-switcher-branch-omega-branch')).not.toBeNull();
 
     fireEvent.change(search, { target: { value: 'does-not-exist' } });
 
@@ -379,6 +392,8 @@ describe('ProjectSwitcher dropdown behavior', () => {
           path: '/projects/current',
           gitCommonDir: '/projects/current/.git',
           mainRoot: '/projects/current',
+          checkoutRoot: '/projects/current',
+          projectSubPath: '',
           isLinkedWorktree: false,
           branch: 'main',
           lastOpenedAt: '2026-07-01',
@@ -388,6 +403,8 @@ describe('ProjectSwitcher dropdown behavior', () => {
           path: '/projects/current/.ok/worktrees/has-worktree',
           gitCommonDir: '/projects/current/.git',
           mainRoot: '/projects/current',
+          checkoutRoot: '/projects/current/.ok/worktrees/has-worktree',
+          projectSubPath: '',
           isLinkedWorktree: true,
           branch: 'has-worktree',
           lastOpenedAt: '2026-07-01',
@@ -424,6 +441,8 @@ describe('ProjectSwitcher dropdown behavior', () => {
           path: '/projects/current',
           gitCommonDir: '/projects/current/.git',
           mainRoot: '/projects/current',
+          checkoutRoot: '/projects/current',
+          projectSubPath: '',
           isLinkedWorktree: false,
           branch: 'main',
           lastOpenedAt: '2026-07-01',
@@ -433,6 +452,8 @@ describe('ProjectSwitcher dropdown behavior', () => {
           path: '/projects/current/.ok/worktrees/has-worktree',
           gitCommonDir: '/projects/current/.git',
           mainRoot: '/projects/current',
+          checkoutRoot: '/projects/current/.ok/worktrees/has-worktree',
+          projectSubPath: '',
           isLinkedWorktree: true,
           branch: 'has-worktree',
           lastOpenedAt: '2026-07-01',

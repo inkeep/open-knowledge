@@ -690,6 +690,16 @@ export {
   wellKnownToolDirs,
 } from './git/git-spawn-path.ts';
 export { detectMissingGitHelper } from './git/missing-git-helper.ts';
+export type {
+  WorktreeInventoryAvailability,
+  WorktreeInventoryEntry,
+  WorktreeInventoryLocation,
+  WorktreeInventoryModel,
+  WorktreeInventoryOpenRequest,
+  WorktreeInventoryOpenResult,
+  WorktreeInventoryRequest,
+  WorktreeInventoryResult,
+} from './git/worktree-inventory-model.ts';
 export {
   type BridgeWorktreeEntry,
   parseWorktreeListPorcelain,
@@ -698,6 +708,7 @@ export { WORKTREES_PARENT_DIR, worktreeRelativeDir } from './git/worktree-path.t
 export {
   type BuildWorktreeSelectorModelInput,
   buildWorktreeSelectorModel,
+  projectWorktreeCreateResult,
   stripRemotePrefix,
   type WorktreeCreateRequest,
   type WorktreeCreateResult,

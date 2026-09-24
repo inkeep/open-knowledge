@@ -1,5 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process';
-import { appendFileSync, readFileSync, realpathSync } from 'node:fs';
+import { appendFileSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, sep } from 'node:path';
 import { promisify } from 'node:util';
 import {
@@ -18,11 +18,17 @@ import {
   worktreeRelativeDir,
 } from '@inkeep/open-knowledge-core';
 import { redactShareSubprocessStderr } from '@inkeep/open-knowledge-server';
+import { isPathWithinProject } from '../shared/path-containment.ts';
+import { getLogger } from './desktop-logger.ts';
 import { gitSpawnEnv } from './git-spawn-env.ts';
 import { listGitWorktrees } from './list-git-worktrees.ts';
 import { seedWorktreeAutoSync } from './worktree-autosync-inherit.ts';
 import { clearRecentGitCache } from './worktree-recents.ts';
-import { seedWorktreeProjectSetup } from './worktree-setup-inherit.ts';
+import {
+  assertWorktreeProjectSetupSafe,
+  seedWorktreeProjectSetup,
+  WorktreeSetupPathSafetyError,
+} from './worktree-setup-inherit.ts';
 
 const execFileAsync = promisify(execFile);
 
@@ -40,6 +46,8 @@ export type { WorktreeCreateResult, WorktreeListResult };
 
 export interface CreateWorktreeArgs extends WorktreeCreateRequest {
   readonly anchorPath: string;
+  readonly projectSubPath?: string;
+  readonly sourceProjectPath?: string;
 }
 
 export async function listWorktreeSelector(
@@ -83,8 +91,15 @@ function resolveAnchorToplevel(
 
 export async function createWorktree(args: CreateWorktreeArgs): Promise<WorktreeCreateResult> {
   const rel = worktreeRelativeDir(args.branch);
+  const projectSubPath = args.projectSubPath ?? '';
   if (rel === null || !isAbsolute(args.anchorPath)) {
     return { ok: false, reason: 'invalid-branch' };
+  }
+  if (
+    (args.sourceProjectPath !== undefined && !isAbsolute(args.sourceProjectPath)) ||
+    !isValidProjectSubPath(projectSubPath)
+  ) {
+    return { ok: false, reason: 'error', message: 'Invalid project scope' };
   }
 
   const worktrees = await listGitWorktrees(args.anchorPath);
@@ -116,19 +131,99 @@ export async function createWorktree(args: CreateWorktreeArgs): Promise<Worktree
   }
 
   clearRecentGitCache();
+  const projectScope = resolveContainedProjectPath(worktreePath, projectSubPath);
+  if (!projectScope.ok) {
+    getLogger('worktree').warn(
+      { worktreePath, projectSubPath, issue: projectScope.issue },
+      'skipped project setup outside the created worktree',
+    );
+    return {
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: projectScope.issue,
+      path: worktreePath,
+      created: true,
+    };
+  }
+  const sourceProjectPath = args.sourceProjectPath ?? args.anchorPath;
   try {
-    await seedWorktreeAutoSync(worktreePath, mainRoot);
-  } catch {}
+    seedWorktreeProjectSetup(projectScope.path, sourceProjectPath);
+  } catch (error) {
+    return projectSetupFailure(error, worktreePath, projectSubPath);
+  }
   try {
-    seedWorktreeProjectSetup(worktreePath, mainRoot);
-  } catch {}
+    assertWorktreeProjectSetupSafe(projectScope.path, sourceProjectPath);
+  } catch (error) {
+    return projectSetupFailure(error, worktreePath, projectSubPath);
+  }
+  try {
+    await seedWorktreeAutoSync(projectScope.path, sourceProjectPath);
+  } catch (error) {
+    return projectSetupFailure(error, worktreePath, projectSubPath);
+  }
   return { ok: true, path: worktreePath, created: true };
+}
+
+function projectSetupFailure(
+  error: unknown,
+  worktreePath: string,
+  projectSubPath: string,
+): WorktreeCreateResult {
+  const issue =
+    error instanceof WorktreeSetupPathSafetyError ? 'unsafe-setup-path' : 'setup-failed';
+  getLogger('worktree').warn(
+    { worktreePath, projectSubPath, issue, error },
+    'project setup failed in the created worktree',
+  );
+  return {
+    ok: false,
+    reason: 'project-scope-unavailable',
+    issue,
+    path: worktreePath,
+    created: true,
+  };
+}
+
+function isValidProjectSubPath(projectSubPath: string): boolean {
+  if (projectSubPath.includes('\0') || isAbsolute(projectSubPath)) return false;
+  return !projectSubPath.split(/[\\/]/).some((segment) => segment === '..');
+}
+
+type ProjectScopeResolution =
+  | { readonly ok: true; readonly path: string }
+  | {
+      readonly ok: false;
+      readonly issue: 'missing' | 'unreadable' | 'outside-worktree';
+    };
+
+function resolveContainedProjectPath(
+  worktreePath: string,
+  projectSubPath: string,
+): ProjectScopeResolution {
+  try {
+    const worktreeRoot = realpathSync(worktreePath);
+    const candidate =
+      projectSubPath.length === 0 ? worktreePath : join(worktreePath, projectSubPath);
+    if (!statSync(candidate).isDirectory()) return { ok: false, issue: 'missing' };
+    const canonicalCandidate = realpathSync(candidate);
+    return isPathWithinProject(canonicalCandidate, worktreeRoot, process.platform)
+      ? { ok: true, path: canonicalCandidate }
+      : { ok: false, issue: 'outside-worktree' };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      ok: false,
+      issue: code === 'ENOENT' || code === 'ENOTDIR' ? 'missing' : 'unreadable',
+    };
+  }
 }
 
 export interface ShareBranchCheckoutArgs {
   readonly anchorPath: string;
   readonly branch: string;
   readonly fetchTimeoutMs?: number;
+  readonly projectSubPath?: string;
+  readonly sourceProjectPath?: string;
 }
 
 export async function checkoutShareBranchWorktree(
@@ -146,7 +241,13 @@ export async function checkoutShareBranchWorktree(
   if (worktrees.length === 0) return { ok: false, reason: 'no-git' };
 
   if (await refExists(args.anchorPath, `refs/heads/${branch}`)) {
-    return createWorktree({ anchorPath: args.anchorPath, branch, createBranch: false });
+    return createWorktree({
+      anchorPath: args.anchorPath,
+      branch,
+      createBranch: false,
+      projectSubPath: args.projectSubPath,
+      sourceProjectPath: args.sourceProjectPath,
+    });
   }
   const remoteRef = `origin/${branch}`;
   if (!(await refExists(args.anchorPath, `refs/remotes/${remoteRef}`))) {
@@ -162,6 +263,8 @@ export async function checkoutShareBranchWorktree(
     branch,
     remoteRef,
     createBranch: true,
+    projectSubPath: args.projectSubPath,
+    sourceProjectPath: args.sourceProjectPath,
   });
 }
 

@@ -264,16 +264,27 @@ export function applyCheckoutOutcome(
 export type WorktreeCheckoutSideEffectReason =
   | 'proxy-null'
   | Extract<WorktreeCreateResult, { ok: false }>['reason'];
+type WorktreeProjectScopeIssue = Extract<
+  WorktreeCreateResult,
+  { reason: 'project-scope-unavailable' }
+>['issue'];
+export type WorktreeCheckoutSideEffect =
+  | {
+      readonly kind: 'toast';
+      readonly reason: 'project-scope-unavailable';
+      readonly projectScopeIssue: WorktreeProjectScopeIssue;
+    }
+  | {
+      readonly kind: 'toast';
+      readonly reason: Exclude<WorktreeCheckoutSideEffectReason, 'project-scope-unavailable'>;
+      readonly helper?: string;
+      readonly authFailed?: true;
+      readonly notFoundAsIdentity?: true;
+    };
 
 export interface ApplyWorktreeCheckoutOutcomeResult {
   readonly state: BranchSwitchDialogState;
-  readonly sideEffect?: {
-    readonly kind: 'toast';
-    readonly reason: WorktreeCheckoutSideEffectReason;
-    readonly helper?: string;
-    readonly authFailed?: true;
-    readonly notFoundAsIdentity?: true;
-  };
+  readonly sideEffect?: WorktreeCheckoutSideEffect;
 }
 
 export function applyWorktreeCheckoutOutcome(
@@ -294,6 +305,16 @@ export function applyWorktreeCheckoutOutcome(
     return {
       state: { phase: 'dismissed', reason: 'branch-not-found' },
       sideEffect: { kind: 'toast', reason: 'branch-not-found' },
+    };
+  }
+  if (result.reason === 'project-scope-unavailable') {
+    return {
+      state: { phase: 'ready', info: state.info },
+      sideEffect: {
+        kind: 'toast',
+        reason: result.reason,
+        projectScopeIssue: result.issue,
+      },
     };
   }
   return {

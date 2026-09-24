@@ -247,6 +247,7 @@
     "2CHoQv": ["Muat Ulang Paksa"],
     "2Ce6hp": ["Dipindahkan"],
     "2D1x3Y": ["Terapkan dan mulai ulang server proyek"],
+    "2EcUjH": ["internal"],
     "2FYpfJ": ["Lainnya"],
     "2G-56b": ["Gagal memperbarui aturan markdownlint"],
     "2GT3Hf": ["Global"],
@@ -303,6 +304,7 @@
     "3-1BY2": ["Sesi terminal ini sudah tidak tersedia."],
     "322lyb": ["Menyoroti tip, peringatan, dan catatan."],
     "32TTpa": ["Kirim surel ke dukungan tentang laporan ini"],
+    "33FYnv": ["jalur tidak dapat dibaca"],
     "34qyH5": ["Server tidak dapat dihubungi"],
     "36WXSC": ["Templat tidak bisa dihapus: ", ["error"]],
     "36aWJD": ["Gabung dengan kami di Discord"],
@@ -348,7 +350,6 @@
     "3SZrdj": ["Periksa pembaruan…"],
     "3TSz9S": ["Perkecil"],
     "3Uuuft": ["Laporan dari ", ["0"]],
-    "3UzaS-": ["Worktree tertaut dari repositori ini"],
     "3V94ia": ["Komentar Anda tidak bisa dikirim — ruang kerjanya belum siap."],
     "3VbwPp": ["Buka ", ["keyName"], " di peramban"],
     "3VsNTI": ["Memuat dokumen"],
@@ -584,6 +585,7 @@
     "65Ea2s": [
       "Mengekspos akan menetapkan port tetap agar target tunnel tetap stabil di seluruh mulai ulang."
     ],
+    "66JlOb": ["Worktree tertaut yang lokasinya tidak dapat dimuat"],
     "67Dpmh": ["Saran perintah garis miring"],
     "67f-3g": [
       "Penggandaan berhasil tetapi bilah sisi mungkin tidak mutakhir — segarkan untuk menyinkronkan ulang"
@@ -682,6 +684,9 @@
     ],
     "7Ag-Xu": ["Tanya ", ["agentName"], ", ", ["hint"]],
     "7Bj3x9": ["Gagal"],
+    "7C9JcA": [
+      "Jalur proyek OpenKnowledge pada branch ini keluar dari worktree. Worktree dibuat, tetapi tidak dibuka."
+    ],
     "7FA2iI": ["Komentar yang menunggu dikirim tidak bisa dibaca — tidak ada yang dikirim."],
     "7FamGZ": ["Ke baris"],
     "7Fkcej": ["+ Tambah ", ["addChildName"]],
@@ -941,7 +946,7 @@
     "AIn2Yv": ["CLI ", ["displayName"], ", ", ["hint"]],
     "AItsE5": ["Buka di sana"],
     "AJ7_B2": ["Buat tema baru"],
-    "AKxFtn": [["openedWorktreeCount", "plural", { "other": ["worktree"] }]],
+    "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktree"] }]],
     "ALhMYW": ["Terminal"],
     "AMU00p": [
       "Kedua versi identik. Memilih Terima yang sekarang membuat perlindungan OpenKnowledge tetap aktif, sehingga penyimpanan versi lama berikutnya akan ditolak lagi. Memilih Terima yang masuk menonaktifkan perlindungan tersebut."
@@ -1079,6 +1084,7 @@
     "C0Ciaj": ["Diimpor sebagai \"", ["0"], "\" — nama \"", ["1"], "\" sudah dipakai."],
     "C0hoX6": ["Selalu disertakan"],
     "C2abof": ["Tidak dilacak"],
+    "C37ssn": ["Memuat worktree…"],
     "C3Zc44": ["Jelajahi keterampilan"],
     "C62P6b": ["Pilihan penyunting"],
     "C7PKTv": ["Kirim komentar yang dicentang ke obrolan"],
@@ -1258,6 +1264,7 @@
       "Kelola akun GitHub yang dipakai OpenKnowledge untuk menelusuri dan menyinkronkan repositori Anda."
     ],
     "E7BhZn": ["Catatan kosong"],
+    "E8NbNG": ["Worktree tidak dapat dimuat."],
     "E91VZY": ["Buka di Jendela Baru"],
     "E9bKSA": ["Membuat"],
     "E9gh86": ["Anda bisa melampirkan hingga ", ["MAX_ATTACHMENTS"], " gambar."],
@@ -1384,6 +1391,7 @@
     ],
     "FCKppt": ["Endpoint"],
     "FCMaBz": ["Keterampilan yang mana"],
+    "FCS8de": ["eksternal"],
     "FCxvG5": ["Item pertama"],
     "FDBwmS": ["Buka folder…"],
     "FEK4oC": [
@@ -1665,6 +1673,7 @@
     "ICoNYz": ["Anda juga bisa mengelola ini di Pengaturan."],
     "IFALcX": ["Deskripsi untuk ", ["field"]],
     "IFezUv": ["Audit tidak dapat diselesaikan. Coba lagi."],
+    "IIgshV": ["terkunci"],
     "IInnZo": ["Konflik"],
     "IKoTAC": ["Biarkan nonaktif"],
     "IMLUBh": ["Nilai warna tidak valid"],
@@ -2245,6 +2254,9 @@
     "PVSwOe": ["Mengalihkan — menunggu proses saat ini berhenti…"],
     "PVUn_c": ["Buka folder"],
     "PVggyD": ["Skema frontmatter"],
+    "PW-5kK": [
+      "Branch ini mengarahkan jalur penyiapan OpenKnowledge ke luar worktree. Worktree dibuat, tetapi tidak dibuka."
+    ],
     "PWh9Ii": ["Terapkan perubahan"],
     "PWqtgd": ["Memuat obrolan"],
     "PXaT32": ["Server mengembalikan respons target skill yang tidak lengkap."],
@@ -2326,6 +2338,9 @@
     "QQghPu": ["Pasang di Claude Desktop"],
     "QR5SP1": ["templat dibuat"],
     "QRSdsO": ["Batas waktu permintaan pengindeksan (detik)"],
+    "QSH_Sn": [
+      "Branch ini tidak berisi proyek OpenKnowledge ini. Worktree dibuat, tetapi tidak dibuka."
+    ],
     "QVk3SK": ["Berkas ini dihapus di cabang masuk (konflik modify-delete)."],
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
@@ -3316,6 +3331,7 @@
     "bGa3Fk": ["Mengunggah berkas"],
     "bH382I": ["Sunting HTML ini — pratinjaunya diperbarui langsung."],
     "bKt9Jk": ["Tidak ditemukan proyek OpenKnowledge yang aktif maupun yang terbaru."],
+    "bRyLwy": ["Terlepas pada ", ["0"]],
     "bSD4im": ["Cari worktree dan cabang"],
     "bS_boY": ["Ganti kecocokan saat ini"],
     "bUUVED": ["Aset"],
@@ -3914,6 +3930,7 @@
     "hDEaQu": ["Hubungkan OpenKnowledge dengan alat lain yang Anda pakai."],
     "hDKtoF": [["diffHrs"], " j lalu"],
     "hDoLrm": ["Hapus ", ["projectName"], " dari proyek terbaru"],
+    "hE33RG": ["Tidak ada worktree yang ditemukan."],
     "hFmYGU": ["Berkas tema tertaut tidak didukung"],
     "hGmuTc": ["Dokumen bertag #", ["tagDocsName"]],
     "hHMv6l": ["Hapus blok"],
@@ -4072,6 +4089,7 @@
     "ij-Elv": ["Pratinjau gambar"],
     "ijLc3m": ["Daftar berpoin"],
     "ikSw6W": ["Dipindahkan ke bawah."],
+    "ikk3no": ["Di luar folder worktree OpenKnowledge repositori ini"],
     "ilodsp": ["Biarkan agen memakai OpenKnowledge tanpa bertanya"],
     "inJhKB": ["Ganti dan simpan"],
     "ioMn4Z": ["Baru dari Templat…"],
@@ -4130,6 +4148,9 @@
     "jKeGuZ": ["Menghapus dokumen, folder, templat, keterampilan, atau aset"],
     "jL3gox": ["Pilih sebuah nilai"],
     "jLOL1H": ["Beralih ke sebuah cabang untuk berbagi."],
+    "jMb2SQ": [
+      "Jalur proyek OpenKnowledge pada branch ini tidak dapat dibaca. Worktree dibuat, tetapi tidak dibuka."
+    ],
     "jO18NZ": ["Saya beralih ke alat lain"],
     "jPUPvG": ["Konflik untuk ", ["filePath"], " tidak bisa diselesaikan."],
     "jRAGrQ": ["Atur agen"],
@@ -4280,6 +4301,7 @@
       "Mewarnai dan menandai berkas yang punya masalah lint atau tautan, tanpa perlu membukanya."
     ],
     "ku0yLQ": ["Halaman di-embed pertama kali ketika sebuah pencarian membutuhkannya."],
+    "kvWZ9R": ["entri Git usang"],
     "kwNS82": ["Tema ini tidak dapat digunakan sampai berkasnya diperbaiki."],
     "ky9Tuc": ["Sunting sumber ", ["0"]],
     "kzpkcn": ["Suntingan itu tidak bisa disimpan."],
@@ -4613,11 +4635,13 @@
     "oCZkaG": ["Salin jalur"],
     "oJl7eO": ["Komponen tidak dikenal: ", ["componentName"], " — sumber bisa disunting di bawah"],
     "oKBnk5": ["Lebih banyak permintaan diblokir."],
+    "oKE6QZ": ["Git telah mengunci worktree ini, tetapi masih dapat dibuka."],
     "oLyLo6": ["Layanan latar belakang terminal tidak berjalan."],
     "oP-FQW": ["Gunakan jalur relatif di dalam skill"],
     "oPU_4D": ["Kirim saat agen sedang senggang"],
     "oPbSBQ": ["Membuat tautan yang bisa dibagikan ke dokumen atau folder"],
     "oQA-cA": ["Jalur lengkap"],
+    "oQubcL": ["Di dalam folder worktree OpenKnowledge repositori ini"],
     "oS1YpJ": ["Membuka Navigator Proyek."],
     "oVW7VD": ["Terpasang ke proyek ini"],
     "oWsZk8": ["Buat halaman ", ["target"], " yang belum ada"],
@@ -4685,6 +4709,7 @@
     "pMPnZv": [["deleted"], " keterampilan dihapus"],
     "pOo4Aa": ["Teks biasa"],
     "pPiV8s": ["Aktifkan Otomatis (Pull dan Push)"],
+    "pSF7TJ": ["Jalur checkout ini tidak dapat dibaca."],
     "pSimwP": ["Nama baru untuk versi ", ["editor"]],
     "pTPqMK": ["Menyalakan atau mematikan blok kode berpagar."],
     "pTyA_t": ["tag"],
@@ -4996,6 +5021,9 @@
     "snrVQ7": ["pemeriksaan gagal"],
     "sq4WQH": ["Pakai ", ["0"], " sebagai tema terang"],
     "sqUrlK": ["Melamun…"],
+    "sqgz2k": [
+      "OpenKnowledge tidak dapat menyelesaikan penyiapan proyek ini. Worktree dibuat, tetapi tidak dibuka."
+    ],
     "srdlOs": [
       "Sinkronisasi otomatis dijeda: Anda tidak punya izin push ke repositori ini. Beralihlah ke Otomatis (hanya Pull) agar tetap menerima pembaruan."
     ],
@@ -5062,7 +5090,6 @@
     "t_YqKh": ["Hapus"],
     "tc65fD": ["Paling banyak dipasang"],
     "tcjTlU": ["Paket awal"],
-    "teD0H9": ["Worktree untuk cabang itu tidak bisa dibuka."],
     "teFjfG": ["Belum ada agen yang disiapkan — pilih satu dari menu kirim."],
     "ten9en": ["Proyek terbaru"],
     "tfDRzk": ["Simpan"],
@@ -5165,6 +5192,7 @@
     "uAQUqI": ["Status"],
     "uA_jXp": ["Ganti cabang dan perbarui"],
     "uBAxNB": ["Penyunting"],
+    "uCZNXY": ["Worktree ini tidak lagi tersedia."],
     "uCaIdy": [
       "Status masuk GitHub tidak ada atau kedaluwarsa. Sambungkan ulang untuk melanjutkan sinkronisasi."
     ],
@@ -5359,6 +5387,7 @@
     "wHZ58m": ["Buka dengan AI ", ["displayName"], " Desktop"],
     "wJijgU": ["Lokasi"],
     "wJo9oS": ["Tutup pencarian"],
+    "wKJo7h": ["Proyek OpenKnowledge tidak ada di jalur checkout ini."],
     "wQp1V3": ["Cermin dari <0>", ["src"], "</0>"],
     "wQvvZY": ["Berkas keterampilan baru"],
     "wRni1Z": ["Nonaktifkan Slidev"],
@@ -5382,6 +5411,7 @@
     "wbpoGe": ["Tidak dapat memasang keterampilan OpenKnowledge: ", ["message"]],
     "wbv9xO": ["Buat proyek baru"],
     "wc54KE": ["Mencobanya…"],
+    "wcZNHh": ["Git menandai worktree ini sebagai dapat dipangkas."],
     "wcfO9r": ["Belum ada laporan bug."],
     "wckWOP": ["Kelola"],
     "wdRxTD": ["Menerapkan…"],
@@ -5402,6 +5432,7 @@
     ],
     "wndeIl": ["Halaman tingkat proyek yang tidak punya sisi graf masuk maupun keluar."],
     "wqD3pI": [["failed"], " dari ", ["0"], " komentar tidak dapat diperbarui."],
+    "wrdxmT": ["proyek tidak ada"],
     "ws5o1F": ["Diperiksa oleh: ", ["0"]],
     "wsLj3t": [
       "Folder itu sudah berisi kode yang tidak ditulis Open Knowledge, dan kepercayaan yang sama akan mengizinkan ",
