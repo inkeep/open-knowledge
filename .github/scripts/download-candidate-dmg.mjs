@@ -13,13 +13,15 @@ export function candidateIdentity(comparisonStatus) {
 }
 
 export function selectDmgAsset(assets, identity) {
-  const names = assets
-    .map((asset) => asset.name)
-    .filter((name) => /^OpenKnowledge(?:-Beta)?-(?:arm64|x64|universal)\.dmg$/.test(name));
-  if (names.length !== 1) return null;
-  if (identity === 'beta' && names[0].startsWith('OpenKnowledge-Beta-')) return names[0];
-  if (identity === 'legacy' && !names[0].startsWith('OpenKnowledge-Beta-')) return names[0];
-  return null;
+  const pattern =
+    identity === 'beta'
+      ? /^OpenKnowledge-Beta-(?:arm64|x64|universal)\.dmg$/
+      : identity === 'legacy'
+        ? /^OpenKnowledge-(?:arm64|x64|universal)\.dmg$/
+        : null;
+  if (pattern === null) return null;
+  const names = assets.map((asset) => asset.name).filter((name) => pattern.test(name));
+  return names.length === 1 ? names[0] : null;
 }
 
 function ghText(args, timeout = 30_000) {

@@ -1,39 +1,5 @@
 name: Draft release janitor
 
-# Sweeps orphaned draft GitHub Releases off inkeep/open-knowledge.
-#
-# release.yml creates every beta as `--draft --prerelease`; promote-stable.yml
-# does the same for stable. desktop-release.yml flips `draft=false` ONLY after
-# the signed DMG + channel manifest (beta-mac.yml / latest-mac.yml) upload
-# succeeds — the draft gate keeps a manifest-less release out of the auto-update
-# .atom feed. When that build fails (both historical cases were transient:
-# an Electron-runtime-download EOF and a GitHub-upload 403, neither retried
-# at the time), the release is stranded as a draft. It never entered the feed,
-# so auto-update never saw it, but it stays pinned to the top of the web
-# releases page forever while the next cut rolls forward past it.
-#
-# This janitor removes such orphans on a schedule. It is deliberately
-# conservative: it deletes a stuck draft beta ONLY once a published STABLE
-# release covers that beta's X.Y.Z cycle. That gate is load-bearing — a beta's
-# changelog delta lives ONLY in its GitHub Release body, and promote-stable.yml
-# aggregates the whole cycle's beta bodies (by tag, via `gh release view`) into
-# the stable release notes at promotion time (packages/*/CHANGELOG.md no longer
-# accumulates per-beta under the zero-commit-bump cadence). Deleting a beta
-# before its cycle is promoted would drop that increment from the stable
-# changelog (it renders as "release body unavailable"). Once the cycle's stable
-# exists, every in-range beta body has already been aggregated (and a later beta
-# on an already-promoted base is never aggregated by any future stable), so the
-# body is safe to reap. Drafts on a not-yet-promoted cycle are left for a human
-# to re-run desktop-release.yml against or promote. The git TAG is always kept
-# (npm-provenance source ref + version lineage); only the Release object goes.
-#
-# The sweep covers stable drafts on the same gate. A stable draft strands the
-# same way (v0.65.0 and v0.66.0 sat draft with zero assets from 2026-08-27 to
-# 2026-09-01, swept by hand) but its body feeds no later changelog, so the
-# `cycle <= maxstable` gate is if anything more conservative for it than for a
-# beta. The selection lives in .github/scripts/select-stuck-drafts.mjs, which is
-# unit-tested; this workflow only acts on what that returns.
-#
 # The age gate reads the release OBJECT's timestamp, never `createdAt`: on a
 # GitHub Release `createdAt` is the TARGET COMMIT's date, so a draft created
 # from an older commit reads as already-aged the moment it exists and the gate

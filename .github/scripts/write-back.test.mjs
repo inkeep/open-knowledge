@@ -1,5 +1,8 @@
+/* biome-ignore-all lint/suspicious/noTemplateCurlyInString: GitHub expression fixtures must remain literal. */
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: Tests exercise the GitHub Actions environment outside Turbo. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
 import {
   CANDIDATE_QUERY,
   changesetDirFor,
@@ -10,8 +13,8 @@ import {
   findChangesetPath,
   isFixRepoInRemit,
   isRetryableNetworkError,
-  isSelfRepoPr,
   isRetryableStatus,
+  isSelfRepoPr,
   isStableVersion,
   LINEAR_RETRY_ATTEMPTS,
   LINEAR_RETRY_CAP_MS,
@@ -88,7 +91,9 @@ describe('candidate enumeration', () => {
 
   test('the tag list comes from the shared boundary, never a private copy of it', () => {
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
-    expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/);
+    expect(source).toMatch(
+      /import \{[^}]*\brealPublishedReleaseTags\b[^}]*\} from '\.\/published-release-tags\.mjs'/,
+    );
     expect(source).not.toMatch(/^function real(?:Stable|Release)Tags/m);
     expect(source).not.toMatch(/Tags[^\n]*\.filter\([^\n]*STABLE_TAG_RE/);
   });
@@ -103,7 +108,9 @@ describe('candidate enumeration', () => {
 
 describe('version derivation', () => {
   const findMirrored = (sha) =>
-    sha === PRIVATE_SHA ? [{ sha: MIRRORED_SHA, message: `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` }] : [];
+    sha === PRIVATE_SHA
+      ? [{ sha: MIRRORED_SHA, message: `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` }]
+      : [];
   const containsFrom = (map) => (tag, sha) => (map[sha] ?? []).includes(tag);
 
   const derive = (overrides = {}) =>
@@ -122,7 +129,13 @@ describe('version derivation', () => {
   test('a commit fix reference resolves without needing a pull request', () => {
     expect(
       derive({
-        fixReferences: [{ channel: 'commit', url: 'https://github.com/x/y/commit/' + PRIVATE_SHA, sha: PRIVATE_SHA }],
+        fixReferences: [
+          {
+            channel: 'commit',
+            url: 'https://github.com/x/y/commit/' + PRIVATE_SHA,
+            sha: PRIVATE_SHA,
+          },
+        ],
         resolvePrMergeSha: () => {
           throw new Error('a commit reference must not need the pull-request hop');
         },
@@ -190,7 +203,9 @@ describe('version derivation', () => {
     const mirrorMain = 'd'.repeat(40);
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' },
+        ],
         stableTags: [...STABLE_TAGS, 'v0.37.0-beta.0'],
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => mirrorMain,
@@ -207,11 +222,14 @@ describe('version derivation', () => {
     const cherryPick = 'e'.repeat(40);
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => mirrorMain,
-        readCommitMessage: (sha) => (sha === mirrorMain ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null),
+        readCommitMessage: (sha) =>
+          sha === mirrorMain ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null,
         findMirroredCommits: (sha) =>
           sha === PRIVATE_SHA
             ? [
@@ -235,9 +253,12 @@ describe('version derivation', () => {
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: ({ repo }) => (repo === 'agents-private' ? PRIVATE_SHA : mirrorEcho),
-        readCommitMessage: (sha) => (sha === mirrorEcho ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null),
+        readCommitMessage: (sha) =>
+          sha === mirrorEcho ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null,
         findMirroredCommits: (sha) =>
-          sha === PRIVATE_SHA ? [{ sha: MIRRORED_SHA, message: `GitOrigin-RevId: ${PRIVATE_SHA}` }] : [],
+          sha === PRIVATE_SHA
+            ? [{ sha: MIRRORED_SHA, message: `GitOrigin-RevId: ${PRIVATE_SHA}` }]
+            : [],
         contains: containsFrom({ [MIRRORED_SHA]: ['v0.36.0'] }),
       }),
     ).toBe('0.36.0');
@@ -247,7 +268,9 @@ describe('version derivation', () => {
     const directSha = 'a1'.repeat(20);
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/500' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/500' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => directSha,
@@ -266,7 +289,9 @@ describe('version derivation', () => {
     const logs = [];
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/502' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/502' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => mergeSha,
@@ -289,14 +314,18 @@ describe('version derivation', () => {
     expect(isSelfRepoPr({ kind: 'sha', sha: 'a'.repeat(40) }, 'inkeep/open-knowledge')).toBe(false);
     expect(isSelfRepoPr(pr('inkeep', 'open-knowledge'), undefined)).toBe(false);
     expect(isSelfRepoPr(pr('inkeep', 'agents-private'), 'inkeep/agents-private')).toBe(false);
-    expect(isSelfRepoPr(pr('inkeep', 'some-fork'), 'inkeep/some-fork', 'inkeep/some-fork')).toBe(false);
+    expect(isSelfRepoPr(pr('inkeep', 'some-fork'), 'inkeep/some-fork', 'inkeep/some-fork')).toBe(
+      false,
+    );
   });
 
   test('a mirror pull request contained in no stable yet yields no version', () => {
     const logs = [];
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/501' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/501' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => 'b2'.repeat(20),
@@ -330,14 +359,18 @@ describe('version derivation', () => {
     expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha, at)).toBe(sha);
     expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha.toUpperCase(), at)).toBe(sha);
 
-    expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(/merge_commit_sha/);
+    expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(
+      /merge_commit_sha/,
+    );
   });
 
   test('a fix reference in a repo this workflow cannot reach is skipped, not attempted', () => {
     const logs = [];
     expect(
       derive({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/management/pull/272' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/management/pull/272' },
+        ],
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => {
           throw new Error('must not be attempted: this repo is out of remit');
@@ -372,11 +405,19 @@ describe('version derivation', () => {
 
   test('remit is decided by repo identity, and a bare commit SHA needs no repo at all', () => {
     const at = { defaultRepo: 'inkeep/agents-private', selfRepo: 'inkeep/open-knowledge' };
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'agents-private' }, at)).toBe(true);
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'InKeep', repo: 'Agents-Private' }, at)).toBe(true);
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge' }, at)).toBe(true);
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'agents-private' }, at)).toBe(
+      true,
+    );
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'InKeep', repo: 'Agents-Private' }, at)).toBe(
+      true,
+    );
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge' }, at)).toBe(
+      true,
+    );
     expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'management' }, at)).toBe(false);
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge-legacy' }, at)).toBe(false);
+    expect(
+      isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge-legacy' }, at),
+    ).toBe(false);
     expect(isFixRepoInRemit({ kind: 'sha', sha: PRIVATE_SHA }, at)).toBe(true);
   });
 
@@ -487,9 +528,11 @@ describe('write-back run', () => {
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'version-underivable' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no stable release could be derived'))).toBe(
-      true,
-    );
+    expect(
+      h.logs.some(
+        (m) => m.startsWith('::warning::') && m.includes('no stable release could be derived'),
+      ),
+    ).toBe(true);
   });
 
   test('a candidate whose only origin cannot be replied to posts nothing and warns', async () => {
@@ -500,11 +543,18 @@ describe('write-back run', () => {
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-unrepliable' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'))).toBe(true);
+    expect(
+      h.logs.some(
+        (m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'),
+      ),
+    ).toBe(true);
   });
 
   test('a candidate with no origin at all is skipped quietly, because not every fix has a reporter', async () => {
-    const h = harness({ live: true, listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL] })] });
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL] })],
+    });
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'no-origin' }]);
@@ -515,7 +565,13 @@ describe('write-back run', () => {
     const h = harness({
       live: true,
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: ['Bug'], attachmentUrls: [] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: ['Bug'],
+          attachmentUrls: [],
+        },
         { id: 'b', identifier: 'PRD-7401', stateType: 'unstarted', labels: [], attachmentUrls: [] },
       ],
     });
@@ -529,7 +585,9 @@ describe('write-back run', () => {
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'no-prose' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no changeset prose'))).toBe(true);
+    expect(
+      h.logs.some((m) => m.startsWith('::warning::') && m.includes('no changeset prose')),
+    ).toBe(true);
   });
 
   test('an infra failure throws out of the run rather than being folded into silence', async () => {
@@ -546,7 +604,13 @@ describe('write-back run', () => {
     const h = harness({
       live: true,
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: ['Bug'], attachmentUrls: [] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: ['Bug'],
+          attachmentUrls: [],
+        },
         { id: 'b', identifier: 'PRD-7403', stateType: 'completed', labels: [], attachmentUrls: [] },
       ],
     });
@@ -558,9 +622,14 @@ describe('write-back run', () => {
 describe('changeset parsing', () => {
   test('the bump block is stripped and the release note is what remains', () => {
     const parsed = parseChangeset(
-      ['---', "'@inkeep/open-knowledge': patch", '---', '', 'Honor backslash escapes in the promoters.', ''].join(
-        '\n',
-      ),
+      [
+        '---',
+        "'@inkeep/open-knowledge': patch",
+        '---',
+        '',
+        'Honor backslash escapes in the promoters.',
+        '',
+      ].join('\n'),
     );
     expect(parsed).toEqual({
       title: 'Honor backslash escapes in the promoters.',
@@ -569,7 +638,9 @@ describe('changeset parsing', () => {
   });
 
   test('a multi-line note keeps its first line as the title and its whole text as the body', () => {
-    const parsed = parseChangeset(['---', "'x': patch", '---', '', 'Short subject', '', 'More detail.'].join('\n'));
+    const parsed = parseChangeset(
+      ['---', "'x': patch", '---', '', 'Short subject', '', 'More detail.'].join('\n'),
+    );
     expect(parsed.title).toBe('Short subject');
     expect(parsed.body).toContain('More detail.');
   });
@@ -596,7 +667,9 @@ describe('changeset parsing', () => {
       expect(text).not.toBeNull();
       expect(text).not.toContain(changeset.title);
       expect(text).not.toContain(changeset.body);
-      expect(text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+      expect(text).toContain(
+        '[the releases page](https://github.com/inkeep/open-knowledge/releases)',
+      );
     }
   });
 });
@@ -614,20 +687,31 @@ describe('locating the changeset a fix shipped with', () => {
   });
 
   test('a pull request against the public mirror keeps it at the root, where that repo puts it', () => {
-    expect(findChangesetPath(['.changeset/some-fix.md'], { repo: 'open-knowledge' })).toBe('.changeset/some-fix.md');
+    expect(findChangesetPath(['.changeset/some-fix.md'], { repo: 'open-knowledge' })).toBe(
+      '.changeset/some-fix.md',
+    );
   });
 
   test("another product's changeset is never picked for an Open Knowledge reporter", () => {
-    const foreign = ['public/agents/.changeset/some-agents-fix.md', '.changeset/a-stray-root-changeset.md'];
+    const foreign = [
+      'public/agents/.changeset/some-agents-fix.md',
+      '.changeset/a-stray-root-changeset.md',
+    ];
     expect(findChangesetPath(foreign, { repo: 'agents-private' })).toBeNull();
   });
 
   test('the changeset README is never mistaken for a changeset', () => {
-    expect(findChangesetPath(['public/open-knowledge/.changeset/README.md'], { repo: 'agents-private' })).toBeNull();
+    expect(
+      findChangesetPath(['public/open-knowledge/.changeset/README.md'], { repo: 'agents-private' }),
+    ).toBeNull();
   });
 
   test('a pull request that added no changeset yields nothing rather than a wrong file', () => {
-    expect(findChangesetPath(['public/open-knowledge/packages/app/src/x.ts'], { repo: 'agents-private' })).toBeNull();
+    expect(
+      findChangesetPath(['public/open-knowledge/packages/app/src/x.ts'], {
+        repo: 'agents-private',
+      }),
+    ).toBeNull();
     expect(findChangesetPath([], { repo: 'agents-private' })).toBeNull();
   });
 
@@ -652,7 +736,13 @@ describe('cross-repo token selection', () => {
   test('with no bridge token configured every call falls back to the ambient one', () => {
     const bare = { GITHUB_REPOSITORY: 'inkeep/open-knowledge' };
     expect(selectGhToken({ owner: 'inkeep', repo: 'agents-private', env: bare })).toBeNull();
-    expect(selectGhToken({ owner: 'inkeep', repo: 'agents-private', env: { ...bare, CROSS_REPO_TOKEN: '  ' } })).toBeNull();
+    expect(
+      selectGhToken({
+        owner: 'inkeep',
+        repo: 'agents-private',
+        env: { ...bare, CROSS_REPO_TOKEN: '  ' },
+      }),
+    ).toBeNull();
   });
 });
 
@@ -694,7 +784,9 @@ describe('one unreadable candidate does not silence the rest', () => {
 
   test('errors still turn the run red once the reachable reporters have been told', () => {
     expect(runFailureMessage({ posted: [], skipped: [], errored: [] })).toBeNull();
-    expect(runFailureMessage({ skipped: [{ identifier: 'PRD-1', reason: 'no-origin' }], errored: [] })).toBeNull();
+    expect(
+      runFailureMessage({ skipped: [{ identifier: 'PRD-1', reason: 'no-origin' }], errored: [] }),
+    ).toBeNull();
 
     const message = runFailureMessage({
       errored: [
@@ -762,7 +854,11 @@ describe('telling a failure that waits from a failure that needs a person', () =
     const needsHuman = runFailureMessage({
       errored: [
         { identifier: 'PRD-0001', message: 'HTTP 503', disposition: 'retried-next-run' },
-        { identifier: 'PRD-0002', message: 'marker written, reply did NOT send', disposition: 'needs-human' },
+        {
+          identifier: 'PRD-0002',
+          message: 'marker written, reply did NOT send',
+          disposition: 'needs-human',
+        },
       ],
     });
     expect(needsHuman).toContain('ACTION REQUIRED');
@@ -772,7 +868,12 @@ describe('telling a failure that waits from a failure that needs a person', () =
 });
 
 describe('a Linear call that failed for reasons unrelated to the request', () => {
-  const ok = (data) => ({ ok: true, status: 200, json: async () => ({ data }), headers: { get: () => null } });
+  const ok = (data) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ data }),
+    headers: { get: () => null },
+  });
   const fail = (status, body = 'upstream connect error', headers = {}) => ({
     ok: false,
     status,
@@ -822,7 +923,8 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('every 4xx that is not 429 fails fast, and every 5xx is retried', () => {
-    for (const status of [400, 401, 403, 404, 409, 422]) expect(isRetryableStatus(status)).toBe(false);
+    for (const status of [400, 401, 403, 404, 409, 422])
+      expect(isRetryableStatus(status)).toBe(false);
     for (const status of [429, 500, 502, 503, 504]) expect(isRetryableStatus(status)).toBe(true);
     expect(isRetryableStatus(200)).toBe(false);
   });
@@ -846,7 +948,9 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
     const second = retryDelayMs({ attempt: 2, random: () => 0.5 });
     expect(second).toBeGreaterThan(first);
     expect(retryDelayMs({ attempt: 20, random: () => 1 })).toBeLessThanOrEqual(LINEAR_RETRY_CAP_MS);
-    expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeLessThan(retryDelayMs({ attempt: 1, random: () => 1 }));
+    expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeLessThan(
+      retryDelayMs({ attempt: 1, random: () => 1 }),
+    );
     expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeGreaterThan(0);
   });
 
@@ -900,8 +1004,12 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('the network classifier reads codes anywhere in the cause chain, and refuses the rest', () => {
-    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(true);
-    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'UND_ERR_SOCKET' }))).toBe(true);
+    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(
+      true,
+    );
+    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'UND_ERR_SOCKET' }))).toBe(
+      true,
+    );
     expect(isRetryableNetworkError(new TypeError('fetch failed'))).toBe(true);
     expect(isRetryableNetworkError(new Error('socket hang up'))).toBe(true);
     expect(isRetryableNetworkError(new Error('Unexpected token < in JSON'))).toBe(false);
@@ -985,8 +1093,8 @@ describe('workflow shape', () => {
   const read = (name) => readFileSync(new URL(`../workflows/${name}`, import.meta.url), 'utf8');
   const workflow = read('write-back.yml');
 
-  test('it triggers on the existing release dispatch rather than on release published', () => {
-    expect(workflow).toMatch(/repository_dispatch:\s*\n\s*types:\s*\[desktop-release\]/);
+  test('it triggers only on the post-publication dispatch', () => {
+    expect(workflow).toMatch(/repository_dispatch:\s*\n\s*types:\s*\[desktop-release-published\]/);
     expect(workflow).not.toMatch(/^\s{2}release:/m);
     expect(workflow).not.toContain('types: [published]');
   });
@@ -994,9 +1102,9 @@ describe('workflow shape', () => {
   test('both release channels run, and a tag of neither shape runs nothing', () => {
     expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
     expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$');
-    expect(workflow).toContain("echo \"channel=stable\"");
-    expect(workflow).toContain("echo \"channel=beta\"");
-    expect(workflow).toContain("echo \"channel=none\"");
+    expect(workflow).toContain('echo "channel=stable"');
+    expect(workflow).toContain('echo "channel=beta"');
+    expect(workflow).toContain('echo "channel=none"');
     expect(workflow).toMatch(/if:\s*steps\.tag\.outputs\.channel != 'none'/);
     expect(workflow).not.toMatch(/steps\.tag\.outputs\.stable/);
   });
@@ -1011,7 +1119,8 @@ describe('workflow shape', () => {
     const group = /concurrency:\s*\n(?:\s*#.*\n)*\s*group:\s*(.+)/.exec(workflow)?.[1] ?? '';
     expect(group).toContain('reporter-write-back');
     for (const other of ['release.yml', 'promote-stable.yml', 'linear-release.yml']) {
-      const otherGroup = /concurrency:\s*\n(?:\s*#.*\n)*\s*group:\s*(.+)/.exec(read(other))?.[1] ?? '';
+      const otherGroup =
+        /concurrency:\s*\n(?:\s*#.*\n)*\s*group:\s*(.+)/.exec(read(other))?.[1] ?? '';
       expect(group.trim()).not.toBe(otherGroup.trim());
     }
   });
@@ -1028,6 +1137,17 @@ describe('workflow shape', () => {
   });
 
   test('live posting needs an explicit mode on top of the credential', () => {
+    const parsed = parse(workflow);
+    expect(parsed.on.workflow_dispatch.inputs.dry_run).toMatchObject({
+      type: 'boolean',
+      default: true,
+    });
+    const notify = parsed.jobs.notify.steps.find(
+      (step) => step.name === 'Notify reporters whose fix reached this release',
+    );
+    expect(notify.env.WRITE_BACK_MODE).toBe(
+      "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || vars.WRITE_BACK_MODE }}",
+    );
     expect(workflow).toContain('WRITE_BACK_MODE');
     expect(workflow).toContain('LINEAR_API_KEY');
   });
@@ -1260,7 +1380,9 @@ describe('origin remit', () => {
     const h = harness({
       live: true,
       listCandidates: async () => [
-        candidate({ attachmentUrls: [GH_PULL, 'https://github.com/inkeep/agents/issues/412', SLACK_ARCHIVE] }),
+        candidate({
+          attachmentUrls: [GH_PULL, 'https://github.com/inkeep/agents/issues/412', SLACK_ARCHIVE],
+        }),
       ],
     });
     const result = await h.run();
@@ -1278,7 +1400,11 @@ describe('origin remit', () => {
     });
     const result = await h.run();
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-unrepliable' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'))).toBe(true);
+    expect(
+      h.logs.some(
+        (m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'),
+      ),
+    ).toBe(true);
   });
 
   test('a Discord thread is repliable wherever it lives, because the bot is not repo-scoped', async () => {
@@ -1343,7 +1469,13 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: [], attachmentUrls: [GH_PULL] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: [],
+          attachmentUrls: [GH_PULL],
+        },
         { id: 'b', identifier: 'PRD-7401', stateType: 'completed', labels: [], attachmentUrls: [] },
       ],
       versionFor: async (node) => (node.identifier === 'PRD-7398' ? '0.36.0' : null),
@@ -1359,14 +1491,22 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: [], attachmentUrls: [GH_PULL] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: [],
+          attachmentUrls: [GH_PULL],
+        },
         { id: 'b', identifier: 'PRD-7401', stateType: 'completed', labels: [], attachmentUrls: [] },
       ],
       versionFor: async () => null,
     });
     const result = await h.run();
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'version-underivable' }]);
-    const warning = h.logs.find((m) => m.startsWith('::warning::') && m.includes('could be derived'));
+    const warning = h.logs.find(
+      (m) => m.startsWith('::warning::') && m.includes('could be derived'),
+    );
     expect(warning).toContain('PRD-7398');
     expect(warning).not.toContain('PRD-7401');
   });
@@ -1476,7 +1616,9 @@ describe('the beta leg', () => {
     const forIssue = posts.find((p) => p.origin === GH_ISSUE);
     const forDiscord = posts.find((p) => p.origin === DISCORD_THREAD);
     expect(forIssue.text).not.toContain(CHANGESET.body);
-    expect(forIssue.text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+    expect(forIssue.text).toContain(
+      '[the releases page](https://github.com/inkeep/open-knowledge/releases)',
+    );
     expect(forDiscord.text).not.toContain(CHANGESET.body);
     expect(forDiscord.text).toContain('<https://github.com/inkeep/open-knowledge/releases>');
   });

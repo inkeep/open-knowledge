@@ -12,16 +12,6 @@ name: Linear Release
 #   the beta and the stable it shipped in, in its Linear sidebar. Uses Linear's
 #   first-party CLI via linear/linear-release-action.
 #
-# HOW IT'S TRIGGERED (no edits to the delicate publish path)
-#   release.yml (beta) and promote-stable.yml (stable) BOTH already fire a
-#   repository_dispatch event_type=desktop-release with
-#   client_payload.{release_tag, ref} right after cutting the tag + draft
-#   Release. We piggyback on that same event rather than adding a new dispatch,
-#   so release.yml / promote-stable.yml stay byte-untouched. We cannot use
-#   `release: published`: GitHub suppresses cascades from GITHUB_TOKEN-authored
-#   release events, and repository_dispatch is the documented exemption (which
-#   is exactly why the desktop-release cascade uses it).
-#
 #   Channel is derived from the tag shape: a `-beta.N` suffix => beta (started
 #   stage `Beta`); a bare vX.Y.Z => stable, which COMPLETES the release so it
 #   lands in the pipeline's built-in completed stage `Released`. Two channels,
@@ -75,9 +65,7 @@ name: Linear Release
 
 on:
   repository_dispatch:
-    # Fired by release.yml (beta) and promote-stable.yml (stable) after each
-    # tag + draft Release. Carries client_payload.{release_tag, ref}.
-    types: [desktop-release]
+    types: [desktop-release-published]
   # Manual re-stamp / backfill for a specific tag.
   workflow_dispatch:
     inputs:
@@ -116,7 +104,7 @@ jobs:
         if: env.HAS_KEY == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || inputs.release_tag }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
           # Full history + tags so the commit scan and previous-tag lookup work.
           fetch-depth: 0
           fetch-tags: true
@@ -138,6 +126,8 @@ jobs:
       - name: Derive channel, version, and scan range
         if: env.HAS_KEY == 'true'
         id: derive
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: node .github/scripts/derive-release-stamp.mjs "${RELEASE_TAG}"
 
       # Create/find the release keyed by this cut's own tag and attach the
@@ -219,6 +209,7 @@ jobs:
       - name: Correct the stable stamp by containment
         if: steps.derive.outputs.channel == 'stable'
         env:
+          GH_TOKEN: ${{ github.token }}
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           CROSS_REPO_TOKEN: ${{ steps.bridge-token.outputs.token }}
           # Absent by default, so wiring credentials cannot by itself start

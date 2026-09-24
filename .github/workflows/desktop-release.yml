@@ -32,7 +32,6 @@ name: Desktop release
 # latest-linux[-arm64].yml, or their beta-* siblings) locally regardless of
 # publish mode, so the fan-in uploads those alongside the installers.
 #
-# Triggers (2):
 #   - repository_dispatch (event_type: desktop-release) — primary cascade
 #     from release.yml (beta) and promote-stable.yml (stable). The
 #     upstream creates the GitHub Release as --draft (so it stays out
@@ -44,14 +43,6 @@ name: Desktop release
 #     GITHUB_TOKEN-authored release events. repository_dispatch is the
 #     documented exemption.
 #     See https://docs.github.com/en/actions/concepts/security/github_token.
-#   - workflow_dispatch — manual recovery path for re-building + re-uploading
-#     assets to an EXISTING Release after a transient failure (e.g., a
-#     CI-only fix landed after the tag was cut). Builds from the chosen ref
-#     and uploads to the Release matching release_tag. Unlike the
-#     electron-builder-publisher era this path no longer creates a missing
-#     Release — the Release must already exist (cut by release.yml /
-#     promote-stable.yml / point-release.yml).
-#
 # Required secrets:
 #   macOS (identical shape to desktop-build.yml):
 #     CSC_LINK / CSC_KEY_PASSWORD
@@ -96,19 +87,10 @@ on:
   # release events; repository_dispatch is the documented exemption.
   repository_dispatch:
     types: [desktop-release]
-  # Manual re-publish path: lets an operator rebuild + re-upload assets for an
-  # existing Release when the original cascade-triggered run failed (e.g., a
-  # CI-only fix landed on `main` after the tag was cut). Builds from
-  # the chosen ref (typically `main` with the fix) and uploads to the
-  # Release matching release_tag. The dispatcher must ensure
-  # `packages/desktop/package.json#version` at the chosen ref matches
-  # release_tag (without the `v` prefix) — the version override below derives
-  # everything from the tag, so a mismatched ref ships mismatched code, not
-  # mismatched metadata.
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing release tag to upload assets to (e.g. v0.3.0)"
+        description: "Existing source tag to rebuild and upload installers for (e.g. v0.3.0)"
         required: true
         type: string
 
@@ -172,19 +154,11 @@ jobs:
             { echo "### Triggered by"; echo "- ${DISPATCHED_BY}"; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # On `repository_dispatch`, check out the ref supplied by the upstream
-      # workflow via `client_payload.ref` — that's the exact commit
-      # release.yml / promote-stable.yml resolved when cutting the tag, so
-      # the bundled version + any CHANGELOG artifacts match the Release.
-      #
-      # On `workflow_dispatch`, check out the workflow ref the user dispatched
-      # against (typically `main` with a CI fix).
-      #
       # fetch-depth: 0 — the native-config staging step's provenance check
       # (`git merge-base --is-ancestor`) needs full history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
           fetch-depth: 0
 
       # Detect channel from the release TAG (not package.json#version). Under
@@ -533,7 +507,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
 
       # Lockstep twin of the prepare job's step (see this job's header for why
       # it exists twice) — same tag → same outputs, so `steps.channel.*` here
@@ -863,7 +837,7 @@ jobs:
           BUILD_VERSION: ${{ steps.channel.outputs.version }}
           BUILD_CHANNEL: ${{ steps.channel.outputs.channel }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}"'
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec node "$DESKTOP_PACKAGER" --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}"'
         working-directory: packages/desktop
         run: |
           # extraMetadata.version override: kept as defense-in-depth so the
@@ -880,17 +854,22 @@ jobs:
           set -euo pipefail
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
           WRAPPER_TMP="${WRAPPER}.tmp.$$"
-          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          export DESKTOP_PACKAGER="${RUNNER_TEMP}/package-desktop.mjs"
+          PACKAGER_TMP="${DESKTOP_PACKAGER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"' EXIT
           materialized=false
           for materialize_attempt in 1 2 3; do
             if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
                git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
                [[ -s "$WRAPPER_TMP" ]] &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/package-desktop.mjs" > "$PACKAGER_TMP" &&
+               [[ -s "$PACKAGER_TMP" ]] &&
+               mv "$PACKAGER_TMP" "$DESKTOP_PACKAGER" &&
                mv "$WRAPPER_TMP" "$WRAPPER"; then
               materialized=true
               break
             fi
-            rm -f "$WRAPPER_TMP"
+            rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"
             if [[ "$materialize_attempt" -lt 3 ]]; then
               materialize_delay=$((materialize_attempt * 5))
               echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
@@ -956,12 +935,15 @@ jobs:
       - name: Verify a historical app can update in place
         if: matrix.variant != 'beta'
         env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
           GH_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ matrix.variant == 'legacy-beta' && 'v0.77.9-beta.0' || 'v0.77.8' }}
           UPDATER_CHANNEL: ${{ matrix.variant == 'legacy-beta' && 'beta' || 'latest' }}
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/historical-upgrade"
+          git fetch --no-tags --depth=1 origin "$WORKFLOW_SHA"
+          git restore --source "$WORKFLOW_SHA" --worktree .github/scripts/smoke-historical-upgrade.mjs .github/scripts/dmg-mount.mjs
           gh release download "$SOURCE_TAG" --pattern 'OpenKnowledge-arm64.dmg' --dir "$RUNNER_TEMP/historical-upgrade"
           node .github/scripts/smoke-historical-upgrade.mjs "$RUNNER_TEMP/historical-upgrade/OpenKnowledge-arm64.dmg" "$UPDATER_CHANNEL"
 
@@ -971,13 +953,6 @@ jobs:
       # Release, the draft never flips, npm never moves, and the announcements
       # never post. (That's strictly stronger than the pre-fan-in behavior,
       # where the mac assets were already uploaded before the smoke ran.)
-      #
-      # The gate is skipped when the checked-out ref predates it. On the
-      # cascade path this job checks out `client_payload.ref` — a tag pointing
-      # at the promoted beta's commit, which for the first releases after this
-      # lands will not contain the smoke harness. Blocking a release because
-      # the gate did not exist yet would be wrong; the gate applies from the
-      # first tag that carries it.
       #
       # Stable only. Every beta cut flows through this same job on
       # channel=beta, and FR5b is scoped to the stable artifact — the beta
@@ -1081,7 +1056,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -1182,7 +1157,7 @@ jobs:
           BUILD_VERSION: ${{ needs.prepare.outputs.version }}
           BUILD_CHANNEL: ${{ env.UPDATER_CHANNEL }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec node "$DESKTOP_PACKAGER" --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
         run: |
           set -euo pipefail
           missing=()
@@ -1200,17 +1175,22 @@ jobs:
           echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
           WRAPPER_TMP="${WRAPPER}.tmp.$$"
-          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          export DESKTOP_PACKAGER="${RUNNER_TEMP}/package-desktop.mjs"
+          PACKAGER_TMP="${DESKTOP_PACKAGER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"' EXIT
           materialized=false
           for materialize_attempt in 1 2 3; do
             if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
                git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
                [[ -s "$WRAPPER_TMP" ]] &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/package-desktop.mjs" > "$PACKAGER_TMP" &&
+               [[ -s "$PACKAGER_TMP" ]] &&
+               mv "$PACKAGER_TMP" "$DESKTOP_PACKAGER" &&
                mv "$WRAPPER_TMP" "$WRAPPER"; then
               materialized=true
               break
             fi
-            rm -f "$WRAPPER_TMP"
+            rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"
             if [[ "$materialize_attempt" -lt 3 ]]; then
               materialize_delay=$((materialize_attempt * 5))
               echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
@@ -1417,7 +1397,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -1503,22 +1483,27 @@ jobs:
           LINUX_TARGETS: ${{ matrix.targets }}
           VERSION: ${{ needs.prepare.outputs.version }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs --linux ${LINUX_TARGETS} --publish never --config.extraMetadata.version="${VERSION}"'
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec node "$DESKTOP_PACKAGER" --linux ${LINUX_TARGETS} --publish never --config.extraMetadata.version="${VERSION}"'
         run: |
           set -euo pipefail
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
           WRAPPER_TMP="${WRAPPER}.tmp.$$"
-          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          export DESKTOP_PACKAGER="${RUNNER_TEMP}/package-desktop.mjs"
+          PACKAGER_TMP="${DESKTOP_PACKAGER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"' EXIT
           materialized=false
           for materialize_attempt in 1 2 3; do
             if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
                git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
                [[ -s "$WRAPPER_TMP" ]] &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/package-desktop.mjs" > "$PACKAGER_TMP" &&
+               [[ -s "$PACKAGER_TMP" ]] &&
+               mv "$PACKAGER_TMP" "$DESKTOP_PACKAGER" &&
                mv "$WRAPPER_TMP" "$WRAPPER"; then
               materialized=true
               break
             fi
-            rm -f "$WRAPPER_TMP"
+            rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"
             if [[ "$materialize_attempt" -lt 3 ]]; then
               materialize_delay=$((materialize_attempt * 5))
               echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
@@ -1794,6 +1779,8 @@ jobs:
   # that).
   finalize:
     needs: [prepare, build-macos, publish-assets]
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
     # `!cancelled()` for the same reason as publish-assets: under a degraded
     # required-set, a non-required platform's failure elsewhere in the run
     # must not skip finalization. The explicit success checks keep the real
@@ -1863,6 +1850,7 @@ jobs:
       # full inventory. Channel-mirror invariant: see
       # packages/desktop/src/main/auto-updater.ts:336-356.
       - name: Promote draft release to published
+        id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -1894,6 +1882,8 @@ jobs:
             gh release edit "$RELEASE_TAG" --draft=false
             echo "Promoted ${RELEASE_TAG} to published (draft=false, latest=false; channel=${CHANNEL})."
           fi
+
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
       # FR5b — the npm stable publish sits downstream of the DMG smoke gate
       # (build-macos fails on a bad verdict, which skips this whole job) AND
@@ -2072,11 +2062,45 @@ jobs:
             echo "::warning::Discord announcement failed for ${RELEASE_TAG} (release is published; notification is best-effort)."
           fi
 
-  # Fires precisely when the rest of the pipeline did not finish. FR5c — page
-  # the release channel when a stable release is blocked; the STUCK-DRAFT
-  # marker keeps failed betas findable via log search. Lives in its own job
-  # (not a `failure()` step inside finalize) because a packaging job failing
-  # SKIPS finalize entirely — skipped steps can't alert.
+  release-consumers:
+    needs: finalize
+    if: ${{ !cancelled() && needs.finalize.outputs.published == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Dispatch publication to release consumers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          jq -nc --arg tag "$RELEASE_TAG" '{event_type:"desktop-release-published",client_payload:{release_tag:$tag,ref:$tag}}' |
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input -
+
+      - name: Alert on failed publication dispatch
+        if: failure() || cancelled()
+        env:
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT="Release ${RELEASE_TAG} is published, but its notification dispatch failed or was cancelled. Reporter writeback and Linear stamping may not have run. Inspect the consumer runs before replaying desktop-release-published for this tag; do not rebuild or republish installers. ${RUN_URL}"
+          echo "::error::$TEXT"
+          echo "$TEXT" >> "$GITHUB_STEP_SUMMARY"
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::warning::No Slack webhook configured; publication dispatch failure remains visible in Actions."
+            exit 0
+          fi
+          payload="$(jq -nc --arg text "$TEXT" '{text:$text}')"
+          if ! curl --fail --silent --show-error --connect-timeout 10 --max-time 30 -X POST -H 'Content-Type: application/json' --data "$payload" "$WEBHOOK_URL"; then
+            echo "::warning::Publication dispatch failure alert could not be delivered."
+          fi
+
   alert:
     needs: [prepare, build-macos, build-windows, build-linux, publish-assets, finalize]
     # "The release did not publish" — not "some job failed": under a degraded

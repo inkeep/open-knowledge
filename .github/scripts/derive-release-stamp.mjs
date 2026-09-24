@@ -1,7 +1,13 @@
 #!/usr/bin/env node
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import {
+  previousPublishedRelease,
+  realPublishedReleaseTags,
+  requirePublishedRelease,
+} from './published-release-tags.mjs';
 
 const STABLE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)$/;
 const BETA_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/;
@@ -97,27 +103,6 @@ function realResolveStableBaseRef(previousTag, tag) {
   return bases[0];
 }
 
-function realTags() {
-  return runGit(['tag', '--list', 'v*'])
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean);
-}
-
-const NO_PREVIOUS_TAG_SENTINELS = [/No names found/i, /unknown revision/i];
-
-function realDescribePreviousTag(tag) {
-  const res = spawnSync('git', ['describe', '--tags', '--abbrev=0', `${tag}^`], {
-    encoding: 'utf8',
-  });
-  if (res.status === 0) return String(res.stdout || '').trim() || null;
-  const stderr = String(res.stderr || '');
-  if (NO_PREVIOUS_TAG_SENTINELS.some((re) => re.test(stderr))) return null;
-  throw new Error(
-    `git describe --tags --abbrev=0 ${tag}^ failed (exit ${res.status}): ${stderr.trim()}`,
-  );
-}
-
 export function formatOutputLines(result) {
   return [
     `channel=${result.channel}`,
@@ -130,10 +115,15 @@ export function formatOutputLines(result) {
 function main() {
   let result;
   try {
+    const tags = realPublishedReleaseTags();
+    requirePublishedRelease(process.argv[2], tags);
     result = deriveReleaseStamp({
       tag: process.argv[2],
-      tags: realTags(),
-      describePreviousTag: realDescribePreviousTag,
+      tags,
+      describePreviousTag: (tag) => {
+        const previous = previousPublishedRelease(tag, tags);
+        return previous ? realResolveStableBaseRef(previous, tag) : null;
+      },
       resolveStableBaseRef: realResolveStableBaseRef,
     });
   } catch (err) {

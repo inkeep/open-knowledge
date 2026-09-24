@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/suspicious/noTemplateCurlyInString: Shell fixtures must remain literal. */
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -8,11 +9,20 @@ import {
   highestPublishedStable,
   isPipelineTag,
   objectAgeSeconds,
-  selectStuckDrafts,
   STUCK_DRAFT_MAX_AGE_SECONDS,
+  selectStuckDrafts,
 } from './select-stuck-drafts.mjs';
 
 const NOW = Date.parse('2026-09-01T18:00:00Z');
+
+test('a misflagged published beta cannot close a stable cycle', () => {
+  expect(
+    highestPublishedStable([
+      { tagName: 'v0.77.8', isDraft: false, isPrerelease: false },
+      { tagName: 'v0.78.0-beta.6', isDraft: false, isPrerelease: false },
+    ]),
+  ).toBe('0.77.8');
+});
 const MAX_AGE = STUCK_DRAFT_MAX_AGE_SECONDS;
 const OLD = '2026-08-27T19:41:28Z';
 const FRESH = '2026-09-01T17:30:00Z';
@@ -116,10 +126,10 @@ describe('selectStuckDrafts', () => {
     expect(swept(releases)).toEqual(['v0.65.0', 'v0.66.0']);
   });
 
-  test('still sweeps a stranded beta draft on a closed cycle', () => {
-    expect(swept([published('v0.68.3'), betaDraft('v0.64.0-beta.6')])).toEqual([
-      'v0.64.0-beta.6',
-    ]);
+  test('retains unpublished beta history even after a newer stable ships', () => {
+    const releases = [published('v0.68.3'), betaDraft('v0.64.0-beta.6')];
+    expect(swept(releases)).toEqual([]);
+    expect(kept(releases)).toEqual(['v0.64.0-beta.6']);
   });
 
   test('keeps a draft whose cycle no published stable covers yet', () => {
@@ -128,8 +138,8 @@ describe('selectStuckDrafts', () => {
     expect(kept(releases)).toEqual(['v0.69.0', 'v0.69.0-beta.1']);
   });
 
-  test('sweeps the draft of the newest published stable cycle itself', () => {
-    expect(swept([published('v0.68.3'), betaDraft('v0.68.3-beta.1')])).toEqual(['v0.68.3-beta.1']);
+  test('a stable publication does not erase never-published betas of the same cycle', () => {
+    expect(swept([published('v0.68.3'), betaDraft('v0.68.3-beta.1')])).toEqual([]);
   });
 
   test('spares a draft younger than the age gate, whatever its cycle', () => {
@@ -270,7 +280,8 @@ describe('the janitor workflow drives this module', () => {
   test('the release list carries the object timestamp, not the commit date', () => {
     const start = workflow.indexOf('RELEASES_JSON=$(');
     const end = workflow.indexOf('sweep=$(');
-    if (start === -1 || end === -1) throw new Error('the janitor no longer lists releases then sweeps');
+    if (start === -1 || end === -1)
+      throw new Error('the janitor no longer lists releases then sweeps');
     const listCommand = workflow.slice(start, end);
     expect(listCommand).toContain('updatedAt: .updated_at');
     expect(listCommand).not.toContain('created_at');
@@ -280,7 +291,8 @@ describe('the janitor workflow drives this module', () => {
   test('the release list is narrowed to what the selector actually reads', () => {
     const start = workflow.indexOf('RELEASES_JSON=$(');
     const end = workflow.indexOf('sweep=$(');
-    if (start === -1 || end === -1) throw new Error('the janitor no longer lists releases then sweeps');
+    if (start === -1 || end === -1)
+      throw new Error('the janitor no longer lists releases then sweeps');
     expect(workflow.slice(start, end)).toContain('select(.draft or (.prerelease | not))');
   });
 
@@ -326,7 +338,8 @@ describe('the janitor workflow drives this module', () => {
   test('a dry run is checked before the cap, so it can preview an over-cap set', () => {
     const dryRunAt = workflow.indexOf('if [ "${DRY_RUN:-false}" = "true" ]');
     const capAt = workflow.indexOf('if [ "${count}" -gt "${MAX_SWEEP_PER_RUN}" ]');
-    if (dryRunAt === -1 || capAt === -1) throw new Error('the janitor no longer branches on a dry run and a cap');
+    if (dryRunAt === -1 || capAt === -1)
+      throw new Error('the janitor no longer branches on a dry run and a cap');
     expect(dryRunAt).toBeLessThan(capAt);
   });
 
@@ -337,7 +350,8 @@ describe('the janitor workflow drives this module', () => {
     const dryRunBlock = workflow.slice(dryRunAt);
     const exitAt = dryRunBlock.indexOf('exit 0');
     const deleteAt = dryRunBlock.indexOf('gh release delete');
-    if (exitAt === -1 || deleteAt === -1) throw new Error('the dry-run branch no longer guards the delete');
+    if (exitAt === -1 || deleteAt === -1)
+      throw new Error('the dry-run branch no longer guards the delete');
     expect(exitAt).toBeLessThan(deleteAt);
   });
 });

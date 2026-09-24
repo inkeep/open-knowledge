@@ -6,15 +6,6 @@ name: Reporter Write-Back
 # narrows on the Bug label, because whether someone hears back should not depend
 # on how triage classified what they raised.
 #
-# HOW IT'S TRIGGERED (no edits to the delicate publish path)
-#   release.yml (beta) and promote-stable.yml (stable) both already fire a
-#   repository_dispatch event_type=desktop-release carrying
-#   client_payload.{release_tag, ref}. This piggybacks on that same event, the
-#   way linear-release.yml already does, so the publish workflows stay
-#   byte-untouched. `release: published` is not an option: GitHub suppresses
-#   cascades from GITHUB_TOKEN-authored release events, and repository_dispatch
-#   is the documented exemption.
-#
 #   BOTH channels run, and they say different things. A `-beta.N` cut tells the
 #   reporter their fix is available now in a beta and that a second message is
 #   coming; the stable promotion sends that second message. The two are kept
@@ -51,7 +42,7 @@ name: Reporter Write-Back
 
 on:
   repository_dispatch:
-    types: [desktop-release]
+    types: [desktop-release-published]
   # Manual backfill / dry-run rehearsal against a specific tag.
   workflow_dispatch:
     inputs:
@@ -59,6 +50,11 @@ on:
         description: "Release tag to notify reporters about (e.g. v0.36.0 or v0.36.0-beta.3)"
         required: true
         type: string
+      dry_run:
+        description: "Preview replies without writing notification markers or posting"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -155,7 +151,7 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           # Absent by default. Set to `live` on the repo (a variable, not a
           # secret, so it is visible in the settings UI) to arm real posts.
-          WRITE_BACK_MODE: ${{ vars.WRITE_BACK_MODE }}
+          WRITE_BACK_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || vars.WRITE_BACK_MODE }}
           DISCORD_NOTIFY_URL: ${{ secrets.DISCORD_NOTIFY_URL }}
           DISCORD_NOTIFY_TOKEN: ${{ secrets.DISCORD_NOTIFY_TOKEN }}
         run: node .github/scripts/write-back.mjs

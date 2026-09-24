@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
+import { realPublishedReleaseTags, sortReleaseTagsAscending } from './published-release-tags.mjs';
 
 const STABLE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)$/;
-const BETA_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/;
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
 const REV_ID_RE = /^[ \t]*GitOrigin-RevId:[ \t]*([0-9a-f]{7,40})[ \t]*$/gim;
 const PR_URL_RE = /^https?:\/\/[^/]*github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/i;
@@ -38,46 +39,14 @@ export function parseFixRef(raw, { defaultRepo = DEFAULT_PRIVATE_REPO } = {}) {
   const numMatch = PR_NUMBER_RE.exec(ref);
   if (numMatch) {
     const [owner, repo] = defaultRepo.split('/');
-    if (!owner || !repo) throw new Error(`invalid default repo '${defaultRepo}' (expected owner/repo)`);
+    if (!owner || !repo)
+      throw new Error(`invalid default repo '${defaultRepo}' (expected owner/repo)`);
     return { kind: 'pr', owner, repo, number: Number(numMatch[1]) };
   }
 
   throw new Error(
     `unrecognized fix reference '${ref}' (expected a full 40-character commit SHA, a PR URL, or #N)`,
   );
-}
-
-function releaseTagKey(raw) {
-  const line = String(raw).trim();
-  const stable = STABLE_TAG_RE.exec(line);
-  if (stable) {
-    return { tag: stable[0], key: [Number(stable[1]), Number(stable[2]), Number(stable[3]), 1, 0] };
-  }
-  const beta = BETA_TAG_RE.exec(line);
-  if (beta) {
-    return {
-      tag: beta[0],
-      key: [Number(beta[1]), Number(beta[2]), Number(beta[3]), 0, Number(beta[4])],
-    };
-  }
-  return null;
-}
-
-function byReleaseKeyAscending(a, b) {
-  for (let i = 0; i < a.key.length; i += 1) {
-    if (a.key[i] !== b.key[i]) return a.key[i] - b.key[i];
-  }
-  return 0;
-}
-
-export function sortReleaseTagsAscending(rawTags) {
-  const parsed = [];
-  for (const line of rawTags) {
-    const entry = releaseTagKey(line);
-    if (entry) parsed.push(entry);
-  }
-  parsed.sort(byReleaseKeyAscending);
-  return parsed.map((p) => p.tag);
 }
 
 export function sortStableTagsAscending(rawTags) {
@@ -149,7 +118,9 @@ export function resolveShippedVersion({
 function runGit(args) {
   const res = spawnSync('git', args, { encoding: 'utf8' });
   if (res.status !== 0) {
-    throw new Error(`git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`);
+    throw new Error(
+      `git ${args.join(' ')} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
+    );
   }
   return String(res.stdout || '');
 }
@@ -159,10 +130,6 @@ export function parseTagLines(raw) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
-}
-
-export function realReleaseTags() {
-  return parseTagLines(runGit(['tag', '--list', 'v*', '--sort=version:refname']));
 }
 
 const REC_SEP = '\x1e';
@@ -201,10 +168,14 @@ export function realContains(tag, sha) {
 function realResolvePrMergeSha({ owner, repo, number }) {
   let out;
   try {
-    out = execFileSync('gh', ['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    out = execFileSync(
+      'gh',
+      ['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'],
+      {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
   } catch (err) {
     throw new Error(
       `gh api repos/${owner}/${repo}/pulls/${number} failed: ${String(err?.stderr || err?.message || '').trim()}`,
@@ -228,11 +199,13 @@ function main() {
   let result;
   let fixRef;
   try {
-    fixRef = parseFixRef(process.argv[2], { defaultRepo: process.env.PRIVATE_REPO || DEFAULT_PRIVATE_REPO });
+    fixRef = parseFixRef(process.argv[2], {
+      defaultRepo: process.env.PRIVATE_REPO || DEFAULT_PRIVATE_REPO,
+    });
     const privateSha = resolvePrivateSha(fixRef, { resolvePrMergeSha: realResolvePrMergeSha });
     result = resolveShippedVersion({
       privateSha,
-      stableTags: realReleaseTags(),
+      stableTags: realPublishedReleaseTags(),
       findMirroredCommits: realFindMirroredCommits,
       contains: realContains,
     });
@@ -242,11 +215,15 @@ function main() {
   }
 
   if (result.shipped) {
-    log(`Shipped: ${result.privateSha.slice(0, 12)} -> mirrored ${result.mirroredSha.slice(0, 12)} -> ${result.tag}.`);
+    log(
+      `Shipped: ${result.privateSha.slice(0, 12)} -> mirrored ${result.mirroredSha.slice(0, 12)} -> ${result.tag}.`,
+    );
   } else if (result.reason === 'not-mirrored') {
     log(`Not shipped: no mirrored commit carries GitOrigin-RevId ${result.privateSha} yet.`);
   } else {
-    log(`Not shipped: mirrored as ${result.mirroredShas.join(', ')}, but no stable tag contains it yet.`);
+    log(
+      `Not shipped: mirrored as ${result.mirroredShas.join(', ')}, but no stable tag contains it yet.`,
+    );
   }
 
   console.log(JSON.stringify(result));

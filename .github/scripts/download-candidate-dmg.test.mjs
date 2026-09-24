@@ -106,7 +106,12 @@ describe('candidate DMG inventory', () => {
       [],
       [{ name: 'unrelated.dmg' }],
       [{ name: '../OpenKnowledge-arm64.dmg' }],
-      [{ name: 'OpenKnowledge-arm64.dmg' }, { name: 'OpenKnowledge-Beta-arm64.dmg' }],
+      [
+        { name: 'OpenKnowledge-arm64.dmg' },
+        { name: 'OpenKnowledge-x64.dmg' },
+        { name: 'OpenKnowledge-Beta-arm64.dmg' },
+        { name: 'OpenKnowledge-Beta-x64.dmg' },
+      ],
     ].map((assets) => ({ assets })),
   )('refuses missing, unknown or ambiguous installers: $assets', ({ assets }) => {
     expect(selectDmgAsset(assets, 'legacy')).toBeNull();
@@ -117,6 +122,12 @@ describe('candidate DMG inventory', () => {
     expect(selectDmgAsset([{ name: 'OpenKnowledge-arm64.dmg' }], 'beta')).toBeNull();
     expect(selectDmgAsset([{ name: 'OpenKnowledge-Beta-arm64.dmg' }], 'legacy')).toBeNull();
     expect(selectDmgAsset([{ name: 'OpenKnowledge-arm64.dmg' }], 'unknown')).toBeNull();
+  });
+
+  test('selects the intended product from a dual-Beta release without merging their identities', () => {
+    const assets = [{ name: 'OpenKnowledge-arm64.dmg' }, { name: 'OpenKnowledge-Beta-arm64.dmg' }];
+    expect(selectDmgAsset(assets, 'beta')).toBe('OpenKnowledge-Beta-arm64.dmg');
+    expect(selectDmgAsset(assets, 'legacy')).toBe('OpenKnowledge-arm64.dmg');
   });
 
   test('requires proven ancestry across the product-identity split', () => {

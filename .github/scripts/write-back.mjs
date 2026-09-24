@@ -1,14 +1,18 @@
 #!/usr/bin/env node
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import {
+  realPublishedReleaseTags,
+  requirePublishedRelease,
+  sortReleaseTagsAscending,
+} from './published-release-tags.mjs';
 import {
   firstContainingStableTag,
   parseFixRef,
   parseGitOriginRevIds,
-  realReleaseTags,
   resolvePrivateSha,
   resolveShippedVersion,
-  sortReleaseTagsAscending,
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
 import {
@@ -70,19 +74,35 @@ export function notificationMarkerUrl({ version, originUrl }) {
   return `${RELEASES_TAG_BASE}/v${v}${markerSuffixFor(originUrl)}`;
 }
 
-export function isFixRepoInRemit({ kind, owner, repo }, { defaultRepo = DEFAULT_PRIVATE_REPO, selfRepo } = {}) {
+export function isFixRepoInRemit(
+  { kind, owner, repo },
+  { defaultRepo = DEFAULT_PRIVATE_REPO, selfRepo } = {},
+) {
   if (kind === 'sha') return true;
   const target = `${owner}/${repo}`.toLowerCase();
   const reachable = [defaultRepo, selfRepo]
-    .map((r) => String(r ?? '').trim().toLowerCase())
+    .map((r) =>
+      String(r ?? '')
+        .trim()
+        .toLowerCase(),
+    )
     .filter(Boolean);
   return reachable.includes(target);
 }
 
 export function isSelfRepoPr({ kind, owner, repo }, selfRepo, defaultRepo = DEFAULT_PRIVATE_REPO) {
   if (kind !== 'pr') return false;
-  const self = String(selfRepo ?? '').trim().toLowerCase();
-  if (!self || self === String(defaultRepo ?? '').trim().toLowerCase()) return false;
+  const self = String(selfRepo ?? '')
+    .trim()
+    .toLowerCase();
+  if (
+    !self ||
+    self ===
+      String(defaultRepo ?? '')
+        .trim()
+        .toLowerCase()
+  )
+    return false;
   return self === `${owner}/${repo}`.toLowerCase();
 }
 
@@ -98,7 +118,9 @@ export function deriveVersionForFixRefs({
   channel = 'stable',
   log = () => {},
 }) {
-  const usable = fixReferences.filter((ref) => ref.channel !== 'commit' || FULL_SHA_RE.test(ref.sha ?? ''));
+  const usable = fixReferences.filter(
+    (ref) => ref.channel !== 'commit' || FULL_SHA_RE.test(ref.sha ?? ''),
+  );
   if (usable.length === 0) return null;
 
   let highest = null;
@@ -107,13 +129,15 @@ export function deriveVersionForFixRefs({
     if (!isFixRepoInRemit(parsed, { defaultRepo, selfRepo })) {
       log(
         `::notice::write-back: ${ref.url} lives in ${parsed.owner}/${parsed.repo}, which is outside this ` +
-          'workflow\'s reach; no version can be derived for it.',
+          "workflow's reach; no version can be derived for it.",
       );
       return null;
     }
     const refSha = resolvePrivateSha(parsed, { resolvePrMergeSha });
     if (!refSha) {
-      log(`::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`);
+      log(
+        `::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`,
+      );
       return null;
     }
     let result;
@@ -169,7 +193,6 @@ export function deriveVersionForFixRefs({
   return highest;
 }
 
-
 export const DEFAULT_RELEASE_LOOKBACK = 3;
 
 export const DEFAULT_BETA_LOOKBACK = 10;
@@ -190,7 +213,9 @@ export function isStableVersion(raw) {
 }
 
 function normalizeVersion(raw) {
-  const trimmed = String(raw ?? '').trim().replace(/^v/, '');
+  const trimmed = String(raw ?? '')
+    .trim()
+    .replace(/^v/, '');
   return /^\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(trimmed) ? trimmed : null;
 }
 
@@ -476,7 +501,11 @@ const RETRYABLE_NETWORK_CODES = new Set([
 ]);
 
 export function isRetryableNetworkError(err) {
-  for (let cur = err, depth = 0; cur && typeof cur === 'object' && depth < 5; cur = cur.cause, depth += 1) {
+  for (
+    let cur = err, depth = 0;
+    cur && typeof cur === 'object' && depth < 5;
+    cur = cur.cause, depth += 1
+  ) {
     if (cur.name === 'TimeoutError') return true;
     if (RETRYABLE_NETWORK_CODES.has(cur.code)) return true;
     if (
@@ -540,9 +569,12 @@ export async function linearGraphql({
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (err) {
-        throw new LinearRequestError(`Linear GraphQL request failed before any reply: ${err.message}`, {
-          retryable: isRetryableNetworkError(err),
-        });
+        throw new LinearRequestError(
+          `Linear GraphQL request failed before any reply: ${err.message}`,
+          {
+            retryable: isRetryableNetworkError(err),
+          },
+        );
       }
 
       if (!res.ok) {
@@ -567,9 +599,12 @@ export async function linearGraphql({
         });
       }
       if (payload.errors?.length) {
-        throw new LinearRequestError(`Linear GraphQL error: ${payload.errors.map((e) => e.message).join('; ')}`, {
-          retryable: false,
-        });
+        throw new LinearRequestError(
+          `Linear GraphQL error: ${payload.errors.map((e) => e.message).join('; ')}`,
+          {
+            retryable: false,
+          },
+        );
       }
       return payload.data;
     } catch (err) {
@@ -660,7 +695,9 @@ function realContains(tag, sha) {
 export function selectGhToken({ owner, repo, env }) {
   const crossRepo = String(env.CROSS_REPO_TOKEN ?? '').trim();
   if (!crossRepo) return null;
-  const self = String(env.GITHUB_REPOSITORY ?? '').trim().toLowerCase();
+  const self = String(env.GITHUB_REPOSITORY ?? '')
+    .trim()
+    .toLowerCase();
   return `${owner}/${repo}`.toLowerCase() === self ? null : crossRepo;
 }
 
@@ -676,10 +713,13 @@ function gh(args, target) {
 function realResolvePrMergeSha({ owner, repo, number }) {
   let out;
   try {
-    out = gh(['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'], {
-      owner,
-      repo,
-    });
+    out = gh(
+      ['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'],
+      {
+        owner,
+        repo,
+      },
+    );
   } catch (err) {
     throw new Error(
       `gh api repos/${owner}/${repo}/pulls/${number} failed: ${String(err?.stderr || err?.message || '').trim()}`,
@@ -706,7 +746,9 @@ export function changesetDirFor(repo) {
 export function findChangesetPath(filenames, { repo } = {}) {
   const dir = changesetDirFor(repo);
   const isChangeset = (name) =>
-    name.startsWith(dir) && /^[^/]+\.md$/.test(name.slice(dir.length)) && !name.endsWith('/README.md');
+    name.startsWith(dir) &&
+    /^[^/]+\.md$/.test(name.slice(dir.length)) &&
+    !name.endsWith('/README.md');
   return filenames.map((name) => String(name).trim()).find(isChangeset) ?? null;
 }
 
@@ -781,7 +823,8 @@ async function realPostReply(origin, text) {
   if (origin.channel === 'discord-thread') {
     const url = process.env.DISCORD_NOTIFY_URL;
     const token = process.env.DISCORD_NOTIFY_TOKEN;
-    if (!url || !token) throw new Error('DISCORD_NOTIFY_URL / DISCORD_NOTIFY_TOKEN are required to reply on Discord');
+    if (!url || !token)
+      throw new Error('DISCORD_NOTIFY_URL / DISCORD_NOTIFY_TOKEN are required to reply on Discord');
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -825,7 +868,8 @@ async function main() {
     );
   }
 
-  const stableTags = realReleaseTags();
+  const stableTags = realPublishedReleaseTags();
+  requirePublishedRelease(releaseTag, stableTags);
   const versionFor = (node) =>
     deriveVersionForFixRefs({
       fixReferences: partitionAttachments(node.attachmentUrls ?? []).fixReferences,
@@ -854,7 +898,8 @@ async function main() {
 
   const result = await runWriteBack({
     listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log }),
-    listChildren: (parentId) => paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log }),
+    listChildren: (parentId) =>
+      paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log }),
     versionFor,
     classifyRelease,
     channel,

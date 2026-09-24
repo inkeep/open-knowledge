@@ -1,10 +1,11 @@
 #!/usr/bin/env node
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import { realPublishedReleaseTags } from './published-release-tags.mjs';
 import {
   realContains,
   realFindMirroredCommits,
-  realReleaseTags,
   resolveShippedVersion,
 } from './resolve-shipped-version.mjs';
 
@@ -90,15 +91,21 @@ function prMergeSha({ owner, repo, number }) {
   if (process.env.CROSS_REPO_TOKEN) env.GH_TOKEN = process.env.CROSS_REPO_TOKEN;
   let out;
   try {
-    out = execFileSync('gh', ['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'], {
-      encoding: 'utf8',
-      env,
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+    out = execFileSync(
+      'gh',
+      ['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'],
+      {
+        encoding: 'utf8',
+        env,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
   } catch (err) {
     const stderr = String(err?.stderr || '');
     if (/HTTP 404/i.test(stderr)) return null;
-    throw new Error(`gh api repos/${owner}/${repo}/pulls/${number} failed: ${stderr.trim().slice(0, 200)}`);
+    throw new Error(
+      `gh api repos/${owner}/${repo}/pulls/${number} failed: ${stderr.trim().slice(0, 200)}`,
+    );
   }
   const [mergedAt, sha] = out.split('\n').map((s) => s.trim());
   if (!mergedAt || mergedAt === 'null') return null;
@@ -125,9 +132,14 @@ async function fetchAttachments(issueIds) {
       const page = (await linear(ATTACHMENTS_QUERY, { ids, after })).issues;
       for (const n of page.nodes) {
         if (n.attachments.pageInfo.hasNextPage) {
-          throw new Error(`issue ${n.id} has more attachments than one page; paginate before trusting this run`);
+          throw new Error(
+            `issue ${n.id} has more attachments than one page; paginate before trusting this run`,
+          );
         }
-        byIssue.set(n.id, n.attachments.nodes.map((a) => a.url));
+        byIssue.set(
+          n.id,
+          n.attachments.nodes.map((a) => a.url),
+        );
       }
       if (!page.pageInfo.hasNextPage) break;
       after = page.pageInfo.endCursor;
@@ -148,7 +160,9 @@ async function fetchPipeline() {
 
   for (const r of releases) {
     if (r.issues.pageInfo.hasNextPage) {
-      throw new Error(`release ${r.name} has more issues than one page; paginate before trusting this run`);
+      throw new Error(
+        `release ${r.name} has more issues than one page; paginate before trusting this run`,
+      );
     }
   }
 
@@ -162,7 +176,9 @@ async function fetchPipeline() {
         id: i.id,
         identifier: i.identifier,
         prs: [
-          ...new Set((attachmentsByIssue.get(i.id) ?? []).filter((u) => PRIVATE_PR_RE.test(u ?? ''))),
+          ...new Set(
+            (attachmentsByIssue.get(i.id) ?? []).filter((u) => PRIVATE_PR_RE.test(u ?? '')),
+          ),
         ],
         attachedReleases: [],
       };
@@ -207,7 +223,7 @@ async function main() {
     return;
   }
 
-  const releaseTags = realReleaseTags();
+  const releaseTags = realPublishedReleaseTags();
   const sorted = releaseTags.filter((t) => /^v\d+\.\d+\.\d+$/.test(t.trim())).map((t) => t.trim());
   const rank = new Map(sorted.map((t, i) => [t, i]));
 
@@ -229,7 +245,9 @@ async function main() {
   for (const { ticket, plan } of plans) {
     if (plan.action === 'noop') continue;
     const attached = ticket.attachedReleases.map((r) => r.name).join(', ');
-    log(`${live ? 'APPLY' : 'DRY '} ${ticket.identifier}: ${plan.action} (${plan.reason}) [was: ${attached}]`);
+    log(
+      `${live ? 'APPLY' : 'DRY '} ${ticket.identifier}: ${plan.action} (${plan.reason}) [was: ${attached}]`,
+    );
     if (!live || (plan.add.length === 0 && plan.remove.length === 0)) continue;
     await linear(
       `mutation($id:String!,$in:IssueUpdateInput!){ issueUpdate(id:$id,input:$in){ success } }`,

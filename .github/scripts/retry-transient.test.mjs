@@ -1555,7 +1555,7 @@ describe('workflow wiring', () => {
     expect(new Set(blocks).size).toBe(1);
     expect(blocks[0]).not.toMatch(/do\s+rm -f "\$WRAPPER_TMP"/);
     expect(blocks[0]).toMatch(
-      /\[\[ -s "\$WRAPPER_TMP" \]\] &&\s+mv "\$WRAPPER_TMP" "\$WRAPPER"; then/,
+      /\[\[ -s "\$PACKAGER_TMP" \]\] &&\s+mv "\$PACKAGER_TMP" "\$DESKTOP_PACKAGER" &&\s+mv "\$WRAPPER_TMP" "\$WRAPPER"; then/,
     );
   });
 
@@ -1616,7 +1616,7 @@ describe('workflow wiring', () => {
       expect(packageStep).toContain('--deadline-epoch-ms "$PACKAGING_DEADLINE_EPOCH_MS"');
       const command = packageStep.split('\n').find((line) => /^\s*PKG_CMD:/.test(line));
       expect(command).toContain(
-        "PKG_CMD: 'rm -rf dist-desktop && node scripts/run-electron-builder.mjs",
+        'PKG_CMD: \'rm -rf dist-desktop && pnpm exec node "$DESKTOP_PACKAGER"',
       );
       expect(command).toContain('--publish never');
     },
