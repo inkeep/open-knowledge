@@ -1,6 +1,7 @@
 import {
   type PtyHostIncomingMessage,
   type PtyHostOutgoingMessage,
+  type SetupPtyHostDeps,
   type SpawnPty,
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
@@ -24,6 +25,7 @@ export interface PtyHostProbeOptions {
   env: Record<string, string | undefined>;
   platform?: NodeJS.Platform;
   shellExists?: (path: string) => boolean;
+  logger?: SetupPtyHostDeps['logger'];
 }
 
 export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
@@ -53,6 +55,7 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
     env: options.env,
     ...(options.platform === undefined ? {} : { platform: options.platform }),
     shellExists: options.shellExists,
+    ...(options.logger === undefined ? {} : { logger: options.logger }),
   });
   const dataOf = (ptyId: string): string => data.get(ptyId) ?? '';
   const exitOf = (ptyId: string): { exitCode: number | undefined; signal: number | null } | null =>
@@ -78,8 +81,9 @@ export function createPtyHostProbe(options: PtyHostProbeOptions): PtyHostProbe {
 }
 
 export interface WaitOptions {
-  timeoutMs?: number;
+  stallMs?: number;
   intervalMs?: number;
+  backstopAt?: number;
 }
 
 export interface ShellReadyOptions extends WaitOptions {
@@ -87,12 +91,12 @@ export interface ShellReadyOptions extends WaitOptions {
 }
 
 const DEFAULT_INTERVAL_MS = 15;
-const DEFAULT_TIMEOUT_MS = 8_000;
+const DEFAULT_STALL_MS = 8_000;
 const DEFAULT_READY_INTERVAL_MS = 50;
 const DEFAULT_QUIET_SAMPLES = 20;
-const DEFAULT_READY_TIMEOUT_MS = 12_000;
+const DEFAULT_READY_STALL_MS = 12_000;
 const RECEIVED_EXCERPT_CHARS = 400;
-const DEFAULT_INPUT_READY_TIMEOUT_MS = 16_000;
+const DEFAULT_INPUT_READY_STALL_MS = 16_000;
 /*
  * UPSTREAM(node-pty@1.2.0-beta.15): the console host, not the shell, writes these on attach, and
  * the two halves rest on different evidence. VtIo::StartIfNeeded's device-attributes and mode trio
@@ -151,24 +155,66 @@ export async function waitForCondition(
   label: string,
   options: WaitOptions = {},
 ): Promise<void> {
-  const intervalMs = options.intervalMs ?? DEFAULT_INTERVAL_MS;
-  const timeoutMs = requireDuration(options.timeoutMs ?? DEFAULT_TIMEOUT_MS, 'timeout', label);
+  const intervalMs = requireDuration(
+    options.intervalMs ?? DEFAULT_INTERVAL_MS,
+    'the poll interval',
+    label,
+  );
+  const stallMs = requireDuration(options.stallMs ?? DEFAULT_STALL_MS, 'the stall window', label);
   const startedAt = performance.now();
-  const deadline = startedAt + timeoutMs;
+  const backstopAt = options.backstopAt ?? startedAt + stallMs;
+  if (!Number.isFinite(backstopAt)) {
+    throw new Error(
+      `the backstop for ${label} must be a finite monotonic-clock reading, got ${String(options.backstopAt)}`,
+    );
+  }
+  if (predicate()) return;
+  const containmentMs =
+    options.backstopAt === undefined
+      ? stallMs
+      : remainingGrantMs(backstopAt, label, { minimumMs: intervalMs, now: () => startedAt });
+  const stallWindowMs = Math.min(stallMs, containmentMs);
+  const cutNote =
+    Math.round(stallWindowMs) < Math.round(stallMs)
+      ? ` (the containment it runs inside cut the ${Math.round(stallMs)}ms it declared)`
+      : '';
+  let leadingAttachChars: number | null = null;
+  const shellChars = (): number => {
+    const text = stream.read();
+    if (leadingAttachChars === null) {
+      const beyondAttach = shellOutputBeyondAttach(text);
+      if (beyondAttach.length === 0) return 0;
+      leadingAttachChars = text.length - beyondAttach.length;
+    }
+    return text.length - leadingAttachChars;
+  };
+  let advanced = shellChars();
+  let lastAdvanceAt = startedAt;
   for (;;) {
-    if (predicate()) return;
     const failure = stream.failure();
     if (failure !== null) {
       throw new Error(
         `shell failed before ${label}: ${failure} (after ${Math.round(performance.now() - startedAt)}ms, received ${describeReceived(stream.read())})`,
       );
     }
-    if (performance.now() >= deadline) {
+    const now = performance.now();
+    const seen = shellChars();
+    if (seen !== advanced) {
+      advanced = seen;
+      lastAdvanceAt = now;
+    }
+    if (now - lastAdvanceAt >= stallWindowMs) {
       throw new Error(
-        `timeout waiting for: ${label} after ${Math.round(timeoutMs)}ms (received ${describeReceived(stream.read())})`,
+        `timeout waiting for: ${label} after ${Math.round(stallWindowMs)}ms${cutNote} without ${advanced === 0 ? 'any' : 'new'} shell output, the only progress signal this wait watches (received ${describeReceived(stream.read())})`,
+      );
+    }
+    if (now >= backstopAt) {
+      throw new Error(
+        `${label} was not reached inside its ${Math.round(containmentMs)}ms containment; the stream last advanced ${Math.round(now - lastAdvanceAt)}ms ago, ${advanced} characters past the shell's first output (received ${describeReceived(stream.read())})`,
       );
     }
     await sleep(intervalMs);
+    if (predicate()) return;
   }
 }
 
@@ -178,6 +224,30 @@ export async function waitForShellReady(
   options: ShellReadyOptions = {},
 ): Promise<void> {
   const quietSamples = options.quietSamples ?? DEFAULT_QUIET_SAMPLES;
+  const intervalMs = requireDuration(
+    options.intervalMs ?? DEFAULT_READY_INTERVAL_MS,
+    'the poll interval',
+    label,
+  );
+  const stallMs = requireDuration(
+    options.stallMs ?? DEFAULT_READY_STALL_MS,
+    'the stall window',
+    label,
+  );
+  const quietWindowMs = quietSamples * intervalMs;
+  if (!(stallMs > quietWindowMs)) {
+    throw new Error(
+      `the stall window for ${label} must outlast the ${quietWindowMs}ms of quiet it counts as ready, got ${stallMs}ms`,
+    );
+  }
+  if (options.backstopAt !== undefined && Number.isFinite(options.backstopAt)) {
+    const containmentMs = options.backstopAt - performance.now();
+    if (!(containmentMs > quietWindowMs)) {
+      throw new HarnessBudgetRefusal(
+        `the grant for ${label} was spent before the wait could count ${quietSamples} quiet polls: ${Math.round(containmentMs)}ms left does not outlast the ${quietWindowMs}ms they take`,
+      );
+    }
+  }
   let previous: string | null = null;
   let stable = 0;
   await waitForCondition(
@@ -190,8 +260,9 @@ export async function waitForShellReady(
     },
     label,
     {
-      timeoutMs: options.timeoutMs ?? DEFAULT_READY_TIMEOUT_MS,
-      intervalMs: options.intervalMs ?? DEFAULT_READY_INTERVAL_MS,
+      stallMs,
+      intervalMs,
+      ...(options.backstopAt === undefined ? {} : { backstopAt: options.backstopAt }),
     },
   );
 }
@@ -201,9 +272,9 @@ export interface EvaluatedInputProbe {
   marker: string;
 }
 
-export interface EvaluatedInputOptions extends Omit<WaitOptions, 'timeoutMs'> {
+export interface EvaluatedInputOptions extends Omit<WaitOptions, 'stallMs' | 'backstopAt'> {
   budgetMs: number;
-  roundTripTimeoutMs?: number;
+  roundTripStallMs?: number;
 }
 
 export interface EvaluatedInputTiming {
@@ -233,6 +304,10 @@ export interface HarnessBudget {
   grantMs(before: string): number;
 }
 
+export class HarnessBudgetRefusal extends Error {
+  override readonly name = 'HarnessBudgetRefusal';
+}
+
 export function createHarnessBudget(
   budgetMs: number,
   reserveMs: number,
@@ -244,13 +319,30 @@ export function createHarnessBudget(
   const remainingMs = (): number => budgetMs - (now() - startedAt);
   return {
     grantMs: (before) => {
-      const granted = remainingMs() - reserveMs;
+      const granted = Math.min(remainingMs() - reserveMs, remainingMs() / 2);
       if (granted <= 0) {
-        throw new Error(`the ${budgetMs}ms harness budget was spent before ${before}`);
+        throw new HarnessBudgetRefusal(
+          `the ${budgetMs}ms harness budget was spent before ${before}`,
+        );
       }
       return granted;
     },
   };
+}
+
+export function remainingGrantMs(
+  deadlineAt: number,
+  before: string,
+  options: { minimumMs?: number; now?: () => number } = {},
+): number {
+  const minimumMs = options.minimumMs ?? DEFAULT_INTERVAL_MS;
+  const remainingMs = deadlineAt - (options.now ?? (() => performance.now()))();
+  if (!(remainingMs >= minimumMs)) {
+    throw new HarnessBudgetRefusal(
+      `the grant for ${before} was spent before the wait could poll once: ${String(Math.round(remainingMs))}ms left of the ${Math.round(minimumMs)}ms one poll takes`,
+    );
+  }
+  return remainingMs;
 }
 
 export function resolveHarnessBudgetMs(raw: string | undefined, defaultMs: number): number {
@@ -342,10 +434,10 @@ export async function waitForEvaluatedInput(
   if (probe.input.includes(probe.marker)) {
     throw new Error(`readiness probe input must not contain its marker: ${probe.marker}`);
   }
-  const budgetMs = requireDuration(options.budgetMs, 'budget', label);
-  const ceilingMs = requireDuration(
-    options.roundTripTimeoutMs ?? DEFAULT_INPUT_READY_TIMEOUT_MS,
-    'round-trip timeout',
+  const budgetMs = requireDuration(options.budgetMs, 'the budget', label);
+  const roundTripStallMs = requireDuration(
+    options.roundTripStallMs ?? DEFAULT_INPUT_READY_STALL_MS,
+    'the round-trip stall window',
     label,
   );
   const interval = options.intervalMs === undefined ? {} : { intervalMs: options.intervalMs };
@@ -355,14 +447,15 @@ export async function waitForEvaluatedInput(
   });
   const remainingMs = budgetMs - firstOutputMs;
   if (remainingMs <= 0) {
-    throw new Error(
-      `shell startup spent the ${Math.round(budgetMs)}ms budget for ${label}: first output after ${Math.round(firstOutputMs)}ms left nothing for the round trip`,
+    throw new HarnessBudgetRefusal(
+      `the ${Math.round(budgetMs)}ms grant for ${label} was spent before the round trip could start: first output after ${Math.round(firstOutputMs)}ms left nothing`,
     );
   }
   const startedAt = performance.now();
   send(probe.input);
   await waitForCondition(stream, () => stream.read().includes(probe.marker), label, {
-    timeoutMs: Math.min(ceilingMs, remainingMs),
+    stallMs: roundTripStallMs,
+    backstopAt: startedAt + remainingMs,
     ...interval,
   });
   return { firstOutputMs, firstOutput, roundTripMs: performance.now() - startedAt };
