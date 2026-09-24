@@ -1,10 +1,11 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { UploadIcon } from 'lucide-react';
-import { useId, useRef, useState } from 'react';
+import { useEffect, useEffectEvent, useId, useRef, useState } from 'react';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { useImageAttachmentProblemMessage } from '@/components/ImageAttachments';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { collectImageFiles } from '@/lib/acp/image-attachment';
 import {
   ACCEPTED_IMAGE_TYPES,
   type ImageAttachmentProblem,
@@ -20,6 +21,7 @@ interface ReportBugImageDropzoneProps {
 
 export function ReportBugImageDropzone({ files, onChange, disabled }: ReportBugImageDropzoneProps) {
   const { t } = useLingui();
+  const root = useRef<HTMLDivElement>(null);
   const picker = useRef<HTMLInputElement>(null);
   const hintId = useId();
   const [dragging, setDragging] = useState(false);
@@ -30,7 +32,7 @@ export function ReportBugImageDropzone({ files, onChange, disabled }: ReportBugI
   const problem = rejection?.files === files ? rejection.problem : null;
   const problemMessage = useImageAttachmentProblemMessage();
 
-  function addFiles(picked: FileList | null) {
+  function addFiles(picked: ArrayLike<File> | null) {
     if (disabled || picked === null || picked.length === 0) return;
     const unique = new Map(files.map((file) => [`${file.name}:${file.size}`, file]));
     for (const file of Array.from(picked)) unique.set(`${file.name}:${file.size}`, file);
@@ -40,8 +42,24 @@ export function ReportBugImageDropzone({ files, onChange, disabled }: ReportBugI
     if (error === null) onChange(next);
   }
 
+  const pasteImages = useEffectEvent((event: ClipboardEvent) => {
+    if (disabled) return;
+    const target = event.target instanceof Element ? event.target : null;
+    const targetDialog = target?.closest('[role="dialog"]') ?? null;
+    if (targetDialog !== null && targetDialog !== root.current?.closest('[role="dialog"]')) return;
+    const pasted = collectImageFiles(event.clipboardData);
+    if (pasted.length === 0) return;
+    event.preventDefault();
+    addFiles(pasted);
+  });
+
+  useEffect(() => {
+    document.addEventListener('paste', pasteImages);
+    return () => document.removeEventListener('paste', pasteImages);
+  }, []);
+
   return (
-    <div className="flex min-w-0 flex-col gap-2">
+    <div ref={root} className="flex min-w-0 flex-col gap-2">
       <Button
         variant="outline"
         className={cn(
