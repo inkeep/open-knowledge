@@ -1,6 +1,8 @@
+import { bindConfigDoc, type ConfigBinding } from '@inkeep/open-knowledge-core';
 import { act, cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import * as Y from 'yjs';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { getLastKnownSignedIn, setLastKnownSignedIn } from '@/lib/auth-state-cache';
 import type { OkLocalOpAuthEvent, OkLocalOpAuthStatusResponse } from '@/lib/desktop-bridge-types';
@@ -68,10 +70,31 @@ const noopAuthTransport: AuthTransport = {
   }),
 };
 
+const bindings: ConfigBinding[] = [];
+
+function bindUserConfig(): ConfigBinding {
+  const listeners = new Set<() => void>();
+  const binding = bindConfigDoc(
+    {
+      document: new Y.Doc(),
+      on: (_event, listener) => listeners.add(listener),
+      off: (_event, listener) => listeners.delete(listener),
+    },
+    'user',
+  );
+  for (const listener of listeners) listener();
+  bindings.push(binding);
+  return binding;
+}
+
 function renderSection(authQueryTransport: AuthQueryTransport) {
   return render(
     <TooltipProvider>
-      <AccountSection authQueryTransport={authQueryTransport} authTransport={noopAuthTransport} />
+      <AccountSection
+        authQueryTransport={authQueryTransport}
+        authTransport={noopAuthTransport}
+        userBinding={bindUserConfig()}
+      />
     </TooltipProvider>,
   );
 }
@@ -81,6 +104,7 @@ describe('AccountSection', () => {
   afterEach(() => {
     cleanup();
     setLastKnownSignedIn(null);
+    for (const binding of bindings.splice(0)) binding.dispose();
   });
 
   test('shows "Connected as @<login>" and a Disconnect control when authenticated', async () => {
@@ -98,6 +122,44 @@ describe('AccountSection', () => {
     const connect = screen.getByRole('button', { name: 'Sign in' });
     expect(connect).toBeDefined();
     expect(screen.queryByTestId('settings-account-disconnect')).toBeNull();
+  });
+
+  test('an origin on an unrecognized host explains why instead of offering Sign in', async () => {
+    setLastKnownSignedIn(true);
+    renderSection(
+      makeQueryTransport({
+        status: async () => ({
+          authenticated: false,
+          host: 'ghes.acme.test',
+          error: 'GitHub sign-in is unavailable for this host.',
+          unsupportedOrigin: { host: 'ghes.acme.test' },
+        }),
+      }),
+    );
+
+    const row = await screen.findByTestId('settings-account-unsupported-origin');
+    expect(row.textContent).toContain('ghes.acme.test');
+    expect(row.textContent).toContain('GitHub Enterprise Server hosts');
+    expect(screen.getByTestId('settings-enterprise-hosts')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
+    expect(screen.queryByText('Not connected')).toBeNull();
+    expect(getLastKnownSignedIn()).toBe(true);
+  });
+
+  test('an origin that names no host explains that sign-in is unavailable', async () => {
+    renderSection(
+      makeQueryTransport({
+        status: async () => ({
+          authenticated: false,
+          host: 'github.com',
+          unsupportedOrigin: { host: null },
+        }),
+      }),
+    );
+
+    const row = await screen.findByTestId('settings-account-unsupported-origin');
+    expect(row.textContent).toContain("couldn't find a host name");
+    expect(screen.queryByRole('button', { name: 'Sign in' })).toBeNull();
   });
 
   test('clicking Sign in opens the AuthModal in connect mode (not reauth)', async () => {

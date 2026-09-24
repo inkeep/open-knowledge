@@ -33,6 +33,7 @@ import {
 import { computeShareFreshness } from '../share/freshness.ts';
 import {
   branchExistsOnOrigin,
+  readDeclaredGitHubHosts,
   readGitHeadBranch,
   readOriginGitHubRepo,
   shouldResetAmbientCredentials,
@@ -66,6 +67,7 @@ import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
 
 export interface ShareRouteDeps {
+  declaredGitHubHosts?: ReadonlySet<string>;
   projectDir: string | undefined;
   contentDir: string;
   log: PinoLogger;
@@ -91,6 +93,7 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
     getSyncEngine,
     toGitRelativePath,
   } = deps;
+  const declaredGitHubHosts = deps.declaredGitHubHosts ?? readDeclaredGitHubHosts();
 
   const handleShareConstructUrl = withValidation(
     ShareConstructUrlRequestSchema,
@@ -121,7 +124,7 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
         }
         const branch = readGitHeadBranch(projectDir);
         if (branch === null) {
-          const originPeek = readOriginGitHubRepo(projectDir);
+          const originPeek = readOriginGitHubRepo(projectDir, declaredGitHubHosts);
           if (originPeek.kind === 'no-remote') {
             emitShareConstructUrlLog('no-remote', { kind: body.kind });
             successResponse(
@@ -143,7 +146,7 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
           );
           return;
         }
-        const origin = readOriginGitHubRepo(projectDir);
+        const origin = readOriginGitHubRepo(projectDir, declaredGitHubHosts);
         if (origin.kind === 'no-remote') {
           emitShareConstructUrlLog('no-remote', { kind: body.kind });
           successResponse(
@@ -306,7 +309,7 @@ export function createShareRoutes(deps: ShareRouteDeps): ApiRouteGroup {
           body.kind,
           {
             credentialConfig: buildSyncCredentialConfig(localOpCliArgs, {
-              resetAmbient: shouldResetAmbientCredentials(projectDir),
+              resetAmbient: shouldResetAmbientCredentials(projectDir, declaredGitHubHosts),
             }),
           },
         );

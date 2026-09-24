@@ -1,10 +1,9 @@
-import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { describeAuthFailure } from '../../auth/describe-auth-error.ts';
 import { detectGh } from '../../auth/gh-detect.ts';
 import type { TokenStore } from '../../auth/token-store.ts';
-import { validateGitHubHost } from './validate-host.ts';
+import { resolveAuthHost } from './validate-host.ts';
 
 interface StatusOptions {
   host: string;
@@ -46,7 +45,6 @@ export function buildStatusPayload(
 
 async function runStatus(opts: StatusOptions, tokenStore: TokenStore): Promise<void> {
   const { host, json } = opts;
-  validateGitHubHost(host);
 
   const backend = tokenStore.backend;
   const source = await resolveStatusSource(host, tokenStore);
@@ -102,11 +100,11 @@ export function statusCommand(getTokenStore: () => Promise<TokenStore>): Command
     .description('Show authentication status')
     .option(
       '--host <host>',
-      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+      'GitHub or GitHub Enterprise hostname (default: the GitHub origin host, or github.com with no origin; required otherwise)',
     )
     .option('--json', 'Output JSON', false)
     .action(async (opts: Omit<StatusOptions, 'host'> & { host?: string }) => {
-      const host = opts.host ?? originGitHubHost(process.cwd());
+      const host = resolveAuthHost(opts.host);
       await runStatus({ ...opts, host }, await getTokenStore());
     });
 }

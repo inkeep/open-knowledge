@@ -25,6 +25,54 @@ afterEach(() => {
 });
 
 describe('httpAuthQueryTransport().status', () => {
+  function problem(status: number, body: Record<string, unknown>): Response {
+    return new Response(JSON.stringify({ status, instance: undefined, ...body }), {
+      status,
+      headers: { 'Content-Type': 'application/problem+json' },
+    });
+  }
+
+  it('reports a non-GitHub origin refusal with the rejected host instead of github.com', async () => {
+    stubFetch(() =>
+      problem(409, {
+        type: 'urn:ok:error:non-github-origin',
+        title: 'GitHub sign-in is unavailable for this host.',
+        detail: 'ghes.acme.test is not a declared GitHub host.',
+        host: 'ghes.acme.test',
+      }),
+    );
+    expect(await httpAuthQueryTransport().status()).toEqual({
+      authenticated: false,
+      host: 'ghes.acme.test',
+      error: 'GitHub sign-in is unavailable for this host.',
+      unsupportedOrigin: { host: 'ghes.acme.test' },
+    });
+  });
+
+  it('reports an origin refusal whose remote names no host', async () => {
+    stubFetch(() =>
+      problem(409, {
+        type: 'urn:ok:error:non-github-origin',
+        title: 'GitHub sign-in is unavailable for this host.',
+        host: null,
+      }),
+    );
+    const result = await httpAuthQueryTransport().status();
+    expect(result).toMatchObject({ authenticated: false, unsupportedOrigin: { host: null } });
+  });
+
+  it('keeps other failures as a plain unauthenticated result', async () => {
+    stubFetch(() =>
+      problem(500, { type: 'urn:ok:error:internal-server-error', title: 'Internal server error.' }),
+    );
+    const result = await httpAuthQueryTransport().status();
+    expect(result).toEqual({
+      authenticated: false,
+      host: 'github.com',
+      error: 'Internal server error.',
+    });
+  });
+
   it('coalesces concurrent same-host checks across transport instances', async () => {
     let resolveFetch: ((response: Response) => void) | undefined;
     const pendingResponse = new Promise<Response>((resolve) => {

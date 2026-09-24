@@ -96,7 +96,9 @@ ok auth login
 
 If you're already logged in with the `gh` CLI, you can skip this step.
 
-`ok auth` also provides `status` (show who's logged in), `repos` (list repositories you can access), `signout` (remove stored credentials), and `pat` (store a Personal Access Token). Every subcommand takes `--host <hostname>` for GitHub Enterprise.
+`ok auth` also provides `status` (show who's logged in), `repos` (list repositories you can access), `signout` (remove stored credentials), and `pat` (store a Personal Access Token). Every subcommand takes `--host <hostname>`. GitHub Enterprise hosts must be declared as `git.hosts.<host>.provider: github` in `~/.ok/global.yml` before commands contact them. See [configuration](/docs/reference/configuration).
+
+Without `--host`, commands select the recognized GitHub origin, or `github.com` when no origin exists. An unrecognized origin requires explicit host selection, so commands cannot contact or clear credentials for a different host by accident. `status` and `repos` contact GitHub APIs. `signout --host <hostname>` only removes local credentials and works even after that host's declaration has been removed.
 
 ## Sync with GitHub
 

@@ -1,7 +1,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { OkLocalOpAuthEvent, OkLocalOpAuthStatusResponse } from '@/lib/desktop-bridge-types';
-import type { AuthQueryTransport } from '@/lib/transports/auth-query-transport';
+import type { AuthQueryStatus, AuthQueryTransport } from '@/lib/transports/auth-query-transport';
 import type { AuthTransport } from '@/lib/transports/auth-transport';
 import { AuthModal } from './AuthModal';
 
@@ -34,7 +34,7 @@ const CONNECTED: OkLocalOpAuthStatusResponse = {
 };
 const NOT_CONNECTED: OkLocalOpAuthStatusResponse = { authenticated: false, host: 'github.com' };
 
-function makeQueryTransport(status: OkLocalOpAuthStatusResponse): AuthQueryTransport {
+function makeQueryTransport(status: AuthQueryStatus): AuthQueryTransport {
   return {
     status: async () => status,
     repos: async () => ({ ok: true, host: 'github.com', repos: [] }),
@@ -158,6 +158,19 @@ describe('AuthModal identityPrompt (set-identity) path', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  test('a hostless dialog probe that reports a refused origin opens the token step for that host', async () => {
+    renderModal({
+      queryTransport: makeQueryTransport({
+        authenticated: false,
+        host: 'ghes.acme.test',
+        unsupportedOrigin: { host: 'ghes.acme.test' },
+      }),
+    });
+
+    expect(await screen.findByText('Create a token on ghes.acme.test')).toBeDefined();
+    expect(screen.queryByText('Starting sign-in flow')).toBeNull();
   });
 
   test('sign-in path (no identityPrompt) goes straight to the device flow', async () => {

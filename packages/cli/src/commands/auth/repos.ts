@@ -1,9 +1,8 @@
-import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { detectGh } from '../../auth/gh-detect.ts';
 import type { TokenStore } from '../../auth/token-store.ts';
-import { validateGitHubHost } from './validate-host.ts';
+import { resolveAuthHost } from './validate-host.ts';
 
 interface ReposOptions {
   host: string;
@@ -23,7 +22,6 @@ export async function resolveReposToken(
 
 async function runRepos(opts: ReposOptions, tokenStore: TokenStore): Promise<void> {
   const { host, json } = opts;
-  validateGitHubHost(host);
   const token = await resolveReposToken(host, tokenStore);
   if (token == null) {
     process.stderr.write(`Not logged in to ${host}\n`);
@@ -57,11 +55,11 @@ export function reposCommand(getTokenStore: () => Promise<TokenStore>): Command 
     .description('List accessible repositories')
     .option(
       '--host <host>',
-      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+      'GitHub or GitHub Enterprise hostname (default: the GitHub origin host, or github.com with no origin; required otherwise)',
     )
     .option('--json', 'Output JSON', false)
     .action(async (opts: Omit<ReposOptions, 'host'> & { host?: string }) => {
-      const host = opts.host ?? originGitHubHost(process.cwd());
+      const host = resolveAuthHost(opts.host);
       await runRepos({ ...opts, host }, await getTokenStore());
     });
 }

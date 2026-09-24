@@ -544,3 +544,53 @@ describe('search.semantic embedding transport tuning', () => {
     },
   );
 });
+
+describe('git.hosts.<host>.provider (declared GitHub Enterprise Server hosts)', () => {
+  test('defaults to an empty host map', () => {
+    expect(ConfigSchema.parse({}).git.hosts).toEqual({});
+  });
+
+  test('round-trips a declared host', () => {
+    const parsed = ConfigSchema.parse({
+      git: { hosts: { 'ghes.example.com': { provider: 'github' } } },
+    });
+    expect(parsed.git.hosts['ghes.example.com']?.provider).toBe('github');
+  });
+
+  test('accepts a host entry with no provider', () => {
+    const parsed = ConfigSchema.parse({ git: { hosts: { 'ghes.example.com': {} } } });
+    expect(parsed.git.hosts['ghes.example.com']?.provider).toBeUndefined();
+  });
+
+  test('an unrecognized provider leaves that host undeclared without failing the parse', () => {
+    const parsed = ConfigSchema.parse({
+      git: { hosts: { h: { provider: 'gitlab' } } },
+      content: { dir: 'docs' },
+    });
+    expect(parsed.git.hosts.h?.provider).toBeUndefined();
+    expect(parsed.content.dir).toBe('docs');
+  });
+
+  test('a hosts value that is not a map empties the section without failing the parse', () => {
+    const parsed = ConfigSchema.parse({ git: { hosts: 'nope' }, content: { dir: 'docs' } });
+    expect(parsed.git.hosts).toEqual({});
+    expect(parsed.content.dir).toBe('docs');
+  });
+
+  test('the hosts record and the provider leaf are per-machine user scope, boot-reloaded', () => {
+    expect(getLeafFieldMeta(ConfigSchema, ['git', 'hosts'])).toMatchObject({
+      scope: 'user',
+      defaultScope: 'user',
+      agentSettable: false,
+      reload: 'boot',
+    });
+    expect(
+      getLeafFieldMeta(ConfigSchema, ['git', 'hosts', 'ghes.example.com', 'provider']),
+    ).toMatchObject({
+      scope: 'user',
+      defaultScope: 'user',
+      agentSettable: false,
+      reload: 'boot',
+    });
+  });
+});

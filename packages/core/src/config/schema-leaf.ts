@@ -24,7 +24,12 @@ export function resolveLeafSchema(
   for (const seg of path) {
     cur = unwrapToShape(cur);
     const shape = (cur as { _zod?: { def?: { shape?: Record<string, AnyZ> } } })?._zod?.def?.shape;
-    if (!shape) return undefined;
+    if (!shape) {
+      const def = (cur as { _zod?: { def?: { type?: string; valueType?: unknown } } })?._zod?.def;
+      if (def?.type !== 'record') return undefined;
+      cur = def.valueType;
+      continue;
+    }
     cur = shape[String(seg)];
     if (cur === undefined) return undefined;
   }

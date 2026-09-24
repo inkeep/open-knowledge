@@ -336,6 +336,7 @@ import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
 import { createSkillPlacementOpsService } from './services/skill-placement-ops.ts';
 import { createSkillReimportService } from './services/skill-reimport.ts';
 import { SERVICE_WRITER, type ShadowRef, shadowGit } from './shadow-repo.ts';
+import { readDeclaredGitHubHosts } from './share/git-context.ts';
 
 import { readSkillInstallModeRaw } from './skill-placements.ts';
 
@@ -1243,6 +1244,7 @@ export async function renameTrackedPathInGit(
 }
 
 export interface ApiExtensionOptions {
+  declaredGitHubHosts?: ReadonlySet<string>;
   ingressPolicy?: IngressPolicy;
   hocuspocus: Hocuspocus;
   durabilityState: DocumentDurabilityState;
@@ -1486,6 +1488,8 @@ export function createApiExtension(
     getLinkPreviewsEnabled,
     getConfigDiagnostics,
   } = options;
+  const declaredGitHubHosts =
+    options.declaredGitHubHosts ?? readDeclaredGitHubHosts(homeDirOverride);
   const catalogCache = createSkillsCatalogCache({ homeDirOverride, log });
   const { bumpSkillsCatalogGen, enumerateInstalledSkillsCached, pluginSkillsByName } = catalogCache;
   const signalChannel: typeof rawSignalChannel = rawSignalChannel
@@ -4956,6 +4960,7 @@ export function createApiExtension(
     setBatchInProgress,
   });
   const shareRoutes = createShareRoutes({
+    declaredGitHubHosts,
     projectDir,
     contentDir,
     log,
@@ -4966,6 +4971,7 @@ export function createApiExtension(
     toGitRelativePath,
   });
   const gitRoutes = createGitRoutes({
+    declaredGitHubHosts,
     projectDir,
     contentDir,
     contentFilter,
@@ -4976,6 +4982,7 @@ export function createApiExtension(
     localOpCliArgs,
   });
   const localOpRoutes = createLocalOpRoutes({
+    declaredGitHubHosts,
     projectDir,
     contentDir,
     log,

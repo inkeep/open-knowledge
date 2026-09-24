@@ -1624,6 +1624,10 @@ msgstr "إضافة تعليق"
 msgid "Add a file name (e.g. notes.md)"
 msgstr "أضف اسم ملف (مثل notes.md)"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add a host"
+msgstr "إضافة مضيف"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr "إضافة مفتاح"
@@ -1676,6 +1680,10 @@ msgstr "إضافة حقل"
 #: src/components/settings/LintingSection.tsx
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "أضف نمط ملف أو مجلد، مثل guides/**/*"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add host"
+msgstr "إضافة المضيف"
 
 #: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
@@ -5793,6 +5801,10 @@ msgstr "أدخل قيمة ست عشرية من 6 خانات مثل #1A2B3C"
 msgid "Enter a folder name (e.g. brain)."
 msgstr "أدخل اسم مجلد (مثل brain)."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Enter a hostname, such as github.example.com."
+msgstr "أدخل اسم مضيف، مثل github.example.com."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Enter a name for this theme."
 msgstr "أدخل اسمًا لهذه السمة."
@@ -5844,6 +5856,11 @@ msgstr "أدخل 3 أحرف على الأقل للبحث حسب المعنى."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "أدخل الأصل العام الذي يخدمه النفق الخاص بك، على سبيل المثال https://notes.example.com"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "enterprise"
+msgstr "المؤسسات"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
@@ -6776,6 +6793,11 @@ msgstr "ابدأ الإعداد"
 msgid "Gets the link that opens this project or a document in the app"
 msgstr "يحصل على الرابط الذي يفتح هذا المشروع أو مستندًا في التطبيق"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GHES"
+msgstr "GHES"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git وطلبات السحب"
@@ -6787,6 +6809,11 @@ msgstr "لا يستطيع Git تتبع هذا المجلد — فهو فارغ �
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
 msgstr "قام Git بقفل شجرة العمل هذه، ولكن لا يزال من الممكن فتحها."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "git host"
+msgstr "مضيف git"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -6829,13 +6856,26 @@ msgstr "انتهت صلاحية الاتصال بـ GitHub. أعد الاتصا�
 msgid "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
 msgstr "رفض GitHub الطلب. قد تحتاج إلى منح OpenKnowledge إذنًا لـ {owner} من متصفحك."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub Enterprise Server hosts"
+msgstr "مضيفو GitHub Enterprise Server"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "تسجيل الدخول إلى GitHub مفقود أو منتهي الصلاحية. أعد الاتصال لاستئناف المزامنة."
 
+#: src/components/settings/AccountSection.tsx
+msgid "GitHub sign-in isn't available for this project"
+msgstr "تسجيل الدخول إلى GitHub غير متاح لهذا المشروع"
+
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub، أو رابط git، أو مسار محلي."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "github.com is always recognized, so it doesn't need to be added."
+msgstr "يُتعرَّف على github.com دائمًا، لذا لا حاجة إلى إضافته."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7299,6 +7339,10 @@ msgstr "إذا لم يعرض {agent} أدوات OpenKnowledge، فشغّله ف�
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "إذا وصل تحديث لشيء تحرّره، فأنت من يختار أي نسخة يُبقي، مثل تعارض الدمج."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "If you use a GitHub Enterprise Server, add its host here so OpenKnowledge can sign in, check push permission, and create share links for repositories hosted there."
+msgstr "إذا كنت تستخدم GitHub Enterprise Server، فأضف مضيفه هنا حتى يتمكن OpenKnowledge من تسجيل الدخول، والتحقق من إذن الدفع، وإنشاء روابط مشاركة للمستودعات المستضافة عليه."
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Ignore broken links in log.md"
@@ -9291,6 +9335,10 @@ msgstr "لا توجد تعديلات بعد."
 msgid "No emoji found."
 msgstr "لم يُعثر على رموز تعبيرية."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "No Enterprise hosts added. Only github.com is treated as GitHub."
+msgstr "لم تتم إضافة أي مضيف Enterprise. يُعامَل github.com وحده على أنه GitHub."
+
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "No excerpt"
 msgstr "لا يوجد مقتطف"
@@ -10214,6 +10262,10 @@ msgstr "تحقق OpenKnowledge من المشروع"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "لم يتمكن OpenKnowledge من العثور على هذا الوكيل على هذا الجهاز."
+
+#: src/components/settings/AccountSection.tsx
+msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
+msgstr "لم يعثر OpenKnowledge على اسم مضيف في المستودع البعيد لـ git الخاص بهذا المشروع، لذا لا يمكنه تحديد خادم GitHub الذي يجب تسجيل الدخول إليه."
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -11584,6 +11636,10 @@ msgstr "إزالة {chip}"
 msgid "Remove {fullLabel} from context"
 msgstr "إزالة {fullLabel} من السياق"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Remove {host}"
+msgstr "إزالة {host}"
+
 #: src/components/FrontmatterRow.tsx
 msgid "Remove {keyName}"
 msgstr "إزالة {keyName}"
@@ -12350,6 +12406,10 @@ msgstr "حُفظ في"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "يُحفظ مع المشروع لفريقك."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Saved. Restart OpenKnowledge to apply the change."
+msgstr "تم الحفظ. أعد تشغيل OpenKnowledge لتطبيق التغيير."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Saves a restore point for every document in the project"
@@ -14220,6 +14280,14 @@ msgstr "يحتوي هذا المجلد بالفعل على شيفرة لم تك�
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "ذلك المجلد ليس مشروع OpenKnowledge بعد. هل تهيّئه وتفتحه؟"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That host is already in the list."
+msgstr "هذا المضيف موجود بالفعل في القائمة."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That isn't a valid hostname. Enter just the server name, such as github.example.com."
+msgstr "هذا ليس اسم مضيف صالحًا. أدخل اسم الخادم فقط، مثل github.example.com."
+
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "That language isn't available for spell checking."
 msgstr "هذه اللغة غير متاحة للتدقيق الإملائي."
@@ -15103,6 +15171,10 @@ msgstr "هذا المشروع ليس مستودع git، لذا أشجار الع
 #: src/components/settings/SyncSection.tsx
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "يعيش هذا المشروع على هذا الجهاز وحده. اربطه بـ GitHub لنسخه احتياطيًا ومشاركته مع آخرين."
+
+#: src/components/settings/AccountSection.tsx
+msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
+msgstr "المستودع البعيد لـ git الخاص بهذا المشروع موجود على {host}، ولا يتعرّف عليه OpenKnowledge كمضيف GitHub. إذا كان {host} يشغّل GitHub Enterprise Server، فأضفه في مضيفو GitHub Enterprise Server أدناه، ثم أعد تشغيل OpenKnowledge."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."

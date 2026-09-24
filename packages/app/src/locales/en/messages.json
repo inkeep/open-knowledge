@@ -230,6 +230,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Reject"],
     "1u-mAI": ["Couldn't start the sync. Check your connection, then retry."],
+    "1uEVfp": ["enterprise"],
     "1vczDE": ["Open ", ["displayName"], " Desktop"],
     "1vn0CI": ["Invalid server response"],
     "1xui0Q": ["Failed to load local files"],
@@ -342,6 +343,7 @@
       ")"
     ],
     "3LbBJn": ["Attach images"],
+    "3LuFP-": ["Saved. Restart OpenKnowledge to apply the change."],
     "3MA3Hh": ["Couldn't read the ", ["gitignorePath"], " rule: ", ["previewError"]],
     "3MnvrL": ["Showing top ", ["0"], " matches — keep typing to narrow"],
     "3Mwaly": ["Could not initialize ", ["0"], "."],
@@ -703,6 +705,13 @@
     "7YRrJ9": [
       "Available in the OpenKnowledge desktop app. From a terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7_I248": [
+      "This project's git remote is on ",
+      ["host"],
+      ", which OpenKnowledge doesn't recognize as a GitHub host. If ",
+      ["host"],
+      " runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
+    ],
     "7_bFEL": ["Drag ", ["patternText"], " to reorder"],
     "7a0YcF": ["Press <0>Space</0> or tap the blob to start"],
     "7aNk5D": ["OpenKnowledge edited ", ["subject"]],
@@ -935,6 +944,7 @@
     "AItsE5": ["Open it there"],
     "AJ7_B2": ["Create new theme"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktrees"] }]],
+    "ALFlyF": ["Add host"],
     "ALhMYW": ["Terminal"],
     "AMU00p": [
       "Both versions are identical. Choosing Accept current leaves OpenKnowledge's protection on, so another save of the older version is refused again. Choosing Accept incoming turns that protection off."
@@ -1174,6 +1184,7 @@
     "DDTdLl": ["Code block settings"],
     "DELNQk": ["Collaborators see your in-progress edits as soon as they sync."],
     "DEWDbv": ["Show diagram"],
+    "DEkRZA": ["That host is already in the list."],
     "DF1MtZ": ["Loading conflict for ", ["filePath"]],
     "DFQ2Sj": ["Email for followups"],
     "DFfRbX": ["Sync status: ", ["syncStateLabel"], " — git identity unset"],
@@ -1236,6 +1247,7 @@
     "Dvr1Sg": ["Copying"],
     "Dvvrs8": [["0"], " couldn't restart on that context window. Use Retry to bring it back."],
     "Dvwa0U": ["Create a worktree from this branch"],
+    "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Zoom In"],
     "E-G19G": [
       "Port ",
@@ -1581,6 +1593,7 @@
     "HJ7aHU": [
       "Move the current block up or down. In lists, move the current item or selected items."
     ],
+    "HK2eIK": ["No Enterprise hosts added. Only github.com is treated as GitHub."],
     "HKH-W-": ["Data"],
     "HLoO-Z": ["Server returned a malformed import response."],
     "HM56Bx": ["Creating..."],
@@ -1687,6 +1700,7 @@
     "IxyZXD": ["Screenshot"],
     "J0uRhj": ["Checking skill"],
     "J1XRO3": ["Theme colors"],
+    "J2-D_a": ["GitHub Enterprise Server hosts"],
     "J2Mv98": ["Name (e.g. ", ["login"], ")"],
     "J2_JuX": ["nothing (", ["0"], " cannot match a doc)"],
     "J2eKUI": ["File"],
@@ -2259,6 +2273,9 @@
     "PezM4_": ["OpenKnowledge skill saved. Upload it in Claude Desktop, then click Cowork again."],
     "Pg83C9": ["Uploaded \"", ["0"], "\"."],
     "PgJDqs": ["Show a preview card when you hover an external link in the editor."],
+    "PgY2nN": [
+      "If you use a GitHub Enterprise Server, add its host here so OpenKnowledge can sign in, check push permission, and create share links for repositories hosted there."
+    ],
     "Pgu10b": ["Saved as <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Move to the previous visual-editor find result."],
     "PhIa-X": ["Replace these copies with symlinks to the source?"],
@@ -2322,6 +2339,7 @@
     "QWdKwH": ["Move"],
     "QYTOaN": ["You can change this later in <0>Settings → Sync</0>."],
     "QYfQdv": [["displayName"], " CLI"],
+    "Qbf7Q4": ["Add a host"],
     "QcTjRP": [
       "This conversation keeps the window it started with. A new chat can use a different one."
     ],
@@ -2348,6 +2366,9 @@
       "A real shell is off for this project. Turning it on runs commands with the full access of your user account."
     ],
     "QqBQu1": ["Label <0>(visible link text)</0>"],
+    "QsnBxE": [
+      "That isn't a valid hostname. Enter just the server name, such as github.example.com."
+    ],
     "Qvls7J": ["Eng specs"],
     "Qw-7Ie": [
       "A simple place to write, with one file per topic and a daily journal. Pick this if you just want to start writing and let the links between notes build up over time."
@@ -2621,6 +2642,7 @@
       ["propertyCount", "plural", { "one": ["#", " property"], "other": ["#", " properties"] }]
     ],
     "UIjjFa": ["See what's added"],
+    "UK3GW4": ["github.com is always recognized, so it doesn't need to be added."],
     "UL-9ej": ["OpenKnowledge opened the live preview"],
     "UL8A9w": ["Tag"],
     "UMT9C9": ["How to use OpenKnowledge and its MCP tools."],
@@ -2844,6 +2866,9 @@
     "XAyxsa": ["Check out remote branch"],
     "XBBZnv": ["Link target \"", ["shown"], "\" does not resolve to an existing document."],
     "XBgr2S": ["Copy in"],
+    "XBpH6-": [
+      "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
+    ],
     "XDzAnp": ["Opens in a new tab"],
     "XF1kgP": ["Everything from ", ["source"], " is already up to date"],
     "XGKy1z": ["Image couldn't be displayed"],
@@ -3357,6 +3382,7 @@
     "cEoyWz": ["Add item to ", ["keyName"]],
     "cF9DyA": ["Reconnecting after server restart"],
     "cFCKYZ": ["Deny"],
+    "cFONFy": ["Enter a hostname, such as github.example.com."],
     "cFSbbh": [
       "Personal to this device. Applies to every project you open here and is never shared with collaborators."
     ],
@@ -3378,6 +3404,7 @@
     "cNvGbn": ["Edit and resend"],
     "cOJyVj": ["Disable Themes"],
     "cOSAfL": ["No repositories found on your GitHub account."],
+    "cOX1Cj": ["git host"],
     "cOrTMo": ["Your share link is ready below."],
     "cPAWbl": ["Emailed"],
     "cPgQ_i": [
@@ -5450,6 +5477,7 @@
     "x57cJf": ["Open link"],
     "xAlHfe": [["basename"], " — text editor"],
     "xBFg6z": ["From the ", ["0"], " plugin"],
+    "xBjIs7": ["GitHub sign-in isn't available for this project"],
     "xCJdfg": ["Clear"],
     "xCdTnb": ["Close new tab"],
     "xD4Xm2": ["Fetch"],
@@ -5468,6 +5496,7 @@
     "xOTzt5": ["just now"],
     "xSVO3J": ["What gets created"],
     "xV5sXw": [["0"], "w ago"],
+    "xVMoYb": ["Remove ", ["host"]],
     "xW5AUw": ["Pulled ", ["pulled"]],
     "xW7KK3": [
       "Something named \"",

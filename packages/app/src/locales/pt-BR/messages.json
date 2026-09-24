@@ -266,6 +266,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Rejeitar"],
     "1u-mAI": ["Não deu para iniciar a sincronização. Verifique sua conexão e tente de novo."],
+    "1uEVfp": ["empresa"],
     "1vczDE": ["Abrir ", ["displayName"], " Desktop"],
     "1vn0CI": ["Resposta do servidor inválida"],
     "1xui0Q": ["Falha ao carregar os arquivos locais"],
@@ -391,6 +392,7 @@
       ")"
     ],
     "3LbBJn": ["Anexar imagens"],
+    "3LuFP-": ["Salvo. Reinicie o OpenKnowledge para aplicar a alteração."],
     "3MA3Hh": ["Não foi possível ler a regra de ", ["gitignorePath"], ": ", ["previewError"]],
     "3MnvrL": [
       "Mostrando as ",
@@ -835,6 +837,13 @@
     "7YRrJ9": [
       "Disponível no app de desktop do OpenKnowledge. Em um terminal, use<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7_I248": [
+      "O remoto git deste projeto está em ",
+      ["host"],
+      ", que o OpenKnowledge não reconhece como host do GitHub. Se ",
+      ["host"],
+      " executa o GitHub Enterprise Server, adicione-o em Hosts do GitHub Enterprise Server abaixo e reinicie o OpenKnowledge."
+    ],
     "7_bFEL": ["Arraste ", ["patternText"], " para reordenar"],
     "7a0YcF": ["Pressione <0>Espaço</0> ou toque no blob para começar"],
     "7aNk5D": ["OpenKnowledge editou ", ["subject"]],
@@ -1094,6 +1103,7 @@
         { "one": ["worktree"], "many": ["worktrees"], "other": ["worktrees"] }
       ]
     ],
+    "ALFlyF": ["Adicionar host"],
     "ALhMYW": ["Terminal"],
     "AMU00p": [
       "As duas versões são idênticas. Escolher Aceitar atual mantém a proteção do OpenKnowledge ativada, então outro salvamento da versão mais antiga será recusado novamente. Escolher Aceitar recebido desativa essa proteção."
@@ -1361,6 +1371,7 @@
     "DDTdLl": ["Configurações do bloco de código"],
     "DELNQk": ["Os colaboradores veem suas edições em andamento assim que elas sincronizam."],
     "DEWDbv": ["Mostrar o diagrama"],
+    "DEkRZA": ["Esse host já está na lista."],
     "DF1MtZ": ["Carregando o conflito de ", ["filePath"]],
     "DFQ2Sj": ["E-mail para acompanhamento"],
     "DFfRbX": [
@@ -1438,6 +1449,7 @@
       " não conseguiu reiniciar com essa janela de contexto. Use Tentar novamente para retomá-lo."
     ],
     "Dvwa0U": ["Criar um worktree a partir deste ramo"],
+    "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Aproximar"],
     "E-G19G": [
       "A porta ",
@@ -1830,6 +1842,7 @@
     "HJ7aHU": [
       "Move o bloco atual para cima ou para baixo. Nas listas, move o item atual ou os itens selecionados."
     ],
+    "HK2eIK": ["Nenhum host Enterprise adicionado. Somente o github.com é tratado como GitHub."],
     "HKH-W-": ["Dados"],
     "HLoO-Z": ["O servidor retornou uma resposta de importação malformada."],
     "HM56Bx": ["Criando..."],
@@ -1952,6 +1965,7 @@
     "IxyZXD": ["Captura de tela"],
     "J0uRhj": ["Verificando habilidade"],
     "J1XRO3": ["Cores do tema"],
+    "J2-D_a": ["Hosts do GitHub Enterprise Server"],
     "J2Mv98": ["Nome (ex.: ", ["login"], ")"],
     "J2_JuX": ["nada (", ["0"], " não pode corresponder a um documento)"],
     "J2eKUI": ["Arquivo"],
@@ -2574,6 +2588,9 @@
     "PgJDqs": [
       "Mostra um cartão de pré-visualização quando você passa o cursor sobre um link externo no editor."
     ],
+    "PgY2nN": [
+      "Se você usa um GitHub Enterprise Server, adicione o host dele aqui para que o OpenKnowledge possa fazer login, verificar a permissão de push e criar links de compartilhamento para os repositórios hospedados nele."
+    ],
     "Pgu10b": ["Salvo como <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Vai para o resultado de busca anterior do editor visual."],
     "PhIa-X": ["Substituir estas cópias por links simbólicos para a fonte?"],
@@ -2643,6 +2660,7 @@
     "QWdKwH": ["Mover"],
     "QYTOaN": ["Você pode mudar isto depois em <0>Configurações → Sincronização</0>."],
     "QYfQdv": ["CLI do ", ["displayName"]],
+    "Qbf7Q4": ["Adicionar um host"],
     "QcTjRP": ["Esta conversa mantem a janela com que comecou. Uma nova conversa pode usar outra."],
     "Qca--K": [
       "Outro programa está usando o Git aqui — espere ele terminar e sincronize de novo (ele está segurando o <0>.git/index.lock</0>)"
@@ -2671,6 +2689,9 @@
       "O shell real está desativado para este projeto. Ativá-lo faz os comandos rodarem com todo o acesso da sua conta de usuário."
     ],
     "QqBQu1": ["Rótulo <0>(texto visível do link)</0>"],
+    "QsnBxE": [
+      "Esse não é um nome de host válido. Digite apenas o nome do servidor, como github.example.com."
+    ],
     "Qvls7J": ["Especificações de engenharia"],
     "Qw-7Ie": [
       "Um lugar simples para escrever, com um arquivo por assunto e um diário. Escolha isto se quiser apenas começar a escrever e deixar os links entre notas surgirem com o tempo."
@@ -2990,6 +3011,7 @@
       ]
     ],
     "UIjjFa": ["Ver o que será adicionado"],
+    "UK3GW4": ["O github.com é sempre reconhecido, então não precisa ser adicionado."],
     "UL-9ej": ["OpenKnowledge abriu a pré-visualização ao vivo"],
     "UL8A9w": ["Tag"],
     "UMT9C9": ["Como usar o OpenKnowledge e suas ferramentas MCP."],
@@ -3264,6 +3286,9 @@
     "XAyxsa": ["Extrair ramo remoto"],
     "XBBZnv": ["O destino do link \"", ["shown"], "\" não corresponde a um documento existente."],
     "XBgr2S": ["Copiar para cá"],
+    "XBpH6-": [
+      "O OpenKnowledge não encontrou um nome de host no remoto git deste projeto, então não consegue saber em qual servidor GitHub fazer login."
+    ],
     "XDzAnp": ["Abre em uma nova aba"],
     "XF1kgP": ["Tudo de ", ["source"], " já está atualizado"],
     "XGKy1z": ["Não foi possível mostrar a imagem"],
@@ -3818,6 +3843,7 @@
     "cEoyWz": ["Adicionar item a ", ["keyName"]],
     "cF9DyA": ["Reconectando após o reinício do servidor"],
     "cFCKYZ": ["Negar"],
+    "cFONFy": ["Digite um nome de host, como github.example.com."],
     "cFSbbh": [
       "Pessoal deste dispositivo. Vale para todos os projetos que você abrir aqui e nunca é compartilhado com os colaboradores."
     ],
@@ -3839,6 +3865,7 @@
     "cNvGbn": ["Editar e reenviar"],
     "cOJyVj": ["Desativar os temas"],
     "cOSAfL": ["Nenhum repositório encontrado na sua conta do GitHub."],
+    "cOX1Cj": ["host git"],
     "cOrTMo": ["Seu link de compartilhamento está pronto abaixo."],
     "cPAWbl": ["Enviado por e-mail"],
     "cPgQ_i": [
@@ -6145,6 +6172,7 @@
     "x57cJf": ["Abrir o link"],
     "xAlHfe": [["basename"], " — editor de texto"],
     "xBFg6z": ["Do plugin ", ["0"]],
+    "xBjIs7": ["O login no GitHub não está disponível para este projeto"],
     "xCJdfg": ["Limpar"],
     "xCdTnb": ["Fechar nova aba"],
     "xD4Xm2": ["Buscar"],
@@ -6173,6 +6201,7 @@
     "xOTzt5": ["agora mesmo"],
     "xSVO3J": ["O que é criado"],
     "xV5sXw": ["há ", ["0"], " sem"],
+    "xVMoYb": ["Remover ", ["host"]],
     "xW5AUw": ["Baixado ", ["pulled"]],
     "xW7KK3": [
       "Já existe algo chamado “",

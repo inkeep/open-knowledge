@@ -1,8 +1,20 @@
 import { describe, expect, test } from 'vitest';
+import { z } from 'zod';
 import { ConfigSchema } from './schema.ts';
 import { getLeafFieldMeta, resolveLeafSchema } from './schema-leaf.ts';
 
 describe('resolveLeafSchema', () => {
+  test('does not treat maps or sets as records', () => {
+    expect(resolveLeafSchema(z.map(z.string(), z.boolean()), ['key'])).toBeUndefined();
+    expect(resolveLeafSchema(z.set(z.boolean()), ['key'])).toBeUndefined();
+  });
+
+  test('resolves boolean content-rule entries without inventing leaf metadata', () => {
+    const path = ['contentRules', 'okf', 'rules', 'custom-rule'];
+    expect(resolveLeafSchema(ConfigSchema, path)?.safeParse(true).success).toBe(true);
+    expect(resolveLeafSchema(ConfigSchema, path)?.safeParse('true').success).toBe(false);
+    expect(getLeafFieldMeta(ConfigSchema, path)).toBeUndefined();
+  });
   test('descends through .default() wrappers to top-level section', () => {
     const leaf = resolveLeafSchema(ConfigSchema, ['content']);
     expect(leaf).toBeDefined();
@@ -20,6 +32,16 @@ describe('resolveLeafSchema', () => {
 
   test('returns undefined for a missing top-level key', () => {
     const leaf = resolveLeafSchema(ConfigSchema, ['nonExistentSection']);
+    expect(leaf).toBeUndefined();
+  });
+
+  test('descends through a record value type to a leaf under an arbitrary key', () => {
+    const leaf = resolveLeafSchema(ConfigSchema, ['git', 'hosts', 'ghes.example.com', 'provider']);
+    expect(leaf).toBeDefined();
+  });
+
+  test('returns undefined for a missing key inside a record value type', () => {
+    const leaf = resolveLeafSchema(ConfigSchema, ['git', 'hosts', 'h', 'nope']);
     expect(leaf).toBeUndefined();
   });
 });
@@ -122,6 +144,21 @@ describe('getLeafFieldMeta', () => {
       defaultScope: 'project',
       description: expect.any(String),
     });
+  });
+
+  test('resolves user metadata for a git.hosts.<host>.provider leaf behind a record', () => {
+    const meta = getLeafFieldMeta(ConfigSchema, ['git', 'hosts', 'ghes.example.com', 'provider']);
+    expect(meta).toEqual({
+      scope: 'user',
+      agentSettable: false,
+      reload: 'boot',
+      defaultScope: 'user',
+      description: expect.any(String),
+    });
+  });
+
+  test('returns undefined for an unknown leaf inside a record value type', () => {
+    expect(getLeafFieldMeta(ConfigSchema, ['git', 'hosts', 'h', 'nope'])).toBeUndefined();
   });
 
   test('returns undefined for an unresolved path', () => {

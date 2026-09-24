@@ -204,6 +204,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["拒絕"],
     "1u-mAI": ["無法開始同步。請檢查你的網路連線，然後再試一次。"],
+    "1uEVfp": ["企業版"],
     "1vczDE": ["開啟 ", ["displayName"], " Desktop"],
     "1vn0CI": ["伺服器回應無效"],
     "1xui0Q": ["載入本機檔案失敗"],
@@ -301,6 +302,7 @@
       "）"
     ],
     "3LbBJn": ["附加圖片"],
+    "3LuFP-": ["已儲存。請重新啟動 OpenKnowledge 以套用變更。"],
     "3MA3Hh": ["無法讀取 ", ["gitignorePath"], " 規則：", ["previewError"]],
     "3MnvrL": ["正在顯示最相關的 ", ["0"], " 個相符項——繼續輸入可以縮小範圍"],
     "3Mwaly": ["無法初始化 ", ["0"], "。"],
@@ -619,6 +621,13 @@
     "7YRrJ9": [
       "在 OpenKnowledge 桌面應用程式中提供。在終端機裡可以使用<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>。"
     ],
+    "7_I248": [
+      "此專案的 git 遠端位於 ",
+      ["host"],
+      "，OpenKnowledge 並未將其辨識為 GitHub 主機。如果 ",
+      ["host"],
+      " 執行的是 GitHub Enterprise Server，請在下方的「GitHub Enterprise Server 主機」中新增它，然後重新啟動 OpenKnowledge。"
+    ],
     "7_bFEL": ["拖曳 ", ["patternText"], " 以重新排序"],
     "7a0YcF": ["按<0>空白鍵</0>或點擊 blob 開始"],
     "7aNk5D": ["OpenKnowledge 編輯了 ", ["subject"]],
@@ -821,6 +830,7 @@
     "AItsE5": ["在那裡開啟"],
     "AJ7_B2": ["建立新主題"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktree"] }]],
+    "ALFlyF": ["新增主機"],
     "ALhMYW": ["終端機"],
     "AMU00p": [
       "兩個版本完全相同。選擇「採用目前」會讓 OpenKnowledge 的保護保持開啟，因此再次儲存較舊的版本仍會被拒絕。選擇「採用傳入」會關閉該保護。"
@@ -1029,6 +1039,7 @@
     "DDTdLl": ["程式碼區塊設定"],
     "DELNQk": ["協作者一同步就會看到你正在進行的編輯。"],
     "DEWDbv": ["顯示圖表"],
+    "DEkRZA": ["這個主機已在清單中。"],
     "DF1MtZ": ["正在載入 ", ["filePath"], " 的衝突"],
     "DFQ2Sj": ["供後續聯絡的電子郵件"],
     "DFfRbX": ["同步狀態：", ["syncStateLabel"], " —— 未設定 git 身分"],
@@ -1089,6 +1100,7 @@
     "Dvr1Sg": ["正在複製"],
     "Dvvrs8": [["0"], " 無法在該脈絡視窗下重新啟動。請使用「重試」將其復原。"],
     "Dvwa0U": ["從這個分支建立 worktree"],
+    "Dwu3RL": ["GHES"],
     "Dz7fsq": ["放大"],
     "E-G19G": [
       "連接埠 ",
@@ -1381,6 +1393,7 @@
     "HHQcx0": ["讓技能在更多位置可用，或從某個位置移除"],
     "HIb0vl": ["網路錯誤——請再試一次"],
     "HJ7aHU": ["將目前的區塊向上或向下移動。在清單中，移動目前的項目或所選項目。"],
+    "HK2eIK": ["尚未新增 Enterprise 主機。只有 github.com 會被視為 GitHub。"],
     "HKH-W-": ["資料"],
     "HLoO-Z": ["伺服器回傳的匯入回應格式錯誤。"],
     "HM56Bx": ["正在建立…"],
@@ -1470,6 +1483,7 @@
     "IxyZXD": ["螢幕擷圖"],
     "J0uRhj": ["檢查技能"],
     "J1XRO3": ["主題色彩"],
+    "J2-D_a": ["GitHub Enterprise Server 主機"],
     "J2Mv98": ["名稱（例如 ", ["login"], "）"],
     "J2_JuX": ["無（", ["0"], " 無法比對到任何文件）"],
     "J2eKUI": ["檔案"],
@@ -1986,6 +2000,9 @@
     "PezM4_": ["已儲存 OpenKnowledge 技能。請在 Claude Desktop 中上傳，然後再次點選 Cowork。"],
     "Pg83C9": ["已上傳「", ["0"], "」。"],
     "PgJDqs": ["在編輯器中把游標停在外部連結上時顯示預覽卡片。"],
+    "PgY2nN": [
+      "如果你使用 GitHub Enterprise Server，請在此新增其主機，讓 OpenKnowledge 能夠登入、檢查推送權限，並為託管在其中的存放庫建立分享連結。"
+    ],
     "Pgu10b": ["已儲存為 <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["跳到視覺化編輯器的上一個尋找結果。"],
     "PhIa-X": ["要把這些副本換成指向來源的符號連結嗎？"],
@@ -2042,6 +2059,7 @@
     "QWdKwH": ["移動"],
     "QYTOaN": ["之後可以在<0>「設定 → 同步」</0>中變更。"],
     "QYfQdv": [["displayName"], " CLI"],
+    "Qbf7Q4": ["新增主機"],
     "QcTjRP": ["本次對話保持開始時的視窗。新對話可以使用其他視窗。"],
     "Qca--K": [
       "另一個程式正在這裡使用 Git——等它完成後再同步一次（它佔用著 <0>.git/index.lock</0>）"
@@ -2064,6 +2082,7 @@
     "QohqVL": ["此智慧代理不提供斜線指令"],
     "QpSqAP": ["本專案未啟用真實 shell。啟用後，命令會以你的使用者帳戶的完整權限執行。"],
     "QqBQu1": ["標籤 <0>（可見的連結文字）</0>"],
+    "QsnBxE": ["這不是有效的主機名稱。請只輸入伺服器名稱，例如 github.example.com。"],
     "Qvls7J": ["工程規格"],
     "Qw-7Ie": [
       "一個單純的寫作空間，每個主題一個檔案，外加一份日誌。如果你只想先動筆，讓筆記之間的連結慢慢長出來，請選這個。"
@@ -2299,6 +2318,7 @@
     ],
     "UI0WPT": [["propertyCount", "plural", { "other": ["#", " 項屬性"] }]],
     "UIjjFa": ["查看將新增的內容"],
+    "UK3GW4": ["github.com 一律會被辨識，不需要新增。"],
     "UL-9ej": ["OpenKnowledge 開啟了即時預覽"],
     "UL8A9w": ["標籤"],
     "UMT9C9": ["如何使用 OpenKnowledge 及其 MCP 工具。"],
@@ -2512,6 +2532,9 @@
     "XAyxsa": ["簽出遠端分支"],
     "XBBZnv": ["連結目標「", ["shown"], "」未指向現有文件。"],
     "XBgr2S": ["複製進來"],
+    "XBpH6-": [
+      "OpenKnowledge 在此專案的 git 遠端位址中找不到主機名稱，因此無法判斷要登入哪一台 GitHub 伺服器。"
+    ],
     "XDzAnp": ["在新分頁中開啟"],
     "XF1kgP": ["來自 ", ["source"], " 的內容均已是最新"],
     "XGKy1z": ["無法顯示圖片"],
@@ -2972,6 +2995,7 @@
     "cEoyWz": ["為 ", ["keyName"], " 新增項目"],
     "cF9DyA": ["伺服器重新啟動後正在重新連線"],
     "cFCKYZ": ["拒絕"],
+    "cFONFy": ["請輸入主機名稱，例如 github.example.com。"],
     "cFSbbh": ["只限這台裝置。對你在這裡打開的每個專案都生效，而且絕不會分享給協作者。"],
     "cH0dkG": ["它缺少我需要的功能"],
     "cHhH3i": ["一個必要的 git 工具"],
@@ -2986,6 +3010,7 @@
     "cNvGbn": ["編輯並重新傳送"],
     "cOJyVj": ["停用主題"],
     "cOSAfL": ["在你的 GitHub 帳戶中找不到儲存庫。"],
+    "cOX1Cj": ["git 主機"],
     "cOrTMo": ["你的分享連結已經在下面產生好了。"],
     "cPAWbl": ["已用電子郵件寄出"],
     "cPgQ_i": [
@@ -4738,6 +4763,7 @@
     "x57cJf": ["開啟連結"],
     "xAlHfe": [["basename"], " — 文字編輯器"],
     "xBFg6z": ["來自 ", ["0"], " 外掛"],
+    "xBjIs7": ["此專案無法使用 GitHub 登入"],
     "xCJdfg": ["清除"],
     "xCdTnb": ["關閉新分頁"],
     "xD4Xm2": ["取得"],
@@ -4756,6 +4782,7 @@
     "xOTzt5": ["剛剛"],
     "xSVO3J": ["會建立什麼"],
     "xV5sXw": [["0"], " 週前"],
+    "xVMoYb": ["移除 ", ["host"]],
     "xW5AUw": [["pulled"], "拉取"],
     "xW7KK3": [
       ["scopeLabel"],

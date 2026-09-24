@@ -1,5 +1,6 @@
-import { ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
+import { type ProblemDetails, ProblemDetailsSchema } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
+import { z } from 'zod';
 import type {
   OkDesktopBridge,
   OkLocalOpAuthReposResponse,
@@ -8,19 +9,36 @@ import type {
 } from '@/lib/desktop-bridge-types';
 
 const DEFAULT_AUTH_QUERY_HOST = 'github.com';
-const authStatusInFlight = new Map<string, Promise<OkLocalOpAuthStatusResponse>>();
+const authStatusInFlight = new Map<string, Promise<AuthQueryStatus>>();
 
-async function extractProblemTitle(res: Response): Promise<string | undefined> {
+const NonGitHubOriginProblemSchema = ProblemDetailsSchema.extend({
+  type: z.literal('urn:ok:error:non-github-origin'),
+  host: z.string().min(1).nullish().catch(null),
+});
+
+async function readJsonBody(res: Response): Promise<unknown> {
   try {
-    const body = (await res.json()) as unknown;
-    const result = ProblemDetailsSchema.safeParse(body);
-    if (result.success) return result.data.title;
-  } catch {}
-  return undefined;
+    return (await res.json()) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
+async function extractProblem(res: Response): Promise<ProblemDetails | undefined> {
+  return ProblemDetailsSchema.safeParse(await readJsonBody(res)).data;
+}
+
+type AuthStatusMember<Authenticated extends boolean> = Extract<
+  OkLocalOpAuthStatusResponse,
+  { authenticated: Authenticated }
+>;
+
+export type AuthQueryStatus =
+  | (AuthStatusMember<true> & { unsupportedOrigin?: never })
+  | (AuthStatusMember<false> & { unsupportedOrigin?: { host: string | null } });
+
 export interface AuthQueryTransport {
-  status(request?: { host?: string }): Promise<OkLocalOpAuthStatusResponse>;
+  status(request?: { host?: string }): Promise<AuthQueryStatus>;
   repos(request?: { host?: string }): Promise<OkLocalOpAuthReposResponse>;
   signout?(request?: { host?: string }): Promise<OkLocalOpAuthSignoutResponse>;
 }
@@ -33,14 +51,22 @@ async function postJson(path: string, body: unknown): Promise<Response> {
   });
 }
 
-async function requestAuthStatus(request?: {
-  host?: string;
-}): Promise<OkLocalOpAuthStatusResponse> {
+async function requestAuthStatus(request?: { host?: string }): Promise<AuthQueryStatus> {
   const host = request?.host ?? DEFAULT_AUTH_QUERY_HOST;
   const res = await postJson('/api/local-op/auth/status', request);
   if (!res.ok) {
-    const error = await extractProblemTitle(res);
-    return { authenticated: false, host, error };
+    const body = await readJsonBody(res);
+    const refusal = NonGitHubOriginProblemSchema.safeParse(body);
+    if (refusal.success) {
+      const rejected = refusal.data.host ?? null;
+      return {
+        authenticated: false,
+        host: rejected ?? host,
+        error: refusal.data.title,
+        unsupportedOrigin: { host: rejected },
+      };
+    }
+    return { authenticated: false, host, error: ProblemDetailsSchema.safeParse(body).data?.title };
   }
   const data = (await res.json()) as Record<string, unknown>;
   const h = typeof data.host === 'string' ? data.host : host;
@@ -66,7 +92,7 @@ async function requestAuthStatus(request?: {
   };
 }
 
-function coalescedAuthStatus(request?: { host?: string }): Promise<OkLocalOpAuthStatusResponse> {
+function coalescedAuthStatus(request?: { host?: string }): Promise<AuthQueryStatus> {
   const host = request?.host ?? DEFAULT_AUTH_QUERY_HOST;
   const existing = authStatusInFlight.get(host);
   if (existing) return existing;
@@ -98,7 +124,7 @@ export function httpAuthQueryTransport(): AuthQueryTransport {
       const host = request?.host ?? 'github.com';
       const res = await postJson('/api/local-op/auth/repos', request);
       if (!res.ok) {
-        const title = await extractProblemTitle(res);
+        const title = (await extractProblem(res))?.title;
         return { ok: false, error: title ?? t`Failed to fetch repositories` };
       }
       const data = lastJsonLine(await res.text());
@@ -125,7 +151,7 @@ export function httpAuthQueryTransport(): AuthQueryTransport {
     async signout(request) {
       const res = await postJson('/api/local-op/auth/signout', request);
       if (!res.ok) {
-        const error = await extractProblemTitle(res);
+        const error = (await extractProblem(res))?.title;
         return { ok: false, error };
       }
       return { ok: true };

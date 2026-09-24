@@ -4,7 +4,7 @@ import { Trans, useLingui } from '@lingui/react/macro';
 import { GlobeIcon, LockIcon } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { getLastKnownSignedIn, setLastKnownSignedIn } from '@/lib/auth-state-cache';
+import { getLastKnownSignedIn, recordAuthStatus } from '@/lib/auth-state-cache';
 import {
   type AuthQueryTransport,
   httpAuthQueryTransport,
@@ -115,7 +115,7 @@ export function CloneDialog({
     void resolvedAuthQuery
       .status()
       .then((data) => {
-        setLastKnownSignedIn(data.authenticated);
+        recordAuthStatus(data);
         if (!cancelled) setIsSignedIn(data.authenticated);
       })
       .catch(() => {

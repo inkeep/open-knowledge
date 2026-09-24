@@ -1,17 +1,24 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import {
   branchExistsOnOrigin,
-  originGitHubHost,
   parseGitHubOriginUrl,
+  readDeclaredGitHubHosts,
   readGitHeadBranch,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
+  resolveGitHubAuthHost,
   sameGitHubLogin,
   shouldResetAmbientCredentials,
 } from './git-context.ts';
+import {
+  declareGitHubHosts,
+  gitHostsYaml,
+  useIsolatedHome,
+  writeUserConfig,
+} from './git-host-declarations.test-helper.ts';
 
 function seedRepo(
   root: string,
@@ -48,6 +55,8 @@ function seedRepo(
     writeFileSync(join(gitDir, 'packed-refs'), spec.packedRefs, 'utf-8');
   }
 }
+
+const home = useIsolatedHome();
 
 const CANONICAL_HEAD = 'ref: refs/heads/main\n';
 const OID_A = 'a'.repeat(40);
@@ -279,13 +288,14 @@ describe('readOriginGitHubRepo', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = git@gitlab.com:inkeep/open-knowledge.git\n',
     });
-    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'gitlab.com' });
   });
 
-  test('presumes an unknown host is a GitHub Enterprise host', () => {
+  test('classifies a declared GitHub Enterprise host as a GitHub origin', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://ghes.acme.test/inkeep/open-knowledge.git\n',
     });
+    declareGitHubHosts(home(), 'ghes.acme.test');
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
       host: 'ghes.acme.test',
@@ -299,6 +309,7 @@ describe('readOriginGitHubRepo', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = git@github.corp.example.com:team/kb.git\n',
     });
+    declareGitHubHosts(home(), 'github.corp.example.com');
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
       host: 'github.corp.example.com',
@@ -312,6 +323,7 @@ describe('readOriginGitHubRepo', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://ghes.acme.test:8443/acme/kb.git\n',
     });
+    declareGitHubHosts(home(), 'ghes.acme.test');
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
       host: 'ghes.acme.test',
@@ -351,6 +363,7 @@ describe('readOriginGitHubRepo', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = ssh://git@git.acme.test:2222/acme/kb.git\n',
     });
+    declareGitHubHosts(home(), 'git.acme.test');
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
       host: 'git.acme.test',
@@ -381,12 +394,12 @@ describe('readOriginGitHubRepo', () => {
 
   test('treats unparseable origin url as non-github (defensive — origin field present but malformed)', () => {
     seedRepo(dir, { config: '[remote "origin"]\n\turl = totally-bogus\n' });
-    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github' });
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: null });
   });
 
   test('credential-embedded https URL keeps the username as the login and drops the password', () => {
     const url = 'https://user:pass@ghes.corp.example/org/repo.git';
-    const parsed = parseGitHubOriginUrl(url);
+    const parsed = parseGitHubOriginUrl(url, new Set(['ghes.corp.example']));
     expect(parsed).toEqual({
       host: 'ghes.corp.example',
       owner: 'org',
@@ -396,6 +409,7 @@ describe('readOriginGitHubRepo', () => {
     });
     expect(JSON.stringify(parsed)).not.toContain('pass');
     seedRepo(dir, { config: `[remote "origin"]\n\turl = ${url}\n` });
+    declareGitHubHosts(home(), 'ghes.corp.example');
     expect(readOriginGitHubRepo(dir)).toEqual({
       kind: 'ok',
       host: 'ghes.corp.example',
@@ -434,7 +448,7 @@ describe('readOriginGitHubRepo', () => {
   });
 });
 
-describe('originGitHubHost', () => {
+describe('resolveGitHubAuthHost', () => {
   let dir: string;
 
   beforeEach(() => {
@@ -449,25 +463,58 @@ describe('originGitHubHost', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://github.com/inkeep/open-knowledge.git\n',
     });
-    expect(originGitHubHost(dir)).toBe('github.com');
+    expect(resolveGitHubAuthHost(dir)).toEqual({ kind: 'ok', host: 'github.com' });
   });
 
-  test('returns the enterprise host for a GHES origin', () => {
+  test('returns the enterprise host for a declared GHES origin', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://ghes.acme.test/acme/kb.git\n',
     });
-    expect(originGitHubHost(dir)).toBe('ghes.acme.test');
+    declareGitHubHosts(home(), 'ghes.acme.test');
+    expect(resolveGitHubAuthHost(dir)).toEqual({ kind: 'ok', host: 'ghes.acme.test' });
   });
 
-  test('falls back to github.com for a known non-GitHub forge', () => {
+  test('rejects a known non-GitHub forge, so GitHub flows have no host', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = git@gitlab.com:team/notes.git\n',
     });
-    expect(originGitHubHost(dir)).toBe('github.com');
+    expect(resolveGitHubAuthHost(dir)).toEqual({ kind: 'rejected-origin', host: 'gitlab.com' });
+  });
+
+  test('normalizes rejected explicit hosts and preserves accepted host ports', () => {
+    expect(resolveGitHubAuthHost(dir, 'GHES.Example.test:8443')).toEqual({
+      kind: 'rejected-explicit',
+      host: 'ghes.example.test',
+    });
+    expect(
+      resolveGitHubAuthHost(dir, 'GHES.Example.test:8443', new Set(['ghes.example.test'])),
+    ).toEqual({
+      kind: 'ok',
+      host: 'GHES.Example.test:8443',
+    });
+  });
+
+  test('uses a captured declaration set until the caller supplies a fresh one', () => {
+    const captured = readDeclaredGitHubHosts();
+    declareGitHubHosts(home(), 'ghes.example.test');
+    expect(resolveGitHubAuthHost(dir, 'ghes.example.test', captured)).toEqual({
+      kind: 'rejected-explicit',
+      host: 'ghes.example.test',
+    });
+    expect(resolveGitHubAuthHost(dir, 'ghes.example.test')).toEqual({
+      kind: 'ok',
+      host: 'ghes.example.test',
+    });
+  });
+
+  test('an explicit GitHub host overrides an unparseable origin', () => {
+    seedRepo(dir, { config: '[remote "origin"]\n\turl = ../repository\n' });
+    expect(resolveGitHubAuthHost(dir, 'github.com')).toEqual({ kind: 'ok', host: 'github.com' });
+    expect(resolveGitHubAuthHost(dir)).toEqual({ kind: 'rejected-origin', host: null });
   });
 
   test('falls back to github.com when there is no .git at all', () => {
-    expect(originGitHubHost(dir)).toBe('github.com');
+    expect(resolveGitHubAuthHost(dir)).toEqual({ kind: 'ok', host: 'github.com' });
   });
 });
 
@@ -489,10 +536,11 @@ describe('shouldResetAmbientCredentials', () => {
     expect(shouldResetAmbientCredentials(dir)).toBe(true);
   });
 
-  test('GHES origin resets — sign-in accepts unknown hosts as enterprise', () => {
+  test('declared GHES origin resets — the declaration opts the host into GitHub handling', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://ghes.acme.test/acme/kb.git\n',
     });
+    declareGitHubHosts(home(), 'ghes.acme.test');
     expect(shouldResetAmbientCredentials(dir)).toBe(true);
   });
 
@@ -618,10 +666,11 @@ describe('readSyncRemoteInfo', () => {
     });
   });
 
-  test('GHES origin yields a host-qualified label and a browsable webUrl', () => {
+  test('declared GHES origin yields a host-qualified label and a browsable webUrl', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://ghes.acme.test/team/notes.git\n',
     });
+    declareGitHubHosts(home(), 'ghes.acme.test');
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'ghes.acme.test/team/notes',
       webUrl: 'https://ghes.acme.test/team/notes',
@@ -632,6 +681,7 @@ describe('readSyncRemoteInfo', () => {
     seedRepo(dir, {
       config: '[remote "origin"]\n\turl = https://user:pass@ghes.corp.example/org/repo.git\n',
     });
+    declareGitHubHosts(home(), 'ghes.corp.example');
     expect(readSyncRemoteInfo(dir)).toEqual({
       label: 'ghes.corp.example/org/repo',
       webUrl: 'https://ghes.corp.example/org/repo',
@@ -741,5 +791,139 @@ describe('sameGitHubLogin', () => {
     expect(sameGitHubLogin('alice', undefined)).toBe(false);
     expect(sameGitHubLogin(undefined, 'alice')).toBe(false);
     expect(sameGitHubLogin(undefined, undefined)).toBe(false);
+  });
+});
+
+describe('git host declaration gates GitHub treatment', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'share-git-declared-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const SELF_HOSTED_CONFIG =
+    '[remote "origin"]\n\turl = https://git.example.internal/team/kb.git\n';
+
+  test('github.com stays a GitHub origin with no declaration', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://github.com/o/r.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'github.com',
+      owner: 'o',
+      repo: 'r',
+      transport: 'https',
+    });
+  });
+
+  test('an undeclared origin whose host merely contains github stays generic', () => {
+    seedRepo(dir, { config: '[remote "origin"]\n\turl = https://github.acme.test/team/kb.git\n' });
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'github.acme.test' });
+    expect(shouldResetAmbientCredentials(dir)).toBe(false);
+    expect(resolveGitHubAuthHost(dir)).toEqual({
+      kind: 'rejected-origin',
+      host: 'github.acme.test',
+    });
+  });
+
+  test('an undeclared self-hosted https origin is a generic git remote', () => {
+    seedRepo(dir, { config: SELF_HOSTED_CONFIG });
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'git.example.internal' });
+    expect(shouldResetAmbientCredentials(dir)).toBe(false);
+    expect(resolveGitHubAuthHost(dir)).toEqual({
+      kind: 'rejected-origin',
+      host: 'git.example.internal',
+    });
+    expect(readSyncRemoteInfo(dir)?.webUrl).toBeNull();
+  });
+
+  test('declaring the host opts it into GitHub treatment on every surface', () => {
+    seedRepo(dir, { config: SELF_HOSTED_CONFIG });
+    declareGitHubHosts(home(), 'git.example.internal');
+    expect(readOriginGitHubRepo(dir)).toEqual({
+      kind: 'ok',
+      host: 'git.example.internal',
+      owner: 'team',
+      repo: 'kb',
+      transport: 'https',
+    });
+    expect(shouldResetAmbientCredentials(dir)).toBe(true);
+    expect(resolveGitHubAuthHost(dir)).toEqual({ kind: 'ok', host: 'git.example.internal' });
+    expect(readSyncRemoteInfo(dir)).toEqual({
+      label: 'git.example.internal/team/kb',
+      webUrl: 'https://git.example.internal/team/kb',
+    });
+  });
+
+  test('an undeclared self-hosted scp-style ssh origin is a generic git remote', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = git@git.example.internal:team/kb.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'git.example.internal' });
+  });
+
+  test('an undeclared self-hosted ssh:// origin is a generic git remote', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = ssh://git@git.example.internal/team/kb.git\n',
+    });
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'git.example.internal' });
+  });
+
+  test.each(['gitlab.com', 'bitbucket.org', 'codeberg.org', 'gitea.com', 'sr.ht', 'sourcehut.org'])(
+    '%s still classifies as a generic git remote',
+    (host) => {
+      seedRepo(dir, { config: `[remote "origin"]\n\turl = https://${host}/team/kb.git\n` });
+      expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: host });
+    },
+  );
+
+  test('a declaration written without a port matches a ported remote URL', () => {
+    seedRepo(dir, {
+      config: '[remote "origin"]\n\turl = https://git.example.internal:8443/team/kb.git\n',
+    });
+    declareGitHubHosts(home(), 'git.example.internal');
+    expect(readOriginGitHubRepo(dir)).toMatchObject({
+      kind: 'ok',
+      host: 'git.example.internal',
+    });
+  });
+
+  test('a malformed ~/.ok/global.yml yields no declarations and is left on disk unchanged', () => {
+    const malformed = 'git:\n  hosts:\n   - [unclosed\n';
+    writeUserConfig(home(), malformed);
+    seedRepo(dir, { config: SELF_HOSTED_CONFIG });
+
+    expect(readDeclaredGitHubHosts().size).toBe(0);
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'git.example.internal' });
+
+    const configPath = join(home(), '.ok', 'global.yml');
+    expect(existsSync(configPath)).toBe(true);
+    expect(readFileSync(configPath, 'utf-8')).toBe(malformed);
+  });
+
+  test("a declaration in the project's .ok/config.yml is ignored", () => {
+    mkdirSync(join(dir, '.ok'), { recursive: true });
+    writeFileSync(join(dir, '.ok', 'config.yml'), gitHostsYaml('git.example.internal'), 'utf-8');
+    seedRepo(dir, { config: SELF_HOSTED_CONFIG });
+
+    expect(readDeclaredGitHubHosts().size).toBe(0);
+    expect(readOriginGitHubRepo(dir)).toEqual({ kind: 'non-github', host: 'git.example.internal' });
+    expect(shouldResetAmbientCredentials(dir)).toBe(false);
+  });
+
+  test('reads declarations from an explicit home directory override', () => {
+    const otherHome = mkdtempSync(join(tmpdir(), 'share-git-other-home-'));
+    try {
+      declareGitHubHosts(otherHome, 'git.example.internal');
+      expect([...readDeclaredGitHubHosts(otherHome)]).toEqual(['git.example.internal']);
+      expect(readDeclaredGitHubHosts().size).toBe(0);
+    } finally {
+      rmSync(otherHome, { recursive: true, force: true });
+    }
   });
 });

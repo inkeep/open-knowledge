@@ -1,6 +1,6 @@
-import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { clearTokenFromAllBackends } from '../../auth/token-store.ts';
+import { resolveSignoutHost } from './validate-host.ts';
 
 interface SignoutOptions {
   host: string;
@@ -29,10 +29,10 @@ export function signoutCommand(): Command {
     .description('Remove stored credentials')
     .option(
       '--host <host>',
-      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+      'GitHub or GitHub Enterprise hostname (default: the GitHub origin host, or github.com with no origin; required otherwise)',
     )
     .action(async (opts: Omit<SignoutOptions, 'host'> & { host?: string }) => {
-      const host = opts.host ?? originGitHubHost(process.cwd());
+      const host = resolveSignoutHost(opts.host);
       await runSignout({ ...opts, host });
     });
 }

@@ -20,6 +20,7 @@ export async function runPatSubprocess(opts: RunPatOptions): Promise<RunPatResul
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
     cliEnv: opts.cliEnv,
+    cwd: opts.cwd,
     trailingArgs: ['auth', 'pat', '--json', '--host', host, '--token-stdin'],
     stdinData: opts.token,
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,

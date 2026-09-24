@@ -1624,6 +1624,10 @@ msgstr "댓글 추가"
 msgid "Add a file name (e.g. notes.md)"
 msgstr "파일 이름을 추가하세요 (예: notes.md)"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add a host"
+msgstr "호스트 추가"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr "키 추가"
@@ -1676,6 +1680,10 @@ msgstr "필드 추가"
 #: src/components/settings/LintingSection.tsx
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "파일 또는 폴더 패턴 추가, 예: guides/**/*"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add host"
+msgstr "호스트 추가"
 
 #: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
@@ -5793,6 +5801,10 @@ msgstr "6자리 16진수 입력, 예: #1A2B3C"
 msgid "Enter a folder name (e.g. brain)."
 msgstr "폴더 이름을 입력하세요(예: brain)."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Enter a hostname, such as github.example.com."
+msgstr "github.example.com과 같은 호스트 이름을 입력하세요."
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Enter a name for this theme."
 msgstr "이 테마의 이름을 입력합니다."
@@ -5844,6 +5856,11 @@ msgstr "의미로 검색하려면 3자 이상 입력하세요."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "터널이 제공하는 공개 오리진을 입력하세요. 예: https://notes.example.com"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "enterprise"
+msgstr "엔터프라이즈"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
@@ -6776,6 +6793,11 @@ msgstr "설정 시작"
 msgid "Gets the link that opens this project or a document in the app"
 msgstr "이 프로젝트나 문서를 앱에서 여는 링크를 가져옵니다"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GHES"
+msgstr "GHES"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git 및 PR"
@@ -6787,6 +6809,11 @@ msgstr "Git이 이 폴더를 추적할 수 없습니다. 비어 있거나 무시
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
 msgstr "Git에서 이 워크트리를 잠갔지만 계속 열 수 있습니다."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "git host"
+msgstr "git 호스트"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -6829,13 +6856,26 @@ msgstr "GitHub 연결이 만료되었습니다. 계속하려면 다시 연결하
 msgid "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
 msgstr "GitHub에서 요청을 거부했습니다. 브라우저에서 {owner}에 OpenKnowledge 권한을 부여해야 할 수 있습니다."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub Enterprise Server hosts"
+msgstr "GitHub Enterprise Server 호스트"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "GitHub 로그인이 없거나 만료되었습니다. 동기화를 계속하려면 다시 연결하세요."
 
+#: src/components/settings/AccountSection.tsx
+msgid "GitHub sign-in isn't available for this project"
+msgstr "이 프로젝트에서는 GitHub 로그인을 사용할 수 없습니다"
+
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, git URL 또는 로컬 경로입니다."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "github.com is always recognized, so it doesn't need to be added."
+msgstr "github.com은 항상 인식되므로 추가할 필요가 없습니다."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7299,6 +7339,10 @@ msgstr "{agent}에 OpenKnowledge 도구가 보이지 않으면 이 프로젝트�
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "편집 중인 항목에 업데이트가 도착하면 병합 충돌처럼 유지할 버전을 선택합니다."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "If you use a GitHub Enterprise Server, add its host here so OpenKnowledge can sign in, check push permission, and create share links for repositories hosted there."
+msgstr "GitHub Enterprise Server를 사용한다면 여기에 호스트를 추가하세요. 그러면 OpenKnowledge가 로그인하고, 푸시 권한을 확인하고, 그곳에 호스팅된 저장소의 공유 링크를 만들 수 있습니다."
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Ignore broken links in log.md"
@@ -9291,6 +9335,10 @@ msgstr "아직 편집 없음."
 msgid "No emoji found."
 msgstr "이모지를 찾지 못했습니다."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "No Enterprise hosts added. Only github.com is treated as GitHub."
+msgstr "추가된 Enterprise 호스트가 없습니다. github.com만 GitHub로 취급됩니다."
+
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "No excerpt"
 msgstr "발췌문 없음"
@@ -10214,6 +10262,10 @@ msgstr "OpenKnowledge에서 프로젝트 확인"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge가 이 컴퓨터에서 이 에이전트를 찾지 못했습니다."
+
+#: src/components/settings/AccountSection.tsx
+msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
+msgstr "OpenKnowledge가 이 프로젝트의 git 원격 주소에서 호스트 이름을 찾지 못해 어느 GitHub 서버에 로그인해야 할지 알 수 없습니다."
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -11584,6 +11636,10 @@ msgstr "{chip} 제거"
 msgid "Remove {fullLabel} from context"
 msgstr "현재 내용에서 {fullLabel} 제거"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Remove {host}"
+msgstr "{host} 제거"
+
 #: src/components/FrontmatterRow.tsx
 msgid "Remove {keyName}"
 msgstr "{keyName} 제거"
@@ -12350,6 +12406,10 @@ msgstr "저장 위치"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "팀을 위해 프로젝트와 함께 저장됨."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Saved. Restart OpenKnowledge to apply the change."
+msgstr "저장되었습니다. 변경 사항을 적용하려면 OpenKnowledge를 다시 시작하세요."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Saves a restore point for every document in the project"
@@ -14220,6 +14280,14 @@ msgstr "해당 폴더에는 Open Knowledge가 작성하지 않은 코드가 이�
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "해당 폴더는 아직 OpenKnowledge 프로젝트가 아닙니다. 초기화하고 여시겠습니까?"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That host is already in the list."
+msgstr "이미 목록에 있는 호스트입니다."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That isn't a valid hostname. Enter just the server name, such as github.example.com."
+msgstr "올바른 호스트 이름이 아닙니다. github.example.com처럼 서버 이름만 입력하세요."
+
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "That language isn't available for spell checking."
 msgstr "해당 언어는 맞춤법 검사에서 지원되지 않습니다."
@@ -15103,6 +15171,10 @@ msgstr "이 프로젝트는 git 저장소가 아니므로 워크트리를 사용
 #: src/components/settings/SyncSection.tsx
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "이 프로젝트는 이 컴퓨터에만 있습니다. 백업하고 다른 사람과 공유하려면 GitHub에 연결합니다."
+
+#: src/components/settings/AccountSection.tsx
+msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
+msgstr "이 프로젝트의 git 원격은 {host}에 있으며, OpenKnowledge는 이를 GitHub 호스트로 인식하지 않습니다. {host}이(가) GitHub Enterprise Server를 실행한다면 아래의 GitHub Enterprise Server 호스트에 추가한 다음 OpenKnowledge를 다시 시작하세요."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."

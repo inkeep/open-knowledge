@@ -449,6 +449,46 @@ describe('SettingsDialogBody section runtime dispatch', () => {
     expect(screen.getByTestId('settings-scope-badge-user')).not.toBeNull();
   });
 
+  test('the Account page mounts the Enterprise hosts card from the user binding', async () => {
+    const { bindConfigDoc } = await import('@inkeep/open-knowledge-core');
+    const { Doc } = await import('yjs');
+    const listeners = new Set<() => void>();
+    const binding = bindConfigDoc(
+      {
+        document: new Doc(),
+        on: (_event, listener) => listeners.add(listener),
+        off: (_event, listener) => listeners.delete(listener),
+      },
+      'user',
+    );
+    for (const listener of listeners) listener();
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('offline in this test'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await renderBody({ activeId: 'account', userBinding: binding });
+      expect(await screen.findByTestId('settings-enterprise-hosts')).not.toBeNull();
+      expect(screen.getByLabelText('Add a host')).not.toBeNull();
+    } finally {
+      fetchSpy.mockRestore();
+      warn.mockRestore();
+      binding.dispose();
+    }
+  });
+
+  test('the Account page waits for the user binding instead of rendering without the hosts card', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    try {
+      await renderBody({ activeId: 'account' });
+      expect(screen.queryByTestId('settings-account')).toBeNull();
+      expect(screen.queryByTestId('settings-enterprise-hosts')).toBeNull();
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
   test('user preferences carries the User badge on its heading', async () => {
     await renderBody({
       activeId: 'preferences',

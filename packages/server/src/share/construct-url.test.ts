@@ -12,6 +12,7 @@ import {
   emitShareConstructUrlLog,
   isValidSharePath,
 } from './construct-url.ts';
+import { declareGitHubHosts, useIsolatedHome } from './git-host-declarations.test-helper.ts';
 
 interface TestRig {
   port: number;
@@ -103,6 +104,8 @@ function seedRemoteAndHead(
     }
   }
 }
+
+const home = useIsolatedHome();
 
 async function postConstructUrl(port: number, body: unknown): Promise<Response> {
   return fetch(`http://127.0.0.1:${port}/api/share/construct-url`, {
@@ -253,13 +256,14 @@ describe('POST /api/share/construct-url', () => {
     expect(json).toEqual({ ok: false, error: 'non-github-remote' });
   });
 
-  test('GHES origins produce an enterprise-host share URL', async () => {
+  test('a declared GHES origin produces an enterprise-host share URL', async () => {
     rig = await bootRig((projectDir) => {
       seedRemoteAndHead(projectDir, {
         head: 'ref: refs/heads/main\n',
         originUrl: 'https://ghes.acme.test/team/notes.git',
         branchesOnOrigin: ['main'],
       });
+      declareGitHubHosts(home(), 'ghes.acme.test');
     });
     const res = await postConstructUrl(rig.port, { kind: 'doc', docPath: 'a.md' });
     expect(res.status).toBe(200);

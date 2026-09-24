@@ -117,6 +117,40 @@ describe('bindConfigDoc — current()', () => {
 });
 
 describe('bindConfigDoc — patch()', () => {
+  test('allows removing providers and hosts without discarding sibling declarations', () => {
+    const binding = bindSyncedConfigDoc('user');
+    expect(
+      binding.patch({
+        git: {
+          hosts: {
+            first: { provider: 'github' },
+            second: { provider: 'github' },
+            third: { provider: 'github' },
+          },
+        },
+      }).ok,
+    ).toBe(true);
+    const result = binding.patch({ git: { hosts: { first: { provider: null }, second: null } } });
+    expect(result).toMatchObject({
+      ok: true,
+      effective: { git: { hosts: { first: {}, third: { provider: 'github' } } } },
+    });
+    if (result.ok) {
+      expect(result.effective.git.hosts.first?.provider).toBeUndefined();
+      expect(result.effective.git.hosts.second).toBeUndefined();
+    }
+    binding.dispose();
+  });
+  test.each([{ h: { provider: 'gitlab' } }, { h: 'invalid' }, 'invalid'])(
+    'rejects invalid host patch %j without mutating CRDT state',
+    (hosts) => {
+      const binding = bindSyncedConfigDoc('user');
+      const result = binding.patch({ git: { hosts: hosts as never } });
+      expect(result).toMatchObject({ ok: false, error: { code: 'SCHEMA_INVALID' } });
+      expect(doc.getText('source').toString()).toBe('');
+      binding.dispose();
+    },
+  );
   test('writes scalar to synced empty Y.Text + returns effective config', () => {
     const binding = bindSyncedConfigDoc('user');
     const result = binding.patch({ appearance: { theme: 'dark' } });

@@ -228,6 +228,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["Tolak"],
     "1u-mAI": ["Sinkronisasinya tidak bisa dimulai. Periksa koneksi Anda, lalu coba lagi."],
+    "1uEVfp": ["enterprise"],
     "1vczDE": ["Buka ", ["displayName"], " Desktop"],
     "1vn0CI": ["Respons server tidak valid"],
     "1xui0Q": ["Gagal memuat berkas lokal"],
@@ -339,6 +340,7 @@
       ")"
     ],
     "3LbBJn": ["Lampirkan gambar"],
+    "3LuFP-": ["Tersimpan. Mulai ulang OpenKnowledge untuk menerapkan perubahan."],
     "3MA3Hh": ["Tidak dapat membaca aturan ", ["gitignorePath"], ": ", ["previewError"]],
     "3MnvrL": ["Menampilkan ", ["0"], " kecocokan teratas — terus ketik untuk mempersempit"],
     "3Mwaly": [["0"], " tidak dapat diinisialisasi."],
@@ -718,6 +720,13 @@
     "7YRrJ9": [
       "Tersedia di aplikasi desktop OpenKnowledge. Dari terminal, gunakan<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>."
     ],
+    "7_I248": [
+      "Remote git proyek ini berada di ",
+      ["host"],
+      ", yang tidak dikenali OpenKnowledge sebagai host GitHub. Jika ",
+      ["host"],
+      " menjalankan GitHub Enterprise Server, tambahkan ke Host GitHub Enterprise Server di bawah, lalu mulai ulang OpenKnowledge."
+    ],
     "7_bFEL": ["Seret ", ["patternText"], " untuk menata ulang"],
     "7a0YcF": ["Tekan <0>Spasi</0> atau ketuk blob untuk mulai"],
     "7aNk5D": ["OpenKnowledge menyunting ", ["subject"]],
@@ -947,6 +956,7 @@
     "AItsE5": ["Buka di sana"],
     "AJ7_B2": ["Buat tema baru"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktree"] }]],
+    "ALFlyF": ["Tambahkan host"],
     "ALhMYW": ["Terminal"],
     "AMU00p": [
       "Kedua versi identik. Memilih Terima yang sekarang membuat perlindungan OpenKnowledge tetap aktif, sehingga penyimpanan versi lama berikutnya akan ditolak lagi. Memilih Terima yang masuk menonaktifkan perlindungan tersebut."
@@ -1174,6 +1184,7 @@
     "DDTdLl": ["Pengaturan blok kode"],
     "DELNQk": ["Kolaborator melihat suntingan Anda yang sedang berjalan begitu tersinkronkan."],
     "DEWDbv": ["Tampilkan diagram"],
+    "DEkRZA": ["Host tersebut sudah ada di daftar."],
     "DF1MtZ": ["Memuat konflik untuk ", ["filePath"]],
     "DFQ2Sj": ["Email untuk tindak lanjut"],
     "DFfRbX": ["Status sinkronisasi: ", ["syncStateLabel"], " — identitas git belum disetel"],
@@ -1242,6 +1253,7 @@
       " tidak dapat dijalankan ulang pada jendela konteks itu. Gunakan Coba lagi untuk memulihkannya."
     ],
     "Dvwa0U": ["Buat worktree dari cabang ini"],
+    "Dwu3RL": ["GHES"],
     "Dz7fsq": ["Perbesar"],
     "E-G19G": [
       "Port ",
@@ -1605,6 +1617,9 @@
     "HJ7aHU": [
       "Pindahkan blok saat ini ke atas atau ke bawah. Dalam daftar, pindahkan item saat ini atau item yang dipilih."
     ],
+    "HK2eIK": [
+      "Belum ada host Enterprise yang ditambahkan. Hanya github.com yang diperlakukan sebagai GitHub."
+    ],
     "HKH-W-": ["Data"],
     "HLoO-Z": ["Server mengembalikan respons impor yang salah bentuk."],
     "HM56Bx": ["Membuat..."],
@@ -1716,6 +1731,7 @@
     "IxyZXD": ["Tangkapan layar"],
     "J0uRhj": ["Memeriksa keterampilan"],
     "J1XRO3": ["Warna tema"],
+    "J2-D_a": ["Host GitHub Enterprise Server"],
     "J2Mv98": ["Nama (mis. ", ["login"], ")"],
     "J2_JuX": ["tidak apa pun (", ["0"], " tidak bisa cocok dengan sebuah dokumen)"],
     "J2eKUI": ["Berkas"],
@@ -2278,6 +2294,9 @@
     "PgJDqs": [
       "Menampilkan kartu pratinjau saat Anda mengarahkan kursor ke tautan eksternal di penyunting."
     ],
+    "PgY2nN": [
+      "Jika Anda menggunakan GitHub Enterprise Server, tambahkan host-nya di sini agar OpenKnowledge dapat masuk, memeriksa izin push, dan membuat tautan berbagi untuk repositori yang dihosting di sana."
+    ],
     "Pgu10b": ["Disimpan sebagai <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["Pergi ke hasil pencarian penyunting visual sebelumnya."],
     "PhIa-X": ["Ganti salinan-salinan ini dengan symlink ke sumbernya?"],
@@ -2345,6 +2364,7 @@
     "QWdKwH": ["Pindahkan"],
     "QYTOaN": ["Anda bisa mengubah ini nanti di <0>Pengaturan → Sinkronisasi</0>."],
     "QYfQdv": ["CLI ", ["displayName"]],
+    "Qbf7Q4": ["Tambahkan host"],
     "QcTjRP": [
       "Percakapan ini mempertahankan jendela awalnya. Percakapan baru bisa memakai jendela lain."
     ],
@@ -2371,6 +2391,9 @@
       "Shell asli dinonaktifkan untuk proyek ini. Mengaktifkannya membuat perintah berjalan dengan akses penuh akun pengguna Anda."
     ],
     "QqBQu1": ["Label <0>(teks tautan yang terlihat)</0>"],
+    "QsnBxE": [
+      "Itu bukan nama host yang valid. Masukkan nama servernya saja, misalnya github.example.com."
+    ],
     "Qvls7J": ["Spesifikasi teknik"],
     "Qw-7Ie": [
       "Tempat sederhana untuk menulis, dengan satu berkas per topik dan jurnal harian. Pilih ini jika Anda hanya ingin mulai menulis dan membiarkan tautan antarcatatan tumbuh seiring waktu."
@@ -2641,6 +2664,7 @@
     ],
     "UI0WPT": [["propertyCount", "plural", { "other": ["#", " properti"] }]],
     "UIjjFa": ["Lihat yang ditambahkan"],
+    "UK3GW4": ["github.com selalu dikenali, jadi tidak perlu ditambahkan."],
     "UL-9ej": ["OpenKnowledge membuka pratinjau langsung"],
     "UL8A9w": ["Tag"],
     "UMT9C9": ["Cara menggunakan OpenKnowledge dan alat MCP-nya."],
@@ -2881,6 +2905,9 @@
     "XAyxsa": ["Ambil cabang remote"],
     "XBBZnv": ["Target tautan \"", ["shown"], "\" tidak merujuk ke dokumen yang ada."],
     "XBgr2S": ["Salin ke sini"],
+    "XBpH6-": [
+      "OpenKnowledge tidak menemukan nama host di remote git proyek ini, jadi tidak dapat mengetahui server GitHub mana yang harus dimasuki."
+    ],
     "XDzAnp": ["Terbuka di tab baru"],
     "XF1kgP": ["Semua dari ", ["source"], " sudah yang terbaru"],
     "XGKy1z": ["Gambar tidak dapat ditampilkan"],
@@ -3404,6 +3431,7 @@
     "cEoyWz": ["Tambahkan item ke ", ["keyName"]],
     "cF9DyA": ["Menyambung ulang setelah server dimulai ulang"],
     "cFCKYZ": ["Tolak"],
+    "cFONFy": ["Masukkan nama host, misalnya github.example.com."],
     "cFSbbh": [
       "Pribadi untuk perangkat ini. Berlaku untuk setiap proyek yang Anda buka di sini dan tidak pernah dibagikan ke kolaborator."
     ],
@@ -3425,6 +3453,7 @@
     "cNvGbn": ["Ubah dan kirim ulang"],
     "cOJyVj": ["Nonaktifkan Tema"],
     "cOSAfL": ["Tidak ada repositori yang ditemukan di akun GitHub Anda."],
+    "cOX1Cj": ["host git"],
     "cOrTMo": ["Tautan berbagi Anda sudah siap di bawah."],
     "cPAWbl": ["Dikirim lewat surel"],
     "cPgQ_i": [
@@ -5466,6 +5495,7 @@
     "x57cJf": ["Buka tautan"],
     "xAlHfe": [["basename"], " — penyunting teks"],
     "xBFg6z": ["Dari plugin ", ["0"]],
+    "xBjIs7": ["Masuk ke GitHub tidak tersedia untuk proyek ini"],
     "xCJdfg": ["Bersihkan"],
     "xCdTnb": ["Tutup tab baru"],
     "xD4Xm2": ["Ambil"],
@@ -5484,6 +5514,7 @@
     "xOTzt5": ["baru saja"],
     "xSVO3J": ["Apa yang dibuat"],
     "xV5sXw": [["0"], " mgg lalu"],
+    "xVMoYb": ["Hapus ", ["host"]],
     "xW5AUw": ["Ditarik ", ["pulled"]],
     "xW7KK3": [
       "Sudah ada sesuatu bernama “",

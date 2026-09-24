@@ -15,6 +15,7 @@ import {
   STORED_SYNC_MODES,
 } from './auto-sync-mode.ts';
 import { fieldRegistry } from './field-registry.ts';
+import { EffectiveGitHostEntrySchema } from './git-host-config.ts';
 
 function base16SlotFields() {
   return Object.fromEntries(
@@ -487,6 +488,22 @@ export const ConfigSchema = z.looseObject({
         .default(null),
     })
     .default({ mode: null, enabled: null, default: null }),
+  git: z
+    .looseObject({
+      hosts: z
+        .record(z.string(), EffectiveGitHostEntrySchema)
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'user',
+          description:
+            "Per-git-host declarations, keyed by hostname (for example ghes.example.com). Each entry says how OpenKnowledge should treat remotes on that host; today the only key an entry carries is `provider`. Hosts absent from this map are treated as generic git remotes. Per-machine (user scope, `~/.ok/global.yml`); a value in a project's `.ok/config.yml` is ignored. Declarations take effect when OpenKnowledge next starts.",
+        })
+        .default({})
+        .catch({}),
+    })
+    .default({ hosts: {} }),
   terminal: z
     .looseObject({
       enabled: z

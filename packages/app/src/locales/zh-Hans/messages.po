@@ -1624,6 +1624,10 @@ msgstr "添加评论"
 msgid "Add a file name (e.g. notes.md)"
 msgstr "添加文件名（例如 notes.md）"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add a host"
+msgstr "添加主机"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr "添加键"
@@ -1676,6 +1680,10 @@ msgstr "添加字段"
 #: src/components/settings/LintingSection.tsx
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "添加文件或文件夹模式，例如 guides/**/*"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add host"
+msgstr "添加主机"
 
 #: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
@@ -5793,6 +5801,10 @@ msgstr "请输入 6 位十六进制值，例如 #1A2B3C"
 msgid "Enter a folder name (e.g. brain)."
 msgstr "请输入文件夹名（例如 brain）。"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Enter a hostname, such as github.example.com."
+msgstr "请输入主机名，例如 github.example.com。"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Enter a name for this theme."
 msgstr "输入此主题的名称。"
@@ -5844,6 +5856,11 @@ msgstr "输入至少 3 个字符以按含义搜索。"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "输入你的隧道所服务的公开来源，例如 https://notes.example.com"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "enterprise"
+msgstr "企业版"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
@@ -6776,6 +6793,11 @@ msgstr "开始设置"
 msgid "Gets the link that opens this project or a document in the app"
 msgstr "获取在应用中打开此项目或文档的链接"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GHES"
+msgstr "GHES"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git 与 PR"
@@ -6787,6 +6809,11 @@ msgstr "Git 无法跟踪这个文件夹——它是空的，或者只包含被�
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
 msgstr "Git 已锁定此工作树，但仍可打开。"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "git host"
+msgstr "git 主机"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -6829,13 +6856,26 @@ msgstr "GitHub 连接已过期。请重新连接以继续。"
 msgid "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
 msgstr "GitHub 拒绝了该请求。你可能需要在浏览器中为 {owner} 授权 OpenKnowledge。"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub Enterprise Server hosts"
+msgstr "GitHub Enterprise Server 主机"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "GitHub 登录缺失或已过期。请重新连接以继续同步。"
 
+#: src/components/settings/AccountSection.tsx
+msgid "GitHub sign-in isn't available for this project"
+msgstr "此项目无法使用 GitHub 登录"
+
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub、一个 git URL，或一个本地路径。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "github.com is always recognized, so it doesn't need to be added."
+msgstr "github.com 始终会被识别，无需添加。"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7299,6 +7339,10 @@ msgstr "如果 {agent} 没有显示 OpenKnowledge 工具，请在这个项目中
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "如果你正在编辑的内容收到更新，你可以像处理合并冲突那样选择保留哪个版本。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "If you use a GitHub Enterprise Server, add its host here so OpenKnowledge can sign in, check push permission, and create share links for repositories hosted there."
+msgstr "如果你使用 GitHub Enterprise Server，请在此添加其主机，以便 OpenKnowledge 能够登录、检查推送权限，并为托管在其上的仓库创建共享链接。"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Ignore broken links in log.md"
@@ -9291,6 +9335,10 @@ msgstr "还没有编辑。"
 msgid "No emoji found."
 msgstr "没有找到表情符号。"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "No Enterprise hosts added. Only github.com is treated as GitHub."
+msgstr "尚未添加 Enterprise 主机。只有 github.com 会被视为 GitHub。"
+
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "No excerpt"
 msgstr "没有摘要"
@@ -10214,6 +10262,10 @@ msgstr "OpenKnowledge 检查了项目"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge 未在此设备上找到该智能体。"
+
+#: src/components/settings/AccountSection.tsx
+msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
+msgstr "OpenKnowledge 在此项目的 git 远程地址中找不到主机名，因此无法确定要登录哪个 GitHub 服务器。"
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -11584,6 +11636,10 @@ msgstr "移除 {chip}"
 msgid "Remove {fullLabel} from context"
 msgstr "把 {fullLabel} 从上下文中移除"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Remove {host}"
+msgstr "移除 {host}"
+
 #: src/components/FrontmatterRow.tsx
 msgid "Remove {keyName}"
 msgstr "移除 {keyName}"
@@ -12350,6 +12406,10 @@ msgstr "保存到"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "与项目一起保存，供你的团队使用。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Saved. Restart OpenKnowledge to apply the change."
+msgstr "已保存。重启 OpenKnowledge 以应用更改。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Saves a restore point for every document in the project"
@@ -14220,6 +14280,14 @@ msgstr "该文件夹中已有并非 Open Knowledge 写入的代码，同一份�
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "那个文件夹还不是 OpenKnowledge 项目。要初始化并打开它吗？"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That host is already in the list."
+msgstr "该主机已在列表中。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That isn't a valid hostname. Enter just the server name, such as github.example.com."
+msgstr "这不是有效的主机名。请只输入服务器名称，例如 github.example.com。"
+
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "That language isn't available for spell checking."
 msgstr "该语言不支持拼写检查。"
@@ -15103,6 +15171,10 @@ msgstr "这个项目不是 git 仓库，因此无法使用 worktree。"
 #: src/components/settings/SyncSection.tsx
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "这个项目只存在于这台电脑上。把它连接到 GitHub 即可备份并与他人共享。"
+
+#: src/components/settings/AccountSection.tsx
+msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
+msgstr "此项目的 git 远程位于 {host}，OpenKnowledge 未将其识别为 GitHub 主机。如果 {host} 运行的是 GitHub Enterprise Server，请在下方的“GitHub Enterprise Server 主机”中添加它，然后重启 OpenKnowledge。"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."

@@ -270,7 +270,11 @@ import {
   saveInMemoryCheckpoint,
   shadowGit,
 } from './shadow-repo.ts';
-import { readOriginGitHubRepo, shouldResetAmbientCredentials } from './share/git-context.ts';
+import {
+  readDeclaredGitHubHosts,
+  readOriginGitHubRepo,
+  shouldResetAmbientCredentials,
+} from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
 import { SyncEngine } from './sync-engine.ts';
@@ -487,6 +491,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     singleDocRelPath,
     ephemeral = false,
   } = options;
+  const declaredGitHubHosts = readDeclaredGitHubHosts(configHomedirOverride);
 
   const log = getLogger('server');
   let headWatcher: HeadWatcherHandle | null = null;
@@ -2086,6 +2091,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     hocuspocus.configuration.extensions.push(systemDocBroadcastGuard);
 
     const apiExtension = createApiExtension({
+      declaredGitHubHosts,
       hocuspocus,
       durabilityState,
       ingressPolicy,
@@ -4401,9 +4407,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       log.warn({ err }, '[conflicts] boot prune of merge-native entries failed');
     }
 
-    const resetAmbientCredentials = shouldResetAmbientCredentials(projectDir);
+    const resetAmbientCredentials = shouldResetAmbientCredentials(projectDir, declaredGitHubHosts);
     log.debug(
-      { resetAmbientCredentials, originKind: readOriginGitHubRepo(projectDir).kind },
+      {
+        resetAmbientCredentials,
+        originKind: readOriginGitHubRepo(projectDir, declaredGitHubHosts).kind,
+      },
       '[sync] ambient credential-chain reset decision at boot',
     );
     const syncCredentialConfig = buildSyncCredentialConfig(localOpCliArgs, {
@@ -4419,6 +4428,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
     try {
       syncEngine = new SyncEngine({
+        declaredGitHubHosts,
         projectDir,
         contentDir,
         contentFilter,

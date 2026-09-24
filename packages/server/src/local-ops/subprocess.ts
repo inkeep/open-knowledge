@@ -12,11 +12,11 @@ type LocalOpCliEnv = Readonly<Record<string, string | undefined>>;
 export interface LocalOpCliInvocation {
   readonly cliArgs: readonly string[];
   readonly cliEnv?: LocalOpCliEnv;
+  readonly cwd?: string;
 }
 
 interface SubprocessRunOptions extends LocalOpCliInvocation {
   trailingArgs: readonly string[];
-  cwd?: string;
   extraPathDirs?: readonly string[];
   timeoutMs: number;
   onLine: (line: ParsedLine) => void;

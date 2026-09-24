@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { withHiddenWindowsConsole } from '../child-process-windows-hide.ts';
 import { getLogger } from '../logger.ts';
-import { asDeclaredGitHubLogin, parseGitHubOriginUrl, readOriginRemoteUrl } from './git-context.ts';
+import { asDeclaredGitHubLogin, parseGitRemoteUrl, readOriginRemoteUrl } from './git-context.ts';
 import { redactShareSubprocessStderr } from './publish.ts';
 
 const log = getLogger('github-account');
@@ -63,7 +63,7 @@ export function resolveGitHubAccountFromUrl(
   url: string,
   options: ResolveGitHubAccountOptions = {},
 ): GitHubAccount {
-  const parsed = parseGitHubOriginUrl(url);
+  const parsed = parseGitRemoteUrl(url);
   if (!parsed) return { source: 'active' };
 
   const host = parsed.host;

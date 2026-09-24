@@ -223,6 +223,11 @@ const FIXTURES: Fixture[] = [
     input: { validation: { suppressLogLinkAdvisories: 'yes' } },
     shouldAccept: false,
   },
+  {
+    name: 'git.hosts declaring a GitHub Enterprise Server host accepted',
+    input: { git: { hosts: { 'ghes.example.com': { provider: 'github' } } } },
+    shouldAccept: true,
+  },
 ];
 
 describe('JSON Schema ↔ runtime equivalence', () => {
@@ -454,5 +459,26 @@ describe('semantic embedding transport JSON schema', () => {
     const input = { search: { semantic: { docTimeoutMs: 2_147_483_648 } } };
     expect(validate(input)).toBe(false);
     expect(ConfigSchema.parse(input).search.semantic.docTimeoutMs).toBe(30_000);
+  });
+});
+
+describe('git.hosts containment', () => {
+  test('an unrecognized provider is rejected by schema tooling and contained at runtime', () => {
+    const input = {
+      git: { hosts: { 'h.example': { provider: 'gitlab' } } },
+      content: { dir: 'docs' },
+    };
+    expect(validate(input)).toBe(false);
+    const parsed = ConfigSchema.parse(input);
+    expect(parsed.git.hosts['h.example']?.provider).toBeUndefined();
+    expect(parsed.content.dir).toBe('docs');
+  });
+
+  test('a non-map hosts value is rejected by schema tooling and contained at runtime', () => {
+    const input = { git: { hosts: 'nope' }, content: { dir: 'docs' } };
+    expect(validate(input)).toBe(false);
+    const parsed = ConfigSchema.parse(input);
+    expect(parsed.git.hosts).toEqual({});
+    expect(parsed.content.dir).toBe('docs');
   });
 });

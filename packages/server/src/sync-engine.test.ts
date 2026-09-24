@@ -23,6 +23,7 @@ import type { GitHandle } from './git-handle.ts';
 import { listNames } from './git-paths.ts';
 import type { DetectGhAccountsFn, DetectGhFn, ProbeTokenStore } from './github-permissions.ts';
 import { getLogger } from './logger.ts';
+import { declareGitHubHosts, useIsolatedHome } from './share/git-host-declarations.test-helper.ts';
 import type { CredentialUrlMatchReader } from './share/github-account.ts';
 import {
   CONTENTION_WARN_THRESHOLD,
@@ -4015,6 +4016,36 @@ describe('SyncEngine per-operation error isolation', () => {
 });
 
 describe('SyncEngine push-permission probe', () => {
+  const home = useIsolatedHome();
+
+  test('keeps host classification from construction until a new engine starts', async () => {
+    await initGitWithOrigin('https://ghes.acme.test/inkeep/open-knowledge.git');
+    const path = join(home(), '.ok', 'global.yml');
+    declareGitHubHosts(home(), 'ghes.acme.test');
+    const probe = fakeProbe({ kind: 'allowed' });
+    const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: probe.fn });
+    writeFileSync(path, 'git:\n  hosts: {}\n');
+    try {
+      await engine.start();
+      await waitForPushPermissionResolved(engine);
+      expect(probe.calls).toBe(1);
+      expect(engine.getStatus().remote?.webUrl).toBe(
+        'https://ghes.acme.test/inkeep/open-knowledge',
+      );
+      const restartedProbe = fakeProbe({ kind: 'allowed' });
+      const restarted = makeProbeEngine({ syncEnabled: false, fakeProbe: restartedProbe.fn });
+      try {
+        await restarted.start();
+        await waitForPushPermissionResolved(restarted);
+        expect(restartedProbe.calls).toBe(0);
+        expect(restarted.getStatus().remote?.webUrl).toBeNull();
+      } finally {
+        await restarted.destroy();
+      }
+    } finally {
+      await engine.destroy();
+    }
+  });
   test('does NOT run when there is no remote', async () => {
     const probe = fakeProbe({ kind: 'allowed' });
     const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: probe.fn });
@@ -4045,8 +4076,9 @@ describe('SyncEngine push-permission probe', () => {
     });
   });
 
-  test('probes a GitHub Enterprise origin against the enterprise host', async () => {
+  test('probes a DECLARED GitHub Enterprise origin against the enterprise host', async () => {
     await initGitWithOrigin('https://ghes.acme.test/inkeep/open-knowledge.git');
+    declareGitHubHosts(home(), 'ghes.acme.test');
     const probe = fakeProbe({ kind: 'allowed' });
     const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: probe.fn });
     await engine.start();
@@ -4060,6 +4092,23 @@ describe('SyncEngine push-permission probe', () => {
     expect(engine.getStatus().pushPermission).toEqual({
       checkStatus: 'allowed',
     });
+  });
+
+  test('does NOT probe or park an UNDECLARED self-hosted https origin in full mode', async () => {
+    await initGitWithOrigin('https://git.example.internal/team/kb.git');
+    const probe = fakeProbe({ kind: 'allowed' });
+    const engine = makeProbeEngine({ mode: 'full', fakeProbe: probe.fn });
+    try {
+      await engine.start();
+      await new Promise((r) => setTimeout(r, 10));
+      const status = engine.getStatus();
+      expect(probe.calls).toBe(0);
+      expect(status.pushPermission).toEqual({ checkStatus: 'unknown' });
+      expect(status.pausedReason).not.toBe('no-push-permission');
+      expect(status.state).not.toBe('disabled');
+    } finally {
+      await engine.destroy();
+    }
   });
 
   test('threads the origin-declared account and the accounts listing into the probe', async () => {
@@ -4352,8 +4401,9 @@ describe('SyncEngine push-permission probe', () => {
     expect(persisted).toBe(false);
   });
 
-  test('passes the origin transport through to the probe (ssh origin)', async () => {
+  test('passes the origin transport through to the probe (declared ssh origin)', async () => {
     await initGitWithOrigin('git@git.example.com:acme/kb.git');
+    declareGitHubHosts(home(), 'git.example.com');
     const probe = fakeProbe({ kind: 'unknown', error: 'ssh-unverified' });
     const engine = makeProbeEngine({ syncEnabled: false, fakeProbe: probe.fn });
     await engine.start();
@@ -4366,8 +4416,9 @@ describe('SyncEngine push-permission probe', () => {
     });
   });
 
-  test('ssh-unverified probe result does NOT pause the engine (self-hosted forge over SSH)', async () => {
+  test('ssh-unverified probe result does NOT pause the engine (declared self-hosted forge over SSH)', async () => {
     await initGitWithOrigin('git@git.example.com:acme/kb.git');
+    declareGitHubHosts(home(), 'git.example.com');
     const probe = fakeProbe({ kind: 'unknown', error: 'ssh-unverified' });
     const engine = makeProbeEngine({ syncEnabled: true, fakeProbe: probe.fn });
     await engine.start();
@@ -4765,6 +4816,8 @@ function recordDetectGh(
 }
 
 describe('SyncEngine gh-token credential relay', () => {
+  const home = useIsolatedHome();
+
   test('threads the resolved gh token through git handles during a real push cycle', async () => {
     const git = simpleGit(projectDir);
     await git.init(['--initial-branch=main']);
@@ -4804,8 +4857,9 @@ describe('SyncEngine gh-token credential relay', () => {
     }
   });
 
-  test('resolves the gh token against a GitHub Enterprise origin host', async () => {
+  test('resolves the gh token against a declared GitHub Enterprise origin host', async () => {
     await initGitWithOrigin('https://ghes.acme.test/inkeep/open-knowledge.git');
+    declareGitHubHosts(home(), 'ghes.acme.test');
     const detect = recordDetectGh({ available: true, token: 'gho_relayed' });
     const engine = new SyncEngine({
       conflicts: newAuthority(),

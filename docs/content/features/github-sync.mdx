@@ -111,7 +111,18 @@ If you are logged in with the GitHub CLI, OpenKnowledge will use those credentia
 
 Manage the connection from **Settings → Account**. **Connect GitHub** authorizes OpenKnowledge to browse and sync your repositories; **Disconnect** clears OpenKnowledge's GitHub token only. From a terminal, the [`ok auth`](/docs/reference/cli) subcommands manage the same credentials: `ok auth signout` matches **Disconnect**, `ok auth pat` stores a Personal Access Token when device authentication isn't an option, and `--host` targets GitHub Enterprise.
 
-When a project's `origin` remote points at a GitHub Enterprise Server host, OpenKnowledge resolves credentials and identity for that host automatically: the account shown in settings, the sync token, the push-permission check, and the `ok auth` default `--host` all follow the workspace's remote instead of assuming github.com. Share links work with enterprise remotes too — a recipient opening a GHES share is asked to confirm the server unless they are already signed in to it.
+For GitHub Enterprise Server, add the host under **Settings → Account → GitHub Enterprise Server hosts**, or declare it in your user configuration, `~/.ok/global.yml`, then restart OpenKnowledge:
+
+```yaml
+git:
+  hosts:
+    github.example.com:
+      provider: github
+```
+
+The declaration applies to every project on your machine. It enables GitHub credential handling, push-permission checks, share links, and the default host for `ok auth`. Without a declaration, OpenKnowledge treats the host as ordinary git, preserves your system git credentials and refuses sharing and project GitHub sign-in requests. **Settings → Account** says the project's remote isn't a recognized GitHub host and points to the Enterprise hosts list instead of offering sign-in.
+
+[Share links](/docs/features/share) work with declared enterprise remotes. A recipient opening a GHES share is asked to confirm the server unless they are already signed in to it.
 
 ### Which GitHub account is used
 
@@ -182,4 +193,4 @@ A few situations stop sync from completing successfully. Most of them change the
 ### Temporary problems
 
 - **Network or service hiccups.** Flaky Wi-Fi, a VPN drop, or a brief GitHub outage. OpenKnowledge retries automatically, slowing down progressively as described in [How often sync runs](#how-often-sync-runs). No action needed; a manual trigger from the sync indicator resets the backoff immediately if you want sync to run sooner.
-- **Another program is holding the Git index lock.** Git lets one process at a time write `.git/index`, and it enforces that by creating `.git/index.lock` first. Another tool on your machine — a terminal command, an editor extension, a background indexer — was holding that lock file when sync reached for it. The sync menu names `.git/index.lock` so you know it isn't your work that's wrong. In Auto and Follow modes sync keeps trying and picks up on its own once the other program lets go. In Manual mode nothing runs unattended, so press Sync again after the other program finishes. If the message persists, look for a git command still open in a terminal.
+- **Another program is holding the Git index lock.** Git lets one process at a time write `.git/index`, and it enforces that by creating `.git/index.lock` first. Another tool on your machine — a terminal command, an editor extension, a background indexer — was holding that lock file when sync reached for it. The sync menu names `.git/index.lock` so you know it isn't your work that's wrong. In the automatic modes, sync keeps trying and picks up on its own once the other program lets go. In Manual mode nothing runs unattended, so press Sync again after the other program finishes. If the message persists, look for a git command still open in a terminal.

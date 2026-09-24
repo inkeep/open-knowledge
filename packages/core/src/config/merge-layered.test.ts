@@ -57,6 +57,17 @@ describe('mergeLayered — default precedence (no scope-aware short-circuit)', (
 });
 
 describe('mergeLayered — scope-aware leaf short-circuits', () => {
+  test("scope: 'user' (git.hosts) ignores host declarations from the project layers", () => {
+    const user = makeConfig({ git: { hosts: { 'ghes.user.test': { provider: 'github' } } } });
+    const project = makeConfig({ git: { hosts: { 'ghes.project.test': { provider: 'github' } } } });
+    const projectLocal = makeConfig({
+      git: { hosts: { 'ghes.local.test': { provider: 'github' } } },
+    });
+    expect(mergeLayered(user, project, projectLocal).git.hosts).toEqual({
+      'ghes.user.test': { provider: 'github' },
+    });
+  });
+
   test("scope: 'user' (appearance.theme) returns user even when project + project-local set it", () => {
     const user = makeConfig({ appearance: { theme: 'dark' } });
     const project = makeConfig({ appearance: { theme: 'light' } });

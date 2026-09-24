@@ -8,6 +8,7 @@ import {
   type RecoveredConfigDiagnostic,
   type ValueFallbackDiagnostic,
 } from './errors.ts';
+import { GitHostsSchema } from './git-host-config.ts';
 import { detectRemovedKeys, stripRemovedKeys } from './removed-keys.ts';
 import {
   type Config,
@@ -131,6 +132,35 @@ function detectEmbeddingsTransportFallbacks(input: {
   return issues.length > 0 ? [{ code: 'VALUE_FALLBACK', issues }] : [];
 }
 
+function detectGitHostFallbacks(input: {
+  rawConfig: unknown;
+  doc: Document;
+  source: string;
+  absPath: string;
+}): ValueFallbackDiagnostic[] {
+  const hosts = rawValueAtPath(input.rawConfig, ['git', 'hosts']);
+  if (hosts === undefined) return [];
+  const parsed = GitHostsSchema.safeParse(hosts);
+  if (parsed.success) return [];
+  const issues = parsed.error.issues.map((issue) => {
+    const path = ['git', 'hosts', ...issue.path.map(String)];
+    const located = locateIssue({
+      file: input.absPath,
+      source: input.source,
+      doc: input.doc,
+      path,
+    });
+    return {
+      path,
+      message: `${issue.message}; ignoring this git-host declaration.`,
+      ...(located !== undefined
+        ? { source: { file: located.file, line: located.line, column: located.column } }
+        : {}),
+    };
+  });
+  return [{ code: 'VALUE_FALLBACK', issues }];
+}
+
 export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSafelyResult {
   const { absPath, sideline = true, timestamp = new Date().toISOString() } = options;
   const warn = options.warn ?? ((msg: string) => console.warn(msg));
@@ -177,22 +207,38 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
 
   const removedKeyDiagnostics = detectRemovedKeys({ value: merged, file: absPath, source, doc });
   const cleaned = removedKeyDiagnostics.length > 0 ? stripRemovedKeys(merged) : merged;
+  const gitHostDiagnostics = detectGitHostFallbacks({ rawConfig: cleaned, doc, source, absPath });
+  for (const diagnostic of gitHostDiagnostics) {
+    for (const issue of diagnostic.issues) {
+      warn(`[config] ${absPath} ${issue.path.join('.')}: ${issue.message}`);
+    }
+  }
 
   const parsed = ConfigSchema.safeParse(cleaned);
   if (!parsed.success) {
     const error = buildSchemaInvalidError(parsed, doc, source, absPath);
+    const git =
+      ConfigSchema.shape.git.safeParse(rawValueAtPath(cleaned, ['git'])).data ?? defaults.git;
+    const fallback =
+      Object.keys(git.hosts).length > 0
+        ? 'Using schema defaults while preserving valid git-host declarations.'
+        : 'Using schema defaults.';
     warn(
-      `[config] ${absPath} fails schema validation (${parsed.error.issues.length} issue(s)). Using schema defaults.` +
+      `[config] ${absPath} fails schema validation (${parsed.error.issues.length} issue(s)). ${fallback}` +
         (sideline ? '' : ' Pass-through mode: file left in place.'),
     );
     const sidelinedTo = sideline ? attemptSideline(absPath, timestamp, warn) : undefined;
     const diagnostics: ConfigDiagnostic[] = [
       ...removedKeyDiagnostics,
+      ...gitHostDiagnostics,
       ...(isKnownConfigError(error) && error.code === 'SCHEMA_INVALID' ? [{ ...error }] : []),
     ];
     return {
       valid: false,
-      value: defaults,
+      value: {
+        ...defaults,
+        git,
+      },
       error,
       diagnostics,
       ...(sidelinedTo !== undefined ? { sidelinedTo } : {}),
@@ -201,6 +247,7 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
 
   const diagnostics: RecoveredConfigDiagnostic[] = [
     ...removedKeyDiagnostics,
+    ...gitHostDiagnostics,
     ...detectEmbeddingsTransportFallbacks({
       rawConfig: cleaned,
       config: parsed.data,

@@ -202,6 +202,7 @@
     "1ruosn": ["OpenKnowledge"],
     "1t_NnN": ["拒绝"],
     "1u-mAI": ["无法开始同步。请检查你的网络连接，然后重试。"],
+    "1uEVfp": ["企业版"],
     "1vczDE": ["打开 ", ["displayName"], " Desktop"],
     "1vn0CI": ["服务器响应无效"],
     "1xui0Q": ["加载本地文件失败"],
@@ -299,6 +300,7 @@
       "）"
     ],
     "3LbBJn": ["附加图片"],
+    "3LuFP-": ["已保存。重启 OpenKnowledge 以应用更改。"],
     "3MA3Hh": ["无法读取 ", ["gitignorePath"], " 规则：", ["previewError"]],
     "3MnvrL": ["正在显示最相关的 ", ["0"], " 条匹配——继续输入可缩小范围"],
     "3Mwaly": ["无法初始化 ", ["0"], "。"],
@@ -619,6 +621,13 @@
     "7YRrJ9": [
       "在 OpenKnowledge 桌面应用中可用。在终端里可使用<0> ok config-sharing status</0> / <1>share</1> / <2>unshare</2>。"
     ],
+    "7_I248": [
+      "此项目的 git 远程位于 ",
+      ["host"],
+      "，OpenKnowledge 未将其识别为 GitHub 主机。如果 ",
+      ["host"],
+      " 运行的是 GitHub Enterprise Server，请在下方的“GitHub Enterprise Server 主机”中添加它，然后重启 OpenKnowledge。"
+    ],
     "7_bFEL": ["拖动 ", ["patternText"], " 以重新排序"],
     "7a0YcF": ["按<0>空格</0>或点击 blob 开始"],
     "7aNk5D": ["OpenKnowledge 编辑了 ", ["subject"]],
@@ -821,6 +830,7 @@
     "AItsE5": ["在那里打开"],
     "AJ7_B2": ["创建新主题"],
     "AKxFtn": [["openedWorktreeCount", "plural", { "one": ["worktree"], "other": ["worktree"] }]],
+    "ALFlyF": ["添加主机"],
     "ALhMYW": ["终端"],
     "AMU00p": [
       "两个版本完全相同。选择“采用当前”会让 OpenKnowledge 的保护保持开启，因此再次保存较旧的版本仍会被拒绝。选择“采用传入”会关闭该保护。"
@@ -1029,6 +1039,7 @@
     "DDTdLl": ["代码块设置"],
     "DELNQk": ["协作者一同步就能看到你正在进行的编辑。"],
     "DEWDbv": ["显示图示"],
+    "DEkRZA": ["该主机已在列表中。"],
     "DF1MtZ": ["正在加载 ", ["filePath"], " 的冲突"],
     "DFQ2Sj": ["用于后续联系的邮箱"],
     "DFfRbX": ["同步状态：", ["syncStateLabel"], " —— 未设置 git 身份"],
@@ -1085,6 +1096,7 @@
     "Dvr1Sg": ["正在复制"],
     "Dvvrs8": [["0"], " 无法在该上下文窗口下重启。请使用「重试」将其恢复。"],
     "Dvwa0U": ["基于这个分支创建 worktree"],
+    "Dwu3RL": ["GHES"],
     "Dz7fsq": ["放大"],
     "E-G19G": [
       "端口 ",
@@ -1373,6 +1385,7 @@
     "HHQcx0": ["让技能在更多位置可用，或从某个位置移除"],
     "HIb0vl": ["网络错误——请重试"],
     "HJ7aHU": ["向上或向下移动当前块。在列表中，移动当前项或所选项。"],
+    "HK2eIK": ["尚未添加 Enterprise 主机。只有 github.com 会被视为 GitHub。"],
     "HKH-W-": ["数据"],
     "HLoO-Z": ["服务器返回的导入响应格式错误。"],
     "HM56Bx": ["正在创建…"],
@@ -1462,6 +1475,7 @@
     "IxyZXD": ["截图"],
     "J0uRhj": ["检查技能"],
     "J1XRO3": ["主题颜色"],
+    "J2-D_a": ["GitHub Enterprise Server 主机"],
     "J2Mv98": ["名称（例如 ", ["login"], "）"],
     "J2_JuX": ["无（", ["0"], " 无法匹配任何文档）"],
     "J2eKUI": ["文件"],
@@ -1968,6 +1982,9 @@
     "PezM4_": ["已保存 OpenKnowledge 技能。请在 Claude Desktop 中上传，然后再次点击 Cowork。"],
     "Pg83C9": ["已上传“", ["0"], "”。"],
     "PgJDqs": ["在编辑器中把鼠标悬停在外部链接上时显示预览卡片。"],
+    "PgY2nN": [
+      "如果你使用 GitHub Enterprise Server，请在此添加其主机，以便 OpenKnowledge 能够登录、检查推送权限，并为托管在其上的仓库创建共享链接。"
+    ],
     "Pgu10b": ["已保存为 <0>", ["slug"], ".md</0>"],
     "PgzIpb": ["跳到可视化编辑器的上一个查找结果。"],
     "PhIa-X": ["要把这些副本替换为指向来源的符号链接吗？"],
@@ -2024,6 +2041,7 @@
     "QWdKwH": ["移动"],
     "QYTOaN": ["之后可以在<0>「设置 → 同步」</0>中更改。"],
     "QYfQdv": [["displayName"], " CLI"],
+    "Qbf7Q4": ["添加主机"],
     "QcTjRP": ["本次对话保持开始时的窗口。新对话可以使用其他窗口。"],
     "Qca--K": [
       "另一个程序正在这里使用 Git——等它完成后再同步一次（它占用着 <0>.git/index.lock</0>）"
@@ -2046,6 +2064,7 @@
     "QohqVL": ["此智能体不提供斜杠命令"],
     "QpSqAP": ["本项目未启用真实 shell。启用后，命令将以你的用户账户的完整权限运行。"],
     "QqBQu1": ["标签 <0>（可见的链接文本）</0>"],
+    "QsnBxE": ["这不是有效的主机名。请只输入服务器名称，例如 github.example.com。"],
     "Qvls7J": ["工程规格"],
     "Qw-7Ie": [
       "一个简单的写作空间，每个主题一个文件，外加一份日志。如果你只想先动笔，让笔记之间的链接慢慢生长，请选这个。"
@@ -2281,6 +2300,7 @@
     ],
     "UI0WPT": [["propertyCount", "plural", { "other": ["#", " 项属性"] }]],
     "UIjjFa": ["查看将添加的内容"],
+    "UK3GW4": ["github.com 始终会被识别，无需添加。"],
     "UL-9ej": ["OpenKnowledge 打开了实时预览"],
     "UL8A9w": ["标签"],
     "UMT9C9": ["如何使用 OpenKnowledge 及其 MCP 工具。"],
@@ -2492,6 +2512,9 @@
     "XAyxsa": ["检出远程分支"],
     "XBBZnv": ["链接目标“", ["shown"], "”未指向现有文档。"],
     "XBgr2S": ["复制进来"],
+    "XBpH6-": [
+      "OpenKnowledge 在此项目的 git 远程地址中找不到主机名，因此无法确定要登录哪个 GitHub 服务器。"
+    ],
     "XDzAnp": ["在新标签页中打开"],
     "XF1kgP": ["来自 ", ["source"], " 的内容均已是最新"],
     "XGKy1z": ["无法显示图片"],
@@ -2954,6 +2977,7 @@
     "cEoyWz": ["向 ", ["keyName"], " 添加项目"],
     "cF9DyA": ["服务器重启后正在重新连接"],
     "cFCKYZ": ["拒绝"],
+    "cFONFy": ["请输入主机名，例如 github.example.com。"],
     "cFSbbh": ["仅限这台设备。对你在这里打开的每个项目都生效，而且绝不会分享给协作者。"],
     "cH0dkG": ["它缺少我需要的功能"],
     "cHhH3i": ["一个必需的 git 工具"],
@@ -2968,6 +2992,7 @@
     "cNvGbn": ["编辑并重发"],
     "cOJyVj": ["禁用主题"],
     "cOSAfL": ["在你的 GitHub 账户中没有找到仓库。"],
+    "cOX1Cj": ["git 主机"],
     "cOrTMo": ["你的共享链接已在下方生成。"],
     "cPAWbl": ["已通过邮件发送"],
     "cPgQ_i": [
@@ -4714,6 +4739,7 @@
     "x57cJf": ["打开链接"],
     "xAlHfe": [["basename"], " — 文本编辑器"],
     "xBFg6z": ["来自 ", ["0"], " 插件"],
+    "xBjIs7": ["此项目无法使用 GitHub 登录"],
     "xCJdfg": ["清除"],
     "xCdTnb": ["关闭新标签页"],
     "xD4Xm2": ["获取"],
@@ -4732,6 +4758,7 @@
     "xOTzt5": ["刚刚"],
     "xSVO3J": ["会创建什么"],
     "xV5sXw": [["0"], " 周前"],
+    "xVMoYb": ["移除 ", ["host"]],
     "xW5AUw": [["pulled"], "拉取"],
     "xW7KK3": [
       ["scopeLabel"],

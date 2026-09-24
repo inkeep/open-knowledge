@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import { fieldRegistry, getFieldMeta } from './field-registry.ts';
 import { ConfigSchema } from './schema.ts';
+import { getLeafFieldMeta } from './schema-leaf.ts';
 
 describe('fieldRegistry singleton', () => {
   test('is reachable via the public globalThis Symbol key', () => {
@@ -143,7 +144,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(allowlisted).toEqual([]);
   });
 
-  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme*,customTheme.*,language,preview.autoOpen,theme} + editor.{previewTabs,wordWrap} + slides.enabled', () => {
+  test('user-strict fields cover agents.autoApproveOkTools + appearance.{colorTheme*,customTheme.*,language,preview.autoOpen,theme} + editor.{previewTabs,wordWrap} + git.hosts + slides.enabled', () => {
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const userStrict = leaves
@@ -181,6 +182,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       'appearance.theme',
       'editor.previewTabs',
       'editor.wordWrap',
+      'git.hosts',
       'slides.enabled',
       'telemetry.skillInstallReports.enabled',
     ]);
@@ -284,7 +286,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     expect(missing).toEqual([]);
   });
 
-  test("boot-only leaves are exactly content.dir + the listener/exposure keys — everything else is 'live'", () => {
+  test("boot-only leaves are exactly content.dir + git.hosts + the listener/exposure keys — everything else is 'live'", () => {
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const bootOnly = leaves
@@ -293,11 +295,21 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(bootOnly).toEqual([
       'content.dir',
+      'git.hosts',
       'server.allowExternal',
       'server.bind',
       'server.externalUrl',
       'server.openBrowser',
       'server.port',
     ]);
+  });
+});
+
+describe('git.hosts record registration', () => {
+  test('the record node and the provider leaf beneath it both report user scope', () => {
+    expect(getLeafFieldMeta(ConfigSchema, ['git', 'hosts'])).toMatchObject({ scope: 'user' });
+    expect(
+      getLeafFieldMeta(ConfigSchema, ['git', 'hosts', 'ghes.example.com', 'provider']),
+    ).toMatchObject({ scope: 'user' });
   });
 });

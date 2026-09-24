@@ -441,7 +441,11 @@ export type { OkFolderState } from './constants/folder-state.ts';
 export {
   classifyGitHubShareHost,
   DEFAULT_GITHUB_OAUTH_CLIENT_ID,
-  KNOWN_NON_GITHUB_GIT_HOSTS,
+  declaredGitHubHostsFrom,
+  GIT_HOST_PROVIDERS,
+  type GitHostProvider,
+  isGitHubHost,
+  normalizeGitHostname,
 } from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
 export {

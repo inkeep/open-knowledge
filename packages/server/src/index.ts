@@ -546,8 +546,11 @@ export {
   type ShadowObjectStats,
 } from './shadow-repo-stats.ts';
 export {
+  type GitHubAuthHostResult,
   loginShapedUserinfoUser,
-  originGitHubHost,
+  readDeclaredGitHubHosts,
+  readOriginGitHubRepo,
+  resolveGitHubAuthHost,
   sameGitHubLogin,
 } from './share/git-context.ts';
 export {

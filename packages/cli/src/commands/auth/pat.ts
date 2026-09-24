@@ -1,10 +1,9 @@
-import { originGitHubHost } from '@inkeep/open-knowledge-server';
 import password from '@inquirer/password';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
 import { describeAuthFailure } from '../../auth/describe-auth-error.ts';
 import type { TokenStore } from '../../auth/token-store.ts';
-import { validateGitHubHost } from './validate-host.ts';
+import { resolveAuthHost } from './validate-host.ts';
 
 interface PatOptions {
   host: string;
@@ -25,9 +24,8 @@ async function runPat(
   readToken?: () => Promise<string>,
 ): Promise<void> {
   const { host, json } = opts;
-  validateGitHubHost(host);
 
-  const getToken = readToken ?? (() => password({ message: 'Enter PAT:' }));
+  const getToken = readToken ?? (() => password({ message: `Enter PAT for ${host}:` }));
 
   const token = await getToken();
   if (!token) {
@@ -70,12 +68,12 @@ export function patCommand(getTokenStore: () => Promise<TokenStore>): Command {
     .description('Store a Personal Access Token')
     .option(
       '--host <host>',
-      'GitHub or GitHub Enterprise hostname (default: workspace origin host)',
+      'GitHub or GitHub Enterprise hostname (default: the GitHub origin host, or github.com with no origin; required otherwise)',
     )
     .option('--json', 'Output JSON', false)
     .option('--token-stdin', 'Read the token from stdin instead of prompting', false)
     .action(async (opts: Omit<PatOptions, 'host'> & { host?: string; tokenStdin?: boolean }) => {
-      const host = opts.host ?? originGitHubHost(process.cwd());
+      const host = resolveAuthHost(opts.host);
       const readToken = opts.tokenStdin ? readTokenFromStdin : undefined;
       await runPat({ host, json: opts.json }, await getTokenStore(), readToken);
     });

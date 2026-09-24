@@ -216,7 +216,22 @@ export function SettingsDialogShell({
           ] satisfies SidebarSubsection[],
         },
         { id: 'hotkeys', label: t`Hotkeys` },
-        { id: 'account', label: t`Account` },
+        {
+          id: 'account',
+          label: t`Account`,
+          subsections: [
+            {
+              id: 'enterprise-hosts',
+              label: t`GitHub Enterprise Server hosts`,
+              anchor: 'section:enterprise-hosts',
+              keywords: [
+                t({ message: 'GHES', context: 'settings search keyword' }),
+                t({ message: 'enterprise', context: 'settings search keyword' }),
+                t({ message: 'git host', context: 'settings search keyword' }),
+              ],
+            },
+          ] satisfies SidebarSubsection[],
+        },
         { id: 'user-plugins-manage', label: t`Plugins` },
         { id: 'user-skills', label: t`Skills Studio` },
       ],

@@ -96,6 +96,21 @@ function collect() {
 }
 
 describe('collectConfigDiagnostics', () => {
+  test('reports invalid host declarations at their user source location', () => {
+    const file = writeScopeConfig('user', { git: { hosts: { h: { provider: 'gitlab' } } } });
+    expect(collect().diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      scope: 'user',
+      file,
+      issues: [
+        expect.objectContaining({
+          path: ['git', 'hosts', 'h', 'provider'],
+          line: expect.any(Number),
+        }),
+      ],
+    });
+  });
+
   test('the fixture path carries every forbidden value, so no absence check can pass on path luck', () => {
     for (const value of CONFIG_VALUES_THE_FINDING_FIELDS_MUST_NEVER_ECHO) {
       expect(projectDir, `projectDir must carry ${value}`).toContain(value);

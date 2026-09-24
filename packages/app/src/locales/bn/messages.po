@@ -1620,6 +1620,10 @@ msgstr "একটি মন্তব্য যোগ করুন"
 msgid "Add a file name (e.g. notes.md)"
 msgstr "একটি ফাইলের নাম যোগ করুন (যেমন notes.md)"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add a host"
+msgstr "একটি হোস্ট যোগ করুন"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr "একটি কী যোগ করুন"
@@ -1672,6 +1676,10 @@ msgstr "ফিল্ড যোগ করুন"
 #: src/components/settings/LintingSection.tsx
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "ফাইল বা ফোল্ডার প্যাটার্ন যোগ করুন, যেমন guides/**/*"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add host"
+msgstr "হোস্ট যোগ করুন"
 
 #: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
@@ -5789,6 +5797,10 @@ msgstr "#1A2B3C-এর মতো ৬-অঙ্কের হেক্স দি�
 msgid "Enter a folder name (e.g. brain)."
 msgstr "একটি ফোল্ডারের নাম দিন (যেমন brain)।"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Enter a hostname, such as github.example.com."
+msgstr "একটি হোস্টনেম লিখুন, যেমন github.example.com।"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Enter a name for this theme."
 msgstr "এই থিমের জন্য একটি নাম লিখুন।"
@@ -5840,6 +5852,11 @@ msgstr "অর্থের ভিত্তিতে অনুসন্ধান 
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "আপনার টানেল যে পাবলিক অরিজিন পরিবেশন করে তা লিখুন, উদাহরণস্বরূপ https://notes.example.com"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "enterprise"
+msgstr "এন্টারপ্রাইজ"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
@@ -6772,6 +6789,11 @@ msgstr "সেট আপ করুন"
 msgid "Gets the link that opens this project or a document in the app"
 msgstr "অ্যাপে এই প্রকল্প বা একটি নথি খোলার লিংক আনে"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GHES"
+msgstr "GHES"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git ও PR"
@@ -6783,6 +6805,11 @@ msgstr "Git এই ফোল্ডারের হিসাব রাখতে �
 #: src/components/RecentProjectsMenu.tsx
 msgid "Git has locked this worktree, but it can still be opened."
 msgstr "Git এই ওয়ার্কট্রিটি লক করেছে, তবে এটি এখনও খোলা যাবে।"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "git host"
+msgstr "git হোস্ট"
 
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
@@ -6825,13 +6852,26 @@ msgstr "GitHub সংযোগের মেয়াদ শেষ হয়ে�
 msgid "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
 msgstr "GitHub অনুরোধটি প্রত্যাখ্যান করেছে। আপনাকে হয়তো ব্রাউজারে {owner}-এর জন্য OpenKnowledge-কে অনুমতি দিতে হবে।"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub Enterprise Server hosts"
+msgstr "GitHub Enterprise Server হোস্ট"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "GitHub সাইন-ইন অনুপস্থিত বা এর মেয়াদ শেষ। সিঙ্ক আবার শুরু করতে পুনরায় যুক্ত হোন।"
 
+#: src/components/settings/AccountSection.tsx
+msgid "GitHub sign-in isn't available for this project"
+msgstr "এই প্রজেক্টের জন্য GitHub সাইন-ইন উপলব্ধ নয়"
+
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, একটি git URL, বা একটি স্থানীয় পথ।"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "github.com is always recognized, so it doesn't need to be added."
+msgstr "github.com সবসময় চেনা হয়, তাই এটি যোগ করার দরকার নেই।"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -7295,6 +7335,10 @@ msgstr "{agent}-এ OpenKnowledge টুল না দেখালে, এটি
 #: src/components/AutoSyncEnableWarning.tsx
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "আপনি যা সম্পাদনা করছেন তার জন্য কোনো হালনাগাদ এলে আপনি বেছে নেন কোন সংস্করণটি রাখবেন, ঠিক মার্জ দ্বন্দ্বের মতো।"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "If you use a GitHub Enterprise Server, add its host here so OpenKnowledge can sign in, check push permission, and create share links for repositories hosted there."
+msgstr "আপনি যদি GitHub Enterprise Server ব্যবহার করেন, তবে এখানে তার হোস্ট যোগ করুন, যাতে OpenKnowledge সাইন ইন করতে, push অনুমতি যাচাই করতে এবং সেখানে হোস্ট করা রিপোজিটরির জন্য শেয়ার লিংক তৈরি করতে পারে।"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Ignore broken links in log.md"
@@ -9287,6 +9331,10 @@ msgstr "এখনও কোনো সম্পাদনা নেই।"
 msgid "No emoji found."
 msgstr "কোনো ইমোজি পাওয়া যায়নি।"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "No Enterprise hosts added. Only github.com is treated as GitHub."
+msgstr "কোনো Enterprise হোস্ট যোগ করা হয়নি। শুধু github.com-কে GitHub হিসেবে ধরা হয়।"
+
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "No excerpt"
 msgstr "কোনো উদ্ধৃতাংশ নেই"
@@ -10210,6 +10258,10 @@ msgstr "OpenKnowledge প্রকল্প পরীক্ষা করেছ�
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge এই মেশিনে এই এজেন্টটি খুঁজে পায়নি।"
+
+#: src/components/settings/AccountSection.tsx
+msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
+msgstr "OpenKnowledge এই প্রজেক্টের git রিমোটে কোনো হোস্টনেম খুঁজে পায়নি, তাই কোন GitHub সার্ভারে সাইন ইন করতে হবে তা বুঝতে পারছে না।"
 
 #: src/lib/worktree-create-error.ts
 msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
@@ -11580,6 +11632,10 @@ msgstr "{chip} সরান"
 msgid "Remove {fullLabel} from context"
 msgstr "{fullLabel} প্রসঙ্গ থেকে সরান"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Remove {host}"
+msgstr "{host} সরান"
+
 #: src/components/FrontmatterRow.tsx
 msgid "Remove {keyName}"
 msgstr "{keyName} সরান"
@@ -12346,6 +12402,10 @@ msgstr "যেখানে সংরক্ষিত"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "আপনার দলের জন্য প্রকল্পের সঙ্গে সংরক্ষিত।"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Saved. Restart OpenKnowledge to apply the change."
+msgstr "সংরক্ষিত হয়েছে। পরিবর্তন প্রয়োগ করতে OpenKnowledge আবার চালু করুন।"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Saves a restore point for every document in the project"
@@ -14216,6 +14276,14 @@ msgstr "ওই ফোল্ডারে ইতিমধ্যেই এমন �
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "ওই ফোল্ডারটি এখনও একটি OpenKnowledge প্রকল্প নয়। এটি চালু করে খুলবেন?"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That host is already in the list."
+msgstr "এই হোস্টটি ইতিমধ্যে তালিকায় আছে।"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That isn't a valid hostname. Enter just the server name, such as github.example.com."
+msgstr "এটি বৈধ হোস্টনেম নয়। শুধু সার্ভারের নাম লিখুন, যেমন github.example.com।"
+
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "That language isn't available for spell checking."
 msgstr "সেই ভাষাটি বানান পরীক্ষার জন্য উপলব্ধ নয়।"
@@ -15099,6 +15167,10 @@ msgstr "এই প্রকল্পটি একটি git রিপোজি�
 #: src/components/settings/SyncSection.tsx
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "এই প্রকল্পটি কেবল এই কম্পিউটারেই আছে। এর ব্যাকআপ রাখতে ও অন্যদের সঙ্গে ভাগ করতে এটি GitHub-এর সঙ্গে যুক্ত করুন।"
+
+#: src/components/settings/AccountSection.tsx
+msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
+msgstr "এই প্রজেক্টের git রিমোট {host}-এ আছে, যাকে OpenKnowledge GitHub হোস্ট হিসেবে চেনে না। {host}-এ যদি GitHub Enterprise Server চলে, তবে নিচের GitHub Enterprise Server হোস্ট অংশে এটি যোগ করুন, তারপর OpenKnowledge আবার চালু করুন।"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."

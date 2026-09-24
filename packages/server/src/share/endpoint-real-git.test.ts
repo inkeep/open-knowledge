@@ -5,6 +5,7 @@ import { decodeShareUrl } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
 import { bootEndpointServer, type EndpointRig } from './endpoint-http.test-helper.ts';
 import { createGitTriangle, type GitTriangle } from './git-fixture.test-helper.ts';
+import { declareGitHubHosts, useIsolatedHome } from './git-host-declarations.test-helper.ts';
 import { computeShareTargetStatus } from './target-status.ts';
 
 const triangles: GitTriangle[] = [];
@@ -237,6 +238,8 @@ describe('POST /api/share/construct-url (freshness computed through the endpoint
 });
 
 describe('POST /api/share/construct-url (v2 minting through the endpoint)', () => {
+  const home = useIsolatedHome();
+
   function shareToken(json: Record<string, unknown>): string {
     return (json.shareUrl as string).replace('https://openknowledge.ai/d/', '');
   }
@@ -275,10 +278,11 @@ describe('POST /api/share/construct-url (v2 minting through the endpoint)', () =
     });
   });
 
-  test('a nested content root returns a business error when its origin cannot be encoded as v2', async () => {
+  test('a declared host whose origin cannot be encoded as v2 returns a business error', async () => {
     const t = newTriangle();
     t.seedAndPush('knowledge/doc.md', '# Document\n');
     t.git(t.senderDir, ['remote', 'set-url', 'origin', 'https://127.0.0.1/o/r.git']);
+    declareGitHubHosts(home(), '127.0.0.1');
 
     rig = await bootEndpointServer({
       projectDir: t.senderDir,
