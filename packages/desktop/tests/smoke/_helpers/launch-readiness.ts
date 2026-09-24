@@ -1,12 +1,13 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { WaterfallPhase } from '../../../src/main/startup-waterfall.ts';
 import {
   BOOT_HEARTBEAT_EVENTS,
   DESKTOP_BOOT_EVENT,
   DESKTOP_OPEN_PROJECT_FAILED_EVENT,
   isBootHeartbeatEvent,
-  isStartupMarkEvent,
   SPAWN_WAIT_HEARTBEAT_MS,
+  type StartupMarkLine,
   startupMarkLine,
   UTILITY_INIT_TIMEOUT_MS,
 } from '../../../src/shared/boot-narration.ts';
@@ -142,9 +143,33 @@ function currentLaunch(lines: readonly string[]): string[] {
   return lastBoot === -1 ? [...lines] : lines.slice(lastBoot);
 }
 
+const STARTUP_STAGE_PHASES = {
+  appReady: true,
+  bootstrapDone: true,
+  serverSpawned: true,
+  serverLockReady: true,
+  windowCreated: true,
+  loadUrlResolved: true,
+  windowShown: true,
+} as const satisfies Record<WaterfallPhase, true>;
+
+export const EVERY_STARTUP_PHASE = Object.keys(STARTUP_STAGE_PHASES) as ReadonlyArray<
+  keyof typeof STARTUP_STAGE_PHASES
+>;
+
+const STARTUP_STAGE_EVENTS: ReadonlySet<string> = new Set(
+  EVERY_STARTUP_PHASE.map((phase) => startupMarkLine(phase, 0).event),
+);
+
+type StartupStageEvent = StartupMarkLine['event'];
+
+function isStartupStageEvent(event: string): event is StartupStageEvent {
+  return STARTUP_STAGE_EVENTS.has(event);
+}
+
 function isLaunchNarrationLine(line: string): boolean {
   const event = parseEvent(line);
-  return event !== undefined && (isStartupMarkEvent(event) || isBootHeartbeatEvent(event));
+  return event !== undefined && (isStartupStageEvent(event) || isBootHeartbeatEvent(event));
 }
 
 function lastLaunchNarrationIndex(launch: readonly string[]): number {
@@ -225,6 +250,21 @@ function newestDeclaredPhaseBudget(all: readonly string[]): DeclaredPhaseBudget 
     if (budget !== undefined) return budget;
   }
   return undefined;
+}
+
+export interface LaunchAdvancement {
+  event: StartupStageEvent;
+  atMs: number;
+}
+
+export function launchAdvancementPhases(all: readonly string[]): StartupStageEvent[] {
+  const ordered: StartupStageEvent[] = [];
+  for (const line of currentLaunch(all)) {
+    const event = parseEvent(line);
+    if (event === undefined || !isStartupStageEvent(event)) continue;
+    if (!ordered.includes(event)) ordered.push(event);
+  }
+  return ordered;
 }
 
 function parseLastPhase(line: string): string | undefined {
@@ -377,6 +417,15 @@ export function bootGapLineFor(input: {
     : { ...base, reason };
 }
 
+export function lastAdvancementMs(wait: ReadyWaitRecord): number | undefined {
+  return wait.advancements.at(-1)?.atMs;
+}
+
+export function sinceLastAdvancementMs(wait: ReadyWaitRecord): number | undefined {
+  const last = lastAdvancementMs(wait);
+  return last === undefined ? undefined : wait.elapsedMs - last;
+}
+
 export function formatBootGapLine(line: BootGapLine): string {
   const parts = [
     `[boot-gap] slot=${line.slot}`,
@@ -391,6 +440,9 @@ export function formatBootGapLine(line: BootGapLine): string {
           'firstWaitWhat=none',
           'firstWaitGaveUp=none',
           'firstWaitReason=none',
+          'firstWaitAdvancements=none',
+          'firstWaitLastAdvancementMs=none',
+          'firstWaitSinceAdvancementMs=none',
         ]
       : [
           `firstWaitMs=${line.firstWait.elapsedMs}`,
@@ -399,6 +451,11 @@ export function formatBootGapLine(line: BootGapLine): string {
           `firstWaitWhat=${JSON.stringify(line.firstWait.what)}`,
           `firstWaitGaveUp=${line.firstWait.gaveUp}`,
           `firstWaitReason=${line.firstWait.reason}`,
+          `firstWaitAdvancements=${JSON.stringify(
+            line.firstWait.advancements.map((advancement) => advancement.event),
+          )}`,
+          `firstWaitLastAdvancementMs=${lastAdvancementMs(line.firstWait) ?? 'none'}`,
+          `firstWaitSinceAdvancementMs=${sinceLastAdvancementMs(line.firstWait) ?? 'none'}`,
         ]),
   ];
   if (line.summary === undefined) {
@@ -434,6 +491,7 @@ export interface ReadySignalOptions<T> {
   startDeadline?: (ms: number) => ReadyDeadline;
   isProbePending?: () => boolean;
   onCapExtended?: (capMs: number) => void;
+  onAdvancement?: (advancement: LaunchAdvancement) => void;
 }
 
 export interface ReadyDeadline {
@@ -563,6 +621,9 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   const startedAt = now();
   let lastProgressAt = startedAt;
   let cursor = -1;
+  const advancementSeen = new Set<string>();
+  let lastLegibleReadAt: number | undefined;
+  let lastStageRenewalAt: number | undefined;
   let snapshot = emptyBootLog(bootLogDirFor(options.home));
   const explicitLiveness = options.liveness;
   let lastProbeError: string | undefined;
@@ -600,10 +661,21 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
       }
 
       snapshot = readLog(options.home);
+      const readAt = now();
       if (snapshot.lineCount > cursor) {
         cursor = snapshot.lineCount;
-        lastProgressAt = now();
+        lastProgressAt = readAt;
       }
+
+      for (const event of launchAdvancementPhases(snapshot.lines)) {
+        if (advancementSeen.has(event)) continue;
+        advancementSeen.add(event);
+        options.onAdvancement?.({ event, atMs: readAt - startedAt });
+        if (lastLegibleReadAt !== undefined) {
+          lastStageRenewalAt = probePendingAtGiveUp ? lastLegibleReadAt : readAt;
+        }
+      }
+      if (classifyBootLog(snapshot) !== 'unreadable') lastLegibleReadAt = readAt;
 
       const declaredPhaseOpen = hasOpenDeclaredPhase(snapshot.lines);
       if (declaredPhaseOpen) {
@@ -617,8 +689,13 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
           derivedDeadlineAt = Math.max(derivedDeadlineAt ?? 0, now() + remaining);
         }
       }
-      const effectiveCapMs =
-        derivedDeadlineAt === undefined ? capMs : Math.max(capMs, derivedDeadlineAt - startedAt);
+      const effectiveCapMs = Math.max(
+        capMs,
+        derivedDeadlineAt === undefined ? capMs : derivedDeadlineAt - startedAt,
+        lastStageRenewalAt === undefined
+          ? capMs
+          : Math.min(lastStageRenewalAt - startedAt + stallMs, capMs + stallMs),
+      );
       if (effectiveCapMs > armedCapMs) {
         deadline.cancel();
         capElapsed = false;
@@ -716,6 +793,7 @@ export interface ReadyWaitRecord {
   requestedCapMs: number;
   gaveUp: boolean;
   reason: ReadyWaitGiveUpReason;
+  advancements: readonly LaunchAdvancement[];
 }
 
 const READY_WAITS_BY_APP = new WeakMap<object, ReadyWaitRecord[]>();
@@ -801,6 +879,7 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
   let pendingProbeCount = 0;
   let succeeded = false;
   let reason: ReadyWaitGiveUpReason = 'none';
+  const advancements: LaunchAdvancement[] = [];
   try {
     const found = await waitForReadySignal<TPage>({
       home,
@@ -812,6 +891,9 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       isProbePending: () => pendingProbeCount > 0,
       onCapExtended: (extended) => {
         decidingCapMs = extended;
+      },
+      onAdvancement: (advancement) => {
+        advancements.push(advancement);
       },
       probe: async () => {
         const pages = app.windows();
@@ -883,6 +965,7 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       requestedCapMs: capMs,
       gaveUp: !succeeded,
       reason,
+      advancements,
     });
   }
 }
