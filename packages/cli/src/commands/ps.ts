@@ -1,10 +1,4 @@
-import { basename, dirname, resolve } from 'node:path';
-import {
-  formatRelativeAge,
-  LOCAL_DIR,
-  OK_DIR,
-  RELATIVE_TIME_UNKNOWN,
-} from '@inkeep/open-knowledge-core';
+import { formatRelativeAge, RELATIVE_TIME_UNKNOWN } from '@inkeep/open-knowledge-core';
 import { lockAdvertisesUi } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import pc from 'picocolors';
@@ -16,9 +10,11 @@ import {
   processUsage,
 } from '../utils/process-scan.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
-import { type V1PsDocument, v1Result } from './supervision-json-v1.ts';
+import { projectDirectoryForLockDir } from './ps-observation.ts';
+import { buildPsV1, PsV1DiscoveryError, psV1Failure } from './ps-v1.ts';
 import { addV1FormatOption, writeV1Document } from './supervision-json-v1-output.ts';
-import { projectV1LockState } from './supervision-lock-v1.ts';
+
+export { buildPsV1, psV1Failure } from './ps-v1.ts';
 
 interface PsEntry {
   directory: string | null;
@@ -55,13 +51,6 @@ export function startedCell(isoString: string | null, now = Date.now()): string 
   if (isoString === null) return '—';
   const age = formatRelativeAge(isoString, now);
   return age === RELATIVE_TIME_UNKNOWN ? '—' : age;
-}
-
-function projectDirectoryForLockDir(lockDir: string): string | null {
-  const parent = dirname(lockDir);
-  if (basename(lockDir) === LOCAL_DIR && basename(parent) === OK_DIR) return dirname(parent);
-  if (basename(lockDir) === OK_DIR) return parent;
-  return null;
 }
 
 function buildEntry(
@@ -255,41 +244,6 @@ interface RunPsDeps {
   json?: boolean;
   all?: boolean;
   log?: (msg: string) => void;
-}
-
-export async function buildPsV1(
-  deps: Pick<RunPsDeps, 'discover' | 'inspect'> = {},
-): Promise<V1PsDocument> {
-  const discover = deps.discover ?? discoverLockDirs;
-  const inspect = deps.inspect ?? ((dir: string) => inspectLock(dir, 'server'));
-  const paths = new Map<string, string>();
-  let discovered: string[];
-  try {
-    discovered = await discover();
-  } catch (error) {
-    throw new PsV1DiscoveryError(error instanceof Error ? error.message : String(error));
-  }
-  for (const dir of discovered) {
-    const normalized = resolve(dir);
-    const path = resolve(normalized, 'server.lock');
-    if (!paths.has(path)) paths.set(path, normalized);
-  }
-  const servers = [...paths]
-    .sort(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
-    .map(([, dir]) => ({
-      projectRoot: projectDirectoryForLockDir(dir),
-      ...projectV1LockState(inspect(dir)),
-    }));
-  return { schemaVersion: 1, command: 'ps', result: v1Result('ps', 'inventoried'), servers };
-}
-
-class PsV1DiscoveryError extends Error {}
-
-export function psV1Failure(
-  code: 'discovery-failed' | 'operation-failed',
-  detail: string,
-): V1PsDocument {
-  return { schemaVersion: 1, command: 'ps', result: v1Result('ps', code, detail), servers: [] };
 }
 
 export async function runPs(deps: RunPsDeps = {}): Promise<void> {

@@ -4,7 +4,7 @@ import { isProcessAlive, lockBaseUrl, resolveLockDir } from '@inkeep/open-knowle
 import { getInvocationCwd } from '../project-anchor.ts';
 import { discoverLockDirs } from '../utils/process-scan.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
-import { runStop } from './stop.ts';
+import { runStop } from './stop-execution.ts';
 import {
   type V1Result,
   type V1StopDocument,
