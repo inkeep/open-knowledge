@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,7 +15,19 @@ import {
   WindowManager,
   type WindowManagerDeps,
 } from '../../src/main/window-manager.ts';
-import { SPAWN_WAIT_HEARTBEAT_MS } from '../../src/shared/boot-narration.ts';
+import {
+  BOOT_HEARTBEAT_EVENTS,
+  SPAWN_STARTUP_DEADLINE_MS,
+  SPAWN_WAIT_EXTENSION_FACTOR,
+  SPAWN_WAIT_HEARTBEAT_MS,
+  UTILITY_INIT_PHASES,
+  UTILITY_INIT_TIMEOUT_MS,
+  UTILITY_WAIT_EXPIRED_EVENT,
+  UTILITY_WAIT_EXTENDED_EVENT,
+  UTILITY_WAIT_LATE_KILL_EVENT,
+  utilityInitPhaseEvent,
+} from '../../src/shared/boot-narration.ts';
+import { parseDeclaredPhaseBudget } from '../smoke/_helpers/launch-readiness.ts';
 
 interface MockUtility extends UtilityProcessLike {
   fire: (msg: unknown) => void;
@@ -3984,6 +3997,831 @@ describe('boot heartbeats (the unpackaged path CI runs)', () => {
     expect(intervals.every((i) => i.cleared)).toBe(true);
   });
 });
+
+interface Settlement<T> {
+  state: 'pending' | 'resolved' | 'rejected';
+  value?: T;
+  reason?: unknown;
+}
+
+function settlementOf<T>(promise: Promise<T>): Settlement<T> {
+  const settlement: Settlement<T> = { state: 'pending' };
+  promise.then(
+    (value) => {
+      settlement.state = 'resolved';
+      settlement.value = value;
+    },
+    (reason: unknown) => {
+      settlement.state = 'rejected';
+      settlement.reason = reason;
+    },
+  );
+  return settlement;
+}
+
+function isSignalablePid(pid: unknown): boolean {
+  return typeof pid === 'number' && Number.isInteger(pid) && pid >= 2;
+}
+
+function rejectionMessage(settlement: Settlement<unknown>): string {
+  return settlement.reason instanceof Error ? settlement.reason.message : String(settlement.reason);
+}
+
+function exportedEventName(event: string): string {
+  expect(event, 'boot-narration exports the event name').toBeTypeOf('string');
+  return event;
+}
+
+function exportedUtilityInitPhases(): typeof UTILITY_INIT_PHASES {
+  expect(UTILITY_INIT_PHASES, 'boot-narration exports UTILITY_INIT_PHASES').toBeInstanceOf(Array);
+  return UTILITY_INIT_PHASES;
+}
+
+function exportedUtilityInitPhaseEvent(): typeof utilityInitPhaseEvent {
+  expect(utilityInitPhaseEvent, 'boot-narration exports utilityInitPhaseEvent').toBeTypeOf(
+    'function',
+  );
+  return utilityInitPhaseEvent;
+}
+
+type ListenerRegistration = (event: string, listener: (value: never) => void) => void;
+
+const FORK_PATH_STARTUP_BUDGETS: ReadonlyArray<{
+  budget: string;
+  utilityInitTimeoutMs: number | undefined;
+}> = [
+  { budget: 'the default startup deadline', utilityInitTimeoutMs: undefined },
+  { budget: 'an injected startup deadline', utilityInitTimeoutMs: SPAWN_STARTUP_DEADLINE_MS },
+];
+
+describe.each(FORK_PATH_STARTUP_BUDGETS)(
+  'the forked utility wait keeps the packaged two-tier startup contract under $budget',
+  ({ utilityInitTimeoutMs }) => {
+    const startupDeadlineMs = utilityInitTimeoutMs ?? UTILITY_INIT_TIMEOUT_MS;
+    const hardCapMs = startupDeadlineMs * SPAWN_WAIT_EXTENSION_FACTOR;
+
+    let env: TestEnv;
+    let alivePids: Set<number>;
+    let probedPids: unknown[];
+    let forkedAt: number;
+
+    beforeEach(() => {
+      vi.useFakeTimers({
+        toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'Date'],
+      });
+      env = buildEnv();
+      alivePids = new Set();
+      probedPids = [];
+      if (utilityInitTimeoutMs !== undefined) env.deps.utilityInitTimeoutMs = utilityInitTimeoutMs;
+      env.deps.setTimeout = (cb, ms) => setTimeout(cb, ms);
+      env.deps.setInterval = (cb, ms) => setInterval(cb, ms);
+      env.deps.clearInterval = (handle) => clearInterval(handle as ReturnType<typeof setInterval>);
+      env.deps.isProcessAlive = (pid) => {
+        probedPids.push(pid);
+        return alivePids.has(pid);
+      };
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    function openProject(projectPath: string): {
+      opening: Settlement<Awaited<ReturnType<WindowManager['createProjectWindow']>>>;
+      utility: MockUtility;
+    } {
+      const wm = new WindowManager(env.deps);
+      const opening = settlementOf(wm.createProjectWindow({ projectPath }));
+      forkedAt = Date.now();
+      const utility = env.utilities[0];
+      if (!utility) throw new Error('utility not forked');
+      return { opening, utility };
+    }
+
+    function observeAlive(utility: MockUtility): void {
+      if (utility.pid !== undefined) alivePids.add(utility.pid);
+    }
+
+    async function drainPendingSettlements(): Promise<void> {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+
+    async function advanceSinceForkTo(elapsedMs: number): Promise<void> {
+      await vi.advanceTimersByTimeAsync(forkedAt + elapsedMs - Date.now());
+      await drainPendingSettlements();
+    }
+
+    function utilityWaitBeats(): Array<{ elapsedMs: number; initTimeoutMs: number }> {
+      return env.logEntries
+        .map((entry) => entry.payload as Record<string, unknown>)
+        .filter((payload) => payload.event === BOOT_HEARTBEAT_EVENTS.utilityWait)
+        .map((payload) => ({
+          elapsedMs: typeof payload.elapsedMs === 'number' ? payload.elapsedMs : Number.NaN,
+          initTimeoutMs:
+            typeof payload.initTimeoutMs === 'number' ? payload.initTimeoutMs : Number.NaN,
+        }));
+    }
+
+    function utilityWaitBootLogLines(): string[] {
+      return env.logEntries
+        .filter(
+          (entry) =>
+            (entry.payload as Record<string, unknown>).event === BOOT_HEARTBEAT_EVENTS.utilityWait,
+        )
+        .map((entry) => JSON.stringify({ ...entry.payload, msg: entry.message }));
+    }
+
+    function terminatingSignalsSentByPid(): unknown[][] {
+      return env.killProbe.mock.calls.filter(([, signal]) => signal !== 0);
+    }
+
+    test('keeps waiting past the startup deadline for a utility observed alive, and opens the editor on a ready posted before the hard cap', async () => {
+      const { opening, utility } = openProject('/tmp/graduating-utility');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('pending');
+
+      await advanceSinceForkTo(hardCapMs - SPAWN_WAIT_HEARTBEAT_MS);
+      expect(opening.state).toBe('pending');
+      utility.fire({ type: 'ready', port: 51777, apiOrigin: 'http://localhost:51777' });
+      await drainPendingSettlements();
+
+      expect(opening.state).toBe('resolved');
+      expect(opening.value?.port).toBe(51777);
+      expect(env.windows).toHaveLength(1);
+      expect(env.createWindowOpts[0]?.additionalArguments).toContain('--ok-mode=editor');
+
+      await advanceSinceForkTo(hardCapMs + SPAWN_WAIT_HEARTBEAT_MS);
+      expect(utility.kill).not.toHaveBeenCalled();
+    });
+
+    test('declares the hard cap as its utility-wait budget once a live utility graduates', async () => {
+      const { opening, utility } = openProject('/tmp/graduated-narration');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(startupDeadlineMs + SPAWN_WAIT_HEARTBEAT_MS);
+
+      const beats = utilityWaitBeats();
+      const beforeDeadline = beats.filter((beat) => beat.elapsedMs < startupDeadlineMs);
+      const afterDeadline = beats.filter((beat) => beat.elapsedMs > startupDeadlineMs);
+      expect(beforeDeadline.length).toBeGreaterThan(0);
+      expect(beforeDeadline.map((beat) => beat.initTimeoutMs)).toEqual(
+        beforeDeadline.map(() => startupDeadlineMs),
+      );
+      expect(afterDeadline.length).toBeGreaterThan(0);
+      expect(afterDeadline.map((beat) => beat.initTimeoutMs)).toEqual(
+        afterDeadline.map(() => hardCapMs),
+      );
+      expect(opening.state).toBe('pending');
+    });
+
+    test('fails at the startup deadline and terminates the utility through its handle when the liveness probe finds it dead', async () => {
+      const { opening, utility } = openProject('/tmp/dead-utility');
+
+      await advanceSinceForkTo(startupDeadlineMs - 1);
+      expect(opening.state).toBe('pending');
+
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toMatch(/timed out/);
+      expect(utility.kill).toHaveBeenCalled();
+      expect(terminatingSignalsSentByPid()).toEqual([]);
+      expect(env.windows).toHaveLength(0);
+    });
+
+    test('fails at the startup deadline and terminates the utility through its handle when it never spawned', async () => {
+      const osAnswersAliveForEveryPid = (pid: number): boolean => {
+        probedPids.push(pid);
+        return true;
+      };
+      env.deps.isProcessAlive = osAnswersAliveForEveryPid;
+      const forkUtility = env.deps.forkUtility;
+      env.deps.forkUtility = (entry, args, opts) => {
+        const neverSpawned = forkUtility(entry, args, opts);
+        neverSpawned.pid = undefined;
+        neverSpawned.kill = vi.fn(() => false);
+        return neverSpawned;
+      };
+      const { opening, utility } = openProject('/tmp/never-spawned-utility');
+
+      await advanceSinceForkTo(startupDeadlineMs - 1);
+      expect(opening.state).toBe('pending');
+
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toMatch(/timed out/);
+      expect(utility.kill).toHaveBeenCalled();
+      expect(probedPids.filter((pid) => !isSignalablePid(pid))).toEqual([]);
+      expect(terminatingSignalsSentByPid()).toEqual([]);
+      expect(env.windows).toHaveLength(0);
+    });
+
+    test('fails at the hard cap without a second graduation and terminates the utility through its handle when a live utility never reports ready', async () => {
+      const { opening, utility } = openProject('/tmp/live-utility-never-ready');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('pending');
+
+      await advanceSinceForkTo(hardCapMs - 1);
+      expect(opening.state).toBe('pending');
+      expect(utility.kill).not.toHaveBeenCalled();
+
+      await advanceSinceForkTo(hardCapMs);
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toMatch(/timed out/);
+      expect(utility.kill).toHaveBeenCalledTimes(1);
+      expect(terminatingSignalsSentByPid()).toEqual([]);
+      expect(Math.max(...utilityWaitBeats().map((beat) => beat.initTimeoutMs))).toBe(hardCapMs);
+      expect(env.windows).toHaveLength(0);
+    });
+
+    test('narrates every beat of a graduated wait as a budget the smoke harness honors', async () => {
+      const { utility } = openProject('/tmp/graduated-harness-reading');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(hardCapMs - 1);
+
+      const lines = utilityWaitBootLogLines();
+      const graduated = utilityWaitBeats().filter((beat) => beat.elapsedMs > startupDeadlineMs);
+      expect(graduated.length).toBeGreaterThan(0);
+      expect(lines.filter((line) => parseDeclaredPhaseBudget(line) === undefined)).toEqual([]);
+    });
+
+    function logPayloadsOf(event: unknown): Array<Record<string, unknown>> {
+      return env.logEntries
+        .map((entry) => entry.payload as Record<string, unknown>)
+        .filter((payload) => payload.event === event);
+    }
+
+    function forkUtilityThatSpawnsLate(): {
+      pidsKilledWith: Array<number | undefined>;
+      spawn: () => number | undefined;
+    } {
+      const spawnListeners: Array<() => void> = [];
+      const pidsKilledWith: Array<number | undefined> = [];
+      let lateUtility: UtilityProcessLike | undefined;
+      let pidOnceSpawned: number | undefined;
+      const forkUtility = env.deps.forkUtility;
+      env.deps.forkUtility = (entry, args, opts) => {
+        const utility = forkUtility(entry, args, opts);
+        lateUtility = utility;
+        pidOnceSpawned = utility.pid;
+        utility.pid = undefined;
+        utility.kill = vi.fn(() => {
+          pidsKilledWith.push(utility.pid);
+          return utility.pid !== undefined;
+        });
+        const captureSpawn =
+          (register: ListenerRegistration): ListenerRegistration =>
+          (event, listener) => {
+            if (event === 'spawn') spawnListeners.push(listener as () => void);
+            else register(event, listener);
+          };
+        utility.on = captureSpawn(utility.on as ListenerRegistration) as UtilityProcessLike['on'];
+        utility.once = captureSpawn(
+          utility.once as ListenerRegistration,
+        ) as UtilityProcessLike['once'];
+        return utility;
+      };
+      return {
+        pidsKilledWith,
+        spawn: () => {
+          if (lateUtility) lateUtility.pid = pidOnceSpawned;
+          for (const listener of spawnListeners.splice(0)) listener();
+          return pidOnceSpawned;
+        },
+      };
+    }
+
+    test('terminates a utility that spawns only after its startup deadline through its handle once it has spawned', async () => {
+      const lateSpawn = forkUtilityThatSpawnsLate();
+      const { opening } = openProject('/tmp/late-spawning-utility');
+
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('rejected');
+      expect(lateSpawn.pidsKilledWith.filter(isSignalablePid)).toEqual([]);
+
+      const spawnedPid = lateSpawn.spawn();
+
+      expect(isSignalablePid(spawnedPid)).toBe(true);
+      expect(lateSpawn.pidsKilledWith.filter(isSignalablePid)).toEqual([spawnedPid]);
+      expect(terminatingSignalsSentByPid()).toEqual([]);
+      expect(env.windows).toHaveLength(0);
+    });
+
+    test('declares the hard cap in a beat at the instant a live utility graduates, even between two heartbeats', async () => {
+      const betweenHeartbeatsDeadlineMs = startupDeadlineMs + SPAWN_WAIT_HEARTBEAT_MS / 2;
+      const betweenHeartbeatsHardCapMs = betweenHeartbeatsDeadlineMs * SPAWN_WAIT_EXTENSION_FACTOR;
+      expect(betweenHeartbeatsDeadlineMs % SPAWN_WAIT_HEARTBEAT_MS).not.toBe(0);
+      env.deps.utilityInitTimeoutMs = betweenHeartbeatsDeadlineMs;
+      const { opening, utility } = openProject('/tmp/graduation-beat');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(betweenHeartbeatsDeadlineMs);
+
+      expect(opening.state).toBe('pending');
+      expect(
+        utilityWaitBeats().filter((beat) => beat.initTimeoutMs === betweenHeartbeatsHardCapMs),
+      ).toEqual([
+        { elapsedMs: betweenHeartbeatsDeadlineMs, initTimeoutMs: betweenHeartbeatsHardCapMs },
+      ]);
+    });
+
+    test.each([
+      {
+        ending: 'the liveness probe finds the utility dead at the startup deadline',
+        utilityAtDeadline: 'dead',
+        graduated: false,
+        termination: 'killed',
+      },
+      {
+        ending: 'the utility has not spawned by the startup deadline',
+        utilityAtDeadline: 'never-spawned',
+        graduated: false,
+        termination: 'deferred-until-spawn',
+      },
+      {
+        ending: 'the probe finds the utility dead and its handle refuses the kill',
+        utilityAtDeadline: 'kill-refused',
+        graduated: false,
+        termination: 'kill-refused',
+      },
+      {
+        ending: 'a utility observed alive never reports ready by the hard cap',
+        utilityAtDeadline: 'alive',
+        graduated: true,
+        termination: 'killed',
+      },
+    ] as const)(
+      'narrates how the wait ended, in bounded fields, when $ending',
+      async ({ utilityAtDeadline, graduated, termination }) => {
+        const extendedEvent = exportedEventName(UTILITY_WAIT_EXTENDED_EVENT);
+        const expiredEvent = exportedEventName(UTILITY_WAIT_EXPIRED_EVENT);
+        if (utilityAtDeadline === 'never-spawned' || utilityAtDeadline === 'kill-refused') {
+          const forkUtility = env.deps.forkUtility;
+          env.deps.forkUtility = (entry, args, opts) => {
+            const utility = forkUtility(entry, args, opts);
+            if (utilityAtDeadline === 'never-spawned') utility.pid = undefined;
+            utility.kill = vi.fn(() => false);
+            return utility;
+          };
+        }
+        const { opening, utility } = openProject(`/tmp/wait-ending-${utilityAtDeadline}`);
+        if (utilityAtDeadline === 'alive') observeAlive(utility);
+        const endsAtMs = graduated ? hardCapMs : startupDeadlineMs;
+
+        await advanceSinceForkTo(endsAtMs - 1);
+        expect(logPayloadsOf(expiredEvent)).toEqual([]);
+
+        await advanceSinceForkTo(endsAtMs);
+        expect(opening.state).toBe('rejected');
+        expect(logPayloadsOf(expiredEvent)).toEqual([
+          {
+            event: expiredEvent,
+            pid: utility.pid,
+            budgetMs: endsAtMs,
+            graduated,
+            termination,
+            lastInitPhase: null,
+          },
+        ]);
+        expect(logPayloadsOf(extendedEvent)).toEqual(
+          graduated
+            ? [
+                {
+                  event: extendedEvent,
+                  pid: utility.pid,
+                  startupDeadlineMs,
+                  hardCapMs,
+                  lastInitPhase: null,
+                },
+              ]
+            : [],
+        );
+      },
+    );
+
+    test('logs each startup phase mark the utility posts as a bounded diagnostic line, and flushes it', async () => {
+      const phaseEvent = exportedUtilityInitPhaseEvent();
+      const phases = exportedUtilityInitPhases();
+      const logLengthAtFlush: number[] = [];
+      env.deps.flushLog = () => {
+        logLengthAtFlush.push(env.logEntries.length);
+      };
+      const { opening, utility } = openProject('/tmp/utility-phase-marks');
+      observeAlive(utility);
+      const markSpacingMs = SPAWN_WAIT_HEARTBEAT_MS / phases.length;
+
+      const expectedLines: Array<Record<string, unknown>> = [];
+      for (const [index, phase] of phases.entries()) {
+        const sinceForkMs = markSpacingMs * (index + 1);
+        await advanceSinceForkTo(sinceForkMs);
+        utility.fire({
+          type: 'init-phase',
+          phase,
+          uptimeMs: sinceForkMs,
+          cpuUserMs: index,
+          cpuSystemMs: index,
+        });
+        expect(logLengthAtFlush.at(-1)).toBe(env.logEntries.length);
+        expectedLines.push({
+          event: phaseEvent(phase),
+          pid: utility.pid,
+          phase,
+          sinceForkMs,
+          uptimeMs: sinceForkMs,
+          cpuUserMs: index,
+          cpuSystemMs: index,
+        });
+      }
+
+      expect(phases.length).toBeGreaterThan(0);
+      expect(
+        env.logEntries
+          .map((entry) => entry.payload as Record<string, unknown>)
+          .filter((payload) => phases.some((phase) => payload.event === phaseEvent(phase))),
+      ).toEqual(expectedLines);
+      expect(opening.state).toBe('pending');
+    });
+
+    test('drops a phase mark outside the utility startup phases and omits any counter that is not a finite, non-negative number', async () => {
+      const phaseEvent = exportedUtilityInitPhaseEvent();
+      const [firstPhase, secondPhase] = exportedUtilityInitPhases();
+      const { utility } = openProject('/tmp/utility-malformed-marks');
+
+      for (const phase of ['constructor', 'not-a-startup-phase', 7, undefined]) {
+        utility.fire({ type: 'init-phase', phase, uptimeMs: 0, cpuUserMs: 0, cpuSystemMs: 0 });
+      }
+      utility.fire({
+        type: 'init-phase',
+        phase: firstPhase,
+        uptimeMs: Number.NaN,
+        cpuUserMs: -1,
+        cpuSystemMs: '1',
+      });
+      utility.fire({
+        type: 'init-phase',
+        phase: secondPhase,
+        uptimeMs: Number.POSITIVE_INFINITY,
+        cpuUserMs: 0,
+        cpuSystemMs: 0,
+      });
+
+      expect(
+        env.logEntries
+          .map((entry) => entry.payload as Record<string, unknown>)
+          .filter((payload) => 'phase' in payload),
+      ).toEqual([
+        { event: phaseEvent(firstPhase), pid: utility.pid, phase: firstPhase, sinceForkMs: 0 },
+        {
+          event: phaseEvent(secondPhase),
+          pid: utility.pid,
+          phase: secondPhase,
+          sinceForkMs: 0,
+          cpuUserMs: 0,
+          cpuSystemMs: 0,
+        },
+      ]);
+    });
+
+    test('fails a utility the liveness probe finds dead at its startup deadline, though it posted phase marks up to the last moment', async () => {
+      const phaseEvent = exportedUtilityInitPhaseEvent();
+      const phases = exportedUtilityInitPhases();
+      const expiredEvent = exportedEventName(UTILITY_WAIT_EXPIRED_EVENT);
+      const { opening, utility } = openProject('/tmp/marking-but-dead');
+
+      for (const [index, phase] of phases.entries()) {
+        await advanceSinceForkTo(startupDeadlineMs - phases.length + index);
+        utility.fire({ type: 'init-phase', phase, uptimeMs: 0, cpuUserMs: 0, cpuSystemMs: 0 });
+      }
+      expect(opening.state).toBe('pending');
+
+      await advanceSinceForkTo(startupDeadlineMs);
+
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toMatch(/timed out/);
+      expect(phases.flatMap((phase) => logPayloadsOf(phaseEvent(phase)))).toHaveLength(
+        phases.length,
+      );
+      expect(logPayloadsOf(expiredEvent).map((payload) => payload.lastInitPhase)).toEqual([
+        phases.at(-1),
+      ]);
+    });
+
+    test('names the last startup phase the utility marked on the line that extends its wait and on the line that expires it, never a mark it dropped', async () => {
+      const extendedEvent = exportedEventName(UTILITY_WAIT_EXTENDED_EVENT);
+      const expiredEvent = exportedEventName(UTILITY_WAIT_EXPIRED_EVENT);
+      const [markedBeforeGraduation, markedAfterGraduation] = exportedUtilityInitPhases();
+      const { opening, utility } = openProject('/tmp/graduated-utility-names-its-last-phase');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(startupDeadlineMs - 1);
+      utility.fire({
+        type: 'init-phase',
+        phase: markedBeforeGraduation,
+        uptimeMs: 0,
+        cpuUserMs: 0,
+        cpuSystemMs: 0,
+      });
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('pending');
+      expect(logPayloadsOf(extendedEvent).map((payload) => payload.lastInitPhase)).toEqual([
+        markedBeforeGraduation,
+      ]);
+
+      await advanceSinceForkTo(hardCapMs - 1);
+      for (const phase of [markedAfterGraduation, 'not-a-startup-phase']) {
+        utility.fire({ type: 'init-phase', phase, uptimeMs: 0, cpuUserMs: 0, cpuSystemMs: 0 });
+      }
+      await advanceSinceForkTo(hardCapMs);
+
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toBe(`utility init timed out after ${hardCapMs}ms`);
+      expect(logPayloadsOf(expiredEvent).map((payload) => payload.lastInitPhase)).toEqual([
+        markedAfterGraduation,
+      ]);
+    });
+
+    test('does not extend the wait of a live utility that reported ready before its startup deadline once that deadline passes', async () => {
+      const extendedEvent = exportedEventName(UTILITY_WAIT_EXTENDED_EVENT);
+      const { opening, utility } = openProject('/tmp/ready-before-startup-deadline');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(startupDeadlineMs - 1);
+      utility.fire({ type: 'ready', port: 51888, apiOrigin: 'http://localhost:51888' });
+      await drainPendingSettlements();
+      expect(opening.state).toBe('resolved');
+      expect(env.createWindowOpts[0]?.additionalArguments).toContain('--ok-mode=editor');
+      const beatsAtReady = utilityWaitBeats();
+      expect(beatsAtReady.length).toBeGreaterThan(0);
+
+      await advanceSinceForkTo(hardCapMs + SPAWN_WAIT_HEARTBEAT_MS);
+
+      expect(logPayloadsOf(extendedEvent)).toEqual([]);
+      expect(utilityWaitBeats()).toEqual(beatsAtReady);
+      expect(utility.kill).not.toHaveBeenCalled();
+      expect(terminatingSignalsSentByPid()).toEqual([]);
+    });
+
+    function refuseEveryKill(): void {
+      const forkUtility = env.deps.forkUtility;
+      env.deps.forkUtility = (entry, args, opts) => {
+        const utility = forkUtility(entry, args, opts);
+        const attemptKill = utility.kill;
+        utility.kill = vi.fn((signal?: NodeJS.Signals) => {
+          attemptKill.call(utility, signal);
+          return false;
+        });
+        return utility;
+      };
+    }
+
+    test.each([
+      { lateKillSucceeds: true, termination: 'killed' },
+      { lateKillSucceeds: false, termination: 'kill-refused' },
+    ] as const)(
+      'narrates the kill that lands once a utility spawns after its wait expired, as $termination from what that kill returned, and flushes it',
+      async ({ lateKillSucceeds, termination }) => {
+        const lateKillEvent = exportedEventName(UTILITY_WAIT_LATE_KILL_EVENT);
+        const logLengthAtFlush: number[] = [];
+        env.deps.flushLog = () => {
+          logLengthAtFlush.push(env.logEntries.length);
+        };
+        const lateSpawn = forkUtilityThatSpawnsLate();
+        if (!lateKillSucceeds) refuseEveryKill();
+        const { opening } = openProject(`/tmp/late-kill-${termination}`);
+
+        await advanceSinceForkTo(startupDeadlineMs);
+        expect(opening.state).toBe('rejected');
+        expect(logPayloadsOf(lateKillEvent)).toEqual([]);
+        const flushesBeforeSpawn = logLengthAtFlush.length;
+
+        const spawnedPid = lateSpawn.spawn();
+
+        expect(isSignalablePid(spawnedPid)).toBe(true);
+        expect(lateSpawn.pidsKilledWith.filter(isSignalablePid)).toEqual([spawnedPid]);
+        expect(logPayloadsOf(lateKillEvent)).toEqual([
+          { event: lateKillEvent, pid: spawnedPid, termination },
+        ]);
+        expect(logLengthAtFlush.length).toBeGreaterThan(flushesBeforeSpawn);
+        expect(logLengthAtFlush.at(-1)).toBe(env.logEntries.length);
+        expect(terminatingSignalsSentByPid()).toEqual([]);
+      },
+    );
+
+    function forkUtilityWithEventEmitterListeners(): void {
+      const forkUtility = env.deps.forkUtility;
+      env.deps.forkUtility = (entry, args, opts) => {
+        const forked = forkUtility(entry, args, opts);
+        const utility = env.utilities.at(-1);
+        if (!utility || utility !== forked) throw new Error('utility not forked');
+        const emitter = new EventEmitter();
+        const through =
+          (
+            register: (event: string, listener: (...values: unknown[]) => void) => unknown,
+          ): ListenerRegistration =>
+          (event, listener) => {
+            register(event, listener as (...values: unknown[]) => void);
+          };
+        utility.on = through((event, listener) =>
+          emitter.on(event, listener),
+        ) as UtilityProcessLike['on'];
+        utility.once = through((event, listener) =>
+          emitter.once(event, listener),
+        ) as UtilityProcessLike['once'];
+        utility.removeListener = through((event, listener) =>
+          emitter.removeListener(event, listener),
+        ) as UtilityProcessLike['removeListener'];
+        utility.fire = (msg) => {
+          emitter.emit('message', msg);
+        };
+        utility.fireExit = (code) => {
+          emitter.emit('exit', code);
+        };
+        return utility;
+      };
+    }
+
+    test.each([
+      {
+        ending: 'exits',
+        end: (utility: MockUtility) => utility.fireExit(1),
+        outcome: /utility exited before ready.*code=1/,
+      },
+      {
+        ending: 'reports that its start failed',
+        end: (utility: MockUtility) =>
+          utility.fire({ type: 'error', message: 'project server failed to start' }),
+        outcome: /^project server failed to start$/,
+      },
+    ])(
+      'ends a graduated wait at once with the outcome of a utility that $ending, and neither kills it nor narrates the wait further',
+      async ({ end, outcome }) => {
+        forkUtilityWithEventEmitterListeners();
+        const { opening, utility } = openProject('/tmp/graduated-utility-ends-its-wait');
+        observeAlive(utility);
+
+        await advanceSinceForkTo(startupDeadlineMs + SPAWN_WAIT_HEARTBEAT_MS);
+        expect(opening.state).toBe('pending');
+        const beatsBeforeTheEnd = utilityWaitBeats();
+        expect(
+          beatsBeforeTheEnd.filter((beat) => beat.initTimeoutMs === hardCapMs).length,
+        ).toBeGreaterThan(0);
+
+        end(utility);
+        await drainPendingSettlements();
+
+        expect(opening.state).toBe('rejected');
+        expect(rejectionMessage(opening)).toMatch(outcome);
+
+        await advanceSinceForkTo(hardCapMs + SPAWN_WAIT_HEARTBEAT_MS);
+
+        expect(utilityWaitBeats()).toEqual(beatsBeforeTheEnd);
+        expect(logPayloadsOf(exportedEventName(UTILITY_WAIT_EXPIRED_EVENT))).toEqual([]);
+        expect(utility.kill).not.toHaveBeenCalled();
+        expect(terminatingSignalsSentByPid()).toEqual([]);
+        expect(env.windows).toHaveLength(0);
+      },
+    );
+
+    test('rejects a live utility that never reports ready with a timeout naming the hard cap', async () => {
+      const { opening, utility } = openProject('/tmp/graduated-utility-times-out');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(hardCapMs);
+
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toBe(`utility init timed out after ${hardCapMs}ms`);
+    });
+
+    test('ends a graduated wait at the hard cap counted from the fork when its startup deadline runs late', async () => {
+      const { opening, utility } = openProject('/tmp/graduated-after-a-late-startup-deadline');
+      observeAlive(utility);
+      const eventLoopStallMs = SPAWN_WAIT_HEARTBEAT_MS;
+
+      await advanceSinceForkTo(startupDeadlineMs - 1);
+      vi.setSystemTime(Date.now() + eventLoopStallMs);
+      await advanceSinceForkTo(startupDeadlineMs + eventLoopStallMs);
+      expect(opening.state).toBe('pending');
+      expect(utilityWaitBeats().find((beat) => beat.initTimeoutMs === hardCapMs)).toEqual({
+        elapsedMs: startupDeadlineMs + eventLoopStallMs,
+        initTimeoutMs: hardCapMs,
+      });
+
+      await advanceSinceForkTo(hardCapMs - 1);
+      expect(opening.state).toBe('pending');
+
+      await advanceSinceForkTo(hardCapMs);
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toBe(`utility init timed out after ${hardCapMs}ms`);
+    });
+
+    test('logs the phase marks a graduated utility keeps posting up to the last moment, and still ends its wait at the hard cap', async () => {
+      const { opening, utility } = openProject('/tmp/graduated-utility-keeps-marking');
+      observeAlive(utility);
+
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('pending');
+
+      const phaseEvent = exportedUtilityInitPhaseEvent();
+      const phases = exportedUtilityInitPhases();
+      expect(phases.length).toBeGreaterThan(0);
+      const lastMarkSinceForkMs = hardCapMs - 1;
+      const graduatedMarkWindowMs = lastMarkSinceForkMs - startupDeadlineMs;
+      const expectedLines: Array<Record<string, unknown>> = [];
+      for (const [index, phase] of phases.entries()) {
+        const sinceForkMs =
+          startupDeadlineMs + Math.floor((graduatedMarkWindowMs * (index + 1)) / phases.length);
+        await advanceSinceForkTo(sinceForkMs);
+        utility.fire({
+          type: 'init-phase',
+          phase,
+          uptimeMs: sinceForkMs,
+          cpuUserMs: index,
+          cpuSystemMs: index,
+        });
+        expectedLines.push({
+          event: phaseEvent(phase),
+          pid: utility.pid,
+          phase,
+          sinceForkMs,
+          uptimeMs: sinceForkMs,
+          cpuUserMs: index,
+          cpuSystemMs: index,
+        });
+      }
+      await drainPendingSettlements();
+
+      expect(phases.flatMap((phase) => logPayloadsOf(phaseEvent(phase)))).toEqual(expectedLines);
+      expect(opening.state).toBe('pending');
+      expect(utility.kill).not.toHaveBeenCalled();
+
+      await advanceSinceForkTo(hardCapMs);
+
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toMatch(/timed out/);
+      expect(utility.kill).toHaveBeenCalledTimes(1);
+      expect(terminatingSignalsSentByPid()).toEqual([]);
+    });
+
+    test('tells a utility that has not spawned by its startup deadline to shut down through its handle, after its init, and still kills it once it spawns', async () => {
+      const lateSpawn = forkUtilityThatSpawnsLate();
+      const { opening, utility } = openProject('/tmp/unspawned-utility-told-to-shut-down');
+      const postedToUtility = (): unknown[] =>
+        vi.mocked(utility.postMessage).mock.calls.map(([message]) => message);
+
+      await advanceSinceForkTo(startupDeadlineMs - 1);
+      expect(opening.state).toBe('pending');
+      expect(utility.pid).toBeUndefined();
+      expect(postedToUtility()).toEqual([expect.objectContaining({ type: 'init' })]);
+
+      await advanceSinceForkTo(startupDeadlineMs);
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toMatch(/timed out/);
+      expect(lateSpawn.pidsKilledWith.filter(isSignalablePid)).toEqual([]);
+      expect(postedToUtility()).toEqual([
+        expect.objectContaining({ type: 'init' }),
+        { type: 'shutdown' },
+      ]);
+
+      const spawnedPid = lateSpawn.spawn();
+
+      expect(isSignalablePid(spawnedPid)).toBe(true);
+      expect(lateSpawn.pidsKilledWith.filter(isSignalablePid)).toEqual([spawnedPid]);
+      expect(terminatingSignalsSentByPid()).toEqual([]);
+      expect(env.windows).toHaveLength(0);
+    });
+
+    test('has told a utility that has not spawned to shut down by the time the failed open reaches its caller', async () => {
+      forkUtilityThatSpawnsLate();
+      const open = new WindowManager(env.deps).createProjectWindow({
+        projectPath: '/tmp/unspawned-utility-shut-down-before-its-caller-sees-the-failure',
+      });
+      forkedAt = Date.now();
+      const utility = env.utilities[0];
+      if (!utility) throw new Error('utility not forked');
+      let postedWhenFailureReachedCaller: unknown[] | undefined;
+      open.catch(() => {
+        postedWhenFailureReachedCaller = vi
+          .mocked(utility.postMessage)
+          .mock.calls.map(([message]) => message);
+      });
+      const opening = settlementOf(open);
+
+      await advanceSinceForkTo(startupDeadlineMs);
+
+      expect(opening.state).toBe('rejected');
+      expect(rejectionMessage(opening)).toMatch(/timed out/);
+      expect(utility.pid).toBeUndefined();
+      expect(postedWhenFailureReachedCaller).toEqual([
+        expect.objectContaining({ type: 'init' }),
+        { type: 'shutdown' },
+      ]);
+    });
+  },
+);
 
 describe('WindowManager — local-op CLI invocation threading', () => {
   const WIN_EXE = 'C:\\Program Files\\OpenKnowledge\\OpenKnowledge.exe';

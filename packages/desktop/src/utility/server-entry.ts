@@ -7,6 +7,7 @@ import type {
   Config,
   ServerExitReason,
 } from '@inkeep/open-knowledge-server';
+import type { UtilityInitCounters, UtilityInitPhase } from '../shared/boot-narration.ts';
 import { type KeyringSmokeResult, runKeyringSmoke } from './keyring-smoke.ts';
 
 export type { KeyringSmokeResult } from './keyring-smoke.ts';
@@ -70,11 +71,16 @@ export interface UtilityDebugKeyringSmokeResultMessage {
   correlationId: string;
   result: KeyringSmokeResult;
 }
+export interface UtilityInitPhaseMessage extends UtilityInitCounters {
+  type: 'init-phase';
+  phase: UtilityInitPhase;
+}
 export type UtilityOutgoingMessage =
   | UtilityReadyMessage
   | UtilityErrorMessage
   | UtilityDegradedMessage
-  | UtilityDebugKeyringSmokeResultMessage;
+  | UtilityDebugKeyringSmokeResultMessage
+  | UtilityInitPhaseMessage;
 
 type UtilityBootedServer = Pick<BootedServer, 'port' | 'destroy' | 'degraded'>;
 
@@ -98,6 +104,16 @@ export interface SetupUtilityDeps {
   env?: Record<string, string | undefined>;
   writeSmokeResult?: (path: string, contents: string) => Promise<void>;
   prepareBootEnvironment?: PrepareBootEnvironment;
+  readInitCounters?: () => UtilityInitCounters;
+}
+
+function readOwnInitCounters(): UtilityInitCounters {
+  const cpu = process.cpuUsage();
+  return {
+    uptimeMs: Math.round(process.uptime() * 1000),
+    cpuUserMs: Math.round(cpu.user / 1000),
+    cpuSystemMs: Math.round(cpu.system / 1000),
+  };
 }
 
 export interface PreparedBootEnvironment {
@@ -111,6 +127,7 @@ export interface PreparedBootEnvironment {
 
 export type PrepareBootEnvironment = (
   ipcOpts: UtilityInitMessage['opts'],
+  onPhase?: (phase: UtilityInitPhase) => void,
 ) => Promise<PreparedBootEnvironment>;
 
 export type UtilityShutdownReason = 'parent-died' | 'shutdown-ipc' | 'SIGTERM' | 'SIGINT';
@@ -184,13 +201,21 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
     deps.exit(drainOk ? 0 : 1);
   }
 
+  const readInitCounters = deps.readInitCounters ?? readOwnInitCounters;
+
+  function markInitPhase(phase: UtilityInitPhase): void {
+    deps.parentPort?.postMessage({ type: 'init-phase', phase, ...readInitCounters() });
+  }
+
   async function handleInit(msg: UtilityInitMessage) {
     try {
+      markInitPhase('init-received');
       const [server, cli, serverNamespace] = await Promise.all([
         deps.importServer(),
         import('@inkeep/open-knowledge'),
         import('@inkeep/open-knowledge-server'),
       ]);
+      markInitPhase('imports-resolved');
       const {
         detectGh,
         detectGhAccounts,
@@ -203,7 +228,8 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       const { makeLazyEmbeddingsKeyStore } = serverNamespace;
       const projectDir = msg.opts.projectDir ?? msg.opts.contentDir;
       const prepare = deps.prepareBootEnvironment ?? defaultPrepareBootEnvironment;
-      const prepared = await prepare(msg.opts);
+      const prepared = await prepare(msg.opts, markInitPhase);
+      if (shuttingDown) return;
 
       if (env.OK_DEBUG_DESKTOP_BOOT_TRACE === '1') {
         console.warn(
@@ -242,6 +268,7 @@ export function setupUtility(deps: SetupUtilityDeps): UtilityHandle {
       };
 
       const requestedPort = prepared.serverRuntime.port ?? msg.opts.port;
+      markInitPhase('boot-server-started');
       try {
         booted = await server.bootServer({ ...bootOpts, port: requestedPort });
       } catch (err) {
@@ -420,6 +447,7 @@ export async function resolveDesktopServerRuntime(projectDir: string): Promise<{
 
 async function defaultPrepareBootEnvironment(
   ipcOpts: UtilityInitMessage['opts'],
+  onPhase?: (phase: UtilityInitPhase) => void,
 ): Promise<PreparedBootEnvironment> {
   const projectDir = ipcOpts.projectDir ?? ipcOpts.contentDir;
   const { ensureProjectGit, initContent } = await import('@inkeep/open-knowledge-server');
@@ -427,6 +455,7 @@ async function defaultPrepareBootEnvironment(
   const degradedHints: string[] = [];
   if (ipcOpts.didEnsureGit !== true) {
     const result = await ensureProjectGit(projectDir);
+    onPhase?.('project-git-ensured');
     if (result.repaired === true) {
       degradedHints.push('project-git-shell-only');
     }

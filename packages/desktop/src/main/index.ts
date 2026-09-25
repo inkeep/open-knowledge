@@ -2121,6 +2121,7 @@ async function openProjectOrFallbackToNavigator(
       },
       '[main] openProject failed, falling back to Navigator',
     );
+    flushDesktopLogger();
     let dialogTitle = 'Unable to open project';
     let dialogBody = `${projectPath}\n\n${errorMessage}`;
     if (kind === 'mcp-server-stuck') {
@@ -2189,12 +2190,14 @@ async function openProjectOrFallbackToNavigator(
               },
               '[main] openProject retry after stopping the conflicting server failed',
             );
+            flushDesktopLogger();
             dialog.showErrorBox(
               'Unable to open project',
               `${projectPath}\n\n${(retryErr as Error).message}`,
             );
           }
         } else {
+          flushDesktopLogger();
           dialog.showErrorBox(
             'Unable to open project',
             `${projectPath}\n\n` +
@@ -2215,6 +2218,7 @@ async function openProjectOrFallbackToNavigator(
         );
         if (isStaleLockHolder) {
           const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
+          flushDesktopLogger();
           dialog.showErrorBox(
             dialogTitle,
             `${dialogBody}\n\n` +

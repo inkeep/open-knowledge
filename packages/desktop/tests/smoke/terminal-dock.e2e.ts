@@ -406,6 +406,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-004 first open mounts the live panel (no consent dialog)', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('default-on');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -419,6 +420,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-005 default-on spawns without writing terminal.enabled', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('default-on-no-write');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -435,6 +437,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-006 opted-out shows not-enabled notice; Enable re-enables the shell', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('opt-out', { optOut: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -453,6 +456,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-002 View-menu Terminal item toggles the panel and flips label', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('toggle', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -470,6 +474,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('native Terminal placement action follows the current home', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('placement-menu', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -491,6 +496,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('Terminal header placement is symmetric and clears the Agents reveal tab', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('header-placement', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -529,6 +535,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('a pointerleave mid-drag resizes the right column by the real delta, never collapsing it', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('divider-pointerleave', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -672,6 +679,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-022 toggle reveals the dock and mounts the terminal inside their liveness budgets', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('perf', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -703,6 +711,7 @@ test.describe('Docked terminal — live Electron', () => {
   });
 
   test('QA-003 shell starts at project root and runs commands', async ({ captureStderrFor }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('cmd', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -770,6 +779,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('terminal tab strip exposes collapse without legacy dock chrome', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('dock-controls', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -787,6 +797,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('the terminal lives in the bottom panel, never in the right column', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('dock-edges', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -804,6 +815,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-020 panel exposes region + screen-reader mode + AA contrast', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('a11y', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -821,6 +833,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-019 Escape reaches the terminal; CmdOrCtrl+J is the no-trap exit', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('escape', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -846,6 +859,7 @@ test.describe('Docked terminal — live Electron', () => {
   });
 
   test('Ctrl+` collapses the dock from inside a focused terminal', async ({ captureStderrFor }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('ctrl-backtick', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -875,6 +889,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-021 collapsed panel is inert and focus returns on collapse', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('inert', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -900,6 +915,7 @@ test.describe('Docked terminal — live Electron', () => {
   });
 
   test('QA-023 panel height persists across reopen', async ({ captureStderrFor }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('resize', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -974,6 +990,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-017 plain terminal stays quiet; missing Claude launch shows Get-Claude-Code banner', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('claude-missing', { consent: true, pinRestrictedPath: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -1001,6 +1018,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-018 Connect tools opens Claude setup and can restart the terminal afterward', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('mcp-rewire', {
       consent: true,
       fakeClaudeTui: true,
@@ -1079,6 +1097,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('Settings installation prompts both running Claude terminals to restart', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('settings-agent-tools', {
       consent: true,
       fakeClaudeTui: true,

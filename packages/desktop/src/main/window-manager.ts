@@ -11,10 +11,17 @@ import type { KeepaliveHandle } from '@inkeep/open-knowledge-core/keepalive';
 import { getLocalDir, type LocalOpCliInvocation } from '@inkeep/open-knowledge-server';
 import {
   BOOT_HEARTBEAT_EVENTS,
+  isUtilityInitPhase,
   SPAWN_STARTUP_DEADLINE_MS,
-  SPAWN_WAIT_EXTENSION_FACTOR,
   SPAWN_WAIT_HEARTBEAT_MS,
+  startupWaitHardCapMs,
+  UTILITY_INIT_COUNTERS,
   UTILITY_INIT_TIMEOUT_MS,
+  UTILITY_WAIT_EXPIRED_EVENT,
+  UTILITY_WAIT_EXTENDED_EVENT,
+  UTILITY_WAIT_LATE_KILL_EVENT,
+  type UtilityInitPhase,
+  utilityInitPhaseEvent,
 } from '../shared/boot-narration.ts';
 import type { OkServerRestartOutcome } from '../shared/bridge-contract.ts';
 import { registerPendingDelivery } from '../shared/ipc-send.ts';
@@ -62,6 +69,23 @@ function isValidLockPidLocal(value: unknown): value is number {
   if (value < 2) return false;
   if (value > 0x7fffffff) return false;
   return true;
+}
+
+type UtilityInitCounter = (typeof UTILITY_INIT_COUNTERS)[number];
+
+type UtilityInitPhaseMark = { phase?: unknown } & Partial<Record<UtilityInitCounter, unknown>>;
+
+function nonNegativeInitCounters(
+  mark: UtilityInitPhaseMark,
+): Partial<Record<UtilityInitCounter, number>> {
+  const counters: Partial<Record<UtilityInitCounter, number>> = {};
+  for (const counter of UTILITY_INIT_COUNTERS) {
+    const value = mark[counter];
+    if (typeof value === 'number' && Number.isFinite(value) && value >= 0) {
+      counters[counter] = value;
+    }
+  }
+  return counters;
 }
 
 let windowInstanceLabel: string | null = null;
@@ -113,6 +137,7 @@ export interface UtilityProcessLike {
   on(event: 'message', cb: (msg: unknown) => void): void;
   on(event: 'exit', cb: (code: number | null) => void): void;
   once(event: 'message', cb: (msg: unknown) => void): void;
+  once(event: 'spawn', cb: () => void): void;
   removeListener?(event: 'message', cb: (msg: unknown) => void): void;
   removeListener?(event: 'exit', cb: (code: number | null) => void): void;
   kill(signal?: NodeJS.Signals): boolean;
@@ -1207,7 +1232,6 @@ export class WindowManager {
       });
     }
 
-    const INIT_TIMEOUT_MS = this.deps.utilityInitTimeoutMs ?? UTILITY_INIT_TIMEOUT_MS;
     const localOpCliArgs = opts.localOpCliInvocation
       ? resolveLocalOpCliArgsForUtilityFork(opts.localOpCliInvocation)
       : null;
@@ -1221,6 +1245,7 @@ export class WindowManager {
         serviceName,
       },
     );
+    const forkedAt = Date.now();
     this.deps.log?.info(
       {
         event: 'desktop-project-server-forked',
@@ -1229,55 +1254,7 @@ export class WindowManager {
       },
       '[window-manager] project server utility forked',
     );
-    const utilityRef = utility;
-    const stopUtilityWaitHeartbeat = startBootHeartbeat(
-      this.deps,
-      BOOT_HEARTBEAT_EVENTS.utilityWait,
-      '[window-manager] still waiting for the utility process to report ready',
-      () => ({ pid: utilityRef.pid, lockDir, initTimeoutMs: INIT_TIMEOUT_MS }),
-    );
-    const ready = new Promise<{ port: number; apiOrigin: string }>((resolveReady, reject) => {
-      let settled = false;
-      const settle = (fn: () => void) => {
-        if (settled) return;
-        settled = true;
-        stopUtilityWaitHeartbeat();
-        utilityRef.removeListener?.('message', onMessage);
-        utilityRef.removeListener?.('exit', onExit);
-        fn();
-      };
-      const onMessage = (msg: unknown) => {
-        const m = msg as {
-          type?: string;
-          port?: number;
-          apiOrigin?: string;
-          message?: string;
-          kind?: string;
-          existingLock?: ServerLockMetadataLike;
-        };
-        if (m.type === 'ready' && typeof m.port === 'number' && typeof m.apiOrigin === 'string') {
-          const p = m.port;
-          const o = m.apiOrigin;
-          settle(() => resolveReady({ port: p, apiOrigin: o }));
-        } else if (m.type === 'error') {
-          const richError = Object.assign(new Error(m.message ?? 'utility init failed'), {
-            name: m.kind === 'lock-collision' ? 'LockCollisionError' : 'UtilityInitError',
-            kind: m.kind,
-            existingLock: m.existingLock,
-          });
-          settle(() => reject(richError));
-        }
-      };
-      const onExit = (code: number | null) => {
-        settle(() => reject(new Error(`utility exited before ready (code=${code})`)));
-      };
-      utilityRef.on('message', onMessage);
-      utilityRef.on('exit', onExit);
-
-      this.deps.setTimeout(() => {
-        settle(() => reject(new Error(`utility init timed out after ${INIT_TIMEOUT_MS}ms`)));
-      }, INIT_TIMEOUT_MS);
-    });
+    const ready = this.waitForForkedUtilityReady(utility, lockDir, forkedAt);
 
     const reactShellDistDir = this.deps.rendererDevUrl
       ? null
@@ -1422,6 +1399,136 @@ export class WindowManager {
       releaseLoadingContext();
     }
     return context;
+  }
+
+  private waitForForkedUtilityReady(
+    utility: UtilityProcessLike,
+    lockDir: string,
+    forkedAt: number,
+  ): Promise<{ port: number; apiOrigin: string }> {
+    const startupDeadlineMs = this.deps.utilityInitTimeoutMs ?? UTILITY_INIT_TIMEOUT_MS;
+    const hardCapMs = startupWaitHardCapMs(startupDeadlineMs);
+    let declaredBudgetMs = startupDeadlineMs;
+    const utilityWaitHeartbeat = startBootHeartbeat(
+      this.deps,
+      BOOT_HEARTBEAT_EVENTS.utilityWait,
+      '[window-manager] still waiting for the utility process to report ready',
+      () => ({ pid: utility.pid, lockDir, initTimeoutMs: declaredBudgetMs }),
+    );
+    return new Promise((resolveReady, reject) => {
+      let settled = false;
+      let lastInitPhase: UtilityInitPhase | null = null;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        utilityWaitHeartbeat();
+        utility.removeListener?.('message', onMessage);
+        utility.removeListener?.('exit', onExit);
+        fn();
+      };
+      const logInitPhase = (mark: UtilityInitPhaseMark) => {
+        const { phase } = mark;
+        if (!isUtilityInitPhase(phase)) return;
+        lastInitPhase = phase;
+        this.deps.log?.info(
+          {
+            event: utilityInitPhaseEvent(phase),
+            pid: utility.pid,
+            phase,
+            sinceForkMs: Date.now() - forkedAt,
+            ...nonNegativeInitCounters(mark),
+          },
+          '[window-manager] utility reached a startup phase',
+        );
+        this.deps.flushLog?.();
+      };
+      const killOnceSpawned = () => {
+        const termination = utility.kill() ? 'killed' : 'kill-refused';
+        this.deps.log?.warn(
+          { event: UTILITY_WAIT_LATE_KILL_EVENT, pid: utility.pid, termination },
+          '[window-manager] utility spawned after its wait expired, terminating it',
+        );
+        this.deps.flushLog?.();
+      };
+      const terminate = (): 'killed' | 'deferred-until-spawn' | 'kill-refused' => {
+        // UPSTREAM(electron@43.4.0): kill() before spawn returns false and leaves the launch running.
+        if (utility.kill()) return 'killed';
+        if (utility.pid !== undefined) return 'kill-refused';
+        utility.once('spawn', killOnceSpawned);
+        utility.postMessage({ type: 'shutdown' });
+        return 'deferred-until-spawn';
+      };
+      const expire = (budgetMs: number, graduated: boolean) => {
+        if (settled) return;
+        settle(() => reject(new Error(`utility init timed out after ${budgetMs}ms`)));
+        const pid = utility.pid;
+        const termination = terminate();
+        this.deps.log?.warn(
+          {
+            event: UTILITY_WAIT_EXPIRED_EVENT,
+            pid,
+            budgetMs,
+            graduated,
+            termination,
+            lastInitPhase,
+          },
+          '[window-manager] utility did not report ready within its wait',
+        );
+        this.deps.flushLog?.();
+      };
+      const onMessage = (msg: unknown) => {
+        const m = msg as {
+          type?: string;
+          port?: number;
+          apiOrigin?: string;
+          message?: string;
+          kind?: string;
+          existingLock?: ServerLockMetadataLike;
+        };
+        if (m.type === 'init-phase') {
+          logInitPhase(msg as UtilityInitPhaseMark);
+        } else if (
+          m.type === 'ready' &&
+          typeof m.port === 'number' &&
+          typeof m.apiOrigin === 'string'
+        ) {
+          const p = m.port;
+          const o = m.apiOrigin;
+          settle(() => resolveReady({ port: p, apiOrigin: o }));
+        } else if (m.type === 'error') {
+          const richError = Object.assign(new Error(m.message ?? 'utility init failed'), {
+            name: m.kind === 'lock-collision' ? 'LockCollisionError' : 'UtilityInitError',
+            kind: m.kind,
+            existingLock: m.existingLock,
+          });
+          settle(() => reject(richError));
+        }
+      };
+      const onExit = (code: number | null) => {
+        settle(() => reject(new Error(`utility exited before ready (code=${code})`)));
+      };
+      utility.on('message', onMessage);
+      utility.on('exit', onExit);
+
+      this.deps.setTimeout(() => {
+        if (settled) return;
+        const pid = utility.pid;
+        if (!isValidLockPidLocal(pid) || this.deps.isProcessAlive?.(pid) !== true) {
+          expire(startupDeadlineMs, false);
+          return;
+        }
+        declaredBudgetMs = hardCapMs;
+        this.deps.log?.info(
+          { event: UTILITY_WAIT_EXTENDED_EVENT, pid, startupDeadlineMs, hardCapMs, lastInitPhase },
+          '[window-manager] utility still starting at its startup deadline, extending the wait',
+        );
+        utilityWaitHeartbeat.beat();
+        this.deps.setTimeout(
+          () => expire(hardCapMs, true),
+          Math.max(0, forkedAt + hardCapMs - Date.now()),
+        );
+      }, startupDeadlineMs);
+    });
   }
 
   async createEphemeralWindow(opts: {
@@ -1817,10 +1924,7 @@ export class WindowManager {
     if (!reader) return { lock: null, waitedDeadlineMs: deadlineMs };
     const isAlive = this.deps.isProcessAlive;
     const started = Date.now();
-    const hardCapMs = Math.max(
-      deadlineMs,
-      progressDeadlineMs ?? deadlineMs * SPAWN_WAIT_EXTENSION_FACTOR,
-    );
+    const hardCapMs = startupWaitHardCapMs(deadlineMs, progressDeadlineMs);
     let effectiveDeadlineMs = deadlineMs;
     let deadline = started + deadlineMs;
     let extended = false;

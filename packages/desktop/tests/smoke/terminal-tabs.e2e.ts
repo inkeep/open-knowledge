@@ -196,6 +196,7 @@ test.describe('Terminal tabs — live Electron', () => {
   test('first and second tabs display their initial prompt without keyboard input', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('initial-prompts');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -216,6 +217,7 @@ test.describe('Terminal tabs — live Electron', () => {
   test('no output arrives before the explicit start, and the initial prompt survives a late one', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('delayed-attach');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -388,6 +390,7 @@ test.describe('Terminal tabs — live Electron', () => {
   test('the seeded profile pins the shell’s PSReadLine state inside the run home', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     test.skip(!WINDOWS, 'PSReadLine state only exists on the Windows shell rungs.');
     const s = seed('psreadline-state');
     const app = await launchApp(s);

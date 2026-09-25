@@ -19,12 +19,18 @@ import {
   BOOT_HEARTBEAT_MAX_BEATS,
   DESKTOP_BOOT_EVENT,
   DESKTOP_OPEN_PROJECT_FAILED_EVENT,
+  isBootHeartbeatEvent,
   isStartupMarkEvent,
   SPAWN_STARTUP_DEADLINE_MS,
   SPAWN_WAIT_EXTENSION_FACTOR,
   SPAWN_WAIT_HEARTBEAT_MS,
   startupMarkLine,
+  UTILITY_INIT_PHASES,
   UTILITY_INIT_TIMEOUT_MS,
+  UTILITY_WAIT_EXPIRED_EVENT,
+  UTILITY_WAIT_EXTENDED_EVENT,
+  UTILITY_WAIT_LATE_KILL_EVENT,
+  utilityInitPhaseEvent,
 } from '../../../src/shared/boot-narration.ts';
 import {
   BOOT_LOG_CAP_MS,
@@ -38,6 +44,7 @@ import {
   bootLogGapSummary,
   bootNarrationFor,
   classifyBootLog,
+  DECLARED_UTILITY_BUDGET_CEILING_MS,
   describeMissingBootLog,
   EVERY_STARTUP_PHASE,
   formatBootGapLine,
@@ -48,6 +55,7 @@ import {
   launchAdvancementPhases,
   launchDesktopApp,
   launchHomeFor,
+  parseDeclaredPhaseBudget,
   READY_WAIT_GIVE_UP_REASONS,
   type ReadyDeadline,
   type ReadyWaitRecord,
@@ -1232,7 +1240,8 @@ describe("the wait outlives the app's own deadline for the phase the window is g
       forkAtMs -
         LAUNCH_RESOLVED_AT_MS +
         UTILITY_INIT_TIMEOUT_MS +
-        UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+        UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS +
+        BOOT_LOG_POLL_MS,
     );
   });
 });
@@ -1254,7 +1263,7 @@ describe('the give-up describes the narration the wait actually read', () => {
       eventAt(5_500, {
         event: BOOT_HEARTBEAT_EVENTS.utilityWait,
         elapsedMs: 5_000,
-        initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+        initTimeoutMs: SPAWN_STARTUP_DEADLINE_MS,
       }),
       eventAt(7_000, {
         event: DESKTOP_OPEN_PROJECT_FAILED_EVENT,
@@ -1347,7 +1356,7 @@ describe('a budget the app did not declare cleanly buys the wait no extra time',
     [
       'an initTimeoutMs larger than the budget the app can declare',
       (beat: Record<string, unknown>) =>
-        JSON.stringify({ ...beat, initTimeoutMs: UTILITY_INIT_TIMEOUT_MS * 2 }),
+        JSON.stringify({ ...beat, initTimeoutMs: DECLARED_UTILITY_BUDGET_CEILING_MS + 1 }),
     ],
     [
       'the budget on a heartbeat that does not own the open phase',
@@ -1402,6 +1411,366 @@ describe('a budget the app did not declare cleanly buys the wait no extra time',
     expect(outcome.gaveUp).toBe(true);
     expect(outcome.elapsedMs).toBeGreaterThan(BOOT_LOG_CAP_MS);
   });
+});
+
+const UTILITY_WAIT_HARD_CAP_MS = UTILITY_INIT_TIMEOUT_MS * SPAWN_WAIT_EXTENSION_FACTOR;
+
+function utilityWaitBeatLine(elapsedMs: number, initTimeoutMs: number): string {
+  return JSON.stringify({ event: BOOT_HEARTBEAT_EVENTS.utilityWait, elapsedMs, initTimeoutMs });
+}
+
+function graduatedUtilityNarration(forkAtMs: number, lastBeatElapsedMs: number): NarrationLine[] {
+  const beatsFromTheStartupDeadline: NarrationLine[] = [];
+  for (
+    let elapsedMs = UTILITY_INIT_TIMEOUT_MS;
+    elapsedMs <= lastBeatElapsedMs;
+    elapsedMs += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    beatsFromTheStartupDeadline.push(
+      eventAt(forkAtMs + elapsedMs, {
+        event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+        elapsedMs,
+        initTimeoutMs:
+          elapsedMs > UTILITY_INIT_TIMEOUT_MS ? UTILITY_WAIT_HARD_CAP_MS : UTILITY_INIT_TIMEOUT_MS,
+      }),
+    );
+  }
+  return [...deepLinkNarration(forkAtMs).slice(0, -1), ...beatsFromTheStartupDeadline];
+}
+
+describe("the wait honors the hard cap a live utility's startup wait graduates to", () => {
+  it('reads a utility-wait beat declaring the hard cap as a budget, and refuses one declaring past it', () => {
+    const graduatedElapsedMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    expect(
+      parseDeclaredPhaseBudget(utilityWaitBeatLine(graduatedElapsedMs, UTILITY_WAIT_HARD_CAP_MS)),
+    ).toEqual({ elapsedMs: graduatedElapsedMs, initTimeoutMs: UTILITY_WAIT_HARD_CAP_MS });
+    expect(
+      parseDeclaredPhaseBudget(
+        utilityWaitBeatLine(graduatedElapsedMs, UTILITY_WAIT_HARD_CAP_MS + 1),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('finds an editor window that answers past the startup deadline, inside the graduated budget', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const readyAtElapsedMs =
+      UTILITY_INIT_TIMEOUT_MS + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    const windowAnswersAtMs = forkAtMs + readyAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+    expect(windowAnswersAtMs).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    expect(readyAtElapsedMs).toBeLessThan(UTILITY_WAIT_HARD_CAP_MS);
+
+    const home = seedHome();
+    mkdirSync(bootLogDirFor(home), { recursive: true });
+    const clock = virtualClock(home, graduatedUtilityNarration(forkAtMs, readyAtElapsedMs));
+    const outcome = await waitForReadySignal<string>({
+      home,
+      what: 'editor window',
+      probe: async () => (clock.now() >= windowAnswersAtMs ? 'graduated-editor-page' : undefined),
+      now: clock.now,
+      sleep: clock.sleep,
+      readLog: clock.readLog,
+      startDeadline: clock.startDeadline,
+    }).then(
+      (found) => ({ found, gaveUpWith: undefined }),
+      (error: unknown) => ({ found: undefined, gaveUpWith: (error as Error).message }),
+    );
+    expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+  });
+});
+
+function utilityWaitBeatWrittenAt(
+  forkAtMs: number,
+  sinceForkMs: number,
+  initTimeoutMs: number,
+): NarrationLine {
+  return eventAt(forkAtMs + sinceForkMs, {
+    event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+    elapsedMs: sinceForkMs,
+    initTimeoutMs,
+  });
+}
+
+function graduatingUtilityNarration(
+  forkAtMs: number,
+  options: {
+    graduationBeat: boolean;
+    decisionLateMs: number;
+    graduatedBeatsLateMs: number;
+    lastBeatElapsedMs: number;
+  },
+): NarrationLine[] {
+  const decisionWrittenAtMs = UTILITY_INIT_TIMEOUT_MS + options.decisionLateMs;
+  const lines: NarrationLine[] = [
+    ...deepLinkNarration(forkAtMs).slice(0, -1),
+    utilityWaitBeatWrittenAt(forkAtMs, decisionWrittenAtMs, UTILITY_INIT_TIMEOUT_MS),
+  ];
+  if (options.graduationBeat) {
+    lines.push(utilityWaitBeatWrittenAt(forkAtMs, decisionWrittenAtMs, UTILITY_WAIT_HARD_CAP_MS));
+  }
+  for (
+    let nominalMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    nominalMs <= options.lastBeatElapsedMs;
+    nominalMs += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    lines.push(
+      utilityWaitBeatWrittenAt(
+        forkAtMs,
+        nominalMs + options.decisionLateMs + options.graduatedBeatsLateMs,
+        UTILITY_WAIT_HARD_CAP_MS,
+      ),
+    );
+  }
+  return lines;
+}
+
+async function waitForEditorWindowAnsweringAt(
+  narration: readonly NarrationLine[],
+  windowAnswersAtMs: number,
+): Promise<{ found: string | undefined; gaveUpWith: string | undefined }> {
+  const home = seedHome();
+  mkdirSync(bootLogDirFor(home), { recursive: true });
+  const clock = virtualClock(home, narration);
+  return waitForReadySignal<string>({
+    home,
+    what: 'editor window',
+    probe: async () => (clock.now() >= windowAnswersAtMs ? 'graduated-editor-page' : undefined),
+    now: clock.now,
+    sleep: clock.sleep,
+    readLog: clock.readLog,
+    startDeadline: clock.startDeadline,
+  }).then(
+    (found) => ({ found, gaveUpWith: undefined }),
+    (error: unknown) => ({ found: undefined, gaveUpWith: (error as Error).message }),
+  );
+}
+
+describe("the wait grants its observation margin after the app's declared decision, not only up to it", () => {
+  it.each(FORKS_THE_STATIC_CAP_CUTS_SHORT)(
+    'finds an editor window in the graduated tier when the lines the app writes at its startup deadline run a poll late, for a utility fork at %ims',
+    async (forkAtMs) => {
+      const windowAnswersAtElapsedMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+      const outcome = await waitForEditorWindowAnsweringAt(
+        graduatingUtilityNarration(forkAtMs, {
+          graduationBeat: true,
+          decisionLateMs: BOOT_LOG_POLL_MS,
+          graduatedBeatsLateMs: 0,
+          lastBeatElapsedMs: windowAnswersAtElapsedMs,
+        }),
+        forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS,
+      );
+      expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+    },
+  );
+});
+
+describe('the graduated budget reaches the wait on the beat the app writes at its decision', () => {
+  it('keeps waiting through a late first graduated heartbeat because the graduation beat declared the hard cap', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const windowAnswersAtElapsedMs = UTILITY_INIT_TIMEOUT_MS + 2 * SPAWN_WAIT_HEARTBEAT_MS;
+    const windowAnswersAtMs = forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+    const narrationWith = (graduationBeat: boolean): NarrationLine[] =>
+      graduatingUtilityNarration(forkAtMs, {
+        graduationBeat,
+        decisionLateMs: 0,
+        graduatedBeatsLateMs: BOOT_LOG_POLL_MS,
+        lastBeatElapsedMs: windowAnswersAtElapsedMs,
+      });
+
+    const withoutGraduationBeat = await waitForEditorWindowAnsweringAt(
+      narrationWith(false),
+      windowAnswersAtMs,
+    );
+    expect(withoutGraduationBeat.found).toBeUndefined();
+
+    const withGraduationBeat = await waitForEditorWindowAnsweringAt(
+      narrationWith(true),
+      windowAnswersAtMs,
+    );
+    expect(withGraduationBeat).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+  });
+});
+
+describe("the wait honors a live utility's whole graduated budget", () => {
+  it('finds an editor window that answers one heartbeat before the hard cap', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[3];
+    const windowAnswersAtElapsedMs = UTILITY_WAIT_HARD_CAP_MS - SPAWN_WAIT_HEARTBEAT_MS;
+    const windowAnswersAtMs = forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+    expect(windowAnswersAtMs).toBeGreaterThan(
+      BOOT_LOG_CAP_MS +
+        BOOT_LOG_STALL_MS +
+        UTILITY_INIT_TIMEOUT_MS +
+        UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+    );
+
+    const outcome = await waitForEditorWindowAnsweringAt(
+      graduatingUtilityNarration(forkAtMs, {
+        graduationBeat: true,
+        decisionLateMs: 0,
+        graduatedBeatsLateMs: 0,
+        lastBeatElapsedMs: windowAnswersAtElapsedMs,
+      }),
+      windowAnswersAtMs,
+    );
+    expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+  });
+});
+
+function exportedEventName(event: string): string {
+  expect(event, 'boot-narration exports the event name').toBeTypeOf('string');
+  return event;
+}
+
+describe("the utility's startup diagnostics are neither launch progress nor a budget to the wait", () => {
+  it('reads the phase-mark, graduation and expiry lines as neither heartbeats, startup stages nor declared budgets', () => {
+    const extendedEvent = exportedEventName(UTILITY_WAIT_EXTENDED_EVENT);
+    const expiredEvent = exportedEventName(UTILITY_WAIT_EXPIRED_EVENT);
+    expect(UTILITY_INIT_PHASES, 'boot-narration exports UTILITY_INIT_PHASES').toBeInstanceOf(Array);
+    expect(utilityInitPhaseEvent, 'boot-narration exports utilityInitPhaseEvent').toBeTypeOf(
+      'function',
+    );
+    const phaseEvents = UTILITY_INIT_PHASES.map((phase) => utilityInitPhaseEvent(phase));
+    const diagnosticEvents = [...phaseEvents, extendedEvent, expiredEvent];
+    expect(phaseEvents.length).toBeGreaterThan(0);
+    expect(isBootHeartbeatEvent(BOOT_HEARTBEAT_EVENTS.utilityWait)).toBe(true);
+    expect(isStartupMarkEvent(startupMarkLine('serverSpawned', 0).event)).toBe(true);
+    expect(diagnosticEvents.filter((event) => isBootHeartbeatEvent(event))).toEqual([]);
+    expect(diagnosticEvents.filter((event) => isStartupMarkEvent(event))).toEqual([]);
+
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const launch = deepLinkNarration(forkAtMs).slice(0, -1);
+    const diagnostics: NarrationLine[] = [
+      ...phaseEvents.map((event, index) =>
+        eventAt(forkAtMs + index + 1, { event, sinceForkMs: index + 1 }),
+      ),
+      eventAt(forkAtMs + UTILITY_INIT_TIMEOUT_MS, {
+        event: extendedEvent,
+        startupDeadlineMs: UTILITY_INIT_TIMEOUT_MS,
+        hardCapMs: UTILITY_WAIT_HARD_CAP_MS,
+      }),
+      eventAt(forkAtMs + UTILITY_WAIT_HARD_CAP_MS, {
+        event: expiredEvent,
+        budgetMs: UTILITY_WAIT_HARD_CAP_MS,
+        graduated: true,
+        termination: 'killed',
+      }),
+    ];
+    const bootLog = (narration: readonly NarrationLine[]): string[] =>
+      [...narration].sort((a, b) => a.at - b.at).map((entry) => entry.text);
+    const withoutDiagnostics = bootLog(launch);
+    const withDiagnostics = bootLog([...launch, ...diagnostics]);
+
+    expect(launchAdvancementPhases(withoutDiagnostics).length).toBeGreaterThan(0);
+    expect(launchAdvancementPhases(withDiagnostics)).toEqual(
+      launchAdvancementPhases(withoutDiagnostics),
+    );
+    expect(
+      launch.filter((line) => parseDeclaredPhaseBudget(line.text) !== undefined).length,
+    ).toBeGreaterThan(0);
+    expect(diagnostics.map((line) => parseDeclaredPhaseBudget(line.text))).toEqual(
+      diagnostics.map(() => undefined),
+    );
+    expect(bootLogGapSummary(withoutDiagnostics).beatsSeen).toBeGreaterThan(0);
+    expect(bootLogGapSummary(withDiagnostics).beatsSeen).toBe(
+      bootLogGapSummary(withoutDiagnostics).beatsSeen,
+    );
+  });
+
+  it('reads the line narrating a late kill as neither a heartbeat, a startup stage nor a declared budget', () => {
+    const lateKillEvent = exportedEventName(UTILITY_WAIT_LATE_KILL_EVENT);
+    expect(isBootHeartbeatEvent(BOOT_HEARTBEAT_EVENTS.utilityWait)).toBe(true);
+    expect(isStartupMarkEvent(startupMarkLine('serverSpawned', 0).event)).toBe(true);
+    expect(isBootHeartbeatEvent(lateKillEvent)).toBe(false);
+    expect(isStartupMarkEvent(lateKillEvent)).toBe(false);
+
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const launch = deepLinkNarration(forkAtMs);
+    const lateKill = eventAt(forkAtMs + UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS, {
+      event: lateKillEvent,
+      pid: 10001,
+      termination: 'killed',
+    });
+    const withoutLateKill = launch.map((line) => line.text);
+    const withLateKill = [...withoutLateKill, lateKill.text];
+
+    expect(launchAdvancementPhases(withoutLateKill).length).toBeGreaterThan(0);
+    expect(launchAdvancementPhases(withLateKill)).toEqual(launchAdvancementPhases(withoutLateKill));
+    expect(
+      launch.filter((line) => parseDeclaredPhaseBudget(line.text) !== undefined).length,
+    ).toBeGreaterThan(0);
+    expect(parseDeclaredPhaseBudget(lateKill.text)).toBeUndefined();
+    expect(bootLogGapSummary(withoutLateKill).beatsSeen).toBeGreaterThan(0);
+    expect(bootLogGapSummary(withLateKill).beatsSeen).toBe(
+      bootLogGapSummary(withoutLateKill).beatsSeen,
+    );
+  });
+});
+
+function sameInstantDecisionNarration(
+  forkAtMs: number,
+  graduationBeat: 'first' | 'a poll later',
+  lastBeatElapsedMs: number,
+): NarrationLine[] {
+  const intervalBeat = utilityWaitBeatWrittenAt(
+    forkAtMs,
+    UTILITY_INIT_TIMEOUT_MS,
+    UTILITY_INIT_TIMEOUT_MS,
+  );
+  const graduation = eventAt(
+    forkAtMs + UTILITY_INIT_TIMEOUT_MS + (graduationBeat === 'first' ? 0 : BOOT_LOG_POLL_MS),
+    {
+      event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+      elapsedMs: UTILITY_INIT_TIMEOUT_MS,
+      initTimeoutMs: UTILITY_WAIT_HARD_CAP_MS,
+    },
+  );
+  const lines: NarrationLine[] = [
+    ...deepLinkNarration(forkAtMs).slice(0, -1),
+    ...(graduationBeat === 'first' ? [graduation, intervalBeat] : [intervalBeat, graduation]),
+  ];
+  for (
+    let nominalMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    nominalMs <= lastBeatElapsedMs;
+    nominalMs += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    lines.push(
+      utilityWaitBeatWrittenAt(forkAtMs, nominalMs + BOOT_LOG_POLL_MS, UTILITY_WAIT_HARD_CAP_MS),
+    );
+  }
+  return lines;
+}
+
+describe('the graduated budget reaches the wait whichever of the two beats the app writes at its decision it reads first', () => {
+  it.each([
+    { graduationBeat: 'first', reachesTheLog: 'before the interval beat of the same instant' },
+    {
+      graduationBeat: 'a poll later',
+      reachesTheLog: 'a poll after the interval beat, stamped with the same elapsed time',
+    },
+  ] as const)(
+    'keeps waiting through a late first graduated heartbeat when the graduation beat reaches the log $reachesTheLog',
+    async ({ graduationBeat }) => {
+      const forkAtMs = MEASURED_FORK_OFFSETS[0];
+      const windowAnswersAtElapsedMs = UTILITY_INIT_TIMEOUT_MS + 2 * SPAWN_WAIT_HEARTBEAT_MS;
+      const windowAnswersAtMs = forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+
+      const withoutGraduationBeat = await waitForEditorWindowAnsweringAt(
+        graduatingUtilityNarration(forkAtMs, {
+          graduationBeat: false,
+          decisionLateMs: 0,
+          graduatedBeatsLateMs: BOOT_LOG_POLL_MS,
+          lastBeatElapsedMs: windowAnswersAtElapsedMs,
+        }),
+        windowAnswersAtMs,
+      );
+      expect(withoutGraduationBeat.found).toBeUndefined();
+
+      const outcome = await waitForEditorWindowAnsweringAt(
+        sameInstantDecisionNarration(forkAtMs, graduationBeat, windowAnswersAtElapsedMs),
+        windowAnswersAtMs,
+      );
+      expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+    },
+  );
 });
 
 function slowForkNarration(): NarrationLine[] {
@@ -3165,6 +3534,17 @@ describe("a launch inside the app's own contract, read on polls further out of p
   }
 });
 
+function anEarlierLaunchThatStoppedJustAfterItsUtilityWaitGraduated(pollMs: number) {
+  const forkAtMs = MEASURED_FORK_OFFSETS[0];
+  const graduatedAtMs = forkAtMs + UTILITY_INIT_TIMEOUT_MS;
+  return graduatingUtilityNarration(forkAtMs, {
+    graduationBeat: true,
+    decisionLateMs: 0,
+    graduatedBeatsLateMs: 0,
+    lastBeatElapsedMs: UTILITY_INIT_TIMEOUT_MS,
+  }).map(({ at, text }) => ({ atMs: at - graduatedAtMs - pollMs, text }));
+}
+
 describe('a launch that boots after the wait first reads a home an earlier launch left its log in', () => {
   const verdictOf = ({ gaveUpAtMs, decidingCapMs, advancements }: GiveUp) => ({
     gaveUpAtMs,
@@ -3197,6 +3577,29 @@ describe('a launch that boots after the wait first reads a home an earlier launc
     );
     const aloneGiveUp = giveUpOf(await reachOf(alone, REPLAY_WATCHDOG_MS), alone);
     const sharedGiveUp = giveUpOf(await reachOf(shared, REPLAY_WATCHDOG_MS), shared);
+    expect(verdictOf(sharedGiveUp)).toEqual(verdictOf(aloneGiveUp));
+    expect(sharedGiveUp.gaveUpAtMs).toBeGreaterThan(shared.appVerdictAtMs);
+    expect(sharedGiveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+
+  it("decides as it would alone when the earlier launch stopped just after its utility wait graduated, and reaches the app's own verdict", async () => {
+    const alone = utilityForkBootingAfterTheWaitsFirstRead(
+      {},
+      { sharedWithALaunchThatStoppedInItsUtilityWait: false },
+    );
+    const shared = {
+      ...alone,
+      name: "a utility fork booting after the wait's first read, into a home an earlier launch left just after its utility wait graduated",
+      narrationUntil: (untilMs: number) => [
+        ...anEarlierLaunchThatStoppedJustAfterItsUtilityWaitGraduated(
+          pollIntervalOf(alone.options),
+        ),
+        ...alone.narrationUntil(untilMs),
+      ],
+    };
+    const watchMs = 2 * readinessWorstCaseMs({ path: 'fork', ...alone.options });
+    const aloneGiveUp = giveUpOf(await reachOf(alone, watchMs), alone);
+    const sharedGiveUp = giveUpOf(await reachOf(shared, watchMs), shared);
     expect(verdictOf(sharedGiveUp)).toEqual(verdictOf(aloneGiveUp));
     expect(sharedGiveUp.gaveUpAtMs).toBeGreaterThan(shared.appVerdictAtMs);
     expect(sharedGiveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);

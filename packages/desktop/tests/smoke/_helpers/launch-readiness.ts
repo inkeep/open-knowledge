@@ -9,9 +9,11 @@ import {
   SPAWN_WAIT_HEARTBEAT_MS,
   type StartupMarkLine,
   startupMarkLine,
-  UTILITY_INIT_TIMEOUT_MS,
+  UTILITY_INIT_HARD_CAP_MS,
 } from '../../../src/shared/boot-narration.ts';
 import type { DesktopLaunchMode } from './launch-desktop';
+
+export const DECLARED_UTILITY_BUDGET_CEILING_MS = UTILITY_INIT_HARD_CAP_MS;
 
 export const BOOT_LOG_HEARTBEAT_MS = SPAWN_WAIT_HEARTBEAT_MS;
 
@@ -40,7 +42,9 @@ export function readinessWorstCaseMs({
     case 'packaged':
       return capMs + stallMs;
     case 'fork':
-      return capMs + stallMs + UTILITY_INIT_TIMEOUT_MS + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS;
+      return (
+        capMs + stallMs + DECLARED_UTILITY_BUDGET_CEILING_MS + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS
+      );
   }
 }
 
@@ -270,24 +274,36 @@ export function parseDeclaredPhaseBudget(line: string): DeclaredPhaseBudget | un
     const { elapsedMs, initTimeoutMs } = parsed;
     if (!isUsableDurationField(elapsedMs) || !isUsableDurationField(initTimeoutMs))
       return undefined;
-    if (initTimeoutMs > UTILITY_INIT_TIMEOUT_MS) return undefined;
+    if (initTimeoutMs > DECLARED_UTILITY_BUDGET_CEILING_MS) return undefined;
     if (elapsedMs < 0 || elapsedMs > initTimeoutMs) return undefined;
     return { elapsedMs, initTimeoutMs };
   } catch {}
   return undefined;
 }
 
+function declaresLaterBudget(
+  budget: DeclaredPhaseBudget,
+  than: DeclaredPhaseBudget | undefined,
+): boolean {
+  if (than === undefined) return true;
+  if (budget.elapsedMs !== than.elapsedMs) return budget.elapsedMs > than.elapsedMs;
+  return budget.initTimeoutMs > than.initTimeoutMs;
+}
+
 function newestDeclaredPhaseBudget(all: readonly string[]): DeclaredPhaseBudget | undefined {
   const launch = currentLaunch(all);
   const openedAt = openDeclaredPhaseStart(launch);
   if (openedAt === -1) return undefined;
+  let newest: DeclaredPhaseBudget | undefined;
   for (let i = launch.length - 1; i > openedAt; i -= 1) {
     const line = launch[i];
     if (line === undefined) continue;
     const budget = parseDeclaredPhaseBudget(line);
-    if (budget !== undefined) return budget;
+    if (budget === undefined) continue;
+    if (newest !== undefined && budget.elapsedMs !== newest.elapsedMs) break;
+    if (declaresLaterBudget(budget, newest)) newest = budget;
   }
-  return undefined;
+  return newest;
 }
 
 export interface LaunchAdvancement {
@@ -681,7 +697,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   let deadline = startDeadline(capMs);
   let capReached = armCapReached(deadline);
   let armedCapMs = capMs;
-  let grantedElapsedMs = Number.NEGATIVE_INFINITY;
+  let grantedBudget: DeclaredPhaseBudget | undefined;
   let derivedDeadlineAt: number | undefined;
   let probePendingAtGiveUp = false;
 
@@ -719,8 +735,16 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
       if (bootLineNow !== undefined && !readsAnEarlierLaunch) {
         if (launchBootLine !== undefined && bootLineNow !== launchBootLine) {
           advancementSeen.clear();
-          grantedElapsedMs = Number.NEGATIVE_INFINITY;
+          grantedBudget = undefined;
           derivedDeadlineAt = undefined;
+          if (armedCapMs !== capMs) {
+            deadline.cancel();
+            capElapsed = false;
+            probePendingAtGiveUp = false;
+            armedCapMs = capMs;
+            deadline = startDeadline(Math.max(startedAt + armedCapMs - now(), 0));
+            capReached = armCapReached(deadline);
+          }
           options.onNewLaunch?.();
         }
         launchBootLine = bootLineNow;
@@ -738,12 +762,10 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
       const declaredPhaseOpen = hasOpenDeclaredPhase(snapshot.lines);
       if (declaredPhaseOpen && !readsAnEarlierLaunch) {
         const budget = newestDeclaredPhaseBudget(snapshot.lines);
-        if (budget !== undefined && budget.elapsedMs > grantedElapsedMs) {
-          grantedElapsedMs = budget.elapsedMs;
-          const remaining = Math.max(
-            budget.initTimeoutMs - budget.elapsedMs,
-            UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
-          );
+        if (budget !== undefined && declaresLaterBudget(budget, grantedBudget)) {
+          grantedBudget = budget;
+          const remaining =
+            budget.initTimeoutMs - budget.elapsedMs + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS;
           derivedDeadlineAt = Math.max(derivedDeadlineAt ?? 0, now() + remaining);
           options.onDeclaredGrant?.(derivedDeadlineAt - startedAt);
         }
@@ -968,6 +990,7 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       onNewLaunch: () => {
         advancements.length = 0;
         declaredGrantMs = undefined;
+        decidingCapMs = capMs;
       },
       probe: async () => {
         const pages = app.windows();

@@ -21,7 +21,7 @@ export function startBootHeartbeat(
   message: string,
   fields: () => Record<string, unknown>,
   options: BootHeartbeatOptions = {},
-): () => void {
+): (() => void) & { readonly beat: () => void } {
   const startedAt = Date.now();
   const maxBeats = options.maxBeats;
   let beats = 0;
@@ -31,7 +31,7 @@ export function startBootHeartbeat(
     deps.clearInterval?.(handle);
     handle = undefined;
   };
-  handle = deps.setInterval?.(() => {
+  const tick = () => {
     beats += 1;
     const elapsedMs = Date.now() - startedAt;
     if (maxBeats !== undefined && beats > maxBeats) {
@@ -50,6 +50,11 @@ export function startBootHeartbeat(
     }
     deps.log?.info({ event, elapsedMs, ...fields() }, message);
     deps.flushLog?.();
-  }, SPAWN_WAIT_HEARTBEAT_MS);
-  return stop;
+  };
+  handle = deps.setInterval?.(tick, SPAWN_WAIT_HEARTBEAT_MS);
+  const beat = () => {
+    if (handle === undefined) return;
+    tick();
+  };
+  return Object.assign(stop, { beat });
 }

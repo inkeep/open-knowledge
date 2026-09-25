@@ -67,6 +67,7 @@ export const SPEC_PLATFORM_GATES = {
   'uninstall-picker.e2e.ts': ['!DARWIN'],
   'uninstall-survey.e2e.ts': ['!DARWIN'],
   'uninstall-window-chrome.e2e.ts': ['!DARWIN'],
+  'utility-process-pre-spawn.e2e.ts': ['!DARWIN'],
   'window-chrome.e2e.ts': ['!PLATFORM_SUPPORTED', 'DARWIN', '!PLATFORM_SUPPORTED'],
   'window-min-size.e2e.ts': ['!PLATFORM_SUPPORTED'],
 } as const satisfies Record<string, readonly string[]>;

@@ -155,6 +155,7 @@ test.describe('Consent-dialog smoke', () => {
   test('Browse button populates content.dir with project-relative path', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const tmpHome = seedTmpHome('browse');
     const projectDir = seedFreshNonGitProject('browse');
     trackForCleanup(tmpHome, projectDir);
