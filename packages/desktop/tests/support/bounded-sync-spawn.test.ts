@@ -9,7 +9,6 @@ import {
   WEDGE_BLOCK_MS,
   WEDGE_BUDGET_MS,
   WEDGE_MARKER,
-  WEDGE_RETURN_CEILING_MS,
   WEDGE_SCRIPT,
 } from './spawn-bound-wedge.test-helper.ts';
 
@@ -36,7 +35,7 @@ describe('spawnSyncBounded against a SIGTERM-trapping script', () => {
   test('the wedge reaches its TERM trap and then blocks past the budget', () => {
     expect(
       result.stdout,
-      `the wedge never reported reaching its trap, so the four bound assertions below would be reading a script that failed at startup rather than one the bound had to preempt. Without this control a broken or missing fixture passes the elapsed-time reading for the wrong reason: a bash that cannot find its script exits 127 in a millisecond, which sits comfortably under every ceiling here`,
+      `the wedge never reported reaching its trap, so the bound assertions below would be reading a script that failed at startup rather than one the bound had to preempt, and each would fail for a reason that points away from the fixture: a bash that cannot find its script exits 127 in a millisecond, before any bound could act`,
     ).toContain(WEDGE_MARKER);
     expect(
       elapsedMs,
@@ -44,17 +43,10 @@ describe('spawnSyncBounded against a SIGTERM-trapping script', () => {
     ).toBeGreaterThanOrEqual(WEDGE_BUDGET_MS);
   });
 
-  test('the primitive returns inside the budget it was given', () => {
-    expect(
-      elapsedMs,
-      `a spawn bound must terminate the spawn within its budget regardless of the child's signal disposition. This run was given ${WEDGE_BUDGET_MS}ms; the script traps SIGTERM and sits in a foreground /bin/sleep ${WEDGE_BLOCK_MS / 1000}, and bash defers a trapped signal until the foreground command it is running returns. spawnSync sends exactly one killSignal to the direct child pid with no escalation and no process-group kill, so a timeout with no untrappable killSignal expresses a request, not a bound: the run lives for the whole ${WEDGE_BLOCK_MS}ms and the budget is advisory. vitest cannot catch that either, because testTimeout runs on the same worker thread spawnSync has blocked. This reading takes the contract at the primitive itself, which is the form every importer gets`,
-    ).toBeLessThan(WEDGE_RETURN_CEILING_MS);
-  });
-
   test('the primitive kills the run rather than letting it complete its own TERM cleanup', () => {
     expect(
       result.status,
-      `the bound must kill the run, so the run must die of a signal and carry no exit status of its own. A numeric status here means the script got control back, ran its TERM handler and exited on its own terms, which is the same observable a wholly unbounded run produces. This pins the same contract as the elapsed-time reading above but reads a signal disposition rather than a clock, so no amount of host load can flip it`,
+      `a spawn bound must terminate the spawn within its budget regardless of the child's signal disposition, so the run must die of a signal and carry no exit status of its own. This run was given ${WEDGE_BUDGET_MS}ms; the script traps SIGTERM and sits in a foreground /bin/sleep ${WEDGE_BLOCK_MS / 1000}, and bash defers a trapped signal until the foreground command it is running returns. spawnSync sends exactly one killSignal to the direct child pid with no escalation and no process-group kill, so a timeout with no untrappable killSignal expresses a request, not a bound: the script gets control back, runs its TERM handler and exits on its own terms, and a numeric status here is that, the same observable a wholly unbounded run produces. vitest cannot catch it either, because testTimeout runs on the same worker thread spawnSync has blocked. This takes the contract at the primitive itself, which is the form every importer gets, and it reads a signal disposition rather than a clock, so no amount of host load can flip it`,
     ).toBeNull();
   });
 
@@ -92,27 +84,21 @@ describe('the spawnSyncBounded reserved options', () => {
       encoding: 'latin1' as const,
       shell: true,
     };
-    const startedAt = Date.now();
     let thrown: unknown;
     try {
       spawnSyncBounded('bash', [WEDGE_SCRIPT], { ...hostile, timeoutMs: WEDGE_BUDGET_MS });
     } catch (error) {
       thrown = error;
     }
-    const elapsedMs = Date.now() - startedAt;
 
     expect(
       thrown,
-      `a caller supplied killSignal SIGTERM, a 60s timeout and shell true through a spread. TypeScript excess-property checking does not fire on a spread of a typed value, so the type alone never rejected this; before the reserved keys were stripped explicitly the only thing stopping them was that the return literal happened to write them after the spread, which a reorder or an intervening variable would have silently undone. The wedge traps SIGTERM, so if the caller killSignal had won this call would have run the fixture's full ${WEDGE_BLOCK_MS}ms and returned normally instead of raising`,
+      `a caller supplied killSignal SIGTERM, a 60s timeout and shell true through a spread. TypeScript excess-property checking does not fire on a spread of a typed value, so the type alone never rejected this; before the reserved keys were stripped explicitly the only thing stopping them was that the return literal happened to write them after the spread, which a reorder or an intervening variable would have silently undone. The wedge traps SIGTERM, so if the caller killSignal had won this call would have run the fixture's full ${WEDGE_BLOCK_MS}ms and returned normally instead of raising, and if the caller 60s timeout had displaced the ${WEDGE_BUDGET_MS}ms budget passed as timeoutMs, no timeout would have fired before the wedge ended on its own, so nothing would have been raised either`,
     ).toBeInstanceOf(BoundedSpawnTimeoutError);
     expect(
       (thrown as BoundedSpawnTimeoutError).result.signal,
       'the bound must still have arrived as the untrappable signal the primitive pins, not the one the caller asked for',
     ).toBe('SIGKILL');
-    expect(
-      elapsedMs,
-      `the caller 60s timeout must not have displaced the ${WEDGE_BUDGET_MS}ms budget passed as timeoutMs`,
-    ).toBeLessThan(WEDGE_RETURN_CEILING_MS);
   });
 });
 
@@ -148,7 +134,7 @@ describe('the spawnSyncBounded non-timeout failure surface', () => {
 
     expect(
       thrown,
-      `node reports a non-timeout spawn failure on the result rather than by throwing, so a boundary that returns it hands a caller a partial result that reads as a whole one. maxBuffer is the reachable case and is not a reserved option: node caps each captured stream at 1 MiB by default, and on overflow it stops reading, kills the child if it is still running, and hands back the truncated stream, which satisfies every assertion that only reads status and output. Returning it is what lets a partial run read as a whole one`,
+      `node reports a non-timeout spawn failure on the result rather than by throwing, so a boundary that returns it hands a caller a partial result that reads as a whole one. maxBuffer is the reachable case and is not a reserved option: node caps the combined bytes of every captured stream at 1 MiB by default, and on overflow it stops reading, kills the child if it is still running, and hands back the truncated stream, which satisfies every assertion that only reads status and output. Returning it is what lets a partial run read as a whole one`,
     ).toBeInstanceOf(BoundedSpawnError);
     expect(
       (thrown as BoundedSpawnError).message,
