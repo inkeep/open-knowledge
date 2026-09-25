@@ -1,5 +1,6 @@
 import { realpathSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
+import { lockBaseUrl } from '@inkeep/open-knowledge-server';
 import { inspectLock, type LockState } from './lock-state.ts';
 import {
   type V1Project,
@@ -114,8 +115,12 @@ export async function buildStatusV1(deps: StatusV1Deps): Promise<V1StatusDocumen
   const now = deps.now ?? Date.now;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PROBE_DEADLINE_MS);
-  const origin = `http://127.0.0.1:${port}`;
-  const request = async (path: string) => {
+  const origins = [
+    lockBaseUrl(state.lock),
+    `http://127.0.0.1:${port}`,
+    `http://[::1]:${port}`,
+  ].filter((origin): origin is string => origin !== null);
+  const request = async (origin: string, path: string) => {
     const response = await fetcher(`${origin}${path}`, { signal: controller.signal });
     let body: unknown;
     try {
@@ -126,51 +131,58 @@ export async function buildStatusV1(deps: StatusV1Deps): Promise<V1StatusDocumen
     return { status: response.status, body: object(body) };
   };
   try {
-    const inspection = await request('/api/server-inspection');
-    const data = inspection.body;
-    if (
-      inspection.status !== 200 ||
-      !data ||
-      data.pid !== observation.process.pid ||
-      typeof data.projectRoot !== 'string' ||
-      !isAbsolute(data.projectRoot) ||
-      canonical(data.projectRoot) !== canonical(deps.project.root) ||
-      typeof data.serverInstanceId !== 'string' ||
-      data.serverInstanceId.trim().length === 0 ||
-      !('runtime' in data) ||
-      (data.runtime !== null && runtime(data.runtime) === null)
-    )
-      return document;
-    server.identity = { serverInstanceId: data.serverInstanceId };
-    server.runtime = runtime(data.runtime);
-
-    try {
-      const readiness = await request('/readyz');
-      if (controller.signal.aborted) {
-        server.readiness.status = 'unreachable';
-        return document;
+    for (const origin of new Set(origins)) {
+      if (controller.signal.aborted) break;
+      let inspection: Awaited<ReturnType<typeof request>>;
+      try {
+        inspection = await request(origin, '/api/server-inspection');
+      } catch {
+        continue;
       }
-      const body = readiness.body;
-      const status = body?.status;
+      if (controller.signal.aborted) break;
+      const data = inspection.body;
       if (
-        body &&
-        typeof body.ready === 'boolean' &&
-        ((readiness.status === 200 && status === 'ready' && body.ready === true) ||
-          (readiness.status === 503 &&
-            (status === 'pending' || status === 'failed' || status === 'draining') &&
-            body.ready === false)) &&
-        Array.isArray(body.degraded) &&
-        body.degraded.every((item) => typeof item === 'string')
-      ) {
-        server.readiness.status = status as V1Readiness['status'];
-        server.readiness.degraded = status === 'ready' ? (body.degraded as string[]) : [];
+        inspection.status !== 200 ||
+        !data ||
+        data.pid !== observation.process.pid ||
+        typeof data.projectRoot !== 'string' ||
+        !isAbsolute(data.projectRoot) ||
+        canonical(data.projectRoot) !== canonical(deps.project.root) ||
+        typeof data.serverInstanceId !== 'string' ||
+        data.serverInstanceId.trim().length === 0 ||
+        !('runtime' in data) ||
+        (data.runtime !== null && runtime(data.runtime) === null)
+      )
+        continue;
+      server.identity = { serverInstanceId: data.serverInstanceId };
+      server.runtime = runtime(data.runtime);
+
+      try {
+        const readiness = await request(origin, '/readyz');
+        if (controller.signal.aborted) {
+          server.readiness.status = 'unreachable';
+          return document;
+        }
+        const body = readiness.body;
+        const status = body?.status;
+        if (
+          body &&
+          typeof body.ready === 'boolean' &&
+          ((readiness.status === 200 && status === 'ready' && body.ready === true) ||
+            (readiness.status === 503 &&
+              (status === 'pending' || status === 'failed' || status === 'draining') &&
+              body.ready === false)) &&
+          Array.isArray(body.degraded) &&
+          body.degraded.every((item) => typeof item === 'string')
+        ) {
+          server.readiness.status = status as V1Readiness['status'];
+          server.readiness.degraded = status === 'ready' ? (body.degraded as string[]) : [];
+        }
+      } catch {
+        server.readiness.status = 'unreachable';
       }
-    } catch {
-      server.readiness.status = 'unreachable';
+      return document;
     }
-  } catch {
-    server.identity = null;
-    server.runtime = null;
   } finally {
     clearTimeout(timer);
     server.readiness.checkedAt = new Date(now()).toISOString();

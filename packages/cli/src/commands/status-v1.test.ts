@@ -113,7 +113,51 @@ describe('status v1 readiness', () => {
     expect(document.server.identity).toBeNull();
     expect(document.server.runtime).toBeNull();
     expect(document.server.readiness.status).toBe('unknown');
-    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(3);
+  });
+
+  test('uses the advertised IPv6 loopback origin for inspection and readiness', async () => {
+    const fetcher = vi.fn(async (url: string) =>
+      url.endsWith('/api/server-inspection')
+        ? response(200, { ...inspection, runtime: { ...snapshot, bind: ['::1'] } })
+        : response(200, { status: 'ready', ready: true, degraded: [] }),
+    );
+    const document = await buildStatusV1({
+      project,
+      lockDir: '/tmp/wiki/.ok/local',
+      inspect: () => ({ ...lock, lock: { ...lock.lock, url: 'http://[::1]:4321' } }),
+      fetch: fetcher as unknown as typeof fetch,
+    });
+    expect(document.server.readiness.status).toBe('ready');
+    expect(document.server.runtime?.bind).toEqual(['::1']);
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      'http://[::1]:4321/api/server-inspection',
+      'http://[::1]:4321/readyz',
+    ]);
+  });
+
+  test('tries IPv6 when other loopback origins cannot confirm the server', async () => {
+    const fetcher = vi.fn(async (url: string) => {
+      if (url.startsWith('http://localhost:')) throw new Error('connection refused');
+      if (url.startsWith('http://127.0.0.1:')) return response(200, { ...inspection, pid: 999 });
+      return url.endsWith('/api/server-inspection')
+        ? response(200, inspection)
+        : response(200, { status: 'ready', ready: true, degraded: [] });
+    });
+    const document = await buildStatusV1({
+      project,
+      lockDir: '/tmp/wiki/.ok/local',
+      inspect: () => lock,
+      fetch: fetcher as unknown as typeof fetch,
+    });
+    expect(document.server.identity).toEqual({ serverInstanceId: 'instance' });
+    expect(document.server.readiness.status).toBe('ready');
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      'http://localhost:4321/api/server-inspection',
+      'http://127.0.0.1:4321/api/server-inspection',
+      'http://[::1]:4321/api/server-inspection',
+      'http://[::1]:4321/readyz',
+    ]);
   });
 
   test('confirmed identity followed by transport failure is unreachable', async () => {
