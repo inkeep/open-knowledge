@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -238,7 +239,6 @@ class BridgedSocket {
 
 const realWebSocket = globalThis.WebSocket;
 let dirs: string[] = [];
-let threadCounter = 0;
 
 function tmp(): string {
   const dir = mkdtempSync(join(tmpdir(), 'acp-crash-recovery-'));
@@ -291,8 +291,7 @@ function recordAnnouncements(region: HTMLElement): () => string[] {
 }
 
 async function openCrashedThread(): Promise<{ threadId: string; spoken: () => string[] }> {
-  threadCounter += 1;
-  const threadId = `crashed-${threadCounter}`;
+  const threadId = randomUUID();
   const localDir = tmp();
   const binDir = tmp();
   writeCrashedThread(localDir, threadId);

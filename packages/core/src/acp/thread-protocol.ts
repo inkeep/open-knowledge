@@ -184,6 +184,8 @@ export interface ThreadInfo {
   chatGrants?: readonly ThreadChatGrant[];
 }
 
+export type BrowserUnavailableReason = 'no-node' | 'failed';
+
 export type ThreadEvent =
   | {
       kind: 'user_message';
@@ -218,6 +220,7 @@ export type ThreadEvent =
     }
   | { kind: 'title_changed'; title: string; ts: number }
   | { kind: 'agent_stderr'; line: string; ts: number }
+  | { kind: 'browser_unavailable'; reason: BrowserUnavailableReason; ts: number }
   | {
       kind: 'runtime_consent_request';
       requestId: string;

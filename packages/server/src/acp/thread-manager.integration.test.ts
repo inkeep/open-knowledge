@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { delimiter, dirname, join, relative } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { ACP_LAUNCH_FAILURE_LOG } from '@inkeep/open-knowledge-core';
 import type {
@@ -103,6 +103,9 @@ function makeManager(
     projectSkillSourceDir?: string | null;
     autoApproveOkTools?: () => boolean;
     terminalAuthAvailable?: boolean;
+    agentBrowserTools?: AcpThreadManagerOptions['agentBrowserTools'];
+    resolveBrowserNpx?: AcpThreadManagerOptions['resolveBrowserNpx'];
+    globalDir?: string | null;
   },
 ): AcpThreadManager {
   const manager = new AcpThreadManager({
@@ -1719,6 +1722,60 @@ describe('AcpThreadManager persistence + resume', () => {
     expect(existsSync(join(threadsDir, `${threadId}.meta.json`))).toBe(false);
   }, 45_000);
 
+  test('deleting a chat removes only its own browser folders, and a planted chat id never loads', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const outside = tmp();
+    writeFileSync(join(outside, 'keep.txt'), 'x');
+    const globalDir = tmp();
+    const threadsDir = join(localDir, 'threads');
+    mkdirSync(threadsDir, { recursive: true });
+    const traversal = relative(join(globalDir, 'agent-browser'), outside);
+    for (const [i, threadId] of [traversal, ''].entries()) {
+      writeFileSync(
+        join(threadsDir, `planted-${i}.meta.json`),
+        JSON.stringify({
+          version: 1,
+          info: {
+            threadId,
+            agent: { id: 'fake-resume', name: 'Fake', source: 'custom' },
+            title: 'Planted',
+            status: 'exited',
+            createdAt: 1,
+            lastActivityAt: 2,
+            modes: null,
+            configOptions: null,
+            lastSeq: -1,
+            archived: true,
+          },
+          sessionId: null,
+          cwd: contentDir,
+          agentRef: { source: 'custom', id: 'fake-resume' },
+        }),
+      );
+    }
+    writeResumableAgentEntry(localDir, 'fake-resume', { FAKE_CAPS: 'resume' });
+    const manager = makeManager(contentDir, localDir, { globalDir });
+    await manager.init();
+    expect(manager.listThreads()).toHaveLength(0);
+    for (const threadId of [traversal, '']) {
+      await expect(manager.deleteThread(threadId)).rejects.toThrow();
+    }
+
+    const threadId = await runOneTurn(manager, 'fake-resume', 'browse');
+    await manager.closeThread(threadId);
+    const own = join(globalDir, 'agent-browser', threadId);
+    const sibling = join(globalDir, 'agent-browser', crypto.randomUUID());
+    mkdirSync(own, { recursive: true });
+    writeFileSync(join(own, 'files-page.png'), 'x');
+    mkdirSync(sibling, { recursive: true });
+
+    await manager.deleteThread(threadId);
+    expect(existsSync(own)).toBe(false);
+    expect(existsSync(sibling)).toBe(true);
+    expect(existsSync(join(outside, 'keep.txt'))).toBe(true);
+  }, 45_000);
+
   test('destroy() archives running threads; a new manager can resume them', async () => {
     const contentDir = tmp();
     const localDir = tmp();
@@ -1820,8 +1877,11 @@ describe('handleFsWrite concurrent replace guard', () => {
   });
 });
 
-function writeRequestingAgentEntry(localDir: string, id: string, promptBody: string): void {
-  const agentPath = join(localDir, `${id}.mjs`);
+function writeRequestingAgentScript(
+  agentPath: string,
+  promptBody: string,
+  options: { loadable?: boolean } = {},
+): void {
   writeFileSync(
     agentPath,
     `
@@ -1866,7 +1926,7 @@ process.stdin.on('data', (chunk) => {
     const reply = (result) => write({ jsonrpc: '2.0', id: msg.id, result });
     if (msg.method === 'initialize') {
       clientCaps = (msg.params && msg.params.clientCapabilities) || {};
-      reply({ protocolVersion: 1, agentCapabilities: {} });
+      reply({ protocolVersion: 1, agentCapabilities: ${options.loadable === true ? '{ loadSession: true }' : '{}'} });
     } else if (msg.method === 'session/new') {
       reply({ sessionId: 'sess-1' });
     } else if (msg.method === 'session/cancel') {
@@ -1887,9 +1947,31 @@ process.stdin.on('data', (chunk) => {
 });
 `,
   );
+}
+
+function writeRequestingAgentEntry(localDir: string, id: string, promptBody: string): void {
+  const agentPath = join(localDir, `${id}.mjs`);
+  writeRequestingAgentScript(agentPath, promptBody);
   writeFileSync(
     join(localDir, 'acp-agents.json'),
     JSON.stringify([{ id, name: `Fake ${id}`, command: 'node', args: [agentPath] }]),
+  );
+}
+
+function writeRequestingRegistryAgent(
+  binDir: string,
+  promptBody: string,
+  options: { loadable?: boolean } = {},
+): void {
+  const agentPath = join(binDir, 'agent.mjs');
+  writeRequestingAgentScript(agentPath, promptBody, options);
+  writeFileSync(join(binDir, 'npx'), `#!/bin/sh\nexec "${process.execPath}" "${agentPath}"\n`, {
+    mode: 0o755,
+  });
+  writeFileSync(
+    join(binDir, 'node'),
+    `#!/bin/sh\nif [ "$1" = "--version" ]; then echo v${process.versions.node}; exit 0; fi\nexec "${process.execPath}" "$@"\n`,
+    { mode: 0o755 },
   );
 }
 
@@ -2085,6 +2167,410 @@ describe('AcpThreadManager terminals + permission effects', () => {
 
     await manager.closeThread(info.threadId);
   }, 60_000);
+
+  describe.skipIf(process.platform === 'win32')('browser approvals', () => {
+    const PROMPT_OPTIONS = `[
+    { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+    { optionId: 'always', name: 'Always allow', kind: 'allow_always' },
+    { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+  ]`;
+
+    function storeGrants(localDir: string, agentId: string, kinds: readonly string[]): void {
+      writeFileSync(
+        join(localDir, 'acp-permissions.json'),
+        JSON.stringify({ version: 1, grants: kinds.map((toolKind) => ({ agentId, toolKind })) }),
+      );
+    }
+
+    async function startBrowserChat(agentId: 'claude-acp' | 'codex-acp', promptBody: string) {
+      const contentDir = tmp();
+      const localDir = tmp();
+      const binDir = tmp();
+      storeGrants(localDir, agentId, [
+        'execute',
+        'other',
+        'mcp:ok-browser/browser_navigate',
+        'mcp:ok-browser/browser_snapshot',
+      ]);
+      writeRequestingRegistryAgent(binDir, promptBody);
+      const manager = registryManagerFor(agentId, contentDir, localDir, binDir, {
+        agentBrowserTools: () => true,
+        resolveBrowserNpx: () => ({ npx: join(binDir, 'npx'), path: binDir }),
+        globalDir: tmp(),
+      });
+      await manager.init();
+      const info = await manager.createThread({ agent: { source: 'registry', id: agentId } });
+      const events: Collected = [];
+      await manager.subscribe(info.threadId, 0, collect(events));
+      await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+      const requests = () =>
+        events
+          .map((e) => e.event)
+          .filter(
+            (e): e is Extract<ThreadEvent, { kind: 'permission_request' }> =>
+              e.kind === 'permission_request',
+          );
+      const grantsOnDisk = () =>
+        (
+          JSON.parse(readFileSync(join(localDir, 'acp-permissions.json'), 'utf8')) as {
+            grants: Array<{ toolKind: string }>;
+          }
+        ).grants.map((g) => g.toolKind);
+      return { manager, threadId: info.threadId, events, requests, grantsOnDisk };
+    }
+
+    test("Claude: the adapter's tool name decides, and no browser action rides a grant", async () => {
+      const chat = await startBrowserChat(
+        'claude-acp',
+        `
+  const options = ${PROMPT_OPTIONS};
+  const answers = [];
+  const ask = async (toolCallId, toolName, rawInput) => {
+    notify({
+      sessionUpdate: 'tool_call',
+      toolCallId,
+      title: toolName,
+      kind: 'other',
+      status: 'pending',
+      rawInput,
+      _meta: { claudeCode: { toolName } },
+    });
+    const response = await request('session/request_permission', {
+      toolCall: { toolCallId, title: toolName, kind: 'other', status: 'pending', rawInput },
+      options,
+    });
+    const outcome = response.outcome;
+    answers.push(toolCallId + '=' + (outcome.outcome === 'selected' ? outcome.optionId : outcome.outcome));
+  };
+  await ask('code', 'mcp__ok-browser__browser_run_code_unsafe', { server: 'browser', tool: 'browser_navigate' });
+  await ask('code2', 'mcp__ok-browser__browser_run_code_unsafe', { server: 'x' });
+  await ask('snap', 'mcp__ok-browser__browser_snapshot', {});
+  await ask('nav', 'mcp__ok-browser__browser_navigate', { url: 'https://example.com' });
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'answers:' + answers.join(',') + ';' } });
+  finish();
+`,
+      );
+      chat.manager.sendPrompt(chat.threadId, 'browse');
+
+      await waitUntil(() => chat.requests().length === 1, 20_000, 'first code prompt');
+      const code = chat.requests()[0];
+      if (code === undefined) throw new Error('unreachable');
+      expect(code.toolCall.title).toBe('mcp__ok-browser__browser_run_code_unsafe');
+      expect(code.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, code.requestId, {
+        kind: 'selected',
+        optionId: 'always',
+      });
+
+      await waitUntil(() => chat.requests().length === 2, 20_000, 'second code prompt');
+      const code2 = chat.requests()[1];
+      if (code2 === undefined) throw new Error('unreachable');
+      expect(code2.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, code2.requestId, {
+        kind: 'selected',
+        optionId: 'allow',
+      });
+
+      await waitUntil(() => chat.requests().length === 3, 20_000, 'snapshot prompt');
+      const snap = chat.requests()[2];
+      if (snap === undefined) throw new Error('unreachable');
+      expect(snap.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, snap.requestId, {
+        kind: 'selected',
+        optionId: 'allow',
+      });
+
+      await waitUntil(() => chat.requests().length === 4, 20_000, 'navigate prompt');
+      const nav = chat.requests()[3];
+      if (nav === undefined) throw new Error('unreachable');
+      expect(nav.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, nav.requestId, {
+        kind: 'selected',
+        optionId: 'allow',
+      });
+
+      await waitUntil(() => agentText(chat.events).includes('answers:'), 20_000, 'answers');
+      expect(agentText(chat.events)).toContain(
+        'answers:code=cancelled,code2=allow,snap=allow,nav=allow;',
+      );
+      expect(chat.requests()).toHaveLength(4);
+      expect(chat.grantsOnDisk()).toEqual([
+        'execute',
+        'other',
+        'mcp:ok-browser/browser_navigate',
+        'mcp:ok-browser/browser_snapshot',
+      ]);
+      await chat.manager.closeThread(chat.threadId);
+    }, 60_000);
+
+    test('Codex: correlated and standalone MCP approvals are tied to the browser, never to a grant', async () => {
+      const chat = await startBrowserChat(
+        'codex-acp',
+        `
+  const options = [
+    { optionId: 'approved', name: 'Allow', kind: 'allow_once' },
+    { optionId: 'approved-for-session', name: 'Allow for this session', kind: 'allow_always' },
+    { optionId: 'cancel', name: 'Cancel', kind: 'reject_once' },
+  ];
+  const answers = [];
+  const answer = (label, response) => {
+    const outcome = response.outcome;
+    answers.push(label + '=' + (outcome.outcome === 'selected' ? outcome.optionId : outcome.outcome));
+  };
+  const mcpCall = (toolCallId, server, tool) =>
+    notify({
+      sessionUpdate: 'tool_call',
+      toolCallId,
+      title: 'mcp.' + server + '.' + tool,
+      kind: 'execute',
+      status: 'in_progress',
+      rawInput: { server, tool, arguments: {} },
+      _meta: { is_mcp_tool_call: true },
+    });
+  const correlated = (toolCallId) =>
+    request('session/request_permission', {
+      toolCall: { toolCallId, kind: 'execute', status: 'pending' },
+      _meta: { is_mcp_tool_approval: true },
+      options,
+    });
+  mcpCall('call-code', 'ok-browser', 'browser_run_code_unsafe');
+  answer('code', await correlated('call-code'));
+  answer(
+    'standalone',
+    await request('session/request_permission', {
+      toolCall: {
+        toolCallId: 'elicitation:sess-1:ok-browser:1',
+        kind: 'execute',
+        status: 'pending',
+        title: 'MCP tool call approval',
+        rawInput: { serverName: 'ok-browser', description: 'Allow the browser tool?' },
+      },
+      _meta: { is_mcp_tool_approval: true },
+      options,
+    }),
+  );
+  mcpCall('call-gh', 'github', 'list_issues');
+  answer('github', await correlated('call-gh'));
+  mcpCall('call-snap', 'ok-browser', 'browser_snapshot');
+  answer('snap', await correlated('call-snap'));
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'answers:' + answers.join(',') + ';' } });
+  finish();
+`,
+      );
+      chat.manager.sendPrompt(chat.threadId, 'browse');
+
+      await waitUntil(() => chat.requests().length === 1, 20_000, 'code prompt');
+      const code = chat.requests()[0];
+      if (code === undefined) throw new Error('unreachable');
+      expect(code.toolCall.title).toBe('mcp.ok-browser.browser_run_code_unsafe');
+      expect(code.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, code.requestId, {
+        kind: 'selected',
+        optionId: 'approved',
+      });
+
+      await waitUntil(() => chat.requests().length === 2, 20_000, 'standalone prompt');
+      const standalone = chat.requests()[1];
+      if (standalone === undefined) throw new Error('unreachable');
+      expect(standalone.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, standalone.requestId, {
+        kind: 'selected',
+        optionId: 'approved-for-session',
+      });
+
+      await waitUntil(() => chat.requests().length === 3, 20_000, 'snapshot prompt');
+      const snap = chat.requests()[2];
+      if (snap === undefined) throw new Error('unreachable');
+      expect(snap.toolCall.title).toBe('mcp.ok-browser.browser_snapshot');
+      expect(snap.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, snap.requestId, {
+        kind: 'selected',
+        optionId: 'approved',
+      });
+
+      await waitUntil(() => agentText(chat.events).includes('answers:'), 20_000, 'answers');
+      expect(agentText(chat.events)).toContain(
+        'answers:code=approved,standalone=cancelled,github=approved,snap=approved;',
+      );
+      expect(chat.requests()).toHaveLength(3);
+      await chat.manager.closeThread(chat.threadId);
+    }, 60_000);
+
+    test('a chat whose browser could not start says so in its transcript', async () => {
+      const contentDir = tmp();
+      const localDir = tmp();
+      const binDir = tmp();
+      writeRequestingRegistryAgent(binDir, 'finish();');
+      const manager = registryManagerFor('claude-acp', contentDir, localDir, binDir, {
+        agentBrowserTools: () => true,
+        resolveBrowserNpx: () => null,
+        globalDir: tmp(),
+      });
+      await manager.init();
+      const info = await manager.createThread({ agent: { source: 'registry', id: 'claude-acp' } });
+      const events: Collected = [];
+      await manager.subscribe(info.threadId, 0, collect(events));
+      await waitUntil(
+        () => events.some((e) => e.event.kind === 'browser_unavailable'),
+        15_000,
+        'browser notice',
+      );
+      expect(events.map((e) => e.event).filter((e) => e.kind === 'browser_unavailable')).toEqual([
+        expect.objectContaining({ kind: 'browser_unavailable', reason: 'no-node' }),
+      ]);
+      await manager.closeThread(info.threadId);
+    }, 60_000);
+
+    test('a chat notes a browser problem once, and again only when the reason changes or returns after the browser worked', async () => {
+      const contentDir = tmp();
+      const localDir = tmp();
+      const binDir = tmp();
+      const globalDir = tmp();
+      writeRequestingRegistryAgent(binDir, 'finish();', { loadable: true });
+      let npx: { npx: string; path: string } | null = null;
+      const managerFor = () =>
+        registryManagerFor('claude-acp', contentDir, localDir, binDir, {
+          agentBrowserTools: () => true,
+          resolveBrowserNpx: () => npx,
+          globalDir,
+        });
+      let manager = managerFor();
+      await manager.init();
+      const { threadId } = await manager.createThread({
+        agent: { source: 'registry', id: 'claude-acp' },
+      });
+      await waitUntil(() => manager.getInfo(threadId)?.status === 'ready', 15_000, 'ready');
+      manager.sendPrompt(threadId, 'hi');
+      await waitUntil(() => manager.getInfo(threadId)?.status === 'ready', 15_000, 'turn ended');
+      const notices = async () => {
+        const events: Collected = [];
+        await manager.subscribe(threadId, 0, collect(events));
+        return events
+          .map((e) => e.event)
+          .flatMap((e) => (e.kind === 'browser_unavailable' ? [e.reason] : []));
+      };
+      const reopen = async () => {
+        await manager.closeThread(threadId);
+        await manager.resumeThread(threadId);
+        await waitUntil(() => manager.getInfo(threadId)?.status === 'ready', 15_000, 'resumed');
+      };
+      const blockFolders = () => {
+        rmSync(join(globalDir, 'agent-browser'), { recursive: true, force: true });
+        writeFileSync(join(globalDir, 'agent-browser'), 'not a folder');
+      };
+
+      expect(await notices()).toEqual(['no-node']);
+      await reopen();
+      expect(await notices()).toEqual(['no-node']);
+
+      await manager.destroy();
+      manager = managerFor();
+      await manager.init();
+      await manager.resumeThread(threadId);
+      await waitUntil(() => manager.getInfo(threadId)?.status === 'ready', 15_000, 'restarted');
+      expect(await notices()).toEqual(['no-node']);
+
+      npx = { npx: join(binDir, 'npx'), path: binDir };
+      blockFolders();
+      await reopen();
+      expect(await notices()).toEqual(['no-node', 'failed']);
+
+      rmSync(join(globalDir, 'agent-browser'), { recursive: true, force: true });
+      await reopen();
+      expect(await notices()).toEqual(['no-node', 'failed']);
+
+      blockFolders();
+      await reopen();
+      expect(await notices()).toEqual(['no-node', 'failed', 'failed']);
+      await manager.closeThread(threadId);
+    }, 90_000);
+
+    test('a request no adapter identifies asks with no option to always allow, whatever grants exist', async () => {
+      const warnLog = vi.spyOn(log, 'warn');
+      const chat = await startBrowserChat(
+        'claude-acp',
+        `
+  const options = ${PROMPT_OPTIONS};
+  const answers = [];
+  const answer = (label, response) => {
+    const outcome = response.outcome;
+    answers.push(label + '=' + (outcome.outcome === 'selected' ? outcome.optionId : outcome.outcome));
+  };
+  answer('bare', await request('session/request_permission', { toolCall: { toolCallId: 'bare', status: 'pending' }, options }));
+  answer('sparse', await request('session/request_permission', { toolCall: { toolCallId: 'sparse', title: 'Run it', kind: 'execute', status: 'pending' }, options }));
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'answers:' + answers.join(',') + ';' } });
+  finish();
+`,
+      );
+      chat.manager.sendPrompt(chat.threadId, 'browse');
+
+      for (const [index, toolCallId] of ['bare', 'sparse'].entries()) {
+        await waitUntil(() => chat.requests().length === index + 1, 20_000, `${toolCallId} prompt`);
+        const prompt = chat.requests()[index];
+        if (prompt === undefined) throw new Error('unreachable');
+        expect(prompt.toolCall.toolCallId).toBe(toolCallId);
+        expect(prompt.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+        chat.manager.respondPermission(chat.threadId, prompt.requestId, {
+          kind: 'selected',
+          optionId: 'allow',
+        });
+      }
+
+      await waitUntil(() => agentText(chat.events).includes('answers:'), 20_000, 'answers');
+      expect(agentText(chat.events)).toContain('answers:bare=allow,sparse=allow;');
+      for (const toolCallId of ['bare', 'sparse']) {
+        expect(warnLog).toHaveBeenCalledWith(
+          { threadId: chat.threadId, toolCallId },
+          '[acp-threads] no tool call report arrived for a permission request in a chat with the browser; asking with no option to always allow it',
+        );
+      }
+      await chat.manager.closeThread(chat.threadId);
+    }, 60_000);
+
+    test('a tool call reported after its permission request settles the request as soon as it arrives', async () => {
+      const warnLog = vi.spyOn(log, 'warn');
+      const chat = await startBrowserChat(
+        'claude-acp',
+        `
+  const options = ${PROMPT_OPTIONS};
+  const toolName = 'mcp__ok-browser__browser_snapshot';
+  const pending = request('session/request_permission', { toolCall: { toolCallId: 'late', status: 'pending' }, options });
+  setTimeout(() => notify({ sessionUpdate: 'tool_call', toolCallId: 'late', title: toolName, kind: 'other', status: 'pending', rawInput: {}, _meta: { claudeCode: { toolName } } }), 150);
+  const outcome = (await pending).outcome;
+  notify({ sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: 'answer:' + (outcome.outcome === 'selected' ? outcome.optionId : outcome.outcome) + ';' } });
+  finish();
+`,
+      );
+      chat.manager.sendPrompt(chat.threadId, 'browse');
+
+      await waitUntil(() => chat.requests().length === 1, 20_000, 'late prompt');
+      const prompt = chat.requests()[0];
+      if (prompt === undefined) throw new Error('unreachable');
+      const reported = chat.events
+        .map((e) => e.event)
+        .find(
+          (e): e is Extract<ThreadEvent, { kind: 'session_update' }> =>
+            e.kind === 'session_update' &&
+            e.update.sessionUpdate === 'tool_call' &&
+            e.update.toolCallId === 'late',
+        );
+      if (reported === undefined) throw new Error('the late tool call was not recorded');
+      expect(prompt.ts - reported.ts).toBeLessThan(500);
+      expect(prompt.toolCall.title).toBe('mcp__ok-browser__browser_snapshot');
+      expect(prompt.options.map((o) => o.kind)).toEqual(['allow_once', 'reject_once']);
+      chat.manager.respondPermission(chat.threadId, prompt.requestId, {
+        kind: 'selected',
+        optionId: 'allow',
+      });
+      await waitUntil(() => agentText(chat.events).includes('answer:'), 20_000, 'answer');
+      expect(agentText(chat.events)).toContain('answer:allow;');
+      expect(warnLog).not.toHaveBeenCalledWith(
+        expect.anything(),
+        '[acp-threads] no tool call report arrived for a permission request in a chat with the browser; asking with no option to always allow it',
+      );
+      await chat.manager.closeThread(chat.threadId);
+    }, 60_000);
+  });
 
   function writeShellProbingAgentEntry(localDir: string): void {
     writeRequestingAgentEntry(

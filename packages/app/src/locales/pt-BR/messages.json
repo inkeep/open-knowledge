@@ -3040,6 +3040,7 @@
     "U7Iesw": [["seconds"], " segundos"],
     "U88xbi": ["Falha ao criar o arquivo de esquema"],
     "U8CD-l": ["Copiar caminho completo, sem espaço de trabalho"],
+    "UBKdn5": ["Deixar os chats de agentes usarem um navegador"],
     "UBv8UK": ["Excluir definitivamente"],
     "UDFrWm": ["Verificando a conexão com o GitHub..."],
     "UD_onR": ["Ruminando…"],
@@ -3775,6 +3776,9 @@
     "aalx4E": ["Editando código MDX quebrado: ", ["reason"]],
     "aatPoi": ["Arquivos gerados"],
     "abiHje": ["Excluir os itens selecionados"],
+    "acPhVg": [
+      "O navegador não está disponível neste chat porque não foi encontrada nenhuma instalação do Node.js que consiga iniciá-lo. Instale o Node.js e depois inicie um novo chat."
+    ],
     "adsMWO": ["Resolvendo deltas"],
     "ae9Ozt": ["outros"],
     "ah_ekO": ["\"", ["name"], "\" já está atualizado"],
@@ -5466,6 +5470,9 @@
     ],
     "pcqlQu": [["0", "plural", { "one": ["Pasta"], "many": ["Pastas"], "other": ["Pastas"] }]],
     "pd0UH2": ["Alinhar à direita"],
+    "peq20S": [
+      "O navegador não está disponível neste chat porque não foi possível configurá-lo. O log do OpenKnowledge tem os detalhes."
+    ],
     "pfkaJ2": ["YAML ou JSON, em qualquer um dos dois formatos base16."],
     "pgDlbM": ["Ativar ou desativar as ferramentas de desenvolvedor"],
     "pgq_xf": [["0"], "/", ["1"], " ", ["2"]],
@@ -5632,6 +5639,9 @@
     "rFL-yb": ["Editar uma cópia"],
     "rFTdVq": ["Mostrar no Explorador"],
     "rFmBG3": ["Tema de cores"],
+    "rFskYz": [
+      "Vale para todos os projetos desta máquina, nos chats do Claude Code e do Codex no painel de agentes iniciados depois que você ativar. O agente pode abrir páginas, clicar, digitar e fazer capturas de tela na própria janela do Google Chrome, com um perfil novo. Requer o Google Chrome e o Node.js instalados. Cada ação do navegador pede sua aprovação, sem opção de permitir sempre, a menos que o próprio modo do agente ou as configurações de permissão dele pulem as aprovações."
+    ],
     "rFw02Q": ["Enviando ", ["keyName"]],
     "rIFV5h": [
       "O plugin ",

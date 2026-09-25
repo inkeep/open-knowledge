@@ -2119,6 +2119,10 @@ msgstr "適用於"
 msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "適用於（glob 模式；開頭的 ! 表示排除；留空表示所有文件）"
 
+#: src/components/settings/settings-fields.ts
+msgid "Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals."
+msgstr "適用於本機上的所有專案，作用於開啟後新建的代理面板中的 Claude Code 和 Codex 對話。代理可以在它自己的 Google Chrome 視窗中（使用全新的設定檔）開啟頁面、點按、輸入和擷取螢幕畫面。需要已安裝 Google Chrome 和 Node.js。除非代理本身的模式或權限設定略過了核准，否則每個瀏覽器操作都會請求你的核准，且沒有「一律允許」的選項。"
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "適用於本機上的所有專案。從內建終端機啟動的 Claude 和 Codex，以及應用程式內代理面板對話中的任何代理，都會自動核准 OpenKnowledge 的讀寫工具（Claude 也會自動執行 \"ok open\"）。刪除、移動、分享、匯入或安裝技能、其他命令以及非 OpenKnowledge 檔案的編輯仍會詢問。在終端機中，Cursor、OpenCode 和 Pi 不受影響。依各代理盡力而為。"
@@ -8140,6 +8144,10 @@ msgstr "無論資料夾層級多深，都不在「問題」、檔案總管指示
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
 msgstr "不要把這些註解放進這則訊息"
+
+#: src/components/settings/settings-fields.ts
+msgid "Let agent chats use a browser"
+msgstr "允許代理對話使用瀏覽器"
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
@@ -14528,6 +14536,14 @@ msgstr "畫板檢視器載入失敗。請檢查網路連線後再試一次。"
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "The board's content is not a valid Excalidraw scene."
 msgstr "畫板內容不是有效的 Excalidraw 場景。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details."
+msgstr "此對話中無法使用瀏覽器，因為未能完成設定。詳細資訊請查看 OpenKnowledge 的記錄。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
+msgstr "此對話中無法使用瀏覽器，因為找不到能啟動它的 Node.js 安裝。請安裝 Node.js，然後開始新的對話。"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"

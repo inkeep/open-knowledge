@@ -2682,6 +2682,7 @@
     "U7Iesw": [["seconds"], " detik"],
     "U88xbi": ["Gagal membuat berkas skema"],
     "U8CD-l": ["Salin jalur lengkap, tanpa ruang kerja"],
+    "UBKdn5": ["Izinkan obrolan agen memakai browser"],
     "UBv8UK": ["Hapus Permanen"],
     "UDFrWm": ["Memeriksa koneksi GitHub..."],
     "UD_onR": ["Mempertimbangkan…"],
@@ -3346,6 +3347,9 @@
     "aalx4E": ["Menyunting sumber MDX yang rusak: ", ["reason"]],
     "aatPoi": ["File yang dihasilkan"],
     "abiHje": ["Hapus item terpilih"],
+    "acPhVg": [
+      "Browser tidak tersedia di obrolan ini karena tidak ditemukan instalasi Node.js yang dapat menjalankannya. Pasang Node.js, lalu mulai obrolan baru."
+    ],
     "adsMWO": ["Menyelesaikan delta"],
     "ae9Ozt": ["lainnya"],
     "ah_ekO": ["\"", ["name"], "\" sudah yang terbaru"],
@@ -4855,6 +4859,9 @@
     "pckX1A": [["0", "plural", { "other": ["#", " penggunaan"] }]],
     "pcqlQu": [["0", "plural", { "other": ["Folder"] }]],
     "pd0UH2": ["Rata kanan"],
+    "peq20S": [
+      "Browser tidak tersedia di obrolan ini karena tidak dapat disiapkan. Log OpenKnowledge berisi detailnya."
+    ],
     "pfkaJ2": ["YAML atau JSON, dalam salah satu tata letak base16."],
     "pgDlbM": ["Tampilkan atau Sembunyikan Alat Pengembang"],
     "pgq_xf": [["0"], "/", ["1"], " ", ["2"]],
@@ -4989,6 +4996,9 @@
     "rFL-yb": ["Sunting salinan"],
     "rFTdVq": ["Tampilkan di Explorer"],
     "rFmBG3": ["Tema warna"],
+    "rFskYz": [
+      "Berlaku untuk semua proyek di mesin ini, pada obrolan Claude Code dan Codex di panel Agen yang dimulai setelah Anda mengaktifkannya. Agen dapat membuka halaman, mengeklik, mengetik, dan mengambil tangkapan layar di jendela Google Chrome miliknya dengan profil baru. Memerlukan Google Chrome dan Node.js yang terpasang. Setiap tindakan browser meminta persetujuan Anda, tanpa opsi untuk selalu mengizinkannya, kecuali mode agen itu sendiri atau pengaturan izinnya melewati persetujuan."
+    ],
     "rFw02Q": ["Mengunggah ", ["keyName"]],
     "rIFV5h": [
       "Plugin ",

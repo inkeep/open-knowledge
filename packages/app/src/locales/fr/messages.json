@@ -3127,6 +3127,7 @@
     "U7Iesw": [["seconds"], " secondes"],
     "U88xbi": ["Échec de la création du fichier de schéma"],
     "U8CD-l": ["Copier le chemin complet, sans espace de travail"],
+    "UBKdn5": ["Laisser les chats d'agents utiliser un navigateur"],
     "UBv8UK": ["Supprimer définitivement"],
     "UDFrWm": ["Vérification de la connexion GitHub…"],
     "UD_onR": ["Cogitation…"],
@@ -3898,6 +3899,9 @@
     "aalx4E": ["Modification d'une source MDX cassée : ", ["reason"]],
     "aatPoi": ["Fichiers générés"],
     "abiHje": ["Supprimer les éléments sélectionnés"],
+    "acPhVg": [
+      "Le navigateur n'est pas disponible dans ce chat, car aucune installation de Node.js capable de le lancer n'a été trouvée. Installez Node.js, puis démarrez un nouveau chat."
+    ],
     "adsMWO": ["Résolution des deltas"],
     "ae9Ozt": ["autres"],
     "ah_ekO": ["« ", ["name"], " » est déjà à jour"],
@@ -5639,6 +5643,9 @@
       ["0", "plural", { "one": ["Dossier"], "many": ["Dossiers"], "other": ["Dossiers"] }]
     ],
     "pd0UH2": ["Aligner à droite"],
+    "peq20S": [
+      "Le navigateur n'est pas disponible dans ce chat, car il n'a pas pu être configuré. Le journal d'OpenKnowledge contient les détails."
+    ],
     "pfkaJ2": ["YAML ou JSON, dans l'une ou l'autre disposition base16."],
     "pgDlbM": ["Afficher/masquer les outils de développement"],
     "pgq_xf": [["0"], "/", ["1"], " ", ["2"]],
@@ -5813,6 +5820,9 @@
     "rFL-yb": ["Modifier une copie"],
     "rFTdVq": ["Afficher dans l'Explorateur"],
     "rFmBG3": ["Thème de couleurs"],
+    "rFskYz": [
+      "S'applique à tous les projets de cette machine, dans les chats Claude Code et Codex du panneau Agents démarrés après l'activation. L'agent peut ouvrir des pages, cliquer, saisir du texte et prendre des captures d'écran dans sa propre fenêtre Google Chrome avec un profil vierge. Nécessite que Google Chrome et Node.js soient installés. Chaque action du navigateur demande votre approbation, sans option pour toujours l'autoriser, sauf si le mode de l'agent lui-même ou ses paramètres d'autorisation ignorent les approbations."
+    ],
     "rFw02Q": ["Envoi de ", ["keyName"]],
     "rIFV5h": [
       "Le plugin ",

@@ -406,8 +406,19 @@ export const ConfigSchema = z.looseObject({
             "Auto-approve OpenKnowledge's own tools for agents launched from the built-in terminal (plus `ok open` on Claude) and for in-app Agents-panel chats with any ACP agent. Destructive tools (delete/move/share/install/import) still prompt. Per-machine personal preference (user scope).",
         })
         .default(true),
+      browserTools: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'user',
+          description:
+            "Give in-app Claude Code and Codex chats a browser they can drive (Playwright MCP, started through npx from OpenKnowledge's own folder with a fresh in-memory profile), so an agent can open pages, click, and take screenshots. Every browser action asks for approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals. Needs Google Chrome and Node.js. Off by default; takes effect for chats started after the change. Per-machine personal preference (user scope).",
+        })
+        .default(false),
     })
-    .default({ autoApproveOkTools: true }),
+    .default({ autoApproveOkTools: true, browserTools: false }),
   autoSync: z
     .looseObject({
       mode: z

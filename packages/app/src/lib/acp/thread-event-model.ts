@@ -3,6 +3,7 @@ import {
   isCodexLegacyWarningUpdate,
 } from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
 import type {
+  BrowserUnavailableReason,
   PermissionOption,
   PiBridgeThreadState,
   SessionUpdate,
@@ -61,6 +62,12 @@ interface RenderedNotice {
   failure: ThreadFailureDetail | null;
   superseded?: boolean;
   attempts: number;
+}
+
+interface RenderedBrowserUnavailable {
+  kind: 'browser_unavailable';
+  reason: BrowserUnavailableReason;
+  seq: number;
 }
 
 interface RenderedAgentNotice {
@@ -130,6 +137,7 @@ export type RenderedItem =
   | RenderedPermission
   | RenderedNotice
   | RenderedAgentNotice
+  | RenderedBrowserUnavailable
   | RenderedRuntimeConsent
   | RenderedPiBridge;
 
@@ -257,6 +265,9 @@ export class ThreadRenderModelBuilder {
       }
       case 'turn_started':
         this.turnActive = true;
+        break;
+      case 'browser_unavailable':
+        this.items.push({ kind: 'browser_unavailable', reason: event.reason, seq });
         break;
       case 'turn_ended':
         this.turnActive = false;

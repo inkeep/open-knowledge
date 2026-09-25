@@ -2115,6 +2115,10 @@ msgstr "Aplica-se a"
 msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "Aplica-se a (globs — um ! inicial exclui; vazio significa todos os documentos)"
 
+#: src/components/settings/settings-fields.ts
+msgid "Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals."
+msgstr "Vale para todos os projetos desta máquina, nos chats do Claude Code e do Codex no painel de agentes iniciados depois que você ativar. O agente pode abrir páginas, clicar, digitar e fazer capturas de tela na própria janela do Google Chrome, com um perfil novo. Requer o Google Chrome e o Node.js instalados. Cada ação do navegador pede sua aprovação, sem opção de permitir sempre, a menos que o próprio modo do agente ou as configurações de permissão dele pulem as aprovações."
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "Vale para todos os projetos desta máquina. Claude e Codex iniciados pelo terminal integrado, e qualquer agente em um chat do painel de agentes do app, aprovam automaticamente as ferramentas de leitura e escrita do OpenKnowledge (o Claude também executa \"ok open\" automaticamente). Excluir, mover, compartilhar, importar ou instalar skills, outros comandos e edições de arquivos fora do OpenKnowledge continuam perguntando. No terminal, Cursor, OpenCode e Pi não são afetados. Melhor esforço por agente."
@@ -8136,6 +8140,10 @@ msgstr "Deixe os links quebrados escritos em um log.md ou log.mdx, em qualquer p
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
 msgstr "Deixar estes comentários fora desta mensagem"
+
+#: src/components/settings/settings-fields.ts
+msgid "Let agent chats use a browser"
+msgstr "Deixar os chats de agentes usarem um navegador"
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
@@ -14524,6 +14532,14 @@ msgstr "O visualizador do quadro não pôde ser carregado. Verifique sua conexã
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "The board's content is not a valid Excalidraw scene."
 msgstr "O conteúdo do quadro não é uma cena válida do Excalidraw."
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details."
+msgstr "O navegador não está disponível neste chat porque não foi possível configurá-lo. O log do OpenKnowledge tem os detalhes."
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
+msgstr "O navegador não está disponível neste chat porque não foi encontrada nenhuma instalação do Node.js que consiga iniciá-lo. Instale o Node.js e depois inicie um novo chat."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"

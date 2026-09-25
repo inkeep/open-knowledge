@@ -16,6 +16,7 @@ import {
   createServer,
   getLogger,
   makeLazyEmbeddingsKeyStore,
+  readAgentBrowserTools,
   releaseServerLock,
   updateServerLockPort,
 } from '@inkeep/open-knowledge-server';
@@ -209,6 +210,9 @@ export function hocuspocusPlugin(): Plugin {
               const port = typeof addr === 'object' && addr !== null ? addr.port : 5173;
               return buildOkMcpStdioCommand(undefined, port, { log: getLogger('acp-threads') });
             },
+            agentBrowserTools: () =>
+              !isTestIsolated &&
+              readAgentBrowserTools(PROJECT_ROOT, undefined, getLogger('acp-permissions')),
             log: getLogger('acp-threads'),
           });
       await acpThreadManager?.init();

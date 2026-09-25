@@ -733,7 +733,7 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
 
   test('subscribed announces the durable log end, ahead of every replayed event', async () => {
     const localDir = tmp();
-    const threadId = 'crash-stale';
+    const threadId = '0a1b2c3d-0000-4000-8000-0000000000c1';
     writeCrashStaleThread(localDir, threadId, MULTI_CHUNK_EVENTS, 2);
     const manager = makeManager(tmp(), localDir);
     await manager.init();
@@ -766,7 +766,7 @@ describe('/collab/thread socket — crash-recovered replay bound', () => {
 
   test('a failed log resolution is retried rather than cached for the process', async () => {
     const localDir = tmp();
-    const threadId = 'unreadable-log';
+    const threadId = '0a1b2c3d-0000-4000-8000-0000000000c2';
     const events: ThreadEvent[] = [{ kind: 'user_message', content: 'hello', ts: 1 }];
     writeCrashStaleThread(localDir, threadId, events, 0);
     const logPath = join(localDir, 'threads', `${threadId}.ndjson`);

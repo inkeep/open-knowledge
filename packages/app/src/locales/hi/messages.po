@@ -2115,6 +2115,10 @@ msgstr "किस पर लागू"
 msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "किस पर लागू (ग्लोब — शुरू में ! बाहर रखता है; खाली का अर्थ हर दस्तावेज़)"
 
+#: src/components/settings/settings-fields.ts
+msgid "Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals."
+msgstr "इस मशीन के सभी प्रोजेक्ट पर लागू होता है, एजेंट पैनल की उन Claude Code और Codex चैट में जो इसे चालू करने के बाद शुरू हों। एजेंट नई प्रोफ़ाइल वाली अपनी Google Chrome विंडो में पेज खोल सकता है, क्लिक कर सकता है, टाइप कर सकता है और स्क्रीनशॉट ले सकता है। Google Chrome और Node.js इंस्टॉल होना ज़रूरी है। ब्राउज़र की हर कार्रवाई आपकी स्वीकृति माँगती है, हमेशा अनुमति देने के किसी विकल्प के बिना, जब तक कि एजेंट का अपना मोड या उसकी अनुमति सेटिंग स्वीकृति को छोड़ न दें।"
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "इस मशीन के सभी प्रोजेक्ट पर लागू होता है। बिल्ट-इन टर्मिनल से शुरू किए गए Claude और Codex, और ऐप के एजेंट पैनल चैट में कोई भी एजेंट, OpenKnowledge के पढ़ने और लिखने वाले टूल स्वतः स्वीकृत करते हैं (Claude \"ok open\" भी स्वतः चलाता है)। स्किल हटाना, ले जाना, साझा करना, आयात या इंस्टॉल करना, अन्य कमांड और गैर-OpenKnowledge फ़ाइल संपादन अब भी पूछते हैं। टर्मिनल में Cursor, OpenCode और Pi पर असर नहीं पड़ता। हर एजेंट के लिए यथासंभव।"
@@ -8136,6 +8140,10 @@ msgstr "किसी भी फ़ोल्डर की गहराई पर 
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
 msgstr "इन टिप्पणियों को इस संदेश से बाहर रखें"
+
+#: src/components/settings/settings-fields.ts
+msgid "Let agent chats use a browser"
+msgstr "एजेंट चैट को ब्राउज़र इस्तेमाल करने दें"
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
@@ -14524,6 +14532,14 @@ msgstr "बोर्ड व्यूअर लोड नहीं हो सक�
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "The board's content is not a valid Excalidraw scene."
 msgstr "बोर्ड की सामग्री एक मान्य Excalidraw दृश्य नहीं है।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details."
+msgstr "इस चैट में ब्राउज़र उपलब्ध नहीं है, क्योंकि इसे सेट अप नहीं किया जा सका। OpenKnowledge के लॉग में विवरण है।"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
+msgstr "इस चैट में ब्राउज़र उपलब्ध नहीं है, क्योंकि इसे शुरू कर सकने वाला कोई Node.js इंस्टॉलेशन नहीं मिला। Node.js इंस्टॉल करें, फिर नई चैट शुरू करें।"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"

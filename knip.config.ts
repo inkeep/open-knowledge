@@ -31,7 +31,6 @@ export default {
     'ps', // process listing — diagnose.ts, process-scan.ts
     'lsof', // open-file listing — diagnose.ts, process-scan.ts
     'pgrep', // process lookup — process-scan.ts
-    'where', // Windows binary lookup — git-preflight.ts, slides slidev probe
     'taskkill', // Windows process-tree termination — acp/launch.ts
     'sw_vers', // macOS version query — bug-report.ts
     'mktemp', // where macOS puts -t files — b4-acceptance-gate.test.ts observes the gate's scratch

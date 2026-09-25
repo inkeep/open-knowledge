@@ -2400,7 +2400,28 @@ function ThreadItem({
       );
     case 'agent_notice':
       return <AgentNoticeCard item={item} />;
+    case 'browser_unavailable':
+      return <BrowserUnavailableNotice item={item} />;
   }
+}
+
+function BrowserUnavailableNotice({
+  item,
+}: {
+  item: Extract<RenderedItem, { kind: 'browser_unavailable' }>;
+}): ReactNode {
+  const { t } = useLingui();
+  return (
+    <div
+      role="note"
+      className="rounded-md border border-border bg-muted/40 px-2 py-1.5 text-muted-foreground text-xs"
+      data-testid="agent-thread-browser-unavailable"
+    >
+      {item.reason === 'no-node'
+        ? t`The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat.`
+        : t`The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details.`}
+    </div>
+  );
 }
 
 function AgentNoticeCard({

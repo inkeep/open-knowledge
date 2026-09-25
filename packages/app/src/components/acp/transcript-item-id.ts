@@ -16,5 +16,7 @@ export function transcriptItemId(item: RenderedItem, index: number): string {
       return `notice:${index}`;
     case 'agent_notice':
       return `agent-notice:${index}`;
+    case 'browser_unavailable':
+      return `browser-unavailable:${item.seq}`;
   }
 }

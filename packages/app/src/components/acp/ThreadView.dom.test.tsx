@@ -3628,6 +3628,25 @@ describe('ThreadView failure notices', () => {
   });
 });
 
+describe('ThreadView browser notice', () => {
+  test('says in the chat why the browser is not available', () => {
+    for (const [reason, text] of [
+      ['no-node', 'no Node.js install that can start it was found'],
+      ['failed', "it couldn't be set up"],
+    ] as const) {
+      model = makeModel({
+        turnActive: false,
+        items: [{ kind: 'browser_unavailable', reason, seq: 0 }],
+      });
+      const { unmount } = render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+      const notice = screen.getByTestId('agent-thread-browser-unavailable');
+      expect(notice.getAttribute('role')).toBe('note');
+      expect(notice.textContent).toContain(text);
+      unmount();
+    }
+  });
+});
+
 describe('ThreadView agent notices', () => {
   const WARNING_TEXT = 'Warning: Skill "foo" was not loaded because its manifest is invalid.\n\n';
 

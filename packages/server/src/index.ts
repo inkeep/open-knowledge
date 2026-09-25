@@ -3,7 +3,7 @@ export {
   GitDirAccessError,
   MalformedGitPointerError,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-export { AcpPermissionStore } from './acp/permissions.ts';
+export { AcpPermissionStore, readAgentBrowserTools } from './acp/permissions.ts';
 export { AcpRegistry, FEATURED_AGENT_IDS, loadCustomAgents } from './acp/registry.ts';
 export {
   AcpThreadManager,

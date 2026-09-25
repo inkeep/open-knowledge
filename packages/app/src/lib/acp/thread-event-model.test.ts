@@ -12,6 +12,17 @@ function ev(event: ThreadEvent): ThreadEvent {
 }
 
 describe('buildThreadRenderModel', () => {
+  test('keeps a browser_unavailable event as its own transcript item', () => {
+    const model = buildThreadRenderModel(
+      [
+        ev({ kind: 'user_message', content: 'hi', ts: 1 }),
+        ev({ kind: 'browser_unavailable', reason: 'no-node', ts: 2 }),
+      ],
+      null,
+    );
+    expect(model.items.at(-1)).toEqual({ kind: 'browser_unavailable', reason: 'no-node', seq: 1 });
+  });
+
   test('coalesces streamed agent chunks by messageId into one message', () => {
     const events: ThreadEvent[] = [
       ev({ kind: 'user_message', content: 'hi', ts: 1 }),

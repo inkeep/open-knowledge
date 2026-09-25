@@ -1,7 +1,7 @@
 import { type SpawnSyncOptions, spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { accessSync, existsSync, constants as fsConstants, readFileSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, delimiter as PATH_DELIM } from 'node:path';
+import { isAbsolute, join, delimiter as PATH_DELIM } from 'node:path';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 
 export const MIN_GIT_VERSION = '2.31.0';
@@ -152,18 +152,33 @@ export function __seedResolveOnPathCacheForTests(name: string, resolvedPath: str
   resolveOnPathCache.set(name, resolvedPath);
 }
 
-function withPath(path: string): NodeJS.ProcessEnv {
-  const next: NodeJS.ProcessEnv = {};
-  let key = 'PATH';
-  for (const [k, v] of Object.entries(process.env)) {
-    if (k.toLowerCase() === 'path') {
-      key = k;
-      continue;
-    }
-    next[k] = v;
+function envValue(name: string): string | undefined {
+  if (process.platform !== 'win32') return process.env[name];
+  const key = Object.keys(process.env).find((k) => k.toUpperCase() === name);
+  return key === undefined ? undefined : process.env[key];
+}
+
+function commandFileNames(name: string): readonly string[] {
+  if (process.platform !== 'win32') return [name];
+  const configured = (envValue('PATHEXT') ?? '')
+    .split(';')
+    .map((ext) => ext.trim().toLowerCase())
+    .filter((ext) => ext.startsWith('.'));
+  const extensions = configured.length > 0 ? configured : ['.com', '.exe', '.bat', '.cmd'];
+  const lower = name.toLowerCase();
+  return extensions.some((ext) => lower.endsWith(ext))
+    ? [name]
+    : extensions.map((ext) => `${name}${ext}`);
+}
+
+function isRunnableFile(path: string): boolean {
+  try {
+    if (!statSync(path).isFile()) return false;
+    if (process.platform !== 'win32') accessSync(path, fsConstants.X_OK);
+    return true;
+  } catch {
+    return false;
   }
-  next[key] = path;
-  return next;
 }
 
 export function resolveOnPath(name: string, pathOverride?: string): string | null {
@@ -171,45 +186,21 @@ export function resolveOnPath(name: string, pathOverride?: string): string | nul
   const cacheKey = pathOverride === undefined ? name : `${pathOverride}\u0000${name}`;
   const cached = resolveOnPathCache.get(cacheKey);
   if (cached !== undefined) return cached;
-  const spawnEnv = pathOverride === undefined ? undefined : withPath(pathOverride);
-  let resolved: string | null;
-  if (process.platform === 'win32') {
-    const result = spawnSync(
-      'where',
-      [name],
-      withHiddenWindowsConsole({ encoding: 'utf-8', timeout: PROBE_TIMEOUT_MS, env: spawnEnv }),
-    );
-    if (result.status !== 0) {
-      resolved = null;
-    } else {
-      const first = (typeof result.stdout === 'string' ? result.stdout : '')
-        .trim()
-        .split(/\r?\n/)[0];
-      resolved = first || null;
-    }
-  } else {
-    const result = spawnSync(
-      '/bin/sh',
-      ['-c', `command -v ${name}`],
-      withHiddenWindowsConsole({
-        encoding: 'utf-8',
-        timeout: PROBE_TIMEOUT_MS,
-        env: spawnEnv,
-      }),
-    );
-    if (result.status !== 0) {
-      resolved = null;
-    } else {
-      const first = (typeof result.stdout === 'string' ? result.stdout : '')
-        .trim()
-        .split(/\r?\n/)[0];
-      resolved = first || null;
+  const dirs = (pathOverride ?? envValue('PATH') ?? '')
+    .split(PATH_DELIM)
+    .map((dir) => dir.trim().replace(/^"(.*)"$/, '$1'))
+    .filter((dir) => dir !== '' && isAbsolute(dir));
+  const fileNames = commandFileNames(name);
+  for (const dir of dirs) {
+    for (const fileName of fileNames) {
+      const candidate = join(dir, fileName);
+      if (isRunnableFile(candidate)) {
+        resolveOnPathCache.set(cacheKey, candidate);
+        return candidate;
+      }
     }
   }
-  if (resolved !== null) {
-    resolveOnPathCache.set(cacheKey, resolved);
-  }
-  return resolved;
+  return null;
 }
 
 export function fallbackPaths(platform: NodeJS.Platform): readonly string[] {

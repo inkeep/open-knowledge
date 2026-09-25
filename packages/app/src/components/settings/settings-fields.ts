@@ -37,6 +37,11 @@ export const FIELDS_USER_PREFERENCES: FieldDef[] = [
     description: msg`When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.).`,
   },
   {
+    path: ['agents', 'browserTools'],
+    label: msg`Let agent chats use a browser`,
+    description: msg`Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals.`,
+  },
+  {
     path: ['telemetry', 'skillInstallReports', 'enabled'],
     label: msg`Count skill installs publicly`,
     description: msg`When you install a published skill, tell the skill directory (skills.sh) so its install count is accurate. Sends the skill name, its source repository, and which agent tools it went to — never file contents, and never for a skill from a private, local, or hand-typed source. Once per skill per machine.`,

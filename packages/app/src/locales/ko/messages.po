@@ -2119,6 +2119,10 @@ msgstr "적용 대상"
 msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "적용 대상 (glob, 앞의 !는 제외, 비워 두면 모든 문서)"
 
+#: src/components/settings/settings-fields.ts
+msgid "Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals."
+msgstr "이 컴퓨터의 모든 프로젝트에 적용되며, 켠 뒤에 시작한 에이전트 패널의 Claude Code 및 Codex 채팅에 적용됩니다. 에이전트는 새 프로필을 쓰는 자체 Google Chrome 창에서 페이지를 열고, 클릭하고, 입력하고, 스크린샷을 찍을 수 있습니다. Google Chrome과 Node.js가 설치되어 있어야 합니다. 에이전트 자체 모드나 권한 설정이 승인을 건너뛰지 않는 한, 모든 브라우저 작업은 승인을 요청하며 항상 허용하는 선택지는 없습니다."
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
 msgstr "이 컴퓨터의 모든 프로젝트에 적용됩니다. 내장 터미널에서 시작한 Claude와 Codex, 그리고 앱 내 에이전트 패널 채팅의 모든 에이전트는 OpenKnowledge의 읽기 및 쓰기 도구를 자동으로 승인합니다(Claude는 \"ok open\"도 자동 실행). 스킬 삭제·이동·공유·가져오기·설치, 기타 명령, OpenKnowledge 외 파일 편집은 여전히 확인을 요청합니다. 터미널에서는 Cursor, OpenCode, Pi에 영향이 없습니다. 에이전트별 최선 노력."
@@ -8140,6 +8144,10 @@ msgstr "어떤 폴더 깊이에 있든 log.md 또는 log.mdx 안에 작성된 �
 #: src/comments/comment-chips.tsx
 msgid "Leave these comments out of this message"
 msgstr "이 메시지에서 댓글 제외"
+
+#: src/components/settings/settings-fields.ts
+msgid "Let agent chats use a browser"
+msgstr "에이전트 채팅에서 브라우저를 사용하도록 허용합니다"
 
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
@@ -14528,6 +14536,14 @@ msgstr "보드 뷰어를 불러오지 못했습니다. 연결을 확인하고 �
 #: src/editor/components/ExcalidrawEmbed.tsx
 msgid "The board's content is not a valid Excalidraw scene."
 msgstr "보드의 내용이 유효한 Excalidraw 장면이 아닙니다."
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details."
+msgstr "이 채팅에서는 브라우저를 사용할 수 없습니다. 브라우저를 설정하지 못했기 때문입니다. 자세한 내용은 OpenKnowledge 로그에 있습니다."
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
+msgstr "이 채팅에서는 브라우저를 사용할 수 없습니다. 브라우저를 시작할 수 있는 Node.js 설치를 찾지 못했기 때문입니다. Node.js를 설치한 뒤 새 채팅을 시작하세요."
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"

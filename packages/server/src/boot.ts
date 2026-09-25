@@ -19,7 +19,7 @@ import {
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { context, propagation } from '@opentelemetry/api';
 import sirv from 'sirv';
-import { readAutoApproveOkTools } from './acp/permissions.ts';
+import { readAgentBrowserTools, readAutoApproveOkTools } from './acp/permissions.ts';
 import {
   AcpThreadManager,
   type AcpThreadManagerOptions,
@@ -483,7 +483,17 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         hostSnapshot: () =>
           collectServerHostSnapshot({ env: 'local-web', resolve: opts.agentIntegrations?.probe }),
         autoApproveOkTools: () =>
-          readAutoApproveOkTools(opts.projectDir ?? opts.contentDir, opts.configHomedirOverride),
+          readAutoApproveOkTools(
+            opts.projectDir ?? opts.contentDir,
+            opts.configHomedirOverride,
+            log,
+          ),
+        agentBrowserTools: () =>
+          readAgentBrowserTools(
+            opts.projectDir ?? opts.contentDir,
+            opts.configHomedirOverride,
+            log,
+          ),
         log,
       });
   if (acpThreadManager !== null) await acpThreadManager.init();

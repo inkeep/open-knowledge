@@ -1,6 +1,6 @@
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   assertGitAvailable,
@@ -302,7 +302,7 @@ describe('GitTooOldError', () => {
 });
 
 describe('resolveOnPath', () => {
-  test('resolves a tool known to exist on the runner (git, where on win, sh elsewhere)', () => {
+  test('resolves a tool that is on PATH (cmd on Windows, sh elsewhere)', () => {
     const target =
       process.platform === 'win32'
         ? 'cmd'
@@ -329,6 +329,56 @@ describe('resolveOnPath', () => {
     expect(resolveOnPath('')).toBeNull();
     expect(resolveOnPath('git ')).toBeNull();
     expect(resolveOnPath(' git')).toBeNull();
+  });
+
+  test('searches only absolute PATH folders, never the working directory or a relative entry', () => {
+    const project = mkdtempSync(join(tmpdir(), 'resolve-project-'));
+    const bin = mkdtempSync(join(tmpdir(), 'resolve-bin-'));
+    const name = 'ok-resolve-probe-tool';
+    const file = process.platform === 'win32' ? `${name}.cmd` : name;
+    for (const dir of [project, bin]) {
+      writeFileSync(join(dir, file), '#!/bin/sh\nexit 0\n', { mode: 0o755 });
+    }
+    const previous = process.cwd();
+    process.chdir(project);
+    try {
+      expect(resolveOnPath(name, ['.', '', relative(project, bin)].join(delimiter))).toBeNull();
+      expect(resolveOnPath(name, bin)).toBe(join(bin, file));
+    } finally {
+      process.chdir(previous);
+      rmSync(project, { recursive: true, force: true });
+      rmSync(bin, { recursive: true, force: true });
+    }
+  });
+
+  test.runIf(process.platform === 'win32')(
+    'falls back to the standard extensions when PATHEXT is empty or lists none',
+    () => {
+      const bin = mkdtempSync(join(tmpdir(), 'resolve-pathext-'));
+      const previous = process.env.PATHEXT;
+      try {
+        for (const [index, pathext] of ['', ';;', 'COM EXE'].entries()) {
+          const name = `ok-resolve-pathext-${index}`;
+          writeFileSync(join(bin, `${name}.cmd`), '@exit /b 0\r\n');
+          process.env.PATHEXT = pathext;
+          expect(resolveOnPath(name, bin), JSON.stringify(pathext)).toBe(join(bin, `${name}.cmd`));
+        }
+      } finally {
+        if (previous === undefined) delete process.env.PATHEXT;
+        else process.env.PATHEXT = previous;
+        rmSync(bin, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')('skips a file that is not executable', () => {
+    const bin = mkdtempSync(join(tmpdir(), 'resolve-noexec-'));
+    try {
+      writeFileSync(join(bin, 'ok-resolve-noexec'), 'x', { mode: 0o644 });
+      expect(resolveOnPath('ok-resolve-noexec', bin)).toBeNull();
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 
   test('accepts plain-letter command names with dots / hyphens / underscores', () => {

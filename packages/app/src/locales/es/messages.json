@@ -3079,6 +3079,7 @@
     "U7Iesw": [["seconds"], " segundos"],
     "U88xbi": ["No se pudo crear el archivo de esquema"],
     "U8CD-l": ["Copiar ruta completa, sin espacio de trabajo"],
+    "UBKdn5": ["Permitir que los chats con agentes usen un navegador"],
     "UBv8UK": ["Eliminar definitivamente"],
     "UDFrWm": ["Comprobando la conexión con GitHub..."],
     "UD_onR": ["Rumiando…"],
@@ -3847,6 +3848,9 @@
     "aalx4E": ["Editando código MDX defectuoso: ", ["reason"]],
     "aatPoi": ["Archivos generados"],
     "abiHje": ["Eliminar los elementos seleccionados"],
+    "acPhVg": [
+      "El navegador no está disponible en este chat porque no se encontró ninguna instalación de Node.js que pueda iniciarlo. Instala Node.js y luego inicia un chat nuevo."
+    ],
     "adsMWO": ["Resolviendo deltas"],
     "ae9Ozt": ["otros"],
     "ah_ekO": ["\"", ["name"], "\" ya está al día"],
@@ -5580,6 +5584,9 @@
       ["0", "plural", { "one": ["Carpeta"], "many": ["Carpetas"], "other": ["Carpetas"] }]
     ],
     "pd0UH2": ["Alinear a la derecha"],
+    "peq20S": [
+      "El navegador no está disponible en este chat porque no se pudo configurar. El registro de OpenKnowledge tiene los detalles."
+    ],
     "pfkaJ2": ["YAML o JSON, en cualquiera de las dos disposiciones base16."],
     "pgDlbM": ["Activar o desactivar las herramientas de desarrollo"],
     "pgq_xf": [["0"], "/", ["1"], " ", ["2"]],
@@ -5748,6 +5755,9 @@
     "rFL-yb": ["Editar una copia"],
     "rFTdVq": ["Mostrar en el Explorador"],
     "rFmBG3": ["Tema de color"],
+    "rFskYz": [
+      "Se aplica a todos los proyectos de esta máquina, en los chats de Claude Code y Codex del panel de agentes que se inicien después de activarlo. El agente puede abrir páginas, hacer clic, escribir y tomar capturas de pantalla en su propia ventana de Google Chrome con un perfil nuevo. Requiere tener Google Chrome y Node.js instalados. Cada acción del navegador pide tu aprobación, sin opción de permitirla siempre, salvo que el propio modo del agente o su configuración de permisos omitan las aprobaciones."
+    ],
     "rFw02Q": ["Subiendo ", ["keyName"]],
     "rIFV5h": [
       "El complemento ",
