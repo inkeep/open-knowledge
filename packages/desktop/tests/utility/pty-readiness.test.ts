@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { PtyProcessLike, PtySpawnOptions, SpawnPty } from '../../src/utility/pty-host.ts';
 import {
@@ -666,7 +669,9 @@ describe('evaluated-input readiness', () => {
 });
 
 const ATTACH_PROLOGUE = '\u001b[?9001h\u001b[?1004h';
-const SHIPPED_ATTACH_PROLOGUE = '\u001b[c\u001b[?1004h\u001b[?9001h';
+const BUNDLED_WINDOW_SHOWN = '\u001b[1t';
+const BUNDLED_DA1_QUERY_AND_INPUT_MODES = '\u001b[c\u001b[?1004h\u001b[?9001h';
+const BUNDLED_ATTACH_PROLOGUE = `${BUNDLED_WINDOW_SHOWN}${BUNDLED_DA1_QUERY_AND_INPUT_MODES}`;
 const BOOT_PAST_ROUND_TRIP_MS = READINESS_CEILING_MS + 500;
 const CONPTY_REPAINT = '\u001b[?25l\u001b[2J\u001b[m\u001b[H';
 const CONPTY_SHOW_CURSOR = '\u001b[?25h';
@@ -678,12 +683,18 @@ const CONPTY_INIT_FRAME = `${CONPTY_REPAINT}${WINDOWS_POWERSHELL_TITLE_BEL}${CON
 const CONPTY_INIT_FRAME_ST_TITLE = `${CONPTY_REPAINT}${WINDOWS_POWERSHELL_TITLE_ST}${CONPTY_SHOW_CURSOR}`;
 const CONPTY_INIT_FRAME_CUT_MID_TITLE = `${CONPTY_REPAINT}\u001b]0;C:\\Prog`;
 const WINDOWS_POWERSHELL_GUID_ECHO = '7768de99-595e-40d4-9a3d-a4760b05683b\r\n';
+const WINDOWS_POWERSHELL_WRAP_TOGGLE = '\u001b[?7l\u001b[?7h';
 const PWSH_BANNER = 'PowerShell 7.6.5\r\n';
 const PWSH_TITLE = '\u001b]0;C:\\Program Files\\PowerShell\\7\\pwsh.exe\u0007';
 const PWSH_ADMIN_TITLE = '\u001b]0;Administrator: C:\\Program Files\\PowerShell\\7\\pwsh.exe\u0007';
 const CI_CAPTURE_CONTENT_FREE_FRAME = `${CONPTY_INIT_FRAME}${WINDOWS_POWERSHELL_GUID_ECHO}`;
 const CI_CAPTURE_BANNER_INSIDE_FRAME = `${CONPTY_REPAINT}${PWSH_BANNER}${PWSH_TITLE}${CONPTY_SHOW_CURSOR}`;
 const CI_CAPTURE_BANNER_THEN_RETITLE = `${CI_CAPTURE_BANNER_INSIDE_FRAME}${PWSH_ADMIN_TITLE}`;
+const BUNDLED_CI_CAPTURE_LAUNCH_THEN_RETITLE =
+  '\u001b[1t\u001b[c\u001b[?1004h\u001b[?9001h\u001b]0;Administrator: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\u001b\\\u001b[?7l\u001b[?7hf8bc0b8a-d339-406f-b6d1-f0b1185054f6\r\n\u001b]0;Administrator: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\u001b\\';
+const BUNDLED_CI_CAPTURE_LAUNCH_ONLY =
+  '\u001b[1t\u001b[c\u001b[?1004h\u001b[?9001h\u001b]0;Administrator: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\u001b\\\u001b[?7l\u001b[?7hd603e31a-bc79-47cd-b36f-7967714a865f\r\n';
+const BUNDLED_CONPTY_RECORDED_WITH_NODE_PTY = '1.2.0-beta.15';
 
 describe('shell startup is a liveness wait, not a round-trip budget', () => {
   test('a shell whose first output arrives after the round-trip ceiling still reports ready', async () => {
@@ -769,17 +780,16 @@ describe('shell startup is a liveness wait, not a round-trip budget', () => {
   });
 
   test('the order the bundled ConPTY ships is not the shell speaking either', () => {
-    expect(shellOutputBeyondAttach(SHIPPED_ATTACH_PROLOGUE)).toBe('');
-    expect(shellOutputBeyondAttach(`${SHIPPED_ATTACH_PROLOGUE}${BOOTED_PROMPT}`)).toBe(
+    expect(shellOutputBeyondAttach(BUNDLED_ATTACH_PROLOGUE)).toBe('');
+    expect(shellOutputBeyondAttach(`${BUNDLED_ATTACH_PROLOGUE}${BOOTED_PROMPT}`)).toBe(
       BOOTED_PROMPT,
     );
-    expect(shellOutputBeyondAttach(SHIPPED_ATTACH_PROLOGUE.slice(0, -2))).toBe('');
+    expect(shellOutputBeyondAttach(BUNDLED_ATTACH_PROLOGUE.slice(0, -2))).toBe('');
   });
 
   test("the host's screen-init frame on attach is not the shell speaking", () => {
     expect(shellOutputBeyondAttach(CONPTY_INIT_FRAME)).toBe('');
     expect(shellOutputBeyondAttach(`${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME}`)).toBe('');
-    expect(shellOutputBeyondAttach(`${SHIPPED_ATTACH_PROLOGUE}${CONPTY_INIT_FRAME}`)).toBe('');
     expect(shellOutputBeyondAttach(`${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME_ST_TITLE}`)).toBe('');
     expect(shellOutputBeyondAttach(`${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME_CUT_MID_TITLE}`)).toBe(
       '',
@@ -787,12 +797,12 @@ describe('shell startup is a liveness wait, not a round-trip budget', () => {
   });
 
   test('a Windows capture reduces to the bytes the shell itself wrote', () => {
-    expect(
-      shellOutputBeyondAttach(`${SHIPPED_ATTACH_PROLOGUE}${CI_CAPTURE_CONTENT_FREE_FRAME}`),
-    ).toBe(WINDOWS_POWERSHELL_GUID_ECHO);
-    expect(
-      shellOutputBeyondAttach(`${SHIPPED_ATTACH_PROLOGUE}${CI_CAPTURE_BANNER_INSIDE_FRAME}`),
-    ).toBe(`${PWSH_BANNER}${PWSH_TITLE}${CONPTY_SHOW_CURSOR}`);
+    expect(shellOutputBeyondAttach(`${ATTACH_PROLOGUE}${CI_CAPTURE_CONTENT_FREE_FRAME}`)).toBe(
+      WINDOWS_POWERSHELL_GUID_ECHO,
+    );
+    expect(shellOutputBeyondAttach(`${ATTACH_PROLOGUE}${CI_CAPTURE_BANNER_INSIDE_FRAME}`)).toBe(
+      `${PWSH_BANNER}${PWSH_TITLE}${CONPTY_SHOW_CURSOR}`,
+    );
     expect(shellOutputBeyondAttach(`${ATTACH_PROLOGUE}${CI_CAPTURE_BANNER_THEN_RETITLE}`)).toBe(
       `${PWSH_BANNER}${PWSH_TITLE}${CONPTY_SHOW_CURSOR}${PWSH_ADMIN_TITLE}`,
     );
@@ -817,9 +827,7 @@ describe('shell startup is a liveness wait, not a round-trip budget', () => {
   test('the first output the gate reports leads with the bytes that opened it', async () => {
     const stream = createFakeStream();
     const head = 'OK_GATE_OPENED_HERE';
-    stream.emit(
-      `${SHIPPED_ATTACH_PROLOGUE}${CONPTY_INIT_FRAME}${head}${'x'.repeat(600)}${BOOTED_PROMPT}`,
-    );
+    stream.emit(`${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME}${head}${'x'.repeat(600)}${BOOTED_PROMPT}`);
     const shell = driveEvaluatingShell(stream);
     try {
       const timing = await waitForEvaluatedInput(
@@ -838,10 +846,10 @@ describe('shell startup is a liveness wait, not a round-trip budget', () => {
 
   test('the shipped attach burst leaves the gate shut, and a prompt behind it opens it', async () => {
     const attaching = createFakeStream();
-    attaching.emit(SHIPPED_ATTACH_PROLOGUE);
+    attaching.emit(BUNDLED_ATTACH_PROLOGUE);
     const attachingShell = driveEvaluatingShell(attaching);
     const booted = createFakeStream();
-    booted.emit(`${SHIPPED_ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
+    booted.emit(`${BUNDLED_ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
     const bootedShell = driveEvaluatingShell(booted);
     try {
       await expect(
@@ -1021,6 +1029,188 @@ describe('shell startup is a liveness wait, not a round-trip budget', () => {
       shell.dispose();
     }
   });
+});
+
+const RECORDED_ATTACH_PROLOGUES = [
+  { host: 'the inbox ConPTY', prologue: ATTACH_PROLOGUE },
+  { host: 'the bundled ConPTY', prologue: BUNDLED_ATTACH_PROLOGUE },
+] as const;
+const BUNDLED_CI_CAPTURE_LAUNCHES = [
+  [
+    'the shell retitles after the launch output',
+    BUNDLED_CI_CAPTURE_LAUNCH_THEN_RETITLE,
+    `${WINDOWS_POWERSHELL_TITLE_ST}${WINDOWS_POWERSHELL_WRAP_TOGGLE}f8bc0b8a-d339-406f-b6d1-f0b1185054f6\r\n${WINDOWS_POWERSHELL_TITLE_ST}`,
+  ],
+  [
+    'the launch output is the last thing written',
+    BUNDLED_CI_CAPTURE_LAUNCH_ONLY,
+    `${WINDOWS_POWERSHELL_TITLE_ST}${WINDOWS_POWERSHELL_WRAP_TOGGLE}d603e31a-bc79-47cd-b36f-7967714a865f\r\n`,
+  ],
+] as const;
+const LEADING_TITLES_BY_HOST = [
+  [
+    'the bundled ConPTY, which paints no title of its own, so the title is the one the shell set',
+    `${BUNDLED_ATTACH_PROLOGUE}${WINDOWS_POWERSHELL_TITLE_ST}`,
+    WINDOWS_POWERSHELL_TITLE_ST,
+  ],
+  [
+    'the inbox ConPTY, which paints the title inside its first-paint frame',
+    `${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME_ST_TITLE}`,
+    '',
+  ],
+] as const;
+
+describe('what the bundled ConPTY writes before the shell speaks is the host speaking, wherever a read cuts it', () => {
+  test.each(RECORDED_ATTACH_PROLOGUES)(
+    'no read of what $host writes on attach opens the gate, and a prompt behind it does',
+    ({ prologue }) => {
+      const reads = Array.from({ length: prologue.length + 1 }, (_, end) => prologue.slice(0, end));
+      expect(reads.filter((read) => shellOutputBeyondAttach(read) !== '')).toEqual([]);
+      expect(shellOutputBeyondAttach(`${prologue}${BOOTED_PROMPT}`)).toBe(BOOTED_PROMPT);
+    },
+  );
+
+  test.each(BUNDLED_CI_CAPTURE_LAUNCHES)(
+    'a launch captured behind the bundled ConPTY drops only the prologue, and keeps everything from the title the shell set on launch, when %s',
+    (_launch, capture, fromShellTitle) => {
+      const kept = shellOutputBeyondAttach(capture);
+      const consumed = capture.slice(0, capture.length - kept.length);
+      expect(consumed).toBe(BUNDLED_ATTACH_PROLOGUE);
+      expect(kept).toBe(fromShellTitle);
+    },
+  );
+
+  test.each(LEADING_TITLES_BY_HOST)(
+    'a title right behind the attach bytes is shell output only when the host paints no title itself: %s',
+    (_host, stream, shellOutput) => {
+      expect(shellOutputBeyondAttach(stream)).toBe(shellOutput);
+    },
+  );
+
+  test('the bundled ConPTY bytes these tests replay were recorded with the node-pty version the desktop package pins and loads', () => {
+    const desktopPackage: { optionalDependencies?: Record<string, string> } = JSON.parse(
+      readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+    );
+    const loadedNodePtyRoot = dirname(dirname(createRequire(import.meta.url).resolve('node-pty')));
+    const loadedNodePty: { version?: string } = JSON.parse(
+      readFileSync(join(loadedNodePtyRoot, 'package.json'), 'utf8'),
+    );
+    const recapture = `BUNDLED_CONPTY_ATTACH_SEQUENCES in the readiness helper and the bundled captures in this file were recorded from node-pty ${BUNDLED_CONPTY_RECORDED_WITH_NODE_PTY} with its bundled conpty 1.25.260303002. A passing Windows real-PTY run does not print the bytes the classifier strips: compare each INPUT_READY firstOutput head on this change's Windows run with a run before it, check any new leading sequence against the OpenConsole source of the new conpty build, re-record the captures from a Windows run that prints the raw stream, then set BUNDLED_CONPTY_RECORDED_WITH_NODE_PTY to the new version`;
+    expect(desktopPackage.optionalDependencies?.['node-pty'], recapture).toBe(
+      BUNDLED_CONPTY_RECORDED_WITH_NODE_PTY,
+    );
+    expect(loadedNodePty.version, recapture).toBe(BUNDLED_CONPTY_RECORDED_WITH_NODE_PTY);
+  });
+});
+
+const LIVENESS_STALL_MS = 400;
+const LIVENESS_POLL_MS = LIVENESS_STALL_MS / 20;
+const LIVENESS_GRANT_MS = LIVENESS_STALL_MS * 4;
+const SLOW_SHELL_BOOT_MS = LIVENESS_STALL_MS * 2;
+const LATER_ATTACH_READ_MS = LIVENESS_STALL_MS / 2;
+const LIVENESS_WAIT = {
+  budgetMs: LIVENESS_GRANT_MS,
+  roundTripStallMs: LIVENESS_STALL_MS,
+  intervalMs: LIVENESS_POLL_MS,
+} as const;
+const RECORDED_ATTACH_ARRIVALS = [
+  { host: 'the inbox ConPTY', reads: [ATTACH_PROLOGUE] },
+  { host: 'the bundled ConPTY', reads: [BUNDLED_ATTACH_PROLOGUE] },
+  {
+    host: 'the bundled ConPTY across two reads',
+    reads: [BUNDLED_WINDOW_SHOWN, BUNDLED_DA1_QUERY_AND_INPUT_MODES],
+  },
+] as const;
+
+function arriveAttachReads(stream: FakeStream, reads: readonly string[]): () => void {
+  const [first = '', ...later] = reads;
+  stream.emit(first);
+  return scheduleEmissions(
+    stream,
+    later.map((chunk, index) => ({ atMs: LATER_ATTACH_READ_MS * (index + 1), chunk })),
+  );
+}
+
+function driveShellBootingAt(
+  stream: FakeStream,
+  bootAtMs: number,
+): {
+  sends: Array<{ data: string; atMs: number }>;
+  send: (data: string) => void;
+  dispose: () => void;
+} {
+  const startedAt = performance.now();
+  const sends: Array<{ data: string; atMs: number }> = [];
+  const typeahead: string[] = [];
+  let booted = false;
+  const evaluate = (data: string): void => {
+    const typed = data.replace(/\r$/u, '');
+    const output = evaluateFakePowerShellCommand(typed);
+    if (output !== null) stream.emit(`${typed}\r\n${output}\r\n`);
+  };
+  const boot = setTimeout(() => {
+    booted = true;
+    stream.emit(BOOTED_PROMPT);
+    for (const data of typeahead.splice(0)) evaluate(data);
+  }, bootAtMs);
+  return {
+    sends,
+    send: (data) => {
+      sends.push({ data, atMs: performance.now() - startedAt });
+      if (booted) evaluate(data);
+      else typeahead.push(data);
+    },
+    dispose: () => clearTimeout(boot),
+  };
+}
+
+describe('a shell behind the bundled ConPTY is held to its startup grant, as one behind the inbox ConPTY is', () => {
+  test.each(RECORDED_ATTACH_ARRIVALS)(
+    'a shell that never writes behind $host is refused at its grant as never having produced output, with the probe unwritten',
+    async ({ reads }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      const stream = createFakeStream();
+      const stopReads = arriveAttachReads(stream, reads);
+      const shell = driveEvaluatingShell(stream, { evaluates: false });
+      const { verdict, settled } = watchEvaluatedInput(stream, shell.send, LIVENESS_WAIT);
+      try {
+        await vi.advanceTimersByTimeAsync(LIVENESS_GRANT_MS + LIVENESS_POLL_MS);
+        await settled;
+        expect(verdict.message).toBe(
+          `shell never produced output before input ready within ${LIVENESS_GRANT_MS}ms (received ${JSON.stringify(reads.join(''))})`,
+        );
+        expect(verdict.atMs).toBeGreaterThanOrEqual(LIVENESS_GRANT_MS);
+        expect(shell.sent).toEqual([]);
+      } finally {
+        stopReads();
+        shell.dispose();
+      }
+    },
+  );
+
+  test.each(RECORDED_ATTACH_ARRIVALS)(
+    'a shell that first writes after the round-trip stall window but inside its grant is admitted behind $host, and the probe waits for it',
+    async ({ reads }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      const stream = createFakeStream();
+      const stopReads = arriveAttachReads(stream, reads);
+      const shell = driveShellBootingAt(stream, SLOW_SHELL_BOOT_MS);
+      const { verdict, settled } = watchEvaluatedInput(stream, shell.send, LIVENESS_WAIT);
+      try {
+        await vi.advanceTimersByTimeAsync(LIVENESS_GRANT_MS + LIVENESS_POLL_MS);
+        await settled;
+        expect(verdict.message).toBe('');
+        expect(verdict.settled).toBe('ready');
+        expect(verdict.timing?.firstOutput).toBe(JSON.stringify(BOOTED_PROMPT));
+        expect(verdict.timing?.firstOutputMs).toBeGreaterThanOrEqual(SLOW_SHELL_BOOT_MS);
+        expect(shell.sends.map((sent) => sent.data)).toEqual([INPUT_READY_PROBE.input]);
+        expect(shell.sends[0]?.atMs).toBeGreaterThanOrEqual(SLOW_SHELL_BOOT_MS);
+      } finally {
+        stopReads();
+        shell.dispose();
+      }
+    },
+  );
 });
 
 const FIRST_OUTPUT_AT_MS = READINESS_CEILING_MS / 40;
@@ -1287,6 +1477,7 @@ function evenCadence(
 function watchContainedWait(
   stream: FakeStream,
   options: ContainedWaitOptions,
+  reached: () => boolean = () => false,
 ): { verdict: ContainedWaitVerdict; settled: Promise<void> } {
   const startedAt = performance.now();
   const verdict: ContainedWaitVerdict = {
@@ -1299,7 +1490,7 @@ function watchContainedWait(
     verdict.atMs = performance.now() - startedAt;
     verdict.buffer = stream.read();
   };
-  const settled = waitForCondition(stream, () => false, ENCODED_COMMAND_LABEL, options).then(
+  const settled = waitForCondition(stream, reached, ENCODED_COMMAND_LABEL, options).then(
     () => {
       verdict.settled = 'reached';
       record();
@@ -1385,6 +1576,111 @@ describe('a console host speaking before the shell never renews a wait, and ever
       stopHostNoise();
       await settled;
     }
+  });
+});
+
+const LAUNCH_OUTPUT = 'd603e31a-bc79-47cd-b36f-7967714a865f\r\n';
+const TITLE_INSIDE_THE_WINDOW_AT_MS = CONTAINED_WAIT_WINDOW_MS / 2;
+const OUTPUT_PAST_THE_WINDOW_FROM_START_AT_MS =
+  CONTAINED_WAIT_WINDOW_MS + CONTAINED_WAIT_WINDOW_MS / 4;
+
+async function waitForLaunchOutputBehind(
+  prologue: string,
+  titleWrite: string,
+): Promise<ContainedWaitVerdict> {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  const stream = createFakeStream();
+  stream.emit(prologue);
+  const stopWriting = scheduleEmissions(stream, [
+    { atMs: TITLE_INSIDE_THE_WINDOW_AT_MS, chunk: titleWrite },
+    { atMs: OUTPUT_PAST_THE_WINDOW_FROM_START_AT_MS, chunk: LAUNCH_OUTPUT },
+  ]);
+  const { verdict, settled } = watchContainedWait(
+    stream,
+    {
+      stallMs: CONTAINED_WAIT_WINDOW_MS,
+      intervalMs: ADVANCEMENT_POLL_MS,
+      backstopAt: performance.now() + CONTAINED_WAIT_CONTAINMENT_MS,
+    },
+    () => stream.read().includes(LAUNCH_OUTPUT),
+  );
+  try {
+    await vi.advanceTimersByTimeAsync(CONTAINED_WAIT_CONTAINMENT_MS + ADVANCEMENT_POLL_MS);
+    return verdict;
+  } finally {
+    stopWriting();
+    await settled;
+  }
+}
+
+describe("a plain wait counts progress from the shell's own first byte, whichever ConPTY spoke before it", () => {
+  test.each(RECORDED_ATTACH_PROLOGUES)(
+    'a wait that sees only what $host writes on attach says it saw no shell output',
+    async ({ prologue }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      const stream = createFakeStream();
+      stream.emit(prologue);
+      const { verdict, settled } = watchContainedWait(stream, {
+        stallMs: CONTAINED_WAIT_WINDOW_MS,
+        intervalMs: ADVANCEMENT_POLL_MS,
+        backstopAt: performance.now() + CONTAINED_WAIT_CONTAINMENT_MS,
+      });
+      await vi.advanceTimersByTimeAsync(CONTAINED_WAIT_CONTAINMENT_MS + ADVANCEMENT_POLL_MS);
+      await settled;
+      expect(verdict.message).toBe(
+        `timeout waiting for: ${ENCODED_COMMAND_LABEL} after ${CONTAINED_WAIT_WINDOW_MS}ms without any shell output, the only progress signal this wait watches (received ${JSON.stringify(prologue)})`,
+      );
+    },
+  );
+
+  test.each(RECORDED_ATTACH_PROLOGUES)(
+    'a shell that keeps writing behind what $host wrote on attach is counted from its own first byte',
+    async ({ prologue }) => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+      const stream = createFakeStream();
+      stream.emit(`${prologue}${SHELL_WRITTEN_STEP}`);
+      const stopShell = scheduleEmissions(
+        stream,
+        evenCadence(SHELL_WRITTEN_STEP, CONTAINED_WAIT_STEP_MS, CONTAINED_WAIT_CONTAINMENT_MS),
+      );
+      const { verdict, settled } = watchContainedWait(stream, {
+        stallMs: CONTAINED_WAIT_WINDOW_MS,
+        intervalMs: ADVANCEMENT_POLL_MS,
+        backstopAt: performance.now() + CONTAINED_WAIT_CONTAINMENT_MS,
+      });
+      try {
+        await vi.advanceTimersByTimeAsync(CONTAINED_WAIT_CONTAINMENT_MS + ADVANCEMENT_POLL_MS);
+        expect(verdict.settled).toBe('refused');
+        expect(verdict.message).toContain(CONTAINMENT_VERDICT);
+        expect(verdict.message).toContain(
+          `${verdict.buffer.length - prologue.length} characters past the shell's first output`,
+        );
+      } finally {
+        stopShell();
+        await settled;
+      }
+    },
+  );
+
+  test('a title the shell sets behind the bundled ConPTY restarts the stall window, so launch output past the window from the start still lands', async () => {
+    const verdict = await waitForLaunchOutputBehind(
+      BUNDLED_ATTACH_PROLOGUE,
+      WINDOWS_POWERSHELL_TITLE_ST,
+    );
+    expect({ settled: verdict.settled, message: verdict.message }).toEqual({
+      settled: 'reached',
+      message: '',
+    });
+    expect(verdict.atMs).toBeGreaterThanOrEqual(OUTPUT_PAST_THE_WINDOW_FROM_START_AT_MS);
+  });
+
+  test('the title the inbox ConPTY paints in its first-paint frame restarts nothing, so the wait still refuses at the window with no shell output', async () => {
+    const verdict = await waitForLaunchOutputBehind(ATTACH_PROLOGUE, CONPTY_INIT_FRAME_ST_TITLE);
+    expect(verdict.message).toBe(
+      `timeout waiting for: ${ENCODED_COMMAND_LABEL} after ${CONTAINED_WAIT_WINDOW_MS}ms without any shell output, the only progress signal this wait watches (received ${JSON.stringify(`${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME_ST_TITLE}`)})`,
+    );
+    expect(verdict.atMs).toBeGreaterThanOrEqual(CONTAINED_WAIT_WINDOW_MS);
+    expect(verdict.atMs).toBeLessThan(OUTPUT_PAST_THE_WINDOW_FROM_START_AT_MS);
   });
 });
 

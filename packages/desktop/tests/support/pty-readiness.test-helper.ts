@@ -97,18 +97,13 @@ const DEFAULT_QUIET_SAMPLES = 20;
 const DEFAULT_READY_STALL_MS = 12_000;
 const RECEIVED_EXCERPT_CHARS = 400;
 const DEFAULT_INPUT_READY_STALL_MS = 16_000;
-/*
- * UPSTREAM(node-pty@1.2.0-beta.15): the console host, not the shell, writes these on attach, and
- * the two halves rest on different evidence. VtIo::StartIfNeeded's device-attributes and mode trio
- * is a contiguous literal in the conpty 1.25.260303002 OpenConsole.exe this package bundles, found
- * by byte search on both win10-x64 and win10-arm64. XtermEngine's first-paint frame of _HideCursor,
- * _ClearScreen, _SetGraphicsDefault, _CursorHome, _ChangeTitle (the child's own path, BEL- or
- * ST-terminated) and _ShowCursor is composed at runtime, so it is zero literals in that same
- * binary; it rests on the renderer source and on what Windows CI captures on attach. Absence of a
- * literal there is not evidence the host does not emit it.
- */
-const CONPTY_ATTACH_SEQUENCES = [
+const BUNDLED_CONPTY_ATTACH_SEQUENCES = [
+  '\u001b[1t',
   '\u001b[c',
+  '\u001b[?1004h',
+  '\u001b[?9001h',
+] as const;
+const INBOX_CONPTY_ATTACH_SEQUENCES = [
   '\u001b[?9001h',
   '\u001b[?1004h',
   '\u001b[?25l',
@@ -117,6 +112,18 @@ const CONPTY_ATTACH_SEQUENCES = [
   '\u001b[m',
   '\u001b[H',
 ] as const;
+const CONPTY_ATTACH_SEQUENCES = [
+  ...BUNDLED_CONPTY_ATTACH_SEQUENCES,
+  ...INBOX_CONPTY_ATTACH_SEQUENCES,
+] as const;
+const INBOX_CONPTY_ATTACH_SEQUENCE_SET: ReadonlySet<string> = new Set(
+  INBOX_CONPTY_ATTACH_SEQUENCES,
+);
+const ONLY_THE_BUNDLED_CONPTY_WRITES: ReadonlySet<string> = new Set(
+  BUNDLED_CONPTY_ATTACH_SEQUENCES.filter(
+    (sequence) => !INBOX_CONPTY_ATTACH_SEQUENCE_SET.has(sequence),
+  ),
+);
 const CONPTY_TITLE_INTRODUCER = '\u001b]0;';
 const CONPTY_TITLE_TERMINATORS = ['\u0007', '\u001b\\'] as const;
 
@@ -372,20 +379,22 @@ function conptyTitleMatch(text: string): AttachMatch {
   return { kind: 'cut-mid-attach' };
 }
 
-function attachMatch(text: string): AttachMatch {
+function attachMatch(text: string, host: { paintsTitles: boolean }): AttachMatch {
   const sequence = CONPTY_ATTACH_SEQUENCES.find((candidate) => text.startsWith(candidate));
   if (sequence !== undefined) return { kind: 'attach', length: sequence.length };
   if (CONPTY_ATTACH_SEQUENCES.some((candidate) => candidate.startsWith(text)) && text.length > 0) {
     return { kind: 'cut-mid-attach' };
   }
-  return conptyTitleMatch(text);
+  return host.paintsTitles ? conptyTitleMatch(text) : { kind: 'shell' };
 }
 
 export function shellOutputBeyondAttach(text: string): string {
   let rest = text;
+  let bundledConptyAttached = false;
   for (;;) {
-    const match = attachMatch(rest);
+    const match = attachMatch(rest, { paintsTitles: !bundledConptyAttached });
     if (match.kind === 'attach') {
+      bundledConptyAttached ||= ONLY_THE_BUNDLED_CONPTY_WRITES.has(rest.slice(0, match.length));
       rest = rest.slice(match.length);
       continue;
     }
