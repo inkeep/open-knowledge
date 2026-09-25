@@ -2828,9 +2828,9 @@ describe('ThreadView attachment disclosure', () => {
 
     expect(
       screen.getByRole('menuitem', {
-        name: 'Attach files · references only (no embedded contents)',
+        name: 'Attach files · project files as references',
       }).textContent,
-    ).toBe('Attach files · references only (no embedded contents)');
+    ).toBe('Attach files · project files as references');
   });
 
   test('an embedding-capable agent keeps the file option concise', async () => {
@@ -3927,8 +3927,12 @@ describe('the transcript renders both sides as markdown', () => {
   });
 });
 
-describe('ThreadView drop-notice for unattachable files', () => {
+describe('ThreadView drop notice and dropped files', () => {
   const makeFile = (name: string, type: string) => new File(['content'], name, { type });
+  const halfBudgetPng = (name: string) =>
+    new File([new Uint8Array(Math.ceil(MAX_TOTAL_ATTACHMENT_BYTES * 0.6))], name, {
+      type: 'image/png',
+    });
 
   const fireDrop = (files: readonly File[]) => {
     const dt = {
@@ -3946,39 +3950,65 @@ describe('ThreadView drop-notice for unattachable files', () => {
     });
   };
 
-  test('a web-host drop of non-image files renders the unknown-path notice', async () => {
+  test('a web-host drop of non-image files attaches them instead of skipping them', async () => {
     model = makeModel({ items: [], turnActive: false });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
     fireDrop([makeFile('foo.ts', 'text/typescript'), makeFile('bar.md', 'text/markdown')]);
-    const notice = await screen.findByTestId('agent-thread-drop-notice');
-    expect(notice.textContent).toContain("this browser can't attach files by path");
-    expect(notice.textContent).toContain('2 files');
+    await waitFor(() =>
+      expect(screen.getAllByTestId('agent-thread-pending-image-remove')).toHaveLength(2),
+    );
+    const notice = screen.getByTestId('agent-thread-drop-notice');
+    expect(notice.textContent).toBe('');
     expect(notice.getAttribute('role')).toBe('status');
     expect(notice.getAttribute('aria-live')).toBe('polite');
   });
 
-  test('the notice clears after the auto-dismiss window', async () => {
-    vi.useFakeTimers();
+  test('binary files dropped together are refused in one notice that names them, with no toast', async () => {
     model = makeModel({ items: [], turnActive: false });
     render(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    fireDrop([makeFile('foo.ts', 'text/typescript')]);
-    await act(async () => {
-      await Promise.resolve();
-    });
-    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toContain('Skipped');
-    act(() => {
-      vi.advanceTimersByTime(4100);
-    });
-    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toBe('');
+    fireDrop([
+      new File([new Uint8Array([0xff, 0xfe, 0xfd])], 'receipt.pdf', { type: 'application/pdf' }),
+      new File([new Uint8Array([0xc3, 0x28])], 'archive.zip', { type: 'application/zip' }),
+    ]);
+    const notice = screen.getByTestId('agent-thread-drop-notice');
+    await vi.waitFor(() =>
+      expect(notice.textContent).toBe(
+        "receipt.pdf and archive.zip aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.",
+      ),
+    );
+    expect(toastError).not.toHaveBeenCalled();
+    expect(screen.queryAllByTestId('agent-thread-pending-image-remove')).toHaveLength(0);
+  });
+
+  test('the notice clears after the auto-dismiss window', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      model = makeModel({ items: [], turnActive: false });
+      render(
+        <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+      );
+      fireDrop([halfBudgetPng('one.png'), halfBudgetPng('two.png')]);
+      await vi.waitFor(() =>
+        expect(screen.getByTestId('agent-thread-drop-notice').textContent).toContain('Skipped'),
+      );
+      act(() => {
+        vi.advanceTimersByTime(4100);
+      });
+      expect(screen.getByTestId('agent-thread-drop-notice').textContent).toBe('');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('an identical repeat drop still re-fires the notice — state carries a fresh identity so React re-runs the auto-clear effect', async () => {
     model = makeModel({ items: [], turnActive: false });
-    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
-    fireDrop([makeFile('foo.ts', 'text/typescript')]);
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+    fireDrop([halfBudgetPng('one.png'), halfBudgetPng('two.png')]);
     const notice = await screen.findByTestId('agent-thread-drop-notice');
     await vi.waitFor(() => expect(notice.textContent).toContain('Skipped'));
-    fireDrop([makeFile('foo.ts', 'text/typescript')]);
+    fireDrop([halfBudgetPng('two.png')]);
     await vi.waitFor(() => expect(notice.textContent).toContain('Skipped'));
   });
 });
@@ -5755,7 +5785,7 @@ describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
     expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1);
   });
 
-  test('a mixed-cause drop reports both the skip and the budget refusal in one notice', async () => {
+  test('a drop past the budget attaches what fits, text files included, and names only the budget refusal', async () => {
     model = makeModel({ items: [], turnActive: false });
     render(
       <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
@@ -5769,7 +5799,8 @@ describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
 
     const notice = await screen.findByTestId('agent-thread-drop-notice');
     await waitFor(() => expect(notice.textContent).toContain("can't total more than"));
-    expect(notice.textContent).toContain("can't attach files by path");
+    expect(notice.textContent).toContain('Skipped 1 file');
+    expect(screen.getAllByTestId('agent-thread-pending-image-remove')).toHaveLength(2);
   });
 
   test('Enter during an in-flight read is held — the attachment survives to ride the send once it settles', async () => {

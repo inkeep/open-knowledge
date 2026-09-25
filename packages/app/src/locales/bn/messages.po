@@ -15,8 +15,8 @@ msgstr ""
 
 #: src/components/acp/AttachFilesButton.tsx
 #: src/components/ComposerAddMenu.tsx
-msgid " · references only (no embedded contents)"
-msgstr " · শুধু রেফারেন্স (কোনো এম্বেড করা বিষয়বস্তু নেই)"
+msgid " · project files as references"
+msgstr " · প্রজেক্টের ফাইল রেফারেন্স হিসেবে"
 
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
@@ -688,6 +688,22 @@ msgstr "{conflictCount, plural, one {# দ্বন্দ্ব} other {# দ্
 msgid "{conflictCount, plural, one {# file conflicted} other {# files conflicted}}"
 msgstr "{conflictCount, plural, one {# ফাইলে দ্বন্দ্ব} other {# ফাইলে দ্বন্দ্ব}}"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, one {{files} {capKb} KB-এর চেয়ে বড়, তাই এটি বার্তার সঙ্গে পাঠানো যায় না। এটি আপনার প্রজেক্টে যোগ করুন, তারপর @ দিয়ে এটির উল্লেখ করুন।} other {{files} প্রতিটি {capKb} KB-এর চেয়ে বড়, তাই এগুলো বার্তার সঙ্গে পাঠানো যায় না। এগুলো আপনার প্রজেক্টে যোগ করুন, তারপর @ দিয়ে এগুলোর উল্লেখ করুন।}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, one {{files} {capKb} KB-এর চেয়ে বড়, তাই এটি বার্তার সঙ্গে পাঠানো যায় না। প্রজেক্টে থাকলে @ দিয়ে এটির উল্লেখ করুন।} other {{files} প্রতিটি {capKb} KB-এর চেয়ে বড়, তাই এগুলো বার্তার সঙ্গে পাঠানো যায় না। প্রজেক্টে থাকলে @ দিয়ে এগুলোর উল্লেখ করুন।}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} aren't text files, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, one {{files} টেক্সট ফাইল নয়, তাই এটি বার্তার সঙ্গে পাঠানো যায় না। এটি আপনার প্রজেক্টে যোগ করুন, তারপর @ দিয়ে এটির উল্লেখ করুন।} other {{files} টেক্সট ফাইল নয়, তাই এগুলো বার্তার সঙ্গে পাঠানো যায় না। এগুলো আপনার প্রজেক্টে যোগ করুন, তারপর @ দিয়ে এগুলোর উল্লেখ করুন।}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, one {{files} টেক্সট ফাইল নয়, তাই এটি বার্তার সঙ্গে পাঠানো যায় না। প্রজেক্টে থাকলে @ দিয়ে এটির উল্লেখ করুন।} other {{files} টেক্সট ফাইল নয়, তাই এগুলো বার্তার সঙ্গে পাঠানো যায় না। প্রজেক্টে থাকলে @ দিয়ে এগুলোর উল্লেখ করুন।}}"
+
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# মন্তব্য} other {# মন্তব্য}}"
@@ -989,14 +1005,6 @@ msgstr "{minutes} মিনিট আগে"
 msgid "{name} CLI"
 msgstr "{name} CLI"
 
-#: src/lib/acp/image-attachment.ts
-msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
-msgstr "{name}-এর কোনো সমাধানযোগ্য পাথ নেই — এজেন্ট শুধু ওয়ার্কস্পেসের ভেতরের ফাইল পড়তে পারে।"
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} is outside the workspace. Move it into your project first."
-msgstr "{name} ওয়ার্কস্পেসের বাইরে আছে। আগে এটি আপনার প্রকল্পে সরান।"
-
 #: src/components/SkillsSidebarSection.tsx
 msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
 msgstr "{name} সরানো হয়েছে, কিন্তু এর পিন সরেনি। সেটিংস লোড হওয়া শেষ হলে আবার পিন করুন।"
@@ -1013,10 +1021,9 @@ msgstr "{omitted, plural, one {আরও # প্রপার্টি পরি
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {ওয়ার্কট্রি} other {ওয়ার্কট্রি}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
-msgstr "{outsideWorkspaceCount, plural, one {ওয়ার্কস্পেসের বাইরের # ফাইল বাদ দেওয়া হয়েছে।} other {ওয়ার্কস্পেসের বাইরের # ফাইল বাদ দেওয়া হয়েছে।}}"
+#: src/lib/acp/image-attachment.ts
+msgid "{others, plural, one {# other} other {# others}}"
+msgstr "{others, plural, one {আরও #টি} other {আরও #টি}}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
@@ -1124,11 +1131,6 @@ msgstr "{sizeText} · গোপন তথ্য সরানো হয়েছ�
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {স্কিল} other {স্কিল}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
-msgstr "{skipTotal, plural, one {# ফাইল বাদ দেওয়া হয়েছে যা সংযুক্ত করা যায়নি।} other {# ফাইল বাদ দেওয়া হয়েছে যা সংযুক্ত করা যায়নি।}}"
-
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -1182,11 +1184,6 @@ msgstr "{total, plural, one {# সমস্যা} other {# সমস্যা}}
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, one {একটি ফোল্ডারের প্রথম আইটেম দেখানো হচ্ছে — সেই ফোল্ডারের বাকিটা লুকানো।} other {একটি ফোল্ডারের প্রথম {formattedCount}টি আইটেম দেখানো হচ্ছে — সেই ফোল্ডারের বাকিটা লুকানো।}}"
-
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
-msgstr "{unknownPathCount, plural, one {# ফাইল বাদ দেওয়া হয়েছে — এই ব্রাউজার পাথ দ্বারা ফাইল সংযুক্ত করতে পারে না।} other {# ফাইল বাদ দেওয়া হয়েছে — এই ব্রাউজার পাথ দ্বারা ফাইল সংযুক্ত করতে পারে না।}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

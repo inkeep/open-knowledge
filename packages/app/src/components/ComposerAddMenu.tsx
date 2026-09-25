@@ -130,7 +130,7 @@ export function ComposerFilesMenuItem({
       <Paperclip className="size-3.5 text-muted-foreground" aria-hidden="true" />
       <span>
         {t`Attach files`}
-        {attachmentMode === 'reference' ? t` · references only (no embedded contents)` : null}
+        {attachmentMode === 'reference' ? t` · project files as references` : null}
       </span>
     </DropdownMenuItem>
   );

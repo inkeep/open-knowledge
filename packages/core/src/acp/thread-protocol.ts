@@ -103,6 +103,22 @@ export interface ThreadAgentInfo {
   version?: string;
 }
 
+export function isTextishMime(mimeType: string | null): boolean {
+  if (mimeType === null) return false;
+  if (mimeType.startsWith('text/')) return true;
+  return (
+    mimeType === 'application/json' ||
+    mimeType === 'application/xml' ||
+    mimeType === 'application/x-yaml' ||
+    mimeType === 'application/yaml' ||
+    mimeType === 'application/javascript' ||
+    mimeType === 'application/typescript' ||
+    mimeType === 'application/toml' ||
+    mimeType === 'application/x-sh' ||
+    mimeType === 'application/sql'
+  );
+}
+
 export type AttachmentPart =
   | {
       readonly kind: 'file';

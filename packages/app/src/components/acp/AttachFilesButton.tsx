@@ -34,7 +34,7 @@ export function AttachFilesButton({
       </TooltipTrigger>
       <TooltipContent side="top">
         {t`Attach a file`}
-        {referencesOnly ? t` · references only (no embedded contents)` : null}
+        {referencesOnly ? t` · project files as references` : null}
       </TooltipContent>
     </Tooltip>
   );

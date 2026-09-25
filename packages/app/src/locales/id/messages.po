@@ -15,8 +15,8 @@ msgstr ""
 
 #: src/components/acp/AttachFilesButton.tsx
 #: src/components/ComposerAddMenu.tsx
-msgid " · references only (no embedded contents)"
-msgstr " · hanya referensi (tanpa konten tertanam)"
+msgid " · project files as references"
+msgstr " · file proyek sebagai referensi"
 
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
@@ -688,6 +688,22 @@ msgstr "{conflictCount, plural, other {# konflik}}"
 msgid "{conflictCount, plural, one {# file conflicted} other {# files conflicted}}"
 msgstr "{conflictCount, plural, other {# berkas berkonflik}}"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, other {{files} lebih besar dari {capKb} KB, jadi tidak bisa dikirim bersama pesan. Tambahkan ke proyek, lalu sebut dengan @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, other {{files} lebih besar dari {capKb} KB, jadi tidak bisa dikirim bersama pesan. Sebut dengan @ setelah ada di proyek.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} aren't text files, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, other {{files} bukan file teks, jadi tidak bisa dikirim bersama pesan. Tambahkan ke proyek, lalu sebut dengan @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, other {{files} bukan file teks, jadi tidak bisa dikirim bersama pesan. Sebut dengan @ setelah ada di proyek.}}"
+
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, other {# komentar}}"
@@ -989,14 +1005,6 @@ msgstr "{minutes} mnt lalu"
 msgid "{name} CLI"
 msgstr "CLI {name}"
 
-#: src/lib/acp/image-attachment.ts
-msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
-msgstr "{name} tidak memiliki jalur yang dapat diuraikan — agen hanya bisa membaca berkas di dalam ruang kerja."
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} is outside the workspace. Move it into your project first."
-msgstr "{name} berada di luar ruang kerja. Pindahkan dulu ke proyek Anda."
-
 #: src/components/SkillsSidebarSection.tsx
 msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
 msgstr "{name} telah dipindahkan, tetapi sematannya tidak ikut berpindah. Sematkan lagi setelah pengaturan selesai dimuat."
@@ -1013,10 +1021,9 @@ msgstr "{omitted, plural, other {# perubahan properti lainnya tidak ditampilkan}
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} other {worktree}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
-msgstr "{outsideWorkspaceCount, plural, other {# file di luar ruang kerja dilewati.}}"
+#: src/lib/acp/image-attachment.ts
+msgid "{others, plural, one {# other} other {# others}}"
+msgstr "{others, plural, other {# lainnya}}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
@@ -1124,11 +1131,6 @@ msgstr "{sizeText} · rahasia disunting · {fileCount, plural, other {# berkas}}
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, other {keterampilan}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
-msgstr "{skipTotal, plural, other {# file dilewati karena tidak dapat dilampirkan.}}"
-
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -1182,11 +1184,6 @@ msgstr "{total, plural, other {# masalah}}"
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, other {Menampilkan {formattedCount} item pertama dalam satu folder — sisa folder itu disembunyikan.}}"
-
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
-msgstr "{unknownPathCount, plural, other {# file dilewati — browser ini tidak dapat melampirkan file berdasarkan path.}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

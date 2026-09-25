@@ -3,10 +3,13 @@ import { plural } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
 import { useRef, useState } from 'react';
 import {
+  type AttachmentRefusal,
   attachmentBudgetKb,
+  describeAttachmentRefusals,
   describeImageError,
   embeddedAttachmentBytes,
   fileToAttachment,
+  isAttachmentRefusal,
   MAX_TOTAL_ATTACHMENT_BYTES,
   totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
@@ -58,8 +61,7 @@ export function useComposerAttachments(
       mimeType: file.type || '',
     }));
     setPendingUploads((previous) => [...previous, ...placeholders]);
-    let outsideWorkspaceCount = 0;
-    let unknownPathCount = 0;
+    const refusals: AttachmentRefusal[] = [];
     let tooLargeTotalCount = 0;
     for (let i = 0; i < files.length; i += 1) {
       const file = files[i];
@@ -73,8 +75,7 @@ export function useComposerAttachments(
         });
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         if (!outcome.ok) {
-          if (outcome.error.kind === 'outside-workspace') outsideWorkspaceCount += 1;
-          else if (outcome.error.kind === 'unknown-path') unknownPathCount += 1;
+          if (isAttachmentRefusal(outcome.error)) refusals.push(outcome.error);
           else report(describeImageError(outcome.error));
           continue;
         }
@@ -94,31 +95,7 @@ export function useComposerAttachments(
         report(t`Couldn't read ${fileName}.`);
       }
     }
-    const skipTotal = outsideWorkspaceCount + unknownPathCount;
-    if (skipTotal > 0) {
-      if (unknownPathCount === 0) {
-        report(
-          t`${plural(outsideWorkspaceCount, {
-            one: 'Skipped # file outside the workspace.',
-            other: 'Skipped # files outside the workspace.',
-          })}`,
-        );
-      } else if (outsideWorkspaceCount === 0) {
-        report(
-          t`${plural(unknownPathCount, {
-            one: "Skipped # file — this browser can't attach files by path.",
-            other: "Skipped # files — this browser can't attach files by path.",
-          })}`,
-        );
-      } else {
-        report(
-          t`${plural(skipTotal, {
-            one: "Skipped # file that couldn't be attached.",
-            other: "Skipped # files that couldn't be attached.",
-          })}`,
-        );
-      }
-    }
+    for (const message of describeAttachmentRefusals(refusals)) report(message);
     if (tooLargeTotalCount > 0) {
       const budgetKb = attachmentBudgetKb();
       report(

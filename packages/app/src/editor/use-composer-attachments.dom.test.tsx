@@ -1,7 +1,11 @@
+import { i18n } from '@lingui/core';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useComposerAttachments } from '@/editor/use-composer-attachments';
 import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
+
+i18n.load('en', {});
+i18n.activate('en');
 
 const PNG_BYTES = [0x89, 0x50, 0x4e, 0x47];
 const PNG_BASE64 = btoa(String.fromCharCode(...PNG_BYTES));
@@ -54,7 +58,7 @@ describe('useComposerAttachments', () => {
     expect(result.current.pendingAttachments).toEqual([]);
   });
 
-  test('a non-image file with no path resolver is reported, not silently dropped', async () => {
+  test('a non-image file with no path resolver travels with the message', async () => {
     const onError = vi.fn();
     const { result } = renderAttachments(onError);
 
@@ -62,25 +66,74 @@ describe('useComposerAttachments', () => {
       await result.current.ingestFiles([new File(['notes'], 'notes.txt', { type: 'text/plain' })]);
     });
 
-    expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0]?.[0]).toContain("can't attach files by path");
-    expect(result.current.pendingAttachments).toEqual([]);
+    await waitFor(() => {
+      expect(result.current.pendingAttachments).toHaveLength(1);
+    });
+    expect(result.current.pendingAttachments[0]).toEqual({
+      kind: 'blob',
+      data: 'notes',
+      textPayload: true,
+      mimeType: 'text/plain',
+      name: 'notes.txt',
+      sizeBytes: 5,
+    });
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  test('a batch of unattachable files is reported once, not once per file', async () => {
+  test('text files without a project path count toward the per-message budget', async () => {
+    const onError = vi.fn();
+    const { result } = renderAttachments(onError);
+    const nearHalf = Math.ceil(MAX_TOTAL_ATTACHMENT_BYTES * 0.6);
+
+    await act(async () => {
+      await result.current.ingestFiles([
+        new File(['a'.repeat(nearHalf)], 'one.log', { type: 'text/plain' }),
+        new File(['b'.repeat(nearHalf)], 'two.log', { type: 'text/plain' }),
+      ]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.pendingAttachments).toHaveLength(1);
+    });
+    expect(result.current.pendingAttachments[0]).toMatchObject({ kind: 'blob', name: 'one.log' });
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[0]).toContain(
+      `${Math.round(MAX_TOTAL_ATTACHMENT_BYTES / 1024)} KB`,
+    );
+  });
+
+  test('a file too large to send is reported by name and never attaches', async () => {
     const onError = vi.fn();
     const { result } = renderAttachments(onError);
 
     await act(async () => {
       await result.current.ingestFiles([
-        new File(['a'], 'a.txt', { type: 'text/plain' }),
-        new File(['b'], 'b.txt', { type: 'text/plain' }),
-        new File(['c'], 'c.txt', { type: 'text/plain' }),
+        new File([new Uint8Array(MAX_TOTAL_ATTACHMENT_BYTES + 1)], 'huge.log', {
+          type: 'text/plain',
+        }),
       ]);
     });
 
     expect(onError).toHaveBeenCalledTimes(1);
-    expect(onError.mock.calls[0]?.[0]).toContain('3');
+    expect(onError.mock.calls[0]?.[0]).toContain('huge.log');
+    expect(result.current.pendingAttachments).toEqual([]);
+  });
+
+  test('binary files with no path are refused together, in one notice that names them', async () => {
+    const onError = vi.fn();
+    const { result } = renderAttachments(onError);
+
+    await act(async () => {
+      await result.current.ingestFiles([
+        new File([new Uint8Array([0xff, 0xfe, 0xfd])], 'receipt.pdf', { type: 'application/pdf' }),
+        new File([new Uint8Array([0xc3, 0x28])], 'archive.zip', { type: 'application/zip' }),
+      ]);
+    });
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]?.[0]).toBe(
+      "receipt.pdf and archive.zip aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.",
+    );
     expect(result.current.pendingAttachments).toEqual([]);
   });
 

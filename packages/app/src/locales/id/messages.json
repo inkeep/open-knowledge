@@ -1828,7 +1828,6 @@
       "OpenKnowledge tidak dapat membaca terminal.shell di .ok/local/config.yml. Shell Windows yang tersedia akan digunakan sebagai gantinya."
     ],
     "K9J00P": ["Kloning gagal — galat koneksi"],
-    "K9ViCA": [["name"], " berada di luar ruang kerja. Pindahkan dulu ke proyek Anda."],
     "KDrbNG": ["OpenKnowledge mencari tautan untuk ", ["subject"]],
     "KDuPiY": ["Mengunggah ", ["fileName"]],
     "KDw4GX": ["Coba lagi"],
@@ -1955,7 +1954,6 @@
     "LXdWeS": ["Judul bagian sedang."],
     "LXfNU-": ["Navigasi dan saran"],
     "LYufDw": ["Gagal mengaktifkan pencarian semantik — ", ["detail"]],
-    "LZe2vX": [" · hanya referensi (tanpa konten tertanam)"],
     "L_mqhg": ["(", ["0", "plural", { "other": ["#", " percobaan"] }], ")"],
     "LaskKp": ["Kirim ke obrolan (", ["0"], ")"],
     "Lbl6KA": ["Tidak bisa memasang dari ", ["0"], ": ", ["1"]],
@@ -2111,6 +2109,20 @@
     "NXNzgx": ["Komponen ini telah berubah. Coba lagi."],
     "NY0p7s": ["Pengaktifan alat Open Knowledge dilewati. Utas ini berjalan tanpa alat itu."],
     "NYUhy5": ["Nama subfolder"],
+    "NYbytK": [
+      [
+        "count",
+        "plural",
+        {
+          "other": [
+            ["files"],
+            " lebih besar dari ",
+            ["capKb"],
+            " KB, jadi tidak bisa dikirim bersama pesan. Sebut dengan @ setelah ada di proyek."
+          ]
+        }
+      ]
+    ],
     "NYn1cR": ["Memuat penyunting"],
     "NYu2Pt": ["Proyek baru…"],
     "N_7kkF": [
@@ -2296,9 +2308,6 @@
     "PZn2LP": ["Simpan sumbernya"],
     "PZt2Ds": ["Kloning berakhir secara tidak terduga."],
     "PZtgO0": ["Membuka worktree"],
-    "P_KNrS": [
-      ["outsideWorkspaceCount", "plural", { "other": ["#", " file di luar ruang kerja dilewati."] }]
-    ],
     "P_bX4O": ["Cara menyiapkan"],
     "PdA9NZ": [["ahead"], " di depan"],
     "PeNdk1": ["Bernalar sebelum bertindak"],
@@ -2468,6 +2477,20 @@
     "RQWuCs": ["Antrekan pesan"],
     "RS98db": ["Ketik '/' untuk melihat perintah"],
     "RSqaSd": ["Akar proyek"],
+    "RVMlXa": [
+      [
+        "count",
+        "plural",
+        {
+          "other": [
+            ["files"],
+            " lebih besar dari ",
+            ["capKb"],
+            " KB, jadi tidak bisa dikirim bersama pesan. Tambahkan ke proyek, lalu sebut dengan @."
+          ]
+        }
+      ]
+    ],
     "RVZJWQ": ["Cari proyek..."],
     "RXEbZy": ["Di aplikasi"],
     "RXYvxn": ["Opsi ini tidak dapat diubah secara otomatis."],
@@ -2561,18 +2584,6 @@
     "SYfHmN": ["Lepas sematan tab"],
     "S_RRZB": ["Hapus berkas"],
     "Sad2tK": ["Mengirim…"],
-    "Sbb90e": [
-      [
-        "unknownPathCount",
-        "plural",
-        {
-          "other": [
-            "#",
-            " file dilewati — browser ini tidak dapat melampirkan file berdasarkan path."
-          ]
-        }
-      ]
-    ],
     "Sc1bKE": [
       "Data kolaborasi lokal untuk \"",
       ["docName"],
@@ -3417,6 +3428,18 @@
     ],
     "bpytj4": ["Pindahkan ke ", ["0"]],
     "brCtGB": ["Riwayat tidak tersedia"],
+    "bsg04M": [
+      [
+        "count",
+        "plural",
+        {
+          "other": [
+            ["files"],
+            " bukan file teks, jadi tidak bisa dikirim bersama pesan. Sebut dengan @ setelah ada di proyek."
+          ]
+        }
+      ]
+    ],
     "btNgJP": ["Dalam rencana di atas, tolong "],
     "buNXgr": ["Beralih antara penyunting visual dan sumber, tanpa kehilangan posisi Anda."],
     "bultyE": [
@@ -3631,6 +3654,7 @@
     ],
     "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": ["Lebih dari ", ["0"], " permintaan diblokir oleh kebijakan keamanan pratinjau"],
+    "dkE4kf": [" · file proyek sebagai referensi"],
     "dprWmL": ["Jangkar di halaman ini"],
     "dr1vFs": ["Ganti semua kecocokan"],
     "drzzZw": ["Tab pratinjau"],
@@ -3730,6 +3754,18 @@
     "ewlFNL": ["Perbaikan otomatis MCP gagal untuk ", ["failures"]],
     "ezUmoU": ["Nilai elemen yang diizinkan (kosong = apa saja)"],
     "f-k37b": ["Pasang keterampilan ini"],
+    "f0wEYt": [
+      [
+        "count",
+        "plural",
+        {
+          "other": [
+            ["files"],
+            " bukan file teks, jadi tidak bisa dikirim bersama pesan. Tambahkan ke proyek, lalu sebut dengan @."
+          ]
+        }
+      ]
+    ],
     "f1-q9m": ["menyimpan keterampilan"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Pindahkan blok"],
@@ -4475,9 +4511,6 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Menulis entri ke"],
     "m6YGpY": ["Isi panel aktif untuk tab yang dipilih muncul di sini."],
-    "m8gL0G": [
-      ["skipTotal", "plural", { "other": ["#", " file dilewati karena tidak dapat dilampirkan."] }]
-    ],
     "mAzs2H": ["Nonaktifkan ", ["file"]],
     "mBK8zm": [
       "/",
@@ -4845,10 +4878,6 @@
     "q63KUv": ["Tambahkan MCP & keterampilan"],
     "q7F5am": ["judul"],
     "q8aCbb": ["Dua versi \"", ["0"], "\" — sumber melawan ", ["editor"]],
-    "q8tKSU": [
-      ["name"],
-      " tidak memiliki jalur yang dapat diuraikan — agen hanya bisa membaca berkas di dalam ruang kerja."
-    ],
     "qAQVSD": ["Respons judul halaman bukan JSON"],
     "qAhFeg": [["userName"], " · ", ["tabCount", "plural", { "other": ["#", " tab"] }]],
     "qApCYm": ["Tidak disamarkan. Periksa gambar sebelum membagikannya."],
@@ -5313,6 +5342,7 @@
     "un-K1H": ["Tetap di komputer ini. Tidak di-commit ke git."],
     "un8kBM": ["Membuat halaman: ", ["linkTitle"], "."],
     "uoJF_D": ["Terlalu sulit disiapkan atau dimulai"],
+    "uqs8Gd": [["others", "plural", { "other": ["#", " lainnya"] }]],
     "ur2XSb": ["Penyunting visual"],
     "uuoHOU": ["Perintah gagal."],
     "uwzRx4": [

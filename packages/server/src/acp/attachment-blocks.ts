@@ -2,23 +2,10 @@ import { readFile, stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import type { ContentBlock, PromptCapabilities } from '@agentclientprotocol/sdk';
-import type { AttachmentPart } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-
-function isTextishMime(mimeType: string | null): boolean {
-  if (mimeType === null) return false;
-  if (mimeType.startsWith('text/')) return true;
-  return (
-    mimeType === 'application/json' ||
-    mimeType === 'application/xml' ||
-    mimeType === 'application/x-yaml' ||
-    mimeType === 'application/yaml' ||
-    mimeType === 'application/javascript' ||
-    mimeType === 'application/typescript' ||
-    mimeType === 'application/toml' ||
-    mimeType === 'application/x-sh' ||
-    mimeType === 'application/sql'
-  );
-}
+import {
+  type AttachmentPart,
+  isTextishMime,
+} from '@inkeep/open-knowledge-core/acp/thread-protocol';
 
 function mimeFromExtension(path: string): string | null {
   const dot = path.lastIndexOf('.');
@@ -99,27 +86,17 @@ export async function partToBlock(
   }
 
   if (part.kind === 'blob') {
+    if (!part.textPayload) {
+      return {
+        dropped: true,
+        reason: `binary files can't be sent with the message (${part.name})`,
+      };
+    }
     if (capabilities?.embeddedContext !== true) {
-      const inlined = part.textPayload
-        ? part.data
-        : `[binary attachment ${part.name} (${part.mimeType || 'application/octet-stream'}) — this agent doesn't accept embedded resources]`;
       return {
         block: {
           type: 'text',
-          text: `\n\n--- Attachment: ${part.name} ---\n${inlined}\n--- End attachment ---`,
-        },
-      };
-    }
-    const uri = `attachment:///${encodeURIComponent(part.name || 'attachment')}`;
-    if (part.textPayload) {
-      return {
-        block: {
-          type: 'resource',
-          resource: {
-            uri,
-            text: part.data,
-            ...(part.mimeType !== '' ? { mimeType: part.mimeType } : {}),
-          },
+          text: `\n\n--- Attachment: ${part.name} ---\n${part.data}\n--- End attachment ---`,
         },
       };
     }
@@ -127,8 +104,8 @@ export async function partToBlock(
       block: {
         type: 'resource',
         resource: {
-          uri,
-          blob: part.data,
+          uri: `attachment:///${encodeURIComponent(part.name || 'attachment')}`,
+          text: part.data,
           ...(part.mimeType !== '' ? { mimeType: part.mimeType } : {}),
         },
       },

@@ -89,9 +89,9 @@ describe('ComposerAddMenu', () => {
     await user.click(screen.getByRole('button', { name: 'Add to prompt' }));
     expect(
       screen.getByRole('menuitem', {
-        name: 'Attach files · references only (no embedded contents)',
+        name: 'Attach files · project files as references',
       }).textContent,
-    ).toBe('Attach files · references only (no embedded contents)');
+    ).toBe('Attach files · project files as references');
     await user.click(screen.getByRole('menuitem', { name: 'Commands' }));
 
     await waitFor(() => {

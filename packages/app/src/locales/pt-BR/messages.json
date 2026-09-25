@@ -2068,7 +2068,6 @@
       "O OpenKnowledge não conseguiu ler terminal.shell em .ok/local/config.yml. Um shell do Windows disponível será usado."
     ],
     "K9J00P": ["Falha ao clonar — erro de conexão"],
-    "K9ViCA": [["name"], " está fora do espaço de trabalho. Mova-o para o seu projeto primeiro."],
     "KDrbNG": ["OpenKnowledge consultou os links de ", ["subject"]],
     "KDuPiY": ["Enviando ", ["fileName"]],
     "KDw4GX": ["Tente de novo"],
@@ -2205,7 +2204,6 @@
     "LXdWeS": ["Título de seção médio."],
     "LXfNU-": ["Navegação e sugestões"],
     "LYufDw": ["Falha ao ativar a busca semântica — ", ["detail"]],
-    "LZe2vX": [" · apenas referências (sem conteúdo incorporado)"],
     "L_mqhg": [
       "(",
       [
@@ -2407,6 +2405,32 @@
       "A ativação das ferramentas do Open Knowledge foi ignorada. Esta conversa funciona sem elas."
     ],
     "NYUhy5": ["Nome da subpasta"],
+    "NYbytK": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " ultrapassa ",
+            ["capKb"],
+            " KB, então não pode ser enviado com a mensagem. Mencione-o com @ quando ele estiver no seu projeto."
+          ],
+          "many": [
+            ["files"],
+            " ultrapassam ",
+            ["capKb"],
+            " KB cada, então não podem ser enviados com a mensagem. Mencione-os com @ quando eles estiverem no seu projeto."
+          ],
+          "other": [
+            ["files"],
+            " ultrapassam ",
+            ["capKb"],
+            " KB cada, então não podem ser enviados com a mensagem. Mencione-os com @ quando eles estiverem no seu projeto."
+          ]
+        }
+      ]
+    ],
     "NYn1cR": ["Carregando o editor"],
     "NYu2Pt": ["Novo projeto…"],
     "N_7kkF": [
@@ -2592,17 +2616,6 @@
     "PZn2LP": ["Manter a fonte"],
     "PZt2Ds": ["A clonagem terminou de forma inesperada."],
     "PZtgO0": ["Abrindo o worktree"],
-    "P_KNrS": [
-      [
-        "outsideWorkspaceCount",
-        "plural",
-        {
-          "one": ["#", " arquivo fora do espaço de trabalho ignorado."],
-          "many": ["#", " arquivos fora do espaço de trabalho ignorados."],
-          "other": ["#", " arquivos fora do espaço de trabalho ignorados."]
-        }
-      ]
-    ],
     "P_bX4O": ["Como configurar"],
     "PdA9NZ": [["ahead"], " à frente"],
     "PeNdk1": ["Raciocina antes de agir"],
@@ -2784,6 +2797,32 @@
     "RQWuCs": ["Colocar a mensagem na fila"],
     "RS98db": ["Digite '/' para ver os comandos"],
     "RSqaSd": ["Raiz do projeto"],
+    "RVMlXa": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " ultrapassa ",
+            ["capKb"],
+            " KB, então não pode ser enviado com a mensagem. Adicione-o ao seu projeto e depois mencione-o com @."
+          ],
+          "many": [
+            ["files"],
+            " ultrapassam ",
+            ["capKb"],
+            " KB cada, então não podem ser enviados com a mensagem. Adicione-os ao seu projeto e depois mencione-os com @."
+          ],
+          "other": [
+            ["files"],
+            " ultrapassam ",
+            ["capKb"],
+            " KB cada, então não podem ser enviados com a mensagem. Adicione-os ao seu projeto e depois mencione-os com @."
+          ]
+        }
+      ]
+    ],
     "RVZJWQ": ["Buscar projetos..."],
     "RXEbZy": ["No app"],
     "RXYvxn": ["Esta opção não pode ser alterada automaticamente."],
@@ -2889,23 +2928,6 @@
     "SYfHmN": ["Desafixar a aba"],
     "S_RRZB": ["Excluir o arquivo"],
     "Sad2tK": ["Enviando…"],
-    "Sbb90e": [
-      [
-        "unknownPathCount",
-        "plural",
-        {
-          "one": ["#", " arquivo ignorado — este navegador não pode anexar arquivos por caminho."],
-          "many": [
-            "#",
-            " arquivos ignorados — este navegador não pode anexar arquivos por caminho."
-          ],
-          "other": [
-            "#",
-            " arquivos ignorados — este navegador não pode anexar arquivos por caminho."
-          ]
-        }
-      ]
-    ],
     "Sc1bKE": [
       "Não foi possível limpar a tempo os dados locais de colaboração de \"",
       ["docName"],
@@ -3839,6 +3861,26 @@
     ],
     "bpytj4": ["Mover para ", ["0"]],
     "brCtGB": ["Histórico indisponível"],
+    "bsg04M": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " não é um arquivo de texto, então não pode ser enviado com a mensagem. Mencione-o com @ quando ele estiver no seu projeto."
+          ],
+          "many": [
+            ["files"],
+            " não são arquivos de texto, então não podem ser enviados com a mensagem. Mencione-os com @ quando eles estiverem no seu projeto."
+          ],
+          "other": [
+            ["files"],
+            " não são arquivos de texto, então não podem ser enviados com a mensagem. Mencione-os com @ quando eles estiverem no seu projeto."
+          ]
+        }
+      ]
+    ],
     "btNgJP": ["No plano acima, por favor "],
     "buNXgr": ["Alterna entre o editor visual e o de código, mantendo seu lugar."],
     "bultyE": [
@@ -4107,6 +4149,7 @@
       ["0"],
       " requisições"
     ],
+    "dkE4kf": [" · arquivos do projeto como referências"],
     "dprWmL": ["Âncora nesta página"],
     "dr1vFs": ["Substituir todas as ocorrências"],
     "drzzZw": ["Abas de pré-visualização"],
@@ -4226,6 +4269,26 @@
     "ewlFNL": ["A reparação automática de MCP falhou para ", ["failures"]],
     "ezUmoU": ["Valores de elemento permitidos (vazio = qualquer)"],
     "f-k37b": ["Instalar esta habilidade"],
+    "f0wEYt": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " não é um arquivo de texto, então não pode ser enviado com a mensagem. Adicione-o ao seu projeto e depois mencione-o com @."
+          ],
+          "many": [
+            ["files"],
+            " não são arquivos de texto, então não podem ser enviados com a mensagem. Adicione-os ao seu projeto e depois mencione-os com @."
+          ],
+          "other": [
+            ["files"],
+            " não são arquivos de texto, então não podem ser enviados com a mensagem. Adicione-os ao seu projeto e depois mencione-os com @."
+          ]
+        }
+      ]
+    ],
     "f1-q9m": ["mantém as habilidades"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Mover o bloco"],
@@ -5029,17 +5092,6 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Grava uma entrada em"],
     "m6YGpY": ["O conteúdo do painel ativo da aba selecionada aparece aqui."],
-    "m8gL0G": [
-      [
-        "skipTotal",
-        "plural",
-        {
-          "one": ["#", " arquivo ignorado, não foi possível anexar."],
-          "many": ["#", " arquivos ignorados, não foi possível anexar."],
-          "other": ["#", " arquivos ignorados, não foi possível anexar."]
-        }
-      ]
-    ],
     "mAzs2H": ["Desativar ", ["file"]],
     "mBK8zm": [
       "/",
@@ -5439,10 +5491,6 @@
     "q63KUv": ["Adicionar MCP e habilidade"],
     "q7F5am": ["título"],
     "q8aCbb": ["Duas versões de \"", ["0"], "\" — a fonte contra ", ["editor"]],
-    "q8tKSU": [
-      ["name"],
-      " não tem um caminho resolvível — o agente só consegue ler arquivos dentro do espaço de trabalho."
-    ],
     "qAQVSD": ["A resposta dos títulos da página não era JSON"],
     "qAhFeg": [
       ["userName"],
@@ -5976,6 +6024,13 @@
     "un-K1H": ["Fica neste computador. Não vai para o git."],
     "un8kBM": ["Criando a página: ", ["linkTitle"], "."],
     "uoJF_D": ["Foi difícil demais configurar ou começar"],
+    "uqs8Gd": [
+      [
+        "others",
+        "plural",
+        { "one": ["mais ", "#"], "many": ["mais ", "#"], "other": ["mais ", "#"] }
+      ]
+    ],
     "ur2XSb": ["Editor visual"],
     "uuoHOU": ["O comando falhou."],
     "uwzRx4": [

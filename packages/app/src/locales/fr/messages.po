@@ -15,8 +15,8 @@ msgstr ""
 
 #: src/components/acp/AttachFilesButton.tsx
 #: src/components/ComposerAddMenu.tsx
-msgid " · references only (no embedded contents)"
-msgstr " · références seulement (pas de contenu intégré)"
+msgid " · project files as references"
+msgstr " · fichiers du projet en tant que références"
 
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
@@ -688,6 +688,22 @@ msgstr "{conflictCount, plural, one {# conflit} many {# conflits} other {# confl
 msgid "{conflictCount, plural, one {# file conflicted} other {# files conflicted}}"
 msgstr "{conflictCount, plural, one {# fichier en conflit} many {# fichiers en conflit} other {# fichiers en conflit}}"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, one {{files} dépasse {capKb} KB, il ne peut donc pas être envoyé avec le message. Ajoutez-le à votre projet, puis mentionnez-le avec @.} many {{files} dépassent chacun {capKb} KB, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @.} other {{files} dépassent chacun {capKb} KB, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, one {{files} dépasse {capKb} KB, il ne peut donc pas être envoyé avec le message. Mentionnez-le avec @ une fois qu'il est dans votre projet.} many {{files} dépassent chacun {capKb} KB, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet.} other {{files} dépassent chacun {capKb} KB, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} aren't text files, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, one {{files} n'est pas un fichier texte, il ne peut donc pas être envoyé avec le message. Ajoutez-le à votre projet, puis mentionnez-le avec @.} many {{files} ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @.} other {{files} ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, one {{files} n'est pas un fichier texte, il ne peut donc pas être envoyé avec le message. Mentionnez-le avec @ une fois qu'il est dans votre projet.} many {{files} ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet.} other {{files} ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet.}}"
+
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# commentaire} many {# commentaires} other {# commentaires}}"
@@ -989,14 +1005,6 @@ msgstr "il y a {minutes} min"
 msgid "{name} CLI"
 msgstr "CLI {name}"
 
-#: src/lib/acp/image-attachment.ts
-msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
-msgstr "{name} n'a pas de chemin résoluble — l'agent ne peut lire que les fichiers situés dans l'espace de travail."
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} is outside the workspace. Move it into your project first."
-msgstr "{name} se trouve hors de l'espace de travail. Déplacez-le d'abord dans votre projet."
-
 #: src/components/SkillsSidebarSection.tsx
 msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
 msgstr "{name} a été déplacé, mais pas son épingle. Épinglez-le de nouveau une fois les paramètres chargés."
@@ -1013,10 +1021,9 @@ msgstr "{omitted, plural, one {# modification de propriété de plus non affich�
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} many {worktrees} other {worktrees}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
-msgstr "{outsideWorkspaceCount, plural, one {# fichier hors de l'espace de travail ignoré.} many {# fichiers hors de l'espace de travail ignorés.} other {# fichiers hors de l'espace de travail ignorés.}}"
+#: src/lib/acp/image-attachment.ts
+msgid "{others, plural, one {# other} other {# others}}"
+msgstr "{others, plural, one {# autre} many {# autres} other {# autres}}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
@@ -1124,11 +1131,6 @@ msgstr "{sizeText} · secrets masqués · {fileCount, plural, one {# fichier} ma
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {compétence} many {compétences} other {compétences}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
-msgstr "{skipTotal, plural, one {# fichier ignoré, impossible à joindre.} many {# fichiers ignorés, impossibles à joindre.} other {# fichiers ignorés, impossibles à joindre.}}"
-
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -1182,11 +1184,6 @@ msgstr "{total, plural, one {# problème} many {# problèmes} other {# problème
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, one {Affichage du premier élément d'un dossier — le reste de ce dossier est masqué.} many {Affichage des {formattedCount} premiers éléments d'un dossier — le reste de ce dossier est masqué.} other {Affichage des {formattedCount} premiers éléments d'un dossier — le reste de ce dossier est masqué.}}"
-
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
-msgstr "{unknownPathCount, plural, one {# fichier ignoré — ce navigateur ne peut pas joindre les fichiers par chemin.} many {# fichiers ignorés — ce navigateur ne peut pas joindre les fichiers par chemin.} other {# fichiers ignorés — ce navigateur ne peut pas joindre les fichiers par chemin.}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

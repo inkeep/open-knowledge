@@ -15,8 +15,8 @@ msgstr ""
 
 #: src/components/acp/AttachFilesButton.tsx
 #: src/components/ComposerAddMenu.tsx
-msgid " · references only (no embedded contents)"
-msgstr " · مراجع فقط (بدون محتوى مضمن)"
+msgid " · project files as references"
+msgstr " · ملفات المشروع كمراجع"
 
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
@@ -688,6 +688,22 @@ msgstr "{conflictCount, plural, zero {# تعارض} one {تعارض واحد} tw
 msgid "{conflictCount, plural, one {# file conflicted} other {# files conflicted}}"
 msgstr "{conflictCount, plural, zero {# ملف متعارض} one {ملف واحد متعارض} two {ملفان متعارضان} few {# ملفات متعارضة} many {# ملفًا متعارضًا} other {# ملف متعارض}}"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, zero {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.} one {{files} أكبر من {capKb} KB، لذا لا يمكن إرساله مع الرسالة. أضفه إلى مشروعك، ثم اذكره باستخدام @.} two {{files} أكبر من {capKb} KB لكل منهما، لذا لا يمكن إرسالهما مع الرسالة. أضفهما إلى مشروعك، ثم اذكرهما باستخدام @.} few {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.} many {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.} other {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, zero {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.} one {{files} أكبر من {capKb} KB، لذا لا يمكن إرساله مع الرسالة. اذكره باستخدام @ عندما يكون في مشروعك.} two {{files} أكبر من {capKb} KB لكل منهما، لذا لا يمكن إرسالهما مع الرسالة. اذكرهما باستخدام @ عندما يكونان في مشروعك.} few {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.} many {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.} other {{files} أكبر من {capKb} KB لكل منها، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} aren't text files, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, zero {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.} one {{files} ليس ملفًا نصيًا، لذا لا يمكن إرساله مع الرسالة. أضفه إلى مشروعك، ثم اذكره باستخدام @.} two {{files} ليسا ملفين نصيين، لذا لا يمكن إرسالهما مع الرسالة. أضفهما إلى مشروعك، ثم اذكرهما باستخدام @.} few {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.} many {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.} other {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. أضفها إلى مشروعك، ثم اذكرها باستخدام @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, zero {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.} one {{files} ليس ملفًا نصيًا، لذا لا يمكن إرساله مع الرسالة. اذكره باستخدام @ عندما يكون في مشروعك.} two {{files} ليسا ملفين نصيين، لذا لا يمكن إرسالهما مع الرسالة. اذكرهما باستخدام @ عندما يكونان في مشروعك.} few {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.} many {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.} other {{files} ليست ملفات نصية، لذا لا يمكن إرسالها مع الرسالة. اذكرها باستخدام @ عندما تكون في مشروعك.}}"
+
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, zero {# تعليق} one {تعليق واحد} two {تعليقان} few {# تعليقات} many {# تعليقًا} other {# تعليق}}"
@@ -989,14 +1005,6 @@ msgstr "قبل {minutes} دقيقة"
 msgid "{name} CLI"
 msgstr "واجهة {name} السطرية"
 
-#: src/lib/acp/image-attachment.ts
-msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
-msgstr "{name} ليس له مسار يمكن تحديده — لا يستطيع الوكيل قراءة سوى الملفات الموجودة داخل مساحة العمل."
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} is outside the workspace. Move it into your project first."
-msgstr "{name} خارج مساحة العمل. انقله إلى مشروعك أولًا."
-
 #: src/components/SkillsSidebarSection.tsx
 msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
 msgstr "تم نقل {name}، لكن لم ينتقل التثبيت معه. أعد تثبيته بعد اكتمال تحميل الإعدادات."
@@ -1013,10 +1021,9 @@ msgstr "{omitted, plural, zero {# تغيير خصائص إضافي غير معر
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {شجرة عمل} other {أشجار عمل}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
-msgstr "{outsideWorkspaceCount, plural, zero {تم تخطي # ملف خارج مساحة العمل.} one {تم تخطي ملف خارج مساحة العمل.} two {تم تخطي ملفين خارج مساحة العمل.} few {تم تخطي # ملفات خارج مساحة العمل.} many {تم تخطي # ملفًا خارج مساحة العمل.} other {تم تخطي # ملف خارج مساحة العمل.}}"
+#: src/lib/acp/image-attachment.ts
+msgid "{others, plural, one {# other} other {# others}}"
+msgstr "{others, plural, zero {# ملف آخر} one {ملف آخر} two {ملفان آخران} few {# ملفات أخرى} many {# ملفًا آخر} other {# ملف آخر}}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
@@ -1124,11 +1131,6 @@ msgstr "{sizeText} · تم إخفاء الأسرار · {fileCount, plural, zero
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, zero {مهارات} one {مهارة} two {مهارتان} few {مهارات} many {مهارةً} other {مهارة}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
-msgstr "{skipTotal, plural, zero {تم تخطي # ملف تعذر إرفاقه.} one {تم تخطي ملف تعذر إرفاقه.} two {تم تخطي ملفين تعذر إرفاقهما.} few {تم تخطي # ملفات تعذر إرفاقها.} many {تم تخطي # ملفًا تعذر إرفاقه.} other {تم تخطي # ملف تعذر إرفاقه.}}"
-
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -1182,11 +1184,6 @@ msgstr "{total, plural, zero {# مشكلة} one {# مشكلة} two {# مشكلت
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, zero {يجري عرض أول {formattedCount} عنصر في مجلد واحد — بقية ذلك المجلد مخفية.} one {يجري عرض أول عنصر في مجلد واحد — بقية ذلك المجلد مخفية.} two {يجري عرض أول عنصرين في مجلد واحد — بقية ذلك المجلد مخفية.} few {يجري عرض أول {formattedCount} عناصر في مجلد واحد — بقية ذلك المجلد مخفية.} many {يجري عرض أول {formattedCount} عنصرًا في مجلد واحد — بقية ذلك المجلد مخفية.} other {يجري عرض أول {formattedCount} عنصر في مجلد واحد — بقية ذلك المجلد مخفية.}}"
-
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
-msgstr "{unknownPathCount, plural, zero {تم تخطي # ملف — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} one {تم تخطي ملف — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} two {تم تخطي ملفين — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} few {تم تخطي # ملفات — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} many {تم تخطي # ملفًا — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.} other {تم تخطي # ملف — لا يمكن لهذا المتصفح إرفاق الملفات عبر المسار.}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"

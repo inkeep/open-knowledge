@@ -1797,7 +1797,6 @@
       "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
     ],
     "K9J00P": ["Clone failed — connection error"],
-    "K9ViCA": [["name"], " is outside the workspace. Move it into your project first."],
     "KDrbNG": ["OpenKnowledge looked up links for ", ["subject"]],
     "KDuPiY": ["Uploading ", ["fileName"]],
     "KDw4GX": ["Try again"],
@@ -1921,7 +1920,6 @@
     "LXdWeS": ["Medium section heading."],
     "LXfNU-": ["Navigation and suggestions"],
     "LYufDw": ["Failed to enable semantic search — ", ["detail"]],
-    "LZe2vX": [" · references only (no embedded contents)"],
     "L_mqhg": [
       "(",
       ["0", "plural", { "one": ["#", " attempt"], "other": ["#", " attempts"] }],
@@ -2095,6 +2093,26 @@
     "NXNzgx": ["This component changed. Try again."],
     "NY0p7s": ["Skipped enabling Open Knowledge tools. This thread runs without them."],
     "NYUhy5": ["Subfolder name"],
+    "NYbytK": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " is larger than ",
+            ["capKb"],
+            " KB, so it can't be sent with the message. Mention it with @ once it's in your project."
+          ],
+          "other": [
+            ["files"],
+            " are each larger than ",
+            ["capKb"],
+            " KB, so they can't be sent with the message. Mention them with @ once they're in your project."
+          ]
+        }
+      ]
+    ],
     "NYn1cR": ["Loading editor"],
     "NYu2Pt": ["New project…"],
     "N_7kkF": [
@@ -2278,16 +2296,6 @@
     "PZn2LP": ["Keep source"],
     "PZt2Ds": ["Clone ended unexpectedly."],
     "PZtgO0": ["Opening worktree"],
-    "P_KNrS": [
-      [
-        "outsideWorkspaceCount",
-        "plural",
-        {
-          "one": ["Skipped ", "#", " file outside the workspace."],
-          "other": ["Skipped ", "#", " files outside the workspace."]
-        }
-      ]
-    ],
     "P_bX4O": ["How to set up"],
     "PdA9NZ": [["ahead"], " ahead"],
     "PeNdk1": ["Reasons before acting"],
@@ -2456,6 +2464,26 @@
     "RQWuCs": ["Queue message"],
     "RS98db": ["Type '/' for commands"],
     "RSqaSd": ["Project root"],
+    "RVMlXa": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " is larger than ",
+            ["capKb"],
+            " KB, so it can't be sent with the message. Add it to your project, then mention it with @."
+          ],
+          "other": [
+            ["files"],
+            " are each larger than ",
+            ["capKb"],
+            " KB, so they can't be sent with the message. Add them to your project, then mention them with @."
+          ]
+        }
+      ]
+    ],
     "RVZJWQ": ["Search projects..."],
     "RXEbZy": ["In app"],
     "RXYvxn": ["This option cannot be changed automatically."],
@@ -2550,16 +2578,6 @@
     "SYfHmN": ["Unpin tab"],
     "S_RRZB": ["Delete the file"],
     "Sad2tK": ["Sending…"],
-    "Sbb90e": [
-      [
-        "unknownPathCount",
-        "plural",
-        {
-          "one": ["Skipped ", "#", " file — this browser can't attach files by path."],
-          "other": ["Skipped ", "#", " files — this browser can't attach files by path."]
-        }
-      ]
-    ],
     "Sc1bKE": [
       "Local collaboration data for \"",
       ["docName"],
@@ -3376,6 +3394,22 @@
     "bpMVIA": ["Link target \"", ["shown"], "\" could not be resolved to a project-local target."],
     "bpytj4": ["Move to ", ["0"]],
     "brCtGB": ["History unavailable"],
+    "bsg04M": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " isn't a text file, so it can't be sent with the message. Mention it with @ once it's in your project."
+          ],
+          "other": [
+            ["files"],
+            " aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project."
+          ]
+        }
+      ]
+    ],
     "btNgJP": ["In the plan above, please "],
     "buNXgr": ["Switch between the visual and source editors, keeping your place."],
     "bultyE": [
@@ -3613,6 +3647,7 @@
     ],
     "dibzbg": [["visibleSummary"], ". ", ["0"]],
     "djc1l9": ["More than ", ["0"], " requests were blocked by the preview's security policy"],
+    "dkE4kf": [" · project files as references"],
     "dprWmL": ["Anchor in this page"],
     "dr1vFs": ["Replace all matches"],
     "drzzZw": ["Preview tabs"],
@@ -3706,6 +3741,22 @@
     "ewlFNL": ["MCP auto-repair failed for ", ["failures"]],
     "ezUmoU": ["Allowed element values (empty = any)"],
     "f-k37b": ["Install this skill"],
+    "f0wEYt": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " isn't a text file, so it can't be sent with the message. Add it to your project, then mention it with @."
+          ],
+          "other": [
+            ["files"],
+            " aren't text files, so they can't be sent with the message. Add them to your project, then mention them with @."
+          ]
+        }
+      ]
+    ],
     "f1-q9m": ["keeps the skills"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Move block"],
@@ -4440,16 +4491,6 @@
     "m2T1Xj": ["Tag #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Writes an entry to"],
     "m6YGpY": ["Active panel content for the selected tab shows here."],
-    "m8gL0G": [
-      [
-        "skipTotal",
-        "plural",
-        {
-          "one": ["Skipped ", "#", " file that couldn't be attached."],
-          "other": ["Skipped ", "#", " files that couldn't be attached."]
-        }
-      ]
-    ],
     "mAzs2H": ["Disable ", ["file"]],
     "mBK8zm": ["/", ["0"], " isn't a command this agent offers — it will be sent as plain text"],
     "mBltnd": ["Path suggestions"],
@@ -4813,10 +4854,6 @@
     "q63KUv": ["Add MCP & skill"],
     "q7F5am": ["title"],
     "q8aCbb": ["Two versions of \"", ["0"], "\" — source vs ", ["editor"]],
-    "q8tKSU": [
-      ["name"],
-      " has no resolvable path — the agent can only read files inside the workspace."
-    ],
     "qAQVSD": ["Page headings response was not JSON"],
     "qAhFeg": [
       ["userName"],
@@ -5298,6 +5335,7 @@
     "un-K1H": ["Stays on this computer. Not committed to git."],
     "un8kBM": ["Creating page: ", ["linkTitle"], "."],
     "uoJF_D": ["It was too hard to set up or get started"],
+    "uqs8Gd": [["others", "plural", { "one": ["#", " other"], "other": ["#", " others"] }]],
     "ur2XSb": ["Visual editor"],
     "uuoHOU": ["Command failed."],
     "uwzRx4": [

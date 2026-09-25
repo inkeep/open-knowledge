@@ -133,12 +133,15 @@ import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-val
 import { exitSummary } from '@/lib/acp/exit-summary';
 import { terminalLaunchAvailable, useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
 import {
+  type AttachmentRefusal,
   attachmentBudgetKb,
   collectAllFiles,
   collectImageFiles,
+  describeAttachmentRefusals,
   describeImageError,
   embeddedAttachmentBytes,
   fileToAttachment,
+  isAttachmentRefusal,
   MAX_TOTAL_ATTACHMENT_BYTES,
   totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
@@ -500,8 +503,7 @@ export function ThreadView({
       if (generation === attachmentsGenerationRef.current) toast.error(message);
     };
     setPendingUploads((previous) => [...previous, ...placeholders]);
-    let outsideWorkspaceCount = 0;
-    let unknownPathCount = 0;
+    const refusals: AttachmentRefusal[] = [];
     let tooLargeTotalCount = 0;
     for (let i = 0; i < accepted.length; i += 1) {
       const file = accepted[i];
@@ -524,10 +526,8 @@ export function ThreadView({
           } else {
             commitPendingAttachments([...current, outcome.part], generation);
           }
-        } else if (outcome.error.kind === 'outside-workspace') {
-          outsideWorkspaceCount += 1;
-        } else if (outcome.error.kind === 'unknown-path') {
-          unknownPathCount += 1;
+        } else if (isAttachmentRefusal(outcome.error)) {
+          refusals.push(outcome.error);
         } else {
           report(describeImageError(outcome.error));
         }
@@ -538,28 +538,7 @@ export function ThreadView({
         report(t`Couldn't read ${fileName}.`);
       }
     }
-    const notices: string[] = [];
-    const skipTotal = outsideWorkspaceCount + unknownPathCount;
-    if (skipTotal > 0) {
-      let noticeText: string;
-      if (unknownPathCount === 0) {
-        noticeText = t`${plural(outsideWorkspaceCount, {
-          one: 'Skipped # file outside the workspace.',
-          other: 'Skipped # files outside the workspace.',
-        })}`;
-      } else if (outsideWorkspaceCount === 0) {
-        noticeText = t`${plural(unknownPathCount, {
-          one: "Skipped # file — this browser can't attach files by path.",
-          other: "Skipped # files — this browser can't attach files by path.",
-        })}`;
-      } else {
-        noticeText = t`${plural(skipTotal, {
-          one: "Skipped # file that couldn't be attached.",
-          other: "Skipped # files that couldn't be attached.",
-        })}`;
-      }
-      notices.push(noticeText);
-    }
+    const notices = describeAttachmentRefusals(refusals);
     if (tooLargeTotalCount > 0) {
       const budgetKb = attachmentBudgetKb();
       notices.push(

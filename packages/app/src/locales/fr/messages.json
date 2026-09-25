@@ -2131,10 +2131,6 @@
       "OpenKnowledge n’a pas pu lire terminal.shell dans .ok/local/config.yml. Un shell Windows disponible sera utilisé à la place."
     ],
     "K9J00P": ["Échec du clonage — erreur de connexion"],
-    "K9ViCA": [
-      ["name"],
-      " se trouve hors de l'espace de travail. Déplacez-le d'abord dans votre projet."
-    ],
     "KDrbNG": ["OpenKnowledge a consulté les liens de ", ["subject"]],
     "KDuPiY": ["Envoi de ", ["fileName"]],
     "KDw4GX": ["Réessayer"],
@@ -2283,7 +2279,6 @@
     "LXdWeS": ["Titre de section moyen."],
     "LXfNU-": ["Navigation et suggestions"],
     "LYufDw": ["Échec de l'activation de la recherche sémantique — ", ["detail"]],
-    "LZe2vX": [" · références seulement (pas de contenu intégré)"],
     "L_mqhg": [
       "(",
       [
@@ -2483,6 +2478,32 @@
     "NXNzgx": ["Ce composant a changé. Réessayez."],
     "NY0p7s": ["Activation des outils Open Knowledge ignorée. Ce fil fonctionne sans eux."],
     "NYUhy5": ["Nom du sous-dossier"],
+    "NYbytK": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " dépasse ",
+            ["capKb"],
+            " KB, il ne peut donc pas être envoyé avec le message. Mentionnez-le avec @ une fois qu'il est dans votre projet."
+          ],
+          "many": [
+            ["files"],
+            " dépassent chacun ",
+            ["capKb"],
+            " KB, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet."
+          ],
+          "other": [
+            ["files"],
+            " dépassent chacun ",
+            ["capKb"],
+            " KB, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet."
+          ]
+        }
+      ]
+    ],
     "NYn1cR": ["Chargement de l'éditeur"],
     "NYu2Pt": ["Nouveau projet…"],
     "N_7kkF": [
@@ -2672,17 +2693,6 @@
     "PZn2LP": ["Conserver la source"],
     "PZt2Ds": ["Le clonage s'est terminé de façon inattendue."],
     "PZtgO0": ["Ouverture du worktree"],
-    "P_KNrS": [
-      [
-        "outsideWorkspaceCount",
-        "plural",
-        {
-          "one": ["#", " fichier hors de l'espace de travail ignoré."],
-          "many": ["#", " fichiers hors de l'espace de travail ignorés."],
-          "other": ["#", " fichiers hors de l'espace de travail ignorés."]
-        }
-      ]
-    ],
     "P_bX4O": ["Comment configurer"],
     "PdA9NZ": [["ahead"], " en avance"],
     "PeNdk1": ["Réfléchit avant d'agir"],
@@ -2868,6 +2878,32 @@
     "RQWuCs": ["Mettre le message en file d'attente"],
     "RS98db": ["Tapez « / » pour afficher les commandes"],
     "RSqaSd": ["Racine du projet"],
+    "RVMlXa": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " dépasse ",
+            ["capKb"],
+            " KB, il ne peut donc pas être envoyé avec le message. Ajoutez-le à votre projet, puis mentionnez-le avec @."
+          ],
+          "many": [
+            ["files"],
+            " dépassent chacun ",
+            ["capKb"],
+            " KB, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @."
+          ],
+          "other": [
+            ["files"],
+            " dépassent chacun ",
+            ["capKb"],
+            " KB, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @."
+          ]
+        }
+      ]
+    ],
     "RVZJWQ": ["Rechercher des projets…"],
     "RXEbZy": ["Dans l'application"],
     "RXYvxn": ["Cette option ne peut pas être modifiée automatiquement."],
@@ -2973,26 +3009,6 @@
     "SYfHmN": ["Détacher l'onglet"],
     "S_RRZB": ["Supprimer le fichier"],
     "Sad2tK": ["Envoi…"],
-    "Sbb90e": [
-      [
-        "unknownPathCount",
-        "plural",
-        {
-          "one": [
-            "#",
-            " fichier ignoré — ce navigateur ne peut pas joindre les fichiers par chemin."
-          ],
-          "many": [
-            "#",
-            " fichiers ignorés — ce navigateur ne peut pas joindre les fichiers par chemin."
-          ],
-          "other": [
-            "#",
-            " fichiers ignorés — ce navigateur ne peut pas joindre les fichiers par chemin."
-          ]
-        }
-      ]
-    ],
     "Sc1bKE": [
       "Les données de collaboration locales de « ",
       ["docName"],
@@ -3966,6 +3982,26 @@
     ],
     "bpytj4": ["Déplacer vers ", ["0"]],
     "brCtGB": ["Historique indisponible"],
+    "bsg04M": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " n'est pas un fichier texte, il ne peut donc pas être envoyé avec le message. Mentionnez-le avec @ une fois qu'il est dans votre projet."
+          ],
+          "many": [
+            ["files"],
+            " ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet."
+          ],
+          "other": [
+            ["files"],
+            " ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Mentionnez-les avec @ une fois qu'ils sont dans votre projet."
+          ]
+        }
+      ]
+    ],
     "btNgJP": ["Dans le plan ci-dessus, veuillez "],
     "buNXgr": [
       "Bascule entre l'éditeur visuel et l'éditeur de source, en conservant votre position."
@@ -4246,6 +4282,7 @@
       ["0"],
       " requêtes ont été bloquées par la politique de sécurité de l'aperçu"
     ],
+    "dkE4kf": [" · fichiers du projet en tant que références"],
     "dprWmL": ["Ancre dans cette page"],
     "dr1vFs": ["Remplacer toutes les occurrences"],
     "drzzZw": ["Onglets d'aperçu"],
@@ -4363,6 +4400,26 @@
     "ewlFNL": ["La réparation automatique de MCP a échoué pour ", ["failures"]],
     "ezUmoU": ["Valeurs d'élément autorisées (vide = toutes)"],
     "f-k37b": ["Installer cette compétence"],
+    "f0wEYt": [
+      [
+        "count",
+        "plural",
+        {
+          "one": [
+            ["files"],
+            " n'est pas un fichier texte, il ne peut donc pas être envoyé avec le message. Ajoutez-le à votre projet, puis mentionnez-le avec @."
+          ],
+          "many": [
+            ["files"],
+            " ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @."
+          ],
+          "other": [
+            ["files"],
+            " ne sont pas des fichiers texte, ils ne peuvent donc pas être envoyés avec le message. Ajoutez-les à votre projet, puis mentionnez-les avec @."
+          ]
+        }
+      ]
+    ],
     "f1-q9m": ["conserve les compétences"],
     "f14doC": ["Slidev"],
     "f1XQyZ": ["Déplacer le bloc"],
@@ -5184,17 +5241,6 @@
     "m2T1Xj": ["Étiquette #", ["tagValue"], ", ", ["uses"]],
     "m3ocfn": ["Écrit une entrée dans"],
     "m6YGpY": ["Le contenu du panneau actif de l'onglet sélectionné s'affiche ici."],
-    "m8gL0G": [
-      [
-        "skipTotal",
-        "plural",
-        {
-          "one": ["#", " fichier ignoré, impossible à joindre."],
-          "many": ["#", " fichiers ignorés, impossibles à joindre."],
-          "other": ["#", " fichiers ignorés, impossibles à joindre."]
-        }
-      ]
-    ],
     "mAzs2H": ["Désactiver ", ["file"]],
     "mBK8zm": [
       "/",
@@ -5618,10 +5664,6 @@
     "q63KUv": ["Ajouter MCP et la compétence"],
     "q7F5am": ["titre"],
     "q8aCbb": ["Deux versions de « ", ["0"], " » — source contre ", ["editor"]],
-    "q8tKSU": [
-      ["name"],
-      " n'a pas de chemin résoluble — l'agent ne peut lire que les fichiers situés dans l'espace de travail."
-    ],
     "qAQVSD": ["La réponse des titres de page n'était pas du JSON"],
     "qAhFeg": [
       ["userName"],
@@ -6164,6 +6206,13 @@
     "un-K1H": ["Reste sur cet ordinateur. Non validé dans git."],
     "un8kBM": ["Création de la page : ", ["linkTitle"], "."],
     "uoJF_D": ["C'était trop compliqué à installer ou à prendre en main"],
+    "uqs8Gd": [
+      [
+        "others",
+        "plural",
+        { "one": ["#", " autre"], "many": ["#", " autres"], "other": ["#", " autres"] }
+      ]
+    ],
     "ur2XSb": ["Éditeur visuel"],
     "uuoHOU": ["La commande a échoué."],
     "uwzRx4": [
