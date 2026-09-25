@@ -46,7 +46,7 @@ import { skillsCommand } from './commands/skills.ts';
 import { runStartCommand, startCommand } from './commands/start.ts';
 import { type ObservationContext, statusCommand } from './commands/status.ts';
 import { stopCommand } from './commands/stop.ts';
-import { requiresProjectConfigForV1 } from './commands/supervision-scope.ts';
+import { supervisionFormats } from './commands/supervision-formats.ts';
 import { syncCommand } from './commands/sync.ts';
 import { uninstallCommand } from './commands/uninstall.ts';
 import { PACKAGE_VERSION } from './constants.ts';
@@ -79,13 +79,8 @@ program
     const opts = thisCommand.opts();
     const cwd = opts.cwd as string | undefined;
     const observationName = actionCommand.name();
-    if (
-      (observationName === 'status' ||
-        observationName === 'ps' ||
-        observationName === 'stop' ||
-        observationName === 'clean') &&
-      actionCommand.opts().format === 'json-v1'
-    ) {
+    const selected = supervisionFormats.select(observationName, actionCommand.opts().format);
+    if (selected) {
       try {
         if (cwd !== undefined) process.chdir(cwd);
         if (program.getOptionValueSource('logLevel') === 'cli') {
@@ -106,7 +101,7 @@ program
           },
           failure: null,
         };
-        if (!requiresProjectConfigForV1(observationName, actionCommand.args)) {
+        if (!selected.strategy.requiresProjectConfig(selected.command, actionCommand.args)) {
           initCliLogger({ command: observationName, cwd: process.cwd() });
           return;
         }

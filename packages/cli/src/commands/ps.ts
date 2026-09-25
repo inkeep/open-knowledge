@@ -11,8 +11,8 @@ import {
 } from '../utils/process-scan.ts';
 import { inspectLock, type LockState } from './lock-state.ts';
 import { projectDirectoryForLockDir } from './ps-observation.ts';
-import { buildPsV1, PsV1DiscoveryError, psV1Failure } from './ps-v1.ts';
-import { addV1FormatOption, writeV1Document } from './supervision-json-v1-output.ts';
+import type { SupervisionFormatRegistry } from './supervision-format-registry.ts';
+import { supervisionFormats } from './supervision-formats.ts';
 
 export { buildPsV1, psV1Failure } from './ps-v1.ts';
 
@@ -291,39 +291,36 @@ export async function runPs(deps: RunPsDeps = {}): Promise<void> {
   log(renderTable(filtered));
 }
 
-export function psCommand(getV1Failure?: () => string | null): Command {
-  return addV1FormatOption(
-    new Command('ps')
-      .description('List all running open-knowledge servers')
-      .argument('[modifier]', '"all" to include stale (dead-pid) entries')
-      .option('--all', 'Include stale entries (foreign and unverified entries already show)')
-      .option('--json', 'Emit structured JSON (always includes all statuses)'),
-    true,
-  ).action(
-    async (
-      modifier: string | undefined,
-      opts: { all?: boolean; json?: boolean; format?: string },
-    ) => {
-      if (opts.format === 'json-v1') {
-        const failure = getV1Failure?.();
-        if (failure) {
-          writeV1Document(psV1Failure('operation-failed', failure));
+export function psCommand(
+  getV1Failure?: () => string | null,
+  registry: SupervisionFormatRegistry = supervisionFormats,
+): Command {
+  return registry
+    .addFormatOption(
+      new Command('ps')
+        .description('List all running open-knowledge servers')
+        .argument('[modifier]', '"all" to include stale (dead-pid) entries')
+        .option('--all', 'Include stale entries (foreign and unverified entries already show)')
+        .option('--json', 'Emit structured JSON (always includes all statuses)'),
+      true,
+    )
+    .action(
+      async (
+        modifier: string | undefined,
+        opts: { all?: boolean; json?: boolean; format?: string },
+      ) => {
+        if (opts.format !== undefined) {
+          await registry.execute(opts.format, {
+            command: 'ps',
+            context: {
+              project: { root: process.cwd(), resolution: 'cwd' },
+              failure: getV1Failure?.() ?? null,
+            },
+          });
           return;
         }
-        try {
-          writeV1Document(await buildPsV1());
-        } catch (error) {
-          writeV1Document(
-            psV1Failure(
-              error instanceof PsV1DiscoveryError ? 'discovery-failed' : 'operation-failed',
-              error instanceof Error ? error.message : String(error),
-            ),
-          );
-        }
-        return;
-      }
-      const all = opts.all === true || modifier === 'all';
-      await runPs({ all, json: opts.json === true });
-    },
-  );
+        const all = opts.all === true || modifier === 'all';
+        await runPs({ all, json: opts.json === true });
+      },
+    );
 }

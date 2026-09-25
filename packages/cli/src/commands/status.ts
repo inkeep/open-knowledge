@@ -1,9 +1,11 @@
 import { type Config, lockAdvertisesUi, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { inspectLock, type LockState } from './lock-state.ts';
-import { buildStatusV1, statusV1Failure } from './status-v1.ts';
-import type { V1Project } from './supervision-json-v1.ts';
-import { addV1FormatOption, writeV1Document } from './supervision-json-v1-output.ts';
+import type {
+  SupervisionContext,
+  SupervisionFormatRegistry,
+} from './supervision-format-registry.ts';
+import { supervisionFormats } from './supervision-formats.ts';
 
 interface StatusEntry {
   name: 'server' | 'ui';
@@ -131,48 +133,31 @@ export function runStatus(deps: RunStatusDeps): StatusReport {
   return report;
 }
 
-export interface ObservationContext {
-  project: V1Project;
-  failure: string | null;
-}
+export type ObservationContext = SupervisionContext;
 
 export function statusCommand(
   getConfig: () => Config,
   getV1Context?: () => ObservationContext,
+  registry: SupervisionFormatRegistry = supervisionFormats,
 ): Command {
-  return addV1FormatOption(
-    new Command('status')
-      .description('Show whether the server and UI are running for this project')
-      .option('--json', 'Emit structured JSON instead of formatted text'),
-    true,
-  ).action(async (opts: { json?: boolean; format?: string }) => {
-    if (opts.format === 'json-v1') {
-      const context = getV1Context?.() ?? {
-        project: { root: process.cwd(), resolution: 'cwd' as const },
-        failure: null,
-      };
-      if (context.failure !== null) {
-        writeV1Document(statusV1Failure('project-unavailable', context.failure));
+  return registry
+    .addFormatOption(
+      new Command('status')
+        .description('Show whether the server and UI are running for this project')
+        .option('--json', 'Emit structured JSON instead of formatted text'),
+      true,
+    )
+    .action(async (opts: { json?: boolean; format?: string }) => {
+      if (opts.format !== undefined) {
+        const context = getV1Context?.() ?? {
+          project: { root: process.cwd(), resolution: 'cwd' as const },
+          failure: null,
+        };
+        await registry.execute(opts.format, { command: 'status', context });
         return;
       }
-      try {
-        const root = context.project.root;
-        if (root === null) throw new Error('Project root is unavailable');
-        writeV1Document(
-          await buildStatusV1({ project: context.project, lockDir: resolveLockDir(root) }),
-        );
-      } catch (error) {
-        writeV1Document(
-          statusV1Failure(
-            'operation-failed',
-            error instanceof Error ? error.message : String(error),
-          ),
-        );
-      }
-      return;
-    }
-    getConfig();
-    const lockDir = resolveLockDir(process.cwd());
-    runStatus({ lockDir, json: opts.json === true });
-  });
+      getConfig();
+      const lockDir = resolveLockDir(process.cwd());
+      runStatus({ lockDir, json: opts.json === true });
+    });
 }
