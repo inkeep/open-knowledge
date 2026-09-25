@@ -47,6 +47,7 @@ export const CANDIDATE_QUERY = `
         state { type }
         labels { nodes { name } }
         attachments { nodes { url } }
+        children(first: 1) { nodes { id } pageInfo { hasNextPage } }
       }
     }
   }
@@ -288,6 +289,27 @@ export class NeedsHumanError extends Error {
   }
 }
 
+export class LinearRateLimitError extends Error {
+  constructor(headers) {
+    const read = (name) => headers?.get?.(name);
+    const windows = [
+      ['request reset epoch ms', read('x-ratelimit-requests-reset')],
+      [
+        `endpoint ${read('x-ratelimit-endpoint-name') ?? 'unspecified'} reset epoch ms`,
+        read('x-ratelimit-endpoint-requests-reset'),
+      ],
+      ['complexity reset epoch ms', read('x-ratelimit-complexity-reset')],
+      ['retry-after', read('retry-after')],
+    ]
+      .filter(([, value]) => value)
+      .map(([label, value]) => `${label}: ${value}`);
+    super(
+      `Linear rate limit reached${windows.length ? ` (${windows.join('; ')})` : ''}; stopping reconciliation and leaving remaining candidates for a later run.`,
+    );
+    this.name = 'LinearRateLimitError';
+  }
+}
+
 export async function runWriteBack({
   listCandidates,
   listChildren,
@@ -349,7 +371,7 @@ export async function runWriteBack({
       return;
     }
 
-    const children = await listChildren(candidate.id);
+    const children = candidate.hasChildren === false ? [] : await listChildren(candidate.id);
 
     const considered = children.length > 0 ? children : [candidate];
 
@@ -522,7 +544,27 @@ export async function runWriteBack({
     }
   };
 
-  for (const candidate of await listCandidates()) {
+  let candidates;
+  try {
+    candidates = await listCandidates();
+  } catch (error) {
+    if (!(error instanceof LinearRateLimitError)) throw error;
+    return {
+      posted,
+      skipped,
+      errored: [
+        {
+          identifier: 'candidate-enumeration',
+          message: error.message,
+          disposition: 'retried-next-run',
+        },
+      ],
+      deferred: null,
+      dryRun: !live,
+    };
+  }
+  let deferred = 0;
+  for (const [index, candidate] of candidates.entries()) {
     try {
       await processCandidate(candidate);
     } catch (err) {
@@ -531,14 +573,21 @@ export async function runWriteBack({
         `::warning::write-back: ${candidate.identifier} could not be processed (${disposition}): ${err.message}`,
       );
       errored.push({ identifier: candidate.identifier, message: err.message, disposition });
+      if (err instanceof LinearRateLimitError) {
+        deferred = candidates.length - index - 1;
+        break;
+      }
     }
   }
 
-  return { posted, skipped, errored, dryRun: !live };
+  return { posted, skipped, errored, deferred, dryRun: !live };
 }
 
-export function runFailureMessage({ errored = [] } = {}) {
+export function runFailureMessage({ errored = [], deferred } = {}) {
   if (errored.length === 0) return null;
+  if (deferred === null) {
+    return `Candidate enumeration stopped: ${errored[0].message} The remaining count is unknown; no marker was written, and a later reconciliation can retry.`;
+  }
   const head =
     `${errored.length} of the candidates could not be processed: ` +
     errored.map((e) => `${e.identifier} (${e.message})`).join('; ');
@@ -561,7 +610,7 @@ export const LINEAR_RETRY_CAP_MS = 8000;
 export const REQUEST_TIMEOUT_MS = 15_000;
 
 export function isRetryableStatus(status) {
-  return status === 429 || (status >= 500 && status < 600);
+  return status >= 500 && status < 600;
 }
 
 const RETRYABLE_NETWORK_CODES = new Set([
@@ -657,14 +706,29 @@ export async function linearGraphql({
       if (!res.ok) {
         let body = '';
         try {
-          body = (await res.text()).slice(0, 400);
+          body = await res.text();
         } catch (err) {
           body = `<body unreadable: ${err.message}>`;
         }
-        throw new LinearRequestError(`Linear GraphQL returned HTTP ${res.status}: ${body}`, {
-          retryable: isRetryableStatus(res.status),
-          retryAfterSeconds: parseRetryAfterSeconds(res.headers?.get?.('retry-after')),
-        });
+        let payload;
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          payload = null;
+        }
+        if (
+          res.status === 429 ||
+          payload?.errors?.some((error) => error.extensions?.code === 'RATELIMITED')
+        ) {
+          throw new LinearRateLimitError(res.headers);
+        }
+        throw new LinearRequestError(
+          `Linear GraphQL returned HTTP ${res.status}: ${body.slice(0, 400)}`,
+          {
+            retryable: isRetryableStatus(res.status),
+            retryAfterSeconds: parseRetryAfterSeconds(res.headers?.get?.('retry-after')),
+          },
+        );
       }
 
       let payload;
@@ -676,6 +740,9 @@ export async function linearGraphql({
         });
       }
       if (payload.errors?.length) {
+        if (payload.errors.some((error) => error.extensions?.code === 'RATELIMITED')) {
+          throw new LinearRateLimitError(res.headers);
+        }
         throw new LinearRequestError(
           `Linear GraphQL error: ${payload.errors.map((e) => e.message).join('; ')}`,
           {
@@ -696,21 +763,30 @@ export async function linearGraphql({
   }
 }
 
-function toNode(raw) {
+export function toNode(raw) {
   return {
     id: raw.id,
     identifier: raw.identifier,
     stateType: raw.state?.type ?? 'unknown',
     labels: (raw.labels?.nodes ?? []).map((l) => l.name),
     attachmentUrls: (raw.attachments?.nodes ?? []).map((a) => a.url),
+    hasChildren: Array.isArray(raw.children?.nodes)
+      ? raw.children.nodes.length > 0 || raw.children.pageInfo?.hasNextPage !== false
+      : undefined,
   };
 }
 
-async function paginate({ apiKey, query, variables, log }) {
+async function paginate({ apiKey, query, variables, log, fetchImpl }) {
   const collected = [];
   let after = null;
   do {
-    const data = await linearGraphql({ apiKey, query, variables: { ...variables, after }, log });
+    const data = await linearGraphql({
+      apiKey,
+      query,
+      variables: { ...variables, after },
+      log,
+      fetchImpl,
+    });
     const page = data?.issues;
     if (!page)
       throw new Error(
@@ -958,10 +1034,16 @@ async function main() {
     );
   }
 
+  let linearRequests = 0;
+  const fetchImpl = (...args) => {
+    linearRequests++;
+    return fetch(...args);
+  };
   const result = await runWriteBack({
-    listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log }),
+    listCandidates: () =>
+      paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log, fetchImpl }),
     listChildren: (parentId) =>
-      paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log }),
+      paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log, fetchImpl }),
     versionFor: (node) => versionFor(node, channel),
     stableVersionFor: (node) => versionFor(node, 'stable'),
     isPublishedVersion: (version) => stableTags.includes(`v${version}`),
@@ -971,6 +1053,7 @@ async function main() {
     postReply: realPostReply,
     recordNotification: async ({ issueId, url, title }) => {
       const data = await linearGraphql({
+        fetchImpl,
         apiKey,
         query:
           'mutation Mark($input: AttachmentCreateInput!) { attachmentCreate(input: $input) { success } }',
@@ -988,6 +1071,8 @@ async function main() {
   console.log(
     JSON.stringify({
       dryRun: result.dryRun,
+      linearRequests,
+      deferred: result.deferred,
       posted: result.posted.length,
       skipped: result.skipped,
       errored: result.errored,

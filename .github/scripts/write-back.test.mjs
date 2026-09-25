@@ -16,6 +16,7 @@ import {
   isStableVersion,
   LINEAR_RETRY_ATTEMPTS,
   LINEAR_RETRY_CAP_MS,
+  LinearRateLimitError,
   linearGraphql,
   makeReleaseWindow,
   notificationMarkerUrl,
@@ -26,6 +27,7 @@ import {
   runFailureMessage,
   runWriteBack,
   selectGhToken,
+  toNode,
 } from './write-back.mjs';
 import { composeReply } from './write-back-gate.mjs';
 
@@ -72,6 +74,23 @@ function harness(overrides = {}) {
 }
 
 describe('candidate enumeration', () => {
+  test('the candidate page proves whether a child lookup is necessary without filtering child states', () => {
+    expect(CANDIDATE_QUERY).toContain(
+      'children(first: 1) { nodes { id } pageInfo { hasNextPage } }',
+    );
+    expect(toNode({ children: { nodes: [], pageInfo: { hasNextPage: false } } }).hasChildren).toBe(
+      false,
+    );
+    expect(
+      toNode({ children: { nodes: [{ id: 'child' }], pageInfo: { hasNextPage: false } } })
+        .hasChildren,
+    ).toBe(true);
+    expect(toNode({ children: { nodes: [], pageInfo: { hasNextPage: true } } }).hasChildren).toBe(
+      true,
+    );
+    expect(toNode({ children: { nodes: [] } }).hasChildren).toBe(true);
+    expect(toNode({}).hasChildren).toBeUndefined();
+  });
   test('candidates come from a Linear ticket query, never from a walk over release commits', () => {
     expect(CANDIDATE_QUERY).toContain('issues(');
     expect(CANDIDATE_QUERY).toContain('state: { type: { eq: "completed" } }');
@@ -461,6 +480,92 @@ describe('idempotency marker', () => {
 });
 
 describe('write-back run', () => {
+  test('an enumeration throttle returns an unknown deferred count without processing or writing', async () => {
+    const h = harness({
+      live: true,
+      listCandidates: async () => {
+        throw new LinearRateLimitError();
+      },
+    });
+    const result = await h.run();
+    expect(result.deferred).toBeNull();
+    expect(result.errored).toHaveLength(1);
+    expect(h.writes).toEqual([]);
+    expect(runFailureMessage(result)).toContain('remaining count is unknown');
+  });
+
+  test('quota diagnostics retain endpoint and complexity windows without mislabelling them as global', () => {
+    const headers = {
+      'x-ratelimit-endpoint-name': 'attachmentCreate',
+      'x-ratelimit-endpoint-requests-reset': '123',
+      'x-ratelimit-complexity-reset': '456',
+      'retry-after': '2',
+    };
+    const error = new LinearRateLimitError({ get: (name) => headers[name] });
+    expect(error.message).toContain('endpoint attachmentCreate reset epoch ms: 123');
+    expect(error.message).toContain('complexity reset epoch ms: 456');
+    expect(error.message).toContain('retry-after: 2');
+    expect(error.message).not.toContain('(request reset');
+  });
+  test('leaf issues spend no separate child-query request', async () => {
+    let calls = 0;
+    const leaf = toNode({
+      id: 'leaf',
+      identifier: 'PRD-7539',
+      state: { type: 'completed' },
+      attachments: { nodes: [{ url: GH_ISSUE }, { url: GH_PULL }] },
+      children: { nodes: [], pageInfo: { hasNextPage: false } },
+    });
+    const h = harness({
+      listCandidates: async () => [leaf],
+      listChildren: async () => {
+        calls++;
+        return [];
+      },
+    });
+    const result = await h.run();
+    expect(result.posted).toHaveLength(1);
+    expect(calls).toBe(0);
+  });
+
+  test.each([true, undefined])(
+    'a parent or unknown child hint still loads every child (hint=%s)',
+    async (hasChildren) => {
+      let calls = 0;
+      const h = harness({
+        listCandidates: async () => [candidate({ hasChildren })],
+        listChildren: async () => {
+          calls++;
+          return [candidate({ id: 'child', identifier: 'PRD-0002', stateType: 'started' })];
+        },
+      });
+      const result = await h.run();
+      expect(calls).toBe(1);
+      expect(result.posted).toEqual([]);
+    },
+  );
+
+  test('a Linear quota refusal stops the entire scan instead of querying every remaining candidate', async () => {
+    let calls = 0;
+    const h = harness({
+      live: true,
+      listCandidates: async () => [
+        candidate(),
+        candidate({ id: '2', identifier: 'PRD-2' }),
+        candidate({ id: '3', identifier: 'PRD-3' }),
+      ],
+      listChildren: async () => {
+        calls++;
+        throw new LinearRateLimitError({ get: () => '1790326800000' });
+      },
+    });
+    const result = await h.run();
+    expect(calls).toBe(1);
+    expect(result.deferred).toBe(2);
+    expect(result.errored).toHaveLength(1);
+    expect(result.errored[0].message).toContain('1790326800000');
+    expect(h.writes).toEqual([]);
+  });
   test('with no explicit live mode it composes and logs but performs no writes at all', async () => {
     const h = harness();
     const result = await h.run();
@@ -922,18 +1027,38 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
     expect(h.slept).toEqual([]);
   });
 
-  test('every 4xx that is not 429 fails fast, and every 5xx is retried', () => {
-    for (const status of [400, 401, 403, 404, 409, 422])
+  test('4xx fails fast, while transient 5xx remains retryable', () => {
+    for (const status of [400, 401, 403, 404, 409, 422, 429])
       expect(isRetryableStatus(status)).toBe(false);
-    for (const status of [429, 500, 502, 503, 504]) expect(isRetryableStatus(status)).toBe(true);
+    for (const status of [500, 502, 503, 504]) expect(isRetryableStatus(status)).toBe(true);
     expect(isRetryableStatus(200)).toBe(false);
   });
 
-  test('a 429 waits as long as Linear asked rather than as long as the backoff computed', async () => {
+  test('a 429 stops without spending more quota or sleeping past the job budget', async () => {
     const h = callLinear([fail(429, 'slow down', { 'retry-after': '2' }), ok({ issues: {} })]);
-    await h.call;
-    expect(h.slept).toEqual([2000]);
+    await expect(h.call).rejects.toBeInstanceOf(LinearRateLimitError);
+    expect(h.attemptCount()).toBe(1);
+    expect(h.slept).toEqual([]);
   });
+
+  test.each([400, 200])(
+    'Linear GraphQL RATELIMITED on HTTP %s stops without retries',
+    async (status) => {
+      const payload = {
+        errors: [
+          { message: 'Rate limit exceeded', extensions: { code: 'RATELIMITED', statusCode: 429 } },
+        ],
+      };
+      const response =
+        status === 400
+          ? fail(400, JSON.stringify(payload))
+          : { ok: true, status: 200, json: async () => payload, headers: { get: () => null } };
+      const h = callLinear([response, ok({ issues: {} })]);
+      await expect(h.call).rejects.toBeInstanceOf(LinearRateLimitError);
+      expect(h.attemptCount()).toBe(1);
+      expect(h.slept).toEqual([]);
+    },
+  );
 
   test('an outsized Retry-After is capped, so one reply cannot park the job', () => {
     expect(retryDelayMs({ attempt: 1, retryAfterSeconds: 3600 })).toBe(LINEAR_RETRY_CAP_MS);
