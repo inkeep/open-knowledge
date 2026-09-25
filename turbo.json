@@ -134,8 +134,12 @@
         "../../plugins/ok/**",
         "../app/src/editor/observers.ts",
         "../cli/src/**",
+        "!../cli/src/**/*.test.ts",
+        "!../cli/src/**/*.test-helper.ts",
         "../cli/tsdown.config.ts",
         "../desktop/src/main/**",
+        "!../desktop/src/main/**/*.test.ts",
+        "!../desktop/src/main/**/*.test-helper.ts",
         "../*/package.json",
         "../../docs/content/**"
       ]
@@ -151,7 +155,8 @@
         "scripts/**/*.ts",
         "scripts/**/*.mjs",
         "vitest.config.ts",
-        "../../test-support/*.ts"
+        "../../test-support/*.ts",
+        "$TURBO_ROOT$/scripts/read-jsonc.mjs"
       ]
     },
     "@inkeep/open-knowledge-desktop#test": {
@@ -161,16 +166,18 @@
         "$TURBO_DEFAULT$",
         "!CHANGELOG.md",
         "!README.md",
-        "../../biome.jsonc",
         "../../oxlint.config.ts",
         "../../lint-plugins/**",
         "../../test-support/**",
         "../../.github/scripts/smoke-packaged-dmg.mjs",
         "../../scripts/verify-native-config-in-packaged-dmg.mjs",
         "../../scripts/verify-keyring-in-packaged-dmg.mjs",
-        "../app/*.ts",
+        "../app/vite.*.ts",
+        "../app/lingui.config.ts",
+        "../app/postcss.config.ts",
         "../app/*.html",
-        "../app/src/**"
+        "../app/src/**",
+        "!../app/src/**/*.md"
       ]
     },
     "@inkeep/md-conformance#test": {
