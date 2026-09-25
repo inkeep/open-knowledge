@@ -4,6 +4,13 @@ import { execFileSync } from 'node:child_process';
 const STABLE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)$/;
 const BETA_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)-beta\.(\d+)$/;
 
+export function deriveChannel(raw) {
+  const tag = String(raw ?? '').trim();
+  if (STABLE_TAG_RE.test(tag)) return 'stable';
+  if (BETA_TAG_RE.test(tag)) return 'beta';
+  return null;
+}
+
 function releaseTagKey(raw) {
   const line = String(raw).trim();
   const stable = STABLE_TAG_RE.exec(line);

@@ -3,12 +3,10 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
 import { parse } from 'yaml';
+import { deriveChannel } from './published-release-tags.mjs';
 import {
   CANDIDATE_QUERY,
   changesetDirFor,
-  DEFAULT_BETA_LOOKBACK,
-  DEFAULT_RELEASE_LOOKBACK,
-  deriveChannel,
   deriveVersionForFixRefs,
   findChangesetPath,
   isFixRepoInRemit,
@@ -60,10 +58,12 @@ function harness(overrides = {}) {
     listCandidates: async () => [candidate()],
     listChildren: async () => [],
     versionFor: async () => 'v0.36.0',
+    stableVersionFor: async () => null,
+    isPublishedVersion: () => true,
     readChangesetProse: async () => CHANGESET,
     postReply: async (origin, text) => writes.push({ kind: 'post', origin: origin.url, text }),
     recordNotification: async (marker) => writes.push({ kind: 'mark', url: marker.url }),
-    classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
+    classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', minimumVersion: '0.35.0' }),
     selfRepo: 'inkeep/open-knowledge',
     log: (m) => logs.push(m),
     ...overrides,
@@ -491,7 +491,7 @@ describe('write-back run', () => {
     await h.run();
     const post = h.writes.find((w) => w.kind === 'post');
     expect(post.origin).toBe(DISCORD_THREAD);
-    expect(post.text).toContain('<https://github.com/inkeep/open-knowledge/releases>');
+    expect(post.text).toContain('<https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0>');
   });
 
   test('a failure while recording the marker leaves the reporter unmessaged', async () => {
@@ -668,7 +668,7 @@ describe('changeset parsing', () => {
       expect(text).not.toContain(changeset.title);
       expect(text).not.toContain(changeset.body);
       expect(text).toContain(
-        '[the releases page](https://github.com/inkeep/open-knowledge/releases)',
+        '[the release page](https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0)',
       );
     }
   });
@@ -1099,20 +1099,24 @@ describe('workflow shape', () => {
     expect(workflow).not.toContain('types: [published]');
   });
 
-  test('both release channels run, and a tag of neither shape runs nothing', () => {
-    expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
-    expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$');
-    expect(workflow).toContain('echo "channel=stable"');
-    expect(workflow).toContain('echo "channel=beta"');
-    expect(workflow).toContain('echo "channel=none"');
+  test('scheduled reconciliation covers both channels and serializes across release tags', () => {
+    const parsed = parse(workflow);
+    expect(parsed.on.schedule).toEqual([{ cron: '43 * * * *' }]);
+    expect(parsed.jobs.notify.strategy.matrix.channel).toBe(
+      "${{ fromJSON(github.event_name == 'schedule' && '[\"stable\",\"beta\"]' || contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '[\"beta\"]' || '[\"stable\"]') }}",
+    );
+    expect(parsed.jobs.notify.concurrency).toEqual({
+      group: 'reporter-write-back-${{ matrix.channel }}',
+      'cancel-in-progress': false,
+    });
     expect(workflow).toMatch(/if:\s*steps\.tag\.outputs\.channel != 'none'/);
-    expect(workflow).not.toMatch(/steps\.tag\.outputs\.stable/);
+    expect(workflow).toContain('run: node .github/scripts/write-back-target.mjs');
   });
 
   test('no working step is left outside the channel gate', () => {
     const stepNames = [...workflow.matchAll(/^ {6}- (?:name:.*|uses:.*)$/gm)].length;
     const gated = [...workflow.matchAll(/if: steps\.tag\.outputs\.channel != 'none'/g)].length;
-    expect(gated).toBe(stepNames - 1);
+    expect(gated).toBe(stepNames - 3);
   });
 
   test('it carries its own concurrency group so a release can never queue behind it', () => {
@@ -1149,6 +1153,7 @@ describe('workflow shape', () => {
       "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || vars.WRITE_BACK_MODE }}",
     );
     expect(workflow).toContain('WRITE_BACK_MODE');
+    expect(notify.env.RELEASE_TAG).toBe('${{ steps.tag.outputs.release_tag }}');
     expect(workflow).toContain('LINEAR_API_KEY');
   });
 
@@ -1175,85 +1180,33 @@ describe('workflow shape', () => {
   });
 });
 
-describe('release window', () => {
-  const TAGS = ['v0.34.0', 'v0.35.0', 'v0.35.1', 'v0.35.2', 'v0.36.0', 'v0.37.0'];
-  const windowFor = (releaseTag, lookback) =>
-    makeReleaseWindow({ releaseTag, stableTags: TAGS, lookback });
-
-  test('the release being processed is in window', () => {
-    expect(windowFor('v0.36.0')('0.36.0')).toBe('in-window');
-  });
-
-  test('a version above the release has not reached anyone yet', () => {
-    expect(windowFor('v0.36.0')('0.37.0')).toBe('not-yet-shipped');
-  });
-
-  test('the lookback keeps recent releases reachable so a missed run self-heals', () => {
-    const classify = windowFor('v0.36.0', 3);
-    for (const v of ['0.36.0', '0.35.2', '0.35.1', '0.35.0']) {
-      expect(classify(v)).toBe('in-window');
+describe('fixed reconciliation window', () => {
+  const windowFor = (releaseTag, minimumVersion = '0.35.0') =>
+    makeReleaseWindow({ releaseTag, minimumVersion });
+  test('missed releases remain eligible however many later releases appear', () => {
+    for (const releaseTag of ['v0.36.0', 'v0.90.0', 'v2.0.0']) {
+      expect(windowFor(releaseTag)('0.35.0')).toBe('in-window');
+      expect(windowFor(releaseTag)('0.34.0')).toBe('shipped-earlier');
     }
-  });
-
-  test('anything older than the lookback is left alone', () => {
-    expect(windowFor('v0.36.0', 3)('0.34.0')).toBe('shipped-earlier');
-  });
-
-  test('a narrower lookback excludes more of the history', () => {
-    const classify = windowFor('v0.36.0', 1);
-    expect(classify('0.35.2')).toBe('in-window');
-    expect(classify('0.35.1')).toBe('shipped-earlier');
-  });
-
-  test('a zero lookback degenerates to the exact release and nothing else', () => {
-    const classify = windowFor('v0.36.0', 0);
-    expect(classify('0.36.0')).toBe('in-window');
-    expect(classify('0.35.2')).toBe('shipped-earlier');
-  });
-
-  test('too little history to reach back keeps everything at or below the release', () => {
-    const classify = makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: ['v0.36.0'] });
-    expect(classify('0.36.0')).toBe('in-window');
-    expect(classify('0.35.0')).toBe('in-window');
-    expect(classify('0.37.0')).toBe('not-yet-shipped');
-  });
-
-  test('the v prefix is accepted on both sides', () => {
+    expect(windowFor('v0.36.0')('0.37.0')).toBe('not-yet-shipped');
+    expect(windowFor('v0.36.0')(null)).toBe('unversioned');
     expect(windowFor('0.36.0')('v0.36.0')).toBe('in-window');
   });
-
-  test('an underivable version is reported as such rather than silently admitted', () => {
-    expect(windowFor('v0.36.0')(null)).toBe('unversioned');
-  });
-
-  test('a missing or malformed release tag refuses rather than admitting all of history', () => {
-    for (const bad of [undefined, '', '   ', 'latest', 'v0.36.0-rc.1', 'v0.36']) {
-      expect(() => makeReleaseWindow({ releaseTag: bad, stableTags: TAGS })).toThrow(/RELEASE_TAG/);
+  test('invalid release or baseline refuses rather than enrolling all history', () => {
+    for (const releaseTag of [undefined, '', 'latest', 'v0.36.0-rc.1']) {
+      expect(() => makeReleaseWindow({ releaseTag })).toThrow('RELEASE_TAG');
     }
+    expect(() => makeReleaseWindow({ releaseTag: 'v0.36.0', minimumVersion: 'garbage' })).toThrow(
+      'minimum',
+    );
   });
-
-  test('a beta tag is a release this runs for, not a malformed one', () => {
-    const window = makeReleaseWindow({
-      releaseTag: 'v0.36.0-beta.1',
-      stableTags: [...TAGS, 'v0.36.0-beta.0', 'v0.36.0-beta.1'],
-    });
-    expect(window('0.36.0-beta.0')).toBe('in-window');
-    expect(window('0.36.0-beta.1')).toBe('in-window');
-    expect(window('0.36.0')).toBe('not-yet-shipped');
-  });
-
-  test('a stable run counts stables, so the betas between them cannot eat the lookback', () => {
-    const dense = ['v0.33.0', 'v0.34.0', 'v0.35.0', 'v0.36.0'].flatMap((tag) => [
-      `${tag}-beta.0`,
-      `${tag}-beta.1`,
-      tag,
-    ]);
-    const window = makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: dense });
-    expect(window('0.33.0')).toBe('in-window');
-  });
-
-  test('the default lookback is three', () => {
-    expect(DEFAULT_RELEASE_LOOKBACK).toBe(3);
+  test('the rollout retains the formerly eligible scope without extending into old unnotified history', () => {
+    const stable = makeReleaseWindow({ releaseTag: 'v0.77.9' });
+    expect(stable('0.77.6')).toBe('in-window');
+    expect(stable('0.77.5')).toBe('shipped-earlier');
+    const beta = makeReleaseWindow({ releaseTag: 'v0.78.0-beta.9' });
+    expect(beta('0.77.8-beta.0')).toBe('in-window');
+    expect(beta('0.77.7-beta.9')).toBe('shipped-earlier');
   });
 });
 
@@ -1263,7 +1216,7 @@ describe('release window applied to a run', () => {
       live: true,
       classifyRelease: makeReleaseWindow({
         releaseTag: 'v0.41.0',
-        stableTags: ['v0.36.0', 'v0.38.0', 'v0.39.0', 'v0.40.0', 'v0.41.0'],
+        minimumVersion: '0.38.0',
       }),
     });
     const result = await h.run();
@@ -1276,7 +1229,6 @@ describe('release window applied to a run', () => {
       live: true,
       classifyRelease: makeReleaseWindow({
         releaseTag: 'v0.35.0',
-        stableTags: ['v0.35.0', 'v0.36.0'],
       }),
     });
     const result = await h.run();
@@ -1287,7 +1239,7 @@ describe('release window applied to a run', () => {
   test('a candidate inside the window still gets its reply', async () => {
     const h = harness({
       live: true,
-      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
+      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', minimumVersion: '0.35.0' }),
     });
     await h.run();
     expect(h.writes.filter((w) => w.kind === 'post')).toHaveLength(1);
@@ -1320,10 +1272,6 @@ describe('release channels', () => {
     expect(isStableVersion('0.36.0')).toBe(true);
     expect(isStableVersion('v0.36.0')).toBe(true);
     expect(isStableVersion('0.36.0-beta.0')).toBe(false);
-  });
-
-  test('the beta lookback is wider than the stable one, because betas cut far more often', () => {
-    expect(DEFAULT_BETA_LOOKBACK).toBeGreaterThan(DEFAULT_RELEASE_LOOKBACK);
   });
 });
 
@@ -1532,13 +1480,15 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
 });
 
 describe('the beta leg', () => {
-  const BETA_TAGS = [...STABLE_TAGS, 'v0.37.0-beta.0', 'v0.37.0-beta.1'];
   const betaHarness = (overrides = {}) =>
     harness({
       live: true,
       channel: 'beta',
       versionFor: async () => '0.37.0-beta.0',
-      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.37.0-beta.1', stableTags: BETA_TAGS }),
+      classifyRelease: makeReleaseWindow({
+        releaseTag: 'v0.37.0-beta.1',
+        minimumVersion: '0.37.0-beta.0',
+      }),
       ...overrides,
     });
 
@@ -1547,7 +1497,7 @@ describe('the beta leg', () => {
     await h.run();
     const post = h.writes.find((w) => w.kind === 'post');
     expect(post.text).toContain('v0.37.0-beta.0');
-    expect(post.text).toContain('going out now on the Open Knowledge beta channel');
+    expect(post.text).toContain('available in Open Knowledge beta');
     expect(post.text).toContain('follow up here');
     expect(post.text).not.toContain('This shipped in');
     expect(post.text).not.toContain(CHANGESET.body);
@@ -1571,7 +1521,7 @@ describe('the beta leg', () => {
       listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, marked] })],
       classifyRelease: makeReleaseWindow({
         releaseTag: 'v0.37.0-beta.5',
-        stableTags: [...BETA_TAGS, 'v0.37.0-beta.5'],
+        minimumVersion: '0.37.0-beta.0',
       }),
     });
     const result = await h.run();
@@ -1617,9 +1567,11 @@ describe('the beta leg', () => {
     const forDiscord = posts.find((p) => p.origin === DISCORD_THREAD);
     expect(forIssue.text).not.toContain(CHANGESET.body);
     expect(forIssue.text).toContain(
-      '[the releases page](https://github.com/inkeep/open-knowledge/releases)',
+      '[the release page](https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0)',
     );
     expect(forDiscord.text).not.toContain(CHANGESET.body);
-    expect(forDiscord.text).toContain('<https://github.com/inkeep/open-knowledge/releases>');
+    expect(forDiscord.text).toContain(
+      '<https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0>',
+    );
   });
 });

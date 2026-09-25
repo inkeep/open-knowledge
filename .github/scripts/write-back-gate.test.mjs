@@ -4,14 +4,15 @@ import {
   compareVersions,
   composeReply,
   evaluateFanIn,
-  isOriginRepliableFrom,
   highestVersion,
+  isOriginRepliableFrom,
   partitionAttachments,
 } from './write-back-gate.mjs';
 
 const GH_ISSUE = 'https://github.com/inkeep/open-knowledge/issues/769';
 const GH_PULL = 'https://github.com/inkeep/agents-private/pull/2844';
-const GH_COMMIT = 'https://github.com/inkeep/agents-private/commit/da71f0c698ccaac11da915169ca6c7d585d5eb97';
+const GH_COMMIT =
+  'https://github.com/inkeep/agents-private/commit/da71f0c698ccaac11da915169ca6c7d585d5eb97';
 const DISCORD_THREAD = 'https://discord.com/channels/1234567890/9876543210/1122334455';
 const SLACK_ARCHIVE = 'https://inkeep.slack.com/archives/C016VCYCL74/p1727122965001469';
 const LINEAR_UPLOAD = 'https://uploads.linear.app/abc/def/diagnostics.zip';
@@ -259,7 +260,12 @@ describe('reply composition', () => {
   const CHANGESET = changesetFrom(CHANGESET_BODY);
 
   const compose = (overrides = {}) =>
-    composeReply({ changeset: CHANGESET, version: 'v0.36.0', originChannel: 'github-issue', ...overrides });
+    composeReply({
+      changeset: CHANGESET,
+      version: 'v0.36.0',
+      originChannel: 'github-issue',
+      ...overrides,
+    });
 
   test('the reply names the version', () => {
     expect(compose()).toContain('v0.36.0');
@@ -274,17 +280,21 @@ describe('reply composition', () => {
   test('a multi-paragraph changeset reaches the reader as a link, not as paragraphs', () => {
     const text = compose({
       changeset: changesetFrom(
-        'Messages you send now carry their own actions:\n\n- Resend to a different agent.\n- Copy and edit.'
+        'Messages you send now carry their own actions:\n\n- Resend to a different agent.\n- Copy and edit.',
       ),
     });
     expect(text).not.toContain('Messages you send now carry their own actions:');
     expect(text).not.toContain('Resend to a different agent.');
-    expect(text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+    expect(text).toContain(
+      '[the release page](https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0)',
+    );
   });
 
-  test('the reply links the releases index, never a tag page still in draft when it posts', () => {
-    expect(compose()).not.toContain('/releases/tag/');
-    expect(compose({ channel: 'beta', version: 'v0.36.0-beta.1' })).not.toContain('/releases/tag/');
+  test('the reply links the verified published release instead of promising a pending upload', () => {
+    expect(compose()).toContain('/releases/tag/v0.36.0');
+    expect(compose({ channel: 'beta', version: 'v0.36.0-beta.1' })).toContain(
+      '/releases/tag/v0.36.0-beta.1',
+    );
   });
 
   test('the reply lists every contributing ticket in sorted order', () => {
@@ -296,18 +306,20 @@ describe('reply composition', () => {
     expect(compose({ coverage: ['PRD-7539'] })).toContain('Covers PRD-7539.');
   });
 
-  test('the stable instruction hedges on the draft window the reply posts inside', () => {
-    expect(compose()).toContain('once the release finishes publishing');
-    expect(compose({ channel: 'beta', version: 'v0.36.0-beta.1' })).toContain(
-      "once the beta's installers have finished uploading"
+  test('the publication boundary makes upload hedges obsolete', () => {
+    expect(compose()).not.toContain('once the release finishes publishing');
+    expect(compose({ channel: 'beta', version: 'v0.36.0-beta.1' })).not.toContain(
+      "once the beta's installers have finished uploading",
     );
   });
 
   test('the update instruction is channel-appropriate', () => {
     const gh = compose({ originChannel: 'github-issue' });
     const discord = compose({ originChannel: 'discord-thread' });
-    expect(gh).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
-    expect(discord).toContain('<https://github.com/inkeep/open-knowledge/releases>');
+    expect(gh).toContain(
+      '[the release page](https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0)',
+    );
+    expect(discord).toContain('<https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0>');
   });
 
   test('the update instruction names the desktop app and nothing else', () => {
@@ -449,12 +461,12 @@ describe('the two channels say different things', () => {
       channel: 'beta',
     });
     expect(text).toContain('v0.59.0-beta.2');
-    expect(text).toContain('going out now on the Open Knowledge beta channel');
+    expect(text).toContain('available in Open Knowledge beta');
     expect(text).toContain('follow up here');
     expect(text).not.toContain('update to the latest');
     expect(text).toContain('download the beta');
     expect(text).not.toMatch(/available now|download it now/i);
-    expect(text).toContain('installers have finished uploading');
+    expect(text).not.toContain('installers have finished uploading');
   });
 
   test('a Discord beta reply wraps the URL so it does not expand into an embed', () => {
@@ -464,7 +476,9 @@ describe('the two channels say different things', () => {
       originChannel: 'discord-thread',
       channel: 'beta',
     });
-    expect(text).toMatch(/<https:\/\/github\.com\/inkeep\/open-knowledge\/releases>/);
+    expect(text).toContain(
+      '<https://github.com/inkeep/open-knowledge/releases/tag/v0.59.0-beta.2>',
+    );
   });
 
   test('a channel that is neither refuses rather than composing a reply in the wrong voice', () => {

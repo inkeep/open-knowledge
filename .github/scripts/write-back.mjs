@@ -3,6 +3,7 @@
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
+  deriveChannel,
   realPublishedReleaseTags,
   requirePublishedRelease,
   sortReleaseTagsAscending,
@@ -24,12 +25,12 @@ import {
   markerSuffixFor,
   partitionAttachments,
 } from './write-back-gate.mjs';
+import writeBackPolicy from './write-back-policy.json' with { type: 'json' };
 
 const LINEAR_GRAPHQL_URL = 'https://api.linear.app/graphql';
 const RELEASES_TAG_BASE = 'https://github.com/inkeep/open-knowledge/releases/tag';
 const DEFAULT_PRIVATE_REPO = 'inkeep/agents-private';
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
-const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
 const PAGE_SIZE = 50;
 
 export const CANDIDATE_QUERY = `
@@ -194,17 +195,6 @@ export function deriveVersionForFixRefs({
   return highest;
 }
 
-export const DEFAULT_RELEASE_LOOKBACK = 3;
-
-export const DEFAULT_BETA_LOOKBACK = 10;
-
-export function deriveChannel(releaseTag) {
-  const tag = String(releaseTag ?? '').trim();
-  if (STABLE_TAG_RE.test(tag)) return 'stable';
-  if (/^v\d+\.\d+\.\d+-beta\.\d+$/.test(tag)) return 'beta';
-  return null;
-}
-
 export function isStableVersion(raw) {
   return /^\d+\.\d+\.\d+$/.test(
     String(raw ?? '')
@@ -220,34 +210,75 @@ function normalizeVersion(raw) {
   return /^\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(trimmed) ? trimmed : null;
 }
 
-export function makeReleaseWindow({ releaseTag, stableTags = [], channel, lookback }) {
+export function makeReleaseWindow({ releaseTag, channel, minimumVersion }) {
   const release = normalizeVersion(releaseTag);
-  if (!release) {
-    throw new Error(
-      `RELEASE_TAG must be a release tag of this cadence, v0.36.0 or v0.36.0-beta.3 ` +
-        `(got ${JSON.stringify(releaseTag)}). ` +
-        'Refusing to run: with no release to scope against, every shipped fix in history is a candidate.',
-    );
-  }
+  if (!release) throw new Error('RELEASE_TAG must be a release tag of this cadence');
   const resolvedChannel = channel ?? (isStableVersion(release) ? 'stable' : 'beta');
-  const resolvedLookback =
-    lookback ?? (resolvedChannel === 'beta' ? DEFAULT_BETA_LOOKBACK : DEFAULT_RELEASE_LOOKBACK);
-
-  const eligible = resolvedChannel === 'beta' ? () => true : (version) => isStableVersion(version);
-  const known = [
-    ...new Set(stableTags.map(normalizeVersion).filter(Boolean).filter(eligible)),
-  ].sort(compareVersions);
-  const atOrBelow = known.filter((v) => compareVersions(v, release) <= 0);
-  const floorIndex = atOrBelow.length - (resolvedLookback + 1) - 1;
-  const floor = floorIndex >= 0 ? atOrBelow[floorIndex] : null;
-
+  const minimum = normalizeVersion(
+    minimumVersion ?? writeBackPolicy.minimumVersion[resolvedChannel],
+  );
+  if (!minimum) throw new Error('Writeback requires a valid fixed minimum version');
   return (version) => {
     const shipped = normalizeVersion(version);
     if (!shipped) return 'unversioned';
     if (compareVersions(shipped, release) > 0) return 'not-yet-shipped';
-    if (floor && compareVersions(shipped, floor) <= 0) return 'shipped-earlier';
+    if (compareVersions(shipped, minimum) < 0) return 'shipped-earlier';
     return 'in-window';
   };
+}
+
+function notificationVersions({ attachmentUrls, originUrl, channel }) {
+  const versions = new Set();
+  for (const raw of attachmentUrls) {
+    let url;
+    try {
+      url = new URL(raw);
+    } catch {
+      continue;
+    }
+    if (url.searchParams.get('notified') !== originUrl) continue;
+    if (!url.href.startsWith(`${RELEASES_TAG_BASE}/v`)) continue;
+    const version = normalizeVersion(url.pathname.split('/').at(-1));
+    if (!version || (isStableVersion(version) ? 'stable' : 'beta') !== channel) continue;
+    versions.add(version);
+  }
+  return [...versions].sort(compareVersions);
+}
+
+export function unavailableNotificationVersions(options) {
+  const versions = notificationVersions(options);
+  const published = versions.filter(options.isPublishedVersion);
+  return versions.filter(
+    (version) =>
+      !options.isPublishedVersion(version) &&
+      !published.some((seen) => compareVersions(seen, version) > 0),
+  );
+}
+
+export function createVersionFor(deps) {
+  const memo = (fn, keyFor = (value) => value) => {
+    const cache = new Map();
+    return (value) => {
+      const key = keyFor(value);
+      if (!cache.has(key)) cache.set(key, fn(value));
+      return cache.get(key);
+    };
+  };
+  const shared = {
+    ...deps,
+    findMirroredCommits: memo(deps.findMirroredCommits),
+    resolvePrMergeSha: memo(
+      deps.resolvePrMergeSha,
+      ({ owner, repo, number }) => `${owner}/${repo}/${number}`,
+    ),
+    readCommitMessage: memo(deps.readCommitMessage),
+  };
+  return (node, channel) =>
+    deriveVersionForFixRefs({
+      ...shared,
+      fixReferences: partitionAttachments(node.attachmentUrls ?? []).fixReferences,
+      channel,
+    });
 }
 
 export class NeedsHumanError extends Error {
@@ -261,6 +292,8 @@ export async function runWriteBack({
   listCandidates,
   listChildren,
   versionFor,
+  stableVersionFor,
+  isPublishedVersion,
   readChangesetProse,
   postReply,
   recordNotification,
@@ -275,6 +308,12 @@ export async function runWriteBack({
   }
   if (channel !== 'stable' && channel !== 'beta') {
     throw new Error(`runWriteBack requires channel 'stable' or 'beta', got '${channel}'`);
+  }
+  if (typeof isPublishedVersion !== 'function') {
+    throw new Error('runWriteBack requires published release availability');
+  }
+  if (channel === 'beta' && typeof stableVersionFor !== 'function') {
+    throw new Error('Beta reconciliation requires stable release containment');
   }
   if (!String(selfRepo ?? '').trim()) {
     throw new Error(
@@ -360,6 +399,21 @@ export async function runWriteBack({
       return;
     }
 
+    if (channel === 'beta') {
+      const stableVersions = new Map();
+      for (const node of considered)
+        stableVersions.set(node.identifier, await stableVersionFor(node));
+      const stableGate = evaluateFanIn({
+        ticket: candidate,
+        descendants: children,
+        resolveVersion: (node) => stableVersions.get(node.identifier) ?? null,
+      });
+      if (stableGate.decision === 'notify') {
+        skip(candidate.identifier, 'stable-covers-it');
+        return;
+      }
+    }
+
     if (origins.length === 0) {
       const unreachable = [
         ...attachedOrigins
@@ -378,11 +432,29 @@ export async function runWriteBack({
     for (const origin of origins) {
       const attachmentUrls = candidate.attachmentUrls ?? [];
       const marker = notificationMarkerUrl({ version: gate.version, originUrl: origin.url });
-      if (attachmentUrls.includes(marker)) {
+      const notifiedVersions = notificationVersions({
+        attachmentUrls,
+        originUrl: origin.url,
+        channel,
+      });
+      if (
+        attachmentUrls.includes(marker) ||
+        notifiedVersions.some(
+          (version) =>
+            isPublishedVersion(version) &&
+            compareVersions(version, normalizeVersion(gate.version)) >= 0,
+        )
+      ) {
         skip(candidate.identifier, 'already-notified');
         continue;
       }
       const changeset = await readChangesetProse(candidate, { fixReferences });
+      const recoveryFrom = unavailableNotificationVersions({
+        attachmentUrls,
+        originUrl: origin.url,
+        channel,
+        isPublishedVersion,
+      });
       const text =
         changeset === null
           ? null
@@ -392,6 +464,7 @@ export async function runWriteBack({
               originChannel: origin.channel,
               coverage: gate.coverage,
               channel,
+              recoveryFrom,
             });
 
       if (!text) {
@@ -407,6 +480,9 @@ export async function runWriteBack({
         log(
           `::notice::write-back: [dry run] would reply to ${origin.url} for ${candidate.identifier} ` +
             `(v${gate.version}, covers ${gate.coverage.join(', ')}).`,
+        );
+        log(
+          `::notice::write-back: [dry run] ${recoveryFrom.length ? 'recovery correction' : 'release announcement'}: ${text.replaceAll('\n', ' ')}`,
         );
         posted.push({
           identifier: candidate.identifier,
@@ -861,23 +937,18 @@ async function main() {
   const stableTags = realPublishedReleaseTags();
   requirePublishedRelease(releaseTag, stableTags);
   const contains = createTagContainment();
-  const versionFor = (node) =>
-    deriveVersionForFixRefs({
-      fixReferences: partitionAttachments(node.attachmentUrls ?? []).fixReferences,
-      stableTags,
-      findMirroredCommits: realFindMirroredCommits,
-      contains,
-      resolvePrMergeSha: realResolvePrMergeSha,
-      readCommitMessage: realReadCommitMessage,
-      channel,
-      log,
-    });
+  const versionFor = createVersionFor({
+    stableTags,
+    findMirroredCommits: realFindMirroredCommits,
+    contains,
+    resolvePrMergeSha: realResolvePrMergeSha,
+    readCommitMessage: realReadCommitMessage,
+    log,
+  });
 
-  const classifyRelease = makeReleaseWindow({ releaseTag, stableTags, channel });
-  const lookback = channel === 'beta' ? DEFAULT_BETA_LOOKBACK : DEFAULT_RELEASE_LOOKBACK;
+  const classifyRelease = makeReleaseWindow({ releaseTag, channel });
   log(
-    `::notice::write-back: ${channel} channel, scoped to ${releaseTag} and the ${lookback} ` +
-      `${channel === 'beta' ? 'releases' : 'stable releases'} before it; anything shipped earlier is left alone.`,
+    `::notice::write-back: ${channel} reconciliation from ${writeBackPolicy.minimumVersion[channel]} through ${releaseTag}; unnotified releases do not expire.`,
   );
 
   if (!String(process.env.CROSS_REPO_TOKEN ?? '').trim()) {
@@ -891,7 +962,9 @@ async function main() {
     listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log }),
     listChildren: (parentId) =>
       paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log }),
-    versionFor,
+    versionFor: (node) => versionFor(node, channel),
+    stableVersionFor: (node) => versionFor(node, 'stable'),
+    isPublishedVersion: (version) => stableTags.includes(`v${version}`),
     classifyRelease,
     channel,
     readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),

@@ -1,6 +1,9 @@
-const GITHUB_ISSUE_RE = /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)(?:[/?#].*)?$/i;
-const GITHUB_PULL_RE = /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/i;
-const GITHUB_COMMIT_RE = /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/commit\/([0-9a-f]{7,40})(?:[/?#].*)?$/i;
+const GITHUB_ISSUE_RE =
+  /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/issues\/(\d+)(?:[/?#].*)?$/i;
+const GITHUB_PULL_RE =
+  /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)(?:[/?#].*)?$/i;
+const GITHUB_COMMIT_RE =
+  /^https?:\/\/(?:www\.)?github\.com\/([^/]+)\/([^/]+)\/commit\/([0-9a-f]{7,40})(?:[/?#].*)?$/i;
 const DISCORD_THREAD_RE =
   /^https?:\/\/(?:(?:canary|ptb)\.)?discord(?:app)?\.com\/channels\/(\d+|@me)\/(\d+)(?:\/(\d+))?(?:[/?#].*)?$/i;
 const SLACK_ARCHIVE_RE = /^https?:\/\/[^/]*\.slack\.com\/archives\//i;
@@ -127,7 +130,8 @@ export function highestVersion(versions) {
 
 export function evaluateFanIn({ ticket, descendants = [], resolveVersion, log = () => {} }) {
   if (!ticket?.identifier) throw new Error('evaluateFanIn needs a ticket with an identifier');
-  if (typeof resolveVersion !== 'function') throw new Error('evaluateFanIn needs a resolveVersion function');
+  if (typeof resolveVersion !== 'function')
+    throw new Error('evaluateFanIn needs a resolveVersion function');
 
   const considered = descendants.length > 0 ? descendants : [ticket];
 
@@ -207,6 +211,7 @@ export function composeReply({
   originChannel,
   coverage = [],
   channel = 'stable',
+  recoveryFrom = [],
 }) {
   const normalizedVersion = String(version ?? '')
     .trim()
@@ -223,36 +228,41 @@ export function composeReply({
   const prose = body || title;
   if (!prose) return null;
 
-  const lines = [openingLine(channel, normalizedVersion)];
+  const lines = [
+    ...(recoveryFrom.length > 0
+      ? [
+          `Correction to our earlier update: the release${recoveryFrom.length === 1 ? '' : 's'} we linked (${recoveryFrom.map((v) => `v${v}`).join(', ')}) ${recoveryFrom.length === 1 ? 'is' : 'are'} not available to download.`,
+          '',
+        ]
+      : []),
+    openingLine(channel, normalizedVersion),
+  ];
 
   if (coverage.length > 0) {
     lines.push('', `Covers ${[...coverage].sort().join(', ')}.`);
   }
 
-  lines.push('', updateInstruction(originChannel, channel));
+  lines.push('', updateInstruction(originChannel, channel, normalizedVersion));
 
   return lines.join('\n');
 }
 
-function updateInstruction(originChannel, channel = 'stable') {
+function updateInstruction(originChannel, channel, version) {
   const lead =
     channel === 'beta'
       ? 'Read the notes and download the beta on'
       : 'To pick it up, update to the latest desktop app. The notes are on';
-  const tail =
-    channel === 'beta'
-      ? " once the beta's installers have finished uploading."
-      : ' once the release finishes publishing.';
+  const url = `${RELEASES_URL}/tag/v${version}`;
   if (originChannel === 'discord-thread') {
-    return `${lead} <${RELEASES_URL}>${tail}`;
+    return `${lead} <${url}>.`;
   }
-  return `${lead} [the releases page](${RELEASES_URL})${tail}`;
+  return `${lead} [the release page](${url}).`;
 }
 
 function openingLine(channel, version) {
   if (channel === 'beta') {
     return (
-      `This is fixed, and it is going out now on the Open Knowledge beta channel as v${version}. ` +
+      `This fix is available in Open Knowledge beta v${version}. ` +
       'Thanks for the report. It will reach the stable channel in an upcoming release, ' +
       'and we will follow up here when it does.'
     );
