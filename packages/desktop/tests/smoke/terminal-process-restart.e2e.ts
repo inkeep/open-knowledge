@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { waitForWindowByMode } from './_helpers/launch-readiness';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -86,21 +88,7 @@ async function launchRestartProfile(seed: RestartSeed): Promise<ElectronApplicat
 }
 
 async function findEditorWindow(app: ElectronApplication): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const candidate of app.windows()) {
-      const mode = await candidate
-        .evaluate(() => window.okDesktop?.config?.mode)
-        .catch(() => undefined);
-      if (mode === 'editor') {
-        page = candidate;
-        return;
-      }
-    }
-    throw new Error('editor window unavailable');
-  }).toPass({ timeout: 25_000 });
-  if (!page) throw new Error('editor window vanished');
-  return page;
+  return waitForWindowByMode(app, 'editor');
 }
 
 async function setWindowSize(
@@ -198,7 +186,7 @@ test.describe('terminal process restart', () => {
   test('restores placement, width, tab order, and active tab in a separate Electron process', async ({
     captureStderrFor,
   }) => {
-    test.setTimeout(240_000);
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const seed = seedRestartProfile();
     const firstApp = await launchRestartProfile(seed);
     captureStderrFor(firstApp, { home: seed.tmpHome });

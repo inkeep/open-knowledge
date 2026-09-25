@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import type { ElectronApplication, ElementHandle, JSHandle, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { waitForWindowByMode } from './_helpers/launch-readiness';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -108,40 +110,24 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
   );
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const candidate of app.windows()) {
-      const mode = await candidate
-        .evaluate(() => window.okDesktop?.config?.mode)
-        .catch(() => undefined);
-      if (mode === 'editor') {
-        page = candidate;
-        return;
-      }
-    }
-    throw new Error('no editor window yet');
-  }).toPass({ timeout: timeoutMs });
-  if (!page) throw new Error('editor window vanished after readiness poll');
-  return page;
+async function findEditorWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'editor');
 }
 
 async function dispatchRendererMenuAction(
-  app: ElectronApplication,
   action: 'move-terminal' | 'toggle-agent-panel' | 'toggle-terminal',
-  editorPage?: Page,
+  editorPage: Page,
 ): Promise<void> {
-  const page = editorPage ?? (await findEditorWindow(app));
-  await page.evaluate(async (menuAction) => {
+  await editorPage.evaluate(async (menuAction) => {
     const menu = window.okDesktop?.menu;
     if (!menu) throw new Error('renderer menu bridge is unavailable');
     await menu.dispatch({ kind: 'menu-action', action: menuAction });
   }, action);
 }
 
-async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
+async function clickViewTerminalItem(app: ElectronApplication, editorPage: Page): Promise<void> {
   if (process.platform !== 'darwin') {
-    await dispatchRendererMenuAction(app, 'toggle-terminal');
+    await dispatchRendererMenuAction('toggle-terminal', editorPage);
     return;
   }
   await app.evaluate(async ({ Menu }) => {
@@ -154,9 +140,9 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
   });
 }
 
-async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
+async function clickViewAgentsItem(app: ElectronApplication, editorPage: Page): Promise<void> {
   if (process.platform !== 'darwin') {
-    await dispatchRendererMenuAction(app, 'toggle-agent-panel');
+    await dispatchRendererMenuAction('toggle-agent-panel', editorPage);
     return;
   }
   await app.evaluate(async ({ Menu }) => {
@@ -171,10 +157,10 @@ async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
 
 async function clickTerminalPlacementItem(
   app: ElectronApplication,
-  editorPage?: Page,
+  editorPage: Page,
 ): Promise<void> {
   if (process.platform !== 'darwin') {
-    await dispatchRendererMenuAction(app, 'move-terminal', editorPage);
+    await dispatchRendererMenuAction('move-terminal', editorPage);
     return;
   }
   await app.evaluate(async ({ Menu }) => {
@@ -190,11 +176,11 @@ async function clickTerminalPlacementItem(
 async function clickTerminalPlacementItemRapidly(
   app: ElectronApplication,
   count: number,
-  editorPage?: Page,
+  editorPage: Page,
 ): Promise<void> {
   if (process.platform !== 'darwin') {
     for (let index = 0; index < count; index += 1) {
-      await dispatchRendererMenuAction(app, 'move-terminal', editorPage);
+      await dispatchRendererMenuAction('move-terminal', editorPage);
     }
     return;
   }
@@ -255,7 +241,7 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   const terminal = visibleTerminal(page);
   await expect(async () => {
     if (await terminal.isVisible()) return;
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, page);
     await expect(terminal).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 15_000 });
   await expect(terminal.locator('[data-terminal-status]')).toHaveAttribute(
@@ -512,7 +498,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('moving a populated terminal preserves every live session', async ({ captureStderrFor }) => {
-    test.setTimeout(260_000);
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed();
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -601,7 +587,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
   test('renderer restart restores the right layout and its live active terminal', async ({
     captureStderrFor,
   }) => {
-    test.setTimeout(300_000);
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed({ skipRestoreState: true });
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -670,7 +656,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
     await typeInActiveTerminal(page, `${SHELL_COMMANDS.output(afterRestart)}\r`);
     await expect.poll(() => readActiveTerminal(page), { timeout: 15_000 }).toContain(afterRestart);
 
-    await clickViewAgentsItem(app);
+    await clickViewAgentsItem(app, page);
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     const editorWindow = await app.browserWindow(page);
     await editorWindow.evaluate((windowHandle: unknown) => {
@@ -725,6 +711,7 @@ test.describe('Terminal placement continuity — live Electron', () => {
   test('fresh and malformed layout state recover to a usable bottom terminal', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed();
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });

@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { _electron as electron } from '@playwright/test';
+import { readinessGiveUpBoundMs } from './launch-readiness';
 
 type ElectronLaunchOptions = NonNullable<Parameters<typeof electron.launch>[0]>;
 export type SmokeLaunchEnv = NonNullable<ElectronLaunchOptions['env']>;
@@ -84,6 +85,13 @@ export interface DesktopLaunchOptions {
 }
 
 export const DEFAULT_LAUNCH_TIMEOUT_MS = 30_000;
+
+export const SETUP_BEFORE_FIRST_READINESS_WAIT_MS = 0;
+
+export const ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS =
+  DEFAULT_LAUNCH_TIMEOUT_MS +
+  readinessGiveUpBoundMs({ path: 'fork' }) +
+  SETUP_BEFORE_FIRST_READINESS_WAIT_MS;
 
 export function desktopLaunchOptions(input: DesktopLaunchOptionsInput = {}): DesktopLaunchOptions {
   const target = input.target ?? resolveDesktopTarget();

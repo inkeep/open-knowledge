@@ -5,6 +5,7 @@ import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -276,6 +277,7 @@ test.describe('Terminal tabs — live Electron', () => {
   test('a second tab spawns its own live shell (independent sessions)', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('two-shells');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -321,6 +323,7 @@ test.describe('Terminal tabs — live Electron', () => {
   test('closing a tab reaps only that shell; the survivor stays interactive', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('close-one');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -344,6 +347,7 @@ test.describe('Terminal tabs — live Electron', () => {
   });
 
   test('a manual rename pins over the program’s OSC title', async ({ captureStderrFor }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('rename-pin');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -424,6 +428,7 @@ test.describe('Terminal tabs — live Electron', () => {
   test('keyboard reorder changes order, keeps sticky numbers, and preserves the live shell', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('reorder-survive');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -471,6 +476,7 @@ test.describe('Terminal tabs — live Electron', () => {
   test('pointer-drag reorder changes order and preserves the live shell', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('drag-survive');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
@@ -513,6 +519,7 @@ test.describe('Terminal tabs — live Electron', () => {
   });
 
   test('a renderer reload preserves tab labels and order', async ({ captureStderrFor }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('reload-preserve');
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });

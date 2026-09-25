@@ -11,6 +11,7 @@ import {
   startupMarkLine,
   UTILITY_INIT_TIMEOUT_MS,
 } from '../../../src/shared/boot-narration.ts';
+import type { DesktopLaunchMode } from './launch-desktop';
 
 export const BOOT_LOG_HEARTBEAT_MS = SPAWN_WAIT_HEARTBEAT_MS;
 
@@ -23,6 +24,43 @@ export const BOOT_LOG_CAP_MS = 25_000;
 export const UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS = 5_000;
 
 const BOOT_LOG_TAIL_LINES = 12;
+
+export type ReadinessPath = 'fork' | 'packaged';
+
+export function readinessWorstCaseMs({
+  path,
+  capMs = BOOT_LOG_CAP_MS,
+  stallMs = BOOT_LOG_STALL_MS,
+}: {
+  path: ReadinessPath;
+  capMs?: number;
+  stallMs?: number;
+}): number {
+  switch (path) {
+    case 'packaged':
+      return capMs + stallMs;
+    case 'fork':
+      return capMs + stallMs + UTILITY_INIT_TIMEOUT_MS + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS;
+  }
+}
+
+export function readinessGiveUpBoundMs(options: {
+  path: ReadinessPath;
+  capMs?: number;
+  stallMs?: number;
+  pollMs?: number;
+}): number {
+  return readinessWorstCaseMs(options) + (options.pollMs ?? BOOT_LOG_POLL_MS);
+}
+
+const READINESS_PATH_BY_MODE = {
+  unpackaged: 'fork',
+  packaged: 'packaged',
+} as const satisfies Record<DesktopLaunchMode, ReadinessPath>;
+
+export function readinessPathOf(mode: DesktopLaunchMode): ReadinessPath {
+  return READINESS_PATH_BY_MODE[mode];
+}
 
 export interface BootLogSnapshot {
   dir: string;
@@ -491,7 +529,9 @@ export interface ReadySignalOptions<T> {
   startDeadline?: (ms: number) => ReadyDeadline;
   isProbePending?: () => boolean;
   onCapExtended?: (capMs: number) => void;
+  onDeclaredGrant?: (grantMs: number) => void;
   onAdvancement?: (advancement: LaunchAdvancement) => void;
+  onNewLaunch?: () => void;
 }
 
 export interface ReadyDeadline {
@@ -622,6 +662,8 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   let lastProgressAt = startedAt;
   let cursor = -1;
   const advancementSeen = new Set<string>();
+  const bootLinesRead = new Set<string>();
+  let launchBootLine: string | undefined;
   let lastLegibleReadAt: number | undefined;
   let lastStageRenewalAt: number | undefined;
   let snapshot = emptyBootLog(bootLogDirFor(options.home));
@@ -667,7 +709,23 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
         lastProgressAt = readAt;
       }
 
-      for (const event of launchAdvancementPhases(snapshot.lines)) {
+      const bootLinesNow = snapshot.lines.filter((line) => parseEvent(line) === DESKTOP_BOOT_EVENT);
+      const bootLineNow = bootLinesNow.at(-1);
+      const readsAnEarlierLaunch =
+        bootLineNow !== undefined &&
+        bootLineNow !== launchBootLine &&
+        bootLinesRead.has(bootLineNow);
+      for (const line of bootLinesNow) bootLinesRead.add(line);
+      if (bootLineNow !== undefined && !readsAnEarlierLaunch) {
+        if (launchBootLine !== undefined && bootLineNow !== launchBootLine) {
+          advancementSeen.clear();
+          grantedElapsedMs = Number.NEGATIVE_INFINITY;
+          derivedDeadlineAt = undefined;
+          options.onNewLaunch?.();
+        }
+        launchBootLine = bootLineNow;
+      }
+      for (const event of readsAnEarlierLaunch ? [] : launchAdvancementPhases(snapshot.lines)) {
         if (advancementSeen.has(event)) continue;
         advancementSeen.add(event);
         options.onAdvancement?.({ event, atMs: readAt - startedAt });
@@ -678,7 +736,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
       if (classifyBootLog(snapshot) !== 'unreadable') lastLegibleReadAt = readAt;
 
       const declaredPhaseOpen = hasOpenDeclaredPhase(snapshot.lines);
-      if (declaredPhaseOpen) {
+      if (declaredPhaseOpen && !readsAnEarlierLaunch) {
         const budget = newestDeclaredPhaseBudget(snapshot.lines);
         if (budget !== undefined && budget.elapsedMs > grantedElapsedMs) {
           grantedElapsedMs = budget.elapsedMs;
@@ -687,14 +745,21 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
             UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
           );
           derivedDeadlineAt = Math.max(derivedDeadlineAt ?? 0, now() + remaining);
+          options.onDeclaredGrant?.(derivedDeadlineAt - startedAt);
         }
       }
-      const effectiveCapMs = Math.max(
-        capMs,
-        derivedDeadlineAt === undefined ? capMs : derivedDeadlineAt - startedAt,
-        lastStageRenewalAt === undefined
-          ? capMs
-          : Math.min(lastStageRenewalAt - startedAt + stallMs, capMs + stallMs),
+      const effectiveCapMs = Math.min(
+        readinessWorstCaseMs({ path: 'fork', capMs, stallMs }),
+        Math.max(
+          capMs,
+          derivedDeadlineAt === undefined ? capMs : derivedDeadlineAt - startedAt,
+          lastStageRenewalAt === undefined
+            ? capMs
+            : Math.min(
+                lastStageRenewalAt - startedAt + stallMs,
+                readinessWorstCaseMs({ path: 'packaged', capMs, stallMs }),
+              ),
+        ),
       );
       if (effectiveCapMs > armedCapMs) {
         deadline.cancel();
@@ -790,6 +855,7 @@ export interface ReadyWaitRecord {
   what: string;
   elapsedMs: number;
   capMs: number;
+  declaredGrantMs?: number;
   requestedCapMs: number;
   gaveUp: boolean;
   reason: ReadyWaitGiveUpReason;
@@ -874,6 +940,7 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
   const what = `${mode} window`;
   const capMs = options.capMs ?? BOOT_LOG_CAP_MS;
   let decidingCapMs = capMs;
+  let declaredGrantMs: number | undefined;
   const startedAt = Date.now();
   const probeStates = new WeakMap<TPage, ModeProbeState>();
   let pendingProbeCount = 0;
@@ -892,8 +959,15 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       onCapExtended: (extended) => {
         decidingCapMs = extended;
       },
+      onDeclaredGrant: (grantMs) => {
+        declaredGrantMs = grantMs;
+      },
       onAdvancement: (advancement) => {
         advancements.push(advancement);
+      },
+      onNewLaunch: () => {
+        advancements.length = 0;
+        declaredGrantMs = undefined;
       },
       probe: async () => {
         const pages = app.windows();
@@ -962,6 +1036,7 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       what,
       elapsedMs: Date.now() - startedAt,
       capMs: decidingCapMs,
+      ...(declaredGrantMs === undefined ? {} : { declaredGrantMs }),
       requestedCapMs: capMs,
       gaveUp: !succeeded,
       reason,

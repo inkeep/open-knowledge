@@ -17,6 +17,7 @@ import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-de
 import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import { seedMcpConsentComplete } from './_helpers/mcp-consent';
 import { clickNavOpen } from './_helpers/navigator-actions';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   homeEnv,
   PLATFORM_SKIP_REASON,
@@ -126,6 +127,7 @@ test.describe('Consent-dialog smoke', () => {
   });
 
   test('Enter on a focused dialog input fires Start', async ({ captureStderrFor }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const tmpHome = seedTmpHome('enter-to-start');
     const projectDir = seedFreshNonGitProject('enter-to-start');
     trackForCleanup(tmpHome, projectDir);
@@ -179,6 +181,7 @@ test.describe('Consent-dialog smoke', () => {
   test('Pick Existing on a sub-folder of a git repo lands .ok/ at the git root', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const tmpHome = seedTmpHome('git-root-promote');
     const { repoRoot, subFolder } = seedGitRepoWithSubFolder(tmpHome, 'git-root-promote');
     trackForCleanup(tmpHome);

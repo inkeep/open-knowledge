@@ -12,7 +12,9 @@ import { join } from 'node:path';
 import type { ElectronApplication, Locator, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { waitForWindowByMode } from './_helpers/launch-readiness';
 import { seedMcpConsentComplete } from './_helpers/mcp-consent';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -114,23 +116,11 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
   );
 }
 
-async function findEditorWindow(app: ElectronApplication, timeoutMs = 25_000): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const p of app.windows()) {
-      const mode = await p.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-      if (mode === 'editor') {
-        page = p;
-        return;
-      }
-    }
-    throw new Error('no editor window yet');
-  }).toPass({ timeout: timeoutMs });
-  if (!page) throw new Error('editor window vanished after readiness poll');
-  return page;
+async function findEditorWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'editor');
 }
 
-async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
+async function clickViewTerminalItem(app: ElectronApplication, editorPage: Page): Promise<void> {
   await app.evaluate(async ({ Menu }) => {
     const menu = Menu.getApplicationMenu();
     if (!menu) throw new Error('application menu is unavailable');
@@ -142,8 +132,7 @@ async function clickViewTerminalItem(app: ElectronApplication): Promise<void> {
     if (process.platform === 'darwin') item.click();
   });
   if (process.platform !== 'darwin') {
-    const page = await findEditorWindow(app);
-    await page.evaluate(async () => {
+    await editorPage.evaluate(async () => {
       const menu = window.okDesktop?.menu;
       if (!menu) throw new Error('renderer menu bridge is unavailable');
       await menu.dispatch({ kind: 'menu-action', action: 'toggle-terminal' });
@@ -166,7 +155,7 @@ async function readTerminalText(page: Page): Promise<string> {
 async function openTerminal(app: ElectronApplication, page: Page): Promise<void> {
   await expect(async () => {
     if (await terminalSection(page).isVisible()) return;
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, page);
     await expect(terminalSection(page)).toBeVisible({ timeout: 1_000 });
   }).toPass({ timeout: 15_000 });
   await expect(page.locator('[data-terminal-status]')).toHaveAttribute(
@@ -206,9 +195,10 @@ test.describe('Docked terminal launch — composed argv', () => {
   test('a Claude launch hands the PTY the settings payload and the prompt verbatim', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed();
     const app = await launchApp(s);
-    captureStderrFor(app, { cleanupDirs: [s.tmpHome, s.projectDir] });
+    captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
     const page = await findEditorWindow(app);
     await openTerminal(app, page);
 

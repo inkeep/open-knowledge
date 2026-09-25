@@ -1,11 +1,16 @@
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { waitForAgentsDockPublish } from './_helpers/dock-state-ready';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
-import { PTY_PLATFORM_SKIP_REASON, PTY_PLATFORM_SUPPORTED } from './_helpers/platform-gate';
+import { waitForWindowByMode } from './_helpers/launch-readiness';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
+import {
+  homeEnv,
+  PTY_PLATFORM_SKIP_REASON,
+  PTY_PLATFORM_SUPPORTED,
+} from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
 
 const TARGET = resolveDesktopTarget();
@@ -17,8 +22,10 @@ test.describe('terminal dock-state IPC', () => {
   test.skip(!TARGET.exists, TARGET.missingReason);
 
   test('terminal tab snapshot survives renderer reload together', async ({ captureStderrFor }) => {
-    test.setTimeout(200_000);
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const testRoot = mkdtempSync(join(tmpdir(), 'ok-terminal-dock-state-'));
+    const tmpHome = join(testRoot, 'home');
+    mkdirSync(tmpHome, { recursive: true });
     const projectDir = join(testRoot, 'project');
     mkdirSync(join(projectDir, '.ok'), { recursive: true });
     writeFileSync(join(projectDir, '.ok', 'config.yml'), "content:\n  dir: '.'\n");
@@ -43,25 +50,11 @@ test.describe('terminal dock-state IPC', () => {
         target: TARGET,
         args: [`--user-data-dir=${userDataDir}`],
         timeout: 30_000,
-        env: { ...process.env, OK_RECLAIM_DISABLE: '1' },
+        env: { ...process.env, ...homeEnv(tmpHome), OK_RECLAIM_DISABLE: '1' },
       }),
     );
-    captureStderrFor(app, { cleanupDirs: [testRoot] });
-    let page: Page | undefined;
-    await expect(async () => {
-      for (const candidate of app.windows()) {
-        const mode = await candidate
-          .evaluate(() => window.okDesktop?.config?.mode)
-          .catch(() => undefined);
-        if (mode === 'editor') {
-          page = candidate;
-          return;
-        }
-      }
-      throw new Error('no editor window yet');
-    }).toPass({ timeout: 25_000 });
-    const editorPage = page;
-    if (editorPage == null) throw new Error('editor window vanished after readiness poll');
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: [testRoot] });
+    const editorPage = await waitForWindowByMode(app, 'editor');
 
     await waitForAgentsDockPublish(
       () => editorPage.evaluate(() => window.okDesktop?.terminal.getDockState()),

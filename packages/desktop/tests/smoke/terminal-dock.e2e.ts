@@ -20,6 +20,7 @@ import {
 } from './_helpers/dock-reveal-latency';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
@@ -161,19 +162,17 @@ async function findEditorWindow(app: ElectronApplication): Promise<Page> {
 }
 
 async function dispatchRendererMenuAction(
-  app: ElectronApplication,
   action: 'move-terminal' | 'toggle-agent-panel' | 'toggle-terminal',
-  editorPage?: Page,
+  editorPage: Page,
 ): Promise<void> {
-  const page = editorPage ?? (await findEditorWindow(app));
-  await page.evaluate(async (menuAction) => {
+  await editorPage.evaluate(async (menuAction) => {
     const menu = window.okDesktop?.menu;
     if (!menu) throw new Error('renderer menu bridge is unavailable');
     await menu.dispatch({ kind: 'menu-action', action: menuAction });
   }, action);
 }
 
-async function clickViewTerminalItem(app: ElectronApplication, editorPage?: Page): Promise<string> {
+async function clickViewTerminalItem(app: ElectronApplication, editorPage: Page): Promise<string> {
   const label = await app.evaluate(async ({ Menu }) => {
     const menu = Menu.getApplicationMenu();
     if (!menu) throw new Error('application menu is unavailable');
@@ -187,7 +186,7 @@ async function clickViewTerminalItem(app: ElectronApplication, editorPage?: Page
     return label;
   });
   if (process.platform !== 'darwin')
-    await dispatchRendererMenuAction(app, 'toggle-terminal', editorPage);
+    await dispatchRendererMenuAction('toggle-terminal', editorPage);
   return label;
 }
 
@@ -230,9 +229,12 @@ async function terminalPlacementLabel(app: ElectronApplication): Promise<string>
   });
 }
 
-async function clickTerminalPlacementItem(app: ElectronApplication): Promise<void> {
+async function clickTerminalPlacementItem(
+  app: ElectronApplication,
+  editorPage: Page,
+): Promise<void> {
   if (process.platform !== 'darwin') {
-    await dispatchRendererMenuAction(app, 'move-terminal');
+    await dispatchRendererMenuAction('move-terminal', editorPage);
     return;
   }
   await app.evaluate(async ({ Menu }) => {
@@ -245,9 +247,9 @@ async function clickTerminalPlacementItem(app: ElectronApplication): Promise<voi
   });
 }
 
-async function clickViewAgentsItem(app: ElectronApplication): Promise<void> {
+async function clickViewAgentsItem(app: ElectronApplication, editorPage: Page): Promise<void> {
   if (process.platform !== 'darwin') {
-    await dispatchRendererMenuAction(app, 'toggle-agent-panel');
+    await dispatchRendererMenuAction('toggle-agent-panel', editorPage);
     return;
   }
   await app.evaluate(async ({ Menu }) => {
@@ -325,7 +327,7 @@ async function widenEditorWindow(
 async function revealTerminalSurface(app: ElectronApplication, target: Locator): Promise<void> {
   await expect(async () => {
     if (await target.isVisible()) return;
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, target.page());
     await expect(target).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 15_000 });
 }
@@ -461,7 +463,7 @@ test.describe('Docked terminal — live Electron', () => {
     await revealTerminalSurface(app, terminalSection(page));
     await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Hide Terminal');
 
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, page);
     await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Terminal');
   });
 
@@ -472,15 +474,15 @@ test.describe('Docked terminal — live Electron', () => {
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
-    await findEditorWindow(app);
+    const page = await findEditorWindow(app);
 
     expect(await terminalPlacementLabel(app)).toBe('Move Terminal to right');
-    await clickTerminalPlacementItem(app);
+    await clickTerminalPlacementItem(app, page);
     await expect
       .poll(() => terminalPlacementLabel(app), { timeout: 8_000 })
       .toBe('Move Terminal to bottom');
 
-    await clickTerminalPlacementItem(app);
+    await clickTerminalPlacementItem(app, page);
     await expect
       .poll(() => terminalPlacementLabel(app), { timeout: 8_000 })
       .toBe('Move Terminal to right');
@@ -594,6 +596,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('right Terminal and Agents exclude each other only when the window is infeasible', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('rail-admission', { consent: true, skipRestoreState: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
@@ -602,12 +605,12 @@ test.describe('Docked terminal — live Electron', () => {
 
     await widenEditorWindow(app, page, 1900, 900);
     await openTerminal(app, page);
-    await clickTerminalPlacementItem(app);
+    await clickTerminalPlacementItem(app, page);
     await expect(page.locator('#terminal-column section[aria-label="Terminal"]')).toBeVisible({
       timeout: 10_000,
     });
     await waitForStatus(page, 'running', 25_000);
-    await clickViewAgentsItem(app);
+    await clickViewAgentsItem(app, page);
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     await expect
       .poll(
@@ -654,14 +657,14 @@ test.describe('Docked terminal — live Electron', () => {
       'Terminal closed to make room for the agent panel.',
       transientNoticeObservation(page, {
         document: 'current',
-        trigger: () => clickViewAgentsItem(app),
+        trigger: () => clickViewAgentsItem(app, page),
       }),
       { timeout: 10_000 },
     );
     await expect(page.locator('#agents-column')).toBeVisible({ timeout: 10_000 });
     await expectCollapsedRailColumn(page, '#terminal-column');
 
-    await clickViewAgentsItem(app);
+    await clickViewAgentsItem(app, page);
     await expectCollapsedRailColumn(page, '#agents-column');
     await expectCollapsedRailColumn(page, '#terminal-column');
   });
@@ -722,6 +725,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('a window-resize storm keeps the shell responsive and settles the PTY at the fitted grid', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('resize-storm', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -837,7 +841,7 @@ test.describe('Docked terminal — live Electron', () => {
     await page.keyboard.press('Escape');
     await expect.poll(focusInTerminal).toBe(true);
 
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, page);
     await expect.poll(focusInTerminal).toBe(false);
   });
 
@@ -881,7 +885,7 @@ test.describe('Docked terminal — live Electron', () => {
     await ensureBottomDock(page);
     await page.locator('section[aria-label="Terminal"] .xterm').click();
 
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, page);
     await expect(page.locator('#terminal-dock-panel')).toHaveAttribute('inert', '', {
       timeout: 10_000,
     });
@@ -927,9 +931,9 @@ test.describe('Docked terminal — live Electron', () => {
       .poll(() => page.evaluate(() => Number(localStorage.getItem('ok-terminal-height-v1') ?? 0)))
       .toBeGreaterThan(heightBefore);
 
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, page);
     await expect(panel).toHaveAttribute('inert', '', { timeout: 10_000 });
-    await clickViewTerminalItem(app);
+    await clickViewTerminalItem(app, page);
     await expect(terminalSection(page)).toBeVisible({ timeout: 10_000 });
     await expect
       .poll(async () => {
@@ -942,6 +946,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('QA-015/032 shell exit shows restart; banner hidden on exit', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('exit', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -1157,6 +1162,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('a renderer reload preserves the open terminal and its live session', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('reload-survival', { consent: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -1188,7 +1194,7 @@ test.describe('Docked terminal — live Electron', () => {
   test('the primary-modifier J shortcuts stage a new CLI tab and toggle visibility', async ({
     captureStderrFor,
   }) => {
-    test.setTimeout(200_000);
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('stage', { consent: true, fakeClaudeTui: true, skipRestoreState: true });
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s, { restrictPath: true });
@@ -1227,11 +1233,11 @@ test.describe('Docked terminal — live Electron', () => {
       .toContain('OKSTAGE_REUSE_742');
     await waitForMenuSelectionState(page, true);
 
-    expect(await clickViewTerminalItem(app)).toBe('Hide Terminal');
+    expect(await clickViewTerminalItem(app, page)).toBe('Hide Terminal');
     await expect(terminalSection(page)).toBeHidden();
     await expect.poll(() => viewTerminalLabel(app), { timeout: 8_000 }).toBe('Show Terminal');
 
-    expect(await clickViewTerminalItem(app)).toBe('Show Terminal');
+    expect(await clickViewTerminalItem(app, page)).toBe('Show Terminal');
     await expect(terminalSection(page)).toBeVisible();
     await waitForStatus(page, 'running', 25_000, { foreground: 'program' });
     expect(await terminalTabs().count()).toBe(tabsAfterLaunch);

@@ -53,6 +53,7 @@ import {
   type ReadyWaitRecord,
   readBootLog,
   readBootLogLines,
+  readinessWorstCaseMs,
   readyWaitsFor,
   rememberLaunchHome,
   sinceLastAdvancementMs,
@@ -63,6 +64,21 @@ import {
   waitForReadySignal,
   waitForWindowByMode,
 } from './launch-readiness.ts';
+import {
+  type GiveUp,
+  giveUpOf,
+  LAUNCH_REACHING_THE_CEILING_OF,
+  launchBootingAfterTheWaitsFirstRead,
+  launchBootingAfterTheWaitsFirstReadBesideTheDayBeforesLog,
+  pollIntervalOf,
+  READINESS_CALLS,
+  READINESS_PATHS,
+  reachOf,
+  utilityForkBootingAfterTheWaitsFirstRead,
+  utilityForkTheLastStageKeptAlive,
+  utilityForkTheLastStageKeptAliveBesideTheDayBeforesLog,
+  utilityForkWhoseFirstBeatLandsOnTheLastStagePoll,
+} from './readiness-reach.test-helper.ts';
 
 function markLine(phase: WaterfallPhase, elapsedMs: number, time: string): string {
   return JSON.stringify({ time, ...startupMarkLine(phase, elapsedMs) });
@@ -3076,6 +3092,169 @@ describe('the longest wait startup stages can buy is the static cap plus one sta
     ).toBeUndefined();
     expect(replay.elapsedMs).toBeLessThanOrEqual(
       BOOT_LOG_CAP_MS + POLL_TO_READ_PLUS_POLL_TO_ACT_MS,
+    );
+  });
+});
+
+describe("a launch the app narrates inside its own contract still reaches the app's own verdict", () => {
+  for (const { label, options } of READINESS_CALLS) {
+    it(label, async () => {
+      const launch = utilityForkTheLastStageKeptAlive(options);
+      const reach = await reachOf(launch, 2 * launch.appVerdictAtMs);
+      expect(reach).toMatchObject({ gaveUpAtMs: expect.any(Number) });
+      expect('gaveUpAtMs' in reach ? reach.gaveUpAtMs : Number.NaN).toBeGreaterThan(
+        launch.appVerdictAtMs,
+      );
+      expect('message' in reach ? reach.message : '').toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+    });
+  }
+});
+
+describe('the latest deadline the helper arms is the shared worst case of the path the launch takes', () => {
+  for (const { label, options } of READINESS_CALLS) {
+    for (const path of READINESS_PATHS) {
+      it(`${label}, on the ${path} path`, async () => {
+        const worstCaseMs = readinessWorstCaseMs({ path, ...options });
+        const launch = LAUNCH_REACHING_THE_CEILING_OF[path](options);
+        const giveUp = giveUpOf(await reachOf(launch, 2 * worstCaseMs), launch);
+        expect(giveUp.decidingCapMs, launch.name).toBe(worstCaseMs);
+        expect(giveUp.gaveUpAtMs).toBeGreaterThanOrEqual(worstCaseMs);
+        expect(giveUp.gaveUpAtMs).toBeLessThan(worstCaseMs + pollIntervalOf(options));
+      });
+    }
+  }
+});
+
+describe("a launch inside the app's own contract, read on a poll out of phase with the app's heartbeat, runs to the app's own last grant", () => {
+  const launch = utilityForkWhoseFirstBeatLandsOnTheLastStagePoll({ pollMs: BOOT_LOG_POLL_MS + 3 });
+  const forkWorstCaseMs = readinessWorstCaseMs({ path: 'fork', ...launch.options });
+
+  it("arms the grant the app's last beat bought, and gives up naming the app's verdict", async () => {
+    const giveUp = giveUpOf(await reachOf(launch, 2 * forkWorstCaseMs), launch);
+    expect(giveUp.declaredGrantMs).toBeDefined();
+    expect(giveUp.decidingCapMs).toBe(giveUp.declaredGrantMs);
+    expect(giveUp.gaveUpAtMs).toBeGreaterThan(launch.appVerdictAtMs);
+    expect(giveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+
+  it("finds that grant inside the fork path's worst case", async () => {
+    const giveUp = giveUpOf(await reachOf(launch, 2 * forkWorstCaseMs), launch);
+    expect(giveUp.declaredGrantMs).toBeDefined();
+    expect(giveUp.declaredGrantMs).toBeLessThanOrEqual(forkWorstCaseMs);
+  });
+});
+
+describe("a launch inside the app's own contract, read on polls further out of phase with the app's heartbeat, still runs to the app's own last grant", () => {
+  for (const pollMs of [
+    BOOT_LOG_POLL_MS + 20,
+    BOOT_LOG_POLL_MS + 60,
+    BOOT_LOG_POLL_MS + 83,
+    BOOT_LOG_POLL_MS + 150,
+    2 * BOOT_LOG_POLL_MS - 1,
+  ]) {
+    it(`read every ${pollMs}ms, arms the grant the app's last beat bought, gives up naming the app's verdict, and finds that grant inside the fork path's worst case`, async () => {
+      const launch = utilityForkWhoseFirstBeatLandsOnTheLastStagePoll({ pollMs });
+      const forkWorstCaseMs = readinessWorstCaseMs({ path: 'fork', ...launch.options });
+      const giveUp = giveUpOf(await reachOf(launch, 2 * forkWorstCaseMs), launch);
+      expect(giveUp.declaredGrantMs, `read every ${pollMs}ms`).toBeDefined();
+      expect(giveUp.decidingCapMs, `read every ${pollMs}ms`).toBe(giveUp.declaredGrantMs);
+      expect(giveUp.gaveUpAtMs).toBeGreaterThan(launch.appVerdictAtMs);
+      expect(giveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+      expect(giveUp.declaredGrantMs).toBeLessThanOrEqual(forkWorstCaseMs);
+    });
+  }
+});
+
+describe('a launch that boots after the wait first reads a home an earlier launch left its log in', () => {
+  const verdictOf = ({ gaveUpAtMs, decidingCapMs, advancements }: GiveUp) => ({
+    gaveUpAtMs,
+    decidingCapMs,
+    advancements,
+  });
+
+  it('decides as it would alone in that home, and records only its own stages', async () => {
+    const alone = launchBootingAfterTheWaitsFirstRead({}, { sharedWithAnEarlierLaunch: false });
+    const shared = launchBootingAfterTheWaitsFirstRead({}, { sharedWithAnEarlierLaunch: true });
+    const aloneGiveUp = giveUpOf(await reachOf(alone, REPLAY_WATCHDOG_MS), alone);
+    const sharedGiveUp = giveUpOf(await reachOf(shared, REPLAY_WATCHDOG_MS), shared);
+    expect(verdictOf(sharedGiveUp)).toEqual(verdictOf(aloneGiveUp));
+    expect(sharedGiveUp.advancements.map((advancement) => advancement.event)).toEqual(
+      shared.ownStageEvents,
+    );
+    expect(aloneGiveUp.decidingCapMs).toBe(
+      readinessWorstCaseMs({ path: 'packaged', ...alone.options }),
+    );
+  });
+
+  it("decides as it would alone when the earlier launch stopped inside its utility wait, and reaches the app's own verdict", async () => {
+    const alone = utilityForkBootingAfterTheWaitsFirstRead(
+      {},
+      { sharedWithALaunchThatStoppedInItsUtilityWait: false },
+    );
+    const shared = utilityForkBootingAfterTheWaitsFirstRead(
+      {},
+      { sharedWithALaunchThatStoppedInItsUtilityWait: true },
+    );
+    const aloneGiveUp = giveUpOf(await reachOf(alone, REPLAY_WATCHDOG_MS), alone);
+    const sharedGiveUp = giveUpOf(await reachOf(shared, REPLAY_WATCHDOG_MS), shared);
+    expect(verdictOf(sharedGiveUp)).toEqual(verdictOf(aloneGiveUp));
+    expect(sharedGiveUp.gaveUpAtMs).toBeGreaterThan(shared.appVerdictAtMs);
+    expect(sharedGiveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+});
+
+describe('a wait over a home that also holds the log a launch the day before left decides as it would had every poll read both logs', () => {
+  const recordOf = ({
+    gaveUpAtMs,
+    reason,
+    decidingCapMs,
+    declaredGrantMs,
+    advancements,
+  }: GiveUp) => ({
+    gaveUpAtMs,
+    reason,
+    decidingCapMs,
+    declaredGrantMs,
+    advancements,
+  });
+
+  it("reads past a poll that could not read the launch's own log, and still reaches the app's own verdict", async () => {
+    const alone = utilityForkTheLastStageKeptAlive({});
+    const beside = utilityForkTheLastStageKeptAliveBesideTheDayBeforesLog(
+      {},
+      { unreadableOnOnePollOfTheDeclaredGrant: false },
+    );
+    const glitched = utilityForkTheLastStageKeptAliveBesideTheDayBeforesLog(
+      {},
+      { unreadableOnOnePollOfTheDeclaredGrant: true },
+    );
+    const watchMs = 2 * alone.appVerdictAtMs;
+    const aloneGiveUp = giveUpOf(await reachOf(alone, watchMs), alone);
+    const besideGiveUp = giveUpOf(await reachOf(beside, watchMs), beside);
+    const glitchedGiveUp = giveUpOf(await reachOf(glitched, watchMs), glitched);
+    expect(recordOf(besideGiveUp)).toEqual(recordOf(aloneGiveUp));
+    expect(recordOf(glitchedGiveUp)).toEqual(recordOf(besideGiveUp));
+    expect(glitchedGiveUp.gaveUpAtMs).toBeGreaterThan(glitched.appVerdictAtMs);
+    expect(glitchedGiveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+
+  it('adopts a launch that boots while the earlier log cannot be read, and records only its own stages', async () => {
+    const alone = launchBootingAfterTheWaitsFirstRead({}, { sharedWithAnEarlierLaunch: false });
+    const beside = launchBootingAfterTheWaitsFirstReadBesideTheDayBeforesLog(
+      {},
+      { unreadableFromTheBootUntilMainsFirstHeartbeat: false },
+    );
+    const glitched = launchBootingAfterTheWaitsFirstReadBesideTheDayBeforesLog(
+      {},
+      { unreadableFromTheBootUntilMainsFirstHeartbeat: true },
+    );
+    const aloneGiveUp = giveUpOf(await reachOf(alone, REPLAY_WATCHDOG_MS), alone);
+    const besideGiveUp = giveUpOf(await reachOf(beside, REPLAY_WATCHDOG_MS), beside);
+    const glitchedGiveUp = giveUpOf(await reachOf(glitched, REPLAY_WATCHDOG_MS), glitched);
+    expect(recordOf(besideGiveUp)).toEqual(recordOf(aloneGiveUp));
+    expect(recordOf(glitchedGiveUp)).toEqual(recordOf(besideGiveUp));
+    expect(glitchedGiveUp.advancements.map((advancement) => advancement.event)).toEqual(
+      glitched.ownStageEvents,
     );
   });
 });
