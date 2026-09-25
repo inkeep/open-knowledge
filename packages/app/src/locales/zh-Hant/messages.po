@@ -1252,6 +1252,10 @@ msgstr "# 每行一個模式。\n"
 "#   *.draft.md\n"
 "#   !keep.md"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "#{position} in the merge queue"
+msgstr "合併佇列中的第 {position} 位"
+
 #: src/components/GraphLegend.tsx
 msgid "+ {overflow} more"
 msgstr "+ 還有 {overflow} 個"
@@ -2167,6 +2171,10 @@ msgstr "已核准"
 msgid "Approved — {optionName}"
 msgstr "已核准 — {optionName}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Approved and ready to merge"
+msgstr "已核准，可以合併"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "確定要把這個檔案轉換成範本嗎？原始檔案會被刪除。這個動作無法復原。"
@@ -2362,6 +2370,10 @@ msgstr "自動修正（{count}）"
 msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr "自動修正只作用於有已知機械式修正方式的問題。"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Auto-merge is on"
+msgstr "已開啟自動合併"
+
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Auto-save"
@@ -2477,6 +2489,10 @@ msgstr "同步之前，請先設定你用於 git 提交的身分："
 msgid "Before you go, mind sharing why?"
 msgstr "在你離開之前，方便說說原因嗎？"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Behind the base branch"
+msgstr "落後於基礎分支"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "下方"
@@ -2514,6 +2530,10 @@ msgstr "Blob Run"
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "由 LaTeX 原始碼經 KaTeX 顯示的獨立數學公式。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Blocked from merging"
+msgstr "已被阻擋合併"
 
 #: src/components/TemplateForm.tsx
 msgid "Blog post"
@@ -2806,6 +2826,10 @@ msgstr "在外部被改動"
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "自從它上次寫入這裡之後，在 OK 之外被改動過——顯示的是磁碟上現在的狀態"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Changes requested"
+msgstr "已要求變更"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Changes save automatically to this theme."
 msgstr "變更會自動儲存到這個主題。"
@@ -2935,6 +2959,10 @@ msgstr "正在檢查…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "帶核取方塊的清單。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Checks are running"
+msgstr "檢查正在執行"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Checks documents for markdown problems and can fix them"
@@ -3255,6 +3283,11 @@ msgstr "關閉視窗"
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "關閉視窗"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Closed"
+msgstr "已關閉"
 
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
@@ -5142,10 +5175,6 @@ msgstr "停用 {file}"
 msgid "Disable {id}"
 msgstr "停用 {id}"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Disable external link previews"
-msgstr "關閉外部連結預覽"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
 msgstr "關閉語意搜尋"
@@ -5333,6 +5362,11 @@ msgstr "正在下載 {0} {1}…"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Downloads a fresh copy from GitHub."
 msgstr "從 GitHub 下載一份全新的副本。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Draft"
+msgstr "草稿"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a spec"
@@ -5735,10 +5769,6 @@ msgstr "啟用自動（僅拉取）"
 msgid "Enable Auto (Pull only)?"
 msgstr "啟用自動（僅拉取）？"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
-msgstr "開啟外部連結預覽"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
 msgstr "啟用索引"
@@ -6039,6 +6069,10 @@ msgstr "外部連結"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews"
 msgstr "外部連結預覽"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews and GitHub reference cards"
+msgstr "外部連結預覽和 GitHub 參照卡片"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
@@ -6986,6 +7020,10 @@ msgstr "強制換行"
 msgid "Hard to use"
 msgstr "不好用"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Has merge conflicts"
+msgstr "有合併衝突"
+
 #: src/components/acp/working-status.ts
 msgid "Having a look around…"
 msgstr "四處看看…"
@@ -7458,6 +7496,10 @@ msgstr "在日誌文件中：條目標題以 ISO YYYY-MM-DD 日期開頭，最�
 msgid "In a subfolder"
 msgstr "在子資料夾中"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
+msgstr "在智慧代理對話中，把游標停在指向 GitHub 提取要求或議題的連結上時，會向 GitHub 查詢其狀態；OpenKnowledge 能使用你的 GitHub 登入時會以你的身分查詢。"
+
 #: src/components/settings/LintingSection.tsx
 msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr "在索引文件中：條目位於節標題下，每個條目都帶有連結。圍繞列表的散文很好。"
@@ -7483,6 +7525,14 @@ msgstr "在 Git 專案中，Open Knowledge 也新增了一個作用域 .gitattri
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "在 Claude Desktop App 中"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue"
+msgstr "在合併佇列中"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue, but it can't merge"
+msgstr "在合併佇列中，但無法合併"
 
 #: src/components/acp/ThreadView.tsx
 msgid "In the plan above, please "
@@ -8127,6 +8177,10 @@ msgstr "限制每個請求傳送的文字總量。超出預算的單一區塊會
 msgid "line {displayLine}"
 msgstr "第 {displayLine} 行"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Lines changed: {additions} added, {deletions} removed"
+msgstr "變更的行數：新增 {additions}，刪除 {deletions}"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
@@ -8602,6 +8656,11 @@ msgstr "中型章節標題。"
 #: src/components/ComposerAddMenu.tsx
 msgid "Mention a page"
 msgstr "提及頁面"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Merged"
+msgstr "已合併"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -9705,6 +9764,11 @@ msgstr "尚未安裝到此專案。"
 msgid "Not now"
 msgstr "現在不用"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Not planned"
+msgstr "未規劃"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Not redacted. Check the image before sharing."
 msgstr "未遮蔽敏感資訊。分享前請檢查圖片。"
@@ -9824,8 +9888,8 @@ msgid "Older"
 msgstr "較早"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
-msgstr "開啟——把游標停在外部連結上時，會把它的 URL 送到目標網站以取得預覽。"
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview, and hovering a GitHub reference in an agent chat asks GitHub for it."
+msgstr "開啟——把游標停在外部連結上時，會把它的 URL 送到目標網站以取得預覽；在智慧代理對話中停在 GitHub 參照上時，會向 GitHub 查詢。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -9885,6 +9949,11 @@ msgstr "只有目前這份文件用到 <0>#{tag}</0>。"
 #: src/components/GraphPanel.tsx
 msgid "Open"
 msgstr "開啟"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Open"
+msgstr "開放"
 
 #. placeholder {0}: status.remote.label
 #: src/components/settings/SyncSection.tsx
@@ -10249,6 +10318,10 @@ msgstr "開啟 worktree"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "開啟、瀏覽、接受或關閉 CodeMirror 的自動完成建議。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Opened by {author}"
+msgstr "由 {author} 建立"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "Opened existing OpenKnowledge project at {ancestorPath}"
@@ -11458,6 +11531,10 @@ msgstr "讀取編輯之間尚未解決的衝突"
 msgid "Ready"
 msgstr "就緒"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Ready to merge"
+msgstr "可以合併"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "現成的資料夾和範本，幫你快速上手。"
@@ -12027,6 +12104,10 @@ msgstr "必填"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "必填"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Required checks are failing"
+msgstr "必要的檢查未通過"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
@@ -13147,8 +13228,8 @@ msgid "Show {hiddenCount} more"
 msgstr "再顯示 {hiddenCount} 個"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor."
-msgstr "在編輯器中把游標停在外部連結上時顯示預覽卡片。"
+msgid "Show a preview card when you hover an external link in the editor or a GitHub pull request or issue in an agent chat."
+msgstr "在編輯器中把游標停在外部連結上，或在智慧代理對話中停在 GitHub 提取要求或議題上時顯示預覽卡片。"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -13535,6 +13616,10 @@ msgstr "Slidev 啟動逾時。請再試一次。"
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "小型章節標題。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Some checks failed, but it can still merge"
+msgstr "部分檢查失敗，但仍可合併"
 
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
@@ -16222,6 +16307,10 @@ msgstr "視覺化編輯器表格選取範圍"
 #: src/components/AuthModal.tsx
 msgid "Waiting for authorization"
 msgstr "正在等待授權"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Waiting for review"
+msgstr "等待審查"
 
 #: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx

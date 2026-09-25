@@ -1,8 +1,11 @@
 import { existsSync } from 'node:fs';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { join, resolve } from 'node:path';
 import {
   AGENTS_SKILLS_ROOT,
   EmptyRequestSchema,
+  GitHubReferenceRequestSchema,
+  GitHubReferenceResponseSchema,
   LinkPreviewRequestSchema,
   LinkPreviewResponseSchema,
   SavedThemeDeleteSuccessSchema,
@@ -23,6 +26,13 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { skillFolderStateForWire } from '@inkeep/open-knowledge-core/skill-folder-state';
 import { z } from 'zod';
+import { fetchGitHubReference, GitHubRateLimitHolds } from '../github-reference/fetch-reference.ts';
+import { GitHubReferenceCache } from '../github-reference/reference-cache.ts';
+import {
+  gitHubReferenceKey,
+  parseGitHubReferenceUrl,
+} from '../github-reference/reference-target.ts';
+import { mayUseGitHubToken } from '../github-reference/token-resolver.ts';
 import { isActivatedSkillRoot, knownSkillRootsFor } from '../in-place-skills.ts';
 import { guardedFetch } from '../link-preview/guarded-fetch.ts';
 import { buildLinkPreviewMetadata, type GuardedFetch } from '../link-preview/metadata.ts';
@@ -78,10 +88,35 @@ export interface WorkspaceToolsRouteDeps {
   searchService: SearchService;
   linkPreviewFetch: GuardedFetch | undefined;
   getLinkPreviewsEnabled: (() => boolean) | undefined;
+  declaredGitHubHosts: ReadonlySet<string>;
+  resolveGitHubToken: ((host: string) => Promise<string | null>) | undefined;
+  githubReferenceFetch: typeof fetch | undefined;
   getGeneratedIndexSettingsStatus: (() => GeneratedIndexSettingsStatus) | undefined;
   setGeneratedIndexEnabled:
     | ((enabled: boolean) => Promise<GeneratedIndexSettingsStatus>)
     | undefined;
+}
+
+function loopbackJsonGate(handler: string): (req: IncomingMessage, res: ServerResponse) => boolean {
+  return (req, res) => {
+    const verdict = classifyLinkPreviewRequest({
+      origin: req.headers.origin,
+      contentType: req.headers['content-type'],
+    });
+    if (verdict.ok) return true;
+    if (verdict.reason === 'origin') {
+      errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', { handler });
+    } else {
+      errorResponse(
+        res,
+        400,
+        'urn:ok:error:invalid-request',
+        'Content-Type must be application/json.',
+        { handler },
+      );
+    }
+    return false;
+  };
 }
 
 export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRouteGroup {
@@ -97,6 +132,9 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
     searchService,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
+    declaredGitHubHosts,
+    resolveGitHubToken,
+    githubReferenceFetch,
     getGeneratedIndexSettingsStatus,
     setGeneratedIndexEnabled,
   } = deps;
@@ -769,27 +807,61 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
     {
       handler: LINK_PREVIEW_HANDLER,
       method: 'POST',
-      preBodyGate: (req, res) => {
-        const verdict = classifyLinkPreviewRequest({
-          origin: req.headers.origin,
-          contentType: req.headers['content-type'],
-        });
-        if (verdict.ok) return true;
-        if (verdict.reason === 'origin') {
-          errorResponse(res, 403, 'urn:ok:error:invalid-origin', 'Origin not allowed.', {
-            handler: LINK_PREVIEW_HANDLER,
-          });
-        } else {
-          errorResponse(
+      preBodyGate: loopbackJsonGate(LINK_PREVIEW_HANDLER),
+    },
+  );
+
+  const GITHUB_REFERENCE_HANDLER = 'github-reference';
+  const githubReferenceCache = new GitHubReferenceCache();
+  const githubRateLimits = new GitHubRateLimitHolds();
+
+  const handleGitHubReference = withValidation(
+    GitHubReferenceRequestSchema,
+    async (req, res, body) => {
+      try {
+        const target = linkPreviewsEnabled()
+          ? parseGitHubReferenceUrl(body.url, declaredGitHubHosts)
+          : null;
+        if (target === null) {
+          const reason = linkPreviewsEnabled() ? 'unsupported' : 'disabled';
+          log.debug({ outcome: reason }, '[github-reference] request outcome');
+          successResponse(
             res,
-            400,
-            'urn:ok:error:invalid-request',
-            'Content-Type must be application/json.',
-            { handler: LINK_PREVIEW_HANDLER },
+            200,
+            GitHubReferenceResponseSchema,
+            { ok: false, reason },
+            { handler: GITHUB_REFERENCE_HANDLER },
           );
+          return;
         }
-        return false;
-      },
+        const signedIn = mayUseGitHubToken(req);
+        const cacheKey = `${signedIn ? 'signed-in' : 'anonymous'} ${gitHubReferenceKey(target)}`;
+        const outcome = await githubReferenceCache.load(cacheKey, async () =>
+          fetchGitHubReference({
+            target,
+            token: signedIn ? ((await resolveGitHubToken?.(target.host)) ?? null) : null,
+            fetchFn: githubReferenceFetch,
+            rateLimits: githubRateLimits,
+          }),
+        );
+        log.debug(
+          { outcome: outcome.ok ? 'ok' : outcome.reason },
+          '[github-reference] request outcome',
+        );
+        successResponse(res, 200, GitHubReferenceResponseSchema, outcome, {
+          handler: GITHUB_REFERENCE_HANDLER,
+        });
+      } catch (e) {
+        errorResponse(res, 500, 'urn:ok:error:internal-server-error', 'Internal server error.', {
+          handler: GITHUB_REFERENCE_HANDLER,
+          cause: e,
+        });
+      }
+    },
+    {
+      handler: GITHUB_REFERENCE_HANDLER,
+      method: 'POST',
+      preBodyGate: loopbackJsonGate(GITHUB_REFERENCE_HANDLER),
     },
   );
 
@@ -843,6 +915,7 @@ export function createWorkspaceToolsRoutes(deps: WorkspaceToolsRouteDeps): ApiRo
     {
       '/api/search': handleSearch,
       '/api/link-preview': handleLinkPreview,
+      '/api/github-reference': handleGitHubReference,
       '/api/skill-targets': handleSkillTargets,
       '/api/saved-themes': handleSavedThemesList,
       '/api/saved-theme': handleSavedTheme,

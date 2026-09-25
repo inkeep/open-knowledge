@@ -1248,6 +1248,10 @@ msgid "# One pattern per line.\n"
 "#   !keep.md"
 msgstr "# प्रति पंक्ति एक पैटर्न।\\n# उदाहरण:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "#{position} in the merge queue"
+msgstr "मर्ज कतार में #{position}"
+
 #: src/components/GraphLegend.tsx
 msgid "+ {overflow} more"
 msgstr "+ {overflow} और"
@@ -2163,6 +2167,10 @@ msgstr "स्वीकृत"
 msgid "Approved — {optionName}"
 msgstr "स्वीकृत — {optionName}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Approved and ready to merge"
+msgstr "स्वीकृत और मर्ज के लिए तैयार"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "क्या आप वाकई इस फ़ाइल को टेम्पलेट में बदलना चाहते हैं? मूल फ़ाइल हटा दी जाएगी। यह क्रिया वापस नहीं ली जा सकती।"
@@ -2358,6 +2366,10 @@ msgstr "स्वत: सुधार ({count})"
 msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr "स्वत: सुधार केवल उन्हीं समस्याओं पर लागू होता है जिनका कोई ज्ञात यांत्रिक समाधान है।"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Auto-merge is on"
+msgstr "ऑटो-मर्ज चालू है"
+
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Auto-save"
@@ -2473,6 +2485,10 @@ msgstr "सिंक करने से पहले, git कमिट के �
 msgid "Before you go, mind sharing why?"
 msgstr "जाने से पहले, क्या आप बताना चाहेंगे कि क्यों?"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Behind the base branch"
+msgstr "बेस ब्रांच से पीछे"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "नीचे"
@@ -2510,6 +2526,10 @@ msgstr "Blob Run"
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "एक LaTeX स्रोत स्ट्रिंग से KaTeX द्वारा रेंडर किया गया ब्लॉक गणित समीकरण।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Blocked from merging"
+msgstr "मर्ज करने से रोका गया"
 
 #: src/components/TemplateForm.tsx
 msgid "Blog post"
@@ -2802,6 +2822,10 @@ msgstr "बाहर बदला गया"
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "OK के पिछली बार यहाँ लिखने के बाद से बाहर बदला गया — दिखाई गई स्थिति वही है जो अभी डिस्क पर है"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Changes requested"
+msgstr "बदलाव माँगे गए"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Changes save automatically to this theme."
 msgstr "बदलाव इस थीम में अपने आप सहेजे जाते हैं।"
@@ -2931,6 +2955,10 @@ msgstr "जाँचा जा रहा है…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "चेकबॉक्स वाली चेकलिस्ट।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Checks are running"
+msgstr "जाँचें चल रही हैं"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Checks documents for markdown problems and can fix them"
@@ -3251,6 +3279,11 @@ msgstr "विंडो बंद करें"
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "विंडो बंद करें"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Closed"
+msgstr "बंद"
 
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
@@ -5138,10 +5171,6 @@ msgstr "{file} अक्षम करें"
 msgid "Disable {id}"
 msgstr "{id} को अक्षम करें"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Disable external link previews"
-msgstr "बाहरी लिंक पूर्वावलोकन अक्षम करें"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
 msgstr "अर्थ-आधारित खोज अक्षम करें"
@@ -5329,6 +5358,11 @@ msgstr "{0} {1} डाउनलोड हो रहा है…"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Downloads a fresh copy from GitHub."
 msgstr "GitHub से एक नई प्रति डाउनलोड करता है।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Draft"
+msgstr "ड्राफ़्ट"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a spec"
@@ -5731,10 +5765,6 @@ msgstr "स्वचालित (केवल खींचें) चालू 
 msgid "Enable Auto (Pull only)?"
 msgstr "स्वचालित (केवल खींचें) चालू करें?"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
-msgstr "बाहरी लिंक पूर्वावलोकन सक्षम करें"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
 msgstr "अनुक्रमणिका सक्षम करें"
@@ -6035,6 +6065,10 @@ msgstr "बाहरी लिंक"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews"
 msgstr "बाहरी लिंक पूर्वावलोकन"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews and GitHub reference cards"
+msgstr "बाहरी लिंक पूर्वावलोकन और GitHub संदर्भ कार्ड"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
@@ -6982,6 +7016,10 @@ msgstr "कठोर विराम"
 msgid "Hard to use"
 msgstr "उपयोग करना कठिन"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Has merge conflicts"
+msgstr "मर्ज टकराव हैं"
+
 #: src/components/acp/working-status.ts
 msgid "Having a look around…"
 msgstr "चारों ओर देखा जा रहा है…"
@@ -7454,6 +7492,10 @@ msgstr "एक लॉग दस्तावेज़ में: प्रवि�
 msgid "In a subfolder"
 msgstr "किसी उप-फ़ोल्डर में"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
+msgstr "एजेंट चैट में, किसी GitHub पुल रिक्वेस्ट या इश्यू के लिंक पर माउस ले जाने पर GitHub से उसकी स्थिति पूछी जाती है, और जब OpenKnowledge आपके GitHub साइन-इन का उपयोग कर सकता है तो आपके रूप में।"
+
 #: src/components/settings/LintingSection.tsx
 msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr "एक सूचकांक दस्तावेज़ में: प्रविष्टियाँ एक अनुभाग शीर्षक के अंतर्गत होती हैं और प्रत्येक में एक लिंक होता है। सूचियों के आसपास गद्य ठीक है."
@@ -7479,6 +7521,14 @@ msgstr "Git परियोजनाओं में, Open Knowledge एक स�
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App में"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue"
+msgstr "मर्ज कतार में"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue, but it can't merge"
+msgstr "मर्ज कतार में है, लेकिन मर्ज नहीं हो सकता"
 
 #: src/components/acp/ThreadView.tsx
 msgid "In the plan above, please "
@@ -8123,6 +8173,10 @@ msgstr "हर अनुरोध में भेजे जाने वाल�
 msgid "line {displayLine}"
 msgstr "पंक्ति {displayLine}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Lines changed: {additions} added, {deletions} removed"
+msgstr "बदली गई पंक्तियाँ: {additions} जोड़ी गईं, {deletions} हटाई गईं"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
@@ -8598,6 +8652,11 @@ msgstr "मध्यम अनुभाग शीर्षक।"
 #: src/components/ComposerAddMenu.tsx
 msgid "Mention a page"
 msgstr "किसी पेज का उल्लेख करें"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Merged"
+msgstr "मर्ज किया गया"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -9701,6 +9760,11 @@ msgstr "इस प्रोजेक्ट में अभी इंस्ट�
 msgid "Not now"
 msgstr "अभी नहीं"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Not planned"
+msgstr "योजना में नहीं"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Not redacted. Check the image before sharing."
 msgstr "संवेदनशील जानकारी नहीं छिपाई गई है। साझा करने से पहले चित्र जाँचें।"
@@ -9820,8 +9884,8 @@ msgid "Older"
 msgstr "पुरानी"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
-msgstr "चालू — किसी बाहरी लिंक पर माउस ले जाने पर पूर्वावलोकन लाने के लिए उसका URL गंतव्य साइट को भेजा जाता है।"
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview, and hovering a GitHub reference in an agent chat asks GitHub for it."
+msgstr "चालू — किसी बाहरी लिंक पर माउस ले जाने पर पूर्वावलोकन लाने के लिए उसका URL गंतव्य साइट को भेजा जाता है, और एजेंट चैट में किसी GitHub संदर्भ पर माउस ले जाने पर GitHub से पूछा जाता है।"
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -9881,6 +9945,11 @@ msgstr "केवल मौजूदा दस्तावेज़ <0>#{tag}</0
 #: src/components/GraphPanel.tsx
 msgid "Open"
 msgstr "खोलें"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Open"
+msgstr "खुला"
 
 #. placeholder {0}: status.remote.label
 #: src/components/settings/SyncSection.tsx
@@ -10245,6 +10314,10 @@ msgstr "वर्कट्री खोलें"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "CodeMirror के पूर्णता सुझाव खोलें, उनमें जाएँ, स्वीकारें या ख़ारिज करें।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Opened by {author}"
+msgstr "{author} ने खोला"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "Opened existing OpenKnowledge project at {ancestorPath}"
@@ -11454,6 +11527,10 @@ msgstr "संपादनों के बीच अनसुलझे टक�
 msgid "Ready"
 msgstr "तैयार"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Ready to merge"
+msgstr "मर्ज के लिए तैयार"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "जल्दी शुरू करने के लिए तैयार फ़ोल्डर और टेम्पलेट।"
@@ -12023,6 +12100,10 @@ msgstr "आवश्यक"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "आवश्यक"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Required checks are failing"
+msgstr "ज़रूरी जाँचें विफल हो रही हैं"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
@@ -13143,8 +13224,8 @@ msgid "Show {hiddenCount} more"
 msgstr "{hiddenCount} और दिखाएँ"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor."
-msgstr "संपादक में किसी बाहरी लिंक पर माउस ले जाने पर एक पूर्वावलोकन कार्ड दिखाएँ।"
+msgid "Show a preview card when you hover an external link in the editor or a GitHub pull request or issue in an agent chat."
+msgstr "संपादक में किसी बाहरी लिंक पर या एजेंट चैट में किसी GitHub पुल रिक्वेस्ट या इश्यू पर माउस ले जाने पर एक पूर्वावलोकन कार्ड दिखाएँ।"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -13531,6 +13612,10 @@ msgstr "Slidev शुरू होने में बहुत समय लग
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "छोटा अनुभाग शीर्षक।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Some checks failed, but it can still merge"
+msgstr "कुछ जाँचें विफल रहीं, लेकिन यह अब भी मर्ज हो सकता है"
 
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
@@ -16218,6 +16303,10 @@ msgstr "दृश्य संपादक की तालिका का च�
 #: src/components/AuthModal.tsx
 msgid "Waiting for authorization"
 msgstr "प्राधिकरण की प्रतीक्षा"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Waiting for review"
+msgstr "समीक्षा की प्रतीक्षा में"
 
 #: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx

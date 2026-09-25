@@ -52,6 +52,7 @@ const EXEMPT_HANDLERS = new Set([
   'handleCommentCounts',
   'handleForwardLinks',
   'handleLinkPreview',
+  'handleGitHubReference',
   'handleLinkGraph',
   'handleSearch',
   'handleSemanticStatus',

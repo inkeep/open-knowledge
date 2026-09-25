@@ -213,6 +213,7 @@ import { type ImagePreview, ImagePreviewContext, PendingImageStrip } from './Pen
 import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
+import { ReferenceRulesContext } from './reference-links-context';
 import {
   clickableAuthMethods,
   isThreadResumable,
@@ -229,6 +230,7 @@ import { transcriptItemId } from './transcript-item-id';
 import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
 import { useDelayedInstallStatus } from './use-delayed-install-status';
 import { useMinutesSince } from './use-minutes-since';
+import { useReferenceRules } from './use-reference-rules';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
 
 const CANCEL_STALL_MS = 10_000;
@@ -662,6 +664,7 @@ export function ThreadView({
   const docPathResolver = pages === null ? null : buildDocPathResolver({ workspace, pages });
   setDocPathResolver(docPathResolver);
   const resolverReady = docPathResolver !== null;
+  const referenceRules = useReferenceRules();
   const transcriptFollowTarget = model !== null ? latestFollowTarget(model.items, workspace) : null;
 
   const { systemProvider, activeDocName } = useDocumentContext();
@@ -1195,336 +1198,342 @@ export function ThreadView({
           }}
         >
           <DocPathResolverReadyContext value={resolverReady}>
-            <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
-            {}
-            <AgentNoticeAnnouncer
-              notices={agentNotices}
-              agentName={agentName}
-              replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
-            />
-            {model !== null && model.plan.length > 0 ? (
-              <PlanChecklist
-                plan={model.plan}
-                approval={
-                  canPrompt && !archived && !planApprovalPending
-                    ? {
-                        onApprove: () => {
-                          setPlanApprovalPending(true);
-                          void sendText('Approve. Please proceed with the plan.');
-                        },
-                        onAskChanges: () => {
-                          const prefix = t`In the plan above, please `;
-                          const composer = composerRef.current;
-                          if (
-                            composer !== null &&
-                            !composer.getContent().instruction.endsWith(prefix)
-                          ) {
-                            composer.appendText(prefix);
-                          }
-                          composer?.focusEnd();
-                        },
-                        onReject: () => {
-                          setPlanApprovalPending(true);
-                          void sendText('Reject. Please stop and do not proceed with this plan.');
-                        },
-                      }
-                    : undefined
-                }
+            <ReferenceRulesContext value={referenceRules}>
+              <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
+              {}
+              <AgentNoticeAnnouncer
+                notices={agentNotices}
+                agentName={agentName}
+                replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
               />
-            ) : null}
-            {authPrompt !== null || model === null || visibleItems.length === 0 ? (
-              <div
-                className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
-                data-testid="agent-thread-transcript"
-              >
-                {authPrompt !== null ? (
-                  <div className="flex min-h-full items-center justify-center">
-                    <ThreadAuthPrompt
-                      failure={authPrompt}
-                      offer={threadAuthOffer({
-                        authMethods: authPrompt.authMethods ?? [],
-                        agentName,
-                        terminalCli,
-                        terminalAvailable,
-                      })}
+              {model !== null && model.plan.length > 0 ? (
+                <PlanChecklist
+                  plan={model.plan}
+                  approval={
+                    canPrompt && !archived && !planApprovalPending
+                      ? {
+                          onApprove: () => {
+                            setPlanApprovalPending(true);
+                            void sendText('Approve. Please proceed with the plan.');
+                          },
+                          onAskChanges: () => {
+                            const prefix = t`In the plan above, please `;
+                            const composer = composerRef.current;
+                            if (
+                              composer !== null &&
+                              !composer.getContent().instruction.endsWith(prefix)
+                            ) {
+                              composer.appendText(prefix);
+                            }
+                            composer?.focusEnd();
+                          },
+                          onReject: () => {
+                            setPlanApprovalPending(true);
+                            void sendText('Reject. Please stop and do not proceed with this plan.');
+                          },
+                        }
+                      : undefined
+                  }
+                />
+              ) : null}
+              {authPrompt !== null || model === null || visibleItems.length === 0 ? (
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                  data-testid="agent-thread-transcript"
+                >
+                  {authPrompt !== null ? (
+                    <div className="flex min-h-full items-center justify-center">
+                      <ThreadAuthPrompt
+                        failure={authPrompt}
+                        offer={threadAuthOffer({
+                          authMethods: authPrompt.authMethods ?? [],
+                          agentName,
+                          terminalCli,
+                          terminalAvailable,
+                        })}
+                        agent={info.agent}
+                        agentName={agentName}
+                        signingIn={signingIn}
+                        signInOutput={info.signInOutput}
+                        showRetry={canRetry}
+                        retryPending={retryPending}
+                        onRetry={retryThread}
+                        onAuthAction={runAuthAction}
+                        runningAuthAction={runningAuthAction}
+                        onAuthenticate={authenticateThread}
+                      />
+                    </div>
+                  ) : (
+                    <ThreadEmptyState
+                      status={status}
+                      displayedStartStatus={displayedStartStatus}
+                      justSettled={startOutcome === 'ready'}
+                      archived={archived}
                       agent={info.agent}
-                      agentName={agentName}
-                      signingIn={signingIn}
-                      signInOutput={info.signInOutput}
-                      showRetry={canRetry}
-                      retryPending={retryPending}
-                      onRetry={retryThread}
+                      authOffer={authOffer}
                       onAuthAction={runAuthAction}
                       runningAuthAction={runningAuthAction}
-                      onAuthenticate={authenticateThread}
                     />
-                  </div>
-                ) : (
-                  <ThreadEmptyState
-                    status={status}
-                    displayedStartStatus={displayedStartStatus}
-                    justSettled={startOutcome === 'ready'}
-                    archived={archived}
-                    agent={info.agent}
-                    authOffer={authOffer}
-                    onAuthAction={runAuthAction}
-                    runningAuthAction={runningAuthAction}
-                  />
-                )}
-              </div>
-            ) : (
-              <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
-                <ScrollToEndBridge apiRef={scrollApiRef} />
-                <MessageScroller className="min-h-0 flex-1">
-                  <MessageScrollerViewport
-                    aria-label={t`Agent transcript`}
-                    className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
-                    data-testid="agent-thread-transcript"
-                  >
-                    <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-                      {visibleEntries.map(({ item, modelIndex }, index) => {
-                        const id = transcriptItemId(item, modelIndex);
-                        const group = toolRunByIndex.get(index);
-                        const collapsed = group !== undefined && !expandedToolRuns.has(group.runId);
-                        if (collapsed && !group.isHead) return null;
-                        if (collapsed && group.isHead) {
-                          const runId = group.runId;
+                  )}
+                </div>
+              ) : (
+                <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+                  <ScrollToEndBridge apiRef={scrollApiRef} />
+                  <MessageScroller className="min-h-0 flex-1">
+                    <MessageScrollerViewport
+                      aria-label={t`Agent transcript`}
+                      className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                      data-testid="agent-thread-transcript"
+                    >
+                      <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
+                        {visibleEntries.map(({ item, modelIndex }, index) => {
+                          const id = transcriptItemId(item, modelIndex);
+                          const group = toolRunByIndex.get(index);
+                          const collapsed =
+                            group !== undefined && !expandedToolRuns.has(group.runId);
+                          if (collapsed && !group.isHead) return null;
+                          if (collapsed && group.isHead) {
+                            const runId = group.runId;
+                            return (
+                              <MessageScrollerItem
+                                key={id}
+                                messageId={id}
+                                className="flex flex-col"
+                                data-tool-call=""
+                              >
+                                <ToolCallGroupRow
+                                  calls={visibleItems
+                                    .slice(group.run.start, group.run.start + group.run.size)
+                                    .filter(
+                                      (candidate): candidate is RenderedToolCall =>
+                                        candidate.kind === 'tool_call',
+                                    )}
+                                  onExpand={() =>
+                                    setExpandedToolRuns((previous) => new Set(previous).add(runId))
+                                  }
+                                />
+                              </MessageScrollerItem>
+                            );
+                          }
                           return (
                             <MessageScrollerItem
                               key={id}
                               messageId={id}
                               className="flex flex-col"
-                              data-tool-call=""
+                              scrollAnchor={item.kind === 'message' && item.role === 'user'}
+                              data-tool-call={item.kind === 'tool_call' ? '' : undefined}
                             >
-                              <ToolCallGroupRow
-                                calls={visibleItems
-                                  .slice(group.run.start, group.run.start + group.run.size)
-                                  .filter(
-                                    (candidate): candidate is RenderedToolCall =>
-                                      candidate.kind === 'tool_call',
-                                  )}
-                                onExpand={() =>
-                                  setExpandedToolRuns((previous) => new Set(previous).add(runId))
+                              <ThreadItem
+                                item={item}
+                                threadId={info.threadId}
+                                agent={info.agent}
+                                actionable={!archived && status !== 'exited' && status !== 'error'}
+                                streaming={turnActive && index === visibleItems.length - 1}
+                                terminals={model.terminals}
+                                permissionsByToolCall={model.permissionsByToolCall}
+                                showRetry={index === retryNoticeIndex}
+                                retryPending={retryPending}
+                                onRetry={retryThread}
+                                showRestore={index === restoreNoticeIndex}
+                                onRestore={() => restoreFailedPromptToComposer(index)}
+                                authOffer={
+                                  index === authOfferNoticeIndex ? authOffer : authHistoryOffer
                                 }
+                                onAuthAction={runAuthAction}
+                                runningAuthAction={runningAuthAction}
+                                onResend={resendMessage}
+                                canSendHere={canPrompt || canQueue}
+                                isLatestUserTurn={index === lastUserTurnIndex}
                               />
                             </MessageScrollerItem>
                           );
-                        }
-                        return (
-                          <MessageScrollerItem
-                            key={id}
-                            messageId={id}
-                            className="flex flex-col"
-                            scrollAnchor={item.kind === 'message' && item.role === 'user'}
-                            data-tool-call={item.kind === 'tool_call' ? '' : undefined}
-                          >
-                            <ThreadItem
-                              item={item}
-                              threadId={info.threadId}
-                              agent={info.agent}
-                              actionable={!archived && status !== 'exited' && status !== 'error'}
-                              streaming={turnActive && index === visibleItems.length - 1}
-                              terminals={model.terminals}
-                              permissionsByToolCall={model.permissionsByToolCall}
-                              showRetry={index === retryNoticeIndex}
-                              retryPending={retryPending}
-                              onRetry={retryThread}
-                              showRestore={index === restoreNoticeIndex}
-                              onRestore={() => restoreFailedPromptToComposer(index)}
-                              authOffer={
-                                index === authOfferNoticeIndex ? authOffer : authHistoryOffer
-                              }
-                              onAuthAction={runAuthAction}
-                              runningAuthAction={runningAuthAction}
-                              onResend={resendMessage}
-                              canSendHere={canPrompt || canQueue}
-                              isLatestUserTurn={index === lastUserTurnIndex}
+                        })}
+                        {turnActive ? (
+                          status === 'awaiting_permission' ? (
+                            <div
+                              className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                              data-testid="agent-thread-awaiting-permission"
+                            >
+                              <span>{t`Waiting for your approval`}</span>
+                            </div>
+                          ) : (
+                            <WorkingAvatar
+                              status={workingStatusText(activeToolKind(model.items), thinkingLine)}
+                              className="px-1 py-1"
+                              testId="agent-thread-working"
                             />
-                          </MessageScrollerItem>
-                        );
-                      })}
-                      {turnActive ? (
-                        status === 'awaiting_permission' ? (
+                          )
+                        ) : status === 'installing' || status === 'spawning' ? (
                           <div
-                            className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                            data-testid="agent-thread-awaiting-permission"
+                            className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
+                            data-testid="agent-thread-starting"
                           >
-                            <span>{t`Waiting for your approval`}</span>
+                            <Spinner className="size-3.5" aria-hidden="true" />
+                            <span className="shimmer">{startStatusMessage}</span>
                           </div>
-                        ) : (
-                          <WorkingAvatar
-                            status={workingStatusText(activeToolKind(model.items), thinkingLine)}
-                            className="px-1 py-1"
-                            testId="agent-thread-working"
-                          />
-                        )
-                      ) : status === 'installing' || status === 'spawning' ? (
-                        <div
-                          className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
-                          data-testid="agent-thread-starting"
-                        >
-                          <Spinner className="size-3.5" aria-hidden="true" />
-                          <span className="shimmer">{startStatusMessage}</span>
-                        </div>
-                      ) : null}
-                    </MessageScrollerContent>
-                  </MessageScrollerViewport>
-                  <MessageScrollerButton direction="end" />
-                </MessageScroller>
-              </MessageScrollerProvider>
-            )}
-            <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
-              {dropNotice !== null ? (
+                        ) : null}
+                      </MessageScrollerContent>
+                    </MessageScrollerViewport>
+                    <MessageScrollerButton direction="end" />
+                  </MessageScroller>
+                </MessageScrollerProvider>
+              )}
+              <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
+                {dropNotice !== null ? (
+                  <div
+                    key={dropNotice.id}
+                    className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                  >
+                    {dropNotice.text}
+                  </div>
+                ) : uploadsPending ? (
+                  <p className="sr-only">
+                    <Plural
+                      value={pendingUploads.length}
+                      one="Uploading # attachment"
+                      other="Uploading # attachments"
+                    />
+                  </p>
+                ) : null}
+              </div>
+              <div role="status" aria-live="polite" data-testid="agent-thread-stalled-region">
+                {info.stalledSince !== undefined &&
+                turnActive &&
+                !cancelPending &&
+                !cancelStalled ? (
+                  <div
+                    className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                    data-testid="agent-thread-stalled"
+                  >
+                    <span className="flex-1">
+                      {t`Nothing from ${agentName} for ${plural(stalledMinutes, {
+                        one: '# minute',
+                        other: '# minutes',
+                      })}. If it looks stuck, Stop and try again.`}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+              {info.steer !== undefined && !archived ? (
                 <div
-                  key={dropNotice.id}
-                  className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                  className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                  data-testid="agent-thread-steer-pending"
                 >
-                  {dropNotice.text}
-                </div>
-              ) : uploadsPending ? (
-                <p className="sr-only">
-                  <Plural
-                    value={pendingUploads.length}
-                    one="Uploading # attachment"
-                    other="Uploading # attachments"
-                  />
-                </p>
-              ) : null}
-            </div>
-            <div role="status" aria-live="polite" data-testid="agent-thread-stalled-region">
-              {info.stalledSince !== undefined && turnActive && !cancelPending && !cancelStalled ? (
-                <div
-                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-                  data-testid="agent-thread-stalled"
-                >
-                  <span className="flex-1">
-                    {t`Nothing from ${agentName} for ${plural(stalledMinutes, {
-                      one: '# minute',
-                      other: '# minutes',
-                    })}. If it looks stuck, Stop and try again.`}
+                  <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
+                  <span className="min-w-0 flex-1 truncate text-foreground/80">
+                    {info.steer.content}
                   </span>
                 </div>
               ) : null}
-            </div>
-            {info.steer !== undefined && !archived ? (
-              <div
-                className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
-                data-testid="agent-thread-steer-pending"
-              >
-                <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-                <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
-                <span className="min-w-0 flex-1 truncate text-foreground/80">
-                  {info.steer.content}
-                </span>
-              </div>
-            ) : null}
-            {cancelStalled && turnActive ? (
-              <div
-                className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-                data-testid="agent-thread-cancel-stalled"
-              >
-                <span className="flex-1">
-                  {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  className="h-6 text-xs"
-                  onClick={() => client.closeThread(info.threadId)}
-                  data-testid="agent-thread-force-stop"
+              {cancelStalled && turnActive ? (
+                <div
+                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                  data-testid="agent-thread-cancel-stalled"
                 >
-                  {t`Force stop`}
-                </Button>
-              </div>
-            ) : null}
-            <span
-              className="sr-only"
-              role="status"
-              aria-live="polite"
-              data-testid="agent-thread-auth-status"
-            >
-              {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
-            </span>
-            <span
-              className="sr-only"
-              role="status"
-              aria-live="polite"
-              data-testid="agent-thread-resume-status"
-            >
-              {resumeFailureMessage}
-            </span>
-            <span
-              className="sr-only"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              data-testid="agent-thread-start-status"
-            >
-              {announcedStartStatus}
-            </span>
-            <span
-              className="sr-only"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              data-testid="agent-thread-crash-status"
-            >
-              {crashAnnouncement}
-            </span>
-            {resumeFailureMessage !== '' && !newChatOfferInTranscript ? (
-              <div
-                className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-                data-testid="agent-thread-resume-failed"
+                  <span className="flex-1">
+                    {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-6 text-xs"
+                    onClick={() => client.closeThread(info.threadId)}
+                    data-testid="agent-thread-force-stop"
+                  >
+                    {t`Force stop`}
+                  </Button>
+                </div>
+              ) : null}
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                data-testid="agent-thread-auth-status"
               >
-                <span className="flex-1">{resumeFailureMessage}</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-6 shrink-0 text-xs"
-                  disabled={runningAuthAction !== null}
-                  aria-busy={runningAuthAction === 'new-chat'}
-                  onClick={startFreshThread}
-                  data-testid="agent-thread-resume-fallback-new"
+                {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
+              </span>
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                data-testid="agent-thread-resume-status"
+              >
+                {resumeFailureMessage}
+              </span>
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-testid="agent-thread-start-status"
+              >
+                {announcedStartStatus}
+              </span>
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-testid="agent-thread-crash-status"
+              >
+                {crashAnnouncement}
+              </span>
+              {resumeFailureMessage !== '' && !newChatOfferInTranscript ? (
+                <div
+                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                  data-testid="agent-thread-resume-failed"
                 >
-                  {runningAuthAction === 'new-chat' ? (
-                    <Spinner className="size-3" aria-hidden="true" />
-                  ) : null}
-                  {t`New chat with ${agentName}`}
-                </Button>
-              </div>
-            ) : null}
-            <ThreadComposer
-              info={info}
-              hasStartedWork={threadHasUserMessage({ items })}
-              onNewChat={startFreshThread}
-              composerRef={composerRef}
-              mentionRecency={mentionRecency}
-              onSubmit={submit}
-              canPrompt={canPrompt}
-              canQueue={canQueue}
-              turnActive={turnActive}
-              cancelPending={cancelPending}
-              onCancel={requestCancel}
-              onSteer={requestSteer}
-              status={status}
-              archived={archived}
-              resumePending={resumePending}
-              usage={model?.tokenUsage ?? null}
-              selectedCommentCount={selectedCommentCount}
-              selectedCommentDocs={selectedCommentDocs}
-              hasQueuedComments={hasQueuedComments}
-              onAttachComments={() => setCommentsAttached(true)}
-              onDismissComments={() => setCommentsAttached(false)}
-              pendingAttachments={pendingAttachments}
-              pendingUploads={pendingUploads}
-              imagesAccepted={imagesAccepted}
-              onIngestImageFiles={ingestFiles}
-              onIngestAllFiles={ingestFiles}
-              onRemovePendingAttachment={removePendingAttachment}
-            />
-            {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+                  <span className="flex-1">{resumeFailureMessage}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 shrink-0 text-xs"
+                    disabled={runningAuthAction !== null}
+                    aria-busy={runningAuthAction === 'new-chat'}
+                    onClick={startFreshThread}
+                    data-testid="agent-thread-resume-fallback-new"
+                  >
+                    {runningAuthAction === 'new-chat' ? (
+                      <Spinner className="size-3" aria-hidden="true" />
+                    ) : null}
+                    {t`New chat with ${agentName}`}
+                  </Button>
+                </div>
+              ) : null}
+              <ThreadComposer
+                info={info}
+                hasStartedWork={threadHasUserMessage({ items })}
+                onNewChat={startFreshThread}
+                composerRef={composerRef}
+                mentionRecency={mentionRecency}
+                onSubmit={submit}
+                canPrompt={canPrompt}
+                canQueue={canQueue}
+                turnActive={turnActive}
+                cancelPending={cancelPending}
+                onCancel={requestCancel}
+                onSteer={requestSteer}
+                status={status}
+                archived={archived}
+                resumePending={resumePending}
+                usage={model?.tokenUsage ?? null}
+                selectedCommentCount={selectedCommentCount}
+                selectedCommentDocs={selectedCommentDocs}
+                hasQueuedComments={hasQueuedComments}
+                onAttachComments={() => setCommentsAttached(true)}
+                onDismissComments={() => setCommentsAttached(false)}
+                pendingAttachments={pendingAttachments}
+                pendingUploads={pendingUploads}
+                imagesAccepted={imagesAccepted}
+                onIngestImageFiles={ingestFiles}
+                onIngestAllFiles={ingestFiles}
+                onRemovePendingAttachment={removePendingAttachment}
+              />
+              {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+            </ReferenceRulesContext>
           </DocPathResolverReadyContext>
         </div>
       </ImagePreviewContext.Provider>

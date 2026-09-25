@@ -53,6 +53,54 @@ afterEach(() => {
 });
 
 describe('readConfigSafely', () => {
+  test('keeps the valid autolinks and reports each invalid entry where it is', () => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(
+      absPath,
+      stringify({
+        autolinks: [
+          { prefix: 'PRD-', url: 'https://linear.app/inkeep/issue/PRD-<num>' },
+          { prefix: '1BAD', url: 'https://x.example/<num>' },
+          { prefix: 'GH-', url: 'https://github.com/o/r/issues/1' },
+        ],
+      }),
+    );
+    const warnings: string[] = [];
+    const result = readConfigSafely({ absPath, warn: (message) => warnings.push(message) });
+    expect(result.valid).toBe(true);
+    expect(result.value.autolinks).toEqual([
+      { prefix: 'PRD-', url: 'https://linear.app/inkeep/issue/PRD-<num>' },
+      null,
+      null,
+    ]);
+    expect(result.diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      issues: [
+        expect.objectContaining({ path: ['autolinks', '1', 'prefix'], source: expect.anything() }),
+        expect.objectContaining({ path: ['autolinks', '2', 'url'], source: expect.anything() }),
+      ],
+    });
+    expect(warnings.join('\n')).toContain('autolinks.1.prefix');
+    expect(warnings.join('\n')).toContain('ignoring this autolink entry.');
+  });
+
+  test('reports an autolinks value that is not a list and ignores it', () => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(absPath, stringify({ autolinks: 'PRD-' }));
+    const result = readConfigSafely({ absPath, warn: () => {} });
+    expect(result.valid).toBe(true);
+    expect(result.value.autolinks).toEqual([]);
+    expect(result.diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      issues: [
+        expect.objectContaining({
+          path: ['autolinks'],
+          message: expect.stringContaining('ignoring autolinks.'),
+        }),
+      ],
+    });
+  });
+
   test('reports a discarded non-map hosts section', () => {
     const absPath = resolve(testDir, 'config.yml');
     writeFileSync(absPath, stringify({ git: { hosts: 'invalid' } }));

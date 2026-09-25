@@ -9,6 +9,12 @@ import { docNameFromHash } from '@/lib/doc-hash';
 import { cn } from '@/lib/utils';
 import { remarkDocPathLinks } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
+import { GitHubReferenceLink } from './GitHubReferenceCard';
+import { isGitHubReferenceHref } from './github-reference';
+import { referenceRulesKey, remarkReferenceLinks } from './reference-links';
+import { ReferenceRulesContext } from './reference-links-context';
+
+const EXTERNAL_LINK_CLASS = 'wrap-anywhere font-medium text-primary underline';
 
 function AgentAnchor(props: { href?: string; children?: ReactNode }): ReactNode {
   const { t } = useLingui();
@@ -26,13 +32,20 @@ function AgentAnchor(props: { href?: string; children?: ReactNode }): ReactNode 
       </a>
     );
   }
+  if (isGitHubReferenceHref(href)) {
+    return (
+      <GitHubReferenceLink href={href} className={EXTERNAL_LINK_CLASS}>
+        {children}
+      </GitHubReferenceLink>
+    );
+  }
   return (
     <a
       href={href}
       target="_blank"
       rel="noopener noreferrer"
       data-streamdown="link"
-      className="wrap-anywhere font-medium text-primary underline"
+      className={EXTERNAL_LINK_CLASS}
     >
       {children}
     </a>
@@ -49,6 +62,7 @@ export function AgentMarkdown({
   untrusted?: boolean;
 }): ReactNode {
   const resolverReady = use(DocPathResolverReadyContext);
+  const referenceRules = use(ReferenceRulesContext);
   return (
     <ErrorBoundary
       resetKeys={[text]}
@@ -58,7 +72,7 @@ export function AgentMarkdown({
       }}
     >
       <Streamdown
-        key={resolverReady ? 'with-resolver' : 'no-resolver'}
+        key={`${resolverReady ? 'with-resolver' : 'no-resolver'}:${referenceRulesKey(referenceRules)}`}
         className={cn(
           '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0 [&_pre_code>span]:block [&_ol]:list-outside [&_ul]:list-outside [&_ol]:ps-6 [&_ul]:ps-6 [&_li+li]:mt-2 [&_li>p]:block! [&_li>*+*]:mt-2 [&_li_[data-streamdown=code-block]]:my-2! [&_code]:text-1sm [&_pre]:text-1sm [&_[data-streamdown=code-block-body]]:p-3 [&_[data-streamdown=code-block-body]]:max-h-80 [&_[data-streamdown=code-block-body]]:overflow-auto',
           className,
@@ -68,6 +82,7 @@ export function AgentMarkdown({
           remarkHardBreaks,
           ...(untrusted ? [remarkUntrustedContent()] : []),
           remarkDocPathLinks(),
+          [remarkReferenceLinks, referenceRules],
         ]}
         components={{ a: AgentAnchor } as Components}
         lineNumbers={false}

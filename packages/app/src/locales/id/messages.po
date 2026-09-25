@@ -1248,6 +1248,10 @@ msgid "# One pattern per line.\n"
 "#   !keep.md"
 msgstr "# Satu pola per baris.\\n# Contoh:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "#{position} in the merge queue"
+msgstr "#{position} di antrean merge"
+
 #: src/components/GraphLegend.tsx
 msgid "+ {overflow} more"
 msgstr "+ {overflow} lagi"
@@ -2163,6 +2167,10 @@ msgstr "Disetujui"
 msgid "Approved — {optionName}"
 msgstr "Disetujui — {optionName}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Approved and ready to merge"
+msgstr "Disetujui dan siap di-merge"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Yakin ingin mengubah berkas ini menjadi templat? Berkas aslinya akan dihapus. Tindakan ini tidak bisa dibatalkan."
@@ -2358,6 +2366,10 @@ msgstr "Perbaikan otomatis ({count})"
 msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr "Perbaikan otomatis hanya berlaku untuk masalah yang punya perbaikan mekanis yang diketahui."
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Auto-merge is on"
+msgstr "Merge otomatis aktif"
+
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Auto-save"
@@ -2473,6 +2485,10 @@ msgstr "Sebelum menyinkronkan, setel identitas Anda untuk commit git:"
 msgid "Before you go, mind sharing why?"
 msgstr "Sebelum pergi, boleh cerita kenapa?"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Behind the base branch"
+msgstr "Tertinggal dari cabang dasar"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "Di bawah"
@@ -2510,6 +2526,10 @@ msgstr "Blob Run"
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "Persamaan matematika blok yang dirender dengan KaTeX dari sumber LaTeX."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Blocked from merging"
+msgstr "Merge diblokir"
 
 #: src/components/TemplateForm.tsx
 msgid "Blog post"
@@ -2802,6 +2822,10 @@ msgstr "diubah di luar"
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "Diubah di luar OK sejak terakhir kali OK menulis di sini — keadaan yang ditampilkan adalah apa yang ada di disk sekarang"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Changes requested"
+msgstr "Perubahan diminta"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Changes save automatically to this theme."
 msgstr "Perubahan disimpan otomatis ke tema ini."
@@ -2931,6 +2955,10 @@ msgstr "Memeriksa..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Daftar periksa dengan kotak centang."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Checks are running"
+msgstr "Pemeriksaan sedang berjalan"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Checks documents for markdown problems and can fix them"
@@ -3251,6 +3279,11 @@ msgstr "Tutup jendela"
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "Tutup Jendela"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Closed"
+msgstr "Ditutup"
 
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
@@ -5138,10 +5171,6 @@ msgstr "Nonaktifkan {file}"
 msgid "Disable {id}"
 msgstr "Nonaktifkan {id}"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Disable external link previews"
-msgstr "Nonaktifkan pratinjau tautan eksternal"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
 msgstr "Nonaktifkan pencarian semantik"
@@ -5329,6 +5358,11 @@ msgstr "Mengunduh {0} {1}…"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Downloads a fresh copy from GitHub."
 msgstr "Mengunduh salinan baru dari GitHub."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Draft"
+msgstr "Draf"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a spec"
@@ -5731,10 +5765,6 @@ msgstr "Aktifkan Otomatis (hanya Pull)"
 msgid "Enable Auto (Pull only)?"
 msgstr "Aktifkan Otomatis (hanya Pull)?"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
-msgstr "Aktifkan pratinjau tautan eksternal"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
 msgstr "Aktifkan indeks"
@@ -6035,6 +6065,10 @@ msgstr "Tautan eksternal"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews"
 msgstr "Pratinjau tautan eksternal"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews and GitHub reference cards"
+msgstr "Pratinjau tautan eksternal dan kartu referensi GitHub"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
@@ -6982,6 +7016,10 @@ msgstr "Ganti baris paksa"
 msgid "Hard to use"
 msgstr "Sulit dipakai"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Has merge conflicts"
+msgstr "Ada konflik merge"
+
 #: src/components/acp/working-status.ts
 msgid "Having a look around…"
 msgstr "Melihat-lihat sekitar…"
@@ -7454,6 +7492,10 @@ msgstr "Dalam dokumen log: judul entri diawali dengan tanggal ISO YYYY-MM-DD, te
 msgid "In a subfolder"
 msgstr "Di subfolder"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
+msgstr "Di chat agen, mengarahkan kursor ke tautan pull request atau issue GitHub meminta statusnya dari GitHub, dengan login GitHub Anda jika OpenKnowledge dapat menggunakannya."
+
 #: src/components/settings/LintingSection.tsx
 msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr "Dalam dokumen indeks: entri berada di bawah judul bagian dan masing-masing membawa tautan. Prosa seputar daftar itu baik-baik saja."
@@ -7479,6 +7521,14 @@ msgstr "Dalam proyek Git, Open Knowledge juga menambahkan aturan cakupan .gitatt
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "Di aplikasi Claude Desktop"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue"
+msgstr "Di antrean merge"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue, but it can't merge"
+msgstr "Di antrean merge, tetapi tidak bisa di-merge"
 
 #: src/components/acp/ThreadView.tsx
 msgid "In the plan above, please "
@@ -8123,6 +8173,10 @@ msgstr "Membatasi total teks yang dikirim dalam setiap permintaan. Potongan yang
 msgid "line {displayLine}"
 msgstr "baris {displayLine}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Lines changed: {additions} added, {deletions} removed"
+msgstr "Baris berubah: {additions} ditambahkan, {deletions} dihapus"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
@@ -8598,6 +8652,11 @@ msgstr "Judul bagian sedang."
 #: src/components/ComposerAddMenu.tsx
 msgid "Mention a page"
 msgstr "Sebut halaman"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Merged"
+msgstr "Di-merge"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -9701,6 +9760,11 @@ msgstr "Belum terpasang di proyek ini."
 msgid "Not now"
 msgstr "Nanti saja"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Not planned"
+msgstr "Tidak direncanakan"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Not redacted. Check the image before sharing."
 msgstr "Tidak disamarkan. Periksa gambar sebelum membagikannya."
@@ -9820,8 +9884,8 @@ msgid "Older"
 msgstr "Lebih lama"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
-msgstr "Aktif — mengarahkan kursor ke tautan eksternal mengirim URL-nya ke situs tujuan untuk mengambil pratinjau."
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview, and hovering a GitHub reference in an agent chat asks GitHub for it."
+msgstr "Aktif — mengarahkan kursor ke tautan eksternal mengirim URL-nya ke situs tujuan untuk mengambil pratinjau, dan mengarahkan kursor ke referensi GitHub di chat agen memintanya dari GitHub."
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -9881,6 +9945,11 @@ msgstr "Hanya dokumen saat ini yang memakai <0>#{tag}</0>."
 #: src/components/GraphPanel.tsx
 msgid "Open"
 msgstr "Buka"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Open"
+msgstr "Terbuka"
 
 #. placeholder {0}: status.remote.label
 #: src/components/settings/SyncSection.tsx
@@ -10245,6 +10314,10 @@ msgstr "Buka worktree"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "Membuka, menelusuri, menerima, atau menutup saran pelengkapan CodeMirror."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Opened by {author}"
+msgstr "Dibuka oleh {author}"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "Opened existing OpenKnowledge project at {ancestorPath}"
@@ -11454,6 +11527,10 @@ msgstr "Membaca konflik yang belum terselesaikan antar suntingan"
 msgid "Ready"
 msgstr "Siap"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Ready to merge"
+msgstr "Siap di-merge"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "Folder dan templat siap pakai agar Anda cepat memulai."
@@ -12023,6 +12100,10 @@ msgstr "wajib"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "Wajib"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Required checks are failing"
+msgstr "Pemeriksaan wajib gagal"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
@@ -13143,8 +13224,8 @@ msgid "Show {hiddenCount} more"
 msgstr "Tampilkan {hiddenCount} lagi"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor."
-msgstr "Menampilkan kartu pratinjau saat Anda mengarahkan kursor ke tautan eksternal di penyunting."
+msgid "Show a preview card when you hover an external link in the editor or a GitHub pull request or issue in an agent chat."
+msgstr "Menampilkan kartu pratinjau saat Anda mengarahkan kursor ke tautan eksternal di penyunting atau ke pull request atau issue GitHub di chat agen."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -13531,6 +13612,10 @@ msgstr "Slidev terlalu lama saat memulai. Coba lagi."
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "Judul bagian kecil."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Some checks failed, but it can still merge"
+msgstr "Beberapa pemeriksaan gagal, tetapi masih bisa di-merge"
 
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
@@ -16218,6 +16303,10 @@ msgstr "Pilihan tabel penyunting visual"
 #: src/components/AuthModal.tsx
 msgid "Waiting for authorization"
 msgstr "Menunggu otorisasi"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Waiting for review"
+msgstr "Menunggu tinjauan"
 
 #: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx

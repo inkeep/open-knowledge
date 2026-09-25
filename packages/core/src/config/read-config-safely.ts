@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, renameSync } from 'node:fs';
 import { type Document, parseDocument } from 'yaml';
+import { AutolinksSchema } from './autolinks-config.ts';
 import {
   type ConfigDiagnostic,
   type ConfigIssue,
@@ -161,6 +162,38 @@ function detectGitHostFallbacks(input: {
   return [{ code: 'VALUE_FALLBACK', issues }];
 }
 
+function detectAutolinkFallbacks(input: {
+  rawConfig: unknown;
+  doc: Document;
+  source: string;
+  absPath: string;
+}): ValueFallbackDiagnostic[] {
+  const autolinks = rawValueAtPath(input.rawConfig, ['autolinks']);
+  if (autolinks === undefined) return [];
+  const parsed = AutolinksSchema.safeParse(autolinks);
+  if (parsed.success) return [];
+  const issues = parsed.error.issues.map((issue) => {
+    const path = ['autolinks', ...issue.path.map(String)];
+    const located = locateIssue({
+      file: input.absPath,
+      source: input.source,
+      doc: input.doc,
+      path,
+    });
+    return {
+      path,
+      message:
+        issue.path.length === 0
+          ? `${issue.message}; ignoring autolinks.`
+          : `${issue.message}; ignoring this autolink entry.`,
+      ...(located !== undefined
+        ? { source: { file: located.file, line: located.line, column: located.column } }
+        : {}),
+    };
+  });
+  return [{ code: 'VALUE_FALLBACK', issues }];
+}
+
 export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSafelyResult {
   const { absPath, sideline = true, timestamp = new Date().toISOString() } = options;
   const warn = options.warn ?? ((msg: string) => console.warn(msg));
@@ -207,8 +240,11 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
 
   const removedKeyDiagnostics = detectRemovedKeys({ value: merged, file: absPath, source, doc });
   const cleaned = removedKeyDiagnostics.length > 0 ? stripRemovedKeys(merged) : merged;
-  const gitHostDiagnostics = detectGitHostFallbacks({ rawConfig: cleaned, doc, source, absPath });
-  for (const diagnostic of gitHostDiagnostics) {
+  const valueFallbackDiagnostics = [
+    ...detectGitHostFallbacks({ rawConfig: cleaned, doc, source, absPath }),
+    ...detectAutolinkFallbacks({ rawConfig: cleaned, doc, source, absPath }),
+  ];
+  for (const diagnostic of valueFallbackDiagnostics) {
     for (const issue of diagnostic.issues) {
       warn(`[config] ${absPath} ${issue.path.join('.')}: ${issue.message}`);
     }
@@ -230,7 +266,7 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
     const sidelinedTo = sideline ? attemptSideline(absPath, timestamp, warn) : undefined;
     const diagnostics: ConfigDiagnostic[] = [
       ...removedKeyDiagnostics,
-      ...gitHostDiagnostics,
+      ...valueFallbackDiagnostics,
       ...(isKnownConfigError(error) && error.code === 'SCHEMA_INVALID' ? [{ ...error }] : []),
     ];
     return {
@@ -247,7 +283,7 @@ export function readConfigSafely(options: ReadConfigSafelyOptions): ReadConfigSa
 
   const diagnostics: RecoveredConfigDiagnostic[] = [
     ...removedKeyDiagnostics,
-    ...gitHostDiagnostics,
+    ...valueFallbackDiagnostics,
     ...detectEmbeddingsTransportFallbacks({
       rawConfig: cleaned,
       config: parsed.data,

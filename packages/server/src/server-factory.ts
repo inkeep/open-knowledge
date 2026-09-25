@@ -168,6 +168,7 @@ import type {
   ProbeTokenStore,
   PushPermission,
 } from './github-permissions.ts';
+import { createGitHubTokenResolver } from './github-reference/token-resolver.ts';
 import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from './head-watcher.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import type { NativeApiHandle } from './http/http-app.ts';
@@ -2185,6 +2186,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getLinkAdvisoryPolicy: readLinkAdvisoryPolicy,
       getProjectConfigEpoch: () => projectConfigEpoch,
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
+      resolveGitHubToken: createGitHubTokenResolver(options.detectGh, options.tokenStore),
       getConfigDiagnostics: readConfigDiagnostics,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
       readSemanticProviderConfig: readSemanticSearchConfig,

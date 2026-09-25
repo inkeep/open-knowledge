@@ -188,7 +188,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
     ]);
   });
 
-  test('project-strict fields cover autoSync.default + content.* + contentRules.* + lossCapture.* + telemetry.localSink.*', () => {
+  test('project-strict fields cover autolinks + autoSync.default + content.* + contentRules.* + lossCapture.* + telemetry.localSink.*', () => {
     const leaves: { path: string[]; schema: unknown }[] = [];
     walkLeaves(ConfigSchema, [], leaves);
     const projectStrict = leaves
@@ -197,6 +197,7 @@ describe('ConfigSchema coverage (NR3 — every leaf has fieldRegistry metadata)'
       .sort();
     expect(projectStrict).toEqual([
       'autoSync.default',
+      'autolinks',
       'bridge.backgroundThrottle.enabled',
       'bridge.deferGuard.enabled',
       'bridge.fixedPoint.enabled',

@@ -1248,6 +1248,10 @@ msgid "# One pattern per line.\n"
 "#   !keep.md"
 msgstr "# প্রতি লাইনে একটি প্যাটার্ন।\\n# উদাহরণ:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "#{position} in the merge queue"
+msgstr "মার্জ কিউতে #{position}"
+
 #: src/components/GraphLegend.tsx
 msgid "+ {overflow} more"
 msgstr "+ আরও {overflow}"
@@ -2163,6 +2167,10 @@ msgstr "অনুমোদিত"
 msgid "Approved — {optionName}"
 msgstr "অনুমোদিত — {optionName}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Approved and ready to merge"
+msgstr "অনুমোদিত এবং মার্জের জন্য প্রস্তুত"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "আপনি কি নিশ্চিত যে এই ফাইলটিকে টেমপ্লেটে রূপান্তর করতে চান? মূল ফাইলটি মুছে ফেলা হবে। এই কাজ ফেরানো যাবে না।"
@@ -2358,6 +2366,10 @@ msgstr "স্বয়ংক্রিয় সংশোধন ({count})"
 msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr "স্বয়ংক্রিয় সংশোধন কেবল সেই সমস্যাগুলোর ক্ষেত্রেই প্রযোজ্য যাদের পরিচিত যান্ত্রিক সমাধান আছে।"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Auto-merge is on"
+msgstr "অটো-মার্জ চালু আছে"
+
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Auto-save"
@@ -2473,6 +2485,10 @@ msgstr "সিঙ্ক করার আগে git কমিটের জন্�
 msgid "Before you go, mind sharing why?"
 msgstr "যাওয়ার আগে কারণটা জানাবেন কি?"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Behind the base branch"
+msgstr "বেস ব্রাঞ্চের চেয়ে পিছিয়ে"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "নিচে"
@@ -2510,6 +2526,10 @@ msgstr "Blob Run"
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "একটি LaTeX সোর্স স্ট্রিং থেকে KaTeX দিয়ে রেন্ডার করা ব্লক গাণিতিক সমীকরণ।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Blocked from merging"
+msgstr "মার্জ করা আটকে আছে"
 
 #: src/components/TemplateForm.tsx
 msgid "Blog post"
@@ -2802,6 +2822,10 @@ msgstr "বাইরে বদলেছে"
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "OK শেষবার এখানে লেখার পর বাইরে থেকে বদলানো হয়েছে — দেখানো অবস্থাটি এখন ডিস্কে যা আছে তাই"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Changes requested"
+msgstr "পরিবর্তন চাওয়া হয়েছে"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Changes save automatically to this theme."
 msgstr "পরিবর্তনগুলি এই থিমে স্বয়ংক্রিয়ভাবে সংরক্ষিত হয়।"
@@ -2931,6 +2955,10 @@ msgstr "পরীক্ষা করা হচ্ছে…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "চেকবক্সসহ চেকলিস্ট।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Checks are running"
+msgstr "চেক চলছে"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Checks documents for markdown problems and can fix them"
@@ -3251,6 +3279,11 @@ msgstr "উইন্ডো বন্ধ করুন"
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "জানালা বন্ধ করুন"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Closed"
+msgstr "বন্ধ"
 
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
@@ -5138,10 +5171,6 @@ msgstr "{file} নিষ্ক্রিয় করুন"
 msgid "Disable {id}"
 msgstr "নিষ্ক্রিয় করুন {id}"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Disable external link previews"
-msgstr "বাইরের লিংকের প্রাকদর্শন নিষ্ক্রিয় করুন"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
 msgstr "অর্থভিত্তিক অনুসন্ধান নিষ্ক্রিয় করুন"
@@ -5329,6 +5358,11 @@ msgstr "{0} {1} ডাউনলোড হচ্ছে…"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Downloads a fresh copy from GitHub."
 msgstr "GitHub থেকে একটি নতুন অনুলিপি ডাউনলোড করে।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Draft"
+msgstr "খসড়া"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a spec"
@@ -5731,10 +5765,6 @@ msgstr "স্বয়ংক্রিয় (শুধু টানুন) চ�
 msgid "Enable Auto (Pull only)?"
 msgstr "স্বয়ংক্রিয় (শুধু টানুন) চালু করবেন?"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
-msgstr "বাইরের লিংকের প্রাকদর্শন চালু করুন"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
 msgstr "সূচী সক্রিয় করুন"
@@ -6035,6 +6065,10 @@ msgstr "বাইরের লিংক"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews"
 msgstr "বাইরের লিংকের প্রাকদর্শন"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews and GitHub reference cards"
+msgstr "বাইরের লিংকের প্রাকদর্শন ও GitHub রেফারেন্স কার্ড"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
@@ -6982,6 +7016,10 @@ msgstr "কঠিন বিরতি"
 msgid "Hard to use"
 msgstr "ব্যবহার করা কঠিন"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Has merge conflicts"
+msgstr "মার্জ কনফ্লিক্ট আছে"
+
 #: src/components/acp/working-status.ts
 msgid "Having a look around…"
 msgstr "চারপাশে দেখা হচ্ছে…"
@@ -7454,6 +7492,10 @@ msgstr "একটি লগ নথিতে: এন্ট্রি শিরো�
 msgid "In a subfolder"
 msgstr "একটি উপ-ফোল্ডারে"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
+msgstr "এজেন্ট চ্যাটে কোনো GitHub পুল রিকোয়েস্ট বা ইস্যুর লিংকের উপর মাউস নিলে GitHub-এর কাছে তার অবস্থা জানতে চাওয়া হয়, আর OpenKnowledge আপনার GitHub সাইন-ইন ব্যবহার করতে পারলে আপনার হয়ে।"
+
 #: src/components/settings/LintingSection.tsx
 msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr "একটি সূচক নথিতে: এন্ট্রিগুলি একটি বিভাগের শিরোনামের নীচে বসে এবং প্রতিটি একটি লিঙ্ক বহন করে। তালিকার চারপাশে গদ্য ঠিক আছে।"
@@ -7479,6 +7521,14 @@ msgstr "Git প্রকল্পে, Open Knowledge একটি স্কো�
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "Claude Desktop App-এ"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue"
+msgstr "মার্জ কিউতে আছে"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue, but it can't merge"
+msgstr "মার্জ কিউতে আছে, কিন্তু মার্জ করা যাবে না"
 
 #: src/components/acp/ThreadView.tsx
 msgid "In the plan above, please "
@@ -8123,6 +8173,10 @@ msgstr "প্রতিটি অনুরোধে পাঠানো মোট
 msgid "line {displayLine}"
 msgstr "লাইন {displayLine}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Lines changed: {additions} added, {deletions} removed"
+msgstr "পরিবর্তিত লাইন: {additions}টি যোগ, {deletions}টি বাদ"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
@@ -8598,6 +8652,11 @@ msgstr "মাঝারি বিভাগ শিরোনাম।"
 #: src/components/ComposerAddMenu.tsx
 msgid "Mention a page"
 msgstr "একটি পাতা উল্লেখ করুন"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Merged"
+msgstr "মার্জ হয়েছে"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -9701,6 +9760,11 @@ msgstr "এই প্রকল্পে এখনো ইনস্টল হয�
 msgid "Not now"
 msgstr "এখন নয়"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Not planned"
+msgstr "পরিকল্পনায় নেই"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Not redacted. Check the image before sharing."
 msgstr "সংবেদনশীল তথ্য আড়াল করা হয়নি। শেয়ার করার আগে ছবিটি পরীক্ষা করুন।"
@@ -9820,8 +9884,8 @@ msgid "Older"
 msgstr "পুরোনো"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
-msgstr "চালু — কোনো বাইরের লিংকের উপর মাউস নিলে প্রাকদর্শন আনতে তার URL গন্তব্য সাইটে পাঠানো হয়।"
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview, and hovering a GitHub reference in an agent chat asks GitHub for it."
+msgstr "চালু — কোনো বাইরের লিংকের উপর মাউস নিলে প্রাকদর্শন আনতে তার URL গন্তব্য সাইটে পাঠানো হয়, আর এজেন্ট চ্যাটে কোনো GitHub রেফারেন্সের উপর মাউস নিলে GitHub-এর কাছে চাওয়া হয়।"
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -9881,6 +9945,11 @@ msgstr "কেবল বর্তমান নথিটিই <0>#{tag}</0> ব�
 #: src/components/GraphPanel.tsx
 msgid "Open"
 msgstr "খুলুন"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Open"
+msgstr "খোলা"
 
 #. placeholder {0}: status.remote.label
 #: src/components/settings/SyncSection.tsx
@@ -10245,6 +10314,10 @@ msgstr "ওয়ার্কট্রি খুলুন"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "CodeMirror-এর সম্পূর্ণকরণ পরামর্শ খুলুন, তাতে চলাচল করুন, গ্রহণ করুন, বা সরিয়ে দিন।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Opened by {author}"
+msgstr "{author} খুলেছেন"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "Opened existing OpenKnowledge project at {ancestorPath}"
@@ -11454,6 +11527,10 @@ msgstr "সম্পাদনার মধ্যে অমীমাংসিত 
 msgid "Ready"
 msgstr "প্রস্তুত"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Ready to merge"
+msgstr "মার্জের জন্য প্রস্তুত"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "দ্রুত শুরু করার জন্য তৈরি ফোল্ডার ও টেমপ্লেট।"
@@ -12023,6 +12100,10 @@ msgstr "আবশ্যক"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "আবশ্যক"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Required checks are failing"
+msgstr "আবশ্যিক চেক ব্যর্থ হচ্ছে"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
@@ -13143,8 +13224,8 @@ msgid "Show {hiddenCount} more"
 msgstr "আরও {hiddenCount}টি দেখান"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor."
-msgstr "সম্পাদকে কোনো বাইরের লিংকের উপর মাউস নিলে একটি প্রাকদর্শন কার্ড দেখান।"
+msgid "Show a preview card when you hover an external link in the editor or a GitHub pull request or issue in an agent chat."
+msgstr "সম্পাদকে কোনো বাইরের লিংক বা এজেন্ট চ্যাটে কোনো GitHub পুল রিকোয়েস্ট বা ইস্যুর উপর মাউস নিলে একটি প্রাকদর্শন কার্ড দেখান।"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -13531,6 +13612,10 @@ msgstr "Slidev চালু হতে সময় শেষ হয়ে গে
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "ছোট বিভাগ শিরোনাম।"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Some checks failed, but it can still merge"
+msgstr "কিছু চেক ব্যর্থ হয়েছে, তবে এটি এখনও মার্জ করা যায়"
 
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
@@ -16218,6 +16303,10 @@ msgstr "দৃশ্য সম্পাদকের টেবিল নির্
 #: src/components/AuthModal.tsx
 msgid "Waiting for authorization"
 msgstr "অনুমোদনের অপেক্ষা"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Waiting for review"
+msgstr "পর্যালোচনার অপেক্ষায়"
 
 #: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx

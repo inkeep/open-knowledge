@@ -1248,6 +1248,10 @@ msgid "# One pattern per line.\n"
 "#   !keep.md"
 msgstr "# Um padrão por linha.\\n# Exemplos:\\n#   drafts/\\n#   *.draft.md\\n#   !keep.md"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "#{position} in the merge queue"
+msgstr "#{position} na fila de mesclagem"
+
 #: src/components/GraphLegend.tsx
 msgid "+ {overflow} more"
 msgstr "+ mais {overflow}"
@@ -2163,6 +2167,10 @@ msgstr "Aprovado"
 msgid "Approved — {optionName}"
 msgstr "Aprovado — {optionName}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Approved and ready to merge"
+msgstr "Aprovado e pronto para mesclar"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "Tem certeza de que quer converter este arquivo em um modelo? O arquivo original será excluído. Esta ação não pode ser desfeita."
@@ -2358,6 +2366,10 @@ msgstr "Correção automática ({count})"
 msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr "A correção automática só vale para problemas com uma correção mecânica conhecida."
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Auto-merge is on"
+msgstr "A mesclagem automática está ativada"
+
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
 msgid "Auto-save"
@@ -2473,6 +2485,10 @@ msgstr "Antes de sincronizar, defina sua identidade para os commits do git:"
 msgid "Before you go, mind sharing why?"
 msgstr "Antes de ir, quer contar por quê?"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Behind the base branch"
+msgstr "Atrás do ramo base"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "Abaixo"
@@ -2510,6 +2526,10 @@ msgstr "Blob Run"
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "Equação matemática em bloco renderizada com KaTeX a partir de código LaTeX."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Blocked from merging"
+msgstr "Mesclagem bloqueada"
 
 #: src/components/TemplateForm.tsx
 msgid "Blog post"
@@ -2802,6 +2822,10 @@ msgstr "alterado fora"
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "Alterado fora do OK desde a última vez que ele escreveu aqui — o estado exibido é o que está no disco agora"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Changes requested"
+msgstr "Alterações solicitadas"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Changes save automatically to this theme."
 msgstr "As alterações são salvas automaticamente neste tema."
@@ -2931,6 +2955,10 @@ msgstr "Verificando..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Lista de verificação com caixas de seleção."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Checks are running"
+msgstr "As verificações estão em execução"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Checks documents for markdown problems and can fix them"
@@ -3251,6 +3279,11 @@ msgstr "Fechar janela"
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "Fechar janela"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Closed"
+msgstr "Fechado"
 
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
@@ -5138,10 +5171,6 @@ msgstr "Desativar {file}"
 msgid "Disable {id}"
 msgstr "Desativar {id}"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Disable external link previews"
-msgstr "Desativar a pré-visualização de links externos"
-
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
 msgstr "Desativar a busca semântica"
@@ -5329,6 +5358,11 @@ msgstr "Baixando {0} {1}…"
 #: src/components/ShareReceiveDialog.tsx
 msgid "Downloads a fresh copy from GitHub."
 msgstr "Baixa uma cópia nova do GitHub."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Draft"
+msgstr "Rascunho"
 
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a spec"
@@ -5731,10 +5765,6 @@ msgstr "Ativar Automático (somente Pull)"
 msgid "Enable Auto (Pull only)?"
 msgstr "Ativar Automático (somente Pull)?"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
-msgstr "Ativar a pré-visualização de links externos"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
 msgstr "Habilitar índices"
@@ -6035,6 +6065,10 @@ msgstr "Link externo"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews"
 msgstr "Pré-visualização de links externos"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews and GitHub reference cards"
+msgstr "Pré-visualização de links externos e cartões de referências do GitHub"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
@@ -6982,6 +7016,10 @@ msgstr "Quebra de linha forçada"
 msgid "Hard to use"
 msgstr "Difícil de usar"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Has merge conflicts"
+msgstr "Tem conflitos de mesclagem"
+
 #: src/components/acp/working-status.ts
 msgid "Having a look around…"
 msgstr "Dando uma olhada…"
@@ -7454,6 +7492,10 @@ msgstr "Em um documento de registro: os cabeçalhos de entrada levam a uma data 
 msgid "In a subfolder"
 msgstr "Em uma subpasta"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
+msgstr "Em um chat com um agente, passar o cursor sobre um link para uma pull request ou issue do GitHub pede ao GitHub o status dela, com o seu login do GitHub quando o OpenKnowledge pode usá-lo."
+
 #: src/components/settings/LintingSection.tsx
 msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr "Em um documento de índice: as entradas ficam sob o título de uma seção e cada uma carrega um link. A prosa em torno das listas está bem."
@@ -7479,6 +7521,14 @@ msgstr "Em projetos Git, Open Knowledge também adiciona uma regra .gitattribute
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "No app Claude Desktop"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue"
+msgstr "Na fila de mesclagem"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue, but it can't merge"
+msgstr "Na fila de mesclagem, mas não pode ser mesclado"
 
 #: src/components/acp/ThreadView.tsx
 msgid "In the plan above, please "
@@ -8123,6 +8173,10 @@ msgstr "Limita o texto combinado enviado em cada requisição. Um fragmento maio
 msgid "line {displayLine}"
 msgstr "linha {displayLine}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Lines changed: {additions} added, {deletions} removed"
+msgstr "Linhas alteradas: {additions} adicionadas, {deletions} removidas"
+
 #: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
 #: src/editor/slash-command/component-items.tsx
@@ -8598,6 +8652,11 @@ msgstr "Título de seção médio."
 #: src/components/ComposerAddMenu.tsx
 msgid "Mention a page"
 msgstr "Mencionar uma página"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Merged"
+msgstr "Mesclado"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -9701,6 +9760,11 @@ msgstr "Ainda não instalada neste projeto."
 msgid "Not now"
 msgstr "Agora não"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Not planned"
+msgstr "Não planejado"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Not redacted. Check the image before sharing."
 msgstr "Sem censura. Revise a imagem antes de compartilhar."
@@ -9820,8 +9884,8 @@ msgid "Older"
 msgstr "Anteriores"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
-msgstr "Ligada — passar o cursor sobre um link externo envia a URL dele ao site de destino para buscar uma pré-visualização."
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview, and hovering a GitHub reference in an agent chat asks GitHub for it."
+msgstr "Ligada — passar o cursor sobre um link externo envia a URL dele ao site de destino para buscar uma pré-visualização, e passar o cursor sobre uma referência do GitHub em um chat com um agente a pede ao GitHub."
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -9881,6 +9945,11 @@ msgstr "Só o documento atual usa <0>#{tag}</0>."
 #: src/components/GraphPanel.tsx
 msgid "Open"
 msgstr "Abrir"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Open"
+msgstr "Aberto"
 
 #. placeholder {0}: status.remote.label
 #: src/components/settings/SyncSection.tsx
@@ -10245,6 +10314,10 @@ msgstr "Abrir o worktree"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "Abre, percorre, aceita ou dispensa as sugestões de autocompletar do CodeMirror."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Opened by {author}"
+msgstr "Aberto por {author}"
 
 #: src/lib/install-onboarding-toast.ts
 msgid "Opened existing OpenKnowledge project at {ancestorPath}"
@@ -11454,6 +11527,10 @@ msgstr "Lê conflitos não resolvidos entre edições"
 msgid "Ready"
 msgstr "Pronto"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Ready to merge"
+msgstr "Pronto para mesclar"
+
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
 msgstr "Pastas e modelos prontos para você começar rápido."
@@ -12023,6 +12100,10 @@ msgstr "obrigatório"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "Obrigatório"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Required checks are failing"
+msgstr "Verificações obrigatórias estão falhando"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
@@ -13143,8 +13224,8 @@ msgid "Show {hiddenCount} more"
 msgstr "Mostrar mais {hiddenCount}"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor."
-msgstr "Mostra um cartão de pré-visualização quando você passa o cursor sobre um link externo no editor."
+msgid "Show a preview card when you hover an external link in the editor or a GitHub pull request or issue in an agent chat."
+msgstr "Mostra um cartão de pré-visualização quando você passa o cursor sobre um link externo no editor ou sobre uma pull request ou issue do GitHub em um chat com um agente."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -13531,6 +13612,10 @@ msgstr "O Slidev demorou demais para iniciar. Tente novamente."
 #: src/editor/slash-command/items.tsx
 msgid "Small section heading."
 msgstr "Título de seção pequeno."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Some checks failed, but it can still merge"
+msgstr "Algumas verificações falharam, mas ainda pode ser mesclado"
 
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
@@ -16218,6 +16303,10 @@ msgstr "Seleção de tabela do editor visual"
 #: src/components/AuthModal.tsx
 msgid "Waiting for authorization"
 msgstr "Aguardando a autorização"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Waiting for review"
+msgstr "Aguardando revisão"
 
 #: src/components/acp/ThreadView.tsx
 #: src/components/SessionsHost.tsx
