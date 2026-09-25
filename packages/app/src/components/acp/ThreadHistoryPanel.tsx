@@ -1,5 +1,4 @@
 import type { ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
-import { t as tStatic } from '@lingui/core/macro';
 import { useLingui } from '@lingui/react/macro';
 import { ChevronLeft, History, Pencil, Search, Trash2, X } from 'lucide-react';
 import {
@@ -38,6 +37,7 @@ import {
   SidebarMenuItem,
 } from '@/components/ui/sidebar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatRelativeActivity } from '@/lib/acp/relative-activity';
 import { getAgentThreadClient } from '@/lib/acp/thread-client';
 import { cn } from '@/lib/utils';
 
@@ -243,7 +243,7 @@ function ThreadHistoryRow({
         />
         <span className="min-w-0 flex-1 truncate text-start">{thread.title}</span>
         <span className="shrink-0 text-2xs text-[var(--thread-row-muted-foreground)] motion-safe:transition-opacity group-focus-within/menu-item:opacity-0 group-hover/menu-item:opacity-0">
-          {formatRelative(thread.lastActivityAt, now)}
+          {formatRelativeActivity(thread.lastActivityAt, now)}
         </span>
       </SidebarMenuButton>
       <SidebarMenuAction
@@ -504,19 +504,4 @@ function isSameLocalDate(a: number, b: number): boolean {
     first.getMonth() === second.getMonth() &&
     first.getDate() === second.getDate()
   );
-}
-
-function formatRelative(ms: number, now: number): string {
-  const diff = Math.max(0, now - ms);
-  if (diff < 60_000) return tStatic`just now`;
-  if (diff < 3_600_000) {
-    const minutes = Math.round(diff / 60_000);
-    return tStatic`${minutes}m ago`;
-  }
-  if (diff < 86_400_000) {
-    const hours = Math.round(diff / 3_600_000);
-    return tStatic`${hours}h ago`;
-  }
-  const days = Math.round(diff / 86_400_000);
-  return tStatic`${days}d ago`;
 }

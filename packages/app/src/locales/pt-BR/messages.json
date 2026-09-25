@@ -98,6 +98,7 @@
       "Habilidades que vêm com este projeto e as pastas de onde suas ferramentas de IA as leem."
     ],
     "0Gd0NU": ["Compartilhado"],
+    "0H5_2R": ["Não está em execução"],
     "0Ht36j": ["Encontra habilidades e lê quais estão instaladas"],
     "0J6nhG": [
       "Uma cópia é uma pasta de verdade, e o OK a mantém em sintonia com a fonte: edite a habilidade aqui e todas as cópias são atualizadas. Isso para no momento em que você edita uma cópia à mão fora do OK — a partir daí ela segue seu próprio caminho e aparece como uma habilidade separada. Já um link simbólico aponta para a fonte, então nada se desvia, mas um local para de funcionar se a fonte for excluída."
@@ -614,6 +615,7 @@
         { "one": ["#", " arquivo"], "many": ["#", " arquivos"], "other": ["#", " arquivos"] }
       ]
     ],
+    "5UccRr": ["Última atividade: ", ["lastActivity"]],
     "5Umg9i": ["Desativar a pré-visualização de links externos"],
     "5WDhAk": ["Aponta para uma página ou uma URL externa."],
     "5W_u0E": [
@@ -644,6 +646,7 @@
     "5kWklo": ["(outras regras podem já ocultar alguns)"],
     "5lWFkC": ["Entrar"],
     "5mksg0": ["Falha ao desativar a busca semântica — ", ["detail"]],
+    "5pYsL1": ["Fazendo login"],
     "5qQr1u": ["Valores permitidos para ", ["field"]],
     "5rnB76": ["Suas edições ficam neste computador"],
     "5soCUZ": ["Editar a mensagem na fila"],
@@ -2338,6 +2341,7 @@
     "MV-Dkb": [["countDisplay"], " arquivos markdown encontrados"],
     "MVxpbf": ["Buscar e substituir"],
     "MWB7fV": ["Mostrar tudo"],
+    "MWKYTL": [", ", ["status"], ", atividade nova"],
     "MXSt4t": [["0"], " criado"],
     "MZSBsh": [
       "Ainda não há modelos. Adicione um para dar aos novos documentos desta pasta um ponto de partida pronto."
@@ -2428,6 +2432,7 @@
     "NmaGHf": ["Nenhum ícone corresponde."],
     "Nn4GgW": ["Será criado como <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Abrir com a IA ", ["targetDisplayName"]],
+    "NnvXp5": ["Parado"],
     "NoY1k4": ["Estrutura da resposta do servidor inválida"],
     "NpC29w": ["Cria um novo item de lista a partir do item atual."],
     "NpEm3p": ["Enviar agora"],
@@ -3840,6 +3845,7 @@
       "Quando está ligado, o agente abre ou atualiza a pré-visualização depois de cada edição. Desligue se você cuida da sua própria janela de pré-visualização (OK Desktop, uma aba do navegador em outra tela, etc.)."
     ],
     "bwil08": ["Compilando <0>openknowledge.skill</0> e abrindo o app Claude Desktop"],
+    "bwoxGI": ["Você precisa fazer login"],
     "bwy8Y7": ["Em <0>", ["address"], "</0>"],
     "bzsK8N": ["Lê a paleta de autoria para que novos documentos sigam o estilo do projeto"],
     "c1LZZH": ["Link copiado."],
@@ -3950,6 +3956,7 @@
     "chL5IG": ["Comunidade"],
     "ciozf1": ["Habilidade já em projeto"],
     "cjtjry": ["Volta pelo histórico de navegação do OpenKnowledge."],
+    "ckH3fT": ["Pronto"],
     "cklVjM": ["Linha do tempo"],
     "clJ3qM": ["Concluído."],
     "cnGeoo": ["Excluir"],
@@ -4923,6 +4930,7 @@
     "l5J_HM": [
       "Digite uma consulta e pressione <0>↵</0> para buscar nas suas páginas por significado."
     ],
+    "l6GfXr": ["Iniciando"],
     "l6kpzR": [
       "Este ",
       ["targetNoun"],
@@ -5001,6 +5009,7 @@
       "Só os links externos geram uma requisição. Os links para outros documentos deste projeto são pré-visualizados pelo índice local e nunca saem do seu computador."
     ],
     "lmE7r-": ["Sobre o ", ["appName"]],
+    "ln8Qo3": ["Atividade nova"],
     "loE6tM": ["Não foi possível mudar para ", ["language"], "."],
     "lond3p": ["Aparece acima do corpo do código. No markdown, vai e volta como `title=\"...\"`."],
     "lrhetp": ["+ mais ", ["overflow"]],
@@ -5291,6 +5300,7 @@
     ],
     "ogAuyr": ["Voltar para a visualização do documento"],
     "ohUJJM": ["Plugins"],
+    "ohunoZ": [", ", ["status"]],
     "ojGc_T": ["Abrir o comentário"],
     "olb6oq": ["Como configurar novos projetos com o OpenKnowledge."],
     "omXJcU": ["Fechar as outras"],

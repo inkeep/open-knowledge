@@ -100,6 +100,7 @@
       "Habilidades que vienen con este proyecto y las carpetas desde las que las leen sus herramientas de IA."
     ],
     "0Gd0NU": ["Compartido"],
+    "0H5_2R": ["No se está ejecutando"],
     "0Ht36j": ["Busca habilidades y lee cuáles están instaladas"],
     "0J6nhG": [
       "Una copia es una carpeta propia, y OK la mantiene alineada con el origen: edita la habilidad aquí y todas las copias se actualizan. Eso se detiene en cuanto editas a mano una copia fuera de OK; a partir de ahí sigue su propio camino y aparece como una habilidad aparte. Un enlace simbólico, en cambio, apunta al origen, así que nada se desvía, pero una ubicación deja de funcionar si se elimina el origen."
@@ -620,6 +621,7 @@
         { "one": ["#", " archivo"], "many": ["#", " archivos"], "other": ["#", " archivos"] }
       ]
     ],
+    "5UccRr": ["Última actividad: ", ["lastActivity"]],
     "5Umg9i": ["Desactivar la vista previa de enlaces externos"],
     "5WDhAk": ["Enlaza a una página o a una URL externa."],
     "5W_u0E": [
@@ -650,6 +652,7 @@
     "5kWklo": ["(puede que otras reglas ya oculten algunos)"],
     "5lWFkC": ["Iniciar sesión"],
     "5mksg0": ["No se pudo desactivar la búsqueda semántica — ", ["detail"]],
+    "5pYsL1": ["Iniciando sesión"],
     "5qQr1u": ["Valores permitidos para ", ["field"]],
     "5rnB76": ["Tus ediciones se quedan en este equipo"],
     "5soCUZ": ["Editar el mensaje en cola"],
@@ -2371,6 +2374,7 @@
     "MV-Dkb": ["Se encontraron ", ["countDisplay"], " archivos markdown"],
     "MVxpbf": ["Buscar y reemplazar"],
     "MWB7fV": ["Mostrar todo"],
+    "MWKYTL": [", ", ["status"], ", actividad nueva"],
     "MXSt4t": ["Se creó ", ["0"]],
     "MZSBsh": [
       "Todavía no hay plantillas. Añade una para dar a los documentos nuevos de esta carpeta un punto de partida ya hecho."
@@ -2461,6 +2465,7 @@
     "NmaGHf": ["Ningún icono coincide."],
     "Nn4GgW": ["Se creará como <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Abrir con la IA ", ["targetDisplayName"]],
+    "NnvXp5": ["Detenido"],
     "NoY1k4": ["La estructura de la respuesta del servidor no es válida"],
     "NpC29w": ["Crea un elemento de lista nuevo a partir del elemento actual."],
     "NpEm3p": ["Enviar ahora"],
@@ -3922,6 +3927,7 @@
       "Cuando está activado, el agente abre o actualiza la vista previa después de cada edición. Desactívalo si gestionas tu propia ventana de vista previa (OK Desktop, una pestaña del navegador en otra pantalla, etc.)."
     ],
     "bwil08": ["Compilando <0>openknowledge.skill</0> y abriendo la aplicación Claude Desktop"],
+    "bwoxGI": ["Tienes que iniciar sesión"],
     "bwy8Y7": ["En <0>", ["address"], "</0>"],
     "bzsK8N": [
       "Lee la paleta de autoría para que los documentos nuevos sigan el estilo del proyecto"
@@ -4037,6 +4043,7 @@
     "chL5IG": ["Comunidad"],
     "ciozf1": ["La habilidad ya está en el proyecto"],
     "cjtjry": ["Retrocede por el historial de navegación de OpenKnowledge."],
+    "ckH3fT": ["Listo"],
     "cklVjM": ["Cronología"],
     "clJ3qM": ["Listo."],
     "cnGeoo": ["Eliminar"],
@@ -5025,6 +5032,7 @@
     "l3zD7w": ["Iniciando el agente…"],
     "l46MqT": ["Pestaña siguiente"],
     "l5J_HM": ["Escribe una consulta y pulsa <0>↵</0> para buscar en tus páginas por significado."],
+    "l6GfXr": ["Iniciando"],
     "l6kpzR": [
       "Este ",
       ["targetNoun"],
@@ -5111,6 +5119,7 @@
       "Solo los enlaces externos generan una solicitud. Los enlaces a otros documentos de este proyecto se previsualizan desde el índice local y nunca salen de tu equipo."
     ],
     "lmE7r-": ["Acerca de ", ["appName"]],
+    "ln8Qo3": ["Actividad nueva"],
     "loE6tM": ["No se pudo cambiar a ", ["language"], "."],
     "lond3p": [
       "Se muestra encima del cuerpo del código. En markdown va y viene como `title=\"...\"`."
@@ -5405,6 +5414,7 @@
     ],
     "ogAuyr": ["Volver a la vista de documento"],
     "ohUJJM": ["Complementos"],
+    "ohunoZ": [", ", ["status"]],
     "ojGc_T": ["Abrir el comentario"],
     "olb6oq": ["Cómo configurar nuevos proyectos con OpenKnowledge."],
     "omXJcU": ["Cerrar las demás"],

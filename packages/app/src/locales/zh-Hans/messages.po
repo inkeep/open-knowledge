@@ -34,6 +34,14 @@ msgstr " 已恢复你的选择。"
 msgid "— except"
 msgstr "— 除了"
 
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr "，{status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr "，{status}，有新动态"
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr "… 已省略更早的输出"
@@ -749,7 +757,7 @@ msgstr "{count} 个技能"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# 天前}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "{days} 天前"
 
@@ -884,10 +892,10 @@ msgstr "{folderCount, plural, other {文件夹}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} 个 GitHub star"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "{hours} 小时前"
 
@@ -969,11 +977,11 @@ msgstr "来自 {server} MCP 服务器的 {mcpTool}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分钟前}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "{minutes} 分钟前"
 
@@ -7942,12 +7950,12 @@ msgstr "跳到锚定的文本"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "跳到光标所在块的 markdown 源码，居中并高亮显示。"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "刚刚"
 
@@ -8043,6 +8051,10 @@ msgstr "标签 <0>（可见的链接文本）</0>"
 #: src/components/settings/settings-fields.ts
 msgid "Language"
 msgstr "语言"
+
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "最近活动：{lastActivity}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
@@ -8994,6 +9006,10 @@ msgstr "导航与建议"
 msgid "Navigation history"
 msgstr "导航历史"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "需要你登录"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "{path} 中嵌套的 .okignore 有错误"
@@ -9032,6 +9048,10 @@ msgstr "新建"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "新建 {0} 对话"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "有新动态"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9695,6 +9715,10 @@ msgstr "未经脱敏。分享前请检查图片。"
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "对于 <0>{endpointHost}</0> 这样的回环端点不是必需的——大多数本地服务器会忽略它。只有你的服务器需要时才添加。"
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "未运行"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -11432,6 +11456,10 @@ msgstr "读取此项目的 OpenKnowledge 设置"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "读取编辑之间未解决的冲突"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "就绪"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -13328,6 +13356,10 @@ msgstr "登录失败：{0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "登录流程未确认就结束了——请重试"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "正在登录"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "正在登录 {agentName}"
@@ -13544,6 +13576,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "{scopeLabel}中已经有名为“{name}”的内容，服务器无法确认它是什么。它可能是此前一次失败的移动有意保留下来的：删除或替换之前，请先与原件比对。"
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "出了点问题"
 
@@ -13729,6 +13762,10 @@ msgstr "入门包"
 msgid "Starter packs"
 msgstr "入门包"
 
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "正在启动"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr "正在启动 {agentName}…"
@@ -13815,6 +13852,10 @@ msgstr "停止修复。已修复的文件保持已修复状态。"
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "停止维护 index.md"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "已停止"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -16186,6 +16227,7 @@ msgid "Waiting for authorization"
 msgstr "正在等待授权"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "正在等待你的批准"
 
@@ -16415,6 +16457,7 @@ msgstr "处理这些评论"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "进行中"

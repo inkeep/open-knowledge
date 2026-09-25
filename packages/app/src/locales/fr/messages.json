@@ -104,6 +104,7 @@
       "Les compétences fournies avec ce projet, et les dossiers dans lesquels ses outils IA les lisent."
     ],
     "0Gd0NU": ["Partagé"],
+    "0H5_2R": ["Inactif"],
     "0Ht36j": ["Trouve des compétences et lit celles qui sont installées"],
     "0J6nhG": [
       "Une copie est un vrai dossier à part entière, et OK la maintient alignée sur la source : modifiez la compétence ici et chaque copie est actualisée. Cela s'arrête dès que vous modifiez une copie à la main en dehors d'OK — à partir de là elle suit son propre chemin et apparaît comme une compétence distincte. Un lien symbolique, lui, pointe vers la source, donc rien ne peut diverger, mais un emplacement cesse de fonctionner si la source est supprimée."
@@ -643,6 +644,7 @@
         { "one": ["#", " fichier"], "many": ["#", " fichiers"], "other": ["#", " fichiers"] }
       ]
     ],
+    "5UccRr": ["Dernière activité : ", ["lastActivity"]],
     "5Umg9i": ["Désactiver les aperçus de liens externes"],
     "5WDhAk": ["Lien vers une page ou une URL externe."],
     "5W_u0E": [
@@ -675,6 +677,7 @@
     "5kWklo": ["(certains sont peut-être déjà masqués par d'autres règles)"],
     "5lWFkC": ["Se connecter"],
     "5mksg0": ["Échec de la désactivation de la recherche sémantique — ", ["detail"]],
+    "5pYsL1": ["Connexion en cours"],
     "5qQr1u": ["Valeurs autorisées pour ", ["field"]],
     "5rnB76": ["Vos modifications restent sur cet ordinateur"],
     "5soCUZ": ["Modifier le message en file d'attente"],
@@ -2416,6 +2419,7 @@
     "MV-Dkb": [["countDisplay"], " fichiers markdown trouvés"],
     "MVxpbf": ["Rechercher et remplacer"],
     "MWB7fV": ["Tout afficher"],
+    "MWKYTL": [", ", ["status"], ", nouvelle activité"],
     "MXSt4t": [["0"], " créé"],
     "MZSBsh": [
       "Pas encore de modèles. Ajoutez-en un pour donner aux nouveaux documents de ce dossier un point de départ prêt à l'emploi."
@@ -2504,6 +2508,7 @@
     "NmaGHf": ["Aucune icône ne correspond."],
     "Nn4GgW": ["Sera créé sous le nom <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Ouvrir avec l'IA ", ["targetDisplayName"]],
+    "NnvXp5": ["Arrêté"],
     "NoY1k4": ["Structure de réponse du serveur invalide"],
     "NpC29w": ["Crée un nouvel élément de liste à partir de l'élément courant."],
     "NpEm3p": ["Envoyer maintenant"],
@@ -3971,6 +3976,7 @@
     "bwil08": [
       "Construction de <0>openknowledge.skill</0> et ouverture de l'application Claude Desktop"
     ],
+    "bwoxGI": ["Vous devez vous connecter"],
     "bwy8Y7": ["Sur <0>", ["address"], "</0>"],
     "bzsK8N": [
       "Lit la palette de rédaction pour que les nouveaux documents suivent le style du projet"
@@ -4091,6 +4097,7 @@
     "chL5IG": ["Communauté"],
     "ciozf1": ["Compétence déjà en projet"],
     "cjtjry": ["Recule dans l'historique de navigation d'OpenKnowledge."],
+    "ckH3fT": ["Prêt"],
     "cklVjM": ["Chronologie"],
     "clJ3qM": ["Terminé."],
     "cnGeoo": ["Supprimer"],
@@ -5066,6 +5073,7 @@
     "l5J_HM": [
       "Saisissez une requête, puis appuyez sur <0>↵</0> pour chercher dans vos pages par le sens."
     ],
+    "l6GfXr": ["Démarrage"],
     "l6kpzR": [
       "Ce ",
       ["targetNoun"],
@@ -5154,6 +5162,7 @@
       "Seuls les liens externes déclenchent une requête. Les liens vers d'autres documents de ce projet s'affichent depuis l'index local et ne quittent jamais votre ordinateur."
     ],
     "lmE7r-": ["À propos de ", ["appName"]],
+    "ln8Qo3": ["Nouvelle activité"],
     "loE6tM": ["Impossible de passer à ", ["language"], "."],
     "lond3p": [
       "S'affiche au-dessus du corps du code. Conservé sous la forme `title=\"...\"` en markdown."
@@ -5448,6 +5457,7 @@
     ],
     "ogAuyr": ["Retour à la vue document"],
     "ohUJJM": ["Plugins"],
+    "ohunoZ": [", ", ["status"]],
     "ojGc_T": ["Ouvrir le commentaire"],
     "olb6oq": ["Comment configurer de nouveaux projets avec OpenKnowledge."],
     "omXJcU": ["Fermer les autres"],

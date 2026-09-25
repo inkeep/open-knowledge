@@ -34,6 +34,14 @@ msgstr " Sua seleção foi restaurada."
 msgid "— except"
 msgstr "— exceto"
 
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr ", {status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr ", {status}, atividade nova"
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr "… saída anterior cortada"
@@ -749,7 +757,7 @@ msgstr "{count} habilidades"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, one {há # dia} many {há # dias} other {há # dias}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "há {days} d"
 
@@ -884,10 +892,10 @@ msgstr "{folderCount, plural, one {pasta} many {pastas} other {pastas}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} estrelas no GitHub"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "há {hours} h"
 
@@ -969,11 +977,11 @@ msgstr "{mcpTool} do servidor MCP {server}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {há # min} many {há # min} other {há # min}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "há {minutes} min"
 
@@ -7938,12 +7946,12 @@ msgstr "Ir para o texto ancorado"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "Ir para o código markdown do bloco onde está o cursor, centralizado e destacado."
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "agora mesmo"
 
@@ -8039,6 +8047,10 @@ msgstr "Rótulo <0>(texto visível do link)</0>"
 #: src/components/settings/settings-fields.ts
 msgid "Language"
 msgstr "Idioma"
+
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "Última atividade: {lastActivity}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
@@ -8990,6 +9002,10 @@ msgstr "Navegação e sugestões"
 msgid "Navigation history"
 msgstr "Histórico de navegação"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "Você precisa fazer login"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "Erro no .okignore aninhado em {path}"
@@ -9028,6 +9044,10 @@ msgstr "Novo"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "Novo chat do {0}"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "Atividade nova"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9691,6 +9711,10 @@ msgstr "Sem censura. Revise a imagem antes de compartilhar."
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "Não é necessária para um endpoint de loopback como <0>{endpointHost}</0> — a maioria dos servidores locais ignora. Adicione uma só se o seu precisar."
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "Não está em execução"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -11428,6 +11452,10 @@ msgstr "Lê as configurações do OpenKnowledge deste projeto"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "Lê conflitos não resolvidos entre edições"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "Pronto"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -13324,6 +13352,10 @@ msgstr "Falha no login: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "O fluxo de login terminou sem confirmação — tente de novo"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "Fazendo login"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "Fazendo login em {agentName}"
@@ -13540,6 +13572,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "Já existe algo chamado “{name}” em {scopeLabel}, e o servidor não conseguiu confirmar o que é. Uma movimentação com falha anterior pode tê-lo mantido ali de propósito: compare com o original antes de apagar ou substituir."
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "Algo deu errado"
 
@@ -13725,6 +13758,10 @@ msgstr "pacote inicial"
 msgid "Starter packs"
 msgstr "Pacotes iniciais"
 
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "Iniciando"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr "Iniciando {agentName}…"
@@ -13811,6 +13848,10 @@ msgstr "Para de corrigir. Os arquivos já corrigidos continuam corrigidos."
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "Pare de manter index.md"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "Parado"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -16182,6 +16223,7 @@ msgid "Waiting for authorization"
 msgstr "Aguardando a autorização"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "Aguardando sua aprovação"
 
@@ -16411,6 +16453,7 @@ msgstr "Trabalhe sobre estes comentários"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "Trabalhando"

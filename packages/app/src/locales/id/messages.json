@@ -84,6 +84,7 @@
       "Keterampilan yang disertakan dengan proyek ini, dan folder tempat alat AI-nya membacanya."
     ],
     "0Gd0NU": ["Dibagikan"],
+    "0H5_2R": ["Tidak berjalan"],
     "0Ht36j": ["Mencari keterampilan dan membaca yang sudah terpasang"],
     "0J6nhG": [
       "Salinan adalah folder tersendiri, dan OK menjaganya tetap selaras dengan sumbernya: sunting keterampilan di sini dan setiap salinan ikut diperbarui. Itu berhenti begitu Anda menyunting sebuah salinan secara manual di luar OK — sejak saat itu ia berjalan sendiri dan muncul sebagai keterampilan terpisah. Symlink justru merupakan penunjuk ke sumbernya, jadi tidak ada yang bisa melenceng, tetapi sebuah lokasi berhenti bekerja jika sumbernya dihapus."
@@ -533,6 +534,7 @@
       " di ",
       ["0", "plural", { "other": ["#", " berkas"] }]
     ],
+    "5UccRr": ["Aktivitas terakhir: ", ["lastActivity"]],
     "5Umg9i": ["Nonaktifkan pratinjau tautan eksternal"],
     "5WDhAk": ["Menaut ke sebuah halaman atau URL eksternal."],
     "5W_u0E": [
@@ -563,6 +565,7 @@
     "5kWklo": ["(sebagian mungkin sudah disembunyikan oleh aturan lain)"],
     "5lWFkC": ["Masuk"],
     "5mksg0": ["Gagal menonaktifkan pencarian semantik — ", ["detail"]],
+    "5pYsL1": ["Sedang masuk"],
     "5qQr1u": ["Nilai yang diizinkan untuk ", ["field"]],
     "5rnB76": ["Suntingan Anda tetap di komputer ini"],
     "5soCUZ": ["Sunting pesan dalam antrean"],
@@ -2044,6 +2047,7 @@
     "MV-Dkb": ["Ditemukan ", ["countDisplay"], " berkas markdown"],
     "MVxpbf": ["Cari dan ganti"],
     "MWB7fV": ["Tampilkan semua"],
+    "MWKYTL": [", ", ["status"], ", ada aktivitas baru"],
     "MXSt4t": [["0"], " dibuat"],
     "MZSBsh": [
       "Belum ada templat. Tambahkan satu agar dokumen baru di folder ini punya titik awal yang siap pakai."
@@ -2132,6 +2136,7 @@
     "NmaGHf": ["Tidak ada ikon yang cocok."],
     "Nn4GgW": ["Akan dibuat sebagai <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Buka dengan AI ", ["targetDisplayName"]],
+    "NnvXp5": ["Berhenti"],
     "NoY1k4": ["Bentuk respons server tidak valid"],
     "NpC29w": ["Membuat item daftar baru dari item daftar saat ini."],
     "NpEm3p": ["Kirim sekarang"],
@@ -3418,6 +3423,7 @@
       "Ketika aktif, agennya membuka atau menyegarkan pratinjau setelah setiap suntingan. Nonaktifkan jika Anda mengelola jendela pratinjau Anda sendiri (OK Desktop, tab peramban di layar lain, dsb.)."
     ],
     "bwil08": ["Membangun <0>openknowledge.skill</0> dan membuka aplikasi Claude Desktop"],
+    "bwoxGI": ["Anda perlu masuk"],
     "bwy8Y7": ["Pada <0>", ["address"], "</0>"],
     "bzsK8N": ["Membaca palet penulisan agar dokumen baru mengikuti gaya proyek"],
     "c1LZZH": ["Tautan disalin."],
@@ -3516,6 +3522,7 @@
     "chL5IG": ["Komunitas"],
     "ciozf1": ["Keterampilan sudah ada dalam proyek"],
     "cjtjry": ["Menyusuri riwayat navigasi OpenKnowledge ke belakang."],
+    "ckH3fT": ["Siap"],
     "cklVjM": ["Lini masa"],
     "clJ3qM": ["Selesai."],
     "cnGeoo": ["Hapus"],
@@ -4372,6 +4379,7 @@
     "l5J_HM": [
       "Ketik sebuah kueri, lalu tekan <0>↵</0> untuk mencari di halaman Anda berdasarkan makna."
     ],
+    "l6GfXr": ["Memulai"],
     "l6kpzR": [
       ["targetNoun"],
       " ini sudah dipindahkan, diganti nama, atau dihapus di salinan lokal Anda pada cabang <0>",
@@ -4447,6 +4455,7 @@
       "Hanya tautan eksternal yang memicu permintaan. Tautan ke dokumen lain di proyek ini dipratinjau dari indeks lokal dan tidak pernah keluar dari komputer Anda."
     ],
     "lmE7r-": ["Tentang ", ["appName"]],
+    "ln8Qo3": ["Ada aktivitas baru"],
     "loE6tM": ["Tidak dapat beralih ke ", ["language"], "."],
     "lond3p": ["Muncul di atas badan kode. Bolak-balik sebagai `title=\"...\"` di markdown."],
     "lrhetp": ["+ ", ["overflow"], " lagi"],
@@ -4705,6 +4714,7 @@
     ],
     "ogAuyr": ["Kembali ke tampilan dokumen"],
     "ohUJJM": ["Plugin"],
+    "ohunoZ": [", ", ["status"]],
     "ojGc_T": ["Buka komentar"],
     "olb6oq": ["Cara menyiapkan proyek baru dengan OpenKnowledge."],
     "omXJcU": ["Tutup yang lain"],

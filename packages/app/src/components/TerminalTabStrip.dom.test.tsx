@@ -1,5 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import {
@@ -133,6 +134,96 @@ describe('TerminalTabStrip', () => {
 
     expect(screen.getByRole('tablist', { name: 'Terminal sessions' })).toBeTruthy();
     expect(screen.queryByRole('tablist', { name: 'Agent chats' })).toBeNull();
+  });
+
+  test('a tab tooltip mounts its content once, only while open, and describes it with the time it opened', async () => {
+    const user = userEvent.setup();
+    const mounts = vi.fn();
+    function Peek() {
+      useEffect(() => {
+        mounts();
+      }, []);
+      return <span>Peek body</span>;
+    }
+    renderStrip({
+      sessions: [
+        {
+          id: 's1',
+          label: 'Chat',
+          tooltip: <Peek />,
+          tooltipDescription: (openedAt) => `Opened at ${openedAt}`,
+        },
+      ],
+      activeSessionId: 's1',
+    });
+    expect(mounts).not.toHaveBeenCalled();
+
+    const before = Date.now();
+    await user.hover(screen.getByRole('tab', { name: 'Chat' }));
+    const description = await screen.findByRole('tooltip');
+
+    expect(mounts).toHaveBeenCalledTimes(1);
+    expect(Number(description.textContent?.replace('Opened at ', ''))).toBeGreaterThanOrEqual(
+      before,
+    );
+    expect(document.querySelector('[data-slot="tooltip-content"]')?.textContent).toContain(
+      'Peek body',
+    );
+  });
+
+  test('a tab tooltip closes and unmounts its content on Escape or when focus leaves', async () => {
+    const user = userEvent.setup();
+    const unmounts = vi.fn();
+    function Peek() {
+      useEffect(() => unmounts, []);
+      return <span>Peek body</span>;
+    }
+    renderStrip({
+      sessions: [
+        { id: 's1', label: 'Chat', tooltip: <Peek />, tooltipDescription: () => 'Opened' },
+        { id: 's2', label: 'Other chat' },
+      ],
+      activeSessionId: 's1',
+    });
+
+    await user.hover(screen.getByRole('tab', { name: 'Chat' }));
+    await screen.findByRole('tooltip');
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(unmounts).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      screen.getByRole('tab', { name: 'Chat' }).focus();
+    });
+    await screen.findByRole('tooltip');
+    act(() => {
+      screen.getByRole('tab', { name: 'Chat' }).blur();
+    });
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(unmounts).toHaveBeenCalledTimes(2);
+  });
+
+  test('moving from one tab tooltip to the next shows only the next one', async () => {
+    const user = userEvent.setup();
+    renderStrip({
+      sessions: [
+        { id: 's1', label: 'First chat', tooltip: <span>First peek</span> },
+        { id: 's2', label: 'Second chat', tooltip: <span>Second peek</span> },
+      ],
+      activeSessionId: 's1',
+    });
+
+    await user.hover(screen.getByRole('tab', { name: 'First chat' }));
+    expect((await screen.findByRole('tooltip')).textContent).toContain('First peek');
+
+    act(() => {
+      screen.getByRole('tab', { name: 'Second chat' }).focus();
+    });
+    await waitFor(() =>
+      expect(screen.getAllByRole('tooltip').map((tooltip) => tooltip.textContent)).toEqual([
+        'Second peek',
+      ]),
+    );
   });
 
   test('hovering a tab surfaces the full (untruncated) title in a tooltip', async () => {

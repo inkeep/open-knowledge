@@ -34,6 +34,14 @@ msgstr " تمت استعادة تحديدك."
 msgid "— except"
 msgstr "— باستثناء"
 
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr "، {status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr "، {status}، نشاط جديد"
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr "… تم اقتطاع المخرجات السابقة"
@@ -749,7 +757,7 @@ msgstr "{count} مهارات"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, zero {قبل # يوم} one {قبل يوم واحد} two {قبل يومين} few {قبل # أيام} many {قبل # يومًا} other {قبل # يوم}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "قبل {days} يوم"
 
@@ -884,10 +892,10 @@ msgstr "{folderCount, plural, zero {مجلدات} one {مجلد} two {مجلدا
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} نجمة على GitHub"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "قبل {hours} ساعة"
 
@@ -969,11 +977,11 @@ msgstr "{mcpTool} من خادم MCP {server}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, zero {قبل # دقيقة} one {قبل # دقيقة} two {قبل # دقيقة} few {قبل # دقائق} many {قبل # دقيقة} other {قبل # دقيقة}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "قبل {minutes} دقيقة"
 
@@ -7942,12 +7950,12 @@ msgstr "الانتقال إلى النص المرتبط"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "انتقل إلى مصدر Markdown للكتلة عند المؤشر، موسّطًا ومظللًا."
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "الآن"
 
@@ -8043,6 +8051,10 @@ msgstr "التسمية <0>(نص الرابط الظاهر)</0>"
 #: src/components/settings/settings-fields.ts
 msgid "Language"
 msgstr "اللغة"
+
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "آخر نشاط: {lastActivity}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
@@ -8994,6 +9006,10 @@ msgstr "التنقل والاقتراحات"
 msgid "Navigation history"
 msgstr "سجل التنقل"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "يلزمك تسجيل الدخول"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "خطأ في .okignore المتداخل في {path}"
@@ -9032,6 +9048,10 @@ msgstr "جديد"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "محادثة {0} جديدة"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "نشاط جديد"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9695,6 +9715,10 @@ msgstr "لم تُحجب المعلومات الحساسة. تحقق من الص�
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "غير مطلوب لنقطة نهاية loopback مثل <0>{endpointHost}</0> — تتجاهله معظم الخوادم المحلية. أضفه فقط إن كان خادمك يحتاجه."
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "لا يعمل"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -11432,6 +11456,10 @@ msgstr "يقرأ إعدادات OpenKnowledge لهذا المشروع"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "يقرأ التعارضات غير المحلولة بين التعديلات"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "جاهز"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -13328,6 +13356,10 @@ msgstr "فشل تسجيل الدخول: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "انتهى بث تسجيل الدخول دون تأكيد — يرجى المحاولة مرة أخرى"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "جارٍ تسجيل الدخول"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "جارٍ تسجيل الدخول إلى {agentName}"
@@ -13544,6 +13576,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "يوجد بالفعل شيء باسم “{name}” في {scopeLabel}، ولم يتمكن الخادم من تأكيد ماهيته. ربما تركه هناك عن قصد نقلٌ فاشل سابق: قارنه بالنسخة الأصلية قبل حذفه أو استبداله."
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "حدث خطأ ما"
 
@@ -13729,6 +13762,10 @@ msgstr "حزمة بداية"
 msgid "Starter packs"
 msgstr "حزم البداية"
 
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "جارٍ البدء"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr "يجري تشغيل {agentName}…"
@@ -13815,6 +13852,10 @@ msgstr "أوقف الإصلاح. تبقى الملفات المُصلَحة با
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "توقف عن صيانة index.md"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "متوقف"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -16186,6 +16227,7 @@ msgid "Waiting for authorization"
 msgstr "في انتظار التفويض"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "في انتظار موافقتك"
 
@@ -16415,6 +16457,7 @@ msgstr "اعمل على هذه التعليقات"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "يعمل"

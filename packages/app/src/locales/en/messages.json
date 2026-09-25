@@ -84,6 +84,7 @@
     "0Er6-M": ["Restarting"],
     "0ExRWt": ["Skills that come with this project, and the folders its AI tools read them from."],
     "0Gd0NU": ["Shared"],
+    "0H5_2R": ["Not running"],
     "0Ht36j": ["Finds skills and reads what's installed"],
     "0J6nhG": [
       "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill. A symlink is a pointer to the source instead, so nothing can drift, but a location stops working if the source is deleted."
@@ -521,6 +522,7 @@
       " across ",
       ["0", "plural", { "one": ["#", " file"], "other": ["#", " files"] }]
     ],
+    "5UccRr": ["Last activity ", ["lastActivity"]],
     "5Umg9i": ["Disable external link previews"],
     "5WDhAk": ["Link to a page or external URL."],
     "5W_u0E": ["Couldn't restart the server. Run ok start in this folder to retry."],
@@ -549,6 +551,7 @@
     "5kWklo": ["(some may already be hidden by other rules)"],
     "5lWFkC": ["Sign in"],
     "5mksg0": ["Failed to disable semantic search — ", ["detail"]],
+    "5pYsL1": ["Signing in"],
     "5qQr1u": ["Allowed values for ", ["field"]],
     "5rnB76": ["Your edits stay on this computer"],
     "5soCUZ": ["Edit queued message"],
@@ -2030,6 +2033,7 @@
     "MV-Dkb": ["Found ", ["countDisplay"], " markdown files"],
     "MVxpbf": ["Find and replace"],
     "MWB7fV": ["Show All"],
+    "MWKYTL": [", ", ["status"], ", new activity"],
     "MXSt4t": ["Created ", ["0"]],
     "MZSBsh": [
       "No templates yet. Add one to give new docs in this folder a ready-made starting point."
@@ -2116,6 +2120,7 @@
     "NmaGHf": ["No icons match."],
     "Nn4GgW": ["Will be created as <0>", ["sanitizedName"], "</0>"],
     "NnQapF": ["Open with AI ", ["targetDisplayName"]],
+    "NnvXp5": ["Stopped"],
     "NoY1k4": ["Invalid server response shape"],
     "NpC29w": ["Create a new list item from the current list item."],
     "NpEm3p": ["Send now"],
@@ -3377,6 +3382,7 @@
       "When enabled, the agent opens or refreshes the preview after each edit. Disable if you manage your own preview window (OK Desktop, a browser tab on another display, etc.)."
     ],
     "bwil08": ["Building <0>openknowledge.skill</0> and opening the Claude Desktop App"],
+    "bwoxGI": ["Needs you to sign in"],
     "bwy8Y7": ["On <0>", ["address"], "</0>"],
     "bzsK8N": ["Reads the authoring palette so new documents match the project's style"],
     "c1LZZH": ["Link copied."],
@@ -3478,6 +3484,7 @@
     "chL5IG": ["Community"],
     "ciozf1": ["Skill already in project"],
     "cjtjry": ["Traverse OpenKnowledge navigation history backward."],
+    "ckH3fT": ["Ready"],
     "cklVjM": ["Timeline"],
     "clJ3qM": ["Done."],
     "cnGeoo": ["Delete"],
@@ -4338,6 +4345,7 @@
     "l3zD7w": ["Starting the agent…"],
     "l46MqT": ["Next tab"],
     "l5J_HM": ["Type a query, then press <0>↵</0> to search your pages by meaning."],
+    "l6GfXr": ["Starting"],
     "l6kpzR": [
       "This ",
       ["targetNoun"],
@@ -4412,6 +4420,7 @@
       "Only external links trigger a request. Links to other documents in this project preview from the local index and never leave your computer."
     ],
     "lmE7r-": ["About ", ["appName"]],
+    "ln8Qo3": ["New activity"],
     "loE6tM": ["Couldn't switch to ", ["language"], "."],
     "lond3p": ["Shows above the code body. Round-trips as `title=\"...\"` in markdown."],
     "lrhetp": ["+ ", ["overflow"], " more"],
@@ -4679,6 +4688,7 @@
     ],
     "ogAuyr": ["Back to document view"],
     "ohUJJM": ["Plugins"],
+    "ohunoZ": [", ", ["status"]],
     "ojGc_T": ["Open comment"],
     "olb6oq": ["How to set up new projects with OpenKnowledge."],
     "omXJcU": ["Close others"],

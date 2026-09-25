@@ -34,6 +34,14 @@ msgstr " آپ کا انتخاب بحال کر دیا گیا ہے۔"
 msgid "— except"
 msgstr "— سوائے"
 
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr "، {status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr "، {status}، نئی سرگرمی"
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr "… پہلے کا آؤٹ پٹ مختصر کر دیا گیا"
@@ -749,7 +757,7 @@ msgstr "{count} مہارتیں"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, one {# دن پہلے} other {# دن پہلے}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "{days} دن پہلے"
 
@@ -884,10 +892,10 @@ msgstr "{folderCount, plural, one {فولڈر} other {فولڈرز}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub ستارے"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "{hours} گھنٹے پہلے"
 
@@ -969,11 +977,11 @@ msgstr "{server} MCP سرور کا {mcpTool}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {# منٹ پہلے} other {# منٹ پہلے}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "{minutes} منٹ پہلے"
 
@@ -7942,12 +7950,12 @@ msgstr "لنگر انداز متن پر جائیں"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "کرسر والے بلاک کے Markdown سورس پر جائیں، بیچ میں اور نمایاں۔"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "ابھی ابھی"
 
@@ -8043,6 +8051,10 @@ msgstr "لیبل <0>(نظر آنے والا لنک متن)</0>"
 #: src/components/settings/settings-fields.ts
 msgid "Language"
 msgstr "زبان"
+
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "آخری سرگرمی: {lastActivity}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
@@ -8994,6 +9006,10 @@ msgstr "نیویگیشن اور تجاویز"
 msgid "Navigation history"
 msgstr "نیویگیشن کی تاریخ"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "آپ کو سائن اِن کرنا ہوگا"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "{path} میں نیسٹڈ .okignore کی خرابی"
@@ -9032,6 +9048,10 @@ msgstr "نیا"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "نئی {0} گفتگو"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "نئی سرگرمی"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9695,6 +9715,10 @@ msgstr "حساس معلومات نہیں چھپائی گئیں۔ شیئر کرن
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "<0>{endpointHost}</0> جیسے loopback اینڈ پوائنٹ کے لیے ضروری نہیں — زیادہ تر مقامی سرورز اسے نظر انداز کرتے ہیں۔ صرف اسی صورت شامل کریں جب آپ کے سرور کو درکار ہو۔"
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "نہیں چل رہا"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -11432,6 +11456,10 @@ msgstr "اس پروجیکٹ کی OpenKnowledge ترتیبات پڑھتا ہے"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "ترامیم کے درمیان حل نہ ہونے والے تنازعات پڑھتا ہے"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "تیار"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -13328,6 +13356,10 @@ msgstr "سائن اِن ناکام: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "سائن اِن کی سٹریم تصدیق کے بغیر ختم ہو گئی — براہِ کرم دوبارہ کوشش کریں"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "سائن اِن ہو رہا ہے"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "{agentName} میں سائن اِن کیا جا رہا ہے"
@@ -13544,6 +13576,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "{scopeLabel} میں “{name}” نام کی کوئی چیز پہلے سے موجود ہے، اور سرور یہ تصدیق نہیں کر سکا کہ وہ کیا ہے۔ ممکن ہے پہلے کی کوئی ناکام منتقلی اسے جان بوجھ کر وہاں چھوڑ گئی ہو: حذف کرنے یا بدلنے سے پہلے اسے اصل سے موازنہ کریں۔"
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "کچھ غلط ہو گیا"
 
@@ -13729,6 +13762,10 @@ msgstr "ابتدائی پیک"
 msgid "Starter packs"
 msgstr "ابتدائی پیکس"
 
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "شروع ہو رہا ہے"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr "{agentName} شروع کیا جا رہا ہے…"
@@ -13815,6 +13852,10 @@ msgstr "ٹھیک کرنا روکیں۔ جو فائلیں پہلے ہی ٹھیک 
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "برقرار رکھنا بند کریں index.md"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "رک گیا"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -16186,6 +16227,7 @@ msgid "Waiting for authorization"
 msgstr "اجازت کا انتظار ہے"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "آپ کی منظوری کا انتظار ہے"
 
@@ -16415,6 +16457,7 @@ msgstr "ان تبصروں پر کام کریں"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "کام جاری ہے"

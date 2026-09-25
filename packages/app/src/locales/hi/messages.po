@@ -34,6 +34,14 @@ msgstr " आपका चयन बहाल कर दिया गया ह�
 msgid "— except"
 msgstr "— सिवाय"
 
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr ", {status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr ", {status}, नई गतिविधि"
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr "… पहले का आउटपुट छाँटा गया"
@@ -749,7 +757,7 @@ msgstr "{count} स्किलें"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, one {# दिन पहले} other {# दिन पहले}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "{days} दिन पहले"
 
@@ -884,10 +892,10 @@ msgstr "{folderCount, plural, one {फ़ोल्डर} other {फ़ोल्
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub स्टार"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "{hours} घंटे पहले"
 
@@ -969,11 +977,11 @@ msgstr "{server} MCP सर्वर का {mcpTool}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {# मिनट पहले} other {# मिनट पहले}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "{minutes} मिनट पहले"
 
@@ -7938,12 +7946,12 @@ msgstr "एंकर किए गए पाठ पर जाएँ"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "कर्सर वाले ब्लॉक के markdown स्रोत पर जाएँ, बीच में और उभारा हुआ।"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "अभी-अभी"
 
@@ -8039,6 +8047,10 @@ msgstr "लेबल <0>(दिखाई देने वाला लिंक 
 #: src/components/settings/settings-fields.ts
 msgid "Language"
 msgstr "भाषा"
+
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "पिछली गतिविधि: {lastActivity}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
@@ -8990,6 +9002,10 @@ msgstr "नेविगेशन और सुझाव"
 msgid "Navigation history"
 msgstr "नेविगेशन इतिहास"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "आपको साइन इन करना होगा"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "{path} में नेस्टेड .okignore त्रुटि"
@@ -9028,6 +9044,10 @@ msgstr "नया"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "नई {0} चैट"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "नई गतिविधि"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9691,6 +9711,10 @@ msgstr "संवेदनशील जानकारी नहीं छिप
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "<0>{endpointHost}</0> जैसे लूपबैक एंडपॉइंट के लिए ज़रूरी नहीं — अधिकतर स्थानीय सर्वर इसे अनदेखा करते हैं। केवल तभी जोड़ें जब आपके सर्वर को इसकी ज़रूरत हो।"
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "नहीं चल रहा"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -11428,6 +11452,10 @@ msgstr "इस प्रोजेक्ट की OpenKnowledge सेटिं�
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "संपादनों के बीच अनसुलझे टकराव पढ़ता है"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "तैयार"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -13324,6 +13352,10 @@ msgstr "साइन इन विफल: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "साइन-इन स्ट्रीम बिना पुष्टि के समाप्त हुई — कृपया फिर कोशिश करें"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "साइन इन हो रहा है"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "{agentName} में साइन इन किया जा रहा है"
@@ -13540,6 +13572,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "{scopeLabel} में “{name}” नाम की कोई चीज़ पहले से मौजूद है, और सर्वर यह पुष्टि नहीं कर सका कि वह क्या है। हो सकता है पहले का कोई असफल मूव उसे जान-बूझकर वहाँ छोड़ गया हो: मिटाने या बदलने से पहले उसे मूल से मिलाकर देखें।"
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "कुछ ग़लत हो गया"
 
@@ -13725,6 +13758,10 @@ msgstr "स्टार्टर पैक"
 msgid "Starter packs"
 msgstr "स्टार्टर पैक"
 
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "शुरू हो रहा है"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr "{agentName} शुरू किया जा रहा है…"
@@ -13811,6 +13848,10 @@ msgstr "ठीक करना रोकें। जो फ़ाइलें �
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "index.md बनाए रखना बंद करें"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "रुक गया"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -16182,6 +16223,7 @@ msgid "Waiting for authorization"
 msgstr "प्राधिकरण की प्रतीक्षा"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "आपकी स्वीकृति की प्रतीक्षा"
 
@@ -16411,6 +16453,7 @@ msgstr "इन टिप्पणियों पर काम करें"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "काम चल रहा है"

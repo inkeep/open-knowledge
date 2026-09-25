@@ -101,6 +101,8 @@ function subscribeStore(cb: () => void) {
   return () => storeListeners.delete(cb);
 }
 
+const unreadThreadIds = new Set<string>();
+
 vi.doMock('@/lib/acp/thread-client', () => ({
   useAgentThreads: () =>
     useSyncExternalStore(
@@ -132,7 +134,7 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       () => threadScope,
       () => threadScope,
     ),
-  useAgentThreadUnread: () => false,
+  useAgentThreadUnread: (threadId: string) => unreadThreadIds.has(threadId),
   getAgentThreadClient: () => ({
     closeThread,
     renameThread,
@@ -241,6 +243,20 @@ function makeThread(overrides: Partial<ThreadInfo> & { threadId: string }): Thre
     archived: false,
     ...overrides,
   };
+}
+
+function visiblePeek(title: string): string {
+  return (
+    Array.from(document.querySelectorAll('[data-slot="tooltip-content"]'))
+      .map((node) => {
+        const visible = node.cloneNode(true) as Element;
+        for (const description of visible.querySelectorAll('[role="tooltip"]')) {
+          description.remove();
+        }
+        return visible.textContent ?? '';
+      })
+      .find((text) => text.startsWith(title)) ?? ''
+  );
 }
 
 function lastThreadViewActive(threadId: string): boolean | undefined {
@@ -423,7 +439,7 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
 
       expect(agentsDockWrites(setDockState)).toHaveLength(0);
       expect(screen.getByRole('tab', { name: /One/ })).toBeDefined();
-      const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      const tabs = tabTitles();
       expect(tabs.indexOf('Two')).toBeGreaterThan(tabs.indexOf('One'));
     } finally {
       vi.useRealTimers();
@@ -978,6 +994,177 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     expect(await screen.findByRole('tab', { name: /Refactor/ })).toBeDefined();
     expect(await screen.findByTestId('thread-view')).toBeDefined();
+  });
+
+  test('each tab tells screen readers and its hover peek what its chat is doing', async () => {
+    const user = userEvent.setup();
+    unreadThreadIds.add('done');
+    try {
+      setOpenThreads([
+        makeThread({ threadId: 'busy', title: 'Refactor', status: 'running' }),
+        makeThread({
+          threadId: 'asking',
+          title: 'Review',
+          status: 'awaiting_permission',
+          lastActivityAt: Date.now(),
+        }),
+        makeThread({ threadId: 'crashed', title: 'Crashed', status: 'exited' }),
+        makeThread({ threadId: 'done', title: 'Done', status: 'ready' }),
+        makeThread({ threadId: 'old', title: 'Old chat', status: 'exited', archived: true }),
+      ]);
+      render(<Harness />);
+
+      expect(await screen.findByRole('tab', { name: /Refactor, Working$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Review, Waiting for your approval$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Crashed, Stopped$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Done, Ready, new activity$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Old chat, Not running$/ })).toBeDefined();
+
+      await user.hover(screen.getByRole('tab', { name: /Review/ }));
+      const description = await screen.findByRole('tooltip');
+      expect(description.textContent).toBe('Last activity just now');
+      const peek = visiblePeek('Review');
+      expect(peek).toContain('Review');
+      expect(peek).toContain('Waiting for your approval');
+      expect(peek).toContain('Last activity just now');
+      expect(peek).not.toContain('New activity');
+    } finally {
+      unreadThreadIds.clear();
+    }
+  });
+
+  test('hovering a tab with unseen activity says so in the peek', async () => {
+    const user = userEvent.setup();
+    unreadThreadIds.add('done');
+    try {
+      setOpenThreads([makeThread({ threadId: 'done', title: 'Done', status: 'ready' })]);
+      render(<Harness />);
+      await user.hover(await screen.findByRole('tab', { name: /Done/ }));
+      await screen.findByRole('tooltip');
+      expect(visiblePeek('Done')).toContain('New activity');
+    } finally {
+      unreadThreadIds.clear();
+    }
+  });
+
+  test('the hover peek keeps its last-activity time current while screen readers keep the time it opened', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      const start = Date.now();
+      setOpenThreads([
+        makeThread({ threadId: 'asking', title: 'Review', status: 'ready', lastActivityAt: start }),
+      ]);
+      render(<Harness />);
+      await user.hover(await screen.findByRole('tab', { name: /Review/ }));
+      expect((await screen.findByRole('tooltip')).textContent).toBe('Last activity just now');
+
+      act(() => {
+        vi.advanceTimersByTime(150_000);
+      });
+
+      await waitFor(() => expect(visiblePeek('Review')).toContain('Last activity 3m ago'));
+      expect(screen.getByRole('tooltip').textContent).toBe('Last activity just now');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('every chat state has its own tab dot and screen-reader words', async () => {
+    const colors: Record<string, string> = {
+      working: 'bg-sky-500',
+      'needs-you': 'bg-amber-500',
+      ready: 'bg-emerald-500',
+      stopped: 'bg-red-500',
+      closed: 'bg-muted-foreground',
+    };
+    const rows: readonly {
+      id: string;
+      status: ThreadInfo['status'];
+      archived?: true;
+      unread?: true;
+      dot: string;
+      pulsing: boolean;
+      words: string;
+    }[] = [
+      { id: 'installing', status: 'installing', dot: 'working', pulsing: true, words: 'Starting' },
+      { id: 'spawning', status: 'spawning', dot: 'working', pulsing: true, words: 'Starting' },
+      {
+        id: 'authenticating',
+        status: 'authenticating',
+        dot: 'working',
+        pulsing: true,
+        words: 'Signing in',
+      },
+      { id: 'running', status: 'running', dot: 'working', pulsing: true, words: 'Working' },
+      {
+        id: 'sign-in',
+        status: 'auth_required',
+        dot: 'needs-you',
+        pulsing: false,
+        words: 'Needs you to sign in',
+      },
+      {
+        id: 'approval',
+        status: 'awaiting_permission',
+        dot: 'needs-you',
+        pulsing: false,
+        words: 'Waiting for your approval',
+      },
+      { id: 'seen', status: 'ready', dot: 'ready', pulsing: false, words: 'Ready' },
+      {
+        id: 'unseen',
+        status: 'ready',
+        unread: true,
+        dot: 'ready',
+        pulsing: true,
+        words: 'Ready, new activity',
+      },
+      {
+        id: 'failed',
+        status: 'error',
+        dot: 'stopped',
+        pulsing: false,
+        words: 'Something went wrong',
+      },
+      { id: 'crashed', status: 'exited', dot: 'stopped', pulsing: false, words: 'Stopped' },
+      {
+        id: 'past',
+        status: 'exited',
+        archived: true,
+        dot: 'closed',
+        pulsing: false,
+        words: 'Not running',
+      },
+    ];
+    for (const row of rows) if (row.unread) unreadThreadIds.add(row.id);
+    try {
+      setOpenThreads(
+        rows.map((row) =>
+          makeThread({
+            threadId: row.id,
+            title: `Chat ${row.id}`,
+            status: row.status,
+            archived: row.archived === true,
+          }),
+        ),
+      );
+      render(<Harness />);
+      await screen.findByRole('tab', { name: /Chat installing/ });
+
+      for (const row of rows) {
+        const tab = screen.getByRole('tab', { name: new RegExp(`Chat ${row.id}, ${row.words}$`) });
+        const dot = tab.querySelector('[data-thread-state]');
+        expect({
+          id: row.id,
+          dot: dot?.getAttribute('data-thread-state'),
+          color: dot?.classList.contains(colors[row.dot] ?? ''),
+          pulsing: dot?.classList.contains('animate-pulse'),
+        }).toEqual({ id: row.id, dot: row.dot, color: true, pulsing: row.pulsing });
+      }
+    } finally {
+      unreadThreadIds.clear();
+    }
   });
 
   test('history stays reachable for live chats and reflects the active conversation', async () => {

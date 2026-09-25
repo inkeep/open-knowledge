@@ -34,6 +34,14 @@ msgstr " Pilihan Anda telah dipulihkan."
 msgid "— except"
 msgstr "— kecuali"
 
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr ", {status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr ", {status}, ada aktivitas baru"
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr "… keluaran sebelumnya dipangkas"
@@ -749,7 +757,7 @@ msgstr "{count} keterampilan"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# hari lalu}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "{days} hr lalu"
 
@@ -884,10 +892,10 @@ msgstr "{folderCount, plural, other {folder}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} bintang GitHub"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "{hours} j lalu"
 
@@ -969,11 +977,11 @@ msgstr "{mcpTool} dari server MCP {server}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# mnt lalu}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "{minutes} mnt lalu"
 
@@ -7938,12 +7946,12 @@ msgstr "Lompat ke teks berjangkar"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "Lompat ke sumber markdown untuk blok di posisi kursor, terpusat dan tersorot."
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "baru saja"
 
@@ -8039,6 +8047,10 @@ msgstr "Label <0>(teks tautan yang terlihat)</0>"
 #: src/components/settings/settings-fields.ts
 msgid "Language"
 msgstr "Bahasa"
+
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "Aktivitas terakhir: {lastActivity}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
@@ -8990,6 +9002,10 @@ msgstr "Navigasi dan saran"
 msgid "Navigation history"
 msgstr "Riwayat navigasi"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "Anda perlu masuk"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "Galat .okignore bersarang di {path}"
@@ -9028,6 +9044,10 @@ msgstr "Baru"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "Obrolan {0} baru"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "Ada aktivitas baru"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9691,6 +9711,10 @@ msgstr "Tidak disamarkan. Periksa gambar sebelum membagikannya."
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "Tidak diperlukan untuk endpoint loopback seperti <0>{endpointHost}</0> — kebanyakan server lokal mengabaikannya. Tambahkan hanya jika milik Anda memerlukannya."
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "Tidak berjalan"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -11428,6 +11452,10 @@ msgstr "Membaca pengaturan OpenKnowledge proyek ini"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "Membaca konflik yang belum terselesaikan antar suntingan"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "Siap"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -13324,6 +13352,10 @@ msgstr "Gagal masuk: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "Aliran proses masuk berakhir tanpa konfirmasi — silakan coba lagi"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "Sedang masuk"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "Sedang masuk ke {agentName}"
@@ -13540,6 +13572,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "Sudah ada sesuatu bernama “{name}” di {scopeLabel}, dan server tidak dapat memastikan apa itu. Pemindahan yang gagal sebelumnya mungkin sengaja menyimpannya di sana: bandingkan dengan aslinya sebelum dihapus atau diganti."
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "Ada yang tidak beres"
 
@@ -13725,6 +13758,10 @@ msgstr "paket awal"
 msgid "Starter packs"
 msgstr "Paket awal"
 
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "Memulai"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr "Memulai {agentName}…"
@@ -13811,6 +13848,10 @@ msgstr "Berhenti memperbaiki. Berkas yang sudah diperbaiki tetap terperbaiki."
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "Berhenti mempertahankan index.md"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "Berhenti"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -16182,6 +16223,7 @@ msgid "Waiting for authorization"
 msgstr "Menunggu otorisasi"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "Menunggu persetujuan Anda"
 
@@ -16411,6 +16453,7 @@ msgstr "Kerjakan komentar-komentar ini"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "Bekerja"

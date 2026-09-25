@@ -34,6 +34,14 @@ msgstr " 선택 영역을 복원했습니다."
 msgid "— except"
 msgstr "제외"
 
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr ", {status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr ", {status}, 새 활동"
+
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
 msgstr "… 이전 출력은 생략되었습니다"
@@ -749,7 +757,7 @@ msgstr "스킬 {count}개"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {#일 전}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "{days}일 전"
 
@@ -884,10 +892,10 @@ msgstr "{folderCount, plural, other {폴더}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} GitHub 스타"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "{hours}시간 전"
 
@@ -969,11 +977,11 @@ msgstr "{server} MCP 서버의 {mcpTool}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {#분 전}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "{minutes}분 전"
 
@@ -7942,12 +7950,12 @@ msgstr "앵커 텍스트로 이동"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "커서가 있는 블록의 Markdown 소스로 이동해 가운데에 표시하고 강조합니다."
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "방금"
 
@@ -8043,6 +8051,10 @@ msgstr "레이블 <0>(표시되는 링크 텍스트)</0>"
 #: src/components/settings/settings-fields.ts
 msgid "Language"
 msgstr "언어"
+
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "마지막 활동: {lastActivity}"
 
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
@@ -8994,6 +9006,10 @@ msgstr "탐색 및 제안"
 msgid "Navigation history"
 msgstr "탐색 기록"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "로그인이 필요합니다"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "{path}의 중첩된 .okignore 오류"
@@ -9032,6 +9048,10 @@ msgstr "새 항목"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "새 {0} 채팅"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "새 활동"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9695,6 +9715,10 @@ msgstr "민감 정보가 가려지지 않았습니다. 공유하기 전에 이�
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "<0>{endpointHost}</0> 같은 루프백 엔드포인트에는 필요하지 않습니다. 대부분의 로컬 서버는 키를 무시합니다. 필요할 때만 추가합니다."
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "실행 중 아님"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -11432,6 +11456,10 @@ msgstr "이 프로젝트의 OpenKnowledge 설정을 읽습니다"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "편집 간의 미해결 충돌을 읽습니다"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "준비됨"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -13328,6 +13356,10 @@ msgstr "로그인 실패: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "로그인 스트림이 확인 없이 종료되었습니다. 다시 시도하세요."
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "로그인 중"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "{agentName} 로그인 중"
@@ -13544,6 +13576,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "“{name}”(이)라는 항목이 이미 {scopeLabel}에 있는데, 서버가 그것이 무엇인지 확인하지 못했습니다. 이전에 실패한 이동이 일부러 남겨 둔 것일 수 있습니다. 삭제하거나 교체하기 전에 원본과 비교하세요."
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "문제가 발생했습니다"
 
@@ -13729,6 +13762,10 @@ msgstr "스타터 팩"
 msgid "Starter packs"
 msgstr "스타터 팩"
 
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "시작 중"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
 msgstr "{agentName} 시작 중…"
@@ -13815,6 +13852,10 @@ msgstr "수정을 중지합니다. 이미 수정한 파일은 그대로 유지�
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "index.md 유지 관리 중지"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "중지됨"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -16186,6 +16227,7 @@ msgid "Waiting for authorization"
 msgstr "인증 대기 중"
 
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "승인 대기 중"
 
@@ -16415,6 +16457,7 @@ msgstr "이 댓글 기반 작업"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "작업 중"
