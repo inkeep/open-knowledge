@@ -4,7 +4,16 @@ import { randomUUID } from 'node:crypto';
 import { rmSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { TERMINAL_CLI_IDS, TERMINAL_CLIS } from '@inkeep/open-knowledge-core';
-import { afterAll, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  afterAll,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  type MockInstance,
+  test,
+  vi,
+} from 'vitest';
 import {
   createScratchHomeWithOkBin,
   firstShellOnDisk,
@@ -207,14 +216,27 @@ function onlySpawnedProbe(): { spawned: ChildProcess; pid: number } {
   return { spawned, pid };
 }
 
+function deliverOnlyToTheHeldProbeGroup(target: number, signal?: string | number): true {
+  const spawned: ChildProcess | undefined = spawnMock.mock.results.at(-1)?.value;
+  if (
+    spawned?.pid !== undefined &&
+    target === -spawned.pid &&
+    spawned.exitCode === null &&
+    spawned.signalCode === null
+  ) {
+    spawned.kill(signal as NodeJS.Signals | number | undefined);
+  }
+  return true;
+}
+
 describe.skipIf(process.platform === 'win32')('realProbeSpawn detached group kill', () => {
   test('signals the detached probe process group with SIGKILL while the probe is still alive', async () => {
-    const groupKill = vi.spyOn(process, 'kill');
+    const groupKill = vi.spyOn(process, 'kill').mockImplementation(deliverOnlyToTheHeldProbeGroup);
     spawnMock.mockClear();
     probeLog.warn.mockClear();
     const child = realProbeSpawn('/bin/sh', ['-c', 'sleep 5']);
+    const { spawned, pid } = onlySpawnedProbe();
     try {
-      const { pid } = onlySpawnedProbe();
       const exited = new Promise<void>((resolve) => child.onExit(() => resolve()));
       child.kill();
       await exited;
@@ -226,7 +248,7 @@ describe.skipIf(process.platform === 'win32')('realProbeSpawn detached group kil
       expect(probeLog.warn).not.toHaveBeenCalled();
     } finally {
       groupKill.mockRestore();
-      child.kill();
+      if (spawned.exitCode === null && spawned.signalCode === null) child.kill();
     }
   });
 
@@ -234,24 +256,20 @@ describe.skipIf(process.platform === 'win32')('realProbeSpawn detached group kil
     spawnMock.mockClear();
     probeLog.warn.mockClear();
     const child = realProbeSpawn('/bin/sh', ['-c', 'exit 0']);
+    let groupKill: MockInstance<typeof process.kill> | undefined;
     try {
-      const { spawned, pid } = onlySpawnedProbe();
+      const { spawned } = onlySpawnedProbe();
       const childKill = vi.spyOn(spawned, 'kill');
       await new Promise<void>((resolve) => child.onExit(() => resolve()));
-      let groupGone = false;
-      try {
-        process.kill(-pid, 'SIGKILL');
-      } catch (err) {
-        groupGone = (err as NodeJS.ErrnoException).code === 'ESRCH';
-      }
-      expect(groupGone, 'precondition: the probe group is really gone before the pin runs').toBe(
-        true,
-      );
+      groupKill = vi.spyOn(process, 'kill').mockImplementation(() => {
+        throw Object.assign(new Error('kill ESRCH'), { code: 'ESRCH' });
+      });
       child.kill();
       expect(probeLog.warn).not.toHaveBeenCalled();
       expect(childKill).not.toHaveBeenCalled();
     } finally {
       child.kill();
+      groupKill?.mockRestore();
     }
   });
 
@@ -324,7 +342,7 @@ describe('realProbeSpawn win32 spawn-site placement', () => {
 
   test('keeps the kill on the child itself and off any process group when the stubbed platform is win32', () => {
     withPlatform('win32', () => {
-      const groupKill = vi.spyOn(process, 'kill');
+      const groupKill = vi.spyOn(process, 'kill').mockImplementation(() => true);
       spawnMock.mockClear();
       const child = realProbeSpawn('/bin/sh', ['-c', 'sleep 5']);
       try {
@@ -408,7 +426,7 @@ describe.skipIf(process.platform === 'win32')('the production CLI-presence probe
 
   test('terminates a hung probe through the production kill when the probe timer fires', async () => {
     spawnMock.mockClear();
-    const groupKill = vi.spyOn(process, 'kill');
+    const groupKill = vi.spyOn(process, 'kill').mockImplementation(deliverOnlyToTheHeldProbeGroup);
     try {
       const outcome = await runLoginShellProbe(realProbeSpawn, shell, realProbeTimers, 100, [
         '-c',

@@ -1,7 +1,11 @@
 import { type ChildProcess, spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import type { ElectronApplication } from '@playwright/test';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  installSignalBoundary,
+  type SignalBoundary,
+} from '../../../../test-support/held-signal-boundary.test-helper';
 import {
   AppCleanupIncompleteError,
   captureAppProcess,
@@ -414,6 +418,245 @@ describe('closeAppBounded — bounded-time process-group reap', () => {
 
     expect(proc.exitCode).toBe(0);
     expect(proc.killCalls).toEqual([]);
+  });
+});
+
+describe('closeAppBounded — nothing is signalled once the launched process has exited', () => {
+  let backstop: SignalBoundary;
+
+  beforeEach(() => {
+    backstop = installSignalBoundary({ deliverToHeldChildren: false });
+  });
+
+  afterEach(() => {
+    backstop.restore();
+  });
+
+  function withStdioHeldOpen(proc: MockProc): MockProc {
+    proc.stdio = [{ destroyed: false }, { destroyed: false }, { destroyed: false }];
+    return proc;
+  }
+
+  function recordingKill() {
+    const calls: MockProc['killCalls'] = [];
+    const kill = (pid: number, signal: NodeJS.Signals | string) => {
+      calls.push({ pid, signal });
+    };
+    return { calls, kill };
+  }
+
+  test('exited at first sight while a descendant still holds its stdio → no group kill of the exited pid, and closure is reported unestablished', async () => {
+    const proc = withStdioHeldOpen(makeProc(31_313));
+    proc.exitCode = 0;
+    const { calls, kill } = recordingKill();
+
+    const rejection = await closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 50,
+      postKillReapMs: REAP_MS,
+      kill,
+      platform: 'linux',
+    }).catch((error: unknown) => error);
+
+    expect({
+      killCalls: calls,
+      reported: rejection instanceof AppCleanupIncompleteError,
+      reachedProcessKill: backstop.refused,
+    }).toEqual({ killCalls: [], reported: true, reachedProcessKill: [] });
+  });
+
+  test('exited at first sight on win32 while a descendant still holds its stdio → no tree-kill of the exited pid, and closure is reported unestablished', async () => {
+    const proc = withStdioHeldOpen(makeProc(31_314));
+    proc.exitCode = 0;
+    const { calls, kill } = recordingKill();
+    const taskkillPids: number[] = [];
+
+    const rejection = await closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 50,
+      postKillReapMs: REAP_MS,
+      kill,
+      taskkill: async (pid) => {
+        taskkillPids.push(pid);
+        return reapedTaskkill(pid);
+      },
+      platform: 'win32',
+    }).catch((error: unknown) => error);
+
+    expect({
+      taskkillPids,
+      killCalls: calls,
+      reported: rejection instanceof AppCleanupIncompleteError,
+      reachedProcessKill: backstop.refused,
+    }).toEqual({ taskkillPids: [], killCalls: [], reported: true, reachedProcessKill: [] });
+  });
+
+  test('exits during the graceful wait while a descendant still holds its stdio → no group kill after the exit', async () => {
+    const proc = withStdioHeldOpen(makeProc(31_315));
+    const exitTimer = setTimeout(() => proc.fireExitWithoutClose(0), 10);
+    (exitTimer as unknown as { unref?: () => void }).unref?.();
+    const { calls, kill } = recordingKill();
+
+    const rejection = await closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 100,
+      postKillReapMs: REAP_MS,
+      kill,
+      platform: 'linux',
+    }).catch((error: unknown) => error);
+
+    expect({
+      exitedBeforeEscalation: proc.exitCode === 0,
+      killCalls: calls,
+      reported: rejection instanceof AppCleanupIncompleteError,
+      reachedProcessKill: backstop.refused,
+    }).toEqual({
+      exitedBeforeEscalation: true,
+      killCalls: [],
+      reported: true,
+      reachedProcessKill: [],
+    });
+  });
+
+  test('a group kill that stops the launched process but not its stdio holder is not repeated after the exit', async () => {
+    const proc = withStdioHeldOpen(makeProc(31_317));
+    const calls: MockProc['killCalls'] = [];
+    const kill = (pid: number, signal: NodeJS.Signals | string) => {
+      calls.push({ pid, signal });
+      if (proc.exitCode === null && proc.signalCode === null) {
+        proc.signalCode = 'SIGKILL';
+        proc.emit('exit', null, 'SIGKILL');
+      }
+    };
+
+    const rejection = await closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 50,
+      postKillReapMs: REAP_MS,
+      kill,
+      platform: 'linux',
+    }).catch((error: unknown) => error);
+
+    expect({
+      killCalls: calls,
+      reported: rejection instanceof AppCleanupIncompleteError,
+      reachedProcessKill: backstop.refused,
+    }).toEqual({
+      killCalls: [{ pid: -31_317, signal: 'SIGKILL' }],
+      reported: true,
+      reachedProcessKill: [],
+    });
+  });
+
+  function leversOf(outcome: unknown): unknown {
+    return outcome instanceof AppCleanupIncompleteError
+      ? outcome.attempts.map((attempt) => attempt.lever)
+      : outcome;
+  }
+
+  test.each(['linux', 'win32'] as const)(
+    "records a 'leader-exited' attempt in every escalation round on %s when the launched process exited while a descendant holds its stdio",
+    async (platform) => {
+      const proc = withStdioHeldOpen(makeProc(31_319));
+      proc.exitCode = 0;
+      const { calls, kill } = recordingKill();
+      const taskkillPids: number[] = [];
+
+      const rejection = await closeAppBounded(proc as unknown as ChildProcess, {
+        gracefulMs: 50,
+        postKillReapMs: REAP_MS,
+        kill,
+        taskkill: async (pid) => {
+          taskkillPids.push(pid);
+          return reapedTaskkill(pid);
+        },
+        platform,
+      }).catch((error: unknown) => error);
+
+      expect({
+        levers: leversOf(rejection),
+        killCalls: calls,
+        taskkillPids,
+        reachedProcessKill: backstop.refused,
+      }).toEqual({
+        levers: ['leader-exited', 'leader-exited'],
+        killCalls: [],
+        taskkillPids: [],
+        reachedProcessKill: [],
+      });
+    },
+  );
+
+  test("records 'leader-exited' for the round after a group kill stopped the launched process, instead of a second kill", async () => {
+    const proc = withStdioHeldOpen(makeProc(31_321));
+    const calls: MockProc['killCalls'] = [];
+    const kill = (pid: number, signal: NodeJS.Signals | string) => {
+      calls.push({ pid, signal });
+      if (proc.exitCode === null && proc.signalCode === null) {
+        proc.signalCode = 'SIGKILL';
+        proc.emit('exit', null, 'SIGKILL');
+      }
+    };
+
+    const rejection = await closeAppBounded(proc as unknown as ChildProcess, {
+      gracefulMs: 50,
+      postKillReapMs: REAP_MS,
+      kill,
+      platform: 'linux',
+    }).catch((error: unknown) => error);
+
+    expect({
+      levers: leversOf(rejection),
+      killCalls: calls,
+      reachedProcessKill: backstop.refused,
+    }).toEqual({
+      levers: ['group-kill', 'leader-exited'],
+      killCalls: [{ pid: -31_321, signal: 'SIGKILL' }],
+      reachedProcessKill: [],
+    });
+  });
+
+  test("a 'leader-exited' round keeps its reap window, so a stdio holder that lets go inside it ends the call as closed", async () => {
+    vi.useFakeTimers();
+    try {
+      const gracefulMs = 50;
+      const proc = withStdioHeldOpen(makeProc(31_320));
+      proc.exitCode = 0;
+      const { calls, kill } = recordingKill();
+      let outcome = 'pending';
+      const settled = closeAppBounded(proc as unknown as ChildProcess, {
+        gracefulMs,
+        postKillReapMs: REAP_MS,
+        kill,
+        platform: 'linux',
+      }).then(
+        () => {
+          outcome = 'closed';
+        },
+        () => {
+          outcome = 'reported-incomplete';
+        },
+      );
+
+      await vi.advanceTimersByTimeAsync(gracefulMs);
+      const afterFirstRound = outcome;
+      for (const slot of proc.stdio) {
+        if (slot !== null && slot !== undefined) slot.destroyed = true;
+      }
+      proc.fireClose();
+      await vi.runAllTimersAsync();
+      await settled;
+
+      expect({
+        afterFirstRound,
+        outcome,
+        killCalls: calls,
+        reachedProcessKill: backstop.refused,
+      }).toEqual({
+        afterFirstRound: 'pending',
+        outcome: 'closed',
+        killCalls: [],
+        reachedProcessKill: [],
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

@@ -20,6 +20,9 @@ import { ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS } from './tests/smoke/_helpers/
  * here would fail on a perfectly good DMG.
  */
 
+/* WARN: desktopLaunchOptions sets OK_IDLE_SHUTDOWN to
+   PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS on every packaged launch, so a spec
+   added here must never leave its server without a /collab client that long. */
 /**
  * The FR5a subset: launch, project creation, and first-launch MCP wiring. This
  * is the smallest set that proves a DMG boots, reaches the renderer, and can

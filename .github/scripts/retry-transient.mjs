@@ -386,6 +386,10 @@ function sendGroupSignal(pid, signal, killFn) {
   }
 }
 
+function hasExited(leader) {
+  return leader.exitCode !== null || leader.signalCode !== null;
+}
+
 function defaultTaskkill(args) {
   return new Promise((resolve) => {
     const child = spawn('taskkill', args, { stdio: 'ignore', windowsHide: true });
@@ -409,13 +413,20 @@ export function createOwnedTreeController({
   pollIntervalMs = DEFAULT_POLL_INTERVAL_MS,
 } = {}) {
   if (platform === 'win32') {
+    const closedOrOutlived = async (graceMs, waitForClose) =>
+      (await waitForClose(graceMs))
+        ? { ok: true, reason: 'clean' }
+        : { ok: false, reason: 'tree-outlived-leader' };
     return {
-      async cleanup(pid, { graceMs, waitForClose }) {
+      async cleanup(leader, { graceMs, waitForClose }) {
+        const { pid } = leader;
         if (await waitForClose(0)) return { ok: true, reason: 'clean' };
+        if (hasExited(leader)) return closedOrOutlived(graceMs, waitForClose);
         const graceful = await taskkillFn(['/PID', String(pid), '/T']);
         if (graceful.ok && (await waitForClose(graceMs))) {
           return { ok: true, reason: 'clean' };
         }
+        if (hasExited(leader)) return closedOrOutlived(graceMs, waitForClose);
         const forced = await taskkillFn(['/PID', String(pid), '/T', '/F']);
         if (!forced.ok) return { ok: false, reason: 'taskkill-failure' };
         if (!(await waitForClose(graceMs))) {
@@ -425,8 +436,24 @@ export function createOwnedTreeController({
       },
     };
   }
+  const settleExitedLeader = async (pid, drainWindowMs, cleanupReserveMs, waitForClose) => {
+    const drained = await waitUntil(
+      () => !processGroupExists(pid, killFn),
+      drainWindowMs,
+      pollIntervalMs,
+      sleepFn,
+    );
+    if (!drained) return { ok: false, reason: 'tree-outlived-leader' };
+    return (await waitForClose(cleanupReserveMs))
+      ? { ok: true, reason: 'clean' }
+      : { ok: false, reason: 'close-not-observed' };
+  };
   return {
-    async cleanup(pid, { graceMs, cleanupReserveMs, waitForClose }) {
+    async cleanup(leader, { graceMs, cleanupReserveMs, waitForClose }) {
+      const { pid } = leader;
+      if (hasExited(leader)) {
+        return settleExitedLeader(pid, graceMs, cleanupReserveMs, waitForClose);
+      }
       if (!processGroupExists(pid, killFn)) {
         return (await waitForClose(graceMs))
           ? { ok: true, reason: 'clean' }
@@ -442,6 +469,9 @@ export function createOwnedTreeController({
         sleepFn,
       );
       if (!goneAfterTerm) {
+        if (hasExited(leader)) {
+          return settleExitedLeader(pid, cleanupReserveMs, cleanupReserveMs, waitForClose);
+        }
         if (!sendGroupSignal(pid, 'SIGKILL', killFn)) {
           return { ok: false, reason: 'signal-send-failure' };
         }
@@ -568,7 +598,7 @@ async function runAttempt({
   const waitForClose = (timeoutMs) => waitForPromise(closePromise, timeoutMs);
   let cleanup = { ok: true, reason: 'clean' };
   if (child.pid) {
-    cleanup = await treeController.cleanup(child.pid, {
+    cleanup = await treeController.cleanup(child, {
       graceMs: cleanupGraceMs,
       cleanupReserveMs,
       waitForClose,

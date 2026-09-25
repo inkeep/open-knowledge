@@ -270,13 +270,14 @@ describe('hermetic package acquisition and native dispatch', () => {
         installNodeFixture(bin);
         const pidPath = join(home, 'probe.pid');
         const observed = join(home, 'probe.json');
+        const HUNG_NPM_SELF_EXIT_MS = 240_000;
         writeExecutable(join(bin, 'npx'), 'process.exit(0);');
         const response =
           mode === 'malformed'
             ? "process.stdout.write('{not-json');"
             : mode === 'overflow'
               ? "process.stdout.write('x'.repeat(32 * 1024 * 1024));"
-              : 'setInterval(() => {}, 1000);';
+              : `setTimeout(() => process.exit(0), ${HUNG_NPM_SELF_EXIT_MS});`;
         writeExecutable(
           join(bin, 'npm'),
           `require('node:fs').writeFileSync(${JSON.stringify(pidPath)}, String(process.pid));
@@ -284,27 +285,20 @@ describe('hermetic package acquisition and native dispatch', () => {
         ${response}`,
         );
         let pid: number | undefined;
-        try {
-          const result = await resolveRegistryLaunch(
-            registryPackage('is-number@7.0.0', 'npx', { PATH: bin }),
-            null,
-            log,
-          ).catch((error: unknown) => error);
-          if (existsSync(pidPath)) pid = Number(readFileSync(pidPath, 'utf8'));
-          expect(result).toBeInstanceOf(AgentLaunchError);
-          expect(result).toMatchObject({ code: 'install-failed' });
-          const probe = JSON.parse(readFileSync(observed, 'utf8'));
-          expect(probe.cwd).toBe(join(home, '.ok', 'acp-npx-cwd'));
-          expect(probe.args).toContain('--ignore-scripts');
-          expect(() => process.kill(pid ?? 0, 0)).toThrow();
-          expect(String(result).length).toBeLessThan(20_000);
-        } finally {
-          if (pid !== undefined) {
-            try {
-              process.kill(pid, 'SIGKILL');
-            } catch {}
-          }
-        }
+        const result = await resolveRegistryLaunch(
+          registryPackage('is-number@7.0.0', 'npx', { PATH: bin }),
+          null,
+          log,
+        ).catch((error: unknown) => error);
+        if (existsSync(pidPath)) pid = Number(readFileSync(pidPath, 'utf8'));
+        expect(result).toBeInstanceOf(AgentLaunchError);
+        expect(result).toMatchObject({ code: 'install-failed' });
+        const probe = JSON.parse(readFileSync(observed, 'utf8'));
+        expect(probe.cwd).toBe(join(home, '.ok', 'acp-npx-cwd'));
+        expect(probe.args).toContain('--ignore-scripts');
+        if (pid === undefined) throw new Error('the npm fixture recorded no pid');
+        expect(() => process.kill(pid, 0)).toThrow();
+        expect(String(result).length).toBeLessThan(20_000);
       });
     },
     120_000,

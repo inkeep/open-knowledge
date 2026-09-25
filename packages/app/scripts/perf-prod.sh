@@ -157,15 +157,15 @@ cleanup() {
   local ec=$?
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "[perf-prod] Stopping server (pid $SERVER_PID)…"
-    kill -TERM "$SERVER_PID" 2>/dev/null || true
+    kill -TERM %1 2>/dev/null || true
   fi
   for _ in 1 2 3 4 5 6 7 8 9 10; do
-    if ! kill -0 "${SERVER_PID:-0}" 2>/dev/null && [[ ! -f "$SERVER_LOCK" ]]; then break; fi
+    if ! kill -0 "$SERVER_PID" 2>/dev/null && [[ ! -f "$SERVER_LOCK" ]]; then break; fi
     sleep 0.5
   done
   if [[ -n "${SERVER_PID:-}" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "[perf-prod] WARN: pid $SERVER_PID did not exit on SIGTERM; sending SIGKILL" >&2
-    kill -KILL "$SERVER_PID" 2>/dev/null || true
+    kill -KILL %1 2>/dev/null || true
   fi
   if [[ $ec -ne 0 ]]; then
     echo "[perf-prod] Script exited non-zero ($ec). Log:" >&2

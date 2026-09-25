@@ -39,7 +39,7 @@ afterEach(() => {
 describe('killGroup errno policy', () => {
   test('reports success when the group signal lands', () => {
     const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
-    expect(killGroup(9_001, 'SIGTERM')).toBe(true);
+    expect(killGroup(fakeChild({ pid: 9_001, kill: () => true }), 'SIGTERM')).toBe(true);
     expect(kill).toHaveBeenCalledWith(-9_001, 'SIGTERM');
   });
 
@@ -47,7 +47,7 @@ describe('killGroup errno policy', () => {
     vi.spyOn(process, 'kill').mockImplementation(() => {
       throw errnoError('ESRCH');
     });
-    expect(killGroup(9_001, 'SIGTERM')).toBe(false);
+    expect(killGroup(fakeChild({ pid: 9_001, kill: () => true }), 'SIGTERM')).toBe(false);
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -55,14 +55,14 @@ describe('killGroup errno policy', () => {
     vi.spyOn(process, 'kill').mockImplementation(() => {
       throw errnoError('EPERM');
     });
-    expect(killGroup(9_001, 'SIGKILL')).toBe(false);
+    expect(killGroup(fakeChild({ pid: 9_001, kill: () => true }), 'SIGKILL')).toBe(false);
   });
 
   test('warns on EPERM so a genuinely leaked tree still leaves a trace', () => {
     vi.spyOn(process, 'kill').mockImplementation(() => {
       throw errnoError('EPERM');
     });
-    killGroup(9_001, 'SIGKILL');
+    killGroup(fakeChild({ pid: 9_001, kill: () => true }), 'SIGKILL');
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0]?.[0])).toContain('EPERM');
   });
@@ -74,7 +74,7 @@ describe('killGroup errno policy', () => {
       vi.spyOn(process, 'kill').mockImplementation(() => {
         throw err;
       });
-      expect(() => killGroup(9_001, 'SIGTERM')).toThrow(err);
+      expect(() => killGroup(fakeChild({ pid: 9_001, kill: () => true }), 'SIGTERM')).toThrow(err);
     },
   );
 
@@ -82,8 +82,36 @@ describe('killGroup errno policy', () => {
     'refuses pid %p instead of signalling our own process group',
     (pid) => {
       const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
-      expect(killGroup(pid, 'SIGKILL')).toBe(false);
+      expect(killGroup(fakeChild({ pid, kill: () => true }), 'SIGKILL')).toBe(false);
       expect(kill).not.toHaveBeenCalled();
+    },
+  );
+});
+
+describe('killGroup signals the group only of a child that has not exited', () => {
+  test.each([
+    ['exits with a code', { exitCode: 0, signalCode: null }],
+    ['is killed by a signal', { exitCode: null, signalCode: 'SIGKILL' }],
+  ] as const)(
+    'signals the group of a running child, and sends nothing once that child %s',
+    (_label, exit) => {
+      const sent: unknown[][] = [];
+      vi.spyOn(process, 'kill').mockImplementation((...args) => {
+        sent.push(args);
+        return true;
+      });
+      expect(vi.isMockFunction(process.kill)).toBe(true);
+      const proc = fakeChild({ pid: 424_242, kill: () => true });
+
+      const whileRunning = killGroup(proc, 'SIGTERM');
+      Object.assign(proc, exit);
+      const afterExit = killGroup(proc, 'SIGKILL');
+
+      expect({ whileRunning, afterExit, sent }).toEqual({
+        whileRunning: true,
+        afterExit: false,
+        sent: [[-424_242, 'SIGTERM']],
+      });
     },
   );
 });
@@ -186,11 +214,86 @@ describe('killGracefully under a kill surface that reports EPERM everywhere', ()
     await expect(killGracefully(proc, 500)).resolves.toBeUndefined();
   });
 
-  test('still sweeps the group when the direct child has already exited', async () => {
-    const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
-    const proc = fakeChild({ kill: () => true });
-    (proc as unknown as { exitCode: number | null }).exitCode = 0;
-    await killGracefully(proc, 500);
-    expect(kill).toHaveBeenCalledWith(-424_242, 'SIGKILL');
+  test.each([
+    ['exited with a code', { exitCode: 0, signalCode: null }],
+    ['was killed by a signal', { exitCode: null, signalCode: 'SIGTERM' }],
+  ] as const)(
+    'sends nothing to the process group once the direct child %s, because its group id is no longer reserved',
+    async (_label, exit) => {
+      const kill = vi.spyOn(process, 'kill').mockReturnValue(true);
+      const proc = fakeChild({ kill: () => true });
+      Object.assign(proc, exit);
+      await killGracefully(proc, 500);
+      expect(kill.mock.calls.filter(([, signal]) => signal !== 0)).toEqual([]);
+    },
+  );
+});
+
+describe('killGracefully drains the group of an exited leader until its probe answers ESRCH', () => {
+  const LEADER_PID = 424_242;
+  const PROBES_WHILE_MEMBERS_REMAIN = 3;
+
+  function recordProbes(answer: (probe: number) => Error) {
+    const sends: unknown[][] = [];
+    const probedTargets: number[] = [];
+    vi.spyOn(process, 'kill').mockImplementation((target, signal) => {
+      if (signal !== 0) {
+        sends.push([target, signal]);
+        return true;
+      }
+      probedTargets.push(target);
+      throw answer(probedTargets.length);
+    });
+    expect(vi.isMockFunction(process.kill)).toBe(true);
+    return { sends, probedTargets };
+  }
+
+  function exitedLeader(): ChildProcess {
+    const proc = fakeChild({ pid: LEADER_PID, kill: () => true });
+    Object.assign(proc, { exitCode: 0, signalCode: null });
+    return proc;
+  }
+
+  function leaderReported(): boolean {
+    return warn.mock.calls.some(([message]) =>
+      new RegExp(`(^|\\D)${LEADER_PID}(\\D|$)`).test(String(message)),
+    );
+  }
+
+  test('keeps probing through EPERM answers and reports nothing once the group answers ESRCH', async () => {
+    const { sends, probedTargets } = recordProbes((probe) =>
+      errnoError(probe > PROBES_WHILE_MEMBERS_REMAIN ? 'ESRCH' : 'EPERM'),
+    );
+
+    await killGracefully(exitedLeader(), 500);
+
+    expect({
+      sends,
+      probedTheLeaderGroupUntilItDrained:
+        probedTargets.length > PROBES_WHILE_MEMBERS_REMAIN &&
+        probedTargets.every((target) => target === -LEADER_PID),
+      leaderReported: leaderReported(),
+    }).toEqual({ sends: [], probedTheLeaderGroupUntilItDrained: true, leaderReported: false });
   });
+
+  test('reports the leader when its group still answers EPERM at the bound', async () => {
+    const { sends, probedTargets } = recordProbes(() => errnoError('EPERM'));
+
+    await killGracefully(exitedLeader(), 500);
+
+    expect({
+      sends,
+      probedMoreThanOnce: probedTargets.length > 1,
+      leaderReported: leaderReported(),
+    }).toEqual({ sends: [], probedMoreThanOnce: true, leaderReported: true });
+  });
+
+  test.each(['EACCES', 'EINVAL', 'ENOSYS', undefined])(
+    'rethrows %s from the probe rather than reading it as a drained group',
+    async (code) => {
+      const err = code === undefined ? new Error('not an errno at all') : errnoError(code);
+      recordProbes(() => err);
+      await expect(killGracefully(exitedLeader(), 500)).rejects.toThrow(err);
+    },
+  );
 });

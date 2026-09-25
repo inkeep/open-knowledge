@@ -167,20 +167,32 @@ function tolerateDuringTeardown(err: unknown, attempt: string): false {
   throw err;
 }
 
-export function killGroup(pid: number, signal: NodeJS.Signals): boolean {
-  if (!Number.isInteger(pid) || pid <= 1) return false;
+export function killGroup(proc: ChildProcess, signal: NodeJS.Signals): boolean {
+  if (proc.pid === undefined || !Number.isInteger(proc.pid) || proc.pid <= 1) return false;
+  if (proc.exitCode !== null || proc.signalCode !== null) return false;
   try {
-    process.kill(-pid, signal);
+    process.kill(-proc.pid, signal);
     return true;
   } catch (err) {
-    return tolerateDuringTeardown(err, `kill(-${pid}, ${signal})`);
+    return tolerateDuringTeardown(err, `kill(-${proc.pid}, ${signal})`);
+  }
+}
+
+function groupStillHasMembers(pid: number): boolean {
+  try {
+    process.kill(-pid, 0);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    if (code === 'ESRCH') return false;
+    if (code === 'EPERM') return true;
+    throw err;
   }
 }
 
 export function signalTree(proc: ChildProcess, signal: NodeJS.Signals): boolean {
-  const pid = proc.pid;
-  if (pid === undefined) return false;
-  if (killGroup(pid, signal)) return true;
+  if (proc.pid === undefined) return false;
+  if (killGroup(proc, signal)) return true;
 
   let emitted: Error | undefined;
   const capture = (err: Error) => {
@@ -197,18 +209,29 @@ export function signalTree(proc: ChildProcess, signal: NodeJS.Signals): boolean 
   return signalled;
 }
 
+const GROUP_DRAIN_POLL_INTERVAL_MS = 25;
+
 export async function killGracefully(proc: ChildProcess, timeoutMs = 5000): Promise<void> {
-  if (proc.exitCode !== null || proc.signalCode !== null) {
-    if (proc.pid !== undefined) killGroup(proc.pid, 'SIGKILL');
-    return;
-  }
-  const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
-  if (!signalTree(proc, 'SIGTERM')) return;
-  await Promise.race([exited, wait(timeoutMs)]);
+  const deadline = Date.now() + timeoutMs;
   if (proc.exitCode === null && proc.signalCode === null) {
-    signalTree(proc, 'SIGKILL');
-    await exited;
-  } else if (proc.pid !== undefined) {
-    killGroup(proc.pid, 'SIGKILL');
+    const exited = new Promise<void>((resolve) => proc.once('exit', () => resolve()));
+    if (!signalTree(proc, 'SIGTERM')) return;
+    await Promise.race([exited, wait(timeoutMs)]);
+    if (proc.exitCode === null && proc.signalCode === null) {
+      signalTree(proc, 'SIGKILL');
+      await exited;
+      return;
+    }
+  }
+  const pid = proc.pid;
+  if (pid === undefined) return;
+  while (groupStillHasMembers(pid)) {
+    if (Date.now() >= deadline) {
+      console.warn(
+        `[e2e teardown] leader ${pid} has exited but its process group still has members after ${timeoutMs}ms; not signalling a group whose leader this teardown no longer holds`,
+      );
+      return;
+    }
+    await wait(GROUP_DRAIN_POLL_INTERVAL_MS);
   }
 }

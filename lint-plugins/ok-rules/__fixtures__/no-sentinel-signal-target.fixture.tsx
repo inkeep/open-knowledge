@@ -17,11 +17,14 @@
 //     P16 Number.parseFloat(...), P17 parseFloat(...)
 //
 // Negatives (0 fires): the signal-0 liveness probe on pid 1 (boundary pair with
-// P2), an `as number`-wrapped spawned pid, a group kill of a spawned pid
-// (`-(child.pid as number)` and bare `-spawnedPid`), the ChildProcess handle, `kill` on
-// a non-`process` object, the method in a type declaration, the seam with an injected
-// recorder — including one threaded past an explicit `undefined` pollMs — a
-// null-filtered pid list, a validated parsed pid, and `?? -1` outside a kill.
+// P2), the ChildProcess handle, `kill` on a non-`process` object, the method in a
+// type declaration, the seam with an injected recorder — including one threaded
+// past an explicit `undefined` pollMs — a null-filtered pid list, and `?? -1`
+// outside a kill. Two blind spots also pass, and neither is a sanctioned target:
+// an `as number`-wrapped spawned pid and a group kill of a spawned pid
+// (`-(child.pid as number)` and bare `-spawnedPid`) pass because the rule does not
+// check that the child is unreaped, a lifecycle blind spot; and a range-checked
+// parsed pid held in a variable passes as data flow the rule cannot see.
 // Exact-equality (`toBe(20)` plus the per-branch counts) catches false-negative
 // regressions and false-positive widenings alike.
 
@@ -80,7 +83,7 @@ export const p20 = reapOwnedTree(1, 500, undefined, undefined);
 
 // (1) Signal 0 sends nothing — the liveness probe, even on pid 1 (boundary pair with P2).
 export const n1 = process.kill(1, 0);
-// (2-3) A spawned pid behind TS wrappers, singly and as its own process group.
+// (2-3) A spawned pid behind TS wrappers, singly and as its own process group. It passes because the rule does not check that the child is unreaped: a lifecycle blind spot, not a sanctioned target.
 export const n2 = process.kill(child.pid as number, 'SIGKILL');
 export const n3 = process.kill(-(child.pid as number), 'SIGTERM');
 // (4) The ChildProcess handle signals exactly that child.
@@ -99,12 +102,12 @@ export const n9 = signalOwnedPids(
   [descendant, spawnedPid, ...(supervisor === null ? [] : [supervisor])],
   'SIGKILL',
 );
-// (10) A parsed pid validated before it is signalled.
+// (10) A range-checked parsed pid reaching a kill through a variable: data flow the rule cannot see, not a sanctioned target.
 const parsed = Number(readFileSync(pidFile, 'utf8'));
 export const n10 = isValidLockPid(parsed) ? process.kill(parsed, 'SIGKILL') : false;
 // (11) `?? -1` outside a kill — an index, not a signal target.
 export const n11 = BODY[hit?.start ?? -1];
-// (12) The same group kill without the TS wrapper — a bare negated spawned pid.
+// (12) The same group kill without the TS wrapper — a bare negated spawned pid. It passes because the rule does not check that the child is unreaped: a lifecycle blind spot, not a sanctioned target.
 export const n12 = process.kill(-spawnedPid, 'SIGKILL');
 // (13) The seam's injected recorder threaded past an explicit `undefined` pollMs.
 export const n13 = reapOwnedTree(1, 500, undefined, sender.send);

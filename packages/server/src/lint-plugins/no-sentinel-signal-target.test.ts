@@ -36,7 +36,7 @@ describe('no-sentinel-signal-target oxlint rule', () => {
     expect(fires.length).toBe(20);
     const literal = fires.filter((d) => d.message.includes('Signal only a pid you spawned'));
     const fallback = fires.filter((d) => d.message.includes('Filter the nullable pid out'));
-    const parsed = fires.filter((d) => d.message.includes('Validate it with `isValidLockPid()`'));
+    const parsed = fires.filter((d) => d.message.includes('Signal the `ChildProcess` you spawned'));
     expect(literal.length).toBe(10);
     expect(fallback.length).toBe(4);
     expect(parsed.length).toBe(6);
@@ -57,6 +57,18 @@ describe('no-sentinel-signal-target oxlint rule', () => {
     }
     const readme = readFileSync(join(REPO_ROOT, README_REL), 'utf8');
     expect(readme).toContain('only if you spawned it detached');
+  });
+
+  test('the parsed remedy names the handle you spawned and, for a pid you hold no handle for, its owner or a report, in the diagnostic and the README alike', () => {
+    const parsed = lintFixture().filter((d) =>
+      d.message.includes('Signal the `ChildProcess` you spawned'),
+    );
+    expect(parsed.length).toBe(6);
+    for (const fire of parsed) {
+      expect(fire.message).toContain('stop that process through its owner, or report it');
+    }
+    const readme = readFileSync(join(REPO_ROOT, README_REL), 'utf8');
+    expect(readme).toContain('Stop that process through its owner, or report it');
   });
 
   test('every fire lands on a positive case and none on the negatives', () => {

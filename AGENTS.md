@@ -49,7 +49,7 @@ pnpm run dev
 
 ## Process safety
 
-Never signal a pid you did not spawn. No literal `0`, `1`, or `-1`, numeric fallback, or unvalidated parsed number may reach `process.kill` or the reaper. Validate lock-file PIDs with `isValidLockPid()`. Gate: `ok/no-sentinel-signal-target`.
+Never signal a pid you did not spawn. Signal a held `ChildProcess` before it exits (its group only then); never a pid from a file, `ps` or stdout, a `?? <n>` fallback or literal `0`/`1`/`-1`. Gate: `ok/no-sentinel-signal-target`.
 
 ## Comment policy
 

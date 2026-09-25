@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { _electron as electron } from '@playwright/test';
+import { SPAWN_STARTUP_DEADLINE_MS } from '../../../src/shared/boot-narration.ts';
 import { readinessGiveUpBoundMs } from './launch-readiness';
 
 type ElectronLaunchOptions = NonNullable<Parameters<typeof electron.launch>[0]>;
@@ -86,6 +87,8 @@ export interface DesktopLaunchOptions {
 
 export const DEFAULT_LAUNCH_TIMEOUT_MS = 30_000;
 
+export const PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS = 2 * SPAWN_STARTUP_DEADLINE_MS;
+
 export const SETUP_BEFORE_FIRST_READINESS_WAIT_MS = 0;
 
 export const ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS =
@@ -103,5 +106,16 @@ export function desktopLaunchOptions(input: DesktopLaunchOptionsInput = {}): Des
       ? { args: [...extraArgs], timeout, executablePath: target.targetPath }
       : { args: [target.targetPath, ...extraArgs], timeout };
 
-  return { ...base, env: { ...process.env, ...input.env, OK_LANG: 'en', OK_LOG_LEVEL: 'info' } };
+  return {
+    ...base,
+    env: {
+      ...process.env,
+      ...input.env,
+      OK_LANG: 'en',
+      OK_LOG_LEVEL: 'info',
+      ...(target.mode === 'packaged'
+        ? { OK_IDLE_SHUTDOWN: `${PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS / 1000}s` }
+        : {}),
+    },
+  };
 }

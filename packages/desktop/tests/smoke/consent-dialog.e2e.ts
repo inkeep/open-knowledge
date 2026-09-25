@@ -118,7 +118,7 @@ test.describe('Consent-dialog smoke', () => {
 
   test.afterEach(async () => {
     const targets = cleanupTargets.splice(0);
-    reapDetachedServers(targets);
+    await reapDetachedServers(targets);
     for (const target of targets) {
       try {
         rmSync(target, { recursive: true, force: true });
@@ -133,7 +133,7 @@ test.describe('Consent-dialog smoke', () => {
     trackForCleanup(tmpHome, projectDir);
 
     const app = await launchApp(tmpHome, { pickedPath: projectDir });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);
@@ -160,7 +160,7 @@ test.describe('Consent-dialog smoke', () => {
     trackForCleanup(tmpHome, projectDir);
 
     const app = await launchApp(tmpHome, { pickedPath: projectDir });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);
@@ -187,7 +187,7 @@ test.describe('Consent-dialog smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedPath: subFolder });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);

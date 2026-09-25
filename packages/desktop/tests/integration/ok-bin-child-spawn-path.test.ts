@@ -39,6 +39,7 @@ import {
   findFreePort,
   realSpawnSlidev,
   type SlidevProcess,
+  signalSlidevChild,
 } from '../../src/main/slidev-server.ts';
 import { buildShellEnv } from '../../src/utility/pty-host.ts';
 import {
@@ -308,22 +309,9 @@ function spawnDeck(
       .map((line) => line.trim().split(/\s+/).map(Number))
       .filter((row) => row.length === 3 && row[1] === shellPid);
   const reap = () => {
-    for (const [pid] of descendants()) {
-      if (!isValidLockPid(pid)) {
-        console.warn(
-          `[spawnDeck] skipped a ps row under ppid ${shellPid}: pid column parsed to ${JSON.stringify(pid)}, which isValidLockPid rejects`,
-        );
-        continue;
-      }
-      try {
-        process.kill(pid, 'SIGKILL');
-      } catch {}
-    }
-    try {
-      process.kill(-shellPid, 'SIGKILL');
-    } catch {}
+    child.kill('SIGKILL');
   };
-  return { shellPid, descendants, reap };
+  return { child, shellPid, descendants, reap };
 }
 
 const FISH_SHELL_CANDIDATES = [
@@ -387,12 +375,18 @@ describe.skipIf(!existsSync('/bin/bash'))('Slidev launch process-group containme
           timeout: 5_000,
         });
         const [deck] = shippedRun.descendants();
+        if (deck === undefined) throw new Error('the deck under the bash shell left the ps table');
         expect(
-          deck?.[2],
+          deck[2],
           "bash turns job control on from -i alone and then setpgid()s the deck into its own group, where signalSlidevChild's process.kill(-pid) cannot reach it",
         ).toBe(shippedRun.shellPid);
-        const deckPid = deck?.[0] ?? 0;
-        process.kill(-shippedRun.shellPid, 'SIGKILL');
+        const deckPid = deck[0];
+        if (shippedRun.child.exitCode !== null || shippedRun.child.signalCode !== null) {
+          throw new Error(
+            'the bash shell exited before the group kill, so its process group is no longer held',
+          );
+        }
+        await signalSlidevChild(shippedRun.child, 'SIGKILL');
         await vi.waitFor(
           () => {
             expect(() => process.kill(deckPid, 0)).toThrow();
@@ -475,12 +469,18 @@ describe('Slidev launch process-group containment on fish', () => {
             timeout: FISH_DECK_APPEAR_TIMEOUT_MS,
           });
           const [deck] = shippedRun.descendants();
+          if (deck === undefined) throw new Error(`the deck under ${fish} left the ps table`);
           expect(
-            deck?.[2],
+            deck[2],
             `a config.fish carrying 'status job-control full' survives into ${fish} -i -c, where it setpgid()s the deck into its own group and signalSlidevChild's process.kill(-pid) cannot reach it, so the opt-out has to land after startup files rather than in the env layer`,
           ).toBe(shippedRun.shellPid);
-          const deckPid = deck?.[0] ?? 0;
-          process.kill(-shippedRun.shellPid, 'SIGKILL');
+          const deckPid = deck[0];
+          if (shippedRun.child.exitCode !== null || shippedRun.child.signalCode !== null) {
+            throw new Error(
+              `${fish} exited before the group kill, so its process group is no longer held`,
+            );
+          }
+          await signalSlidevChild(shippedRun.child, 'SIGKILL');
           await vi.waitFor(
             () => {
               expect(() => process.kill(deckPid, 0)).toThrow();

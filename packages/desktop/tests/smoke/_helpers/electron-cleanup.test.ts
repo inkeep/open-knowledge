@@ -1,8 +1,13 @@
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import {
+  installSignalBoundary,
+  type SignalBoundary,
+} from '../../../../../test-support/held-signal-boundary.test-helper';
 import {
   AppCleanupIncompleteError,
+  type CloseAppBoundedOpts,
   closeAppBounded,
   type TaskkillOutcome,
 } from './electron-cleanup';
@@ -119,17 +124,17 @@ describe('closeAppBounded — real subprocess contract', () => {
   });
 });
 
-const HOLDER_SCRIPT = 'setInterval(() => {}, 1000);';
 const HANG_FOREVER = "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);";
+const GRACEFUL_WAIT_THE_ROOT_EXITS_INSIDE_MS = 3_000;
 
 function exitAfter(ms: number): string {
   return `setTimeout(() => process.exit(0), ${ms});`;
 }
 
-function rootScript(afterHolderSpawn: string): string {
+function rootScript(afterHolderSpawn: string, holderGroup: 'root' | 'own'): string {
   return [
     "const { spawn } = require('node:child_process');",
-    `const holder = spawn(process.execPath, ['-e', ${JSON.stringify(HOLDER_SCRIPT)}], { stdio: 'inherit' });`,
+    `const holder = spawn('sh', ['-c', 'exec cat <&3'], { stdio: ['inherit', 'inherit', 'inherit', 3], detached: ${holderGroup === 'own'} });`,
     afterHolderSpawn,
     "process.stdout.write('HOLDER_PID=' + holder.pid + '\\n');",
   ].join('\n');
@@ -153,37 +158,30 @@ interface StreamHeldTree {
   closeObserved: () => boolean;
 }
 
-interface TrackedTree {
-  rootPid: number;
-  holderPid: number | undefined;
-}
-
-const liveTrees: TrackedTree[] = [];
+const liveRoots: ChildProcess[] = [];
+let boundary: SignalBoundary | undefined;
 
 afterEach(() => {
-  for (const tracked of liveTrees) {
-    try {
-      process.kill(-tracked.rootPid, 'SIGKILL');
-    } catch {}
-    if (tracked.holderPid === undefined) continue;
-    try {
-      process.kill(tracked.holderPid, 'SIGKILL');
-    } catch {}
+  for (const root of liveRoots) {
+    root.kill('SIGKILL');
+    root.stdio[3]?.destroy();
   }
-  liveTrees.length = 0;
+  liveRoots.length = 0;
 });
 
-async function spawnStreamHeldTree(afterHolderSpawn: string): Promise<StreamHeldTree> {
-  const root = spawn(process.execPath, ['-e', rootScript(afterHolderSpawn)], {
-    stdio: 'pipe',
+async function spawnStreamHeldTree(
+  afterHolderSpawn: string,
+  holderGroup: 'root' | 'own' = 'root',
+): Promise<StreamHeldTree> {
+  const root = spawn(process.execPath, ['-e', rootScript(afterHolderSpawn, holderGroup)], {
+    stdio: ['pipe', 'pipe', 'pipe', 'pipe'],
     detached: true,
   });
+  liveRoots.push(root);
+  boundary?.hold(root);
   if (root.pid === undefined) await once(root, 'spawn');
   const rootPid = root.pid;
   if (rootPid === undefined) throw new Error('spawn did not assign a root pid');
-
-  const tracked: TrackedTree = { rootPid, holderPid: undefined };
-  liveTrees.push(tracked);
 
   let closeObserved = false;
   root.once('close', () => {
@@ -212,38 +210,93 @@ async function spawnStreamHeldTree(afterHolderSpawn: string): Promise<StreamHeld
     check();
   });
 
-  tracked.holderPid = holderPid;
   return { root, rootPid, holderPid, closeObserved: () => closeObserved };
+}
+
+async function rootExited(tree: StreamHeldTree): Promise<void> {
+  if (tree.root.exitCode === null && tree.root.signalCode === null) {
+    await once(tree.root, 'exit');
+  }
+}
+
+function settleClose(
+  tree: StreamHeldTree,
+  opts: CloseAppBoundedOpts,
+): Promise<'returned' | 'reported-failure' | 'threw'> {
+  return closeAppBounded(tree.root, opts).then(
+    () => 'returned' as const,
+    (error: unknown) =>
+      error instanceof AppCleanupIncompleteError ? ('reported-failure' as const) : 'threw',
+  );
 }
 
 describe.skipIf(process.platform === 'win32')(
   'closeAppBounded — close, not exit, is the postcondition',
   () => {
-    test('(1) root exits on its own while a descendant still holds its stdio → returns only once the launched process closed', async () => {
-      const tree = await spawnStreamHeldTree(exitAfter(150));
+    beforeEach(() => {
+      boundary = installSignalBoundary({ deliverToHeldChildren: true });
+    });
 
-      await closeAppBounded(tree.root, { gracefulMs: 1_000, platform: 'linux' });
+    afterEach(() => {
+      boundary?.restore();
+      boundary = undefined;
+    });
+
+    function heldBoundary(): SignalBoundary {
+      if (boundary === undefined || process.kill !== boundary.send) {
+        throw new Error('the signal boundary is not installed; refusing to run code that signals');
+      }
+      return boundary;
+    }
+
+    test('(1) root exits on its own while a same-group descendant still holds its stdio → nothing is signalled once the root has exited, and closure is never claimed while the holder lives', async () => {
+      const tree = await spawnStreamHeldTree(exitAfter(150));
+      const signals = heldBoundary();
+      const calledAt = Date.now();
+      let rootExitedAt =
+        tree.root.exitCode === null && tree.root.signalCode === null ? undefined : calledAt;
+      tree.root.once('exit', () => {
+        rootExitedAt ??= Date.now();
+      });
+
+      const outcome = await settleClose(tree, {
+        gracefulMs: GRACEFUL_WAIT_THE_ROOT_EXITS_INSIDE_MS,
+        postKillReapMs: REAP_MS,
+        platform: 'linux',
+      });
 
       expect({
-        closeObserved: tree.closeObserved(),
-        holderAlive: isAlive(tree.holderPid),
-      }).toEqual({ closeObserved: true, holderAlive: false });
+        rootExitedInsideTheGracefulWait:
+          rootExitedAt !== undefined &&
+          rootExitedAt - calledAt < GRACEFUL_WAIT_THE_ROOT_EXITS_INSIDE_MS,
+        refused: signals.refused,
+        outcome: outcome === 'threw' ? 'threw' : 'settled',
+        claimedCleanupComplete: outcome === 'returned' && isAlive(tree.holderPid),
+      }).toEqual({
+        rootExitedInsideTheGracefulWait: true,
+        refused: [],
+        outcome: 'settled',
+        claimedCleanupComplete: false,
+      });
     });
 
     test('(2) hung root with a stdio-holding descendant → returns only once the group kill reached both and the launched process closed', async () => {
       const tree = await spawnStreamHeldTree(HANG_FOREVER);
+      const signals = heldBoundary();
 
       await closeAppBounded(tree.root, { gracefulMs: 500, platform: 'linux' });
 
       expect({
+        refused: signals.refused,
         closeObserved: tree.closeObserved(),
         rootAlive: isAlive(tree.rootPid),
         holderAlive: isAlive(tree.holderPid),
-      }).toEqual({ closeObserved: true, rootAlive: false, holderAlive: false });
+      }).toEqual({ refused: [], closeObserved: true, rootAlive: false, holderAlive: false });
     });
 
     test('(3) win32 tree-kill reports ETIMEDOUT once and kills nothing, then succeeds → converges to real closure', async () => {
       const tree = await spawnStreamHeldTree(HANG_FOREVER);
+      heldBoundary();
       const attempts: TaskkillOutcome[] = [];
 
       const taskkill = async (pid: number): Promise<TaskkillOutcome> => {
@@ -252,9 +305,8 @@ describe.skipIf(process.platform === 'win32')(
           attempts.push(timedOut);
           return timedOut;
         }
-        try {
-          process.kill(-pid, 'SIGKILL');
-        } catch {}
+        tree.root.kill('SIGKILL');
+        tree.root.stdio[3]?.destroy();
         const reaped = reapedTaskkill(pid);
         attempts.push(reaped);
         return reaped;
@@ -272,6 +324,7 @@ describe.skipIf(process.platform === 'win32')(
 
     test('(4) win32 tree-kill always reports ETIMEDOUT and kills nothing → never returns normally while the tree is still alive', async () => {
       const tree = await spawnStreamHeldTree(HANG_FOREVER);
+      heldBoundary();
       const attempts: number[] = [];
 
       const taskkill = async (pid: number): Promise<TaskkillOutcome> => {
@@ -279,16 +332,12 @@ describe.skipIf(process.platform === 'win32')(
         return timedOutTaskkill();
       };
 
-      const outcome = await closeAppBounded(tree.root, {
+      const outcome = await settleClose(tree, {
         gracefulMs: 500,
         postKillReapMs: REAP_MS,
         taskkill,
         platform: 'win32',
-      }).then(
-        () => 'returned' as const,
-        (error: unknown) =>
-          error instanceof AppCleanupIncompleteError ? ('reported-failure' as const) : 'threw',
-      );
+      });
 
       const rootAlive = isAlive(tree.rootPid);
       const holderAlive = isAlive(tree.holderPid);
@@ -304,18 +353,22 @@ describe.skipIf(process.platform === 'win32')(
       });
     });
 
-    test('(5) root already exited before the call while a descendant still holds its stdio → escalation still establishes closure', async () => {
+    test('(5) root already exited before the call while a same-group descendant still holds its stdio → nothing is signalled after the exit, and closure is never claimed while the holder lives', async () => {
       const tree = await spawnStreamHeldTree(exitAfter(50));
-      if (tree.root.exitCode === null && tree.root.signalCode === null) {
-        await once(tree.root, 'exit');
-      }
+      await rootExited(tree);
+      const signals = heldBoundary();
 
-      await closeAppBounded(tree.root, { gracefulMs: 1_000, platform: 'linux' });
+      const outcome = await settleClose(tree, {
+        gracefulMs: 1_000,
+        postKillReapMs: REAP_MS,
+        platform: 'linux',
+      });
 
       expect({
-        closeObserved: tree.closeObserved(),
-        holderAlive: isAlive(tree.holderPid),
-      }).toEqual({ closeObserved: true, holderAlive: false });
+        refused: signals.refused,
+        outcome: outcome === 'threw' ? 'threw' : 'settled',
+        claimedCleanupComplete: outcome === 'returned' && isAlive(tree.holderPid),
+      }).toEqual({ refused: [], outcome: 'settled', claimedCleanupComplete: false });
     });
 
     test('(7) a piped process that already closed before the call → the structural fallback returns without a kill', async () => {
@@ -346,6 +399,7 @@ describe.skipIf(process.platform === 'win32')(
 
     test('(6) a signal was sent but the root ignored it → `killed === true` alone is not closure', async () => {
       const tree = await spawnStreamHeldTree(HANG_FOREVER);
+      const signals = heldBoundary();
       tree.root.kill('SIGTERM');
       expect(tree.root.killed).toBe(true);
       expect(isAlive(tree.rootPid)).toBe(true);
@@ -353,10 +407,29 @@ describe.skipIf(process.platform === 'win32')(
       await closeAppBounded(tree.root, { gracefulMs: 500, platform: 'linux' });
 
       expect({
+        refused: signals.refused,
         closeObserved: tree.closeObserved(),
         rootAlive: isAlive(tree.rootPid),
         holderAlive: isAlive(tree.holderPid),
-      }).toEqual({ closeObserved: true, rootAlive: false, holderAlive: false });
+      }).toEqual({ refused: [], closeObserved: true, rootAlive: false, holderAlive: false });
+    });
+
+    test('(8) root exits while its stdio holder sits in a group of its own → nothing is signalled at the emptied root group, and closure is never claimed while the holder lives', async () => {
+      const tree = await spawnStreamHeldTree(exitAfter(50), 'own');
+      await rootExited(tree);
+      const signals = heldBoundary();
+
+      const outcome = await settleClose(tree, {
+        gracefulMs: 300,
+        postKillReapMs: REAP_MS,
+        platform: 'linux',
+      });
+
+      expect({
+        refused: signals.refused,
+        outcome: outcome === 'threw' ? 'threw' : 'settled',
+        claimedCleanupComplete: outcome === 'returned' && isAlive(tree.holderPid),
+      }).toEqual({ refused: [], outcome: 'settled', claimedCleanupComplete: false });
     });
   },
 );

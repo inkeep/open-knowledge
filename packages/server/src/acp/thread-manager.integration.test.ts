@@ -5551,6 +5551,7 @@ describe('diagnostic stream lifetime', () => {
     const localDir = tmp();
     const id = 'resume-after-close';
     const pidFile = join(localDir, 'resumed-pid');
+    const RESUMED_AGENT_SELF_EXIT_MS = 30_000;
     writeResumableAgentEntry(localDir, id, { FAKE_CAPS: 'resume' });
     const release = Promise.withResolvers<string | null>();
     const entered = Promise.withResolvers<void>();
@@ -5573,7 +5574,7 @@ describe('diagnostic stream lifetime', () => {
       `
       import { writeFileSync } from 'node:fs';
       writeFileSync(${JSON.stringify(pidFile)}, String(process.pid));
-      setInterval(() => {}, 1000);
+      setTimeout(() => process.exit(0), ${RESUMED_AGENT_SELF_EXIT_MS});
       process.stdin.once('data', (chunk) => {
         const msg = JSON.parse(chunk.toString());
         process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id,
@@ -5587,51 +5588,31 @@ describe('diagnostic stream lifetime', () => {
     await manager.closeThread(info.threadId);
     expect(manager.getInfo(info.threadId)?.archived).toBe(true);
     release.resolve(null);
-    try {
-      expect(await resumed).toMatchObject({ code: 'spawn-failed' });
-      const pid = Number(readFileSync(pidFile, 'utf8'));
-      expect(
-        isValidLockPid(pid),
-        `resumed-pid held ${JSON.stringify(readFileSync(pidFile, 'utf8'))}`,
-      ).toBe(true);
-      await expect
-        .poll(
-          () => {
-            try {
-              process.kill(pid, 0);
-              return true;
-            } catch {
-              return false;
-            }
-          },
-          { timeout: 3000 },
-        )
-        .toBe(false);
-      const replay: ThreadEvent[] = [];
-      await manager.subscribe(info.threadId, 0, (frame) => {
-        if (frame.op === 'event') replay.push(frame.event);
-        if (frame.op === 'events') replay.push(...frame.events);
-      });
-      expect(replay.at(-1)).toMatchObject({ kind: 'status', detail: 'thread closed' });
-    } finally {
-      if (existsSync(pidFile)) {
-        const raw = readFileSync(pidFile, 'utf8');
-        const pid = Number(raw);
-        if (isValidLockPid(pid)) {
+    expect(await resumed).toMatchObject({ code: 'spawn-failed' });
+    const pid = Number(readFileSync(pidFile, 'utf8'));
+    expect(
+      isValidLockPid(pid),
+      `resumed-pid held ${JSON.stringify(readFileSync(pidFile, 'utf8'))}`,
+    ).toBe(true);
+    await expect
+      .poll(
+        () => {
           try {
-            process.kill(pid, 'SIGKILL');
-          } catch {}
-        } else {
-          console.warn(
-            `[resume-after-close cleanup] left a spawned child unreaped: ${pidFile} held ${JSON.stringify(raw)}, which isValidLockPid rejects`,
-          );
-        }
-      } else {
-        console.warn(
-          `[resume-after-close cleanup] no pidfile at ${pidFile}: either the resume failed before spawning, or a child was spawned and this test threw before the child's first write — in that case it is still running`,
-        );
-      }
-    }
+            process.kill(pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 3000 },
+      )
+      .toBe(false);
+    const replay: ThreadEvent[] = [];
+    await manager.subscribe(info.threadId, 0, (frame) => {
+      if (frame.op === 'event') replay.push(frame.event);
+      if (frame.op === 'events') replay.push(...frame.events);
+    });
+    expect(replay.at(-1)).toMatchObject({ kind: 'status', detail: 'thread closed' });
   }, 15_000);
 
   test.each(['prompt', 'resume'] as const)(

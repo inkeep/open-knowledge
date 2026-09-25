@@ -1,6 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { EventEmitter } from 'node:events';
+import { EventEmitter, once } from 'node:events';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -10,6 +11,7 @@ import {
   createFuseFailure,
   FUSE_FAILURE_MARKER,
 } from '../../packages/desktop/scripts/packaging-diagnostics.mjs';
+import { installSignalBoundary } from '../../test-support/held-signal-boundary.test-helper.ts';
 import {
   classifyEvidence,
   computeRetryDelayMs,
@@ -1099,26 +1101,89 @@ describe('deadlines and cancellation', () => {
   });
 
   test.runIf(process.platform !== 'win32')(
-    'reaps a real grandchild before the next attempt starts',
+    "a real grandchild that outlives the exited leader of its attempt is reported as 'tree-outlived-leader', which stops the run before the next attempt starts, and no signal reaches the group of that reaped leader",
     async (ctx) => {
       const helper = join(scratch, 'tree-helper.mjs');
       const count = join(scratch, 'tree-count');
       const pidFile = join(scratch, 'grandchild-pid');
       const overlap = join(scratch, 'tree-overlap');
+      const lifelinePath = join(scratch, 'lifeline.sock');
       writeFileSync(count, '0');
+      const lifelines = [];
+      const lifelineServer = createServer((socket) => lifelines.push(socket));
+      let lifelineReleased = false;
+      const releaseLifeline = () => {
+        if (lifelineReleased) return;
+        lifelineReleased = true;
+        for (const socket of lifelines) socket.destroy();
+        lifelineServer.close();
+      };
+      const grandchild = `process.on("SIGTERM",()=>{});const lifeline=require("net").connect(${JSON.stringify(lifelinePath)});lifeline.on("close",()=>process.exit(0));lifeline.on("error",()=>process.exit(0));setTimeout(()=>process.exit(0),${childSelfExitMs})`;
       writeFileSync(
         helper,
-        `import { spawn } from 'node:child_process';import { readFileSync,writeFileSync } from 'node:fs';const [count,pidFile,overlap]=process.argv.slice(2);const n=+readFileSync(count,'utf8')+1;writeFileSync(count,String(n));if(n===1){const child=spawn(process.execPath,['-e','process.on("SIGTERM",()=>{});setTimeout(()=>{},${childSelfExitMs})'],{stdio:'ignore'});writeFileSync(pidFile,String(child.pid));console.error('socket hang up');process.exit(1)}const pid=+readFileSync(pidFile,'utf8');try{process.kill(pid,0);writeFileSync(overlap,'alive');process.exit(1)}catch{process.exit(0)}`,
+        `import { spawn } from 'node:child_process';import { readFileSync,writeFileSync } from 'node:fs';const [count,pidFile,overlap]=process.argv.slice(2);const n=+readFileSync(count,'utf8')+1;writeFileSync(count,String(n));if(n===1){const child=spawn(process.execPath,['-e',${JSON.stringify(grandchild)}],{stdio:'ignore'});writeFileSync(pidFile,String(child.pid));console.error('socket hang up');process.exit(1)}const pid=+readFileSync(pidFile,'utf8');try{process.kill(pid,0);writeFileSync(overlap,'alive');process.exit(1)}catch{process.exit(0)}`,
       );
-      const result = await run({
-        command: [process.execPath, helper, count, pidFile, overlap],
-        cleanupGraceMs: 30,
-      });
-      expect(result).toMatchObject({ ok: true, attempts: 2 });
-      expect(existsSync(overlap)).toBe(false);
-      await assertChildRanThenDied(ctx, pidFile);
+      const boundary = installSignalBoundary({ deliverToHeldChildren: true });
+      try {
+        expect(process.kill).toBe(boundary.send);
+        lifelineServer.listen(lifelinePath);
+        await once(lifelineServer, 'listening');
+        const result = await run({
+          command: [process.execPath, helper, count, pidFile, overlap],
+          cleanupGraceMs: 30,
+          spawnFn: (...args) => boundary.hold(spawn(...args)),
+        });
+        const grandchildPid = existsSync(pidFile) ? Number(readFileSync(pidFile, 'utf8')) : NaN;
+        const inProcessTable = (pid) => {
+          try {
+            process.kill(pid, 0);
+            return true;
+          } catch {
+            return false;
+          }
+        };
+        const grandchildAliveWhenTheRunReturned =
+          Number.isInteger(grandchildPid) && grandchildPid > 1 && inProcessTable(grandchildPid);
+
+        expect({
+          result: {
+            ok: result.ok,
+            reason: result.reason,
+            cleanup: result.cleanup,
+            attempts: result.attempts,
+          },
+          attemptsStarted: readFileSync(count, 'utf8'),
+          overlapObserved: existsSync(overlap),
+          refused: boundary.refused,
+          grandchildAliveWhenTheRunReturned,
+        }).toEqual({
+          result: {
+            ok: false,
+            reason: 'cleanup-failure',
+            cleanup: 'tree-outlived-leader',
+            attempts: 1,
+          },
+          attemptsStarted: '1',
+          overlapObserved: false,
+          refused: [],
+          grandchildAliveWhenTheRunReturned: true,
+        });
+
+        await vi.waitFor(
+          () =>
+            expect(
+              lifelines.length,
+              `grandchild ${grandchildPid} never connected to the lifeline at ${lifelinePath}, so closing that lifeline cannot be what ends it`,
+            ).toBeGreaterThan(0),
+          { timeout: readinessTimeoutDefaultMs, interval: 10 },
+        );
+        releaseLifeline();
+        await assertChildRanThenDied(ctx, pidFile);
+      } finally {
+        boundary.restore();
+        releaseLifeline();
+      }
     },
-    5_000,
   );
 
   test.runIf(process.platform !== 'win32')(
@@ -1153,6 +1218,8 @@ describe('deadlines and cancellation', () => {
   );
 });
 
+const heldLeader = () => ({ pid: 4321, exitCode: null, signalCode: null });
+
 describe('POSIX owned-tree cleanup reasons', () => {
   const options = { graceMs: 1, cleanupReserveMs: 1, waitForClose: async () => false };
 
@@ -1172,7 +1239,9 @@ describe('POSIX owned-tree cleanup reasons', () => {
       sleepFn: async () => {},
       pollIntervalMs: 1,
     });
-    expect(await controller.cleanup(4321, { ...options, waitForClose: async () => true })).toEqual({
+    expect(
+      await controller.cleanup(heldLeader(), { ...options, waitForClose: async () => true }),
+    ).toEqual({
       ok: true,
       reason: 'clean',
     });
@@ -1201,7 +1270,9 @@ describe('POSIX owned-tree cleanup reasons', () => {
       sleepFn: async () => {},
       pollIntervalMs: 1,
     });
-    expect(await controller.cleanup(4321, { ...options, waitForClose: async () => true })).toEqual({
+    expect(
+      await controller.cleanup(heldLeader(), { ...options, waitForClose: async () => true }),
+    ).toEqual({
       ok: true,
       reason: 'clean',
     });
@@ -1218,7 +1289,7 @@ describe('POSIX owned-tree cleanup reasons', () => {
         if (signal !== 0) throw Object.assign(new Error('denied'), { code: 'EPERM' });
       },
     });
-    expect(await controller.cleanup(4321, options)).toEqual({
+    expect(await controller.cleanup(heldLeader(), options)).toEqual({
       ok: false,
       reason: 'signal-send-failure',
     });
@@ -1231,7 +1302,7 @@ describe('POSIX owned-tree cleanup reasons', () => {
       sleepFn: async () => {},
       pollIntervalMs: 1,
     });
-    expect(await controller.cleanup(4321, options)).toEqual({
+    expect(await controller.cleanup(heldLeader(), options)).toEqual({
       ok: false,
       reason: 'tree-survived-kill',
     });
@@ -1244,10 +1315,12 @@ describe('POSIX owned-tree cleanup reasons', () => {
         throw Object.assign(new Error('gone'), { code: 'ESRCH' });
       },
     });
-    expect(await controller.cleanup(4321, options)).toEqual({
-      ok: false,
-      reason: 'close-not-observed',
-    });
+    expect(await controller.cleanup({ pid: 4321, exitCode: 0, signalCode: null }, options)).toEqual(
+      {
+        ok: false,
+        reason: 'close-not-observed',
+      },
+    );
   });
 });
 
@@ -1288,7 +1361,7 @@ describe('Windows owned-tree adapter', () => {
       },
       sleepFn: () => Promise.resolve(),
     });
-    const cleaned = await controller.cleanup(4321, {
+    const cleaned = await controller.cleanup(heldLeader(), {
       graceMs: 50,
       waitForClose: async () => calls.length > 1,
     });
@@ -1305,7 +1378,7 @@ describe('Windows owned-tree adapter', () => {
       taskkillFn: async () => ({ ok: false }),
     });
     expect(
-      await controller.cleanup(4321, {
+      await controller.cleanup(heldLeader(), {
         graceMs: 1,
         waitForClose: async () => false,
       }),
@@ -1318,7 +1391,7 @@ describe('Windows owned-tree adapter', () => {
       taskkillFn: async () => ({ ok: true }),
     });
     expect(
-      await controller.cleanup(4321, {
+      await controller.cleanup(heldLeader(), {
         graceMs: 1,
         waitForClose: async () => false,
       }),

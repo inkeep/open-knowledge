@@ -44,6 +44,14 @@ interface VerdictRun {
   bodiesRan: string[];
   bootFailureInjected: boolean;
   workersRefusingGroupSignals: string[];
+  groupSignalsOtherThanProbes: RefusedSignal[];
+}
+
+interface RefusedSignal {
+  caller?: number;
+  worker?: string;
+  pid: number;
+  signal?: string | number;
 }
 
 interface DeclaredResult {
@@ -134,6 +142,9 @@ async function runVerdictCases(cases: string[], retries: number): Promise<Verdic
   }
 
   const reportPath = join(runDir, 'results.json');
+  const workerGroupRefusals = linesOf(join(runDir, 'refused-signals.jsonl'))
+    .map((line) => JSON.parse(line) as RefusedSignal)
+    .filter((refusal) => refusal.pid < 0 && refusal.worker !== undefined);
   return {
     cases,
     exitCode,
@@ -149,10 +160,10 @@ async function runVerdictCases(cases: string[], retries: number): Promise<Verdic
       .map((entry) => entry.slice('body-ran.'.length))
       .sort(),
     bootFailureInjected: existsSync(join(runDir, 'boot-failure-injected')),
-    workersRefusingGroupSignals: linesOf(join(runDir, 'refused-signals.jsonl')).flatMap((line) => {
-      const refusal = JSON.parse(line) as { pid: number; worker?: string };
-      return refusal.pid < 0 && refusal.worker !== undefined ? [refusal.worker] : [];
-    }),
+    workersRefusingGroupSignals: workerGroupRefusals.flatMap((refusal) =>
+      refusal.worker === undefined ? [] : [refusal.worker],
+    ),
+    groupSignalsOtherThanProbes: workerGroupRefusals.filter((refusal) => refusal.signal !== 0),
   };
 }
 
@@ -224,8 +235,12 @@ function requireRefusedDevServerReaps(run: VerdictRun): void {
   ).not.toEqual([]);
   expect(
     run.workersRefusingGroupSignals,
-    `verdict run [${run.cases.join(', ')}] ran its boot attempts in Playwright workers ${bootAttemptWorkers.join(', ')}, and each of them reaps its exited dev server by signalling that server's process group, so each must have recorded that signal as refused; a worker missing here reaped outside the refusal preload and could have signalled a real process group`,
+    `verdict run [${run.cases.join(', ')}] ran its boot attempts in Playwright workers ${bootAttemptWorkers.join(', ')}, and each of them reaps its exited dev server by probing that server's process group with signal 0, never signalling it, so each must have recorded that probe as refused; a worker missing here reaped outside the refusal preload and could have signalled a real process group`,
   ).toEqual(expect.arrayContaining(bootAttemptWorkers));
+  expect(
+    run.groupSignalsOtherThanProbes,
+    `verdict run [${run.cases.join(', ')}] reaps only dev servers whose leader has already exited, so every process-group call its workers made must be a signal-0 probe; any other signal was sent to a group whose leader teardown no longer held`,
+  ).toEqual([]);
 }
 
 const REPORTER_ERROR_MARKER = 'Error in reporter';

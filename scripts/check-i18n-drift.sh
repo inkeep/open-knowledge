@@ -11,13 +11,13 @@ LOCALES_DIR="packages/app/src/locales"
 SNAPSHOT_ROOT="$(mktemp -d)"
 SNAPSHOT_READY=0
 CATALOGS_SETTLED=0
-EXTRACT_PID=''
+EXTRACTING=0
 STAGED_RESTORE="$REPO_ROOT/$LOCALES_DIR.restore.$$"
 restore_catalogs() {
   set +e
-  if [ -n "$EXTRACT_PID" ]; then
-    kill -- "-$EXTRACT_PID" 2>/dev/null
-    wait "$EXTRACT_PID" 2>/dev/null
+  if [ "$EXTRACTING" -eq 1 ]; then
+    kill -TERM %1 2>/dev/null
+    wait %1 2>/dev/null
   fi
   if [ "$SNAPSHOT_READY" -eq 1 ] && [ "$CATALOGS_SETTLED" -eq 0 ]; then
     rm -rf "${STAGED_RESTORE:?}"
@@ -41,12 +41,12 @@ cd "$REPO_ROOT"
 UNTRACKED_BEFORE="$(git ls-files --others --exclude-standard -- "$LOCALES_DIR")"
 
 cd "$REPO_ROOT/packages/app"
-set -m
-pnpm run --silent i18n >/dev/null &
-EXTRACT_PID=$!
-set +m
-wait "$EXTRACT_PID"
-EXTRACT_PID=''
+node "$SCRIPT_DIR/run-in-own-process-group.mjs" pnpm run --silent i18n >/dev/null &
+EXTRACTING=1
+extract_status=0
+wait %1 || extract_status=$?
+EXTRACTING=0
+[ "$extract_status" -eq 0 ] || exit "$extract_status"
 
 cd "$REPO_ROOT"
 UNTRACKED_AFTER="$(git ls-files --others --exclude-standard -- "$LOCALES_DIR")"

@@ -46,18 +46,12 @@ async function assertNoOrphan(killSignal: 'SIGTERM' | 'SIGKILL'): Promise<void> 
     kill: (signal: NodeJS.Signals) => child.kill(signal),
     exited: once(child, 'exit'),
   };
-  let shellPid: number | null = null;
   try {
-    shellPid = await readShellPid(proc.stdout, 20_000);
+    const shellPid = await readShellPid(proc.stdout, 20_000);
     expect(isProcessAlive(shellPid)).toBe(true);
     proc.kill(killSignal);
     expect(await waitForReaped(shellPid, 10_000)).toBe(true);
   } finally {
-    if (shellPid !== null && isProcessAlive(shellPid)) {
-      try {
-        process.kill(shellPid, 'SIGKILL');
-      } catch {}
-    }
     proc.kill('SIGKILL');
     await proc.exited;
   }

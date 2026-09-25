@@ -2,9 +2,9 @@ import { docsUrl } from '../docs.mjs';
 
 const URL = docsUrl('no-sentinel-signal-target');
 
-const LITERAL_MESSAGE = `Signal target is a literal 0, 1 or -1 — on POSIX that addresses the caller's whole process group, init, or every process the user owns, never a child. Signal only a pid you spawned — the ChildProcess handle, or its pid taken from that handle, negated for the group only if you spawned it detached. See ${URL}`;
+const LITERAL_MESSAGE = `Signal target is a literal 0, 1 or -1 — on POSIX that addresses the caller's whole process group, init, or every process the user owns, never a child. Signal only a pid you spawned, and only while it has not exited — the ChildProcess handle, or its pid taken from that handle, negated for the group only if you spawned it detached. See ${URL}`;
 const FALLBACK_MESSAGE = `A \`?? <n>\` / \`|| <n>\` fallback fabricates a signal target when the pid is missing, and \`kill(0, …)\` reaches the caller's own process group. Filter the nullable pid out instead of substituting a sentinel. See ${URL}`;
-const PARSED_MESSAGE = `A pid parsed from text reaches \`process.kill\` unvalidated — an empty pidfile yields \`0\` or \`NaN\` depending on the parser, and a stale one yields a pid that now belongs to some other process. Validate it with \`isValidLockPid()\` from @inkeep/open-knowledge-server before signalling. See ${URL}`;
+const PARSED_MESSAGE = `A pid parsed from text reaches \`process.kill\` — an empty pidfile yields \`0\` or \`NaN\` depending on the parser, and a stale pid names whatever process holds the number now. \`isValidLockPid()\` checks only its range, not who owns it. Signal the \`ChildProcess\` you spawned instead; if you hold no handle for the process it names, stop that process through its owner, or report it. See ${URL}`;
 
 const SEAM_SENDER_INDEX = new Map([
   ['signalOwnedGroup', 2],
@@ -104,7 +104,7 @@ export const noSentinelSignalTarget = {
     type: 'problem',
     docs: {
       description:
-        'process.kill and the owned-process reaper never receive a literal, fallback-fabricated or unvalidated-parsed pid.',
+        'process.kill and the owned-process reaper never receive a literal, fallback-fabricated or parsed pid.',
       url: URL,
     },
   },
