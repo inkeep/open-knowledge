@@ -57,6 +57,22 @@ describe('observation CLI v1 captured process', () => {
     120_000,
   );
 
+  test('ps inventories independently of malformed project config', () => {
+    const configPath = join(projectDir, '.ok', 'config.yml');
+    writeFileSync(configPath, 'server:\n  port: 99999999\n');
+    try {
+      const result = atProject('ps', ['--format', 'json-v1']);
+      expect(result.exitCode).toBe(0);
+      const document = JSON.parse(result.stdout);
+      expect(document.result).toMatchObject({ kind: 'success', code: 'inventoried' });
+      expect(Array.isArray(document.servers)).toBe(true);
+      const status = atProject('status', ['--format', 'json-v1']);
+      expect(JSON.parse(status.stdout).result.code).toBe('project-unavailable');
+    } finally {
+      writeFileSync(configPath, '{}\n');
+    }
+  }, 60_000);
+
   test.each(['status', 'ps'] as const)(
     '%s parser errors emit no document',
     (command) => {

@@ -46,6 +46,7 @@ import { skillsCommand } from './commands/skills.ts';
 import { runStartCommand, startCommand } from './commands/start.ts';
 import { type ObservationContext, statusCommand } from './commands/status.ts';
 import { stopCommand } from './commands/stop.ts';
+import { requiresProjectConfigForV1 } from './commands/supervision-scope.ts';
 import { syncCommand } from './commands/sync.ts';
 import { uninstallCommand } from './commands/uninstall.ts';
 import { PACKAGE_VERSION } from './constants.ts';
@@ -105,6 +106,10 @@ program
           },
           failure: null,
         };
+        if (!requiresProjectConfigForV1(observationName, actionCommand.args)) {
+          initCliLogger({ command: observationName, cwd: process.cwd() });
+          return;
+        }
         const loaded = loadConfig(anchorRoot ?? cwd);
         resolvedConfig = loaded.config;
         for (const key of loaded.ignoredCommittedKeys) {
