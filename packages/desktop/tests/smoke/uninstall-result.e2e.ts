@@ -18,6 +18,7 @@ import { type Browser, chromium, _electron as electron, expect, test } from '@pl
 import { buildDesktopUninstallHandoffScript } from '../../src/main/desktop-uninstall-handoff';
 import { captureAppProcess, closeAppBounded } from './_helpers/electron-cleanup';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { SMOKE_ENABLED } from './_helpers/platform-gate';
 
 const TARGET = resolveDesktopTarget();
 const DARWIN = process.platform === 'darwin';
@@ -40,6 +41,7 @@ function closeOrRecord(proc: Parameters<typeof closeAppBounded>[0]): Promise<voi
 }
 
 test.describe('isolated uninstall completion', () => {
+  test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'macOS uninstall handoff');
   test.skip(!TARGET.exists, TARGET.missingReason);
   for (const success of [true, false]) {
@@ -174,6 +176,7 @@ test.describe('isolated uninstall completion', () => {
 });
 
 test.describe('continuous uninstall handoff', () => {
+  test.skip(!SMOKE_ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1 to run Electron smoke tests.');
   test.skip(!DARWIN, 'macOS uninstall handoff');
   test.skip(!TARGET.exists, TARGET.missingReason);
   for (const success of [true, false]) {
