@@ -3,11 +3,8 @@
 import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { realPublishedReleaseTags } from './published-release-tags.mjs';
-import {
-  realContains,
-  realFindMirroredCommits,
-  resolveShippedVersion,
-} from './resolve-shipped-version.mjs';
+import { realFindMirroredCommits, resolveShippedVersion } from './resolve-shipped-version.mjs';
+import { createTagContainment } from './tag-containment.mjs';
 
 const BETA_VERSION_RE = /-beta\.\d+$/;
 const PRIVATE_PR_RE = /github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/;
@@ -189,7 +186,7 @@ async function fetchPipeline() {
   return { releaseByVersion, tickets: [...tickets.values()] };
 }
 
-function resolveTicket(ticket, releaseTags, rank) {
+function resolveTicket(ticket, releaseTags, rank, contains) {
   let best = null;
   let provenNotShipped = false;
   for (const url of ticket.prs) {
@@ -203,7 +200,7 @@ function resolveTicket(ticket, releaseTags, rank) {
       privateSha: sha,
       stableTags: releaseTags,
       findMirroredCommits: realFindMirroredCommits,
-      contains: realContains,
+      contains,
     });
     if (r.shipped) {
       if (best === null || rank.get(r.tag) < rank.get(best)) best = r.tag;
@@ -231,8 +228,9 @@ async function main() {
   log(`Considering ${tickets.length} ticket(s) across ${releaseByVersion.size} release(s).`);
 
   const plans = [];
+  const contains = createTagContainment();
   for (const ticket of tickets) {
-    const { evidence, shippedTag } = resolveTicket(ticket, releaseTags, rank);
+    const { evidence, shippedTag } = resolveTicket(ticket, releaseTags, rank, contains);
     const plan = planTicketReconciliation({
       attachedReleases: ticket.attachedReleases,
       shippedTag,

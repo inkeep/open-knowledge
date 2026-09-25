@@ -15,6 +15,7 @@ import {
   resolveShippedVersion,
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
+import { createTagContainment } from './tag-containment.mjs';
 import {
   compareVersions,
   composeReply,
@@ -681,17 +682,6 @@ function realFindMirroredCommits(privateSha) {
   return commits;
 }
 
-function realContains(tag, sha) {
-  const res = spawnSync('git', ['merge-base', '--is-ancestor', sha, `${tag}^{commit}`], {
-    encoding: 'utf8',
-  });
-  if (res.status === 0) return true;
-  if (res.status === 1) return false;
-  throw new Error(
-    `git merge-base --is-ancestor ${sha} ${tag} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
-  );
-}
-
 export function selectGhToken({ owner, repo, env }) {
   const crossRepo = String(env.CROSS_REPO_TOKEN ?? '').trim();
   if (!crossRepo) return null;
@@ -870,12 +860,13 @@ async function main() {
 
   const stableTags = realPublishedReleaseTags();
   requirePublishedRelease(releaseTag, stableTags);
+  const contains = createTagContainment();
   const versionFor = (node) =>
     deriveVersionForFixRefs({
       fixReferences: partitionAttachments(node.attachmentUrls ?? []).fixReferences,
       stableTags,
       findMirroredCommits: realFindMirroredCommits,
-      contains: realContains,
+      contains,
       resolvePrMergeSha: realResolvePrMergeSha,
       readCommitMessage: realReadCommitMessage,
       channel,

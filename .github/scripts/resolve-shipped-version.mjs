@@ -4,6 +4,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { realPublishedReleaseTags, sortReleaseTagsAscending } from './published-release-tags.mjs';
+import { createTagContainment } from './tag-containment.mjs';
 
 const STABLE_TAG_RE = /^v(\d+)\.(\d+)\.(\d+)$/;
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
@@ -154,17 +155,6 @@ export function realFindMirroredCommits(privateSha) {
   return commits;
 }
 
-export function realContains(tag, sha) {
-  const res = spawnSync('git', ['merge-base', '--is-ancestor', sha, `${tag}^{commit}`], {
-    encoding: 'utf8',
-  });
-  if (res.status === 0) return true;
-  if (res.status === 1) return false;
-  throw new Error(
-    `git merge-base --is-ancestor ${sha} ${tag} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
-  );
-}
-
 function realResolvePrMergeSha({ owner, repo, number }) {
   let out;
   try {
@@ -207,7 +197,7 @@ function main() {
       privateSha,
       stableTags: realPublishedReleaseTags(),
       findMirroredCommits: realFindMirroredCommits,
-      contains: realContains,
+      contains: createTagContainment(),
     });
   } catch (err) {
     console.error(`::error::resolve-shipped-version: ${err.message}`);
