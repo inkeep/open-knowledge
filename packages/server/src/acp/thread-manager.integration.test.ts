@@ -7075,6 +7075,12 @@ function logCount(warn: ReturnType<typeof vi.spyOn>, message: string): number {
   return warn.mock.calls.filter((call) => call[1] === message).length;
 }
 
+function hasLaunchFailureEntry(logPath: string, threadId: string): boolean {
+  if (!existsSync(logPath)) return false;
+  const text = readFileSync(logPath, 'utf8');
+  return text.includes(`thread=${threadId}`) && text.endsWith('\n\n');
+}
+
 async function withNpxLaunchFixture(
   mode: NpxEnoentMode,
   run: (fixture: {
@@ -7177,7 +7183,11 @@ describe('launch failure diagnostics and npx cache recovery', () => {
       const statuses = await statusesOf(manager, info.threadId);
       expect(statuses.filter((status) => status === 'error')).toHaveLength(1);
       const logPath = join(localDir, ACP_LAUNCH_FAILURE_LOG);
-      await waitUntil(() => existsSync(logPath), 5_000, 'launch failure log');
+      await waitUntil(
+        () => hasLaunchFailureEntry(logPath, info.threadId),
+        5_000,
+        'launch failure log entry',
+      );
       const logText = readFileSync(logPath, 'utf8');
       expect(logText.match(/=== acp launch failure /g)).toHaveLength(1);
       expect(logText).toContain(
@@ -7279,7 +7289,11 @@ describe('launch failure diagnostics and npx cache recovery', () => {
     expect(existsSync(entryDir)).toBe(true);
     expect(logCount(warn, NPX_RELAUNCH_LOG)).toBe(0);
     const logPath = join(localDir, ACP_LAUNCH_FAILURE_LOG);
-    await waitUntil(() => existsSync(logPath), 5_000, 'launch failure log');
+    await waitUntil(
+      () => hasLaunchFailureEntry(logPath, info.threadId),
+      5_000,
+      'launch failure log entry',
+    );
     const logText = readFileSync(logPath, 'utf8');
     expect(logText).toContain(
       `thread=${info.threadId} agent=npx-cache source=custom reason=connect ===`,
@@ -7303,7 +7317,11 @@ describe('launch failure diagnostics and npx cache recovery', () => {
       'session setup failure',
     );
     const logPath = join(localDir, ACP_LAUNCH_FAILURE_LOG);
-    await waitUntil(() => existsSync(logPath), 5_000, 'launch failure log');
+    await waitUntil(
+      () => hasLaunchFailureEntry(logPath, info.threadId),
+      5_000,
+      'launch failure log entry',
+    );
     const logText = readFileSync(logPath, 'utf8');
     expect(logText).toContain(
       `thread=${info.threadId} agent=broken-agent source=custom reason=session-setup ===\nsession setup failed: Failed to initialize session services`,

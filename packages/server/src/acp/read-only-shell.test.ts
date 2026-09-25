@@ -34,8 +34,11 @@ describe('isReadOnlyShellCommand', () => {
         'git --no-pager diff HEAD~1 -- README.md',
         'git branch --show-current',
         'git branch -r',
+        'git branch -avv --no-color',
+        "git branch --sort=-committerdate --format='%(refname:short)'",
         'git tag --list',
         'git tag -l',
+        'git tag -n3 --sort=version:refname',
         'git remote -v',
         'git stash list',
         'git config --get remote.origin.url',
@@ -48,7 +51,7 @@ describe('isReadOnlyShellCommand', () => {
         'echo $HOME; pwd',
         `echo "${DOLLAR_BRACE}HOME}/.ok" | wc -c`,
         'which node || command -v node',
-        "printf '%s\\n' \"$PATH\" | tr ':' '\\n'",
+        "echo \"$PATH\" | tr ':' '\\n'",
         'du -sh .ok 2>/dev/null',
         'test -f .ok/local/server.lock && echo locked',
         '/bin/ls -la',
@@ -78,8 +81,15 @@ describe('isReadOnlyShellCommand', () => {
         'git branch -D feature',
         'git branch new-branch',
         'git branch --set-upstream-to=origin/main',
+        'git branch --set-upstream-t=origin/main',
+        'git branch --unset-up',
+        'git branch -uorigin/main',
+        'git branch -vuorigin/main',
         'git branch --track=inherit',
+        'git branch --rem',
         'git tag --force=v1',
+        'git tag -a v1',
+        'git tag -d v1',
         'git tag v1.0.0',
         'git remote add origin x',
         'git stash pop',
@@ -190,6 +200,200 @@ describe('isReadOnlyShellCommand', () => {
     );
     expectReadOnly(
       ['ls $DIR', 'cat $FILE', 'grep $PATTERN *.md', 'echo $X', 'ls {a,b}', 'cat notes.{md,txt}'],
+      true,
+    );
+  });
+
+  test("an input redirection's target is never read as one of the program's arguments", () => {
+    expectReadOnly(
+      [
+        'git <-C branch log -D feature',
+        'git < -C branch status --set-upstream-to=origin/main',
+        "git <'-C' branch log -D feature",
+        'git 0<-C branch log -D feature',
+        'curl <-A -o/tmp/x https://example.com/x',
+        'cat <$FILE',
+        'cat <*.md',
+        'cat <>notes.md',
+        'cat <',
+        'cat < ; ls',
+        "git branch '2'>/dev/null",
+        "git branch ''7<README.md",
+        'git branch "3"<notes.md',
+        'git branch \\2>/dev/null',
+        "uniq README.md '2'>/dev/null",
+        'git branch 12>/dev/null',
+        'git tag 10>/dev/null',
+        'git branch 34<notes.md',
+        'uniq notes.md 56>/dev/null',
+        'git -C 12>/dev/null log branch -D feature',
+        'ls >&1x',
+        'ls 2>&12',
+        "ls >/dev/null'x'",
+        'echo x &>/dev/null touch pwned',
+        'ls &>/dev/null',
+        'echo payload >>&1',
+        'ls 2>>&1',
+        'ls >|&1',
+      ],
+      false,
+    );
+    expectReadOnly(
+      [
+        'cat <notes.md',
+        'wc -l < "notes.md"',
+        'wc -l 0<notes.md',
+        "wc -l <'notes.md' 2>/dev/null",
+        'sort < names.txt | uniq -c',
+        'ls 2>/dev/null|head',
+        'ls 2>&1;pwd',
+        'ls 2>/dev/null&&pwd',
+        'ls >/dev/null 2>&1',
+        'ls 2>&-',
+      ],
+      true,
+    );
+  });
+
+  test('an abbreviated spelling of an option git refuses in full is refused too', () => {
+    expectReadOnly(
+      [
+        'git grep --op needle',
+        'git grep --open-files=sh needle',
+        'git grep --open-files-in-p=sh needle',
+        'git cat-file --textc HEAD:README.md',
+        'git cat-file --filters HEAD:README.md',
+        'git grep --textc needle',
+      ],
+      false,
+    );
+    expectReadOnly(
+      [
+        'git grep -n pattern',
+        'git grep -e a --or -e b',
+        'git grep --text needle',
+        'git cat-file -p HEAD:README.md',
+      ],
+      true,
+    );
+  });
+
+  test('printf always prompts, and sort or date may not use an abbreviated refused option', () => {
+    expectReadOnly(
+      [
+        'printf -v PATH %s bin; git status',
+        'printf -vX %s y',
+        'printf $FMT x',
+        'printf %n PATH; git status',
+        'printf "ab%n" V',
+        'printf %5n X',
+        "printf '%1$n' X",
+        'printf "%hn" X',
+        'printf "%jn" X',
+        'printf "%ln" X',
+        'printf "%Ln" X',
+        'printf "%qn" X',
+        'printf "%tn" X',
+        'printf "%zn" X',
+        'printf "%%%n" X',
+        "printf '%\\156' PATH; git status",
+        "printf '%\\x6e' X",
+        "printf '\\x25n' X",
+        "printf '%\\u006e' X",
+        'printf "%s\\n" hello',
+        'printf "%s" "$HOME"',
+        "printf '%%n is a literal'",
+        "printf 'tab\\there\\n'",
+        'printf',
+        'sort --o=README.md README.md',
+        'sort --outp=out.txt names.txt',
+        'sort -S1 --co=./x big.txt',
+        'sort --c=./x big.txt',
+        'sort --t=/tmp names.txt',
+        'date --s="2026-01-01"',
+        'date --se "2026-01-01"',
+      ],
+      false,
+    );
+    expectReadOnly(['sort --check names.txt', 'sort -rn counts.txt', 'date --utc'], true);
+  });
+
+  test('inside double quotes a backslash escapes only $, a backtick, a double quote, a backslash or a newline', () => {
+    expectReadOnly(
+      [
+        'git branch "-\\v"',
+        'git tag "-\\l" "v*"',
+        'git grep "--open-files-in-pa\\\nger=./evil" pattern',
+        'git grep --open-files-in-pa\\\nger=./evil pattern',
+      ],
+      false,
+    );
+    expectReadOnly(
+      [
+        'git branch "-v"',
+        'echo "cost: \\$5"',
+        'echo "say \\"hi\\""',
+        'echo "a\\\\b"',
+        'echo "one\\\ntwo"',
+      ],
+      true,
+    );
+  });
+
+  test('a command word that names a built-in object member is not a policy', () => {
+    expectReadOnly(
+      [
+        'git toString x',
+        'git constructor --x',
+        'git __proto__ a',
+        'constructor x',
+        'toString',
+        'hasOwnProperty x',
+      ],
+      false,
+    );
+  });
+
+  test('a git format or sort that runs the signature check is not read-only', () => {
+    expectReadOnly(
+      [
+        "git branch --format='%(signature)'",
+        "git branch --format='%(refname:short) %(*signature:grade)'",
+        'git branch --sort=signature:key',
+        'git tag -l --sort=-signature',
+        "git tag -l --sort='*signature'",
+        'git log --format=%GG',
+        "git log --pretty='format:%h %G?'",
+        'git show --format=%GS HEAD',
+        "git for-each-ref --format '%(signature)'",
+        "git for-each-ref --form='%(signature)'",
+        "git for-each-ref --fo '%(signature)'",
+        'git for-each-ref --so=signature',
+        "git for-each-ref --f='%(signature:grade)'",
+        'git shortlog -s --group=format:%GG',
+        'git shortlog --group format:%G?',
+        'git shortlog --gr=format:%GS',
+        'git log --format=%+GG',
+        "git log '--format=% GS'",
+        'git log --format=%-GK',
+        'git log --format=%Gx',
+        'git log --format=%G',
+        'git log --format=%GF',
+        'git log --format=%GP',
+        'git log --format=%GT',
+        'git log --show-signature',
+      ],
+      false,
+    );
+    expectReadOnly(
+      [
+        "git log --format='%h %s'",
+        "git log --date=format:'%G-%V' -1",
+        "git for-each-ref --format='%(refname)'",
+        "git for-each-ref --sort=-committerdate --format='%(refname:short)'",
+        'git shortlog -sn --group=author',
+        'ls 2>/dev/null',
+      ],
       true,
     );
   });

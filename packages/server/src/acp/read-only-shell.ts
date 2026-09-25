@@ -40,7 +40,6 @@ const READ_ONLY_WITH_ANY_ARGUMENTS: ReadonlySet<string> = new Set([
   'nl',
   'od',
   'pgrep',
-  'printf',
   'ps',
   'pwd',
   'readlink',
@@ -88,6 +87,8 @@ const FD_DIGITS = /^[0-9]+$/;
 
 const DEV_NULL = '/dev/null';
 
+const DOUBLE_QUOTE_ESCAPABLE: ReadonlySet<string> = new Set(['$', '`', '"', '\\', '\n']);
+
 const WORD_TERMINATORS: ReadonlySet<string> = new Set([
   ' ',
   '\t',
@@ -102,6 +103,17 @@ const WORD_TERMINATORS: ReadonlySet<string> = new Set([
   '`',
   '"',
   "'",
+]);
+
+const REDIRECT_TARGET_ENDS: ReadonlySet<string> = new Set([
+  ' ',
+  '\t',
+  '\n',
+  ';',
+  '|',
+  '&',
+  '<',
+  '>',
 ]);
 
 const FIND_MUTATORS: ReadonlySet<string> = new Set([
@@ -142,45 +154,77 @@ const GIT_READ_SUBCOMMANDS: ReadonlySet<string> = new Set([
 
 const GIT_REJECTED_ARGUMENTS: ReadonlySet<string> = new Set([
   '--ext-diff',
-  '--open-files-in-pager',
   '--output',
-  '--show-signature',
   '--textconv',
 ]);
 
-const GIT_REJECTED_PREFIXES = ['--output=', '--open-files-in-pager='];
-
-const GIT_BRANCH_MUTATORS: ReadonlySet<string> = new Set([
-  '-c',
-  '-C',
-  '-d',
-  '-D',
-  '-f',
-  '-m',
-  '-M',
-  '-u',
-  '--copy',
-  '--delete',
-  '--edit-description',
-  '--force',
-  '--move',
-  '--set-upstream-to',
-  '--track',
-  '--no-track',
-  '--unset-upstream',
+const GIT_ABBREVIABLE_REJECTS: ReadonlyMap<
+  string,
+  readonly (readonly [option: string, shortest: string])[]
+> = new Map([
+  [
+    'cat-file',
+    [
+      ['--filters', '--f'],
+      ['--textconv', '--t'],
+    ],
+  ],
+  [
+    'grep',
+    [
+      ['--open-files-in-pager', '--o'],
+      ['--textconv', '--textc'],
+    ],
+  ],
 ]);
 
-const GIT_TAG_MUTATORS: ReadonlySet<string> = new Set([
-  '-a',
-  '-d',
-  '-f',
-  '-F',
-  '-m',
-  '-s',
-  '-u',
-  '--delete',
-  '--force',
+const GIT_FORMAT_OPTIONS = ['--format', '--group', '--pretty', '--sort'];
+
+const SIGNATURE_CHECK_FORMAT = /signature|%[-+ ]?G/;
+
+const GIT_REJECTED_PREFIXES = ['--output='];
+
+const GIT_BRANCH_LISTING_OPTIONS: ReadonlySet<string> = new Set([
+  '--abbrev',
+  '--all',
+  '--color',
+  '--column',
+  '--contains',
+  '--format',
+  '--ignore-case',
+  '--list',
+  '--merged',
+  '--no-abbrev',
+  '--no-color',
+  '--no-column',
+  '--no-contains',
+  '--no-merged',
+  '--points-at',
+  '--remotes',
+  '--show-current',
+  '--sort',
+  '--verbose',
 ]);
+
+const GIT_BRANCH_LISTING_LETTERS = 'arvli';
+
+const GIT_TAG_LISTING_OPTIONS: ReadonlySet<string> = new Set([
+  '--color',
+  '--column',
+  '--contains',
+  '--format',
+  '--ignore-case',
+  '--list',
+  '--merged',
+  '--no-color',
+  '--no-column',
+  '--no-contains',
+  '--no-merged',
+  '--points-at',
+  '--sort',
+]);
+
+const GIT_TAG_LISTING_LETTERS = 'lni0123456789';
 
 const HOSTNAME_FLAGS: ReadonlySet<string> = new Set([
   '-A',
@@ -283,8 +327,11 @@ function splitStatements(command: string): Word[][] | null {
   let words: Word[] = [];
   let text = '';
   let literal = true;
+  let plain = true;
   let inWord = false;
   let quote: '"' | "'" | null = null;
+  let redirectTarget = false;
+  let invalidRedirect = false;
   const append = (part: string, isLiteral: boolean): void => {
     text += part;
     inWord = true;
@@ -292,23 +339,32 @@ function splitStatements(command: string): Word[][] | null {
   };
   const endWord = (): void => {
     if (!inWord) return;
-    words.push({ text, literal });
+    if (redirectTarget) {
+      redirectTarget = false;
+      if (!literal) invalidRedirect = true;
+    } else {
+      words.push({ text, literal });
+    }
     text = '';
     literal = true;
+    plain = true;
     inWord = false;
   };
   const endStatement = (): void => {
     endWord();
+    if (redirectTarget) invalidRedirect = true;
     if (words.length > 0) statements.push(words);
     words = [];
   };
-  const dropFdPrefix = (): void => {
-    if (inWord && literal && FD_DIGITS.test(text)) {
+  const dropFdPrefix = (): boolean => {
+    if (inWord && literal && plain && FD_DIGITS.test(text)) {
+      if (text.length > 1) return false;
       text = '';
       inWord = false;
-    } else {
-      endWord();
+      return true;
     }
+    endWord();
+    return true;
   };
   let i = 0;
   while (i < chars.length) {
@@ -333,8 +389,8 @@ function splitStatements(command: string): Word[][] | null {
         i = after;
         continue;
       }
-      if (c === '\\' && next !== undefined) {
-        append(next, true);
+      if (c === '\\' && next !== undefined && DOUBLE_QUOTE_ESCAPABLE.has(next)) {
+        if (next !== '\n') append(next, true);
         i += 2;
         continue;
       }
@@ -345,12 +401,16 @@ function splitStatements(command: string): Word[][] | null {
     if (c === "'" || c === '"') {
       quote = c;
       inWord = true;
+      plain = false;
       i += 1;
       continue;
     }
     if (c === '\\') {
       if (next === undefined) return null;
-      if (next !== '\n') append(next, true);
+      if (next !== '\n') {
+        append(next, true);
+        plain = false;
+      }
       i += 2;
       continue;
     }
@@ -386,33 +446,27 @@ function splitStatements(command: string): Word[][] | null {
         i += 2;
         continue;
       }
-      if (next === '>') {
-        endWord();
-        const after = readDevNullTarget(chars, i + 2);
-        if (after === null) return null;
-        i = after;
-        continue;
-      }
       return null;
     }
     if (c === '>') {
-      dropFdPrefix();
-      let j = i + 1;
-      if (chars[j] === '>' || chars[j] === '|') j += 1;
-      if (chars[j] === '&') {
-        const after = readFdDuplicate(chars, j + 1);
+      if (!dropFdPrefix() || redirectTarget) return null;
+      if (next === '&') {
+        const after = readFdDuplicate(chars, i + 2);
         if (after === null) return null;
         i = after;
         continue;
       }
+      let j = i + 1;
+      if (chars[j] === '>' || chars[j] === '|') j += 1;
       const after = readDevNullTarget(chars, j);
       if (after === null) return null;
       i = after;
       continue;
     }
     if (c === '<') {
-      if (next === '<' || next === '(' || next === '&') return null;
-      dropFdPrefix();
+      if (next === '<' || next === '(' || next === '&' || next === '>') return null;
+      if (!dropFdPrefix() || redirectTarget) return null;
+      redirectTarget = true;
       i += 1;
       continue;
     }
@@ -426,7 +480,7 @@ function splitStatements(command: string): Word[][] | null {
   }
   if (quote !== null) return null;
   endStatement();
-  return statements;
+  return invalidRedirect ? null : statements;
 }
 
 function readParameter(
@@ -469,11 +523,15 @@ function readParameter(
   return start + 1;
 }
 
+function endsRedirectTarget(chars: readonly string[], index: number): boolean {
+  const next = chars[index];
+  return next === undefined || REDIRECT_TARGET_ENDS.has(next);
+}
+
 function readFdDuplicate(chars: readonly string[], start: number): number | null {
-  if (chars[start] === '-') return start + 1;
-  let i = start;
-  while (i < chars.length && FD_DIGITS.test(chars[i] ?? '')) i += 1;
-  return i === start ? null : i;
+  const target = chars[start] ?? '';
+  if (target !== '-' && !FD_DIGITS.test(target)) return null;
+  return endsRedirectTarget(chars, start + 1) ? start + 1 : null;
 }
 
 function readDevNullTarget(chars: readonly string[], start: number): number | null {
@@ -484,7 +542,7 @@ function readDevNullTarget(chars: readonly string[], start: number): number | nu
     target += chars[i];
     i += 1;
   }
-  return target === DEV_NULL ? i : null;
+  return target === DEV_NULL && endsRedirectTarget(chars, i) ? i : null;
 }
 
 function isReadOnlySimpleCommand(statement: readonly Word[]): boolean {
@@ -501,7 +559,7 @@ function isReadOnlySimpleCommand(statement: readonly Word[]): boolean {
   const program = programName(head.text);
   if (program === null) return false;
   if (READ_ONLY_WITH_ANY_ARGUMENTS.has(program)) return true;
-  const policy = RESTRICTED_PROGRAMS[program];
+  const policy = RESTRICTED_PROGRAMS.get(program);
   if (policy === undefined) return false;
   const args = words.slice(1);
   if (!args.every((word) => word.literal)) return false;
@@ -529,24 +587,58 @@ function optionName(arg: string): string {
   return arg.split('=', 1)[0] ?? arg;
 }
 
-const RESTRICTED_PROGRAMS: Readonly<Record<string, ArgumentPolicy>> = {
-  command: (args) => (args[0] === '-v' || args[0] === '-V') && args.length > 1,
-  curl: isReadOnlyCurl,
-  date: (args) => !args.some((arg) => arg.startsWith('--set') || shortClusterHas(arg, 's')),
-  find: (args) => !args.some((arg) => FIND_MUTATORS.has(arg)),
-  git: isReadOnlyGit,
-  hostname: (args) => args.every((arg) => HOSTNAME_FLAGS.has(arg)),
-  sort: (args) =>
-    !args.some(
-      (arg) =>
-        arg.startsWith('--output') ||
-        arg.startsWith('--temporary-directory') ||
-        arg.startsWith('--compress-program') ||
-        shortClusterHas(arg, 'oT'),
-    ),
-  tree: (args) => !args.some((arg) => shortClusterHas(arg, 'o')),
-  uniq: (args) => args.filter(isOperand).length <= 1,
-};
+function abbreviates(arg: string, option: string, shortest: string): boolean {
+  if (!arg.startsWith('--')) return false;
+  const name = optionName(arg);
+  return name.startsWith(shortest) && option.startsWith(name);
+}
+
+function requestsSignatureCheck(args: readonly string[]): boolean {
+  return args.some((arg, index) => {
+    if (arg === '--show-signature') return true;
+    if (!GIT_FORMAT_OPTIONS.some((option) => abbreviates(arg, option, option.slice(0, 3)))) {
+      return false;
+    }
+    const name = optionName(arg);
+    const value = name === arg ? (args[index + 1] ?? '') : arg.slice(name.length + 1);
+    return SIGNATURE_CHECK_FORMAT.test(value);
+  });
+}
+
+function isListingOption(
+  arg: string,
+  longOptions: ReadonlySet<string>,
+  shortLetters: string,
+): boolean {
+  if (arg.startsWith('--')) return longOptions.has(optionName(arg));
+  if (!arg.startsWith('-') || arg.length < 2) return false;
+  return Array.from(arg.slice(1)).every((letter) => shortLetters.includes(letter));
+}
+
+const RESTRICTED_PROGRAMS: ReadonlyMap<string, ArgumentPolicy> = new Map<string, ArgumentPolicy>([
+  ['command', (args) => (args[0] === '-v' || args[0] === '-V') && args.length > 1],
+  ['curl', isReadOnlyCurl],
+  [
+    'date',
+    (args) => !args.some((arg) => abbreviates(arg, '--set', '--s') || shortClusterHas(arg, 's')),
+  ],
+  ['find', (args) => !args.some((arg) => FIND_MUTATORS.has(arg))],
+  ['git', isReadOnlyGit],
+  ['hostname', (args) => args.every((arg) => HOSTNAME_FLAGS.has(arg))],
+  [
+    'sort',
+    (args) =>
+      !args.some(
+        (arg) =>
+          abbreviates(arg, '--output', '--o') ||
+          abbreviates(arg, '--temporary-directory', '--t') ||
+          abbreviates(arg, '--compress-program', '--c') ||
+          shortClusterHas(arg, 'oT'),
+      ),
+  ],
+  ['tree', (args) => !args.some((arg) => shortClusterHas(arg, 'o'))],
+  ['uniq', (args) => args.filter(isOperand).length <= 1],
+]);
 
 function isReadOnlyGit(args: readonly string[]): boolean {
   let i = 0;
@@ -565,11 +657,14 @@ function isReadOnlyGit(args: readonly string[]): boolean {
   const subcommand = args[i];
   if (subcommand === undefined) return false;
   const rest = args.slice(i + 1);
+  const abbreviableRejects = GIT_ABBREVIABLE_REJECTS.get(subcommand) ?? [];
   if (
+    requestsSignatureCheck(rest) ||
     rest.some(
       (arg) =>
         GIT_REJECTED_ARGUMENTS.has(arg) ||
         GIT_REJECTED_PREFIXES.some((prefix) => arg.startsWith(prefix)) ||
+        abbreviableRejects.some(([option, shortest]) => abbreviates(arg, option, shortest)) ||
         shortClusterHas(arg, 'O'),
     )
   ) {
@@ -578,9 +673,13 @@ function isReadOnlyGit(args: readonly string[]): boolean {
   if (GIT_READ_SUBCOMMANDS.has(subcommand)) return true;
   switch (subcommand) {
     case 'branch':
-      return rest.every((arg) => arg.startsWith('-') && !GIT_BRANCH_MUTATORS.has(optionName(arg)));
+      return rest.every((arg) =>
+        isListingOption(arg, GIT_BRANCH_LISTING_OPTIONS, GIT_BRANCH_LISTING_LETTERS),
+      );
     case 'tag':
-      return rest.every((arg) => arg.startsWith('-') && !GIT_TAG_MUTATORS.has(optionName(arg)));
+      return rest.every((arg) =>
+        isListingOption(arg, GIT_TAG_LISTING_OPTIONS, GIT_TAG_LISTING_LETTERS),
+      );
     case 'remote':
       return (
         rest.every((arg) => arg === '-v' || arg === '--verbose') ||
