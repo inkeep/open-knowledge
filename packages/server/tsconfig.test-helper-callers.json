@@ -4,6 +4,7 @@
   "files": [
     "src/expect-stable.test.ts",
     "src/file-watcher-chokidar-fallback.test.ts",
+    "src/file-watcher-chokidar-readiness.test.ts",
     "src/managed-artifact-watcher.test.ts",
     "src/persistence-tripwire-block.test.ts",
     "src/persistence-tripwire-paste.test.ts",

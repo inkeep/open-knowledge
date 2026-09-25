@@ -6,6 +6,7 @@ import {
   realpathSync,
   type Stats,
   statSync,
+  watch as watchFsPath,
 } from 'node:fs';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { basename, dirname, extname, join, relative } from 'node:path';
@@ -1537,6 +1538,21 @@ export function isChokidarPathIgnored(
 
 const CHOKIDAR_READY_TIMEOUT_MS = 10_000;
 
+/* UPSTREAM(nodejs/node#52601, libuv/libuv#3866, libuv/libuv#637): a macOS directory fs.watch
+   returns before FSEvents covers its path; closing one waits for the stream rebuild that covers
+   every earlier registration. */
+function waitForPendingFsEventsRegistrations(dir: string, platform: NodeJS.Platform): void {
+  if (platform !== 'darwin') return;
+  try {
+    watchFsPath(dir).close();
+  } catch (err) {
+    log.warn(
+      { err },
+      'could not wait for FSEvents to cover the chokidar-watched directories; a change made right after start may be missed',
+    );
+  }
+}
+
 async function startChokidarWatcher(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
@@ -1545,6 +1561,7 @@ async function startChokidarWatcher(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
+  platform: NodeJS.Platform,
   onRawBatch?: (absPaths: readonly string[]) => void,
 ): Promise<AsyncSubscription> {
   const { watch } = await import('chokidar');
@@ -1602,6 +1619,8 @@ async function startChokidarWatcher(
     setTimeout(settle, CHOKIDAR_READY_TIMEOUT_MS).unref();
   });
 
+  waitForPendingFsEventsRegistrations(contentDir, platform);
+
   return {
     unsubscribe: () => {
       if (batchTimer) {
@@ -1621,6 +1640,7 @@ export async function startWatcher(
   opts: {
     forceBackend?: 'parcel' | 'chokidar';
     onRawBatch?: (absPaths: readonly string[]) => void;
+    platform?: NodeJS.Platform;
   } = {},
 ): Promise<WatcherHandle> {
   const { onRawBatch } = opts;
@@ -1694,6 +1714,7 @@ export async function startWatcher(
         onDiskEvent,
         aliasMap,
         bumpFileIndexGeneration,
+        opts.platform ?? process.platform,
         onRawBatch,
       );
       backend = 'chokidar';
