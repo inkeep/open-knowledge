@@ -2267,20 +2267,36 @@ describe('AcpThreadManager terminals + permission effects', () => {
   }, 45_000);
 });
 
-function writeCascadingConfigAgent(localDir: string): void {
+function writeCascadingConfigAgent(
+  localDir: string,
+  variant: {
+    thinkingResetsThought?: boolean;
+    thoughtResetsThinking?: boolean;
+    rejectUnavailableThought?: boolean;
+    requestLog?: string;
+  } = {},
+): void {
   const agentPath = join(localDir, 'cascade-agent.mjs');
   writeFileSync(
     agentPath,
     `
+import { appendFileSync } from 'node:fs';
+const REQUEST_LOG = ${JSON.stringify(variant.requestLog ?? null)};
+const THINKING_RESETS_THOUGHT = ${variant.thinkingResetsThought === true};
+const THOUGHT_RESETS_THINKING = ${variant.thoughtResetsThinking === true};
+const REJECT_UNAVAILABLE_THOUGHT = ${variant.rejectUnavailableThought === true};
 let model = 'sonnet';
+let thinkingEnabled = false;
 let thought = 'med';
+const wideThought = () => model === 'opus' && thinkingEnabled;
 const thoughtOptions = () =>
-  model === 'opus'
+  wideThought() || REJECT_UNAVAILABLE_THOUGHT
     ? [{ value: 'low', name: 'Low' }, { value: 'med', name: 'Med' }, { value: 'high', name: 'High' }, { value: 'xhigh', name: 'XHigh' }]
     : [{ value: 'low', name: 'Low' }, { value: 'med', name: 'Med' }];
 const configOptions = () => [
   { id: 'model', name: 'Model', category: 'model', type: 'select', currentValue: model,
     options: [{ value: 'sonnet', name: 'Sonnet' }, { value: 'opus', name: 'Opus' }] },
+  { id: 'thinking_enabled', name: 'Thinking enabled', category: 'other', type: 'boolean', currentValue: thinkingEnabled },
   { id: 'thought_level', name: 'Thinking', category: 'thought_level', type: 'select', currentValue: thought,
     options: thoughtOptions() },
 ];
@@ -2303,9 +2319,22 @@ process.stdin.on('data', (chunk) => {
       reply({ sessionId: 's1', configOptions: configOptions() });
     } else if (msg.method === 'session/set_config_option') {
       const { configId, value } = msg.params;
-      if (configId === 'model') model = value;
-      else if (configId === 'thought_level' && thoughtOptions().some((o) => o.value === value)) thought = value;
-      reply({ configOptions: configOptions() });
+      if (REQUEST_LOG !== null) appendFileSync(REQUEST_LOG, configId + '\\n');
+      if (configId === 'thought_level' && REJECT_UNAVAILABLE_THOUGHT && !wideThought() && value !== 'low' && value !== 'med') {
+        process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: msg.id, error: { code: -32602, message: 'thought level not available yet' } }) + '\\n');
+      } else {
+        if (configId === 'model') {
+          model = value;
+          thought = 'med';
+        } else if (configId === 'thinking_enabled') {
+          thinkingEnabled = value;
+          if (THINKING_RESETS_THOUGHT) thought = 'med';
+        } else if (configId === 'thought_level' && thoughtOptions().some((o) => o.value === value)) {
+          thought = value;
+          if (THOUGHT_RESETS_THINKING) thinkingEnabled = false;
+        }
+        reply({ configOptions: configOptions() });
+      }
     } else if (msg.method === 'session/prompt') {
       reply({ stopReason: 'end_turn' });
     } else if (msg.id !== undefined) {
@@ -2534,7 +2563,7 @@ describe('AcpThreadManager initial mode apply', () => {
 });
 
 describe('AcpThreadManager initial config apply', () => {
-  test('applies remembered config before ready — model first, dependent option re-validated', async () => {
+  test('restores a remembered thought level that only appears once thinking is turned on', async () => {
     const contentDir = tmp();
     const localDir = tmp();
     writeCascadingConfigAgent(localDir);
@@ -2542,12 +2571,20 @@ describe('AcpThreadManager initial config apply', () => {
 
     const info = await manager.createThread({
       agent: { source: 'custom', id: 'cascade-agent' },
-      settings: { config: { thought_level: 'xhigh', model: 'opus', retired_option: 'gone' } },
+      settings: {
+        config: {
+          thought_level: 'xhigh',
+          model: 'opus',
+          thinking_enabled: true,
+          retired_option: 'gone',
+        },
+      },
     });
     await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
 
     const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
     expect(opts.find((o) => o.id === 'model')?.currentValue).toBe('opus');
+    expect(opts.find((o) => o.id === 'thinking_enabled')?.currentValue).toBe(true);
     expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('xhigh');
 
     await manager.closeThread(info.threadId);
@@ -2568,6 +2605,178 @@ describe('AcpThreadManager initial config apply', () => {
     const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
     expect(opts.find((o) => o.id === 'model')?.currentValue).toBe('sonnet');
     expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('med');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('keeps the rest of the remembered config when one value never becomes available', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      settings: { config: { model: 'opus', thought_level: 'xhigh' } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'model')?.currentValue).toBe('opus');
+    expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('med');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('restores remembered options whatever order they were stored in', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      settings: { config: { thinking_enabled: true, thought_level: 'high', model: 'opus' } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'model')?.currentValue).toBe('opus');
+    expect(opts.find((o) => o.id === 'thinking_enabled')?.currentValue).toBe(true);
+    expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('high');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('applies the model before a remembered value the model change would reset', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir);
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      settings: { config: { thought_level: 'low', model: 'opus' } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'model')?.currentValue).toBe('opus');
+    expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('low');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('logs remembered options that did not come back, keeping missing options apart from unavailable values', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir);
+    const infoLog = vi.spyOn(log, 'info');
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      settings: { config: { model: 'opus', thought_level: 'xhigh', retired_option: 'gone' } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    expect(infoLog).toHaveBeenCalledWith(
+      {
+        threadId: info.threadId,
+        missingConfigIds: ['retired_option'],
+        unmatchedConfigIds: ['thought_level'],
+        sessionStateUnknown: false,
+      },
+      '[acp-threads] some remembered config options did not come back in the new session',
+    );
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('applies a remembered value again when a later option resets it in the same pass', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir, { thinkingResetsThought: true });
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      settings: { config: { model: 'opus', thought_level: 'low', thinking_enabled: true } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'thinking_enabled')?.currentValue).toBe(true);
+    expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('low');
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('retries a remembered value the agent rejected once a later option makes it available', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    writeCascadingConfigAgent(localDir, { rejectUnavailableThought: true });
+    const warnLog = vi.spyOn(log, 'warn');
+    const infoLog = vi.spyOn(log, 'info');
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      settings: { config: { model: 'opus', thought_level: 'xhigh', thinking_enabled: true } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    const opts = manager.getInfo(info.threadId)?.configOptions ?? [];
+    expect(opts.find((o) => o.id === 'thought_level')?.currentValue).toBe('xhigh');
+    expect(infoLog).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: info.threadId, configId: 'thought_level', pass: 0 }),
+      '[acp-threads] initial config apply attempt failed',
+    );
+    for (const message of [
+      '[acp-threads] initial config apply failed',
+      '[acp-threads] some remembered config options could not be applied to the new session',
+    ]) {
+      expect(warnLog).not.toHaveBeenCalledWith(expect.anything(), message);
+    }
+
+    await manager.closeThread(info.threadId);
+  }, 30_000);
+
+  test('stops retrying when two remembered options keep resetting each other', async () => {
+    const contentDir = tmp();
+    const localDir = tmp();
+    const requestLog = join(localDir, 'set-config-requests.log');
+    writeCascadingConfigAgent(localDir, {
+      thinkingResetsThought: true,
+      thoughtResetsThinking: true,
+      requestLog,
+    });
+    const infoLog = vi.spyOn(log, 'info');
+    const manager = makeManager(contentDir, localDir);
+
+    const info = await manager.createThread({
+      agent: { source: 'custom', id: 'cascade-agent' },
+      settings: { config: { model: 'opus', thinking_enabled: true, thought_level: 'low' } },
+    });
+    await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+
+    expect(readFileSync(requestLog, 'utf8').trim().split('\n')).toEqual([
+      'model',
+      'thinking_enabled',
+      'thought_level',
+      'thinking_enabled',
+      'thought_level',
+      'thinking_enabled',
+    ]);
+    expect(infoLog).toHaveBeenCalledWith(
+      {
+        threadId: info.threadId,
+        missingConfigIds: [],
+        unmatchedConfigIds: ['thought_level'],
+        sessionStateUnknown: false,
+      },
+      '[acp-threads] some remembered config options did not come back in the new session',
+    );
 
     await manager.closeThread(info.threadId);
   }, 30_000);

@@ -2933,42 +2933,74 @@ export class AcpThreadManager {
   ): Promise<void> {
     const sessionId = record.sessionId;
     if (sessionId === null) return;
-    const isModel = (id: string): boolean =>
-      (record.info.configOptions ?? []).find((o) => o.id === id)?.category === 'model';
-    const ids = Object.keys(config).sort((a, b) => Number(isModel(b)) - Number(isModel(a)));
     let applied = false;
-    const rejected: string[] = [];
-    for (const configId of ids) {
-      const value = config[configId];
-      if (value === undefined) continue;
-      const option = (record.info.configOptions ?? []).find((o) => o.id === configId);
-      if (option === undefined) continue;
-      if (!sessionStateUnknown && option.currentValue === value) continue;
-      if (!initialConfigValueValid(option, value)) continue;
-      const request: SetSessionConfigOptionRequest =
-        typeof value === 'boolean'
-          ? { sessionId, configId, type: 'boolean', value }
-          : { sessionId, configId, value };
-      try {
-        const response: SetSessionConfigOptionResponse = await conn.agent.request(
-          acpMethods.agent.session.setConfigOption,
-          request,
-        );
-        record.info.configOptions = response.configOptions;
-        applied = true;
-      } catch (err) {
-        rejected.push(configId);
-        this.opts.log.warn(
-          { err, threadId: record.info.threadId, configId },
-          '[acp-threads] initial config apply failed',
-        );
+    const rejected = new Set<string>();
+    const findOption = (id: string) => (record.info.configOptions ?? []).find((o) => o.id === id);
+    const passLimit = Object.keys(config).length + 1;
+    let pending = Object.entries(config);
+    for (let pass = 0; pending.length > 0 && pass < passLimit; pass += 1) {
+      const isModel = (id: string): boolean => findOption(id)?.category === 'model';
+      let changed = false;
+      const ordered = [...pending].sort(([a], [b]) => Number(isModel(b)) - Number(isModel(a)));
+      for (const [configId, value] of ordered) {
+        const option = findOption(configId);
+        if (option === undefined) continue;
+        if ((!sessionStateUnknown || pass > 0) && option.currentValue === value) continue;
+        if (!initialConfigValueValid(option, value)) continue;
+        const request: SetSessionConfigOptionRequest =
+          typeof value === 'boolean'
+            ? { sessionId, configId, type: 'boolean', value }
+            : { sessionId, configId, value };
+        try {
+          const response: SetSessionConfigOptionResponse = await conn.agent.request(
+            acpMethods.agent.session.setConfigOption,
+            request,
+          );
+          record.info.configOptions = response.configOptions;
+          rejected.delete(configId);
+          applied = true;
+          changed = true;
+        } catch (err) {
+          rejected.add(configId);
+          this.opts.log.info(
+            { err, threadId: record.info.threadId, configId, pass },
+            '[acp-threads] initial config apply attempt failed',
+          );
+        }
+        if (record.closed) return;
       }
-      if (record.closed) return;
+      if (!changed) break;
+      pending = Object.entries(config).filter(
+        ([configId, value]) => findOption(configId)?.currentValue !== value,
+      );
     }
-    if (rejected.length > 0) {
+    if (rejected.size > 0) {
       this.opts.log.warn(
-        { threadId: record.info.threadId, rejectedConfigIds: rejected, sessionStateUnknown },
+        {
+          threadId: record.info.threadId,
+          rejectedConfigIds: [...rejected],
+          sessionStateUnknown,
+        },
         '[acp-threads] some remembered config options could not be applied to the new session',
+      );
+    }
+    const missingConfigIds: string[] = [];
+    const unmatchedConfigIds: string[] = [];
+    for (const [configId, value] of Object.entries(config)) {
+      if (rejected.has(configId)) continue;
+      const option = findOption(configId);
+      if (option === undefined) missingConfigIds.push(configId);
+      else if (option.currentValue !== value) unmatchedConfigIds.push(configId);
+    }
+    if (missingConfigIds.length > 0 || unmatchedConfigIds.length > 0) {
+      this.opts.log.info(
+        {
+          threadId: record.info.threadId,
+          missingConfigIds,
+          unmatchedConfigIds,
+          sessionStateUnknown,
+        },
+        '[acp-threads] some remembered config options did not come back in the new session',
       );
     }
     if (applied) this.emitInfo(record);
