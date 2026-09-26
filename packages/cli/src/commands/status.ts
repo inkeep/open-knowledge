@@ -1,6 +1,11 @@
 import { type Config, lockAdvertisesUi, resolveLockDir } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
 import { inspectLock, type LockState } from './lock-state.ts';
+import type {
+  SupervisionContext,
+  SupervisionFormatRegistry,
+} from './supervision-format-registry.ts';
+import { supervisionFormats } from './supervision-formats.ts';
 
 interface StatusEntry {
   name: 'server' | 'ui';
@@ -128,11 +133,29 @@ export function runStatus(deps: RunStatusDeps): StatusReport {
   return report;
 }
 
-export function statusCommand(getConfig: () => Config): Command {
-  return new Command('status')
-    .description('Show whether the server and UI are running for this project')
-    .option('--json', 'Emit structured JSON instead of formatted text')
-    .action((opts: { json?: boolean }) => {
+export type ObservationContext = SupervisionContext;
+
+export function statusCommand(
+  getConfig: () => Config,
+  getV1Context?: () => ObservationContext,
+  registry: SupervisionFormatRegistry = supervisionFormats,
+): Command {
+  return registry
+    .addFormatOption(
+      new Command('status')
+        .description('Show whether the server and UI are running for this project')
+        .option('--json', 'Emit structured JSON instead of formatted text'),
+      true,
+    )
+    .action(async (opts: { json?: boolean; format?: string }) => {
+      if (opts.format !== undefined) {
+        const context = getV1Context?.() ?? {
+          project: { root: process.cwd(), resolution: 'cwd' as const },
+          failure: null,
+        };
+        await registry.execute(opts.format, { command: 'status', context });
+        return;
+      }
       getConfig();
       const lockDir = resolveLockDir(process.cwd());
       runStatus({ lockDir, json: opts.json === true });

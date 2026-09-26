@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import type { Server as HttpServer } from 'node:http';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
@@ -7,6 +7,7 @@ import {
   DEFAULT_SERVER_HOST,
   EXECUTABLE_BLOCKLIST_EXTENSIONS,
   INLINE_RENDERABLE_EXTENSIONS,
+  idleShutdownToMs,
   isLoopbackOnlyBind,
   LOCAL_DIR,
   OK_DIR,
@@ -26,6 +27,7 @@ import {
   buildOkMcpStdioCommand,
 } from './acp/thread-manager.ts';
 import { collectServerHostSnapshot } from './agent-registry-probes.ts';
+import type { AppliedRuntimeSnapshot } from './applied-runtime.ts';
 import { createAssetServeMiddleware } from './asset-serve-middleware.ts';
 import { bootElapsedMs, recordBootPhase, startBootTimings } from './boot-timings.ts';
 import type { Config } from './config/schema.ts';
@@ -113,6 +115,22 @@ function computeWorktreeAttributes(projectDir: string): {
 const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
 const DESTROY_STEP_TIMEOUT_MS = Number(process.env.OK_DESTROY_STEP_TIMEOUT_MS) || 5000;
 
+function appliedIdleShutdown(
+  value: string | undefined,
+  milliseconds: number | null,
+): string | null {
+  if (milliseconds === null) return 'off';
+  if (value !== undefined) {
+    try {
+      if (idleShutdownToMs(value) === milliseconds) return value;
+    } catch {}
+  }
+  if (milliseconds > 0 && Number.isSafeInteger(milliseconds) && milliseconds % 1000 === 0) {
+    return `${milliseconds / 1000}s`;
+  }
+  return null;
+}
+
 export interface BootServerOptions
   extends Pick<
     ServerOptions,
@@ -154,6 +172,7 @@ export interface BootServerOptions
   ensurePiAcpBridge?: AcpThreadManagerOptions['ensurePiAcpBridge'];
   terminalAuthAvailable?: boolean;
   idleShutdownMs?: number | null;
+  idleShutdownValue?: string;
   serveContentAssets?: boolean;
   reactShellDistDir?: string;
   autoInitFn?: () => boolean | Promise<boolean>;
@@ -179,6 +198,7 @@ export interface BootedServer {
   serverInstance: ServerInstance;
   runtime: ProjectRuntime;
   acpThreadManager: AcpThreadManager | null;
+  appliedRuntime: AppliedRuntimeSnapshot | null;
 }
 
 const PINO_REDACT_MAX_DEPTH = 5;
@@ -324,6 +344,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     const okDirExists = existsSync(okDir);
     throw new MissingOkConfigError(okDirExists ? 'config' : 'okdir', projectDir);
   }
+  const canonicalProjectRoot = realpathSync(projectDir);
   const gitignorePath = resolve(okDir, '.gitignore');
   if (!existsSync(gitignorePath)) {
     getLogger('boot').warn(
@@ -499,6 +520,7 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   if (acpThreadManager !== null) await acpThreadManager.init();
 
   let readinessState: ReadinessState = 'pending';
+  let appliedRuntime: AppliedRuntimeSnapshot | null = null;
   ready.then(
     () => {
       readinessState = 'ready';
@@ -518,6 +540,12 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
       readiness: () => readinessState,
       degraded: () => degraded,
     },
+    inspection: () => ({
+      pid: process.pid,
+      projectRoot: canonicalProjectRoot,
+      serverInstanceId: serverInstance.serverInstanceId,
+      runtime: appliedRuntime,
+    }),
     log,
     sessionManager,
     agentFocusBroadcaster,
@@ -537,8 +565,9 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   collabClientCounter = attachCollabClientCounter(httpServer);
 
   let idleHandle: IdleShutdownHandle | null = null;
-  if (opts.idleShutdownMs !== null) {
-    const idleMs = opts.idleShutdownMs ?? DEFAULT_IDLE_THRESHOLD_MS;
+  const idleMs =
+    opts.idleShutdownMs === null ? null : (opts.idleShutdownMs ?? DEFAULT_IDLE_THRESHOLD_MS);
+  if (idleMs !== null) {
     const idleHandler =
       opts.idleShutdownHandler ??
       ((destroyFn) => async () => {
@@ -627,6 +656,29 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
   boundPort = realPort;
   const boundBaseUrl = internalBaseUrl();
   updateServerLockPort(lockDir, realPort, boundBaseUrl);
+  const boundAddresses = [httpServer, ...secondaryServers].map((server) => server.address());
+  const idleShutdown = appliedIdleShutdown(
+    opts.idleShutdownValue ?? (opts.idleShutdownMs === undefined ? '30m' : undefined),
+    idleMs,
+  );
+  if (
+    Number.isInteger(realPort) &&
+    realPort > 0 &&
+    realPort <= 65535 &&
+    idleShutdown !== null &&
+    boundAddresses.length > 0 &&
+    boundAddresses.every((address) => typeof address === 'object' && address !== null)
+  ) {
+    appliedRuntime = {
+      source: 'server',
+      revision: 1,
+      effectiveSince: new Date().toISOString(),
+      port: realPort,
+      bind: boundAddresses.map((address) => (address as import('node:net').AddressInfo).address),
+      idleShutdown,
+      externalUrl: serverRuntime.externalUrl ?? null,
+    };
+  }
   log.info(
     {
       event: 'server-listening',
@@ -802,5 +854,6 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
     serverInstance,
     runtime: createProjectRuntime(serverInstance, { contentDir: opts.contentDir, projectDir }),
     acpThreadManager,
+    appliedRuntime,
   };
 }

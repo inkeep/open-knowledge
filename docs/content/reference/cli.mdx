@@ -127,6 +127,8 @@ Each project runs its own local server. These commands let you see and stop them
 
 `ok status`, `ok ps`, and the server-lock health check distinguish an unverified owner from a foreign host. `ok status --json` uses `state: "unverified-owner"` and includes the PID, with server liveness reported as unknown. `ok ps --json` uses the same status, `displayStatus: "unverified"`, and `null` for unrecorded host, port, and start time. The directory is the project root for current `.ok/local` and legacy `.ok` locks; it is `null` when a custom lock location does not establish a project root. Such records are not signal authority for `ok stop`, including with `--force`.
 
+For scripts that supervise local servers, see the [versioned server supervision JSON contract](/docs/reference/server-supervision-json). It covers readiness polling, applied runtime settings, inventory, and safe stop and clean outcomes.
+
 ## Remote Control
 
 Serve this project's web UI and `/mcp` endpoint to your other devices through any HTTPS tunnel, both on one URL. See the [Remote Control overview](/docs/remote-control/overview) for the full setup and access-control model. Use [Connect remote agents](/docs/remote-control/connecting-agents) to point agents at the URL.
