@@ -25,6 +25,7 @@ import {
   DEFAULT_CHECKPOINT_RETENTION,
   FANOUT_INDEX_NAME,
   GIT_UPSTREAM_WRITER,
+  gitDirExcludePatterns,
   type InMemoryCheckpointParams,
   initShadowRepo,
   isShadowExcludesDegraded,
@@ -2482,5 +2483,95 @@ describe('shadow repo excludes OpenKnowledge machine-local state', () => {
     const status = await sg.raw('status', '--porcelain', '--untracked-files=all');
 
     expect(status).not.toContain('.ok/local/');
+  });
+});
+
+describe('shadow repo excludes a git dir that lives inside the work tree under another name', () => {
+  let projectRoot: string;
+  let shadow: ShadowHandle;
+
+  const writer: WriterIdentity = {
+    id: 'human-ada',
+    name: 'Ada Lovelace',
+    email: 'ada@example.com',
+  };
+
+  function treePaths(ref: string): string[] {
+    return execFileSync('git', ['ls-tree', '-r', '--name-only', ref], {
+      cwd: shadow.workTree,
+      env: { ...process.env, GIT_DIR: shadow.gitDir },
+      encoding: 'utf-8',
+    })
+      .split('\n')
+      .map((path) => path.trim())
+      .filter((path) => path.length > 0);
+  }
+
+  beforeEach(async () => {
+    projectRoot = resolve(tmpDir, 'project');
+    mkdirSync(projectRoot, { recursive: true });
+    const git = simpleGit(projectRoot);
+    await git.init();
+    await git.raw('config', 'user.name', 'Test');
+    await git.raw('config', 'user.email', 'test@test.com');
+    execFileSync('mv', ['.git', '.git.nosync'], { cwd: projectRoot });
+    symlinkSync('.git.nosync', resolve(projectRoot, '.git'));
+    writeFileSync(resolve(projectRoot, 'intro.md'), '# Hello\n');
+    shadow = await initShadowRepo(projectRoot);
+  });
+
+  test('derives anchored excludes for the symlink target and the shadow dir', () => {
+    expect(gitDirExcludePatterns(shadow)).toEqual(['/.git.nosync/', '/.git.nosync/ok/']);
+    const exclude = readFileSync(resolve(shadow.gitDir, 'info/exclude'), 'utf-8');
+    expect(exclude).toContain('/.git.nosync/\n');
+  });
+
+  test('a regular .git directory needs no extra excludes', async () => {
+    const plainRoot = resolve(tmpDir, 'plain');
+    mkdirSync(plainRoot, { recursive: true });
+    await simpleGit(plainRoot).init();
+    const plainShadow = await initShadowRepo(plainRoot);
+    expect(gitDirExcludePatterns(plainShadow)).toEqual([]);
+  });
+
+  test('WIP commits never stage the shadow repo or the project git dir', async () => {
+    await commitWip(shadow, writer, '.', 'WIP: first');
+    writeFileSync(resolve(projectRoot, 'intro.md'), '# Hello again\n');
+    await commitWip(shadow, writer, '.', 'WIP: second');
+
+    const paths = treePaths(`refs/wip/main/${writer.id}`);
+    expect(paths).toContain('intro.md');
+    expect(paths.filter((path) => path.startsWith('.git.nosync/'))).toEqual([]);
+  });
+
+  test('the fan-out tree never stages the shadow repo or the project git dir', async () => {
+    await commitWip(shadow, writer, '.', 'WIP: seed objects');
+    const tree = await buildWipTree(shadow, '.');
+    const paths = treePaths(tree);
+    expect(paths).toContain('intro.md');
+    expect(paths.filter((path) => path.startsWith('.git.nosync/'))).toEqual([]);
+  });
+
+  test('a fan-out index that already staged the git dir is swept on the next build', async () => {
+    const fanoutIndex = resolve(shadow.gitDir, FANOUT_INDEX_NAME);
+    const excludeFile = resolve(shadow.gitDir, 'info/exclude');
+    const realExclude = readFileSync(excludeFile, 'utf-8');
+    writeFileSync(excludeFile, '');
+    try {
+      execFileSync('git', ['add', '-A', '.'], {
+        cwd: shadow.workTree,
+        env: {
+          ...process.env,
+          GIT_DIR: shadow.gitDir,
+          GIT_WORK_TREE: shadow.workTree,
+          GIT_INDEX_FILE: fanoutIndex,
+        },
+      });
+    } finally {
+      writeFileSync(excludeFile, realExclude);
+    }
+
+    const tree = await buildWipTree(shadow, '.');
+    expect(treePaths(tree).filter((path) => path.startsWith('.git.nosync/'))).toEqual([]);
   });
 });
