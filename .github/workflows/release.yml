@@ -594,6 +594,7 @@ jobs:
       # --- SHARED PUBLISH STEP ---
 
       - name: Publish to npm via Trusted Publishing
+        id: publish-npm
         if: github.event.action == 'publish-stable' || steps.compute-beta.outputs.run_beta == 'true'
         env:
           NPM_CONFIG_PROVENANCE: "true"
@@ -642,6 +643,21 @@ jobs:
           # are skipped by `changeset publish`.
           echo "Publishing with --tag ${TAG} (VERSION=${VERSION})"
           pnpm exec changeset publish --tag "$TAG"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # repository_dispatch for the same reason as the desktop-release
+      # trigger above. Runs for beta and stable.
+      - name: Trigger container-release.yml to build + push the container image
+        if: steps.publish-npm.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.publish-npm.outputs.version }}
+        run: |
+          set -euo pipefail
+          payload=$(jq -nc --arg version "$VERSION" \
+            '{event_type: "container-release", client_payload: {version: $version}}')
+          gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input - <<<"$payload"
+          echo "Dispatched container-release for ${VERSION}"
 
       - name: Restore working tree (defensive)
         # Both paths mutate package.json + SKILL.md transiently via jq/sed.
