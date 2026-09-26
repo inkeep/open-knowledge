@@ -2682,6 +2682,7 @@
     "U7Iesw": [["seconds"], " detik"],
     "U88xbi": ["Gagal membuat berkas skema"],
     "U8CD-l": ["Salin jalur lengkap, tanpa ruang kerja"],
+    "U8novP": ["Percakapan ini"],
     "UBKdn5": ["Izinkan obrolan agen memakai browser"],
     "UBv8UK": ["Hapus Permanen"],
     "UDFrWm": ["Memeriksa koneksi GitHub..."],
@@ -4645,6 +4646,7 @@
       "Server ini tidak memiliki autentikasi bawaan. Siapa pun yang dapat menjangkau tunnel mendapatkan kendali penuh atas basis pengetahuan ini. Pasang gerbang autentikasi di depannya, seperti jaringan Tailscale pribadi atau reverse proxy dengan autentikasi."
     ],
     "n4vt3Q": ["Unduh aplikasi"],
+    "n57RjG": ["Laporkan masalah dengan chat ini…"],
     "n5Vy3l": ["Dibuka di cabang ", ["branch"]],
     "n5n_vi": ["Repositori pribadi"],
     "n6hXUm": [
@@ -4665,12 +4667,16 @@
     "nNYV3Y": ["dan ", ["remaining"], " lagi"],
     "nOEDQs": ["Gagal memperbarui mode sinkronisasi — ", ["detail"]],
     "nP-KFo": ["Obrolan ", ["0"], " baru"],
+    "nRX05G": ["Percakapan tidak dapat ditambahkan ke laporan ini."],
     "nTM8ab": ["Beri nama sebelum menyunting warnanya."],
     "nTwL53": ["Buka sebuah dokumen untuk membagikan URL-nya."],
     "nWMRxa": ["Lepas sematan"],
     "nWS2gQ": ["Diterbitkan oleh ", ["publisher"]],
     "nWv1ja": ["Kelola berkas tersembunyi di Pengaturan → Pola abaikan."],
     "nXHOFU": ["Tidak dapat memperbarui dari ", ["0"], ": ", ["1"]],
+    "nXK5bR": [
+      "Pesan chat, panggilan alat, dan hasilnya, agar kami bisa melihat apa yang dilakukan agen, beserta judul chat, jalur folder proyek, dokumen tempat chat ini dimulai, serta agen dan pengaturannya. Gambar diganti dengan jenis dan ukurannya, dan berkas teks yang dilampirkan disertakan. Isinya bisa memuat isi dokumen, jadi hapus centangnya jika Anda tidak ingin membagikannya."
+    ],
     "nYeBmY": [["hours"], " j lalu"],
     "n_I-da": ["Lihat sumber"],
     "nbLQ_9": ["Pilih ke mana komentar ini dikirim"],

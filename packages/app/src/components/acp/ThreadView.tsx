@@ -45,6 +45,7 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  type ComponentProps,
   Fragment,
   type ReactNode,
   type RefObject,
@@ -83,6 +84,7 @@ import {
   requestTerminalLaunch,
 } from '@/components/handoff/terminal-launch-events';
 import { useOptionalPageList } from '@/components/PageListContext';
+import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { RotatingComposerPlaceholder } from '@/components/RotatingComposerPlaceholder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -95,6 +97,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -1712,11 +1715,13 @@ function AgentSettingsPopover({
   info,
   hasStartedWork,
   onNewChat,
+  onReportProblem,
   triggerRef,
 }: {
   info: ThreadInfo;
   hasStartedWork: boolean;
   onNewChat: () => void;
+  onReportProblem?: () => void;
   triggerRef?: RefObject<HTMLButtonElement | null>;
 }): ReactNode {
   const { i18n, t } = useLingui();
@@ -1752,28 +1757,40 @@ function AgentSettingsPopover({
     const reason = settled
       ? t`${info.agent.name} doesn't offer any settings to adjust`
       : t`${info.agent.name} hasn't reported its settings yet`;
+    const tone: AgentSettingsTone = onReportProblem === undefined ? 'disabled' : 'muted';
+    const trigger = (
+      <AgentSettingsTrigger
+        ref={triggerRef}
+        label={t`Agent settings`}
+        tone={tone}
+        className="max-w-48 gap-1"
+        aria-describedby={tone === 'disabled' ? reasonId : undefined}
+      >
+        <span className={cn('truncate', AGENT_SETTINGS_TONE_TEXT[tone])}>{t`Settings`}</span>
+      </AgentSettingsTrigger>
+    );
+    if (onReportProblem !== undefined) {
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-60"
+            data-testid="agent-thread-settings-popover"
+          >
+            <DropdownMenuLabel className="font-normal text-muted-foreground">
+              {reason}
+            </DropdownMenuLabel>
+            <ReportProblemItem onSelect={onReportProblem} />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    }
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          {}
           <span className="inline-flex cursor-not-allowed">
-            <Button
-              ref={triggerRef}
-              type="button"
-              variant="ghost"
-              className="h-7 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
-              aria-label={t`Agent settings`}
-              aria-disabled
-              aria-describedby={reasonId}
-              data-testid="agent-thread-settings"
-            >
-              <span className="truncate text-muted-foreground/50">{t`Settings`}</span>
-              <ChevronDown
-                className="size-3.5 text-muted-foreground/50"
-                data-icon="inline-end"
-                aria-hidden="true"
-              />
-            </Button>
+            {trigger}
             <span id={reasonId} className="sr-only">
               {reason}
             </span>
@@ -1828,13 +1845,10 @@ function AgentSettingsPopover({
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button
+            <AgentSettingsTrigger
               ref={triggerRef}
-              type="button"
-              variant="ghost"
-              className="h-7 min-w-0 max-w-sm shrink gap-1.5 rounded-md pl-1.5 pr-1! text-xs"
-              aria-label={settingsLabel}
-              data-testid="agent-thread-settings"
+              label={settingsLabel}
+              className="min-w-0 max-w-sm shrink gap-1.5"
             >
               <span className="min-w-0 truncate">{triggerText}</span>
               {fastOn ? (
@@ -1855,8 +1869,7 @@ function AgentSettingsPopover({
                   {t`Read-only allowed`}
                 </span>
               ) : null}
-              <ChevronDown className="size-3.5" data-icon="inline-end" aria-hidden="true" />
-            </Button>
+            </AgentSettingsTrigger>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" aria-label={t`Agent settings`}>
@@ -1945,8 +1958,58 @@ function AgentSettingsPopover({
             </span>
           </DropdownMenuItem>
         ) : null}
+        {onReportProblem !== undefined ? <ReportProblemItem onSelect={onReportProblem} /> : null}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+type AgentSettingsTone = 'normal' | 'muted' | 'disabled';
+
+const AGENT_SETTINGS_TONE_TEXT: Record<AgentSettingsTone, string | undefined> = {
+  normal: undefined,
+  muted: 'text-muted-foreground',
+  disabled: 'text-muted-foreground/50',
+};
+
+function AgentSettingsTrigger({
+  ref,
+  label,
+  tone = 'normal',
+  className,
+  children,
+  ...buttonProps
+}: ComponentProps<typeof Button> & { label: string; tone?: AgentSettingsTone }): ReactNode {
+  return (
+    <Button
+      {...buttonProps}
+      ref={ref}
+      type="button"
+      variant="ghost"
+      className={cn('h-7 rounded-md pl-1.5 pr-1! text-xs', className)}
+      aria-label={label}
+      aria-disabled={tone === 'disabled' || undefined}
+      data-testid="agent-thread-settings"
+    >
+      {children}
+      <ChevronDown
+        className={cn('size-3.5', AGENT_SETTINGS_TONE_TEXT[tone])}
+        data-icon="inline-end"
+        aria-hidden="true"
+      />
+    </Button>
+  );
+}
+
+function ReportProblemItem({ onSelect }: { onSelect: () => void }): ReactNode {
+  const { t } = useLingui();
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onSelect={onSelect} data-testid="agent-thread-report-problem">
+        {t`Report a problem with this chat…`}
+      </DropdownMenuItem>
+    </>
   );
 }
 
@@ -4320,6 +4383,8 @@ function ThreadComposer({
   onIngestAllFiles: (files: readonly File[]) => Promise<void>;
   onRemovePendingAttachment: (index: number) => void;
 }): ReactNode {
+  const [reportOpen, setReportOpen] = useState(false);
+  const canReportProblem = typeof window !== 'undefined' && window.okDesktop != null;
   const { t, i18n } = useLingui();
   const agentName = agentDisplayName(info.agent.name);
 
@@ -4482,8 +4547,17 @@ function ThreadComposer({
             info={info}
             hasStartedWork={hasStartedWork}
             onNewChat={onNewChat}
+            {...(canReportProblem ? { onReportProblem: () => setReportOpen(true) } : {})}
             triggerRef={settingsTriggerRef}
           />
+          {canReportProblem ? (
+            <ReportBugDialog
+              open={reportOpen}
+              onOpenChange={setReportOpen}
+              agentChat={{ threadId: info.threadId }}
+              launcherBorne
+            />
+          ) : null}
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />

@@ -12059,6 +12059,10 @@ msgstr "بگ رپورٹ کریں"
 msgid "Report a bug…"
 msgstr "بگ رپورٹ کریں…"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Report a problem with this chat…"
+msgstr "اس چیٹ میں مسئلے کی رپورٹ کریں…"
+
 #. placeholder {0}: row.projectSlug
 #: src/components/BugReportHistory.tsx
 msgid "Report from {0}"
@@ -14545,9 +14549,17 @@ msgstr "اس چیٹ میں براؤزر دستیاب نہیں ہے، کیونک�
 msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
 msgstr "اس چیٹ میں براؤزر دستیاب نہیں ہے، کیونکہ اسے شروع کر سکنے والی کوئی Node.js تنصیب نہیں ملی۔ Node.js انسٹال کریں، پھر نئی چیٹ شروع کریں۔"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The chat's messages, tool calls, and their output, so we can see what the agent did, plus the chat's title, the project folder's path, the document it started from, and the agent and its settings. Images are replaced by their type and size, and attached text files are included. It can contain document content, so uncheck it if you'd rather not share it."
+msgstr "چیٹ کے پیغامات، ٹول کالز اور ان کا آؤٹ پٹ، تاکہ ہم دیکھ سکیں کہ ایجنٹ نے کیا کیا، نیز چیٹ کا عنوان، پروجیکٹ کے فولڈر کا راستہ، وہ دستاویز جس سے یہ شروع ہوئی، اور ایجنٹ بمع اس کی ترتیبات۔ تصاویر کی جگہ ان کی قسم اور سائز دیا جاتا ہے، اور منسلک ٹیکسٹ فائلیں شامل کی جاتی ہیں۔ اس میں دستاویز کا مواد ہو سکتا ہے، اس لیے اگر آپ اسے شیئر نہیں کرنا چاہتے تو نشان ہٹا دیں۔"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude Desktop App نے فائل نہیں کھولی۔ کیا یہ نصب ہے؟ ({msg})"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "The conversation couldn't be added to this report."
+msgstr "گفتگو اس رپورٹ میں شامل نہیں کی جا سکی۔"
 
 #: src/lib/skills-api.ts
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
@@ -15050,6 +15062,10 @@ msgstr "یہ جزو ہٹا دیا گیا ہے۔"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "یہاں فائلیں منسلک نہیں کی جا سکتیں۔"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "This conversation"
+msgstr "یہ گفتگو"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This conversation keeps the window it started with. A new chat can use a different one."

@@ -75,6 +75,7 @@ type CreateRequest = {
   includeCrashDump?: boolean;
   includeScreenshot?: boolean;
   attachments?: { contentType: string; bytes: Uint8Array }[];
+  agentChatThreadId?: string;
 };
 type SendRequest = OkBugReportSendInput;
 
@@ -196,6 +197,7 @@ async function renderDialog(
     systemWide?: boolean;
     crashContext?: import('./ReportBugDialogBody').ReportBugCrashContext;
     crashInvite?: OkBugReportCrashDetectedEvent;
+    agentChat?: { threadId: string };
   } = {},
   options: { statefulOpen?: boolean } = {},
 ) {
@@ -652,6 +654,116 @@ describe('ReportBugDialog', () => {
         includeCrashDump: true,
       },
     ]);
+  });
+
+  test('a report opened from an agent chat includes that conversation unless unchecked', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    const log = installBridge();
+    await renderDialog({ agentChat: { threadId } });
+
+    const chat = screen.getByRole('checkbox', { name: 'This conversation' });
+    expect(chat.getAttribute('aria-checked')).toBe('true');
+    expect(
+      document.getElementById(chat.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toContain('the agent and its settings');
+    await createReport();
+    expect(log.createCalls[0]?.agentChatThreadId).toBe(threadId);
+
+    cleanup();
+    const second = installBridge();
+    await renderDialog({ agentChat: { threadId } });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This conversation' }));
+    await createReport();
+    expect(second.createCalls[0]).not.toHaveProperty('agentChatThreadId');
+  });
+
+  test('a report opened outside an agent chat offers no conversation to include', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    expect(screen.queryByRole('checkbox', { name: 'This conversation' })).toBeNull();
+    await createReport();
+    expect(log.createCalls[0]).not.toHaveProperty('agentChatThreadId');
+  });
+
+  test('sending restores the conversation checkbox for the next report from the same chat', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    const log = installBridge();
+    const { reopen } = await renderDialog({ agentChat: { threadId } }, { statefulOpen: true });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This conversation' }));
+    await createReport();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+    await vi.waitFor(() => {
+      expect(log.sendCalls).toHaveLength(1);
+    });
+    reopen();
+    await screen.findByRole('dialog');
+
+    expect(
+      screen.getByRole('checkbox', { name: 'This conversation' }).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  test('a report carrying the conversation is not labeled as carrying an unredacted crash dump', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    installBridge({
+      create: () =>
+        Promise.resolve({
+          ...CREATE_OK,
+          summary: {
+            ...SUMMARY,
+            files: [
+              ...SUMMARY.files,
+              `extra/agent-chat/${threadId}.ndjson`,
+              `extra/agent-chat/${threadId}.meta.json`,
+            ],
+          },
+        }),
+    });
+    await renderDialog({ agentChat: { threadId } });
+    await createReport();
+
+    expect(screen.getByText(/6\.8 MB · secrets redacted · 4 files/)).not.toBeNull();
+    expect(screen.queryByText(/crash dump not redacted/)).toBeNull();
+    expect(screen.queryByText("The conversation couldn't be added to this report.")).toBeNull();
+  });
+
+  test('a crash dump bundled beside the conversation still qualifies the redaction claim', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    installBridge({
+      create: () =>
+        Promise.resolve({
+          ...CREATE_OK,
+          summary: {
+            ...SUMMARY,
+            files: [...SUMMARY.files, `extra/agent-chat/${threadId}.ndjson`, 'extra/renderer.dmp'],
+          },
+        }),
+    });
+    await renderDialog({ agentChat: { threadId } });
+    await createReport();
+
+    expect(
+      screen.getByText(/6\.8 MB · secrets redacted · 4 files · crash dump not redacted/),
+    ).not.toBeNull();
+  });
+
+  test('the review step says so when the conversation could not be added', async () => {
+    installBridge();
+    await renderDialog({ agentChat: { threadId: '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6' } });
+    await createReport();
+
+    expect(screen.getByText("The conversation couldn't be added to this report.")).not.toBeNull();
+  });
+
+  test('an unchecked conversation is not reported as missing from the review', async () => {
+    installBridge();
+    await renderDialog({ agentChat: { threadId: '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6' } });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This conversation' }));
+    await createReport();
+
+    expect(screen.queryByText("The conversation couldn't be added to this report.")).toBeNull();
   });
 
   test('unchecking Crash dump excludes the minidump from create', async () => {

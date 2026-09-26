@@ -169,7 +169,11 @@ import {
   threadAuthMethods,
 } from './terminal-auth.ts';
 import { AcpTerminalSet } from './terminals.ts';
-import { type PersistedThreadMeta, ThreadPersistenceStore } from './thread-persistence.ts';
+import {
+  acpThreadStoreRoots,
+  type PersistedThreadMeta,
+  ThreadPersistenceStore,
+} from './thread-persistence.ts';
 import { clampThreadTitle, deriveThreadTitle } from './thread-title.ts';
 
 export const MAX_ACP_THREADS = 8;
@@ -527,9 +531,10 @@ export class AcpThreadManager {
     this.unwatchedTurnCancelMs = opts.unwatchedTurnCancelMs ?? DEFAULT_UNWATCHED_TURN_CANCEL_MS;
     this.unwatchedTurnKillMs = opts.unwatchedTurnKillMs ?? DEFAULT_UNWATCHED_TURN_KILL_MS;
     this.turnStallMs = opts.turnStallMs ?? DEFAULT_TURN_STALL_MS;
+    const [primaryDir, legacyDir = null] = acpThreadStoreRoots(opts.globalDir, opts.localDir);
     this.persistence = new ThreadPersistenceStore({
-      primaryDir: opts.globalDir ?? opts.localDir,
-      legacyDir: opts.globalDir !== null ? opts.localDir : null,
+      primaryDir,
+      legacyDir,
       cwd: opts.globalDir !== null ? opts.contentDir : null,
       log: opts.log,
     });

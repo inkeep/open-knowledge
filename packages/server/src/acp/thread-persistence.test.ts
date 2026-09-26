@@ -12,7 +12,12 @@ import { dirname, join } from 'node:path';
 import type { ThreadEvent, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { afterEach, describe, expect, test } from 'vitest';
 import { getLogger } from '../logger.ts';
-import { type PersistedThreadMeta, ThreadPersistenceStore } from './thread-persistence.ts';
+import {
+  acpThreadStoreRoots,
+  acpThreadsDir,
+  type PersistedThreadMeta,
+  ThreadPersistenceStore,
+} from './thread-persistence.ts';
 
 const log = getLogger('acp-persist-test');
 
@@ -315,5 +320,36 @@ describe('ThreadPersistenceStore global dir + legacy fallback', () => {
     await store.whenIdle(TD);
     expect(store.eventsPath(TD)).toContain(legacy);
     expect(existsSync(join(legacy, 'threads', `${TD}.ndjson`))).toBe(true);
+  });
+
+  test('acpThreadStoreRoots lists the global store before the project store and leaves out an unknown one', () => {
+    const global = tmp();
+    const local = tmp();
+
+    expect(acpThreadStoreRoots(global, local)).toEqual([global, local]);
+    expect(acpThreadStoreRoots(null, local)).toEqual([local]);
+    expect(acpThreadStoreRoots(global, null)).toEqual([global]);
+  });
+
+  test('acpThreadsDir names the directory each base dir keeps its transcripts and metadata in', async () => {
+    const global = tmp();
+    const legacy = tmp();
+    const cwd = realpathSync(tmp());
+    const seed = new ThreadPersistenceStore({ primaryDir: legacy, log });
+    await seed.init();
+    seed.queueMetaWrite(TL, metaCwd(TL, cwd));
+    await seed.whenIdle(TL);
+
+    const store = new ThreadPersistenceStore({ primaryDir: global, legacyDir: legacy, cwd, log });
+    await store.init();
+    await store.scan();
+    store.queueMetaWrite(TN, metaCwd(TN, cwd));
+    store.appendEvents(TN, [ev(0)]);
+    await store.whenIdle(TN);
+
+    expect(dirname(store.eventsPath(TN))).toBe(acpThreadsDir(global));
+    expect(dirname(store.metaPath(TN))).toBe(acpThreadsDir(global));
+    expect(dirname(store.eventsPath(TL))).toBe(acpThreadsDir(legacy));
+    expect(dirname(store.metaPath(TL))).toBe(acpThreadsDir(legacy));
   });
 });

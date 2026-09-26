@@ -3079,6 +3079,7 @@
     "U7Iesw": [["seconds"], " segundos"],
     "U88xbi": ["No se pudo crear el archivo de esquema"],
     "U8CD-l": ["Copiar ruta completa, sin espacio de trabajo"],
+    "U8novP": ["Esta conversación"],
     "UBKdn5": ["Permitir que los chats con agentes usen un navegador"],
     "UBv8UK": ["Eliminar definitivamente"],
     "UDFrWm": ["Comprobando la conexión con GitHub..."],
@@ -5350,6 +5351,7 @@
       "Este servidor no tiene autenticación integrada. Cualquiera que pueda alcanzar el túnel obtiene control total de esta base de conocimiento. Coloca delante una barrera de autenticación, como una red privada de Tailscale o un proxy inverso con autenticación."
     ],
     "n4vt3Q": ["Descargar la aplicación"],
+    "n57RjG": ["Informar de un problema con este chat…"],
     "n5Vy3l": ["Abierto en la rama ", ["branch"]],
     "n5n_vi": ["Repositorio privado"],
     "n6hXUm": [
@@ -5370,12 +5372,16 @@
     "nNYV3Y": ["y ", ["remaining"], " más"],
     "nOEDQs": ["No se pudo actualizar el modo de sincronización — ", ["detail"]],
     "nP-KFo": ["Nuevo chat de ", ["0"]],
+    "nRX05G": ["No se pudo añadir la conversación a este informe."],
     "nTM8ab": ["Ponle un nombre antes de editar sus colores."],
     "nTwL53": ["Abre un documento para compartir su URL."],
     "nWMRxa": ["Dejar de fijar"],
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gestiona los archivos ocultos en Ajustes → Patrones de exclusión."],
     "nXHOFU": ["No se pudo actualizar desde ", ["0"], ": ", ["1"]],
+    "nXK5bR": [
+      "Los mensajes del chat, las llamadas a herramientas y su resultado, para que veamos qué hizo el agente, además del título del chat, la ruta de la carpeta del proyecto, el documento desde el que empezó y el agente con sus ajustes. Las imágenes se sustituyen por su tipo y tamaño, y se incluyen los archivos de texto adjuntos. Puede contener contenido de documentos, así que desmárcala si prefieres no compartirla."
+    ],
     "nYeBmY": ["hace ", ["hours"], " h"],
     "n_I-da": ["Ver la fuente"],
     "nbLQ_9": ["Elige a dónde enviar estos comentarios"],

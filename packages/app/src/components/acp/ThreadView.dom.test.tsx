@@ -28,7 +28,11 @@ import type {
   RenderedTerminal,
   ThreadRenderModel,
 } from '@/lib/acp/thread-event-model';
-import { expectVisualClassTokensAbsent } from '@/test-utils/visual-contract';
+import { installPointerPositionTracker } from '@/lib/pointer-position';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 import { MockComposerMentionInput } from './composer-mention-input.test-helper';
 
 i18n.load('en', {});
@@ -6194,4 +6198,146 @@ describe('ThreadView hands the composer what to list first', () => {
       activeDocName = null;
     }
   });
+});
+
+describe('ThreadView reporting a problem with the chat', () => {
+  const withSettings = () =>
+    makeInfo({
+      status: 'ready',
+      configOptions: [
+        {
+          id: 'model',
+          name: 'Model',
+          category: 'model',
+          type: 'select',
+          currentValue: 'opus',
+          options: [
+            { value: 'opus', name: 'Opus' },
+            { value: 'sonnet', name: 'Sonnet' },
+          ],
+        },
+      ],
+    });
+  const installReportBridge = () =>
+    Object.assign(window, {
+      okDesktop: {
+        bugReport: {
+          crashDumpAvailability: () => Promise.resolve({ available: false }),
+          captureScreenshot: () => Promise.resolve(null),
+        },
+      },
+    });
+
+  test('the settings trigger keeps a muted label and chevron when it only opens the report', () => {
+    installReportBridge();
+    try {
+      model = makeModel({ items: [], turnActive: false });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+      const trigger = screen.getByTestId('agent-thread-settings');
+      const label = within(trigger).getByText('Settings');
+      const chevron = trigger.querySelector('svg');
+
+      for (const part of [label, chevron]) {
+        expectVisualClassTokens(part?.getAttribute('class'), ['text-muted-foreground']);
+        expectVisualClassTokensAbsent(part?.getAttribute('class'), ['text-muted-foreground/50']);
+      }
+      expect(trigger.hasAttribute('aria-disabled')).toBe(false);
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('the settings trigger dims fully when it opens nothing and not at all when it opens settings', () => {
+    model = makeModel({ items: [], turnActive: false });
+    const view = render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+    const disabled = screen.getByTestId('agent-thread-settings');
+    for (const part of [within(disabled).getByText('Settings'), disabled.querySelector('svg')]) {
+      expectVisualClassTokens(part?.getAttribute('class'), ['text-muted-foreground/50']);
+    }
+    expect(disabled.getAttribute('aria-disabled')).toBe('true');
+
+    view.rerender(<ThreadView info={withSettings()} />);
+    const normal = screen.getByTestId('agent-thread-settings');
+    expectVisualClassTokensAbsent(normal.querySelector('svg')?.getAttribute('class'), [
+      'text-muted-foreground',
+      'text-muted-foreground/50',
+    ]);
+    expect(normal.hasAttribute('aria-disabled')).toBe(false);
+  });
+
+  test('the settings menu offers no report where reports cannot be sent', async () => {
+    model = makeModel({ items: [], turnActive: false });
+    render(<ThreadView info={withSettings()} />);
+    await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
+    await screen.findByRole('menu');
+    expect(screen.queryByTestId('agent-thread-report-problem')).toBeNull();
+  });
+
+  test('a chat whose agent offers settings lists the report below them', async () => {
+    installReportBridge();
+    try {
+      model = makeModel({ items: [], turnActive: false });
+      render(<ThreadView info={withSettings()} />);
+      await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
+      const item = await screen.findByTestId('agent-thread-report-problem');
+      expect(item.textContent).toBe('Report a problem with this chat…');
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  });
+
+  test('a chat with no settings to adjust still opens a report that carries it', async () => {
+    installReportBridge();
+    try {
+      model = makeModel({ items: [], turnActive: false });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+      await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
+      await userEvent.click(await screen.findByTestId('agent-thread-report-problem'));
+      const chat = await screen.findByRole(
+        'checkbox',
+        { name: 'This conversation' },
+        { timeout: 15_000 },
+      );
+      expect(chat.getAttribute('aria-checked')).toBe('true');
+    } finally {
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  }, 30_000);
+
+  test('the screenshot waits for the settings menu to close and marks no row', async () => {
+    const stopPointerTracking = installPointerPositionTracker();
+    window.dispatchEvent(
+      new PointerEvent('pointermove', { clientX: 240, clientY: 160, bubbles: true }),
+    );
+    let captures = 0;
+    let markersAtCapture = -1;
+    let menuAtCapture: boolean | null = null;
+    Object.assign(window, {
+      okDesktop: {
+        bugReport: {
+          crashDumpAvailability: () => Promise.resolve({ available: false }),
+          captureScreenshot: () => {
+            captures += 1;
+            markersAtCapture = document.querySelectorAll('.ok-pointer-marker').length;
+            menuAtCapture = screen.queryByTestId('agent-thread-settings-popover') !== null;
+            return Promise.resolve(null);
+          },
+        },
+      },
+    });
+    try {
+      model = makeModel({ items: [], turnActive: false });
+      render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+      await userEvent.click(screen.getByRole('button', { name: /^Agent settings/ }));
+      await userEvent.click(await screen.findByTestId('agent-thread-report-problem'));
+      await screen.findByRole('checkbox', { name: 'This conversation' }, { timeout: 15_000 });
+
+      expect(captures).toBe(1);
+      expect(markersAtCapture).toBe(0);
+      expect(menuAtCapture).toBe(false);
+    } finally {
+      stopPointerTracking();
+      Reflect.deleteProperty(window, 'okDesktop');
+    }
+  }, 30_000);
 });

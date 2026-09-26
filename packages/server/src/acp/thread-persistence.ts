@@ -20,6 +20,14 @@ const THREADS_SUBDIR = 'threads';
 const META_VERSION = 1;
 const READ_CHUNK_SIZE = 512;
 
+export function acpThreadsDir(baseDir: string): string {
+  return join(baseDir, THREADS_SUBDIR);
+}
+
+export function acpThreadStoreRoots(globalDir: string | null, localDir: string | null): string[] {
+  return [globalDir, localDir].filter((dir) => dir !== null);
+}
+
 const MINTED_THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function isMintedThreadId(threadId: string): boolean {
@@ -60,8 +68,8 @@ export class ThreadPersistenceStore {
   private readonly appendBroken = new Set<string>();
 
   constructor(opts: ThreadPersistenceStoreOptions) {
-    this.primaryThreadsDir = join(opts.primaryDir, THREADS_SUBDIR);
-    this.legacyThreadsDir = opts.legacyDir != null ? join(opts.legacyDir, THREADS_SUBDIR) : null;
+    this.primaryThreadsDir = acpThreadsDir(opts.primaryDir);
+    this.legacyThreadsDir = opts.legacyDir != null ? acpThreadsDir(opts.legacyDir) : null;
     this.cwd = opts.cwd ?? null;
     this.log = opts.log;
     this.writeThreadsDir = this.primaryThreadsDir;

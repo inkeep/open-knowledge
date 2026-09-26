@@ -29,7 +29,11 @@ import {
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { parse as parseYaml } from 'yaml';
 import { ZipFile } from 'yazl';
-import type { BundleExtraFile, BundleLogger } from '../commands/bug-report-bundle.ts';
+import {
+  type BundleExtraFile,
+  type BundleLogger,
+  scrubbedExtraAudit,
+} from '../commands/bug-report-bundle.ts';
 import { redactContent } from '../commands/bug-report-redact.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
 import { defaultReadLanguage, type LanguageMetadata } from '../report-language.ts';
@@ -643,15 +647,20 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     }
 
     for (const extra of opts.extraFiles ?? []) {
-      const staged = stageFileIfPresent(
-        extra.sourcePath,
-        join(stagingDir, 'extra', extra.zipName ?? basename(extra.sourcePath)),
-      );
+      const zipName = extra.zipName ?? basename(extra.sourcePath);
+      const staged = stageFileIfPresent(extra.sourcePath, join(stagingDir, 'extra', zipName));
       if (!staged) {
         deps.logger?.warn(
           { sourcePath: extra.sourcePath },
           'extra file missing; omitted from bundle',
         );
+        continue;
+      }
+      const audit = scrubbedExtraAudit(extra, `extra/${zipName}`);
+      if (audit !== null) {
+        secretScrub ??= { redactions: [], redactedLineCount: 0 };
+        secretScrub.redactions.push(audit);
+        secretScrub.redactedLineCount += audit.lineCount;
       }
     }
 

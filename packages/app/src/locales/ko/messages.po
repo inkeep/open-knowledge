@@ -12059,6 +12059,10 @@ msgstr "버그 신고"
 msgid "Report a bug…"
 msgstr "버그 신고…"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Report a problem with this chat…"
+msgstr "이 채팅의 문제 신고…"
+
 #. placeholder {0}: row.projectSlug
 #: src/components/BugReportHistory.tsx
 msgid "Report from {0}"
@@ -14545,9 +14549,17 @@ msgstr "이 채팅에서는 브라우저를 사용할 수 없습니다. 브라�
 msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
 msgstr "이 채팅에서는 브라우저를 사용할 수 없습니다. 브라우저를 시작할 수 있는 Node.js 설치를 찾지 못했기 때문입니다. Node.js를 설치한 뒤 새 채팅을 시작하세요."
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The chat's messages, tool calls, and their output, so we can see what the agent did, plus the chat's title, the project folder's path, the document it started from, and the agent and its settings. Images are replaced by their type and size, and attached text files are included. It can contain document content, so uncheck it if you'd rather not share it."
+msgstr "채팅 메시지, 도구 호출과 그 출력으로, 에이전트가 무엇을 했는지 확인할 수 있습니다. 채팅 제목, 프로젝트 폴더 경로, 채팅을 시작한 문서, 에이전트와 그 설정도 포함됩니다. 이미지는 형식과 크기로 대체되고, 첨부한 텍스트 파일은 포함됩니다. 문서 내용이 포함될 수 있으므로 공유하지 않으려면 선택을 해제하세요."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude Desktop App 파일 열기 실패. 설치 상태 확인: ({msg})"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "The conversation couldn't be added to this report."
+msgstr "대화를 이 보고서에 추가하지 못했습니다."
 
 #: src/lib/skills-api.ts
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
@@ -15050,6 +15062,10 @@ msgstr "이 컴포넌트가 삭제되었습니다."
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "여기에는 파일을 첨부할 수 없습니다."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "This conversation"
+msgstr "이 대화"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This conversation keeps the window it started with. A new chat can use a different one."

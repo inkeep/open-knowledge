@@ -71,34 +71,48 @@ function chunkMessageId(u: ChunkUpdate): string {
   return typeof u.messageId === 'string' ? u.messageId : 'default';
 }
 
+export interface StreamedChunk {
+  readonly stream: string;
+  readonly text: string;
+}
+
+export function streamedChunkOf(
+  event: unknown,
+  agent: CodexLegacyAgentIdentity | null,
+): StreamedChunk | null {
+  if (typeof event !== 'object' || event === null) return null;
+  const e = event as { kind?: unknown; terminalId?: unknown; chunk?: unknown; update?: unknown };
+  if (e.kind === 'terminal_output') {
+    return typeof e.terminalId === 'string' && typeof e.chunk === 'string'
+      ? { stream: `terminal ${e.terminalId}`, text: e.chunk }
+      : null;
+  }
+  if (e.kind !== 'session_update' || typeof e.update !== 'object' || e.update === null) {
+    return null;
+  }
+  const update = e.update as ChunkUpdate;
+  if (!COALESCIBLE_CHUNK_KINDS.has(update.sessionUpdate)) return null;
+  if (isCodexLegacyWarningUpdate(update as SessionUpdate, agent)) return null;
+  const text = chunkText(update.content);
+  return text === null
+    ? null
+    : { stream: `${update.sessionUpdate} ${chunkMessageId(update)}`, text };
+}
+
 export function coalesceChunkInto(
   prev: ThreadEvent,
   next: ThreadEvent,
   agent: CodexLegacyAgentIdentity,
 ): boolean {
-  if (prev.kind === 'terminal_output' && next.kind === 'terminal_output') {
-    if (prev.terminalId !== next.terminalId) return false;
-    if (prev.chunk.length >= COALESCE_TEXT_CAP) return false;
-    prev.chunk += next.chunk;
+  const before = streamedChunkOf(prev, agent);
+  const after = streamedChunkOf(next, agent);
+  if (before === null || after === null || before.stream !== after.stream) return false;
+  if (before.text.length >= COALESCE_TEXT_CAP) return false;
+  if (prev.kind === 'terminal_output') {
+    prev.chunk += after.text;
     return true;
   }
-  if (prev.kind !== 'session_update' || next.kind !== 'session_update') return false;
-  if (
-    isCodexLegacyWarningUpdate(prev.update, agent) ||
-    isCodexLegacyWarningUpdate(next.update, agent)
-  ) {
-    return false;
-  }
-  const p = prev.update as ChunkUpdate;
-  const n = next.update as ChunkUpdate;
-  if (p.sessionUpdate !== n.sessionUpdate || !COALESCIBLE_CHUNK_KINDS.has(n.sessionUpdate)) {
-    return false;
-  }
-  if (chunkMessageId(p) !== chunkMessageId(n)) return false;
-  const prevText = chunkText(p.content);
-  const nextText = chunkText(n.content);
-  if (prevText === null || nextText === null) return false;
-  if (prevText.length >= COALESCE_TEXT_CAP) return false;
-  p.content = { type: 'text', text: prevText + nextText };
+  if (prev.kind !== 'session_update') return false;
+  (prev.update as ChunkUpdate).content = { type: 'text', text: before.text + after.text };
   return true;
 }

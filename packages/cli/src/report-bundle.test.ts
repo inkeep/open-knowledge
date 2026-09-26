@@ -1014,6 +1014,97 @@ describe('collectReportBundle — interface-language seam', () => {
   });
 });
 
+describe('collectReportBundle — extras scrubbed before bundling', () => {
+  const scrubbed = { lineCount: 2, patterns: ['github-pat'] };
+  const audit = { file: 'extra/agent-chat/chat.ndjson', ...scrubbed };
+
+  function scrubbedExtra() {
+    const sourceDir = makeTmpDir();
+    writeAt(sourceDir, 'chat.ndjson', '{"line":"[REDACTED-GH-PAT]"}\n');
+    return {
+      sourcePath: join(sourceDir, 'chat.ndjson'),
+      zipName: 'agent-chat/chat.ndjson',
+      scrubbed,
+    };
+  }
+
+  test("a standard bundle's README and MANIFEST count what the caller scrubbed", async () => {
+    const { zipPath, summary } = await collectReportBundle({
+      level: 'standard',
+      projectDir: makeStandardProjectDir(),
+      redact: true,
+      outputPath: join(makeTmpDir(), 'report.zip'),
+      extraFiles: [scrubbedExtra()],
+    });
+
+    expect(summary.redactions).toContainEqual(audit);
+    expect(JSON.parse(readZipEntry(zipPath, 'MANIFEST.json')).redactions).toContainEqual(audit);
+    expect(readZipEntry(zipPath, 'README.md')).toContain(
+      `${summary.redactedLineCount} line(s) were scrubbed across ${summary.redactions.length} file(s).`,
+    );
+    expect(summary.redactedLineCount).toBeGreaterThanOrEqual(2);
+  });
+
+  test("a full bundle's manifest counts what the caller scrubbed", async () => {
+    const { zipPath, summary } = await collectReportBundle({
+      level: 'full',
+      projectDir: makeFullProjectDir(),
+      redact: true,
+      outputPath: join(makeTmpDir(), 'report.zip'),
+      extraFiles: [scrubbedExtra()],
+    });
+
+    expect(summary.redactions).toContainEqual(audit);
+    const secretScrub = JSON.parse(readZipEntry(zipPath, 'manifest.json')).redaction.secretScrub;
+    expect(secretScrub.redactions).toContainEqual(audit);
+    expect(secretScrub.redactedLineCount).toBe(summary.redactedLineCount);
+  });
+
+  test('an extra with nothing scrubbed adds no audit entry', async () => {
+    const extra = { ...scrubbedExtra(), scrubbed: { lineCount: 0, patterns: [] } };
+    const { summary } = await collectReportBundle({
+      level: 'standard',
+      projectDir: makeStandardProjectDir(),
+      redact: true,
+      outputPath: join(makeTmpDir(), 'report.zip'),
+      extraFiles: [extra],
+    });
+
+    expect(summary.redactions.map((r) => r.file)).not.toContain('extra/agent-chat/chat.ndjson');
+  });
+
+  test('a full bundle adds no audit entry for an extra with nothing scrubbed', async () => {
+    const extra = { ...scrubbedExtra(), scrubbed: { lineCount: 0, patterns: [] } };
+    const { zipPath, summary } = await collectReportBundle({
+      level: 'full',
+      projectDir: makeFullProjectDir(),
+      redact: true,
+      outputPath: join(makeTmpDir(), 'report.zip'),
+      extraFiles: [extra],
+    });
+
+    const secretScrub = JSON.parse(readZipEntry(zipPath, 'manifest.json')).redaction.secretScrub;
+    expect(summary.redactions.map((r) => r.file)).not.toContain(audit.file);
+    expect(secretScrub.redactions.map((r: { file: string }) => r.file)).not.toContain(audit.file);
+  });
+
+  test.each(['standard', 'full'] as const)(
+    'a %s bundle counts what the caller scrubbed with its own redaction off',
+    async (level) => {
+      const { summary } = await collectReportBundle({
+        level,
+        projectDir: level === 'full' ? makeFullProjectDir() : makeStandardProjectDir(),
+        redact: false,
+        outputPath: join(makeTmpDir(), 'report.zip'),
+        extraFiles: [scrubbedExtra()],
+      });
+
+      expect(summary.redactions).toEqual([audit]);
+      expect(summary.redactedLineCount).toBe(audit.lineCount);
+    },
+  );
+});
+
 describe('collectReportBundle — opted-in extras that cannot be staged', () => {
   function makeRecordingLogger() {
     const warnings: Array<{ payload: Record<string, unknown>; message: string }> = [];

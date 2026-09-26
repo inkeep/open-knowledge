@@ -3127,6 +3127,7 @@
     "U7Iesw": [["seconds"], " secondes"],
     "U88xbi": ["Échec de la création du fichier de schéma"],
     "U8CD-l": ["Copier le chemin complet, sans espace de travail"],
+    "U8novP": ["Cette conversation"],
     "UBKdn5": ["Laisser les chats d'agents utiliser un navigateur"],
     "UBv8UK": ["Supprimer définitivement"],
     "UDFrWm": ["Vérification de la connexion GitHub…"],
@@ -5395,6 +5396,7 @@
       "Ce serveur n’a pas d’authentification intégrée. Toute personne pouvant atteindre le tunnel obtient un contrôle total de cette base de connaissances. Placez devant lui une barrière d’authentification, comme un réseau Tailscale privé ou un proxy inverse avec authentification."
     ],
     "n4vt3Q": ["Télécharger l’application"],
+    "n57RjG": ["Signaler un problème avec cette conversation…"],
     "n5Vy3l": ["Ouvert sur la branche ", ["branch"]],
     "n5n_vi": ["Dépôt privé"],
     "n6hXUm": [
@@ -5415,12 +5417,16 @@
     "nNYV3Y": ["et ", ["remaining"], " de plus"],
     "nOEDQs": ["Échec de la mise à jour du mode de synchronisation — ", ["detail"]],
     "nP-KFo": ["Nouvelle discussion ", ["0"]],
+    "nRX05G": ["Impossible d'ajouter la conversation à ce rapport."],
     "nTM8ab": ["Donnez-lui un nom avant de modifier ses couleurs."],
     "nTwL53": ["Ouvrez un document pour partager son URL."],
     "nWMRxa": ["Détacher"],
     "nWS2gQ": ["Publié par ", ["publisher"]],
     "nWv1ja": ["Gérez les fichiers masqués dans Paramètres → Motifs d'exclusion."],
     "nXHOFU": ["Impossible de mettre à jour depuis ", ["0"], " : ", ["1"]],
+    "nXK5bR": [
+      "Les messages de la conversation, les appels d'outils et leurs résultats, pour que nous puissions voir ce qu'a fait l'agent, ainsi que le titre de la conversation, le chemin du dossier de projet, le document depuis lequel elle a commencé et l'agent avec ses paramètres. Les images sont remplacées par leur type et leur taille, et les fichiers texte joints sont inclus. Elle peut contenir du contenu de document, alors décochez-la si vous préférez ne pas la partager."
+    ],
     "nYeBmY": ["il y a ", ["hours"], " h"],
     "n_I-da": ["Voir la source"],
     "nbLQ_9": ["Choisissez où envoyer ces commentaires"],

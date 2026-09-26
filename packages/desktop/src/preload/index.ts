@@ -568,6 +568,7 @@ const bridge: OkDesktopBridge = {
         includeCrashDump: request.includeCrashDump,
         includeScreenshot: request.includeScreenshot,
         attachments: request.attachments,
+        agentChatThreadId: request.agentChatThreadId,
       }) as Promise<OkBugReportCreateResult>,
     captureScreenshot: () =>
       invoke('ok:bug-report:dispatch', {

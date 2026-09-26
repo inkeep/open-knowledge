@@ -12059,6 +12059,10 @@ msgstr "报告问题"
 msgid "Report a bug…"
 msgstr "报告问题…"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Report a problem with this chat…"
+msgstr "报告此对话的问题…"
+
 #. placeholder {0}: row.projectSlug
 #: src/components/BugReportHistory.tsx
 msgid "Report from {0}"
@@ -14545,9 +14549,17 @@ msgstr "此对话中无法使用浏览器，因为未能完成设置。详细信
 msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
 msgstr "此对话中无法使用浏览器，因为没有找到能启动它的 Node.js 安装。请安装 Node.js，然后开始新的对话。"
 
+#: src/components/ReportBugDialogBody.tsx
+msgid "The chat's messages, tool calls, and their output, so we can see what the agent did, plus the chat's title, the project folder's path, the document it started from, and the agent and its settings. Images are replaced by their type and size, and attached text files are included. It can contain document content, so uncheck it if you'd rather not share it."
+msgstr "对话中的消息、工具调用及其输出，方便我们了解智能体做了什么，另外还包括对话标题、项目文件夹路径、对话开始时所在的文档，以及智能体及其设置。图片会替换为其类型和大小，附加的文本文件会包含在内。它可能包含文档内容，如果你不想分享，请取消勾选。"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude 桌面应用没有打开这个文件。它安装了吗？（{msg}）"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "The conversation couldn't be added to this report."
+msgstr "无法将对话添加到此报告中。"
 
 #: src/lib/skills-api.ts
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
@@ -15050,6 +15062,10 @@ msgstr "此组件已被移除。"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "此处无法添加附件。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "This conversation"
+msgstr "此对话"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This conversation keeps the window it started with. A new chat can use a different one."

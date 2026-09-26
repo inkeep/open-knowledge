@@ -46,6 +46,14 @@ export interface BundleLogger {
 export interface BundleExtraFile {
   sourcePath: string;
   zipName?: string;
+  scrubbed?: Omit<BundleRedaction, 'file'>;
+}
+
+export function scrubbedExtraAudit(extra: BundleExtraFile, file: string): BundleRedaction | null {
+  const { scrubbed } = extra;
+  return scrubbed !== undefined && scrubbed.patterns.length > 0
+    ? { file, lineCount: scrubbed.lineCount, patterns: [...scrubbed.patterns] }
+    : null;
 }
 
 export interface CollectStandardBundleOptions {
@@ -445,6 +453,8 @@ export async function collectStandardBundle(
       const name = `extra/${extra.zipName ?? basename(extra.sourcePath)}`;
       zipfile.addBuffer(raw, name);
       bundleFiles.push(name);
+      const audit = scrubbedExtraAudit(extra, name);
+      if (audit !== null) redactions.push(audit);
     } catch (err) {
       logger?.warn(
         { sourcePath: extra.sourcePath, err },

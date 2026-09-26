@@ -855,6 +855,7 @@ export type {
   SerializedErrorTruncation,
 } from './logger-types.ts';
 export {
+  BUG_REPORT_AGENT_CHAT_ZIP_DIR,
   BUG_REPORT_ATTACHMENT_CONTENT_TYPES,
   BUG_REPORT_ATTACHMENT_EXTENSIONS,
   BUG_REPORT_ATTACHMENTS_ZIP_DIR,
@@ -862,10 +863,13 @@ export {
   BUG_REPORT_CONTACT_EMAIL_MAX_LENGTH,
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  isBugReportAgentChatEntry,
   isBugReportAttachmentEntry,
+  isBugReportCrashDumpEntry,
   LOG_LEVELS,
   MAX_BUG_REPORT_ATTACHMENTS,
   MAX_BUG_REPORT_ATTACHMENTS_TOTAL_BYTES,
+  MINIDUMP_FILE_EXTENSION,
 } from './logger-types.ts';
 export {
   LOGGER_OWNED_FIELDS,

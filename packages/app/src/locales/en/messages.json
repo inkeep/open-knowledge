@@ -2673,6 +2673,7 @@
     "U7Iesw": [["seconds"], " seconds"],
     "U88xbi": ["Failed to create the schema file"],
     "U8CD-l": ["Copy full path, No workspace"],
+    "U8novP": ["This conversation"],
     "UBKdn5": ["Let agent chats use a browser"],
     "UBv8UK": ["Delete Permanently"],
     "UDFrWm": ["Checking GitHub connection..."],
@@ -4624,6 +4625,7 @@
       "This server has no built-in authentication. Anyone who can reach the tunnel gets full control of this knowledge base. Put an authenticating gate in front, such as a private Tailscale network or a reverse proxy with authentication."
     ],
     "n4vt3Q": ["Download app"],
+    "n57RjG": ["Report a problem with this chat…"],
     "n5Vy3l": ["Opened on branch ", ["branch"]],
     "n5n_vi": ["Private repository"],
     "n6hXUm": [
@@ -4644,12 +4646,16 @@
     "nNYV3Y": ["and ", ["remaining"], " more"],
     "nOEDQs": ["Failed to update sync mode — ", ["detail"]],
     "nP-KFo": ["New ", ["0"], " chat"],
+    "nRX05G": ["The conversation couldn't be added to this report."],
     "nTM8ab": ["Give it a name before editing its colors."],
     "nTwL53": ["Open a doc to share its URL."],
     "nWMRxa": ["Unpin"],
     "nWS2gQ": ["Published by ", ["publisher"]],
     "nWv1ja": ["Manage hidden files in Settings → Ignore patterns."],
     "nXHOFU": ["Couldn't update from ", ["0"], ": ", ["1"]],
+    "nXK5bR": [
+      "The chat's messages, tool calls, and their output, so we can see what the agent did, plus the chat's title, the project folder's path, the document it started from, and the agent and its settings. Images are replaced by their type and size, and attached text files are included. It can contain document content, so uncheck it if you'd rather not share it."
+    ],
     "nYeBmY": [["hours"], "h ago"],
     "n_I-da": ["View source"],
     "nbLQ_9": ["Choose where to send these comments"],

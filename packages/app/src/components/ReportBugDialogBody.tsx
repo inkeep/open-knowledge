@@ -6,7 +6,9 @@ import type {
 import {
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
   formatRelativeAge,
+  isBugReportAgentChatEntry,
   isBugReportAttachmentEntry,
+  isBugReportCrashDumpEntry,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
@@ -119,17 +121,12 @@ function crashInviteLines(invite: OkBugReportCrashDetectedEvent): string[] {
 
 type Phase =
   | { step: 'compose'; creating: boolean; createError: string | null }
-  | { step: 'review'; report: CreatedReport };
+  | { step: 'review'; report: CreatedReport; conversationMissing: boolean };
 
 const COMPOSE_IDLE: Phase = { step: 'compose', creating: false, createError: null };
 
 function reportIncludesRawDump(report: CreatedReport): boolean {
-  return report.summary.files.some(
-    (file) =>
-      file.startsWith('extra/') &&
-      file !== BUG_REPORT_SCREENSHOT_ZIP_ENTRY &&
-      !isBugReportAttachmentEntry(file),
-  );
+  return report.summary.files.some(isBugReportCrashDumpEntry);
 }
 
 function reportIncludesAttachments(report: CreatedReport): boolean {
@@ -154,6 +151,7 @@ export interface ReportBugDialogProps {
   screenshot?: OkBugReportScreenshot | null;
   pointerMarked?: boolean;
   crashDumpAvailable?: boolean;
+  agentChat?: { readonly threadId: string };
 }
 
 function ReportBugDialog({
@@ -165,6 +163,7 @@ function ReportBugDialog({
   screenshot = null,
   pointerMarked = false,
   crashDumpAvailable: probedCrashDumpAvailable = false,
+  agentChat,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
   const isMacOS =
@@ -176,6 +175,7 @@ function ReportBugDialog({
     crashInvite !== undefined ? crashInvite.minidumpAvailable === true : probedCrashDumpAvailable;
   const [includeDump, setIncludeDump] = useState(crashInvite?.minidumpAvailable === true);
   const [includeScreenshot, setIncludeScreenshot] = useState(true);
+  const [includeChat, setIncludeChat] = useState(true);
   const [attachments, setAttachments] = useState<File[]>([]);
   const attachmentIntake = useImageAttachmentIntake({
     files: attachments,
@@ -193,6 +193,8 @@ function ReportBugDialog({
   const detailedHintId = useId();
   const dumpId = useId();
   const dumpHintId = useId();
+  const chatId = useId();
+  const chatHintId = useId();
   const screenshotId = useId();
   const screenshotHintId = useId();
   const shareEmailId = useId();
@@ -242,12 +244,14 @@ function ReportBugDialog({
     setPhase({ step: 'compose', creating: true, createError: null });
     const attachmentInputs = await toAttachmentInputs(attachments);
     if (opSeqRef.current !== seq) return;
+    const conversationRequested = agentChat !== undefined && includeChat;
     const result = await bugReport.create({
       level: detailed ? 'full' : 'standard',
       note: composeNote(note, noteContextLines),
       ...(crashDumpAvailable ? { includeCrashDump: includeDump } : {}),
       ...(screenshot !== null ? { includeScreenshot } : {}),
       ...(attachmentInputs.length > 0 ? { attachments: attachmentInputs } : {}),
+      ...(conversationRequested ? { agentChatThreadId: agentChat.threadId } : {}),
     });
     if (opSeqRef.current !== seq) return;
     if (result.ok) {
@@ -259,6 +263,8 @@ function ReportBugDialog({
           zipSizeBytes: result.zipSizeBytes,
           summary: result.summary,
         },
+        conversationMissing:
+          conversationRequested && !result.summary.files.some(isBugReportAgentChatEntry),
       });
     } else {
       setPhase({ step: 'compose', creating: false, createError: result.error });
@@ -280,6 +286,7 @@ function ReportBugDialog({
     setDetailed(crashContext !== undefined || crashInvite !== undefined);
     setIncludeDump(crashInvite?.minidumpAvailable === true);
     setIncludeScreenshot(true);
+    setIncludeChat(true);
     setAttachments([]);
     handleOpenChange(false);
   }
@@ -566,6 +573,32 @@ function ReportBugDialog({
                   </div>
                 </div>
               )}
+              {agentChat !== undefined && (
+                <div className="flex items-start gap-2.5">
+                  <Checkbox
+                    id={chatId}
+                    checked={includeChat}
+                    onCheckedChange={(value) => setIncludeChat(value === true)}
+                    aria-describedby={chatHintId}
+                    disabled={phase.creating}
+                    className="mt-0.5"
+                  />
+                  <div className="flex flex-col gap-0.5">
+                    <label htmlFor={chatId} className="text-sm font-medium">
+                      <Trans>This conversation</Trans>
+                    </label>
+                    <p id={chatHintId} className="text-1sm text-muted-foreground">
+                      <Trans>
+                        The chat's messages, tool calls, and their output, so we can see what the
+                        agent did, plus the chat's title, the project folder's path, the document it
+                        started from, and the agent and its settings. Images are replaced by their
+                        type and size, and attached text files are included. It can contain document
+                        content, so uncheck it if you'd rather not share it.
+                      </Trans>
+                    </p>
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 <Trans>
                   Known secrets are scrubbed, but other sensitive information may remain. Review the
@@ -647,6 +680,11 @@ function ReportBugDialog({
                 rawDumpIncluded={reportIncludesRawDump(phase.report)}
                 onReveal={revealZip}
               />
+              {phase.conversationMissing ? (
+                <p className="text-xs text-muted-foreground">
+                  <Trans>The conversation couldn't be added to this report.</Trans>
+                </p>
+              ) : null}
               <div className="flex items-start gap-2 rounded-md border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
                 <ShieldIcon
                   className="size-3.5 shrink-0 text-muted-foreground"

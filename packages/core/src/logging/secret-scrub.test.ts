@@ -122,6 +122,158 @@ describe('scrubSecrets', () => {
 });
 
 describe('redactSecrets', () => {
+  it('scans a long run of repeated JWT headers in linear time', () => {
+    const input = `see ${'eyJ'.repeat(70_000)}x`;
+
+    const started = performance.now();
+    const result = redactSecrets(input);
+
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(result.redacted).toBe(input);
+  });
+
+  it('checks for a key after each control sequence in linear time', () => {
+    const input = `[${'1;msk-1;mrk_live_1;mAKIA'.repeat(50_000)}`;
+
+    const started = performance.now();
+    const result = redactSecrets(input);
+
+    expect(performance.now() - started).toBeLessThan(2000);
+    expect(result.redacted).toBe(input);
+  });
+
+  it('still catches a JWT after a bearer prefix, an equals sign or a quote', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcDEF1234_-';
+    for (const input of [
+      `Authorization: Bearer ${jwt}`,
+      `token=${jwt}`,
+      JSON.stringify({ token: jwt }),
+      `"${jwt}"`,
+    ]) {
+      expect(redactSecrets(input).redacted).not.toContain('eyJzdWIi');
+    }
+  });
+
+  it('still catches a JWT right after a newline escape in a JSON log line', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcDEF1234_-';
+    const line = JSON.stringify({ msg: `response body:\n${jwt}` });
+
+    const result = redactSecrets(line);
+
+    expect(result.redacted).not.toContain('eyJzdWIi');
+    expect(result.patterns).toContain('jwt');
+  });
+
+  it('redacts a JWT exactly where the plain JWT pattern would, whatever comes before it', () => {
+    const plainJwt = /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g;
+    const segments = [
+      'eyJabcdefgh',
+      'eyJhbGciabcdefgh',
+      'abcdefgh',
+      'eyJ',
+      'xeyJabcdefgh',
+      'eyJeyJeyJabcdefgh',
+      '-_9eyJabcdefg',
+      'ab',
+    ];
+    const glue = ['.', '.', '.', '..', ' ', '-', '', '%20', '\u001b[32m'];
+    let seed = 0x2545f491;
+    const drawn = new Map<string, number>();
+    const pick = <T extends string>(from: readonly T[]): T => {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      const choice = from[(seed >>> 0) % from.length] as T;
+      drawn.set(choice, (drawn.get(choice) ?? 0) + 1);
+      return choice;
+    };
+    let matched = 0;
+    for (let round = 0; round < 20_000; round += 1) {
+      let line = pick(glue);
+      for (let segment = 0; segment < 5; segment += 1) line += pick(segments) + pick(glue);
+      const expected = line.replace(plainJwt, '[REDACTED-JWT]');
+      const result = redactSecrets(line);
+      expect(result.redacted, line).toBe(expected);
+      expect(result.patterns.includes('jwt'), line).toBe(expected !== line);
+      if (expected !== line) matched += 1;
+    }
+    expect(matched).toBeGreaterThan(1000);
+    for (const piece of [...segments, ...glue]) {
+      expect(drawn.get(piece) ?? 0, piece).toBeGreaterThan(1000);
+    }
+  });
+
+  it('catches a JWT glued to a color code, a percent-encoded byte or a word', () => {
+    const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.abcDEF1234_-';
+    for (const input of [
+      `\u001b[32m${jwt}`,
+      String.raw`\u001b[32m` + jwt,
+      `Bearer%20${jwt}`,
+      `token%3D${jwt}`,
+      `cache-${jwt}`,
+      `id_token_${jwt}`,
+      `v2${jwt}`,
+    ]) {
+      expect(redactSecrets(input).redacted, input).not.toContain('eyJzdWIi');
+    }
+  });
+
+  it('catches AWS, OpenAI and Stripe keys after a control sequence whose escape byte was stripped, but not inside words', () => {
+    const keys = [
+      `AKIA${'J'.repeat(16)}`,
+      `ASIA${'2'.repeat(16)}`,
+      `sk-${'f'.repeat(24)}`,
+      `sk-proj-${'a'.repeat(24)}`,
+      `sk-svcacct-${'b'.repeat(24)}`,
+      `sk-admin-${'c'.repeat(24)}`,
+      `sk_live_${'d'.repeat(24)}`,
+      `rk_live_${'e'.repeat(24)}`,
+    ];
+    for (const key of keys) {
+      for (const before of [
+        '[32m',
+        '^[[32m',
+        '\u009b32m',
+        '&#x1b;[32m',
+        '[1;31m',
+        '[38:5:208m',
+        '[2K',
+        '[2K[1G',
+        '[?25h',
+        '\u009b2K',
+        ' ',
+      ]) {
+        expect(redactSecrets(`${before}${key}`).redacted, `${before}${key}`).not.toContain(key);
+      }
+    }
+    for (const word of [
+      'task-admin-dashboard-route-handlers',
+      'task_live_notificationsEnabled',
+      'task-scheduleNotificationsForUsers',
+      'SLOVAKIAREPUBLICDATASETS',
+    ]) {
+      expect(redactSecrets(word).redacted).toBe(word);
+    }
+  });
+
+  it('catches vendor tokens whatever character comes right before them', () => {
+    const tokens = [
+      `gho_${'a'.repeat(36)}`,
+      `github_pat_${'b'.repeat(22)}`,
+      `glpat-${'c'.repeat(20)}`,
+      `xoxb-${'1'.repeat(12)}`,
+      `AIza${'d'.repeat(35)}`,
+      `sk-ant-api03-${'e'.repeat(24)}`,
+    ];
+    for (const token of tokens) {
+      for (const before of ['[32m', 'x', '9', '^[[0m', '&#x1b;[1m']) {
+        expect(redactSecrets(`${before}${token}`).redacted, `${before}${token}`).not.toContain(
+          token,
+        );
+      }
+    }
+  });
+
   it('reports which named patterns matched with a per-line count', () => {
     const result = redactSecrets(
       'line one clean\nghp_0123456789abcdefghijklmnopqrstuvwxyz\n/Users/alice/notes',

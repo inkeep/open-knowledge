@@ -1216,6 +1216,7 @@ export interface OkDesktopBridge {
       includeCrashDump?: boolean;
       includeScreenshot?: boolean;
       attachments?: OkBugReportAttachmentInput[];
+      agentChatThreadId?: string;
     }): Promise<OkBugReportCreateResult>;
     captureScreenshot(): Promise<OkBugReportScreenshot | null>;
     crashDumpAvailability(): Promise<OkBugReportCrashDumpAvailability>;

@@ -3040,6 +3040,7 @@
     "U7Iesw": [["seconds"], " segundos"],
     "U88xbi": ["Falha ao criar o arquivo de esquema"],
     "U8CD-l": ["Copiar caminho completo, sem espaço de trabalho"],
+    "U8novP": ["Esta conversa"],
     "UBKdn5": ["Deixar os chats de agentes usarem um navegador"],
     "UBv8UK": ["Excluir definitivamente"],
     "UDFrWm": ["Verificando a conexão com o GitHub..."],
@@ -5242,6 +5243,7 @@
       "Este servidor não tem autenticação integrada. Qualquer pessoa que consiga acessar o túnel obtém controle total desta base de conhecimento. Coloque um portão de autenticação à frente, como uma rede Tailscale privada ou um proxy reverso com autenticação."
     ],
     "n4vt3Q": ["Baixar aplicativo"],
+    "n57RjG": ["Relatar um problema com este chat…"],
     "n5Vy3l": ["Aberto no ramo ", ["branch"]],
     "n5n_vi": ["Repositório privado"],
     "n6hXUm": [
@@ -5262,12 +5264,16 @@
     "nNYV3Y": ["e mais ", ["remaining"]],
     "nOEDQs": ["Falha ao atualizar o modo de sincronização — ", ["detail"]],
     "nP-KFo": ["Novo chat do ", ["0"]],
+    "nRX05G": ["Não foi possível adicionar a conversa a este relatório."],
     "nTM8ab": ["Dê um nome antes de editar as cores."],
     "nTwL53": ["Abra um documento para compartilhar a URL dele."],
     "nWMRxa": ["Desafixar"],
     "nWS2gQ": ["Publicado por ", ["publisher"]],
     "nWv1ja": ["Gerencie os arquivos ocultos em Configurações → Padrões de exclusão."],
     "nXHOFU": ["Não foi possível atualizar de ", ["0"], ": ", ["1"]],
+    "nXK5bR": [
+      "As mensagens do chat, as chamadas de ferramentas e o resultado delas, para vermos o que o agente fez, além do título do chat, do caminho da pasta do projeto, do documento em que ele começou e do agente com suas configurações. As imagens são substituídas pelo tipo e tamanho, e os arquivos de texto anexados são incluídos. Ela pode conter conteúdo de documentos, então desmarque se preferir não compartilhá-la."
+    ],
     "nYeBmY": ["há ", ["hours"], " h"],
     "n_I-da": ["Ver fonte"],
     "nbLQ_9": ["Escolha para onde enviar estes comentários"],
