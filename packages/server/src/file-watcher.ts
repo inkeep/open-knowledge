@@ -30,6 +30,7 @@ import {
   extractPageTitle,
   extractPageType,
 } from './page-identity.ts';
+import { subscribeParcel } from './parcel-subscription.ts';
 import { toPosix } from './path-utils.ts';
 import { containsConflictMarkers } from './reconciliation.ts';
 import { getMeter, withSpan } from './telemetry.ts';
@@ -1450,6 +1451,7 @@ async function startParcelWatcher(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
+  platform: NodeJS.Platform,
   onRawBatch?: (absPaths: readonly string[]) => void,
   discoveredStructuralDirs?: ReadonlySet<string>,
 ): Promise<AsyncSubscription | null> {
@@ -1474,7 +1476,8 @@ async function startParcelWatcher(
         }
       : undefined;
 
-    const subscription = await parcel.subscribe(
+    const subscription = await subscribeParcel(
+      parcel,
       contentDir,
       async (err, events) => {
         if (err) {
@@ -1498,6 +1501,7 @@ async function startParcelWatcher(
         }
       },
       subscribeOpts,
+      platform,
     );
 
     return subscription;
@@ -1684,6 +1688,7 @@ export async function startWatcher(
   let subscription: AsyncSubscription;
   let backend: WatcherBackend;
   const forceChokidar = process.env.OK_FILE_WATCHER_BACKEND === 'chokidar';
+  const platform = opts.platform ?? process.platform;
   try {
     const parcelSub =
       forceChokidar || opts.forceBackend === 'chokidar'
@@ -1696,6 +1701,7 @@ export async function startWatcher(
             onDiskEvent,
             aliasMap,
             bumpFileIndexGeneration,
+            platform,
             onRawBatch,
             structuralIgnoreDirs,
           );
@@ -1714,7 +1720,7 @@ export async function startWatcher(
         onDiskEvent,
         aliasMap,
         bumpFileIndexGeneration,
-        opts.platform ?? process.platform,
+        platform,
         onRawBatch,
       );
       backend = 'chokidar';

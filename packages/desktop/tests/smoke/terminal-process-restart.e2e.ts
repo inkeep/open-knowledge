@@ -4,6 +4,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
+import {
+  type CrashDumpVerdict,
+  type CrashDumpWatch,
+  collectCrashDumps,
+  failIfEarlierAttemptFoundCrashDump,
+  observeQuit,
+  runningAppProcesses,
+  watchCrashDumps,
+} from './_helpers/crash-dumps';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
 import { waitForWindowByMode } from './_helpers/launch-readiness';
 import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
@@ -35,6 +44,8 @@ import {
 const TARGET = resolveDesktopTarget();
 const ENABLED = process.env.OK_DESKTOP_E2E_SMOKE === '1';
 const PRIMARY_MODIFIER = process.platform === 'darwin' ? 'Meta' : 'Control';
+const QUIT_SAMPLES = process.platform === 'win32' ? 50 : 1;
+const SECOND_TAB_LABEL = process.platform === 'win32' ? 'process second' : 'Terminal 2';
 
 interface RestartSeed {
   tmpHome: string;
@@ -146,6 +157,34 @@ async function openBareTab(page: Page): Promise<void> {
   });
 }
 
+async function expectArrangedTabs(page: Page): Promise<void> {
+  await expect(terminalTabs(page)).toHaveText([SECOND_TAB_LABEL, 'process first']);
+  await expect(page.getByRole('tab', { name: SECOND_TAB_LABEL })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+}
+
+async function arrangeTabsInRightColumn(
+  page: Page,
+  firstTabId: string,
+  secondTabId: string,
+): Promise<void> {
+  await renameTerminalTab(page, terminalTabById(page, firstTabId), 'process first');
+  if (process.platform === 'win32') {
+    await renameTerminalTab(page, terminalTabById(page, secondTabId), SECOND_TAB_LABEL);
+  }
+  await terminalTabById(page, secondTabId).click();
+  await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
+  await page.locator('section[aria-label="Terminal"]:visible .xterm').click();
+  await page.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
+  await expectTerminalTabOrder(page, [secondTabId, firstTabId]);
+  await expect(terminalTabById(page, secondTabId)).toHaveAttribute('aria-selected', 'true');
+  await dispatchRendererMenuAction(page, 'move-terminal');
+  await expect(page.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
+  await expectArrangedTabs(page);
+}
+
 async function applyPersistedRightTerminalWidth(page: Page, width: number): Promise<number> {
   await page.evaluate((nextWidth) => {
     localStorage.setItem('ok-terminal-right-width-v1', String(nextWidth));
@@ -178,6 +217,24 @@ async function quitAndWait(app: ElectronApplication, child: ChildProcess): Promi
   expect(child.exitCode ?? child.signalCode).not.toBeNull();
 }
 
+async function quitAndCollectCrashDumps(
+  app: ElectronApplication,
+  child: ChildProcess,
+  dumps: CrashDumpWatch,
+): Promise<CrashDumpVerdict> {
+  const quit = await observeQuit(app);
+  await quitAndWait(app, child);
+  await expect
+    .configure({ soft: true })
+    .poll(() => runningAppProcesses(quit.processes), {
+      message:
+        'every process the app ran before quit has exited, so the crash-dump scan is complete',
+      timeout: 15_000,
+    })
+    .toEqual([]);
+  return collectCrashDumps(dumps, quit, test.info());
+}
+
 test.describe('terminal process restart', () => {
   test.skip(!ENABLED, 'Set OK_DESKTOP_E2E_SMOKE=1');
   test.skip(!PTY_PLATFORM_SUPPORTED, PTY_PLATFORM_SKIP_REASON);
@@ -187,10 +244,12 @@ test.describe('terminal process restart', () => {
     captureStderrFor,
   }) => {
     test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
+    failIfEarlierAttemptFoundCrashDump(test.info());
     const seed = seedRestartProfile();
     const firstApp = await launchRestartProfile(seed);
     captureStderrFor(firstApp, { home: seed.tmpHome });
     const firstProcess = firstApp.process();
+    const firstDumps = await watchCrashDumps(firstApp);
     const firstPage = await findEditorWindow(firstApp);
     await setWindowSize(firstApp, firstPage, 1900, 900);
     await openTerminal(firstPage);
@@ -199,31 +258,11 @@ test.describe('terminal process restart', () => {
     await openBareTab(firstPage);
     const [, secondTabId] = await terminalTabIds(firstPage);
     if (secondTabId === undefined) throw new Error('second terminal tab was not created');
-    await renameTerminalTab(firstPage, terminalTabById(firstPage, firstTabId), 'process first');
-    const secondLabel = process.platform === 'win32' ? 'process second' : 'Terminal 2';
-    if (process.platform === 'win32') {
-      await renameTerminalTab(firstPage, terminalTabById(firstPage, secondTabId), secondLabel);
-    }
-    await terminalTabById(firstPage, secondTabId).click();
-    await expect(terminalTabById(firstPage, secondTabId)).toHaveAttribute('aria-selected', 'true');
-    await firstPage.locator('section[aria-label="Terminal"]:visible .xterm').click();
-    await firstPage.keyboard.press(`${PRIMARY_MODIFIER}+Shift+ArrowLeft`);
-    await expectTerminalTabOrder(firstPage, [secondTabId, firstTabId]);
-    await expect(terminalTabById(firstPage, secondTabId)).toHaveAttribute('aria-selected', 'true');
-    await dispatchRendererMenuAction(firstPage, 'move-terminal');
-    await expect(firstPage.locator('#terminal-column')).toBeVisible({ timeout: 10_000 });
-    await expect(terminalTabs(firstPage)).toHaveText([secondLabel, 'process first']);
-    await expect(firstPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await arrangeTabsInRightColumn(firstPage, firstTabId, secondTabId);
     const retainedWidth = await applyPersistedRightTerminalWidth(firstPage, 860);
-    await expect(terminalTabs(firstPage)).toHaveText([secondLabel, 'process first']);
-    await expect(firstPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
-    await quitAndWait(firstApp, firstProcess);
+    await expectArrangedTabs(firstPage);
+    const firstQuitDumps = await quitAndCollectCrashDumps(firstApp, firstProcess, firstDumps);
+    expect.soft(firstQuitDumps.lines, firstQuitDumps.headline).toEqual([]);
 
     const secondApp = await launchRestartProfile(seed);
     captureStderrFor(secondApp, {
@@ -234,13 +273,13 @@ test.describe('terminal process restart', () => {
     await setWindowSize(secondApp, secondPage, 1900, 900);
     await expect(secondPage.locator('#terminal-column')).toBeVisible({ timeout: 25_000 });
     await expect(secondPage.locator('#terminal-dock-panel')).toHaveCount(0);
-    await expect(terminalTabs(secondPage)).toHaveText([secondLabel, 'process first'], {
+    await expect(terminalTabs(secondPage)).toHaveText([SECOND_TAB_LABEL, 'process first'], {
       timeout: 25_000,
     });
     const restoredTail = settleBudget('restored active tab and right Terminal width', {
       timeout: RAIL_LAYOUT_SETTLE_TIMEOUT_MS,
     });
-    await expect(secondPage.getByRole('tab', { name: secondLabel })).toHaveAttribute(
+    await expect(secondPage.getByRole('tab', { name: SECOND_TAB_LABEL })).toHaveAttribute(
       'aria-selected',
       'true',
       { timeout: restoredTail.remainingMs() },
@@ -251,4 +290,32 @@ test.describe('terminal process restart', () => {
       { reading: 'width', of: '#terminal-column', budget: restoredTail },
     );
   });
+
+  for (let sample = 1; sample <= QUIT_SAMPLES; sample += 1) {
+    test(`clean quit ${sample} of ${QUIT_SAMPLES} with two live terminals leaves no crash dump for the next launch`, async ({
+      captureStderrFor,
+    }) => {
+      test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
+      failIfEarlierAttemptFoundCrashDump(test.info());
+      const seed = seedRestartProfile();
+      const app = await launchRestartProfile(seed);
+      captureStderrFor(app, { home: seed.tmpHome, cleanupDirs: [seed.tmpHome, seed.projectDir] });
+      const appProcess = app.process();
+      const dumps = await watchCrashDumps(app);
+      // WARN: mirrors the first process of the restart test above
+      const page = await findEditorWindow(app);
+      await setWindowSize(app, page, 1900, 900);
+      await openTerminal(page);
+      const [firstTabId] = await terminalTabIds(page);
+      if (firstTabId === undefined) throw new Error('first terminal tab was not created');
+      await openBareTab(page);
+      const [, secondTabId] = await terminalTabIds(page);
+      if (secondTabId === undefined) throw new Error('second terminal tab was not created');
+      await arrangeTabsInRightColumn(page, firstTabId, secondTabId);
+      await applyPersistedRightTerminalWidth(page, 860);
+      await expectArrangedTabs(page);
+      const quit = await quitAndCollectCrashDumps(app, appProcess, dumps);
+      expect(quit.lines, quit.headline).toEqual([]);
+    });
+  }
 });

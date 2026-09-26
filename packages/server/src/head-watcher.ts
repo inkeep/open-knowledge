@@ -3,6 +3,7 @@ import {
   type GitRepository,
 } from '@inkeep/open-knowledge-core/git-repository';
 import { getLogger } from './logger.ts';
+import { subscribeParcel } from './parcel-subscription.ts';
 
 const log = getLogger('head-watcher');
 
@@ -69,6 +70,7 @@ export function watchedGitFile(rawPath: string): string | null {
 async function tryStartParcelHeadWatcher(
   gitDir: string,
   dispatch: HeadEventDispatch,
+  platform: NodeJS.Platform,
 ): Promise<(() => Promise<void>) | null> {
   let parcel: typeof import('@parcel/watcher');
   try {
@@ -81,13 +83,19 @@ async function tryStartParcelHeadWatcher(
     return null;
   }
   try {
-    const subscription = await parcel.subscribe(gitDir, (err, events) => {
-      if (err) {
-        log.warn({ err }, '[head-watcher] parcel subscription error');
-        return;
-      }
-      for (const event of events) dispatch(event.path);
-    });
+    const subscription = await subscribeParcel(
+      parcel,
+      gitDir,
+      (err, events) => {
+        if (err) {
+          log.warn({ err }, '[head-watcher] parcel subscription error');
+          return;
+        }
+        for (const event of events) dispatch(event.path);
+      },
+      undefined,
+      platform,
+    );
     return () => subscription.unsubscribe();
   } catch (err) {
     log.debug(
@@ -121,6 +129,7 @@ export async function startHeadWatcher(
   onBatchEnd: OnBatchEnd,
   opts: {
     forceBackend?: 'parcel' | 'chokidar';
+    platform?: NodeJS.Platform;
     subscribeForTest?: (
       gitDir: string,
       dispatch: HeadEventDispatch,
@@ -247,7 +256,11 @@ export async function startHeadWatcher(
     resolvedUnsub = await opts.subscribeForTest(gitDir, dispatch);
     backend = 'test';
   } else if (opts.forceBackend !== 'chokidar') {
-    resolvedUnsub = await tryStartParcelHeadWatcher(gitDir, dispatch);
+    resolvedUnsub = await tryStartParcelHeadWatcher(
+      gitDir,
+      dispatch,
+      opts.platform ?? process.platform,
+    );
     if (resolvedUnsub) backend = 'parcel';
   }
   if (!resolvedUnsub) {
