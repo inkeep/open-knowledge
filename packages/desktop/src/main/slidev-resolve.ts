@@ -1,6 +1,6 @@
-import { access, constants, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { SlidevSource } from '../shared/ipc-channels.ts';
+import { isExecutableFileSync } from './executable-file.ts';
 
 type SlidevResolution = { available: true; source: SlidevSource } | { available: false };
 
@@ -31,13 +31,5 @@ export async function resolveSlidev(
 }
 
 export async function realIsExecutableFile(absPath: string): Promise<boolean> {
-  try {
-    const st = await stat(absPath);
-    if (!st.isFile()) return false;
-    if (process.platform === 'win32') return true;
-    await access(absPath, constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
+  return isExecutableFileSync(absPath);
 }

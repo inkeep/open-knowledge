@@ -55,15 +55,17 @@ function measure(statfs: DevShmPostureDeps['statfs'], path: string): MeasuredSpa
       errorCode: null,
     };
   } catch (error) {
-    const errorCode =
-      error !== null &&
-      typeof error === 'object' &&
-      'code' in error &&
-      typeof error.code === 'string'
-        ? error.code
-        : 'UNKNOWN';
-    return { available: null, total: null, errorCode };
+    return { available: null, total: null, errorCode: errorCodeOf(error) };
   }
+}
+
+export function errorCodeOf(error: unknown): string {
+  return error !== null &&
+    typeof error === 'object' &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : 'UNKNOWN';
 }
 
 export function decideDevShmPosture(deps: DevShmPostureDeps): DevShmPosture {

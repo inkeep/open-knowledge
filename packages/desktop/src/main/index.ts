@@ -332,6 +332,7 @@ import {
 } from './ipc-handlers.ts';
 import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
+import { getBootAmbientCapsFacts, logAmbientCapsPosture } from './linux-ambient-caps.ts';
 import {
   detectGraphicalAuthCommand,
   runManualInstallFallbackDialog,
@@ -5897,6 +5898,13 @@ applyDevShmPosture({
   log: (level, facts) =>
     getRootDesktopLogger()[level](facts, 'linux shared-memory posture for chromium'),
 });
+
+const bootAmbientCapsFacts = getBootAmbientCapsFacts();
+if (bootAmbientCapsFacts) {
+  logAmbientCapsPosture(bootAmbientCapsFacts, (level, facts) =>
+    getRootDesktopLogger()[level](facts, 'linux ambient capabilities posture'),
+  );
+}
 
 if (!app.isPackaged) {
   const resolved = resolveEffectiveInstanceName(process.env, app.getAppPath(), {
