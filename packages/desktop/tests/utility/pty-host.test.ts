@@ -31,6 +31,11 @@ import {
   type SpawnPty,
   setupPtyHost,
 } from '../../src/utility/pty-host.ts';
+import {
+  type ConptyCursorSyncHost,
+  CURSOR_POSITION_QUERY,
+  createConptyCursorSyncHost,
+} from '../support/conpty-cursor-sync-host.test-helper.ts';
 
 interface FakePty extends PtyProcessLike {
   writes: string[];
@@ -472,6 +477,1046 @@ describe('setupPtyHost — streaming', () => {
     h.fire({ type: 'resume', ptyId: 'p1' });
     expect(pty.pauseCount).toBe(1);
     expect(pty.resumeCount).toBe(1);
+  });
+});
+
+const PWSH = 'C:\\Program Files\\PowerShell\\7\\pwsh.exe';
+const FOCUS_OUT = '\u001b[O';
+const FOCUS_IN = '\u001b[I';
+const SHIFT_F3 = '\u001b[1;2R';
+const RECORDED_CURSOR_REPORT = '\u001b[13;81R';
+const SMOKE_SPAWN_SIZE = { cols: 222, rows: 13 };
+const MOVED_SIZE = { cols: 101, rows: 52 };
+const POST_MOVE_COMMAND = 'Write-Output "PROCESS_after-move=$PID"';
+
+interface TerminalLink {
+  send(data: string): void;
+  resize(cols: number, rows: number): void;
+  received(): string;
+}
+
+interface XtermSide {
+  readonly sent: readonly string[];
+  type(text: string): void;
+  report(sequence: string): void;
+  resize(size: { cols: number; rows: number }): void;
+  answerCursorQueries(): void;
+}
+
+function createXtermSide(link: TerminalLink): XtermSide {
+  const sent: string[] = [];
+  let answered = 0;
+  const send = (data: string): void => {
+    sent.push(data);
+    link.send(data);
+  };
+  return {
+    sent,
+    type(text) {
+      for (const key of text) send(key);
+    },
+    report: send,
+    resize({ cols, rows }) {
+      link.resize(cols, rows);
+    },
+    answerCursorQueries() {
+      const asked = link.received().split(CURSOR_POSITION_QUERY).length - 1;
+      for (; answered < asked; answered += 1) send(RECORDED_CURSOR_REPORT);
+    },
+  };
+}
+
+function rendererReceived(h: Harness, ptyId: string): string {
+  return h.posted
+    .flatMap((message) =>
+      message.type === 'data' && message.ptyId === ptyId ? [message.data] : [],
+    )
+    .join('');
+}
+
+function ptyHostLink(h: Harness, ptyId: string): TerminalLink {
+  return {
+    send: (data) => h.fire({ type: 'input', ptyId, data }),
+    resize: (cols, rows) => h.fire({ type: 'resize', ptyId, cols, rows }),
+    received: () => rendererReceived(h, ptyId),
+  };
+}
+
+function startBundledConptySession(host: ConptyCursorSyncHost): { h: Harness; xterm: XtermSide } {
+  const h = makeHarness({
+    platform: 'win32',
+    env: { SystemRoot: 'C:\\Windows', ProgramFiles: 'C:\\Program Files' },
+    shellExists: (path) => path === PWSH,
+    pathProbe: () => PWSH,
+    spawn: () => host,
+  });
+  h.fire(CREATE({ cwd: 'C:\\project', ...SMOKE_SPAWN_SIZE }));
+  return { h, xterm: createXtermSide(ptyHostLink(h, 'p1')) };
+}
+
+interface RecordedRetriedQuery {
+  attempt: string;
+  command: string;
+  typedBeforeFirstQuery: string;
+  typedBetweenQueries: string;
+  typedBeforeReplies: string;
+  shellRan: string;
+}
+
+const RECORDED_RETRIED_QUERIES: readonly RecordedRetriedQuery[] = [
+  {
+    attempt: 'bundled #10 of run 36140409827',
+    command: 'Write-Output "PROCESS_1e6a4905ac984ac483cff50173bdb9b9=$PID"',
+    typedBeforeFirstQuery: 'W',
+    typedBetweenQueries: '',
+    typedBeforeReplies: '',
+    shellRan: 'Wite-Output "PROCESS_1e6a4905ac984ac483cff50173bdb9b9=$PID"',
+  },
+  {
+    attempt: 'bundled #32 of run 36140409827',
+    command: 'Write-Output "PROCESS_4b7e8901d77d4c309c337676fe637047=$PID"',
+    typedBeforeFirstQuery: 'W',
+    typedBetweenQueries: '',
+    typedBeforeReplies: 'r',
+    shellRan: 'Wrte-Output "PROCESS_4b7e8901d77d4c309c337676fe637047=$PID"',
+  },
+  {
+    attempt: 'bundled #16 of run 36138023695',
+    command: 'Write-Output "PROCESS_a292934b75004134ab1f29723a1243cb=$PID"',
+    typedBeforeFirstQuery: 'W',
+    typedBetweenQueries: 'ri',
+    typedBeforeReplies: '',
+    shellRan: 'Wrie-Output "PROCESS_a292934b75004134ab1f29723a1243cb=$PID"',
+  },
+  {
+    attempt: 'bundled #18 of run 36138023695',
+    command: 'Write-Output "PROCESS_8446c9b807c94289a86014529d59b33e=$PID"',
+    typedBeforeFirstQuery: 'Write-Output',
+    typedBetweenQueries: '',
+    typedBeforeReplies: '',
+    shellRan: 'Write-Output"PROCESS_8446c9b807c94289a86014529d59b33e=$PID"',
+  },
+];
+
+function replayRetriedQuery(
+  xterm: XtermSide,
+  host: ConptyCursorSyncHost,
+  recorded: RecordedRetriedQuery,
+): void {
+  const typedBeforeReplies =
+    recorded.typedBeforeFirstQuery + recorded.typedBetweenQueries + recorded.typedBeforeReplies;
+  if (!recorded.command.startsWith(typedBeforeReplies)) {
+    throw new Error(
+      `${recorded.attempt}: the keys typed before the replies must begin its command`,
+    );
+  }
+  xterm.report(FOCUS_OUT);
+  xterm.resize(MOVED_SIZE);
+  xterm.report(FOCUS_IN);
+  xterm.type(recorded.typedBeforeFirstQuery);
+  host.shellReadsScreenBufferInfo();
+  xterm.type(recorded.typedBetweenQueries);
+  host.cursorSyncWaitTimesOut();
+  host.shellReadsScreenBufferInfo();
+  xterm.type(recorded.typedBeforeReplies);
+  xterm.answerCursorQueries();
+  xterm.type(`${recorded.command.slice(typedBeforeReplies.length)}\r`);
+}
+
+describe('setupPtyHost — cursor-position queries from the console host', () => {
+  test.each(RECORDED_RETRIED_QUERIES)(
+    'a query the bundled ConPTY host re-issued after its wait expired does not cost the shell a typed key ($attempt)',
+    (recorded) => {
+      const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+      const { xterm } = startBundledConptySession(host);
+
+      replayRetriedQuery(xterm, host, recorded);
+
+      expect(host.cursorQueriesIssued).toBe(2);
+      expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([recorded.command]);
+      expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(
+        `${recorded.command}\r`,
+      );
+    },
+  );
+
+  test('a second query raised by a later resize while the first is unanswered does not cost the shell a typed key, even from a host that stops re-asking after a timeout', () => {
+    const host = createConptyCursorSyncHost({
+      ...SMOKE_SPAWN_SIZE,
+      afterTimedOutQuery: 'stops-asking',
+    });
+    const { xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    host.cursorSyncWaitTimesOut();
+    host.shellReadsScreenBufferInfo();
+    expect(host.cursorQueriesIssued).toBe(1);
+    xterm.resize(SMOKE_SPAWN_SIZE);
+    xterm.type('r');
+    host.shellReadsScreenBufferInfo();
+    expect(host.cursorQueriesIssued).toBe(2);
+    xterm.answerCursorQueries();
+    xterm.type(`${POST_MOVE_COMMAND.slice('Wr'.length)}\r`);
+
+    expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([POST_MOVE_COMMAND]);
+    expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(`${POST_MOVE_COMMAND}\r`);
+  });
+
+  test('a re-issued query split across output chunks is still recognized, so its late reply does not cost the shell a typed key', () => {
+    const recorded = RECORDED_RETRIED_QUERIES[1] as RecordedRetriedQuery;
+    const host = createConptyCursorSyncHost({
+      ...SMOKE_SPAWN_SIZE,
+      queryOutput: (queryNumber) =>
+        queryNumber === 1 ? ['\u001b[?25l\u001b[', '6n'] : ['\u001b', '[6n\u001b[?25h'],
+    });
+    const { xterm } = startBundledConptySession(host);
+
+    replayRetriedQuery(xterm, host, recorded);
+
+    expect(host.cursorQueriesIssued).toBe(2);
+    expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([recorded.command]);
+    expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(`${recorded.command}\r`);
+  });
+
+  test('a query answered before the wait expires still reaches the host, which takes the cursor position from the reply', () => {
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const { xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    xterm.answerCursorQueries();
+    expect(host.cursorReportsConsumed).toEqual([{ row: 13, column: 81 }]);
+    xterm.type(`${POST_MOVE_COMMAND.slice('W'.length)}\r`);
+    host.shellReadsScreenBufferInfo();
+
+    expect(host.cursorQueriesIssued).toBe(1);
+    expect(host.inputReceived.join('')).toBe(xterm.sent.join(''));
+    expect(host.linesAcceptedByShell).toEqual([POST_MOVE_COMMAND]);
+  });
+
+  test('a query split across output chunks still reaches the renderer intact, and its reply still reaches the host', () => {
+    const host = createConptyCursorSyncHost({
+      ...SMOKE_SPAWN_SIZE,
+      queryOutput: () => ['\u001b[', '6n'],
+    });
+    const { h, xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    xterm.answerCursorQueries();
+    xterm.type(`${POST_MOVE_COMMAND.slice('W'.length)}\r`);
+
+    expect(rendererReceived(h, 'p1')).toBe(host.outputEmitted.join(''));
+    expect(host.cursorReportsConsumed).toEqual([{ row: 13, column: 81 }]);
+    expect(host.inputReceived.join('')).toBe(xterm.sent.join(''));
+    expect(host.linesAcceptedByShell).toEqual([POST_MOVE_COMMAND]);
+  });
+
+  test('a Shift+F3 the user types after the host query was answered still reaches the host unchanged', () => {
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const { xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    xterm.answerCursorQueries();
+    xterm.type('rite-Output');
+    xterm.report(SHIFT_F3);
+    xterm.type('rX\r');
+
+    expect(host.inputReceived.join('')).toBe(xterm.sent.join(''));
+    expect(host.linesAcceptedByShell).toEqual(['WXrite-Output']);
+  });
+
+  test.each(['darwin', 'linux'] as const)(
+    'on %s, a shell application that asks for the cursor position twice gets both replies',
+    (platform) => {
+      const pty = makeFakePty();
+      const h = makeHarness({
+        pty,
+        platform,
+        env: { SHELL: '/bin/bash', PATH: '/usr/bin' },
+        shellExists: (path) => path === '/bin/bash',
+      });
+      h.fire(CREATE());
+      const xterm = createXtermSide(ptyHostLink(h, 'p1'));
+
+      pty.emitData(CURSOR_POSITION_QUERY);
+      pty.emitData(CURSOR_POSITION_QUERY);
+      xterm.answerCursorQueries();
+
+      expect(pty.writes.join('')).toBe(RECORDED_CURSOR_REPORT.repeat(2));
+    },
+  );
+});
+
+describe('ConPTY cursor-sync host model — conformance to the recorded attempts', () => {
+  test.each(RECORDED_RETRIED_QUERIES)(
+    'fed the recorded bytes with nothing in between, it runs the command the shell ran in $attempt',
+    (recorded) => {
+      const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+      const xterm = createXtermSide({
+        send: (data) => host.write(data),
+        resize: (cols, rows) => host.resize(cols, rows),
+        received: () => host.outputEmitted.join(''),
+      });
+
+      replayRetriedQuery(xterm, host, recorded);
+
+      expect(host.linesAcceptedByShell).toEqual([recorded.shellRan]);
+    },
+  );
+});
+
+const WINDOWS_PWSH_SESSION = {
+  platform: 'win32',
+  env: { SystemRoot: 'C:\\Windows', ProgramFiles: 'C:\\Program Files' },
+  shellExists: (path: string) => path === PWSH,
+  pathProbe: () => PWSH,
+} as const;
+const VIM_START_UP_PROBES = [
+  { probe: '\u001b[2;1H\u25bd\u001b[6n', reply: '\u001b[2;2R' },
+  { probe: '\u001b[3;1H\u001bPzz\u001b\\\u001b[0%m\u001b[6n', reply: '\u001b[3;1R' },
+] as const;
+const DECXCPR_REPLY = '\u001b[?13;81R';
+const SPLIT_QUERY_OUTPUT = (queryNumber: number): readonly string[] =>
+  queryNumber === 1 ? ['\u001b[?25l\u001b[', '6n'] : ['\u001b', '[6n\u001b[?25h'];
+const CURSOR_REPORT_DROPPED = {
+  level: 'warn',
+  entry: { event: 'pty-host-cursor-report-dropped', ptyId: 'p1' },
+} as const;
+
+function openWindowsTerminal(h: Harness, ptyId = 'p1'): XtermSide {
+  h.fire(CREATE({ ptyId, cwd: 'C:\\project', ...SMOKE_SPAWN_SIZE }));
+  return createXtermSide(ptyHostLink(h, ptyId));
+}
+
+function spawnInTurn(...ptys: PtyProcessLike[]): SpawnPty {
+  const unspawned = [...ptys];
+  return () => {
+    const next = unspawned.shift();
+    if (next === undefined) throw new Error('the host spawned more ptys than the test prepared');
+    return next;
+  };
+}
+
+function rendererChunks(h: Harness, ptyId: string): string[] {
+  return h.posted.flatMap((message) =>
+    message.type === 'data' && message.ptyId === ptyId ? [message.data] : [],
+  );
+}
+
+function answerVimStartUpProbes(pty: FakePty, xterm: XtermSide): void {
+  for (const { probe } of VIM_START_UP_PROBES) pty.emitData(probe);
+  for (const { reply } of VIM_START_UP_PROBES) xterm.report(reply);
+}
+
+function answerOnlyTheFirstRetriedQuery(host: ConptyCursorSyncHost, xterm: XtermSide): void {
+  xterm.resize(MOVED_SIZE);
+  host.shellReadsScreenBufferInfo();
+  host.cursorSyncWaitTimesOut();
+  host.shellReadsScreenBufferInfo();
+  xterm.report(RECORDED_CURSOR_REPORT);
+}
+
+function typeWithShiftF3(xterm: XtermSide): void {
+  xterm.type('Write-Output');
+  xterm.report(SHIFT_F3);
+  xterm.type('rX\r');
+}
+
+describe("setupPtyHost — cursor-position replies outside the console host's resize sync", () => {
+  test('with no size change since the session started, a Windows application that asks for the cursor position twice gets both replies', () => {
+    const pty = makeFakePty();
+    const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+
+    pty.emitData(CURSOR_POSITION_QUERY);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    xterm.answerCursorQueries();
+
+    expect(pty.writes).toEqual([RECORDED_CURSOR_REPORT, RECORDED_CURSOR_REPORT]);
+  });
+
+  test.each([
+    {
+      size: 'the size it was created at',
+      settle: (_pty: FakePty, xterm: XtermSide) => xterm.resize(SMOKE_SPAWN_SIZE),
+    },
+    {
+      size: 'the size a finished sync left',
+      settle: (pty: FakePty, xterm: XtermSide) => {
+        xterm.resize(MOVED_SIZE);
+        pty.emitData(CURSOR_POSITION_QUERY);
+        xterm.answerCursorQueries();
+        xterm.resize(MOVED_SIZE);
+      },
+    },
+  ])(
+    "a resize to the size the session already has withholds neither reply to vim's two start-up probes ($size)",
+    ({ settle }) => {
+      const pty = makeFakePty();
+      const h = makeHarness({ pty, ...WINDOWS_PWSH_SESSION });
+      const xterm = openWindowsTerminal(h);
+
+      settle(pty, xterm);
+      answerVimStartUpProbes(pty, xterm);
+
+      expect(rendererReceived(h, 'p1')).toContain(
+        VIM_START_UP_PROBES.map(({ probe }) => probe).join(''),
+      );
+      expect(pty.writes).toEqual(xterm.sent);
+    },
+  );
+
+  test("once the console host's post-resize query is answered, vim's two start-up probes get both replies", () => {
+    const pty = makeFakePty();
+    const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+
+    xterm.resize(MOVED_SIZE);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    xterm.answerCursorQueries();
+    answerVimStartUpProbes(pty, xterm);
+
+    expect(pty.writes).toEqual([
+      RECORDED_CURSOR_REPORT,
+      ...VIM_START_UP_PROBES.map(({ reply }) => reply),
+    ]);
+  });
+
+  test.each([
+    { lookalike: 'a DECXCPR request', output: '\u001b[?6n' },
+    { lookalike: 'a status request with code 16', output: '\u001b[16n' },
+    { lookalike: 'the query text without its escape', output: '[6n' },
+  ])(
+    'a lookalike of the cursor query in host output during the resize sync is not taken for one, so a Shift+F3 typed after the real query was answered still reaches the host ($lookalike)',
+    ({ output }) => {
+      const host = createConptyCursorSyncHost({
+        ...SMOKE_SPAWN_SIZE,
+        queryOutput: () => [output, CURSOR_POSITION_QUERY],
+      });
+      const { xterm } = startBundledConptySession(host);
+
+      xterm.resize(MOVED_SIZE);
+      xterm.type('W');
+      host.shellReadsScreenBufferInfo();
+      xterm.answerCursorQueries();
+      xterm.type('rite-Output');
+      xterm.report(SHIFT_F3);
+      xterm.type('rX\r');
+
+      expect(host.cursorReportsConsumed).toEqual([{ row: 13, column: 81 }]);
+      expect(host.inputReceived).toEqual(xterm.sent);
+      expect(host.linesAcceptedByShell).toEqual(['WXrite-Output']);
+    },
+  );
+
+  test('a surplus reply outstanding in one Windows session does not withhold a Shift+F3 typed in another', () => {
+    const asking = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const typing = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const h = makeHarness({ ...WINDOWS_PWSH_SESSION, spawn: spawnInTurn(asking, typing) });
+    const askingXterm = openWindowsTerminal(h, 'asking');
+    const typingXterm = openWindowsTerminal(h, 'typing');
+
+    answerOnlyTheFirstRetriedQuery(asking, askingXterm);
+    typeWithShiftF3(typingXterm);
+
+    expect(asking.cursorQueriesIssued).toBe(2);
+    expect(asking.cursorReportsConsumed).toEqual([{ row: 13, column: 81 }]);
+    expect(typing.inputReceived).toEqual(typingXterm.sent);
+    expect(typing.linesAcceptedByShell).toEqual(['WXrite-Output']);
+  });
+
+  test('a create that replaces a live Windows session under the same id starts with no reply outstanding', () => {
+    const replaced = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const replacement = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const h = makeHarness({ ...WINDOWS_PWSH_SESSION, spawn: spawnInTurn(replaced, replacement) });
+
+    answerOnlyTheFirstRetriedQuery(replaced, openWindowsTerminal(h));
+    const xterm = openWindowsTerminal(h);
+    typeWithShiftF3(xterm);
+
+    expect(replaced.cursorQueriesIssued).toBe(2);
+    expect(replacement.inputReceived).toEqual(xterm.sent);
+    expect(replacement.linesAcceptedByShell).toEqual(['WXrite-Output']);
+  });
+});
+
+describe("setupPtyHost — an application's cursor-position queries inside the console host's resize sync", () => {
+  test('after a size change, before the console host asks for the cursor position, an application that asks for it twice before either reply, as vim does at start-up, gets only its first reply: the second is withheld with one warn record, and input after that reaches the host', () => {
+    const records: Array<{ level: 'warn' | 'info'; entry: Record<string, unknown> }> = [];
+    const pty = makeFakePty();
+    const h = makeHarness({
+      pty,
+      ...WINDOWS_PWSH_SESSION,
+      logger: {
+        warn: (entry) => records.push({ level: 'warn', entry }),
+        info: (entry) => records.push({ level: 'info', entry }),
+      },
+    });
+    const xterm = openWindowsTerminal(h);
+    const recordsAtStart = records.length;
+    const recordsSinceStart = () => records.slice(recordsAtStart);
+    const [vimFirstProbe, vimSecondProbe] = VIM_START_UP_PROBES;
+
+    xterm.resize(MOVED_SIZE);
+    answerVimStartUpProbes(pty, xterm);
+
+    expect(rendererReceived(h, 'p1'), 'the output the renderer received').toBe(
+      vimFirstProbe.probe + vimSecondProbe.probe,
+    );
+    expect(xterm.sent, 'the replies the renderer sent').toEqual([
+      vimFirstProbe.reply,
+      vimSecondProbe.reply,
+    ]);
+    expect(pty.writes, 'the input written to the host').toEqual([vimFirstProbe.reply]);
+    expect(recordsSinceStart(), 'the records after both replies').toEqual([CURSOR_REPORT_DROPPED]);
+
+    xterm.report(SHIFT_F3);
+    answerVimStartUpProbes(pty, xterm);
+
+    expect(
+      pty.writes,
+      'the input written to the host after the Shift+F3 and the second vim start',
+    ).toEqual([vimFirstProbe.reply, SHIFT_F3, vimFirstProbe.reply, vimSecondProbe.reply]);
+    expect(recordsSinceStart(), 'the records after the Shift+F3 and the second vim start').toEqual([
+      CURSOR_REPORT_DROPPED,
+    ]);
+  });
+});
+
+describe("setupPtyHost — the surplus reply to the console host's resize sync", () => {
+  test('while the surplus reply is outstanding, a DECXCPR reply and input that carries a reply among other bytes reach the host unchanged, and the surplus reply is still withheld', () => {
+    const pty = makeFakePty();
+    const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+    const notALoneReply = [
+      DECXCPR_REPLY,
+      `x${RECORDED_CURSOR_REPORT}`,
+      `${RECORDED_CURSOR_REPORT}x`,
+      `\u001b[200~${RECORDED_CURSOR_REPORT}\u001b[201~`,
+    ];
+
+    xterm.resize(MOVED_SIZE);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    for (const input of notALoneReply) xterm.report(input);
+    expect(pty.writes).toEqual([RECORDED_CURSOR_REPORT, ...notALoneReply]);
+
+    xterm.report(RECORDED_CURSOR_REPORT);
+
+    expect(pty.writes, 'the input written once the surplus reply arrived').toEqual([
+      RECORDED_CURSOR_REPORT,
+      ...notALoneReply,
+    ]);
+  });
+
+  test('a session on the OS ConPTY, after the bundled dll failed to load, also keeps a re-issued query from costing the shell a typed key', () => {
+    const recorded = RECORDED_RETRIED_QUERIES[0] as RecordedRetriedQuery;
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const spawnOptions: PtySpawnOptions[] = [];
+    const xterm = openWindowsTerminal(
+      makeHarness({
+        ...WINDOWS_PWSH_SESSION,
+        spawn: (_file, _args, options) => {
+          spawnOptions.push(options);
+          if (spawnOptions.length === 1) {
+            throw new Error('Cannot find conpty.dll beside conpty.node');
+          }
+          return host;
+        },
+      }),
+    );
+
+    replayRetriedQuery(xterm, host, recorded);
+
+    expect(spawnOptions.map((options) => options.useConptyDll)).toEqual([true, false]);
+    expect(host.cursorQueriesIssued).toBe(2);
+    expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([recorded.command]);
+    expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(`${recorded.command}\r`);
+  });
+
+  test('each console host resize sync that withholds replies leaves exactly one warn record, naming its session and with no reply bytes in it, however many replies it withholds, and a reply that reaches the host leaves none', () => {
+    const records: Array<{ level: 'warn' | 'info'; entry: Record<string, unknown> }> = [];
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const xterm = openWindowsTerminal(
+      makeHarness({
+        ...WINDOWS_PWSH_SESSION,
+        spawn: () => host,
+        logger: {
+          warn: (entry) => records.push({ level: 'warn', entry }),
+          info: (entry) => records.push({ level: 'info', entry }),
+        },
+      }),
+    );
+    const recordsAtStart = records.length;
+    const recordsSinceStart = () => records.slice(recordsAtStart);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    host.cursorSyncWaitTimesOut();
+    host.shellReadsScreenBufferInfo();
+    host.cursorSyncWaitTimesOut();
+    host.shellReadsScreenBufferInfo();
+    expect(host.cursorQueriesIssued).toBe(3);
+
+    xterm.report(RECORDED_CURSOR_REPORT);
+    expect(host.cursorReportsConsumed).toEqual([{ row: 13, column: 81 }]);
+    expect(recordsSinceStart(), 'after the reply the host consumed').toEqual([]);
+
+    xterm.report(RECORDED_CURSOR_REPORT);
+    expect(recordsSinceStart(), 'after the first surplus reply').toEqual([CURSOR_REPORT_DROPPED]);
+
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.type(`${POST_MOVE_COMMAND.slice('W'.length)}\r`);
+    expect(
+      recordsSinceStart(),
+      'after the second surplus reply of the same sync and the typed command',
+    ).toEqual([CURSOR_REPORT_DROPPED]);
+
+    xterm.resize(SMOKE_SPAWN_SIZE);
+    host.shellReadsScreenBufferInfo();
+    host.cursorSyncWaitTimesOut();
+    host.shellReadsScreenBufferInfo();
+    expect(host.cursorQueriesIssued).toBe(5);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.report(RECORDED_CURSOR_REPORT);
+
+    expect(host.cursorReportsConsumed, 'the replies the host consumed').toEqual([
+      { row: 13, column: 81 },
+      { row: 13, column: 81 },
+    ]);
+    expect(recordsSinceStart(), 'after the surplus reply of the next sync').toEqual([
+      CURSOR_REPORT_DROPPED,
+      CURSOR_REPORT_DROPPED,
+    ]);
+  });
+
+  test('each warn record names the Windows session whose surplus reply it withheld, when two sessions in one window each withhold one', () => {
+    const records: Array<{ level: 'warn' | 'info'; entry: Record<string, unknown> }> = [];
+    const recorded = RECORDED_RETRIED_QUERIES[0] as RecordedRetriedQuery;
+    const firstTab = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const secondTab = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const h = makeHarness({
+      ...WINDOWS_PWSH_SESSION,
+      spawn: spawnInTurn(firstTab, secondTab),
+      logger: {
+        warn: (entry) => records.push({ level: 'warn', entry }),
+        info: (entry) => records.push({ level: 'info', entry }),
+      },
+    });
+    const firstTabXterm = openWindowsTerminal(h, 'first-tab');
+    const secondTabXterm = openWindowsTerminal(h, 'second-tab');
+    const recordsAtStart = records.length;
+
+    replayRetriedQuery(firstTabXterm, firstTab, recorded);
+    replayRetriedQuery(secondTabXterm, secondTab, recorded);
+
+    expect(records.slice(recordsAtStart)).toEqual([
+      { level: 'warn', entry: { event: 'pty-host-cursor-report-dropped', ptyId: 'first-tab' } },
+      { level: 'warn', entry: { event: 'pty-host-cursor-report-dropped', ptyId: 'second-tab' } },
+    ]);
+  });
+
+  test.each([
+    {
+      shape: 'each query in its own chunk',
+      recorded: RECORDED_RETRIED_QUERIES[2] as RecordedRetriedQuery,
+      queryOutput: undefined,
+    },
+    {
+      shape: 'each query split across chunks',
+      recorded: RECORDED_RETRIED_QUERIES[1] as RecordedRetriedQuery,
+      queryOutput: SPLIT_QUERY_OUTPUT,
+    },
+  ])(
+    'in a retried-query replay, the renderer gets the host output chunk for chunk and the host gets every renderer message but the surplus reply ($shape)',
+    ({ recorded, queryOutput }) => {
+      const host = createConptyCursorSyncHost({ ...SMOKE_SPAWN_SIZE, queryOutput });
+      const { h, xterm } = startBundledConptySession(host);
+
+      replayRetriedQuery(xterm, host, recorded);
+
+      expect(host.cursorQueriesIssued).toBe(2);
+      expect(rendererChunks(h, 'p1'), 'the output the renderer received').toEqual(
+        host.outputEmitted,
+      );
+      expect(xterm.sent.filter((message) => message === RECORDED_CURSOR_REPORT)).toHaveLength(2);
+      const surplusReply = xterm.sent.lastIndexOf(RECORDED_CURSOR_REPORT);
+      expect(host.inputReceived, 'the input the host received').toEqual(
+        xterm.sent.filter((_message, index) => index !== surplusReply),
+      );
+    },
+  );
+});
+
+const CMD_EXE = 'C:\\Windows\\System32\\cmd.exe';
+const WINDOWS_POWERSHELL = 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+
+describe("setupPtyHost — the console host's cursor query in its output", () => {
+  test('when the console host re-issued its query before the pty-host read the first, both queries arrive in one output chunk and only the first reply reaches the host', () => {
+    const pty = makeFakePty();
+    const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+
+    xterm.resize(MOVED_SIZE);
+    pty.emitData(CURSOR_POSITION_QUERY + CURSOR_POSITION_QUERY);
+    xterm.answerCursorQueries();
+
+    expect(xterm.sent, 'the replies the renderer sent').toEqual([
+      RECORDED_CURSOR_REPORT,
+      RECORDED_CURSOR_REPORT,
+    ]);
+    expect(pty.writes, 'the input written to the host').toEqual([RECORDED_CURSOR_REPORT]);
+  });
+
+  test.each([
+    { split: 'one byte per chunk', queryOutput: () => [...CURSOR_POSITION_QUERY] },
+    { split: 'split before its last byte', queryOutput: () => ['\u001b[6', 'n'] },
+  ])(
+    'a re-issued query the console host writes across output chunks is still recognized, so its late reply does not cost the shell a typed key ($split)',
+    ({ queryOutput }) => {
+      const recorded = RECORDED_RETRIED_QUERIES[0] as RecordedRetriedQuery;
+      const host = createConptyCursorSyncHost({ ...SMOKE_SPAWN_SIZE, queryOutput });
+      const { h, xterm } = startBundledConptySession(host);
+
+      replayRetriedQuery(xterm, host, recorded);
+
+      expect(host.cursorQueriesIssued).toBe(2);
+      expect(rendererChunks(h, 'p1'), 'the output the renderer received').toEqual(
+        host.outputEmitted,
+      );
+      expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([recorded.command]);
+      expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(
+        `${recorded.command}\r`,
+      );
+    },
+  );
+
+  test('output that only begins a cursor query before the next chunk breaks it off is not completed by later output, so a Shift+F3 typed after the real query was answered still reaches the host', () => {
+    const host = createConptyCursorSyncHost({
+      ...SMOKE_SPAWN_SIZE,
+      queryOutput: () => ['\u001b[', '?25h', '6n', CURSOR_POSITION_QUERY],
+    });
+    const { xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    xterm.answerCursorQueries();
+    xterm.type('rite-Output');
+    xterm.report(SHIFT_F3);
+    xterm.type('rX\r');
+
+    expect(host.cursorReportsConsumed).toEqual([{ row: 13, column: 81 }]);
+    expect(host.inputReceived).toEqual(xterm.sent);
+    expect(host.linesAcceptedByShell).toEqual(['WXrite-Output']);
+  });
+});
+
+describe("setupPtyHost — the console host's resize sync after any size change, in any Windows session", () => {
+  test.each([
+    { dimension: 'width', size: { cols: MOVED_SIZE.cols, rows: SMOKE_SPAWN_SIZE.rows } },
+    { dimension: 'height', size: { cols: SMOKE_SPAWN_SIZE.cols, rows: MOVED_SIZE.rows } },
+  ])(
+    "a resize that changes only the $dimension also keeps the console host's re-issued query from costing the shell a typed key",
+    ({ size }) => {
+      const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+      const { xterm } = startBundledConptySession(host);
+
+      xterm.resize(size);
+      xterm.type('W');
+      host.shellReadsScreenBufferInfo();
+      host.cursorSyncWaitTimesOut();
+      host.shellReadsScreenBufferInfo();
+      xterm.answerCursorQueries();
+      xterm.type(`${POST_MOVE_COMMAND.slice('W'.length)}\r`);
+
+      expect(host.cursorQueriesIssued).toBe(2);
+      expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([POST_MOVE_COMMAND]);
+      expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(
+        `${POST_MOVE_COMMAND}\r`,
+      );
+    },
+  );
+
+  test("a second move, after the console host's first resize sync was answered, also keeps the host's re-issued query from costing the shell a typed key", () => {
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const { xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    host.shellReadsScreenBufferInfo();
+    xterm.answerCursorQueries();
+    expect(host.cursorReportsConsumed).toEqual([{ row: 13, column: 81 }]);
+    xterm.resize(SMOKE_SPAWN_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    host.cursorSyncWaitTimesOut();
+    host.shellReadsScreenBufferInfo();
+    xterm.answerCursorQueries();
+    xterm.type(`${POST_MOVE_COMMAND.slice('W'.length)}\r`);
+
+    expect(host.cursorQueriesIssued).toBe(3);
+    expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([POST_MOVE_COMMAND]);
+    expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(`${POST_MOVE_COMMAND}\r`);
+  });
+
+  test.each([
+    {
+      session: 'a cmd.exe shell',
+      shellExists: () => false,
+      create: CREATE({ cwd: 'C:\\project', ...SMOKE_SPAWN_SIZE }),
+      spawned: { file: CMD_EXE, args: [] },
+    },
+    {
+      session: 'a Windows PowerShell shell',
+      shellExists: (path: string) => path === WINDOWS_POWERSHELL,
+      create: CREATE({ cwd: 'C:\\project', ...SMOKE_SPAWN_SIZE }),
+      spawned: { file: WINDOWS_POWERSHELL, args: [] },
+    },
+    {
+      session: 'an agent launched through cmd /K',
+      shellExists: () => false,
+      create: CREATE({
+        cwd: 'C:\\project',
+        ...SMOKE_SPAWN_SIZE,
+        launchCommand: { executable: 'claude', args: [] },
+      }),
+      spawned: { file: CMD_EXE, args: '/K claude' },
+    },
+  ])(
+    "in a Windows session with $session, only the first reply to the console host's retried query reaches the host",
+    ({ shellExists, create, spawned }) => {
+      const pty = makeFakePty();
+      const h = makeHarness({
+        pty,
+        platform: 'win32',
+        env: { SystemRoot: 'C:\\Windows', ComSpec: CMD_EXE },
+        shellExists,
+        pathProbe: () => null,
+        listDirectory: () => [],
+      });
+      h.fire(create);
+      const xterm = createXtermSide(ptyHostLink(h, 'p1'));
+
+      xterm.resize(MOVED_SIZE);
+      pty.emitData(CURSOR_POSITION_QUERY);
+      pty.emitData(CURSOR_POSITION_QUERY);
+      xterm.answerCursorQueries();
+
+      expect(h.spawnCalls.map(({ file, args }) => ({ file, args }))).toEqual([spawned]);
+      expect(xterm.sent, 'the replies the renderer sent').toEqual([
+        RECORDED_CURSOR_REPORT,
+        RECORDED_CURSOR_REPORT,
+      ]);
+      expect(pty.writes, 'the input written to the host').toEqual([RECORDED_CURSOR_REPORT]);
+    },
+  );
+});
+
+describe("setupPtyHost — replies across the console host's resize syncs", () => {
+  test("after both replies to the console host's retried query came back, a Shift+F3 the user types reaches the host", () => {
+    const pty = makeFakePty();
+    const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+
+    xterm.resize(MOVED_SIZE);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    xterm.answerCursorQueries();
+    expect(xterm.sent, 'the replies the renderer sent').toEqual([
+      RECORDED_CURSOR_REPORT,
+      RECORDED_CURSOR_REPORT,
+    ]);
+    const writtenBeforeTheKey = pty.writes.length;
+
+    xterm.report(SHIFT_F3);
+
+    expect(pty.writes.slice(writtenBeforeTheKey), 'the input written for the key').toEqual([
+      SHIFT_F3,
+    ]);
+  });
+
+  test.each([
+    {
+      unmatched: 'a late reply from an application',
+      aroundTheMove: (pty: FakePty, xterm: XtermSide) => {
+        pty.emitData(CURSOR_POSITION_QUERY);
+        xterm.resize(MOVED_SIZE);
+        xterm.answerCursorQueries();
+      },
+      bytes: RECORDED_CURSOR_REPORT,
+    },
+    {
+      unmatched: 'a Shift+F3 typed after the move',
+      aroundTheMove: (_pty: FakePty, xterm: XtermSide) => {
+        xterm.resize(MOVED_SIZE);
+        xterm.report(SHIFT_F3);
+      },
+      bytes: SHIFT_F3,
+    },
+  ])(
+    "a lone reply that no console host query is waiting for ($unmatched) reaches the host, and the surplus reply to the host's retried query after the move is still withheld",
+    ({ aroundTheMove, bytes }) => {
+      const pty = makeFakePty();
+      const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+
+      aroundTheMove(pty, xterm);
+      pty.emitData(CURSOR_POSITION_QUERY);
+      pty.emitData(CURSOR_POSITION_QUERY);
+      xterm.answerCursorQueries();
+
+      expect(xterm.sent, 'the input the renderer sent').toEqual([
+        bytes,
+        RECORDED_CURSOR_REPORT,
+        RECORDED_CURSOR_REPORT,
+      ]);
+      expect(pty.writes, 'the input written to the host').toEqual([bytes, RECORDED_CURSOR_REPORT]);
+    },
+  );
+
+  test("a size change while the console host's query is unanswered still lets the reply reach the host, which then asks no more", () => {
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const { xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    xterm.resize(SMOKE_SPAWN_SIZE);
+    xterm.answerCursorQueries();
+    expect(host.cursorReportsConsumed, 'the replies the host consumed').toEqual([
+      { row: 13, column: 81 },
+    ]);
+    xterm.type(`${POST_MOVE_COMMAND.slice('W'.length)}\r`);
+    host.shellReadsScreenBufferInfo();
+
+    expect(host.cursorQueriesIssued).toBe(1);
+    expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([POST_MOVE_COMMAND]);
+  });
+
+  test("after a retried sync whose second reply never came back, the console host's next post-resize query still gets its reply", () => {
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const { xterm } = startBundledConptySession(host);
+
+    answerOnlyTheFirstRetriedQuery(host, xterm);
+    xterm.resize(SMOKE_SPAWN_SIZE);
+    host.shellReadsScreenBufferInfo();
+    expect(host.cursorQueriesIssued).toBe(3);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.type(`${POST_MOVE_COMMAND}\r`);
+
+    expect(host.cursorReportsConsumed, 'the replies the host consumed').toEqual([
+      { row: 13, column: 81 },
+      { row: 13, column: 81 },
+    ]);
+    expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([POST_MOVE_COMMAND]);
+  });
+
+  test("a surplus reply that arrives only after the next move is withheld, and the console host's retried query after that move costs the shell no typed key either", () => {
+    const host = createConptyCursorSyncHost(SMOKE_SPAWN_SIZE);
+    const { xterm } = startBundledConptySession(host);
+
+    xterm.resize(MOVED_SIZE);
+    xterm.type('W');
+    host.shellReadsScreenBufferInfo();
+    host.cursorSyncWaitTimesOut();
+    host.shellReadsScreenBufferInfo();
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.resize(SMOKE_SPAWN_SIZE);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.type('r');
+    host.shellReadsScreenBufferInfo();
+    host.cursorSyncWaitTimesOut();
+    host.shellReadsScreenBufferInfo();
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.type(`${POST_MOVE_COMMAND.slice('Wr'.length)}\r`);
+
+    expect(host.cursorQueriesIssued).toBe(4);
+    expect(host.cursorReportsConsumed, 'the replies the host consumed').toEqual([
+      { row: 13, column: 81 },
+      { row: 13, column: 81 },
+    ]);
+    expect(host.linesAcceptedByShell, 'the command the shell ran').toEqual([POST_MOVE_COMMAND]);
+    expect(host.keysReadByShell.join(''), 'the keys the shell read').toBe(`${POST_MOVE_COMMAND}\r`);
+  });
+
+  test("vim's probe, arriving between the first reply to the console host's retried query and the surplus one, still gets its reply while the surplus is withheld", () => {
+    const pty = makeFakePty();
+    const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+    const [vimFirstProbe] = VIM_START_UP_PROBES;
+
+    xterm.resize(MOVED_SIZE);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    pty.emitData(vimFirstProbe.probe);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.report(vimFirstProbe.reply);
+
+    expect(pty.writes, 'the input written to the host').toEqual([
+      RECORDED_CURSOR_REPORT,
+      vimFirstProbe.reply,
+    ]);
+  });
+});
+
+describe("setupPtyHost — bytes that only resemble the console host's resize sync", () => {
+  test.each([
+    { input: 'Ctrl+Up', bytes: '\u001b[1;5A' },
+    { input: 'Shift+F1', bytes: '\u001b[1;2P' },
+    { input: 'the reply text without its escape', bytes: '[13;81R' },
+  ])(
+    'a key or text that only resembles a reply ($input) reaches the host while the surplus reply is outstanding, and the surplus reply is still withheld',
+    ({ bytes }) => {
+      const pty = makeFakePty();
+      const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+
+      xterm.resize(MOVED_SIZE);
+      pty.emitData(CURSOR_POSITION_QUERY);
+      pty.emitData(CURSOR_POSITION_QUERY);
+      xterm.report(RECORDED_CURSOR_REPORT);
+      xterm.report(bytes);
+      expect(pty.writes, 'the input written before the surplus reply').toEqual([
+        RECORDED_CURSOR_REPORT,
+        bytes,
+      ]);
+
+      xterm.report(RECORDED_CURSOR_REPORT);
+
+      expect(xterm.sent, 'the input the renderer sent').toEqual([
+        RECORDED_CURSOR_REPORT,
+        bytes,
+        RECORDED_CURSOR_REPORT,
+      ]);
+      expect(pty.writes, 'the input written once the surplus reply arrived').toEqual([
+        RECORDED_CURSOR_REPORT,
+        bytes,
+      ]);
+    },
+  );
+
+  test("output with no cursor query in it, such as the echo of a key typed before the next move, does not let an earlier sync's surplus reply reach the host", () => {
+    const pty = makeFakePty();
+    const xterm = openWindowsTerminal(makeHarness({ pty, ...WINDOWS_PWSH_SESSION }));
+
+    xterm.resize(MOVED_SIZE);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    pty.emitData(CURSOR_POSITION_QUERY);
+    xterm.report(RECORDED_CURSOR_REPORT);
+    xterm.type('W');
+    xterm.resize(SMOKE_SPAWN_SIZE);
+    pty.emitData('W');
+    xterm.report(RECORDED_CURSOR_REPORT);
+
+    expect(xterm.sent, 'the input the renderer sent').toEqual([
+      RECORDED_CURSOR_REPORT,
+      'W',
+      RECORDED_CURSOR_REPORT,
+    ]);
+    expect(pty.writes, 'the input written to the host').toEqual([RECORDED_CURSOR_REPORT, 'W']);
   });
 });
 
@@ -1945,7 +2990,7 @@ describe('node-pty import failure', () => {
   test('a Linux-capable host replies to create with the existing spawn-error contract', () => {
     expect(isTerminalPlatform('linux')).toBe(true);
 
-    let handler: ((event: { data: unknown }) => void) | null = null;
+    let handler = null as ((event: { data: unknown }) => void) | null;
     const posted: PtyHostOutgoingMessage[] = [];
     const warnings: Array<{ data: Record<string, unknown>; message: string }> = [];
     installPtyImportFailureReply(

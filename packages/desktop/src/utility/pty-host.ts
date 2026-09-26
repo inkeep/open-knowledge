@@ -666,10 +666,84 @@ function classifyNodePtyEnding(
   return { type: 'exit', ptyId, exitCode, signal: signal ?? null };
 }
 
+const CSI = '\u001b[';
+const CURSOR_POSITION_QUERY = `${CSI}6n`;
+const CURSOR_POSITION_REPORT_PARAMETERS = /^\d+;\d+$/u;
+
+function isCursorPositionReport(input: string): boolean {
+  return (
+    input.startsWith(CSI) &&
+    input.endsWith('R') &&
+    CURSOR_POSITION_REPORT_PARAMETERS.test(input.slice(CSI.length, -1))
+  );
+}
+
+function trailingCursorPositionQueryPrefix(output: string): string {
+  for (let length = CURSOR_POSITION_QUERY.length - 1; length > 0; length -= 1) {
+    const prefix = CURSOR_POSITION_QUERY.slice(0, length);
+    if (output.endsWith(prefix)) return prefix;
+  }
+  return '';
+}
+
+interface ConptyCursorSyncGate {
+  observeResize(cols: number, rows: number): void;
+  observeOutput(data: string): void;
+  observeInput(data: string): 'admit' | 'withhold';
+}
+
+// UPSTREAM(node-pty@1.2.0-beta.15): its bundled ConPTY asks for the cursor position after a resize, asks again while the reply is late, and keeps one reply slot, so a surplus reply becomes an F3 key.
+function createConptyCursorSyncGate(
+  size: { cols: number; rows: number },
+  onReplyWithheld: () => void,
+): ConptyCursorSyncGate {
+  let { cols, rows } = size;
+  let syncPending = false;
+  let unansweredQueries = 0;
+  let replySlotArmed = false;
+  let withheldReplyReported = false;
+  let partialQuery = '';
+  return {
+    observeResize(nextCols, nextRows) {
+      if (nextCols === cols && nextRows === rows) return;
+      cols = nextCols;
+      rows = nextRows;
+      syncPending = true;
+    },
+    observeOutput(data) {
+      const scanned = partialQuery + data;
+      if (syncPending) {
+        const queries = scanned.split(CURSOR_POSITION_QUERY).length - 1;
+        if (queries > 0) {
+          unansweredQueries += queries;
+          replySlotArmed = true;
+        }
+      }
+      partialQuery = trailingCursorPositionQueryPrefix(scanned);
+    },
+    observeInput(data) {
+      if (unansweredQueries === 0 || !isCursorPositionReport(data)) return 'admit';
+      unansweredQueries -= 1;
+      if (replySlotArmed) {
+        replySlotArmed = false;
+        syncPending = false;
+        withheldReplyReported = false;
+        return 'admit';
+      }
+      if (!withheldReplyReported) {
+        withheldReplyReported = true;
+        onReplyWithheld();
+      }
+      return 'withhold';
+    },
+  };
+}
+
 export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   const env = deps.env ?? (process.env as Record<string, string | undefined>);
   const platform = deps.platform ?? process.platform;
   const sessions = new Map<string, PtyProcessLike>();
+  const cursorSyncGates = new WeakMap<PtyProcessLike, ConptyCursorSyncGate>();
   const shutdownMs = deps.shutdownMs ?? 1_500;
   const setHostTimer = deps.setTimer ?? setTimeout;
   const clearHostTimer = deps.clearTimer ?? clearTimeout;
@@ -868,9 +942,19 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
         return;
       }
     }
+    if (platform === 'win32') {
+      cursorSyncGates.set(
+        pty,
+        createConptyCursorSyncGate({ cols: message.cols, rows: message.rows }, () =>
+          deps.logger?.warn({ event: 'pty-host-cursor-report-dropped', ptyId }),
+        ),
+      );
+    }
     sessions.set(ptyId, pty);
     pty.onData((data) => {
-      if (sessions.get(ptyId) === pty) post({ type: 'data', ptyId, data });
+      if (sessions.get(ptyId) !== pty) return;
+      cursorSyncGates.get(pty)?.observeOutput(data);
+      post({ type: 'data', ptyId, data });
     });
     pty.onExit((event) => {
       clearKillEscalate(ptyId);
@@ -881,11 +965,17 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   }
 
   function handleInput(message: PtyInputMessage): void {
-    sessions.get(message.ptyId)?.write(message.data);
+    const pty = sessions.get(message.ptyId);
+    if (!pty) return;
+    if (cursorSyncGates.get(pty)?.observeInput(message.data) === 'withhold') return;
+    pty.write(message.data);
   }
 
   function handleResize(message: PtyResizeMessage): void {
-    sessions.get(message.ptyId)?.resize(message.cols, message.rows);
+    const pty = sessions.get(message.ptyId);
+    if (!pty) return;
+    cursorSyncGates.get(pty)?.observeResize(message.cols, message.rows);
+    pty.resize(message.cols, message.rows);
   }
 
   function handleKill(message: PtyKillMessage): void {
