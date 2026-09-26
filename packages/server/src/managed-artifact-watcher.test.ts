@@ -21,9 +21,7 @@ afterEach(async () => {
   rmSync(root, { recursive: true, force: true });
 });
 
-const RUNNING_IN_CI = Boolean(process.env.CI);
-
-describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
+describe('startManagedArtifactWatcher', () => {
   test('fires onChange for a SKILL.md created after start', async () => {
     const skillsRoot = resolve(root, '.ok', 'skills');
     const seen: Array<[string, string]> = [];
@@ -85,6 +83,36 @@ describe.skipIf(RUNNING_IN_CI)('startManagedArtifactWatcher', () => {
       { timeoutMs: 20_000, pollMs: 50 },
     );
     expect(contents).not.toContain('noise');
+  }, 25_000);
+
+  test('fires onChange for a SKILL.md present at start only once it is edited', async () => {
+    const skillsRoot = resolve(root, '.ok', 'skills');
+    const skillDir = resolve(skillsRoot, 'demo');
+    mkdirSync(skillDir, { recursive: true });
+    const leaf = resolve(skillDir, 'SKILL.md');
+    writeFileSync(leaf, 'v1', 'utf-8');
+
+    const seen: Array<[string, string]> = [];
+    cleanup = await startManagedArtifactWatcher([skillsRoot], (p, c) => seen.push([p, c]));
+
+    const addedDir = resolve(skillsRoot, 'added');
+    mkdirSync(addedDir, { recursive: true });
+    const addedLeaf = resolve(addedDir, 'SKILL.md');
+    writeFileSync(addedLeaf, 'added after start', 'utf-8');
+
+    await waitWithinTestBudget(
+      "the watcher to report the SKILL.md created after start with its 'added after start' contents",
+      () => seen.some(([p, c]) => p === addedLeaf && c === 'added after start'),
+      { timeoutMs: 20_000, pollMs: 50 },
+    );
+    writeFileSync(leaf, 'v2, edited after start', 'utf-8');
+
+    await waitWithinTestBudget(
+      "the watcher to report the SKILL.md present at start with its 'v2, edited after start' contents",
+      () => seen.some(([p, c]) => p === leaf && c === 'v2, edited after start'),
+      { timeoutMs: 20_000, pollMs: 50 },
+    );
+    expect(seen.filter(([p]) => p === leaf).map(([, c]) => c)).toEqual(['v2, edited after start']);
   }, 25_000);
 });
 

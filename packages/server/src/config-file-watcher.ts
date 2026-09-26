@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { tracedMkdirSync } from './fs-traced.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import { getLogger } from './logger.ts';
+import { startPolledPathWatcher } from './polled-path-watcher.ts';
 
 export type ConfigFileWatcherUnsubscribe = () => Promise<void>;
 
@@ -11,7 +12,6 @@ export async function startConfigFileWatcher(
   onChange: (content: string) => void,
 ): Promise<ConfigFileWatcherUnsubscribe> {
   const log = getLogger('config-file-watcher');
-  const { watch } = await import('chokidar');
 
   const watchDir = dirname(absPath);
   try {
@@ -22,19 +22,6 @@ export async function startConfigFileWatcher(
       log.warn({ err, watchDir }, 'failed to create watch directory; watcher may be inert');
     }
   }
-
-  const watcher = watch(watchDir, {
-    ignoreInitial: true,
-    depth: 0,
-    usePolling: true,
-    interval: 200,
-    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
-    ignored: (p) => p !== watchDir && p !== absPath,
-  });
-
-  await new Promise<void>((resolve) => {
-    watcher.once('ready', resolve);
-  });
 
   let lastContent: string | null = null;
   try {
@@ -48,8 +35,9 @@ export async function startConfigFileWatcher(
     } catch (err) {
       const code = errnoCode(err);
       if (code === 'ENOENT') {
-        if (logMissing)
+        if (logMissing) {
           log.debug({ path }, 'config file disappeared between event and read; dropping');
+        }
         return;
       }
       log.warn({ err, path }, 'config file read failed; dropping event');
@@ -63,35 +51,20 @@ export async function startConfigFileWatcher(
       log.warn({ err, path }, 'config file change handler threw');
     }
   };
-  const handler = (path: string): void => handlePath(path);
-
-  watcher.on('add', handler);
-  watcher.on('change', handler);
-  watcher.on('unlink', (path) => {
+  const handleUnlink = (path: string): void => {
     if (path !== absPath) return;
     log.debug({ path }, 'config file unlinked; Y.Text retained at current state');
-  });
-  watcher.on('error', (err) => {
-    log.warn(
-      { err, watchDir, absPath },
-      `[config-file-watcher] chokidar error while watching ${absPath}`,
-    );
-  });
-  let fallbackAttempts = 0;
-  const fallbackPoll = setInterval(() => {
-    fallbackAttempts++;
-    handlePath(absPath, false);
-    if (fallbackAttempts >= 20) clearInterval(fallbackPoll);
-  }, 500);
-  fallbackPoll.unref?.();
-
-  let closed = false;
-  return async () => {
-    if (closed) return;
-    closed = true;
-    clearInterval(fallbackPoll);
-    await watcher.close();
   };
+
+  const stop = await startPolledPathWatcher({
+    listPaths: async () => [absPath],
+    onEvent: (event, path) => (event === 'unlink' ? handleUnlink(path) : handlePath(path)),
+    onError: (err, path) => {
+      log.warn({ err, path }, '[config-file-watcher] poll error');
+    },
+  });
+  handlePath(absPath, false);
+  return stop;
 }
 
 export async function startMultiPathConfigFileWatcher(
@@ -102,7 +75,6 @@ export async function startMultiPathConfigFileWatcher(
     throw new Error('startMultiPathConfigFileWatcher requires at least one absolute path');
   }
   const log = getLogger('config-file-watcher');
-  const { watch } = await import('chokidar');
 
   const watchedPaths = new Set(absPaths);
   const watchDirs = Array.from(new Set(Array.from(watchedPaths, (p) => dirname(p))));
@@ -117,19 +89,6 @@ export async function startMultiPathConfigFileWatcher(
       }
     }
   }
-
-  const watcher = watch(watchDirs, {
-    ignoreInitial: true,
-    depth: 0,
-    usePolling: true,
-    interval: 200,
-    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
-    ignored: (p) => !watchedPaths.has(p) && !watchDirs.includes(p),
-  });
-
-  await new Promise<void>((resolve) => {
-    watcher.once('ready', resolve);
-  });
 
   const lastContent = new Map<string, string | null>();
   for (const path of watchedPaths) {
@@ -148,8 +107,9 @@ export async function startMultiPathConfigFileWatcher(
     } catch (err) {
       const code = errnoCode(err);
       if (code === 'ENOENT') {
-        if (logMissing)
+        if (logMissing) {
           log.debug({ path }, 'config file disappeared between event and read; dropping');
+        }
         return;
       }
       log.warn({ err, path }, 'config file read failed; dropping event');
@@ -163,36 +123,18 @@ export async function startMultiPathConfigFileWatcher(
       log.warn({ err, path }, 'config file change handler threw');
     }
   };
-  const handler = (path: string): void => handlePath(path);
-
-  watcher.on('add', handler);
-  watcher.on('change', handler);
-  watcher.on('unlink', (path) => {
+  const handleUnlink = (path: string): void => {
     if (!watchedPaths.has(path)) return;
     log.debug({ path }, 'config file unlinked; downstream state retained');
-  });
-  watcher.on('error', (err) => {
-    log.warn(
-      { err, watchDirs, paths: Array.from(watchedPaths) },
-      '[config-file-watcher] chokidar error in multi-path watcher',
-    );
-  });
-
-  let fallbackAttempts = 0;
-  const fallbackPoll = setInterval(() => {
-    fallbackAttempts++;
-    for (const path of watchedPaths) {
-      handlePath(path, false);
-    }
-    if (fallbackAttempts >= 20) clearInterval(fallbackPoll);
-  }, 500);
-  fallbackPoll.unref?.();
-
-  let closed = false;
-  return async () => {
-    if (closed) return;
-    closed = true;
-    clearInterval(fallbackPoll);
-    await watcher.close();
   };
+
+  const stop = await startPolledPathWatcher({
+    listPaths: async () => Array.from(watchedPaths),
+    onEvent: (event, path) => (event === 'unlink' ? handleUnlink(path) : handlePath(path)),
+    onError: (err, path) => {
+      log.warn({ err, path }, '[config-file-watcher] poll error');
+    },
+  });
+  for (const path of watchedPaths) handlePath(path, false);
+  return stop;
 }

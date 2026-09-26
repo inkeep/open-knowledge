@@ -2,12 +2,15 @@
   "extends": "./tsconfig.json",
   "include": [],
   "files": [
+    "src/config-file-watcher-readiness.test.ts",
     "src/expect-stable.test.ts",
     "src/file-watcher-chokidar-fallback.test.ts",
     "src/file-watcher-chokidar-readiness.test.ts",
+    "src/managed-artifact-watcher-readiness.test.ts",
     "src/managed-artifact-watcher.test.ts",
     "src/persistence-tripwire-block.test.ts",
     "src/persistence-tripwire-paste.test.ts",
+    "src/polled-watcher-contract.test.ts",
     "src/serialize-doc-vs-git-show-byte-equality.test.ts",
     "src/serialize-doc-ytext.test.ts",
     "src/wait-within-test-budget.test.ts"

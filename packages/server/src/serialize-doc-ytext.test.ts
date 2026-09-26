@@ -2,13 +2,11 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'no
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
-import { describe as _vitestDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetQuiescenceForTests } from './bridge-quiescence.ts';
 import { resetMetrics } from './metrics.ts';
 import { createServer } from './server-factory.ts';
 import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
-
-const describe = process.env.CI ? _vitestDescribe.skip : _vitestDescribe;
 
 vi.setConfig({ testTimeout: 20_000, hookTimeout: 20_000 });
 

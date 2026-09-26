@@ -9,7 +9,11 @@ const PACKAGE_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TSCONFIG = 'tsconfig.test-helper-callers.json';
 const TYPECHECK_SCRIPT = 'typecheck:test-helper-callers';
 
-const HELPERS = ['wait-within-test-budget.test-helper.ts', 'expect-stable.test-helper.ts'];
+const HELPERS = [
+  'wait-within-test-budget.test-helper.ts',
+  'expect-stable.test-helper.ts',
+  'forked-watcher-process.test-helper.ts',
+];
 
 const UNSCANNED_DIRS = new Set(['node_modules', 'dist', '.turbo']);
 

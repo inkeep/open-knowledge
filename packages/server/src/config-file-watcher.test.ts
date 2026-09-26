@@ -67,15 +67,9 @@ describe('startConfigFileWatcher', () => {
     expect(existsSync(fx.absPath)).toBe(false);
     writeFileSync(fx.absPath, 'theme: dark\n', 'utf-8');
 
-    let attempt = 0;
-    const fired = await waitFor(() => {
-      if (events.length > 0) return true;
-      attempt++;
-      writeFileSync(fx.absPath, `theme: dark\nattempt: ${attempt}\n`, 'utf-8');
-      return false;
-    }, 20_000);
+    const fired = await waitFor(() => events.length > 0, 20_000);
     expect(fired).toBe(true);
-    expect(events[0]?.startsWith('theme: dark\n')).toBe(true);
+    expect(events[0]).toBe('theme: dark\n');
   }, 25_000);
 
   test('fires onChange when an existing file is modified', async () => {
@@ -94,7 +88,7 @@ describe('startConfigFileWatcher', () => {
     expect(events.at(-1)).toBe('theme: dark\n');
   });
 
-  test('does NOT fire onChange on the initial scan (ignoreInitial)', async () => {
+  test('does NOT fire onChange for the content present when the watcher starts', async () => {
     writeFileSync(fx.absPath, 'theme: light\n', 'utf-8');
 
     const events: string[] = [];
@@ -107,7 +101,7 @@ describe('startConfigFileWatcher', () => {
     expect(events).toEqual([]);
   });
 
-  test('atomic tmp+rename produces a single change event (awaitWriteFinish)', async () => {
+  test('atomic tmp+rename reports the renamed-in content, in at most two change events', async () => {
     writeFileSync(fx.absPath, 'theme: light\n', 'utf-8');
 
     const events: string[] = [];
@@ -220,17 +214,11 @@ describe('startMultiPathConfigFileWatcher', () => {
 
     writeFileSync(multiFx.pathA, 'drafts/\n', 'utf-8');
 
-    let attempt = 0;
-    const fired = await waitFor(() => {
-      if (events.length > 0) return true;
-      attempt++;
-      writeFileSync(multiFx.pathA, `drafts/\nattempt: ${attempt}\n`, 'utf-8');
-      return false;
-    }, 20_000);
+    const fired = await waitFor(() => events.length > 0, 20_000);
     expect(fired).toBe(true);
     const matched = events.find((e) => e.path === multiFx.pathA);
     expect(matched).toBeDefined();
-    expect(matched?.content.startsWith('drafts/\n')).toBe(true);
+    expect(matched?.content).toBe('drafts/\n');
     expect(events.some((e) => e.path === multiFx.pathB)).toBe(false);
   }, 25_000);
 
@@ -258,7 +246,7 @@ describe('startMultiPathConfigFileWatcher', () => {
     expect(fired).toBe(true);
   });
 
-  test('does NOT fire on the initial scan (ignoreInitial honored across both paths)', async () => {
+  test('does NOT fire for the content present on either path when the watcher starts', async () => {
     writeFileSync(multiFx.pathA, 'drafts/\n', 'utf-8');
     writeFileSync(multiFx.pathB, 'node_modules/\n', 'utf-8');
 

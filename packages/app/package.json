@@ -210,7 +210,6 @@
     "@vitejs/plugin-react": "^6.0.1",
     "axe-core": "~4.12.1",
     "babel-plugin-react-compiler": "0.0.0-experimental-a8e64ef-20260402",
-    "chokidar": "^5.0.0",
     "commonmark.json": "0.31.0",
     "diff": "^8.0.4",
     "fake-indexeddb": "^6.0.0",

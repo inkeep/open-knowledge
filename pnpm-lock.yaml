@@ -778,9 +778,6 @@ importers:
       babel-plugin-react-compiler:
         specifier: 0.0.0-experimental-a8e64ef-20260402
         version: 0.0.0-experimental-a8e64ef-20260402
-      chokidar:
-        specifier: ^5.0.0
-        version: 5.0.0
       commonmark.json:
         specifier: 0.31.0
         version: 0.31.0
