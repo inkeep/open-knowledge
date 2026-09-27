@@ -133,7 +133,6 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   await waitForShellReady(
     () => readActiveText(page),
     (command) => typeInActive(page, `${command}\r`),
-    { resetTerminalInput: () => page.keyboard.press('Control+C') },
   );
 }
 
@@ -147,7 +146,6 @@ async function waitActiveRunning(page: Page, timeoutMs = 15_000): Promise<void> 
   await waitForShellReady(
     () => readActiveText(page),
     (command) => typeInActive(page, `${command}\r`),
-    { resetTerminalInput: () => page.keyboard.press('Control+C') },
   );
 }
 

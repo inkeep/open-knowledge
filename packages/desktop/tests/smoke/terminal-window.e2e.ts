@@ -12,7 +12,9 @@ import {
   userDataDirFor,
 } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
+import { waitForShellReady } from './_helpers/terminal-ready';
 import {
+  reportedWorkingDirectory,
   seedTerminalShellProfiles,
   terminalSmokeEnvironment,
   terminalSmokeShellCommands,
@@ -128,6 +130,20 @@ async function terminalWindowCount(app: ElectronApplication): Promise<number> {
   return count;
 }
 
+async function readTerminalText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const sec = document.querySelector('section[aria-label="Terminal"]');
+    const a11y = sec?.querySelector('.xterm-accessibility')?.textContent ?? '';
+    const rows = sec?.querySelector('.xterm-rows')?.textContent ?? '';
+    return `${a11y}\n${rows}`;
+  });
+}
+
+async function typeInTerminal(page: Page, text: string): Promise<void> {
+  await page.locator('section[aria-label="Terminal"] .xterm').first().click();
+  await page.keyboard.type(text);
+}
+
 const cleanup: string[] = [];
 function track(...paths: string[]): void {
   cleanup.push(...paths);
@@ -170,22 +186,19 @@ test.describe('Standalone terminal window — live Electron', () => {
       { timeout: 25_000 },
     );
     await expect(term.getByRole('tab')).toHaveCount(1);
+    await waitForShellReady(
+      () => readTerminalText(term),
+      (command) => typeInTerminal(term, `${command}\r`),
+    );
 
-    await term.locator('section[aria-label="Terminal"] .xterm').first().click();
-    await term.keyboard.type(`${SHELL_COMMANDS.cwd}\r`);
+    await typeInTerminal(term, `${SHELL_COMMANDS.workingDirectory('WINDOW_CWD')}\r`);
     const tail = basename(s.projectDir);
-    await expect
-      .poll(
-        () =>
-          term.evaluate(() => {
-            const sec = document.querySelector('section[aria-label="Terminal"]');
-            const a11y = sec?.querySelector('.xterm-accessibility')?.textContent ?? '';
-            const rows = sec?.querySelector('.xterm-rows')?.textContent ?? '';
-            return `${a11y}\n${rows}`;
-          }),
-        { timeout: 15_000 },
-      )
-      .toContain(tail);
+    await expect(async () => {
+      const text = await readTerminalText(term);
+      expect(reportedWorkingDirectory('WINDOW_CWD', text), text).toEqual(
+        expect.stringContaining(tail),
+      );
+    }).toPass({ timeout: 15_000 });
 
     await term.getByRole('button', { name: /^Close / }).click();
     await expect.poll(() => terminalWindowCount(app), { timeout: 15_000 }).toBe(0);

@@ -20,7 +20,7 @@ import {
   settleBudget,
 } from './_helpers/settled-reading';
 import { expect, test } from './_helpers/smoke-test';
-import { waitForShellReady } from './_helpers/terminal-ready';
+import { waitForShellReady, waitForTerminalOutput } from './_helpers/terminal-ready';
 import {
   numberedScrollLine,
   readScrollbackUpward,
@@ -252,7 +252,6 @@ async function openTerminal(app: ElectronApplication, page: Page): Promise<void>
   await waitForShellReady(
     () => readActiveTerminal(page),
     (command) => typeInActiveTerminal(page, `${command}\r`),
-    { resetTerminalInput: () => page.keyboard.press('Control+C') },
   );
 }
 
@@ -266,7 +265,6 @@ async function openBareTab(page: Page): Promise<void> {
     await waitForShellReady(
       () => readActiveTerminal(page),
       (command) => typeInActiveTerminal(page, `${command}\r`),
-      { resetTerminalInput: () => page.keyboard.press('Control+C') },
     );
   });
 }
@@ -529,9 +527,9 @@ test.describe('Terminal placement continuity — live Electron', () => {
       page,
       `${SHELL_COMMANDS.scroll(sentinel, scrollStart, scrollback.linePrefix, scrollback.lineCount)}\r`,
     );
-    await expect
-      .poll(() => readActiveTerminal(page), { timeout: 15_000 })
-      .toContain(newestScrollLine);
+    await waitForTerminalOutput(() => readActiveTerminal(page), newestScrollLine, {
+      stallMs: 15_000,
+    });
     await expectScrollbackRetains(page, scrollback);
 
     const liveSurface = await captureLiveTerminal(page);

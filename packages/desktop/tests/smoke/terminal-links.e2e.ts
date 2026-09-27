@@ -105,7 +105,6 @@ async function openRunningTerminal(app: ElectronApplication, page: Page): Promis
   await waitForShellReady(
     () => page.locator('section[aria-label="Terminal"] .xterm-rows').innerText(),
     (command) => typeTerminalCommand(page, command),
-    { resetTerminalInput: () => page.keyboard.press('Control+C') },
   );
 }
 

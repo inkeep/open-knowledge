@@ -362,7 +362,6 @@ async function waitForStatus(
     await waitForShellReady(
       () => readTerminalText(page),
       (command) => typeInTerminal(page, `${command}\r`),
-      { resetTerminalInput: () => page.keyboard.press('Control+C') },
     );
   }
 }
