@@ -3145,6 +3145,7 @@ export function FileTree({ ref }: { ref?: Ref<FileTreeHandle | null> }) {
           model={model}
           style={createFileTreeStyle(resolvedTheme)}
           {...{ [FILE_TREE_CREATION_CLEARED_ATTR]: creationDirCleared ? '' : undefined }}
+          data-state={anyActionBusy ? 'busy' : 'idle'}
           onClickCapture={handleTreeClickCapture}
           onDoubleClickCapture={handleTreeDoubleClickCapture}
           onMouseMove={handleTreeMouseMove}

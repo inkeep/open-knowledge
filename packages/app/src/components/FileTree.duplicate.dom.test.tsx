@@ -418,6 +418,7 @@ vi.doMock('@pierre/trees/react', () => ({
     onClickCapture,
     onMouseMove,
     onMouseLeave,
+    'data-state': dataState,
   }: {
     renderContextMenu?: (
       item: typeof menuItem,
@@ -426,9 +427,11 @@ vi.doMock('@pierre/trees/react', () => ({
     onClickCapture?: MouseEventHandler<HTMLDivElement>;
     onMouseMove?: MouseEventHandler<HTMLDivElement>;
     onMouseLeave?: MouseEventHandler<HTMLDivElement>;
+    'data-state'?: string;
   }) => (
     <div
       data-testid="fake-pierre-tree"
+      data-state={dataState}
       role="tree"
       onClickCapture={onClickCapture}
       onMouseMove={onMouseMove}
@@ -1027,6 +1030,27 @@ describe('FileTree duplicate action runtime behavior', () => {
       expect(toastSuccessMock).toHaveBeenCalledWith('File duplicated', {
         description: 'notes/source copy',
       }),
+    );
+  });
+
+  test('the tree reports busy while a file-tree action is in flight and idle once it settles', async () => {
+    let releaseDuplicate: () => void = () => {};
+    duplicateGate = new Promise<void>((resolve) => {
+      releaseDuplicate = resolve;
+    });
+    const user = userEvent.setup();
+    renderFileTree();
+
+    const duplicate = await screen.findByRole('menuitem', { name: /duplicate/i });
+    fetchCalls = [];
+    await user.click(duplicate);
+    await waitFor(() => expect(duplicateCalls()).toHaveLength(1));
+
+    expect(screen.getByTestId('fake-pierre-tree').getAttribute('data-state')).toBe('busy');
+
+    releaseDuplicate();
+    await waitFor(() =>
+      expect(screen.getByTestId('fake-pierre-tree').getAttribute('data-state')).toBe('idle'),
     );
   });
 
