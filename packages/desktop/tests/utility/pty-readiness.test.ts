@@ -10,9 +10,12 @@ import {
   type EvaluatedInputOptions,
   type EvaluatedInputTiming,
   HARNESS_CHILD_KILL_WAIT_MS,
+  HARNESS_REPORT_RESERVE_MS,
   HARNESS_VERDICT_POLL_INTERVAL_MS,
   HarnessBudgetRefusal,
+  harnessExitAfterKillWait,
   harnessTimeouts,
+  harnessWindowsLaunchWait,
   type PtyStream,
   remainingGrantMs,
   resolveHarnessBudgetMs,
@@ -534,6 +537,9 @@ const BOOTED_PROMPT = 'PS C:\\project> ';
 const SLOW_EVALUATION_MS = 120;
 const READINESS_CEILING_MS = 16_000;
 const SILENT_SHELL_VERDICT = 'without new shell output, the only progress signal this wait watches';
+const ROUND_TRIP_CONTAINMENT_VERDICT = 'input ready was not reached inside its';
+const NO_SHELL_OUTPUT_VERDICT = 'without any shell output';
+const SHELL_PROGRESS_COUNTED = "characters past the shell's first output";
 
 function driveEvaluatingShell(
   stream: FakeStream,
@@ -580,14 +586,15 @@ describe('evaluated-input readiness', () => {
     }
   });
 
-  test('a booted shell gone silent is refused after its 16 second silence window, not at a round-trip ceiling', async () => {
+  test('a booted shell gone silent is held to its containment, not refused when its silence window passes', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const stream = createFakeStream();
     stream.emit(BOOTED_PROMPT);
     const shell = driveEvaluatingShell(stream, { evaluates: false });
+    const budgetMs = READINESS_CEILING_MS * 4;
     let outcome: string = 'pending';
     const pending = waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', {
-      budgetMs: READINESS_CEILING_MS * 4,
+      budgetMs,
     }).then(
       () => {
         outcome = 'resolved';
@@ -596,38 +603,43 @@ describe('evaluated-input readiness', () => {
         outcome = error instanceof Error ? error.message : String(error);
       },
     );
-    await vi.advanceTimersByTimeAsync(READINESS_CEILING_MS - 1_000);
+    await vi.advanceTimersByTimeAsync(budgetMs - 1_000);
     expect(outcome).toBe('pending');
     await vi.advanceTimersByTimeAsync(1_100);
-    expect(outcome).toBe(
-      `timeout waiting for: input ready after ${READINESS_CEILING_MS}ms ${SILENT_SHELL_VERDICT} (received ${JSON.stringify(BOOTED_PROMPT)})`,
-    );
+    expect(outcome).toContain(ROUND_TRIP_CONTAINMENT_VERDICT);
+    expect(outcome).toContain(`(received ${JSON.stringify(BOOTED_PROMPT)})`);
     await pending;
   });
 
   test('a shell that only echoes the probe never reports ready', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const stream = createFakeStream();
     stream.emit(BOOTED_PROMPT);
-    await expect(
-      waitForEvaluatedInput(stream, (data) => stream.emit(data), INPUT_READY_PROBE, 'input ready', {
-        ...INPUT_READY_FAST,
-        budgetMs: 5_000,
-      }),
-    ).rejects.toThrow(/timeout waiting for: input ready/u);
+    const { verdict, settled } = watchEvaluatedInput(stream, (data) => stream.emit(data), {
+      ...INPUT_READY_FAST,
+      budgetMs: 5_000,
+    });
+    await vi.advanceTimersByTimeAsync(5_000 + INPUT_READY_FAST.intervalMs);
+    await settled;
+    expect(verdict.settled).toBe('failed');
+    expect(verdict.message).toContain(ROUND_TRIP_CONTAINMENT_VERDICT);
     expect(stream.read()).toContain('Write-Output');
     expect(stream.read()).not.toContain(INPUT_READY_MARKER);
   });
 
-  test('a shell that never evaluates times out having written the probe once', async () => {
+  test('a shell that never evaluates is refused at its containment having written the probe once', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const stream = createFakeStream();
     stream.emit(BOOTED_PROMPT);
     const shell = driveEvaluatingShell(stream, { evaluates: false });
-    await expect(
-      waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', {
-        ...INPUT_READY_FAST,
-        budgetMs: 5_000,
-      }),
-    ).rejects.toThrow(/timeout waiting for: input ready/u);
+    const { verdict, settled } = watchEvaluatedInput(stream, shell.send, {
+      ...INPUT_READY_FAST,
+      budgetMs: 5_000,
+    });
+    await vi.advanceTimersByTimeAsync(5_000 + INPUT_READY_FAST.intervalMs);
+    await settled;
+    expect(verdict.settled).toBe('failed');
+    expect(verdict.message).toContain(ROUND_TRIP_CONTAINMENT_VERDICT);
     expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
   });
 
@@ -755,17 +767,21 @@ describe('shell startup is a liveness wait, not a round-trip budget', () => {
   });
 
   test('a shell that boots but never answers is named at the round trip, not at startup', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const stream = createFakeStream();
     stream.emit(`${ATTACH_PROLOGUE}${BOOTED_PROMPT}`);
     const shell = driveEvaluatingShell(stream, { evaluates: false });
     try {
-      await expect(
-        waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, 'input ready', {
-          budgetMs: 5_000,
-          roundTripStallMs: 200,
-          intervalMs: 5,
-        }),
-      ).rejects.toThrow(/timeout waiting for: input ready/u);
+      const { verdict, settled } = watchEvaluatedInput(stream, shell.send, {
+        budgetMs: 5_000,
+        roundTripStallMs: 200,
+        intervalMs: 5,
+      });
+      await vi.advanceTimersByTimeAsync(5_000 + 5);
+      await settled;
+      expect(verdict.settled).toBe('failed');
+      expect(verdict.message).toContain(ROUND_TRIP_CONTAINMENT_VERDICT);
+      expect(verdict.message).not.toContain('shell never produced output');
       expect(shell.sent).toEqual([INPUT_READY_PROBE.input]);
     } finally {
       shell.dispose();
@@ -1319,7 +1335,7 @@ async function raceWedgedAgainstAdvancing(): Promise<{
   }
 }
 
-describe('readiness is refused for lack of progress, not for elapsed time while advancing', () => {
+describe('readiness is refused when its containment is spent, not for elapsed time, whether the shell is still advancing or has gone quiet', () => {
   test('a shell still advancing when the ceiling passes is ready once its marker lands inside the budget', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const stream = createFakeStream();
@@ -1354,12 +1370,13 @@ describe('readiness is refused for lack of progress, not for elapsed time while 
     }
   });
 
-  test('a wedged shell is refused sooner than one that is still advancing, and both are refused', async () => {
+  test('a wedged live shell is held to its containment as one still advancing is, and both are refused there', async () => {
     const { wedged, advancing } = await raceWedgedAgainstAdvancing();
     expect(wedged.settled).toBe('failed');
     expect(advancing.settled).toBe('failed');
-    expect(wedged.atMs).toBeLessThan(ADVANCEMENT_BUDGET_MS);
-    expect(wedged.atMs).toBeLessThan(advancing.atMs);
+    expect(wedged.atMs).toBeGreaterThanOrEqual(ADVANCEMENT_BUDGET_MS);
+    expect(advancing.atMs).toBeGreaterThanOrEqual(ADVANCEMENT_BUDGET_MS);
+    expect(wedged.message).toContain(ROUND_TRIP_CONTAINMENT_VERDICT);
   });
 
   test('a wedged shell and an advancing one showing the reader the same bytes are not refused alike', async () => {
@@ -1536,8 +1553,8 @@ async function raceHostNoiseAgainstShellOutput(): Promise<{
   }
 }
 
-describe('a console host speaking before the shell never renews a wait, and every byte after the shell speaks counts as progress', () => {
-  test('console-host attach bytes arriving mid-wait do not renew it, and shell bytes do', async () => {
+describe('a console host speaking before the shell is never counted as shell output, and every byte after the shell speaks is', () => {
+  test('console-host attach bytes arriving mid-wait are not counted as shell output and shell bytes are, and neither wait is refused before its containment', async () => {
     const { hostNoise, shellSpeaking } = await raceHostNoiseAgainstShellOutput();
     expect(hostNoise.buffer.length).toBeGreaterThan(HOST_WRITTEN_STEP.length);
     expect(shellSpeaking.buffer.length).toBeGreaterThan(SHELL_WRITTEN_STEP.length);
@@ -1545,9 +1562,12 @@ describe('a console host speaking before the shell never renews a wait, and ever
     expect(shellOutputBeyondAttach(shellSpeaking.buffer)).toBe(shellSpeaking.buffer);
     expect(hostNoise.settled).toBe('refused');
     expect(shellSpeaking.settled).toBe('refused');
-    expect(hostNoise.atMs).toBeLessThan(shellSpeaking.atMs);
-    expect(hostNoise.atMs).toBeLessThan(CONTAINED_WAIT_CONTAINMENT_MS);
-    expect(shellSpeaking.atMs).toBeGreaterThan(CONTAINED_WAIT_WINDOW_MS);
+    expect(hostNoise.atMs).toBeGreaterThanOrEqual(CONTAINED_WAIT_CONTAINMENT_MS);
+    expect(shellSpeaking.atMs).toBeGreaterThanOrEqual(CONTAINED_WAIT_CONTAINMENT_MS);
+    expect(hostNoise.message).toContain(CONTAINMENT_VERDICT);
+    expect(hostNoise.message).toContain(NO_SHELL_OUTPUT_VERDICT);
+    expect(hostNoise.message).not.toContain(SHELL_PROGRESS_COUNTED);
+    expect(shellSpeaking.message).toContain(SHELL_PROGRESS_COUNTED);
   });
 
   test('a shell that speaks once and then leaves the host writing runs to containment, and the verdict names what it counted', async () => {
@@ -1615,7 +1635,7 @@ async function waitForLaunchOutputBehind(
 
 describe("a plain wait counts progress from the shell's own first byte, whichever ConPTY spoke before it", () => {
   test.each(RECORDED_ATTACH_PROLOGUES)(
-    'a wait that sees only what $host writes on attach says it saw no shell output',
+    'a wait that sees only what $host writes on attach is refused at its containment and says it saw no shell output',
     async ({ prologue }) => {
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
       const stream = createFakeStream();
@@ -1627,9 +1647,12 @@ describe("a plain wait counts progress from the shell's own first byte, whicheve
       });
       await vi.advanceTimersByTimeAsync(CONTAINED_WAIT_CONTAINMENT_MS + ADVANCEMENT_POLL_MS);
       await settled;
-      expect(verdict.message).toBe(
-        `timeout waiting for: ${ENCODED_COMMAND_LABEL} after ${CONTAINED_WAIT_WINDOW_MS}ms without any shell output, the only progress signal this wait watches (received ${JSON.stringify(prologue)})`,
-      );
+      expect(verdict.settled).toBe('refused');
+      expect(verdict.atMs).toBeGreaterThanOrEqual(CONTAINED_WAIT_CONTAINMENT_MS);
+      expect(verdict.message).toContain(CONTAINMENT_VERDICT);
+      expect(verdict.message).toContain(NO_SHELL_OUTPUT_VERDICT);
+      expect(verdict.message).not.toContain(SHELL_PROGRESS_COUNTED);
+      expect(verdict.message).toContain(`(received ${JSON.stringify(prologue)})`);
     },
   );
 
@@ -1662,7 +1685,7 @@ describe("a plain wait counts progress from the shell's own first byte, whicheve
     },
   );
 
-  test('a title the shell sets behind the bundled ConPTY restarts the stall window, so launch output past the window from the start still lands', async () => {
+  test('a title the shell sets behind the bundled ConPTY is shell output, and launch output past the window from the start still lands inside the containment', async () => {
     const verdict = await waitForLaunchOutputBehind(
       BUNDLED_ATTACH_PROLOGUE,
       WINDOWS_POWERSHELL_TITLE_ST,
@@ -1674,13 +1697,14 @@ describe("a plain wait counts progress from the shell's own first byte, whicheve
     expect(verdict.atMs).toBeGreaterThanOrEqual(OUTPUT_PAST_THE_WINDOW_FROM_START_AT_MS);
   });
 
-  test('the title the inbox ConPTY paints in its first-paint frame restarts nothing, so the wait still refuses at the window with no shell output', async () => {
+  test('the title the inbox ConPTY paints in its first-paint frame is not shell output, and launch output past the window from the start still lands inside the containment', async () => {
+    expect(shellOutputBeyondAttach(`${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME_ST_TITLE}`)).toBe('');
     const verdict = await waitForLaunchOutputBehind(ATTACH_PROLOGUE, CONPTY_INIT_FRAME_ST_TITLE);
-    expect(verdict.message).toBe(
-      `timeout waiting for: ${ENCODED_COMMAND_LABEL} after ${CONTAINED_WAIT_WINDOW_MS}ms without any shell output, the only progress signal this wait watches (received ${JSON.stringify(`${ATTACH_PROLOGUE}${CONPTY_INIT_FRAME_ST_TITLE}`)})`,
-    );
-    expect(verdict.atMs).toBeGreaterThanOrEqual(CONTAINED_WAIT_WINDOW_MS);
-    expect(verdict.atMs).toBeLessThan(OUTPUT_PAST_THE_WINDOW_FROM_START_AT_MS);
+    expect({ settled: verdict.settled, message: verdict.message }).toEqual({
+      settled: 'reached',
+      message: '',
+    });
+    expect(verdict.atMs).toBeGreaterThanOrEqual(OUTPUT_PAST_THE_WINDOW_FROM_START_AT_MS);
   });
 });
 
@@ -1817,7 +1841,7 @@ describe('a grant gone before a wait could poll once is refused as spent, not re
 });
 
 describe('a wait window the containment cut is named as cut, so a red tells starvation from a stalled shell', () => {
-  test('the stall verdict names the window the call site declared only when the containment took it away', async () => {
+  test('the window the call site declared is named as cut only when the containment took it away, and a containment that outlasts it ends as a spent containment', async () => {
     const declaredStallMs = VALIDATED_WAIT.stallMs * 4;
     const cut = await messageFromRefusal(() =>
       waitForCondition(wedgedBootedStream(), () => false, ENCODED_COMMAND_LABEL, {
@@ -1836,7 +1860,7 @@ describe('a wait window the containment cut is named as cut, so a red tells star
         backstopAt: performance.now() + declaredStallMs,
       }),
     );
-    expect(uncut).toContain(`after ${VALIDATED_WAIT.stallMs}ms ${SILENT_SHELL_VERDICT}`);
+    expect(uncut).toContain(CONTAINMENT_VERDICT);
     expect(uncut).not.toContain('it declared');
   });
 
@@ -1858,7 +1882,7 @@ describe('a wait window the containment cut is named as cut, so a red tells star
     }
   });
 
-  test('an input round trip names the silence window its grant cut, and claims no cut when its grant is larger', async () => {
+  test('an input round trip names the silence window its grant cut, and a grant larger than the window ends as a spent containment with no cut claimed', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
     const cutStream = createFakeStream();
     const uncutStream = createFakeStream();
@@ -1874,14 +1898,80 @@ describe('a wait window the containment cut is named as cut, so a red tells star
       driveEvaluatingShell(uncutStream, { evaluates: false }).send,
       { budgetMs: READINESS_CEILING_MS * 2 },
     );
-    await vi.advanceTimersByTimeAsync(READINESS_CEILING_MS * 2);
+    await vi.advanceTimersByTimeAsync(READINESS_CEILING_MS * 2 + READINESS_CEILING_MS / 8);
     await Promise.all([cut.settled, uncut.settled]);
-    expect(uncut.verdict.message).toBe(
-      `timeout waiting for: input ready after ${READINESS_CEILING_MS}ms ${SILENT_SHELL_VERDICT} (received ${JSON.stringify(BOOTED_PROMPT)})`,
-    );
+    expect(uncut.verdict.message).toContain(ROUND_TRIP_CONTAINMENT_VERDICT);
+    expect(uncut.verdict.message).toContain(`(received ${JSON.stringify(BOOTED_PROMPT)})`);
+    expect(uncut.verdict.message).not.toContain('it declared');
     expect(cut.verdict.message).toBe(
       `timeout waiting for: input ready after ${READINESS_CEILING_MS / 8}ms (the containment it runs inside cut the ${READINESS_CEILING_MS}ms it declared) ${SILENT_SHELL_VERDICT} (received ${JSON.stringify(BOOTED_PROMPT)})`,
     );
+  });
+
+  test('a window that spans its containment reports silence only when the shell wrote nothing through it, so a shell that wrote just before the containment is counted instead', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const stream = wedgedBootedStream();
+    const stopShell = scheduleEmissions(stream, [
+      { atMs: VALIDATED_WAIT.stallMs - 2 * VALIDATED_WAIT.intervalMs, chunk: SHELL_WRITTEN_STEP },
+    ]);
+    const { verdict, settled } = watchContainedWait(stream, {
+      ...VALIDATED_WAIT,
+      stallMs: VALIDATED_WAIT.stallMs * 4,
+      backstopAt: performance.now() + VALIDATED_WAIT.stallMs,
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(VALIDATED_WAIT.stallMs + VALIDATED_WAIT.intervalMs);
+      expect(verdict.settled).toBe('refused');
+      expect(verdict.message).toContain(CONTAINMENT_VERDICT);
+      expect(verdict.message).not.toContain(SILENT_SHELL_VERDICT);
+      expect(verdict.message).toContain(
+        `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters past the shell's first output`,
+      );
+    } finally {
+      stopShell();
+      await settled;
+    }
+  });
+
+  test('a window its containment outlasts is named when the shell went silent past it, and not when the shell last wrote inside it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const lastWriteAtMs = CONTAINED_WAIT_CONTAINMENT_MS / 2;
+    const silentPastWindowMs = CONTAINED_WAIT_WINDOW_MS;
+    const wroteInsideWindowMs = CONTAINED_WAIT_CONTAINMENT_MS - CONTAINED_WAIT_WINDOW_MS;
+    const watchWithWindow = (stallMs: number) => {
+      const stream = wedgedBootedStream();
+      const stopShell = scheduleEmissions(stream, [
+        { atMs: lastWriteAtMs, chunk: SHELL_WRITTEN_STEP },
+      ]);
+      const watched = watchContainedWait(stream, {
+        stallMs,
+        intervalMs: ADVANCEMENT_POLL_MS,
+        backstopAt: performance.now() + CONTAINED_WAIT_CONTAINMENT_MS,
+      });
+      return { ...watched, stopShell };
+    };
+    const silentPast = watchWithWindow(silentPastWindowMs);
+    const wroteInside = watchWithWindow(wroteInsideWindowMs);
+    try {
+      await vi.advanceTimersByTimeAsync(CONTAINED_WAIT_CONTAINMENT_MS + ADVANCEMENT_POLL_MS);
+      for (const { verdict } of [silentPast, wroteInside]) {
+        expect(verdict.settled).toBe('refused');
+        expect(verdict.atMs).toBeGreaterThanOrEqual(CONTAINED_WAIT_CONTAINMENT_MS);
+        expect(verdict.message).toContain(CONTAINMENT_VERDICT);
+        expect(verdict.message).not.toContain(SILENT_SHELL_VERDICT);
+        expect(verdict.message).toContain(
+          `${verdict.buffer.length - ATTACH_PROLOGUE.length} characters past the shell's first output`,
+        );
+      }
+      expect(silentPast.verdict.message).toContain(
+        `longer than its ${silentPastWindowMs}ms stall window`,
+      );
+      expect(wroteInside.verdict.message).not.toContain('stall window');
+    } finally {
+      silentPast.stopShell();
+      wroteInside.stopShell();
+      await Promise.all([silentPast.settled, wroteInside.settled]);
+    }
   });
 });
 
@@ -1998,5 +2088,388 @@ describe('a wait whose readiness is silence is refused at entry when its stall w
       message: '',
     });
     expect(verdict.atMs).toBe(quietWindowMs + VALIDATED_WAIT.intervalMs);
+  });
+});
+
+const RECORDED_S1_BANNER_THEN_SILENCE =
+  '\u001b[1t\u001b[c\u001b[?1004h\u001b[?9001hPowerShell 7.6.6\r\n\u001b]0;Administrator: C:\\Program Files\\PowerShell\\7\\pwsh.exe\u001b\\';
+const RECORDED_LAUNCH_TITLE_THEN_SILENCE =
+  '\u001b[1t\u001b[c\u001b[?1004h\u001b[?9001h\u001b]0;Administrator: C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe\u001b\\';
+const RECORDED_FIRST_OUTPUT_AT_MS = 3_647;
+const HARNESS_COMMAND_ECHO = 'Write-Output "HARNESS_$((6*7))_DONE"\r\n';
+const HARNESS_COMMAND_OUTPUT = 'HARNESS_42_DONE';
+const POSIX_PROMPT = 'bash-5.2$ ';
+const SHELL_EXIT = 'exited (code 1, signal none)';
+const LATE_SHARE_OF_CONTAINMENT = 7 / 8;
+const EARLY_SHARE_OF_CONTAINMENT = 1 / 16;
+const PAST_CONTAINMENT_SHARE = 1 / 8;
+const NOTICE_SHARE_OF_CONTAINMENT = 1 / 100;
+
+function grantWithWholeBudgetLeft(platform: NodeJS.Platform): number {
+  return createHarnessBudget(
+    harnessTimeouts(platform).budgetMs,
+    HARNESS_REPORT_RESERVE_MS,
+    () => 0,
+  ).grantMs('the first scenario started');
+}
+
+function answerAt(stream: FakeStream, atMs: number | null, chunk: string): () => void {
+  return atMs === null ? () => undefined : scheduleEmissions(stream, [{ atMs, chunk }]);
+}
+
+function driveShellAnsweringAt(
+  stream: FakeStream,
+  answerAtMs: number | null,
+): { sent: string[]; send: (data: string) => void; dispose: () => void } {
+  const sent: string[] = [];
+  const answer =
+    answerAtMs === null
+      ? null
+      : setTimeout(() => {
+          for (const data of sent) {
+            const typed = data.replace(/\r$/u, '');
+            const output = evaluateFakePowerShellCommand(typed);
+            if (output !== null) stream.emit(`${typed}\r\n${output}\r\n`);
+          }
+        }, answerAtMs);
+  return {
+    sent,
+    send: (data) => {
+      sent.push(data);
+    },
+    dispose: () => {
+      if (answer !== null) clearTimeout(answer);
+    },
+  };
+}
+
+interface ReadinessSiteRun {
+  settled: Promise<unknown>;
+  probesWritten: () => readonly string[] | null;
+  dispose: () => void;
+}
+
+interface ReadinessSite {
+  site: string;
+  platform: NodeJS.Platform;
+  label: string;
+  speaks: ReadonlyArray<{ atMs: number; chunk: string }>;
+  probesWritten: readonly string[] | null;
+  begin(
+    stream: FakeStream,
+    label: string,
+    containmentMs: number,
+    answerAtMs: number | null,
+  ): ReadinessSiteRun;
+}
+
+const READINESS_SITES: readonly ReadinessSite[] = [
+  {
+    site: 'the Windows input round trip',
+    platform: 'win32',
+    label: 'interactive shell ready at project root',
+    speaks: [
+      { atMs: 0, chunk: BUNDLED_ATTACH_PROLOGUE },
+      {
+        atMs: RECORDED_FIRST_OUTPUT_AT_MS,
+        chunk: RECORDED_S1_BANNER_THEN_SILENCE.slice(BUNDLED_ATTACH_PROLOGUE.length),
+      },
+    ],
+    probesWritten: [INPUT_READY_PROBE.input],
+    begin: (stream, label, containmentMs, answerAtMs) => {
+      const shell = driveShellAnsweringAt(stream, answerAtMs);
+      return {
+        settled: waitForEvaluatedInput(stream, shell.send, INPUT_READY_PROBE, label, {
+          budgetMs: containmentMs,
+        }),
+        probesWritten: () => shell.sent,
+        dispose: shell.dispose,
+      };
+    },
+  },
+  {
+    site: 'the EncodedCommand launch wait',
+    platform: 'win32',
+    label: ENCODED_COMMAND_LABEL,
+    speaks: [
+      { atMs: 0, chunk: BUNDLED_ATTACH_PROLOGUE },
+      {
+        atMs: RECORDED_FIRST_OUTPUT_AT_MS,
+        chunk: RECORDED_LAUNCH_TITLE_THEN_SILENCE.slice(BUNDLED_ATTACH_PROLOGUE.length),
+      },
+    ],
+    probesWritten: null,
+    begin: (stream, label, containmentMs, answerAtMs) => {
+      const stopAnswer = answerAt(
+        stream,
+        answerAtMs,
+        `${WINDOWS_POWERSHELL_WRAP_TOGGLE}${LAUNCH_OUTPUT}`,
+      );
+      return {
+        settled: waitForCondition(
+          stream,
+          () => stream.read().includes(LAUNCH_OUTPUT),
+          label,
+          harnessWindowsLaunchWait(performance.now() + containmentMs),
+        ),
+        probesWritten: () => null,
+        dispose: stopAnswer,
+      };
+    },
+  },
+  {
+    site: 'a command wait after shell output',
+    platform: 'win32',
+    label: 'evaluated command output',
+    speaks: [
+      { atMs: 0, chunk: `${BUNDLED_ATTACH_PROLOGUE}${BOOTED_PROMPT}${HARNESS_COMMAND_ECHO}` },
+    ],
+    probesWritten: null,
+    begin: (stream, label, containmentMs, answerAtMs) => {
+      const stopAnswer = answerAt(stream, answerAtMs, `${HARNESS_COMMAND_OUTPUT}\r\n`);
+      return {
+        settled: waitForCondition(
+          stream,
+          () => stream.read().includes(HARNESS_COMMAND_OUTPUT),
+          label,
+          { backstopAt: performance.now() + containmentMs },
+        ),
+        probesWritten: () => null,
+        dispose: stopAnswer,
+      };
+    },
+  },
+  {
+    site: 'the POSIX interactive-shell wait',
+    platform: 'linux',
+    label: 'interactive shell ready at project root',
+    speaks: [],
+    probesWritten: null,
+    begin: (stream, label, containmentMs, answerAtMs) => {
+      const stopAnswer = answerAt(stream, answerAtMs, POSIX_PROMPT);
+      return {
+        settled: waitForShellReady(stream, label, {
+          backstopAt: performance.now() + containmentMs,
+        }),
+        probesWritten: () => null,
+        dispose: stopAnswer,
+      };
+    },
+  },
+];
+
+interface LiveShellVerdict {
+  settled: 'pending' | 'ready' | 'refused';
+  atMs: number;
+  message: string;
+  probesWritten: readonly string[] | null;
+}
+
+async function runReadinessSite(
+  site: ReadinessSite,
+  containmentMs: number,
+  script: { answerAtMs: number | null; exitAtMs: number | null },
+): Promise<LiveShellVerdict> {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  const stream = createFakeStream();
+  for (const step of site.speaks) if (step.atMs === 0) stream.emit(step.chunk);
+  const stopSpeaking = scheduleEmissions(
+    stream,
+    site.speaks.filter((step) => step.atMs > 0),
+  );
+  const exit =
+    script.exitAtMs === null ? null : setTimeout(() => stream.fail(SHELL_EXIT), script.exitAtMs);
+  const startedAt = performance.now();
+  const verdict: LiveShellVerdict = {
+    settled: 'pending',
+    atMs: Number.NaN,
+    message: '',
+    probesWritten: null,
+  };
+  const run = site.begin(stream, site.label, containmentMs, script.answerAtMs);
+  void run.settled.then(
+    () => {
+      verdict.settled = 'ready';
+      verdict.atMs = performance.now() - startedAt;
+    },
+    (error: unknown) => {
+      verdict.settled = 'refused';
+      verdict.atMs = performance.now() - startedAt;
+      verdict.message = error instanceof Error ? error.message : String(error);
+    },
+  );
+  try {
+    await vi.advanceTimersByTimeAsync(
+      Math.ceil(containmentMs * (1 + PAST_CONTAINMENT_SHARE + NOTICE_SHARE_OF_CONTAINMENT)),
+    );
+    verdict.probesWritten = run.probesWritten();
+    return verdict;
+  } finally {
+    stopSpeaking();
+    if (exit !== null) clearTimeout(exit);
+    run.dispose();
+  }
+}
+
+describe.each(READINESS_SITES)(
+  "$site takes its verdict from the shell's answer, its exit or its spent containment, never from its silence",
+  (site) => {
+    const containmentMs = grantWithWholeBudgetLeft(site.platform);
+    const lateAtMs = Math.round(containmentMs * LATE_SHARE_OF_CONTAINMENT);
+    const lastSpokeAtMs = Math.max(0, ...site.speaks.map((step) => step.atMs));
+    const noticeMs = containmentMs * NOTICE_SHARE_OF_CONTAINMENT;
+
+    test('a live shell that stays silent until late in its containment and then answers is admitted', async () => {
+      const verdict = await runReadinessSite(site, containmentMs, {
+        answerAtMs: lateAtMs,
+        exitAtMs: null,
+      });
+      expect({ settled: verdict.settled, message: verdict.message }).toEqual({
+        settled: 'ready',
+        message: '',
+      });
+      expect(verdict.atMs).toBeGreaterThanOrEqual(lateAtMs);
+      expect(verdict.atMs).toBeLessThan(containmentMs);
+      expect(verdict.probesWritten).toEqual(site.probesWritten);
+    });
+
+    test('a live shell that has not answered when its containment is spent is refused there as a spent containment, though it would answer later', async () => {
+      const verdict = await runReadinessSite(site, containmentMs, {
+        answerAtMs: Math.round(containmentMs * (1 + PAST_CONTAINMENT_SHARE / 2)),
+        exitAtMs: null,
+      });
+      expect(verdict.settled).toBe('refused');
+      expect(verdict.message).toContain(`${site.label} was not reached inside its`);
+      expect(verdict.atMs).toBeGreaterThanOrEqual(containmentMs);
+      expect(verdict.atMs).toBeLessThan(containmentMs + noticeMs);
+      expect(verdict.probesWritten).toEqual(site.probesWritten);
+    });
+
+    test('a shell that exits right after it speaks is refused at its exit', async () => {
+      const exitAtMs = lastSpokeAtMs + Math.round(containmentMs * EARLY_SHARE_OF_CONTAINMENT);
+      const verdict = await runReadinessSite(site, containmentMs, {
+        answerAtMs: null,
+        exitAtMs,
+      });
+      expect(verdict.settled).toBe('refused');
+      expect(verdict.message).toContain(`shell failed before ${site.label}: ${SHELL_EXIT}`);
+      expect(verdict.atMs).toBeGreaterThanOrEqual(exitAtMs);
+      expect(verdict.atMs).toBeLessThan(exitAtMs + noticeMs);
+      expect(verdict.probesWritten).toEqual(site.probesWritten);
+    });
+
+    test('a shell that exits late in its containment, after a long silence, is refused at its exit and not earlier for the silence', async () => {
+      const verdict = await runReadinessSite(site, containmentMs, {
+        answerAtMs: null,
+        exitAtMs: lateAtMs,
+      });
+      expect(verdict.settled).toBe('refused');
+      expect(verdict.message).toContain(`shell failed before ${site.label}: ${SHELL_EXIT}`);
+      expect(verdict.atMs).toBeGreaterThanOrEqual(lateAtMs);
+      expect(verdict.atMs).toBeLessThan(lateAtMs + noticeMs);
+      expect(verdict.probesWritten).toEqual(site.probesWritten);
+    });
+  },
+);
+
+const EXIT_AFTER_KILL_LABEL = 'exit after kill';
+
+function createShellExitingOn(exitsOn: 'SIGKILL' | 'never'): SpawnPty {
+  return (): PtyProcessLike => {
+    let exit: (event: { exitCode: number | undefined; signal?: number }) => void = () => undefined;
+    return {
+      pid: 4244,
+      onData(listener) {
+        queueMicrotask(() => listener(POSIX_PROMPT));
+      },
+      onExit(listener) {
+        exit = listener;
+      },
+      write() {},
+      resize() {},
+      kill(signal) {
+        if (exitsOn === 'SIGKILL' && signal === 'SIGKILL') {
+          queueMicrotask(() => exit({ exitCode: undefined, signal: 9 }));
+        }
+      },
+      pause() {},
+      resume() {},
+    };
+  };
+}
+
+interface ExitAfterKillVerdict {
+  settled: 'pending' | 'reached' | 'refused';
+  atMs: number;
+  message: string;
+  exited: boolean;
+}
+
+async function waitOutExitAfterKill(
+  exitsOn: 'SIGKILL' | 'never',
+  containmentMs: number,
+): Promise<ExitAfterKillVerdict> {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+  const host = createPtyHostProbe({
+    spawn: createShellExitingOn(exitsOn),
+    env: { PATH: '/usr/bin', SHELL: '/bin/sh' },
+    platform: 'linux',
+    shellExists: () => true,
+  });
+  const first = host.streamOf('c1');
+  try {
+    host.send({ type: 'create', ptyId: 'c1', cwd: '/tmp', cols: 80, rows: 24 });
+    host.send({ type: 'kill', ptyId: 'c1' });
+    const startedAt = performance.now();
+    const verdict: ExitAfterKillVerdict = {
+      settled: 'pending',
+      atMs: Number.NaN,
+      message: '',
+      exited: false,
+    };
+    void waitForCondition(
+      first,
+      () => host.exitOf('c1') !== null,
+      EXIT_AFTER_KILL_LABEL,
+      harnessExitAfterKillWait(startedAt + containmentMs),
+    ).then(
+      () => {
+        verdict.settled = 'reached';
+        verdict.atMs = performance.now() - startedAt;
+      },
+      (error: unknown) => {
+        verdict.settled = 'refused';
+        verdict.atMs = performance.now() - startedAt;
+        verdict.message = error instanceof Error ? error.message : String(error);
+      },
+    );
+    await vi.advanceTimersByTimeAsync(Math.ceil(containmentMs * (1 + NOTICE_SHARE_OF_CONTAINMENT)));
+    verdict.exited = host.exitOf('c1') !== null;
+    return verdict;
+  } finally {
+    host.killActive();
+  }
+}
+
+describe('a wait whose condition is the shell exiting keeps its meaning: the exit is the success, and a shell still alive is the failure', () => {
+  test('waiting on the exit of a shell that exits once the host escalates the kill is reached before its containment', async () => {
+    const containmentMs = grantWithWholeBudgetLeft('win32');
+    const verdict = await waitOutExitAfterKill('SIGKILL', containmentMs);
+    expect({ settled: verdict.settled, message: verdict.message }).toEqual({
+      settled: 'reached',
+      message: '',
+    });
+    expect(verdict.exited).toBe(true);
+    expect(verdict.atMs).toBeLessThan(containmentMs);
+  });
+
+  test('waiting on the exit of a shell that outlives every kill is refused when its containment is spent, not before', async () => {
+    const containmentMs = grantWithWholeBudgetLeft('win32');
+    const verdict = await waitOutExitAfterKill('never', containmentMs);
+    expect(verdict.settled).toBe('refused');
+    expect(verdict.message).toContain(EXIT_AFTER_KILL_LABEL);
+    expect(verdict.exited).toBe(false);
+    expect(verdict.atMs).toBeGreaterThanOrEqual(containmentMs);
+    expect(verdict.atMs).toBeLessThan(containmentMs * (1 + NOTICE_SHARE_OF_CONTAINMENT));
   });
 });

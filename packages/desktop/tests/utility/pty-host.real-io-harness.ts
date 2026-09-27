@@ -12,8 +12,11 @@ import {
   buildCwdFileProofCommand,
   createHarnessBudget,
   createPtyHostProbe,
+  HARNESS_REPORT_RESERVE_MS,
   HarnessBudgetRefusal,
+  harnessExitAfterKillWait,
   harnessTimeouts,
+  harnessWindowsLaunchWait,
   remainingGrantMs,
   resolveHarnessBudgetMs,
   waitForCondition,
@@ -82,12 +85,10 @@ const verdictLine = (detail: string): string =>
 const BASE_ENV = { ...process.env };
 const shellCommands = terminalSmokeShellCommands();
 const CWD_PROOF_FILE = '.ok-pty-cwd-proof';
-const WINDOWS_LAUNCH_WAIT = { stallMs: 20_000 } as const;
 const HARNESS_BUDGET_MS = resolveHarnessBudgetMs(
   process.env.OK_PTY_HARNESS_BUDGET_MS,
   harnessTimeouts(process.platform).budgetMs,
 );
-const HARNESS_REPORT_RESERVE_MS = 1_000;
 const harnessBudget = createHarnessBudget(HARNESS_BUDGET_MS, HARNESS_REPORT_RESERVE_MS);
 
 async function waitForWindowsInputReady(
@@ -240,7 +241,7 @@ async function main(): Promise<void> {
           launch,
           () => launch.read().includes(launchToken),
           'PowerShell EncodedCommand output',
-          { ...WINDOWS_LAUNCH_WAIT, backstopAt: deadlineAt },
+          harnessWindowsLaunchWait(deadlineAt),
         );
         await waitForWindowsInputReady(
           host,
@@ -266,10 +267,12 @@ async function main(): Promise<void> {
       backstopAt: deadlineAt,
     });
     host.send({ type: 'kill', ptyId: 'c1' });
-    await waitForCondition(first, () => host.exitOf('c1') !== null, 'exit after kill', {
-      stallMs: 12_000,
-      backstopAt: deadlineAt,
-    });
+    await waitForCondition(
+      first,
+      () => host.exitOf('c1') !== null,
+      'exit after kill',
+      harnessExitAfterKillWait(deadlineAt),
+    );
     host.send({ type: 'create', ptyId: 'c2', cwd: tmp, cols: 80, rows: 24 });
     await waitForCondition(
       second,

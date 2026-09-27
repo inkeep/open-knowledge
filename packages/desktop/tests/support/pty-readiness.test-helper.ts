@@ -132,6 +132,9 @@ const HARNESS_VERDICT_GRACE_MS_BY_TIER = { win32: 5_000, default: 15_000 } as co
 const HARNESS_TEARDOWN_GRACE_MS = 15_000;
 export const HARNESS_VERDICT_POLL_INTERVAL_MS = 25;
 export const HARNESS_CHILD_KILL_WAIT_MS = 2_000;
+export const HARNESS_REPORT_RESERVE_MS = 1_000;
+export const harnessWindowsLaunchWait = (backstopAt: number) => ({ stallMs: 20_000, backstopAt });
+export const harnessExitAfterKillWait = (backstopAt: number) => ({ stallMs: 12_000, backstopAt });
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -181,6 +184,7 @@ export async function waitForCondition(
       ? stallMs
       : remainingGrantMs(backstopAt, label, { minimumMs: intervalMs, now: () => startedAt });
   const stallWindowMs = Math.min(stallMs, containmentMs);
+  const declaredWindowSpansContainment = stallWindowMs >= containmentMs;
   const cutNote =
     Math.round(stallWindowMs) < Math.round(stallMs)
       ? ` (the containment it runs inside cut the ${Math.round(stallMs)}ms it declared)`
@@ -210,14 +214,20 @@ export async function waitForCondition(
       advanced = seen;
       lastAdvanceAt = now;
     }
-    if (now - lastAdvanceAt >= stallWindowMs) {
-      throw new Error(
-        `timeout waiting for: ${label} after ${Math.round(stallWindowMs)}ms${cutNote} without ${advanced === 0 ? 'any' : 'new'} shell output, the only progress signal this wait watches (received ${describeReceived(stream.read())})`,
-      );
-    }
     if (now >= backstopAt) {
+      const silentPastWindow = now - lastAdvanceAt >= stallWindowMs;
+      if (declaredWindowSpansContainment && silentPastWindow) {
+        throw new Error(
+          `timeout waiting for: ${label} after ${Math.round(stallWindowMs)}ms${cutNote} without ${advanced === 0 ? 'any' : 'new'} shell output, the only progress signal this wait watches (received ${describeReceived(stream.read())})`,
+        );
+      }
+      const stallNote = silentPastWindow
+        ? `, longer than its ${Math.round(stallWindowMs)}ms stall window`
+        : '';
       throw new Error(
-        `${label} was not reached inside its ${Math.round(containmentMs)}ms containment; the stream last advanced ${Math.round(now - lastAdvanceAt)}ms ago, ${advanced} characters past the shell's first output (received ${describeReceived(stream.read())})`,
+        advanced === 0
+          ? `${label} was not reached inside its ${Math.round(containmentMs)}ms containment without any shell output (received ${describeReceived(stream.read())})`
+          : `${label} was not reached inside its ${Math.round(containmentMs)}ms containment; the stream last advanced ${Math.round(now - lastAdvanceAt)}ms ago${stallNote}, ${advanced} characters past the shell's first output (received ${describeReceived(stream.read())})`,
       );
     }
     await sleep(intervalMs);
