@@ -399,6 +399,11 @@ msgstr "{0}개 선택됨 (전체 {1}개 프로젝트 중)"
 msgid "{0} of {1} selected"
 msgstr "{0}/{1} 선택됨"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{0}/{totalCount}"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13816,6 +13821,11 @@ msgstr "＋ 버튼으로 채팅 시작하거나 페이지에서 에이전트 실
 msgid "Start a new chat"
 msgstr "새 채팅 시작"
 
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "새 채팅 시작 ({0})"
+
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "새 OpenKnowledge 프로젝트를 시작합니다."
@@ -14667,8 +14677,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "OpenKnowledge 서버의 응답이 너무 오래 걸렸습니다. 에이전트에게 다시 시도해 달라고 요청하세요."
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "원문 삭제됨. 선택한 텍스트에 댓글 다시 배치 가능"
+msgid "The original text was deleted."
+msgstr "원문이 삭제되었습니다."
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"

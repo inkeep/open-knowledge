@@ -399,6 +399,11 @@ msgstr "{1} में से {0} प्रोजेक्ट चुने गए
 msgid "{0} of {1} selected"
 msgstr "{1} में से {0} चुने गए"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{totalCount} में से {0}"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13812,6 +13817,11 @@ msgstr "＋ बटन से चैट शुरू करें, या कि�
 msgid "Start a new chat"
 msgstr "नई चैट शुरू करें"
 
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "नई चैट शुरू करें ({0})"
+
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "एक नया OpenKnowledge प्रोजेक्ट शुरू करें।"
@@ -14663,8 +14673,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "OpenKnowledge सर्वर ने जवाब देने में बहुत समय लिया। एजेंट से दोबारा कोशिश करने को कहें।"
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "मूल पाठ हटा दिया गया था। आप इस टिप्पणी को चयनित पाठ पर फिर से रख सकते हैं।"
+msgid "The original text was deleted."
+msgstr "मूल पाठ हटा दिया गया था।"
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"

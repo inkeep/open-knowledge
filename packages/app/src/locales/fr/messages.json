@@ -82,9 +82,6 @@
     ],
     "04JR6L": ["Connectez vos outils d'IA"],
     "04RA0-": ["Échec de l'activation de la synchronisation — ", ["detail"]],
-    "05F1GY": [
-      "Le texte d'origine a été supprimé. Vous pouvez replacer ce commentaire sur le texte sélectionné."
-    ],
     "05n5wS": ["Suggestions de mentions de documents"],
     "06SZfb": ["Modèle « ", ["trimmedTitle"], " » créé"],
     "06Ucfz": ["Non installé · Fichiers OpenKnowledge présents"],
@@ -1396,6 +1393,7 @@
     "ChMshD": ["Quitter ", ["appName"]],
     "ChdabN": ["Videz un champ pour rétablir sa valeur par défaut."],
     "Ck9XRt": ["Impossible d'enregistrer la clé — veuillez réessayer."],
+    "CkmUOk": ["Le texte d'origine a été supprimé."],
     "ClII5l": ["Appuyez sur le soleil ou la lune de « Custom » ci-dessus pour utiliser ce thème."],
     "ClTEde": [
       "Prépare le passage sélectionné dans le panneau des agents, prêt à être complété et envoyé."
@@ -2279,6 +2277,7 @@
     "LQsCPn": ["Des commits locaux empêchent cette copie de se mettre à jour"],
     "LRLKnQ": ["Masquer les éléments résolus"],
     "LRgZAt": [["owner"], "/", ["name"], " existe déjà"],
+    "LSuMte": [["0"], " sur ", ["totalCount"]],
     "LTeJuX": ["Basculer en plein écran"],
     "LXIm4m": ["Fenetre de contexte"],
     "LXdWeS": ["Titre de section moyen."],
@@ -3968,6 +3967,7 @@
     "bV6DJA": ["Qui vous êtes, pour que l'agent connaisse votre contexte."],
     "bWLmRK": ["Impossible de récupérer la branche. Vérifiez votre connexion."],
     "bYUIzq": ["Champs du schéma"],
+    "bZinKv": ["Démarrer une nouvelle discussion (", ["0"], ")"],
     "ba3vIW": [
       ["templateCount", "plural", { "one": ["modèle"], "many": ["modèles"], "other": ["modèles"] }]
     ],

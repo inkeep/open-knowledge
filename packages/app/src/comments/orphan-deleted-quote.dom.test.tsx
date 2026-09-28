@@ -22,6 +22,7 @@ function renderCard(overrides: Partial<CommentThread> = {}) {
   return render(
     <TooltipProvider>
       <ThreadCard
+        layout="doc"
         thread={thread}
         cardRef={() => {}}
         focused={false}
@@ -45,9 +46,19 @@ describe('an orphaned card', () => {
     expect(screen.getByText(/The original text was deleted/)).toBeTruthy();
   });
 
-  test('still offers the one-click recovery', () => {
+  test('places a compact recovery link below the explanation and comment', () => {
     renderCard();
-    expect(screen.getByText('Re-place on selected text')).toBeTruthy();
+    const body = screen.getByTestId('thread-comment-body');
+    const link = screen.getByRole('button', {
+      name: 'Re-place on selected text',
+    });
+    const explanation = screen.getByText(/The original text was deleted/);
+
+    expect(explanation.textContent).toBe('The original text was deleted.');
+    expect(explanation.nextElementSibling).toBe(link);
+    expect(
+      body.compareDocumentPosition(explanation) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   test('carries no status badge — the block below is the only statement', () => {

@@ -51,7 +51,14 @@ function thread(overrides: Partial<CommentThread> = {}): CommentThread {
 function renderEditing(t: CommentThread = thread()) {
   const view = render(
     <TooltipProvider>
-      <ThreadCard thread={t} cardRef={() => {}} focused={false} active={false} sending={false} />
+      <ThreadCard
+        layout="doc"
+        thread={t}
+        cardRef={() => {}}
+        focused={false}
+        active={false}
+        sending={false}
+      />
     </TooltipProvider>,
   );
   fireEvent.click(screen.getByRole('button', { name: /edit this comment/i }));

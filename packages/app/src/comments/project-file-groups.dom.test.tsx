@@ -33,7 +33,24 @@ vi.doMock('./store', () => ({
   clearActiveThread: () => {},
 }));
 
-vi.doMock('./CommentSendFooter', () => ({ CommentSendFooter: () => null }));
+vi.doMock('./CommentSendFooter', () => ({
+  CommentSendFooter: ({
+    selection,
+    threadIds,
+    totalCount,
+  }: {
+    selection: ReactNode;
+    threadIds: readonly string[];
+    totalCount: number;
+  }) => (
+    <footer>
+      {selection}
+      <span>
+        {threadIds.length} of {totalCount}
+      </span>
+    </footer>
+  ),
+}));
 
 function thread(id: string, docName: string): CommentThread {
   return {
@@ -57,14 +74,14 @@ const THREADS = [
   thread('t3', 'recipes/soup'),
 ];
 
-async function renderPanel(threads: readonly CommentThread[] = THREADS) {
+async function renderPanel(threads: readonly CommentThread[] = THREADS, groupByDocument = true) {
   const { CommentListPanel } = await import('./CommentListPanel');
   const { TooltipProvider } = await import('@/components/ui/tooltip');
   return render(
     <TooltipProvider>
       <CommentListPanel
         threads={threads}
-        groupByDocument
+        groupByDocument={groupByDocument}
         empty="none"
         testIdPrefix="comment-queue"
       />
@@ -80,6 +97,14 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('the project scope grouped by file', () => {
+  test('puts each file and its comments in one card', async () => {
+    const { container } = await renderPanel();
+    const file = container.querySelector('section[aria-label="recipes/stir-fry"]');
+    expect(file).not.toBeNull();
+    expect(file?.querySelectorAll('article')).toHaveLength(2);
+    expect(container.querySelectorAll('section[aria-label^="recipes/"]')).toHaveLength(2);
+  });
+
   test('mounts with every file open', async () => {
     await renderPanel();
     expect(screen.getByText('comment t1')).toBeTruthy();
@@ -120,6 +145,14 @@ describe('the project scope grouped by file', () => {
   });
 });
 
+describe('the doc scope', () => {
+  test('shows comments as one list without file cards', async () => {
+    const { container } = await renderPanel(THREADS, false);
+    expect(container.querySelectorAll('article')).toHaveLength(3);
+    expect(container.querySelector('section[aria-label^="recipes/"]')).toBeNull();
+  });
+});
+
 describe('the list-level select all', () => {
   test('carries no visible label — the hint above already says what checked means', async () => {
     await renderPanel();
@@ -127,16 +160,22 @@ describe('the list-level select all', () => {
     expect(screen.getByTestId('comment-queue-select-all').getAttribute('aria-label')).toBeTruthy();
   });
 
-  test('reads how many of the listed comments are going out', async () => {
-    await renderPanel();
-    expect(screen.getByText('2/3')).toBeTruthy();
-  });
-
-  test('a partly-ticked list offers the tick, not the un-tick', async () => {
+  test('places the bulk tick in the footer and shows a mixed state for partial selection', async () => {
     await renderPanel();
     const selectAll = screen.getByTestId('comment-queue-select-all');
+    expect(selectAll.closest('footer')).not.toBeNull();
     expect(selectAll.getAttribute('aria-label')).toMatch(/mark every comment to send/i);
-    expect(selectAll.getAttribute('aria-checked')).toBe('false');
+    expect(selectAll.getAttribute('aria-checked')).toBe('mixed');
+    expect(screen.getByText('2 of 3')).toBeTruthy();
+  });
+
+  test('excludes resolved comments from the footer count', async () => {
+    selected = ['t1'];
+    await renderPanel([
+      thread('t1', 'recipes/stir-fry'),
+      { ...thread('t2', 'recipes/stir-fry'), status: 'resolved' },
+    ]);
+    expect(screen.getByText('1 of 1')).toBeTruthy();
   });
 });
 
@@ -147,28 +186,32 @@ describe('the per-file tick', () => {
     expect(screen.getByTestId('comment-queue-file-select-recipes/soup')).toBeTruthy();
   });
 
-  test('is transparent at rest but still focusable', async () => {
+  test('shows the file icon until an unchecked checkbox is hovered or focused', async () => {
     await renderPanel();
-    const tick = screen.getByTestId('comment-queue-file-select-recipes/stir-fry');
+    const tick = screen.getByTestId('comment-queue-file-select-recipes/soup');
     expect(tick.className).toContain('opacity-0');
     expect(tick.className).toContain('focus-visible:opacity-100');
-    expect(tick.className).not.toContain('focus-within');
+    expect(tick.className).toContain('group-has-[:focus-visible]/file:opacity-100');
+    expect(tick.className).toContain('[@media(hover:none)]:opacity-100');
+    const icon = tick.parentElement?.querySelector('svg');
+    expect(icon?.getAttribute('class')).toContain('[@media(hover:none)]:opacity-0');
+    expect(tick.className).not.toContain('group-focus-within/file');
     expect(tick.getAttribute('disabled')).toBeNull();
   });
 
   test('reads checked when every comment in the file is going', async () => {
     await renderPanel();
-    expect(
-      screen.getByTestId('comment-queue-file-select-recipes/stir-fry').getAttribute('data-state'),
-    ).toBe('checked');
+    const tick = screen.getByTestId('comment-queue-file-select-recipes/stir-fry');
+    expect(tick.getAttribute('data-state')).toBe('checked');
+    expect(tick.className).not.toContain('opacity-0');
   });
 
   test('reads mixed when only some of the file is going', async () => {
     selected = ['t1'];
     await renderPanel();
-    expect(
-      screen.getByTestId('comment-queue-file-select-recipes/stir-fry').getAttribute('data-state'),
-    ).toBe('indeterminate');
+    const tick = screen.getByTestId('comment-queue-file-select-recipes/stir-fry');
+    expect(tick.getAttribute('data-state')).toBe('indeterminate');
+    expect(tick.className).not.toContain('opacity-0');
   });
 
   test('reads unchecked when none of the file is going', async () => {

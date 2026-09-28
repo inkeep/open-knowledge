@@ -235,6 +235,7 @@ describe('every ComposerMentionInput surface either refuses the drop with a reas
     render(
       <TooltipProvider>
         <ThreadCard
+          layout="doc"
           thread={commentThread()}
           cardRef={() => {}}
           focused={false}

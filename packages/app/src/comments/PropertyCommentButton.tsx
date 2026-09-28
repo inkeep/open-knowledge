@@ -106,7 +106,7 @@ export function PropertyCommentButton({
           className="min-h-16 resize-none text-sm"
         />
         <div className="flex items-center justify-end gap-1.5">
-          <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+          <Button size="sm" variant="ghost-mono" onClick={() => setOpen(false)}>
             <Trans>Cancel</Trans>
           </Button>
           <Button size="sm" onClick={post} disabled={draft.trim().length === 0}>

@@ -64,9 +64,6 @@
     ],
     "04JR6L": ["Hubungkan alat AI Anda"],
     "04RA0-": ["Gagal mengaktifkan sinkronisasi — ", ["detail"]],
-    "05F1GY": [
-      "Teks aslinya telah dihapus. Anda dapat menempatkan ulang komentar ini pada teks terpilih."
-    ],
     "05n5wS": ["Saran penyebutan dokumen"],
     "06SZfb": ["Templat \"", ["trimmedTitle"], "\" dibuat"],
     "06Ucfz": ["Belum terpasang · File OpenKnowledge ada"],
@@ -1156,6 +1153,7 @@
     "ChMshD": ["Keluar dari ", ["appName"]],
     "ChdabN": ["Kosongkan kolom untuk mengembalikan nilai defaultnya."],
     "Ck9XRt": ["Kuncinya tidak bisa disimpan — silakan coba lagi."],
+    "CkmUOk": ["Teks aslinya telah dihapus."],
     "ClII5l": ["Tekan ikon matahari atau bulan pada “Custom” di atas untuk memakai tema ini."],
     "ClTEde": ["Siapkan bagian yang dipilih di panel agen, siap dilengkapi dan dikirim."],
     "CmeH9S": ["Tambahkan properti ke ", ["keyName"]],
@@ -1954,6 +1952,7 @@
     "LQsCPn": ["Commit lokal menghalangi salinan ini diperbarui"],
     "LRLKnQ": ["Sembunyikan yang sudah selesai"],
     "LRgZAt": [["owner"], "/", ["name"], " sudah ada"],
+    "LSuMte": [["0"], " dari ", ["totalCount"]],
     "LTeJuX": ["Layar Penuh"],
     "LXIm4m": ["Jendela konteks"],
     "LXdWeS": ["Judul bagian sedang."],
@@ -3414,6 +3413,7 @@
     "bV6DJA": ["Siapa Anda, agar agennya punya konteks Anda."],
     "bWLmRK": ["Cabang tidak dapat diambil. Periksa koneksi Anda."],
     "bYUIzq": ["Bidang skema"],
+    "bZinKv": ["Mulai obrolan baru (", ["0"], ")"],
     "ba3vIW": [["templateCount", "plural", { "other": ["templat"] }]],
     "bbJ-VR": ["Perkecil"],
     "bcDHUM": [["descriptorLabel"], " — galat render, sumber bisa disunting di bawah"],

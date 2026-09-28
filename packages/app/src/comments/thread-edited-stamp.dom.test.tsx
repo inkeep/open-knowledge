@@ -25,6 +25,7 @@ function renderEdited(updatedAt: number) {
   return render(
     <TooltipProvider>
       <ThreadCard
+        layout="doc"
         thread={thread}
         cardRef={() => {}}
         focused={false}

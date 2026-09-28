@@ -78,9 +78,6 @@
     "03wKPg": ["Un informe nos ayuda a encontrar la causa. No se envía nada hasta que lo revises."],
     "04JR6L": ["Conecta tus herramientas de IA"],
     "04RA0-": ["No se pudo activar la sincronización — ", ["detail"]],
-    "05F1GY": [
-      "El texto original se eliminó. Puedes volver a colocar este comentario sobre el texto seleccionado."
-    ],
     "05n5wS": ["Sugerencias de menciones de documentos"],
     "06SZfb": ["Se creó la plantilla \"", ["trimmedTitle"], "\""],
     "06Ucfz": ["No instalado · Archivos de OpenKnowledge presentes"],
@@ -1367,6 +1364,7 @@
     "ChMshD": ["Salir de ", ["appName"]],
     "ChdabN": ["Borra el contenido de un campo para restaurar su valor predeterminado."],
     "Ck9XRt": ["No se pudo guardar la clave; inténtalo de nuevo."],
+    "CkmUOk": ["El texto original se eliminó."],
     "ClII5l": ["Pulsa el sol o la luna de “Custom” arriba para usar este tema."],
     "ClTEde": [
       "Prepara el fragmento seleccionado en el panel de agentes, listo para ampliar y enviar."
@@ -2235,6 +2233,7 @@
     "LQsCPn": ["Hay commits locales que impiden actualizar esta copia"],
     "LRLKnQ": ["Ocultar los resueltos"],
     "LRgZAt": [["owner"], "/", ["name"], " ya existe"],
+    "LSuMte": [["0"], " de ", ["totalCount"]],
     "LTeJuX": ["Activar o desactivar la pantalla completa"],
     "LXIm4m": ["Ventana de contexto"],
     "LXdWeS": ["Encabezado de sección mediano."],
@@ -3917,6 +3916,7 @@
     "bV6DJA": ["Quién eres, para que el agente tenga tu contexto."],
     "bWLmRK": ["No se pudo obtener la rama. Revisa tu conexión."],
     "bYUIzq": ["Campos del esquema"],
+    "bZinKv": ["Empezar un chat nuevo (", ["0"], ")"],
     "ba3vIW": [
       [
         "templateCount",

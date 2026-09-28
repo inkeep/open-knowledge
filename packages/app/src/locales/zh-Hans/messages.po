@@ -399,6 +399,11 @@ msgstr "已选择 {1} 个项目中的 {0} 个"
 msgid "{0} of {1} selected"
 msgstr "已选择 {1} 项中的 {0} 项"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{totalCount} 项中的 {0} 项"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13816,6 +13821,11 @@ msgstr "使用 ＋ 按钮开始对话，或从页面启动智能体。"
 msgid "Start a new chat"
 msgstr "开始新对话"
 
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "开始新对话（{0}）"
+
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "开始一个新的 OpenKnowledge 项目。"
@@ -14667,8 +14677,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "OpenKnowledge 服务器响应超时。请让代理重试。"
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "原始文本已被删除。你可以将此评论重新定位到选中的文本上。"
+msgid "The original text was deleted."
+msgstr "原始文本已被删除。"
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"

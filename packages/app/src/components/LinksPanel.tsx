@@ -115,12 +115,12 @@ function SectionTrigger({
   isLoading: boolean;
 }) {
   return (
-    <CollapsibleTrigger className="group flex w-full cursor-pointer items-center justify-between px-5 py-3 text-left transition-colors hover:bg-muted/40">
+    <CollapsibleTrigger className="group flex w-full cursor-pointer items-center px-5 py-3 text-left transition-colors hover:bg-muted/40">
       <span className="flex items-center gap-2.5">
         <ChevronDown className="size-3.5 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90" />
         <PanelTitle>{title}</PanelTitle>
+        {!isLoading && count !== null && <PanelCount>{count}</PanelCount>}
       </span>
-      {!isLoading && count !== null && <PanelCount>{count}</PanelCount>}
     </CollapsibleTrigger>
   );
 }

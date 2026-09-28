@@ -3,6 +3,7 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import { CheckCheck, MapPin, Pencil, RotateCcw, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import type { PanelScope } from '@/components/PanelScopeHeader';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -28,6 +29,9 @@ import {
   toggleSending,
 } from './store';
 import type { CommentThread } from './types';
+
+const actionRevealClass =
+  'size-6 p-0 pointer-events-none opacity-0 transition-opacity duration-150 ease-out-strong text-muted-foreground group-hover/comment-card:pointer-events-auto group-hover/comment-card:opacity-100 group-has-[:focus-visible]/comment-card:pointer-events-auto group-has-[:focus-visible]/comment-card:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100 motion-reduce:transition-none';
 
 function editedAt(at: number, now: number): string {
   const date = new Date(at);
@@ -55,12 +59,14 @@ export function ThreadCard({
   focused,
   active,
   sending,
+  layout,
 }: {
   thread: CommentThread;
   cardRef: (el: HTMLElement | null) => void;
   focused: boolean;
   active: boolean;
   sending: boolean;
+  layout: PanelScope;
 }) {
   const { t } = useLingui();
   const [renderedAt] = useState(() => Date.now());
@@ -180,11 +186,18 @@ export function ThreadCard({
         toggleSending(thread.id);
       }}
       className={cn(
-        'flex flex-col gap-1.5 rounded-lg border p-2.5 transition-[box-shadow,border-color,background-color]',
+        'group/comment-card flex flex-col gap-1.5 transition-[box-shadow,border-color,background-color]',
+        'border-b py-3 last:border-b-0',
+        layout === 'doc' &&
+          'relative isolate before:pointer-events-none before:absolute before:-inset-x-2 before:inset-y-1 before:-z-10 before:rounded-lg before:bg-azure-800/5 dark:before:bg-white/5 before:opacity-0 before:transition-opacity before:duration-150 motion-reduce:before:transition-none',
+        layout === 'project' && 'px-3',
         cardSelects && 'cursor-pointer',
         isResolved && 'opacity-70',
-        active && 'bg-blue-600/10',
-        focused && 'ring-2 ring-primary',
+        active && (layout === 'doc' ? 'before:opacity-100' : 'bg-azure-800/5 dark:bg-white/5'),
+        focused &&
+          (layout === 'doc'
+            ? 'before:opacity-100 before:ring-2 before:ring-primary'
+            : 'ring-2 ring-primary'),
       )}
     >
       {}
@@ -198,85 +211,95 @@ export function ThreadCard({
               aria-label={sending ? t`Don't send this comment` : t`Send this comment`}
             />
           )}
+          {isResolved && (
+            <CheckCheck aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
+          )}
           {}
           <span
-            className="shrink-0 text-[10px] text-muted-foreground"
+            className="shrink-0 text-xs text-muted-foreground"
             title={new Date(thread.updatedAt).toLocaleString()}
           >
             {editedAt(thread.updatedAt, renderedAt)}
           </span>
         </div>
-        <div className="flex min-w-0 items-center gap-1.5">
+        <div className="grid min-w-0 items-center justify-items-end">
           {isResolved && (
             <Badge
-              variant="outline"
-              className="gap-1 border-green-600/40 text-green-700 dark:text-green-500"
+              variant="primary"
+              className="pointer-events-none col-start-1 row-start-1 opacity-100 transition-opacity duration-150 ease-out-strong group-hover/comment-card:opacity-0 group-has-[:focus-visible]/comment-card:opacity-0 [@media(hover:none)]:opacity-0 motion-reduce:transition-none"
             >
-              {}
-              <CheckCheck className="size-2.5" />
               <Trans>Resolved</Trans>
             </Badge>
           )}
-          {}
-          {}
-          {!isResolved && (
+          <div className="col-start-1 row-start-1 flex items-center gap-1.5">
+            {isResolved ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t`Reopen`}
+                    className={cn(actionRevealClass, 'hover:text-foreground')}
+                    onClick={() => reopenThread(thread.id)}
+                  >
+                    <RotateCcw className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <Trans>Reopen</Trans>
+                </TooltipContent>
+              </Tooltip>
+            ) : (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    aria-label={t`Edit this comment`}
+                    aria-expanded={editing}
+                    className={cn(actionRevealClass, 'hover:text-foreground')}
+                    onClick={() => setEditing((open) => !open)}
+                  >
+                    <Pencil className="size-3.5" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <Trans>Edit this comment</Trans>
+                </TooltipContent>
+              </Tooltip>
+            )}
+            {}
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
                   size="sm"
                   variant="ghost"
-                  aria-label={t`Edit this comment`}
-                  aria-expanded={editing}
-                  className={cn(
-                    'size-6 p-0',
-                    editing ? 'text-foreground' : 'text-muted-foreground hover:text-foreground',
-                  )}
-                  onClick={() => setEditing((open) => !open)}
+                  className={cn(actionRevealClass, 'hover:text-destructive')}
+                  aria-label={t`Delete this comment`}
+                  onClick={deleteComment}
                 >
-                  <Pencil className="size-3.5" />
+                  <Trash2 className="size-3.5" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <Trans>Edit this comment</Trans>
+                <Trans>Delete this comment</Trans>
               </TooltipContent>
             </Tooltip>
-          )}
-          {}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="sm"
-                variant="ghost"
-                className="size-6 p-0 text-muted-foreground hover:text-destructive"
-                aria-label={t`Delete this comment`}
-                onClick={deleteComment}
-              >
-                <Trash2 className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <Trans>Delete this comment</Trans>
-            </TooltipContent>
-          </Tooltip>
+          </div>
         </div>
       </div>
 
       {}
       {isOrphaned ? (
-        <div className="flex flex-col gap-0.5 rounded border-l-2 border-muted-foreground/40 bg-muted/40 px-2 py-1">
+        <div className="flex flex-col gap-2">
           {thread.anchor !== null && (
             <p
-              className="truncate text-xs text-muted-foreground line-through"
+              className="truncate text-sm text-muted-foreground line-through border-l-2 border-l-muted-foreground/40 px-2 py-0.5"
               title={thread.anchor.quote}
             >
               {}“{thread.anchor.quote}”
             </p>
           )}
-          <p className="text-xs text-muted-foreground">
-            <Trans>
-              The original text was deleted. You can re-place this comment on selected text.
-            </Trans>
-          </p>
         </div>
       ) : (
         <Tooltip>
@@ -288,7 +311,7 @@ export function ThreadCard({
                 variant="ghost"
                 disabled={thread.anchor === null}
                 onClick={() => jumpToQuote(thread.anchor?.quote ?? '')}
-                className="h-auto w-full justify-start truncate rounded border-l-2 border-muted-foreground/40 bg-muted/40 px-2 py-1 text-left text-xs font-normal text-muted-foreground hover:bg-muted/70 disabled:opacity-100"
+                className="h-auto w-full justify-start truncate rounded-none border-l-2 border-l-muted-foreground/40 px-2 py-0.5 text-left text-sm font-normal text-muted-foreground hover:bg-muted/70 disabled:opacity-100"
               >
                 <span className="truncate">
                   {thread.target.kind === 'property' ? (
@@ -330,11 +353,11 @@ export function ThreadCard({
             }}
             onSubmit={commitEdit}
             onEscape={cancelEdit}
-            className="max-h-40 overflow-y-auto rounded-md border px-2 py-1 text-sm"
+            className="max-h-40 overflow-y-auto rounded-md border px-2 py-1 text-sm subtle-scrollbar bg-background"
           />
           {}
           <div className="flex items-center justify-end gap-1.5">
-            <Button size="sm" variant="ghost" onClick={cancelEdit}>
+            <Button size="sm" variant="ghost-mono" onClick={cancelEdit}>
               <Trans>Cancel</Trans>
             </Button>
             <Button
@@ -348,38 +371,31 @@ export function ThreadCard({
           </div>
         </div>
       ) : (
-        <p data-testid="thread-comment-body" className="text-sm text-foreground/90">
+        <p
+          data-testid="thread-comment-body"
+          className={cn('text-sm text-foreground/90', isResolved && 'line-through')}
+        >
           {thread.body}
         </p>
       )}
 
       {}
-      {isOrphaned ? (
-        <Button size="sm" variant="outline" className="min-w-0" onClick={rePlaceOnSelection}>
-          <MapPin className="size-3.5 shrink-0" />
-          <span className="truncate">
+      {isOrphaned && (
+        <div className="flex flex-col items-start gap-0.5">
+          <p className="text-xs text-muted-foreground">
+            <Trans>The original text was deleted.</Trans>
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            variant="link"
+            className="h-auto gap-1 p-0 text-xs font-normal"
+            onClick={rePlaceOnSelection}
+          >
+            <MapPin className="size-3" />
             <Trans>Re-place on selected text</Trans>
-          </span>
-        </Button>
-      ) : (
-        <>
-          {}
-          {isResolved && (
-            <div className="flex min-w-0 flex-nowrap items-center justify-end gap-1.5">
-              <Button
-                size="sm"
-                variant="outline"
-                className="min-w-0"
-                onClick={() => reopenThread(thread.id)}
-              >
-                <RotateCcw className="size-3.5 shrink-0" />
-                <span className="truncate">
-                  <Trans>Reopen</Trans>
-                </span>
-              </Button>
-            </div>
-          )}
-        </>
+          </Button>
+        </div>
       )}
     </article>
   );

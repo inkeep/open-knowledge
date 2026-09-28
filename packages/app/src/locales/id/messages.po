@@ -399,6 +399,11 @@ msgstr "{0} dari {1} proyek dipilih"
 msgid "{0} of {1} selected"
 msgstr "{0} dari {1} dipilih"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{0} dari {totalCount}"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13812,6 +13817,11 @@ msgstr "Mulai obrolan dengan tombol ＋, atau luncurkan agen dari halaman."
 msgid "Start a new chat"
 msgstr "Mulai obrolan baru"
 
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "Mulai obrolan baru ({0})"
+
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "Mulai proyek OpenKnowledge baru."
@@ -14663,8 +14673,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "Server OpenKnowledge terlalu lama merespons. Minta agen mencoba lagi."
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "Teks aslinya telah dihapus. Anda dapat menempatkan ulang komentar ini pada teks terpilih."
+msgid "The original text was deleted."
+msgstr "Teks aslinya telah dihapus."
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"

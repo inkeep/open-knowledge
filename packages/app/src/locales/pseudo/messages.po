@@ -399,6 +399,11 @@ msgstr ""
 msgid "{0} of {1} selected"
 msgstr ""
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr ""
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13812,6 +13817,11 @@ msgstr ""
 msgid "Start a new chat"
 msgstr ""
 
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr ""
+
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr ""
@@ -14663,7 +14673,7 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr ""
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
+msgid "The original text was deleted."
 msgstr ""
 
 #: src/components/SkillFileCreateDialog.tsx

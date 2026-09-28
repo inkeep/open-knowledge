@@ -78,9 +78,6 @@
     "03wKPg": ["Um relatório nos ajuda a achar a causa. Nada é enviado até você revisar."],
     "04JR6L": ["Conecte suas ferramentas de IA"],
     "04RA0-": ["Falha ao ativar a sincronização — ", ["detail"]],
-    "05F1GY": [
-      "O texto original foi excluído. Você pode reposicionar este comentário no texto selecionado."
-    ],
     "05n5wS": ["Sugestões de menção de documentos"],
     "06SZfb": ["Modelo \"", ["trimmedTitle"], "\" criado"],
     "06Ucfz": ["Não instalado · Arquivos do OpenKnowledge presentes"],
@@ -1341,6 +1338,7 @@
     "ChMshD": ["Encerrar o ", ["appName"]],
     "ChdabN": ["Limpe um campo para restaurar seu valor padrão."],
     "Ck9XRt": ["Não deu para salvar a chave — tente de novo."],
+    "CkmUOk": ["O texto original foi excluído."],
     "ClII5l": ["Pressione o sol ou a lua em “Custom” acima para usar este tema."],
     "ClTEde": [
       "Prepara o trecho selecionado no painel de agentes, pronto para complementar e enviar."
@@ -2204,6 +2202,7 @@
     "LQsCPn": ["Commits locais estão impedindo esta cópia de atualizar"],
     "LRLKnQ": ["Ocultar os resolvidos"],
     "LRgZAt": [["owner"], "/", ["name"], " já existe"],
+    "LSuMte": [["0"], " de ", ["totalCount"]],
     "LTeJuX": ["Ativar ou desativar a tela cheia"],
     "LXIm4m": ["Janela de contexto"],
     "LXdWeS": ["Título de seção médio."],
@@ -3845,6 +3844,7 @@
     "bV6DJA": ["Quem você é, para que o agente tenha seu contexto."],
     "bWLmRK": ["Não foi possível obter o ramo. Verifique sua conexão."],
     "bYUIzq": ["Campos do esquema"],
+    "bZinKv": ["Começar um novo chat (", ["0"], ")"],
     "ba3vIW": [
       ["templateCount", "plural", { "one": ["modelo"], "many": ["modelos"], "other": ["modelos"] }]
     ],

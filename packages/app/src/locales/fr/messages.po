@@ -399,6 +399,11 @@ msgstr "{0} projet(s) sélectionné(s) sur {1}"
 msgid "{0} of {1} selected"
 msgstr "{0} sélectionné(s) sur {1}"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{0} sur {totalCount}"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13816,6 +13821,11 @@ msgstr "Démarrez un chat avec le bouton ＋ ou lancez un agent depuis une page.
 msgid "Start a new chat"
 msgstr "Démarrer une nouvelle discussion"
 
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "Démarrer une nouvelle discussion ({0})"
+
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "Démarrez un nouveau projet OpenKnowledge."
@@ -14667,8 +14677,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "Le serveur OpenKnowledge a mis trop de temps a repondre. Demandez a l'agent de reessayer."
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "Le texte d'origine a été supprimé. Vous pouvez replacer ce commentaire sur le texte sélectionné."
+msgid "The original text was deleted."
+msgstr "Le texte d'origine a été supprimé."
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"

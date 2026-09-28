@@ -399,6 +399,11 @@ msgstr "تم تحديد {0} من {1} مشروع"
 msgid "{0} of {1} selected"
 msgstr "تم تحديد {0} من {1}"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{0} من {totalCount}"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -13816,6 +13821,11 @@ msgstr "ابدأ محادثة بزر ＋، أو شغّل وكيلاً من صف�
 msgid "Start a new chat"
 msgstr "بدء محادثة جديدة"
 
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "بدء محادثة جديدة ({0})"
+
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
 msgstr "ابدأ مشروع OpenKnowledge جديدًا."
@@ -14667,8 +14677,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "استغرق خادم OpenKnowledge وقتا طويلا للرد. اطلب من الوكيل المحاولة مرة أخرى."
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "تم حذف النص الأصلي. يمكنك إعادة وضع هذا التعليق على النص المحدد."
+msgid "The original text was deleted."
+msgstr "تم حذف النص الأصلي."
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"
