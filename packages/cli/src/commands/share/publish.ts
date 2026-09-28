@@ -9,11 +9,17 @@ import {
 } from '@inkeep/open-knowledge-server';
 import { Octokit } from '@octokit/rest';
 import { Command } from 'commander';
-import simpleGit, { type SimpleGit, type SimpleGitOptions } from 'simple-git';
+import simpleGit, { type SimpleGit } from 'simple-git';
+import { buildHttpsHostCliCredentialConfig, type ResolvedAuth } from '../../auth/resolve-auth.ts';
 import type { TokenStore } from '../../auth/token-store.ts';
 import { resolveReposToken } from '../auth/repos.ts';
 import { validateGitHubHost } from '../auth/validate-host.ts';
-import { buildCloneEnv, buildCloneGitOptions } from '../clone.ts';
+import {
+  buildCloneAuthEnv,
+  buildCloneEnv,
+  buildCloneGitOptions,
+  resolveSelfCliArgs,
+} from '../clone.ts';
 
 interface PublishOptions {
   host: string;
@@ -133,25 +139,32 @@ async function probeOwnerKind(octokit: Octokit, ownerLogin: string): Promise<'us
   return me.data.login.toLowerCase() === ownerLogin.toLowerCase() ? 'user' : 'org';
 }
 
-function makeGit(projectDir: string): SimpleGit {
-  return simpleGit(buildCloneGitOptions(projectDir, []) as Partial<SimpleGitOptions>).env(
-    buildCloneEnv(),
-  );
+type RelayToken = NonNullable<ResolvedAuth['relayToken']>;
+
+function makeGit(projectDir: string, relayToken?: RelayToken): SimpleGit {
+  if (relayToken === undefined) {
+    return simpleGit(buildCloneGitOptions(projectDir, [])).env(buildCloneEnv());
+  }
+  return simpleGit(
+    buildCloneGitOptions(
+      projectDir,
+      buildHttpsHostCliCredentialConfig(resolveSelfCliArgs(), relayToken.host),
+    ),
+  ).env(buildCloneAuthEnv({ relayToken }));
 }
 
-function injectTokenIntoCloneUrl(cloneUrl: string, token: string): string {
-  if (!cloneUrl.startsWith('https://')) return cloneUrl;
+function isGitHubDotComHttpsUrl(cloneUrl: string): boolean {
+  if (!cloneUrl.startsWith('https://')) return false;
   try {
-    if (new URL(cloneUrl).hostname !== 'github.com') return cloneUrl;
+    return new URL(cloneUrl).hostname === 'github.com';
   } catch {
-    return cloneUrl;
+    return false;
   }
-  return cloneUrl.replace('https://', `https://x-access-token:${token}@`);
 }
 
 interface PublishGitDeps {
   ensureOkScaffold: (projectDir: string) => void;
-  gitFactory: (projectDir: string) => SimpleGit;
+  gitFactory: (projectDir: string, relayToken?: RelayToken) => SimpleGit;
 }
 
 const DEFAULT_DEPS: PublishGitDeps = {
@@ -258,9 +271,11 @@ export async function runPublishFlow(params: PublishParams): Promise<PublishResu
     }
   }
 
-  const authUrl = injectTokenIntoCloneUrl(created.cloneUrl, params.token);
+  const pushGit = isGitHubDotComHttpsUrl(created.cloneUrl)
+    ? deps.gitFactory(projectDir, { token: params.token, host: 'github.com' })
+    : git;
   try {
-    await git.raw(['push', authUrl, `HEAD:refs/heads/${created.defaultBranch}`]);
+    await pushGit.raw(['push', created.cloneUrl, `HEAD:refs/heads/${created.defaultBranch}`]);
   } catch (err) {
     const message = String((err as { message?: string }).message ?? '').toLowerCase();
     if (message.includes('saml') || message.includes('sso')) {

@@ -110,7 +110,7 @@ Sync a project with its remote from the terminal:
 | `ok pull` | Pull changes from the remote |
 | `ok push` | Push commits to the remote |
 
-Each command goes through the running server when one is up and falls back to plain git otherwise; pass `--json` for JSONL progress events when scripting. See [GitHub sync](/docs/features/github-sync) for how syncing works.
+Each command goes through the running server when one is up. Otherwise it runs git directly. When the remote's URL is `https://` and names `github.com` or a declared GitHub Enterprise host exactly, in lowercase and with no port, and OpenKnowledge has a GitHub sign-in for it ([which account is used](/docs/features/github-sync#which-github-account-is-used)), that sign-in replaces your git credential helpers for HTTPS requests to that host during the command, though a `~/.netrc` entry for the host is still used before any helper. The sign-in answers only that exact spelling of the host: for a submodule or extra push URL that writes it with an explicit `:443` or in different letter case, git asks a configured askpass program (`GIT_ASKPASS`, `core.askPass` or `SSH_ASKPASS`; VS Code's integrated terminal sets one), and the request fails when none is configured. Requests to another host, a non-default port or a plain `http://` URL use your own git credentials. Pass `--json` for JSONL progress events when scripting. See [GitHub sync](/docs/features/github-sync) for how syncing works.
 
 ## Manage local servers
 
