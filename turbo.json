@@ -172,6 +172,8 @@
         "../../.github/scripts/smoke-packaged-dmg.mjs",
         "../../scripts/verify-native-config-in-packaged-dmg.mjs",
         "../../scripts/verify-keyring-in-packaged-dmg.mjs",
+        "../../scripts/lume-bake/**",
+        "../../scripts/lume-qa/**",
         "../app/vite.*.ts",
         "../app/lingui.config.ts",
         "../app/postcss.config.ts",
