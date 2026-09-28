@@ -664,6 +664,15 @@ describe('the bug lane verifies the synthetic tree at the same bar as main', () 
     expect(retry).not.toContain('--force');
   });
 
+  test('both attempts run every package, so server#test and the uncached tier it brings run on the verified tree', () => {
+    const commands = verify
+      .replace(/\\\n\s*/g, ' ')
+      .split('\n')
+      .filter((l) => l.includes('pnpm exec turbo run typecheck test'));
+    expect(commands).toHaveLength(2);
+    for (const command of commands) expect(command).not.toMatch(/\s(--filter|-F)[\s=]/);
+  });
+
   test('only a second consecutive failure mints a refusing verdict', () => {
     const installGuardAt = verify.indexOf('verdict=fail');
     const retryAt = verify.indexOf('| tee "$RETRY_LOG"');

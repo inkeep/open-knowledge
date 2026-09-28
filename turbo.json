@@ -52,6 +52,10 @@
         "tsconfig.json"
       ]
     },
+    "//#test:uncached": {
+      "cache": false,
+      "inputs": []
+    },
     "@inkeep/open-knowledge#check:dts": {
       "dependsOn": ["build"],
       "inputs": [
@@ -122,26 +126,13 @@
     "@inkeep/open-knowledge-server#test": {
       "dependsOn": ["^build"],
       "cache": true,
+      "with": ["//#test:uncached"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "!CHANGELOG.md",
         "!README.md",
         "../../test-support/*.ts",
-        "../../oxlint.config.ts",
-        "../../AGENTS.md",
-        "../../lint-plugins/**",
-        "../plugin/**",
-        "../../plugins/ok/**",
-        "../app/src/editor/observers.ts",
-        "../cli/src/**",
-        "!../cli/src/**/*.test.ts",
-        "!../cli/src/**/*.test-helper.ts",
-        "../cli/tsdown.config.ts",
-        "../desktop/src/main/**",
-        "!../desktop/src/main/**/*.test.ts",
-        "!../desktop/src/main/**/*.test-helper.ts",
-        "../*/package.json",
-        "../../docs/content/**"
+        "../app/src/editor/observers.ts"
       ]
     },
     "@inkeep/open-knowledge#test": {

@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   oxlintFixtureArgs,
@@ -8,9 +9,9 @@ import {
   readEnabledRuleIds,
   readRegisteredRuleNames,
   readRuleScope,
-} from '../../../../test-support/read-ok-rules-config.test-helper';
+} from '../../../test-support/read-ok-rules-config.test-helper.ts';
 
-const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const RULE = 'no-sentinel-signal-target';
 const FIXTURE_REL = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
 const README_REL = 'lint-plugins/ok-rules/README.md';
@@ -70,7 +71,7 @@ describe('no-sentinel-signal-target oxlint rule', () => {
     const source = readFileSync(join(REPO_ROOT, FIXTURE_REL), 'utf8').split('\n');
     const firedLines = lintFixture()
       .map((d) => d.labels?.[0]?.span?.line)
-      .filter((line): line is number => typeof line === 'number');
+      .filter((line) => typeof line === 'number');
     expect(firedLines.length).toBe(20);
     for (const line of firedLines) {
       expect(source[line - 1]).toMatch(/^export const p\d+ = /);

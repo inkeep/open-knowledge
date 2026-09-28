@@ -140,7 +140,7 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
           `name/message/stack; \`err.message\` / \`String(err)\` discard the stack the JSONL ` +
           `bundle needs. For a site where a string copy is genuinely intended, suffix the line ` +
           `with \`// ${MARKER} <why>\` or add a FILE_ALLOWLIST entry in ` +
-          `error-log-discipline.test.ts:\n${violations.join('\n')}`,
+          `error-log-discipline.uncached.test.ts:\n${violations.join('\n')}`,
       );
     }
   });

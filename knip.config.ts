@@ -103,6 +103,7 @@ export default {
   workspaces: {
     '.': {
       entry: ['test-support/fixtures/no-net-connect/no-net-connect.fixture.ts'],
+      vitest: { entry: ['**/*.uncached.test.{ts,tsx,mjs}'] },
     },
     'packages/app': {
       entry: [

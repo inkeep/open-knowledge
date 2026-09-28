@@ -168,7 +168,7 @@ The rule does NOT catch:
 
 Included: `packages/server/src/server-observers.ts`, `lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/path-conditional-map-driven-origin.mjs`](rules/path-conditional-map-driven-origin.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx`](__fixtures__/path-conditional-map-driven-origin.fixture.tsx). Test: [`packages/server/src/path-conditional-map-driven-origin.test.ts`](../../packages/server/src/path-conditional-map-driven-origin.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/path-conditional-map-driven-origin.mjs`](rules/path-conditional-map-driven-origin.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx`](__fixtures__/path-conditional-map-driven-origin.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/path-conditional-map-driven-origin.uncached.test.mjs`](tests/path-conditional-map-driven-origin.uncached.test.mjs).
 
 ### `cst-pm-handler-todo-stub`
 
@@ -429,7 +429,7 @@ The rule does NOT catch: bare `exec(...)` (the identifier is too commonly shadow
 
 Included: `packages/server/src/**/*.ts`, `packages/cli/src/**/*.ts`, `packages/desktop/src/**/*.ts`, `lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test-helper.ts`.
 
-Rule: [`lint-plugins/ok-rules/rules/require-windowshide-on-spawn.mjs`](rules/require-windowshide-on-spawn.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx`](__fixtures__/require-windowshide-on-spawn.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts`](../../packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/require-windowshide-on-spawn.mjs`](rules/require-windowshide-on-spawn.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx`](__fixtures__/require-windowshide-on-spawn.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/require-windowshide-on-spawn.uncached.test.mjs`](tests/require-windowshide-on-spawn.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `require-utf8-multipart-parser`
 
@@ -456,7 +456,7 @@ The rule does NOT catch: member calls (`parsers.busboy(...)` — a different AST
 
 Included: `**/*.ts`, `**/*.tsx`, `**/*.mts`, `lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx`. Excluded: `**/node_modules/**`, `**/dist/**`, `**/*.test.ts`, `**/*.test.tsx`, `**/*.test.mts`, `**/*.test-helper.ts`, `packages/server/src/multipart.ts`.
 
-Rule: [`lint-plugins/ok-rules/rules/require-utf8-multipart-parser.mjs`](rules/require-utf8-multipart-parser.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx`](__fixtures__/require-utf8-multipart-parser.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-utf8-multipart-parser.test.ts`](../../packages/server/src/lint-plugins/require-utf8-multipart-parser.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/require-utf8-multipart-parser.mjs`](rules/require-utf8-multipart-parser.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx`](__fixtures__/require-utf8-multipart-parser.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/require-utf8-multipart-parser.uncached.test.mjs`](tests/require-utf8-multipart-parser.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-blind-agent-host-fanout`
 
@@ -664,7 +664,7 @@ The rule does NOT catch:
 
 **Opting out.** There is no legitimate sentinel signal target. A liveness probe is already exempt by its signal argument; anything else is fixed at the source, not suppressed.
 
-Rule: [`lint-plugins/ok-rules/rules/no-sentinel-signal-target.mjs`](rules/no-sentinel-signal-target.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-sentinel-signal-target.fixture.tsx`](__fixtures__/no-sentinel-signal-target.fixture.tsx). Test: [`packages/server/src/lint-plugins/no-sentinel-signal-target.test.ts`](../../packages/server/src/lint-plugins/no-sentinel-signal-target.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-sentinel-signal-target.mjs`](rules/no-sentinel-signal-target.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-sentinel-signal-target.fixture.tsx`](__fixtures__/no-sentinel-signal-target.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-sentinel-signal-target.uncached.test.mjs`](tests/no-sentinel-signal-target.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ## Suppression
 
@@ -751,14 +751,14 @@ Drop `<rule-name>.fixture.tsx` in `__fixtures__/`, pairing positive cases (must 
 
 ### 5. Author the fixture-file test
 
-Shell out to oxlint against the fixture config and assert an exact count:
+Put it at `lint-plugins/ok-rules/tests/<rule-name>.uncached.test.mjs`, not in a package. The `.uncached.test` suffix runs it in the uncached cross-package tier (`vitest.uncached.config.ts`): every agent round, CI's `lint` job, and beside every `turbo run test` that runs `server#test`. A package's cached test tier would replay a stale pass when only the rule or `oxlint.config.ts` changed, unless that package's Turbo key hashed both. Write it as plain JavaScript. Shell out to oxlint against the fixture config and assert an exact count:
 
-```ts
+```js
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
-const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const FIXTURE = 'lint-plugins/ok-rules/__fixtures__/<rule-name>.fixture.tsx';
 const CONFIG = 'lint-plugins/ok-rules/__fixtures__/oxlint.fixtures.json';
 
@@ -787,8 +787,8 @@ Exact equality is the point: it catches false-negative regressions (count drops 
 # 1. Rule loads and the main lint stays clean:
 pnpm run lint:oxlint
 
-# 2. Fixture test fires the diagnostic on positive cases:
-pnpm --dir packages/<host> exec vitest run <rule-name>
+# 2. Fixture test fires the diagnostic on positive cases (from the Open Knowledge root):
+pnpm exec vitest run --config vitest.uncached.config.ts <rule-name>
 
 # 3. Mutation check (manual, one-time during dev):
 #    Temporarily break the rule's predicate; re-run the test; confirm it FAILS;

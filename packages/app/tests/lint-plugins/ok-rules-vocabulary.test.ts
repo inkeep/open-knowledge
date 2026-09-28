@@ -13,16 +13,11 @@ const CORPUS_DIRS = [
   'lint-plugins/ok-rules',
   'packages/app/tests/lint-plugins',
   'packages/app/src/lint-plugins',
-  'packages/server/src/lint-plugins',
   'packages/md-conformance/src/lint-plugins',
   'packages/md-conformance/src/contracts',
 ];
 
-const TEST_DIRS = [
-  'packages/app/tests/integration',
-  'packages/server/src',
-  'packages/desktop/tests/integration',
-];
+const TEST_DIRS = ['packages/app/tests/integration', 'packages/desktop/tests/integration'];
 
 const RETIRED = /gritql|\.grit\b|biome-plugins|bun run/i;
 

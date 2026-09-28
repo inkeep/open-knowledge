@@ -29,6 +29,7 @@ const KNOWN_TEST_PROJECTS = [
   'test-support/fixtures/no-net-connect/vitest.no-net-connect-fixture.config.ts',
   'vitest.config.ts',
   'vitest.scripts.config.ts',
+  'vitest.uncached.config.ts',
 ];
 
 const KNOWN_BUILD_CONFIGS = [
@@ -55,14 +56,31 @@ function findConfigs(): string[] {
     .sort();
 }
 
-async function resolveSetupFiles(relPath: string): Promise<string[]> {
+type TestOptions = { name?: unknown; setupFiles?: unknown; projects?: unknown };
+
+function setupFileList(setupFiles: unknown): string[] {
+  if (setupFiles === undefined) return [];
+  return (Array.isArray(setupFiles) ? setupFiles : [setupFiles]).map(String);
+}
+
+async function resolveSetupFiles(
+  relPath: string,
+): Promise<Array<{ project: string; setupFiles: string[] }>> {
   const loaded: unknown = await import(pathToFileURL(join(REPO_ROOT, relPath)).href);
   const exported = (loaded as { default?: unknown }).default ?? loaded;
   const config =
     typeof exported === 'function' ? await exported({ command: 'serve', mode: 'test' }) : exported;
-  const setupFiles = (config as { test?: { setupFiles?: unknown } }).test?.setupFiles;
-  if (setupFiles === undefined) return [];
-  return (Array.isArray(setupFiles) ? setupFiles : [setupFiles]).map(String);
+  const test = (config as { test?: TestOptions }).test;
+  if (!Array.isArray(test?.projects)) {
+    return [{ project: relPath, setupFiles: setupFileList(test?.setupFiles) }];
+  }
+  return test.projects.map((project: unknown, index: number) => {
+    const inline = (project as { test?: TestOptions } | null)?.test;
+    return {
+      project: `${relPath} project ${String(inline?.name ?? index)}`,
+      setupFiles: setupFileList(inline?.setupFiles),
+    };
+  });
 }
 
 const configs = findConfigs();
@@ -105,14 +123,15 @@ describe('vitest setupFiles contract', () => {
   test.each(configs.filter(isTestConfig))(
     '%s resolves setupFiles containing every entry the shared base installs',
     async (relPath) => {
-      const setupFiles = await resolveSetupFiles(relPath);
-      const missing = okVitestBase.test.setupFiles.filter((entry) => !setupFiles.includes(entry));
-      expect(
-        missing,
-        `${relPath} omits ${missing.length} shared setup file(s); it resolves ` +
-          `[${setupFiles.join(', ')}]. Build it from okVitestBase.test.setupFiles ` +
-          'rather than listing entries by hand.',
-      ).toEqual([]);
+      for (const { project, setupFiles } of await resolveSetupFiles(relPath)) {
+        const missing = okVitestBase.test.setupFiles.filter((entry) => !setupFiles.includes(entry));
+        expect(
+          missing,
+          `${project} omits ${missing.length} shared setup file(s); it resolves ` +
+            `[${setupFiles.join(', ')}]. Build it from okVitestBase.test.setupFiles ` +
+            'rather than listing entries by hand.',
+        ).toEqual([]);
+      }
     },
   );
 });

@@ -1,14 +1,14 @@
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 import {
   oxlintFixtureArgs,
   readEnabledRuleIds,
   readRegisteredRuleNames,
   readRuleScope,
-} from '../../../test-support/read-ok-rules-config.test-helper';
+} from '../../../test-support/read-ok-rules-config.test-helper.ts';
 
-const REPO_ROOT = join(__dirname, '..', '..', '..');
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const FIXTURE_REL =
   'lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx';
 

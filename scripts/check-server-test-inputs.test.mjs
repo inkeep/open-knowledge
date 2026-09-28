@@ -44,20 +44,43 @@ describe('check-server-test-inputs', () => {
     expect(uncoveredReads()).toEqual([]);
   });
 
-  test('the sweep finds a non-trivial corpus, so a green is not vacuous', () => {
-    expect(escapingReads().size).toBeGreaterThan(5);
+  test('the sweep finds a corpus, so a green is not vacuous', () => {
+    expect(escapingReads().size).toBeGreaterThan(0);
   });
 
-  test.each([
-    ['../../docs/content/**', 'docs/content/'],
-    ['../*/package.json', 'packages/app/package.json'],
-    ['../cli/tsdown.config.ts', 'packages/cli/tsdown.config.ts'],
-    ['../plugin/**', 'packages/plugin'],
-    ['../../plugins/ok/**', 'plugins/ok'],
-  ])('reds when %s is dropped from the task inputs', (glob, expectedTarget) => {
-    const uncovered = uncoveredReads(fixtureRootWithout(glob));
-    expect(uncovered.length).toBeGreaterThan(0);
-    expect(uncovered.map((entry) => entry.target).join('\n')).toContain(expectedTarget);
+  test.each([['../../test-support/*.ts', 'test-support/']])(
+    'reds when %s is dropped from the task inputs',
+    (glob, expectedTarget) => {
+      const uncovered = uncoveredReads(fixtureRootWithout(glob));
+      expect(uncovered.length).toBeGreaterThan(0);
+      expect(uncovered.map((entry) => entry.target).join('\n')).toContain(expectedTarget);
+    },
+  );
+
+  function fixtureRootReading(testFile) {
+    const root = mkdtempSync(join(tmpdir(), 'ok-server-inputs-'));
+    mkdirSync(join(root, 'packages/server/src'), { recursive: true });
+    mkdirSync(join(root, 'docs'), { recursive: true });
+    writeFileSync(join(root, 'docs/guide.md'), '');
+    writeFileSync(
+      join(root, 'packages/server/src', testFile),
+      "const guide = join(REPO_ROOT, 'docs', 'guide.md');\n",
+    );
+    writeFileSync(
+      join(root, 'turbo.json'),
+      JSON.stringify({ tasks: { [TASK]: { inputs: ['$TURBO_DEFAULT$'] } } }),
+    );
+    return root;
+  }
+
+  test('a read composed through join(<*ROOT*>, ...) is derived, not only a quoted ../ literal', () => {
+    expect(uncoveredReads(fixtureRootReading('reads-docs.test.ts'))).toEqual([
+      { target: 'docs/guide.md', readers: ['src/reads-docs.test.ts'] },
+    ]);
+  });
+
+  test('a test with the .uncached.test suffix is outside the sweep, because the uncached tier runs it', () => {
+    expect(uncoveredReads(fixtureRootReading('reads-docs.uncached.test.ts'))).toEqual([]);
   });
 
   test.each(Object.keys(KNOWN_UNSWEPT))(
@@ -111,17 +134,17 @@ describe('check-server-test-inputs', () => {
   });
 
   test('a KNOWN_UNSWEPT pin is satisfied by coverage, not by its exact spelling', () => {
-    const root = fixtureRootWithout('../../lint-plugins/**');
+    const root = fixtureRootWithout('../app/src/editor/observers.ts');
     const turboPath = join(root, 'turbo.json');
     const turbo = JSON.parse(readFileSync(turboPath, 'utf-8'));
-    turbo.tasks[TASK].inputs.push('../../**');
+    turbo.tasks[TASK].inputs.push('../app/src/**');
     writeFileSync(turboPath, JSON.stringify(turbo, null, 2));
     expect(missingKnownUnswept(root)).toEqual([]);
   });
 
   test('a KNOWN_UNSWEPT pin whose coverage is actually gone still reds', () => {
-    expect(missingKnownUnswept(fixtureRootWithout('../../lint-plugins/**'))).toEqual([
-      '../../lint-plugins/**',
+    expect(missingKnownUnswept(fixtureRootWithout('../app/src/editor/observers.ts'))).toEqual([
+      '../app/src/editor/observers.ts',
     ]);
   });
 
@@ -135,5 +158,15 @@ describe('check-server-test-inputs', () => {
     const run = spawnSync(process.execPath, [script], { encoding: 'utf-8' });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout).toMatch(/check:server-test-inputs: OK/);
+  });
+});
+
+describe('the uncached tier runs wherever server#test runs', () => {
+  test('server#test brings the uncached tier as its with sibling, and that tier is never cached', () => {
+    const turbo = JSON.parse(readFileSync(join(OK_ROOT, 'turbo.json'), 'utf-8'));
+    expect(turbo.tasks[TASK].with ?? []).toContain('//#test:uncached');
+    expect(turbo.tasks['//#test:uncached']).toMatchObject({ cache: false });
+    const pkg = JSON.parse(readFileSync(join(OK_ROOT, 'package.json'), 'utf-8'));
+    expect(pkg.scripts['test:uncached']).toBe('vitest run --config vitest.uncached.config.ts');
   });
 });

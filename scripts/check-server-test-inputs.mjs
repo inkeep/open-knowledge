@@ -2,6 +2,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isUncachedTestFile } from '../test-support/uncached-tier.ts';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const PKG_REL = 'packages/server';
@@ -15,14 +16,8 @@ const QUOTED_SEGMENT = /'([^'\n]*)'|"([^"\n]*)"/g;
 const DEPENDENCY_CLOSURE_PREFIXES = ['packages/core/'];
 
 export const KNOWN_UNSWEPT = {
-  '../../oxlint.config.ts':
-    'read inside test-support/read-ok-rules-config.test-helper.ts, which the walk does not enter',
-  '../../lint-plugins/**':
-    'same helper, plus fixture paths built from a bare root-relative constant',
   '../app/src/editor/observers.ts':
     'bridge-no-wallclock.test.ts reaches it via a lowercase repoRoot and a root-relative literal',
-  '../../AGENTS.md':
-    'no-sentinel-signal-target.test.ts reaches it through join(REPO_ROOT, AGENTS_REL), a named constant the sweep cannot resolve',
 };
 
 function walkTestFiles(dir, out = []) {
@@ -30,7 +25,7 @@ function walkTestFiles(dir, out = []) {
     if (entry.name === 'node_modules' || entry.name === 'dist') continue;
     const full = join(dir, entry.name);
     if (entry.isDirectory()) walkTestFiles(full, out);
-    else if (entry.name.endsWith('.test.ts')) out.push(full);
+    else if (entry.name.endsWith('.test.ts') && !isUncachedTestFile(entry.name)) out.push(full);
   }
   return out;
 }
@@ -186,13 +181,17 @@ function main() {
         `dependency closure. A change confined to one of them yields a cached PASS that\n` +
         `executed nothing, and the remote cache shares that answer with every cell.\n\n` +
         `${detail}\n\n` +
-        `Fix: add a matching glob to \`${TASK}\`.inputs in public/open-knowledge/turbo.json.\n`,
+        `Fix: a test that reads files outside its package's key takes the \`.uncached.test\`\n` +
+        `suffix. Rename each reader to <name>.uncached.test.ts, and the uncached tier runs it\n` +
+        `every round, in CI's lint job and beside every \`turbo run test\` of this package.\n` +
+        `Add a matching glob to \`${TASK}\`.inputs in public/open-knowledge/turbo.json\n` +
+        `instead only if the whole server tier should re-run whenever that path changes.\n`,
     );
     process.exit(1);
   }
   console.log(
     `check:server-test-inputs: OK - ${swept} cross-package path(s) DERIVED from ` +
-      `packages/server/**/*.test.ts (quoted '../' literals and statically resolvable ` +
+      `packages/server/**/*.test.ts outside the uncached tier (quoted '../' literals and statically resolvable ` +
       `join(<*ROOT*>, ...) calls) are declared inputs, plus ` +
       `${Object.keys(KNOWN_UNSWEPT).length} pinned by name because their readers use ` +
       `shapes this sweep does not recognise.`,
