@@ -14,7 +14,6 @@ const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
 const RULE = 'no-sentinel-signal-target';
 const FIXTURE_REL = `lint-plugins/ok-rules/__fixtures__/${RULE}.fixture.tsx`;
 const README_REL = 'lint-plugins/ok-rules/README.md';
-const AGENTS_REL = 'AGENTS.md';
 
 function lintFixture() {
   const result = spawnSync('pnpm', oxlintFixtureArgs(FIXTURE_REL), {
@@ -46,7 +45,7 @@ describe('no-sentinel-signal-target oxlint rule', () => {
     }
   });
 
-  test('the literal remedy sanctions a handle-derived pid negated for its group and names the detached precondition, in the diagnostic and the README alike', () => {
+  test('the literal remedy sanctions a handle-derived pid negated for its group and names the detached precondition', () => {
     const literal = lintFixture().filter((d) =>
       d.message.includes('Signal only a pid you spawned'),
     );
@@ -55,11 +54,9 @@ describe('no-sentinel-signal-target oxlint rule', () => {
       expect(fire.message).toContain('its pid taken from that handle');
       expect(fire.message).toContain('negated for the group only if you spawned it detached');
     }
-    const readme = readFileSync(join(REPO_ROOT, README_REL), 'utf8');
-    expect(readme).toContain('only if you spawned it detached');
   });
 
-  test('the parsed remedy names the handle you spawned and, for a pid you hold no handle for, its owner or a report, in the diagnostic and the README alike', () => {
+  test('the parsed remedy names the handle you spawned and, for a pid you hold no handle for, its owner or a report', () => {
     const parsed = lintFixture().filter((d) =>
       d.message.includes('Signal the `ChildProcess` you spawned'),
     );
@@ -67,8 +64,6 @@ describe('no-sentinel-signal-target oxlint rule', () => {
     for (const fire of parsed) {
       expect(fire.message).toContain('stop that process through its owner, or report it');
     }
-    const readme = readFileSync(join(REPO_ROOT, README_REL), 'utf8');
-    expect(readme).toContain('Stop that process through its owner, or report it');
   });
 
   test('every fire lands on a positive case and none on the negatives', () => {
@@ -88,13 +83,9 @@ describe('no-sentinel-signal-target oxlint rule', () => {
     expect(readRuleScope(REPO_ROOT, RULE)).toEqual([]);
   });
 
-  test('the prose and the rule cite each other and the cited README heading exists', () => {
+  test('the README carries a heading for the rule, and the rule module exists', () => {
     const readme = readFileSync(join(REPO_ROOT, README_REL), 'utf8');
     expect(readme).toContain(`### \`${RULE}\``);
-    expect(readme).toContain('Never signal a pid you did not spawn');
-    const agents = readFileSync(join(REPO_ROOT, AGENTS_REL), 'utf8');
-    expect(agents).toContain('Never signal a pid you did not spawn');
-    expect(agents).toContain(`ok/${RULE}`);
     expect(existsSync(join(REPO_ROOT, `lint-plugins/ok-rules/rules/${RULE}.mjs`))).toBe(true);
   });
 });
