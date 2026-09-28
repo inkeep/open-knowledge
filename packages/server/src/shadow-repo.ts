@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readdirSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, rmSync } from 'node:fs';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import {
   OK_DIR,
@@ -31,7 +31,7 @@ import {
 import simpleGit from 'simple-git';
 import { resolveCheckpointChainAnchors } from './checkpoint-chain.ts';
 import { tracedMkdirSync, tracedRenameSync, tracedWriteFileSync } from './fs-traced.ts';
-import { listTreeLongEntries } from './git-paths.ts';
+import { escapeGitPatternSegment, listTreeLongEntries, realpathOrResolved } from './git-paths.ts';
 import { assertNotSymlink, ensureGitignoreEntries, SymlinkRefusedError } from './init-project.ts';
 import { getLogger } from './logger.ts';
 import {
@@ -93,18 +93,6 @@ const SHADOW_EXCLUDE_PATTERNS: readonly string[] = [
   ATOMIC_TEMP_GLOB,
 ];
 
-function realpathOrResolved(path: string): string {
-  try {
-    return realpathSync(path);
-  } catch {
-    return resolve(path);
-  }
-}
-
-function escapeGitignoreSegment(segment: string): string {
-  return segment.replace(/[\\!?*[\]]/g, (character) => `\\${character}`);
-}
-
 export function gitDirExcludePatterns(shadow: ShadowHandle): string[] {
   const workTreeReal = realpathOrResolved(shadow.workTree);
   const patterns = new Set<string>();
@@ -115,7 +103,7 @@ export function gitDirExcludePatterns(shadow: ShadowHandle): string[] {
     const segments = rel.split(sep);
     if (segments.includes('.git')) continue;
     if (segments.some((segment) => /[\r\n]/.test(segment))) continue;
-    patterns.add(`/${segments.map(escapeGitignoreSegment).join('/')}/`);
+    patterns.add(`/${segments.map(escapeGitPatternSegment).join('/')}/`);
   }
   return [...patterns];
 }

@@ -2597,6 +2597,27 @@ describe('shadow repo excludes a git dir that lives inside the work tree under a
     expect(paths.filter((path) => path.startsWith('.gitdata/'))).toEqual([]);
   });
 
+  test('a git dir that resolves outside the work tree contributes no excludes', async () => {
+    const externalRoot = resolve(tmpDir, 'external-project');
+    mkdirSync(externalRoot, { recursive: true });
+    const externalGitDir = resolve(tmpDir, 'external-store');
+    execFileSync('git', ['init', `--separate-git-dir=${externalGitDir}`, externalRoot]);
+    execFileSync('git', ['config', 'user.name', 'Test'], {
+      cwd: externalRoot,
+      env: { ...process.env, GIT_DIR: externalGitDir },
+    });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], {
+      cwd: externalRoot,
+      env: { ...process.env, GIT_DIR: externalGitDir },
+    });
+    writeFileSync(resolve(externalRoot, 'intro.md'), '# Hello\n');
+    const externalShadow = await initShadowRepo(externalRoot);
+
+    expect(gitDirExcludePatterns(externalShadow)).toEqual([]);
+    const exclude = readFileSync(resolve(externalShadow.gitDir, 'info/exclude'), 'utf-8');
+    expect(exclude).not.toContain('/../');
+  });
+
   test('a git dir named with a glob metacharacter still lets other content stage', async () => {
     const metaRoot = resolve(tmpDir, 'meta-project');
     mkdirSync(metaRoot, { recursive: true });
