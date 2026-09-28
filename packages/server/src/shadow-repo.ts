@@ -24,6 +24,7 @@ import {
   type ParsedCheckpoint,
   parseCheckpoint,
   parseWriterId,
+  resolveGitDir,
   resolveShadowDir,
   type WriterClassification,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
@@ -100,16 +101,21 @@ function realpathOrResolved(path: string): string {
   }
 }
 
+function escapeGitignoreSegment(segment: string): string {
+  return segment.replace(/[\\!?*[\]]/g, (character) => `\\${character}`);
+}
+
 export function gitDirExcludePatterns(shadow: ShadowHandle): string[] {
   const workTreeReal = realpathOrResolved(shadow.workTree);
   const patterns = new Set<string>();
-  for (const candidate of [resolve(shadow.workTree, '.git'), shadow.gitDir]) {
-    if (!existsSync(candidate)) continue;
+  for (const candidate of [resolveGitDir(shadow.workTree), shadow.gitDir]) {
+    if (!candidate || !existsSync(candidate)) continue;
     const rel = relative(workTreeReal, realpathOrResolved(candidate));
     if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) continue;
     const segments = rel.split(sep);
     if (segments.includes('.git')) continue;
-    patterns.add(`/${segments.join('/')}/`);
+    if (segments.some((segment) => /[\r\n]/.test(segment))) continue;
+    patterns.add(`/${segments.map(escapeGitignoreSegment).join('/')}/`);
   }
   return [...patterns];
 }
@@ -175,7 +181,7 @@ async function dropExcludedIndexEntries(
       incrementShadowExcludeIndexEntriesDropped(dropped);
       log.info(
         { count: dropped },
-        '[shadow-repo] dropped machine-local entries a previous build had staged',
+        '[shadow-repo] dropped excluded entries a previous build had staged',
       );
     }
     return { failed: false };
@@ -185,8 +191,8 @@ async function dropExcludedIndexEntries(
     log.warn(
       { err: e, dropped, leftStaged: leftStaged ?? 'unknown' },
       leftStaged === undefined
-        ? '[shadow-repo] could not read the index to clear machine-local entries — none were dropped and an unknown number are still staged (non-fatal)'
-        : `[shadow-repo] could not finish clearing machine-local entries from the index — dropped ${dropped}, left ${leftStaged} still staged (non-fatal)`,
+        ? '[shadow-repo] could not read the index to clear excluded entries — none were dropped and an unknown number are still staged (non-fatal)'
+        : `[shadow-repo] could not finish clearing excluded entries from the index — dropped ${dropped}, left ${leftStaged} still staged (non-fatal)`,
     );
     return { failed: true };
   }
@@ -215,7 +221,7 @@ async function ensureShadowExcludes(shadow: ShadowHandle): Promise<void> {
     } else {
       log.warn(
         { err: e, excludeFile },
-        '[shadow-repo] could not write the shadow exclude file — machine-local state stays out of versions only through the index sweep',
+        '[shadow-repo] could not write the shadow exclude file — excluded paths stay out of versions only through the index sweep',
       );
     }
   }
