@@ -889,10 +889,7 @@ function TerminalSession({
       const droppedFiles = filesFromExternalDrop(event);
       const paths = droppedFiles
         .map((file) => bridge.getPathForFile(file))
-        .filter(
-          (path): path is string =>
-            path !== null && path !== '' && !Array.from(path).some((ch) => ch.charCodeAt(0) < 0x20),
-        );
+        .filter((path): path is string => path !== null && path !== '' && !/\p{Cc}/u.test(path));
       let rejectedCount = droppedFiles.length - paths.length;
       const escapedPaths = paths.flatMap((path) => {
         if (bridge.platform !== 'win32') return [shellSingleQuote(path)];

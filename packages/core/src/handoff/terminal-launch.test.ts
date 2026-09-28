@@ -299,6 +299,90 @@ describe('Windows launch composition', () => {
   });
 });
 
+const DROPPED_NAME_CONTROL_CHARACTERS: ReadonlyArray<readonly [label: string, character: string]> =
+  [
+    ['U+0000 (C0)', '\u0000'],
+    ['U+0001 (C0)', '\u0001'],
+    ['U+000A (C0)', '\u000a'],
+    ['U+001B (C0)', '\u001b'],
+    ['U+001F (C0)', '\u001f'],
+    ['U+007F (DEL)', '\u007f'],
+    ['U+0080 (C1)', '\u0080'],
+    ['U+0085 (C1)', '\u0085'],
+    ['U+009B (C1)', '\u009b'],
+    ['U+009F (C1)', '\u009f'],
+  ];
+
+const DROPPED_NAME_TYPED_CHARACTERS: ReadonlyArray<readonly [label: string, character: string]> = [
+  ['U+0020', '\u0020'],
+  ['U+007E', '\u007e'],
+  ['U+00A0', '\u00a0'],
+  ['U+200B', '\u200b'],
+  ['U+200E', '\u200e'],
+  ['U+2028', '\u2028'],
+  ['U+202E', '\u202e'],
+  ['U+202F', '\u202f'],
+  ['U+2066', '\u2066'],
+  ['U+FEFF', '\ufeff'],
+];
+
+const LATIN_1_CODE_POINTS = Array.from({ length: 0x100 }, (_, codePoint) => codePoint);
+
+function isControlCodePoint(codePoint: number): boolean {
+  return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+}
+
+function formatCodePoint(codePoint: number): string {
+  return `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+function droppedWindowsPath(character: string): string {
+  return `C:\\Users\\me\\a${character}b.md`;
+}
+
+describe.each([
+  ['powershell', "'", ''],
+  ['cmd', '"', '!"%'],
+  ['bash', "'", ''],
+] as const)('quoteWindowsShellPath for a %s terminal', (family, quote, otherRefusedCharacters) => {
+  const quotesCodePoint = (codePoint: number): boolean =>
+    quoteWindowsShellPath(family, droppedWindowsPath(String.fromCharCode(codePoint))) !== null;
+  const exceptions = Array.from(otherRefusedCharacters, (character) =>
+    formatCodePoint(character.charCodeAt(0)),
+  );
+
+  it.each(DROPPED_NAME_CONTROL_CHARACTERS)(
+    'refuses a dropped path containing %s',
+    (_label, character) => {
+      expect(quoteWindowsShellPath(family, droppedWindowsPath(character))).toBeNull();
+    },
+  );
+
+  it.each(DROPPED_NAME_TYPED_CHARACTERS)(
+    'quotes a dropped path containing %s as-is',
+    (_label, character) => {
+      const path = droppedWindowsPath(character);
+      expect(quoteWindowsShellPath(family, path)).toBe(`${quote}${path}${quote}`);
+    },
+  );
+
+  it('refuses every control character from U+0000 to U+00FF', () => {
+    const controls = LATIN_1_CODE_POINTS.filter(isControlCodePoint);
+    const refused = controls.filter((codePoint) => !quotesCodePoint(codePoint));
+    expect(refused.map(formatCodePoint)).toEqual(controls.map(formatCodePoint));
+  });
+
+  it(`quotes every other character from U+0000 to U+00FF${exceptions.length === 0 ? '' : ` except ${exceptions.join(', ')}`}`, () => {
+    const others = LATIN_1_CODE_POINTS.filter(
+      (codePoint) =>
+        !isControlCodePoint(codePoint) &&
+        !otherRefusedCharacters.includes(String.fromCharCode(codePoint)),
+    );
+    const quoted = others.filter(quotesCodePoint);
+    expect(quoted.map(formatCodePoint)).toEqual(others.map(formatCodePoint));
+  });
+});
+
 function findNulMapfileBash(): string {
   const candidates = [
     process.env.OK_TEST_BASH,

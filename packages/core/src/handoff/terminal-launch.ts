@@ -233,7 +233,7 @@ export function composeWindowsShellLaunchArgs(
 }
 
 export function quoteWindowsShellPath(family: WindowsShellFamily, path: string): string | null {
-  if (path.length === 0 || Array.from(path).some((ch) => ch.charCodeAt(0) < 0x20)) return null;
+  if (path.length === 0 || /\p{Cc}/u.test(path)) return null;
   if (family === 'powershell') return psQuoteArg(path);
   if (family === 'bash') return shellSingleQuote(path);
   if (/["%!]/u.test(path)) return null;
