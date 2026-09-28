@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -433,6 +434,328 @@ describe('Git Bash structured launch, run by a real Bash', () => {
       }
     },
   );
+});
+
+const POWERSHELL_SINGLE_QUOTES = new Set(["'", '\u2018', '\u2019', '\u201A', '\u201B']);
+
+interface PowerShellLiteralReadback {
+  readonly literal: string | null;
+  readonly wholeLine: boolean;
+}
+
+function readFirstPowerShellLiteral(line: string): PowerShellLiteralReadback {
+  if (!POWERSHELL_SINGLE_QUOTES.has(line.charAt(0))) return { literal: null, wholeLine: false };
+  let literal = '';
+  let index = 1;
+  while (index < line.length) {
+    const char = line.charAt(index);
+    if (!POWERSHELL_SINGLE_QUOTES.has(char)) {
+      literal += char;
+      index += 1;
+      continue;
+    }
+    const next = line.charAt(index + 1);
+    if (!POWERSHELL_SINGLE_QUOTES.has(next)) {
+      return { literal, wholeLine: line.slice(index + 1).trim() === '' };
+    }
+    literal += next;
+    index += 2;
+  }
+  return { literal, wholeLine: false };
+}
+
+const PWSH_7_6_6_FIRST_LITERALS: ReadonlyArray<readonly [line: string, literal: string]> = [
+  ["'C:\\Users\\me\\O''Brien.md' ", "C:\\Users\\me\\O'Brien.md"],
+  ["'C:\\Users\\me\\Nick\u2019s notes.md' ", 'C:\\Users\\me\\Nick'],
+  ["'C:\\Users\\me\\\u2018draft.md' ", 'C:\\Users\\me\\'],
+  ["'C:\\Users\\me\\a\u201Ab.md' ", 'C:\\Users\\me\\a'],
+  ["'C:\\Users\\me\\a\u201Bb.md' ", 'C:\\Users\\me\\a'],
+  ["'C:\\Users\\me\\Nick\u2019\u2019s notes.md' ", 'C:\\Users\\me\\Nick\u2019s notes.md'],
+  ["'C:\\Users\\me\\Nick\u2019's notes.md' ", "C:\\Users\\me\\Nick's notes.md"],
+  [
+    "'C:\\Users\\me\\O''Brien\u2019\u2019s \u2018\u2018draft\u2019\u2019.md' ",
+    "C:\\Users\\me\\O'Brien\u2019s \u2018draft\u2019.md",
+  ],
+  [
+    "'C:\\Users\\me\\O''Brien\u2019's \u2018'draft\u2019'.md' ",
+    "C:\\Users\\me\\O'Brien's 'draft'.md",
+  ],
+  [
+    "'a\u2018\u2018b\u2019\u2019c\u201A\u201Ad\u201B\u201Be.md' ",
+    'a\u2018b\u2019c\u201Ad\u201Be.md',
+  ],
+  ["'a\u2018'b\u2019'c\u201A'd\u201B'e.md' ", "a'b'c'd'e.md"],
+];
+
+const READ_BACK_NAMES: ReadonlyArray<readonly [label: string, name: string]> = [
+  ['a right single quotation mark', 'C:\\Users\\me\\Nick\u2019s notes.md'],
+  ['left and right single quotation marks', 'C:\\Users\\me\\\u2018draft\u2019.md'],
+  ['low-9 and high-reversed-9 quotation marks', 'C:\\Users\\me\\a\u201Ab\u201Bc.md'],
+  ['straight and curly quotes side by side', "C:\\Users\\me\\O'Brien\u2019s \u2018'\u2019 copy.md"],
+  [
+    'curly double quotes and apostrophe-like letters',
+    'C:\\Users\\me\\\u201ENotizen\u201C \u201Cnotes\u201D it\u02BCs 5\u2032.md',
+  ],
+];
+
+const POWERSHELL_PATH_NAME = fc.string({
+  unit: fc.constantFrom(
+    'a',
+    'Z',
+    ' ',
+    '\\',
+    '.',
+    "'",
+    '\u2018',
+    '\u2019',
+    '\u201A',
+    '\u201B',
+    '\u201C',
+    '\u201D',
+    '"',
+    '`',
+    '$',
+    '\u02BC',
+    '\u{1F4DD}',
+  ),
+  maxLength: 16,
+});
+
+describe('psQuoteArg with curly single quotes', () => {
+  it.each([
+    ['U+2018', '\u2018draft.md', "'\u2018\u2018draft.md'"],
+    ['U+2019', 'Nick\u2019s notes.md', "'Nick\u2019\u2019s notes.md'"],
+    ['U+201A', 'a\u201Ab.md', "'a\u201A\u201Ab.md'"],
+    ['U+201B', 'a\u201Bb.md', "'a\u201B\u201Bb.md'"],
+  ])(
+    'doubles %s with itself, the way PowerShell escapes a single-quoted string',
+    (_codePoint, name, quoted) => {
+      expect(psQuoteArg(name)).toBe(quoted);
+    },
+  );
+});
+
+describe('psQuoteArg output read back by a model of the PowerShell tokenizer', () => {
+  it('reads the same first literal that PowerShell 7.6.6 read from each recorded line', () => {
+    expect(
+      PWSH_7_6_6_FIRST_LITERALS.map(([line]) => readFirstPowerShellLiteral(line).literal),
+    ).toEqual(PWSH_7_6_6_FIRST_LITERALS.map(([, literal]) => literal));
+  });
+
+  it.each(READ_BACK_NAMES)('reads back a name with %s exactly', (_label, name) => {
+    expect(readFirstPowerShellLiteral(psQuoteArg(name))).toEqual({
+      literal: name,
+      wholeLine: true,
+    });
+  });
+
+  it('reads back any name built from quotes, spaces and path characters exactly', () => {
+    fc.assert(
+      fc.property(POWERSHELL_PATH_NAME, (name) => {
+        expect(readFirstPowerShellLiteral(psQuoteArg(name))).toEqual({
+          literal: name,
+          wholeLine: true,
+        });
+      }),
+      { seed: 42 },
+    );
+  });
+});
+
+const POWERSHELL = process.env.OK_TEST_PWSH ?? 'pwsh';
+
+const POWERSHELL_READBACK_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  '$lines = Get-Content -Raw -LiteralPath $env:OK_TEST_POWERSHELL_LINES | ConvertFrom-Json',
+  'foreach ($line in $lines) {',
+  '  $tokens = $null',
+  '  $errors = $null',
+  '  [void][System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$tokens, [ref]$errors)',
+  "  $significant = @($tokens | Where-Object { $_.Kind -ne 'EndOfInput' -and $_.Kind -ne 'NewLine' })",
+  '  [ordered]@{',
+  '    errors = @($errors).Count',
+  "    tokens = @($significant | ForEach-Object { [ordered]@{ kind = [string]$_.Kind; value = if ($_.Kind -eq 'StringLiteral') { $_.Value } else { $_.Text } } })",
+  '  } | ConvertTo-Json -Compress -Depth 5 -EscapeHandling EscapeNonAscii',
+  '}',
+].join('\n');
+
+interface PowerShellToken {
+  readonly kind: string;
+  readonly value: string;
+}
+
+interface PowerShellParse {
+  readonly errors: number;
+  readonly tokens: readonly PowerShellToken[];
+}
+
+function asciiJson(value: unknown): string {
+  return JSON.stringify(value).replace(/[^ -~]/gu, (char) =>
+    Array.from(
+      { length: char.length },
+      (_, index) => `\\u${char.charCodeAt(index).toString(16).padStart(4, '0')}`,
+    ).join(''),
+  );
+}
+
+function parseWithRealPowerShell(lines: readonly string[]): PowerShellParse[] | null {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-powershell-readback-'));
+  try {
+    const linesPath = join(dir, 'lines.json');
+    const scriptPath = join(dir, 'readback.ps1');
+    writeFileSync(linesPath, asciiJson(lines));
+    writeFileSync(scriptPath, POWERSHELL_READBACK_SCRIPT);
+    const run = spawnSync(
+      POWERSHELL,
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', scriptPath],
+      {
+        ...REAL_BASH_PROBE_SPAWN_OPTIONS,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          HOME: dir,
+          XDG_CACHE_HOME: join(dir, 'cache'),
+          XDG_CONFIG_HOME: join(dir, 'config'),
+          XDG_DATA_HOME: join(dir, 'data'),
+          POWERSHELL_TELEMETRY_OPTOUT: '1',
+          POWERSHELL_UPDATECHECK: 'Off',
+          OK_TEST_POWERSHELL_LINES: linesPath,
+        },
+      },
+    );
+    if ((run.error as { code?: unknown } | undefined)?.code === 'ENOENT') {
+      expect(
+        process.env.CI,
+        `${POWERSHELL} is not on PATH, and a CI run must read these lines back with a real PowerShell parser instead of skipping`,
+      ).not.toBe('true');
+      return null;
+    }
+    expect(run.error, `pwsh stderr: ${run.stderr}`).toBeUndefined();
+    expect(run.status, `pwsh stderr: ${run.stderr}`).toBe(0);
+    const parses = run.stdout
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() !== '')
+      .map((line) => JSON.parse(line) as PowerShellParse);
+    expect(parses).toHaveLength(lines.length);
+    return parses;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe('psQuoteArg output read back by a real PowerShell parser', () => {
+  it('reads back every name exactly, as a value and as a command argument', (context) => {
+    const names = [
+      ...READ_BACK_NAMES.map(([, name]) => name),
+      ...fc.sample(POWERSHELL_PATH_NAME, { seed: 42, numRuns: 50 }),
+    ];
+    const recordedLines = PWSH_7_6_6_FIRST_LITERALS.map(([line]) => line);
+    const parses = parseWithRealPowerShell([
+      ...recordedLines,
+      ...names.map((name) => `${psQuoteArg(name)} `),
+      ...names.map((name) => `Write-Output ${psQuoteArg(name)} `),
+    ]);
+    if (parses === null) return context.skip(`${POWERSHELL} is not on PATH`);
+
+    expect(
+      parses
+        .slice(0, recordedLines.length)
+        .map((parse) => parse.tokens.find((token) => token.kind === 'StringLiteral')?.value),
+    ).toEqual(PWSH_7_6_6_FIRST_LITERALS.map(([, literal]) => literal));
+    expect(parses.slice(recordedLines.length, recordedLines.length + names.length)).toEqual(
+      names.map((name) => ({ errors: 0, tokens: [{ kind: 'StringLiteral', value: name }] })),
+    );
+    expect(parses.slice(recordedLines.length + names.length)).toEqual(
+      names.map((name) => ({
+        errors: 0,
+        tokens: [
+          { kind: 'Generic', value: 'Write-Output' },
+          { kind: 'StringLiteral', value: name },
+        ],
+      })),
+    );
+  });
+});
+
+const CURLY_QUOTE_LAUNCH = {
+  executable: 'C:\\Users\\me\\Nick\u2019s agents\\agent.exe',
+  args: ['--config', 'C:\\Users\\me\\\u2018work\u2019 profile.json', '--label', 'a\u201Ab\u201Bc'],
+};
+
+const CURLY_QUOTE_LAUNCH_WITH_ENV = {
+  ...CURLY_QUOTE_LAUNCH,
+  env: { AGENT_HOME: 'C:\\Users\\me\\.agent' },
+};
+
+const CURLY_QUOTE_LAUNCH_CALL =
+  "& 'C:\\Users\\me\\Nick\u2019\u2019s agents\\agent.exe' '--config' 'C:\\Users\\me\\\u2018\u2018work\u2019\u2019 profile.json' '--label' 'a\u201A\u201Ab\u201B\u201Bc'";
+
+function decodePowerShellLaunchScript(composed: string[] | string): string {
+  expect(Array.isArray(composed)).toBe(true);
+  expect(composed.slice(0, 2)).toEqual(['-NoExit', '-EncodedCommand']);
+  return Buffer.from(composed[2] ?? '', 'base64').toString('utf16le');
+}
+
+describe('PowerShell launch composition with curly single quotes', () => {
+  it('doubles each curly single quote in the executable and arguments with itself', () => {
+    expect(
+      decodePowerShellLaunchScript(composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH)),
+    ).toBe(CURLY_QUOTE_LAUNCH_CALL);
+  });
+
+  it('doubles them the same way in a launch that sets environment variables', () => {
+    expect(
+      decodePowerShellLaunchScript(
+        composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH_WITH_ENV),
+      ),
+    ).toBe(
+      "$__ok_names = @('AGENT_HOME'); $__ok_slots = @('OK_TERMINAL_LAUNCH_ENV_0'); $__ok_prev = @{}; " +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        '$__ok_prev[$__ok_names[$__ok_i]] = [Environment]::GetEnvironmentVariable($__ok_names[$__ok_i]); ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], [Environment]::GetEnvironmentVariable($__ok_slots[$__ok_i]), 'Process') }; " +
+        `try { ${CURLY_QUOTE_LAUNCH_CALL} } finally { ` +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], $__ok_prev[$__ok_names[$__ok_i]], 'Process'); " +
+        "[Environment]::SetEnvironmentVariable($__ok_slots[$__ok_i], $null, 'Process') }; " +
+        'Remove-Variable __ok_names, __ok_slots, __ok_prev, __ok_i -ErrorAction SilentlyContinue }',
+    );
+  });
+});
+
+describe('PowerShell launch composition read back by a real PowerShell parser', () => {
+  it('reads the call back as one string per launch token, with and without environment variables', (context) => {
+    const parses = parseWithRealPowerShell([
+      decodePowerShellLaunchScript(composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH)),
+      decodePowerShellLaunchScript(
+        composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH_WITH_ENV),
+      ),
+    ]);
+    if (parses === null) return context.skip(`${POWERSHELL} is not on PATH`);
+
+    const call = [
+      { kind: 'Ampersand', value: '&' },
+      ...[CURLY_QUOTE_LAUNCH.executable, ...CURLY_QUOTE_LAUNCH.args].map((value) => ({
+        kind: 'StringLiteral',
+        value,
+      })),
+    ];
+    const [plain, withEnv] = parses;
+    expect(plain).toEqual({ errors: 0, tokens: call });
+    const callStart = withEnv?.tokens.findIndex((token) => token.kind === 'Ampersand') ?? -1;
+    expect({
+      errors: withEnv?.errors,
+      tryBlock: withEnv?.tokens.slice(callStart - 2, callStart + call.length + 2),
+    }).toEqual({
+      errors: 0,
+      tryBlock: [
+        { kind: 'Try', value: 'try' },
+        { kind: 'LCurly', value: '{' },
+        ...call,
+        { kind: 'RCurly', value: '}' },
+        { kind: 'Finally', value: 'finally' },
+      ],
+    });
+  });
 });
 
 describe('buildClaudeLaunchCommand', () => {

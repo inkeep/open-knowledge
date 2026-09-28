@@ -39,8 +39,10 @@ export function isWindowsShellFamily(value: unknown): value is WindowsShellFamil
   return typeof value === 'string' && WINDOWS_SHELL_FAMILIES.has(value as WindowsShellFamily);
 }
 
+const POWERSHELL_SINGLE_QUOTE = /['\u2018\u2019\u201A\u201B]/g;
+
 export function psQuoteArg(value: string): string {
-  return `'${value.replace(/'/g, "''")}'`;
+  return `'${value.replace(POWERSHELL_SINGLE_QUOTE, '$&$&')}'`;
 }
 
 function encodeUtf8Base64(value: string): string {

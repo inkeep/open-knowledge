@@ -869,6 +869,42 @@ describe('TerminalPanel', () => {
     expect(terminal.input).toHaveBeenCalledWith('pty-1', "'C:\\Users\\O''Brien\\shot.png' ");
   });
 
+  test('a PowerShell terminal doubles every curly single quote in dropped Windows paths', async () => {
+    const { bridge, terminal, pushNotice } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      WIRED,
+      undefined,
+      'win32',
+    );
+    (bridge as unknown as { getPathForFile: (file: File) => string }).getPathForFile = (file) =>
+      `C:\\Users\\me\\${file.name}`;
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
+    act(() =>
+      pushNotice({
+        ptyId: 'pty-1',
+        notice: 'shell-resolved',
+        shellFamily: 'powershell',
+      }),
+    );
+
+    const container = document.querySelector('[data-terminal-status]');
+    if (container === null) throw new Error('terminal container not found');
+    const files = [
+      new File(['a'], '\u2018draft.md', { type: 'text/markdown' }),
+      new File(['b'], 'Nick\u2019s notes.md', { type: 'text/markdown' }),
+      new File(['c'], 'a\u201Ab.md', { type: 'text/markdown' }),
+      new File(['d'], 'a\u201Bb.md', { type: 'text/markdown' }),
+    ];
+    fireEvent.drop(container, { dataTransfer: { types: ['Files'], files } });
+
+    expect(terminal.input).toHaveBeenCalledWith(
+      'pty-1',
+      "'C:\\Users\\me\\\u2018\u2018draft.md' 'C:\\Users\\me\\Nick\u2019\u2019s notes.md' 'C:\\Users\\me\\a\u201A\u201Ab.md' 'C:\\Users\\me\\a\u201B\u201Bb.md' ",
+    );
+    expect(screen.queryByTestId('terminal-path-drop-notice-banner')).toBeNull();
+  });
+
   test('a Git Bash terminal POSIX-quotes dropped Windows paths', async () => {
     const { bridge, terminal, pushNotice } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
