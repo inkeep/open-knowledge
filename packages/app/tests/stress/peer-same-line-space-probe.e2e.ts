@@ -53,17 +53,23 @@ async function openPeer(browser: Browser, baseURL: string, docName: string): Pro
     { timeout: 15_000 },
   );
   await page.locator(EDITOR).getByText(BASELINE, { exact: false }).first().click();
-  await page.keyboard.press('End');
-  await page.waitForFunction(
-    (baseline: string) => {
-      const editor = window.__activeEditor;
-      if (!editor) return false;
-      const { $from, empty } = editor.state.selection;
-      return empty && $from.parent.textContent.includes(baseline);
-    },
-    BASELINE,
-    { timeout: 10_000 },
-  );
+  await expect(async () => {
+    await page.keyboard.press('End');
+    await page.waitForFunction(
+      (baseline: string) => {
+        const editor = window.__activeEditor;
+        if (!editor) return false;
+        const { $from, empty } = editor.state.selection;
+        return (
+          empty &&
+          $from.parent.textContent.includes(baseline) &&
+          $from.parentOffset === $from.parent.content.size
+        );
+      },
+      BASELINE,
+      { timeout: 1_000 },
+    );
+  }).toPass({ timeout: 10_000 });
   return { context, page };
 }
 
