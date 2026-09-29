@@ -145,7 +145,9 @@ import {
   embeddedAttachmentBytes,
   fileToAttachment,
   isAttachmentRefusal,
+  logAttachmentRejection,
   MAX_TOTAL_ATTACHMENT_BYTES,
+  rejectedPart,
   totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
 import { computeDiffRows } from '@/lib/acp/inline-diff';
@@ -489,6 +491,7 @@ export function ThreadView({
       const isImage = (file.type || '').startsWith('image/');
       if (isImage && !imagesAccepted) {
         rejectedImageCount += 1;
+        logAttachmentRejection('agent-chat', file, { kind: 'images-not-accepted' });
       } else {
         accepted.push(file);
       }
@@ -519,6 +522,8 @@ export function ThreadView({
           absPathOf,
           workspaceContentDir,
           pathSeparator,
+          imageBudgetBytes:
+            MAX_TOTAL_ATTACHMENT_BYTES - totalEmbeddedAttachmentBytes(attachmentsRef.current),
         });
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         if (outcome.ok) {
@@ -528,13 +533,17 @@ export function ThreadView({
             MAX_TOTAL_ATTACHMENT_BYTES
           ) {
             tooLargeTotalCount += 1;
+            logAttachmentRejection('agent-chat', rejectedPart(outcome.part), {
+              kind: 'total-too-large',
+              limitBytes: MAX_TOTAL_ATTACHMENT_BYTES,
+            });
           } else {
             commitPendingAttachments([...current, outcome.part], generation);
           }
-        } else if (isAttachmentRefusal(outcome.error)) {
-          refusals.push(outcome.error);
         } else {
-          report(describeImageError(outcome.error));
+          logAttachmentRejection('agent-chat', file, outcome.error);
+          if (isAttachmentRefusal(outcome.error)) refusals.push(outcome.error);
+          else report(describeImageError(outcome.error));
         }
       } catch (err) {
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));

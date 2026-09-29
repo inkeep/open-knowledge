@@ -17,11 +17,12 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { notifySignInTerminalExited } from '@/components/handoff/sign-in-terminal-events';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
+import { stubImageCanvas } from '@/lib/acp/image-canvas.test-helper';
 import type { RemoteModelCandidate } from '@/lib/acp/model-candidates';
 import type {
   RenderedItem,
@@ -5793,6 +5794,63 @@ describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
 
   const smallPng = (name: string) =>
     new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, { type: 'image/png' });
+
+  test('an image dropped on an agent that takes none is refused and logged', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: false } })} />,
+    );
+
+    fireDrop([smallPng('a.png')]);
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Claude doesn't accept image attachments."),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      '[acp-attachment] refused',
+      expect.objectContaining({ surface: 'agent-chat', reason: 'images-not-accepted' }),
+    );
+  });
+
+  test('a photo too big to send whole attaches as a copy shrunk to fit', async () => {
+    stubImageCanvas({ width: 4000, height: 3000 });
+    onTestFinished(() => vi.unstubAllGlobals());
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+
+    fireDrop([
+      new File([new Uint8Array(MAX_TOTAL_ATTACHMENT_BYTES * 3)], 'photo.png', {
+        type: 'image/png',
+      }),
+    ]);
+
+    await waitFor(() =>
+      expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1),
+    );
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toBe('');
+  });
+
+  test('a second photo too big to send whole is shrunk into what the first left of the budget', async () => {
+    stubImageCanvas({ width: 4000, height: 3000, bytesPerPixel: 0.15 });
+    onTestFinished(() => vi.unstubAllGlobals());
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+    const photo = (name: string) =>
+      new File([new Uint8Array(MAX_TOTAL_ATTACHMENT_BYTES * 3)], name, { type: 'image/png' });
+
+    fireDrop([photo('one.png'), photo('two.png')]);
+
+    await waitFor(() =>
+      expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(2),
+    );
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toBe('');
+  });
 
   test('interleaved drops cannot stack attachments past the aggregate byte budget', async () => {
     model = makeModel({ items: [], turnActive: false });

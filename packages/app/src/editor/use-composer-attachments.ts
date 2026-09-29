@@ -10,7 +10,9 @@ import {
   embeddedAttachmentBytes,
   fileToAttachment,
   isAttachmentRefusal,
+  logAttachmentRejection,
   MAX_TOTAL_ATTACHMENT_BYTES,
+  rejectedPart,
   totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
 
@@ -72,9 +74,12 @@ export function useComposerAttachments(
           absPathOf: options.absPathOf,
           workspaceContentDir: options.workspaceContentDir,
           pathSeparator: options.pathSeparator,
+          imageBudgetBytes:
+            MAX_TOTAL_ATTACHMENT_BYTES - totalEmbeddedAttachmentBytes(attachmentsRef.current),
         });
         setPendingUploads((previous) => previous.filter((p) => p.id !== placeholderId));
         if (!outcome.ok) {
+          logAttachmentRejection('composer', file, outcome.error);
           if (isAttachmentRefusal(outcome.error)) refusals.push(outcome.error);
           else report(describeImageError(outcome.error));
           continue;
@@ -85,6 +90,10 @@ export function useComposerAttachments(
           MAX_TOTAL_ATTACHMENT_BYTES
         ) {
           tooLargeTotalCount += 1;
+          logAttachmentRejection('composer', rejectedPart(outcome.part), {
+            kind: 'total-too-large',
+            limitBytes: MAX_TOTAL_ATTACHMENT_BYTES,
+          });
           continue;
         }
         commit([...current, outcome.part], generation);
