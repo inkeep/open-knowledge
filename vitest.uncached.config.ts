@@ -1,7 +1,8 @@
 import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import serverConfig from './packages/server/vitest.config';
-import { UNCACHED_TEST_GLOBS } from './test-support/uncached-tier';
+import { UNCACHED_TEST_GLOBS, UNCACHED_TIER_CONFIG } from './test-support/uncached-tier';
+import { uncachedTierFloor } from './test-support/uncached-tier-floor';
 import scriptsConfig from './vitest.scripts.config';
 
 const SOURCES = [
@@ -21,19 +22,20 @@ export default defineConfig({
       const missing = UNCACHED_TEST_GLOBS.filter((glob) => !exclude.includes(glob));
       if (missing.length > 0) {
         throw new Error(
-          `vitest.uncached.config.ts: ${name} does not exclude ${missing.join(', ')}, so its cached tier would run the suffixed files too and could replay a stale pass. Spread okVitestBase.test.exclude into its exclude.`,
+          `${UNCACHED_TIER_CONFIG}: ${name} does not exclude ${missing.join(', ')}, so its cached tier would run the suffixed files too and could replay a stale pass. Spread okVitestBase.test.exclude into its exclude.`,
         );
       }
       const suffixed = include.map((glob) => glob.replace(/\.test\.(?=[^/]*$)/, '.uncached.test.'));
       const unsuffixed = suffixed.filter((glob) => !glob.includes('.uncached.test.'));
       if (unsuffixed.length > 0) {
         throw new Error(
-          `vitest.uncached.config.ts: ${name} includes ${unsuffixed.join(', ')}, which names no .test. segment, so the tier cannot derive the suffixed form of it. Name test files by their .test. segment in that include.`,
+          `${UNCACHED_TIER_CONFIG}: ${name} includes ${unsuffixed.join(', ')}, which names no .test. segment, so the tier cannot derive the suffixed form of it. Name test files by their .test. segment in that include.`,
         );
       }
       const globalSetup = config.test?.globalSetup ?? [];
       return {
         ...config,
+        plugins: [...(config.plugins ?? []), uncachedTierFloor()],
         root: fileURLToPath(new URL(`./${dir}/`, import.meta.url)),
         test: {
           ...config.test,

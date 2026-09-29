@@ -4,10 +4,9 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestProject } from 'vitest/node';
 import { gitCleanEnv } from '../scripts/git-clean-env.mjs';
-import { UNCACHED_TEST_GLOBS } from './uncached-tier';
+import { UNCACHED_TEST_GLOBS, UNCACHED_TIER_CONFIG } from './uncached-tier';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
-const TIER = 'vitest.uncached.config.ts';
 const RECONCILED = Symbol.for('open-knowledge.uncached-tier.reconciled');
 
 export type UncachedTierProject = { name: string; dir: string; collected: string[] };
@@ -28,7 +27,7 @@ export function listUncachedTestFiles(root: string): string[] {
   );
   if (listed.error || listed.status !== 0) {
     throw new Error(
-      `${TIER}: git ls-files could not list the suffixed test files (${listed.error?.message ?? listed.stderr.trim()}), so the tier cannot show that it runs every one of them. Run it from a git work tree.`,
+      `${UNCACHED_TIER_CONFIG}: git ls-files could not list the suffixed test files (${listed.error?.message ?? listed.stderr.trim()}), so the tier cannot show that it runs every one of them. Run it from a git work tree.`,
     );
   }
   return listed.stdout.split('\0').filter((path) => path !== '' && existsSync(join(root, path)));
@@ -66,7 +65,7 @@ export function uncachedTierProblems(
     const covering = projects.find(({ dir }) => dir === owningPackage(root, path));
     problems.push(
       covering === undefined
-        ? `${path} takes the .uncached.test suffix, but no project here covers its package, so no tier would run it (every cached tier excludes the suffix through test-support/vitest.base.ts). Add that package's Vitest config to SOURCES in ${TIER}, or drop the suffix if the test reads only files inside its package's key.`
+        ? `${path} takes the .uncached.test suffix, but no project here covers its package, so no tier would run it (every cached tier excludes the suffix through test-support/vitest.base.ts). Add that package's Vitest config to SOURCES in ${UNCACHED_TIER_CONFIG}, or drop the suffix if the test reads only files inside its package's key.`
         : `${path} takes the .uncached.test suffix and sits under ${covering.dir}, but that project's include and exclude do not collect it, so no tier would run it. Fix ${covering.name}'s include or exclude so the uncached project collects it.`,
     );
   }
@@ -91,7 +90,7 @@ export default async function reconcile(project: TestProject): Promise<void> {
   const declared = project.vitest.config.projects.length;
   if (project.vitest.projects.length < declared) {
     throw new Error(
-      `${TIER}: the --project filter (${project.vitest.config.project.join(', ')}) keeps ${project.vitest.projects.length} of the tier's ${declared} projects, so the tier cannot show that it runs every suffixed file git lists. Drop --project, and narrow the run with a file filter instead.`,
+      `${UNCACHED_TIER_CONFIG}: the --project filter (${project.vitest.config.project.join(', ')}) keeps ${project.vitest.projects.length} of the tier's ${declared} projects, so the tier cannot show that it runs every suffixed file git lists. Drop --project, and narrow the run with a file filter instead.`,
     );
   }
   const listed = listUncachedTestFiles(OK_ROOT);
@@ -108,5 +107,5 @@ export default async function reconcile(project: TestProject): Promise<void> {
       .map(({ name, collected }) => `${name}: ${collected.length}`)
       .join(', ')})`,
   );
-  if (problems.length > 0) throw new Error(`${TIER}:\n  ${problems.join('\n  ')}`);
+  if (problems.length > 0) throw new Error(`${UNCACHED_TIER_CONFIG}:\n  ${problems.join('\n  ')}`);
 }
