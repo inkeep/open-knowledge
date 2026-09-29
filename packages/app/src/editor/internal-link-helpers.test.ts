@@ -116,6 +116,32 @@ describe('activateAssetLink', () => {
     expect(assign).toHaveBeenCalledTimes(1);
     expect(assign).toHaveBeenCalledWith('#/__asset__/docs/report.html');
   });
+
+  it('Cmd/Ctrl/middle-click on an Excalidraw board opens the board in a new app tab, not the OS', () => {
+    const open = vi.fn(() => null);
+    Object.defineProperty(globalThis, 'window', {
+      configurable: true,
+      value: { open },
+      writable: true,
+    });
+    const navigate = vi.fn((_assetPath: string) => {});
+    const dispatch = vi.fn(async () => {});
+
+    activateAssetLink(
+      {
+        url: './board.excalidraw',
+        projectRelPath: 'docs/board.excalidraw',
+        ext: 'excalidraw',
+        title: 'board.excalidraw',
+        newTab: true,
+      },
+      { navigate, dispatch },
+    );
+
+    expect(open).toHaveBeenCalledWith('#/docs/board.excalidraw', '_blank', 'noopener,noreferrer');
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+  });
 });
 
 describe('navigateToMarkdownTarget — external routing', () => {

@@ -59,6 +59,37 @@ async function dropFileIntoEditor(
   );
 }
 
+function writeEmptyBoard(contentDir: string, runId: string): string {
+  const board = `board-${runId}.excalidraw`;
+  writeFileSync(
+    join(contentDir, board),
+    JSON.stringify({ type: 'excalidraw', version: 2, elements: [], appState: {}, files: {} }),
+  );
+  return board;
+}
+
+async function clickLinkAndExpectBoard(
+  page: Page,
+  docName: string,
+  linkSelector: string,
+  board: string,
+): Promise<void> {
+  await page.goto(`/#/${docName}`);
+  await waitForProvider(page);
+  await page.waitForSelector('.ProseMirror:not(.composer-prosemirror)');
+  await expect(page.locator('[data-resolution-state="asset"]').first()).toBeVisible({
+    timeout: 10_000,
+  });
+
+  await page.click(linkSelector);
+
+  await expect.poll(async () => page.evaluate(() => window.location.hash)).toBe(`#/${board}`);
+  await expect(page.getByRole('main', { name: 'Excalidraw canvas' })).toBeVisible({
+    timeout: 30_000,
+  });
+  await expect(page.getByTestId('asset-preview-open-as-text')).toHaveCount(0);
+}
+
 const TINY_PDF_SOURCE = `%PDF-1.4
 1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj
 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj
@@ -189,6 +220,43 @@ test.describe('asset-click dispatcher — P9 E2E scenarios (SPEC 2026-04-23)', (
     ]);
     await newPage.waitForURL('**/guide.html', { timeout: 10_000 });
     await newPage.close();
+  });
+
+  test('P9.10c: bare click on a markdown link to an Excalidraw board opens the board canvas', async ({
+    page,
+    api,
+    workerServer,
+  }) => {
+    const board = writeEmptyBoard(workerServer.contentDir, runId);
+    await api.replaceDoc(docName, `# Board link test\n\nSee [the board](./${board}).\n`);
+
+    await clickLinkAndExpectBoard(page, docName, 'span[data-link]', board);
+  });
+
+  test('P9.10d: bare click on a wiki link to an Excalidraw board opens the board canvas', async ({
+    page,
+    api,
+    workerServer,
+  }) => {
+    const board = writeEmptyBoard(workerServer.contentDir, runId);
+    await api.replaceDoc(docName, `# Board link test\n\nSee [[${board}]].\n`);
+
+    await clickLinkAndExpectBoard(page, docName, '[data-wiki-link]', board);
+  });
+
+  test('P9.10e: one Back after a link opens an Excalidraw board returns to the note', async ({
+    page,
+    api,
+    workerServer,
+  }) => {
+    const board = writeEmptyBoard(workerServer.contentDir, runId);
+    await api.replaceDoc(docName, `# Board link test\n\nSee [[${board}]].\n`);
+    await clickLinkAndExpectBoard(page, docName, '[data-wiki-link]', board);
+
+    await page.goBack();
+
+    await expect.poll(async () => page.evaluate(() => window.location.hash)).toBe(`#/${docName}`);
+    await expect(page.getByRole('heading', { level: 1, name: 'Board link test' })).toBeVisible();
   });
 
   test('P9.11: inline image click is a no-op (regression guard — dispatcher does not fire)', async ({
