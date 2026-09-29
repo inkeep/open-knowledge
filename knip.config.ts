@@ -102,7 +102,10 @@ export default {
   },
   workspaces: {
     '.': {
-      entry: ['test-support/fixtures/no-net-connect/no-net-connect.fixture.ts'],
+      entry: [
+        'test-support/fixtures/no-net-connect/no-net-connect.fixture.ts',
+        'scripts/check-no-major-changeset.mjs',
+      ],
       vitest: { entry: ['**/*.uncached.test.{ts,tsx,mjs}'] },
     },
     'packages/app': {
