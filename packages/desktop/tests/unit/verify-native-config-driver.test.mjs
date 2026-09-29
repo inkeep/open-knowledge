@@ -174,14 +174,11 @@ describe('runDriver (full orchestration)', () => {
 });
 
 describe('real bundle (end-to-end, requires a built CLI)', () => {
-  test('loads + round-trips the actual packages/cli/dist/native bundle', async () => {
-    if (!existsSync(resolve(cliDist, 'native', 'index.js'))) {
-      console.warn(
-        '[verify-native-config-driver] SKIP: packages/cli/dist/native not built. ' +
-          'Run `bun run build` (the gate builds it upstream of this tier).',
-      );
-      return;
-    }
+  test('loads + round-trips the actual packages/cli/dist/native bundle', async (ctx) => {
+    ctx.skip(
+      !existsSync(resolve(cliDist, 'native', 'index.js')),
+      'packages/cli/dist/native not built. Run `pnpm run build` (the gate builds it upstream of this tier).',
+    );
     const messages = [];
     const code = await runDriver(['node', 'script', cliDist], {
       writeStream: (s) => messages.push(s),

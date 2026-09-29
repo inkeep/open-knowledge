@@ -28,8 +28,8 @@ describe('spawnDetached — error classification', () => {
     expect(outcome).toEqual({ ok: false, reason: 'not-installed' });
   });
 
-  test('EACCES (no exec permission on POSIX) → { ok: false, reason: "not-installed" }', async () => {
-    if (process.platform === 'win32') return;
+  test('EACCES (no exec permission on POSIX) → { ok: false, reason: "not-installed" }', async (ctx) => {
+    ctx.skip(process.platform === 'win32', 'exec permission bits are POSIX-only');
     const dir = await mkdtemp(join(tmpdir(), 'ok-spawn-noexec-'));
     try {
       const script = join(dir, 'noexec.sh');

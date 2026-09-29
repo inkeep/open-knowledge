@@ -89,13 +89,11 @@ describe('Linux package native-version guard helpers', () => {
 });
 
 describe('Linux package native guard lane visibility', () => {
-  test('reports whether OK_LINUX_PACKAGE_DIR enabled the assertive lane', () => {
-    if (packageDir === null) {
-      console.log(
-        '[linux-package-native-guards] OK_LINUX_PACKAGE_DIR is unset — packaged-artifact assertions skipped',
-      );
-      return;
-    }
+  test('reports whether OK_LINUX_PACKAGE_DIR enabled the assertive lane', (ctx) => {
+    ctx.skip(
+      packageDir === null,
+      'OK_LINUX_PACKAGE_DIR is unset, so the packaged-artifact assertions are skipped',
+    );
     console.log(`[linux-package-native-guards] checking ${packageDir}`);
     expect(packageDirInput).not.toBe('');
   });

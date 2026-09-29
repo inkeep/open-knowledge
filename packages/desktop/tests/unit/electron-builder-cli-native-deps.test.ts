@@ -206,19 +206,16 @@ describe('@inkeep/open-knowledge-native-config ships its napi loader + platform 
     expect(existsSync(resolve(nativeConfigDir, 'package.json'))).toBe(true);
   });
 
-  test('the napi-built loader + a platform binary exist after a build', () => {
+  test('the napi-built loader + a platform binary exist after a build', (ctx) => {
     const loader = resolve(nativeConfigDir, 'index.js');
     const nodeBinaries = existsSync(nativeConfigDir)
       ? readdirSync(nativeConfigDir).filter((f) => f.endsWith('.node'))
       : [];
-    if (!existsSync(loader) || nodeBinaries.length === 0) {
-      console.warn(
-        `[electron-builder-cli-native-deps] SKIP: ${NATIVE_CONFIG} not built ` +
-          `(no index.js / *.node in ${nativeConfigDir}). Run \`pnpm run build\` first; ` +
-          'the gate builds it upstream of this tier.',
-      );
-      return;
-    }
+    ctx.skip(
+      !existsSync(loader) || nodeBinaries.length === 0,
+      `${NATIVE_CONFIG} not built (no index.js / *.node in ${nativeConfigDir}). ` +
+        'Run `pnpm run build` first; the gate builds it upstream of this tier.',
+    );
     expect(nodeBinaries.length).toBeGreaterThan(0);
     if (process.platform === 'darwin' && process.arch === 'arm64') {
       expect(nodeBinaries).toContain('native-config.darwin-arm64.node');
@@ -246,20 +243,17 @@ describe('@inkeep/open-knowledge-native-config ships bundled in cli/dist/native'
     }
   });
 
-  test('the bundled loader + platform binary exist in cli/dist/native after a build', () => {
+  test('the bundled loader + platform binary exist in cli/dist/native after a build', (ctx) => {
     const nativeBundle = resolve(cliDist, 'native');
     const loader = resolve(nativeBundle, 'index.js');
     const pkgJson = resolve(nativeBundle, 'package.json');
     const nodeBinaries = existsSync(nativeBundle)
       ? readdirSync(nativeBundle).filter((f) => f.endsWith('.node'))
       : [];
-    if (!existsSync(loader) || nodeBinaries.length === 0) {
-      console.warn(
-        '[electron-builder-cli-native-deps] SKIP: cli/dist/native not built ' +
-          `(no index.js / *.node in ${nativeBundle}). Run \`pnpm run build\` first.`,
-      );
-      return;
-    }
+    ctx.skip(
+      !existsSync(loader) || nodeBinaries.length === 0,
+      `cli/dist/native not built (no index.js / *.node in ${nativeBundle}). Run \`pnpm run build\` first.`,
+    );
     expect(existsSync(pkgJson)).toBe(true);
     expect(nodeBinaries.length).toBeGreaterThan(0);
   });

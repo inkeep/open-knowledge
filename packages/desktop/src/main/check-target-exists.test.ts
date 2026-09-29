@@ -220,8 +220,11 @@ describe('checkTargetExists', () => {
       ).toEqual('missing');
     });
 
-    test('handles unreadable directory (EACCES) as unreadable, not missing', () => {
-      if (process.platform === 'win32' || process.getuid?.() === 0) return;
+    test('handles unreadable directory (EACCES) as unreadable, not missing', (ctx) => {
+      ctx.skip(
+        process.platform === 'win32' || process.getuid?.() === 0,
+        'a mode-000 directory stays readable on Windows and to root, so EACCES cannot be provoked',
+      );
       const project = makeProject();
       try {
         mkdirSync(join(project, 'locked'), { recursive: true });
@@ -430,8 +433,8 @@ describe('checkProjectDirExists', () => {
     }
   });
 
-  test('returns unreadable when a present folder has an unreadable parent (EACCES)', () => {
-    if (isRoot) return;
+  test('returns unreadable when a present folder has an unreadable parent (EACCES)', (ctx) => {
+    ctx.skip(isRoot, 'root reads a mode-000 directory, so EACCES cannot be provoked');
     const parent = makeTmp();
     const child = join(parent, 'proj');
     mkdirSync(child);

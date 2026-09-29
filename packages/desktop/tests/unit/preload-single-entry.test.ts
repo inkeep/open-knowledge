@@ -24,11 +24,9 @@ describe('preload bundle self-containment', () => {
     expect(Object.keys(await preloadInput())).toEqual(['index']);
   });
 
-  test('the built preload requires only specifiers the sandbox can resolve', () => {
+  test('the built preload requires only specifiers the sandbox can resolve', (ctx) => {
     const built = resolve(desktopRoot, 'out', 'preload', 'index.js');
-    if (!existsSync(built)) {
-      return;
-    }
+    ctx.skip(!existsSync(built), 'the desktop preload is not built (out/preload/index.js)');
     const requires = [...readFileSync(built, 'utf-8').matchAll(/require\(["']([^"']+)["']\)/g)].map(
       (match) => match[1],
     );
