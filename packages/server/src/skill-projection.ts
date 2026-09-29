@@ -13,6 +13,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import type { SkillHostId } from '@inkeep/open-knowledge-core/skills-catalog';
 import { parse as parseYaml } from 'yaml';
+import { isSkillBundlePathWithheld } from './content-filter.ts';
 import {
   tracedCpSync,
   tracedMkdirSync,
@@ -538,6 +539,7 @@ function listSkillFiles(dir: string, prefix = ''): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (isSkillBundlePathWithheld(rel)) continue;
     if (entry.isDirectory()) out.push(...listSkillFiles(join(dir, entry.name), rel));
     else if (entry.isFile()) out.push(rel);
   }

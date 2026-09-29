@@ -1,4 +1,12 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, afterEach, beforeAll, expect, test, vi } from 'vitest';
@@ -182,6 +190,180 @@ test('raw bundle writes preserve text, resolve sibling extensions, and reject bi
   expect(
     (await request(`/api/skill-file?name=${name}&path=assets/moved.dat`, 'DELETE')).existed,
   ).toBe(true);
+});
+
+test('bundle reads withhold VCS, package and OS-artifact entries below the skill root', async () => {
+  const name = 'withheld-bundle';
+  const skill = await request('/api/skill', 'PUT', {
+    name,
+    scope: 'project',
+    frontmatter: { name, description: 'Withheld entries' },
+    body: 'Body.\n',
+  });
+  const dir = join(root, (skill.path as string).slice(0, -9));
+  const token = '[remote "origin"]\n\turl = https://user:secret-token@example.com/r.git\n';
+  for (const path of ['.git/config', 'NODE_MODULES/x.md', 'assets/.DS_Store']) {
+    mkdirSync(join(dir, path, '..'), { recursive: true });
+    writeFileSync(join(dir, path), token);
+  }
+  writeFileSync(join(dir, 'assets/keep.txt'), 'Keep.\n');
+
+  const got = await request(`/api/skill?name=${name}&scope=project`);
+  expect(got.skill.files.map((f: { path: string }) => f.path)).toEqual(['assets/keep.txt']);
+  const listed = await request('/api/skills');
+  expect(listed.skills.find((s: { name: string }) => s.name === name)?.filePaths).toEqual([
+    'assets/keep.txt',
+  ]);
+  for (const path of ['.git/config', '.GIT/config', 'NODE_MODULES/x.md', 'assets/.DS_Store']) {
+    const response = await rawRequest(
+      server.port,
+      `/api/skill-file?name=${name}&path=${encodeURIComponent(path)}`,
+    );
+    expect(`${path}=${response.status}`).toBe(`${path}=404`);
+  }
+  expect((await request(`/api/skill-file?name=${name}&path=assets/keep.txt`)).text).toBe('Keep.\n');
+});
+
+test('bundle writes refuse withheld entries below the skill root', async () => {
+  const name = 'withheld-writes';
+  const skill = await request('/api/skill', 'PUT', {
+    name,
+    scope: 'project',
+    frontmatter: { name, description: 'Withheld writes' },
+    body: 'Body.\n',
+  });
+  const dir = join(root, (skill.path as string).slice(0, -9));
+  mkdirSync(join(dir, '.git'), { recursive: true });
+  writeFileSync(join(dir, '.git/config'), 'Original.\n');
+  await request('/api/skill-file', 'PUT', {
+    name,
+    scope: 'project',
+    path: 'assets/keep.txt',
+    content: 'Keep.\n',
+  });
+  const json = { 'Content-Type': 'application/json' };
+  const attempts = {
+    put: await rawRequest(server.port, '/api/skill-file', {
+      method: 'PUT',
+      headers: json,
+      body: JSON.stringify({ name, scope: 'project', path: '.GIT/config', content: 'Evil.\n' }),
+    }),
+    delete: await rawRequest(
+      server.port,
+      `/api/skill-file?name=${name}&scope=project&path=.git/config`,
+      { method: 'DELETE' },
+    ),
+    rename: await rawRequest(server.port, '/api/skill-file/rename', {
+      method: 'POST',
+      headers: json,
+      body: JSON.stringify({
+        name,
+        scope: 'project',
+        from: 'assets/keep.txt',
+        to: 'node_modules/keep.txt',
+      }),
+    }),
+  };
+  const withheldTitle =
+    'Skill file path falls under an entry Open Knowledge withholds from skill bundles (.git, node_modules, OK and editor host dirs, OS artifact files).';
+  for (const [verb, response] of Object.entries(attempts)) {
+    expect(`${verb}=${response.status} ${JSON.parse(response.body).title}`).toBe(
+      `${verb}=400 ${withheldTitle}`,
+    );
+  }
+  expect(readFileSync(join(dir, '.git/config'), 'utf-8')).toBe('Original.\n');
+  expect(readFileSync(join(dir, 'assets/keep.txt'), 'utf-8')).toBe('Keep.\n');
+});
+
+test('bundle reads and writes refuse paths a symlink resolves into a withheld entry or out of the skill', async () => {
+  const name = 'linked-bundle';
+  const skill = await request('/api/skill', 'PUT', {
+    name,
+    scope: 'project',
+    frontmatter: { name, description: 'Linked entries' },
+    body: 'Body.\n',
+  });
+  const dir = join(root, (skill.path as string).slice(0, -9));
+  const outside = mkdtempSync(join(tmpdir(), 'ok-skill-file-outside-'));
+  writeFileSync(join(outside, 'secret.txt'), 'Outside.\n');
+  mkdirSync(join(dir, '.git'));
+  writeFileSync(join(dir, '.git/config'), 'Original.\n');
+  writeFileSync(join(dir, '.git/HEAD'), 'ref: refs/heads/main\n');
+  mkdirSync(join(dir, '.git/objects'));
+  await request('/api/skill-file', 'PUT', {
+    name,
+    scope: 'project',
+    path: 'assets/keep.txt',
+    content: 'Keep.\n',
+  });
+  symlinkSync('.git', join(dir, 'cfg'), 'dir');
+  symlinkSync('.git', join(dir, 'references'), 'dir');
+  symlinkSync('.git/config', join(dir, 'leaf'), 'file');
+  symlinkSync('.git/config', join(dir, 'notes.mdx'), 'file');
+  symlinkSync(outside, join(dir, 'ext'), 'dir');
+  symlinkSync('.git/newfile', join(dir, 'dangling'), 'file');
+  symlinkSync('.git/objects', join(dir, 'y'), 'dir');
+  symlinkSync('y/../info/attributes', join(dir, 'dotdot'), 'file');
+  try {
+    const reads: Record<string, number> = {};
+    for (const path of ['cfg/config', 'leaf', 'notes.md', 'ext/secret.txt']) {
+      const response = await rawRequest(
+        server.port,
+        `/api/skill-file?name=${name}&path=${encodeURIComponent(path)}`,
+      );
+      reads[path] = response.status;
+    }
+    const put = (path: string) =>
+      rawRequest(server.port, '/api/skill-file', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, scope: 'project', path, content: 'Evil.\n' }),
+      });
+    const rename = (from: string, to: string) =>
+      rawRequest(server.port, '/api/skill-file/rename', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, scope: 'project', from, to }),
+      });
+    const writes: Record<string, number> = {
+      'put cfg/config': (await put('cfg/config')).status,
+      'put references/config.md': (await put('references/config.md')).status,
+      'put ext/secret.txt': (await put('ext/secret.txt')).status,
+      'put dangling': (await put('dangling')).status,
+      'put dotdot': (await put('dotdot')).status,
+      'rename to cfg/keep.txt': (await rename('assets/keep.txt', 'cfg/keep.txt')).status,
+      'rename cfg/config': (await rename('cfg/config', 'assets/moved.txt')).status,
+      'delete cfg/HEAD': (
+        await rawRequest(server.port, `/api/skill-file?name=${name}&scope=project&path=cfg/HEAD`, {
+          method: 'DELETE',
+        })
+      ).status,
+    };
+    expect({ reads, writes }).toEqual({
+      reads: { 'cfg/config': 404, leaf: 404, 'notes.md': 404, 'ext/secret.txt': 400 },
+      writes: {
+        'put cfg/config': 400,
+        'put references/config.md': 400,
+        'put ext/secret.txt': 400,
+        'put dangling': 400,
+        'put dotdot': 400,
+        'rename to cfg/keep.txt': 400,
+        'rename cfg/config': 400,
+        'delete cfg/HEAD': 400,
+      },
+    });
+    expect(readFileSync(join(dir, '.git/config'), 'utf-8')).toBe('Original.\n');
+    expect(existsSync(join(dir, '.git/HEAD'))).toBe(true);
+    expect(existsSync(join(dir, '.git/config.md'))).toBe(false);
+    expect(existsSync(join(dir, '.git/keep.txt'))).toBe(false);
+    expect(existsSync(join(dir, '.git/newfile'))).toBe(false);
+    expect(existsSync(join(dir, '.git/info/attributes'))).toBe(false);
+    expect(existsSync(join(dir, 'info/attributes'))).toBe(false);
+    expect(readFileSync(join(dir, 'assets/keep.txt'), 'utf-8')).toBe('Keep.\n');
+    expect(readFileSync(join(outside, 'secret.txt'), 'utf-8')).toBe('Outside.\n');
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
 });
 
 test('bundle path and size errors leave the existing file unchanged', async () => {

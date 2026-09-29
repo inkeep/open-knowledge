@@ -2030,6 +2030,20 @@ describe('ContentFilter', () => {
       expect(result.nestedFileCount).toBe(2);
     });
 
+    test('skips nested ignore files under any case of node_modules', async () => {
+      mkdirSync(join(projectDir, 'subdir'));
+      writeFileSync(join(projectDir, 'subdir', '.okignore'), 'private.md\n');
+      mkdirSync(join(projectDir, 'NODE_MODULES', 'p'), { recursive: true });
+      writeFileSync(join(projectDir, 'NODE_MODULES', 'p', '.gitignore'), 'tmp/\n');
+
+      const filter = createContentFilter({ projectDir, contentDir: projectDir });
+      const result = await filter.rebuildIgnorePatterns();
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) throw new Error('unreachable');
+      expect(result.nestedFileCount).toBe(1);
+    });
+
     test('fires onAfterRebuild on success', async () => {
       let calls = 0;
       const filter = createContentFilter({

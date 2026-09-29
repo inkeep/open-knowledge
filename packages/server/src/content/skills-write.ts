@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { type Dirent, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, normalize, sep } from 'node:path';
 import {
   applyPatchToFm,
@@ -11,6 +11,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { ATOMIC_TEMP_INFIX, atomicTempPath } from '@inkeep/open-knowledge-core/server';
 import { stringify as stringifyYaml } from 'yaml';
+import { isSkillBundlePathWithheld } from '../content-filter.ts';
 /*
  * STOP: every disk write in this module goes through `fs-traced.ts` so it
  * carries an `fs.*` span. A bare `node:fs` call here drops the span.
@@ -274,26 +275,21 @@ function resolveBundleFileAbs(
 
 export function countBundleFiles(skillDir: string): number {
   let count = 0;
-  const walk = (dir: string): void => {
-    let names: string[];
+  const walk = (dir: string, prefix: string): void => {
+    let entries: Dirent[];
     try {
-      names = readdirSync(dir);
+      entries = readdirSync(dir, { withFileTypes: true });
     } catch {
       return;
     }
-    for (const entryName of names) {
-      const abs = join(dir, entryName);
-      let isDir: boolean;
-      try {
-        isDir = statSync(abs).isDirectory();
-      } catch {
-        continue;
-      }
-      if (isDir) walk(abs);
-      else if (!(dir === skillDir && entryName === SKILL_FILE)) count++;
+    for (const entry of entries) {
+      const rel = prefix === '' ? entry.name : `${prefix}/${entry.name}`;
+      if (isSkillBundlePathWithheld(rel)) continue;
+      if (entry.isDirectory()) walk(join(dir, entry.name), rel);
+      else if (entry.isFile() && !(dir === skillDir && entry.name === SKILL_FILE)) count++;
     }
   };
-  walk(skillDir);
+  walk(skillDir, '');
   return count;
 }
 

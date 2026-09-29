@@ -67,6 +67,10 @@ const ALWAYS_SKIP_DIRS = new Set<string>([
 
 const OK_ALWAYS_SKIP_CHILDREN = new Set(['worktrees', 'local']);
 
+function isBuiltinSkipDirName(name: string): boolean {
+  return BUILTIN_SKIP_DIRS.has(name) || ALWAYS_SKIP_DIRS.has(name.toLowerCase());
+}
+
 type AttachmentFolderShape =
   | { kind: 'sibling' }
   | { kind: 'content-root' }
@@ -127,7 +131,7 @@ function pathHasAlwaysSkipSegment(relativePath: string, showOk?: boolean): boole
   const segments = relativePath.split('/');
   for (let i = 0; i < segments.length; i++) {
     const segment = segments[i];
-    const canonicalSegment = segment.toLowerCase() === OK_DIR ? OK_DIR : segment;
+    const canonicalSegment = segment.toLowerCase();
     if (!ALWAYS_SKIP_DIRS.has(canonicalSegment)) continue;
     if (
       showOk &&
@@ -141,15 +145,26 @@ function pathHasAlwaysSkipSegment(relativePath: string, showOk?: boolean): boole
   return false;
 }
 
+export function isSkillBundlePathWithheld(below: string): boolean {
+  return pathHasAlwaysSkipSegment(below) || isAlwaysSkipFile(below);
+}
+
+function skillDescendantIsSkipped(relativePath: string, root: string): boolean {
+  return isSkillBundlePathWithheld(relativePath.slice(root.length + 1));
+}
+
 function isSkillContentFile(relativePath: string): boolean {
-  return relativePath.startsWith(`${LEGACY_SKILL_STORE_ROOT}/`);
+  return (
+    relativePath.startsWith(`${LEGACY_SKILL_STORE_ROOT}/`) &&
+    !skillDescendantIsSkipped(relativePath, LEGACY_SKILL_STORE_ROOT)
+  );
 }
 
 function isSkillContentAncestorDir(relativePath: string): boolean {
   return (
     relativePath === '.ok' ||
     relativePath === LEGACY_SKILL_STORE_ROOT ||
-    relativePath.startsWith(`${LEGACY_SKILL_STORE_ROOT}/`)
+    isSkillContentFile(relativePath)
   );
 }
 
@@ -230,7 +245,7 @@ function buildWatcherIgnoreGlobs(patterns: readonly string[]): string[] {
 
 function templateFolderPrefixIsSkipped(segments: string[], okIndex: number): boolean {
   for (let i = 0; i < okIndex; i++) {
-    if (BUILTIN_SKIP_DIRS.has(segments[i]) || segments[i].toLowerCase() === OK_DIR) return true;
+    if (isBuiltinSkipDirName(segments[i])) return true;
   }
   return false;
 }
@@ -297,7 +312,9 @@ function isUnderSkillRoot(relativePath: string, roots: ReadonlySet<string>): boo
 function isInPlaceSkillFile(relativePath: string, dirs: ReadonlySet<string>): boolean {
   if (dirs.size === 0) return false;
   for (const d of dirs) {
-    if (relativePath.startsWith(`${d}/`)) return true;
+    if (relativePath.startsWith(`${d}/`) && !skillDescendantIsSkipped(relativePath, d)) {
+      return true;
+    }
   }
   return false;
 }
@@ -308,7 +325,7 @@ function isInPlaceSkillAncestorDir(relativePath: string, dirs: ReadonlySet<strin
     if (
       d === relativePath ||
       d.startsWith(`${relativePath}/`) ||
-      relativePath.startsWith(`${d}/`)
+      (relativePath.startsWith(`${d}/`) && !skillDescendantIsSkipped(relativePath, d))
     ) {
       return true;
     }
@@ -774,7 +791,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
 
   function isRejectedByConfigurableRules(relativePath: string): boolean {
     for (const segment of relativePath.split('/')) {
-      if (BUILTIN_SKIP_DIRS.has(segment)) return true;
+      if (isBuiltinSkipDirName(segment)) return true;
     }
 
     if (contentOutsideProject) return false;
@@ -883,7 +900,7 @@ export function createContentFilter(opts: ContentFilterOptions): ContentFilter {
         );
       }
       for (const segment of relativePath.split('/')) {
-        if (BUILTIN_SKIP_DIRS.has(segment)) return true;
+        if (isBuiltinSkipDirName(segment)) return true;
       }
       if (contentOutsideProject) return false;
       return (
@@ -1105,7 +1122,7 @@ async function populateDirCountYielding(
     for (const entry of entries) {
       const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
       if (entry.isDirectory()) {
-        if (BUILTIN_SKIP_DIRS.has(entry.name)) continue;
+        if (isBuiltinSkipDirName(entry.name)) continue;
         if (isIgnored(childRel) || isIgnored(`${childRel}/`)) continue;
         stack.push({ dir: join(cur, entry.name), relPath: childRel });
       } else if (entry.isFile() && isSupportedDocFile(entry.name) && !isIgnored(childRel)) {
@@ -1131,7 +1148,7 @@ function populateDirCount(
   for (const entry of entries) {
     const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
-      if (BUILTIN_SKIP_DIRS.has(entry.name)) continue;
+      if (isBuiltinSkipDirName(entry.name)) continue;
       if (isIgnored(childRel) || isIgnored(`${childRel}/`)) continue;
       populateDirCount(join(dir, entry.name), childRel, isIgnored, dirCount);
     } else if (entry.isFile() && isSupportedDocFile(entry.name) && !isIgnored(childRel)) {
@@ -1182,7 +1199,7 @@ function loadNestedIgnoreFiles(
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
 
-    if (BUILTIN_SKIP_DIRS.has(entry.name)) continue;
+    if (isBuiltinSkipDirName(entry.name)) continue;
 
     const dirPath = join(dir, entry.name);
     const relToProject = toPosix(relative(projectDir, dirPath));
@@ -1235,7 +1252,7 @@ async function initContentDirStateAsync(
     const childRel = relPath ? `${relPath}/${entry.name}` : entry.name;
 
     if (entry.isDirectory()) {
-      if (BUILTIN_SKIP_DIRS.has(entry.name)) continue;
+      if (isBuiltinSkipDirName(entry.name)) continue;
 
       const dirPath = join(dir, entry.name);
 
@@ -1336,7 +1353,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
   }
   function isRejectedByConfigurableRules(relativePath: string): boolean {
     for (const segment of relativePath.split('/')) {
-      if (BUILTIN_SKIP_DIRS.has(segment)) return true;
+      if (isBuiltinSkipDirName(segment)) return true;
     }
     if (contentOutsideProject) return false;
     return isIgnored(relativePath);
@@ -1496,7 +1513,7 @@ export async function createContentFilterAsync(opts: ContentFilterOptions): Prom
         );
       }
       for (const segment of relativePath.split('/')) {
-        if (BUILTIN_SKIP_DIRS.has(segment)) return true;
+        if (isBuiltinSkipDirName(segment)) return true;
       }
       if (contentOutsideProject) return false;
       return (
