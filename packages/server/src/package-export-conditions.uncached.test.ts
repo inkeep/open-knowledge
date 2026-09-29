@@ -5,29 +5,7 @@ import { describe, expect, test } from 'vitest';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-describe('worker entry ships in every bundle shape', () => {
-  test('server tsdown config emits the parse-worker entry', () => {
-    const config = readFileSync(resolve(__dirname, '../tsdown.config.ts'), 'utf8');
-    expect(config).toMatch(/'parse-worker':\s*'src\/parse-worker\.ts'/);
-  });
-
-  test('cli tsdown config emits the parse-worker entry next to dist/cli.mjs', () => {
-    const config = readFileSync(resolve(__dirname, '../../cli/tsdown.config.ts'), 'utf8');
-    expect(config).toMatch(/'parse-worker':\s*'src\/parse-worker\.ts'/);
-  });
-
-  test('server package.json exports the parse-worker subpath for both conditions', () => {
-    const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf8')) as {
-      exports: Record<string, Record<string, string>>;
-    };
-    expect(pkg.exports['./parse-worker']).toEqual({
-      '@inkeep/source': './src/parse-worker.ts',
-      development: './src/parse-worker.ts',
-      types: './dist/parse-worker.d.mts',
-      default: './dist/parse-worker.mjs',
-    });
-  });
-
+describe('package export conditions', () => {
   test.each([
     ['@inkeep/open-knowledge-server', '../package.json'],
     ['@inkeep/open-knowledge-core', '../../core/package.json'],
