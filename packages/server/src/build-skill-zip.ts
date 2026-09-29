@@ -32,10 +32,15 @@ export interface ResolveBundledSkillDirOptions {
 
 const DESKTOP_SKILLS_REL = 'OpenKnowledge.app/Contents/Resources/cli/dist/assets/skills';
 
-export function resolveBundledSkillDir(
-  which: BundleId | (string & {}),
-  opts: ResolveBundledSkillDirOptions = {},
-): string {
+function runsFromSource(moduleUrl: string): boolean {
+  return new URL(moduleUrl).pathname.endsWith('.ts');
+}
+
+function bundledSkillCandidates(
+  which: string,
+  moduleUrl: string,
+  opts: ResolveBundledSkillDirOptions,
+): string[] {
   const platform = opts.platform ?? process.platform;
   const checkDesktop = opts.checkDesktop ?? false;
   const home = opts.home ?? homedir();
@@ -48,19 +53,32 @@ export function resolveBundledSkillDir(
       candidates.push(join(home, 'Applications', DESKTOP_SKILLS_REL, which));
     }
   }
-  candidates.push(fileURLToPath(new URL(`../dist/assets/skills/${which}`, import.meta.url)));
-  candidates.push(fileURLToPath(new URL(`../assets/skills/${which}`, import.meta.url)));
-  candidates.push(fileURLToPath(new URL(`./assets/skills/${which}`, import.meta.url)));
+  if (runsFromSource(moduleUrl)) {
+    candidates.push(fileURLToPath(new URL(`../assets/skills/${which}`, moduleUrl)));
+    return candidates;
+  }
+  candidates.push(fileURLToPath(new URL(`../dist/assets/skills/${which}`, moduleUrl)));
+  candidates.push(fileURLToPath(new URL(`../assets/skills/${which}`, moduleUrl)));
+  candidates.push(fileURLToPath(new URL(`./assets/skills/${which}`, moduleUrl)));
+  return candidates;
+}
 
+function missingBundleMessage(which: string, moduleUrl: string, candidates: string[]): string {
+  const remedy = runsFromSource(moduleUrl)
+    ? 'Running from source, only the source assets are read, so the bundle name is unknown or its directory under packages/server/assets/skills is missing.'
+    : 'This usually means the package build did not copy packages/server/assets into dist/assets. Run `pnpm run build` in the package that ships the skills before publishing.';
+  return `Bundled skill asset directory not found for bundle '${which}'. Tried: ${candidates.join(', ')}. ${remedy}`;
+}
+
+export function resolveBundledSkillDir(
+  which: BundleId | (string & {}),
+  opts: ResolveBundledSkillDirOptions = {},
+): string {
+  const candidates = bundledSkillCandidates(which, import.meta.url, opts);
   for (const candidate of candidates) {
     if (existsSync(candidate)) return candidate;
   }
-  throw new Error(
-    `Bundled skill asset directory not found for bundle '${which}'. ` +
-      `Tried: ${candidates.join(', ')}. ` +
-      'This usually means the CLI build did not copy packages/server/assets into dist/assets. ' +
-      'Run `cd packages/cli && bun run build` before publishing.',
-  );
+  throw new Error(missingBundleMessage(which, import.meta.url, candidates));
 }
 
 async function* walkFiles(dir: string, base: string = dir): AsyncGenerator<string> {
@@ -163,4 +181,9 @@ export async function buildSkillZip(opts: BuildSkillZipOptions = {}): Promise<Bu
   return { outputPath, size, sha256 };
 }
 
-export const __testing = { computeWrapperFolderName, toPosixZipPath };
+export const __testing = {
+  computeWrapperFolderName,
+  toPosixZipPath,
+  bundledSkillCandidates,
+  missingBundleMessage,
+};
