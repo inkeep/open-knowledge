@@ -2,7 +2,14 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "inputs": ["Cargo.toml", "Cargo.lock", "build.rs", "src/**/*.rs", "package.json"],
+      "inputs": [
+        "Cargo.toml",
+        "Cargo.lock",
+        "build.rs",
+        "src/**/*.rs",
+        "package.json",
+        "scripts/build.mjs"
+      ],
       "outputs": ["index.js", "index.d.ts", "*.node"]
     },
     "test": {
