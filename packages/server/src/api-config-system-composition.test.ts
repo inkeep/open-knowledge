@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import {
   existsSync,
   mkdirSync,
@@ -11,19 +12,23 @@ import {
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { resolveShadowDir } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import type { BootedServer } from './boot.ts';
+import { CC1Broadcaster } from './cc1-broadcast.ts';
 import {
   bootCompositionRig,
   makeCaptureRes,
   makeSyntheticReq,
 } from './composition-rig.test-helper.ts';
+import * as headWatcherModule from './head-watcher.ts';
 import {
   type ConfigSystemRouteDeps,
   createConfigSystemRoutes,
 } from './http/config-system-routes.ts';
 import { checkLocalOpSecurity } from './local-op-security.ts';
 import type { PinoLogger } from './logger.ts';
+import { saveInMemoryCheckpoint } from './shadow-repo.ts';
 
 const statSyncFaults = vi.hoisted(() => new Map<string, NodeJS.ErrnoException>());
 const statSyncOverrides = vi.hoisted(() => new Map<string, unknown>());
@@ -76,7 +81,6 @@ function buildConfigSystemRoutes(overrides: Partial<ConfigSystemRouteDeps> = {})
     ephemeral: false,
     log: noopLog,
     ready: undefined,
-    durabilityState: { getActiveBranch: () => 'main' },
     serverInstanceId: 'test-instance',
     getDiskAckSVs: undefined,
     getCollabClientCount: undefined,
@@ -94,6 +98,7 @@ function buildConfigSystemRoutes(overrides: Partial<ConfigSystemRouteDeps> = {})
     getFileIndex: () => new Map(),
     shadowRef: undefined,
     getCurrentBranch: undefined,
+    getReportedBranch: undefined,
     installedAgentsCache: {
       probeAll: (async () => ({})) as ConfigSystemRouteDeps['installedAgentsCache']['probeAll'],
     },
@@ -464,4 +469,141 @@ describe('flat rescue-buffer listing — nested documents', () => {
     expect(entries.map((e) => e.docName)).toEqual(['folder/live']);
     expect(warns).toContain('[rescue] skipping uninspectable rescue entry');
   });
+});
+
+describe('server-info branch reporting', () => {
+  async function serverInfoBody(
+    overrides: Partial<ConfigSystemRouteDeps>,
+  ): Promise<{ currentBranch?: string }> {
+    const out = await dispatch(buildConfigSystemRoutes(overrides), '/api/server-info', {
+      host: '127.0.0.1',
+    });
+    expect(out.status).toBe(200);
+    return out.body as { currentBranch?: string };
+  }
+
+  test('reports the checked-out branch when the project is a git repository', async () => {
+    const body = await serverInfoBody({ getReportedBranch: () => 'feat/app-header' });
+
+    expect(body.currentBranch).toBe('feat/app-header');
+  });
+
+  test('reports the git branch when the storage accessor returns no branch', async () => {
+    const body = await serverInfoBody({
+      getCurrentBranch: () => null,
+      getReportedBranch: () => 'feat/app-header',
+    });
+
+    expect(body.currentBranch).toBe('feat/app-header');
+  });
+
+  test('omits the branch when the project has no readable git HEAD', async () => {
+    const body = await serverInfoBody({ getReportedBranch: () => null });
+
+    expect(body).not.toHaveProperty('currentBranch');
+  });
+
+  test('omits the branch when no branch accessor is wired', async () => {
+    const body = await serverInfoBody({ getReportedBranch: undefined });
+
+    expect(body).not.toHaveProperty('currentBranch');
+  });
+});
+
+describe('server-info branch reporting over the composed listener', () => {
+  let branchTmpRoot: string;
+  const booted: BootedServer[] = [];
+
+  async function bootOn(dirPrefix: string, init?: (dir: string) => void): Promise<BootedServer> {
+    const contentDir = mkdtempSync(resolve(branchTmpRoot, dirPrefix));
+    init?.(contentDir);
+    const server = await bootCompositionRig(contentDir);
+    booted.push(server);
+    await server.ready;
+    return server;
+  }
+
+  async function currentBranchOf(server: BootedServer): Promise<string | undefined> {
+    const res = await fetch(`http://127.0.0.1:${server.port}/api/server-info`);
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { currentBranch?: string }).currentBranch;
+  }
+
+  beforeAll(async () => {
+    branchTmpRoot = await mkdtemp(resolve(tmpdir(), 'ok-config-system-branch-'));
+  }, 60_000);
+
+  afterAll(async () => {
+    for (const server of booted) await server.destroy('test-cleanup');
+    await rm(branchTmpRoot, { recursive: true, force: true });
+  });
+
+  test('a git project reports its checked-out branch', async () => {
+    const emitServerInfo = vi.spyOn(CC1Broadcaster.prototype, 'emitServerInfo');
+    try {
+      const server = await bootOn('repo-', (dir) => {
+        execFileSync('git', ['init', '-q', '-b', 'feat/probe'], { cwd: dir });
+      });
+
+      expect(await currentBranchOf(server)).toBe('feat/probe');
+      expect(emitServerInfo).toHaveBeenCalledWith(expect.any(String), 'feat/probe');
+    } finally {
+      emitServerInfo.mockRestore();
+    }
+  }, 60_000);
+
+  test('a failed HEAD watcher reports the git branch while rescue uses the storage branch', async () => {
+    const startHeadWatcher = vi
+      .spyOn(headWatcherModule, 'startHeadWatcher')
+      .mockRejectedValueOnce(new Error('watcher unavailable'));
+    try {
+      const server = await bootOn('watcher-failed-', (dir) => {
+        execFileSync('git', ['init', '-q', '-b', 'feat/probe'], { cwd: dir });
+      });
+
+      expect(server.degraded).toContain('head-watcher');
+      expect(await currentBranchOf(server)).toBe('feat/probe');
+
+      const shadow = {
+        gitDir: resolveShadowDir(server.contentDir),
+        workTree: server.contentDir,
+      };
+      await saveInMemoryCheckpoint(shadow, '', {
+        kind: 'external-change-rescue',
+        docName: 'storage-branch.md',
+        contents: '# Storage branch\n',
+        label: 'Storage branch rescue',
+        branch: 'main',
+        metadata: { incomingDiskSha: '' },
+      });
+      await saveInMemoryCheckpoint(shadow, '', {
+        kind: 'external-change-rescue',
+        docName: 'reported-branch.md',
+        contents: '# Reported branch\n',
+        label: 'Reported branch rescue',
+        branch: 'feat/probe',
+        metadata: { incomingDiskSha: '' },
+      });
+
+      const rescue = await fetch(`http://127.0.0.1:${server.port}/api/rescue`);
+      expect(rescue.status).toBe(200);
+      const entries = (await rescue.json()) as Array<{ docName: string }>;
+      expect(entries.map((entry) => entry.docName)).toContain('storage-branch.md');
+      expect(entries.map((entry) => entry.docName)).not.toContain('reported-branch.md');
+    } finally {
+      startHeadWatcher.mockRestore();
+    }
+  }, 60_000);
+
+  test('a plain folder reports no branch rather than a fabricated "main"', async () => {
+    const emitServerInfo = vi.spyOn(CC1Broadcaster.prototype, 'emitServerInfo');
+    try {
+      const server = await bootOn('plain-');
+
+      expect(await currentBranchOf(server)).toBeUndefined();
+      expect(emitServerInfo).toHaveBeenCalledWith(expect.any(String), undefined);
+    } finally {
+      emitServerInfo.mockRestore();
+    }
+  }, 60_000);
 });

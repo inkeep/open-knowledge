@@ -2,6 +2,20 @@ import { describe, expect, test } from 'vitest';
 import { validatePatchScopes } from './validate-patch-scopes.ts';
 
 describe('validatePatchScopes', () => {
+  test.each([{}, { h: null }, { h: {} }, { h: { provider: 'github' as const } }, null])(
+    'checks the user-only host record before descending %j',
+    (hosts) => {
+      const patch = { git: { hosts } };
+      expect(validatePatchScopes(patch, 'project')).toMatchObject({
+        code: 'SCOPE_VIOLATION',
+        path: ['git', 'hosts'],
+      });
+      expect(validatePatchScopes(patch, 'project-local')).toMatchObject({
+        code: 'SCOPE_VIOLATION',
+      });
+      expect(validatePatchScopes(patch, 'user')).toBeNull();
+    },
+  );
   test('returns null for an empty patch', () => {
     expect(validatePatchScopes({}, 'project-local')).toBeNull();
     expect(validatePatchScopes({}, 'project')).toBeNull();

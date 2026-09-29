@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import { emitLocalMenuAction } from '@/lib/local-menu-action-bus';
+import type { TerminalLaunchIntent } from './EditorPane';
+import { subscribeToSignInTerminalExits } from './handoff/sign-in-terminal-events';
 import {
   dispatchReorderChord,
   dispatchTabChord,
@@ -51,17 +53,25 @@ vi.doMock('@tanstack/react-query', () => ({
   useQuery: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
+type GateExit = (info: { exitCode: number; signal: number | null }) => void;
+const gateExits: Array<GateExit | undefined> = [];
+
 vi.doMock('./TerminalGate', () => ({
   TerminalGate: ({
     adoptPtyId,
     onPtyId,
+    onExit,
   }: {
     adoptPtyId?: string | null;
     onPtyId?: (ptyId: string | null) => void;
+    onExit?: GateExit;
   }) => {
     useEffect(() => {
       onPtyId?.(adoptPtyId ?? 'pty-fresh');
     }, [adoptPtyId, onPtyId]);
+    useEffect(() => {
+      gateExits.push(onExit);
+    }, [onExit]);
     return <div data-testid="terminal-gate" data-adopt={adoptPtyId ?? ''} />;
   },
 }));
@@ -89,11 +99,13 @@ function Harness({
   restoreNonce = 0,
   startVisible = false,
   bumpRestoreAfterMount = false,
+  launch = null,
 }: {
   bridge: OkDesktopBridge;
   restoreNonce?: number;
   startVisible?: boolean;
   bumpRestoreAfterMount?: boolean;
+  launch?: TerminalLaunchIntent | null;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(startVisible);
@@ -115,6 +127,7 @@ function Harness({
         terminalCapable
         visible={visible}
         terminalRestoreRevealNonce={nonce}
+        launch={launch}
         onVisibleChange={setVisible}
         installedClis={{}}
         container={container}
@@ -134,10 +147,118 @@ async function revealAndSettle(ms: number) {
 describe('SessionsHost — terminal dock rehydration must always settle', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    gateExits.length = 0;
   });
   afterEach(() => {
     cleanup();
     vi.useRealTimers();
+  });
+
+  test('a sign-in terminal closing tells the chat that opened it', async () => {
+    const seen = vi.fn();
+    const stop = subscribeToSignInTerminalExits(seen);
+    try {
+      render(
+        <Harness
+          bridge={makeBridge({})}
+          launch={{
+            prompt: null,
+            cli: null,
+            command: { executable: 'auggie', args: ['--acp', 'login'] },
+            label: 'Log in with Auggie',
+            nonce: 1,
+            signInThreadId: 't1',
+          }}
+        />,
+      );
+      await revealAndSettle(1_000);
+      const exit = gateExits.filter((handler) => handler !== undefined).at(-1);
+      expect(exit).toBeDefined();
+      act(() => exit?.({ exitCode: 0, signal: null }));
+      expect(seen).toHaveBeenCalledWith('t1');
+    } finally {
+      stop();
+    }
+  });
+
+  test('closing a sign-in tab through its close control tells the chat exactly once', async () => {
+    const seen = vi.fn();
+    const stop = subscribeToSignInTerminalExits(seen);
+    try {
+      render(
+        <Harness
+          bridge={makeBridge({})}
+          launch={{
+            prompt: null,
+            cli: null,
+            command: { executable: 'auggie', args: ['--acp', 'login'] },
+            label: 'Log in with Auggie',
+            nonce: 1,
+            signInThreadId: 't1',
+          }}
+        />,
+      );
+      await revealAndSettle(1_000);
+      const exit = gateExits.filter((handler) => handler !== undefined).at(-1);
+      expect(exit).toBeDefined();
+      const closeButtons = screen.getAllByRole('button', { name: /^Close / });
+      act(() => {
+        fireEvent.click(closeButtons[closeButtons.length - 1] as HTMLElement);
+      });
+      await revealAndSettle(10);
+      expect(seen).toHaveBeenCalledTimes(1);
+      expect(seen).toHaveBeenCalledWith('t1');
+      act(() => exit?.({ exitCode: 0, signal: null }));
+      expect(seen).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  test('a sign-in shell that exits before its tab closes still tells the chat once', async () => {
+    const seen = vi.fn();
+    const stop = subscribeToSignInTerminalExits(seen);
+    try {
+      render(
+        <Harness
+          bridge={makeBridge({})}
+          launch={{
+            prompt: null,
+            cli: null,
+            command: { executable: 'auggie', args: ['--acp', 'login'] },
+            label: 'Log in with Auggie',
+            nonce: 1,
+            signInThreadId: 't1',
+          }}
+        />,
+      );
+      await revealAndSettle(1_000);
+      const exit = gateExits.filter((handler) => handler !== undefined).at(-1);
+      act(() => exit?.({ exitCode: 0, signal: null }));
+      expect(seen).toHaveBeenCalledTimes(1);
+      const closeButtons = screen.getAllByRole('button', { name: /^Close / });
+      act(() => {
+        fireEvent.click(closeButtons[closeButtons.length - 1] as HTMLElement);
+      });
+      await revealAndSettle(10);
+      expect(seen).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+    }
+  });
+
+  test('an ordinary terminal closing tells no chat', async () => {
+    const seen = vi.fn();
+    const stop = subscribeToSignInTerminalExits(seen);
+    try {
+      render(<Harness bridge={makeBridge({})} launch={{ prompt: null, cli: 'codex', nonce: 1 }} />);
+      await revealAndSettle(1_000);
+      expect(gateExits.length).toBeGreaterThan(0);
+      expect(gateExits.every((handler) => handler === undefined)).toBe(true);
+      expect(seen).not.toHaveBeenCalled();
+    } finally {
+      stop();
+    }
   });
 
   test('a getDockState() that never settles still seeds a terminal on reveal', async () => {

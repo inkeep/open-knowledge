@@ -27,6 +27,7 @@ import { subscribeLocalMenuAction } from '@/lib/local-menu-action-bus';
 import { cn } from '@/lib/utils';
 import { CreateProjectDialog } from './CreateProjectDialog';
 import { NewWorktreeDialog } from './NewWorktreeDialog';
+import { basenameOf } from './project-switcher-recents';
 import { RecentProjectsMenu } from './RecentProjectsMenu';
 
 export const runWithToast = (
@@ -142,12 +143,22 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
 
   const currentPath = bridge.config.projectPath;
   const query = search.trim().toLowerCase();
-  const isSearching = query !== '';
   const loadedRecents = recents ?? [];
-  const menuRecents = isSearching
-    ? loadedRecents.filter((r) => !r.isLinkedWorktree)
-    : loadedRecents;
-  const menuWorktreeModel = isSearching ? null : worktreeModel;
+  const menuRecents = loadedRecents;
+  const menuWorktreeModel = worktreeModel;
+  const triggerName =
+    worktreeModel !== null ? basenameOf(worktreeModel.mainRoot) : bridge.config.projectName;
+  const currentCheckout = worktreeModel?.entries.find((entry) => entry.isCurrent) ?? null;
+  const checkoutName =
+    branch ??
+    (currentCheckout?.worktreePath !== null && currentCheckout?.worktreePath !== undefined
+      ? basenameOf(currentCheckout.worktreePath)
+      : null);
+  const projectScopeName =
+    bridge.config.projectName === triggerName ? null : bridge.config.projectName;
+  const triggerCheckout = [projectScopeName, checkoutName]
+    .filter((value) => value !== null)
+    .join(' · ');
 
   return (
     <>
@@ -157,7 +168,7 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
           <SidebarMenuButton
             className={cn(
               'justify-between text-sidebar-foreground/70 hover:text-sidebar-foreground! data-open:hover:text-sidebar-foreground!',
-              branch !== null && 'h-auto py-1.5',
+              triggerCheckout.length > 0 && 'h-auto py-1.5',
             )}
             data-testid="project-switcher-trigger"
             aria-label={t`Open project menu`}
@@ -182,14 +193,14 @@ export function ProjectSwitcher({ bridge }: ProjectSwitcherProps) {
             }
           >
             <span className="flex min-w-0 flex-col gap-0.5">
-              <span className="truncate">{bridge.config.projectName}</span>
-              {branch !== null ? (
+              <span className="truncate">{triggerName}</span>
+              {triggerCheckout.length > 0 ? (
                 <span
                   className="flex min-w-0 items-center gap-1 text-xs text-sidebar-foreground/50 group-hover/menu-button:text-sidebar-foreground"
                   data-testid="project-switcher-branch"
                 >
                   <GitBranch aria-hidden="true" className="size-3! shrink-0" />
-                  <span className="truncate">{branch}</span>
+                  <span className="truncate">{triggerCheckout}</span>
                 </span>
               ) : null}
             </span>

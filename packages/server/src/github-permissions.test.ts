@@ -159,6 +159,23 @@ describe('checkPushPermission — classification', () => {
     expect(result).toEqual({ kind: 'unknown', error: 'rate-limit' });
   });
 
+  test('403 with retry-after → unknown/rate-limit (secondary rate-limit path)', async () => {
+    const { fetch } = mockFetch(
+      () =>
+        new Response('', {
+          status: 403,
+          headers: { 'retry-after': '60', 'content-type': 'application/json' },
+        }),
+    );
+    const result = await checkPushPermission({
+      owner: 'inkeep',
+      repo: 'open-knowledge',
+      detectGh: ghAvailable(),
+      _fetchFn: fetch,
+    });
+    expect(result).toEqual({ kind: 'unknown', error: 'rate-limit' });
+  });
+
   test('200 with a non-JSON body → unknown/malformed-response', async () => {
     const { fetch } = mockFetch(() => new Response('<!doctype html>', { status: 200 }));
     const result = await checkPushPermission({

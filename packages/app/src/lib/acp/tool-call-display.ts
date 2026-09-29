@@ -1,6 +1,11 @@
-import { OPEN_KNOWLEDGE_MCP_TOOLS } from '@inkeep/open-knowledge-core';
+import {
+  asRecord,
+  identifyOpenKnowledgeToolCall,
+  openKnowledgeToolName,
+  stringField,
+  unwrapMcpInput,
+} from '@inkeep/open-knowledge-core/acp/tool-call-input';
 import { plural, t } from '@lingui/core/macro';
-import { asRecord, stringField, unwrapMcpInput } from '@/lib/acp/mcp-input';
 
 export type ToolCallGlyph =
   | 'read'
@@ -53,13 +58,6 @@ function ellipsize(line: string): string {
   return line.length > PREVIEW_LIMIT ? `${line.slice(0, PREVIEW_LIMIT).trimEnd()}…` : line;
 }
 
-const OPEN_KNOWLEDGE_TOOLS: ReadonlySet<string> = new Set(OPEN_KNOWLEDGE_MCP_TOOLS);
-
-const OPEN_KNOWLEDGE_SERVER = /^(?:open[-_ ]?knowledge|ok)(?:[-_][a-z]+)*$/;
-
-const OPEN_KNOWLEDGE_TITLE =
-  /^(?:mcp[^a-z0-9]+)?(?:open[-_ ]?knowledge|ok)(?:-[a-z]+)*[^a-z0-9]+([a-z_]+)$/;
-
 const MCP_TITLE = /^mcp([^a-zA-Z0-9]+)([a-zA-Z0-9][a-zA-Z0-9_-]*?)\1([a-zA-Z0-9][a-zA-Z0-9_-]*)$/;
 
 function mcpServerAndTool(title: string): string | null {
@@ -67,31 +65,6 @@ function mcpServerAndTool(title: string): string | null {
   const server = match?.[2];
   const tool = match?.[3];
   return server === undefined || tool === undefined ? null : `${server} · ${tool}`;
-}
-
-interface OpenKnowledgeCall {
-  tool: string;
-  args: Record<string, unknown>;
-}
-
-function toolFromTitle(title: string): string | null {
-  return OPEN_KNOWLEDGE_TITLE.exec(title.trim().toLowerCase())?.[1] ?? null;
-}
-
-function identifyOpenKnowledgeCall(title: string, rawInput: unknown): OpenKnowledgeCall | null {
-  const server = stringField(asRecord(rawInput), 'server');
-  if (server !== null && !OPEN_KNOWLEDGE_SERVER.test(server.toLowerCase())) return null;
-
-  const unwrapped = unwrapMcpInput(rawInput);
-  const tool = [toolFromTitle(title), unwrapped?.tool ?? null].find(
-    (candidate): candidate is string => candidate !== null && OPEN_KNOWLEDGE_TOOLS.has(candidate),
-  );
-  if (tool === undefined) return null;
-  return { tool, args: unwrapped?.args ?? {} };
-}
-
-export function openKnowledgeToolName(call: { title: string; rawInput: unknown }): string | null {
-  return identifyOpenKnowledgeCall(call.title, call.rawInput)?.tool ?? null;
 }
 
 function pathsOf(value: unknown): string[] {
@@ -432,7 +405,7 @@ export function describeToolCall(call: {
   toolKind: string;
   rawInput: unknown;
 }): ToolCallDisplay {
-  const openKnowledge = identifyOpenKnowledgeCall(call.title, call.rawInput);
+  const openKnowledge = identifyOpenKnowledgeToolCall(call);
   if (openKnowledge !== null) return openKnowledgeDisplay(openKnowledge.tool, openKnowledge.args);
   const text = mcpServerAndTool(call.title) ?? call.title;
   const value = argumentValue(call.rawInput);

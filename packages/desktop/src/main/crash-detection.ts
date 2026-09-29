@@ -8,7 +8,10 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { dirname, join } from 'node:path';
-import type { OkBugReportCrashDetectedEvent } from '@inkeep/open-knowledge-core';
+import {
+  MINIDUMP_FILE_EXTENSION,
+  type OkBugReportCrashDetectedEvent,
+} from '@inkeep/open-knowledge-core';
 import { asReportableAppVersion } from './crashed-app-version.ts';
 import type { DesktopCrashProcessSnapshot } from './desktop-process-observability.ts';
 import {
@@ -218,7 +221,7 @@ function collectMinidumpEntries(dir: string, depth: number, out: MinidumpEntry[]
       if (depth > 0) collectMinidumpEntries(entryPath, depth - 1, out);
       continue;
     }
-    if (!entry.name.endsWith('.dmp')) continue;
+    if (!entry.name.endsWith(MINIDUMP_FILE_EXTENSION)) continue;
     try {
       out.push({ path: entryPath, mtimeMs: statSync(entryPath).mtimeMs });
     } catch {}

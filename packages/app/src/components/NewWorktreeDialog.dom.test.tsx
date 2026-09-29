@@ -50,6 +50,7 @@ describe('NewWorktreeDialog', () => {
         path: '/repo/.ok/worktrees/my-feature',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       }),
     );
   });
@@ -198,6 +199,33 @@ describe('NewWorktreeDialog', () => {
     expect(screen.queryByTestId('new-worktree-error-detail')).toBeNull();
   });
 
+  test('explains when a nested project is absent without opening the rejected path', async () => {
+    const bridge = createBridge({
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'missing',
+      path: '/repo/.ok/worktrees/dev',
+      created: true,
+    });
+    render(
+      <NewWorktreeDialog
+        open={true}
+        onOpenChange={noop}
+        bridge={bridge as never}
+        currentBranch="main"
+      />,
+    );
+    fireEvent.change(await screen.findByTestId('new-worktree-branch'), {
+      target: { value: 'dev' },
+    });
+    fireEvent.click(screen.getByTestId('new-worktree-create'));
+    const error = await screen.findByTestId('new-worktree-error');
+    expect(error.textContent).toContain('does not contain this OpenKnowledge project');
+    expect(error.textContent).toContain('created but not opened');
+    expect(refreshWorktrees).toHaveBeenCalledTimes(1);
+    expect(bridge.project.open).not.toHaveBeenCalled();
+  });
+
   test('checks out an existing branch (createBranch false, no base) and refreshes the cache', async () => {
     const bridge = createBridge({
       ok: true,
@@ -230,6 +258,7 @@ describe('NewWorktreeDialog', () => {
         path: '/repo/.ok/worktrees/dev',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       }),
     );
     expect(refreshWorktrees).toHaveBeenCalled();
@@ -537,6 +566,7 @@ describe('NewWorktreeDialog', () => {
         path: '/repo/.ok/worktrees/dev',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       }),
     );
     expect(refreshWorktrees).toHaveBeenCalled();
@@ -610,6 +640,7 @@ describe('NewWorktreeDialog', () => {
         path: '/repo/.ok/worktrees/feature-x',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       }),
     );
   });

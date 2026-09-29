@@ -169,6 +169,10 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   const renameInput = page.getByRole('textbox', { name: /rename Untitled/i });
   await expect(renameInput).toBeVisible({ timeout: 10_000 });
   await renameInput.fill(createdDoc);
+  const renameResponse = page.waitForResponse(
+    (response) =>
+      response.url().endsWith('/api/rename-path') && response.request().method() === 'POST',
+  );
   await renameInput.press('Enter');
   await fileRow(page, `${createdDoc}.md`).waitFor({ state: 'visible', timeout: 15_000 });
 
@@ -178,6 +182,8 @@ test('an activated .ok folder row never becomes a mutation target — create fal
     })
     .toBe(true);
   expect(existsSync(join(okDir, `${createdDoc}.md`))).toBe(false);
+  await renameResponse;
+  await expect(sidebar(page).locator('file-tree-container')).toHaveAttribute('data-state', 'idle');
 
   await treeScroller(page).evaluate((el) => {
     el.scrollTop = 0;
@@ -189,6 +195,7 @@ test('an activated .ok folder row never becomes a mutation target — create fal
   await expect(controlRow).toBeFocused();
   await page.keyboard.press('Delete');
   await expect(page.getByRole('alertdialog')).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByRole('alertdialog')).toHaveAccessibleName(`Delete ${controlFolder}/`);
   await page.keyboard.press('Escape');
   await expect(page.getByRole('alertdialog')).toHaveCount(0);
 

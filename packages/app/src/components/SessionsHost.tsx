@@ -5,11 +5,7 @@ import {
   type TerminalCli,
   type TerminalPlacement,
 } from '@inkeep/open-knowledge-core';
-import type {
-  AttachmentPart,
-  ThreadInfo,
-  ThreadStatus,
-} from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type { AttachmentPart, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { useLingui } from '@lingui/react/macro';
 import { SquareTerminalIcon } from 'lucide-react';
 import {
@@ -40,6 +36,7 @@ import {
   HISTORY_PANEL_WIDTH_PX,
   useHistoryPresentationMode,
 } from '@/hooks/use-history-presentation-mode';
+import { useActivityClock } from '@/lib/acp/activity-clock';
 import { isInAppAgentEnabled } from '@/lib/acp/agent-visibility';
 import { detectedHarnessAgents, useAgentCatalogQuery } from '@/lib/acp/catalog';
 import { useEnabledOverrides } from '@/lib/acp/enabled-agents';
@@ -56,6 +53,7 @@ import {
   useDefaultRegisteredAgent,
   useRegisteredAgents,
 } from '@/lib/acp/registered-agents';
+import { formatRelativeActivity } from '@/lib/acp/relative-activity';
 import {
   getAgentThreadClient,
   useAgentThreadConnection,
@@ -65,8 +63,15 @@ import {
   useInitialRosterThreadIds,
   useOpenAgentThreadTabs,
 } from '@/lib/acp/thread-client';
-import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
+import {
+  isEmptyThreadDraft,
+  readThreadDraft,
+  stageThreadDraft,
+  type ThreadDraftContent,
+} from '@/lib/acp/thread-draft-staging';
+import { threadHasUserMessage } from '@/lib/acp/thread-event-model';
 import type { OkDesktopBridge, OkTerminalRestartSnapshot } from '@/lib/desktop-bridge-types';
+import { emitDiagnosticBreadcrumb } from '@/lib/diagnostic-breadcrumb';
 import {
   type DockSessionOrder,
   type DockSurface,
@@ -99,6 +104,7 @@ const ThreadView = lazy(() =>
 
 import { sendQueuedCommentsInThread, subscribeSendToOpenChat } from '@/comments/open-chat-send';
 import { subscribeToPreferredSessionRequests } from './handoff/preferred-session-events';
+import { notifySignInTerminalExited } from './handoff/sign-in-terminal-events';
 import type { TerminalCommandId } from './handoff/terminal-command-events';
 import {
   type ActiveTerminalInputDetail,
@@ -140,7 +146,7 @@ type AgentPaneLaunchRequest = {
   readonly attachments?: readonly AttachmentPart[];
 } & (
   | { readonly prompt?: string | null; readonly stageDraft?: never }
-  | { readonly prompt?: never; readonly stageDraft: string }
+  | { readonly prompt?: never; readonly stageDraft: string | ThreadDraftContent }
 );
 
 type EmptyAgentLaunchState = 'idle' | 'launching' | 'deduped' | 'failed';
@@ -211,30 +217,132 @@ function focusInsideHost(hostEl: HTMLElement | null): boolean {
   return hostEl?.contains(document.activeElement) ?? false;
 }
 
+function focusAvailableButton(candidate: HTMLButtonElement | null): HTMLButtonElement | null {
+  if (
+    candidate == null ||
+    candidate.disabled ||
+    candidate.tabIndex < 0 ||
+    !candidate.isConnected ||
+    candidate.closest('[aria-disabled="true"], [hidden], [inert], [aria-hidden="true"]') != null
+  ) {
+    return null;
+  }
+  let current: HTMLElement | null = candidate;
+  while (current != null) {
+    const style = window.getComputedStyle(current);
+    if (style.display === 'none' || style.visibility === 'hidden') return null;
+    current = current.parentElement;
+  }
+  candidate.focus();
+  return document.activeElement === candidate ? candidate : null;
+}
+
+function emptyAgentStateFallbackButton(hostEl: HTMLElement): HTMLButtonElement | null {
+  return hostEl.querySelector<HTMLButtonElement>('[data-testid="terminal-new-chat"]');
+}
+
 export type SessionSurface = 'terminal-dock' | 'agents-panel' | 'terminal-window';
 
 function chordTargetsHost(hostEl: HTMLElement | null, isWindow: boolean): boolean {
   return isWindow || focusInsideHost(hostEl);
 }
 
-function threadStatusDotClass(status: ThreadStatus): string {
-  switch (status) {
-    case 'running':
-      return 'bg-amber-500 animate-pulse';
+type ThreadTabState = 'working' | 'needs-you' | 'ready' | 'stopped' | 'closed';
+
+function threadTabState(info: ThreadInfo): ThreadTabState {
+  if (info.archived === true) return 'closed';
+  switch (info.status) {
     case 'installing':
     case 'spawning':
     case 'authenticating':
-      return 'bg-sky-500 animate-pulse';
+    case 'running':
+      return 'working';
     case 'auth_required':
     case 'awaiting_permission':
-      return 'bg-amber-500';
+      return 'needs-you';
     case 'ready':
-      return 'bg-emerald-500';
+      return 'ready';
     case 'error':
-      return 'bg-red-500';
-    default:
-      return 'bg-muted-foreground';
+    case 'exited':
+      return 'stopped';
+    default: {
+      const exhaustive: never = info.status;
+      return exhaustive;
+    }
   }
+}
+
+const THREAD_TAB_DOT_CLASSES: Record<ThreadTabState, string> = {
+  working: 'bg-sky-500 animate-pulse',
+  'needs-you': 'bg-amber-500',
+  ready: 'bg-emerald-500',
+  stopped: 'bg-red-500',
+  closed: 'bg-muted-foreground',
+};
+
+function useThreadTabStatus(info: ThreadInfo): string {
+  const { t } = useLingui();
+  if (info.archived === true) return t`Not running`;
+  switch (info.status) {
+    case 'installing':
+    case 'spawning':
+      return t`Starting`;
+    case 'authenticating':
+      return t`Signing in`;
+    case 'auth_required':
+      return t`Needs you to sign in`;
+    case 'awaiting_permission':
+      return t`Waiting for your approval`;
+    case 'running':
+      return t`Working`;
+    case 'ready':
+      return t`Ready`;
+    case 'error':
+      return t`Something went wrong`;
+    case 'exited':
+      return t`Stopped`;
+    default: {
+      const exhaustive: never = info.status;
+      return exhaustive;
+    }
+  }
+}
+
+function ThreadTabPeek({
+  info,
+  threadId,
+  label,
+}: {
+  info: ThreadInfo;
+  threadId: string;
+  label: string;
+}): ReactNode {
+  const { t } = useLingui();
+  const now = useActivityClock();
+  const status = useThreadTabStatus(info);
+  const unread = useAgentThreadUnread(threadId);
+  const lastActivity = formatRelativeActivity(info.lastActivityAt, now);
+  return (
+    <span className="flex max-w-64 flex-col gap-0.5 text-start">
+      <span className="break-words font-medium">{label}</span>
+      <span>{status}</span>
+      {unread ? <span>{t`New activity`}</span> : null}
+      <span className="opacity-70">{t`Last activity ${lastActivity}`}</span>
+    </span>
+  );
+}
+
+function ThreadTabScreenReaderStatus({
+  info,
+  threadId,
+}: {
+  info: ThreadInfo;
+  threadId: string;
+}): ReactNode {
+  const { t } = useLingui();
+  const status = useThreadTabStatus(info);
+  const unread = useAgentThreadUnread(threadId);
+  return unread ? t`, ${status}, new activity` : t`, ${status}`;
 }
 
 function terminalTabIcon(): ReactNode {
@@ -283,9 +391,10 @@ function ThreadTabIcon({
         <span
           className={cn(
             '-right-0.5 -bottom-0.5 absolute size-1.5 rounded-full ring-1 ring-background',
-            threadStatusDotClass(info.status),
-            unread && info.status === 'ready' && 'animate-pulse',
+            THREAD_TAB_DOT_CLASSES[threadTabState(info)],
+            unread && threadTabState(info) === 'ready' && 'animate-pulse',
           )}
+          data-thread-state={threadTabState(info)}
           aria-hidden="true"
         />
       ) : null}
@@ -345,6 +454,8 @@ function closeHistory(
   if (shouldRestoreFocus) queueMicrotask(() => toggleRef.current?.focus());
 }
 
+const MAX_HOST_STATE_REPORTS = 20;
+
 export function SessionsHost({
   bridge,
   terminalCapable = false,
@@ -388,9 +499,13 @@ export function SessionsHost({
     return el;
   });
 
+  const [attachedHostEl, setAttachedHostEl] = useState<HTMLDivElement | null>(null);
+  const hostStateReportsRef = useRef(0);
+
   useLayoutEffect(() => {
     if (hostEl == null || container == null) return;
     if (hostEl.parentElement !== container) container.appendChild(hostEl);
+    setAttachedHostEl(hostEl);
   }, [hostEl, container]);
 
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -459,7 +574,9 @@ export function SessionsHost({
   const [emptyAgentLaunchState, setEmptyAgentLaunchState] = useState<EmptyAgentLaunchState>('idle');
   const pendingAgentLaunchRequestRef = useRef<AgentPaneLaunchRequest | null>(null);
   const retryAgentLaunchRequestRef = useRef<AgentPaneLaunchRequest | null>(null);
-  const emptyAgentRetryButtonRef = useRef<HTMLButtonElement>(null);
+  const emptyAgentActionButtonRef = useRef<HTMLButtonElement>(null);
+  const revealFocusRef = useRef<{ pendingThreadId: string | null } | null>(null);
+  const revealFocusWasShowingRef = useRef(false);
   const retryFocusRequestedRef = useRef(false);
   const restoreAbandonedRef = useRef(false);
   const restoreUnreadRef = useRef(false);
@@ -472,6 +589,13 @@ export function SessionsHost({
   const consumedRestoreRevealNonceRef = useRef(terminalRestoreRevealNonce);
   const ptyIdBySessionRef = useRef(new Map<string, string>());
   const stripLaunchNonceRef = useRef(0);
+
+  useLayoutEffect(() => {
+    const revealing = isShowing && !revealFocusWasShowingRef.current;
+    revealFocusWasShowingRef.current = isShowing;
+    if (revealing) revealFocusRef.current = { pendingThreadId: null };
+    if (!isShowing) revealFocusRef.current = null;
+  }, [isShowing]);
 
   const openThreadTabs = useOpenAgentThreadTabs();
   const agentThreads = useAgentThreads();
@@ -490,7 +614,7 @@ export function SessionsHost({
     if (emptyAgentLaunchState !== 'failed' && emptyAgentLaunchState !== 'deduped') return;
     const frame = window.requestAnimationFrame(() => {
       retryFocusRequestedRef.current = false;
-      emptyAgentRetryButtonRef.current?.focus();
+      emptyAgentActionButtonRef.current?.focus();
     });
     return () => window.cancelAnimationFrame(frame);
   }, [emptyAgentLaunchState]);
@@ -889,12 +1013,48 @@ export function SessionsHost({
     openSession(null, null, 'user');
   }
 
+  function unsentActiveThread(): { threadId: string; agent: ThreadInfo['agent'] } | null {
+    const active = sessionsRef.current.find((session) => session.id === activeSessionIdRef.current);
+    if (active == null || active.kind !== 'thread') return null;
+    const info = threadInfoById.get(active.threadId);
+    if (info === undefined || info.archived === true) return null;
+    const model = getAgentThreadClient().getThreadModel(active.threadId);
+    if (model === null) return null;
+    if (threadHasUserMessage(model)) return null;
+    return { threadId: active.threadId, agent: info.agent };
+  }
+
   function pickNewChatAgent(agent: RegisteredAgent) {
+    const unsent = unsentActiveThread();
+    if (unsent !== null && switchingThreads.has(unsent.threadId)) return;
     dismissCoveringHistory();
     registerAgent(agent);
     writePreferBareTerminal(false);
     saveStickyAgent(threadAgentId(agent));
-    void launchAgentForPane({ agent });
+    if (unsent === null || (unsent.agent.source === agent.source && unsent.agent.id === agent.id)) {
+      void launchAgentForPane({ agent });
+      return;
+    }
+    const draft = readThreadDraft(unsent.threadId);
+    if (draft?.uploadsPending === true) {
+      void launchAgentForPane({ agent });
+      return;
+    }
+    const request: AgentPaneLaunchRequest =
+      draft !== null && !isEmptyThreadDraft(draft) && draft.doc !== null
+        ? { agent, stageDraft: { doc: draft.doc, attachments: draft.attachments } }
+        : { agent };
+    const switchingFrom = unsent.threadId;
+    setSwitchingThreads((previous) => new Set(previous).add(switchingFrom));
+    void launchAgentForPane(request).then((outcome) => {
+      setSwitchingThreads((previous) => {
+        if (!previous.has(switchingFrom)) return previous;
+        const next = new Set(previous);
+        next.delete(switchingFrom);
+        return next;
+      });
+      if (outcome === 'started') getAgentThreadClient().closeThread(switchingFrom);
+    });
   }
 
   function setSessionTitle(id: string, title: string) {
@@ -996,6 +1156,7 @@ export function SessionsHost({
     if (index === -1) return;
     noteUserArrangement();
     const session = current[index];
+    notifySignInExitOnce(session);
     const isLast = current.length === 1;
     pendingActiveKeyRef.current = null;
     if (id === activeSessionIdRef.current) {
@@ -1015,6 +1176,15 @@ export function SessionsHost({
     }
   }
   const closeActiveRef = useRef(() => {});
+  const signInExitNotifiedRef = useRef(new Set<string>());
+  function notifySignInExitOnce(session: (typeof sessionsRef.current)[number] | undefined) {
+    if (session == null || session.kind !== 'terminal') return;
+    const threadId = session.launch?.signInThreadId;
+    if (threadId === undefined || signInExitNotifiedRef.current.has(session.id)) return;
+    signInExitNotifiedRef.current.add(session.id);
+    notifySignInTerminalExited(threadId);
+  }
+  const [switchingThreads, setSwitchingThreads] = useState<ReadonlySet<string>>(() => new Set());
 
   useEffect(() => {
     persistSuppressedRef.current = dockPersistSuppressed;
@@ -1140,7 +1310,11 @@ export function SessionsHost({
     const newest = added[added.length - 1];
     if (newest != null) {
       setActiveSessionId(newest);
-      queueMicrotask(() => focusThreadSession(newest));
+      if (revealFocusRef.current != null) {
+        revealFocusRef.current.pendingThreadId = newest;
+      } else {
+        queueMicrotask(() => focusThreadSession(newest));
+      }
     }
   }, [openThreadTabs, hostThreads]);
 
@@ -1589,18 +1763,38 @@ export function SessionsHost({
   }, [isShowing, visible, onRequestEditorFocus]);
 
   useEffect(() => {
-    if (!isShowing || hostEl == null) return;
+    if (!isShowing || attachedHostEl == null) return;
     const focusOrigin = document.activeElement;
-    const initialActive = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
-    if (initialActive != null && focusSession(initialActive)) return;
-    let landed = focusInsideHost(hostEl);
+    const initialTargetId = revealFocusRef.current?.pendingThreadId ?? activeSessionIdRef.current;
+    const initialActive = sessionsRef.current.find((s) => s.id === initialTargetId);
+    let initialFallbackLanding = false;
+    if (initialActive != null) {
+      const fallback = fallbackSessionFocusElement(initialActive);
+      const preferred = focusSession(initialActive);
+      if (preferred) {
+        revealFocusRef.current = null;
+        return;
+      }
+      initialFallbackLanding = fallback != null && document.activeElement === fallback;
+    }
+    const emptySurfaceLanding =
+      hostThreads && initialActive == null
+        ? (focusAvailableButton(emptyAgentActionButtonRef.current) ??
+          focusAvailableButton(emptyAgentStateFallbackButton(attachedHostEl)))
+        : null;
+    revealFocusRef.current = { pendingThreadId: revealFocusRef.current?.pendingThreadId ?? null };
+    let landed = initialFallbackLanding;
+    let attemptedFallback: HTMLElement | null = null;
     let retryFrame: number | null = null;
+    let retired = false;
     const recordLanding = (event: FocusEvent) => {
-      if (hostEl.contains(event.target as Node | null)) landed = true;
+      if (event.target === attemptedFallback) landed = true;
     };
     const retryFocus = () => {
       retryFrame = null;
-      const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
+      if (retired) return;
+      const targetId = revealFocusRef.current?.pendingThreadId ?? activeSessionIdRef.current;
+      const active = sessionsRef.current.find((s) => s.id === targetId);
       if (active == null) return;
       const focused = document.activeElement;
       const fallback = fallbackSessionFocusElement(active);
@@ -1608,15 +1802,25 @@ export function SessionsHost({
         focused != null &&
         focused !== document.body &&
         focused !== focusOrigin &&
-        focused !== fallback
-      )
+        focused !== fallback &&
+        focused !== emptySurfaceLanding
+      ) {
+        landed = true;
+        revealFocusRef.current = null;
         return;
+      }
+      landed = false;
+      attemptedFallback = fallback;
       const preferred = focusSession(active);
-      landed = focusInsideHost(hostEl) || landed;
-      if (preferred) observer.disconnect();
+      attemptedFallback = null;
+      landed = preferred || landed || (fallback != null && document.activeElement === fallback);
+      if (preferred) {
+        revealFocusRef.current = null;
+        observer.disconnect();
+      }
     };
     const scheduleRetry = () => {
-      if (retryFrame !== null) return;
+      if (retired || retryFrame !== null) return;
       retryFrame = window.requestAnimationFrame(retryFocus);
     };
     document.addEventListener('focusin', recordLanding, true);
@@ -1624,10 +1828,14 @@ export function SessionsHost({
       retryFocus();
       if (!landed) scheduleRetry();
     });
-    observer.observe(hostEl, { subtree: true, childList: true });
+    observer.observe(attachedHostEl, { subtree: true, childList: true });
     scheduleRetry();
     const deadline = window.setTimeout(() => {
+      retired = true;
+      if (retryFrame != null) window.cancelAnimationFrame(retryFrame);
+      retryFrame = null;
       observer.disconnect();
+      revealFocusRef.current = null;
       const focusNowhere =
         document.activeElement == null || document.activeElement === document.body;
       const active = sessionsRef.current.find((s) => s.id === activeSessionIdRef.current);
@@ -1638,12 +1846,14 @@ export function SessionsHost({
       }
     }, REVEAL_FOCUS_LANDING_TIMEOUT_MS);
     return () => {
+      retired = true;
+      revealFocusRef.current = null;
       document.removeEventListener('focusin', recordLanding, true);
       observer.disconnect();
       if (retryFrame != null) window.cancelAnimationFrame(retryFrame);
       window.clearTimeout(deadline);
     };
-  }, [isShowing, hostEl, hostThreads]);
+  }, [isShowing, attachedHostEl, hostThreads]);
 
   const activeThreadIdForView = (() => {
     const active = sessions.find((s) => s.id === activeSessionId);
@@ -1666,18 +1876,40 @@ export function SessionsHost({
     isShowing,
   ]);
 
-  const tabDescriptors: TerminalTabDescriptor[] = sessions.map((session) => ({
-    id: session.id,
-    label: sessionLabel(session),
-    icon:
-      session.kind === 'terminal' ? (
-        terminalTabIcon()
-      ) : (
-        <ThreadTabIcon info={threadInfoById.get(session.threadId)} threadId={session.threadId} />
-      ),
-  }));
+  const tabDescriptors: TerminalTabDescriptor[] = sessions.map((session) => {
+    const label = sessionLabel(session);
+    if (session.kind === 'terminal') return { id: session.id, label, icon: terminalTabIcon() };
+    const info = threadInfoById.get(session.threadId);
+    return {
+      id: session.id,
+      label,
+      icon: <ThreadTabIcon info={info} threadId={session.threadId} />,
+      tooltip:
+        info === undefined ? undefined : (
+          <ThreadTabPeek info={info} threadId={session.threadId} label={label} />
+        ),
+      tooltipDescription:
+        info === undefined
+          ? undefined
+          : (openedAt) => {
+              const lastActivity = formatRelativeActivity(info.lastActivityAt, openedAt);
+              return t`Last activity ${lastActivity}`;
+            },
+      srStatus:
+        info === undefined ? undefined : (
+          <ThreadTabScreenReaderStatus info={info} threadId={session.threadId} />
+        ),
+    };
+  });
 
   const panelSessions = [...sessions].sort((a, b) => a.ordinal - b.ordinal);
+
+  const agentPickPending = sessions.some(
+    (session) =>
+      session.id === activeSessionId &&
+      session.kind === 'thread' &&
+      switchingThreads.has(session.threadId),
+  );
 
   const newButton = (
     <TerminalNewChatButton
@@ -1686,6 +1918,7 @@ export function SessionsHost({
       showAgents={hostThreads}
       registeredAgents={enabledRegisteredAgents}
       onPickAgent={pickNewChatAgent}
+      agentPickPending={agentPickPending}
       onOpenSettings={openAgentSettings}
       liveThreadCount={liveThreadCount}
       showClis={terminalAvailable}
@@ -1702,6 +1935,7 @@ export function SessionsHost({
       showAgents
       registeredAgents={enabledRegisteredAgents}
       onPickAgent={pickNewChatAgent}
+      agentPickPending={agentPickPending}
       onOpenSettings={openAgentSettings}
       liveThreadCount={liveThreadCount}
       showClis={terminalAvailable}
@@ -1722,6 +1956,31 @@ export function SessionsHost({
   ) : null;
 
   const showStrip = sessions.length > 0 || (visible && !isWindow);
+
+  useEffect(() => {
+    if (!hostTerminals) return;
+    if (hostStateReportsRef.current >= MAX_HOST_STATE_REPORTS) return;
+    hostStateReportsRef.current += 1;
+    emitDiagnosticBreadcrumb('ok-terminal-sessions-host-state', {
+      surface,
+      sessions: sessions.length,
+      hostConnected: hostEl?.isConnected === true,
+      hasContainer: container != null,
+      attached: attachedHostEl != null,
+      terminalVisible: visible,
+      showStrip,
+      tabs: hostEl?.querySelectorAll('[role="tab"]').length ?? 0,
+    });
+  }, [
+    hostTerminals,
+    surface,
+    sessions.length,
+    hostEl,
+    container,
+    attachedHostEl,
+    visible,
+    showStrip,
+  ]);
   const emptyAgentStatePreview = readEmptyAgentStatePreview();
   const emptyAgentState =
     emptyAgentStatePreview ??
@@ -1742,7 +2001,7 @@ export function SessionsHost({
       onRetry={
         emptyAgentState === 'agents-unavailable' ? refetchAgentCatalog : retryFailedAgentLaunch
       }
-      retryButtonRef={emptyAgentRetryButtonRef}
+      actionButtonRef={emptyAgentActionButtonRef}
     />
   ) : sessions.length === 0 ? (
     terminalAvailable ? null : (
@@ -1769,6 +2028,11 @@ export function SessionsHost({
               commandId={session.commandId}
               adoptPtyId={session.adoptPtyId}
               onPtyId={(ptyId) => setSessionPtyId(session.id, ptyId)}
+              onExit={
+                session.launch?.signInThreadId === undefined
+                  ? undefined
+                  : () => notifySignInExitOnce(session)
+              }
               onTitleChange={(title) => setSessionTitle(session.id, title)}
               onClose={() => closeSession(session.id)}
             />
@@ -1883,7 +2147,7 @@ export function SessionsHost({
 
   return (
     <>
-      {hostEl != null
+      {attachedHostEl != null
         ? createPortal(
             <>
               {sessionViews}
@@ -1895,7 +2159,7 @@ export function SessionsHost({
                 data-testid="terminal-reorder-announcer"
               />
             </>,
-            hostEl,
+            attachedHostEl,
           )
         : null}
     </>
@@ -1962,12 +2226,12 @@ function EmptyAgentSessionsState({
   state,
   onConfigureAgents,
   onRetry,
-  retryButtonRef,
+  actionButtonRef,
 }: {
   state: EmptyAgentState;
   onConfigureAgents: () => void;
   onRetry: () => void;
-  retryButtonRef: RefObject<HTMLButtonElement | null>;
+  actionButtonRef: RefObject<HTMLButtonElement | null>;
 }) {
   const { t } = useLingui();
   let content: ReactNode;
@@ -1995,7 +2259,7 @@ function EmptyAgentSessionsState({
       content = (
         <div className="flex flex-col items-center gap-2" data-testid="sessions-dock-no-agents">
           <p>{t`No agents enabled.`}</p>
-          <Button type="button" size="sm" onClick={onConfigureAgents}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onConfigureAgents}>
             {t`Configure agents`}
           </Button>
         </div>
@@ -2008,7 +2272,7 @@ function EmptyAgentSessionsState({
           data-testid="sessions-dock-agents-unavailable"
         >
           <p>{t`Couldn't load your agents.`}</p>
-          <Button type="button" size="sm" onClick={onRetry}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onRetry}>
             {t`Try again`}
           </Button>
         </div>
@@ -2018,7 +2282,7 @@ function EmptyAgentSessionsState({
       content = (
         <div className="flex flex-col items-center gap-2" data-testid="sessions-dock-launch-failed">
           <p>{t`Couldn't start the agent thread.`}</p>
-          <Button ref={retryButtonRef} type="button" size="sm" onClick={onRetry}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onRetry}>
             {t`Try again`}
           </Button>
         </div>
@@ -2031,7 +2295,7 @@ function EmptyAgentSessionsState({
           data-testid="sessions-dock-launch-deduped"
         >
           <p>{t`Already starting a chat with this agent — try again in a moment.`}</p>
-          <Button ref={retryButtonRef} type="button" size="sm" onClick={onRetry}>
+          <Button ref={actionButtonRef} type="button" size="sm" onClick={onRetry}>
             {t`Try again`}
           </Button>
         </div>

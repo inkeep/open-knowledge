@@ -355,6 +355,7 @@ export function createSyncRoutes(deps: SyncRouteDeps): ApiRouteGroup {
             handler: 'sync-resolve-conflict',
             cause: e,
             detail,
+            extensions: { file, strategy },
           },
         );
       } finally {

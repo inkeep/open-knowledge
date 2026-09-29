@@ -6,7 +6,9 @@ import type {
 import {
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
   formatRelativeAge,
+  isBugReportAgentChatEntry,
   isBugReportAttachmentEntry,
+  isBugReportCrashDumpEntry,
 } from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import {
@@ -19,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
 import { BugReportPreviousReports } from '@/components/BugReportHistory';
-import { ImageAttachmentList } from '@/components/ImageAttachments';
+import { ImageAttachmentTextarea, useImageAttachmentIntake } from '@/components/ImageAttachments';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -36,7 +38,6 @@ import {
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Spinner } from '@/components/ui/spinner';
-import { Textarea } from '@/components/ui/textarea';
 import { useContactEmail } from '@/hooks/use-contact-email';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { formatBundleSize, zipBasename } from '@/lib/bug-report-support';
@@ -44,7 +45,6 @@ import { commitContactEmail } from '@/lib/contact-email-store';
 import { isImageAttachmentType } from '@/lib/image-attachments';
 import { revealInFileManagerLabel } from '@/lib/platform-labels';
 import { isValidContactEmail } from '@/lib/validate-email';
-import { ReportBugImageDropzone } from './ReportBugImageDropzone';
 
 export interface ReportBugCrashContext {
   source: string;
@@ -121,17 +121,12 @@ function crashInviteLines(invite: OkBugReportCrashDetectedEvent): string[] {
 
 type Phase =
   | { step: 'compose'; creating: boolean; createError: string | null }
-  | { step: 'review'; report: CreatedReport };
+  | { step: 'review'; report: CreatedReport; conversationMissing: boolean };
 
 const COMPOSE_IDLE: Phase = { step: 'compose', creating: false, createError: null };
 
 function reportIncludesRawDump(report: CreatedReport): boolean {
-  return report.summary.files.some(
-    (file) =>
-      file.startsWith('extra/') &&
-      file !== BUG_REPORT_SCREENSHOT_ZIP_ENTRY &&
-      !isBugReportAttachmentEntry(file),
-  );
+  return report.summary.files.some(isBugReportCrashDumpEntry);
 }
 
 function reportIncludesAttachments(report: CreatedReport): boolean {
@@ -156,6 +151,7 @@ export interface ReportBugDialogProps {
   screenshot?: OkBugReportScreenshot | null;
   pointerMarked?: boolean;
   crashDumpAvailable?: boolean;
+  agentChat?: { readonly threadId: string };
 }
 
 function ReportBugDialog({
@@ -167,6 +163,7 @@ function ReportBugDialog({
   screenshot = null,
   pointerMarked = false,
   crashDumpAvailable: probedCrashDumpAvailable = false,
+  agentChat,
 }: ReportBugDialogProps) {
   const { t } = useLingui();
   const isMacOS =
@@ -178,7 +175,13 @@ function ReportBugDialog({
     crashInvite !== undefined ? crashInvite.minidumpAvailable === true : probedCrashDumpAvailable;
   const [includeDump, setIncludeDump] = useState(crashInvite?.minidumpAvailable === true);
   const [includeScreenshot, setIncludeScreenshot] = useState(true);
+  const [includeChat, setIncludeChat] = useState(true);
   const [attachments, setAttachments] = useState<File[]>([]);
+  const attachmentIntake = useImageAttachmentIntake({
+    files: attachments,
+    onChange: setAttachments,
+    disabled: phase.step !== 'compose' || phase.creating,
+  });
   const [shareEmail, setShareEmail] = useState(false);
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState<string | null>(null);
@@ -190,6 +193,8 @@ function ReportBugDialog({
   const detailedHintId = useId();
   const dumpId = useId();
   const dumpHintId = useId();
+  const chatId = useId();
+  const chatHintId = useId();
   const screenshotId = useId();
   const screenshotHintId = useId();
   const shareEmailId = useId();
@@ -239,15 +244,18 @@ function ReportBugDialog({
     setPhase({ step: 'compose', creating: true, createError: null });
     const attachmentInputs = await toAttachmentInputs(attachments);
     if (opSeqRef.current !== seq) return;
+    const conversationRequested = agentChat !== undefined && includeChat;
     const result = await bugReport.create({
       level: detailed ? 'full' : 'standard',
       note: composeNote(note, noteContextLines),
       ...(crashDumpAvailable ? { includeCrashDump: includeDump } : {}),
       ...(screenshot !== null ? { includeScreenshot } : {}),
       ...(attachmentInputs.length > 0 ? { attachments: attachmentInputs } : {}),
+      ...(conversationRequested ? { agentChatThreadId: agentChat.threadId } : {}),
     });
     if (opSeqRef.current !== seq) return;
     if (result.ok) {
+      attachmentIntake.clearProblem();
       setPhase({
         step: 'review',
         report: {
@@ -255,6 +263,8 @@ function ReportBugDialog({
           zipSizeBytes: result.zipSizeBytes,
           summary: result.summary,
         },
+        conversationMissing:
+          conversationRequested && !result.summary.files.some(isBugReportAgentChatEntry),
       });
     } else {
       setPhase({ step: 'compose', creating: false, createError: result.error });
@@ -276,6 +286,7 @@ function ReportBugDialog({
     setDetailed(crashContext !== undefined || crashInvite !== undefined);
     setIncludeDump(crashInvite?.minidumpAvailable === true);
     setIncludeScreenshot(true);
+    setIncludeChat(true);
     setAttachments([]);
     handleOpenChange(false);
   }
@@ -286,7 +297,7 @@ function ReportBugDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="gap-2 sm:max-w-[46.25rem]">
+      <DialogContent className="gap-2 sm:max-w-[46.25rem]" onPaste={attachmentIntake.onPaste}>
         {phase.step === 'compose' && (
           <>
             {/* oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL. */}
@@ -362,7 +373,7 @@ function ReportBugDialog({
                     <Trans>(optional)</Trans>
                   </span>
                 </label>
-                <Textarea
+                <ImageAttachmentTextarea
                   id={noteId}
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
@@ -372,87 +383,74 @@ function ReportBugDialog({
                       : t`e.g. The editor froze after I pasted a large table`
                   }
                   rows={2}
-                  className="min-h-16 resize-none"
-                  disabled={phase.creating}
+                  className="min-h-20"
+                  intake={attachmentIntake}
+                  hint={<Trans>Images aren't redacted.</Trans>}
                 />
               </div>
-              <div
-                className={
-                  screenshot !== null ? 'grid gap-4 sm:grid-cols-[1.35fr_1fr]' : 'grid gap-4'
-                }
-              >
-                {screenshot !== null && (
-                  <div className="flex min-w-0 flex-col gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <Checkbox
-                        id={screenshotId}
-                        checked={includeScreenshot}
-                        onCheckedChange={(value) => setIncludeScreenshot(value === true)}
-                        aria-describedby={screenshotHintId}
-                        disabled={phase.creating}
-                      />
-                      <label htmlFor={screenshotId} className="text-sm font-medium">
-                        <Trans>Screenshot</Trans>
-                      </label>
-                    </div>
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button
-                          variant="outline"
-                          className="relative block h-auto w-full overflow-hidden rounded-md bg-muted/40 p-0"
-                          aria-label={t`Enlarge screenshot`}
-                        >
-                          <img
-                            src={screenshot.dataUrl}
-                            alt={t`Preview of the screenshot`}
-                            className={`h-44 w-full object-contain ${includeScreenshot ? '' : 'opacity-40'}`}
-                          />
-                          <span className="absolute end-2 top-2 flex items-center gap-1 rounded bg-popover/90 px-2 py-1 text-xs">
-                            <ExpandIcon className="size-3" aria-hidden="true" />
-                            <Trans>Enlarge</Trans>
-                          </span>
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="sm:max-w-5xl">
-                        {/* oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL. */}
-                        <DialogHeader className="pr-6">
-                          <DialogTitle>
-                            <Trans>Screenshot preview</Trans>
-                          </DialogTitle>
-                          <DialogDescription>
-                            <Trans>Not redacted. Check the image before sharing.</Trans>
-                          </DialogDescription>
-                        </DialogHeader>
-                        <DialogBody>
-                          <img
-                            src={screenshot.dataUrl}
-                            alt={t`Preview of the screenshot`}
-                            className="max-h-[70dvh] w-full object-contain"
-                          />
-                        </DialogBody>
-                      </DialogContent>
-                    </Dialog>
-                    <p id={screenshotHintId} className="text-xs text-muted-foreground">
-                      {pointerMarked ? (
-                        <Trans>Captured before this dialog, with the pointer marked.</Trans>
-                      ) : (
-                        <Trans>Captured before this dialog.</Trans>
-                      )}{' '}
-                      <Trans>Not redacted. Check the image before sharing.</Trans>
-                    </p>
+              {screenshot !== null && (
+                <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+                  <div className="flex items-center gap-2.5 pt-0.5">
+                    <Checkbox
+                      id={screenshotId}
+                      checked={includeScreenshot}
+                      onCheckedChange={(value) => setIncludeScreenshot(value === true)}
+                      aria-describedby={screenshotHintId}
+                      disabled={phase.creating}
+                    />
+                    <label htmlFor={screenshotId} className="text-sm font-medium">
+                      <Trans>Screenshot</Trans>
+                    </label>
                   </div>
-                )}
-                <div
-                  className={`flex min-w-0 flex-col gap-2 ${screenshot !== null ? 'sm:pt-7' : ''}`}
-                >
-                  <ReportBugImageDropzone
-                    files={attachments}
-                    onChange={setAttachments}
-                    disabled={phase.creating}
-                  />
-                  <ImageAttachmentList files={attachments} onChange={setAttachments} />
+                  <Dialog>
+                    <DialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="relative block h-auto w-40 shrink-0 overflow-hidden rounded-md bg-muted/40 p-0"
+                        aria-label={t`Enlarge screenshot`}
+                      >
+                        <img
+                          src={screenshot.dataUrl}
+                          alt={t`Preview of the screenshot`}
+                          className={`h-24 w-full object-contain ${includeScreenshot ? '' : 'opacity-40'}`}
+                        />
+                        <span className="absolute end-1 top-1 flex items-center rounded bg-popover/90 p-1">
+                          <ExpandIcon className="size-3" aria-hidden="true" />
+                        </span>
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-5xl">
+                      {/* oxlint-disable-next-line ok/no-physical-direction-utility -- Matches the shared dialog close button's physical right-2 position, including RTL. */}
+                      <DialogHeader className="pr-6">
+                        <DialogTitle>
+                          <Trans>Screenshot preview</Trans>
+                        </DialogTitle>
+                        <DialogDescription>
+                          <Trans>Not redacted. Check the image before sharing.</Trans>
+                        </DialogDescription>
+                      </DialogHeader>
+                      <DialogBody>
+                        <img
+                          src={screenshot.dataUrl}
+                          alt={t`Preview of the screenshot`}
+                          className="max-h-[70dvh] w-full object-contain"
+                        />
+                      </DialogBody>
+                    </DialogContent>
+                  </Dialog>
+                  <p
+                    id={screenshotHintId}
+                    className="min-w-40 flex-1 text-xs text-muted-foreground"
+                  >
+                    {pointerMarked ? (
+                      <Trans>Captured before this dialog, with the pointer marked.</Trans>
+                    ) : (
+                      <Trans>Captured before this dialog.</Trans>
+                    )}{' '}
+                    <Trans>Not redacted. Check the image before sharing.</Trans>
+                  </p>
                 </div>
-              </div>
+              )}
               <fieldset className="grid min-w-0 gap-3 border-t pt-3 sm:grid-cols-[1fr_1.25fr]">
                 <legend className="sr-only">
                   <Trans>What to include</Trans>
@@ -575,6 +573,32 @@ function ReportBugDialog({
                   </div>
                 </div>
               )}
+              {agentChat !== undefined && (
+                <div className="flex items-start gap-2.5">
+                  <Checkbox
+                    id={chatId}
+                    checked={includeChat}
+                    onCheckedChange={(value) => setIncludeChat(value === true)}
+                    aria-describedby={chatHintId}
+                    disabled={phase.creating}
+                    className="mt-0.5"
+                  />
+                  <div className="flex flex-col gap-0.5">
+                    <label htmlFor={chatId} className="text-sm font-medium">
+                      <Trans>This conversation</Trans>
+                    </label>
+                    <p id={chatHintId} className="text-1sm text-muted-foreground">
+                      <Trans>
+                        The chat's messages, tool calls, and their output, so we can see what the
+                        agent did, plus the chat's title, the project folder's path, the document it
+                        started from, and the agent and its settings. Images are replaced by their
+                        type and size, and attached text files are included. It can contain document
+                        content, so uncheck it if you'd rather not share it.
+                      </Trans>
+                    </p>
+                  </div>
+                </div>
+              )}
               <p className="text-xs text-muted-foreground">
                 <Trans>
                   Known secrets are scrubbed, but other sensitive information may remain. Review the
@@ -656,6 +680,11 @@ function ReportBugDialog({
                 rawDumpIncluded={reportIncludesRawDump(phase.report)}
                 onReveal={revealZip}
               />
+              {phase.conversationMissing ? (
+                <p className="text-xs text-muted-foreground">
+                  <Trans>The conversation couldn't be added to this report.</Trans>
+                </p>
+              ) : null}
               <div className="flex items-start gap-2 rounded-md border bg-muted/50 px-3 py-2.5 text-xs text-muted-foreground">
                 <ShieldIcon
                   className="size-3.5 shrink-0 text-muted-foreground"

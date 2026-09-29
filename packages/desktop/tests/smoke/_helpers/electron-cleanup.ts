@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ElectronApplication } from '@playwright/test';
+import { PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS } from './launch-desktop';
 
 export interface TaskkillOutcome {
   status: number | null;
@@ -90,8 +91,44 @@ export function captureAppProcess(app: ElectronApplication): ChildProcess {
 }
 
 const LOCK_SEARCH_DEPTH = 3;
+export const DETACHED_SERVER_RELEASE_BOUND_MS = 15_000;
+export const SMOKE_SERVER_RELEASE_WINDOW_MS =
+  PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS + DETACHED_SERVER_RELEASE_BOUND_MS;
+const DETACHED_SERVER_POLL_INTERVAL_MS = 100;
 
-function collectServerLockPids(dir: string, depth: number, out: number[]): void {
+export interface ServerLockRecord {
+  lockPath: string;
+  pid: number | undefined;
+}
+
+type LockRead =
+  | { kind: 'absent' }
+  | { kind: 'unreadable' }
+  | { kind: 'foreign' }
+  | { kind: 'names'; pid: number };
+
+function readLock(lockPath: string): LockRead {
+  let text: string;
+  try {
+    text = readFileSync(lockPath, 'utf8');
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === 'ENOENT' || code === 'ENOTDIR' ? { kind: 'absent' } : { kind: 'unreadable' };
+  }
+  let lock: unknown;
+  try {
+    lock = JSON.parse(text);
+  } catch {
+    return { kind: 'unreadable' };
+  }
+  const pid =
+    typeof lock === 'object' && lock !== null ? (lock as { pid?: unknown }).pid : undefined;
+  return typeof pid === 'number' && Number.isInteger(pid) && pid > 1
+    ? { kind: 'names', pid }
+    : { kind: 'foreign' };
+}
+
+function collectServerLocks(dir: string, depth: number, out: Map<string, ServerLockRecord>): void {
   let entries: Dirent[];
   try {
     entries = readdirSync(dir, { withFileTypes: true, encoding: 'utf8' });
@@ -101,25 +138,59 @@ function collectServerLockPids(dir: string, depth: number, out: number[]): void 
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name === '.ok') {
-      try {
-        const raw = readFileSync(join(dir, '.ok', 'local', 'server.lock'), 'utf8');
-        const pid = (JSON.parse(raw) as { pid?: unknown }).pid;
-        if (typeof pid === 'number' && Number.isInteger(pid) && pid > 1) out.push(pid);
-      } catch {}
+      const lockPath = join(dir, '.ok', 'local', 'server.lock');
+      const lock = readLock(lockPath);
+      if (lock.kind === 'names') out.set(lockPath, { lockPath, pid: lock.pid });
+      if (lock.kind === 'unreadable') out.set(lockPath, { lockPath, pid: undefined });
       continue;
     }
-    if (depth > 0) collectServerLockPids(join(dir, entry.name), depth - 1, out);
+    if (depth > 0) collectServerLocks(join(dir, entry.name), depth - 1, out);
   }
 }
 
-export function reapDetachedServers(dirs: readonly string[]): void {
-  const pids: number[] = [];
-  for (const dir of dirs) collectServerLockPids(dir, LOCK_SEARCH_DEPTH, pids);
-  for (const pid of new Set(pids)) {
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {}
+function probeFindsProcess(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
   }
+}
+
+function stillPending(record: ServerLockRecord): ServerLockRecord[] {
+  const lock = readLock(record.lockPath);
+  if (lock.kind === 'absent') return [];
+  if (lock.kind === 'names' && record.pid !== undefined && lock.pid !== record.pid) return [];
+  const pid = record.pid === undefined && lock.kind === 'names' ? lock.pid : record.pid;
+  if (pid === undefined) return [record];
+  return probeFindsProcess(pid) ? [{ lockPath: record.lockPath, pid }] : [];
+}
+
+export async function reapDetachedServers(
+  dirs: readonly string[],
+  opts: { boundMs?: number } = {},
+): Promise<ServerLockRecord[]> {
+  const boundMs = opts.boundMs ?? DETACHED_SERVER_RELEASE_BOUND_MS;
+  const locks = new Map<string, ServerLockRecord>();
+  for (const dir of dirs) collectServerLocks(dir, LOCK_SEARCH_DEPTH, locks);
+  const deadline = Date.now() + boundMs;
+  let pending = [...locks.values()].flatMap(stillPending);
+  while (pending.length > 0 && Date.now() < deadline) {
+    await new Promise<void>((resolve) => setTimeout(resolve, DETACHED_SERVER_POLL_INTERVAL_MS));
+    pending = pending.flatMap(stillPending);
+  }
+  for (const { lockPath, pid } of pending) {
+    if (pid === undefined) {
+      console.warn(
+        `[smoke-test] ${lockPath} still exists with no readable pid after ${boundMs}ms; nothing was signalled`,
+      );
+      continue;
+    }
+    console.warn(
+      `[smoke-test] server pid ${pid} still holds ${lockPath} after ${boundMs}ms; not signalling a process this teardown did not spawn`,
+    );
+  }
+  return pending;
 }
 
 function openStdioCount(proc: ChildProcess): number {
@@ -176,12 +247,14 @@ export type KillAttempt = { elapsedMs: number } & (
   | { lever: 'taskkill'; outcome: TaskkillOutcome }
   | { lever: 'group-kill'; thrown: unknown }
   | { lever: 'no-pid' }
+  | { lever: 'leader-exited' }
 );
 
 async function escalate(proc: ChildProcess, opts: CloseAppBoundedOpts): Promise<KillAttempt> {
   const startedAt = Date.now();
   const pid = usablePid(proc);
   if (pid === undefined) return { lever: 'no-pid', elapsedMs: Date.now() - startedAt };
+  if (hasExited(proc)) return { lever: 'leader-exited', elapsedMs: Date.now() - startedAt };
   if ((opts.platform ?? process.platform) === 'win32') {
     const outcome = await (opts.taskkill ?? taskkillTree)(pid);
     return { lever: 'taskkill', outcome, elapsedMs: Date.now() - startedAt };
@@ -203,6 +276,9 @@ function quote(text: string): string {
 function describeAttempt(attempt: KillAttempt, slot: number): string {
   const label = `attempt ${slot + 1} after ${attempt.elapsedMs}ms`;
   if (attempt.lever === 'no-pid') return `${label}: no usable pid, no kill lever available`;
+  if (attempt.lever === 'leader-exited') {
+    return `${label}: nothing signalled because the launched process had already exited`;
+  }
   if (attempt.lever === 'group-kill') {
     const thrown = attempt.thrown;
     if (thrown === undefined) return `${label}: kill(-pid, SIGKILL) sent`;
@@ -278,4 +354,56 @@ export async function closeAppBounded(
   const failure = new AppCleanupIncompleteError(proc, attempts, gracefulWaitMs);
   incomplete.set(proc, failure);
   throw failure;
+}
+
+export async function closeAppsThenAwaitServerRelease(
+  procs: readonly ChildProcess[],
+  cleanupDirs: readonly string[],
+  opts: CloseAppBoundedOpts & { gracefulMs: number; serverReleaseWindowMs?: number },
+): Promise<{
+  unclosed: Error[];
+  survivors: ServerLockRecord[];
+  closedAfterServerRelease: number[];
+}> {
+  const { serverReleaseWindowMs, ...closeOpts } = opts;
+  const failedFirstClose: { proc: ChildProcess; failure: Error }[] = [];
+  for (const proc of procs) {
+    try {
+      await closeAppBounded(proc, closeOpts);
+    } catch (error) {
+      failedFirstClose.push({
+        proc,
+        failure: error instanceof Error ? error : new Error(String(error)),
+      });
+    }
+  }
+  const survivors = await reapDetachedServers(cleanupDirs, {
+    boundMs: serverReleaseWindowMs ?? SMOKE_SERVER_RELEASE_WINDOW_MS,
+  });
+  const unclosed: Error[] = [];
+  const closedAfterServerRelease: number[] = [];
+  for (const { proc, failure } of failedFirstClose) {
+    await waitForClose(proc, opts.postKillReapMs ?? POST_KILL_REAP_MS);
+    if (hasClosed(proc)) {
+      if (proc.pid !== undefined) closedAfterServerRelease.push(proc.pid);
+    } else {
+      unclosed.push(failure);
+    }
+  }
+  return { unclosed, survivors, closedAfterServerRelease };
+}
+
+export function cleanupIncompleteReport(
+  unclosed: readonly Error[],
+  survivors: readonly ServerLockRecord[],
+): string | undefined {
+  if (unclosed.length === 0 && survivors.length === 0) return undefined;
+  return [
+    ...unclosed.map((error) => error.message),
+    ...survivors.map(({ lockPath, pid }) =>
+      pid === undefined
+        ? `${lockPath} still existed with no readable pid when the release window ended; nothing was signalled`
+        : `server pid ${pid} still held ${lockPath} when the release window ended; it was not signalled`,
+    ),
+  ].join('\n\n');
 }

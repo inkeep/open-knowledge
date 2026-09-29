@@ -1,6 +1,7 @@
 import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { configDefaults, type Plugin, type ViteUserConfig } from 'vitest/config';
+import { UNCACHED_TEST_GLOBS } from './uncached-tier';
 
 const cpuCount = availableParallelism();
 const boundedMaxForks =
@@ -41,7 +42,13 @@ export const okVitestBase = {
     env: { DO_NOT_TRACK: '1' },
     setupFiles: [bunGlobalShimPath, noNetConnectPath],
     include: ['**/*.test.ts?(x)'],
-    exclude: [...configDefaults.exclude, '**/*.spec.*', '**/*.e2e.*', '**/*.dom.test.ts?(x)'],
+    exclude: [
+      ...configDefaults.exclude,
+      '**/*.spec.*',
+      '**/*.e2e.*',
+      '**/*.dom.test.ts?(x)',
+      ...UNCACHED_TEST_GLOBS,
+    ],
     ...(boundedMaxForks === undefined ? {} : { minWorkers: 1, maxWorkers: boundedMaxForks }),
   },
 } satisfies ViteUserConfig;

@@ -1,7 +1,9 @@
 import { expect } from '@playwright/test';
-import { buildInputReadyProbe } from './terminal-smoke-shell';
-
-const WINDOWS_SETTLE_BUDGET_DIVISOR = 3;
+import {
+  buildInputReadyProbe,
+  WINDOWS_PRIMARY_PROMPT_AT_END,
+  windowsPrimaryPromptAfter,
+} from './terminal-smoke-shell';
 
 export async function waitForShellReady(
   readTerminalText: () => Promise<string>,
@@ -11,52 +13,87 @@ export async function waitForShellReady(
     quietPolls = 3,
     interval = 250,
     platform = process.platform,
-    resetTerminalInput,
   }: WaitForShellReadyOptions = {},
 ): Promise<void> {
   if (platform === 'win32') {
-    if (resetTerminalInput === undefined) {
-      throw new Error('Windows shell readiness requires resetTerminalInput');
-    }
     const startedAt = Date.now();
-    await settleTerminalTextBestEffort(
+    await waitForTerminalText(
       readTerminalText,
-      Math.floor(timeout / WINDOWS_SETTLE_BUDGET_DIVISOR),
-      quietPolls,
+      WINDOWS_PRIMARY_PROMPT_AT_END,
+      'PowerShell primary prompt',
+      timeout,
       interval,
     );
-
-    const { marker, command: probe } = buildInputReadyProbe('win32');
-    let attempted = false;
-    const remainingTimeout = Math.max(interval, timeout - (Date.now() - startedAt));
-    await expect(async () => {
-      if ((await readTerminalText()).includes(marker)) return;
-
-      // STOP: this reset must not land within a second of pty create; U+0003 written there kills the shell with STATUS_CONTROL_C_EXIT no matter how much output it has already drawn, so the settle phase and interval ahead of it are load-bearing.
-      if (attempted) {
-        await resetTerminalInput();
-      }
-      attempted = true;
-      await sendTerminalCommand(probe);
-      expect(await readTerminalText()).toContain(marker);
-    }).toPass({ timeout: remainingTimeout, intervals: [interval] });
+    const firstPromptWaitMs = Date.now() - startedAt;
+    const { marker, command } = buildInputReadyProbe('win32');
+    await sendTerminalCommand(command);
+    try {
+      await waitForTerminalText(
+        readTerminalText,
+        windowsPrimaryPromptAfter(marker),
+        'PowerShell primary prompt after the probe output',
+        Math.max(interval, timeout - (Date.now() - startedAt)),
+        interval,
+      );
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `The post-probe prompt wait ended without a match; this waitForShellReady call's timeout is ${timeout} ms and its first-prompt wait took ${firstPromptWaitMs} ms.\n\n${reason}`,
+        { cause: error },
+      );
+    }
     return;
   }
 
   await waitForQuietTerminalText(readTerminalText, timeout, quietPolls, interval);
 }
 
-async function settleTerminalTextBestEffort(
+async function waitForTerminalText(
   readTerminalText: () => Promise<string>,
+  pattern: RegExp,
+  label: string,
   timeout: number,
-  quietPolls: number,
   interval: number,
 ): Promise<void> {
-  try {
-    await waitForQuietTerminalText(readTerminalText, timeout, quietPolls, interval);
-  } catch {
-    return;
-  }
+  await expect(async () => {
+    expect(await readTerminalText(), label).toMatch(pattern);
+  }).toPass({ timeout, intervals: [interval] });
+}
+
+export async function waitForTerminalOutput(
+  readTerminalText: () => Promise<string>,
+  expected: string,
+  { stallMs }: WaitForTerminalOutputOptions,
+): Promise<void> {
+  const startedAt = performance.now();
+  let lastText: string | undefined;
+  let lastChangeSeenAt = startedAt;
+  let reads = 0;
+  let changes = 0;
+  let slowestReadMs = 0;
+  await expect
+    .poll(
+      async () => {
+        const readStartedAt = performance.now();
+        const text = await readTerminalText();
+        const readEndedAt = performance.now();
+        reads += 1;
+        slowestReadMs = Math.max(slowestReadMs, readEndedAt - readStartedAt);
+        if (text !== lastText) {
+          lastText = text;
+          lastChangeSeenAt = readEndedAt;
+          changes += 1;
+          return text;
+        }
+        const quietMs = readStartedAt - lastChangeSeenAt;
+        if (quietMs < stallMs) return text;
+        throw new Error(
+          `The terminal output stopped advancing before it showed ${JSON.stringify(expected)}: it has not changed for ${Math.round(quietMs)} ms, which reaches this wait's declared stall window of ${stallMs} ms. It last changed ${Math.round(lastChangeSeenAt - startedAt)} ms after the wait began; the wait made ${reads} reads in ${Math.round(readEndedAt - startedAt)} ms, ${changes} of which changed the text, and its slowest read took ${Math.round(slowestReadMs)} ms. Last read: ${JSON.stringify(text)}`,
+        );
+      },
+      { message: `the terminal output shows ${expected}`, timeout: 0 },
+    )
+    .toContain(expected);
 }
 
 async function waitForQuietTerminalText(
@@ -71,7 +108,11 @@ async function waitForQuietTerminalText(
     const current = (await readTerminalText()).replace(/\s+$/, '');
     stable = current.length > 0 && current === previous ? stable + 1 : 0;
     previous = current;
-    expect(stable).toBeGreaterThanOrEqual(quietPolls);
+    if (stable < quietPolls) {
+      throw new Error(
+        `terminal text quiet for ${stable} of ${quietPolls} polls; last read ${JSON.stringify(current)}`,
+      );
+    }
   }).toPass({ timeout, intervals: [interval] });
 }
 
@@ -80,5 +121,8 @@ export interface WaitForShellReadyOptions {
   quietPolls?: number;
   interval?: number;
   platform?: NodeJS.Platform;
-  resetTerminalInput?: () => Promise<void>;
+}
+
+export interface WaitForTerminalOutputOptions {
+  stallMs: number;
 }

@@ -37,6 +37,7 @@ interface TerminalNewChatButtonProps {
   readonly onPickAgent: (agent: RegisteredAgent) => void;
   readonly onOpenSettings: () => void;
   readonly liveThreadCount: number;
+  readonly agentPickPending?: boolean;
   readonly showClis: boolean;
   readonly onPickCli: (cli: TerminalCli) => void;
   readonly onPickTerminal: () => void;
@@ -53,6 +54,7 @@ export function TerminalNewChatButton({
   onPickAgent,
   onOpenSettings,
   liveThreadCount,
+  agentPickPending = false,
   showClis,
   onPickCli,
   onPickTerminal,
@@ -66,6 +68,7 @@ export function TerminalNewChatButton({
   const catalog = useAgentCatalogQuery(menuOpen && showAgents);
   const maxThreads = catalog.data?.maxThreads ?? 8;
   const atCap = liveThreadCount >= maxThreads;
+  const agentsDisabled = atCap || agentPickPending;
   const hasMenu = showAgents || showClis;
   const panel = presentation === 'panel';
   const agentName = selected.kind === 'agent' ? selected.agent?.name : undefined;
@@ -109,7 +112,7 @@ export function TerminalNewChatButton({
                   selected.kind === 'agent' &&
                   selected.agent?.source === agent.source &&
                   selected.agent?.id === agent.id,
-                disabled: atCap,
+                disabled: agentsDisabled,
                 onSelect: () => onPickAgent(agent),
               }))
             : undefined
@@ -222,7 +225,7 @@ export function TerminalNewChatButton({
                   <DropdownMenuItem
                     key={`${agent.source}:${agent.id}`}
                     onSelect={() => onPickAgent(agent)}
-                    disabled={atCap}
+                    disabled={agentsDisabled}
                     data-testid={`terminal-new-chat-agent-${agent.id}`}
                     aria-current={isSelected ? 'true' : undefined}
                   >

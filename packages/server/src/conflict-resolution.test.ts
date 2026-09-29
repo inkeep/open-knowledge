@@ -39,22 +39,30 @@ interface RecordingIo extends ConflictIo {
   gitCalls: string[][];
   applied: Array<{ docName: string; bytes: string }>;
   unlinks: string[];
+  declaredDeletes: string[];
 }
 
 function makeIo(overrides: Partial<ConflictIo> = {}): RecordingIo {
   const gitCalls: string[][] = [];
   const applied: Array<{ docName: string; bytes: string }> = [];
   const unlinks: string[] = [];
+  const declaredDeletes: string[] = [];
   return {
     gitCalls,
     applied,
     unlinks,
+    declaredDeletes,
     gitRaw: async (args) => {
       gitCalls.push(args);
       return '';
     },
     writeProjectFileUntracked: (absPath, bytes) => writeFileSync(absPath, bytes, 'utf-8'),
-    unlinkProjectFile: (absPath) => {
+    unlinkProjectFileUndeclared: (absPath) => {
+      unlinks.push(absPath);
+      rmSync(absPath, { force: true });
+    },
+    deleteResolvedContent: (_docName, absPath) => {
+      declaredDeletes.push(absPath);
       unlinks.push(absPath);
       rmSync(absPath, { force: true });
     },
@@ -186,11 +194,13 @@ describe('resolveWorkingTree', () => {
     expect(readFileSync(replacementTarget, 'utf-8')).toBe('REPLACEMENT\n');
   });
 
-  test("'delete' removes the file", async () => {
+  test("'delete' removes the file without declaring the removal", async () => {
     writeFileSync(join(projectDir, 'a.md'), 'LOCAL\n', 'utf-8');
     const io = makeIo();
     await resolveWorkingTree(workingTree('a.md', 'sha'), 'delete', undefined, io, projectDir);
     expect(existsSync(join(projectDir, 'a.md'))).toBe(false);
+    expect(io.unlinks).toEqual([join(projectDir, 'a.md')]);
+    expect(io.declaredDeletes).toEqual([]);
   });
 });
 
@@ -217,12 +227,13 @@ describe('resolveReconcile', () => {
     expect(io.gitCalls).toEqual([]);
   });
 
-  test("'delete' unlinks the file and never touches git", async () => {
+  test("'delete' unlinks the file through the declared-removal member and never touches git", async () => {
     const abs = join(projectDir, 'a.md');
     writeFileSync(abs, 'markers\n', 'utf-8');
     const io = makeIo();
     await resolveReconcile('delete', undefined, 'a', abs, io);
     expect(io.unlinks).toEqual([abs]);
+    expect(io.declaredDeletes).toEqual([abs]);
     expect(io.gitCalls).toEqual([]);
   });
 

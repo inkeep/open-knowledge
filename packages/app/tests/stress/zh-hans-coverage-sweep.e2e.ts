@@ -15,6 +15,7 @@ const NEVER_TRANSLATED = [
   'Claude Desktop',
   'Open Knowledge',
   'OpenKnowledge',
+  'Google Chrome',
   'Claude Agent',
   'Claude Code',
   'Claude CLI',

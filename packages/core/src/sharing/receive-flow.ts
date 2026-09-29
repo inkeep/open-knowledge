@@ -19,6 +19,8 @@ export interface RecentProjectEntry {
   gitRemoteUrl?: string;
   gitCommonDir?: string;
   mainRoot?: string;
+  checkoutRoot?: string;
+  projectSubPath?: string;
   isLinkedWorktree?: boolean;
   branch?: string | null;
 }

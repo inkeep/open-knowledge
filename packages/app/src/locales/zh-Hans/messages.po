@@ -15,8 +15,8 @@ msgstr ""
 
 #: src/components/acp/AttachFilesButton.tsx
 #: src/components/ComposerAddMenu.tsx
-msgid " · references only (no embedded contents)"
-msgstr " · 仅引用（无嵌入内容）"
+msgid " · project files as references"
+msgstr " · 项目文件以引用方式发送"
 
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
@@ -33,6 +33,14 @@ msgstr " 已恢复你的选择。"
 #: src/components/settings/LintingSection.tsx
 msgid "— except"
 msgstr "— 除了"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr "，{status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr "，{status}，有新动态"
 
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
@@ -391,6 +399,11 @@ msgstr "已选择 {1} 个项目中的 {0} 个"
 msgid "{0} of {1} selected"
 msgstr "已选择 {1} 项中的 {0} 项"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{totalCount} 项中的 {0} 项"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -614,6 +627,10 @@ msgstr "{agentName} 需要你登录。"
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} 报告：{headline}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} stopped unexpectedly."
+msgstr "{agentName} 意外停止了。"
+
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} stopped with an error."
 msgstr "{agentName} 因错误已停止。"
@@ -676,6 +693,22 @@ msgstr "{conflictCount, plural, other {# 处冲突}}"
 msgid "{conflictCount, plural, one {# file conflicted} other {# files conflicted}}"
 msgstr "{conflictCount, plural, other {# 个文件有冲突}}"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, other {{files} 超过 {capKb} KB，无法随消息发送。请先添加到项目中，再用 @ 提及。}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, other {{files} 超过 {capKb} KB，无法随消息发送。只要文件在项目中，就可以用 @ 提及。}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} aren't text files, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, other {{files} 不是文本文件，无法随消息发送。请先添加到项目中，再用 @ 提及。}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, other {{files} 不是文本文件，无法随消息发送。只要文件在项目中，就可以用 @ 提及。}}"
+
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, other {# 条评论}}"
@@ -688,6 +721,10 @@ msgstr "{count, plural, other {# 条评论}}，分布在 {0, plural, other {# �
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, other {# 个文档}}"
+
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, other {已附加 # 张图片}}"
 
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
@@ -741,7 +778,7 @@ msgstr "{count} 个技能"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, other {# 天前}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "{days} 天前"
 
@@ -876,10 +913,10 @@ msgstr "{folderCount, plural, other {文件夹}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} 个 GitHub star"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "{hours} 小时前"
 
@@ -928,6 +965,10 @@ msgstr "已启用 {label}"
 msgid "{label} problems"
 msgstr "{label} 个问题"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} 使用隔离的应用数据"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, other {会移除这个文件上 # 处较新的编辑。}}"
@@ -957,25 +998,17 @@ msgstr "来自 {server} MCP 服务器的 {mcpTool}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, other {# 分钟前}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "{minutes} 分钟前"
 
 #: src/components/TerminalNewChatButton.tsx
 msgid "{name} CLI"
 msgstr "{name} CLI"
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
-msgstr "{name} 没有可解析的路径 — 智能体只能读取工作区内的文件。"
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} is outside the workspace. Move it into your project first."
-msgstr "{name} 位于工作区之外。请先将它移入你的项目。"
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
@@ -991,12 +1024,11 @@ msgstr "{omitted, plural, other {另有 # 处属性改动未显示}}"
 
 #: src/components/RecentProjectsMenu.tsx
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
-msgstr "{openedWorktreeCount, plural, other {worktree}}"
+msgstr "{openedWorktreeCount, plural, one {worktree} other {worktree}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
-msgstr "{outsideWorkspaceCount, plural, other {已跳过 # 个工作区外的文件。}}"
+#: src/lib/acp/image-attachment.ts
+msgid "{others, plural, one {# other} other {# others}}"
+msgstr "{others, plural, other {其他 # 个文件}}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
@@ -1104,11 +1136,6 @@ msgstr "{sizeText} · 已隐去机密信息 · {fileCount, plural, other {# 个�
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, other {技能}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
-msgstr "{skipTotal, plural, other {已跳过 # 个无法附加的文件。}}"
-
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -1162,11 +1189,6 @@ msgstr "{total, plural, other {# 个问题}}"
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, other {只显示某个文件夹里的前 {formattedCount} 个项目——该文件夹的其余内容已隐藏。}}"
-
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
-msgstr "{unknownPathCount, plural, other {已跳过 # 个文件 — 此浏览器无法按路径附加文件。}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"
@@ -1234,6 +1256,10 @@ msgstr "# 每行一个模式。\n"
 "#   drafts/\n"
 "#   *.draft.md\n"
 "#   !keep.md"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "#{position} in the merge queue"
+msgstr "合并队列中的第 {position} 位"
 
 #: src/components/GraphLegend.tsx
 msgid "+ {overflow} more"
@@ -1339,9 +1365,17 @@ msgstr "<0>已修改</0>标记表示你的配置显式设置过的规则——�
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr "名为 {shareBranch} 的分支已存在。请从切换器中打开它的 worktree。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "同名分支已存在。请从切换器中打开它的 worktree。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs could not be run (exit code {code}). Check that it is executable and that you have permission to run it."
+msgstr "无法运行智能体需要的命令（退出码 {code}）。请检查它是否可执行，以及你是否有权限运行它。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs was not found (exit code {code}). Check that the agent's dependencies are installed and on your PATH."
+msgstr "找不到智能体需要的命令（退出码 {code}）。请检查智能体的依赖项已安装并位于你的 PATH 中。"
 
 #: src/components/SkillInstallMenu.tsx
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
@@ -1389,8 +1423,8 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "一行带脚注<0><1>[1]</1></0>的文字，定义显示在下方。"
 
 #: src/components/RecentProjectsMenu.tsx
-msgid "A linked worktree of this repository"
-msgstr "此仓库的一个链接 worktree"
+msgid "A linked worktree whose location could not be loaded"
+msgstr "无法加载位置的链接工作树"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
@@ -1507,7 +1541,7 @@ msgstr "标题、描述、标签——任何能描述这个文件夹的信息。
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "{shareBranch} 的 worktree 文件夹已存在。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A worktree folder for that branch already exists."
 msgstr "该分支的 worktree 文件夹已存在。"
 
@@ -1620,6 +1654,10 @@ msgstr "添加评论"
 msgid "Add a file name (e.g. notes.md)"
 msgstr "添加文件名（例如 notes.md）"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add a host"
+msgstr "添加主机"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr "添加键"
@@ -1672,6 +1710,10 @@ msgstr "添加字段"
 #: src/components/settings/LintingSection.tsx
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "添加文件或文件夹模式，例如 guides/**/*"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add host"
+msgstr "添加主机"
 
 #: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
@@ -1885,6 +1927,7 @@ msgstr "智能体设置 — {headerSummary}：更改将在继续此对话时生�
 msgid "Agent transcript"
 msgstr "智能体记录"
 
+#: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
@@ -1933,6 +1976,10 @@ msgstr "所有标签"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Allow external access"
 msgstr "允许外部访问"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Allow read-only commands while this chat is open"
+msgstr "在此对话打开期间允许只读命令"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
@@ -2057,6 +2104,10 @@ msgstr "还有什么想补充的吗？（可选）"
 msgid "API key set"
 msgstr "API 密钥已设置"
 
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "应用实例：{label}"
+
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
 msgstr "记录改动内容的只追加日志。"
@@ -2073,9 +2124,13 @@ msgstr "适用于"
 msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "适用于（glob 模式；以 ! 开头表示排除；留空表示所有文档）"
 
+#: src/components/settings/settings-fields.ts
+msgid "Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals."
+msgstr "适用于本机上的所有项目，作用于开启后新建的智能体面板中的 Claude Code 和 Codex 对话。智能体可以在它自己的 Google Chrome 窗口中（使用全新的配置文件）打开页面、点击、输入和截图。需要已安装 Google Chrome 和 Node.js。除非智能体自身的模式或权限设置跳过了批准，否则每个浏览器操作都会请求你的批准，且没有“始终允许”的选项。"
+
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "适用于这台电脑上的所有项目。从内置终端启动的 Claude 和 Codex 会自动批准 OpenKnowledge 的读写工具（Claude 还会自动运行 “ok open”）。删除、移动、共享、导入或安装技能，以及其他命令和 OpenKnowledge 之外的文件编辑，仍然会询问。Cursor、OpenCode 和 Pi 不受影响。各智能体尽力而为。"
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "适用于本机上的所有项目。从内置终端启动的 Claude 和 Codex，以及应用内智能体面板对话中的任何智能体，都会自动批准 OpenKnowledge 的读写工具（Claude 还会自动运行 \"ok open\"）。删除、移动、分享、导入或安装技能、其他命令以及非 OpenKnowledge 文件的编辑仍会询问。在终端中，Cursor、OpenCode 和 Pi 不受影响。按各智能体尽力而为。"
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2125,6 +2180,10 @@ msgstr "已批准"
 msgid "Approved — {optionName}"
 msgstr "已批准 — {optionName}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Approved and ready to merge"
+msgstr "已批准，可以合并"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "确定要把这个文件转换成模板吗？原文件会被删除。此操作无法撤销。"
@@ -2167,7 +2226,6 @@ msgstr "询问"
 msgid "Ask {0} CLI"
 msgstr "询问 {0} CLI"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -2179,6 +2237,10 @@ msgstr "询问 {agentName}"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Ask {agentName}, {hint}"
 msgstr "询问 {agentName}，{hint}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Ask again before read-only commands"
+msgstr "只读命令前重新询问"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -2242,7 +2304,6 @@ msgid "Attach files"
 msgstr "附加文件"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "附加图片"
 
@@ -2317,6 +2378,10 @@ msgstr "自动修复（{count}）"
 #: src/components/ProblemsPanel.tsx
 msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr "自动修复只作用于有已知机械修复方案的问题。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Auto-merge is on"
+msgstr "已开启自动合并"
 
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
@@ -2433,6 +2498,10 @@ msgstr "同步之前，请设置你用于 git 提交的身份："
 msgid "Before you go, mind sharing why?"
 msgstr "在你离开之前，方便说说原因吗？"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Behind the base branch"
+msgstr "落后于基础分支"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "下方"
@@ -2470,6 +2539,10 @@ msgstr "Blob Run"
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "由 LaTeX 源码经 KaTeX 渲染的独立数学公式。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Blocked from merging"
+msgstr "已被阻止合并"
 
 #: src/components/TemplateForm.tsx
 msgid "Blog post"
@@ -2560,10 +2633,6 @@ msgstr "失效链接"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "浏览"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "浏览文件"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -2766,6 +2835,10 @@ msgstr "在外部被修改"
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "自上次在这里写入后，它在 OK 之外被改动过——显示的是磁盘上现在的状态"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Changes requested"
+msgstr "已请求更改"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Changes save automatically to this theme."
 msgstr "更改会自动保存到此主题。"
@@ -2895,6 +2968,10 @@ msgstr "正在检查…"
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "带复选框的清单。"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Checks are running"
+msgstr "检查正在运行"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Checks documents for markdown problems and can fix them"
@@ -3215,6 +3292,11 @@ msgstr "关闭窗口"
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "关闭窗口"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Closed"
+msgstr "已关闭"
 
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
@@ -4056,7 +4138,7 @@ msgstr "无法创建模板：{error}"
 msgid "Couldn't create the report"
 msgstr "无法生成报告"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "无法创建 worktree。请换一个名字。"
 
@@ -4185,6 +4267,10 @@ msgstr "无法加载 OpenKnowledge 技能。请重试。"
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "无法加载该版本的预览。你仍然可以在下方选择如何解决。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Couldn't load worktrees."
+msgstr "无法加载工作树。"
+
 #: src/components/SessionsHost.tsx
 msgid "Couldn't load your agents."
 msgstr "无法加载你的智能体。"
@@ -4227,10 +4313,6 @@ msgstr "无法打开“{name}”：{0}"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Couldn't open {0} for editing: {1}"
 msgstr "无法打开 {0} 进行编辑：{1}"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Couldn't open a worktree for that branch."
-msgstr "无法为该分支打开 worktree。"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Couldn't open document"
@@ -5018,6 +5100,11 @@ msgstr "描述 token"
 msgid "Design"
 msgstr "设计"
 
+#. placeholder {0}: entry.headSha.slice(0, 8)
+#: src/components/RecentProjectsMenu.tsx
+msgid "Detached at {0}"
+msgstr "在 {0} 处分离"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "detached HEAD"
 msgstr "分离的 HEAD"
@@ -5047,14 +5134,6 @@ msgstr "检测到的 OpenKnowledge 项目"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "正在检测"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "开发实例：{label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "开发实例：{label}（与其他 worktree 隔离）"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"
@@ -5104,10 +5183,6 @@ msgstr "禁用 {file}"
 #: src/components/settings/LintingSection.tsx
 msgid "Disable {id}"
 msgstr "禁用 {id}"
-
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Disable external link previews"
-msgstr "关闭外部链接预览"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
@@ -5297,6 +5372,11 @@ msgstr "正在下载 {0} {1}…"
 msgid "Downloads a fresh copy from GitHub."
 msgstr "从 GitHub 下载一份全新的副本。"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Draft"
+msgstr "草稿"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a spec"
 msgstr "起草一份规格"
@@ -5326,9 +5406,9 @@ msgstr "拖动项目 {0} 以重新排序"
 msgid "Drop a file to attach"
 msgstr "拖放文件以附加"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "将图片拖放到此处"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "拖放、粘贴或附加最多 {MAX_ATTACHMENTS} 张图片。"
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5698,10 +5778,6 @@ msgstr "启用自动（仅拉取）"
 msgid "Enable Auto (Pull only)?"
 msgstr "启用自动（仅拉取）？"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
-msgstr "开启外部链接预览"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
 msgstr "启用索引"
@@ -5760,10 +5836,6 @@ msgid "Eng specs"
 msgstr "工程规格"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "放大"
-
-#: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
 msgstr "放大屏幕截图"
 
@@ -5779,6 +5851,10 @@ msgstr "请输入 6 位十六进制值，例如 #1A2B3C"
 #: src/components/SeedDialog.tsx
 msgid "Enter a folder name (e.g. brain)."
 msgstr "请输入文件夹名（例如 brain）。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Enter a hostname, such as github.example.com."
+msgstr "请输入主机名，例如 github.example.com。"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Enter a name for this theme."
@@ -5804,7 +5880,7 @@ msgstr "请输入仓库 URL 或 owner/repo"
 msgid "Enter a title for this template."
 msgstr "请为这个模板输入标题。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "请输入有效的分支名（不能有空格、不能以点开头、不能包含 \"..\"）。"
 
@@ -5831,6 +5907,11 @@ msgstr "输入至少 3 个字符以按含义搜索。"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "输入你的隧道所服务的公开来源，例如 https://notes.example.com"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "enterprise"
+msgstr "企业版"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
@@ -5977,6 +6058,10 @@ msgstr "要将此项目公开到网络吗？"
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
 msgstr "公开时会固定一个端口，使隧道的目标在重启后保持稳定。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "external"
+msgstr "外部"
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5993,6 +6078,10 @@ msgstr "外部链接"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews"
 msgstr "外部链接预览"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews and GitHub reference cards"
+msgstr "外部链接预览和 GitHub 引用卡片"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
@@ -6759,6 +6848,11 @@ msgstr "开始设置"
 msgid "Gets the link that opens this project or a document in the app"
 msgstr "获取在应用中打开此项目或文档的链接"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GHES"
+msgstr "GHES"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git 与 PR"
@@ -6767,9 +6861,22 @@ msgstr "Git 与 PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git 无法跟踪这个文件夹——它是空的，或者只包含被忽略的文件。在你添加一个受跟踪的文档之前，链接不会生效。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git has locked this worktree, but it can still be opened."
+msgstr "Git 已锁定此工作树，但仍可打开。"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "git host"
+msgstr "git 主机"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "尚未设置 git 身份——提交会使用默认作者。设置你自己的身份，队友才能看到你的名字。"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git marks this worktree as prunable."
+msgstr "Git 将此工作树标记为可清理。"
 
 #: src/components/settings/LintingSection.tsx
 msgid "Git merge rule"
@@ -6779,7 +6886,7 @@ msgstr "Git 合并规则"
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git 在这个仓库中需要 {tool}，但它未安装或找不到。请先安装再重试。"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git 需要一个辅助工具（例如 git-lfs），但它未安装或找不到。请先安装再重试。"
 
@@ -6804,13 +6911,26 @@ msgstr "GitHub 连接已过期。请重新连接以继续。"
 msgid "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
 msgstr "GitHub 拒绝了该请求。你可能需要在浏览器中为 {owner} 授权 OpenKnowledge。"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub Enterprise Server hosts"
+msgstr "GitHub Enterprise Server 主机"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "GitHub 登录缺失或已过期。请重新连接以继续同步。"
 
+#: src/components/settings/AccountSection.tsx
+msgid "GitHub sign-in isn't available for this project"
+msgstr "此项目无法使用 GitHub 登录"
+
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub、一个 git URL，或一个本地路径。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "github.com is always recognized, so it doesn't need to be added."
+msgstr "github.com 始终会被识别，无需添加。"
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -6908,6 +7028,10 @@ msgstr "强制换行"
 #: src/components/FeedbackForm.tsx
 msgid "Hard to use"
 msgstr "不好用"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Has merge conflicts"
+msgstr "存在合并冲突"
 
 #: src/components/acp/working-status.ts
 msgid "Having a look around…"
@@ -7275,6 +7399,10 @@ msgstr "如果 {agent} 没有显示 OpenKnowledge 工具，请在这个项目中
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "如果你正在编辑的内容收到更新，你可以像处理合并冲突那样选择保留哪个版本。"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "If you use a GitHub Enterprise Server, add its host here so OpenKnowledge can sign in, check push permission, and create share links for repositories hosted there."
+msgstr "如果你使用 GitHub Enterprise Server，请在此添加其主机，以便 OpenKnowledge 能够登录、检查推送权限，并为托管在其上的仓库创建共享链接。"
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Ignore broken links in log.md"
 msgstr "忽略 log.md 中失效的链接"
@@ -7325,7 +7453,7 @@ msgstr "无法将图片目标“{shown}”解析为项目本地文件。"
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "图片目标“{shown}”未指向现有文件。"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "图片不会进行脱敏处理。"
 
@@ -7377,6 +7505,10 @@ msgstr "在日志文档中：条目标题以 ISO YYYY-MM-DD 日期开头，最�
 msgid "In a subfolder"
 msgstr "在子文件夹中"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
+msgstr "在智能体对话中，把鼠标悬停在指向 GitHub 拉取请求或议题的链接上时，会向 GitHub 查询其状态；OpenKnowledge 能使用你的 GitHub 登录时会以你的身份查询。"
+
 #: src/components/settings/LintingSection.tsx
 msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr "在索引文档中：条目位于节标题下，每个条目都带有一个链接。围绕列表的散文很好。"
@@ -7402,6 +7534,14 @@ msgstr "在 Git 项目中，Open Knowledge 还添加了一个作用域 .gitattri
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "在 Claude 桌面应用中"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue"
+msgstr "在合并队列中"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue, but it can't merge"
+msgstr "在合并队列中，但无法合并"
 
 #: src/components/acp/ThreadView.tsx
 msgid "In the plan above, please "
@@ -7571,6 +7711,10 @@ msgstr "在下方插入行"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
 msgstr "通过 CodeMirror 的默认按键映射，在源码编辑器中插入、删除、移动、复制和缩进行。"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Inside this repository's OpenKnowledge worktrees folder"
+msgstr "位于此仓库的 OpenKnowledge 工作树文件夹内"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
@@ -7767,6 +7911,10 @@ msgstr "给 AI 的指令"
 msgid "Integrations"
 msgstr "集成"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "internal"
+msgstr "内部"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid color value"
 msgstr "无效的颜色值"
@@ -7858,12 +8006,12 @@ msgstr "跳到锚定的文本"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "跳到光标所在块的 markdown 源码，居中并高亮显示。"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "刚刚"
 
@@ -7960,6 +8108,10 @@ msgstr "标签 <0>（可见的链接文本）</0>"
 msgid "Language"
 msgstr "语言"
 
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "最近活动：{lastActivity}"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
 msgstr "最近一次编辑"
@@ -7998,6 +8150,10 @@ msgstr "无论文件夹层级多深，都不在“问题”、文件资源管理
 msgid "Leave these comments out of this message"
 msgstr "不要把这些评论放进这条消息"
 
+#: src/components/settings/settings-fields.ts
+msgid "Let agent chats use a browser"
+msgstr "允许智能体对话使用浏览器"
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
 msgstr "让智能体无需询问即可使用 OpenKnowledge"
@@ -8033,6 +8189,10 @@ msgstr "限制每个请求发送的文本总量。超出预算的单个块会单
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "第 {displayLine} 行"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Lines changed: {additions} added, {deletions} removed"
+msgstr "更改的行数：新增 {additions}，删除 {deletions}"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
@@ -8284,6 +8444,10 @@ msgstr "正在加载对话"
 msgid "Loading timeline history"
 msgstr "正在加载时间线历史"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Loading worktrees…"
+msgstr "正在加载工作树…"
+
 #: src/components/BugReportHistory.tsx
 msgid "Loading your reports"
 msgstr "正在加载你的报告"
@@ -8335,6 +8499,10 @@ msgstr "已请求仅本地，但未创建 git 仓库。等项目位于 git 仓�
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
 msgstr "位置"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "locked"
+msgstr "已锁定"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Logs & system info"
@@ -8501,6 +8669,11 @@ msgstr "中号章节标题。"
 #: src/components/ComposerAddMenu.tsx
 msgid "Mention a page"
 msgstr "提及页面"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Merged"
+msgstr "已合并"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -8902,6 +9075,10 @@ msgstr "导航与建议"
 msgid "Navigation history"
 msgstr "导航历史"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "需要你登录"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "{path} 中嵌套的 .okignore 有错误"
@@ -8940,6 +9117,10 @@ msgstr "新建"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "新建 {0} 对话"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "有新动态"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9250,6 +9431,10 @@ msgstr "还没有编辑。"
 msgid "No emoji found."
 msgstr "没有找到表情符号。"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "No Enterprise hosts added. Only github.com is treated as GitHub."
+msgstr "尚未添加 Enterprise 主机。只有 github.com 会被视为 GitHub。"
+
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "No excerpt"
 msgstr "没有摘要"
@@ -9306,7 +9491,7 @@ msgstr "还没有中枢页面。当页面积累起入链后，中枢页就会出
 msgid "No icons match."
 msgstr "没有匹配的图标。"
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "未添加任何图片。"
 
@@ -9512,6 +9697,10 @@ msgstr "还没有模板。添加一个，让这个文件夹中的新文档有个
 msgid "No workspace"
 msgstr "无工作区"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "No worktrees found."
+msgstr "未找到工作树。"
+
 #: src/components/settings/SyncSection.tsx
 msgid "None"
 msgstr "无"
@@ -9588,6 +9777,11 @@ msgstr "尚未安装到此项目。"
 msgid "Not now"
 msgstr "暂时不用"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Not planned"
+msgstr "未计划"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Not redacted. Check the image before sharing."
 msgstr "未经脱敏。分享前请检查图片。"
@@ -9595,6 +9789,10 @@ msgstr "未经脱敏。分享前请检查图片。"
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "对于 <0>{endpointHost}</0> 这样的回环端点不是必需的——大多数本地服务器会忽略它。只有你的服务器需要时才添加。"
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "未运行"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -9609,6 +9807,10 @@ msgstr "无（{0} 无法匹配任何文档）"
 #: src/components/settings/LintingSection.tsx
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "无（{0} 不是有效的模式）"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "{agentName} 已有 {stalledMinutes, plural, other {# 分钟}}没有任何响应。如果看起来卡住了，请停止并重试。"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
@@ -9699,8 +9901,8 @@ msgid "Older"
 msgstr "更早"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
-msgstr "开启——把鼠标悬停在外部链接上时，会把它的 URL 发送到目标站点以获取预览。"
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview, and hovering a GitHub reference in an agent chat asks GitHub for it."
+msgstr "开启——把鼠标悬停在外部链接上时，会把它的 URL 发送到目标站点以获取预览；在智能体对话中悬停在 GitHub 引用上时，会向 GitHub 查询。"
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -9760,6 +9962,11 @@ msgstr "只有当前文档使用 <0>#{tag}</0>。"
 #: src/components/GraphPanel.tsx
 msgid "Open"
 msgstr "打开"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Open"
+msgstr "开放"
 
 #. placeholder {0}: status.remote.label
 #: src/components/settings/SyncSection.tsx
@@ -10125,6 +10332,10 @@ msgstr "打开 worktree"
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "打开、浏览、接受或关闭 CodeMirror 的补全建议。"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Opened by {author}"
+msgstr "由 {author} 创建"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Opened existing OpenKnowledge project at {ancestorPath}"
 msgstr "已打开位于 {ancestorPath} 的现有 OpenKnowledge 项目"
@@ -10165,6 +10376,14 @@ msgstr "OpenKnowledge 检查了项目"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge 未在此设备上找到该智能体。"
+
+#: src/components/settings/AccountSection.tsx
+msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
+msgstr "OpenKnowledge 在此项目的 git 远程地址中找不到主机名，因此无法确定要登录哪个 GitHub 服务器。"
+
+#: src/lib/worktree-create-error.ts
+msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+msgstr "OpenKnowledge 无法完成此项目的设置。工作树已创建，但未打开。"
 
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
@@ -10479,6 +10698,10 @@ msgstr "大纲"
 msgid "Outside any block"
 msgstr "不在任何块内"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Outside this repository's OpenKnowledge worktrees folder"
+msgstr "位于此仓库的 OpenKnowledge 工作树文件夹外"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
 msgstr "不在 Open Knowledge 的提交范围内。"
@@ -10676,6 +10899,10 @@ msgstr "路径解析结果在项目之外"
 #: src/editor/link-path-suggestions.tsx
 msgid "Path suggestions"
 msgstr "路径建议"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "path unreadable"
+msgstr "路径无法读取"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Pattern (regex)"
@@ -11002,6 +11229,10 @@ msgstr "项目文件夹已创建，但 git init 失败。请重试。"
 msgid "Project MCP server"
 msgstr "项目 MCP 服务器"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "project missing"
+msgstr "项目缺失"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
 msgstr "项目名称"
@@ -11253,6 +11484,10 @@ msgstr "读取"
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "通读这个代码库，为其中最复杂的模块起草一份技术规格：总览、架构、关键文件和待解决的问题，全部从规格索引页链接过去。"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Read-only allowed"
+msgstr "已允许只读命令"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr "来自另一个文档的 MirrorSource 块的只读副本。在来源处编辑，这里会实时更新。"
@@ -11304,6 +11539,14 @@ msgstr "读取此项目的 OpenKnowledge 设置"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "读取编辑之间未解决的冲突"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "就绪"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Ready to merge"
+msgstr "可以合并"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -11514,6 +11757,10 @@ msgstr "移除 {chip}"
 #: src/editor/composer-mention/composer-mention.ts
 msgid "Remove {fullLabel} from context"
 msgstr "把 {fullLabel} 从上下文中移除"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Remove {host}"
+msgstr "移除 {host}"
 
 #: src/components/FrontmatterRow.tsx
 msgid "Remove {keyName}"
@@ -11817,6 +12064,10 @@ msgstr "报告问题"
 msgid "Report a bug…"
 msgstr "报告问题…"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Report a problem with this chat…"
+msgstr "报告此对话的问题…"
+
 #. placeholder {0}: row.projectSlug
 #: src/components/BugReportHistory.tsx
 msgid "Report from {0}"
@@ -11870,6 +12121,10 @@ msgstr "必填"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "必填"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Required checks are failing"
+msgstr "必需的检查未通过"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
@@ -12281,6 +12536,10 @@ msgstr "保存到"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "与项目一起保存，供你的团队使用。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Saved. Restart OpenKnowledge to apply the change."
+msgstr "已保存。重启 OpenKnowledge 以应用更改。"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Saves a restore point for every document in the project"
@@ -12986,8 +13245,8 @@ msgid "Show {hiddenCount} more"
 msgstr "再显示 {hiddenCount} 个"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor."
-msgstr "在编辑器中把鼠标悬停在外部链接上时显示预览卡片。"
+msgid "Show a preview card when you hover an external link in the editor or a GitHub pull request or issue in an agent chat."
+msgstr "在编辑器中把鼠标悬停在外部链接上，或在智能体对话中悬停在 GitHub 拉取请求或议题上时显示预览卡片。"
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -13192,6 +13451,10 @@ msgstr "登录失败：{0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "登录流程未确认就结束了——请重试"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "正在登录"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "正在登录 {agentName}"
@@ -13371,6 +13634,10 @@ msgstr "Slidev 启动超时。请重试。"
 msgid "Small section heading."
 msgstr "小号章节标题。"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Some checks failed, but it can still merge"
+msgstr "部分检查失败，但仍可合并"
+
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
 msgstr "部分拖放的文件无法安全插入。"
@@ -13408,6 +13675,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "{scopeLabel}中已经有名为“{name}”的内容，服务器无法确认它是什么。它可能是此前一次失败的移动有意保留下来的：删除或替换之前，请先与原件比对。"
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "出了点问题"
 
@@ -13532,6 +13800,10 @@ msgstr "拆分列表项"
 msgid "Stage the selected passage in the agents panel, ready to extend and send."
 msgstr "把选中的内容放入智能体面板，随时可以补充并发送。"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "stale Git entry"
+msgstr "过期的 Git 条目"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "在 GitHub 上给我们点个星"
@@ -13548,6 +13820,11 @@ msgstr "使用 ＋ 按钮开始对话，或从页面启动智能体。"
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
 msgstr "开始新对话"
+
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "开始新对话（{0}）"
 
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
@@ -13588,6 +13865,10 @@ msgstr "入门包"
 #: src/components/CreateProjectDialog.tsx
 msgid "Starter packs"
 msgstr "入门包"
+
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "正在启动"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
@@ -13675,6 +13956,10 @@ msgstr "停止修复。已修复的文件保持已修复状态。"
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "停止维护 index.md"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "已停止"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -14026,6 +14311,7 @@ msgstr "可用模板"
 
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
+#: src/components/EditorArea.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -14116,8 +14402,8 @@ msgstr "感谢你的反馈！"
 msgid "Thanks for the report!"
 msgstr "感谢你的报告！"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "That branch is already open in another worktree."
 msgstr "那个分支已经在另一个 worktree 中打开了。"
 
@@ -14145,6 +14431,14 @@ msgstr "该文件夹中已有并非 Open Knowledge 写入的代码，同一份�
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "那个文件夹还不是 OpenKnowledge 项目。要初始化并打开它吗？"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That host is already in the list."
+msgstr "该主机已在列表中。"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That isn't a valid hostname. Enter just the server name, such as github.example.com."
+msgstr "这不是有效的主机名。请只输入服务器名称，例如 github.example.com。"
 
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "That language isn't available for spell checking."
@@ -14193,6 +14487,38 @@ msgstr "智能体正在工作"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "智能体没有停止。强制停止将关闭此对话并退出智能体。"
 
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process ended on its own."
+msgstr "智能体进程自行结束了。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped for an unknown reason."
+msgstr "智能体进程因未知原因停止了。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped with exit code {code}."
+msgstr "智能体进程已停止，退出码为 {code}。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+msgstr "智能体进程已被强制终止（SIGKILL）。这通常来自系统（例如内存耗尽），或来自结束它的另一个进程。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was stopped by a {signal} signal."
+msgstr "智能体进程被 {signal} 信号停止。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was told to stop ({signal}) by something outside this chat."
+msgstr "此对话之外的某个来源要求智能体进程停止（{signal}）。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent ran out of memory."
+msgstr "智能体内存不足。"
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
+msgstr "智能体的安装缺少文件（找不到某个模块）。重新安装智能体通常可以解决。"
+
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
 msgstr "智能体的 OpenKnowledge 工具无法连接到服务器。请让智能体重试；如果一直失败，请开始新对话。"
@@ -14225,9 +14551,25 @@ msgstr "画板查看器加载失败。请检查网络连接后重试。"
 msgid "The board's content is not a valid Excalidraw scene."
 msgstr "画板内容不是有效的 Excalidraw 场景。"
 
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details."
+msgstr "此对话中无法使用浏览器，因为未能完成设置。详细信息请查看 OpenKnowledge 的日志。"
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
+msgstr "此对话中无法使用浏览器，因为没有找到能启动它的 Node.js 安装。请安装 Node.js，然后开始新的对话。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "The chat's messages, tool calls, and their output, so we can see what the agent did, plus the chat's title, the project folder's path, the document it started from, and the agent and its settings. Images are replaced by their type and size, and attached text files are included. It can contain document content, so uncheck it if you'd rather not share it."
+msgstr "对话中的消息、工具调用及其输出，方便我们了解智能体做了什么，另外还包括对话标题、项目文件夹路径、对话开始时所在的文档，以及智能体及其设置。图片会替换为其类型和大小，附加的文本文件会包含在内。它可能包含文档内容，如果你不想分享，请取消勾选。"
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "Claude 桌面应用没有打开这个文件。它安装了吗？（{msg}）"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "The conversation couldn't be added to this report."
+msgstr "无法将对话添加到此报告中。"
 
 #: src/lib/skills-api.ts
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
@@ -14314,6 +14656,18 @@ msgstr "你的端点提供的模型 id。它的向量维度会自动检测——
 msgid "the open agent"
 msgstr "已打开的智能体"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The OpenKnowledge project is missing at this checkout path."
+msgstr "此检出路径中缺少 OpenKnowledge 项目。"
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch cannot be read. The worktree was created but not opened."
+msgstr "无法读取此分支中的 OpenKnowledge 项目路径。工作树已创建，但未打开。"
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
+msgstr "此分支中的 OpenKnowledge 项目路径位于工作树之外。工作树已创建，但未打开。"
+
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
 msgstr "OpenKnowledge 服务器响应超时，更改可能已经生效。请让代理先确认，然后再重试。"
@@ -14323,8 +14677,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "OpenKnowledge 服务器响应超时。请让代理重试。"
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "原始文本已被删除。你可以将此评论重新定位到选中的文本上。"
+msgid "The original text was deleted."
+msgstr "原始文本已被删除。"
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"
@@ -14566,6 +14920,10 @@ msgstr "这些规则来自你项目的 <0>{configFile}</0> 文件，该文件完
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "它们教你的 AI 工具如何使用 OpenKnowledge。安装其中一个，会把它添加到本机的每个 AI 工具。"
 
+#: src/components/acp/ThreadView.tsx
+msgid "They run without asking while this chat is open"
+msgstr "在此对话打开期间它们无需询问即可运行"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "Think"
 msgstr "思考"
@@ -14673,13 +15031,25 @@ msgstr "这个智能体通过 {0} 运行，但它没有安装。Open Knowledge �
 msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
 msgstr "这还会安装此入门包的 {packSkillCount, plural, one {# 项技能} other {# 项技能}}。"
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch does not contain this OpenKnowledge project. The worktree was created but not opened."
+msgstr "此分支不包含这个 OpenKnowledge 项目。工作树已创建，但未打开。"
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
 msgstr "这个分支已在以下位置检出："
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
+msgstr "此分支将 OpenKnowledge 设置路径重定向到工作树之外。工作树已创建，但未打开。"
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "这可以在「设置 > AI 工具与 CLI」中配置"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This checkout path cannot be read."
+msgstr "无法读取此检出路径。"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -14702,6 +15072,10 @@ msgstr "此组件已被移除。"
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "此处无法添加附件。"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "This conversation"
+msgstr "此对话"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This conversation keeps the window it started with. A new chat can use a different one."
@@ -14969,8 +15343,8 @@ msgstr "这会永久移除 {path}。在重新创建它，或者由上级文件�
 msgid "This project"
 msgstr "本项目"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
 msgstr "此项目还没有任何提交，因此没有可作为 worktree 基础的分支。请先创建第一个提交，然后重试。"
 
@@ -14993,14 +15367,18 @@ msgstr "这个项目运行的 OpenKnowledge 版本与这个应用（v{0}）不�
 msgid "This project is running an older version of OpenKnowledge (v{0}) than this app (v{1})."
 msgstr "这个项目运行的 OpenKnowledge 版本（v{0}）比这个应用（v{1}）旧。"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr "这个项目不是 git 仓库，因此无法使用 worktree。"
 
 #: src/components/settings/SyncSection.tsx
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "这个项目只存在于这台电脑上。把它连接到 GitHub 即可备份并与他人共享。"
+
+#: src/components/settings/AccountSection.tsx
+msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
+msgstr "此项目的 git 远程位于 {host}，OpenKnowledge 未将其识别为 GitHub 主机。如果 {host} 运行的是 GitHub Enterprise Server，请在下方的“GitHub Enterprise Server 主机”中添加它，然后重启 OpenKnowledge。"
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
@@ -15100,6 +15478,10 @@ msgstr "这通常意味着以下之一："
 #: src/components/AuthModal.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "这个窗口无法保存令牌——请从应用主窗口打开「设置」。"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This worktree is no longer available."
+msgstr "此工作树已不可用。"
 
 #: src/components/acp/working-status.ts
 msgid "Tidying up…"
@@ -15586,10 +15968,6 @@ msgstr "未命名报告"
 msgid "Untracked"
 msgstr "未跟踪"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "最多 3 张屏幕截图或照片"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
 msgstr "已是最新"
@@ -15972,7 +16350,12 @@ msgstr "可视化编辑器表格选区"
 msgid "Waiting for authorization"
 msgstr "正在等待授权"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Waiting for review"
+msgstr "等待审查"
+
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "正在等待你的批准"
 
@@ -16054,6 +16437,10 @@ msgstr "这个知识库是做什么用的？"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "希望 AI 做什么？（可选）"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "我们来做些什么？"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."
@@ -16198,6 +16585,7 @@ msgstr "处理这些评论"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "进行中"

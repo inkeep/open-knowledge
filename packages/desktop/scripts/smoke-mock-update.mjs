@@ -7,7 +7,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateRawSync } from 'node:zlib';
 
-const SUPPORTED_CHANNELS = /** @type {const} */ (['latest', 'beta']);
+const SUPPORTED_CHANNELS = /** @type {const} */ (['latest', 'beta', 'beta-product']);
 const RAW_CHANNEL = process.env.OK_UPDATER_MOCK_CHANNEL ?? 'latest';
 if (!SUPPORTED_CHANNELS.includes(/** @type {any} */ (RAW_CHANNEL))) {
   console.error(
@@ -15,10 +15,10 @@ if (!SUPPORTED_CHANNELS.includes(/** @type {any} */ (RAW_CHANNEL))) {
   );
   process.exit(2);
 }
-/** @type {'latest' | 'beta'} */
-const CHANNEL = /** @type {'latest' | 'beta'} */ (RAW_CHANNEL);
+/** @type {'latest' | 'beta' | 'beta-product'} */
+const CHANNEL = /** @type {'latest' | 'beta' | 'beta-product'} */ (RAW_CHANNEL);
 const MANIFEST_NAME = `${CHANNEL}-mac.yml`;
-const DEFAULT_VERSION = CHANNEL === 'beta' ? '0.4.0-beta.0' : '0.99.0-mock';
+const DEFAULT_VERSION = CHANNEL === 'latest' ? '0.99.0-mock' : '0.4.0-beta.0';
 const VERSION = process.env.MOCK_UPDATE_VERSION ?? DEFAULT_VERSION;
 const TIMEOUT_MS = Number.parseInt(process.env.MOCK_UPDATE_TIMEOUT_MS ?? '30000', 10);
 const KEEP_ALIVE = process.argv.includes('--keep-alive');

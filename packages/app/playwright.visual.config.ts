@@ -1,6 +1,7 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
 import { EXPECT_TIMEOUT_MS, resolveWorkerCount } from './playwright.config.ts';
+import { SETUP_NON_RESULT_REPORTER } from './tests/stress/_helpers/setup-non-result-reporter.ts';
 
 /**
  * Visual Playwright config — per-worker fixture isolation (same shape as
@@ -48,6 +49,7 @@ export default defineConfig({
   updateSnapshots: 'none',
   fullyParallel: true,
   workers: isCI ? 4 : resolveWorkerCount(availableParallelism()),
+  reporter: [['list'], [SETUP_NON_RESULT_REPORTER]],
   use: {
     // `baseURL` is populated by the worker-scoped fixture in
     // `tests/stress/_helpers/fixtures.ts`. Leave unset so the fixture's

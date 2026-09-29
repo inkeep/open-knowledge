@@ -12,21 +12,35 @@ import {
 } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
-  PATH_SHIM_BEGIN as BEGIN,
-  PATH_SHIM_BLOCK_RE as BLOCK_RE,
-  PATH_SHIM_END as END,
   type PathDiscovery,
   type PathInstallConsent,
   type PathInstallMarker,
-  pathInstallMarkerPath,
+  pathInstallMarkerPath as stablePathInstallMarkerPath,
 } from '@inkeep/open-knowledge';
 import { posixOkManagedBinDir } from '@inkeep/open-knowledge-core';
+import { DESKTOP_VARIANT } from '../shared/desktop-variant.ts';
 import type { McpWiringPathInstallDescriptor } from '../shared/ipc-channels.ts';
 import { classifyInstallShape } from './install-shape.ts';
 
-export { pathInstallMarkerPath };
+const NAMES = DESKTOP_VARIANT.cliCommandNames;
+const CLI_HOME_PREFIX = DESKTOP_VARIANT.cliHomeSegment
+  ? `.ok/variants/${DESKTOP_VARIANT.cliHomeSegment}`
+  : '.ok';
+const CLI_BLOCK_NAME =
+  DESKTOP_VARIANT.name === 'stable'
+    ? 'open-knowledge cli'
+    : `open-knowledge ${DESKTOP_VARIANT.name} cli`;
+const BEGIN = `# >>> ${CLI_BLOCK_NAME} >>>`;
+const END = `# <<< ${CLI_BLOCK_NAME} <<<`;
+const BLOCK_RE = new RegExp(
+  `^${BEGIN.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n[\\s\\S]*?^${END.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\n?`,
+  'm',
+);
 
-const NAMES = ['ok', 'open-knowledge'] as const;
+export function pathInstallMarkerPath(home: string): string {
+  if (DESKTOP_VARIANT.name === 'stable') return stablePathInstallMarkerPath(home);
+  return join(home, CLI_HOME_PREFIX, 'path-install.json');
+}
 
 interface PathInstallFsOps {
   existsSync(path: string): boolean;
@@ -149,22 +163,24 @@ function writeMarker(home: string, marker: PathInstallMarker, fs: PathInstallFsO
 }
 
 function okBin(home: string): string {
-  return posixOkManagedBinDir(home);
+  return DESKTOP_VARIANT.name === 'stable'
+    ? posixOkManagedBinDir(home)
+    : join(home, CLI_HOME_PREFIX, 'bin');
 }
 
 function envShim(home: string): string {
-  return join(home, '.ok', 'env.sh');
+  return join(home, CLI_HOME_PREFIX, 'env.sh');
 }
 
 const MANAGED_HINT =
   '# ! Contents within this block are managed by OpenKnowledge. Do not edit.\n# ! Delete this whole block to opt out — OpenKnowledge will not re-add it.';
 
 function block(): string {
-  return `${BEGIN}\n${MANAGED_HINT}\n[ -f "$HOME/.ok/env.sh" ] && . "$HOME/.ok/env.sh"\n${END}\n`;
+  return `${BEGIN}\n${MANAGED_HINT}\n[ -f "$HOME/${CLI_HOME_PREFIX}/env.sh" ] && . "$HOME/${CLI_HOME_PREFIX}/env.sh"\n${END}\n`;
 }
 
 function fishBlock(): string {
-  return `${BEGIN}\n${MANAGED_HINT}\nif test -d "$HOME/.ok/bin"\n  if not contains "$HOME/.ok/bin" $PATH\n    set -gx PATH "$HOME/.ok/bin" $PATH\n  end\nend\n${END}\n`;
+  return `${BEGIN}\n${MANAGED_HINT}\nif test -d "$HOME/${CLI_HOME_PREFIX}/bin"\n  if not contains "$HOME/${CLI_HOME_PREFIX}/bin" $PATH\n    set -gx PATH "$HOME/${CLI_HOME_PREFIX}/bin" $PATH\n  end\nend\n${END}\n`;
 }
 
 function rcTargets(
@@ -197,7 +213,13 @@ function rcTargets(
     ...(fishDetected
       ? [
           {
-            path: join(fishConfigDir, 'conf.d', 'open-knowledge.fish'),
+            path: join(
+              fishConfigDir,
+              'conf.d',
+              DESKTOP_VARIANT.name === 'stable'
+                ? 'open-knowledge.fish'
+                : `open-knowledge-${DESKTOP_VARIANT.name}.fish`,
+            ),
             create: true,
             content: fishBlock(),
           },
@@ -478,11 +500,7 @@ export async function ensureCliOnPath(opts: EnsureCliOnPathOpts): Promise<Ensure
     fs.mkdirSync(dirname(shim), { recursive: true });
     fs.writeFileSync(
       shim,
-      '# OpenKnowledge CLI environment — managed file, do not edit.\ncase ":$' +
-        '{PATH}:" in\n  *:"$' +
-        '{HOME}/.ok/bin":*) ;;\n  *) export PATH="$' +
-        '{HOME}/.ok/bin:$' +
-        '{PATH}" ;;\nesac\n',
+      `# ${DESKTOP_VARIANT.productName} CLI environment — managed file, do not edit.\ncase ":\${PATH}:" in\n  *:"\${HOME}/${CLI_HOME_PREFIX}/bin":*) ;;\n  *) export PATH="\${HOME}/${CLI_HOME_PREFIX}/bin:\${PATH}" ;;\nesac\n`,
     );
 
     phase = 'discoverPath';
@@ -640,7 +658,15 @@ export function removePathShimFromRcFiles(opts: {
 }): RemovePathShimResult {
   const { home, fs = defaultFsOps, logger = DEFAULT_LOGGER } = opts;
   const marker = readMarker(home, fs, logger);
-  const okOwnedFishConf = join(home, '.config', 'fish', 'conf.d', 'open-knowledge.fish');
+  const okOwnedFishConf = join(
+    home,
+    '.config',
+    'fish',
+    'conf.d',
+    DESKTOP_VARIANT.name === 'stable'
+      ? 'open-knowledge.fish'
+      : `open-knowledge-${DESKTOP_VARIANT.name}.fish`,
+  );
   const candidates = new Set<string>([
     ...rcTargets(home, (opts.env ?? process.env).SHELL, fs, opts.platform).map(
       (target) => target.path,

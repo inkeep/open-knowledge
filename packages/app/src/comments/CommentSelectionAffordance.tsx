@@ -185,7 +185,7 @@ export function CommentSelectionAffordance({
         onEmptyChange={setEmpty}
         onSubmit={post}
         onEscape={reset}
-        className="max-h-40 min-h-16 overflow-y-auto rounded-md border px-2 py-1 text-sm"
+        className="max-h-40 min-h-16 overflow-y-auto rounded-md border px-2 py-1 text-sm subtle-scrollbar"
       />
       {}
       {}

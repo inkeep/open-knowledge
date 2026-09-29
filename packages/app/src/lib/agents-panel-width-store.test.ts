@@ -5,6 +5,7 @@ import {
   getInitialAgentsPanelWidth,
   MIN_AGENTS_PANEL_WIDTH,
   readAgentsPanelWidth,
+  resolveAgentsPanelPointerRelease,
   type WidthStorage,
   writeAgentsPanelWidth,
 } from './agents-panel-width-store.ts';
@@ -92,6 +93,28 @@ describe('writeAgentsPanelWidth', () => {
       },
     };
     expect(() => writeAgentsPanelWidth(640, throwing)).not.toThrow();
+  });
+});
+
+describe('resolveAgentsPanelPointerRelease', () => {
+  test.each([
+    [Number.NaN, { kind: 'restore-preferred', widthPx: 480 }],
+    [-1, { kind: 'restore-preferred', widthPx: 480 }],
+    [0, { kind: 'close' }],
+    [159.999, { kind: 'close' }],
+    [160, { kind: 'settle-minimum', widthPx: 320 }],
+    [319.999, { kind: 'settle-minimum', widthPx: 320 }],
+    [320, { kind: 'commit-preferred', widthPx: 320 }],
+    [640.5, { kind: 'commit-preferred', widthPx: 641 }],
+  ] as const)('resolves a %s px release', (measuredWidthPx, expected) => {
+    expect(resolveAgentsPanelPointerRelease(measuredWidthPx, 480)).toEqual(expected);
+  });
+
+  test('restores a clamped durable preference when measurement is missing', () => {
+    expect(resolveAgentsPanelPointerRelease(undefined, 200)).toEqual({
+      kind: 'restore-preferred',
+      widthPx: MIN_AGENTS_PANEL_WIDTH,
+    });
   });
 });
 

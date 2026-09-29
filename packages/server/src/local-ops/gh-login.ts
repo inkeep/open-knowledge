@@ -72,6 +72,7 @@ export async function cachedGhBinaryPath(): Promise<string | null> {
 export interface RunGhDeviceLoginOptions {
   host: string;
   ghPath: string;
+  cwd?: string;
   timeoutMs?: number;
   verificationDeadlineMs?: number;
   onEvent: (event: AuthEvent) => void;
@@ -97,6 +98,7 @@ export function runGhDeviceLoginSubprocess(
 
   const proc = runSubprocess({
     cliArgs: [opts.ghPath],
+    cwd: opts.cwd,
     trailingArgs: [
       'auth',
       'login',

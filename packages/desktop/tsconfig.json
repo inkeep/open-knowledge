@@ -6,6 +6,6 @@
     "lib": ["ES2024", "DOM"],
     "types": ["node"]
   },
-  "include": ["src", "tests", "*.ts"],
+  "include": ["src", "tests", "scripts/**/*.ts", "*.ts"],
   "exclude": ["node_modules", "out", "dist-desktop", "**/*.test.ts"]
 }

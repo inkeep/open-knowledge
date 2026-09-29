@@ -110,6 +110,8 @@ function main(path: string, commonDir: string, branch = 'main'): RecentProjectEn
     lastOpenedAt: '2026-07-01',
     gitCommonDir: commonDir,
     mainRoot: path,
+    checkoutRoot: path,
+    projectSubPath: '',
     isLinkedWorktree: false,
     branch,
   };
@@ -127,6 +129,8 @@ function worktree(
     lastOpenedAt,
     gitCommonDir: commonDir,
     mainRoot,
+    checkoutRoot: path,
+    projectSubPath: '',
     isLinkedWorktree: true,
     branch,
   };
@@ -146,6 +150,8 @@ function createBridge() {
   return {
     project: { open: vi.fn(() => Promise.resolve()) },
     worktree: {
+      inventory: vi.fn(() => Promise.resolve({ ok: false as const, reason: 'no-git' as const })),
+      openInventory: vi.fn(() => Promise.resolve({ ok: true as const })),
       create: vi.fn(() =>
         Promise.resolve({
           ok: true as const,
@@ -207,7 +213,7 @@ function renderMenu(
   const bridge = overrides.bridge ?? createBridge();
   const closeMenu = overrides.closeMenu ?? vi.fn(() => {});
   const openNewWorktreeWith = overrides.openNewWorktreeWith ?? vi.fn((_name: string) => {});
-  render(
+  const rendered = render(
     <Host
       bridge={bridge}
       recents={overrides.recents ?? []}
@@ -218,7 +224,7 @@ function renderMenu(
       openNewWorktreeWith={openNewWorktreeWith}
     />,
   );
-  return { bridge, closeMenu, openNewWorktreeWith };
+  return { bridge, closeMenu, openNewWorktreeWith, ...rendered };
 }
 
 const { RecentProjectsMenu } = await import('./RecentProjectsMenu');
@@ -244,12 +250,8 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     expect(groupRow.textContent).toContain('/repo');
     expect(screen.queryByTestId('project-switcher-flyout-/repo')).toBeNull();
 
-    const toggle = screen.getByTestId('project-switcher-toggle-/repo');
-    expect(toggle.querySelectorAll('svg').length).toBe(0);
-    expect(toggle.textContent).toContain('1 worktree');
-    expect(toggle.textContent).not.toContain('1 worktrees');
-
-    fireEvent.click(toggle);
+    expect(screen.queryByTestId('project-switcher-toggle-/repo')).toBeNull();
+    fireEvent.click(groupRow);
     await waitFor(() => {
       expect(screen.getByTestId('project-switcher-flyout-/repo')).not.toBeNull();
     });
@@ -410,6 +412,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         path: '/repo/.ok/worktrees/dev',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     });
   });
@@ -430,6 +433,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         },
         { branch: 'main', worktreePath: null, isCurrent: false, isMain: false, locked: false },
       ]),
+      currentPath: '/repo',
     });
     fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
 
@@ -451,9 +455,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         worktree('/repo/.ok/worktrees/newer', '/repo/.git', '/repo', 'newer', '2026-06-30'),
       ],
     });
-    expect(screen.getByTestId('project-switcher-toggle-/repo').textContent).toContain(
-      '2 worktrees',
-    );
+    expect(screen.queryByTestId('project-switcher-toggle-/repo')).toBeNull();
     fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
 
     const flyout = await screen.findByTestId('project-switcher-flyout-/repo');
@@ -467,8 +469,40 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     ]);
   });
 
-  test('count chip + flyout affordance single-source from the builder: a model-known opened worktree not in Recents still counts', async () => {
+  test('lazy inventory adds a registered checkout that was never in Recents', async () => {
+    const bridge = createBridge();
+    bridge.worktree.inventory.mockResolvedValue({
+      ok: true,
+      inventory: {
+        gitCommonDir: '/repo/.git',
+        primaryCheckoutRoot: '/repo',
+        projectSubPath: '',
+        entries: [
+          {
+            checkoutRoot: '/repo',
+            projectPath: '/repo',
+            branch: 'main',
+            headSha: '1',
+            location: 'primary',
+            availability: 'available',
+            locked: false,
+            prunable: false,
+          },
+          {
+            checkoutRoot: '/repo/.ok/worktrees/ghost',
+            projectPath: '/repo/.ok/worktrees/ghost',
+            branch: 'ghost',
+            headSha: '2',
+            location: 'internal',
+            availability: 'available',
+            locked: false,
+            prunable: false,
+          },
+        ],
+      },
+    });
     renderMenu({
+      bridge,
       recents: [main('/repo', '/repo/.git')],
       currentPath: '/repo',
       worktreeModel: model([
@@ -483,13 +517,39 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
       ]),
     });
     expect(screen.getByTestId('project-switcher-group-/repo')).not.toBeNull();
-    expect(screen.getByTestId('project-switcher-toggle-/repo').textContent).toContain('1 worktree');
+    expect(screen.queryByTestId('project-switcher-toggle-/repo')).toBeNull();
 
     fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
     await screen.findByTestId('project-switcher-flyout-/repo');
+    await waitFor(() => {
+      expect(screen.getByTestId('project-switcher-toggle-/repo').textContent).toContain(
+        '1 worktree',
+      );
+    });
     expect(
       screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/ghost'),
     ).not.toBeNull();
+    fireEvent.mouseLeave(screen.getByTestId('project-switcher-flyout-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    await waitFor(() => expect(bridge.worktree.inventory).toHaveBeenCalledTimes(2));
+  });
+
+  test('a zero-worktree repository exposes loading and initial-error states on first open', async () => {
+    const bridge = createBridge();
+    let resolveInventory:
+      | ((result: { ok: false; reason: 'enumeration-failed' }) => void)
+      | undefined;
+    bridge.worktree.inventory.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveInventory = resolve;
+        }),
+    );
+    renderMenu({ bridge, recents: [main('/repo', '/repo/.git')] });
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    expect(await screen.findByText('Loading worktrees…')).not.toBeNull();
+    resolveInventory?.({ ok: false, reason: 'enumeration-failed' });
+    expect(await screen.findByText("Couldn't load worktrees.")).not.toBeNull();
   });
 
   test('the flyout search filters that project’s worktrees + branches; a create-on-demand branch creates its worktree', async () => {
@@ -542,6 +602,7 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
         path: '/repo/.ok/worktrees/feature-x',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     });
     expect(refreshWorktrees).toHaveBeenCalled();
@@ -721,15 +782,205 @@ describe('RecentProjectsMenu — grouped browse (no query)', () => {
     renderMenu({
       recents: [worktree('/repo/.ok/worktrees/dev', '/repo/.git', '/repo', 'dev')],
     });
-    const groupRow = screen.getByTestId('project-switcher-group-/repo');
-    expect(groupRow.textContent).toContain('/repo');
-    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
-    await screen.findByTestId('project-switcher-flyout-/repo');
+    const groupRow = screen.getByTestId('project-switcher-group-/repo/.ok/worktrees/dev');
+    expect(groupRow.textContent).toContain('/repo/.ok/worktrees/dev');
+    fireEvent.mouseEnter(groupRow);
+    await screen.findByTestId('project-switcher-flyout-/repo/.ok/worktrees/dev');
     const devEntry = screen.getByTestId('project-switcher-flyout-entry-/repo/.ok/worktrees/dev');
     expect(devEntry).not.toBeNull();
     expect(screen.queryByTestId('project-switcher-flyout-entry-/repo')).toBeNull();
     expect(devEntry.textContent).toContain('worktree');
     expect(devEntry.textContent).not.toContain('primary');
+  });
+
+  test('another repository loads lazily, searches never-opened external paths, and opens exact inventory identity', async () => {
+    const bridge = createBridge();
+    bridge.worktree.inventory.mockImplementation(async ({ projectPath }) => {
+      if (projectPath !== '/other') return { ok: false as const, reason: 'no-git' as const };
+      return {
+        ok: true as const,
+        inventory: {
+          gitCommonDir: '/other/.git',
+          primaryCheckoutRoot: '/other',
+          projectSubPath: '',
+          entries: [
+            {
+              checkoutRoot: '/other',
+              projectPath: '/other',
+              branch: 'main',
+              headSha: '1',
+              location: 'primary' as const,
+              availability: 'available' as const,
+              locked: false,
+              prunable: false,
+            },
+            {
+              checkoutRoot: '/outside/other-locked',
+              projectPath: '/outside/other-locked',
+              branch: 'locked-feature',
+              headSha: '2',
+              location: 'external' as const,
+              availability: 'available' as const,
+              locked: true,
+              prunable: false,
+            },
+            {
+              checkoutRoot: '/outside/other-missing',
+              projectPath: '/outside/other-missing',
+              branch: 'missing-feature',
+              headSha: '3',
+              location: 'external' as const,
+              availability: 'missing' as const,
+              locked: false,
+              prunable: false,
+            },
+            {
+              checkoutRoot: '/outside/other-prunable',
+              projectPath: '/outside/other-prunable',
+              branch: 'prunable-feature',
+              headSha: '4',
+              location: 'external' as const,
+              availability: 'missing' as const,
+              locked: false,
+              prunable: true,
+            },
+          ],
+        },
+      };
+    });
+    renderMenu({
+      bridge,
+      recents: [main('/repo', '/repo/.git'), main('/other', '/other/.git')],
+      currentPath: '/repo',
+    });
+
+    expect(bridge.worktree.inventory).not.toHaveBeenCalled();
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/other'));
+    await waitFor(() => {
+      expect(bridge.worktree.inventory).toHaveBeenCalledWith({ projectPath: '/other' });
+    });
+
+    const search = screen.getByTestId('project-switcher-flyout-search-/other');
+    fireEvent.change(search, { target: { value: 'other-locked' } });
+    const locked = await screen.findByTestId('project-switcher-flyout-entry-/outside/other-locked');
+    expect(locked.textContent).toContain('locked');
+    fireEvent.click(locked);
+    await waitFor(() => {
+      expect(bridge.worktree.openInventory).toHaveBeenCalledWith({
+        anchorProjectPath: '/other',
+        gitCommonDir: '/other/.git',
+        projectSubPath: '',
+        checkoutRoot: '/outside/other-locked',
+        projectPath: '/outside/other-locked',
+      });
+    });
+    expect(bridge.project.open).not.toHaveBeenCalledWith(
+      expect.objectContaining({ path: '/outside/other-locked' }),
+    );
+
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/other'));
+    await screen.findByTestId('project-switcher-flyout-/other');
+    fireEvent.change(screen.getByTestId('project-switcher-flyout-search-/other'), {
+      target: { value: '' },
+    });
+    expect(
+      screen
+        .getByTestId('project-switcher-flyout-entry-/outside/other-missing')
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+    expect(
+      screen
+        .getByTestId('project-switcher-flyout-entry-/outside/other-prunable')
+        .getAttribute('aria-disabled'),
+    ).toBe('true');
+    fireEvent.keyDown(screen.getByTestId('project-switcher-flyout-entry-/outside/other-missing'), {
+      key: 'Enter',
+    });
+    expect(bridge.worktree.openInventory).toHaveBeenCalledTimes(1);
+  });
+
+  test('global search retains inventory-only checkouts from every repository already loaded', async () => {
+    const bridge = createBridge();
+    bridge.worktree.inventory.mockImplementation(async ({ projectPath }) => ({
+      ok: true as const,
+      inventory: {
+        gitCommonDir: `${projectPath}/.git`,
+        primaryCheckoutRoot: projectPath,
+        projectSubPath: '',
+        entries: [
+          {
+            checkoutRoot: projectPath,
+            projectPath,
+            branch: 'main',
+            headSha: '1',
+            location: 'primary' as const,
+            availability: 'available' as const,
+            locked: false,
+            prunable: false,
+          },
+          {
+            checkoutRoot: `/outside${projectPath}-only`,
+            projectPath: `/outside${projectPath}-only`,
+            branch: `${projectPath.slice(1)}-only`,
+            headSha: '2',
+            location: 'external' as const,
+            availability: 'available' as const,
+            locked: false,
+            prunable: false,
+          },
+        ],
+      },
+    }));
+    const recents = [main('/repo', '/repo/.git'), main('/other', '/other/.git')];
+    const rendered = renderMenu({ bridge, recents, currentPath: '/repo' });
+
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    await waitFor(() =>
+      expect(bridge.worktree.inventory).toHaveBeenCalledWith({ projectPath: '/repo' }),
+    );
+    fireEvent.mouseLeave(await screen.findByTestId('project-switcher-flyout-/repo'));
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/other'));
+    await waitFor(() =>
+      expect(bridge.worktree.inventory).toHaveBeenCalledWith({ projectPath: '/other' }),
+    );
+
+    rendered.rerender(
+      <Host
+        bridge={bridge}
+        recents={recents}
+        currentPath="/repo"
+        query="repo-only"
+        worktreeModel={null}
+        closeMenu={rendered.closeMenu}
+        openNewWorktreeWith={rendered.openNewWorktreeWith}
+      />,
+    );
+    expect(screen.getByTestId('project-switcher-inventory-/outside/repo-only')).not.toBeNull();
+  });
+
+  test('Enter never opens a disabled recent-only worktree row', async () => {
+    const missing = {
+      ...worktree('/repo/.ok/worktrees/missing', '/repo/.git', '/repo', 'missing'),
+      missing: true,
+    };
+    const { bridge } = renderMenu({
+      recents: [main('/repo', '/repo/.git'), missing],
+      currentPath: '/repo',
+    });
+    fireEvent.mouseEnter(screen.getByTestId('project-switcher-group-/repo'));
+    const row = await screen.findByTestId(
+      'project-switcher-flyout-entry-/repo/.ok/worktrees/missing',
+    );
+    expect(row.getAttribute('aria-disabled')).toBe('true');
+    expect(row.textContent).toContain('project missing');
+    const search = screen.getByTestId('project-switcher-flyout-search-/repo');
+    fireEvent.keyDown(search, { key: 'ArrowDown' });
+    const primary = screen.getByTestId('project-switcher-flyout-entry-/repo');
+    fireEvent.keyDown(primary, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(row);
+    fireEvent.keyDown(row, { key: 'Enter' });
+    expect(bridge.worktree.openInventory).not.toHaveBeenCalled();
+    expect(bridge.project.open).not.toHaveBeenCalled();
   });
 });
 
@@ -808,6 +1059,7 @@ describe('RecentProjectsMenu — flyout keyboard navigation (item 29)', () => {
         path: '/repo/.ok/worktrees/newer',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     });
   });
@@ -856,6 +1108,7 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
         path: '/repo/.ok/worktrees/dev',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     });
   });
@@ -880,6 +1133,7 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
         path: '/repo/.ok/worktrees/feature-x',
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     });
     expect(refreshWorktrees).toHaveBeenCalled();
@@ -924,6 +1178,36 @@ describe('RecentProjectsMenu — search (cross-project)', () => {
     fireEvent.click(screen.getByTestId('project-switcher-branch-feature-x'));
     await waitFor(() => expect(bridge.worktree.create).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(bridge.project.open).not.toHaveBeenCalled();
+  });
+
+  test('a rejected project scope shows its cause, refreshes, and never opens', async () => {
+    toastError.mockClear();
+    refreshWorktrees.mockClear();
+    const bridge = createBridge();
+    bridge.worktree.create = vi.fn(() =>
+      Promise.resolve({
+        ok: false as const,
+        reason: 'project-scope-unavailable' as const,
+        issue: 'outside-worktree' as const,
+        path: '/repo/.ok/worktrees/feature-x',
+        created: true as const,
+      }),
+    );
+    renderMenu({
+      bridge,
+      query: 'feature',
+      worktreeModel: model([
+        { branch: 'feature-x', worktreePath: null, isCurrent: false, isMain: false, locked: false },
+      ]),
+    });
+    fireEvent.click(screen.getByTestId('project-switcher-branch-feature-x'));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        'The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened.',
+      ),
+    );
+    expect(refreshWorktrees).toHaveBeenCalledTimes(1);
     expect(bridge.project.open).not.toHaveBeenCalled();
   });
 });

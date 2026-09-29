@@ -72,6 +72,7 @@ import {
 } from './mcp-config-reconciler.ts';
 import { toPosix } from './path-utils.ts';
 import {
+  readDeclaredGitHubHosts,
   readOriginGitHubRepo,
   readSyncRemoteInfo,
   type SyncRemoteInfo,
@@ -303,6 +304,7 @@ interface PersistedSyncState {
 }
 
 interface SyncEngineOptions {
+  declaredGitHubHosts?: ReadonlySet<string>;
   projectDir: string;
   contentDir: string;
   contentFilter: ContentFilter;
@@ -376,6 +378,7 @@ const FF_ONLY_TIMEOUT_MS = 120_000;
 const GIT_BLOCK_TIMEOUT_MS = 120_000;
 
 export class SyncEngine {
+  private readonly declaredGitHubHosts: ReadonlySet<string>;
   private state: SyncState = 'dormant';
   private projectDir: string;
   private contentDir: string;
@@ -469,6 +472,7 @@ export class SyncEngine {
 
   constructor(options: SyncEngineOptions) {
     this.projectDir = options.projectDir;
+    this.declaredGitHubHosts = options.declaredGitHubHosts ?? readDeclaredGitHubHosts();
     this.contentDir = options.contentDir;
     this.contentFilter = options.contentFilter;
     this.contentRoot = options.contentRoot ?? '';
@@ -1106,7 +1110,7 @@ export class SyncEngine {
       syncEnabled: this.mode !== 'off',
       syncMode: this.mode,
       identityUnresolved: this.identityUnresolved,
-      remote: this.hasRemote ? readSyncRemoteInfo(this.projectDir) : null,
+      remote: this.hasRemote ? readSyncRemoteInfo(this.projectDir, this.declaredGitHubHosts) : null,
       ...(this.pushError !== undefined ? { pushError: this.pushError } : {}),
       ...(this.pushErrorCode !== undefined ? { pushErrorCode: this.pushErrorCode } : {}),
       ...(this.pullError !== undefined ? { pullError: this.pullError } : {}),
@@ -1208,7 +1212,7 @@ export class SyncEngine {
     if (!this.hasRemote) return null;
     if (this.pushPermissionProbeInFlight) return null;
 
-    const origin = readOriginGitHubRepo(this.projectDir);
+    const origin = readOriginGitHubRepo(this.projectDir, this.declaredGitHubHosts);
     if (origin.kind !== 'ok') {
       const next: PushPermissionStatus = { checkStatus: 'unknown' };
       const prev = this.pushPermission;

@@ -113,7 +113,10 @@ import {
   isRegisteredMarkdownDocName,
 } from './doc-extensions.ts';
 import { runDocLineageGuard } from './doc-lineage-guard.ts';
-import { DocumentDurabilityState } from './document-durability-state.ts';
+import {
+  DocumentDurabilityState,
+  type StaleExternalWriteConflict,
+} from './document-durability-state.ts';
 import {
   type Embedder,
   type EmbeddingsKeyStore,
@@ -137,7 +140,9 @@ import {
   type DiskEvent,
   pathToDocName,
   reconcileFileIndexAfterFilterRebuild,
+  registerRemoval,
   registerWrite,
+  retractRemoval,
   startWatcher,
   type WatcherHandle,
 } from './file-watcher.ts';
@@ -156,6 +161,7 @@ import type {
   ProbeTokenStore,
   PushPermission,
 } from './github-permissions.ts';
+import { createGitHubTokenResolver } from './github-reference/token-resolver.ts';
 import { type HeadWatcherHandle, readProjectHeadState, startHeadWatcher } from './head-watcher.ts';
 import { errnoCode } from './http/handler-utils.ts';
 import type { NativeApiHandle } from './http/http-app.ts';
@@ -255,7 +261,11 @@ import {
   saveInMemoryCheckpoint,
   shadowGit,
 } from './shadow-repo.ts';
-import { readOriginGitHubRepo, shouldResetAmbientCredentials } from './share/git-context.ts';
+import {
+  readDeclaredGitHubHosts,
+  readOriginGitHubRepo,
+  shouldResetAmbientCredentials,
+} from './share/git-context.ts';
 import { resyncRecordedSkillCopies } from './skill-placements.ts';
 import { assertCompatibleStateManifest } from './state-manifest.ts';
 import { SyncEngine } from './sync-engine.ts';
@@ -473,8 +483,13 @@ export function createServer(options: ServerOptions): ServerInstance {
     singleDocRelPath,
     ephemeral = false,
   } = options;
+  const declaredGitHubHosts = readDeclaredGitHubHosts(configHomedirOverride);
 
   const log = getLogger('server');
+  let headWatcher: HeadWatcherHandle | null = null;
+  const getStorageBranch = () => headWatcher?.getLastKnownBranch() ?? null;
+  const getReportedBranch = () =>
+    headWatcher ? headWatcher.getLastKnownBranch() : readProjectHeadState(projectDir).branch;
   const generatedIndexWarningScope = createGeneratedIndexWarningScope(resolve(contentDir));
   let cc1Broadcaster: CC1Broadcaster | null = null;
   const initialBranch = readProjectHeadState(projectDir).branch ?? 'main';
@@ -523,17 +538,36 @@ export function createServer(options: ServerOptions): ServerInstance {
       gitRaw: async (args) =>
         createGitInstance(projectDir, { credentialConfig: [], timeoutMs: 30_000 }).git.raw(args),
       writeProjectFileUntracked: (absPath, bytes) => tracedWriteFileSync(absPath, bytes, 'utf-8'),
-      unlinkProjectFile: (absPath) => tracedUnlinkSync(absPath),
+      unlinkProjectFileUndeclared: (absPath) => tracedUnlinkSync(absPath),
+      deleteResolvedContent: (docName, absPath) => {
+        const declaration = registerRemoval(absPath);
+        try {
+          tracedUnlinkSync(absPath);
+        } catch (cause) {
+          retractRemoval(declaration);
+          throw cause;
+        }
+        contentFilter.decrementMdDir(dirname(docName));
+      },
       applyResolvedContent: async (docName, absPath, bytes) => {
+        const absent = !existsSync(absPath);
         registerWrite(absPath, contentHash(bytes));
         await atomicWriteFile(absPath, bytes, { fs: tracedAtomicFs });
+        if (absent) contentFilter.incrementMdDir(dirname(docName));
         if (hocuspocus.documents.get(docName)) applyToDoc(docName, bytes);
         setReconciledBase(docName, bytes);
         await derivedDocumentIndex.recordDiskUpsert(docName, bytes);
       },
       readLiveContent: (docName) => serializeDoc(docName),
       finalizeReconcileResolution: async (entry, strategy, docName) => {
+        let priorStaleExternalWrite:
+          | { conflict: StaleExternalWriteConflict; branch: string }
+          | undefined;
         if (entry.reason === 'stale-external-write') {
+          const conflict = durabilityState.getStaleExternalWrite(docName);
+          if (conflict) {
+            priorStaleExternalWrite = { conflict, branch: durabilityState.getActiveBranch() };
+          }
           if (strategy === 'mine' || strategy === 'content') {
             durabilityState.recordDisplacedVersion(docName, entry.stages.theirs);
           } else {
@@ -544,14 +578,67 @@ export function createServer(options: ServerOptions): ServerInstance {
         const document = hocuspocus.documents.get(docName);
         const lifecycle = document?.getMap('lifecycle');
         if (strategy === 'delete') {
-          deleteReconciledBase(docName);
+          const isDirty = document
+            ? rescueUnflushedEditsBeforeTeardown(
+                docName,
+                headWatcher?.getLastKnownBranch() ?? 'main',
+                'delete',
+                true,
+              )
+            : false;
           await derivedDocumentIndex.recordDiskDelete(docName);
+          log.info(
+            { docName, isDirty, source: 'resolve-delete' },
+            `[reconcile] delete: ${docName} (dirty=${isDirty})`,
+          );
+          const priorLifecycle = lifecycle
+            ? {
+                status: lifecycle.get('status'),
+                reason: lifecycle.get('reason'),
+                detectedAt: lifecycle.get('detectedAt'),
+              }
+            : undefined;
           lifecycle?.set('status', 'deleted-upstream');
           lifecycle?.delete('reason');
           lifecycle?.delete('detectedAt');
-          if (document) hocuspocus.closeConnections(docName);
+          if (document) {
+            try {
+              hocuspocus.closeConnections(docName);
+              await forceUnloadDocument(document);
+            } catch (cause) {
+              if (lifecycle && priorLifecycle) {
+                for (const [key, value] of Object.entries(priorLifecycle)) {
+                  if (value === undefined) lifecycle.delete(key);
+                  else lifecycle.set(key, value);
+                }
+              }
+              if (priorStaleExternalWrite) {
+                try {
+                  durabilityState.restoreStaleExternalWrite(
+                    priorStaleExternalWrite.conflict,
+                    priorStaleExternalWrite.branch,
+                  );
+                } catch (rollbackFailure) {
+                  log.error(
+                    { err: rollbackFailure, docName },
+                    `[reconcile] stale-external-write rollback failed for ${docName}; the retry may not find the conflict`,
+                  );
+                }
+              }
+              throw cause;
+            }
+          }
+          deleteReconciledBase(docName);
           onUpstreamDelete(docName);
           scheduleIndexRegenerationAfterRemoval(docName);
+          console.info(
+            JSON.stringify({
+              event: 'recently-removed-docs-populate',
+              docName,
+              kind: 'deleted',
+              source: 'resolve-delete',
+            }),
+          );
         } else if (lifecycle?.get('reason') === entry.reason) {
           lifecycle.delete('status');
           lifecycle.delete('reason');
@@ -1642,7 +1729,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     maintenanceCoordinator = gitEnabled
       ? createMaintenanceCoordinator({
           getShadow: () => shadowRef.current ?? null,
-          getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
+          getCurrentBranch: getStorageBranch,
           contentRoot: contentRoot ?? '',
           projectGitDir: resolveGitDir(projectDir) ?? undefined,
           isWriterLive: (writerId) => {
@@ -1679,7 +1766,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       contentRoot,
       derivedDocumentIndex,
       configHomedirOverride,
-      getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
+      getCurrentBranch: getStorageBranch,
       resolveEmbed,
       resolveSize,
       getPrincipal: () => loadedPrincipal,
@@ -1994,6 +2081,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     hocuspocus.configuration.extensions.push(systemDocBroadcastGuard);
 
     const apiExtension = createApiExtension({
+      declaredGitHubHosts,
       hocuspocus,
       durabilityState,
       ingressPolicy,
@@ -2051,7 +2139,8 @@ export function createServer(options: ServerOptions): ServerInstance {
       shadowRef,
       flushGitCommit: () => persistence.flushPendingGitCommit(),
       flushContributors: () => persistence.flushContributors(),
-      getCurrentBranch: () => headWatcher?.getLastKnownBranch() ?? null,
+      getCurrentBranch: getStorageBranch,
+      getReportedBranch,
       getDiskAckSVs: () => cc1Broadcaster?.getLatestDiskAckSVsAsBase64() ?? {},
       getCollabClientCount: options.getCollabClientCount,
       contentRoot,
@@ -2085,6 +2174,7 @@ export function createServer(options: ServerOptions): ServerInstance {
       getLinkAdvisoryPolicy: readLinkAdvisoryPolicy,
       getProjectConfigEpoch: () => projectConfigEpoch,
       getLinkPreviewsEnabled: readLinkPreviewsEnabled,
+      resolveGitHubToken: createGitHubTokenResolver(options.detectGh, options.tokenStore),
       getConfigDiagnostics: readConfigDiagnostics,
       embeddingsSecretsFile: secretsFilePath(configHomedirOverride),
       readSemanticProviderConfig: readSemanticSearchConfig,
@@ -2289,7 +2379,7 @@ export function createServer(options: ServerOptions): ServerInstance {
   ): Promise<void> => {
     incrementDiskAuthoritativeIngest();
     const ours = serializeDoc(docName) ?? '';
-    const branch = headWatcher?.getLastKnownBranch() ?? 'main';
+    const branch = getStorageBranch() ?? 'main';
     const theirsH = contentHash(theirs).slice(0, 6);
     const liveOnlyContentAtRisk = ours !== '' && ours !== theirs;
     const rescue: 'not-needed' | 'rescued' | 'lost' = !liveOnlyContentAtRisk
@@ -2556,7 +2646,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           const isDirty = rescueUnflushedEditsBeforeTeardown(
             docName,
-            headWatcher?.getLastKnownBranch() ?? 'main',
+            getStorageBranch() ?? 'main',
             'delete',
             true,
           );
@@ -2566,7 +2656,10 @@ export function createServer(options: ServerOptions): ServerInstance {
 
           deleteReconciledBase(docName);
           await derivedDocumentIndex.recordDiskDelete(docName);
-          log.info({ docName, isDirty }, `[reconcile] delete: ${docName} (dirty=${isDirty})`);
+          log.info(
+            { docName, isDirty, source: 'watcher-delete' },
+            `[reconcile] delete: ${docName} (dirty=${isDirty})`,
+          );
 
           hocuspocus.closeConnections(docName);
           await forceUnloadDocument(document);
@@ -2594,11 +2687,7 @@ export function createServer(options: ServerOptions): ServerInstance {
           };
           const loadedBeforeIndex = hocuspocus.documents.get(oldDocName);
           const isDirty = loadedBeforeIndex
-            ? rescueUnflushedEditsBeforeTeardown(
-                oldDocName,
-                headWatcher?.getLastKnownBranch() ?? 'main',
-                'rename',
-              )
+            ? rescueUnflushedEditsBeforeTeardown(oldDocName, getStorageBranch() ?? 'main', 'rename')
             : false;
           if (loadedBeforeIndex) freezeAsRenamed(loadedBeforeIndex);
 
@@ -2751,7 +2840,6 @@ export function createServer(options: ServerOptions): ServerInstance {
   }
 
   let watcher: WatcherHandle | null = null;
-  let headWatcher: HeadWatcherHandle | null = null;
   let syncEngine: SyncEngine | null = null;
   let inflightDestroy: Promise<void> | null = null;
 
@@ -3439,7 +3527,7 @@ export function createServer(options: ServerOptions): ServerInstance {
 
     try {
       systemDocConnection = await hocuspocus.openDirectConnection(SYSTEM_DOC_NAME);
-      cc1Broadcaster?.emitServerInfo(serverInstanceId, getActiveBranch());
+      cc1Broadcaster?.emitServerInfo(serverInstanceId, getReportedBranch() ?? undefined);
     } catch (err) {
       log.error(
         { err },
@@ -4220,9 +4308,12 @@ export function createServer(options: ServerOptions): ServerInstance {
       log.warn({ err }, '[conflicts] boot prune of merge-native entries failed');
     }
 
-    const resetAmbientCredentials = shouldResetAmbientCredentials(projectDir);
+    const resetAmbientCredentials = shouldResetAmbientCredentials(projectDir, declaredGitHubHosts);
     log.debug(
-      { resetAmbientCredentials, originKind: readOriginGitHubRepo(projectDir).kind },
+      {
+        resetAmbientCredentials,
+        originKind: readOriginGitHubRepo(projectDir, declaredGitHubHosts).kind,
+      },
       '[sync] ambient credential-chain reset decision at boot',
     );
     const syncCredentialConfig = buildSyncCredentialConfig(localOpCliArgs, {
@@ -4238,6 +4329,7 @@ export function createServer(options: ServerOptions): ServerInstance {
     }
     try {
       syncEngine = new SyncEngine({
+        declaredGitHubHosts,
         projectDir,
         contentDir,
         contentFilter,

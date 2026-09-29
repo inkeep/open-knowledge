@@ -62,8 +62,10 @@ import { useDocumentStats } from '@/hooks/use-document-stats';
 import { useSelectionStats } from '@/hooks/use-selection-stats';
 import { closeAgentDiff, useAgentDiffView } from '@/lib/agent-diff-store';
 import {
+  type AgentsPanelPointerReleaseDecision,
   getInitialAgentsPanelWidth,
   MIN_AGENTS_PANEL_WIDTH,
+  resolveAgentsPanelPointerRelease,
   writeAgentsPanelWidth,
 } from '@/lib/agents-panel-width-store';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
@@ -128,15 +130,152 @@ const LazyActivityModeContent = lazy(async () => {
 });
 
 const PANEL_GROUP_UNAVAILABLE_MESSAGE = /^Could not find Group with id "/;
+const BLOCKED_RAIL_LAYOUT_RETRY_DEADLINE_MS = 60_000;
 
-function reportUnexpectedPanelGroupFailure(event: string, error: unknown) {
+type AgentsPanelCloseRetryContext = {
+  readonly decision: 'close';
+  readonly targetWidthPx: 0;
+};
+
+type AgentsPanelPointerReleaseRetryContext =
+  | AgentsPanelCloseRetryContext
+  | { readonly decision: 'restore-preferred'; readonly targetWidthPx: number }
+  | { readonly decision: 'settle-minimum'; readonly targetWidthPx: number }
+  | { readonly decision: 'commit-preferred'; readonly targetWidthPx: number };
+
+type RailLayoutSyncRetryContext = {
+  readonly decision: 'sync-rail-columns' | 'sync-doc-presence';
+  readonly targetWidthPx: number;
+};
+
+type AgentsPanelKeyboardRetryContext = {
+  readonly decision: 'keyboard-settle-minimum';
+  readonly targetWidthPx: typeof MIN_AGENTS_PANEL_WIDTH;
+};
+
+type RailLayoutRetryContext =
+  | AgentsPanelPointerReleaseRetryContext
+  | AgentsPanelKeyboardRetryContext
+  | RailLayoutSyncRetryContext;
+
+type RailLayoutRetryOutcome = 'applied' | 'blocked' | 'failed';
+
+type RailLayoutRetryController = {
+  frameId: number;
+  deadlineTimer: ReturnType<typeof setTimeout> | null;
+  context?: RailLayoutRetryContext;
+};
+
+type RailLayoutRetryControllerRef = {
+  current: RailLayoutRetryController;
+};
+
+function createAgentsPanelPointerReleaseRetryContext(
+  decision: AgentsPanelPointerReleaseDecision,
+): AgentsPanelPointerReleaseRetryContext {
+  switch (decision.kind) {
+    case 'close':
+      return { decision: decision.kind, targetWidthPx: 0 };
+    case 'restore-preferred':
+    case 'settle-minimum':
+    case 'commit-preferred':
+      return { decision: decision.kind, targetWidthPx: decision.widthPx };
+    default: {
+      const exhaustiveDecision: never = decision;
+      return exhaustiveDecision;
+    }
+  }
+}
+
+function reportUnexpectedPanelGroupFailure(
+  event: string,
+  error: unknown,
+  context?: RailLayoutRetryContext,
+) {
   if (error instanceof Error && PANEL_GROUP_UNAVAILABLE_MESSAGE.test(error.message)) return;
   console.warn(
     JSON.stringify({
       event,
       error: error instanceof Error ? error.message : String(error),
+      ...context,
     }),
   );
+}
+
+function cancelRailLayoutRetry(retryRef: RailLayoutRetryControllerRef) {
+  if (retryRef.current.frameId !== 0) cancelAnimationFrame(retryRef.current.frameId);
+  if (retryRef.current.deadlineTimer != null) clearTimeout(retryRef.current.deadlineTimer);
+  retryRef.current.frameId = 0;
+  retryRef.current.deadlineTimer = null;
+  retryRef.current.context = undefined;
+}
+
+function runRailLayoutRetry({
+  retryRef,
+  attempt,
+  context,
+  onComplete,
+  onExhausted,
+}: {
+  retryRef: RailLayoutRetryControllerRef;
+  attempt: () => RailLayoutRetryOutcome;
+  context: RailLayoutRetryContext;
+  onComplete?: () => void;
+  onExhausted?: () => void;
+}) {
+  cancelRailLayoutRetry(retryRef);
+  retryRef.current.context = context;
+  const deadlineTimestamp = performance.now() + BLOCKED_RAIL_LAYOUT_RETRY_DEADLINE_MS;
+  const completeRetry = () => {
+    cancelRailLayoutRetry(retryRef);
+    onComplete?.();
+  };
+  const completeExhaustedRetry = () => {
+    cancelRailLayoutRetry(retryRef);
+    reportUnexpectedPanelGroupFailure(
+      'rail-layout-retry-exhausted',
+      new Error('Rail layout did not apply within the retry budget'),
+      context,
+    );
+    onExhausted?.();
+    onComplete?.();
+  };
+  retryRef.current.deadlineTimer = setTimeout(
+    completeExhaustedRetry,
+    BLOCKED_RAIL_LAYOUT_RETRY_DEADLINE_MS,
+  );
+  const retry = (failuresLeft: number, frameTimestamp?: number) => {
+    retryRef.current.frameId = 0;
+    if (frameTimestamp != null && frameTimestamp >= deadlineTimestamp) {
+      completeExhaustedRetry();
+      return;
+    }
+    const outcome = attempt();
+    switch (outcome) {
+      case 'applied':
+        completeRetry();
+        return;
+      case 'blocked':
+        retryRef.current.frameId = requestAnimationFrame((timestamp) =>
+          retry(failuresLeft, timestamp),
+        );
+        return;
+      case 'failed':
+        if (failuresLeft <= 0) {
+          completeExhaustedRetry();
+          return;
+        }
+        retryRef.current.frameId = requestAnimationFrame((timestamp) =>
+          retry(failuresLeft - 1, timestamp),
+        );
+        return;
+      default: {
+        const exhaustiveOutcome: never = outcome;
+        return exhaustiveOutcome;
+      }
+    }
+  };
+  retry(30);
 }
 
 const SkillEditBanner = lazy(async () => ({
@@ -466,17 +605,18 @@ function EditorAreaInner({
   }
 
   const [initialAgentsWidthPx] = useState(() => getInitialAgentsPanelWidth());
-  const agentsWidthPxRef = useRef(initialAgentsWidthPx);
+  const agentsPreferredWidthPxRef = useRef(initialAgentsWidthPx);
   const [isDraggingAgentsHandle, setIsDraggingAgentsHandle] = useState(false);
   const isDraggingAgentsHandleRef = useRef(false);
-  const agentsWriteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  function debouncedWriteAgentsWidth(px: number) {
-    if (agentsWriteTimerRef.current != null) clearTimeout(agentsWriteTimerRef.current);
-    agentsWriteTimerRef.current = setTimeout(() => {
-      writeAgentsPanelWidth(px);
-      agentsWriteTimerRef.current = null;
-    }, 100);
-  }
+  const agentsSettlementRetryRef = useRef<RailLayoutRetryController>({
+    frameId: 0,
+    deadlineTimer: null,
+  });
+  const railColumnSyncRetryRef = useRef<RailLayoutRetryController>({
+    frameId: 0,
+    deadlineTimer: null,
+  });
+  const pendingAgentsVisibilityRetryContextRef = useRef<AgentsPanelCloseRetryContext | null>(null);
 
   const [initialTerminalWidthPx] = useState(() =>
     Math.max(
@@ -499,8 +639,8 @@ function EditorAreaInner({
   useEffect(
     () => () => {
       if (writeTimerRef.current != null) clearTimeout(writeTimerRef.current);
-      if (agentsWriteTimerRef.current != null) clearTimeout(agentsWriteTimerRef.current);
       if (terminalWriteTimerRef.current != null) clearTimeout(terminalWriteTimerRef.current);
+      cancelRailLayoutRetry(agentsSettlementRetryRef);
     },
     [],
   );
@@ -524,7 +664,10 @@ function EditorAreaInner({
   }, [workspaceHeaderContainer, workspaceColumnEl]);
 
   const docSlotPresentRef = useRef(false);
-  const presenceRepinFrameRef = useRef(0);
+  const presenceRepinRetryRef = useRef<RailLayoutRetryController>({
+    frameId: 0,
+    deadlineTimer: null,
+  });
   const railPinOutcomeRef = useRef<RailPinOutcome>({ stage: 'group-missing' });
   const railPinExhaustedReportsRef = useRef<Record<RailPinExhaustedTrigger, number>>({
     'rail-column-sync': 0,
@@ -645,7 +788,14 @@ function EditorAreaInner({
     });
   }, [agentsVisible, terminalColumnPresent, isCollapsed]);
 
-  function applyRailLayout(docCollapsed: boolean): boolean {
+  function applyRailLayout(
+    docCollapsed: boolean,
+    {
+      agentsWidthOverridePx,
+    }: {
+      agentsWidthOverridePx?: number;
+    } = {},
+  ): boolean {
     const group = groupRef.current;
     if (group == null) {
       railPinOutcomeRef.current = { stage: 'group-missing' };
@@ -706,7 +856,7 @@ function EditorAreaInner({
           ? 0
           : atFloor
             ? MIN_AGENTS_PANEL_WIDTH
-            : agentsWidthPxRef.current;
+            : (agentsWidthOverridePx ?? agentsPreferredWidthPxRef.current);
       }
       return pins;
     };
@@ -801,15 +951,22 @@ function EditorAreaInner({
     });
   }
 
-  function assertRightRailLayout(docCollapsed: boolean): boolean {
+  function attemptRailLayout(
+    docCollapsed: boolean,
+    overrides?: { agentsWidthOverridePx?: number },
+  ): RailLayoutRetryOutcome {
     if (
       isDraggingDocHandleRef.current ||
       isDraggingTerminalHandleRef.current ||
       isDraggingAgentsHandleRef.current
     )
-      return true;
+      return 'blocked';
     isCollapsedRef.current = docCollapsed;
-    return applyRailLayout(docCollapsed);
+    return applyRailLayout(docCollapsed, overrides) ? 'applied' : 'failed';
+  }
+
+  function assertRightRailLayout(docCollapsed: boolean): boolean {
+    return attemptRailLayout(docCollapsed) !== 'failed';
   }
 
   const assertRightRailLayoutRef = useRef(assertRightRailLayout);
@@ -852,31 +1009,116 @@ function EditorAreaInner({
   }
   useEffect(() => () => endHandleDragRef.current?.(), []);
 
-  function syncRailColumns(): boolean {
+  function cancelAgentsSettlement() {
+    cancelRailLayoutRetry(agentsSettlementRetryRef);
+  }
+
+  function cancelAgentsKeyboardSettlement() {
+    if (agentsSettlementRetryRef.current.context?.decision === 'keyboard-settle-minimum') {
+      cancelAgentsSettlement();
+    }
+  }
+
+  function superviseAgentsPointerSettlement(context: AgentsPanelPointerReleaseRetryContext) {
+    runRailLayoutRetry({
+      retryRef: agentsSettlementRetryRef,
+      attempt: () => attemptRailLayout(isCollapsedRef.current),
+      context,
+    });
+  }
+
+  function settleAgentsPointerRelease() {
+    cancelAgentsSettlement();
+    const measuredWidthPx = agentsColumnPanelRef.current?.getSize().inPixels;
+    const decision = resolveAgentsPanelPointerRelease(
+      measuredWidthPx,
+      agentsPreferredWidthPxRef.current,
+    );
+    const context = createAgentsPanelPointerReleaseRetryContext(decision);
+    switch (context.decision) {
+      case 'close':
+        if (onAgentsVisibleChange != null) {
+          pendingAgentsVisibilityRetryContextRef.current = context;
+          onAgentsVisibleChange(false);
+        } else {
+          superviseAgentsPointerSettlement(context);
+        }
+        return;
+      case 'restore-preferred':
+        agentsPreferredWidthPxRef.current = context.targetWidthPx;
+        superviseAgentsPointerSettlement(context);
+        return;
+      case 'settle-minimum':
+      case 'commit-preferred':
+        agentsPreferredWidthPxRef.current = context.targetWidthPx;
+        writeAgentsPanelWidth(context.targetWidthPx);
+        superviseAgentsPointerSettlement(context);
+        return;
+      default: {
+        const exhaustiveContext: never = context;
+        return exhaustiveContext;
+      }
+    }
+  }
+
+  function settleAgentsKeyboardLayout(layout: Record<string, number>, isUserInteraction: boolean) {
     if (
+      !isUserInteraction ||
       isDraggingDocHandleRef.current ||
       isDraggingTerminalHandleRef.current ||
       isDraggingAgentsHandleRef.current
     )
-      return true;
-    return applyRailLayout(isCollapsedRef.current);
+      return;
+    const activeElement = document.activeElement;
+    if (
+      !(activeElement instanceof HTMLElement) ||
+      !activeElement.hasAttribute('data-agents-panel-resize-handle')
+    ) {
+      cancelAgentsKeyboardSettlement();
+      return;
+    }
+    cancelAgentsSettlement();
+    const agentsPercentage = layout[AGENTS_COLUMN_ID];
+    const groupWidthPx = resolveGroupPxWidth();
+    if (agentsPercentage == null || groupWidthPx == null) return;
+    const measuredWidthPx = (agentsPercentage / 100) * groupWidthPx;
+    if (measuredWidthPx <= 0 || measuredWidthPx >= MIN_AGENTS_PANEL_WIDTH) return;
+    runRailLayoutRetry({
+      retryRef: agentsSettlementRetryRef,
+      attempt: () =>
+        attemptRailLayout(isCollapsedRef.current, {
+          agentsWidthOverridePx: MIN_AGENTS_PANEL_WIDTH,
+        }),
+      context: {
+        decision: 'keyboard-settle-minimum',
+        targetWidthPx: MIN_AGENTS_PANEL_WIDTH,
+      },
+    });
   }
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: syncRailColumns is render-bound but reads only refs, so the mount closure stays current; listing it would restart the retry loop on every render
+  // biome-ignore lint/correctness/useExhaustiveDependencies: agentsVisible and render-bound attemptRailLayout are sampled only when rail column presence changes; the presence dependencies own retry replacement
   useEffect(() => {
-    const frameRef = { id: 0 };
-    const attempt = (attemptsLeft: number) => {
-      if (syncRailColumns()) return;
-      if (attemptsLeft <= 0) {
-        reportRailPinExhausted('rail-column-sync');
-        return;
-      }
-      frameRef.id = requestAnimationFrame(() => attempt(attemptsLeft - 1));
+    if (pendingAgentsVisibilityRetryContextRef.current?.decision === 'close' && agentsVisible) {
+      pendingAgentsVisibilityRetryContextRef.current = null;
+    }
+    const pendingContext = pendingAgentsVisibilityRetryContextRef.current;
+    const context: RailLayoutRetryContext = pendingContext ?? {
+      decision: 'sync-rail-columns',
+      targetWidthPx: agentsVisible ? agentsPreferredWidthPxRef.current : 0,
     };
-    attempt(30);
-    return () => {
-      if (frameRef.id !== 0) cancelAnimationFrame(frameRef.id);
-    };
+    runRailLayoutRetry({
+      retryRef: railColumnSyncRetryRef,
+      attempt: () => attemptRailLayout(isCollapsedRef.current),
+      context,
+      onExhausted:
+        pendingContext == null ? () => reportRailPinExhausted('rail-column-sync') : undefined,
+      onComplete: () => {
+        if (pendingAgentsVisibilityRetryContextRef.current === context) {
+          pendingAgentsVisibilityRetryContextRef.current = null;
+        }
+      },
+    });
+    return () => cancelRailLayoutRetry(railColumnSyncRetryRef);
   }, [terminalColumnPresent, agentsColumnPresent]);
 
   function expandDocPanel() {
@@ -1257,30 +1499,18 @@ function EditorAreaInner({
     const docSlotPresenceChanged = docSlotPresentRef.current !== docSlotPresent;
     docSlotPresentRef.current = docSlotPresent;
     if (!docSlotPresenceChanged) return;
-    if (presenceRepinFrameRef.current !== 0) {
-      cancelAnimationFrame(presenceRepinFrameRef.current);
-      presenceRepinFrameRef.current = 0;
-    }
     const docCollapsed = isCollapsedRef.current;
-    const attempt = (attemptsLeft: number) => {
-      presenceRepinFrameRef.current = 0;
-      if (assertRightRailLayoutRef.current(docCollapsed)) return;
-      if (attemptsLeft <= 0) {
-        reportRailPinExhausted('doc-slot-presence');
-        return;
-      }
-      presenceRepinFrameRef.current = requestAnimationFrame(() => attempt(attemptsLeft - 1));
-    };
-    attempt(30);
+    runRailLayoutRetry({
+      retryRef: presenceRepinRetryRef,
+      attempt: () => attemptRailLayout(docCollapsed),
+      context: {
+        decision: 'sync-doc-presence',
+        targetWidthPx: agentsVisible ? agentsPreferredWidthPxRef.current : 0,
+      },
+      onExhausted: () => reportRailPinExhausted('doc-slot-presence'),
+    });
   });
-  useEffect(
-    () => () => {
-      if (presenceRepinFrameRef.current !== 0) {
-        cancelAnimationFrame(presenceRepinFrameRef.current);
-      }
-    },
-    [],
-  );
+  useEffect(() => () => cancelRailLayoutRetry(presenceRepinRetryRef), []);
 
   function renderUnfocusedPane({
     activityMount,
@@ -1484,7 +1714,7 @@ function EditorAreaInner({
         id={TERMINAL_COLUMN_ID}
         panelRef={terminalColumnPanelRef}
         defaultSize={terminalColumnPresent ? `${initialTerminalWidthPx}px` : 0}
-        minSize={`${RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX}px`}
+        minSize={terminalColumnPresent ? `${RIGHT_TERMINAL_PANEL_MIN_WIDTH_PX}px` : '0px'}
         maxSize={terminalColumnPresent ? undefined : '0px'}
         collapsible
         collapsedSize={0}
@@ -1517,18 +1747,18 @@ function EditorAreaInner({
     <>
       <ResizableHandle
         withHandle={agentsColumnPresent}
+        aria-controls={terminalColumnPresent ? TERMINAL_COLUMN_ID : AGENTS_COLUMN_ID}
+        aria-label={terminalColumnPresent ? t`Terminal` : t`Agents`}
+        data-agents-panel-resize-handle=""
         className={agentsColumnPresent ? undefined : 'pointer-events-none'}
         style={agentsColumnPresent ? undefined : { display: 'none' }}
         onPointerDown={(event) => {
+          cancelAgentsSettlement();
           trackHandleDrag(
             event.pointerId,
             setIsDraggingAgentsHandle,
             isDraggingAgentsHandleRef,
-            () => {
-              if (agentsColumnPanelRef.current?.isCollapsed()) {
-                onAgentsVisibleChange?.(false);
-              }
-            },
+            settleAgentsPointerRelease,
             () => {
               if (!agentsColumnPanelRef.current?.isCollapsed()) setAgentsShowingHold(false);
             },
@@ -1539,15 +1769,11 @@ function EditorAreaInner({
         id={AGENTS_COLUMN_ID}
         panelRef={agentsColumnPanelRef}
         defaultSize={agentsColumnPresent ? `${initialAgentsWidthPx}px` : 0}
-        minSize={`${MIN_AGENTS_PANEL_WIDTH}px`}
+        minSize="0px"
         maxSize={agentsColumnPresent ? '95%' : '0px'}
         collapsible
         collapsedSize={0}
         onResize={(size) => {
-          if (size.inPixels > 0 && isDraggingAgentsHandleRef.current) {
-            agentsWidthPxRef.current = size.inPixels;
-            debouncedWriteAgentsWidth(size.inPixels);
-          }
           setAgentsColumnCollapsed(size.inPixels === 0);
           if (size.inPixels === 0 && isDraggingAgentsHandleRef.current) {
             setAgentsShowingHold(true);
@@ -1592,6 +1818,9 @@ function EditorAreaInner({
         <ResizablePanelGroup
           orientation="horizontal"
           groupRef={groupRef}
+          onLayoutChanged={(layout, meta) => {
+            settleAgentsKeyboardLayout(layout, meta.isUserInteraction);
+          }}
           data-dragging={
             isDraggingDocHandle || isDraggingTerminalHandle || isDraggingAgentsHandle || undefined
           }
@@ -1612,8 +1841,9 @@ function EditorAreaInner({
           <TerminalRevealTab
             edge="right"
             onReveal={() => {
-              if (agentsVisible && agentsColumnCollapsed) agentsColumnPanelRef.current?.expand();
-              else onRevealAgents();
+              if (agentsVisible && agentsColumnCollapsed) {
+                assertRightRailLayout(isCollapsedRef.current);
+              } else onRevealAgents();
             }}
             className="top-2.5 right-0"
           />

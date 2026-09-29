@@ -20,7 +20,30 @@ const ANNOTATION_OBJECT_VALUE_RVA_OFFSET = 8;
 const ANNOTATION_TYPE_STRING = 1;
 const EXCEPTION_STREAM_TYPE = 6;
 const EXCEPTION_STREAM_BYTES = 168;
+const EXCEPTION_THREAD_ID_OFFSET = 0;
 const EXCEPTION_CODE_OFFSET = 8;
+const EXCEPTION_FLAGS_OFFSET = 12;
+const EXCEPTION_ADDRESS_OFFSET = 24;
+const MODULE_BASE_OFFSET = 0;
+const MODULE_SIZE_OFFSET = 8;
+const MISC_INFO_STREAM_TYPE = 15;
+const MISC_INFO_BYTES = 24;
+const MISC_INFO_FLAGS_OFFSET = 4;
+const MISC_INFO_PROCESS_ID_OFFSET = 8;
+const MISC_INFO_PROCESS_CREATE_TIME_OFFSET = 12;
+const MISC_INFO_PROCESS_ID_FLAG = 0x1;
+const MISC_INFO_PROCESS_TIMES_FLAG = 0x2;
+const HEADER_TIME_DATE_STAMP_OFFSET = 20;
+
+interface MinidumpModuleImage {
+  base: bigint;
+  size: number;
+}
+
+interface MinidumpMiscInfo {
+  processId?: number;
+  processCreateTime?: number;
+}
 
 export interface MinidumpPatch {
   signature?: string;
@@ -52,6 +75,12 @@ export interface MinidumpPatch {
   annotationObjectType?: number;
   annotationObjectValueRva?: number;
   annotationObjectValueByteLength?: number;
+  moduleImages?: readonly MinidumpModuleImage[];
+  exceptionThreadId?: number;
+  exceptionFlags?: number;
+  exceptionAddress?: bigint;
+  miscInfo?: MinidumpMiscInfo;
+  timeDateStamp?: number;
 }
 
 export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}): Buffer {
@@ -61,7 +90,9 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
   const objectModules = patch.annotationObjects ?? null;
   const hasCrashpadStream = annotationEntries !== null || objectModules !== null;
   const hasException = patch.exceptionCode !== undefined;
-  const directoryEntries = decoyStreams + 1 + (hasCrashpadStream ? 1 : 0) + (hasException ? 1 : 0);
+  const hasMiscInfo = patch.miscInfo !== undefined;
+  const directoryEntries =
+    decoyStreams + 1 + (hasCrashpadStream ? 1 : 0) + (hasException ? 1 : 0) + (hasMiscInfo ? 1 : 0);
   const directoryRva = HEADER_BYTES;
   const moduleListRva = directoryRva + directoryEntries * DIRECTORY_ENTRY_BYTES;
   const moduleListBytes = 4 + modulePaths.length * MODULE_RECORD_BYTES;
@@ -230,10 +261,29 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
   const exceptionRva = cursor;
   if (hasException) {
     const exception = Buffer.alloc(EXCEPTION_STREAM_BYTES);
-    exception.writeUInt32LE(1, 0);
+    exception.writeUInt32LE(patch.exceptionThreadId ?? 1, EXCEPTION_THREAD_ID_OFFSET);
     exception.writeUInt32LE(patch.exceptionCode ?? 0, EXCEPTION_CODE_OFFSET);
+    exception.writeUInt32LE(patch.exceptionFlags ?? 0, EXCEPTION_FLAGS_OFFSET);
+    exception.writeBigUInt64LE(patch.exceptionAddress ?? 0n, EXCEPTION_ADDRESS_OFFSET);
     exceptionBlocks.push(exception);
     cursor += EXCEPTION_STREAM_BYTES;
+  }
+
+  const miscInfoBlocks: Buffer[] = [];
+  const miscInfoRva = cursor;
+  if (patch.miscInfo !== undefined) {
+    const { processId, processCreateTime } = patch.miscInfo;
+    const misc = Buffer.alloc(MISC_INFO_BYTES);
+    misc.writeUInt32LE(MISC_INFO_BYTES, 0);
+    misc.writeUInt32LE(
+      (processId === undefined ? 0 : MISC_INFO_PROCESS_ID_FLAG) |
+        (processCreateTime === undefined ? 0 : MISC_INFO_PROCESS_TIMES_FLAG),
+      MISC_INFO_FLAGS_OFFSET,
+    );
+    misc.writeUInt32LE(processId ?? 0, MISC_INFO_PROCESS_ID_OFFSET);
+    misc.writeUInt32LE(processCreateTime ?? 0, MISC_INFO_PROCESS_CREATE_TIME_OFFSET);
+    miscInfoBlocks.push(misc);
+    cursor += MISC_INFO_BYTES;
   }
 
   const header = Buffer.alloc(HEADER_BYTES);
@@ -241,6 +291,9 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
   header.writeUInt32LE(0xa793, 4);
   header.writeUInt32LE(patch.streamCount ?? directoryEntries, 8);
   header.writeUInt32LE(patch.streamDirectoryRva ?? directoryRva, 12);
+  if (patch.timeDateStamp !== undefined) {
+    header.writeUInt32LE(patch.timeDateStamp, HEADER_TIME_DATE_STAMP_OFFSET);
+  }
 
   const directory = Buffer.alloc(directoryEntries * DIRECTORY_ENTRY_BYTES);
   for (let i = 0; i < decoyStreams; i += 1) {
@@ -263,12 +316,23 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
     directory.writeUInt32LE(exceptionRva, nextEntry + 8);
     nextEntry += DIRECTORY_ENTRY_BYTES;
   }
+  if (hasMiscInfo) {
+    directory.writeUInt32LE(MISC_INFO_STREAM_TYPE, nextEntry);
+    directory.writeUInt32LE(MISC_INFO_BYTES, nextEntry + 4);
+    directory.writeUInt32LE(miscInfoRva, nextEntry + 8);
+    nextEntry += DIRECTORY_ENTRY_BYTES;
+  }
 
   const moduleList = Buffer.alloc(moduleListBytes);
   moduleList.writeUInt32LE(patch.moduleCount ?? modulePaths.length, 0);
   nameRvas.forEach((rva, index) => {
     const at = 4 + index * MODULE_RECORD_BYTES + MODULE_NAME_RVA_OFFSET;
     moduleList.writeUInt32LE(index === 0 ? (patch.nameRva ?? rva) : rva, at);
+  });
+  patch.moduleImages?.forEach((image, index) => {
+    const at = 4 + index * MODULE_RECORD_BYTES;
+    moduleList.writeBigUInt64LE(image.base, at + MODULE_BASE_OFFSET);
+    moduleList.writeUInt32LE(image.size, at + MODULE_SIZE_OFFSET);
   });
 
   const dump = Buffer.concat([
@@ -278,6 +342,7 @@ export function buildMinidump(modulePaths: string[], patch: MinidumpPatch = {}):
     ...nameBlocks,
     ...crashpadBlocks,
     ...exceptionBlocks,
+    ...miscInfoBlocks,
   ]);
   return patch.truncateTo === undefined ? dump : dump.subarray(0, patch.truncateTo);
 }

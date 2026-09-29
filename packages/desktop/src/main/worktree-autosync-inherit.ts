@@ -45,23 +45,26 @@ export function resolveRootAutoSyncMode(mainRoot: string): SyncMode | null {
   });
 }
 
-export async function seedWorktreeAutoSync(worktreePath: string, mainRoot: string): Promise<void> {
-  const inherited = resolveRootAutoSyncMode(mainRoot);
+export async function seedWorktreeAutoSync(
+  worktreeProjectPath: string,
+  sourceProjectPath: string,
+): Promise<void> {
+  const inherited = resolveRootAutoSyncMode(sourceProjectPath);
   if (inherited === null) return;
   const result = await writeConfigPatch({
-    cwd: worktreePath,
+    cwd: worktreeProjectPath,
     scope: 'project-local',
     patch: {
       autoSync: {
         mode: inherited,
         inheritedNoticePending: true,
-        inheritedFrom: basename(mainRoot),
+        inheritedFrom: basename(sourceProjectPath),
       },
     },
   });
   if (!result.ok) {
     getLogger('worktree-autosync').warn(
-      { worktreePath, reason: result.error.code },
+      { worktreeProjectPath, reason: result.error.code },
       'failed to seed inherited autoSync.mode',
     );
     return;

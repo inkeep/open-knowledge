@@ -57,7 +57,7 @@ import {
   runPatSubprocess,
 } from '../local-ops/index.ts';
 import type { PinoLogger } from '../logger.ts';
-import { originGitHubHost } from '../share/git-context.ts';
+import { readDeclaredGitHubHosts, resolveGitHubAuthHost } from '../share/git-context.ts';
 import { redactShareSubprocessStderr } from '../share/publish.ts';
 import type { SyncEngine } from '../sync-engine.ts';
 import { resolveUiRedirectPort } from '../ui-redirect-port.ts';
@@ -83,6 +83,7 @@ export function resumeSyncOnAuthEvent(
 }
 
 export interface LocalOpRouteDeps {
+  declaredGitHubHosts?: ReadonlySet<string>;
   projectDir: string | undefined;
   contentDir: string;
   log: PinoLogger;
@@ -494,7 +495,33 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
 
   const AUTH_DEVICE_FLOW_TIMEOUT_MS = 16 * 60 * 1000;
 
-  const defaultAuthHost = (): string => originGitHubHost(projectDir ?? contentDir);
+  const authProjectDir = projectDir ?? contentDir;
+  const authDeclaredGitHubHosts = deps.declaredGitHubHosts ?? readDeclaredGitHubHosts();
+  function resolveAuthHost(
+    res: ServerResponse,
+    handler: string,
+    explicitHost: string | undefined,
+  ): string | null {
+    const result = resolveGitHubAuthHost(authProjectDir, explicitHost, authDeclaredGitHubHosts);
+    if (result.kind === 'ok') return result.host;
+    const rejectedHost = result.host;
+    const detail =
+      rejectedHost === null
+        ? "The project's origin URL could not be parsed to determine its host. Set a supported origin URL or explicitly select a GitHub host."
+        : `${rejectedHost} is not a declared GitHub host. If it runs GitHub Enterprise Server, declare git.hosts.${rejectedHost}.provider as github in ~/.ok/global.yml and restart OpenKnowledge.`;
+    errorResponse(
+      res,
+      409,
+      'urn:ok:error:non-github-origin',
+      'GitHub sign-in is unavailable for this host.',
+      {
+        handler,
+        detail,
+        extensions: { host: rejectedHost },
+      },
+    );
+    return null;
+  }
 
   type StreamingAuthController = { done: Promise<void>; cancel(): void };
   type InFlightAuthStream = { cancel(): void; notifyDisplaced(): void };
@@ -637,7 +664,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     res: ServerResponse,
     body: LocalOpAuthHostRequest,
   ): Promise<void> {
-    const host = body.host ?? defaultAuthHost();
+    const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_LOGIN, body.host);
+    if (host === null) return;
     streamAuthFlow({
       res,
       handler: HANDLE_LOCAL_OP_AUTH_LOGIN,
@@ -648,6 +676,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
       makeFlow: (onEvent) =>
         runDeviceFlowSubprocess({
           cliArgs: localOpCliArgs,
+          cwd: authProjectDir,
           host,
           timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
           onEvent,
@@ -659,7 +688,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthGhLogin = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
-      const host = body.host ?? defaultAuthHost();
+      const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_GH_LOGIN, body.host);
+      if (host === null) return;
       const ghPath = await cachedGhBinaryPath();
       if (ghPath === null) {
         errorResponse(
@@ -683,6 +713,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
           runGhDeviceLoginSubprocess({
             host,
             ghPath,
+            cwd: authProjectDir,
             timeoutMs: AUTH_DEVICE_FLOW_TIMEOUT_MS,
             onEvent,
           }),
@@ -733,7 +764,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthStatus = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
-      const host = body.host ?? defaultAuthHost();
+      const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_STATUS, body.host);
+      if (host === null) return;
 
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_STATUS_KEY)) {
         errorResponse(
@@ -757,6 +789,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
             withHiddenWindowsConsole({
               ...LOCAL_OP_PIPE_STDIO_OPTIONS,
               env: { ...process.env },
+              cwd: authProjectDir,
             }),
           );
           let settled = false;
@@ -841,7 +874,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthPat = withValidation(
     LocalOpAuthPatRequestSchema,
     async (_req, res, body) => {
-      const host = body.host ?? defaultAuthHost();
+      const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_PAT, body.host);
+      if (host === null) return;
 
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_PAT_KEY)) {
         errorResponse(
@@ -855,7 +889,12 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
       }
 
       try {
-        const result = await runPatSubprocess({ cliArgs: localOpCliArgs, host, token: body.token });
+        const result = await runPatSubprocess({
+          cliArgs: localOpCliArgs,
+          cwd: authProjectDir,
+          host,
+          token: body.token,
+        });
         if (result.ok) {
           onAuthCredentialLanded(getSyncEngine);
           successResponse(
@@ -903,7 +942,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
     res: ServerResponse,
     body: LocalOpAuthHostRequest,
   ): Promise<void> {
-    const host = body.host ?? defaultAuthHost();
+    const host = resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_REPOS, body.host);
+    if (host === null) return;
 
     if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_REPOS_KEY)) {
       errorResponse(
@@ -936,6 +976,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
       withHiddenWindowsConsole({
         ...LOCAL_OP_PIPE_STDIO_OPTIONS,
         env: { ...process.env },
+        cwd: authProjectDir,
       }),
     );
 
@@ -1038,7 +1079,8 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
   const handleLocalOpAuthSignout = withValidation(
     LocalOpAuthHostRequestSchema,
     async (_req, res, body) => {
-      const host = body.host ?? defaultAuthHost();
+      const host = body.host ?? resolveAuthHost(res, HANDLE_LOCAL_OP_AUTH_SIGNOUT, undefined);
+      if (host === null) return;
 
       if (!localOpGuard.tryAcquire(LOCAL_OP_AUTH_SIGNOUT_KEY)) {
         errorResponse(
@@ -1062,6 +1104,7 @@ export function createLocalOpRoutes(deps: LocalOpRouteDeps): ApiRouteGroup {
             withHiddenWindowsConsole({
               ...LOCAL_OP_IGNORED_STDIO_OPTIONS,
               env: { ...process.env },
+              cwd: authProjectDir,
             }),
           );
           let settled = false;

@@ -1,0 +1,6 @@
+{
+  "minimumVersion": {
+    "stable": "0.77.6",
+    "beta": "0.77.8-beta.0"
+  }
+}

@@ -3,14 +3,15 @@ import {
   isCodexLegacyWarningUpdate,
 } from '@inkeep/open-knowledge-core/acp/codex-legacy-notice';
 import type {
+  BrowserUnavailableReason,
   PermissionOption,
   PiBridgeThreadState,
   SessionUpdate,
   ThreadEvent,
   ThreadFailureDetail,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import { shellCommandFromRawInput } from '@inkeep/open-knowledge-core/acp/tool-call-input';
 import { t } from '@lingui/core/macro';
-import { shellCommandFromRawInput } from '@/lib/acp/shell-command-format';
 
 type RenderedMessage =
   | {
@@ -48,6 +49,7 @@ export interface RenderedPermission {
   toolKind: string;
   command: string | null;
   options: PermissionOption[];
+  readOnlyShell: boolean;
   resolved: { optionId: string | null; auto: boolean } | null;
   toolCallId: string | null;
   mergedIntoToolCall: boolean;
@@ -60,6 +62,12 @@ interface RenderedNotice {
   failure: ThreadFailureDetail | null;
   superseded?: boolean;
   attempts: number;
+}
+
+interface RenderedBrowserUnavailable {
+  kind: 'browser_unavailable';
+  reason: BrowserUnavailableReason;
+  seq: number;
 }
 
 interface RenderedAgentNotice {
@@ -129,6 +137,7 @@ export type RenderedItem =
   | RenderedPermission
   | RenderedNotice
   | RenderedAgentNotice
+  | RenderedBrowserUnavailable
   | RenderedRuntimeConsent
   | RenderedPiBridge;
 
@@ -162,7 +171,8 @@ function isSupersededByReady(failure: ThreadFailureDetail | null): boolean {
     failure !== null &&
     (failure.reason === 'connect' ||
       failure.reason === 'session-setup' ||
-      failure.reason === 'auth-required')
+      failure.reason === 'auth-required' ||
+      failure.reason === 'exited')
   );
 }
 
@@ -256,6 +266,9 @@ export class ThreadRenderModelBuilder {
       case 'turn_started':
         this.turnActive = true;
         break;
+      case 'browser_unavailable':
+        this.items.push({ kind: 'browser_unavailable', reason: event.reason, seq });
+        break;
       case 'turn_ended':
         this.turnActive = false;
         this.messageIndex.clear();
@@ -288,12 +301,16 @@ export class ThreadRenderModelBuilder {
             }
           }
         }
-        if (event.status === 'error' || event.status === 'auth_required') {
+        if (
+          event.status === 'error' ||
+          event.status === 'auth_required' ||
+          (event.status === 'exited' && event.failure?.reason === 'exited')
+        ) {
           if (event.failure !== undefined || (event.detail ?? '') !== '') {
             const next: RenderedNotice = {
               kind: 'notice',
               text: event.detail ?? '',
-              tone: event.status === 'error' ? 'error' : 'info',
+              tone: event.status === 'auth_required' ? 'info' : 'error',
               failure: event.failure ?? null,
               attempts: 1,
             };
@@ -324,6 +341,7 @@ export class ThreadRenderModelBuilder {
             shellCommandOf(toolKind, event.toolCall.rawInput) ??
             shellCommandOf(toolKind, call?.kind === 'tool_call' ? call.rawInput : undefined),
           options: event.options,
+          readOnlyShell: event.readOnlyShell === true,
           resolved: null,
           toolCallId,
           mergedIntoToolCall: callIndex !== undefined,
@@ -613,6 +631,10 @@ export class ThreadRenderModelBuilder {
   }
 }
 
+export function threadHasUserMessage(model: Pick<ThreadRenderModel, 'items'>): boolean {
+  return model.items.some((item) => item.kind === 'message' && item.role === 'user');
+}
+
 export function buildThreadRenderModel(
   events: readonly ThreadEvent[],
   agent: CodexLegacyAgentIdentity | null,
@@ -674,8 +696,14 @@ function isSameFailure(a: RenderedNotice, b: RenderedNotice): boolean {
     if (a.failure.reason !== b.failure.reason) return false;
     if ((a.failure.agentMessage ?? '') !== (b.failure.agentMessage ?? '')) return false;
     if ((a.failure.machineDetail ?? '') !== (b.failure.machineDetail ?? '')) return false;
+    if (!isSameExit(a.failure.exit, b.failure.exit)) return false;
   }
   return true;
+}
+
+function isSameExit(a: ThreadFailureDetail['exit'], b: ThreadFailureDetail['exit']): boolean {
+  if (a === undefined || b === undefined) return a === b;
+  return a.cause === b.cause && a.exitCode === b.exitCode && a.signal === b.signal;
 }
 
 function mergeToolContent(call: RenderedToolCall, content: unknown): void {

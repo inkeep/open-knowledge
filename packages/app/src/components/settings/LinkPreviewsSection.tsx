@@ -69,7 +69,10 @@ export function LinkPreviewsSection() {
         title={<Trans>Link previews</Trans>}
         scope="project-local"
       >
-        <Trans>Show a preview card when you hover an external link in the editor.</Trans>
+        <Trans>
+          Show a preview card when you hover an external link in the editor or a GitHub pull request
+          or issue in an agent chat.
+        </Trans>
       </SettingsSectionHeader>
 
       <div className="rounded-md border p-3">
@@ -86,7 +89,7 @@ export function LinkPreviewsSection() {
               {enabled ? (
                 <Trans>
                   On — hovering an external link sends its URL to the destination site to fetch a
-                  preview.
+                  preview, and hovering a GitHub reference in an agent chat asks GitHub for it.
                 </Trans>
               ) : (
                 <Trans>
@@ -102,9 +105,7 @@ export function LinkPreviewsSection() {
             checked={enabled}
             disabled={!bindingReady}
             onCheckedChange={onToggleRequest}
-            aria-label={
-              enabled ? t`Disable external link previews` : t`Enable external link previews`
-            }
+            aria-label={t`External link previews and GitHub reference cards`}
             data-testid="settings-link-previews-toggle"
           />
         </div>
@@ -173,6 +174,12 @@ function EnableLinkPreviewsConfirmDialog({
                 <Trans>
                   When you hover an external link, its URL is sent to the destination site to fetch
                   the page's preview metadata — one request per previewed link.
+                </Trans>
+              </li>
+              <li>
+                <Trans>
+                  In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub
+                  for its status, signed in as you when OpenKnowledge can use your GitHub sign-in.
                 </Trans>
               </li>
               <li>

@@ -144,12 +144,12 @@ cleanup() {
   local ec=$?
   if [[ -n "$SERVER_PID" ]] && kill -0 "$SERVER_PID" 2>/dev/null; then
     echo "[measure-sweep] stopping server (pid $SERVER_PID)…" >&2
-    kill -TERM "$SERVER_PID" 2>/dev/null || true
+    kill -TERM %1 2>/dev/null || true
     for _ in 1 2 3 4 5 6 7 8 9 10; do
       kill -0 "$SERVER_PID" 2>/dev/null || break
       sleep 0.5
     done
-    kill -0 "$SERVER_PID" 2>/dev/null && kill -KILL "$SERVER_PID" 2>/dev/null || true
+    kill -0 "$SERVER_PID" 2>/dev/null && kill -KILL %1 2>/dev/null || true
   fi
   if [[ "$KEEP_SCRATCH" -eq 1 ]]; then
     echo "[measure-sweep] scratch kept at $SCRATCH" >&2

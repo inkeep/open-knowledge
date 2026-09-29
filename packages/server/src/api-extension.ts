@@ -331,6 +331,7 @@ import { createSkillInstallOpsService } from './services/skill-install-ops.ts';
 import { createSkillPlacementOpsService } from './services/skill-placement-ops.ts';
 import { createSkillReimportService } from './services/skill-reimport.ts';
 import { SERVICE_WRITER, type ShadowRef, shadowGit } from './shadow-repo.ts';
+import { readDeclaredGitHubHosts } from './share/git-context.ts';
 
 import { readSkillInstallModeRaw } from './skill-placements.ts';
 
@@ -1238,6 +1239,7 @@ export async function renameTrackedPathInGit(
 }
 
 export interface ApiExtensionOptions {
+  declaredGitHubHosts?: ReadonlySet<string>;
   ingressPolicy?: IngressPolicy;
   hocuspocus: Hocuspocus;
   durabilityState: DocumentDurabilityState;
@@ -1263,6 +1265,7 @@ export interface ApiExtensionOptions {
   flushGitCommit?: () => Promise<void>;
   flushContributors?: () => Promise<void>;
   getCurrentBranch?: () => string | null;
+  getReportedBranch?: () => string | null;
   getDiskAckSVs?: () => Record<string, string>;
   getCollabClientCount?: () => number;
   contentRoot?: string;
@@ -1280,6 +1283,8 @@ export interface ApiExtensionOptions {
   projectDir?: string;
   linkPreviewFetch?: GuardedFetch;
   getLinkPreviewsEnabled?: () => boolean;
+  resolveGitHubToken?: (host: string) => Promise<string | null>;
+  githubReferenceFetch?: typeof fetch;
   getConfigDiagnostics?: () => ConfigDiagnosticsReport;
   resolveEmbed?: (basename: string, sourcePath: string) => string | null;
   getPrincipal?: () => Principal | null;
@@ -1437,6 +1442,7 @@ export function createApiExtension(
     flushGitCommit,
     flushContributors,
     getCurrentBranch,
+    getReportedBranch,
     getDiskAckSVs,
     getCollabClientCount,
     contentRoot,
@@ -1475,8 +1481,12 @@ export function createApiExtension(
     ephemeral = false,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
+    resolveGitHubToken,
+    githubReferenceFetch,
     getConfigDiagnostics,
   } = options;
+  const declaredGitHubHosts =
+    options.declaredGitHubHosts ?? readDeclaredGitHubHosts(homeDirOverride);
   const catalogCache = createSkillsCatalogCache({ homeDirOverride, log });
   const { bumpSkillsCatalogGen, enumerateInstalledSkillsCached, pluginSkillsByName } = catalogCache;
   const signalChannel: typeof rawSignalChannel = rawSignalChannel
@@ -4696,7 +4706,6 @@ export function createApiExtension(
     ephemeral,
     log,
     ready,
-    durabilityState,
     serverInstanceId,
     getDiskAckSVs,
     getCollabClientCount,
@@ -4714,6 +4723,7 @@ export function createApiExtension(
     getFileIndex,
     shadowRef,
     getCurrentBranch,
+    getReportedBranch,
     installedAgentsCache,
   });
   const lintRoutes = createLintRoutes({
@@ -4897,6 +4907,9 @@ export function createApiExtension(
     searchService,
     linkPreviewFetch,
     getLinkPreviewsEnabled,
+    declaredGitHubHosts,
+    resolveGitHubToken,
+    githubReferenceFetch,
     getGeneratedIndexSettingsStatus,
     setGeneratedIndexEnabled,
   });
@@ -4918,6 +4931,7 @@ export function createApiExtension(
     setBatchInProgress,
   });
   const shareRoutes = createShareRoutes({
+    declaredGitHubHosts,
     projectDir,
     contentDir,
     log,
@@ -4928,6 +4942,7 @@ export function createApiExtension(
     toGitRelativePath,
   });
   const gitRoutes = createGitRoutes({
+    declaredGitHubHosts,
     projectDir,
     contentDir,
     contentFilter,
@@ -4938,6 +4953,7 @@ export function createApiExtension(
     localOpCliArgs,
   });
   const localOpRoutes = createLocalOpRoutes({
+    declaredGitHubHosts,
     projectDir,
     contentDir,
     log,

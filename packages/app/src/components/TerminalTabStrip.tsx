@@ -42,6 +42,7 @@ import {
   tabRunCollisionDetection,
 } from './editor-tabs-chrome';
 import { scrollTabStripOnWheel } from './tab-strip-wheel';
+import { CLOSED_TAB_TOOLTIP, nextOpenTabTooltip, type OpenTabTooltip } from './tab-tooltip-state';
 
 const TERMINAL_TAB_SORTABLE_SELECTOR = '[data-terminal-tab-sortable]';
 
@@ -75,6 +76,9 @@ export interface TerminalTabDescriptor {
   readonly id: string;
   readonly label: string;
   readonly icon?: ReactNode;
+  readonly tooltip?: ReactNode;
+  readonly tooltipDescription?: (openedAt: number) => string;
+  readonly srStatus?: ReactNode;
 }
 
 export type SessionPanelEdge = 'bottom' | 'right';
@@ -184,6 +188,7 @@ export function TerminalTabStrip({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const [openTooltip, setOpenTooltip] = useState<OpenTabTooltip>(CLOSED_TAB_TOOLTIP);
   const renameInputRef = useRef<HTMLInputElement>(null);
   const cancelRenameRef = useRef(false);
   const renameEnabled = onRename != null;
@@ -323,7 +328,15 @@ export function TerminalTabStrip({
                         disabled={!reorderEnabled || renamingId != null}
                       >
                         {({ setNodeRef, listeners, style }) => (
-                          <Tooltip>
+                          <Tooltip
+                            open={openTooltip.id === session.id}
+                            onOpenChange={(open) => {
+                              const at = Date.now();
+                              setOpenTooltip((current) =>
+                                nextOpenTabTooltip(current, session.id, open, at),
+                              );
+                            }}
+                          >
                             <TooltipTrigger asChild>
                               <TabsTrigger
                                 ref={setNodeRef}
@@ -360,13 +373,21 @@ export function TerminalTabStrip({
                                     'min-w-0 flex-1',
                                     isActive || isHovered ? TAB_TITLE_FADE_CLASS : 'truncate',
                                   )}
+                                  data-tab-title=""
                                 >
                                   {session.label}
                                 </span>
+                                {session.srStatus !== undefined ? (
+                                  <span className="sr-only">{session.srStatus}</span>
+                                ) : null}
                               </TabsTrigger>
                             </TooltipTrigger>
-                            <TooltipContent side="bottom" sideOffset={8}>
-                              {session.label}
+                            <TooltipContent
+                              side="bottom"
+                              sideOffset={8}
+                              aria-label={session.tooltipDescription?.(openTooltip.openedAt)}
+                            >
+                              {session.tooltip ?? session.label}
                             </TooltipContent>
                           </Tooltip>
                         )}

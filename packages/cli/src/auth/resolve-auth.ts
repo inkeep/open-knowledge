@@ -22,9 +22,20 @@ interface ResolveAuthOptions {
   selfCliArgs?: readonly string[];
 }
 
+function cliCredentialHelperCommand(selfCliArgs: readonly string[]): string {
+  return `!${selfCliArgs.map(shellSingleQuote).join(' ')} auth git-credential`;
+}
+
 export function buildCliCredentialHelper(selfCliArgs: readonly string[]): string {
-  const prefix = selfCliArgs.map(shellSingleQuote).join(' ');
-  return `credential.helper=!${prefix} auth git-credential`;
+  return `credential.helper=${cliCredentialHelperCommand(selfCliArgs)}`;
+}
+
+export function buildHttpsHostCliCredentialConfig(
+  selfCliArgs: readonly string[],
+  host: string,
+): string[] {
+  const helper = `credential.https://${host}.helper`;
+  return [`${helper}=`, `${helper}=${cliCredentialHelperCommand(selfCliArgs)}`];
 }
 
 export async function resolveAuth(

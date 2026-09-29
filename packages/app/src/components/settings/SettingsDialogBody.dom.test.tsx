@@ -252,6 +252,22 @@ describe('SettingsDialogBody preferences runtime', () => {
     expect(screen.queryByTestId('settings-spellcheck-languages-row')).toBeNull();
   });
 
+  test('offers the agent chat browser as a Preferences switch that starts off and writes agents.browserTools', async () => {
+    const user = userEvent.setup();
+    const { binding, patches } = makeBinding();
+    const { container } = renderPreferences(binding);
+
+    const field = container.querySelector('[data-field="agents.browserTools"]');
+    expect(field).toBeTruthy();
+    const browserSwitch = screen.getByRole('switch', { name: 'Let agent chats use a browser' });
+    expect(browserSwitch.getAttribute('aria-checked')).toBe('false');
+    await user.click(browserSwitch);
+
+    await waitFor(() => {
+      expect(patches).toEqual([{ agents: { browserTools: true } }]);
+    });
+  });
+
   test('commits editor.wordWrap changes through binding.patch', async () => {
     const user = userEvent.setup();
     const { binding, patches } = makeBinding();

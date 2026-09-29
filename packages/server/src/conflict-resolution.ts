@@ -40,7 +40,7 @@ export async function resolveMergeNative(
   entry: Extract<Conflict, { kind: 'merge-native' }>,
   strategy: ResolveStrategy,
   content: string | undefined,
-  io: ConflictIo,
+  io: Pick<ConflictIo, 'gitRaw' | 'writeProjectFileUntracked'>,
   projectDir: string,
 ): Promise<void> {
   switch (strategy) {
@@ -76,7 +76,7 @@ export async function resolveWorkingTree(
   entry: Extract<Conflict, { kind: 'working-tree' }>,
   strategy: ResolveStrategy,
   content: string | undefined,
-  io: ConflictIo,
+  io: Pick<ConflictIo, 'gitRaw' | 'writeProjectFileUntracked' | 'unlinkProjectFileUndeclared'>,
   projectDir: string,
 ): Promise<void> {
   const requestedPath = resolve(projectDir, entry.file);
@@ -99,8 +99,10 @@ export async function resolveWorkingTree(
       return;
     }
 
+    /* WARN: this unlink is undeclared because nothing fallible runs between it and
+       `unindex`; inserting one requires `deleteResolvedContent` and the teardown with it. */
     case 'delete':
-      if (existsSync(requestedPath)) io.unlinkProjectFile(requestedPath);
+      if (existsSync(requestedPath)) io.unlinkProjectFileUndeclared(requestedPath);
       return;
 
     default: {
@@ -115,7 +117,7 @@ export async function resolveReconcile(
   resolvedBytes: string | undefined,
   docName: string,
   absPath: string,
-  io: ConflictIo,
+  io: Pick<ConflictIo, 'applyResolvedContent' | 'deleteResolvedContent'>,
 ): Promise<void> {
   switch (strategy) {
     case 'mine':
@@ -126,7 +128,7 @@ export async function resolveReconcile(
     }
 
     case 'delete':
-      if (existsSync(absPath)) io.unlinkProjectFile(absPath);
+      if (existsSync(absPath)) io.deleteResolvedContent(docName, absPath);
       return;
 
     default: {
@@ -141,7 +143,9 @@ export type CommitMergeResult =
   | { ok: false; unmerged: string[]; cause: unknown }
   | { ok: false; unmerged: null; probeError: unknown; cause: unknown };
 
-export async function commitMergeIfEmpty(io: ConflictIo): Promise<CommitMergeResult> {
+export async function commitMergeIfEmpty(
+  io: Pick<ConflictIo, 'gitRaw'>,
+): Promise<CommitMergeResult> {
   try {
     await io.gitRaw(['commit', '--no-edit']);
     return { ok: true };

@@ -1,6 +1,11 @@
 import { basename } from 'node:path';
 
-const DEFAULT_USERDATA_NAMES = new Set(['OpenKnowledge', 'Open Knowledge', 'Electron']);
+const DEFAULT_USERDATA_NAMES = new Set([
+  'OpenKnowledge',
+  'Open Knowledge',
+  'OpenKnowledge Beta',
+  'Electron',
+]);
 
 const DEV_WRAPPER = /^(?:OpenKnowledge|Open Knowledge) \((.+)\)$/;
 
@@ -14,4 +19,9 @@ export function resolveInstanceLabel(userDataDir: string): string | null {
 
 export function formatInstanceAppName(appName: string, label: string): string {
   return `${appName} (${label})`;
+}
+
+export function combineInstanceLabels(...labels: Array<string | null>): string | null {
+  const present = labels.filter((label): label is string => label !== null && label.length > 0);
+  return present.length > 0 ? present.join(' · ') : null;
 }

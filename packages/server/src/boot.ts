@@ -19,6 +19,7 @@ import {
 import { resolveGitDirDetailed } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import { context, propagation } from '@opentelemetry/api';
 import sirv from 'sirv';
+import { readAgentBrowserTools, readAutoApproveOkTools } from './acp/permissions.ts';
 import {
   AcpThreadManager,
   type AcpThreadManagerOptions,
@@ -151,6 +152,7 @@ export interface BootServerOptions
   probeHarnessManagedMcpEntry?: AcpThreadManagerOptions['probeHarnessManagedMcpEntry'];
   probePiAcpBridge?: AcpThreadManagerOptions['probePiAcpBridge'];
   ensurePiAcpBridge?: AcpThreadManagerOptions['ensurePiAcpBridge'];
+  terminalAuthAvailable?: boolean;
   idleShutdownMs?: number | null;
   serveContentAssets?: boolean;
   reactShellDistDir?: string;
@@ -477,8 +479,21 @@ async function bootServerInner(opts: BootServerOptions): Promise<BootedServer> {
         probeHarnessManagedMcpEntry: opts.probeHarnessManagedMcpEntry,
         probePiAcpBridge: opts.probePiAcpBridge,
         ensurePiAcpBridge: opts.ensurePiAcpBridge,
+        terminalAuthAvailable: opts.terminalAuthAvailable === true,
         hostSnapshot: () =>
           collectServerHostSnapshot({ env: 'local-web', resolve: opts.agentIntegrations?.probe }),
+        autoApproveOkTools: () =>
+          readAutoApproveOkTools(
+            opts.projectDir ?? opts.contentDir,
+            opts.configHomedirOverride,
+            log,
+          ),
+        agentBrowserTools: () =>
+          readAgentBrowserTools(
+            opts.projectDir ?? opts.contentDir,
+            opts.configHomedirOverride,
+            log,
+          ),
         log,
       });
   if (acpThreadManager !== null) await acpThreadManager.init();

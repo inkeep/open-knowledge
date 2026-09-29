@@ -2,6 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import {
+  DESKTOP_PRODUCTS,
+  desktopWindowsExecutableName,
+  desktopWindowsInstallDirNames,
+} from '@inkeep/open-knowledge-core';
 import { findEnclosingProjectRoot, withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import checkbox from '@inquirer/checkbox';
 import { Command } from 'commander';
@@ -31,11 +36,7 @@ export interface InstallMethod {
   instruction: string;
 }
 
-const WINDOWS_APP_REMOVAL =
-  'Uninstall from Windows Settings → Apps → Installed apps → OpenKnowledge';
-
-const LINUX_APP_REMOVAL =
-  'Remove with your package manager: sudo apt remove openknowledge (Debian/Ubuntu) or sudo dnf remove OpenKnowledge (Fedora/RHEL)';
+const DESKTOP_PRODUCT_LIST = [DESKTOP_PRODUCTS.stable, DESKTOP_PRODUCTS.beta] as const;
 
 export function detectInstallMethods(
   home: string,
@@ -49,40 +50,51 @@ export function detectInstallMethods(
   const env = opts.env ?? process.env;
 
   if (platform === 'darwin') {
-    for (const app of [
-      '/Applications/OpenKnowledge.app',
-      join(home, 'Applications', 'OpenKnowledge.app'),
-    ]) {
-      if (exists(app)) {
-        methods.push({
-          method: 'app',
-          label: `OK Desktop (${app})`,
-          instruction: `Move ${app} to the Trash (or: rm -rf "${app}")`,
-        });
+    for (const product of DESKTOP_PRODUCT_LIST) {
+      for (const applicationsDir of ['/Applications', join(home, 'Applications')]) {
+        const app = join(applicationsDir, `${product.productName}.app`);
+        if (exists(app)) {
+          methods.push({
+            method: 'app',
+            label: `${product.productName} (${app})`,
+            instruction: `Move ${app} to the Trash (or: rm -rf "${app}")`,
+          });
+        }
       }
     }
   } else if (platform === 'win32') {
     const localAppData = env.LOCALAPPDATA;
     if (localAppData) {
-      for (const dirName of ['@inkeepopen-knowledge-desktop', 'OpenKnowledge']) {
-        const exe = join(localAppData, 'Programs', dirName, 'OpenKnowledge.exe');
-        if (exists(exe)) {
-          methods.push({
-            method: 'app',
-            label: `OK Desktop (${exe})`,
-            instruction: WINDOWS_APP_REMOVAL,
-          });
-          break;
+      for (const product of DESKTOP_PRODUCT_LIST) {
+        for (const dirName of desktopWindowsInstallDirNames(product)) {
+          const exe = join(
+            localAppData,
+            'Programs',
+            dirName,
+            desktopWindowsExecutableName(product),
+          );
+          if (exists(exe)) {
+            methods.push({
+              method: 'app',
+              label: `${product.productName} (${exe})`,
+              instruction: `Uninstall from Windows Settings → Apps → Installed apps → ${product.productName}`,
+            });
+            break;
+          }
         }
       }
     }
   } else if (platform === 'linux') {
-    if (exists('/opt/OpenKnowledge/openknowledge')) {
-      methods.push({
-        method: 'app',
-        label: 'OK Desktop (/opt/OpenKnowledge)',
-        instruction: LINUX_APP_REMOVAL,
-      });
+    for (const product of DESKTOP_PRODUCT_LIST) {
+      const installDir = `/opt/${product.productName}`;
+      if (exists(join(installDir, product.linuxExecutableName))) {
+        const { deb: debPackageName, rpm: rpmPackageName } = product.linuxPackageNames;
+        methods.push({
+          method: 'app',
+          label: `${product.productName} (${installDir})`,
+          instruction: `Remove with your package manager: sudo apt remove ${debPackageName} (Debian/Ubuntu) or sudo dnf remove ${rpmPackageName} (Fedora/RHEL)`,
+        });
+      }
     }
   }
 

@@ -8,7 +8,7 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { ArrowUpRight, ChevronRight } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { type Ref, useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { AuthModal } from '@/components/AuthModal';
 import { EnableSyncConfirmDialog } from '@/components/EnableSyncConfirmDialog';
@@ -49,6 +49,37 @@ const SYNC_SELECTED_TOGGLE_CLASS =
   'data-[state=on]:border-primary data-[state=on]:bg-primary data-[state=on]:text-primary-foreground data-[state=on]:hover:bg-primary/90';
 
 export function SyncSection() {
+  const [publishOpen, setPublishOpen] = useState(false);
+  const setUpSyncingRef = useRef<HTMLButtonElement>(null);
+  const syncSectionRef = useRef<HTMLElement>(null);
+
+  return (
+    <section
+      ref={syncSectionRef}
+      aria-labelledby="settings-sync-title"
+      tabIndex={-1}
+      data-testid="settings-sync-section"
+    >
+      <SyncSectionContent
+        onPublish={() => setPublishOpen(true)}
+        setUpSyncingRef={setUpSyncingRef}
+      />
+      <PublishToGitHubDialog
+        open={publishOpen}
+        onOpenChange={setPublishOpen}
+        returnFocus={() => (setUpSyncingRef.current ?? syncSectionRef.current)?.focus()}
+      />
+    </section>
+  );
+}
+
+function SyncSectionContent({
+  onPublish,
+  setUpSyncingRef,
+}: {
+  onPublish: () => void;
+  setUpSyncingRef: Ref<HTMLButtonElement>;
+}) {
   const { t } = useLingui();
   const status = useGitSyncStatus();
   const { projectConfig, projectLocalConfig, projectLocalSynced, projectSynced } =
@@ -65,16 +96,11 @@ export function SyncSection() {
   const localMode = resolveLocalAutoSyncMode(projectLocalConfig?.autoSync) ?? 'off';
   const { confirmOpen, setConfirmOpen, pendingMode, onModeSelect, onConfirm } =
     useSyncModeSelection(modeWriter, localMode);
-  const [publishOpen, setPublishOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
   if (status && !status.hasRemote && status.state === 'dormant') {
     return (
-      <section
-        aria-labelledby="settings-sync-title"
-        className="space-y-4"
-        data-testid="settings-sync-empty"
-      >
+      <div className="space-y-4" data-testid="settings-sync-empty">
         <SettingsSectionHeader
           titleId="settings-sync-title"
           title={<Trans>Sync</Trans>}
@@ -95,7 +121,7 @@ export function SyncSection() {
               <Trans>We'll create a repository and start syncing — no terminal needed.</Trans>
             </p>
           </div>
-          <Button onClick={() => setPublishOpen(true)} data-testid="settings-sync-setup">
+          <Button ref={setUpSyncingRef} onClick={onPublish} data-testid="settings-sync-setup">
             <Trans>Set up syncing</Trans>
           </Button>
         </div>
@@ -120,9 +146,7 @@ export function SyncSection() {
             </Trans>
           </CollapsibleContent>
         </Collapsible>
-
-        <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />
-      </section>
+      </div>
     );
   }
 
@@ -226,7 +250,7 @@ export function SyncSection() {
   }
 
   return (
-    <section aria-labelledby="settings-sync-title" className="space-y-3">
+    <div className="space-y-3">
       <SettingsSectionHeader
         titleId="settings-sync-title"
         title={<Trans>Sync</Trans>}
@@ -600,6 +624,6 @@ export function SyncSection() {
         onSuccess={() => setAuthModalOpen(false)}
         reauth
       />
-    </section>
+    </div>
   );
 }

@@ -3,6 +3,7 @@ import { readFile, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import {
+  type BundleExtraFile,
   type BundleLogger,
   collectReportBundle,
   defaultBugReportZipPath,
@@ -33,6 +34,13 @@ import type {
   OkBugReportAttachmentInput,
   OkBugReportSendInput,
 } from '@inkeep/open-knowledge-core/desktop-bridge';
+import {
+  type AgentChatMetadataOutcome,
+  type AgentChatStageOutcome,
+  defaultAgentChatThreadDirs,
+  isAgentChatThreadId,
+  stageAgentChatTranscript,
+} from '../bug-report-agent-chat.ts';
 import { type BugReportSendTrace, beginSendTrace } from '../bug-report-trace.ts';
 import type { MinidumpReportLookup } from '../crash-detection.ts';
 import { logIpcError } from '../ipc-log.ts';
@@ -50,6 +58,7 @@ export interface OkBugReportCreateRequest {
   includeCrashDump?: boolean;
   includeScreenshot?: boolean;
   attachments?: OkBugReportAttachmentInput[];
+  agentChatThreadId?: string;
 }
 
 interface OkBugReportCaptureScreenshotRequest {
@@ -112,6 +121,8 @@ export interface BugReportCreateDeps {
   onReportGenerated?: (meta: GeneratedReportMeta) => Promise<void>;
   onScreenshotStaged?: (reportId: string, png: Buffer) => void;
   onAttachmentsStaged?: (reportId: string, attachments: readonly StagedAttachment[]) => void;
+  agentChatThreadDirs?: readonly string[];
+  agentChatTranscriptMaxBytes?: number;
 }
 
 export interface StagedAttachment {
@@ -165,7 +176,8 @@ function isCreateRequest(request: unknown): request is OkBugReportCreateRequest 
     isValidNote(r.note) &&
     (r.includeCrashDump === undefined || typeof r.includeCrashDump === 'boolean') &&
     (r.includeScreenshot === undefined || typeof r.includeScreenshot === 'boolean') &&
-    isValidAttachments(r.attachments)
+    isValidAttachments(r.attachments) &&
+    (r.agentChatThreadId === undefined || isAgentChatThreadId(r.agentChatThreadId))
   );
 }
 
@@ -221,6 +233,94 @@ function recordMinidumpDecision(
   } catch {}
 }
 
+function assertNeverAgentChatStageOutcome(value: never): never {
+  throw new Error(`unhandled agent chat stage outcome: ${JSON.stringify(value)}`);
+}
+
+function assertNeverAgentChatMetadataOutcome(value: never): never {
+  throw new Error(`unhandled agent chat metadata outcome: ${JSON.stringify(value)}`);
+}
+
+function logAgentChatMetadataOmission(
+  logger: BundleLogger | undefined,
+  threadId: string,
+  metadata: AgentChatMetadataOutcome,
+): void {
+  const event = 'bug-report.agent-chat-metadata';
+  switch (metadata.status) {
+    case 'attached':
+      return;
+    case 'not-found':
+      logger?.warn(
+        { event, threadId, attached: false, reason: 'not-found' },
+        "bug-report: agent chat's metadata file not found; the report carries the transcript without it",
+      );
+      return;
+    case 'too-large':
+      logger?.warn(
+        { event, threadId, attached: false, reason: 'too-large', sizeBytes: metadata.sizeBytes },
+        "bug-report: agent chat's metadata file is too large to read; the report carries the transcript without it",
+      );
+      return;
+    case 'failed':
+      logger?.warn(
+        { err: metadata.error, event, threadId, attached: false, reason: 'stage-failed' },
+        "bug-report: agent chat's metadata could not be staged; the report carries the transcript without it",
+      );
+      return;
+    default:
+      assertNeverAgentChatMetadataOutcome(metadata);
+  }
+}
+
+async function stageAgentChat(
+  deps: BugReportCreateDeps,
+  threadId: string,
+  tmpPaths: string[],
+): Promise<readonly BundleExtraFile[]> {
+  let staged: AgentChatStageOutcome;
+  try {
+    staged = await stageAgentChatTranscript({
+      threadId,
+      threadDirs: deps.agentChatThreadDirs ?? defaultAgentChatThreadDirs(deps.projectDir),
+      tmpDir: tmpdir(),
+      tmpPaths,
+      ...(deps.agentChatTranscriptMaxBytes !== undefined
+        ? { maxBytes: deps.agentChatTranscriptMaxBytes }
+        : {}),
+    });
+  } catch (err) {
+    deps.logger?.warn(
+      { err, event: 'bug-report.agent-chat', threadId, attached: false, reason: 'stage-failed' },
+      'bug-report: agent chat transcript could not be staged; the report goes without it',
+    );
+    return [];
+  }
+  switch (staged.status) {
+    case 'attached':
+      deps.logger?.info(
+        { event: 'bug-report.agent-chat', threadId, attached: true, truncated: staged.truncated },
+        'bug-report: agent chat transcript attached',
+      );
+      logAgentChatMetadataOmission(deps.logger, threadId, staged.metadata);
+      return staged.files;
+    case 'too-large':
+      deps.logger?.warn(
+        { event: 'bug-report.agent-chat', threadId, attached: false, reason: 'too-large' },
+        "bug-report: agent chat's newest event is too large to read; the report goes without it",
+      );
+      return [];
+    case 'not-found':
+      deps.logger?.warn(
+        { event: 'bug-report.agent-chat', threadId, attached: false, reason: 'not-found' },
+        'bug-report: agent chat transcript not found; the report goes without it',
+      );
+      return [];
+    default:
+      return assertNeverAgentChatStageOutcome(staged);
+  }
+}
+
 export async function handleBugReportCreate(
   deps: BugReportCreateDeps,
   request: OkBugReportCreateRequest,
@@ -246,7 +346,7 @@ export async function handleBugReportCreate(
   const screenshotBytes =
     request.includeScreenshot === true ? (deps.screenshotPngBytes?.() ?? null) : null;
 
-  const extraFiles: { sourcePath: string; zipName?: string }[] = [];
+  const extraFiles: BundleExtraFile[] = [];
   if (minidumpPath !== null) extraFiles.push({ sourcePath: minidumpPath });
 
   const dumpSizeBytes =
@@ -305,6 +405,7 @@ export async function handleBugReportCreate(
 
   let screenshotTmpPath: string | null = null;
   const attachmentTmpPaths: string[] = [];
+  const agentChatTmpPaths: string[] = [];
   try {
     if (screenshotBytes !== null) {
       screenshotTmpPath = join(tmpdir(), `ok-bugreport-screenshot-${randomUUID()}.png`);
@@ -320,6 +421,11 @@ export async function handleBugReportCreate(
         sourcePath: tmpPath,
         zipName: `${BUG_REPORT_ATTACHMENTS_ZIP_DIR}/${index + 1}.${extension}`,
       });
+    }
+    if (request.agentChatThreadId !== undefined) {
+      extraFiles.push(
+        ...(await stageAgentChat(deps, request.agentChatThreadId, agentChatTmpPaths)),
+      );
     }
     const outputPath = deps.outputPath ?? defaultBugReportZipPath();
     const { zipPath, summary } = await collectReportBundle({
@@ -414,6 +520,14 @@ export async function handleBugReportCreate(
         deps.logger?.warn(
           { attachmentTmpPath, err },
           'bug-report: failed to remove temp attachment file',
+        );
+      });
+    }
+    for (const agentChatTmpPath of agentChatTmpPaths) {
+      await unlink(agentChatTmpPath).catch((err: unknown) => {
+        deps.logger?.warn(
+          { agentChatTmpPath, err },
+          'bug-report: failed to remove temp agent chat file',
         );
       });
     }

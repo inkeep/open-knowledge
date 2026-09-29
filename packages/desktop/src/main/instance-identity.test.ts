@@ -1,10 +1,17 @@
 import { describe, expect, test } from 'vitest';
-import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
+import {
+  combineInstanceLabels,
+  formatInstanceAppName,
+  resolveInstanceLabel,
+} from './instance-identity.ts';
 
 describe('resolveInstanceLabel', () => {
   test('returns null for the default install userData names', () => {
     expect(resolveInstanceLabel('/Users/me/Library/Application Support/OpenKnowledge')).toBeNull();
     expect(resolveInstanceLabel('/Users/me/Library/Application Support/Open Knowledge')).toBeNull();
+    expect(
+      resolveInstanceLabel('/Users/me/Library/Application Support/OpenKnowledge Beta'),
+    ).toBeNull();
     expect(resolveInstanceLabel('/tmp/Electron')).toBeNull();
   });
 
@@ -28,5 +35,13 @@ describe('resolveInstanceLabel', () => {
 describe('formatInstanceAppName', () => {
   test('suffixes the app name with the label', () => {
     expect(formatInstanceAppName('OpenKnowledge', 'work')).toBe('OpenKnowledge (work)');
+  });
+});
+
+describe('combineInstanceLabels', () => {
+  test('reuses one label surface for product and dev identities', () => {
+    expect(combineInstanceLabels('Beta', 'work')).toBe('Beta · work');
+    expect(combineInstanceLabels('Beta', null)).toBe('Beta');
+    expect(combineInstanceLabels(null, null)).toBeNull();
   });
 });

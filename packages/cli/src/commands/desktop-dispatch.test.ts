@@ -26,6 +26,9 @@ function statForFile(path: string): DetectDeps['statSync'] {
 
 const APP_EXEC = '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
 const HOME_EXEC = '/Users/andrew/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge';
+const BETA_APP_EXEC = '/Applications/OpenKnowledge Beta.app/Contents/MacOS/OpenKnowledge Beta';
+const HOME_BETA_APP_EXEC =
+  '/Users/andrew/Applications/OpenKnowledge Beta.app/Contents/MacOS/OpenKnowledge Beta';
 
 describe('detectDesktop — platform gate (FR10)', () => {
   test('unknown platform → unsupported-platform', () => {
@@ -49,7 +52,10 @@ describe('detectDesktop — platform gate (FR10)', () => {
 describe('detectDesktop — Windows/Linux install resolution', () => {
   const WIN_EXE =
     'C:\\Users\\u\\AppData\\Local\\Programs\\@inkeepopen-knowledge-desktop\\OpenKnowledge.exe';
+  const BETA_WIN_EXE =
+    'C:\\Users\\u\\AppData\\Local\\Programs\\openknowledge-beta-desktop\\OpenKnowledge Beta.exe';
   const DEB_EXE = '/opt/OpenKnowledge/openknowledge';
+  const BETA_DEB_EXE = '/opt/OpenKnowledge Beta/openknowledge-beta';
 
   test('win32: %LOCALAPPDATA% per-user install → available', () => {
     const result = detectDesktop(
@@ -74,6 +80,17 @@ describe('detectDesktop — Windows/Linux install resolution', () => {
     expect(result).toEqual({ available: true, reason: 'available', bundlePath: WIN_EXE });
   });
 
+  test('win32: Beta per-user install → available', () => {
+    const result = detectDesktop(
+      baseDeps({
+        platform: 'win32',
+        env: { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local' },
+        statSync: statForFile(BETA_WIN_EXE),
+      }),
+    );
+    expect(result).toEqual({ available: true, reason: 'available', bundlePath: BETA_WIN_EXE });
+  });
+
   test('linux: deb install at /opt → available (with a display)', () => {
     const result = detectDesktop(
       baseDeps({
@@ -91,6 +108,17 @@ describe('detectDesktop — Windows/Linux install resolution', () => {
     );
     expect(result).toEqual({ available: false, reason: 'headless', bundlePath: DEB_EXE });
   });
+
+  test('linux: Beta deb install at /opt → available', () => {
+    const result = detectDesktop(
+      baseDeps({
+        platform: 'linux',
+        env: { DISPLAY: ':0' },
+        statSync: statForFile(BETA_DEB_EXE),
+      }),
+    );
+    expect(result).toEqual({ available: true, reason: 'available', bundlePath: BETA_DEB_EXE });
+  });
 });
 
 describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
@@ -105,6 +133,23 @@ describe('detectDesktop — bundle resolution (FR10 D2 a/b/c)', () => {
     const result = detectDesktop(baseDeps({ statSync: statForFile(HOME_EXEC) }));
     expect(result.available).toBe(true);
     expect(result.bundlePath).toBe('/Users/andrew/Applications/OpenKnowledge.app');
+  });
+
+  test('darwin + only Beta in /Applications → available', () => {
+    const result = detectDesktop(baseDeps({ statSync: statForFile(BETA_APP_EXEC) }));
+    expect(result).toEqual({
+      available: true,
+      reason: 'available',
+      bundlePath: '/Applications/OpenKnowledge Beta.app',
+    });
+  });
+
+  test('darwin prefers Stable across install locations when both products exist', () => {
+    const installed = new Set([APP_EXEC, HOME_BETA_APP_EXEC]);
+    const result = detectDesktop(
+      baseDeps({ statSync: (path) => (installed.has(path) ? { isFile: () => true } : null) }),
+    );
+    expect(result.bundlePath).toBe('/Applications/OpenKnowledge.app');
   });
 
   test('darwin + no bundle → no-bundle', () => {
@@ -303,7 +348,7 @@ describe('detectDesktop — headless gate (FR9 — CI is intentionally NOT a tri
 });
 
 describe('launchDesktop — spawn shape (FR11)', () => {
-  test('spawns open with -b <bundle-id>, detached, stdio:ignore, unref()', () => {
+  test('spawns open with the detected bundle path, detached, stdio:ignore, unref()', () => {
     let captured: { command?: string; args?: readonly string[]; opts?: SpawnOptions } = {};
     let unrefCalled = false;
 
@@ -318,10 +363,13 @@ describe('launchDesktop — spawn shape (FR11)', () => {
     }) as unknown as Parameters<typeof launchDesktop>[0]['spawn'];
 
     let logged = '';
-    launchDesktop({ spawn: fakeSpawn, log: (m) => (logged = m), platform: 'darwin' });
+    launchDesktop(
+      { spawn: fakeSpawn, log: (m) => (logged = m), platform: 'darwin' },
+      { available: true, reason: 'available', bundlePath: '/Applications/OpenKnowledge Beta.app' },
+    );
 
     expect(captured.command).toBe('open');
-    expect(captured.args).toEqual(['-b', DESKTOP_BUNDLE_ID]);
+    expect(captured.args).toEqual(['-a', '/Applications/OpenKnowledge Beta.app']);
     expect(captured.opts?.detached).toBe(true);
     expect(captured.opts?.stdio).toBe('ignore');
     expect(unrefCalled).toBe(true);
@@ -370,7 +418,10 @@ describe('launchDesktop — spawn shape (FR11)', () => {
         return { unref: () => {} };
       }) as unknown as Parameters<typeof launchDesktop>[0]['spawn'];
 
-      launchDesktop({ spawn: fakeSpawn, log: () => {}, platform: 'darwin' });
+      launchDesktop(
+        { spawn: fakeSpawn, log: () => {}, platform: 'darwin' },
+        { available: true, reason: 'available', bundlePath: '/Applications/OpenKnowledge.app' },
+      );
 
       expect(captured.opts?.env).toBeDefined();
       expect(captured.opts?.env).not.toHaveProperty('ELECTRON_RUN_AS_NODE');

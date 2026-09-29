@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/suspicious/noTemplateCurlyInString: GitHub expression and shell fixtures must remain literal. */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -45,6 +46,13 @@ const UNDELIVERABLE_POST_ONLY_WARNS =
   /if ! curl[\s\S]*?; then\n\s+echo "::warning::Linear stamping failure alert failed to POST\."\n\s+fi/;
 
 describe('linear release stamping workflow', () => {
+  test('only completed installer publication triggers automatic stamping', () => {
+    const parsed = parse(workflow);
+    expect(parsed.on.repository_dispatch.types).toEqual(['desktop-release-published']);
+    const derive = parsed.jobs.stamp.steps.find((step) => step.id === 'derive');
+    expect(derive.env.GH_TOKEN).toBe('${{ github.token }}');
+  });
+
   test('restores workflow revision scripts after checking out historical release code', () => {
     const labels = stepLabels(workflow);
     const expected = [
@@ -57,9 +65,7 @@ describe('linear release stamping workflow', () => {
       .flatMap((job) => job.steps)
       .find((step) => step.name === 'Restore stamping scripts from workflow revision');
     expect(restore.env.WORKFLOW_SHA).toBe('${{ github.workflow_sha }}');
-    expect(restore.run).toBe(
-      'git restore --source "$WORKFLOW_SHA" --worktree .github/scripts/',
-    );
+    expect(restore.run).toBe('git restore --source "$WORKFLOW_SHA" --worktree .github/scripts/');
     expect(workflow).toContain(
       'run: node .github/scripts/derive-release-stamp.mjs "${RELEASE_TAG}"',
     );

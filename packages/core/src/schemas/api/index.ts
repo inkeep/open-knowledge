@@ -6,6 +6,7 @@ export * from './comments.ts';
 export * from './document-read.ts';
 export * from './embed-detect.ts';
 export * from './git-worktree-status.ts';
+export * from './github-reference.ts';
 export * from './history.ts';
 export * from './link-preview.ts';
 export * from './links-orphans.ts';

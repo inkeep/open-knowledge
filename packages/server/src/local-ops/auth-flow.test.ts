@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { describe, expect, test } from 'vitest';
 import { type RunDeviceFlowController, runDeviceFlowSubprocess } from './auth-flow.ts';
 import type { AuthEvent } from './types.ts';
@@ -273,4 +275,18 @@ describe('runDeviceFlowSubprocess', () => {
     await ctrl.done;
     expect(events).toEqual([]);
   });
+});
+
+test('device flow runs in the supplied project directory', async () => {
+  const cwd = realpathSync(tmpdir());
+  const events: AuthEvent[] = [];
+  const controller = runDeviceFlowSubprocess({
+    cwd,
+    cliArgs: fixtureCli(
+      `console.log(JSON.stringify({type: 'complete', host: process.cwd(), login: 'octocat'}));`,
+    ),
+    onEvent: (event) => events.push(event),
+  });
+  await controller.done;
+  expect(events).toEqual([expect.objectContaining({ type: 'complete', host: cwd })]);
 });

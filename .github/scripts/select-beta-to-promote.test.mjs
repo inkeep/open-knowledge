@@ -54,6 +54,21 @@ describe('parseBetaTags', () => {
 });
 
 describe('selectPromotion', () => {
+  test('a recovered old draft earns a full day from installer publication, not creation', () => {
+    const tag = 'v0.78.0-beta.6';
+    const createdAt = '2026-06-01T00:00:00Z';
+    const fetchReleaseMeta = fetcher({
+      [tag]: { ...meta({ publishedAt: new Date(NOW).toISOString() }), createdAt },
+    });
+    const options = { betaTags: [tag], fetchReleaseMeta };
+    expect(select({ ...options, nowMs: NOW + SOAK * 1000 - 1 })).toEqual({ kind: 'none' });
+    expect(select({ ...options, nowMs: NOW + SOAK * 1000 })).toEqual({
+      kind: 'select',
+      target: tag,
+      tier: 'soak',
+    });
+  });
+
   test('reaches back to the latest soaked beta when the head is under-soaked', () => {
     const r = select({
       betaTags: ['v0.10.0-beta.6', 'v0.10.0-beta.5'],

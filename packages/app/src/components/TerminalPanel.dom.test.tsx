@@ -869,6 +869,42 @@ describe('TerminalPanel', () => {
     expect(terminal.input).toHaveBeenCalledWith('pty-1', "'C:\\Users\\O''Brien\\shot.png' ");
   });
 
+  test('a PowerShell terminal doubles every curly single quote in dropped Windows paths', async () => {
+    const { bridge, terminal, pushNotice } = makeBridge(
+      { ok: true, ptyId: 'pty-1' },
+      WIRED,
+      undefined,
+      'win32',
+    );
+    (bridge as unknown as { getPathForFile: (file: File) => string }).getPathForFile = (file) =>
+      `C:\\Users\\me\\${file.name}`;
+    render(<TerminalPanel bridge={bridge} />);
+    await waitFor(() => expect(lastTerm?.onDataCb).toBeTruthy());
+    act(() =>
+      pushNotice({
+        ptyId: 'pty-1',
+        notice: 'shell-resolved',
+        shellFamily: 'powershell',
+      }),
+    );
+
+    const container = document.querySelector('[data-terminal-status]');
+    if (container === null) throw new Error('terminal container not found');
+    const files = [
+      new File(['a'], '\u2018draft.md', { type: 'text/markdown' }),
+      new File(['b'], 'Nick\u2019s notes.md', { type: 'text/markdown' }),
+      new File(['c'], 'a\u201Ab.md', { type: 'text/markdown' }),
+      new File(['d'], 'a\u201Bb.md', { type: 'text/markdown' }),
+    ];
+    fireEvent.drop(container, { dataTransfer: { types: ['Files'], files } });
+
+    expect(terminal.input).toHaveBeenCalledWith(
+      'pty-1',
+      "'C:\\Users\\me\\\u2018\u2018draft.md' 'C:\\Users\\me\\Nick\u2019\u2019s notes.md' 'C:\\Users\\me\\a\u201A\u201Ab.md' 'C:\\Users\\me\\a\u201B\u201Bb.md' ",
+    );
+    expect(screen.queryByTestId('terminal-path-drop-notice-banner')).toBeNull();
+  });
+
   test('a Git Bash terminal POSIX-quotes dropped Windows paths', async () => {
     const { bridge, terminal, pushNotice } = makeBridge(
       { ok: true, ptyId: 'pty-1' },
@@ -1007,6 +1043,183 @@ describe('TerminalPanel', () => {
 
     expect(terminal.input).toHaveBeenCalledTimes(1);
     expect(terminal.input).toHaveBeenCalledWith('pty-1', "'/dropped/shot.png' ");
+  });
+
+  describe('dropped file names with control characters', () => {
+    const DROPPED_NAME_CONTROL_CHARACTERS: ReadonlyArray<
+      readonly [label: string, character: string]
+    > = [
+      ['U+0000 (C0)', '\u0000'],
+      ['U+0001 (C0)', '\u0001'],
+      ['U+000A (C0)', '\u000a'],
+      ['U+001B (C0)', '\u001b'],
+      ['U+001F (C0)', '\u001f'],
+      ['U+007F (DEL)', '\u007f'],
+      ['U+0080 (C1)', '\u0080'],
+      ['U+0085 (C1)', '\u0085'],
+      ['U+009B (C1)', '\u009b'],
+      ['U+009F (C1)', '\u009f'],
+    ];
+    const DROPPED_NAME_TYPED_CHARACTERS: ReadonlyArray<
+      readonly [label: string, character: string]
+    > = [
+      ['U+0020', '\u0020'],
+      ['U+007E', '\u007e'],
+      ['U+00A0', '\u00a0'],
+      ['U+200B', '\u200b'],
+      ['U+200E', '\u200e'],
+      ['U+2028', '\u2028'],
+      ['U+202E', '\u202e'],
+      ['U+202F', '\u202f'],
+      ['U+2066', '\u2066'],
+      ['U+FEFF', '\ufeff'],
+    ];
+    const DROP_TERMINALS: ReadonlyArray<{
+      readonly label: string;
+      readonly platform: OkDesktopBridge['platform'];
+      readonly shellFamily: 'powershell' | 'cmd' | 'bash' | null;
+      readonly root: string;
+      readonly quote: string;
+      readonly otherRefusedCharacters: string;
+    }> = [
+      {
+        label: 'macOS',
+        platform: 'darwin',
+        shellFamily: null,
+        root: '/dropped/',
+        quote: "'",
+        otherRefusedCharacters: '',
+      },
+      {
+        label: 'Linux',
+        platform: 'linux',
+        shellFamily: null,
+        root: '/dropped/',
+        quote: "'",
+        otherRefusedCharacters: '',
+      },
+      {
+        label: 'Windows PowerShell',
+        platform: 'win32',
+        shellFamily: 'powershell',
+        root: 'C:\\Users\\me\\',
+        quote: "'",
+        otherRefusedCharacters: '',
+      },
+      {
+        label: 'Windows cmd',
+        platform: 'win32',
+        shellFamily: 'cmd',
+        root: 'C:\\Users\\me\\',
+        quote: '"',
+        otherRefusedCharacters: '!"%',
+      },
+      {
+        label: 'Windows Git Bash',
+        platform: 'win32',
+        shellFamily: 'bash',
+        root: 'C:\\Users\\me\\',
+        quote: "'",
+        otherRefusedCharacters: '',
+      },
+    ];
+    type DropTerminal = (typeof DROP_TERMINALS)[number];
+    const LATIN_1_CODE_POINTS = Array.from({ length: 0x100 }, (_, codePoint) => codePoint);
+    const isControlCodePoint = (codePoint: number): boolean =>
+      codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+    const formatCodePoint = (codePoint: number): string =>
+      `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+
+    async function renderDropTarget(
+      target: DropTerminal,
+    ): Promise<(names: readonly string[]) => string[]> {
+      const { bridge, terminal, pushNotice } = makeBridge(
+        { ok: true, ptyId: 'pty-1' },
+        WIRED,
+        undefined,
+        target.platform,
+      );
+      (bridge as unknown as { getPathForFile: (file: File) => string }).getPathForFile = (file) =>
+        `${target.root}${file.name}`;
+      render(<TerminalPanel bridge={bridge} />);
+      await waitFor(() =>
+        expect(document.querySelector('[data-terminal-status="running"]')).not.toBeNull(),
+      );
+      const { shellFamily } = target;
+      if (shellFamily !== null) {
+        act(() => pushNotice({ ptyId: 'pty-1', notice: 'shell-resolved', shellFamily }));
+      }
+      const container = document.querySelector('[data-terminal-status]');
+      if (container === null) throw new Error('terminal container not found');
+      return (names) => {
+        const writesBefore = terminal.input.mock.calls.length;
+        const files = names.map((name) => new File(['x'], name, { type: 'text/markdown' }));
+        fireEvent.drop(container, { dataTransfer: { types: ['Files'], files } });
+        return terminal.input.mock.calls.slice(writesBefore).map(([, data]) => data);
+      };
+    }
+
+    function typedPath(target: DropTerminal, name: string): string {
+      return `${target.quote}${target.root}${name}${target.quote}`;
+    }
+
+    describe.each(DROP_TERMINALS)('on a $label terminal', (target) => {
+      const exceptions = Array.from(target.otherRefusedCharacters, (character) =>
+        formatCodePoint(character.charCodeAt(0)),
+      );
+
+      test.each(DROPPED_NAME_CONTROL_CHARACTERS)(
+        'leaves out a file whose name contains %s and types the rest of the drop',
+        async (_label, character) => {
+          const drop = await renderDropTarget(target);
+          expect(drop(['before.md', `a${character}b.md`, 'after.md'])).toEqual([
+            `${typedPath(target, 'before.md')} ${typedPath(target, 'after.md')} `,
+          ]);
+          expect(screen.getByTestId('terminal-path-drop-notice-banner')).toBeTruthy();
+        },
+      );
+
+      test.each(DROPPED_NAME_TYPED_CHARACTERS)(
+        'types a file whose name contains %s as-is',
+        async (_label, character) => {
+          const name = `a${character}b.md`;
+          const drop = await renderDropTarget(target);
+          expect(drop(['before.md', name, 'after.md'])).toEqual([
+            `${typedPath(target, 'before.md')} ${typedPath(target, name)} ${typedPath(target, 'after.md')} `,
+          ]);
+          expect(screen.queryByTestId('terminal-path-drop-notice-banner')).toBeNull();
+        },
+      );
+
+      test('types nothing when every dropped file name contains DEL or a C1 control', async () => {
+        const drop = await renderDropTarget(target);
+        expect(drop(['a\u007fb.md', 'c\u009bd.md'])).toEqual([]);
+        expect(screen.getByTestId('terminal-path-drop-notice-banner')).toBeTruthy();
+      });
+
+      test('leaves out every file whose name contains a control character from U+0000 to U+00FF', async () => {
+        const drop = await renderDropTarget(target);
+        const controls = LATIN_1_CODE_POINTS.filter(isControlCodePoint);
+        const leftOut = controls.filter(
+          (codePoint) => drop([`a${String.fromCharCode(codePoint)}b.md`]).length === 0,
+        );
+        expect(leftOut.map(formatCodePoint)).toEqual(controls.map(formatCodePoint));
+        expect(drop(['after.md'])).toEqual([`${typedPath(target, 'after.md')} `]);
+      });
+
+      test(`types a file whose name contains any other character from U+0000 to U+00FF${exceptions.length === 0 ? '' : ` except ${exceptions.join(', ')}`}`, async () => {
+        const drop = await renderDropTarget(target);
+        const others = LATIN_1_CODE_POINTS.filter(
+          (codePoint) =>
+            !isControlCodePoint(codePoint) &&
+            !target.otherRefusedCharacters.includes(String.fromCharCode(codePoint)),
+        );
+        const typed = others.filter(
+          (codePoint) => drop([`a${String.fromCharCode(codePoint)}b.md`]).length === 1,
+        );
+        expect(typed.map(formatCodePoint)).toEqual(others.map(formatCodePoint));
+      });
+    });
   });
 
   test('a drag that carries no external files is ignored (no PTY write)', async () => {

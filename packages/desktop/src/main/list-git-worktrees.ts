@@ -11,12 +11,18 @@ const MAX_STDOUT_BYTES = 10 * 1024 * 1024;
 
 const STDERR_LOG_CAP = 500;
 
-export async function listGitWorktrees(anchorPath: string): Promise<BridgeWorktreeEntry[]> {
+export type GitWorktreeSnapshotResult =
+  | { readonly ok: true; readonly entries: readonly BridgeWorktreeEntry[] }
+  | { readonly ok: false };
+
+export async function readGitWorktreeSnapshot(
+  anchorPath: string,
+): Promise<GitWorktreeSnapshotResult> {
   if (!isAbsolute(anchorPath)) {
     console.warn(
       `[receive] list_git_worktrees=failed reason=anchor-not-absolute anchor=${anchorPath}`,
     );
-    return [];
+    return { ok: false };
   }
 
   let stdout: string;
@@ -32,18 +38,24 @@ export async function listGitWorktrees(anchorPath: string): Promise<BridgeWorktr
     const stderrRaw = readErrStream(err, 'stderr') ?? readErrMessage(err) ?? '';
     const stderr = stderrRaw.replace(/\s+/g, ' ').slice(0, STDERR_LOG_CAP);
     console.warn(`[receive] list_git_worktrees=failed reason=${stderr}`);
-    return [];
+    return { ok: false };
   }
 
   const parsed = parseWorktreeListPorcelain(stdout);
 
-  return parsed.map((entry) => {
+  const entries = parsed.map((entry) => {
     try {
       return { ...entry, path: realpathSync(entry.path) };
     } catch {
       return entry;
     }
   });
+  return { ok: true, entries };
+}
+
+export async function listGitWorktrees(anchorPath: string): Promise<BridgeWorktreeEntry[]> {
+  const result = await readGitWorktreeSnapshot(anchorPath);
+  return result.ok ? [...result.entries] : [];
 }
 
 interface ExecFileError {

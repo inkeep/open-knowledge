@@ -90,6 +90,8 @@ export function EditorHeader({
   const leadingActionsRef = useRef<HTMLDivElement>(null);
   const tabsHostRef = useRef<HTMLDivElement>(null);
   const trailingActionsRef = useRef<HTMLDivElement>(null);
+  const shareButtonRef = useRef<HTMLButtonElement>(null);
+  const overflowTriggerRef = useRef<HTMLButtonElement>(null);
   const shareInput: ShareTargetInput | null = (() => {
     if (activeTarget?.kind === 'folder') {
       return buildFolderShareInput(activeTarget.folderPath);
@@ -203,7 +205,11 @@ export function EditorHeader({
     <>
       {}
       {!reducedChrome && (
-        <ShareButton input={shareInput} onClickWhenNoRemote={() => setPublishOpen(true)} />
+        <ShareButton
+          input={shareInput}
+          onClickWhenNoRemote={() => setPublishOpen(true)}
+          triggerRef={shareButtonRef}
+        />
       )}
       {!noteWindow && <SyncStatusBadge onSignIn={onSignIn} onSetIdentity={onSetIdentity} />}
       <PresenceBar />
@@ -320,7 +326,7 @@ export function EditorHeader({
       {noteWindow && noteModeToggle ? (
         <div
           data-note-window-mode-toggle=""
-          className="absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center [-webkit-app-region:no-drag] [&_[data-slot=toggle-group]]:bg-transparent [&_[data-slot=toggle-group]]:p-0 [&_[data-slot=toggle-group-item]]:size-8 [&_[data-slot=toggle-group-item]]:shadow-none"
+          className="absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center [-webkit-app-region:no-drag]"
         >
           {noteModeToggle}
         </div>
@@ -343,6 +349,7 @@ export function EditorHeader({
             <Popover>
               <PopoverTrigger asChild>
                 <Button
+                  ref={overflowTriggerRef}
                   variant="ghost"
                   size="icon-sm"
                   aria-label={overflowActionsLabel}
@@ -379,7 +386,11 @@ export function EditorHeader({
           ))}
         {!noteWindow && <SyncToastHost />}
         {!reducedChrome && (
-          <PublishToGitHubDialog open={publishOpen} onOpenChange={setPublishOpen} />
+          <PublishToGitHubDialog
+            open={publishOpen}
+            onOpenChange={setPublishOpen}
+            returnFocus={() => (shareButtonRef.current ?? overflowTriggerRef.current)?.focus()}
+          />
         )}
       </div>
     </header>

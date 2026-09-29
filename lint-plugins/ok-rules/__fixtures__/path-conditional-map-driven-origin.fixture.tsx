@@ -1,4 +1,4 @@
-// FIXTURE — drives `path-conditional-map-driven-origin.test.ts` via shell-out
+// FIXTURE — drives `path-conditional-map-driven-origin.uncached.test.mjs` via shell-out
 // to `pnpm exec oxlint`. Not part of the main lint: `__fixtures__/` is in
 // `oxlint.config.ts#ignorePatterns`, and `__fixtures__/oxlint.fixtures.json`
 // re-enables the rules for the test.

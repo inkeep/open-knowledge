@@ -92,6 +92,11 @@ describe('collectStandardBundle — project bundle', () => {
     const projectDir = makeProjectDir();
     writeAt(projectDir, '.ok/local/server.lock', '{"pid":1234}\n');
     writeAt(projectDir, '.ok/local/last-spawn-error.log', 'spawn failed\n');
+    writeAt(
+      projectDir,
+      '.ok/local/acp-launch-failures.log',
+      '=== acp launch failure 2026-09-23T12:00:00.000Z thread=t agent=codex-acp source=registry reason=connect ===\n',
+    );
     writeAt(projectDir, '.ok/local/logs/server-current.jsonl', '{"level":30}\n');
     const outputPath = join(makeTmpDir(), 'report.zip');
 
@@ -108,6 +113,7 @@ describe('collectStandardBundle — project bundle', () => {
     const entries = listZipEntries(zipPath);
     expect(entries).toContain('lockdir/server.lock');
     expect(entries).toContain('lockdir/last-spawn-error.log');
+    expect(entries).toContain('lockdir/acp-launch-failures.log');
     expect(entries).toContain('local-logs/server-current.jsonl');
     expect(entries).toContain('sysinfo.json');
     expect(entries).toContain('MANIFEST.json');

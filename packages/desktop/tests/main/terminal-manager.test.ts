@@ -1319,6 +1319,107 @@ describe('createTerminalManager — exit + crash surfacing', () => {
     );
   });
 
+  test('reports a pty that ended before its shell attached as a start failure, keeping the exit code in the log', () => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({
+      type: 'spawn-error',
+      ptyId: 'pty-1',
+      shellNeverAttached: true,
+      exitCode: 2,
+    });
+    expect(h.exits()).toEqual([{ ptyId: 'pty-1', neverStarted: true }]);
+    expect(h.warns).toContainEqual(
+      expect.objectContaining({
+        event: 'terminal-manager-spawn-error',
+        ptyId: 'pty-1',
+        shellNeverAttached: true,
+        exitCode: 2,
+      }),
+    );
+  });
+
+  test.each([
+    { failure: 'the shell never attached', reported: { shellNeverAttached: true, exitCode: -1 } },
+    { failure: 'the host reports a message', reported: { message: 'EMFILE: too many open files' } },
+    { failure: 'the launch could not be composed', reported: { launchFailure: 'unsafe-argument' } },
+  ])(
+    'logs how long a start took to fail when $failure, so a readiness timeout reads apart from an immediate failure',
+    ({ reported }) => {
+      const now = vi.spyOn(Date, 'now');
+      try {
+        const h = makeManager();
+        now.mockReturnValue(1_000);
+        createStartedTerminal(h.mgr, {
+          windowId: 1,
+          webContents: makeWebContents(),
+          projectRoot: PROJECT,
+          cols: 80,
+          rows: 24,
+        });
+        now.mockReturnValue(6_000);
+        h.forked[0]?.emitMessage({ type: 'spawn-error', ptyId: 'pty-1', ...reported });
+        expect(h.warns).toContainEqual(
+          expect.objectContaining({
+            event: 'terminal-manager-spawn-error',
+            ...reported,
+            elapsedMs: 5_000,
+          }),
+        );
+      } finally {
+        now.mockRestore();
+      }
+    },
+  );
+
+  test.each(
+    [
+      { failure: 'the shell never attached', reported: { shellNeverAttached: true, exitCode: -1 } },
+      {
+        failure: 'the host reports a message',
+        reported: { message: 'EMFILE: too many open files' },
+      },
+      {
+        failure: 'the launch could not be composed',
+        reported: { launchFailure: 'unsafe-argument' },
+      },
+    ].flatMap((row) => [
+      { ...row, killRequested: true },
+      { ...row, killRequested: false },
+    ]),
+  )(
+    'states killRequested: $killRequested on the start-failure warning when $failure, without booking a shell exit',
+    ({ reported, killRequested }) => {
+      const recordShellExit = vi.fn();
+      const h = makeManager({ recordShellExit });
+      createStartedTerminal(h.mgr, {
+        windowId: 1,
+        webContents: makeWebContents(),
+        projectRoot: PROJECT,
+        cols: 80,
+        rows: 24,
+      });
+      if (killRequested) h.mgr.kill({ windowId: 1, ptyId: 'pty-1' });
+      h.forked[0]?.emitMessage({ type: 'spawn-error', ptyId: 'pty-1', ...reported });
+      expect(h.warns).toContainEqual(
+        expect.objectContaining({
+          event: 'terminal-manager-spawn-error',
+          ptyId: 'pty-1',
+          ...reported,
+          killRequested,
+        }),
+      );
+      expect(h.infos.filter((line) => line.ptyId === 'pty-1')).toEqual([]);
+      expect(recordShellExit).not.toHaveBeenCalled();
+    },
+  );
+
   test('rejects a spawn-error that carries neither a message nor a known launch reason', () => {
     const h = makeManager();
     createStartedTerminal(h.mgr, {
@@ -1380,6 +1481,39 @@ describe('createTerminalManager — exit + crash surfacing', () => {
     expect(h.forked[0]?.posted).toContainEqual({ type: 'kill', ptyId: 'pty-1' });
     expect(h.warns).toContainEqual(
       expect.objectContaining({ event: 'pty-host-unexpected-message', reaped: true }),
+    );
+  });
+
+  test.each([
+    { shape: 'also carries a message', extra: { exitCode: -1, message: 'EACCES' } },
+    {
+      shape: 'also carries a launch reason',
+      extra: { exitCode: -1, launchFailure: 'unsafe-argument' },
+    },
+    { shape: 'carries a non-numeric exit code', extra: { exitCode: '-1' } },
+  ])('rejects a never-attached spawn-error that $shape', ({ extra }) => {
+    const h = makeManager();
+    createStartedTerminal(h.mgr, {
+      windowId: 1,
+      webContents: makeWebContents(),
+      projectRoot: PROJECT,
+      cols: 80,
+      rows: 24,
+    });
+    h.forked[0]?.emitMessage({
+      type: 'spawn-error',
+      ptyId: 'pty-1',
+      shellNeverAttached: true,
+      ...extra,
+    });
+    expect(h.exits()).toEqual([{ ptyId: 'pty-1', neverStarted: true }]);
+    expect(h.warns).toContainEqual(
+      expect.objectContaining({
+        event: 'pty-host-unexpected-message',
+        ptyId: 'pty-1',
+        rawType: 'spawn-error',
+        reaped: true,
+      }),
     );
   });
 

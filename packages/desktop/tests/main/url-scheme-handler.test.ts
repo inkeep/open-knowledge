@@ -193,6 +193,28 @@ describe('registerProtocolHandler — setAsDefaultProtocolClient', () => {
     expect(env.app.setAsDefaultProtocolClient).toHaveBeenCalledWith('openknowledge');
   });
 
+  test('registers and routes file opens through the Beta scheme', async () => {
+    const env = makeEnv({ isPackaged: true });
+    const control = registerProtocolHandler({
+      app: env.app,
+      focusWindowForProject: env.focusWindowForProject,
+      openProject: env.openProject,
+      openEphemeralFile: env.openEphemeralFile,
+      sendDeepLink: env.sendDeepLink,
+      getAnyReadyWindow: env.getAnyReadyWindow,
+      setTimeout: (cb, ms) => env.timers.push({ cb, ms }),
+      protocolScheme: 'openknowledge-beta',
+    });
+
+    expect(env.app.setAsDefaultProtocolClient).toHaveBeenCalledWith('openknowledge-beta');
+    env.app.fireOpenFile('/Users/me/notes/beta.md');
+    env.app.resolveReady();
+    await flushPromises();
+    control.drainQueuedUrls();
+    await flushPromises();
+    expect(env.openEphemeralFile).toHaveBeenCalledWith('/Users/me/notes/beta.md');
+  });
+
   for (const platform of ['darwin', 'win32', 'linux'] as const) {
     test(`packaged ${platform} builds self-heal the scheme binding per boot`, () => {
       const env = makeEnv({ isPackaged: true });

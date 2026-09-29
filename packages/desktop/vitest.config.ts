@@ -18,23 +18,17 @@ import { okVitestBase } from '../../test-support/vitest.base';
  * error.
  */
 
-/**
- * The VM-substrate suites drive real macOS host scripts (ioreg, plutil,
- * defaults, bsdtar) through a scripted `lume` fake, so they can only produce a
- * verdict on darwin — anywhere else they die at pre-flight before asserting
- * anything. Their dedicated CI tier runs on a macOS runner with this same
- * config, so gating on the host platform keeps both that tier and the
- * developer inner loop intact while a Linux package run collects the rest.
- * Excluding them outright would silence the local loop too.
- */
-const lumeQaExcludeFor = (platform: string): string[] =>
-  platform === 'darwin' ? [] : ['tests/lume-qa/**'];
+const lumeQaExcludeFor = (platform: string, optIn: string | undefined): string[] =>
+  platform === 'darwin' && optIn === '1' ? [] : ['tests/lume-qa/**'];
 
 export default defineConfig({
   ...okVitestBase,
   test: {
     ...okVitestBase.test,
     include: ['**/*.test.ts?(x)', '**/*.test.mjs'],
-    exclude: [...okVitestBase.test.exclude, ...lumeQaExcludeFor(process.platform)],
+    exclude: [
+      ...okVitestBase.test.exclude,
+      ...lumeQaExcludeFor(process.platform, process.env.OK_LUME_QA_SUITES),
+    ],
   },
 });

@@ -1,3 +1,5 @@
+import { realpathSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { describe, expect, test } from 'vitest';
 import { runAuthReposSubprocess, runAuthStatusSubprocess } from './auth-query.ts';
 
@@ -363,3 +365,19 @@ describe('runAuthReposSubprocess', () => {
     }
   });
 });
+
+for (const [name, run, type] of [
+  ['status', runAuthStatusSubprocess, 'status'],
+  ['repos', runAuthReposSubprocess, 'repos'],
+] as const) {
+  test(`${name} runs in the supplied project directory`, async () => {
+    const cwd = realpathSync(tmpdir());
+    const response = await run({
+      cwd,
+      cliArgs: fixtureCli(
+        `console.log(JSON.stringify({type: ${JSON.stringify(type)}, authenticated: true, login: 'octocat', repos: [], host: process.cwd()}));`,
+      ),
+    });
+    expect(response).toMatchObject({ host: cwd });
+  });
+}

@@ -32,6 +32,20 @@ export type WorktreeCreateResult =
   | { readonly ok: true; readonly path: string; readonly created: boolean }
   | {
       readonly ok: false;
+      readonly reason: 'project-scope-unavailable';
+      readonly issue:
+        | 'missing'
+        | 'unreadable'
+        | 'outside-worktree'
+        | 'unsafe-setup-path'
+        | 'setup-failed';
+      readonly path: string;
+      readonly created: true;
+      readonly message?: never;
+      readonly helper?: never;
+    }
+  | {
+      readonly ok: false;
       readonly reason: 'helper-not-found';
       readonly helper: string;
       readonly message?: string;
@@ -58,6 +72,19 @@ export type WorktreeCreateResult =
       readonly message?: string;
       readonly helper?: never;
     };
+
+export function projectWorktreeCreateResult(
+  result: WorktreeCreateResult,
+  projectSubPath: string,
+): WorktreeCreateResult {
+  if (!result.ok || projectSubPath.length === 0) return result;
+  const separator = result.path.includes('\\') ? '\\' : '/';
+  const path = `${result.path.replace(/[\\/]+$/, '')}${separator}${projectSubPath
+    .split(/[\\/]/)
+    .filter((segment) => segment.length > 0)
+    .join(separator)}`;
+  return { ...result, path };
+}
 
 export interface BuildWorktreeSelectorModelInput {
   readonly worktrees: readonly BridgeWorktreeEntry[];

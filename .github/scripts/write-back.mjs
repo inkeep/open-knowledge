@@ -1,16 +1,22 @@
 #!/usr/bin/env node
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
+import {
+  deriveChannel,
+  realPublishedReleaseTags,
+  requirePublishedRelease,
+  sortReleaseTagsAscending,
+} from './published-release-tags.mjs';
 import {
   firstContainingStableTag,
   parseFixRef,
   parseGitOriginRevIds,
-  realReleaseTags,
   resolvePrivateSha,
   resolveShippedVersion,
-  sortReleaseTagsAscending,
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
+import { createTagContainment } from './tag-containment.mjs';
 import {
   compareVersions,
   composeReply,
@@ -19,12 +25,12 @@ import {
   markerSuffixFor,
   partitionAttachments,
 } from './write-back-gate.mjs';
+import writeBackPolicy from './write-back-policy.json' with { type: 'json' };
 
 const LINEAR_GRAPHQL_URL = 'https://api.linear.app/graphql';
 const RELEASES_TAG_BASE = 'https://github.com/inkeep/open-knowledge/releases/tag';
 const DEFAULT_PRIVATE_REPO = 'inkeep/agents-private';
 const FULL_SHA_RE = /^[0-9a-f]{40}$/i;
-const STABLE_TAG_RE = /^v\d+\.\d+\.\d+$/;
 const PAGE_SIZE = 50;
 
 export const CANDIDATE_QUERY = `
@@ -41,6 +47,7 @@ export const CANDIDATE_QUERY = `
         state { type }
         labels { nodes { name } }
         attachments { nodes { url } }
+        children(first: 1) { nodes { id } pageInfo { hasNextPage } }
       }
     }
   }
@@ -70,19 +77,35 @@ export function notificationMarkerUrl({ version, originUrl }) {
   return `${RELEASES_TAG_BASE}/v${v}${markerSuffixFor(originUrl)}`;
 }
 
-export function isFixRepoInRemit({ kind, owner, repo }, { defaultRepo = DEFAULT_PRIVATE_REPO, selfRepo } = {}) {
+export function isFixRepoInRemit(
+  { kind, owner, repo },
+  { defaultRepo = DEFAULT_PRIVATE_REPO, selfRepo } = {},
+) {
   if (kind === 'sha') return true;
   const target = `${owner}/${repo}`.toLowerCase();
   const reachable = [defaultRepo, selfRepo]
-    .map((r) => String(r ?? '').trim().toLowerCase())
+    .map((r) =>
+      String(r ?? '')
+        .trim()
+        .toLowerCase(),
+    )
     .filter(Boolean);
   return reachable.includes(target);
 }
 
 export function isSelfRepoPr({ kind, owner, repo }, selfRepo, defaultRepo = DEFAULT_PRIVATE_REPO) {
   if (kind !== 'pr') return false;
-  const self = String(selfRepo ?? '').trim().toLowerCase();
-  if (!self || self === String(defaultRepo ?? '').trim().toLowerCase()) return false;
+  const self = String(selfRepo ?? '')
+    .trim()
+    .toLowerCase();
+  if (
+    !self ||
+    self ===
+      String(defaultRepo ?? '')
+        .trim()
+        .toLowerCase()
+  )
+    return false;
   return self === `${owner}/${repo}`.toLowerCase();
 }
 
@@ -98,7 +121,9 @@ export function deriveVersionForFixRefs({
   channel = 'stable',
   log = () => {},
 }) {
-  const usable = fixReferences.filter((ref) => ref.channel !== 'commit' || FULL_SHA_RE.test(ref.sha ?? ''));
+  const usable = fixReferences.filter(
+    (ref) => ref.channel !== 'commit' || FULL_SHA_RE.test(ref.sha ?? ''),
+  );
   if (usable.length === 0) return null;
 
   let highest = null;
@@ -107,13 +132,15 @@ export function deriveVersionForFixRefs({
     if (!isFixRepoInRemit(parsed, { defaultRepo, selfRepo })) {
       log(
         `::notice::write-back: ${ref.url} lives in ${parsed.owner}/${parsed.repo}, which is outside this ` +
-          'workflow\'s reach; no version can be derived for it.',
+          "workflow's reach; no version can be derived for it.",
       );
       return null;
     }
     const refSha = resolvePrivateSha(parsed, { resolvePrMergeSha });
     if (!refSha) {
-      log(`::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`);
+      log(
+        `::notice::write-back: ${ref.url} was closed without merging, so it carries no fix commit.`,
+      );
       return null;
     }
     let result;
@@ -169,18 +196,6 @@ export function deriveVersionForFixRefs({
   return highest;
 }
 
-
-export const DEFAULT_RELEASE_LOOKBACK = 3;
-
-export const DEFAULT_BETA_LOOKBACK = 10;
-
-export function deriveChannel(releaseTag) {
-  const tag = String(releaseTag ?? '').trim();
-  if (STABLE_TAG_RE.test(tag)) return 'stable';
-  if (/^v\d+\.\d+\.\d+-beta\.\d+$/.test(tag)) return 'beta';
-  return null;
-}
-
 export function isStableVersion(raw) {
   return /^\d+\.\d+\.\d+$/.test(
     String(raw ?? '')
@@ -190,38 +205,81 @@ export function isStableVersion(raw) {
 }
 
 function normalizeVersion(raw) {
-  const trimmed = String(raw ?? '').trim().replace(/^v/, '');
+  const trimmed = String(raw ?? '')
+    .trim()
+    .replace(/^v/, '');
   return /^\d+\.\d+\.\d+(?:-beta\.\d+)?$/.test(trimmed) ? trimmed : null;
 }
 
-export function makeReleaseWindow({ releaseTag, stableTags = [], channel, lookback }) {
+export function makeReleaseWindow({ releaseTag, channel, minimumVersion }) {
   const release = normalizeVersion(releaseTag);
-  if (!release) {
-    throw new Error(
-      `RELEASE_TAG must be a release tag of this cadence, v0.36.0 or v0.36.0-beta.3 ` +
-        `(got ${JSON.stringify(releaseTag)}). ` +
-        'Refusing to run: with no release to scope against, every shipped fix in history is a candidate.',
-    );
-  }
+  if (!release) throw new Error('RELEASE_TAG must be a release tag of this cadence');
   const resolvedChannel = channel ?? (isStableVersion(release) ? 'stable' : 'beta');
-  const resolvedLookback =
-    lookback ?? (resolvedChannel === 'beta' ? DEFAULT_BETA_LOOKBACK : DEFAULT_RELEASE_LOOKBACK);
-
-  const eligible = resolvedChannel === 'beta' ? () => true : (version) => isStableVersion(version);
-  const known = [
-    ...new Set(stableTags.map(normalizeVersion).filter(Boolean).filter(eligible)),
-  ].sort(compareVersions);
-  const atOrBelow = known.filter((v) => compareVersions(v, release) <= 0);
-  const floorIndex = atOrBelow.length - (resolvedLookback + 1) - 1;
-  const floor = floorIndex >= 0 ? atOrBelow[floorIndex] : null;
-
+  const minimum = normalizeVersion(
+    minimumVersion ?? writeBackPolicy.minimumVersion[resolvedChannel],
+  );
+  if (!minimum) throw new Error('Writeback requires a valid fixed minimum version');
   return (version) => {
     const shipped = normalizeVersion(version);
     if (!shipped) return 'unversioned';
     if (compareVersions(shipped, release) > 0) return 'not-yet-shipped';
-    if (floor && compareVersions(shipped, floor) <= 0) return 'shipped-earlier';
+    if (compareVersions(shipped, minimum) < 0) return 'shipped-earlier';
     return 'in-window';
   };
+}
+
+function notificationVersions({ attachmentUrls, originUrl, channel }) {
+  const versions = new Set();
+  for (const raw of attachmentUrls) {
+    let url;
+    try {
+      url = new URL(raw);
+    } catch {
+      continue;
+    }
+    if (url.searchParams.get('notified') !== originUrl) continue;
+    if (!url.href.startsWith(`${RELEASES_TAG_BASE}/v`)) continue;
+    const version = normalizeVersion(url.pathname.split('/').at(-1));
+    if (!version || (isStableVersion(version) ? 'stable' : 'beta') !== channel) continue;
+    versions.add(version);
+  }
+  return [...versions].sort(compareVersions);
+}
+
+export function unavailableNotificationVersions(options) {
+  const versions = notificationVersions(options);
+  const published = versions.filter(options.isPublishedVersion);
+  return versions.filter(
+    (version) =>
+      !options.isPublishedVersion(version) &&
+      !published.some((seen) => compareVersions(seen, version) > 0),
+  );
+}
+
+export function createVersionFor(deps) {
+  const memo = (fn, keyFor = (value) => value) => {
+    const cache = new Map();
+    return (value) => {
+      const key = keyFor(value);
+      if (!cache.has(key)) cache.set(key, fn(value));
+      return cache.get(key);
+    };
+  };
+  const shared = {
+    ...deps,
+    findMirroredCommits: memo(deps.findMirroredCommits),
+    resolvePrMergeSha: memo(
+      deps.resolvePrMergeSha,
+      ({ owner, repo, number }) => `${owner}/${repo}/${number}`,
+    ),
+    readCommitMessage: memo(deps.readCommitMessage),
+  };
+  return (node, channel) =>
+    deriveVersionForFixRefs({
+      ...shared,
+      fixReferences: partitionAttachments(node.attachmentUrls ?? []).fixReferences,
+      channel,
+    });
 }
 
 export class NeedsHumanError extends Error {
@@ -231,10 +289,33 @@ export class NeedsHumanError extends Error {
   }
 }
 
+export class LinearRateLimitError extends Error {
+  constructor(headers) {
+    const read = (name) => headers?.get?.(name);
+    const windows = [
+      ['request reset epoch ms', read('x-ratelimit-requests-reset')],
+      [
+        `endpoint ${read('x-ratelimit-endpoint-name') ?? 'unspecified'} reset epoch ms`,
+        read('x-ratelimit-endpoint-requests-reset'),
+      ],
+      ['complexity reset epoch ms', read('x-ratelimit-complexity-reset')],
+      ['retry-after', read('retry-after')],
+    ]
+      .filter(([, value]) => value)
+      .map(([label, value]) => `${label}: ${value}`);
+    super(
+      `Linear rate limit reached${windows.length ? ` (${windows.join('; ')})` : ''}; stopping reconciliation and leaving remaining candidates for a later run.`,
+    );
+    this.name = 'LinearRateLimitError';
+  }
+}
+
 export async function runWriteBack({
   listCandidates,
   listChildren,
   versionFor,
+  stableVersionFor,
+  isPublishedVersion,
   readChangesetProse,
   postReply,
   recordNotification,
@@ -249,6 +330,12 @@ export async function runWriteBack({
   }
   if (channel !== 'stable' && channel !== 'beta') {
     throw new Error(`runWriteBack requires channel 'stable' or 'beta', got '${channel}'`);
+  }
+  if (typeof isPublishedVersion !== 'function') {
+    throw new Error('runWriteBack requires published release availability');
+  }
+  if (channel === 'beta' && typeof stableVersionFor !== 'function') {
+    throw new Error('Beta reconciliation requires stable release containment');
   }
   if (!String(selfRepo ?? '').trim()) {
     throw new Error(
@@ -284,7 +371,7 @@ export async function runWriteBack({
       return;
     }
 
-    const children = await listChildren(candidate.id);
+    const children = candidate.hasChildren === false ? [] : await listChildren(candidate.id);
 
     const considered = children.length > 0 ? children : [candidate];
 
@@ -334,6 +421,21 @@ export async function runWriteBack({
       return;
     }
 
+    if (channel === 'beta') {
+      const stableVersions = new Map();
+      for (const node of considered)
+        stableVersions.set(node.identifier, await stableVersionFor(node));
+      const stableGate = evaluateFanIn({
+        ticket: candidate,
+        descendants: children,
+        resolveVersion: (node) => stableVersions.get(node.identifier) ?? null,
+      });
+      if (stableGate.decision === 'notify') {
+        skip(candidate.identifier, 'stable-covers-it');
+        return;
+      }
+    }
+
     if (origins.length === 0) {
       const unreachable = [
         ...attachedOrigins
@@ -352,11 +454,29 @@ export async function runWriteBack({
     for (const origin of origins) {
       const attachmentUrls = candidate.attachmentUrls ?? [];
       const marker = notificationMarkerUrl({ version: gate.version, originUrl: origin.url });
-      if (attachmentUrls.includes(marker)) {
+      const notifiedVersions = notificationVersions({
+        attachmentUrls,
+        originUrl: origin.url,
+        channel,
+      });
+      if (
+        attachmentUrls.includes(marker) ||
+        notifiedVersions.some(
+          (version) =>
+            isPublishedVersion(version) &&
+            compareVersions(version, normalizeVersion(gate.version)) >= 0,
+        )
+      ) {
         skip(candidate.identifier, 'already-notified');
         continue;
       }
       const changeset = await readChangesetProse(candidate, { fixReferences });
+      const recoveryFrom = unavailableNotificationVersions({
+        attachmentUrls,
+        originUrl: origin.url,
+        channel,
+        isPublishedVersion,
+      });
       const text =
         changeset === null
           ? null
@@ -366,6 +486,7 @@ export async function runWriteBack({
               originChannel: origin.channel,
               coverage: gate.coverage,
               channel,
+              recoveryFrom,
             });
 
       if (!text) {
@@ -381,6 +502,9 @@ export async function runWriteBack({
         log(
           `::notice::write-back: [dry run] would reply to ${origin.url} for ${candidate.identifier} ` +
             `(v${gate.version}, covers ${gate.coverage.join(', ')}).`,
+        );
+        log(
+          `::notice::write-back: [dry run] ${recoveryFrom.length ? 'recovery correction' : 'release announcement'}: ${text.replaceAll('\n', ' ')}`,
         );
         posted.push({
           identifier: candidate.identifier,
@@ -420,7 +544,27 @@ export async function runWriteBack({
     }
   };
 
-  for (const candidate of await listCandidates()) {
+  let candidates;
+  try {
+    candidates = await listCandidates();
+  } catch (error) {
+    if (!(error instanceof LinearRateLimitError)) throw error;
+    return {
+      posted,
+      skipped,
+      errored: [
+        {
+          identifier: 'candidate-enumeration',
+          message: error.message,
+          disposition: 'retried-next-run',
+        },
+      ],
+      deferred: null,
+      dryRun: !live,
+    };
+  }
+  let deferred = 0;
+  for (const [index, candidate] of candidates.entries()) {
     try {
       await processCandidate(candidate);
     } catch (err) {
@@ -429,14 +573,21 @@ export async function runWriteBack({
         `::warning::write-back: ${candidate.identifier} could not be processed (${disposition}): ${err.message}`,
       );
       errored.push({ identifier: candidate.identifier, message: err.message, disposition });
+      if (err instanceof LinearRateLimitError) {
+        deferred = candidates.length - index - 1;
+        break;
+      }
     }
   }
 
-  return { posted, skipped, errored, dryRun: !live };
+  return { posted, skipped, errored, deferred, dryRun: !live };
 }
 
-export function runFailureMessage({ errored = [] } = {}) {
+export function runFailureMessage({ errored = [], deferred } = {}) {
   if (errored.length === 0) return null;
+  if (deferred === null) {
+    return `Candidate enumeration stopped: ${errored[0].message} The remaining count is unknown; no marker was written, and a later reconciliation can retry.`;
+  }
   const head =
     `${errored.length} of the candidates could not be processed: ` +
     errored.map((e) => `${e.identifier} (${e.message})`).join('; ');
@@ -459,7 +610,7 @@ export const LINEAR_RETRY_CAP_MS = 8000;
 export const REQUEST_TIMEOUT_MS = 15_000;
 
 export function isRetryableStatus(status) {
-  return status === 429 || (status >= 500 && status < 600);
+  return status >= 500 && status < 600;
 }
 
 const RETRYABLE_NETWORK_CODES = new Set([
@@ -476,7 +627,11 @@ const RETRYABLE_NETWORK_CODES = new Set([
 ]);
 
 export function isRetryableNetworkError(err) {
-  for (let cur = err, depth = 0; cur && typeof cur === 'object' && depth < 5; cur = cur.cause, depth += 1) {
+  for (
+    let cur = err, depth = 0;
+    cur && typeof cur === 'object' && depth < 5;
+    cur = cur.cause, depth += 1
+  ) {
     if (cur.name === 'TimeoutError') return true;
     if (RETRYABLE_NETWORK_CODES.has(cur.code)) return true;
     if (
@@ -540,22 +695,40 @@ export async function linearGraphql({
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (err) {
-        throw new LinearRequestError(`Linear GraphQL request failed before any reply: ${err.message}`, {
-          retryable: isRetryableNetworkError(err),
-        });
+        throw new LinearRequestError(
+          `Linear GraphQL request failed before any reply: ${err.message}`,
+          {
+            retryable: isRetryableNetworkError(err),
+          },
+        );
       }
 
       if (!res.ok) {
         let body = '';
         try {
-          body = (await res.text()).slice(0, 400);
+          body = await res.text();
         } catch (err) {
           body = `<body unreadable: ${err.message}>`;
         }
-        throw new LinearRequestError(`Linear GraphQL returned HTTP ${res.status}: ${body}`, {
-          retryable: isRetryableStatus(res.status),
-          retryAfterSeconds: parseRetryAfterSeconds(res.headers?.get?.('retry-after')),
-        });
+        let payload;
+        try {
+          payload = JSON.parse(body);
+        } catch {
+          payload = null;
+        }
+        if (
+          res.status === 429 ||
+          payload?.errors?.some((error) => error.extensions?.code === 'RATELIMITED')
+        ) {
+          throw new LinearRateLimitError(res.headers);
+        }
+        throw new LinearRequestError(
+          `Linear GraphQL returned HTTP ${res.status}: ${body.slice(0, 400)}`,
+          {
+            retryable: isRetryableStatus(res.status),
+            retryAfterSeconds: parseRetryAfterSeconds(res.headers?.get?.('retry-after')),
+          },
+        );
       }
 
       let payload;
@@ -567,9 +740,15 @@ export async function linearGraphql({
         });
       }
       if (payload.errors?.length) {
-        throw new LinearRequestError(`Linear GraphQL error: ${payload.errors.map((e) => e.message).join('; ')}`, {
-          retryable: false,
-        });
+        if (payload.errors.some((error) => error.extensions?.code === 'RATELIMITED')) {
+          throw new LinearRateLimitError(res.headers);
+        }
+        throw new LinearRequestError(
+          `Linear GraphQL error: ${payload.errors.map((e) => e.message).join('; ')}`,
+          {
+            retryable: false,
+          },
+        );
       }
       return payload.data;
     } catch (err) {
@@ -584,21 +763,30 @@ export async function linearGraphql({
   }
 }
 
-function toNode(raw) {
+export function toNode(raw) {
   return {
     id: raw.id,
     identifier: raw.identifier,
     stateType: raw.state?.type ?? 'unknown',
     labels: (raw.labels?.nodes ?? []).map((l) => l.name),
     attachmentUrls: (raw.attachments?.nodes ?? []).map((a) => a.url),
+    hasChildren: Array.isArray(raw.children?.nodes)
+      ? raw.children.nodes.length > 0 || raw.children.pageInfo?.hasNextPage !== false
+      : undefined,
   };
 }
 
-async function paginate({ apiKey, query, variables, log }) {
+async function paginate({ apiKey, query, variables, log, fetchImpl }) {
   const collected = [];
   let after = null;
   do {
-    const data = await linearGraphql({ apiKey, query, variables: { ...variables, after }, log });
+    const data = await linearGraphql({
+      apiKey,
+      query,
+      variables: { ...variables, after },
+      log,
+      fetchImpl,
+    });
     const page = data?.issues;
     if (!page)
       throw new Error(
@@ -646,21 +834,12 @@ function realFindMirroredCommits(privateSha) {
   return commits;
 }
 
-function realContains(tag, sha) {
-  const res = spawnSync('git', ['merge-base', '--is-ancestor', sha, `${tag}^{commit}`], {
-    encoding: 'utf8',
-  });
-  if (res.status === 0) return true;
-  if (res.status === 1) return false;
-  throw new Error(
-    `git merge-base --is-ancestor ${sha} ${tag} failed (exit ${res.status}): ${String(res.stderr || '').trim()}`,
-  );
-}
-
 export function selectGhToken({ owner, repo, env }) {
   const crossRepo = String(env.CROSS_REPO_TOKEN ?? '').trim();
   if (!crossRepo) return null;
-  const self = String(env.GITHUB_REPOSITORY ?? '').trim().toLowerCase();
+  const self = String(env.GITHUB_REPOSITORY ?? '')
+    .trim()
+    .toLowerCase();
   return `${owner}/${repo}`.toLowerCase() === self ? null : crossRepo;
 }
 
@@ -676,10 +855,13 @@ function gh(args, target) {
 function realResolvePrMergeSha({ owner, repo, number }) {
   let out;
   try {
-    out = gh(['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'], {
-      owner,
-      repo,
-    });
+    out = gh(
+      ['api', `repos/${owner}/${repo}/pulls/${number}`, '--jq', '.merged_at,.merge_commit_sha'],
+      {
+        owner,
+        repo,
+      },
+    );
   } catch (err) {
     throw new Error(
       `gh api repos/${owner}/${repo}/pulls/${number} failed: ${String(err?.stderr || err?.message || '').trim()}`,
@@ -706,7 +888,9 @@ export function changesetDirFor(repo) {
 export function findChangesetPath(filenames, { repo } = {}) {
   const dir = changesetDirFor(repo);
   const isChangeset = (name) =>
-    name.startsWith(dir) && /^[^/]+\.md$/.test(name.slice(dir.length)) && !name.endsWith('/README.md');
+    name.startsWith(dir) &&
+    /^[^/]+\.md$/.test(name.slice(dir.length)) &&
+    !name.endsWith('/README.md');
   return filenames.map((name) => String(name).trim()).find(isChangeset) ?? null;
 }
 
@@ -781,7 +965,8 @@ async function realPostReply(origin, text) {
   if (origin.channel === 'discord-thread') {
     const url = process.env.DISCORD_NOTIFY_URL;
     const token = process.env.DISCORD_NOTIFY_TOKEN;
-    if (!url || !token) throw new Error('DISCORD_NOTIFY_URL / DISCORD_NOTIFY_TOKEN are required to reply on Discord');
+    if (!url || !token)
+      throw new Error('DISCORD_NOTIFY_URL / DISCORD_NOTIFY_TOKEN are required to reply on Discord');
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
@@ -825,24 +1010,21 @@ async function main() {
     );
   }
 
-  const stableTags = realReleaseTags();
-  const versionFor = (node) =>
-    deriveVersionForFixRefs({
-      fixReferences: partitionAttachments(node.attachmentUrls ?? []).fixReferences,
-      stableTags,
-      findMirroredCommits: realFindMirroredCommits,
-      contains: realContains,
-      resolvePrMergeSha: realResolvePrMergeSha,
-      readCommitMessage: realReadCommitMessage,
-      channel,
-      log,
-    });
+  const stableTags = realPublishedReleaseTags();
+  requirePublishedRelease(releaseTag, stableTags);
+  const contains = createTagContainment();
+  const versionFor = createVersionFor({
+    stableTags,
+    findMirroredCommits: realFindMirroredCommits,
+    contains,
+    resolvePrMergeSha: realResolvePrMergeSha,
+    readCommitMessage: realReadCommitMessage,
+    log,
+  });
 
-  const classifyRelease = makeReleaseWindow({ releaseTag, stableTags, channel });
-  const lookback = channel === 'beta' ? DEFAULT_BETA_LOOKBACK : DEFAULT_RELEASE_LOOKBACK;
+  const classifyRelease = makeReleaseWindow({ releaseTag, channel });
   log(
-    `::notice::write-back: ${channel} channel, scoped to ${releaseTag} and the ${lookback} ` +
-      `${channel === 'beta' ? 'releases' : 'stable releases'} before it; anything shipped earlier is left alone.`,
+    `::notice::write-back: ${channel} reconciliation from ${writeBackPolicy.minimumVersion[channel]} through ${releaseTag}; unnotified releases do not expire.`,
   );
 
   if (!String(process.env.CROSS_REPO_TOKEN ?? '').trim()) {
@@ -852,16 +1034,26 @@ async function main() {
     );
   }
 
+  let linearRequests = 0;
+  const fetchImpl = (...args) => {
+    linearRequests++;
+    return fetch(...args);
+  };
   const result = await runWriteBack({
-    listCandidates: () => paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log }),
-    listChildren: (parentId) => paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log }),
-    versionFor,
+    listCandidates: () =>
+      paginate({ apiKey, query: CANDIDATE_QUERY, variables: {}, log, fetchImpl }),
+    listChildren: (parentId) =>
+      paginate({ apiKey, query: CHILDREN_QUERY, variables: { parentId }, log, fetchImpl }),
+    versionFor: (node) => versionFor(node, channel),
+    stableVersionFor: (node) => versionFor(node, 'stable'),
+    isPublishedVersion: (version) => stableTags.includes(`v${version}`),
     classifyRelease,
     channel,
     readChangesetProse: (candidate, ctx) => realReadChangesetProse(candidate, ctx),
     postReply: realPostReply,
     recordNotification: async ({ issueId, url, title }) => {
       const data = await linearGraphql({
+        fetchImpl,
         apiKey,
         query:
           'mutation Mark($input: AttachmentCreateInput!) { attachmentCreate(input: $input) { success } }',
@@ -879,6 +1071,8 @@ async function main() {
   console.log(
     JSON.stringify({
       dryRun: result.dryRun,
+      linearRequests,
+      deferred: result.deferred,
       posted: result.posted.length,
       skipped: result.skipped,
       errored: result.errored,

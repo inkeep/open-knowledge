@@ -95,7 +95,7 @@ export function SettingsDialogBody({
     return <HotkeysSection />;
   }
   if (activeId === 'account') {
-    return <AccountSection />;
+    return userBinding ? <AccountSection userBinding={userBinding} /> : <SectionSkeleton />;
   }
   if (activeId === 'sync') {
     return (

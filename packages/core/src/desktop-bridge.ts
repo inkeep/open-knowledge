@@ -4,6 +4,12 @@ import type { CreateNewBannerKind } from './constants/create-new-banner.ts';
 import type { EditorId } from './constants/editors.ts';
 import type { OkFolderState } from './constants/folder-state.ts';
 import type {
+  WorktreeInventoryOpenRequest,
+  WorktreeInventoryOpenResult,
+  WorktreeInventoryRequest,
+  WorktreeInventoryResult,
+} from './git/worktree-inventory-model.ts';
+import type {
   WorktreeCreateRequest,
   WorktreeCreateResult,
   WorktreeListResult,
@@ -216,6 +222,7 @@ export interface OkProjectOpenRequest {
   path: string;
   target: 'new-window';
   entryPoint: OkProjectEntryPoint;
+  requireExactManagedProject?: boolean;
   pendingDeepLinkTarget?: {
     kind: 'doc' | 'folder';
     path: string;
@@ -1188,6 +1195,8 @@ export interface OkDesktopBridge {
 
   worktree: {
     list(): Promise<WorktreeListResult>;
+    inventory(request: WorktreeInventoryRequest): Promise<WorktreeInventoryResult>;
+    openInventory(request: WorktreeInventoryOpenRequest): Promise<WorktreeInventoryOpenResult>;
     create(request: WorktreeCreateRequest): Promise<WorktreeCreateResult>;
     checkout(request: { branch: string }): Promise<WorktreeCreateResult>;
   };
@@ -1209,6 +1218,7 @@ export interface OkDesktopBridge {
       includeCrashDump?: boolean;
       includeScreenshot?: boolean;
       attachments?: OkBugReportAttachmentInput[];
+      agentChatThreadId?: string;
     }): Promise<OkBugReportCreateResult>;
     captureScreenshot(): Promise<OkBugReportScreenshot | null>;
     crashDumpAvailability(): Promise<OkBugReportCrashDumpAvailability>;

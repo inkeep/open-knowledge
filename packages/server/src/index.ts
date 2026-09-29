@@ -3,7 +3,8 @@ export {
   GitDirAccessError,
   MalformedGitPointerError,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-export { AcpPermissionStore } from './acp/permissions.ts';
+export { type StreamedChunk, streamedChunkOf } from './acp/event-log-bounds.ts';
+export { AcpPermissionStore, readAgentBrowserTools } from './acp/permissions.ts';
 export { AcpRegistry, FEATURED_AGENT_IDS, loadCustomAgents } from './acp/registry.ts';
 export {
   AcpThreadManager,
@@ -11,6 +12,7 @@ export {
   type HarnessManagedMcpEntryHit,
   MAX_ACP_THREADS,
 } from './acp/thread-manager.ts';
+export { acpThreadStoreRoots, acpThreadsDir, isMintedThreadId } from './acp/thread-persistence.ts';
 export { attachAcpThreadSocket } from './acp/thread-socket.ts';
 export { AgentFocusBroadcaster } from './agent-focus.ts';
 export { AGENT_ID_MAX_LEN, AGENT_ID_RE, toBroadcasterKey, validateAgentId } from './agent-id.ts';
@@ -535,8 +537,11 @@ export {
   type ShadowObjectStats,
 } from './shadow-repo-stats.ts';
 export {
+  type GitHubAuthHostResult,
   loginShapedUserinfoUser,
-  originGitHubHost,
+  readDeclaredGitHubHosts,
+  readOriginGitHubRepo,
+  resolveGitHubAuthHost,
   sameGitHubLogin,
 } from './share/git-context.ts';
 export {

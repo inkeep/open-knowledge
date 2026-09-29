@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import shellQuote from 'shell-quote';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   applyGitEnv,
   buildGitEnv,
@@ -185,6 +185,37 @@ describe('createGitInstance (credential.helper config)', () => {
     expect((await handle.git.raw(['config', '--get', 'credential.interactive'])).trim()).toBe(
       'false',
     );
+  });
+});
+
+describe('createGitInstance under a process environment carrying GIT_CONFIG_COUNT', () => {
+  let repoDir: string;
+  let isolatedHome: string;
+
+  beforeEach(() => {
+    repoDir = mkdtempSync(join(tmpdir(), 'ok-git-handle-envcount-'));
+    isolatedHome = mkdtempSync(join(tmpdir(), 'ok-git-handle-envcount-home-'));
+    vi.stubEnv('HOME', isolatedHome);
+    vi.stubEnv('USERPROFILE', isolatedHome);
+    vi.stubEnv('XDG_CONFIG_HOME', join(isolatedHome, '.config'));
+    execSync('git init -q', { cwd: repoDir });
+    vi.stubEnv('GIT_CONFIG_COUNT', '1');
+    vi.stubEnv('GIT_CONFIG_KEY_0', 'credential.interactive');
+    vi.stubEnv('GIT_CONFIG_VALUE_0', 'false');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    rmSync(repoDir, { recursive: true, force: true });
+    rmSync(isolatedHome, { recursive: true, force: true });
+  });
+
+  test('server git runs instead of meeting simple-git refusing GIT_CONFIG_COUNT', async () => {
+    const handle = createGitInstance(repoDir, {
+      credentialConfig: buildSyncCredentialConfig(['open-knowledge'], { resetAmbient: true }),
+    });
+
+    await expect(handle.git.raw(['rev-parse', '--is-inside-work-tree'])).resolves.toBe('true\n');
   });
 });
 

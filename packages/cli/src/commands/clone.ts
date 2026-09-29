@@ -20,7 +20,7 @@ import {
   sameGitHubLogin,
 } from '@inkeep/open-knowledge-server';
 import { Command } from 'commander';
-import simpleGit, { type SimpleGitOptions } from 'simple-git';
+import simpleGit, { GitPluginError, type SimpleGitOptions } from 'simple-git';
 import type { GhDetectResult } from '../auth/gh-detect.ts';
 import { type ResolvedAuth, resolveAuth } from '../auth/resolve-auth.ts';
 import { makeLazyTokenStore, type TokenStore } from '../auth/token-store.ts';
@@ -123,20 +123,7 @@ interface CloneOptions {
   _detectGhFn?: (host?: string, options?: { login?: string }) => GhDetectResult;
 }
 
-type CredentialHelperUnsafeGitOptions = SimpleGitOptions & {
-  unsafe?: NonNullable<SimpleGitOptions['unsafe']> & {
-    allowUnsafeCredentialHelper?: boolean;
-    allowUnsafePager?: boolean;
-    allowUnsafeSshCommand?: boolean;
-    allowUnsafeAskPass?: boolean;
-    allowUnsafeEditor?: boolean;
-  };
-};
-
-export function buildCloneGitOptions(
-  cwd: string,
-  gitConfig: string[],
-): Partial<CredentialHelperUnsafeGitOptions> {
+export function buildCloneGitOptions(cwd: string, gitConfig: string[]): Partial<SimpleGitOptions> {
   return {
     baseDir: cwd,
     config: gitConfig,
@@ -146,6 +133,7 @@ export function buildCloneGitOptions(
       allowUnsafeSshCommand: true,
       allowUnsafeAskPass: true,
       allowUnsafeEditor: true,
+      allowUnsafeConfigEnvCount: true,
     },
   };
 }
@@ -166,15 +154,16 @@ export interface CloneAuthResolution {
   };
 }
 
-export function formatDeclaredMissWarning(
+export function formatDeclaredAccountMiss(
   miss: CloneAuthResolution['declaredMiss'],
+  wording: { url: string; operation: string },
 ): string | null {
   if (miss === undefined) return null;
   const { declaredLogin, declaredSource } = miss;
   let mechanism: string;
   switch (declaredSource) {
     case 'remote-url':
-      mechanism = `The clone URL names ${declaredLogin}`;
+      mechanism = `${wording.url} names ${declaredLogin}`;
       break;
     case 'credential-config':
       mechanism = `Your Git credential configuration names ${declaredLogin}`;
@@ -183,9 +172,15 @@ export function formatDeclaredMissWarning(
       mechanism = `Your Git configuration names ${declaredLogin}`;
   }
   return (
-    `⚠ ${mechanism}, but the GitHub CLI couldn't confirm that account — the clone used its active account.\n` +
+    `⚠ ${mechanism}, but the GitHub CLI couldn't confirm that account — ${wording.operation} used its active account.\n` +
     `  Run \`gh auth status\` to see which account that is. If ${declaredLogin} is listed as active, nothing is wrong; confirming an account by name needs GitHub CLI 2.40 or newer.\n`
   );
+}
+
+export function formatDeclaredMissWarning(
+  miss: CloneAuthResolution['declaredMiss'],
+): string | null {
+  return formatDeclaredAccountMiss(miss, { url: 'The clone URL', operation: 'the clone' });
 }
 
 export async function resolveCloneAuth(
@@ -278,7 +273,7 @@ export async function runClone(
   const env = buildCloneAuthEnv(resolved);
 
   const gitOptions = buildCloneGitOptions(cwd, resolved.gitConfig);
-  const git = simpleGit(gitOptions as Partial<SimpleGitOptions>).env(env);
+  const git = simpleGit(gitOptions).env(env);
 
   let lastPct = -1;
 
@@ -428,6 +423,25 @@ export function formatCloneAuthFailure(opts: {
   ].join('\n');
 }
 
+function formatCloneEnvConfigRefusal(opts: {
+  error: unknown;
+  message: string;
+  url: string;
+  branch?: string | null;
+}): string | null {
+  if (!(opts.error instanceof GitPluginError) || opts.error.plugin !== 'unsafe') return null;
+  if (!opts.message.startsWith('Configuring ')) return null;
+  const displayUrl = stripUrlPassword(opts.url);
+  return [
+    `✗ Couldn't clone ${displayUrl} — a Git setting passed in through the GIT_CONFIG_COUNT and GIT_CONFIG_KEY_<n> environment variables was refused:`,
+    `  ${opts.message}`,
+    '',
+    '  To fix:',
+    '    1. Remove that setting from the GIT_CONFIG_KEY_<n> and GIT_CONFIG_VALUE_<n> variables, or unset GIT_CONFIG_COUNT',
+    `    2. Then re-run: ${reconstructCloneCommand(displayUrl, opts.branch)}`,
+  ].join('\n');
+}
+
 export function emitCloneFailure(opts: {
   error: unknown;
   url: string;
@@ -445,13 +459,20 @@ export function emitCloneFailure(opts: {
     opts.emit({ type: 'error', message: rawMessage });
     return;
   }
-  const actionable = formatCloneAuthFailure({
-    error: opts.error,
-    url: opts.url,
-    branch: opts.branch,
-    principal: opts.principal,
-    resolvedLogin: opts.resolvedLogin,
-  });
+  const actionable =
+    formatCloneAuthFailure({
+      error: opts.error,
+      url: opts.url,
+      branch: opts.branch,
+      principal: opts.principal,
+      resolvedLogin: opts.resolvedLogin,
+    }) ??
+    formatCloneEnvConfigRefusal({
+      error: opts.error,
+      message: rawMessage,
+      url: opts.url,
+      branch: opts.branch,
+    });
   opts.printStderr(`${actionable ?? `✗ ${rawMessage}`}\n`);
 }
 

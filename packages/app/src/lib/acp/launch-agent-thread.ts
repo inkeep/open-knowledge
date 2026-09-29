@@ -3,7 +3,11 @@ import { t } from '@lingui/core/macro';
 import { toast } from 'sonner';
 import { agentDisplayName } from '@/lib/acp/agent-display';
 import { getAgentThreadClient, ThreadChannelUnavailableError } from '@/lib/acp/thread-client';
-import { stageThreadDraft } from '@/lib/acp/thread-draft-staging';
+import {
+  stageThreadDraft,
+  stageThreadDraftContent,
+  type ThreadDraftContent,
+} from '@/lib/acp/thread-draft-staging';
 
 const inflightLaunches = new Set<string>();
 const IMAGE_CAPABILITY_WATCH_MS = 60_000;
@@ -49,7 +53,7 @@ export function launchAgentThread(
   prompt: string | null,
   docName: string | null,
   titleHint: string | null,
-  stageDraft?: string | null,
+  stageDraft?: string | ThreadDraftContent | null,
   attachments?: readonly AttachmentPart[],
 ): Promise<ThreadLaunchOutcome> {
   const launchKey = `${agent.source}:${agent.id}`;
@@ -67,7 +71,8 @@ export function launchAgentThread(
       warnWhenLaunchedImagesAreUnsupported(info, attachments);
       if (stageDraft != null) {
         try {
-          stageThreadDraft(info.threadId, stageDraft);
+          if (typeof stageDraft === 'string') stageThreadDraft(info.threadId, stageDraft);
+          else stageThreadDraftContent(info.threadId, stageDraft);
         } catch (err) {
           console.error('[agent-threads] draft staging failed for', info.threadId, err);
         }

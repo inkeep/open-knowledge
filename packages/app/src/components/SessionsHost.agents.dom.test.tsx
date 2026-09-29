@@ -11,7 +11,12 @@ import {
   reloadEnabledAgentsFromStorage,
   setAgentEnabled,
 } from '@/lib/acp/enabled-agents';
-import { subscribeStagedThreadDraft } from '@/lib/acp/thread-draft-staging';
+import {
+  registerThreadDraftReader,
+  resetStagedThreadDrafts,
+  subscribeStagedThreadDraft,
+} from '@/lib/acp/thread-draft-staging';
+import type { ThreadRenderModel } from '@/lib/acp/thread-event-model';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
 import type { ThreadLaunchIntent } from './EditorPane';
 import { requestPreferredSession } from './handoff/preferred-session-events';
@@ -69,6 +74,21 @@ const deleteThread = vi.fn((id: string) => {
   setArchivedThreads(archivedThreads.filter((t) => t.threadId !== id));
 });
 const markThreadViewed = vi.fn((_id: string) => {});
+const threadModels = new Map<string, ThreadRenderModel>();
+function setThreadModel(threadId: string, model: ThreadRenderModel | null) {
+  if (model === null) threadModels.delete(threadId);
+  else threadModels.set(threadId, model);
+}
+function emptyThreadModel(items: ThreadRenderModel['items'] = []): ThreadRenderModel {
+  return {
+    items,
+    plan: [],
+    turnActive: false,
+    tokenUsage: null,
+    terminals: {},
+    permissionsByToolCall: {},
+  };
+}
 
 let connectionStatus: 'idle' | 'connecting' | 'open' | 'closed' = 'open';
 function setConnectionStatus(next: typeof connectionStatus) {
@@ -80,6 +100,8 @@ function subscribeStore(cb: () => void) {
   storeListeners.add(cb);
   return () => storeListeners.delete(cb);
 }
+
+const unreadThreadIds = new Set<string>();
 
 vi.doMock('@/lib/acp/thread-client', () => ({
   useAgentThreads: () =>
@@ -112,13 +134,14 @@ vi.doMock('@/lib/acp/thread-client', () => ({
       () => threadScope,
       () => threadScope,
     ),
-  useAgentThreadUnread: () => false,
+  useAgentThreadUnread: (threadId: string) => unreadThreadIds.has(threadId),
   getAgentThreadClient: () => ({
     closeThread,
     renameThread,
     openArchivedThread,
     deleteThread,
     markThreadViewed,
+    getThreadModel: (threadId: string) => threadModels.get(threadId) ?? null,
   }),
   ThreadChannelUnavailableError: class ThreadChannelUnavailableError extends Error {},
 }));
@@ -146,6 +169,7 @@ type MockAgent = {
 };
 
 let mockRegisteredAgent: MockAgent | null = null;
+let mockExtraAgents: MockAgent[] = [];
 let mockPersistedDefaultAgent: MockAgent | null = null;
 const registerAgent = vi.fn((_agent: MockAgent) => {});
 
@@ -154,7 +178,7 @@ const { pickEffectiveDefaultAgent } = await vi.importActual<
 >('@/lib/acp/registered-agents');
 
 function presentedAgents(): MockAgent[] {
-  const list = mockRegisteredAgent === null ? [] : [mockRegisteredAgent];
+  const list = mockRegisteredAgent === null ? [] : [mockRegisteredAgent, ...mockExtraAgents];
   const persisted = mockPersistedDefaultAgent;
   if (
     persisted !== null &&
@@ -175,9 +199,10 @@ vi.doMock('@/lib/acp/registered-agents', () => ({
 
 let mockInflightLaunch = false;
 let mockLaunchOutcome: 'started' | 'deduped' | 'failed' = 'started';
+let mockLaunchGate: Promise<'started' | 'deduped' | 'failed'> | null = null;
 const launchAgentThread = vi.fn(() => {
   mockInflightLaunch = true;
-  return Promise.resolve(mockLaunchOutcome);
+  return mockLaunchGate ?? Promise.resolve(mockLaunchOutcome);
 });
 const toastError = vi.fn((_message: string) => {});
 vi.doMock('sonner', () => ({
@@ -220,6 +245,20 @@ function makeThread(overrides: Partial<ThreadInfo> & { threadId: string }): Thre
   };
 }
 
+function visiblePeek(title: string): string {
+  return (
+    Array.from(document.querySelectorAll('[data-slot="tooltip-content"]'))
+      .map((node) => {
+        const visible = node.cloneNode(true) as Element;
+        for (const description of visible.querySelectorAll('[role="tooltip"]')) {
+          description.remove();
+        }
+        return visible.textContent ?? '';
+      })
+      .find((text) => text.startsWith(title)) ?? ''
+  );
+}
+
 function lastThreadViewActive(threadId: string): boolean | undefined {
   const calls = renderThreadView.mock.calls.filter(
     ([props]) => (props as { info: ThreadInfo }).info.threadId === threadId,
@@ -248,6 +287,7 @@ function makeTerminalBridge(): OkDesktopBridge {
 
 type HarnessControl = {
   setVisible: (v: boolean) => void;
+  setShowing: (v: boolean) => void;
   setThreadLaunch: (t: ThreadLaunchIntent | null) => void;
   setRestoreSettled: (v: boolean) => void;
   setBridge: (b: OkDesktopBridge | null) => void;
@@ -265,6 +305,7 @@ function Harness({
   threadLaunch: initialThreadLaunch = null,
   control,
   initiallyRestoreSettled = true,
+  initialShowing,
   onRequestEditorFocus,
 }: {
   bridge?: OkDesktopBridge | null;
@@ -273,10 +314,12 @@ function Harness({
   threadLaunch?: ThreadLaunchIntent | null;
   control?: { current: HarnessControl | null };
   initiallyRestoreSettled?: boolean;
+  initialShowing?: boolean;
   onRequestEditorFocus?: () => void;
 }) {
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [visible, setVisible] = useState(initialVisible);
+  const [showing, setShowing] = useState(initialShowing ?? initialVisible);
   const [threadLaunch, setThreadLaunch] = useState(initialThreadLaunch);
   const [restoreSettled, setRestoreSettled] = useState(initiallyRestoreSettled);
   const [bridge, setBridge] = useState(initialBridge);
@@ -284,7 +327,11 @@ function Harness({
   useEffect(() => {
     if (control != null)
       control.current = {
-        setVisible,
+        setVisible: (next) => {
+          setVisible(next);
+          setShowing(next);
+        },
+        setShowing,
         setThreadLaunch,
         setRestoreSettled,
         setBridge,
@@ -307,7 +354,7 @@ function Harness({
         }}
         installedClis={{}}
         container={container}
-        isShowing={visible && container != null}
+        isShowing={showing && container != null}
         onRequestEditorFocus={onRequestEditorFocus ?? (() => {})}
       />
     </TooltipProvider>
@@ -392,7 +439,7 @@ describe('SessionsHost — agents desktop order-restore gate', () => {
 
       expect(agentsDockWrites(setDockState)).toHaveLength(0);
       expect(screen.getByRole('tab', { name: /One/ })).toBeDefined();
-      const tabs = screen.getAllByRole('tab').map((tab) => tab.textContent);
+      const tabs = tabTitles();
       expect(tabs.indexOf('Two')).toBeGreaterThan(tabs.indexOf('One'));
     } finally {
       vi.useRealTimers();
@@ -896,7 +943,10 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     catalogError = null;
     refetchCatalog.mockClear();
     mockRegisteredAgent = null;
+    mockExtraAgents = [];
     mockPersistedDefaultAgent = null;
+    threadModels.clear();
+    resetStagedThreadDrafts();
     initialRosterIds = null;
     localStorage.clear();
     reloadEnabledAgentsFromStorage();
@@ -944,6 +994,177 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     expect(await screen.findByRole('tab', { name: /Refactor/ })).toBeDefined();
     expect(await screen.findByTestId('thread-view')).toBeDefined();
+  });
+
+  test('each tab tells screen readers and its hover peek what its chat is doing', async () => {
+    const user = userEvent.setup();
+    unreadThreadIds.add('done');
+    try {
+      setOpenThreads([
+        makeThread({ threadId: 'busy', title: 'Refactor', status: 'running' }),
+        makeThread({
+          threadId: 'asking',
+          title: 'Review',
+          status: 'awaiting_permission',
+          lastActivityAt: Date.now(),
+        }),
+        makeThread({ threadId: 'crashed', title: 'Crashed', status: 'exited' }),
+        makeThread({ threadId: 'done', title: 'Done', status: 'ready' }),
+        makeThread({ threadId: 'old', title: 'Old chat', status: 'exited', archived: true }),
+      ]);
+      render(<Harness />);
+
+      expect(await screen.findByRole('tab', { name: /Refactor, Working$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Review, Waiting for your approval$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Crashed, Stopped$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Done, Ready, new activity$/ })).toBeDefined();
+      expect(screen.getByRole('tab', { name: /Old chat, Not running$/ })).toBeDefined();
+
+      await user.hover(screen.getByRole('tab', { name: /Review/ }));
+      const description = await screen.findByRole('tooltip');
+      expect(description.textContent).toBe('Last activity just now');
+      const peek = visiblePeek('Review');
+      expect(peek).toContain('Review');
+      expect(peek).toContain('Waiting for your approval');
+      expect(peek).toContain('Last activity just now');
+      expect(peek).not.toContain('New activity');
+    } finally {
+      unreadThreadIds.clear();
+    }
+  });
+
+  test('hovering a tab with unseen activity says so in the peek', async () => {
+    const user = userEvent.setup();
+    unreadThreadIds.add('done');
+    try {
+      setOpenThreads([makeThread({ threadId: 'done', title: 'Done', status: 'ready' })]);
+      render(<Harness />);
+      await user.hover(await screen.findByRole('tab', { name: /Done/ }));
+      await screen.findByRole('tooltip');
+      expect(visiblePeek('Done')).toContain('New activity');
+    } finally {
+      unreadThreadIds.clear();
+    }
+  });
+
+  test('the hover peek keeps its last-activity time current while screen readers keep the time it opened', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    try {
+      const start = Date.now();
+      setOpenThreads([
+        makeThread({ threadId: 'asking', title: 'Review', status: 'ready', lastActivityAt: start }),
+      ]);
+      render(<Harness />);
+      await user.hover(await screen.findByRole('tab', { name: /Review/ }));
+      expect((await screen.findByRole('tooltip')).textContent).toBe('Last activity just now');
+
+      act(() => {
+        vi.advanceTimersByTime(150_000);
+      });
+
+      await waitFor(() => expect(visiblePeek('Review')).toContain('Last activity 3m ago'));
+      expect(screen.getByRole('tooltip').textContent).toBe('Last activity just now');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('every chat state has its own tab dot and screen-reader words', async () => {
+    const colors: Record<string, string> = {
+      working: 'bg-sky-500',
+      'needs-you': 'bg-amber-500',
+      ready: 'bg-emerald-500',
+      stopped: 'bg-red-500',
+      closed: 'bg-muted-foreground',
+    };
+    const rows: readonly {
+      id: string;
+      status: ThreadInfo['status'];
+      archived?: true;
+      unread?: true;
+      dot: string;
+      pulsing: boolean;
+      words: string;
+    }[] = [
+      { id: 'installing', status: 'installing', dot: 'working', pulsing: true, words: 'Starting' },
+      { id: 'spawning', status: 'spawning', dot: 'working', pulsing: true, words: 'Starting' },
+      {
+        id: 'authenticating',
+        status: 'authenticating',
+        dot: 'working',
+        pulsing: true,
+        words: 'Signing in',
+      },
+      { id: 'running', status: 'running', dot: 'working', pulsing: true, words: 'Working' },
+      {
+        id: 'sign-in',
+        status: 'auth_required',
+        dot: 'needs-you',
+        pulsing: false,
+        words: 'Needs you to sign in',
+      },
+      {
+        id: 'approval',
+        status: 'awaiting_permission',
+        dot: 'needs-you',
+        pulsing: false,
+        words: 'Waiting for your approval',
+      },
+      { id: 'seen', status: 'ready', dot: 'ready', pulsing: false, words: 'Ready' },
+      {
+        id: 'unseen',
+        status: 'ready',
+        unread: true,
+        dot: 'ready',
+        pulsing: true,
+        words: 'Ready, new activity',
+      },
+      {
+        id: 'failed',
+        status: 'error',
+        dot: 'stopped',
+        pulsing: false,
+        words: 'Something went wrong',
+      },
+      { id: 'crashed', status: 'exited', dot: 'stopped', pulsing: false, words: 'Stopped' },
+      {
+        id: 'past',
+        status: 'exited',
+        archived: true,
+        dot: 'closed',
+        pulsing: false,
+        words: 'Not running',
+      },
+    ];
+    for (const row of rows) if (row.unread) unreadThreadIds.add(row.id);
+    try {
+      setOpenThreads(
+        rows.map((row) =>
+          makeThread({
+            threadId: row.id,
+            title: `Chat ${row.id}`,
+            status: row.status,
+            archived: row.archived === true,
+          }),
+        ),
+      );
+      render(<Harness />);
+      await screen.findByRole('tab', { name: /Chat installing/ });
+
+      for (const row of rows) {
+        const tab = screen.getByRole('tab', { name: new RegExp(`Chat ${row.id}, ${row.words}$`) });
+        const dot = tab.querySelector('[data-thread-state]');
+        expect({
+          id: row.id,
+          dot: dot?.getAttribute('data-thread-state'),
+          color: dot?.classList.contains(colors[row.dot] ?? ''),
+          pulsing: dot?.classList.contains('animate-pulse'),
+        }).toEqual({ id: row.id, dot: row.dot, color: true, pulsing: row.pulsing });
+      }
+    } finally {
+      unreadThreadIds.clear();
+    }
   });
 
   test('history stays reachable for live chats and reflects the active conversation', async () => {
@@ -1448,6 +1669,428 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     expect(document.activeElement).toBe(screen.getByRole('tab', { name: /Connecting/ }));
   });
 
+  test('an actionable empty reveal focuses Configure agents despite earlier controls', async () => {
+    const control = makeControl();
+    setInitialRosterIds(new Set());
+    render(<Harness initialVisible initialShowing={false} control={control} />);
+
+    const action = await screen.findByRole('button', { name: 'Configure agents' });
+    const hostElement = screen.getByTestId('dock-container').firstElementChild;
+    expect(hostElement).toBeInstanceOf(HTMLElement);
+    const disqualified = document.createElement('button');
+    disqualified.disabled = true;
+    disqualified.setAttribute('aria-label', 'Disabled earlier action');
+    const unrelated = document.createElement('button');
+    unrelated.setAttribute('aria-label', 'Earlier unrelated action');
+    hostElement?.prepend(unrelated);
+    hostElement?.prepend(disqualified);
+
+    try {
+      act(() => control.current?.setShowing(true));
+
+      await waitFor(() => expect(document.activeElement).toBe(action));
+    } finally {
+      disqualified.remove();
+      unrelated.remove();
+    }
+  });
+
+  test('a content-less empty reveal focuses the named new-chat fallback despite earlier controls', async () => {
+    const control = makeControl();
+    mockRegisteredAgent = FIRST_AGENT;
+    setInitialRosterIds(new Set(['t1']));
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Restored' })]);
+    render(<Harness initialVisible initialShowing={false} control={control} />);
+    await screen.findByTestId('thread-view');
+
+    act(() => setOpenThreads([]));
+    await waitFor(() => expect(screen.getByTestId('sessions-dock-empty').textContent).toBe(''));
+
+    const fallback = screen.getByRole('button', { name: 'New chat with First Agent' });
+    const hostElement = screen.getByTestId('dock-container').firstElementChild;
+    expect(hostElement).toBeInstanceOf(HTMLElement);
+    const disqualified = document.createElement('button');
+    disqualified.tabIndex = -1;
+    disqualified.setAttribute('aria-label', 'Unfocusable earlier action');
+    const unrelated = document.createElement('button');
+    unrelated.setAttribute('aria-label', 'Earlier unrelated action');
+    hostElement?.prepend(unrelated);
+    hostElement?.prepend(disqualified);
+
+    try {
+      act(() => control.current?.setShowing(true));
+
+      await waitFor(() => expect(document.activeElement).toBe(fallback));
+    } finally {
+      disqualified.remove();
+      unrelated.remove();
+    }
+  });
+
+  test('an empty reveal upgrades its focus landing when a session arrives', async () => {
+    const control = makeControl();
+    render(<Harness initialVisible={false} control={control} />);
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+    await screen.findByTestId('sessions-dock-empty');
+
+    const host = screen.getByTestId('dock-container');
+    await waitFor(() => expect(host.contains(document.activeElement)).toBe(true));
+    const emptyLanding = document.activeElement;
+    expect(emptyLanding).not.toBeNull();
+    await act(async () => {});
+    expect(document.activeElement).toBe(emptyLanding);
+
+    act(() => {
+      setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+    });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer')),
+    );
+  });
+
+  test('an empty reveal retries a missed session handoff without another mutation', async () => {
+    const control = makeControl();
+    render(<Harness initialVisible={false} control={control} />);
+
+    act(() => {
+      control.current?.setVisible(true);
+    });
+    await screen.findByTestId('sessions-dock-empty');
+
+    const host = screen.getByTestId('dock-container');
+    await waitFor(() => expect(host.contains(document.activeElement)).toBe(true));
+
+    const originalFocus = HTMLElement.prototype.focus;
+    let composerMissed = false;
+    let tabMissed = false;
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function focusWithOneHandoffMiss(
+        this: HTMLElement,
+        options?: FocusOptions,
+      ) {
+        if (this.matches('[data-testid="agent-thread-composer"]') && !composerMissed) {
+          composerMissed = true;
+          return;
+        }
+        if (this.matches('[role="tab"][data-tab-id="t1"]') && composerMissed && !tabMissed) {
+          tabMissed = true;
+          return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+      });
+
+      await waitFor(() => expect(tabMissed).toBe(true));
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByTestId('agent-thread-composer')),
+      );
+    } finally {
+      focusSpy.mockRestore();
+    }
+  });
+
+  test('a fallback-tab landing leaves no redundant reveal retry frame queued', async () => {
+    const control = makeControl();
+    const queuedFrames: FrameRequestCallback[] = [];
+    let nextFrameId = 0;
+    const frameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      queuedFrames.push(callback);
+      nextFrameId += 1;
+      return nextFrameId;
+    });
+    const cancelFrameSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    render(<Harness initialVisible={false} control={control} />);
+    const hostElement = screen.getByTestId('dock-container').firstElementChild;
+    expect(hostElement).toBeInstanceOf(HTMLElement);
+    const unrelated = document.createElement('button');
+    hostElement?.append(unrelated);
+
+    let allowTargetLanding = false;
+    let targetAttempted = false;
+    const originalFocus = HTMLElement.prototype.focus;
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function holdFirstTargetAttempt(
+        this: HTMLElement,
+        options?: FocusOptions,
+      ) {
+        if (!allowTargetLanding && this.matches('[role="tab"][data-tab-id="t1"]')) {
+          targetAttempted = true;
+          return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      await screen.findByTestId('sessions-dock-empty');
+      await waitFor(() =>
+        expect(screen.getByTestId('dock-container').contains(document.activeElement)).toBe(true),
+      );
+
+      act(() => {
+        for (const callback of queuedFrames.splice(0)) callback(0);
+      });
+      expect(queuedFrames).toHaveLength(0);
+
+      act(() => {
+        unrelated.focus();
+        unrelated.blur();
+      });
+
+      threadViewHeld = true;
+      act(() => {
+        setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+      });
+      const fallbackTab = await screen.findByRole('tab', { name: /Arrived/ });
+      await waitFor(() => expect(targetAttempted).toBe(true));
+      expect(queuedFrames.length).toBeGreaterThan(0);
+
+      allowTargetLanding = true;
+      act(() => {
+        for (const callback of queuedFrames.splice(0)) callback(0);
+      });
+      expect(document.activeElement).toBe(fallbackTab);
+      expect(queuedFrames).toHaveLength(0);
+
+      const marker = document.createElement('span');
+      act(() => {
+        hostElement?.append(marker);
+      });
+      await act(async () => {});
+      marker.remove();
+
+      expect(queuedFrames).toHaveLength(0);
+    } finally {
+      focusSpy.mockRestore();
+      cancelFrameSpy.mockRestore();
+      frameSpy.mockRestore();
+      unrelated.remove();
+    }
+  });
+
+  test('a reveal focus retry cannot move focus after its deadline', async () => {
+    vi.useFakeTimers();
+    const control = makeControl();
+    const queuedFrames: Array<{ id: number; callback: FrameRequestCallback }> = [];
+    let nextFrameId = 0;
+    const frameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      nextFrameId += 1;
+      queuedFrames.push({ id: nextFrameId, callback });
+      return nextFrameId;
+    });
+    const cancelFrameSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => {});
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't1', title: 'Pre-existing' })]);
+    render(<Harness initialVisible={false} control={control} />);
+    await act(async () => {});
+    const outside = document.body.appendChild(document.createElement('input'));
+    outside.focus();
+
+    let allowTargetLanding = false;
+    const originalFocus = HTMLElement.prototype.focus;
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function holdRevealTarget(this: HTMLElement, options?: FocusOptions) {
+        if (
+          !allowTargetLanding &&
+          this.matches('[role="tab"], [data-testid="agent-thread-composer"]')
+        ) {
+          return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      const retry = queuedFrames.at(-1);
+      expect(retry).toBeDefined();
+
+      act(() => {
+        vi.advanceTimersByTime(5_000);
+      });
+      allowTargetLanding = true;
+      act(() => {
+        retry?.callback(0);
+      });
+
+      expect(document.activeElement).toBe(outside);
+      expect(cancelFrameSpy).toHaveBeenCalledWith(retry?.id);
+    } finally {
+      focusSpy.mockRestore();
+      cancelFrameSpy.mockRestore();
+      frameSpy.mockRestore();
+      outside.remove();
+      vi.useRealTimers();
+    }
+  });
+
+  test('a same-batch reveal and session arrival leaves no competing focus transfer queued', async () => {
+    const control = makeControl();
+    render(<Harness initialVisible={false} control={control} />);
+    const outside = document.body.appendChild(document.createElement('input'));
+    const pendingMicrotasks: VoidFunction[] = [];
+    const microtaskSpy = vi
+      .spyOn(globalThis, 'queueMicrotask')
+      .mockImplementation((callback) => pendingMicrotasks.push(callback));
+
+    try {
+      act(() => {
+        control.current?.setVisible(true);
+        setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+      });
+      await screen.findByTestId('agent-thread-composer');
+
+      outside.focus();
+      expect(document.activeElement).toBe(outside);
+
+      act(() => {
+        while (pendingMicrotasks.length > 0) pendingMicrotasks.shift()?.();
+      });
+      await act(async () => {});
+
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      microtaskSpy.mockRestore();
+      outside.remove();
+    }
+  });
+
+  test('a same-batch pending handoff keeps later focus moves from a competing arrival', async () => {
+    const control = makeControl();
+    const outside = document.body.appendChild(document.createElement('input'));
+    threadViewHeld = true;
+    setOpenThreads([makeThread({ threadId: 't0', title: 'Already open' })]);
+    render(<Harness initialVisible initialShowing={false} control={control} />);
+    const firstTab = await screen.findByRole('tab', { name: /Already open/ });
+    await waitFor(() => expect(document.activeElement).toBe(firstTab));
+    act(() => outside.focus());
+
+    const pendingMicrotasks: VoidFunction[] = [];
+    const queuedFrames: FrameRequestCallback[] = [];
+    let nextFrameId = 0;
+    let allowTargetLanding = false;
+    let firstTargetAttempted = false;
+    const originalFocus = HTMLElement.prototype.focus;
+    const microtaskSpy = vi
+      .spyOn(globalThis, 'queueMicrotask')
+      .mockImplementation((callback) => pendingMicrotasks.push(callback));
+    const frameSpy = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      queuedFrames.push(callback);
+      nextFrameId += 1;
+      return nextFrameId;
+    });
+    const focusSpy = vi
+      .spyOn(HTMLElement.prototype, 'focus')
+      .mockImplementation(function holdRevealTarget(this: HTMLElement, options?: FocusOptions) {
+        if (!allowTargetLanding) {
+          if (this.matches('[role="tab"]')) {
+            if (this.dataset.tabId === 't1') firstTargetAttempted = true;
+            return;
+          }
+          if (this.dataset.testid === 'terminal-new-chat') return;
+        }
+        originalFocus.call(this, options);
+      });
+
+    try {
+      act(() => {
+        control.current?.setShowing(true);
+        setOpenThreads([
+          makeThread({ threadId: 't0', title: 'Already open' }),
+          makeThread({ threadId: 't1', title: 'Reveal arrival' }),
+        ]);
+      });
+      await screen.findByRole('tab', { name: /Reveal arrival/ });
+      await act(async () => {});
+      expect(document.activeElement).toBe(outside);
+      expect(firstTargetAttempted).toBe(true);
+      expect(queuedFrames.length).toBeGreaterThan(0);
+
+      act(() => {
+        setOpenThreads([
+          makeThread({ threadId: 't0', title: 'Already open' }),
+          makeThread({ threadId: 't1', title: 'Reveal arrival' }),
+          makeThread({ threadId: 't2', title: 'Later arrival' }),
+        ]);
+      });
+      const ownedTargetTab = await screen.findByRole('tab', { name: /Later arrival/ });
+      await act(async () => {});
+
+      allowTargetLanding = true;
+      act(() => {
+        for (const callback of queuedFrames.splice(0)) callback(0);
+      });
+      expect(document.activeElement).toBe(ownedTargetTab);
+
+      act(() => outside.focus());
+      expect(document.activeElement).toBe(outside);
+
+      act(() => {
+        while (pendingMicrotasks.length > 0) pendingMicrotasks.shift()?.();
+      });
+
+      expect(document.activeElement).toBe(outside);
+    } finally {
+      focusSpy.mockRestore();
+      frameSpy.mockRestore();
+      microtaskSpy.mockRestore();
+      outside.remove();
+    }
+  });
+
+  test.each(['inside', 'outside'] as const)(
+    'a session arriving after an empty reveal does not steal focus moved %s the host',
+    async (targetLocation) => {
+      const control = makeControl();
+      render(<Harness initialVisible={false} control={control} />);
+
+      act(() => {
+        control.current?.setVisible(true);
+      });
+      await screen.findByTestId('sessions-dock-empty');
+
+      const host = screen.getByTestId('dock-container');
+      await waitFor(() => expect(host.contains(document.activeElement)).toBe(true));
+      const emptyLanding = document.activeElement;
+      const focusTarget =
+        targetLocation === 'inside'
+          ? Array.from(host.querySelectorAll<HTMLElement>('button:not(:disabled)')).find(
+              (candidate) => candidate !== emptyLanding && candidate.tabIndex >= 0,
+            )
+          : document.body.appendChild(document.createElement('input'));
+      expect(focusTarget).toBeDefined();
+
+      try {
+        focusTarget?.focus();
+        expect(document.activeElement).toBe(focusTarget);
+
+        act(() => {
+          setOpenThreads([makeThread({ threadId: 't1', title: 'Arrived' })]);
+        });
+        await screen.findByTestId('agent-thread-composer');
+        await act(async () => {});
+
+        expect(document.activeElement).toBe(focusTarget);
+      } finally {
+        if (targetLocation === 'outside') focusTarget?.remove();
+      }
+    },
+  );
+
   test('collapsing the dock hands focus back to the editor', async () => {
     const user = userEvent.setup();
     const onVisibleChange = vi.fn((_v: boolean) => {});
@@ -1800,9 +2443,11 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
     test('an Ask AI instruction RUNS on a new thread (never a CLI)', async () => {
       mockRegisteredAgent = { source: 'registry', id: 'acme-agent', name: 'Acme' };
       const launches: unknown[] = [];
-      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
-        launches.push({ prompt, cli, ...opts }),
-      );
+      const stopLaunch = subscribeToTerminalLaunchRequests((request) => {
+        if (request.kind === 'cli') {
+          launches.push({ prompt: request.prompt, cli: request.cli, stage: request.stage });
+        }
+      });
       render(<Harness />);
       await screen.findByTestId('terminal-new-chat');
 
@@ -2011,9 +2656,11 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
       { submit: false, label: 'a selection send' },
     ])('with NO agent set up, $label is left to the terminal dock', async ({ submit }) => {
       const launches: unknown[] = [];
-      const stopLaunch = subscribeToTerminalLaunchRequests((prompt, cli, opts) =>
-        launches.push({ prompt, cli, ...opts }),
-      );
+      const stopLaunch = subscribeToTerminalLaunchRequests((request) => {
+        if (request.kind === 'cli') {
+          launches.push({ prompt: request.prompt, cli: request.cli, stage: request.stage });
+        }
+      });
       const onVisibleChange = vi.fn((_v: boolean) => {});
       render(<Harness bridge={makeTerminalBridge()} onVisibleChange={onVisibleChange} />);
       await screen.findByTestId('terminal-new-chat');
@@ -2557,5 +3204,226 @@ describe('SessionsHost — agents panel (web / no bridge)', () => {
 
     setConnectionStatus('open');
     await waitFor(() => expect(screen.queryByTestId('agent-thread-reconnecting')).toBeNull());
+  });
+});
+
+describe('switching the agent of an unsent chat', () => {
+  const CURRENT: MockAgent = { source: 'registry', id: 'a', name: 'Agent' };
+  const OTHER: MockAgent = { source: 'registry', id: 'codex-acp', name: 'Codex' };
+  const DRAFT_DOC = {
+    type: 'doc',
+    content: [{ type: 'paragraph', content: [{ type: 'text', text: 'quoted passage' }] }],
+  };
+  const DRAFT_IMAGE = {
+    kind: 'image',
+    mimeType: 'image/png',
+    data: 'aGk=',
+    name: 'a.png',
+  } as const;
+
+  beforeEach(() => {
+    closeThread.mockClear();
+    launchAgentThread.mockClear();
+    registerAgent.mockClear();
+    mockLaunchOutcome = 'started';
+    mockInflightLaunch = false;
+    mockRegisteredAgent = null;
+    mockExtraAgents = [];
+    mockPersistedDefaultAgent = null;
+    mockLaunchGate = null;
+    threadModels.clear();
+    resetStagedThreadDrafts();
+    setOpenThreads([]);
+    localStorage.clear();
+  });
+  afterEach(() => {
+    cleanup();
+  });
+
+  async function pickFromHeaderMenu(name: string) {
+    const user = userEvent.setup();
+    const [trigger] = screen.getAllByRole('button', {
+      name: /Choose what a new (tab|chat) starts/,
+    });
+    if (trigger === undefined) throw new Error('header picker trigger missing');
+    await user.click(trigger);
+    await user.click(await screen.findByRole('menuitem', { name }));
+  }
+
+  test('picking another agent while the open chat is unsent switches it and carries the draft', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'quoted passage',
+      doc: DRAFT_DOC,
+      attachments: [DRAFT_IMAGE],
+      uploadsPending: false,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    stopReading();
+
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]).toEqual([
+      { source: 'registry', id: 'codex-acp' },
+      null,
+      null,
+      null,
+      { doc: DRAFT_DOC, attachments: [DRAFT_IMAGE] },
+      undefined,
+    ]);
+    await waitFor(() => expect(closeThread).toHaveBeenCalledWith('t1'));
+  });
+
+  test.each(['failed', 'deduped'] as const)(
+    'a replacement launch that ends %s leaves the unsent chat and its draft in place',
+    async (outcome) => {
+      mockRegisteredAgent = CURRENT;
+      mockExtraAgents = [OTHER];
+      mockLaunchOutcome = outcome;
+      render(<Harness />);
+      setOpenThreads([makeThread({ threadId: 't1' })]);
+      await screen.findByTestId('thread-view');
+      setThreadModel('t1', emptyThreadModel());
+      const stopReading = registerThreadDraftReader('t1', () => ({
+        text: 'quoted passage',
+        doc: DRAFT_DOC,
+        attachments: [],
+      }));
+
+      await pickFromHeaderMenu('Codex');
+      await waitFor(() => expect(launchAgentThread).toHaveBeenCalledTimes(1));
+      await act(async () => {
+        await Promise.resolve();
+      });
+      stopReading();
+
+      expect(closeThread).not.toHaveBeenCalled();
+    },
+  );
+
+  test('a chat that already has a message keeps its agent and the pick opens a new chat', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel(
+      't1',
+      emptyThreadModel([{ kind: 'message', role: 'user', text: 'hello', messageId: 'm1' }]),
+    );
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'a follow-up',
+      doc: DRAFT_DOC,
+      attachments: [],
+      uploadsPending: false,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    stopReading();
+
+    expect(closeThread).not.toHaveBeenCalled();
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]).toEqual([
+      { source: 'registry', id: 'codex-acp' },
+      null,
+      null,
+      null,
+      null,
+      undefined,
+    ]);
+  });
+
+  test('the agent list is unavailable until a switch has settled', async () => {
+    const THIRD: MockAgent = { source: 'registry', id: 'cursor', name: 'Cursor' };
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER, THIRD];
+    const gate = Promise.withResolvers<'started' | 'deduped' | 'failed'>();
+    mockLaunchGate = gate.promise;
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'quoted passage',
+      doc: DRAFT_DOC,
+      attachments: [],
+      uploadsPending: false,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]?.[4]).toEqual({ doc: DRAFT_DOC, attachments: [] });
+
+    const user = userEvent.setup();
+    const [trigger] = screen.getAllByRole('button', {
+      name: /Choose what a new (tab|chat) starts/,
+    });
+    if (trigger === undefined) throw new Error('header picker trigger missing');
+    await user.click(trigger);
+    const cursorItem = await screen.findByRole('menuitem', { name: 'Cursor' });
+    expect(cursorItem.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('menuitem', { name: 'Codex' }).getAttribute('aria-disabled')).toBe(
+      'true',
+    );
+    await user.click(cursorItem);
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(closeThread).not.toHaveBeenCalled();
+    await user.keyboard('{Escape}');
+
+    await act(async () => {
+      gate.resolve('started');
+      await gate.promise;
+    });
+    stopReading();
+    await waitFor(() => expect(closeThread).toHaveBeenCalledWith('t1'));
+
+    await user.click(trigger);
+    const cursorAgain = await screen.findByRole('menuitem', { name: 'Cursor' });
+    expect(cursorAgain.getAttribute('aria-disabled')).toBeNull();
+  });
+
+  test('a chat with a file still being read is not switched', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+    const stopReading = registerThreadDraftReader('t1', () => ({
+      text: 'quoted passage',
+      doc: DRAFT_DOC,
+      attachments: [],
+      uploadsPending: true,
+    }));
+
+    await pickFromHeaderMenu('Codex');
+    await act(async () => {
+      await Promise.resolve();
+    });
+    stopReading();
+
+    expect(closeThread).not.toHaveBeenCalled();
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]?.[4]).toBeNull();
+  });
+
+  test('picking the agent the unsent chat already uses opens a new chat as before', async () => {
+    mockRegisteredAgent = CURRENT;
+    mockExtraAgents = [OTHER];
+    render(<Harness />);
+    setOpenThreads([makeThread({ threadId: 't1' })]);
+    await screen.findByTestId('thread-view');
+    setThreadModel('t1', emptyThreadModel());
+
+    await pickFromHeaderMenu('Agent');
+
+    expect(closeThread).not.toHaveBeenCalled();
+    expect(launchAgentThread).toHaveBeenCalledTimes(1);
+    expect(launchAgentThread.mock.calls[0]?.[0]).toEqual({ source: 'registry', id: 'a' });
   });
 });

@@ -75,12 +75,23 @@ test.describe('Settings search — navigation + pinned layout', () => {
     await page.getByTestId('settings-search-input').fill('Config sharing');
     const result = page.getByTestId('settings-search-result-subsection:sync:sharing');
     await expect(result).toBeVisible({ timeout: 5_000 });
+    await page.evaluate(() => {
+      const observer = new MutationObserver(() => {
+        if (document.querySelector('[data-field="section:sharing"].animate-settings-nav-flash')) {
+          document.documentElement.dataset.sharingNavigationFlashed = 'true';
+          observer.disconnect();
+        }
+      });
+      observer.observe(document.body, { childList: true, subtree: true, attributes: true });
+    });
     await result.click();
 
     const block = page.locator('[data-field="section:sharing"]');
     await expect(block).toBeVisible({ timeout: SETTINGS_PANEL_TIMEOUT_MS });
     await expect(block).toBeInViewport();
-    await expect(block).toHaveClass(/animate-settings-nav-flash/, { timeout: 2_000 });
+    await expect
+      .poll(() => page.evaluate(() => document.documentElement.dataset.sharingNavigationFlashed))
+      .toBe('true');
   });
 
   test('Preview tabs is searchable from its catalog-backed label and description', async ({

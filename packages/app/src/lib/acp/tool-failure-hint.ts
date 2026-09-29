@@ -3,13 +3,13 @@ import {
   SERVER_TIMEOUT_ERROR_PREFIX,
   SERVER_UNREACHABLE_ERROR_PREFIX,
 } from '@inkeep/open-knowledge-core';
+import { openKnowledgeToolName } from '@inkeep/open-knowledge-core/acp/tool-call-input';
 import { t } from '@lingui/core/macro';
 import {
   type RenderedPermission,
   type RenderedToolCall,
   resolvePermissionOutcome,
 } from '@/lib/acp/thread-event-model';
-import { openKnowledgeToolName } from '@/lib/acp/tool-call-display';
 
 export type ToolFailureClass =
   | 'permission-denied'

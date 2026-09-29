@@ -1,6 +1,7 @@
 import { execFileSync, execSync } from 'node:child_process';
 import {
   appendFileSync,
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -187,6 +188,316 @@ function makeLogRecorder() {
     decisions: () => lines.filter((l) => l.payload.event === 'bug-report.minidump-decision'),
   };
 }
+
+describe('handleBugReportCreate — agent chat transcript', () => {
+  const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+
+  test("attaches the chosen chat's transcript with secrets scrubbed", async () => {
+    const threadsDir = makeTmpDir('ok-bugreport-threads-');
+    const secret = `ghp_${'a'.repeat(36)}`;
+    writeFileSync(
+      join(threadsDir, `${threadId}.ndjson`),
+      `{"kind":"user_message","content":"use ${secret}"}\n{"kind":"session_update"}\n`,
+    );
+    writeFileSync(join(threadsDir, `${threadId}.meta.json`), '{"version":1}');
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      agentChatThreadDirs: [makeTmpDir('ok-bugreport-empty-'), threadsDir],
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      agentChatThreadId: threadId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const entries = listZipEntries(result.zipPath);
+    expect(entries).toContain(`extra/agent-chat/${threadId}.ndjson`);
+    expect(entries).toContain(`extra/agent-chat/${threadId}.meta.json`);
+    const transcript = readZipEntry(result.zipPath, `extra/agent-chat/${threadId}.ndjson`);
+    expect(transcript).toContain('[REDACTED-GH-PAT]');
+    expect(transcript).not.toContain(secret);
+    const audit = {
+      file: `extra/agent-chat/${threadId}.ndjson`,
+      lineCount: 1,
+      patterns: ['github-pat'],
+    };
+    expect(result.summary.redactions).toContainEqual(audit);
+    expect(JSON.parse(readZipEntry(result.zipPath, 'MANIFEST.json')).redactions).toContainEqual(
+      audit,
+    );
+    expect(readZipEntry(result.zipPath, 'README.md')).toContain(
+      '1 line(s) were scrubbed across 1 file(s).',
+    );
+  });
+
+  test('a token that starts a line of tool output never reaches the zip', async () => {
+    const threadsDir = makeTmpDir('ok-bugreport-threads-');
+    const secret = `gho_${'b'.repeat(36)}`;
+    writeFileSync(
+      join(threadsDir, `${threadId}.ndjson`),
+      `${JSON.stringify({ kind: 'agent_stderr', line: `$ gh auth token\n${secret}\n`, ts: 1 })}\n`,
+    );
+    const deps = makeDeps({ projectDir: makeProjectDir(), agentChatThreadDirs: [threadsDir] });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      agentChatThreadId: threadId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const transcript = readZipEntry(result.zipPath, `extra/agent-chat/${threadId}.ndjson`);
+    expect(transcript).not.toContain(secret);
+    expect(transcript).toContain('[REDACTED-GH-PAT]');
+  });
+
+  test("a detailed report audits the transcript's redactions in its manifest", async () => {
+    const threadsDir = makeTmpDir('ok-bugreport-threads-');
+    const secret = `ghp_${'c'.repeat(36)}`;
+    writeFileSync(
+      join(threadsDir, `${threadId}.ndjson`),
+      `${JSON.stringify({ kind: 'agent_stderr', line: `token ${secret}`, ts: 1 })}\n`,
+    );
+    const deps = makeDeps({ projectDir: makeProjectDir(), agentChatThreadDirs: [threadsDir] });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'full',
+      agentChatThreadId: threadId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(readZipEntry(result.zipPath, `extra/agent-chat/${threadId}.ndjson`)).not.toContain(
+      secret,
+    );
+    const audit = {
+      file: `extra/agent-chat/${threadId}.ndjson`,
+      lineCount: 1,
+      patterns: ['github-pat'],
+    };
+    expect(result.summary.redactions).toContainEqual(audit);
+    expect(
+      JSON.parse(readZipEntry(result.zipPath, 'manifest.json')).redaction.secretScrub.redactions,
+    ).toContainEqual(audit);
+  });
+
+  test('a newest event too large to read is logged as left out, with the reason', async () => {
+    const threadsDir = makeTmpDir('ok-bugreport-threads-');
+    writeFileSync(
+      join(threadsDir, `${threadId}.ndjson`),
+      `{"kind":"turn_started","ts":1}\n${JSON.stringify({ kind: 'agent_stderr', line: 'x'.repeat(600), ts: 2 })}\n`,
+    );
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      agentChatThreadDirs: [threadsDir],
+      agentChatTranscriptMaxBytes: 100,
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      agentChatThreadId: threadId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath).some((e) => e.includes('agent-chat/'))).toBe(false);
+    const chatLines = recorder.lines.filter((l) => l.payload.event === 'bug-report.agent-chat');
+    expect(chatLines).toEqual([
+      expect.objectContaining({
+        level: 'warn',
+        payload: expect.objectContaining({ threadId, attached: false, reason: 'too-large' }),
+      }),
+    ]);
+  });
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'a transcript lookup that fails for another reason is logged with its error',
+    async () => {
+      const locked = join(makeTmpDir('ok-bugreport-threads-'), 'locked');
+      mkdirSync(locked);
+      writeFileSync(join(locked, `${threadId}.ndjson`), '{"kind":"turn_started","ts":1}\n');
+      chmodSync(locked, 0o000);
+      const recorder = makeLogRecorder();
+      const deps = makeDeps({
+        projectDir: makeProjectDir(),
+        agentChatThreadDirs: [locked],
+        logger: recorder.logger,
+      });
+
+      try {
+        const result = await handleBugReportCreate(deps, {
+          kind: 'create',
+          level: 'standard',
+          agentChatThreadId: threadId,
+        });
+        if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+      } finally {
+        chmodSync(locked, 0o755);
+      }
+      const chatLine = recorder.lines.find((l) => l.payload.event === 'bug-report.agent-chat');
+      expect(chatLine?.payload).toMatchObject({
+        threadId,
+        attached: false,
+        reason: 'stage-failed',
+      });
+      expect(chatLine?.payload.err).toMatchObject({ code: 'EACCES' });
+    },
+  );
+
+  test('missing metadata is logged as left out, and the transcript still goes in', async () => {
+    const threadsDir = makeTmpDir('ok-bugreport-threads-');
+    writeFileSync(join(threadsDir, `${threadId}.ndjson`), '{"kind":"turn_started","ts":1}\n');
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      agentChatThreadDirs: [threadsDir],
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      agentChatThreadId: threadId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const entries = listZipEntries(result.zipPath);
+    expect(entries).toContain(`extra/agent-chat/${threadId}.ndjson`);
+    expect(entries).not.toContain(`extra/agent-chat/${threadId}.meta.json`);
+    expect(recorder.lines).toContainEqual(
+      expect.objectContaining({
+        level: 'info',
+        payload: expect.objectContaining({
+          event: 'bug-report.agent-chat',
+          threadId,
+          attached: true,
+        }),
+      }),
+    );
+    expect(
+      recorder.lines.filter((l) => l.payload.event === 'bug-report.agent-chat-metadata'),
+    ).toEqual([
+      expect.objectContaining({
+        level: 'warn',
+        payload: expect.objectContaining({ threadId, attached: false, reason: 'not-found' }),
+      }),
+    ]);
+  });
+
+  test('metadata too large to read is logged as left out, and the transcript still goes in', async () => {
+    const threadsDir = makeTmpDir('ok-bugreport-threads-');
+    writeFileSync(join(threadsDir, `${threadId}.ndjson`), '{"kind":"turn_started","ts":1}\n');
+    writeFileSync(
+      join(threadsDir, `${threadId}.meta.json`),
+      JSON.stringify({ version: 1, info: { title: 'x'.repeat(300_000) } }),
+    );
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      agentChatThreadDirs: [threadsDir],
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      agentChatThreadId: threadId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    const entries = listZipEntries(result.zipPath);
+    expect(entries).toContain(`extra/agent-chat/${threadId}.ndjson`);
+    expect(entries).not.toContain(`extra/agent-chat/${threadId}.meta.json`);
+    expect(
+      recorder.lines.filter((l) => l.payload.event === 'bug-report.agent-chat-metadata'),
+    ).toEqual([
+      expect.objectContaining({
+        level: 'warn',
+        payload: expect.objectContaining({ threadId, attached: false, reason: 'too-large' }),
+      }),
+    ]);
+  });
+
+  test.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
+    'metadata that cannot be read is logged with its error, and the transcript still goes in',
+    async () => {
+      const threadsDir = makeTmpDir('ok-bugreport-threads-');
+      writeFileSync(join(threadsDir, `${threadId}.ndjson`), '{"kind":"turn_started","ts":1}\n');
+      const metaPath = join(threadsDir, `${threadId}.meta.json`);
+      writeFileSync(metaPath, '{"version":1}');
+      chmodSync(metaPath, 0o000);
+      const recorder = makeLogRecorder();
+      const deps = makeDeps({
+        projectDir: makeProjectDir(),
+        agentChatThreadDirs: [threadsDir],
+        logger: recorder.logger,
+      });
+
+      const result = await handleBugReportCreate(deps, {
+        kind: 'create',
+        level: 'standard',
+        agentChatThreadId: threadId,
+      });
+
+      if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+      expect(listZipEntries(result.zipPath)).toContain(`extra/agent-chat/${threadId}.ndjson`);
+      const metadataLine = recorder.lines.find(
+        (l) => l.payload.event === 'bug-report.agent-chat-metadata',
+      );
+      expect(metadataLine?.payload).toMatchObject({
+        threadId,
+        attached: false,
+        reason: 'stage-failed',
+      });
+      expect(metadataLine?.payload.err).toMatchObject({ code: 'EACCES' });
+    },
+  );
+
+  test('a transcript that cannot be found leaves the rest of the report intact', async () => {
+    const recorder = makeLogRecorder();
+    const deps = makeDeps({
+      projectDir: makeProjectDir(),
+      agentChatThreadDirs: [makeTmpDir('ok-bugreport-empty-')],
+      logger: recorder.logger,
+    });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      agentChatThreadId: threadId,
+    });
+
+    if (!result.ok) throw new Error(`expected ok, got: ${result.error}`);
+    expect(listZipEntries(result.zipPath).some((e) => e.includes('agent-chat/'))).toBe(false);
+    expect(recorder.lines).toContainEqual(
+      expect.objectContaining({
+        level: 'warn',
+        payload: expect.objectContaining({
+          event: 'bug-report.agent-chat',
+          threadId,
+          attached: false,
+        }),
+      }),
+    );
+  });
+
+  test('rejects a thread id that is not a chat id', async () => {
+    const deps = makeDeps({ projectDir: makeProjectDir() });
+
+    const result = await handleBugReportCreate(deps, {
+      kind: 'create',
+      level: 'standard',
+      agentChatThreadId: '../../../etc/passwd',
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toBe('invalid-request');
+  });
+});
 
 describe('handleBugReportCreate — project bundle', () => {
   test('builds the zip at the returned path with the project content set and the note', async () => {

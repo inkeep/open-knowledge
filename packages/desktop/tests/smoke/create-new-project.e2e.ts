@@ -120,7 +120,7 @@ test.describe('Create-new-project smoke', () => {
 
   test.afterEach(async () => {
     const targets = cleanupTargets.splice(0);
-    reapDetachedServers(targets);
+    await reapDetachedServers(targets);
     for (const target of targets) {
       try {
         rmSync(target, { recursive: true, force: true });
@@ -139,7 +139,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: parent });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -202,7 +202,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: subFolder });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -239,7 +239,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -300,7 +300,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent: `${sub1}\x1f${sub2}` });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);
@@ -388,7 +388,7 @@ test.describe('Create-new-project smoke', () => {
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedParent });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavCreateNew(navigator);

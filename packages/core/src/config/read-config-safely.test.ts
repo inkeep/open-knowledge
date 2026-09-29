@@ -53,6 +53,128 @@ afterEach(() => {
 });
 
 describe('readConfigSafely', () => {
+  test('keeps the valid autolinks and reports each invalid entry where it is', () => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(
+      absPath,
+      stringify({
+        autolinks: [
+          { prefix: 'PRD-', url: 'https://linear.app/inkeep/issue/PRD-<num>' },
+          { prefix: '1BAD', url: 'https://x.example/<num>' },
+          { prefix: 'GH-', url: 'https://github.com/o/r/issues/1' },
+        ],
+      }),
+    );
+    const warnings: string[] = [];
+    const result = readConfigSafely({ absPath, warn: (message) => warnings.push(message) });
+    expect(result.valid).toBe(true);
+    expect(result.value.autolinks).toEqual([
+      { prefix: 'PRD-', url: 'https://linear.app/inkeep/issue/PRD-<num>' },
+      null,
+      null,
+    ]);
+    expect(result.diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      issues: [
+        expect.objectContaining({ path: ['autolinks', '1', 'prefix'], source: expect.anything() }),
+        expect.objectContaining({ path: ['autolinks', '2', 'url'], source: expect.anything() }),
+      ],
+    });
+    expect(warnings.join('\n')).toContain('autolinks.1.prefix');
+    expect(warnings.join('\n')).toContain('ignoring this autolink entry.');
+  });
+
+  test('reports an autolinks value that is not a list and ignores it', () => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(absPath, stringify({ autolinks: 'PRD-' }));
+    const result = readConfigSafely({ absPath, warn: () => {} });
+    expect(result.valid).toBe(true);
+    expect(result.value.autolinks).toEqual([]);
+    expect(result.diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      issues: [
+        expect.objectContaining({
+          path: ['autolinks'],
+          message: expect.stringContaining('ignoring autolinks.'),
+        }),
+      ],
+    });
+  });
+
+  test('reports a discarded non-map hosts section', () => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(absPath, stringify({ git: { hosts: 'invalid' } }));
+    const result = readConfigSafely({ absPath, warn: () => {} });
+    expect(result.valid).toBe(true);
+    expect(result.value.git.hosts).toEqual({});
+    expect(result.diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      issues: [expect.objectContaining({ path: ['git', 'hosts'] })],
+    });
+  });
+
+  test('retains host fallback diagnostics and siblings alongside unrelated schema errors', () => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(
+      absPath,
+      stringify({
+        git: { hosts: { good: { provider: 'github' }, bad: null } },
+        autoSync: { mode: 'invalid' },
+      }),
+    );
+    const result = readConfigSafely({ absPath, sideline: false, warn: () => {} });
+    expect(result.valid).toBe(false);
+    expect(result.value.git.hosts.good?.provider).toBe('github');
+    expect(result.diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      issues: [expect.objectContaining({ path: ['git', 'hosts', 'bad'] })],
+    });
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'SCHEMA_INVALID' }));
+  });
+  test.each([null, 'not-an-object', []].map((bad) => ({ bad })))(
+    'contains malformed host entry $bad and reports it',
+    ({ bad }) => {
+      const absPath = resolve(testDir, 'config.yml');
+      writeFileSync(absPath, stringify({ git: { hosts: { good: { provider: 'github' }, bad } } }));
+      const warnings: string[] = [];
+      const result = readConfigSafely({ absPath, warn: (message) => warnings.push(message) });
+      expect(result.valid).toBe(true);
+      expect(result.value.git.hosts.good?.provider).toBe('github');
+      expect(result.value.git.hosts.bad?.provider).toBeUndefined();
+      expect(result.diagnostics).toContainEqual({
+        code: 'VALUE_FALLBACK',
+        issues: [expect.objectContaining({ path: ['git', 'hosts', 'bad'] })],
+      });
+      expect(warnings.join('\n')).toContain('git.hosts');
+    },
+  );
+
+  test('preserves host declarations after an unrelated schema failure', () => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(
+      absPath,
+      stringify({
+        git: { hosts: { good: { provider: 'github' } } },
+        autoSync: { mode: 'invalid' },
+      }),
+    );
+    const result = readConfigSafely({ absPath, sideline: false, warn: () => {} });
+    expect(result.valid).toBe(false);
+    expect(result.value.git.hosts.good?.provider).toBe('github');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: 'SCHEMA_INVALID' }));
+  });
+
+  test.each(['unsupported', 12, null])('reports invalid provider %j', (provider) => {
+    const absPath = resolve(testDir, 'config.yml');
+    writeFileSync(absPath, stringify({ git: { hosts: { h: { provider } } } }));
+    const result = readConfigSafely({ absPath, warn: () => {} });
+    expect(result.value.git.hosts.h?.provider).toBeUndefined();
+    expect(result.diagnostics).toContainEqual({
+      code: 'VALUE_FALLBACK',
+      issues: [expect.objectContaining({ path: ['git', 'hosts', 'h', 'provider'] })],
+    });
+  });
+
   test('the fixture path carries every value the VALUE_FALLBACK arm must not echo, so no absence check can pass on path luck', () => {
     for (const value of CONFIG_VALUES_THE_VALUE_FALLBACK_ARM_MUST_NEVER_ECHO) {
       expect(testDir, `testDir must carry ${value}`).toContain(value);

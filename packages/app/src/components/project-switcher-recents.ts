@@ -1,139 +1,269 @@
-import type { WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
+import type {
+  WorktreeInventoryEntry,
+  WorktreeInventoryLocation,
+  WorktreeInventoryModel,
+  WorktreeInventoryOpenRequest,
+  WorktreeSelectorModel,
+} from '@inkeep/open-knowledge-core';
 import type { RecentProjectEntry } from '@/lib/desktop-bridge-types';
 
 export interface RecentRepoGroup {
+  readonly key: string;
   readonly project: RecentProjectEntry;
+  readonly primaryProject: RecentProjectEntry | null;
   readonly worktrees: readonly RecentProjectEntry[];
+  readonly recentEntries: readonly RecentProjectEntry[];
   readonly projectSynthesized: boolean;
+  readonly repositoryName: string;
+  readonly gitCommonDir: string | null;
+  readonly projectSubPath: string | null;
+  readonly inventoryAnchorPath: string | null;
 }
 
-export interface WorktreeFlyoutEntry {
+interface WorktreeCheckoutFlyoutEntry {
+  readonly kind: 'checkout';
   readonly branch: string | null;
-  readonly path: string | null;
-  readonly opened: boolean;
-  readonly isMain: boolean;
+  readonly headSha: string | null;
+  readonly path: string;
+  readonly checkoutRoot: string;
+  readonly location: WorktreeInventoryLocation | 'unknown';
+  readonly availability: 'available' | 'missing' | 'unreadable';
+  readonly locked: boolean;
+  readonly prunable: boolean;
   readonly isCurrent: boolean;
+  readonly inventoryOpenRequest: WorktreeInventoryOpenRequest | null;
 }
 
-export type RowLocation = 'primary' | 'worktree' | 'none';
+interface WorktreeBranchFlyoutEntry {
+  readonly kind: 'branch';
+  readonly branch: string;
+  readonly headSha: null;
+  readonly path: null;
+  readonly checkoutRoot: null;
+  readonly location: 'none';
+  readonly availability: 'available';
+  readonly locked: false;
+  readonly prunable: false;
+  readonly isCurrent: false;
+  readonly inventoryOpenRequest: null;
+}
 
-export function rowLocation(entry: Pick<WorktreeFlyoutEntry, 'isMain' | 'opened'>): RowLocation {
-  if (!entry.opened) return 'none';
-  return entry.isMain ? 'primary' : 'worktree';
+export type WorktreeFlyoutEntry = WorktreeCheckoutFlyoutEntry | WorktreeBranchFlyoutEntry;
+
+export type RowLocation = WorktreeInventoryLocation | 'unknown' | 'none';
+
+export function rowLocation(entry: WorktreeFlyoutEntry): RowLocation {
+  return entry.location;
 }
 
 export function buildWorktreeFlyoutEntries(
   group: RecentRepoGroup,
+  inventory: WorktreeInventoryModel | null,
   worktreeModel: WorktreeSelectorModel | null,
   currentPath: string,
 ): WorktreeFlyoutEntry[] {
   const entries: WorktreeFlyoutEntry[] = [];
   const seenPaths = new Set<string>();
   const seenBranches = new Set<string>();
-
-  const isCurrentModel =
-    worktreeModel !== null && worktreeModel.mainRoot === group.project.mainRoot;
-
-  if (!group.projectSynthesized) {
-    entries.push({
-      branch: group.project.branch ?? null,
-      path: group.project.path,
-      opened: true,
-      isMain: true,
-      isCurrent: group.project.path === currentPath,
-    });
-    seenPaths.add(group.project.path);
-    if (group.project.branch != null) seenBranches.add(group.project.branch);
-  }
-
-  const openedByRecency = [...group.worktrees].sort((a, b) =>
-    b.lastOpenedAt.localeCompare(a.lastOpenedAt),
+  const recentRank = new Map(
+    [...group.recentEntries]
+      .sort((a, b) => b.lastOpenedAt.localeCompare(a.lastOpenedAt))
+      .map((entry, index) => [entry.path, index]),
   );
-  for (const wt of openedByRecency) {
-    if (seenPaths.has(wt.path)) continue;
-    entries.push({
-      branch: wt.branch ?? null,
-      path: wt.path,
-      opened: true,
-      isMain: false,
-      isCurrent: wt.path === currentPath,
-    });
-    seenPaths.add(wt.path);
-    if (wt.branch != null) seenBranches.add(wt.branch);
-  }
 
-  if (isCurrentModel) {
-    const modelExtras = worktreeModel.entries
-      .filter(
-        (e) =>
-          e.branch !== null &&
-          !seenBranches.has(e.branch) &&
-          (e.worktreePath === null || !seenPaths.has(e.worktreePath)),
-      )
-      .sort((a, b) => (a.branch ?? '').localeCompare(b.branch ?? ''));
-    for (const e of modelExtras) {
-      entries.push({
-        branch: e.branch,
-        path: e.worktreePath,
-        opened: e.worktreePath !== null,
-        isMain: e.isMain,
-        isCurrent: e.isCurrent,
-      });
-      if (e.branch != null) seenBranches.add(e.branch);
-      if (e.worktreePath != null) seenPaths.add(e.worktreePath);
+  if (inventoryMatchesGroup(inventory, group)) {
+    for (const entry of inventory.entries) {
+      entries.push(inventoryFlyoutEntry(entry, inventory, group, currentPath));
+      seenPaths.add(entry.projectPath);
+      if (entry.branch !== null) seenBranches.add(entry.branch);
     }
   }
 
-  return entries.sort((a, b) => rankFlyout(a) - rankFlyout(b));
+  for (const recent of group.recentEntries) {
+    if (seenPaths.has(recent.path)) continue;
+    const isPrimary = recent.isLinkedWorktree !== true;
+    entries.push({
+      kind: 'checkout',
+      branch: recent.branch ?? null,
+      headSha: null,
+      path: recent.path,
+      checkoutRoot: recent.checkoutRoot ?? recent.path,
+      location: isPrimary ? 'primary' : 'unknown',
+      availability: recent.missing === true ? 'missing' : 'available',
+      locked: false,
+      prunable: false,
+      isCurrent: recent.path === currentPath,
+      inventoryOpenRequest: null,
+    });
+    seenPaths.add(recent.path);
+    if (recent.branch != null) seenBranches.add(recent.branch);
+  }
+
+  if (group.recentEntries.some((entry) => entry.path === currentPath)) {
+    for (const selectorEntry of worktreeModel?.entries ?? []) {
+      if (
+        selectorEntry.branch === null ||
+        selectorEntry.worktreePath !== null ||
+        seenBranches.has(selectorEntry.branch)
+      ) {
+        continue;
+      }
+      entries.push({
+        kind: 'branch',
+        branch: selectorEntry.branch,
+        headSha: null,
+        path: null,
+        checkoutRoot: null,
+        location: 'none',
+        availability: 'available',
+        locked: false,
+        prunable: false,
+        isCurrent: false,
+        inventoryOpenRequest: null,
+      });
+      seenBranches.add(selectorEntry.branch);
+    }
+  }
+
+  return entries.sort((a, b) => compareFlyout(a, b, recentRank));
 }
 
-function rankFlyout(e: WorktreeFlyoutEntry): number {
-  if (e.isMain) return 0;
-  if (e.opened) return 1;
-  return 2;
+function inventoryFlyoutEntry(
+  entry: WorktreeInventoryEntry,
+  inventory: WorktreeInventoryModel,
+  group: RecentRepoGroup,
+  currentPath: string,
+): WorktreeCheckoutFlyoutEntry {
+  return {
+    kind: 'checkout',
+    branch: entry.branch,
+    headSha: entry.headSha,
+    path: entry.projectPath,
+    checkoutRoot: entry.checkoutRoot,
+    location: entry.location,
+    availability: entry.availability,
+    locked: entry.locked,
+    prunable: entry.prunable,
+    isCurrent: entry.projectPath === currentPath,
+    inventoryOpenRequest:
+      group.inventoryAnchorPath === null
+        ? null
+        : {
+            anchorProjectPath: group.inventoryAnchorPath,
+            gitCommonDir: inventory.gitCommonDir,
+            projectSubPath: inventory.projectSubPath,
+            checkoutRoot: entry.checkoutRoot,
+            projectPath: entry.projectPath,
+          },
+  };
+}
+
+function compareFlyout(
+  a: WorktreeFlyoutEntry,
+  b: WorktreeFlyoutEntry,
+  recentRank: ReadonlyMap<string, number>,
+): number {
+  const rank = (entry: WorktreeFlyoutEntry): readonly [number, number, string] => {
+    if (entry.kind === 'checkout' && entry.location === 'primary') return [0, 0, entry.path];
+    if (entry.kind === 'checkout') {
+      const recent = recentRank.get(entry.path);
+      return [recent === undefined ? 2 : 1, recent ?? 0, entry.branch ?? entry.path];
+    }
+    return [3, 0, entry.branch];
+  };
+  const ar = rank(a);
+  const br = rank(b);
+  return ar[0] - br[0] || ar[1] - br[1] || ar[2].localeCompare(br[2]);
+}
+
+function inventoryMatchesGroup(
+  inventory: WorktreeInventoryModel | null,
+  group: RecentRepoGroup,
+): inventory is WorktreeInventoryModel {
+  return (
+    inventory !== null &&
+    inventory.gitCommonDir === group.gitCommonDir &&
+    inventory.projectSubPath === group.projectSubPath
+  );
 }
 
 export function basenameOf(path: string): string {
-  const segments = path.split(/[/\\]/).filter((s) => s.length > 0);
+  const segments = path.split(/[/\\]/).filter((segment) => segment.length > 0);
   return segments.length > 0 ? (segments[segments.length - 1] ?? path) : path;
 }
 
 interface GroupBuilder {
-  project: RecentProjectEntry | null;
-  mainRoot: string;
-  worktrees: RecentProjectEntry[];
+  readonly key: string;
+  readonly gitCommonDir: string;
+  readonly mainRoot: string;
+  readonly projectSubPath: string;
+  readonly recentEntries: RecentProjectEntry[];
 }
 
 export function groupRecentsByRepo(recents: readonly RecentProjectEntry[]): RecentRepoGroup[] {
-  const builders: GroupBuilder[] = [];
-  const gitGroupIndex = new Map<string, number>();
+  const order: Array<RecentRepoGroup | GroupBuilder> = [];
+  const builders = new Map<string, GroupBuilder>();
 
   for (const entry of recents) {
-    const commonDir = entry.gitCommonDir;
-    const mainRoot = entry.mainRoot;
-    if (commonDir === undefined || mainRoot === undefined) {
-      builders.push({ project: entry, mainRoot: entry.path, worktrees: [] });
+    if (
+      entry.gitCommonDir === undefined ||
+      entry.mainRoot === undefined ||
+      entry.projectSubPath === undefined
+    ) {
+      order.push(singleProjectGroup(entry));
       continue;
     }
-    let idx = gitGroupIndex.get(commonDir);
-    if (idx === undefined) {
-      idx = builders.length;
-      gitGroupIndex.set(commonDir, idx);
-      builders.push({ project: null, mainRoot, worktrees: [] });
+    const key = `${entry.gitCommonDir}\0${entry.projectSubPath}`;
+    let builder = builders.get(key);
+    if (builder === undefined) {
+      builder = {
+        key,
+        gitCommonDir: entry.gitCommonDir,
+        mainRoot: entry.mainRoot,
+        projectSubPath: entry.projectSubPath,
+        recentEntries: [],
+      };
+      builders.set(key, builder);
+      order.push(builder);
     }
-    const builder = builders[idx];
-    if (builder === undefined) continue;
-    if (entry.isLinkedWorktree) builder.worktrees.push(entry);
-    else if (builder.project === null) builder.project = entry;
+    builder.recentEntries.push(entry);
   }
 
-  return builders.map((builder) => {
-    const synthesized = builder.project === null;
-    const project = builder.project ?? {
-      path: builder.mainRoot,
-      name: basenameOf(builder.mainRoot),
-      lastOpenedAt: '',
-    };
-    return { project, worktrees: builder.worktrees, projectSynthesized: synthesized };
-  });
+  return order.map((item) => ('mainRoot' in item ? finalizeGitGroup(item) : item));
+}
+
+function finalizeGitGroup(builder: GroupBuilder): RecentRepoGroup {
+  const ordered = [...builder.recentEntries].sort((a, b) =>
+    b.lastOpenedAt.localeCompare(a.lastOpenedAt),
+  );
+  const primaryProject = ordered.find((entry) => entry.isLinkedWorktree !== true) ?? null;
+  const project = primaryProject ?? ordered[0];
+  if (project === undefined) throw new Error('Git-backed recent group has no entries');
+  return {
+    key: builder.key,
+    project,
+    primaryProject,
+    worktrees: ordered.filter((entry) => entry.isLinkedWorktree === true),
+    recentEntries: ordered,
+    projectSynthesized: primaryProject === null,
+    repositoryName: basenameOf(builder.mainRoot),
+    gitCommonDir: builder.gitCommonDir,
+    projectSubPath: builder.projectSubPath,
+    inventoryAnchorPath: ordered.find((entry) => entry.missing !== true)?.path ?? null,
+  };
+}
+
+function singleProjectGroup(project: RecentProjectEntry): RecentRepoGroup {
+  return {
+    key: `project:${project.path}`,
+    project,
+    primaryProject: project,
+    worktrees: [],
+    recentEntries: [project],
+    projectSynthesized: false,
+    repositoryName: project.name,
+    gitCommonDir: null,
+    projectSubPath: null,
+    inventoryAnchorPath: null,
+  };
 }

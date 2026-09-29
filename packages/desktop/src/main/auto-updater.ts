@@ -101,11 +101,16 @@ interface StartAutoUpdaterOpts {
   getPrimaryWindow: () => { webContents: SendableWebContents } | null;
   getAllWindows?: () => readonly { webContents: SendableWebContents }[];
   getAppVersion: () => string;
+  buildChannel?: UpdateChannel;
   isPackaged: boolean;
   platform?: NodeJS.Platform;
   forceDevBypass?: boolean;
   feedUrl?: string;
-  proxyFeed?: { base: string; channels: ReadonlySet<UpdateChannel> };
+  proxyFeed?: {
+    base: string;
+    channels: ReadonlySet<UpdateChannel>;
+    betaChannel?: 'beta' | 'beta-product';
+  };
   whenRendererReady?: (fn: () => void) => void;
   prepareForRelaunch?: () => void | Promise<void>;
   sweepUpdateSurvivors?: () => WindowsUpdateSurvivorSweepResult | undefined;
@@ -379,6 +384,7 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
     getPrimaryWindow,
     getAllWindows,
     getAppVersion,
+    buildChannel: configuredBuildChannel,
     isPackaged,
     platform = process.platform,
     forceDevBypass = false,
@@ -398,11 +404,15 @@ export function startAutoUpdater(opts: StartAutoUpdaterOpts): StartAutoUpdaterHa
   updater.autoDownload = false;
   updater.autoInstallOnAppQuit = platform !== 'linux';
   const appVersion = getAppVersion();
-  const buildChannel = channelFromVersion(appVersion);
+  const buildChannel = configuredBuildChannel ?? channelFromVersion(appVersion);
   applyChannelSettings(updater, buildChannel);
 
   updater.forceDevUpdateConfig = forceDevBypass;
-  const proxyChannelPath = buildChannel === 'beta' ? 'beta' : 'stable';
+  const proxyChannelPath = buildChannel === 'beta' ? (proxyFeed?.betaChannel ?? 'beta') : 'stable';
+  if (buildChannel === 'beta' && proxyFeed?.betaChannel) {
+    updater.channel = proxyFeed.betaChannel;
+    updater.allowDowngrade = false;
+  }
   const configuredProxyFeed =
     !feedUrl && proxyFeed?.channels.has(buildChannel)
       ? {

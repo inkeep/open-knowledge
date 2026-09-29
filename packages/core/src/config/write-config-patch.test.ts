@@ -259,6 +259,61 @@ describe('writeConfigPatch — project-local scope', () => {
 });
 
 describe('writeConfigPatch — user scope', () => {
+  test.each([{ h: { provider: 'gitlab' } }, { h: 'invalid' }, 'invalid'])(
+    'rejects invalid host patch %j without writing',
+    async (hosts) => {
+      const home = mkdtempSync(join(tmpdir(), 'ok-write-config-patch-home-'));
+      try {
+        const result = await writeConfigPatch({
+          cwd: testDir,
+          scope: 'user',
+          patch: { git: { hosts: hosts as never } },
+          homedirOverride: home,
+        });
+        expect(result).toMatchObject({ ok: false, error: { code: 'SCHEMA_INVALID' } });
+        expect(existsSync(userConfigPath(home))).toBe(false);
+      } finally {
+        rmSync(home, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('accepts host provider declarations and deletions', async () => {
+    const home = mkdtempSync(join(tmpdir(), 'ok-write-config-patch-home-'));
+    try {
+      const first = await writeConfigPatch({
+        cwd: testDir,
+        scope: 'user',
+        patch: { git: { hosts: { h: { provider: 'github' }, sibling: { provider: 'github' } } } },
+        homedirOverride: home,
+      });
+      expect(first.ok).toBe(true);
+      const removed = await writeConfigPatch({
+        cwd: testDir,
+        scope: 'user',
+        patch: { git: { hosts: { h: null } } },
+        homedirOverride: home,
+      });
+      expect(removed).toMatchObject({
+        ok: true,
+        effective: { git: { hosts: { sibling: { provider: 'github' } } } },
+      });
+      if (removed.ok) expect(removed.effective.git.hosts.h).toBeUndefined();
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  test('refuses a host declaration written to the project file', async () => {
+    const result = await writeConfigPatch({
+      cwd: testDir,
+      scope: 'project',
+      patch: { git: { hosts: { h: { provider: 'github' } } } },
+    });
+    expect(result).toMatchObject({ ok: false, error: { code: 'SCOPE_VIOLATION' } });
+    expect(existsSync(projectConfigPath())).toBe(false);
+  });
+
   test('lazy first-write of ~/.ok/global.yml creates parent dir', async () => {
     const home = mkdtempSync(join(tmpdir(), 'ok-write-config-patch-home-'));
     try {

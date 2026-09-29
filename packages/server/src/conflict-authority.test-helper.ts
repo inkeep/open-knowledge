@@ -22,7 +22,8 @@ export function createTestConflictAuthority(
     io: {
       gitRaw: async () => '',
       writeProjectFileUntracked: () => {},
-      unlinkProjectFile: () => {},
+      unlinkProjectFileUndeclared: () => {},
+      deleteResolvedContent: () => {},
       applyResolvedContent: async () => {},
     },
   });

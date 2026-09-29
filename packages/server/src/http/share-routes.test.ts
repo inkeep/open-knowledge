@@ -1,10 +1,14 @@
+import { execFileSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import type { IncomingMessage } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Readable } from 'node:stream';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
 import { loggerFactory } from '../logger.ts';
+import { useIsolatedHome } from '../share/git-host-declarations.test-helper.ts';
 import { SHARE_PUBLISH_TIMEOUT_MS } from '../share/publish.ts';
 import { createShareRoutes, type ShareRouteDeps } from './share-routes.ts';
 
@@ -23,6 +27,42 @@ function buildGroup(overrides: Partial<ShareRouteDeps> = {}) {
 }
 
 describe('createShareRoutes table', () => {
+  const home = useIsolatedHome();
+
+  test('keeps declared hosts for its lifetime and accepts an injected boot snapshot', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-share-host-snapshot-'));
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: projectDir });
+    try {
+      git('init', '--initial-branch=main');
+      git('remote', 'add', 'origin', 'https://ghes.example.com/team/kb.git');
+      mkdirSync(join(home(), '.ok'));
+      const config = join(home(), '.ok', 'global.yml');
+      writeFileSync(config, 'git:\n  hosts:\n    ghes.example.com:\n      provider: github\n');
+      const initial = buildGroup({ projectDir });
+      const refused = buildGroup({ projectDir, declaredGitHubHosts: new Set() });
+      writeFileSync(config, 'git:\n  hosts: {}\n');
+      const restarted = buildGroup({ projectDir });
+      for (const [group, expected] of [
+        [initial, 'branch-not-on-origin'],
+        [refused, 'non-github-remote'],
+        [restarted, 'non-github-remote'],
+      ] as const) {
+        const req = Readable.from([
+          Buffer.from(JSON.stringify({ kind: 'doc', docPath: 'README.md' })),
+        ]) as IncomingMessage;
+        req.method = 'POST';
+        req.url = '/api/share/construct-url';
+        const { res, captured } = makeCaptureRes();
+        const route = group.table.resolve(req.url);
+        if (!route?.dispatch) throw new Error('missing construct-url handler');
+        await route.dispatch(req, res);
+        expect(captured.status).toBe(200);
+        expect(JSON.parse(captured.body)).toMatchObject({ ok: false, error: expected });
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
   test('registers exactly the five share paths', () => {
     expect([...buildGroup().paths].sort()).toEqual(
       [

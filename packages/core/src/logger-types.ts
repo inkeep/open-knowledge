@@ -92,6 +92,24 @@ export function isBugReportAttachmentEntry(name: string): boolean {
   return name.startsWith(BUG_REPORT_ATTACHMENTS_ZIP_PREFIX);
 }
 
+export const BUG_REPORT_AGENT_CHAT_ZIP_DIR = 'agent-chat';
+const BUG_REPORT_AGENT_CHAT_ZIP_PREFIX = `extra/${BUG_REPORT_AGENT_CHAT_ZIP_DIR}/`;
+
+export function isBugReportAgentChatEntry(name: string): boolean {
+  return name.startsWith(BUG_REPORT_AGENT_CHAT_ZIP_PREFIX);
+}
+
+export const MINIDUMP_FILE_EXTENSION = '.dmp';
+
+const BUG_REPORT_EXTRA_ZIP_PREFIX = 'extra/';
+
+export function isBugReportCrashDumpEntry(name: string): boolean {
+  if (!name.startsWith(BUG_REPORT_EXTRA_ZIP_PREFIX) || !name.endsWith(MINIDUMP_FILE_EXTENSION)) {
+    return false;
+  }
+  return !name.slice(BUG_REPORT_EXTRA_ZIP_PREFIX.length).includes('/');
+}
+
 export interface OkBugReportScreenshot {
   dataUrl: string;
   width: number;

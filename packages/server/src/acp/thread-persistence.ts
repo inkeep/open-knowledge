@@ -2,7 +2,11 @@ import { createReadStream, existsSync } from 'node:fs';
 import { readdir, readFile, realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
-import type { ThreadEvent, ThreadInfo } from '@inkeep/open-knowledge-core/acp/thread-protocol';
+import type {
+  BrowserUnavailableReason,
+  ThreadEvent,
+  ThreadInfo,
+} from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import {
   tracedAppendFile,
   tracedMkdir,
@@ -16,6 +20,20 @@ const THREADS_SUBDIR = 'threads';
 const META_VERSION = 1;
 const READ_CHUNK_SIZE = 512;
 
+export function acpThreadsDir(baseDir: string): string {
+  return join(baseDir, THREADS_SUBDIR);
+}
+
+export function acpThreadStoreRoots(globalDir: string | null, localDir: string | null): string[] {
+  return [globalDir, localDir].filter((dir) => dir !== null);
+}
+
+const MINTED_THREAD_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function isMintedThreadId(threadId: string): boolean {
+  return MINTED_THREAD_ID.test(threadId);
+}
+
 export interface PersistedThreadMeta {
   version: typeof META_VERSION;
   info: ThreadInfo;
@@ -24,6 +42,7 @@ export interface PersistedThreadMeta {
   agentRef: { source: 'registry' | 'custom'; id: string };
   docName?: string;
   contextWindow?: number | null;
+  browserNotice?: BrowserUnavailableReason | null;
 }
 
 export interface ResolvedEventLog {
@@ -49,8 +68,8 @@ export class ThreadPersistenceStore {
   private readonly appendBroken = new Set<string>();
 
   constructor(opts: ThreadPersistenceStoreOptions) {
-    this.primaryThreadsDir = join(opts.primaryDir, THREADS_SUBDIR);
-    this.legacyThreadsDir = opts.legacyDir != null ? join(opts.legacyDir, THREADS_SUBDIR) : null;
+    this.primaryThreadsDir = acpThreadsDir(opts.primaryDir);
+    this.legacyThreadsDir = opts.legacyDir != null ? acpThreadsDir(opts.legacyDir) : null;
     this.cwd = opts.cwd ?? null;
     this.log = opts.log;
     this.writeThreadsDir = this.primaryThreadsDir;
@@ -185,6 +204,13 @@ export class ThreadPersistenceStore {
         parsed.agentRef === null
       ) {
         this.log.warn({ path }, '[acp-persist] skipping unreadable thread meta');
+        continue;
+      }
+      if (!isMintedThreadId(parsed.info.threadId) || name !== `${parsed.info.threadId}.meta.json`) {
+        this.log.warn(
+          { path },
+          '[acp-persist] skipping a thread meta whose id OpenKnowledge did not mint',
+        );
         continue;
       }
       if (typeof parsed.sessionId !== 'string' && parsed.sessionId !== null) {

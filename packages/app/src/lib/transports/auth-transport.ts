@@ -116,7 +116,7 @@ function streamAuthEndpoint(
           let message = t`Failed to start sign-in — try again`;
           try {
             const result = ProblemDetailsSchema.safeParse((await res.json()) as unknown);
-            if (result.success) message = result.data.title;
+            if (result.success) message = result.data.detail || result.data.title;
           } catch {}
           push({ type: 'error', message });
           return;

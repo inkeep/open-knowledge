@@ -1,4 +1,4 @@
-// FIXTURE — drives `require-utf8-multipart-parser.test.ts` via shell-out to
+// FIXTURE — drives `require-utf8-multipart-parser.uncached.test.mjs` via shell-out to
 // `pnpm exec oxlint`. The rule's scope entry self-includes this fixture, so the
 // rule DOES apply here; what keeps the 3 fires below out of a normal
 // `pnpm run lint` is that `__fixtures__/` is in `oxlint.config.ts#ignorePatterns`,

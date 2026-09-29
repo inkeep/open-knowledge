@@ -18,7 +18,7 @@ type ReservedSpawnOption = (typeof RESERVED_SPAWN_OPTIONS)[number];
 
 const STREAM_TAIL_LIMIT = 2_000;
 
-function capturedTails(result: SpawnSyncReturns<string>): string {
+export function capturedTails(result: SpawnSyncReturns<string>): string {
   const tail = (stream: string | null | undefined): string => {
     const trimmed = (stream ?? '').trim();
     return trimmed.length <= STREAM_TAIL_LIMIT
@@ -59,8 +59,8 @@ export class BoundedSpawnError extends Error {
       `${command} did not run to completion: ${cause.code ?? cause.name}. ` +
         'node reports this on the result rather than by throwing, and the message it builds names ' +
         'only the program, so absorbing it here would leave a caller reading a partial result as a ' +
-        'whole one. The reachable case is maxBuffer: node caps each captured stream at 1 MiB by ' +
-        'default, and on overflow it stops reading, kills the child if it is still running, and hands ' +
+        'whole one. The reachable case is maxBuffer: node caps the combined bytes of every captured ' +
+        'stream at 1 MiB by default, and on overflow it stops reading, kills the child if it is still running, and hands ' +
         'back the truncated stream, which is indistinguishable from a legitimately short run to any ' +
         'assertion that only reads status and ' +
         `output. Node's own text was: ${cause.message}\n${capturedTails(result)}`,

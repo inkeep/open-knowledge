@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { sortReleaseTagsAscending } from './published-release-tags.mjs';
 import {
   firstContainingStableTag,
   parseFixRef,
@@ -6,7 +7,6 @@ import {
   parseTagLines,
   resolvePrivateSha,
   resolveShippedVersion,
-  sortReleaseTagsAscending,
   sortStableTagsAscending,
 } from './resolve-shipped-version.mjs';
 
@@ -58,7 +58,9 @@ describe('parseGitOriginRevIds', () => {
   });
 
   test('is case-insensitive on the key and normalizes the value', () => {
-    expect(parseGitOriginRevIds(`gitorigin-revid: ${PRIVATE_SHA.toUpperCase()}`)).toEqual([PRIVATE_SHA]);
+    expect(parseGitOriginRevIds(`gitorigin-revid: ${PRIVATE_SHA.toUpperCase()}`)).toEqual([
+      PRIVATE_SHA,
+    ]);
   });
 
   test('empty / missing message yields no trailers', () => {
@@ -86,12 +88,21 @@ describe('parseFixRef', () => {
   });
 
   test('accepts a PR URL with trailing path or query junk', () => {
-    expect(parseFixRef('https://github.com/inkeep/agents-private/pull/2767/files').number).toBe(2767);
-    expect(parseFixRef('https://github.com/inkeep/agents-private/pull/2767#issuecomment-1').number).toBe(2767);
+    expect(parseFixRef('https://github.com/inkeep/agents-private/pull/2767/files').number).toBe(
+      2767,
+    );
+    expect(
+      parseFixRef('https://github.com/inkeep/agents-private/pull/2767#issuecomment-1').number,
+    ).toBe(2767);
   });
 
   test('resolves a bare #N / N against the default repo', () => {
-    expect(parseFixRef('#2767')).toEqual({ kind: 'pr', owner: 'inkeep', repo: 'agents-private', number: 2767 });
+    expect(parseFixRef('#2767')).toEqual({
+      kind: 'pr',
+      owner: 'inkeep',
+      repo: 'agents-private',
+      number: 2767,
+    });
     expect(parseFixRef('2767', { defaultRepo: 'acme/widgets' })).toEqual({
       kind: 'pr',
       owner: 'acme',
@@ -112,8 +123,23 @@ describe('parseFixRef', () => {
 
 describe('sortStableTagsAscending', () => {
   test('sorts numerically, not lexically, and drops non-stable refs', () => {
-    const raw = ['v0.9.0', 'v0.36.0', 'v0.35.10', 'v0.35.2', 'v0.35.2-beta.4', 'main', '', 'v1.0.0'];
-    expect(sortStableTagsAscending(raw)).toEqual(['v0.9.0', 'v0.35.2', 'v0.35.10', 'v0.36.0', 'v1.0.0']);
+    const raw = [
+      'v0.9.0',
+      'v0.36.0',
+      'v0.35.10',
+      'v0.35.2',
+      'v0.35.2-beta.4',
+      'main',
+      '',
+      'v1.0.0',
+    ];
+    expect(sortStableTagsAscending(raw)).toEqual([
+      'v0.9.0',
+      'v0.35.2',
+      'v0.35.10',
+      'v0.36.0',
+      'v1.0.0',
+    ]);
   });
 
   test('tolerates surrounding whitespace from raw git output', () => {
@@ -189,10 +215,20 @@ describe('resolveShippedVersion', () => {
   });
 
   test('pinned fixture: it is contained in NONE of v0.35.0 through v0.35.6', () => {
-    for (const tag of ['v0.35.0', 'v0.35.1', 'v0.35.2', 'v0.35.3', 'v0.35.4', 'v0.35.5', 'v0.35.6']) {
+    for (const tag of [
+      'v0.35.0',
+      'v0.35.1',
+      'v0.35.2',
+      'v0.35.3',
+      'v0.35.4',
+      'v0.35.5',
+      'v0.35.6',
+    ]) {
       expect(containsMirrored(tag, MIRRORED_SHA)).toBe(false);
     }
-    const withoutTarget = resolve({ stableTags: STABLE_TAGS_SHUFFLED.filter((t) => t !== 'v0.36.0') });
+    const withoutTarget = resolve({
+      stableTags: STABLE_TAGS_SHUFFLED.filter((t) => t !== 'v0.36.0'),
+    });
     expect(withoutTarget).toMatchObject({ shipped: false, reason: 'not-in-any-stable' });
   });
 
@@ -206,7 +242,10 @@ describe('resolveShippedVersion', () => {
   });
 
   test('discards a candidate whose message only quotes the trailer', () => {
-    const quoted = { sha: 'f'.repeat(40), message: `chore: cite GitOrigin-RevId: ${PRIVATE_SHA} inline` };
+    const quoted = {
+      sha: 'f'.repeat(40),
+      message: `chore: cite GitOrigin-RevId: ${PRIVATE_SHA} inline`,
+    };
     expect(resolve({ findMirroredCommits: finderFor([quoted]) })).toMatchObject({
       shipped: false,
       reason: 'not-mirrored',
@@ -234,7 +273,12 @@ describe('resolveShippedVersion', () => {
         return false;
       },
     });
-    expect(r).toMatchObject({ shipped: true, tag: 'v0.35.7', version: '0.35.7', mirroredSha: pointReleaseSha });
+    expect(r).toMatchObject({
+      shipped: true,
+      tag: 'v0.35.7',
+      version: '0.35.7',
+      mirroredSha: pointReleaseSha,
+    });
     expect(r.mirroredShas).toEqual([MIRRORED_SHA, pointReleaseSha]);
   });
 
@@ -248,7 +292,10 @@ describe('resolveShippedVersion', () => {
   });
 
   test('no stable tags at all (bootstrap repo) is not-in-any-stable', () => {
-    expect(resolve({ stableTags: [] })).toMatchObject({ shipped: false, reason: 'not-in-any-stable' });
+    expect(resolve({ stableTags: [] })).toMatchObject({
+      shipped: false,
+      reason: 'not-in-any-stable',
+    });
   });
 
   test('propagates an infra error from the containment boundary (fail loud)', () => {
@@ -411,7 +458,6 @@ describe('resolving against a channel', () => {
     ).toMatchObject({ shipped: false, reason: 'not-in-any-release' });
   });
 });
-
 
 describe('the tag boundary', () => {
   test('prereleases survive it, because the channel decides what counts and not this', () => {

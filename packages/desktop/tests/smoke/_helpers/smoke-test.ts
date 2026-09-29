@@ -2,7 +2,11 @@ import type { ChildProcess } from 'node:child_process';
 import { rmSync } from 'node:fs';
 import { expect as baseExpect, test as baseTest, type ElectronApplication } from '@playwright/test';
 import { emitBootGapLines } from './boot-gap-emit';
-import { captureAppProcess, closeAppBounded, reapDetachedServers } from './electron-cleanup';
+import {
+  captureAppProcess,
+  cleanupIncompleteReport,
+  closeAppsThenAwaitServerRelease,
+} from './electron-cleanup';
 import {
   attachCapturedStderr,
   captureElectronStderr,
@@ -37,18 +41,21 @@ export const test = baseTest.extend<SmokeFixtures>({
       }
     });
     await emitBootGapLines(apps, testInfo);
-    const unclosed: Error[] = [];
-    for (const proc of procs) {
-      try {
-        await closeAppBounded(proc, { gracefulMs: 5_000 });
-      } catch (error) {
-        unclosed.push(error instanceof Error ? error : new Error(String(error)));
-      }
+    const { unclosed, survivors, closedAfterServerRelease } = await closeAppsThenAwaitServerRelease(
+      procs,
+      cleanupDirs,
+      { gracefulMs: 5_000 },
+    );
+    for (const pid of closedAfterServerRelease) {
+      console.log(
+        `[smoke-test] app pid ${pid} closed only after the detached servers under its dirs released`,
+      );
     }
-    if (unclosed.length > 0) {
+    const report = cleanupIncompleteReport(unclosed, survivors);
+    if (report !== undefined) {
       try {
         await testInfo.attach('app-cleanup-incomplete', {
-          body: unclosed.map((error) => error.message).join('\n\n'),
+          body: report,
           contentType: 'text/plain',
         });
       } catch (error) {
@@ -56,7 +63,6 @@ export const test = baseTest.extend<SmokeFixtures>({
         console.warn(`[smoke-test] cleanup-diagnostic attach failed: ${reason}`);
       }
     }
-    reapDetachedServers(cleanupDirs);
     for (const dir of cleanupDirs) {
       try {
         rmSync(dir, { recursive: true, force: true });

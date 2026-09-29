@@ -3,6 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('node:child_process', async (importOriginal) => {
@@ -165,6 +166,22 @@ describe('Windows launch composition', () => {
     ).toEqual({ executable: 'claude', args: [] });
   });
 
+  it('keeps the env and PATH dirs of a support-file launch while dropping its arguments', () => {
+    expect(
+      launchWithoutSupportFile({
+        executable: 'claude',
+        args: ['--settings', 'x.json'],
+        env: { A: '1' },
+        pathPrepend: ['/rt/bin'],
+        supportFile: {
+          kind: 'claude-settings',
+          relativePath: '.ok/local/terminal/claude-settings-mcp.json',
+          contents: '{}',
+        },
+      }),
+    ).toEqual({ executable: 'claude', args: [], env: { A: '1' }, pathPrepend: ['/rt/bin'] });
+  });
+
   it('composes PowerShell as -NoExit -EncodedCommand with quoted structured args', () => {
     const args = composeWindowsShellLaunchArgs('C:\\Program Files\\PowerShell\\7\\pwsh.exe', {
       executable: 'native.exe',
@@ -279,6 +296,90 @@ describe('Windows launch composition', () => {
     expect(quoteWindowsShellPath('bash', "C:\\Users\\O'Brien\\shot.png")).toBe(
       "'C:\\Users\\O'\\''Brien\\shot.png'",
     );
+  });
+});
+
+const DROPPED_NAME_CONTROL_CHARACTERS: ReadonlyArray<readonly [label: string, character: string]> =
+  [
+    ['U+0000 (C0)', '\u0000'],
+    ['U+0001 (C0)', '\u0001'],
+    ['U+000A (C0)', '\u000a'],
+    ['U+001B (C0)', '\u001b'],
+    ['U+001F (C0)', '\u001f'],
+    ['U+007F (DEL)', '\u007f'],
+    ['U+0080 (C1)', '\u0080'],
+    ['U+0085 (C1)', '\u0085'],
+    ['U+009B (C1)', '\u009b'],
+    ['U+009F (C1)', '\u009f'],
+  ];
+
+const DROPPED_NAME_TYPED_CHARACTERS: ReadonlyArray<readonly [label: string, character: string]> = [
+  ['U+0020', '\u0020'],
+  ['U+007E', '\u007e'],
+  ['U+00A0', '\u00a0'],
+  ['U+200B', '\u200b'],
+  ['U+200E', '\u200e'],
+  ['U+2028', '\u2028'],
+  ['U+202E', '\u202e'],
+  ['U+202F', '\u202f'],
+  ['U+2066', '\u2066'],
+  ['U+FEFF', '\ufeff'],
+];
+
+const LATIN_1_CODE_POINTS = Array.from({ length: 0x100 }, (_, codePoint) => codePoint);
+
+function isControlCodePoint(codePoint: number): boolean {
+  return codePoint <= 0x1f || (codePoint >= 0x7f && codePoint <= 0x9f);
+}
+
+function formatCodePoint(codePoint: number): string {
+  return `U+${codePoint.toString(16).toUpperCase().padStart(4, '0')}`;
+}
+
+function droppedWindowsPath(character: string): string {
+  return `C:\\Users\\me\\a${character}b.md`;
+}
+
+describe.each([
+  ['powershell', "'", ''],
+  ['cmd', '"', '!"%'],
+  ['bash', "'", ''],
+] as const)('quoteWindowsShellPath for a %s terminal', (family, quote, otherRefusedCharacters) => {
+  const quotesCodePoint = (codePoint: number): boolean =>
+    quoteWindowsShellPath(family, droppedWindowsPath(String.fromCharCode(codePoint))) !== null;
+  const exceptions = Array.from(otherRefusedCharacters, (character) =>
+    formatCodePoint(character.charCodeAt(0)),
+  );
+
+  it.each(DROPPED_NAME_CONTROL_CHARACTERS)(
+    'refuses a dropped path containing %s',
+    (_label, character) => {
+      expect(quoteWindowsShellPath(family, droppedWindowsPath(character))).toBeNull();
+    },
+  );
+
+  it.each(DROPPED_NAME_TYPED_CHARACTERS)(
+    'quotes a dropped path containing %s as-is',
+    (_label, character) => {
+      const path = droppedWindowsPath(character);
+      expect(quoteWindowsShellPath(family, path)).toBe(`${quote}${path}${quote}`);
+    },
+  );
+
+  it('refuses every control character from U+0000 to U+00FF', () => {
+    const controls = LATIN_1_CODE_POINTS.filter(isControlCodePoint);
+    const refused = controls.filter((codePoint) => !quotesCodePoint(codePoint));
+    expect(refused.map(formatCodePoint)).toEqual(controls.map(formatCodePoint));
+  });
+
+  it(`quotes every other character from U+0000 to U+00FF${exceptions.length === 0 ? '' : ` except ${exceptions.join(', ')}`}`, () => {
+    const others = LATIN_1_CODE_POINTS.filter(
+      (codePoint) =>
+        !isControlCodePoint(codePoint) &&
+        !otherRefusedCharacters.includes(String.fromCharCode(codePoint)),
+    );
+    const quoted = others.filter(quotesCodePoint);
+    expect(quoted.map(formatCodePoint)).toEqual(others.map(formatCodePoint));
   });
 });
 
@@ -417,6 +518,328 @@ describe('Git Bash structured launch, run by a real Bash', () => {
       }
     },
   );
+});
+
+const POWERSHELL_SINGLE_QUOTES = new Set(["'", '\u2018', '\u2019', '\u201A', '\u201B']);
+
+interface PowerShellLiteralReadback {
+  readonly literal: string | null;
+  readonly wholeLine: boolean;
+}
+
+function readFirstPowerShellLiteral(line: string): PowerShellLiteralReadback {
+  if (!POWERSHELL_SINGLE_QUOTES.has(line.charAt(0))) return { literal: null, wholeLine: false };
+  let literal = '';
+  let index = 1;
+  while (index < line.length) {
+    const char = line.charAt(index);
+    if (!POWERSHELL_SINGLE_QUOTES.has(char)) {
+      literal += char;
+      index += 1;
+      continue;
+    }
+    const next = line.charAt(index + 1);
+    if (!POWERSHELL_SINGLE_QUOTES.has(next)) {
+      return { literal, wholeLine: line.slice(index + 1).trim() === '' };
+    }
+    literal += next;
+    index += 2;
+  }
+  return { literal, wholeLine: false };
+}
+
+const PWSH_7_6_6_FIRST_LITERALS: ReadonlyArray<readonly [line: string, literal: string]> = [
+  ["'C:\\Users\\me\\O''Brien.md' ", "C:\\Users\\me\\O'Brien.md"],
+  ["'C:\\Users\\me\\Nick\u2019s notes.md' ", 'C:\\Users\\me\\Nick'],
+  ["'C:\\Users\\me\\\u2018draft.md' ", 'C:\\Users\\me\\'],
+  ["'C:\\Users\\me\\a\u201Ab.md' ", 'C:\\Users\\me\\a'],
+  ["'C:\\Users\\me\\a\u201Bb.md' ", 'C:\\Users\\me\\a'],
+  ["'C:\\Users\\me\\Nick\u2019\u2019s notes.md' ", 'C:\\Users\\me\\Nick\u2019s notes.md'],
+  ["'C:\\Users\\me\\Nick\u2019's notes.md' ", "C:\\Users\\me\\Nick's notes.md"],
+  [
+    "'C:\\Users\\me\\O''Brien\u2019\u2019s \u2018\u2018draft\u2019\u2019.md' ",
+    "C:\\Users\\me\\O'Brien\u2019s \u2018draft\u2019.md",
+  ],
+  [
+    "'C:\\Users\\me\\O''Brien\u2019's \u2018'draft\u2019'.md' ",
+    "C:\\Users\\me\\O'Brien's 'draft'.md",
+  ],
+  [
+    "'a\u2018\u2018b\u2019\u2019c\u201A\u201Ad\u201B\u201Be.md' ",
+    'a\u2018b\u2019c\u201Ad\u201Be.md',
+  ],
+  ["'a\u2018'b\u2019'c\u201A'd\u201B'e.md' ", "a'b'c'd'e.md"],
+];
+
+const READ_BACK_NAMES: ReadonlyArray<readonly [label: string, name: string]> = [
+  ['a right single quotation mark', 'C:\\Users\\me\\Nick\u2019s notes.md'],
+  ['left and right single quotation marks', 'C:\\Users\\me\\\u2018draft\u2019.md'],
+  ['low-9 and high-reversed-9 quotation marks', 'C:\\Users\\me\\a\u201Ab\u201Bc.md'],
+  ['straight and curly quotes side by side', "C:\\Users\\me\\O'Brien\u2019s \u2018'\u2019 copy.md"],
+  [
+    'curly double quotes and apostrophe-like letters',
+    'C:\\Users\\me\\\u201ENotizen\u201C \u201Cnotes\u201D it\u02BCs 5\u2032.md',
+  ],
+];
+
+const POWERSHELL_PATH_NAME = fc.string({
+  unit: fc.constantFrom(
+    'a',
+    'Z',
+    ' ',
+    '\\',
+    '.',
+    "'",
+    '\u2018',
+    '\u2019',
+    '\u201A',
+    '\u201B',
+    '\u201C',
+    '\u201D',
+    '"',
+    '`',
+    '$',
+    '\u02BC',
+    '\u{1F4DD}',
+  ),
+  maxLength: 16,
+});
+
+describe('psQuoteArg with curly single quotes', () => {
+  it.each([
+    ['U+2018', '\u2018draft.md', "'\u2018\u2018draft.md'"],
+    ['U+2019', 'Nick\u2019s notes.md', "'Nick\u2019\u2019s notes.md'"],
+    ['U+201A', 'a\u201Ab.md', "'a\u201A\u201Ab.md'"],
+    ['U+201B', 'a\u201Bb.md', "'a\u201B\u201Bb.md'"],
+  ])(
+    'doubles %s with itself, the way PowerShell escapes a single-quoted string',
+    (_codePoint, name, quoted) => {
+      expect(psQuoteArg(name)).toBe(quoted);
+    },
+  );
+});
+
+describe('psQuoteArg output read back by a model of the PowerShell tokenizer', () => {
+  it('reads the same first literal that PowerShell 7.6.6 read from each recorded line', () => {
+    expect(
+      PWSH_7_6_6_FIRST_LITERALS.map(([line]) => readFirstPowerShellLiteral(line).literal),
+    ).toEqual(PWSH_7_6_6_FIRST_LITERALS.map(([, literal]) => literal));
+  });
+
+  it.each(READ_BACK_NAMES)('reads back a name with %s exactly', (_label, name) => {
+    expect(readFirstPowerShellLiteral(psQuoteArg(name))).toEqual({
+      literal: name,
+      wholeLine: true,
+    });
+  });
+
+  it('reads back any name built from quotes, spaces and path characters exactly', () => {
+    fc.assert(
+      fc.property(POWERSHELL_PATH_NAME, (name) => {
+        expect(readFirstPowerShellLiteral(psQuoteArg(name))).toEqual({
+          literal: name,
+          wholeLine: true,
+        });
+      }),
+      { seed: 42 },
+    );
+  });
+});
+
+const POWERSHELL = process.env.OK_TEST_PWSH ?? 'pwsh';
+
+const POWERSHELL_READBACK_SCRIPT = [
+  "$ErrorActionPreference = 'Stop'",
+  '$lines = Get-Content -Raw -LiteralPath $env:OK_TEST_POWERSHELL_LINES | ConvertFrom-Json',
+  'foreach ($line in $lines) {',
+  '  $tokens = $null',
+  '  $errors = $null',
+  '  [void][System.Management.Automation.Language.Parser]::ParseInput($line, [ref]$tokens, [ref]$errors)',
+  "  $significant = @($tokens | Where-Object { $_.Kind -ne 'EndOfInput' -and $_.Kind -ne 'NewLine' })",
+  '  [ordered]@{',
+  '    errors = @($errors).Count',
+  "    tokens = @($significant | ForEach-Object { [ordered]@{ kind = [string]$_.Kind; value = if ($_.Kind -eq 'StringLiteral') { $_.Value } else { $_.Text } } })",
+  '  } | ConvertTo-Json -Compress -Depth 5 -EscapeHandling EscapeNonAscii',
+  '}',
+].join('\n');
+
+interface PowerShellToken {
+  readonly kind: string;
+  readonly value: string;
+}
+
+interface PowerShellParse {
+  readonly errors: number;
+  readonly tokens: readonly PowerShellToken[];
+}
+
+function asciiJson(value: unknown): string {
+  return JSON.stringify(value).replace(/[^ -~]/gu, (char) =>
+    Array.from(
+      { length: char.length },
+      (_, index) => `\\u${char.charCodeAt(index).toString(16).padStart(4, '0')}`,
+    ).join(''),
+  );
+}
+
+function parseWithRealPowerShell(lines: readonly string[]): PowerShellParse[] | null {
+  const dir = mkdtempSync(join(tmpdir(), 'ok-powershell-readback-'));
+  try {
+    const linesPath = join(dir, 'lines.json');
+    const scriptPath = join(dir, 'readback.ps1');
+    writeFileSync(linesPath, asciiJson(lines));
+    writeFileSync(scriptPath, POWERSHELL_READBACK_SCRIPT);
+    const run = spawnSync(
+      POWERSHELL,
+      ['-NoLogo', '-NoProfile', '-NonInteractive', '-File', scriptPath],
+      {
+        ...REAL_BASH_PROBE_SPAWN_OPTIONS,
+        windowsHide: true,
+        env: {
+          ...process.env,
+          HOME: dir,
+          XDG_CACHE_HOME: join(dir, 'cache'),
+          XDG_CONFIG_HOME: join(dir, 'config'),
+          XDG_DATA_HOME: join(dir, 'data'),
+          POWERSHELL_TELEMETRY_OPTOUT: '1',
+          POWERSHELL_UPDATECHECK: 'Off',
+          OK_TEST_POWERSHELL_LINES: linesPath,
+        },
+      },
+    );
+    if ((run.error as { code?: unknown } | undefined)?.code === 'ENOENT') {
+      expect(
+        process.env.CI,
+        `${POWERSHELL} is not on PATH, and a CI run must read these lines back with a real PowerShell parser instead of skipping`,
+      ).not.toBe('true');
+      return null;
+    }
+    expect(run.error, `pwsh stderr: ${run.stderr}`).toBeUndefined();
+    expect(run.status, `pwsh stderr: ${run.stderr}`).toBe(0);
+    const parses = run.stdout
+      .split(/\r?\n/u)
+      .filter((line) => line.trim() !== '')
+      .map((line) => JSON.parse(line) as PowerShellParse);
+    expect(parses).toHaveLength(lines.length);
+    return parses;
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe('psQuoteArg output read back by a real PowerShell parser', () => {
+  it('reads back every name exactly, as a value and as a command argument', (context) => {
+    const names = [
+      ...READ_BACK_NAMES.map(([, name]) => name),
+      ...fc.sample(POWERSHELL_PATH_NAME, { seed: 42, numRuns: 50 }),
+    ];
+    const recordedLines = PWSH_7_6_6_FIRST_LITERALS.map(([line]) => line);
+    const parses = parseWithRealPowerShell([
+      ...recordedLines,
+      ...names.map((name) => `${psQuoteArg(name)} `),
+      ...names.map((name) => `Write-Output ${psQuoteArg(name)} `),
+    ]);
+    if (parses === null) return context.skip(`${POWERSHELL} is not on PATH`);
+
+    expect(
+      parses
+        .slice(0, recordedLines.length)
+        .map((parse) => parse.tokens.find((token) => token.kind === 'StringLiteral')?.value),
+    ).toEqual(PWSH_7_6_6_FIRST_LITERALS.map(([, literal]) => literal));
+    expect(parses.slice(recordedLines.length, recordedLines.length + names.length)).toEqual(
+      names.map((name) => ({ errors: 0, tokens: [{ kind: 'StringLiteral', value: name }] })),
+    );
+    expect(parses.slice(recordedLines.length + names.length)).toEqual(
+      names.map((name) => ({
+        errors: 0,
+        tokens: [
+          { kind: 'Generic', value: 'Write-Output' },
+          { kind: 'StringLiteral', value: name },
+        ],
+      })),
+    );
+  });
+});
+
+const CURLY_QUOTE_LAUNCH = {
+  executable: 'C:\\Users\\me\\Nick\u2019s agents\\agent.exe',
+  args: ['--config', 'C:\\Users\\me\\\u2018work\u2019 profile.json', '--label', 'a\u201Ab\u201Bc'],
+};
+
+const CURLY_QUOTE_LAUNCH_WITH_ENV = {
+  ...CURLY_QUOTE_LAUNCH,
+  env: { AGENT_HOME: 'C:\\Users\\me\\.agent' },
+};
+
+const CURLY_QUOTE_LAUNCH_CALL =
+  "& 'C:\\Users\\me\\Nick\u2019\u2019s agents\\agent.exe' '--config' 'C:\\Users\\me\\\u2018\u2018work\u2019\u2019 profile.json' '--label' 'a\u201A\u201Ab\u201B\u201Bc'";
+
+function decodePowerShellLaunchScript(composed: string[] | string): string {
+  expect(Array.isArray(composed)).toBe(true);
+  expect(composed.slice(0, 2)).toEqual(['-NoExit', '-EncodedCommand']);
+  return Buffer.from(composed[2] ?? '', 'base64').toString('utf16le');
+}
+
+describe('PowerShell launch composition with curly single quotes', () => {
+  it('doubles each curly single quote in the executable and arguments with itself', () => {
+    expect(
+      decodePowerShellLaunchScript(composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH)),
+    ).toBe(CURLY_QUOTE_LAUNCH_CALL);
+  });
+
+  it('doubles them the same way in a launch that sets environment variables', () => {
+    expect(
+      decodePowerShellLaunchScript(
+        composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH_WITH_ENV),
+      ),
+    ).toBe(
+      "$__ok_names = @('AGENT_HOME'); $__ok_slots = @('OK_TERMINAL_LAUNCH_ENV_0'); $__ok_prev = @{}; " +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        '$__ok_prev[$__ok_names[$__ok_i]] = [Environment]::GetEnvironmentVariable($__ok_names[$__ok_i]); ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], [Environment]::GetEnvironmentVariable($__ok_slots[$__ok_i]), 'Process') }; " +
+        `try { ${CURLY_QUOTE_LAUNCH_CALL} } finally { ` +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], $__ok_prev[$__ok_names[$__ok_i]], 'Process'); " +
+        "[Environment]::SetEnvironmentVariable($__ok_slots[$__ok_i], $null, 'Process') }; " +
+        'Remove-Variable __ok_names, __ok_slots, __ok_prev, __ok_i -ErrorAction SilentlyContinue }',
+    );
+  });
+});
+
+describe('PowerShell launch composition read back by a real PowerShell parser', () => {
+  it('reads the call back as one string per launch token, with and without environment variables', (context) => {
+    const parses = parseWithRealPowerShell([
+      decodePowerShellLaunchScript(composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH)),
+      decodePowerShellLaunchScript(
+        composeWindowsShellLaunchArgs('pwsh.exe', CURLY_QUOTE_LAUNCH_WITH_ENV),
+      ),
+    ]);
+    if (parses === null) return context.skip(`${POWERSHELL} is not on PATH`);
+
+    const call = [
+      { kind: 'Ampersand', value: '&' },
+      ...[CURLY_QUOTE_LAUNCH.executable, ...CURLY_QUOTE_LAUNCH.args].map((value) => ({
+        kind: 'StringLiteral',
+        value,
+      })),
+    ];
+    const [plain, withEnv] = parses;
+    expect(plain).toEqual({ errors: 0, tokens: call });
+    const callStart = withEnv?.tokens.findIndex((token) => token.kind === 'Ampersand') ?? -1;
+    expect({
+      errors: withEnv?.errors,
+      tryBlock: withEnv?.tokens.slice(callStart - 2, callStart + call.length + 2),
+    }).toEqual({
+      errors: 0,
+      tryBlock: [
+        { kind: 'Try', value: 'try' },
+        { kind: 'LCurly', value: '{' },
+        ...call,
+        { kind: 'RCurly', value: '}' },
+        { kind: 'Finally', value: 'finally' },
+      ],
+    });
+  });
 });
 
 describe('buildClaudeLaunchCommand', () => {
@@ -734,5 +1157,152 @@ describe('isWindowsShellFamily', () => {
     expect(isWindowsShellFamily(false)).toBe(false);
     expect(isWindowsShellFamily({})).toBe(false);
     expect(isWindowsShellFamily(['cmd'])).toBe(false);
+  });
+});
+
+describe('composeWindowsShellLaunchArgs with a launch env', () => {
+  const NUL = String.fromCharCode(0);
+  const launch = {
+    executable: 'auggie',
+    args: ['--acp', 'login'],
+    env: { AUGGIE_HOME: 'C:\\Users\\me\\.auggie', AUGGIE_LOGIN_FLOW: 'terminal' },
+  };
+  const decodeArgv = (encoded: string) =>
+    Buffer.from(encoded, 'base64').toString('utf8').split(NUL).filter(Boolean);
+
+  it('bash hands name and slot pairs to a subshell around the login, then drops the slots', () => {
+    const args = composeWindowsShellLaunchArgs(
+      'C:\\Program Files\\Git\\bin\\bash.exe',
+      launch,
+    ) as string[];
+    expect(decodeArgv(args[5] ?? '')).toEqual(['auggie', '--acp', 'login']);
+    expect(decodeArgv(args[6] ?? '')).toEqual([
+      'AUGGIE_HOME',
+      'OK_TERMINAL_LAUNCH_ENV_0',
+      'AUGGIE_LOGIN_FLOW',
+      'OK_TERMINAL_LAUNCH_ENV_1',
+    ]);
+    expect(args[3]).toContain(
+      `(for ((__ok_i = 0; __ok_i < \${#__ok_env[@]}; __ok_i += 2)); do __ok_slot="\${__ok_env[__ok_i + 1]}"; export "\${__ok_env[__ok_i]}=\${!__ok_slot}"; done; exec "\${__ok_argv[@]}"); `,
+    );
+    expect(args[3]).toContain(
+      `for ((__ok_i = 1; __ok_i < \${#__ok_env[@]}; __ok_i += 2)); do unset "\${__ok_env[__ok_i]}"; done; exec "$BASH" --login -i`,
+    );
+    expect(args.join(' ')).not.toContain('.auggie');
+  });
+
+  it('PowerShell saves what each name held, assigns the slots for the login, and puts the old values back in a finally block', () => {
+    const args = composeWindowsShellLaunchArgs('pwsh.exe', launch) as string[];
+    const script = Buffer.from(args[2] ?? '', 'base64').toString('utf16le');
+    expect(script).toBe(
+      "$__ok_names = @('AUGGIE_HOME', 'AUGGIE_LOGIN_FLOW'); $__ok_slots = @('OK_TERMINAL_LAUNCH_ENV_0', 'OK_TERMINAL_LAUNCH_ENV_1'); $__ok_prev = @{}; " +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        '$__ok_prev[$__ok_names[$__ok_i]] = [Environment]::GetEnvironmentVariable($__ok_names[$__ok_i]); ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], [Environment]::GetEnvironmentVariable($__ok_slots[$__ok_i]), 'Process') }; " +
+        "try { & 'auggie' '--acp' 'login' } finally { " +
+        'for ($__ok_i = 0; $__ok_i -lt $__ok_names.Length; $__ok_i++) { ' +
+        "[Environment]::SetEnvironmentVariable($__ok_names[$__ok_i], $__ok_prev[$__ok_names[$__ok_i]], 'Process'); " +
+        "[Environment]::SetEnvironmentVariable($__ok_slots[$__ok_i], $null, 'Process') }; " +
+        'Remove-Variable __ok_names, __ok_slots, __ok_prev, __ok_i -ErrorAction SilentlyContinue }',
+    );
+    expect(script).not.toContain('.auggie');
+    const plain = composeWindowsShellLaunchArgs('pwsh.exe', {
+      executable: 'auggie',
+      args: ['login'],
+    }) as string[];
+    expect(Buffer.from(plain[2] ?? '', 'base64').toString('utf16le')).toBe("& 'auggie' 'login'");
+  });
+
+  it('cmd runs the login in a child cmd that expands the slots itself, so the tab never holds the names', () => {
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', {
+        executable: 'auggie',
+        args: ['login'],
+        env: { AUGGIE_LOGIN_FLOW: 'terminal' },
+      }),
+    ).toBe(
+      '/K cmd /d /v:on /c "set "AUGGIE_LOGIN_FLOW=!OK_TERMINAL_LAUNCH_ENV_0!" & auggie login" & set "OK_TERMINAL_LAUNCH_ENV_0="',
+    );
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', {
+        executable: 'auggie',
+        args: ['login'],
+        env: { AUGGIE_HOME: 'C:\\auggie', AUGGIE_LOGIN_FLOW: 'terminal' },
+      }),
+    ).toBe(
+      '/K cmd /d /v:on /c "set "AUGGIE_HOME=!OK_TERMINAL_LAUNCH_ENV_0!" & set "AUGGIE_LOGIN_FLOW=!OK_TERMINAL_LAUNCH_ENV_1!" & auggie login" & set "OK_TERMINAL_LAUNCH_ENV_0=" & set "OK_TERMINAL_LAUNCH_ENV_1="',
+    );
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', { executable: 'auggie', args: ['login'] }),
+    ).toBe('/K auggie login');
+    expect(
+      composeWindowsShellLaunchArgs('cmd.exe', {
+        executable: 'auggie',
+        args: ['login'],
+        env: { AUGGIE_HOME: 'C:\\Users\\me space\\.auggie', AUGGIE_LOGIN_FLOW: 'terminal=yes' },
+      }),
+    ).toBe(
+      '/K cmd /d /v:on /c "set "AUGGIE_HOME=!OK_TERMINAL_LAUNCH_ENV_0!" & set "AUGGIE_LOGIN_FLOW=!OK_TERMINAL_LAUNCH_ENV_1!" & auggie login" & set "OK_TERMINAL_LAUNCH_ENV_0=" & set "OK_TERMINAL_LAUNCH_ENV_1="',
+    );
+    for (const value of [
+      'say "hi"',
+      'x" & calc & rem "',
+      'a & calc',
+      'pipe | more',
+      'to > file',
+      'from < file',
+      'group (x)',
+      'caret ^x',
+      '%TEMP%',
+      '!OK_TERMINAL_LAUNCH_ENV_0!',
+      'two\nlines',
+      'cr\rhere',
+    ]) {
+      expect(() =>
+        composeWindowsShellLaunchArgs('cmd.exe', {
+          executable: 'auggie',
+          args: ['login'],
+          env: { AUGGIE_LOGIN_FLOW: value },
+        }),
+      ).toThrow(
+        expect.objectContaining({ name: 'WindowsShellLaunchError', reason: 'unsafe-argument' }),
+      );
+    }
+  });
+
+  it.each([
+    ['bash', 'C:\\Program Files\\Git\\bin\\bash.exe'],
+    ['PowerShell', 'pwsh.exe'],
+    ['cmd', 'cmd.exe'],
+  ])('%s refuses env names that differ only in case', (_family, shell) => {
+    expect(() =>
+      composeWindowsShellLaunchArgs(shell, {
+        executable: 'auggie',
+        args: ['login'],
+        env: { Path: 'C:\\agent', PATH: 'C:\\other' },
+      }),
+    ).toThrow(
+      expect.objectContaining({ name: 'WindowsShellLaunchError', reason: 'invalid-launch' }),
+    );
+  });
+
+  it.each([
+    ['bash', 'C:\\Program Files\\Git\\bin\\bash.exe'],
+    ['PowerShell', 'pwsh.exe'],
+    ['cmd', 'cmd.exe'],
+  ])('%s refuses env names that are not identifiers and values with NUL', (_family, shell) => {
+    for (const env of [
+      { 'X; Start-Process calc; $y': '1' },
+      { '--split-string': 'evil' },
+      { 'A B': '1' },
+      { '1ABC': '1' },
+      { OK_TERMINAL_LAUNCH_ENV_0: 'reserved for the slot the launch itself uses' },
+      { ok_terminal_launch_env_0: 'the same slot on a case-folding shell' },
+      { OK: `a${NUL}b` },
+    ]) {
+      expect(() =>
+        composeWindowsShellLaunchArgs(shell, { executable: 'auggie', args: ['login'], env }),
+      ).toThrow(WindowsShellLaunchError);
+    }
   });
 });

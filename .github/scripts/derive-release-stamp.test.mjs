@@ -1,5 +1,13 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -243,20 +251,65 @@ function makeReleaseRepo() {
       { cwd: dir, encoding: 'utf8', env, stdio: ['ignore', 'pipe', 'pipe'] },
     ).trim();
   git('init', '--quiet', '--initial-branch=main');
+  const bin = join(dir, '.git', 'test-bin');
+  mkdirSync(bin);
+  writeFileSync(
+    join(bin, 'gh'),
+    `#!/usr/bin/env node
+const {execFileSync} = require('node:child_process');
+const drafts = JSON.parse(process.env.TEST_DRAFT_TAGS || '[]');
+for (const tag_name of execFileSync('git', ['tag', '--list'], {encoding:'utf8'}).trim().split('\\n').filter(Boolean)) {
+  console.log(JSON.stringify({tag_name, draft:drafts.includes(tag_name), published_at: drafts.includes(tag_name) ? null : '2026-09-24T22:00:00Z', assets:[{name:'OpenKnowledge-arm64.dmg'},{name:'beta-mac.yml'}]}));
+}
+`,
+  );
+  chmodSync(join(bin, 'gh'), 0o755);
+  env.PATH = `${bin}:${env.PATH}`;
   const commit = (subject) => {
     git('commit', '--quiet', '--allow-empty', '-m', subject);
     return git('rev-parse', 'HEAD');
   };
-  const run = (tag) =>
+  const run = (tag, drafts = []) =>
     spawnSync(
       process.execPath,
       [fileURLToPath(new URL('./derive-release-stamp.mjs', import.meta.url)), tag],
-      { cwd: dir, encoding: 'utf8', env: { ...env, GITHUB_OUTPUT: join(dir, 'output') } },
+      {
+        cwd: dir,
+        encoding: 'utf8',
+        env: {
+          ...env,
+          TEST_DRAFT_TAGS: JSON.stringify(drafts),
+          GITHUB_OUTPUT: join(dir, 'output'),
+        },
+      },
     );
-  return { dir, git, commit, run };
+  return { dir, git, commit, run, env };
 }
 
 describe('release scan bounds with real Git histories', () => {
+  test('recovery scans every unpublished beta and refuses writeback before publication', () => {
+    const { git, commit, run } = makeReleaseRepo();
+    commit('published stable');
+    git('tag', 'v0.77.9');
+    const drafts = [];
+    const fixes = [];
+    for (let index = 0; index < 12; index++) {
+      fixes.push(commit(`PRD-${9000 + index}: queued fix`));
+      const tag = `v0.78.0-beta.${index}`;
+      git('tag', tag);
+      drafts.push(tag);
+    }
+    const target = drafts.at(-1);
+    const refused = run(target, drafts);
+    expect(refused.status).toBe(1);
+    expect(refused.stderr).toContain('not a published desktop release');
+    const recovered = run(target, drafts.slice(0, -1));
+    expect(recovered.status, recovered.stderr).toBe(0);
+    const { baseRef } = JSON.parse(recovered.stdout);
+    expect(baseRef).toBe('v0.77.9');
+    expect(git('rev-list', `${baseRef}..HEAD`).split('\n')).toEqual(fixes.reverse());
+  });
+
   test('v0.71.8 uses the common ancestor of a divergent v0.71.7 without widening the scan', () => {
     const { dir, git, commit, run } = makeReleaseRepo();
     commit('PRD-1000: already shipped');
@@ -330,7 +383,7 @@ describe('release scan bounds with real Git histories', () => {
   test.each(['missing', 'broken'])(
     'restores both stamping scripts and their imports over %s historical scripts',
     (history) => {
-      const { dir, git, commit } = makeReleaseRepo();
+      const { dir, git, commit, env: fixtureEnv } = makeReleaseRepo();
       const common = commit('common');
       git('switch', '-c', 'previous-stable');
       commit('previous stable');
@@ -359,7 +412,7 @@ describe('release scan bounds with real Git histories', () => {
       git('add', '.');
       const workflowSha = commit('fixed stamping scripts');
       const env = {
-        ...gitCleanEnv(),
+        ...fixtureEnv,
         RELEASE_TAG: 'v0.71.8',
         GITHUB_OUTPUT: join(dir, 'output'),
         LINEAR_API_KEY: '',

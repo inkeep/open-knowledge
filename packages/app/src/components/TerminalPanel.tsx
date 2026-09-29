@@ -28,7 +28,7 @@ import type { OkDesktopBridge, OkPtyNotice } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
 import { getPageListCache } from '../editor/page-list-cache';
 import { filePathToDocName, hashFromDocName, hashFromFolderPath } from '../lib/doc-hash';
-import type { TerminalLaunchIntent } from './EditorPane';
+import type { TerminalCliLaunchIntent, TerminalLaunchIntent } from './EditorPane';
 import { filesFromExternalDrop, isExternalFileDrag } from './file-tree-adapter';
 import {
   type TerminalCommandId,
@@ -250,6 +250,7 @@ function TerminalSession({
       scrollback: 10000,
       smoothScrollDuration: 125,
       scrollSensitivity: 3,
+      windowsPty: bridge.platform === 'win32' ? { backend: 'conpty' } : undefined,
       linkHandler: {
         activate: (_event, uri) => openUrl(uri),
       },
@@ -608,7 +609,7 @@ function TerminalSession({
     };
 
     const resolveLaunchCommand = async (
-      intent: TerminalLaunchIntent,
+      intent: TerminalCliLaunchIntent,
     ): Promise<string | TerminalLaunchCommand | undefined> => {
       const buildLaunch = (opts: Parameters<typeof buildCliLaunchArgString>[2]) =>
         bridge.platform === 'win32'
@@ -704,9 +705,13 @@ function TerminalSession({
       let launchCommand: string | TerminalLaunchCommand | undefined;
       let launchCli: TerminalCli | undefined;
       if (launch !== null && adoptPtyId === null) {
-        launchCli = launch.cli;
-        launchCommand = await resolveLaunchCommand(launch);
-        if (cancelled) return;
+        if (launch.cli === null) {
+          launchCommand = launch.command;
+        } else {
+          launchCli = launch.cli;
+          launchCommand = await resolveLaunchCommand(launch);
+          if (cancelled) return;
+        }
       } else if (commandId !== null && adoptPtyId === null) {
         launchCommand =
           bridge.platform === 'win32'
@@ -759,12 +764,13 @@ function TerminalSession({
       markInteractive();
 
       const staged = launch?.stagePaste;
+      const cliLaunch = launch !== null && launch.cli !== null ? launch : null;
       const injectionBytes =
-        launch != null && launchCommand !== undefined && launch.prompt != null
-          ? buildStartupInjectionBytes(launch.cli, launch.prompt, bridge.platform)
+        cliLaunch !== null && launchCommand !== undefined && cliLaunch.prompt != null
+          ? buildStartupInjectionBytes(cliLaunch.cli, cliLaunch.prompt, bridge.platform)
           : null;
-      if (injectionBytes != null && launch != null) {
-        const cfg = startupInjectionFor(launch.cli, bridge.platform);
+      if (injectionBytes != null && cliLaunch !== null) {
+        const cfg = startupInjectionFor(cliLaunch.cli, bridge.platform);
         const settleMs = cfg?.settleMs ?? STAGE_PASTE_SETTLE_MS;
         const marker = cfg?.readyMarker;
         const bytes = injectionBytes;
@@ -883,10 +889,7 @@ function TerminalSession({
       const droppedFiles = filesFromExternalDrop(event);
       const paths = droppedFiles
         .map((file) => bridge.getPathForFile(file))
-        .filter(
-          (path): path is string =>
-            path !== null && path !== '' && !Array.from(path).some((ch) => ch.charCodeAt(0) < 0x20),
-        );
+        .filter((path): path is string => path !== null && path !== '' && !/\p{Cc}/u.test(path));
       let rejectedCount = droppedFiles.length - paths.length;
       const escapedPaths = paths.flatMap((path) => {
         if (bridge.platform !== 'win32') return [shellSingleQuote(path)];

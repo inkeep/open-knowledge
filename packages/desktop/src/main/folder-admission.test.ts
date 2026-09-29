@@ -10,6 +10,7 @@ import {
   discoverProject,
   type FolderPickValidation,
   type GitState,
+  isExactManagedProject,
   type RejectionReason,
   type SensitivePathWarning,
   type ValidateFolderPickOptions,
@@ -263,6 +264,7 @@ describe('discoverProject — managed kind (ancestor walk)', () => {
     expect(result.projectDir).toBe(project);
     expect(result.pickedPath).toBe(project);
     expect(result.ancestorPromoted).toBe(false);
+    expect(isExactManagedProject(result)).toBe(true);
   });
 
   test('promotes to ancestor when .ok/ is one level up', async () => {
@@ -281,6 +283,21 @@ describe('discoverProject — managed kind (ancestor walk)', () => {
     if (result.kind !== 'managed') return;
     expect(result.projectDir).toBe(project);
     expect(result.ancestorPromoted).toBe(true);
+    expect(isExactManagedProject(result)).toBe(false);
+  });
+
+  test('exact-project admission rejects non-managed and rejected discoveries', () => {
+    expect(
+      isExactManagedProject({
+        kind: 'fresh',
+        pickedPath: '/repo/docs',
+        projectDir: '/repo/docs',
+        defaultContentDir: '.',
+        gitState: 'present',
+        gitRootPromoted: false,
+      }),
+    ).toBe(false);
+    expect(isExactManagedProject({ kind: 'rejected', reason: 'unreadable' })).toBe(false);
   });
 
   test.each([1, 2, 3, 4, 5])(

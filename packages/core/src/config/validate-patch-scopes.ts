@@ -16,6 +16,16 @@ export function validatePatchScopes(
   function walk(value: unknown, path: string[]): void {
     if (violation !== null) return;
     if (value === undefined) return;
+    const meta = getLeafFieldMeta(ConfigSchema, path);
+    if (meta?.scope !== undefined && !isScopeCompatible(meta.scope, writerScope)) {
+      violation = {
+        code: 'SCOPE_VIOLATION',
+        path,
+        expectedScope: meta.scope,
+        actualScope: writerScope,
+      };
+      return;
+    }
     if (value !== null && typeof value === 'object' && !Array.isArray(value)) {
       for (const [key, subValue] of Object.entries(value)) {
         walk(subValue, [...path, key]);
@@ -23,15 +33,6 @@ export function validatePatchScopes(
       }
       return;
     }
-    const meta = getLeafFieldMeta(ConfigSchema, path);
-    if (meta?.scope === undefined) return;
-    if (isScopeCompatible(meta.scope, writerScope)) return;
-    violation = {
-      code: 'SCOPE_VIOLATION',
-      path,
-      expectedScope: meta.scope,
-      actualScope: writerScope,
-    };
   }
 
   for (const [key, value] of Object.entries(patch)) {

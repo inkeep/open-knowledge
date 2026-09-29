@@ -55,6 +55,7 @@ import {
   type LanguagePreference,
   OPENKNOWLEDGE_SKILLS_REPO,
   PROTOCOL_VERSION,
+  projectWorktreeCreateResult,
   ServerInfoSuccessSchema,
   SPAWN_ERROR_LOG,
   TERMINAL_CLIS,
@@ -143,6 +144,7 @@ import type {
   OkMenuAction,
   OkMenuActionOrigin,
 } from '../shared/bridge-contract.ts';
+import { DESKTOP_VARIANT } from '../shared/desktop-variant.ts';
 import { type EntryPoint, isEntryPoint } from '../shared/entry-point.ts';
 import type {
   EditorActiveTargetSnapshot,
@@ -177,7 +179,6 @@ import { attachAssetSafetyNet } from './asset-safety-net.ts';
 import { resolveEffectiveInstanceName } from './auto-instance.ts';
 import {
   bootAutoUpdater,
-  channelFromVersion,
   installWasInFlightDuring,
   type StartAutoUpdaterHandle,
 } from './auto-updater.ts';
@@ -276,12 +277,21 @@ import {
   runDriverBootSmoke,
 } from './driver-boot-smoke.ts';
 import { EMBED_HOST_PATTERNS, rewriteEmbedRequestHeaders } from './embed-referer.ts';
-import { defaultGitTopLevel, discoverProject, validateFolderPick } from './folder-admission.ts';
+import {
+  defaultGitTopLevel,
+  discoverProject,
+  isExactManagedProject,
+  validateFolderPick,
+} from './folder-admission.ts';
 import { createBootBudgetDirSizeProbe } from './fs-walk-budget.ts';
 import { ensureGitAvailable } from './git-preflight-handler.ts';
 import { readCanonicalGitHubRemoteUrl } from './git-remote.ts';
 import { classifyInstallShape } from './install-shape.ts';
-import { formatInstanceAppName, resolveInstanceLabel } from './instance-identity.ts';
+import {
+  combineInstanceLabels,
+  formatInstanceAppName,
+  resolveInstanceLabel,
+} from './instance-identity.ts';
 import { deriveInstanceUserDataDir } from './instance-isolation.ts';
 import {
   type EditorPresenceProbes,
@@ -322,6 +332,7 @@ import {
 } from './ipc-handlers.ts';
 import { logIpcError, withIpcErrorLogging } from './ipc-log.ts';
 import { createDesktopKeepaliveFactory, toKeepaliveLogger } from './keepalive.ts';
+import { getBootAmbientCapsFacts, logAmbientCapsPosture } from './linux-ambient-caps.ts';
 import {
   detectGraphicalAuthCommand,
   runManualInstallFallbackDialog,
@@ -544,11 +555,8 @@ import {
   sweepWindowsUpdateSurvivors,
   type WindowsUpdateSurvivorSweepResult,
 } from './windows-update-survivor-sweep.ts';
-import {
-  classifyRecentGit,
-  classifyRecentGitAsync,
-  readWorktreeBranchAsync,
-} from './worktree-recents.ts';
+import { isAllowedInventoryAnchor, WorktreeInventoryService } from './worktree-inventory.ts';
+import { classifyRecentGitAsync, readWorktreeBranchAsync } from './worktree-recents.ts';
 import {
   checkoutShareBranchWorktree,
   createWorktree,
@@ -1362,6 +1370,7 @@ function ensureWindowManager() {
       } as unknown as Parameters<typeof utilityProcess.fork>[2]);
       return child as unknown as UtilityProcessLike;
     },
+    terminalAuthAvailable: isTerminalAvailable(),
     utilityEntryPath,
     ...(bundleCliMjsPath !== null
       ? {
@@ -1422,6 +1431,7 @@ function ensureWindowManager() {
                 otlpEndpoint: process.env.OTEL_EXPORTER_OTLP_ENDPOINT,
               }),
               ...(singleFile !== undefined ? { singleFile, projectDir } : {}),
+              terminalAuthAvailable: isTerminalAvailable(),
             });
             let childRef: ReturnType<typeof spawn>;
             startupWaterfall.mark('serverSpawned');
@@ -1612,6 +1622,7 @@ function openNavigator(pendingPayload?: ShareNavigatorPayload) {
       : join(__dirname, '../renderer/index.html'),
     rendererDevUrl,
     appVersion: app.getVersion(),
+    productName: DESKTOP_VARIANT.productName,
     languagePreference: userPreferences.language,
     themePreference: userPreferences.theme,
     showGate,
@@ -1647,6 +1658,10 @@ function logAiIntegrationOutcomes(result: ProjectAiIntegrationsResult): number {
 const BOOT_BUDGET_FILE_CAP = 10_000;
 const bootBudgetDirSizeProbe = createBootBudgetDirSizeProbe(BOOT_BUDGET_FILE_CAP);
 
+interface OpenProjectOptions {
+  readonly requireExactManagedProject?: boolean;
+}
+
 async function openProject(
   projectPath: string,
   entryPoint: EntryPoint,
@@ -1660,7 +1675,8 @@ async function openProject(
   pendingMultiCandidate?: boolean,
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
   pendingTargetMissing?: boolean,
-) {
+  options: OpenProjectOptions = {},
+): Promise<boolean> {
   getLogger('project').info(
     {
       pickedName: basename(projectPath),
@@ -1725,7 +1741,11 @@ async function openProject(
       }`,
     );
     openNavigator();
-    return;
+    return false;
+  }
+
+  if (options.requireExactManagedProject === true && !isExactManagedProject(discovery)) {
+    throw new Error('This worktree no longer contains the expected OpenKnowledge project.');
   }
 
   const warningsCount = validation.warnings.length;
@@ -1804,7 +1824,7 @@ async function openProject(
         warningsCount,
       });
       openNavigator();
-      return;
+      return false;
     }
     flowKind = 'managed-promote';
     if (entryPoint !== 'recents' && entryPoint !== 'create-new-nested-redirect') {
@@ -1829,7 +1849,7 @@ async function openProject(
           'Cannot open this folder',
           `${projectPath}\n\nFailed to open the Project Navigator.`,
         );
-        return;
+        return false;
       }
       const navigatorWebContents = (navigator as unknown as { webContents: Electron.WebContents })
         .webContents;
@@ -1882,7 +1902,7 @@ async function openProject(
         contentDirChanged: false,
         warningsCount,
       });
-      return;
+      return false;
     }
     const { request } = decision;
     contentDirChanged = request.contentDir !== discovery.defaultContentDir;
@@ -2019,12 +2039,9 @@ async function openProject(
   navigatorHandoff.close({ projectPath });
   const gitRemoteUrl = readCanonicalGitHubRemoteUrl(resolvedProjectDir) ?? undefined;
   appState = addRecentProject(appState, resolvedProjectDir, ctx.projectName, gitRemoteUrl);
-  if (entryPoint === 'worktree') {
-    const mainRoot = classifyRecentGit(resolvedProjectDir).mainRoot;
-    if (mainRoot !== null) appState = { ...appState, lastOpenedProject: mainRoot };
-  }
   saveAppState(appState);
   refreshApplicationMenu();
+  return true;
 }
 
 function pruneRecentIfMissing(projectPath: string): { removed: boolean; name: string } {
@@ -2061,17 +2078,18 @@ async function openProjectOrFallbackToNavigator(
   pendingMultiCandidate?: boolean,
   pendingShareBranchSwitch?: ShareDeepLinkBranchSwitchPayload,
   pendingTargetMissing?: boolean,
-) {
+  options: OpenProjectOptions = {},
+): Promise<boolean> {
   if (
     pendingDeepLinkTarget === undefined &&
     pendingShareBranchSwitch === undefined &&
     pruneRecentIfMissing(projectPath).removed
   ) {
     openNavigator();
-    return;
+    return false;
   }
   try {
-    await openProject(
+    return await openProject(
       projectPath,
       entryPoint,
       pendingDeepLinkTarget,
@@ -2079,6 +2097,7 @@ async function openProjectOrFallbackToNavigator(
       pendingMultiCandidate,
       pendingShareBranchSwitch,
       pendingTargetMissing,
+      options,
     );
   } catch (err) {
     const errorMessage = (err as Error).message;
@@ -2103,6 +2122,7 @@ async function openProjectOrFallbackToNavigator(
       },
       '[main] openProject failed, falling back to Navigator',
     );
+    flushDesktopLogger();
     let dialogTitle = 'Unable to open project';
     let dialogBody = `${projectPath}\n\n${errorMessage}`;
     if (kind === 'mcp-server-stuck') {
@@ -2150,7 +2170,7 @@ async function openProjectOrFallbackToNavigator(
         const stop = await wm.forceStopConflictingServer(projectPath);
         if (stop.ok) {
           try {
-            await openProject(
+            const opened = await openProject(
               projectPath,
               entryPoint,
               pendingDeepLinkTarget,
@@ -2158,8 +2178,9 @@ async function openProjectOrFallbackToNavigator(
               pendingMultiCandidate,
               pendingShareBranchSwitch,
               pendingTargetMissing,
+              options,
             );
-            return;
+            return opened;
           } catch (retryErr) {
             getLogger('project').error(
               {
@@ -2170,12 +2191,14 @@ async function openProjectOrFallbackToNavigator(
               },
               '[main] openProject retry after stopping the conflicting server failed',
             );
+            flushDesktopLogger();
             dialog.showErrorBox(
               'Unable to open project',
               `${projectPath}\n\n${(retryErr as Error).message}`,
             );
           }
         } else {
+          flushDesktopLogger();
           dialog.showErrorBox(
             'Unable to open project',
             `${projectPath}\n\n` +
@@ -2196,6 +2219,7 @@ async function openProjectOrFallbackToNavigator(
         );
         if (isStaleLockHolder) {
           const stopCommandTarget = quoteStopCommandPath(projectPath, process.platform);
+          flushDesktopLogger();
           dialog.showErrorBox(
             dialogTitle,
             `${dialogBody}\n\n` +
@@ -2215,10 +2239,11 @@ async function openProjectOrFallbackToNavigator(
         }
       }
       openNavigator();
-      return;
+      return false;
     }
     dialog.showErrorBox(dialogTitle, dialogBody);
     openNavigator();
+    return false;
   }
 }
 
@@ -2413,7 +2438,7 @@ function applyMenuDispatchRole(role: MenuDispatchRole, sender: Electron.WebConte
       wc.reloadIgnoringCache();
       return;
     case 'toggleDevTools':
-      if (!app.isPackaged || channelFromVersion(app.getVersion()) === 'beta') {
+      if (!app.isPackaged || DESKTOP_VARIANT.name !== 'stable') {
         wc.toggleDevTools();
       }
       return;
@@ -2445,11 +2470,13 @@ async function runApplicationMenuRefresh(): Promise<void> {
   await installApplicationMenu({
     appName: app.name,
     translate: currentMenuTranslator(),
-    showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+    showDevToolsMenu: !app.isPackaged || DESKTOP_VARIANT.name !== 'stable',
     terminalCapable: isTerminalAvailable(),
     dialog,
     openNavigator,
-    openProject: (path, entryPoint) => openProjectOrFallbackToNavigator(path, entryPoint),
+    openProject: async (path, entryPoint) => {
+      await openProjectOrFallbackToNavigator(path, entryPoint);
+    },
     openEphemeralFile: (filePath) => openEphemeralFile(filePath),
     getRecentProjects: () => appState.recentProjects,
     clearRecentProjects: () => {
@@ -3772,6 +3799,7 @@ const RECENT_GIT_ROOTS_CAP = 256;
 
 function registerIpcHandlers() {
   const handle = createHandler(ipcMain);
+  const worktreeInventory = new WorktreeInventoryService();
 
   handle(
     'ok:mcp-wiring:reconfigure',
@@ -4458,7 +4486,7 @@ function registerIpcHandlers() {
         return {
           recentProjects: appState.recentProjects.map((r) => ({ path: r.path, name: r.name })),
           spellCheckEnabled: appState.spellCheckEnabled,
-          showDevToolsMenu: !app.isPackaged || channelFromVersion(app.getVersion()) === 'beta',
+          showDevToolsMenu: !app.isPackaged || DESKTOP_VARIANT.name !== 'stable',
           canCheckForUpdates: autoUpdaterHandle != null,
           canReconfigureMcpWiring: app.isPackaged && supportedPackagedInstall(),
           activeTarget: currentActiveTarget(),
@@ -4721,7 +4749,7 @@ function registerIpcHandlers() {
         desktopMeta: {
           version: app.getVersion(),
           packaged: app.isPackaged,
-          channel: channelFromVersion(app.getVersion()),
+          channel: DESKTOP_VARIANT.updateChannel,
         },
         readLanguage: () =>
           describeDesktopLanguage({
@@ -4778,6 +4806,8 @@ function registerIpcHandlers() {
           ...entry,
           gitCommonDir: git.gitCommonDir,
           mainRoot: git.mainRoot ?? undefined,
+          checkoutRoot: git.checkoutRoot ?? undefined,
+          projectSubPath: git.projectSubPath ?? undefined,
           isLinkedWorktree: git.isLinkedWorktree,
           branch,
         };
@@ -4893,6 +4923,7 @@ function registerIpcHandlers() {
       request.pendingMultiCandidate,
       request.pendingShareBranchSwitch,
       targetMissing || undefined,
+      { requireExactManagedProject: request.requireExactManagedProject === true },
     );
     return undefined;
   });
@@ -4920,9 +4951,113 @@ function registerIpcHandlers() {
     if (request.kind === 'list') {
       return listWorktreeSelector(anchor, anchor);
     }
+    if (request.kind === 'inventory') {
+      if (
+        !isAllowedInventoryAnchor(
+          request.projectPath,
+          anchor,
+          appState.recentProjects.map((project) => project.path),
+        )
+      ) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:worktree:dispatch',
+          reason: 'invalid-request',
+          handler: 'worktreeDispatch',
+          details: { projectPath: request.projectPath },
+        });
+        return { ok: false, reason: 'invalid-request' } as const;
+      }
+      const result = await withIpcErrorLogging(
+        {
+          channel: 'ok:worktree:dispatch',
+          reason: 'inventory-failed',
+          handler: 'worktreeDispatch',
+          details: { projectPath: request.projectPath },
+        },
+        () => worktreeInventory.inventory(request.projectPath),
+      );
+      if (!result.ok) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:worktree:dispatch',
+          reason: result.reason,
+          handler: 'worktreeDispatch',
+          details: { projectPath: request.projectPath },
+        });
+      }
+      return result;
+    }
+    if (request.kind === 'open-inventory') {
+      if (
+        !isAllowedInventoryAnchor(
+          request.anchorProjectPath,
+          anchor,
+          appState.recentProjects.map((project) => project.path),
+        )
+      ) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:worktree:dispatch',
+          reason: 'invalid-request',
+          handler: 'worktreeDispatch',
+          details: { projectPath: request.anchorProjectPath },
+        });
+        return { ok: false, reason: 'invalid-request' } as const;
+      }
+      const target = await withIpcErrorLogging(
+        {
+          channel: 'ok:worktree:dispatch',
+          reason: 'inventory-validation-failed',
+          handler: 'worktreeDispatch',
+          details: { projectPath: request.anchorProjectPath },
+        },
+        () => worktreeInventory.validateOpen(request),
+      );
+      if (!target.ok) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:worktree:dispatch',
+          reason: target.reason,
+          handler: 'worktreeDispatch',
+          details: { projectPath: request.projectPath },
+        });
+        return target;
+      }
+      const opened = await openProjectOrFallbackToNavigator(
+        target.projectPath,
+        'worktree',
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { requireExactManagedProject: true },
+      );
+      if (!opened) {
+        logIpcError({
+          event: 'ipc.error',
+          channel: 'ok:worktree:dispatch',
+          reason: 'open-failed',
+          handler: 'worktreeDispatch',
+          details: { projectPath: target.projectPath },
+        });
+        return { ok: false, reason: 'open-failed' } as const;
+      }
+      return { ok: true } as const;
+    }
+    const git = await classifyRecentGitAsync(anchor);
+    const mutationContext = {
+      projectSubPath: git.projectSubPath ?? '',
+      sourceProjectPath: anchor,
+    };
     const result =
       request.kind === 'checkout'
-        ? await checkoutShareBranchWorktree({ anchorPath: anchor, branch: request.branch })
+        ? await checkoutShareBranchWorktree({
+            anchorPath: anchor,
+            branch: request.branch,
+            ...mutationContext,
+          })
         : await createWorktree({
             anchorPath: anchor,
             branch: request.branch,
@@ -4930,6 +5065,7 @@ function registerIpcHandlers() {
             baseRef: request.baseRef,
             remoteRef: request.remoteRef,
             createBranch: request.createBranch,
+            ...mutationContext,
           });
     if (!result.ok) {
       getLogger('worktree').warn(
@@ -4938,12 +5074,16 @@ function registerIpcHandlers() {
           reason: result.reason,
           helper: result.helper,
           message: result.message,
+          ...(result.reason === 'project-scope-unavailable' ? { issue: result.issue } : {}),
           branch: request.branch,
         },
         'worktree dispatch failed',
       );
     }
-    return result;
+    if (result.ok || result.reason === 'project-scope-unavailable') {
+      worktreeInventory.invalidate(git.gitCommonDir ?? undefined);
+    }
+    return projectWorktreeCreateResult(result, git.projectSubPath ?? '');
   });
 
   handle('ok:share:validate-folder', async (_event, request) => {
@@ -5212,7 +5352,7 @@ function registerIpcHandlers() {
       appState = s;
     },
     saveAppState,
-    getBuildChannel: () => channelFromVersion(app.getVersion()),
+    getBuildChannel: () => DESKTOP_VARIANT.updateChannel,
     getPendingSchemaIncompatibility,
     clearPendingSchemaIncompatibility,
   });
@@ -5761,6 +5901,13 @@ applyDevShmPosture({
     getRootDesktopLogger()[level](facts, 'linux shared-memory posture for chromium'),
 });
 
+const bootAmbientCapsFacts = getBootAmbientCapsFacts();
+if (bootAmbientCapsFacts) {
+  logAmbientCapsPosture(bootAmbientCapsFacts, (level, facts) =>
+    getRootDesktopLogger()[level](facts, 'linux ambient capabilities posture'),
+  );
+}
+
 if (!app.isPackaged) {
   const resolved = resolveEffectiveInstanceName(process.env, app.getAppPath(), {
     autoDeriveEnabled: process.env.OK_DESKTOP_E2E_SMOKE !== '1',
@@ -5783,9 +5930,12 @@ if (!app.isPackaged) {
   }
 }
 
-const instanceLabel = resolveInstanceLabel(app.getPath('userData'));
+const parallelInstanceLabel = resolveInstanceLabel(app.getPath('userData'));
+const instanceLabel = combineInstanceLabels(DESKTOP_VARIANT.instanceLabel, parallelInstanceLabel);
+if (parallelInstanceLabel) {
+  app.setName(formatInstanceAppName(app.getName(), parallelInstanceLabel));
+}
 if (instanceLabel) {
-  app.setName(formatInstanceAppName(app.getName(), instanceLabel));
   setWindowInstanceLabel(instanceLabel);
 }
 
@@ -6041,6 +6191,7 @@ function bootPrimaryInstance(): void {
   });
 
   const protocolControl = registerProtocolHandler({
+    protocolScheme: DESKTOP_VARIANT.protocolScheme,
     app: {
       on: (event, cb) => {
         app.on(event as Parameters<typeof app.on>[0], cb as Parameters<typeof app.on>[1]);
@@ -6481,12 +6632,14 @@ function bootPrimaryInstance(): void {
         },
         getAllWindows: () => BrowserWindow.getAllWindows(),
         getAppVersion: () => app.getVersion(),
+        buildChannel: DESKTOP_VARIANT.updateChannel,
         isPackaged: app.isPackaged,
         forceDevBypass: process.env.OK_UPDATER_FORCE_DEV === '1',
         feedUrl: process.env.OK_UPDATER_FEED_URL || undefined,
         proxyFeed: {
           base: 'https://openknowledge.ai/updates',
           channels: new Set<UpdateChannel>(['beta', 'latest']),
+          betaChannel: DESKTOP_VARIANT.name === 'beta' ? 'beta-product' : 'beta',
         },
         whenRendererReady: (fn) => {
           const tryFire = (win: BrowserWindow): void => {

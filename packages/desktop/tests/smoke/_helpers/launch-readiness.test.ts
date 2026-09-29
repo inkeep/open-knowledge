@@ -1,19 +1,36 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import type { WaterfallPhase } from '../../../src/main/startup-waterfall.ts';
 import {
   BOOT_HEARTBEAT_ABANDONED_SUFFIX,
   BOOT_HEARTBEAT_EVENTS,
   BOOT_HEARTBEAT_MAX_BEATS,
   DESKTOP_BOOT_EVENT,
   DESKTOP_OPEN_PROJECT_FAILED_EVENT,
+  isBootHeartbeatEvent,
+  isStartupMarkEvent,
   SPAWN_STARTUP_DEADLINE_MS,
   SPAWN_WAIT_EXTENSION_FACTOR,
   SPAWN_WAIT_HEARTBEAT_MS,
   startupMarkLine,
+  UTILITY_INIT_PHASES,
   UTILITY_INIT_TIMEOUT_MS,
+  UTILITY_WAIT_EXPIRED_EVENT,
+  UTILITY_WAIT_EXTENDED_EVENT,
+  UTILITY_WAIT_LATE_KILL_EVENT,
+  utilityInitPhaseEvent,
 } from '../../../src/shared/boot-narration.ts';
 import {
   BOOT_LOG_CAP_MS,
@@ -27,19 +44,27 @@ import {
   bootLogGapSummary,
   bootNarrationFor,
   classifyBootLog,
+  DECLARED_UTILITY_BUDGET_CEILING_MS,
   describeMissingBootLog,
+  EVERY_STARTUP_PHASE,
   formatBootGapLine,
   giveUpReason,
   hasBootCompleted,
   isMoreCompleteNarration,
+  lastAdvancementMs,
+  launchAdvancementPhases,
   launchDesktopApp,
   launchHomeFor,
+  parseDeclaredPhaseBudget,
   READY_WAIT_GIVE_UP_REASONS,
   type ReadyDeadline,
+  type ReadyWaitRecord,
   readBootLog,
   readBootLogLines,
+  readinessWorstCaseMs,
   readyWaitsFor,
   rememberLaunchHome,
+  sinceLastAdvancementMs,
   tryBootLogFor,
   tryFirstWaitFor,
   UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
@@ -47,8 +72,23 @@ import {
   waitForReadySignal,
   waitForWindowByMode,
 } from './launch-readiness.ts';
+import {
+  type GiveUp,
+  giveUpOf,
+  LAUNCH_REACHING_THE_CEILING_OF,
+  launchBootingAfterTheWaitsFirstRead,
+  launchBootingAfterTheWaitsFirstReadBesideTheDayBeforesLog,
+  pollIntervalOf,
+  READINESS_CALLS,
+  READINESS_PATHS,
+  reachOf,
+  utilityForkBootingAfterTheWaitsFirstRead,
+  utilityForkTheLastStageKeptAlive,
+  utilityForkTheLastStageKeptAliveBesideTheDayBeforesLog,
+  utilityForkWhoseFirstBeatLandsOnTheLastStagePoll,
+} from './readiness-reach.test-helper.ts';
 
-function markLine(phase: string, elapsedMs: number, time: string): string {
+function markLine(phase: WaterfallPhase, elapsedMs: number, time: string): string {
   return JSON.stringify({ time, ...startupMarkLine(phase, elapsedMs) });
 }
 
@@ -648,6 +688,192 @@ describe("stall bound is a contract against the app's boot narration", () => {
   });
 });
 
+describe("the wait records which of the app's own startup stages arrived while it waited", () => {
+  const bootLine = (time: string): string => JSON.stringify({ time, event: DESKTOP_BOOT_EVENT });
+  const beatLine = (time: string, lastPhase: string): string =>
+    JSON.stringify({ time, event: BOOT_HEARTBEAT_EVENTS.boot, lastPhase });
+
+  it("names the app's own stages and nothing else, in the order it first saw each", () => {
+    expect(
+      launchAdvancementPhases([
+        bootLine('2026-09-24T00:00:00.000Z'),
+        markLine('appReady', 0, '2026-09-24T00:00:00.100Z'),
+        beatLine('2026-09-24T00:00:05.000Z', 'appReady'),
+        JSON.stringify({ time: '2026-09-24T00:00:06.000Z', msg: 'project window created' }),
+        markLine('windowCreated', 7_000, '2026-09-24T00:00:07.000Z'),
+        rendererRelayedLineAt('2026-09-24T00:00:08.000Z', 'desktop.startup.renderer-step-0'),
+        markLine('loadUrlResolved', 9_000, '2026-09-24T00:00:09.000Z'),
+      ]),
+    ).toEqual([
+      'desktop.startup.appReady',
+      'desktop.startup.windowCreated',
+      'desktop.startup.loadUrlResolved',
+    ]);
+  });
+
+  it('counts a stage once however many times the line is read back', () => {
+    expect(
+      launchAdvancementPhases([
+        markLine('windowCreated', 1_000, '2026-09-24T00:00:01.000Z'),
+        markLine('windowCreated', 1_000, '2026-09-24T00:00:01.000Z'),
+      ]),
+    ).toEqual(['desktop.startup.windowCreated']);
+  });
+
+  it('describes this launch, not the one before it', () => {
+    expect(
+      launchAdvancementPhases([
+        bootLine('2026-09-24T00:00:00.000Z'),
+        markLine('windowShown', 3_000, '2026-09-24T00:00:03.000Z'),
+        bootLine('2026-09-24T00:01:00.000Z'),
+        markLine('appReady', 0, '2026-09-24T00:01:00.100Z'),
+      ]),
+    ).toEqual(['desktop.startup.appReady']);
+  });
+
+  it('reports each stage once, with the elapsed time the wait observed it', async () => {
+    let clock = 0;
+    const seen: Array<{ event: string; atMs: number }> = [];
+    const narration = [bootLine('2026-09-24T00:00:00.000Z')];
+    const found = await waitForReadySignal<string>({
+      probe: async () => (clock >= 4_000 ? 'editor-page' : undefined),
+      home: '/unused',
+      what: 'editor window',
+      now: () => clock,
+      sleep: async () => {
+        clock += 1_000;
+        if (clock === 2_000) {
+          narration.push(markLine('windowCreated', 2_000, '2026-09-24T00:00:02.000Z'));
+        }
+        if (clock === 3_000) {
+          narration.push(markLine('loadUrlResolved', 3_000, '2026-09-24T00:00:03.000Z'));
+          narration.push(markLine('loadUrlResolved', 3_000, '2026-09-24T00:00:03.000Z'));
+        }
+      },
+      readLog: () => snapshot({ lines: narration, lineCount: narration.length }),
+      onAdvancement: (advancement) => {
+        seen.push(advancement);
+      },
+    });
+    expect(found).toBe('editor-page');
+    expect(seen).toEqual([
+      { event: 'desktop.startup.windowCreated', atMs: 2_000 },
+      { event: 'desktop.startup.loadUrlResolved', atMs: 3_000 },
+    ]);
+  });
+
+  it('carries the stages it read off the real boot log into the record the triage line reads', async () => {
+    const home = seedHome([
+      bootLine('2026-09-24T00:00:00.000Z'),
+      markLine('windowCreated', 1_000, '2026-09-24T00:00:01.000Z'),
+      markLine('loadUrlResolved', 2_000, '2026-09-24T00:00:02.000Z'),
+    ]);
+    try {
+      let polls = 0;
+      const editor = {
+        evaluate: async (): Promise<string | undefined> => {
+          polls += 1;
+          return polls > 1 ? 'editor' : undefined;
+        },
+      };
+      const app = { windows: () => [editor] };
+      await expect(waitForWindowByMode(app, 'editor', { home, pollMs: 1 })).resolves.toBe(editor);
+      const record = tryFirstWaitFor(app);
+      expect(record?.advancements.map((advancement) => advancement.event)).toEqual([
+        'desktop.startup.windowCreated',
+        'desktop.startup.loadUrlResolved',
+      ]);
+      const last = lastAdvancementMs(record as ReadyWaitRecord);
+      expect(last).toBeGreaterThanOrEqual(0);
+      expect(sinceLastAdvancementMs(record as ReadyWaitRecord)).toBe(
+        (record as ReadyWaitRecord).elapsedMs - (last as number),
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it('separates advancement from a boot the app only heartbeats through', async () => {
+    let clock = 0;
+    const seen: string[] = [];
+    const narration = [
+      bootLine('2026-09-24T00:00:00.000Z'),
+      markLine('loadUrlResolved', 100, '2026-09-24T00:00:00.100Z'),
+    ];
+    await expect(
+      waitForReadySignal<string>({
+        probe: async () => undefined,
+        home: '/unused',
+        what: 'editor window',
+        now: () => clock,
+        sleep: async () => {
+          clock += 1_000;
+          if (clock % BOOT_LOG_HEARTBEAT_MS === 0) {
+            narration.push(beatLine(new Date(clock).toISOString(), 'loadUrlResolved'));
+          }
+        },
+        readLog: () => snapshot({ lines: narration, lineCount: narration.length }),
+        onAdvancement: (advancement) => {
+          seen.push(advancement.event);
+        },
+      }),
+    ).rejects.toThrow(/kept logging boot activity/);
+    expect(seen).toEqual(['desktop.startup.loadUrlResolved']);
+    expect(clock).toBeGreaterThanOrEqual(BOOT_LOG_CAP_MS);
+  });
+
+  it('carries the advancement record into the triage line', () => {
+    const line = formatBootGapLine({
+      slot: 0,
+      source: 'wait-snapshot',
+      readyWaitCount: 1,
+      firstWait: {
+        ordinal: 0,
+        what: 'editor window',
+        elapsedMs: 25_217,
+        capMs: BOOT_LOG_CAP_MS,
+        requestedCapMs: BOOT_LOG_CAP_MS,
+        gaveUp: true,
+        reason: 'cap',
+        advancements: [
+          { event: 'desktop.startup.windowCreated', atMs: 17_138 },
+          { event: 'desktop.startup.loadUrlResolved', atMs: 19_261 },
+        ],
+      },
+      summary: undefined,
+      reason: 'no summary',
+    });
+    expect(line).toContain(
+      'firstWaitAdvancements=["desktop.startup.windowCreated","desktop.startup.loadUrlResolved"]',
+    );
+    expect(line).toContain('firstWaitLastAdvancementMs=19261');
+    expect(line).toContain('firstWaitSinceAdvancementMs=5956');
+  });
+
+  it('says there was no advancement rather than printing a zero', () => {
+    const line = formatBootGapLine({
+      slot: 0,
+      source: 'wait-snapshot',
+      readyWaitCount: 1,
+      firstWait: {
+        ordinal: 0,
+        what: 'editor window',
+        elapsedMs: 25_000,
+        capMs: BOOT_LOG_CAP_MS,
+        requestedCapMs: BOOT_LOG_CAP_MS,
+        gaveUp: true,
+        reason: 'cap',
+        advancements: [],
+      },
+      summary: undefined,
+      reason: 'no summary',
+    });
+    expect(line).toContain('firstWaitAdvancements=[]');
+    expect(line).toContain('firstWaitLastAdvancementMs=none');
+    expect(line).toContain('firstWaitSinceAdvancementMs=none');
+  });
+});
+
 describe('bootLogGapSummary', () => {
   it("reports the largest silence between the app's own stages", () => {
     const lines = [
@@ -788,6 +1014,19 @@ describe('bootLogGapSummary', () => {
     expect(s.maxGapMs).toBe(3_000);
   });
 
+  it('ends boot at the window it showed, not at a later renderer line that borrows the startup-stage prefix', () => {
+    const s = bootLogGapSummary([
+      markLine('appReady', 0, '2026-09-04T00:00:00.000Z'),
+      markLine('windowShown', 3_000, '2026-09-04T00:00:03.000Z'),
+      rendererRelayedLineAt('2026-09-04T00:00:10.000Z', 'desktop.startup.renderer-step-0'),
+      JSON.stringify({ time: '2026-09-04T00:00:45.000Z', event: 'terminal-session-exit' }),
+    ]);
+    expect(s.phases).toEqual(['desktop.startup.appReady', 'desktop.startup.windowShown']);
+    expect(s.lineCount).toBe(2);
+    expect(s.maxGapMs).toBe(3_000);
+    expect(s.bootComplete).toBe(true);
+  });
+
   it('is empty-safe when the app logged nothing', () => {
     expect(bootLogGapSummary([])).toEqual({
       totalBootMs: 0,
@@ -807,12 +1046,22 @@ describe('the cap is a livelock backstop, deliberately tighter than the app can 
     expect(BOOT_LOG_STALL_MS).toBeLessThan(BOOT_LOG_CAP_MS);
   });
 
-  it('lets the cap stay the operative verdict on a boot that never shows a window', () => {
-    expect(BOOT_HEARTBEAT_MAX_BEATS * SPAWN_WAIT_HEARTBEAT_MS).toBeGreaterThan(BOOT_LOG_CAP_MS);
+  it("keeps main's heartbeat running past the latest deadline a startup stage can set", () => {
+    expect(BOOT_HEARTBEAT_MAX_BEATS * SPAWN_WAIT_HEARTBEAT_MS).toBeGreaterThan(
+      BOOT_LOG_CAP_MS + BOOT_LOG_STALL_MS,
+    );
   });
 
-  it("is deliberately below the packaged path's graduated spawn budget", () => {
-    expect(BOOT_LOG_CAP_MS).toBeLessThan(SPAWN_STARTUP_DEADLINE_MS * SPAWN_WAIT_EXTENSION_FACTOR);
+  it("keeps the latest deadline a startup stage can set below the packaged path's graduated spawn budget", () => {
+    expect(BOOT_LOG_CAP_MS + BOOT_LOG_STALL_MS).toBeLessThan(
+      SPAWN_STARTUP_DEADLINE_MS * SPAWN_WAIT_EXTENSION_FACTOR,
+    );
+  });
+
+  it("keeps the latest deadline a startup stage can set inside the one the app's declared utility budget can already reach", () => {
+    expect(BOOT_LOG_STALL_MS).toBeLessThanOrEqual(
+      UTILITY_INIT_TIMEOUT_MS + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+    );
   });
 });
 
@@ -835,7 +1084,7 @@ function isoAt(atMs: number): string {
   return new Date(DEEP_LINK_APP_T0 + atMs).toISOString();
 }
 
-function markAt(phase: string, atMs: number): NarrationLine {
+function markAt(phase: WaterfallPhase, atMs: number): NarrationLine {
   return { at: atMs, text: markLine(phase, atMs, isoAt(atMs)) };
 }
 
@@ -991,7 +1240,8 @@ describe("the wait outlives the app's own deadline for the phase the window is g
       forkAtMs -
         LAUNCH_RESOLVED_AT_MS +
         UTILITY_INIT_TIMEOUT_MS +
-        UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+        UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS +
+        BOOT_LOG_POLL_MS,
     );
   });
 });
@@ -1013,7 +1263,7 @@ describe('the give-up describes the narration the wait actually read', () => {
       eventAt(5_500, {
         event: BOOT_HEARTBEAT_EVENTS.utilityWait,
         elapsedMs: 5_000,
-        initTimeoutMs: UTILITY_INIT_TIMEOUT_MS,
+        initTimeoutMs: SPAWN_STARTUP_DEADLINE_MS,
       }),
       eventAt(7_000, {
         event: DESKTOP_OPEN_PROJECT_FAILED_EVENT,
@@ -1106,7 +1356,7 @@ describe('a budget the app did not declare cleanly buys the wait no extra time',
     [
       'an initTimeoutMs larger than the budget the app can declare',
       (beat: Record<string, unknown>) =>
-        JSON.stringify({ ...beat, initTimeoutMs: UTILITY_INIT_TIMEOUT_MS * 2 }),
+        JSON.stringify({ ...beat, initTimeoutMs: DECLARED_UTILITY_BUDGET_CEILING_MS + 1 }),
     ],
     [
       'the budget on a heartbeat that does not own the open phase',
@@ -1163,6 +1413,366 @@ describe('a budget the app did not declare cleanly buys the wait no extra time',
   });
 });
 
+const UTILITY_WAIT_HARD_CAP_MS = UTILITY_INIT_TIMEOUT_MS * SPAWN_WAIT_EXTENSION_FACTOR;
+
+function utilityWaitBeatLine(elapsedMs: number, initTimeoutMs: number): string {
+  return JSON.stringify({ event: BOOT_HEARTBEAT_EVENTS.utilityWait, elapsedMs, initTimeoutMs });
+}
+
+function graduatedUtilityNarration(forkAtMs: number, lastBeatElapsedMs: number): NarrationLine[] {
+  const beatsFromTheStartupDeadline: NarrationLine[] = [];
+  for (
+    let elapsedMs = UTILITY_INIT_TIMEOUT_MS;
+    elapsedMs <= lastBeatElapsedMs;
+    elapsedMs += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    beatsFromTheStartupDeadline.push(
+      eventAt(forkAtMs + elapsedMs, {
+        event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+        elapsedMs,
+        initTimeoutMs:
+          elapsedMs > UTILITY_INIT_TIMEOUT_MS ? UTILITY_WAIT_HARD_CAP_MS : UTILITY_INIT_TIMEOUT_MS,
+      }),
+    );
+  }
+  return [...deepLinkNarration(forkAtMs).slice(0, -1), ...beatsFromTheStartupDeadline];
+}
+
+describe("the wait honors the hard cap a live utility's startup wait graduates to", () => {
+  it('reads a utility-wait beat declaring the hard cap as a budget, and refuses one declaring past it', () => {
+    const graduatedElapsedMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    expect(
+      parseDeclaredPhaseBudget(utilityWaitBeatLine(graduatedElapsedMs, UTILITY_WAIT_HARD_CAP_MS)),
+    ).toEqual({ elapsedMs: graduatedElapsedMs, initTimeoutMs: UTILITY_WAIT_HARD_CAP_MS });
+    expect(
+      parseDeclaredPhaseBudget(
+        utilityWaitBeatLine(graduatedElapsedMs, UTILITY_WAIT_HARD_CAP_MS + 1),
+      ),
+    ).toBeUndefined();
+  });
+
+  it('finds an editor window that answers past the startup deadline, inside the graduated budget', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const readyAtElapsedMs =
+      UTILITY_INIT_TIMEOUT_MS + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    const windowAnswersAtMs = forkAtMs + readyAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+    expect(windowAnswersAtMs).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    expect(readyAtElapsedMs).toBeLessThan(UTILITY_WAIT_HARD_CAP_MS);
+
+    const home = seedHome();
+    mkdirSync(bootLogDirFor(home), { recursive: true });
+    const clock = virtualClock(home, graduatedUtilityNarration(forkAtMs, readyAtElapsedMs));
+    const outcome = await waitForReadySignal<string>({
+      home,
+      what: 'editor window',
+      probe: async () => (clock.now() >= windowAnswersAtMs ? 'graduated-editor-page' : undefined),
+      now: clock.now,
+      sleep: clock.sleep,
+      readLog: clock.readLog,
+      startDeadline: clock.startDeadline,
+    }).then(
+      (found) => ({ found, gaveUpWith: undefined }),
+      (error: unknown) => ({ found: undefined, gaveUpWith: (error as Error).message }),
+    );
+    expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+  });
+});
+
+function utilityWaitBeatWrittenAt(
+  forkAtMs: number,
+  sinceForkMs: number,
+  initTimeoutMs: number,
+): NarrationLine {
+  return eventAt(forkAtMs + sinceForkMs, {
+    event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+    elapsedMs: sinceForkMs,
+    initTimeoutMs,
+  });
+}
+
+function graduatingUtilityNarration(
+  forkAtMs: number,
+  options: {
+    graduationBeat: boolean;
+    decisionLateMs: number;
+    graduatedBeatsLateMs: number;
+    lastBeatElapsedMs: number;
+  },
+): NarrationLine[] {
+  const decisionWrittenAtMs = UTILITY_INIT_TIMEOUT_MS + options.decisionLateMs;
+  const lines: NarrationLine[] = [
+    ...deepLinkNarration(forkAtMs).slice(0, -1),
+    utilityWaitBeatWrittenAt(forkAtMs, decisionWrittenAtMs, UTILITY_INIT_TIMEOUT_MS),
+  ];
+  if (options.graduationBeat) {
+    lines.push(utilityWaitBeatWrittenAt(forkAtMs, decisionWrittenAtMs, UTILITY_WAIT_HARD_CAP_MS));
+  }
+  for (
+    let nominalMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    nominalMs <= options.lastBeatElapsedMs;
+    nominalMs += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    lines.push(
+      utilityWaitBeatWrittenAt(
+        forkAtMs,
+        nominalMs + options.decisionLateMs + options.graduatedBeatsLateMs,
+        UTILITY_WAIT_HARD_CAP_MS,
+      ),
+    );
+  }
+  return lines;
+}
+
+async function waitForEditorWindowAnsweringAt(
+  narration: readonly NarrationLine[],
+  windowAnswersAtMs: number,
+): Promise<{ found: string | undefined; gaveUpWith: string | undefined }> {
+  const home = seedHome();
+  mkdirSync(bootLogDirFor(home), { recursive: true });
+  const clock = virtualClock(home, narration);
+  return waitForReadySignal<string>({
+    home,
+    what: 'editor window',
+    probe: async () => (clock.now() >= windowAnswersAtMs ? 'graduated-editor-page' : undefined),
+    now: clock.now,
+    sleep: clock.sleep,
+    readLog: clock.readLog,
+    startDeadline: clock.startDeadline,
+  }).then(
+    (found) => ({ found, gaveUpWith: undefined }),
+    (error: unknown) => ({ found: undefined, gaveUpWith: (error as Error).message }),
+  );
+}
+
+describe("the wait grants its observation margin after the app's declared decision, not only up to it", () => {
+  it.each(FORKS_THE_STATIC_CAP_CUTS_SHORT)(
+    'finds an editor window in the graduated tier when the lines the app writes at its startup deadline run a poll late, for a utility fork at %ims',
+    async (forkAtMs) => {
+      const windowAnswersAtElapsedMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+      const outcome = await waitForEditorWindowAnsweringAt(
+        graduatingUtilityNarration(forkAtMs, {
+          graduationBeat: true,
+          decisionLateMs: BOOT_LOG_POLL_MS,
+          graduatedBeatsLateMs: 0,
+          lastBeatElapsedMs: windowAnswersAtElapsedMs,
+        }),
+        forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS,
+      );
+      expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+    },
+  );
+});
+
+describe('the graduated budget reaches the wait on the beat the app writes at its decision', () => {
+  it('keeps waiting through a late first graduated heartbeat because the graduation beat declared the hard cap', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const windowAnswersAtElapsedMs = UTILITY_INIT_TIMEOUT_MS + 2 * SPAWN_WAIT_HEARTBEAT_MS;
+    const windowAnswersAtMs = forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+    const narrationWith = (graduationBeat: boolean): NarrationLine[] =>
+      graduatingUtilityNarration(forkAtMs, {
+        graduationBeat,
+        decisionLateMs: 0,
+        graduatedBeatsLateMs: BOOT_LOG_POLL_MS,
+        lastBeatElapsedMs: windowAnswersAtElapsedMs,
+      });
+
+    const withoutGraduationBeat = await waitForEditorWindowAnsweringAt(
+      narrationWith(false),
+      windowAnswersAtMs,
+    );
+    expect(withoutGraduationBeat.found).toBeUndefined();
+
+    const withGraduationBeat = await waitForEditorWindowAnsweringAt(
+      narrationWith(true),
+      windowAnswersAtMs,
+    );
+    expect(withGraduationBeat).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+  });
+});
+
+describe("the wait honors a live utility's whole graduated budget", () => {
+  it('finds an editor window that answers one heartbeat before the hard cap', async () => {
+    const forkAtMs = MEASURED_FORK_OFFSETS[3];
+    const windowAnswersAtElapsedMs = UTILITY_WAIT_HARD_CAP_MS - SPAWN_WAIT_HEARTBEAT_MS;
+    const windowAnswersAtMs = forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+    expect(windowAnswersAtMs).toBeGreaterThan(
+      BOOT_LOG_CAP_MS +
+        BOOT_LOG_STALL_MS +
+        UTILITY_INIT_TIMEOUT_MS +
+        UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
+    );
+
+    const outcome = await waitForEditorWindowAnsweringAt(
+      graduatingUtilityNarration(forkAtMs, {
+        graduationBeat: true,
+        decisionLateMs: 0,
+        graduatedBeatsLateMs: 0,
+        lastBeatElapsedMs: windowAnswersAtElapsedMs,
+      }),
+      windowAnswersAtMs,
+    );
+    expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+  });
+});
+
+function exportedEventName(event: string): string {
+  expect(event, 'boot-narration exports the event name').toBeTypeOf('string');
+  return event;
+}
+
+describe("the utility's startup diagnostics are neither launch progress nor a budget to the wait", () => {
+  it('reads the phase-mark, graduation and expiry lines as neither heartbeats, startup stages nor declared budgets', () => {
+    const extendedEvent = exportedEventName(UTILITY_WAIT_EXTENDED_EVENT);
+    const expiredEvent = exportedEventName(UTILITY_WAIT_EXPIRED_EVENT);
+    expect(UTILITY_INIT_PHASES, 'boot-narration exports UTILITY_INIT_PHASES').toBeInstanceOf(Array);
+    expect(utilityInitPhaseEvent, 'boot-narration exports utilityInitPhaseEvent').toBeTypeOf(
+      'function',
+    );
+    const phaseEvents = UTILITY_INIT_PHASES.map((phase) => utilityInitPhaseEvent(phase));
+    const diagnosticEvents = [...phaseEvents, extendedEvent, expiredEvent];
+    expect(phaseEvents.length).toBeGreaterThan(0);
+    expect(isBootHeartbeatEvent(BOOT_HEARTBEAT_EVENTS.utilityWait)).toBe(true);
+    expect(isStartupMarkEvent(startupMarkLine('serverSpawned', 0).event)).toBe(true);
+    expect(diagnosticEvents.filter((event) => isBootHeartbeatEvent(event))).toEqual([]);
+    expect(diagnosticEvents.filter((event) => isStartupMarkEvent(event))).toEqual([]);
+
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const launch = deepLinkNarration(forkAtMs).slice(0, -1);
+    const diagnostics: NarrationLine[] = [
+      ...phaseEvents.map((event, index) =>
+        eventAt(forkAtMs + index + 1, { event, sinceForkMs: index + 1 }),
+      ),
+      eventAt(forkAtMs + UTILITY_INIT_TIMEOUT_MS, {
+        event: extendedEvent,
+        startupDeadlineMs: UTILITY_INIT_TIMEOUT_MS,
+        hardCapMs: UTILITY_WAIT_HARD_CAP_MS,
+      }),
+      eventAt(forkAtMs + UTILITY_WAIT_HARD_CAP_MS, {
+        event: expiredEvent,
+        budgetMs: UTILITY_WAIT_HARD_CAP_MS,
+        graduated: true,
+        termination: 'killed',
+      }),
+    ];
+    const bootLog = (narration: readonly NarrationLine[]): string[] =>
+      [...narration].sort((a, b) => a.at - b.at).map((entry) => entry.text);
+    const withoutDiagnostics = bootLog(launch);
+    const withDiagnostics = bootLog([...launch, ...diagnostics]);
+
+    expect(launchAdvancementPhases(withoutDiagnostics).length).toBeGreaterThan(0);
+    expect(launchAdvancementPhases(withDiagnostics)).toEqual(
+      launchAdvancementPhases(withoutDiagnostics),
+    );
+    expect(
+      launch.filter((line) => parseDeclaredPhaseBudget(line.text) !== undefined).length,
+    ).toBeGreaterThan(0);
+    expect(diagnostics.map((line) => parseDeclaredPhaseBudget(line.text))).toEqual(
+      diagnostics.map(() => undefined),
+    );
+    expect(bootLogGapSummary(withoutDiagnostics).beatsSeen).toBeGreaterThan(0);
+    expect(bootLogGapSummary(withDiagnostics).beatsSeen).toBe(
+      bootLogGapSummary(withoutDiagnostics).beatsSeen,
+    );
+  });
+
+  it('reads the line narrating a late kill as neither a heartbeat, a startup stage nor a declared budget', () => {
+    const lateKillEvent = exportedEventName(UTILITY_WAIT_LATE_KILL_EVENT);
+    expect(isBootHeartbeatEvent(BOOT_HEARTBEAT_EVENTS.utilityWait)).toBe(true);
+    expect(isStartupMarkEvent(startupMarkLine('serverSpawned', 0).event)).toBe(true);
+    expect(isBootHeartbeatEvent(lateKillEvent)).toBe(false);
+    expect(isStartupMarkEvent(lateKillEvent)).toBe(false);
+
+    const forkAtMs = MEASURED_FORK_OFFSETS[0];
+    const launch = deepLinkNarration(forkAtMs);
+    const lateKill = eventAt(forkAtMs + UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS, {
+      event: lateKillEvent,
+      pid: 10001,
+      termination: 'killed',
+    });
+    const withoutLateKill = launch.map((line) => line.text);
+    const withLateKill = [...withoutLateKill, lateKill.text];
+
+    expect(launchAdvancementPhases(withoutLateKill).length).toBeGreaterThan(0);
+    expect(launchAdvancementPhases(withLateKill)).toEqual(launchAdvancementPhases(withoutLateKill));
+    expect(
+      launch.filter((line) => parseDeclaredPhaseBudget(line.text) !== undefined).length,
+    ).toBeGreaterThan(0);
+    expect(parseDeclaredPhaseBudget(lateKill.text)).toBeUndefined();
+    expect(bootLogGapSummary(withoutLateKill).beatsSeen).toBeGreaterThan(0);
+    expect(bootLogGapSummary(withLateKill).beatsSeen).toBe(
+      bootLogGapSummary(withoutLateKill).beatsSeen,
+    );
+  });
+});
+
+function sameInstantDecisionNarration(
+  forkAtMs: number,
+  graduationBeat: 'first' | 'a poll later',
+  lastBeatElapsedMs: number,
+): NarrationLine[] {
+  const intervalBeat = utilityWaitBeatWrittenAt(
+    forkAtMs,
+    UTILITY_INIT_TIMEOUT_MS,
+    UTILITY_INIT_TIMEOUT_MS,
+  );
+  const graduation = eventAt(
+    forkAtMs + UTILITY_INIT_TIMEOUT_MS + (graduationBeat === 'first' ? 0 : BOOT_LOG_POLL_MS),
+    {
+      event: BOOT_HEARTBEAT_EVENTS.utilityWait,
+      elapsedMs: UTILITY_INIT_TIMEOUT_MS,
+      initTimeoutMs: UTILITY_WAIT_HARD_CAP_MS,
+    },
+  );
+  const lines: NarrationLine[] = [
+    ...deepLinkNarration(forkAtMs).slice(0, -1),
+    ...(graduationBeat === 'first' ? [graduation, intervalBeat] : [intervalBeat, graduation]),
+  ];
+  for (
+    let nominalMs = UTILITY_INIT_TIMEOUT_MS + SPAWN_WAIT_HEARTBEAT_MS;
+    nominalMs <= lastBeatElapsedMs;
+    nominalMs += SPAWN_WAIT_HEARTBEAT_MS
+  ) {
+    lines.push(
+      utilityWaitBeatWrittenAt(forkAtMs, nominalMs + BOOT_LOG_POLL_MS, UTILITY_WAIT_HARD_CAP_MS),
+    );
+  }
+  return lines;
+}
+
+describe('the graduated budget reaches the wait whichever of the two beats the app writes at its decision it reads first', () => {
+  it.each([
+    { graduationBeat: 'first', reachesTheLog: 'before the interval beat of the same instant' },
+    {
+      graduationBeat: 'a poll later',
+      reachesTheLog: 'a poll after the interval beat, stamped with the same elapsed time',
+    },
+  ] as const)(
+    'keeps waiting through a late first graduated heartbeat when the graduation beat reaches the log $reachesTheLog',
+    async ({ graduationBeat }) => {
+      const forkAtMs = MEASURED_FORK_OFFSETS[0];
+      const windowAnswersAtElapsedMs = UTILITY_INIT_TIMEOUT_MS + 2 * SPAWN_WAIT_HEARTBEAT_MS;
+      const windowAnswersAtMs = forkAtMs + windowAnswersAtElapsedMs - LAUNCH_RESOLVED_AT_MS;
+
+      const withoutGraduationBeat = await waitForEditorWindowAnsweringAt(
+        graduatingUtilityNarration(forkAtMs, {
+          graduationBeat: false,
+          decisionLateMs: 0,
+          graduatedBeatsLateMs: BOOT_LOG_POLL_MS,
+          lastBeatElapsedMs: windowAnswersAtElapsedMs,
+        }),
+        windowAnswersAtMs,
+      );
+      expect(withoutGraduationBeat.found).toBeUndefined();
+
+      const outcome = await waitForEditorWindowAnsweringAt(
+        sameInstantDecisionNarration(forkAtMs, graduationBeat, windowAnswersAtElapsedMs),
+        windowAnswersAtMs,
+      );
+      expect(outcome).toEqual({ found: 'graduated-editor-page', gaveUpWith: undefined });
+    },
+  );
+});
+
 function slowForkNarration(): NarrationLine[] {
   const forkAtMs = BOOT_LOG_CAP_MS + LAUNCH_RESOLVED_AT_MS - SPAWN_WAIT_HEARTBEAT_MS;
   const lines: NarrationLine[] = [eventAt(0, { event: DESKTOP_BOOT_EVENT })];
@@ -1204,7 +1814,7 @@ describe('the extension keeps the probe running rather than only deferring the v
     expect(clock.now()).toBeGreaterThan(BOOT_LOG_CAP_MS);
   });
 
-  it('keeps probing when the first declared budget lands on the poll the static cap fires', async () => {
+  it('keeps probing past the static cap when the utility fork lands one heartbeat before it', async () => {
     const home = seedHome();
     mkdirSync(bootLogDirFor(home), { recursive: true });
     const clock = virtualClock(home, slowForkNarration());
@@ -1221,10 +1831,22 @@ describe('the extension keeps the probe running rather than only deferring the v
     expect(clock.now()).toBeGreaterThan(BOOT_LOG_CAP_MS);
   });
 
-  it('stops blaming a probe that was outstanding when the cap it outlived fired', async () => {
+  it('stops blaming a probe that was outstanding when the static cap fired, once a startup stage read on that lap renews the wait', async () => {
     const home = seedHome();
     mkdirSync(bootLogDirFor(home), { recursive: true });
-    const clock = virtualClock(home, slowForkNarration());
+    const lines = syntheticLaunch({
+      stages: [
+        ...EVERY_STARTUP_PHASE.slice(0, EVERY_STARTUP_PHASE.indexOf('loadUrlResolved')).map(
+          (phase) => stageLine(phase, -BOOT_LOG_POLL_MS),
+        ),
+        stageLine('loadUrlResolved', BOOT_LOG_CAP_MS),
+      ],
+      logsUntilMs: BOOT_LOG_CAP_MS + 2 * BOOT_LOG_STALL_MS,
+    });
+    const clock = virtualClock(
+      home,
+      lines.map((line) => ({ at: LAUNCH_RESOLVED_AT_MS + line.readableFromMs, text: line.text })),
+    );
     let overranTheCap = false;
     const outcome = await waitForReadySignal<string>({
       home,
@@ -1246,7 +1868,10 @@ describe('the extension keeps the probe running rather than only deferring the v
     );
     expect(overranTheCap).toBe(true);
     expect(outcome.gaveUp).toBe(true);
-    expect(clock.now()).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    expect(
+      clock.now(),
+      'the wait kept probing past the lap the static cap preempted',
+    ).toBeGreaterThan(BOOT_LOG_CAP_MS + BOOT_LOG_POLL_MS * 2);
     expect(outcome.message).not.toContain('The last probe had not answered when the cap fired.');
   });
 });
@@ -1604,6 +2229,55 @@ describe('the recorded ready wait names which wait it measured', () => {
     expect(wait?.capMs).toBeGreaterThan(300);
   });
 
+  it('carries the deadline a startup stage bought it into the record and the triage line, beside the cap its caller asked for', async () => {
+    const home = seedHome([
+      JSON.stringify({ event: DESKTOP_BOOT_EVENT, time: '2026-09-04T00:00:00.000Z' }),
+      markLine('appReady', 0, '2026-09-04T00:00:00.100Z'),
+    ]);
+    const editor = { evaluate: async () => 'editor' };
+    let windowsCalls = 0;
+    const app = {
+      windows: () => {
+        windowsCalls += 1;
+        if (windowsCalls === 2) {
+          appendFileSync(
+            join(bootLogDirFor(home), 'desktop.2026-09-03.log'),
+            `${markLine('loadUrlResolved', 900, '2026-09-04T00:00:00.900Z')}\n`,
+            'utf8',
+          );
+        }
+        return windowsCalls >= 3 ? [editor] : [];
+      },
+    };
+    rememberLaunchHome(app, home);
+    const requestedCapMs = BOOT_LOG_STALL_MS / 2;
+    try {
+      await expect(
+        waitForWindowByMode(app, 'editor', { pollMs: 20, capMs: requestedCapMs }),
+      ).resolves.toBe(editor);
+      const wait = tryFirstWaitFor(app);
+      expect(wait?.advancements.map((advancement) => advancement.event)).toContain(
+        'desktop.startup.loadUrlResolved',
+      );
+      expect(wait?.requestedCapMs).toBe(requestedCapMs);
+      expect(wait?.capMs).toBeGreaterThan(requestedCapMs);
+      expect(wait?.capMs).toBeLessThanOrEqual(requestedCapMs + BOOT_LOG_STALL_MS);
+      const line = formatBootGapLine(
+        bootGapLineFor({
+          slot: 0,
+          narration: bootNarrationFor(tryBootLogFor(app), readBootLog(home)),
+          readyWaitCount: readyWaitsFor(app)?.length ?? 0,
+          ...(wait === undefined ? {} : { firstWait: wait }),
+          homeShared: false,
+        }),
+      );
+      expect(line).toContain(`firstWaitCapMs=${wait?.capMs}`);
+      expect(line).toContain(`firstWaitRequestedCapMs=${requestedCapMs}`);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it('reports the first wait, not a later re-find of an already-open window', async () => {
     const app = slowFirstPoll();
     rememberLaunchHome(app, seedHome());
@@ -1825,6 +2499,10 @@ describe('formatBootGapLine', () => {
         requestedCapMs: 9_000,
         gaveUp: false,
         reason: 'none',
+        advancements: [
+          { event: 'desktop.startup.windowCreated', atMs: 900 },
+          { event: 'desktop.startup.loadUrlResolved', atMs: 1_600 },
+        ],
       },
       summary: bootLogGapSummary([
         markLine('appReady', 0, '2026-09-04T00:00:00.000Z'),
@@ -1861,6 +2539,7 @@ describe('formatBootGapLine', () => {
         requestedCapMs: BOOT_LOG_CAP_MS,
         gaveUp: true,
         reason: 'cap',
+        advancements: [],
       },
       summary: undefined,
       reason: 'no summary',
@@ -1909,6 +2588,7 @@ describe('formatBootGapLine', () => {
           elapsedMs: 25_000,
           capMs: BOOT_LOG_CAP_MS,
           requestedCapMs: BOOT_LOG_CAP_MS,
+          advancements: [],
           gaveUp: reason !== 'none',
           reason,
         },
@@ -2210,5 +2890,774 @@ describe('the cap bounds the wait itself, not only the gaps between polls', () =
     expect(released).toBe(false);
     expect(message).toMatch(/logged no new boot activity/);
     expect(message).toContain('The last probe had not answered when the cap fired.');
+  });
+});
+
+interface RecordedFirstWait {
+  source: {
+    workflowRun: string;
+    job: string;
+    traceAttachment: { name: string; sha1: string };
+  };
+  trace: { launchElectronEnd: string; evaluateStart: string; evaluateEnd: string };
+  lane: { bootGapLine: string; giveUpDiagnostics: string[] };
+  bootLog: string[];
+}
+
+const RECORDED_FIRST_WAIT = JSON.parse(
+  readFileSync(
+    new URL(
+      './fixtures/recorded-first-wait-windows-terminal-tabs-2026-09-24.json',
+      import.meta.url,
+    ),
+    'utf8',
+  ),
+) as RecordedFirstWait;
+
+const RECORDED_WAIT_STARTED_AT = Date.parse(RECORDED_FIRST_WAIT.trace.launchElectronEnd);
+
+function sinceRecordedWaitStarted(iso: string): number {
+  return Date.parse(iso) - RECORDED_WAIT_STARTED_AT;
+}
+
+const RECORDED_EVALUATE_ISSUED_MS = sinceRecordedWaitStarted(
+  RECORDED_FIRST_WAIT.trace.evaluateStart,
+);
+
+const RECORDED_EVALUATE_ANSWERED_MS = sinceRecordedWaitStarted(
+  RECORDED_FIRST_WAIT.trace.evaluateEnd,
+);
+
+const RECORDED_EDITOR_PAGE = 'the editor page the recorded evaluate answered for';
+
+const STARTUP_STAGE_EVENTS: ReadonlySet<string> = new Set(
+  EVERY_STARTUP_PHASE.map((phase) => startupMarkLine(phase, 0).event),
+);
+
+const POLL_TO_READ_PLUS_POLL_TO_ACT_MS = 2 * BOOT_LOG_POLL_MS;
+
+const LONGEST_WAIT_THE_STAGES_CAN_BUY_MS = BOOT_LOG_CAP_MS + BOOT_LOG_STALL_MS;
+
+const REPLAY_WATCHDOG_MS = 2 * LONGEST_WAIT_THE_STAGES_CAN_BUY_MS;
+
+interface RecordedLine {
+  text: string;
+  readableFromMs: number;
+  fields: Record<string, unknown>;
+}
+
+function stringField(line: RecordedLine, key: string): string | undefined {
+  const value = line.fields[key];
+  return typeof value === 'string' ? value : undefined;
+}
+
+function recordedLinesInFileOrder(): RecordedLine[] {
+  let readableFromMs = Number.NEGATIVE_INFINITY;
+  return RECORDED_FIRST_WAIT.bootLog.map((text) => {
+    const fields = JSON.parse(text) as RecordedLine['fields'] & { time: string };
+    readableFromMs = Math.max(readableFromMs, sinceRecordedWaitStarted(fields.time));
+    return { text, readableFromMs, fields };
+  });
+}
+
+function isStartupStage(line: RecordedLine): boolean {
+  const event = stringField(line, 'event');
+  return event !== undefined && STARTUP_STAGE_EVENTS.has(event);
+}
+
+function lastStageReadableFromMs(lines: readonly RecordedLine[]): number {
+  return Math.max(...lines.filter(isStartupStage).map((line) => line.readableFromMs));
+}
+
+function isRendererDriven(line: RecordedLine): boolean {
+  return (
+    stringField(line, 'source') === 'renderer-console' ||
+    stringField(line, 'subsystem') === 'probe-spawn'
+  );
+}
+
+function withMainHeartbeatingOnItsOwnBudget(lines: readonly RecordedLine[]): RecordedLine[] {
+  const beats = lines.filter((line) => stringField(line, 'event') === BOOT_HEARTBEAT_EVENTS.boot);
+  const last = beats.at(-1);
+  if (last === undefined) return [...lines];
+  const template = JSON.parse(last.text) as Record<string, unknown> & {
+    elapsedMs: number;
+    msg: string;
+  };
+  const continued: RecordedLine[] = [];
+  for (let beat = beats.length + 1; beat <= BOOT_HEARTBEAT_MAX_BEATS + 1; beat += 1) {
+    const laterMs = (beat - beats.length) * SPAWN_WAIT_HEARTBEAT_MS;
+    const readableFromMs = last.readableFromMs + laterMs;
+    const elapsedMs = template.elapsedMs + laterMs;
+    const body = {
+      ...template,
+      time: new Date(RECORDED_WAIT_STARTED_AT + readableFromMs).toISOString(),
+      elapsedMs,
+      ...(beat > BOOT_HEARTBEAT_MAX_BEATS
+        ? {
+            event: `${BOOT_HEARTBEAT_EVENTS.boot}${BOOT_HEARTBEAT_ABANDONED_SUFFIX}`,
+            beats: BOOT_HEARTBEAT_MAX_BEATS,
+            msg: `${template.msg} — giving up on narration after ${elapsedMs}ms`,
+          }
+        : {}),
+    };
+    continued.push({ text: JSON.stringify(body), readableFromMs, fields: body });
+  }
+  return [...lines, ...continued];
+}
+
+function recordedStalledRenderer(): RecordedLine[] {
+  return withMainHeartbeatingOnItsOwnBudget(
+    recordedLinesInFileOrder().filter((line) => !isRendererDriven(line)),
+  );
+}
+
+function startingLater(lines: readonly RecordedLine[], laterByMs: number): RecordedLine[] {
+  return lines.map((line) => ({ ...line, readableFromMs: line.readableFromMs - laterByMs }));
+}
+
+function recordedLineShape(matches: (line: RecordedLine) => boolean): Record<string, unknown> {
+  const found = recordedLinesInFileOrder().find(matches);
+  if (found === undefined) throw new Error('the recording has no line of that shape');
+  return JSON.parse(found.text) as Record<string, unknown>;
+}
+
+const RECORDED_BOOT_SHAPE = recordedLineShape(
+  (line) => stringField(line, 'event') === DESKTOP_BOOT_EVENT,
+);
+
+const RECORDED_STAGE_SHAPE = recordedLineShape(isStartupStage);
+
+const RECORDED_HEARTBEAT_SHAPE = recordedLineShape(
+  (line) => stringField(line, 'event') === BOOT_HEARTBEAT_EVENTS.boot,
+);
+
+const RECORDED_RENDERER_CONSOLE_SHAPE = recordedLineShape(
+  (line) => stringField(line, 'source') === 'renderer-console',
+);
+
+function lineShapedLike(
+  shape: Record<string, unknown>,
+  readableFromMs: number,
+  fields: Record<string, unknown>,
+): RecordedLine {
+  const body = {
+    ...shape,
+    time: new Date(RECORDED_WAIT_STARTED_AT + readableFromMs).toISOString(),
+    ...fields,
+  };
+  return { text: JSON.stringify(body), readableFromMs, fields: body };
+}
+
+function stageLine(phase: WaterfallPhase, readableFromMs: number): RecordedLine {
+  return lineShapedLike(RECORDED_STAGE_SHAPE, readableFromMs, {
+    ...startupMarkLine(phase, readableFromMs),
+    msg: `startup ${phase}`,
+  });
+}
+
+function rendererRelayedEventLine(readableFromMs: number, event: string): RecordedLine {
+  return lineShapedLike(RECORDED_RENDERER_CONSOLE_SHAPE, readableFromMs, {
+    level: 30,
+    event,
+    msg: event,
+  });
+}
+
+function rendererRelayedLineAt(time: string, event: string): string {
+  return JSON.stringify({ ...JSON.parse(rendererRelayedEventLine(0, event).text), time });
+}
+
+function syntheticLaunch(input: {
+  stages: readonly RecordedLine[];
+  others?: readonly RecordedLine[];
+  logsUntilMs: number;
+}): RecordedLine[] {
+  const stages = [...input.stages].sort((a, b) => a.readableFromMs - b.readableFromMs);
+  const beats: RecordedLine[] = [];
+  for (let at = SPAWN_WAIT_HEARTBEAT_MS; at <= input.logsUntilMs; at += SPAWN_WAIT_HEARTBEAT_MS) {
+    const reached = stages.filter((stage) => stage.readableFromMs <= at).at(-1);
+    beats.push(
+      lineShapedLike(RECORDED_HEARTBEAT_SHAPE, at, {
+        elapsedMs: at,
+        lastPhase:
+          (reached === undefined ? undefined : stringField(reached, 'phase')) ??
+          '(no phase marked yet)',
+      }),
+    );
+  }
+  return [
+    lineShapedLike(RECORDED_BOOT_SHAPE, -BOOT_LOG_POLL_MS, {}),
+    ...stages,
+    ...(input.others ?? []),
+    ...beats,
+  ].sort((a, b) => a.readableFromMs - b.readableFromMs);
+}
+
+class ReplayOutlivedItsWatchdog extends Error {}
+
+type ReplayVerdict =
+  | { admitted: string; atMs: number }
+  | { gaveUp: string; atMs: number; head: string }
+  | { stillWaitingAtMs: number };
+
+interface FirstWaitReplay {
+  verdict: ReplayVerdict;
+  elapsedMs: number;
+  message: string;
+  reportedCapMs: number | undefined;
+  heldProbeLaps: number;
+}
+
+async function replayFirstWait(input: {
+  lines: readonly RecordedLine[];
+  pendingFromMs: number;
+  answersAtMs?: number;
+  probeHoldsTheLoopFromMs?: number;
+  logUnreadableUntilMs?: number;
+}): Promise<FirstWaitReplay> {
+  const home = seedHome();
+  try {
+    mkdirSync(bootLogDirFor(home), { recursive: true });
+    const clock = virtualClock(
+      home,
+      input.lines.map((line) => ({
+        at: LAUNCH_RESOLVED_AT_MS + line.readableFromMs,
+        text: line.text,
+      })),
+    );
+    const answered = (): boolean =>
+      input.answersAtMs !== undefined && clock.now() >= input.answersAtMs;
+    const holdsTheLoop = (): boolean =>
+      input.probeHoldsTheLoopFromMs !== undefined && clock.now() >= input.probeHoldsTheLoopFromMs;
+    const logUnreadable = (): boolean =>
+      input.logUnreadableUntilMs !== undefined && clock.now() < input.logUnreadableUntilMs;
+    let reportedCapMs: number | undefined;
+    let armedDeadlineAtMs = Number.POSITIVE_INFINITY;
+    let heldProbeLaps = 0;
+    const settled = await waitForReadySignal<string>({
+      home,
+      what: 'editor window',
+      capMs: BOOT_LOG_CAP_MS,
+      probe: async () => {
+        if (answered()) return RECORDED_EDITOR_PAGE;
+        if (!holdsTheLoop()) return undefined;
+        heldProbeLaps += 1;
+        const holdsUntilMs = Math.min(armedDeadlineAtMs, REPLAY_WATCHDOG_MS);
+        await clock.sleep(Math.max(holdsUntilMs - clock.now(), 0));
+        return holdsUntilMs < armedDeadlineAtMs
+          ? undefined
+          : new Promise<string | undefined>(() => {});
+      },
+      isProbePending: () => clock.now() >= input.pendingFromMs && !answered(),
+      onCapExtended: (capMs) => {
+        reportedCapMs = capMs;
+      },
+      now: clock.now,
+      sleep: async (ms) => {
+        if (clock.now() + ms > REPLAY_WATCHDOG_MS) throw new ReplayOutlivedItsWatchdog();
+        await clock.sleep(ms);
+      },
+      readLog: (readFrom) =>
+        logUnreadable()
+          ? snapshot({
+              dir: bootLogDirFor(readFrom),
+              exists: false,
+              fileCount: 0,
+              unreadableReason: 'EACCES',
+            })
+          : clock.readLog(readFrom),
+      startDeadline: (ms) => {
+        armedDeadlineAtMs = clock.now() + ms;
+        return clock.startDeadline(ms);
+      },
+    }).then(
+      (admitted): Pick<FirstWaitReplay, 'verdict' | 'message'> => ({
+        verdict: { admitted, atMs: clock.now() },
+        message: '',
+      }),
+      (error: unknown): Pick<FirstWaitReplay, 'verdict' | 'message'> => {
+        if (error instanceof ReplayOutlivedItsWatchdog) {
+          return { verdict: { stillWaitingAtMs: clock.now() }, message: '' };
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        const reason = (error as { reason?: unknown }).reason;
+        return {
+          verdict: {
+            gaveUp: typeof reason === 'string' ? reason : 'no reason given',
+            atMs: clock.now(),
+            head: message.split('\n')[0] ?? '',
+          },
+          message,
+        };
+      },
+    );
+    return { ...settled, elapsedMs: clock.now(), reportedCapMs, heldProbeLaps };
+  } finally {
+    rmSync(home, { recursive: true, force: true });
+  }
+}
+
+function preemptedNoLaterThanMs(lastStageFromMs: number): number {
+  return (
+    Math.max(BOOT_LOG_CAP_MS, lastStageFromMs + BOOT_LOG_STALL_MS) +
+    POLL_TO_READ_PLUS_POLL_TO_ACT_MS
+  );
+}
+
+const BOOT_GAP_SUMMARY_FIELDS = [
+  'source',
+  'totalBootMs',
+  'maxGapMs',
+  'openStageMs',
+  'beatsSeen',
+  'lineCount',
+  'bootComplete',
+  'afterPhase',
+  'lastBeatPhase',
+] as const;
+
+function bootGapFields(line: string, keys: readonly string[]): Record<string, string> {
+  const all = new Map<string, string>();
+  for (const [, key, value] of line.matchAll(/(\w+)=("[^"]*"|\S+)/g)) {
+    if (key !== undefined && value !== undefined) all.set(key, value);
+  }
+  const present: Array<[string, string]> = [];
+  for (const key of keys) {
+    const value = all.get(key);
+    if (value !== undefined) present.push([key, value]);
+  }
+  return Object.fromEntries(present);
+}
+
+describe(`the first-window wait recorded on merge_group run ${RECORDED_FIRST_WAIT.source.workflowRun}, job ${RECORDED_FIRST_WAIT.source.job}`, () => {
+  it(`is byte for byte the ${RECORDED_FIRST_WAIT.source.traceAttachment.name} attachment the lane's trace names by its sha1`, () => {
+    expect(createHash('sha1').update(RECORDED_FIRST_WAIT.bootLog.join('\n')).digest('hex')).toBe(
+      RECORDED_FIRST_WAIT.source.traceAttachment.sha1,
+    );
+  });
+
+  it("reads here the way the lane's own [boot-gap] line summarized it", () => {
+    const lane = bootGapFields(RECORDED_FIRST_WAIT.lane.bootGapLine, BOOT_GAP_SUMMARY_FIELDS);
+    const here = bootGapFields(
+      formatBootGapLine(
+        bootGapLineFor({
+          slot: 0,
+          narration: bootNarrationFor(RECORDED_FIRST_WAIT.bootLog, snapshot({ exists: false })),
+          readyWaitCount: 1,
+          homeShared: false,
+        }),
+      ),
+      BOOT_GAP_SUMMARY_FIELDS,
+    );
+    expect(Object.keys(lane)).toEqual([...BOOT_GAP_SUMMARY_FIELDS]);
+    expect(here).toEqual(lane);
+  });
+});
+
+describe("the first-window bound admits a launch still advancing through the app's own startup stages", () => {
+  it('admits the window the recorded launch answered past the static cap, within one stall bound of its last startup stage', async () => {
+    const lines = recordedLinesInFileOrder();
+    expect(
+      RECORDED_EVALUATE_ANSWERED_MS,
+      'the recorded window answered after the static cap',
+    ).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    expect(
+      RECORDED_EVALUATE_ANSWERED_MS - lastStageReadableFromMs(lines),
+      'and within one stall bound of the last startup stage the recorded app narrated',
+    ).toBeLessThan(BOOT_LOG_STALL_MS);
+    const replay = await replayFirstWait({
+      lines,
+      pendingFromMs: RECORDED_EVALUATE_ISSUED_MS,
+      answersAtMs: RECORDED_EVALUATE_ANSWERED_MS,
+    });
+    expect(replay.verdict).toMatchObject({ admitted: RECORDED_EDITOR_PAGE });
+  });
+
+  it('admits a window that answers soon after a startup stage the wait first reads on the poll its static cap fires', async () => {
+    const answersAtMs = BOOT_LOG_CAP_MS + BOOT_LOG_STALL_MS / 2;
+    const lines = syntheticLaunch({
+      stages: [
+        ...EVERY_STARTUP_PHASE.slice(0, EVERY_STARTUP_PHASE.indexOf('loadUrlResolved')).map(
+          (phase) => stageLine(phase, -BOOT_LOG_POLL_MS),
+        ),
+        stageLine('loadUrlResolved', BOOT_LOG_CAP_MS),
+      ],
+      logsUntilMs: answersAtMs,
+    });
+    const replay = await replayFirstWait({ lines, pendingFromMs: 0, answersAtMs });
+    expect(replay.verdict).toMatchObject({ admitted: RECORDED_EDITOR_PAGE });
+  });
+});
+
+describe('the first-window bound still preempts a launch that has stopped advancing', () => {
+  it('preempts at the static cap a launch that reaches no new startup stage while the wait runs, however long main keeps logging', async () => {
+    const stalled = recordedStalledRenderer();
+    const laterByMs = lastStageReadableFromMs(stalled) + BOOT_LOG_POLL_MS;
+    const lines = startingLater(stalled, laterByMs);
+    expect(
+      lines.filter(isStartupStage).every((line) => line.readableFromMs < 0),
+      'every startup stage was narrated before the wait began',
+    ).toBe(true);
+    expect(
+      lines.filter((line) => line.readableFromMs > BOOT_LOG_CAP_MS).length,
+      'main keeps logging past the static cap',
+    ).toBeGreaterThan(0);
+    const replay = await replayFirstWait({
+      lines,
+      pendingFromMs: RECORDED_EVALUATE_ISSUED_MS - laterByMs,
+    });
+    expect(replay.verdict).toMatchObject({ gaveUp: expect.any(String) });
+    expect(replay.elapsedMs).toBeLessThanOrEqual(
+      BOOT_LOG_CAP_MS + POLL_TO_READ_PLUS_POLL_TO_ACT_MS,
+    );
+    expect(replay.message).not.toContain('logged no new boot activity');
+  });
+
+  it('preempts the recorded launch once its renderer stalls, within one stall bound of the last stage main narrated, and blames nothing main did not do', async () => {
+    const lines = recordedStalledRenderer();
+    const lastStageFromMs = lastStageReadableFromMs(lines);
+    expect(
+      lines.filter((line) => line.readableFromMs > lastStageFromMs + BOOT_LOG_STALL_MS).length,
+      'main keeps logging for longer than one stall bound after its last stage',
+    ).toBeGreaterThan(0);
+    const replay = await replayFirstWait({ lines, pendingFromMs: RECORDED_EVALUATE_ISSUED_MS });
+    expect(replay.verdict).toMatchObject({ gaveUp: expect.any(String) });
+    expect(replay.elapsedMs).toBeLessThanOrEqual(preemptedNoLaterThanMs(lastStageFromMs));
+    expect(
+      replay.elapsedMs,
+      'a wait that outlives the static cap reports the bound that decided it',
+    ).toBeLessThanOrEqual(
+      (replay.reportedCapMs ?? BOOT_LOG_CAP_MS) + POLL_TO_READ_PLUS_POLL_TO_ACT_MS,
+    );
+    expect(replay.message).not.toContain('logged no new boot activity');
+    expect(replay.message).toContain('Probe errors: none on any poll.');
+    expect(replay.message).toMatch(/last probe had not answered/);
+    expect(replay.message.split('\n')).toEqual(
+      expect.arrayContaining(RECORDED_FIRST_WAIT.lane.giveUpDiagnostics),
+    );
+  });
+
+  it('gives the recorded launch the silence verdict, not the static cap, once main falls quiet right after its last startup stage', async () => {
+    const lines = recordedLinesInFileOrder();
+    const lastStageFromMs = lastStageReadableFromMs(lines);
+    expect(
+      lastStageFromMs + BOOT_LOG_STALL_MS,
+      'a silence that starts at the last stage outlasts the static cap',
+    ).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    const replay = await replayFirstWait({
+      lines: lines.filter((line) => line.readableFromMs <= lastStageFromMs),
+      pendingFromMs: RECORDED_EVALUATE_ISSUED_MS,
+    });
+    expect(replay.verdict).toMatchObject({ gaveUp: 'stall' });
+    expect(replay.elapsedMs).toBeLessThanOrEqual(
+      lastStageFromMs + BOOT_LOG_STALL_MS + POLL_TO_READ_PLUS_POLL_TO_ACT_MS,
+    );
+    expect(replay.message).toContain('logged no new boot activity');
+    expect(replay.message).not.toContain('kept logging boot activity');
+    expect(replay.message).toMatch(/last probe had not answered/);
+  });
+
+  it('preempts the recorded stalled renderer no later than its last stage allows, even when its probe holds the loop across every deadline', async () => {
+    const lines = recordedStalledRenderer();
+    const lastStageFromMs = lastStageReadableFromMs(lines);
+    expect(
+      lines
+        .filter(isStartupStage)
+        .some(
+          (line) =>
+            line.readableFromMs > RECORDED_EVALUATE_ISSUED_MS &&
+            line.readableFromMs <= BOOT_LOG_CAP_MS,
+        ),
+      'a startup stage turns readable while the held probe keeps the wait from reading the log',
+    ).toBe(true);
+    const replay = await replayFirstWait({
+      lines,
+      pendingFromMs: RECORDED_EVALUATE_ISSUED_MS,
+      probeHoldsTheLoopFromMs: RECORDED_EVALUATE_ISSUED_MS,
+    });
+    expect(replay.heldProbeLaps).toBeGreaterThan(0);
+    expect(replay.verdict).toMatchObject({ gaveUp: expect.any(String) });
+    expect(replay.elapsedMs).toBeLessThanOrEqual(preemptedNoLaterThanMs(lastStageFromMs));
+    expect(replay.message).toMatch(/last probe had not answered/);
+  });
+
+  it('preempts at the static cap a launch whose stages all predate the wait, though an unreadable log hid them until late in it', async () => {
+    const stalled = recordedStalledRenderer();
+    const laterByMs = lastStageReadableFromMs(stalled) + BOOT_LOG_POLL_MS;
+    const lines = startingLater(stalled, laterByMs);
+    const logUnreadableUntilMs = BOOT_LOG_CAP_MS - BOOT_LOG_STALL_MS + BOOT_LOG_POLL_MS;
+    expect(
+      lines.filter(isStartupStage).every((line) => line.readableFromMs < 0),
+      'every startup stage was narrated before the wait began',
+    ).toBe(true);
+    expect(
+      logUnreadableUntilMs + BOOT_LOG_STALL_MS,
+      'a stage dated at the first read that could see the log would carry the wait past the static cap',
+    ).toBeGreaterThan(BOOT_LOG_CAP_MS);
+    const replay = await replayFirstWait({
+      lines,
+      pendingFromMs: RECORDED_EVALUATE_ISSUED_MS - laterByMs,
+      logUnreadableUntilMs,
+    });
+    expect(replay.reportedCapMs).toBeUndefined();
+    expect(replay.verdict).toMatchObject({ gaveUp: 'cap', atMs: BOOT_LOG_CAP_MS });
+  });
+});
+
+describe('the longest wait startup stages can buy is the static cap plus one stall bound', () => {
+  it('ends a launch that reaches every startup stage as late as it can, each one just inside a stall bound of the last', async () => {
+    const lines = syntheticLaunch({
+      stages: EVERY_STARTUP_PHASE.map((phase, index) =>
+        stageLine(phase, BOOT_LOG_CAP_MS + index * (BOOT_LOG_STALL_MS - BOOT_LOG_POLL_MS)),
+      ),
+      logsUntilMs: REPLAY_WATCHDOG_MS,
+    });
+    expect(launchAdvancementPhases(lines.map((line) => line.text))).toHaveLength(
+      EVERY_STARTUP_PHASE.length,
+    );
+    const replay = await replayFirstWait({ lines, pendingFromMs: 0 });
+    expect(replay.verdict).toMatchObject({ gaveUp: expect.any(String) });
+    expect(replay.elapsedMs).toBeLessThanOrEqual(
+      LONGEST_WAIT_THE_STAGES_CAN_BUY_MS + POLL_TO_READ_PLUS_POLL_TO_ACT_MS,
+    );
+  });
+
+  it('does not let lines that only borrow the startup-stage prefix buy time without end', async () => {
+    const impostors: RecordedLine[] = [];
+    for (
+      let fromMs = BOOT_LOG_CAP_MS;
+      fromMs < REPLAY_WATCHDOG_MS;
+      fromMs += BOOT_LOG_STALL_MS - BOOT_LOG_POLL_MS
+    ) {
+      impostors.push(
+        rendererRelayedEventLine(fromMs, `desktop.startup.renderer-step-${impostors.length}`),
+      );
+    }
+    const lines = syntheticLaunch({
+      stages: EVERY_STARTUP_PHASE.filter((phase) => phase !== 'windowShown').map((phase) =>
+        stageLine(phase, -BOOT_LOG_POLL_MS),
+      ),
+      others: impostors,
+      logsUntilMs: REPLAY_WATCHDOG_MS,
+    });
+    const stagePrefixed = new Set(
+      lines
+        .map((line) => stringField(line, 'event'))
+        .filter((event): event is string => event !== undefined && isStartupMarkEvent(event)),
+    );
+    expect(
+      stagePrefixed.size,
+      'the narration offers more stage-prefixed events than the app has startup stages',
+    ).toBeGreaterThan(EVERY_STARTUP_PHASE.length);
+    const replay = await replayFirstWait({ lines, pendingFromMs: 0 });
+    expect(replay.verdict).toMatchObject({ gaveUp: expect.any(String) });
+    expect(replay.elapsedMs).toBeLessThanOrEqual(
+      LONGEST_WAIT_THE_STAGES_CAN_BUY_MS + POLL_TO_READ_PLUS_POLL_TO_ACT_MS,
+    );
+    expect(
+      replay.reportedCapMs,
+      'a line that only borrows the prefix renews nothing',
+    ).toBeUndefined();
+    expect(replay.elapsedMs).toBeLessThanOrEqual(
+      BOOT_LOG_CAP_MS + POLL_TO_READ_PLUS_POLL_TO_ACT_MS,
+    );
+  });
+});
+
+describe("a launch the app narrates inside its own contract still reaches the app's own verdict", () => {
+  for (const { label, options } of READINESS_CALLS) {
+    it(label, async () => {
+      const launch = utilityForkTheLastStageKeptAlive(options);
+      const reach = await reachOf(launch, 2 * launch.appVerdictAtMs);
+      expect(reach).toMatchObject({ gaveUpAtMs: expect.any(Number) });
+      expect('gaveUpAtMs' in reach ? reach.gaveUpAtMs : Number.NaN).toBeGreaterThan(
+        launch.appVerdictAtMs,
+      );
+      expect('message' in reach ? reach.message : '').toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+    });
+  }
+});
+
+describe('the latest deadline the helper arms is the shared worst case of the path the launch takes', () => {
+  for (const { label, options } of READINESS_CALLS) {
+    for (const path of READINESS_PATHS) {
+      it(`${label}, on the ${path} path`, async () => {
+        const worstCaseMs = readinessWorstCaseMs({ path, ...options });
+        const launch = LAUNCH_REACHING_THE_CEILING_OF[path](options);
+        const giveUp = giveUpOf(await reachOf(launch, 2 * worstCaseMs), launch);
+        expect(giveUp.decidingCapMs, launch.name).toBe(worstCaseMs);
+        expect(giveUp.gaveUpAtMs).toBeGreaterThanOrEqual(worstCaseMs);
+        expect(giveUp.gaveUpAtMs).toBeLessThan(worstCaseMs + pollIntervalOf(options));
+      });
+    }
+  }
+});
+
+describe("a launch inside the app's own contract, read on a poll out of phase with the app's heartbeat, runs to the app's own last grant", () => {
+  const launch = utilityForkWhoseFirstBeatLandsOnTheLastStagePoll({ pollMs: BOOT_LOG_POLL_MS + 3 });
+  const forkWorstCaseMs = readinessWorstCaseMs({ path: 'fork', ...launch.options });
+
+  it("arms the grant the app's last beat bought, and gives up naming the app's verdict", async () => {
+    const giveUp = giveUpOf(await reachOf(launch, 2 * forkWorstCaseMs), launch);
+    expect(giveUp.declaredGrantMs).toBeDefined();
+    expect(giveUp.decidingCapMs).toBe(giveUp.declaredGrantMs);
+    expect(giveUp.gaveUpAtMs).toBeGreaterThan(launch.appVerdictAtMs);
+    expect(giveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+
+  it("finds that grant inside the fork path's worst case", async () => {
+    const giveUp = giveUpOf(await reachOf(launch, 2 * forkWorstCaseMs), launch);
+    expect(giveUp.declaredGrantMs).toBeDefined();
+    expect(giveUp.declaredGrantMs).toBeLessThanOrEqual(forkWorstCaseMs);
+  });
+});
+
+describe("a launch inside the app's own contract, read on polls further out of phase with the app's heartbeat, still runs to the app's own last grant", () => {
+  for (const pollMs of [
+    BOOT_LOG_POLL_MS + 20,
+    BOOT_LOG_POLL_MS + 60,
+    BOOT_LOG_POLL_MS + 83,
+    BOOT_LOG_POLL_MS + 150,
+    2 * BOOT_LOG_POLL_MS - 1,
+  ]) {
+    it(`read every ${pollMs}ms, arms the grant the app's last beat bought, gives up naming the app's verdict, and finds that grant inside the fork path's worst case`, async () => {
+      const launch = utilityForkWhoseFirstBeatLandsOnTheLastStagePoll({ pollMs });
+      const forkWorstCaseMs = readinessWorstCaseMs({ path: 'fork', ...launch.options });
+      const giveUp = giveUpOf(await reachOf(launch, 2 * forkWorstCaseMs), launch);
+      expect(giveUp.declaredGrantMs, `read every ${pollMs}ms`).toBeDefined();
+      expect(giveUp.decidingCapMs, `read every ${pollMs}ms`).toBe(giveUp.declaredGrantMs);
+      expect(giveUp.gaveUpAtMs).toBeGreaterThan(launch.appVerdictAtMs);
+      expect(giveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+      expect(giveUp.declaredGrantMs).toBeLessThanOrEqual(forkWorstCaseMs);
+    });
+  }
+});
+
+function anEarlierLaunchThatStoppedJustAfterItsUtilityWaitGraduated(pollMs: number) {
+  const forkAtMs = MEASURED_FORK_OFFSETS[0];
+  const graduatedAtMs = forkAtMs + UTILITY_INIT_TIMEOUT_MS;
+  return graduatingUtilityNarration(forkAtMs, {
+    graduationBeat: true,
+    decisionLateMs: 0,
+    graduatedBeatsLateMs: 0,
+    lastBeatElapsedMs: UTILITY_INIT_TIMEOUT_MS,
+  }).map(({ at, text }) => ({ atMs: at - graduatedAtMs - pollMs, text }));
+}
+
+describe('a launch that boots after the wait first reads a home an earlier launch left its log in', () => {
+  const verdictOf = ({ gaveUpAtMs, decidingCapMs, advancements }: GiveUp) => ({
+    gaveUpAtMs,
+    decidingCapMs,
+    advancements,
+  });
+
+  it('decides as it would alone in that home, and records only its own stages', async () => {
+    const alone = launchBootingAfterTheWaitsFirstRead({}, { sharedWithAnEarlierLaunch: false });
+    const shared = launchBootingAfterTheWaitsFirstRead({}, { sharedWithAnEarlierLaunch: true });
+    const aloneGiveUp = giveUpOf(await reachOf(alone, REPLAY_WATCHDOG_MS), alone);
+    const sharedGiveUp = giveUpOf(await reachOf(shared, REPLAY_WATCHDOG_MS), shared);
+    expect(verdictOf(sharedGiveUp)).toEqual(verdictOf(aloneGiveUp));
+    expect(sharedGiveUp.advancements.map((advancement) => advancement.event)).toEqual(
+      shared.ownStageEvents,
+    );
+    expect(aloneGiveUp.decidingCapMs).toBe(
+      readinessWorstCaseMs({ path: 'packaged', ...alone.options }),
+    );
+  });
+
+  it("decides as it would alone when the earlier launch stopped inside its utility wait, and reaches the app's own verdict", async () => {
+    const alone = utilityForkBootingAfterTheWaitsFirstRead(
+      {},
+      { sharedWithALaunchThatStoppedInItsUtilityWait: false },
+    );
+    const shared = utilityForkBootingAfterTheWaitsFirstRead(
+      {},
+      { sharedWithALaunchThatStoppedInItsUtilityWait: true },
+    );
+    const aloneGiveUp = giveUpOf(await reachOf(alone, REPLAY_WATCHDOG_MS), alone);
+    const sharedGiveUp = giveUpOf(await reachOf(shared, REPLAY_WATCHDOG_MS), shared);
+    expect(verdictOf(sharedGiveUp)).toEqual(verdictOf(aloneGiveUp));
+    expect(sharedGiveUp.gaveUpAtMs).toBeGreaterThan(shared.appVerdictAtMs);
+    expect(sharedGiveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+
+  it("decides as it would alone when the earlier launch stopped just after its utility wait graduated, and reaches the app's own verdict", async () => {
+    const alone = utilityForkBootingAfterTheWaitsFirstRead(
+      {},
+      { sharedWithALaunchThatStoppedInItsUtilityWait: false },
+    );
+    const shared = {
+      ...alone,
+      name: "a utility fork booting after the wait's first read, into a home an earlier launch left just after its utility wait graduated",
+      narrationUntil: (untilMs: number) => [
+        ...anEarlierLaunchThatStoppedJustAfterItsUtilityWaitGraduated(
+          pollIntervalOf(alone.options),
+        ),
+        ...alone.narrationUntil(untilMs),
+      ],
+    };
+    const watchMs = 2 * readinessWorstCaseMs({ path: 'fork', ...alone.options });
+    const aloneGiveUp = giveUpOf(await reachOf(alone, watchMs), alone);
+    const sharedGiveUp = giveUpOf(await reachOf(shared, watchMs), shared);
+    expect(verdictOf(sharedGiveUp)).toEqual(verdictOf(aloneGiveUp));
+    expect(sharedGiveUp.gaveUpAtMs).toBeGreaterThan(shared.appVerdictAtMs);
+    expect(sharedGiveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+});
+
+describe('a wait over a home that also holds the log a launch the day before left decides as it would had every poll read both logs', () => {
+  const recordOf = ({
+    gaveUpAtMs,
+    reason,
+    decidingCapMs,
+    declaredGrantMs,
+    advancements,
+  }: GiveUp) => ({
+    gaveUpAtMs,
+    reason,
+    decidingCapMs,
+    declaredGrantMs,
+    advancements,
+  });
+
+  it("reads past a poll that could not read the launch's own log, and still reaches the app's own verdict", async () => {
+    const alone = utilityForkTheLastStageKeptAlive({});
+    const beside = utilityForkTheLastStageKeptAliveBesideTheDayBeforesLog(
+      {},
+      { unreadableOnOnePollOfTheDeclaredGrant: false },
+    );
+    const glitched = utilityForkTheLastStageKeptAliveBesideTheDayBeforesLog(
+      {},
+      { unreadableOnOnePollOfTheDeclaredGrant: true },
+    );
+    const watchMs = 2 * alone.appVerdictAtMs;
+    const aloneGiveUp = giveUpOf(await reachOf(alone, watchMs), alone);
+    const besideGiveUp = giveUpOf(await reachOf(beside, watchMs), beside);
+    const glitchedGiveUp = giveUpOf(await reachOf(glitched, watchMs), glitched);
+    expect(recordOf(besideGiveUp)).toEqual(recordOf(aloneGiveUp));
+    expect(recordOf(glitchedGiveUp)).toEqual(recordOf(besideGiveUp));
+    expect(glitchedGiveUp.gaveUpAtMs).toBeGreaterThan(glitched.appVerdictAtMs);
+    expect(glitchedGiveUp.message).toContain(DESKTOP_OPEN_PROJECT_FAILED_EVENT);
+  });
+
+  it('adopts a launch that boots while the earlier log cannot be read, and records only its own stages', async () => {
+    const alone = launchBootingAfterTheWaitsFirstRead({}, { sharedWithAnEarlierLaunch: false });
+    const beside = launchBootingAfterTheWaitsFirstReadBesideTheDayBeforesLog(
+      {},
+      { unreadableFromTheBootUntilMainsFirstHeartbeat: false },
+    );
+    const glitched = launchBootingAfterTheWaitsFirstReadBesideTheDayBeforesLog(
+      {},
+      { unreadableFromTheBootUntilMainsFirstHeartbeat: true },
+    );
+    const aloneGiveUp = giveUpOf(await reachOf(alone, REPLAY_WATCHDOG_MS), alone);
+    const besideGiveUp = giveUpOf(await reachOf(beside, REPLAY_WATCHDOG_MS), beside);
+    const glitchedGiveUp = giveUpOf(await reachOf(glitched, REPLAY_WATCHDOG_MS), glitched);
+    expect(recordOf(besideGiveUp)).toEqual(recordOf(aloneGiveUp));
+    expect(recordOf(glitchedGiveUp)).toEqual(recordOf(besideGiveUp));
+    expect(glitchedGiveUp.advancements.map((advancement) => advancement.event)).toEqual(
+      glitched.ownStageEvents,
+    );
   });
 });

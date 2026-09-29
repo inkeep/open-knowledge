@@ -235,10 +235,12 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
           let output = '';
           let ptyId = null;
           let settled = false;
-          let unsubscribe = () => {{}};
           let createdAt = null;
           let firstByteAt = null;
           let markerAt = null;
+          const endings = [];
+          const notices = [];
+          const releases = [];
           const sinceStart = (at) => (at === null ? null : Math.round(at - startedAt));
           const timings = () => ({{
             createdMs: sinceStart(createdAt),
@@ -249,10 +251,10 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
             if (settled) return;
             settled = true;
             clearTimeout(timeout);
-            unsubscribe();
+            for (const release of releases) release();
             if (ptyId !== null) await bridge.terminal.kill(ptyId).catch(() => {{}});
             if (error) reject(error);
-            else resolve({{ output, platform: bridge.platform, timings: timings() }});
+            else resolve({{ output, platform: bridge.platform, timings: timings(), endings, notices }});
           }};
           const consume = (data, at) => {{
             if (firstByteAt === null) firstByteAt = at;
@@ -280,15 +282,26 @@ def evaluate_pty_echo(socket_url: str) -> Dict[str, object]:
             () =>
               void finish(
                 new Error(
-                  `PTY echo timed out; output=${{JSON.stringify(output)}}; timings=${{JSON.stringify(timings())}}`,
+                  `PTY echo timed out; output=${{JSON.stringify(output)}}; timings=${{JSON.stringify(timings())}}; endings=${{JSON.stringify(endings)}}; notices=${{JSON.stringify(notices)}}`,
                 ),
               ),
             {renderer_echo_timeout_ms()},
           );
-          unsubscribe = bridge.terminal.onData((message) => {{
-            if (message.ptyId !== ptyId) return;
-            consume(message.data, performance.now());
-          }});
+          try {{
+            releases.push(bridge.terminal.onData((message) => {{
+              if (message.ptyId !== ptyId) return;
+              consume(message.data, performance.now());
+            }}));
+            releases.push(bridge.terminal.onExit((message) => {{
+              endings.push({{ ...message, atMs: sinceStart(performance.now()) }});
+            }}));
+            releases.push(bridge.terminal.onNotice((message) => {{
+              notices.push({{ ...message, atMs: sinceStart(performance.now()) }});
+            }}));
+          }} catch (error) {{
+            await finish(error);
+            return;
+          }}
           const isWindows = bridge.platform === 'win32';
           const created = await bridge.terminal.create({{
             cols: 80,
@@ -355,7 +368,10 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
-    print(f"PTY echo marker observed: {MARKER}; timings={json.dumps(result.get('timings'))}")
+    print(
+        f"PTY echo marker observed: {MARKER}; timings={json.dumps(result.get('timings'))}; "
+        f"endings={json.dumps(result.get('endings'))}; notices={json.dumps(result.get('notices'))}"
+    )
     return 0
 
 

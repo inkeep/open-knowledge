@@ -1,20 +1,22 @@
+/* biome-ignore-all lint/suspicious/noTemplateCurlyInString: GitHub expression fixtures must remain literal. */
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: Tests exercise the GitHub Actions environment outside Turbo. */
 import { readFileSync } from 'node:fs';
 import { describe, expect, test } from 'vitest';
+import { parse } from 'yaml';
+import { deriveChannel } from './published-release-tags.mjs';
 import {
   CANDIDATE_QUERY,
   changesetDirFor,
-  DEFAULT_BETA_LOOKBACK,
-  DEFAULT_RELEASE_LOOKBACK,
-  deriveChannel,
   deriveVersionForFixRefs,
   findChangesetPath,
   isFixRepoInRemit,
   isRetryableNetworkError,
-  isSelfRepoPr,
   isRetryableStatus,
+  isSelfRepoPr,
   isStableVersion,
   LINEAR_RETRY_ATTEMPTS,
   LINEAR_RETRY_CAP_MS,
+  LinearRateLimitError,
   linearGraphql,
   makeReleaseWindow,
   notificationMarkerUrl,
@@ -25,6 +27,7 @@ import {
   runFailureMessage,
   runWriteBack,
   selectGhToken,
+  toNode,
 } from './write-back.mjs';
 import { composeReply } from './write-back-gate.mjs';
 
@@ -57,10 +60,12 @@ function harness(overrides = {}) {
     listCandidates: async () => [candidate()],
     listChildren: async () => [],
     versionFor: async () => 'v0.36.0',
+    stableVersionFor: async () => null,
+    isPublishedVersion: () => true,
     readChangesetProse: async () => CHANGESET,
     postReply: async (origin, text) => writes.push({ kind: 'post', origin: origin.url, text }),
     recordNotification: async (marker) => writes.push({ kind: 'mark', url: marker.url }),
-    classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
+    classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', minimumVersion: '0.35.0' }),
     selfRepo: 'inkeep/open-knowledge',
     log: (m) => logs.push(m),
     ...overrides,
@@ -69,6 +74,23 @@ function harness(overrides = {}) {
 }
 
 describe('candidate enumeration', () => {
+  test('the candidate page proves whether a child lookup is necessary without filtering child states', () => {
+    expect(CANDIDATE_QUERY).toContain(
+      'children(first: 1) { nodes { id } pageInfo { hasNextPage } }',
+    );
+    expect(toNode({ children: { nodes: [], pageInfo: { hasNextPage: false } } }).hasChildren).toBe(
+      false,
+    );
+    expect(
+      toNode({ children: { nodes: [{ id: 'child' }], pageInfo: { hasNextPage: false } } })
+        .hasChildren,
+    ).toBe(true);
+    expect(toNode({ children: { nodes: [], pageInfo: { hasNextPage: true } } }).hasChildren).toBe(
+      true,
+    );
+    expect(toNode({ children: { nodes: [] } }).hasChildren).toBe(true);
+    expect(toNode({}).hasChildren).toBeUndefined();
+  });
   test('candidates come from a Linear ticket query, never from a walk over release commits', () => {
     expect(CANDIDATE_QUERY).toContain('issues(');
     expect(CANDIDATE_QUERY).toContain('state: { type: { eq: "completed" } }');
@@ -88,7 +110,9 @@ describe('candidate enumeration', () => {
 
   test('the tag list comes from the shared boundary, never a private copy of it', () => {
     const source = readFileSync(new URL('./write-back.mjs', import.meta.url), 'utf8');
-    expect(source).toMatch(/import \{[^}]*\brealReleaseTags\b[^}]*\} from '\.\/resolve-shipped-version\.mjs'/);
+    expect(source).toMatch(
+      /import \{[^}]*\brealPublishedReleaseTags\b[^}]*\} from '\.\/published-release-tags\.mjs'/,
+    );
     expect(source).not.toMatch(/^function real(?:Stable|Release)Tags/m);
     expect(source).not.toMatch(/Tags[^\n]*\.filter\([^\n]*STABLE_TAG_RE/);
   });
@@ -103,7 +127,9 @@ describe('candidate enumeration', () => {
 
 describe('version derivation', () => {
   const findMirrored = (sha) =>
-    sha === PRIVATE_SHA ? [{ sha: MIRRORED_SHA, message: `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` }] : [];
+    sha === PRIVATE_SHA
+      ? [{ sha: MIRRORED_SHA, message: `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` }]
+      : [];
   const containsFrom = (map) => (tag, sha) => (map[sha] ?? []).includes(tag);
 
   const derive = (overrides = {}) =>
@@ -122,7 +148,13 @@ describe('version derivation', () => {
   test('a commit fix reference resolves without needing a pull request', () => {
     expect(
       derive({
-        fixReferences: [{ channel: 'commit', url: 'https://github.com/x/y/commit/' + PRIVATE_SHA, sha: PRIVATE_SHA }],
+        fixReferences: [
+          {
+            channel: 'commit',
+            url: 'https://github.com/x/y/commit/' + PRIVATE_SHA,
+            sha: PRIVATE_SHA,
+          },
+        ],
         resolvePrMergeSha: () => {
           throw new Error('a commit reference must not need the pull-request hop');
         },
@@ -190,7 +222,9 @@ describe('version derivation', () => {
     const mirrorMain = 'd'.repeat(40);
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' },
+        ],
         stableTags: [...STABLE_TAGS, 'v0.37.0-beta.0'],
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => mirrorMain,
@@ -207,11 +241,14 @@ describe('version derivation', () => {
     const cherryPick = 'e'.repeat(40);
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/928' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => mirrorMain,
-        readCommitMessage: (sha) => (sha === mirrorMain ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null),
+        readCommitMessage: (sha) =>
+          sha === mirrorMain ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null,
         findMirroredCommits: (sha) =>
           sha === PRIVATE_SHA
             ? [
@@ -235,9 +272,12 @@ describe('version derivation', () => {
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: ({ repo }) => (repo === 'agents-private' ? PRIVATE_SHA : mirrorEcho),
-        readCommitMessage: (sha) => (sha === mirrorEcho ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null),
+        readCommitMessage: (sha) =>
+          sha === mirrorEcho ? `subject\n\nGitOrigin-RevId: ${PRIVATE_SHA}\n` : null,
         findMirroredCommits: (sha) =>
-          sha === PRIVATE_SHA ? [{ sha: MIRRORED_SHA, message: `GitOrigin-RevId: ${PRIVATE_SHA}` }] : [],
+          sha === PRIVATE_SHA
+            ? [{ sha: MIRRORED_SHA, message: `GitOrigin-RevId: ${PRIVATE_SHA}` }]
+            : [],
         contains: containsFrom({ [MIRRORED_SHA]: ['v0.36.0'] }),
       }),
     ).toBe('0.36.0');
@@ -247,7 +287,9 @@ describe('version derivation', () => {
     const directSha = 'a1'.repeat(20);
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/500' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/500' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => directSha,
@@ -266,7 +308,9 @@ describe('version derivation', () => {
     const logs = [];
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/502' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/502' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => mergeSha,
@@ -289,14 +333,18 @@ describe('version derivation', () => {
     expect(isSelfRepoPr({ kind: 'sha', sha: 'a'.repeat(40) }, 'inkeep/open-knowledge')).toBe(false);
     expect(isSelfRepoPr(pr('inkeep', 'open-knowledge'), undefined)).toBe(false);
     expect(isSelfRepoPr(pr('inkeep', 'agents-private'), 'inkeep/agents-private')).toBe(false);
-    expect(isSelfRepoPr(pr('inkeep', 'some-fork'), 'inkeep/some-fork', 'inkeep/some-fork')).toBe(false);
+    expect(isSelfRepoPr(pr('inkeep', 'some-fork'), 'inkeep/some-fork', 'inkeep/some-fork')).toBe(
+      false,
+    );
   });
 
   test('a mirror pull request contained in no stable yet yields no version', () => {
     const logs = [];
     expect(
       deriveVersionForFixRefs({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/501' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/open-knowledge/pull/501' },
+        ],
         stableTags: STABLE_TAGS,
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => 'b2'.repeat(20),
@@ -330,14 +378,18 @@ describe('version derivation', () => {
     expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha, at)).toBe(sha);
     expect(parseMergeShaOutput('2026-07-23T14:19:56Z\n' + sha.toUpperCase(), at)).toBe(sha);
 
-    expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(/merge_commit_sha/);
+    expect(() => parseMergeShaOutput('2026-07-23T14:19:56Z\nnot-a-sha', at)).toThrow(
+      /merge_commit_sha/,
+    );
   });
 
   test('a fix reference in a repo this workflow cannot reach is skipped, not attempted', () => {
     const logs = [];
     expect(
       derive({
-        fixReferences: [{ channel: 'pull-request', url: 'https://github.com/inkeep/management/pull/272' }],
+        fixReferences: [
+          { channel: 'pull-request', url: 'https://github.com/inkeep/management/pull/272' },
+        ],
         selfRepo: 'inkeep/open-knowledge',
         resolvePrMergeSha: () => {
           throw new Error('must not be attempted: this repo is out of remit');
@@ -372,11 +424,19 @@ describe('version derivation', () => {
 
   test('remit is decided by repo identity, and a bare commit SHA needs no repo at all', () => {
     const at = { defaultRepo: 'inkeep/agents-private', selfRepo: 'inkeep/open-knowledge' };
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'agents-private' }, at)).toBe(true);
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'InKeep', repo: 'Agents-Private' }, at)).toBe(true);
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge' }, at)).toBe(true);
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'agents-private' }, at)).toBe(
+      true,
+    );
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'InKeep', repo: 'Agents-Private' }, at)).toBe(
+      true,
+    );
+    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge' }, at)).toBe(
+      true,
+    );
     expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'management' }, at)).toBe(false);
-    expect(isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge-legacy' }, at)).toBe(false);
+    expect(
+      isFixRepoInRemit({ kind: 'pr', owner: 'inkeep', repo: 'open-knowledge-legacy' }, at),
+    ).toBe(false);
     expect(isFixRepoInRemit({ kind: 'sha', sha: PRIVATE_SHA }, at)).toBe(true);
   });
 
@@ -420,6 +480,92 @@ describe('idempotency marker', () => {
 });
 
 describe('write-back run', () => {
+  test('an enumeration throttle returns an unknown deferred count without processing or writing', async () => {
+    const h = harness({
+      live: true,
+      listCandidates: async () => {
+        throw new LinearRateLimitError();
+      },
+    });
+    const result = await h.run();
+    expect(result.deferred).toBeNull();
+    expect(result.errored).toHaveLength(1);
+    expect(h.writes).toEqual([]);
+    expect(runFailureMessage(result)).toContain('remaining count is unknown');
+  });
+
+  test('quota diagnostics retain endpoint and complexity windows without mislabelling them as global', () => {
+    const headers = {
+      'x-ratelimit-endpoint-name': 'attachmentCreate',
+      'x-ratelimit-endpoint-requests-reset': '123',
+      'x-ratelimit-complexity-reset': '456',
+      'retry-after': '2',
+    };
+    const error = new LinearRateLimitError({ get: (name) => headers[name] });
+    expect(error.message).toContain('endpoint attachmentCreate reset epoch ms: 123');
+    expect(error.message).toContain('complexity reset epoch ms: 456');
+    expect(error.message).toContain('retry-after: 2');
+    expect(error.message).not.toContain('(request reset');
+  });
+  test('leaf issues spend no separate child-query request', async () => {
+    let calls = 0;
+    const leaf = toNode({
+      id: 'leaf',
+      identifier: 'PRD-7539',
+      state: { type: 'completed' },
+      attachments: { nodes: [{ url: GH_ISSUE }, { url: GH_PULL }] },
+      children: { nodes: [], pageInfo: { hasNextPage: false } },
+    });
+    const h = harness({
+      listCandidates: async () => [leaf],
+      listChildren: async () => {
+        calls++;
+        return [];
+      },
+    });
+    const result = await h.run();
+    expect(result.posted).toHaveLength(1);
+    expect(calls).toBe(0);
+  });
+
+  test.each([true, undefined])(
+    'a parent or unknown child hint still loads every child (hint=%s)',
+    async (hasChildren) => {
+      let calls = 0;
+      const h = harness({
+        listCandidates: async () => [candidate({ hasChildren })],
+        listChildren: async () => {
+          calls++;
+          return [candidate({ id: 'child', identifier: 'PRD-0002', stateType: 'started' })];
+        },
+      });
+      const result = await h.run();
+      expect(calls).toBe(1);
+      expect(result.posted).toEqual([]);
+    },
+  );
+
+  test('a Linear quota refusal stops the entire scan instead of querying every remaining candidate', async () => {
+    let calls = 0;
+    const h = harness({
+      live: true,
+      listCandidates: async () => [
+        candidate(),
+        candidate({ id: '2', identifier: 'PRD-2' }),
+        candidate({ id: '3', identifier: 'PRD-3' }),
+      ],
+      listChildren: async () => {
+        calls++;
+        throw new LinearRateLimitError({ get: () => '1790326800000' });
+      },
+    });
+    const result = await h.run();
+    expect(calls).toBe(1);
+    expect(result.deferred).toBe(2);
+    expect(result.errored).toHaveLength(1);
+    expect(result.errored[0].message).toContain('1790326800000');
+    expect(h.writes).toEqual([]);
+  });
   test('with no explicit live mode it composes and logs but performs no writes at all', async () => {
     const h = harness();
     const result = await h.run();
@@ -450,7 +596,7 @@ describe('write-back run', () => {
     await h.run();
     const post = h.writes.find((w) => w.kind === 'post');
     expect(post.origin).toBe(DISCORD_THREAD);
-    expect(post.text).toContain('<https://github.com/inkeep/open-knowledge/releases>');
+    expect(post.text).toContain('<https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0>');
   });
 
   test('a failure while recording the marker leaves the reporter unmessaged', async () => {
@@ -487,9 +633,11 @@ describe('write-back run', () => {
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'version-underivable' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no stable release could be derived'))).toBe(
-      true,
-    );
+    expect(
+      h.logs.some(
+        (m) => m.startsWith('::warning::') && m.includes('no stable release could be derived'),
+      ),
+    ).toBe(true);
   });
 
   test('a candidate whose only origin cannot be replied to posts nothing and warns', async () => {
@@ -500,11 +648,18 @@ describe('write-back run', () => {
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-unrepliable' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'))).toBe(true);
+    expect(
+      h.logs.some(
+        (m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'),
+      ),
+    ).toBe(true);
   });
 
   test('a candidate with no origin at all is skipped quietly, because not every fix has a reporter', async () => {
-    const h = harness({ live: true, listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL] })] });
+    const h = harness({
+      live: true,
+      listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL] })],
+    });
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'no-origin' }]);
@@ -515,7 +670,13 @@ describe('write-back run', () => {
     const h = harness({
       live: true,
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: ['Bug'], attachmentUrls: [] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: ['Bug'],
+          attachmentUrls: [],
+        },
         { id: 'b', identifier: 'PRD-7401', stateType: 'unstarted', labels: [], attachmentUrls: [] },
       ],
     });
@@ -529,7 +690,9 @@ describe('write-back run', () => {
     const result = await h.run();
     expect(h.writes).toEqual([]);
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'no-prose' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no changeset prose'))).toBe(true);
+    expect(
+      h.logs.some((m) => m.startsWith('::warning::') && m.includes('no changeset prose')),
+    ).toBe(true);
   });
 
   test('an infra failure throws out of the run rather than being folded into silence', async () => {
@@ -546,7 +709,13 @@ describe('write-back run', () => {
     const h = harness({
       live: true,
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: ['Bug'], attachmentUrls: [] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: ['Bug'],
+          attachmentUrls: [],
+        },
         { id: 'b', identifier: 'PRD-7403', stateType: 'completed', labels: [], attachmentUrls: [] },
       ],
     });
@@ -558,9 +727,14 @@ describe('write-back run', () => {
 describe('changeset parsing', () => {
   test('the bump block is stripped and the release note is what remains', () => {
     const parsed = parseChangeset(
-      ['---', "'@inkeep/open-knowledge': patch", '---', '', 'Honor backslash escapes in the promoters.', ''].join(
-        '\n',
-      ),
+      [
+        '---',
+        "'@inkeep/open-knowledge': patch",
+        '---',
+        '',
+        'Honor backslash escapes in the promoters.',
+        '',
+      ].join('\n'),
     );
     expect(parsed).toEqual({
       title: 'Honor backslash escapes in the promoters.',
@@ -569,7 +743,9 @@ describe('changeset parsing', () => {
   });
 
   test('a multi-line note keeps its first line as the title and its whole text as the body', () => {
-    const parsed = parseChangeset(['---', "'x': patch", '---', '', 'Short subject', '', 'More detail.'].join('\n'));
+    const parsed = parseChangeset(
+      ['---', "'x': patch", '---', '', 'Short subject', '', 'More detail.'].join('\n'),
+    );
     expect(parsed.title).toBe('Short subject');
     expect(parsed.body).toContain('More detail.');
   });
@@ -596,7 +772,9 @@ describe('changeset parsing', () => {
       expect(text).not.toBeNull();
       expect(text).not.toContain(changeset.title);
       expect(text).not.toContain(changeset.body);
-      expect(text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+      expect(text).toContain(
+        '[the release page](https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0)',
+      );
     }
   });
 });
@@ -614,20 +792,31 @@ describe('locating the changeset a fix shipped with', () => {
   });
 
   test('a pull request against the public mirror keeps it at the root, where that repo puts it', () => {
-    expect(findChangesetPath(['.changeset/some-fix.md'], { repo: 'open-knowledge' })).toBe('.changeset/some-fix.md');
+    expect(findChangesetPath(['.changeset/some-fix.md'], { repo: 'open-knowledge' })).toBe(
+      '.changeset/some-fix.md',
+    );
   });
 
   test("another product's changeset is never picked for an Open Knowledge reporter", () => {
-    const foreign = ['public/agents/.changeset/some-agents-fix.md', '.changeset/a-stray-root-changeset.md'];
+    const foreign = [
+      'public/agents/.changeset/some-agents-fix.md',
+      '.changeset/a-stray-root-changeset.md',
+    ];
     expect(findChangesetPath(foreign, { repo: 'agents-private' })).toBeNull();
   });
 
   test('the changeset README is never mistaken for a changeset', () => {
-    expect(findChangesetPath(['public/open-knowledge/.changeset/README.md'], { repo: 'agents-private' })).toBeNull();
+    expect(
+      findChangesetPath(['public/open-knowledge/.changeset/README.md'], { repo: 'agents-private' }),
+    ).toBeNull();
   });
 
   test('a pull request that added no changeset yields nothing rather than a wrong file', () => {
-    expect(findChangesetPath(['public/open-knowledge/packages/app/src/x.ts'], { repo: 'agents-private' })).toBeNull();
+    expect(
+      findChangesetPath(['public/open-knowledge/packages/app/src/x.ts'], {
+        repo: 'agents-private',
+      }),
+    ).toBeNull();
     expect(findChangesetPath([], { repo: 'agents-private' })).toBeNull();
   });
 
@@ -652,7 +841,13 @@ describe('cross-repo token selection', () => {
   test('with no bridge token configured every call falls back to the ambient one', () => {
     const bare = { GITHUB_REPOSITORY: 'inkeep/open-knowledge' };
     expect(selectGhToken({ owner: 'inkeep', repo: 'agents-private', env: bare })).toBeNull();
-    expect(selectGhToken({ owner: 'inkeep', repo: 'agents-private', env: { ...bare, CROSS_REPO_TOKEN: '  ' } })).toBeNull();
+    expect(
+      selectGhToken({
+        owner: 'inkeep',
+        repo: 'agents-private',
+        env: { ...bare, CROSS_REPO_TOKEN: '  ' },
+      }),
+    ).toBeNull();
   });
 });
 
@@ -694,7 +889,9 @@ describe('one unreadable candidate does not silence the rest', () => {
 
   test('errors still turn the run red once the reachable reporters have been told', () => {
     expect(runFailureMessage({ posted: [], skipped: [], errored: [] })).toBeNull();
-    expect(runFailureMessage({ skipped: [{ identifier: 'PRD-1', reason: 'no-origin' }], errored: [] })).toBeNull();
+    expect(
+      runFailureMessage({ skipped: [{ identifier: 'PRD-1', reason: 'no-origin' }], errored: [] }),
+    ).toBeNull();
 
     const message = runFailureMessage({
       errored: [
@@ -762,7 +959,11 @@ describe('telling a failure that waits from a failure that needs a person', () =
     const needsHuman = runFailureMessage({
       errored: [
         { identifier: 'PRD-0001', message: 'HTTP 503', disposition: 'retried-next-run' },
-        { identifier: 'PRD-0002', message: 'marker written, reply did NOT send', disposition: 'needs-human' },
+        {
+          identifier: 'PRD-0002',
+          message: 'marker written, reply did NOT send',
+          disposition: 'needs-human',
+        },
       ],
     });
     expect(needsHuman).toContain('ACTION REQUIRED');
@@ -772,7 +973,12 @@ describe('telling a failure that waits from a failure that needs a person', () =
 });
 
 describe('a Linear call that failed for reasons unrelated to the request', () => {
-  const ok = (data) => ({ ok: true, status: 200, json: async () => ({ data }), headers: { get: () => null } });
+  const ok = (data) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ data }),
+    headers: { get: () => null },
+  });
   const fail = (status, body = 'upstream connect error', headers = {}) => ({
     ok: false,
     status,
@@ -821,17 +1027,38 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
     expect(h.slept).toEqual([]);
   });
 
-  test('every 4xx that is not 429 fails fast, and every 5xx is retried', () => {
-    for (const status of [400, 401, 403, 404, 409, 422]) expect(isRetryableStatus(status)).toBe(false);
-    for (const status of [429, 500, 502, 503, 504]) expect(isRetryableStatus(status)).toBe(true);
+  test('4xx fails fast, while transient 5xx remains retryable', () => {
+    for (const status of [400, 401, 403, 404, 409, 422, 429])
+      expect(isRetryableStatus(status)).toBe(false);
+    for (const status of [500, 502, 503, 504]) expect(isRetryableStatus(status)).toBe(true);
     expect(isRetryableStatus(200)).toBe(false);
   });
 
-  test('a 429 waits as long as Linear asked rather than as long as the backoff computed', async () => {
+  test('a 429 stops without spending more quota or sleeping past the job budget', async () => {
     const h = callLinear([fail(429, 'slow down', { 'retry-after': '2' }), ok({ issues: {} })]);
-    await h.call;
-    expect(h.slept).toEqual([2000]);
+    await expect(h.call).rejects.toBeInstanceOf(LinearRateLimitError);
+    expect(h.attemptCount()).toBe(1);
+    expect(h.slept).toEqual([]);
   });
+
+  test.each([400, 200])(
+    'Linear GraphQL RATELIMITED on HTTP %s stops without retries',
+    async (status) => {
+      const payload = {
+        errors: [
+          { message: 'Rate limit exceeded', extensions: { code: 'RATELIMITED', statusCode: 429 } },
+        ],
+      };
+      const response =
+        status === 400
+          ? fail(400, JSON.stringify(payload))
+          : { ok: true, status: 200, json: async () => payload, headers: { get: () => null } };
+      const h = callLinear([response, ok({ issues: {} })]);
+      await expect(h.call).rejects.toBeInstanceOf(LinearRateLimitError);
+      expect(h.attemptCount()).toBe(1);
+      expect(h.slept).toEqual([]);
+    },
+  );
 
   test('an outsized Retry-After is capped, so one reply cannot park the job', () => {
     expect(retryDelayMs({ attempt: 1, retryAfterSeconds: 3600 })).toBe(LINEAR_RETRY_CAP_MS);
@@ -846,7 +1073,9 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
     const second = retryDelayMs({ attempt: 2, random: () => 0.5 });
     expect(second).toBeGreaterThan(first);
     expect(retryDelayMs({ attempt: 20, random: () => 1 })).toBeLessThanOrEqual(LINEAR_RETRY_CAP_MS);
-    expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeLessThan(retryDelayMs({ attempt: 1, random: () => 1 }));
+    expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeLessThan(
+      retryDelayMs({ attempt: 1, random: () => 1 }),
+    );
     expect(retryDelayMs({ attempt: 1, random: () => 0 })).toBeGreaterThan(0);
   });
 
@@ -900,8 +1129,12 @@ describe('a Linear call that failed for reasons unrelated to the request', () =>
   });
 
   test('the network classifier reads codes anywhere in the cause chain, and refuses the rest', () => {
-    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(true);
-    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'UND_ERR_SOCKET' }))).toBe(true);
+    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'ECONNRESET' }))).toBe(
+      true,
+    );
+    expect(isRetryableNetworkError(Object.assign(new Error('x'), { code: 'UND_ERR_SOCKET' }))).toBe(
+      true,
+    );
     expect(isRetryableNetworkError(new TypeError('fetch failed'))).toBe(true);
     expect(isRetryableNetworkError(new Error('socket hang up'))).toBe(true);
     expect(isRetryableNetworkError(new Error('Unexpected token < in JSON'))).toBe(false);
@@ -985,33 +1218,38 @@ describe('workflow shape', () => {
   const read = (name) => readFileSync(new URL(`../workflows/${name}`, import.meta.url), 'utf8');
   const workflow = read('write-back.yml');
 
-  test('it triggers on the existing release dispatch rather than on release published', () => {
-    expect(workflow).toMatch(/repository_dispatch:\s*\n\s*types:\s*\[desktop-release\]/);
+  test('it triggers only on the post-publication dispatch', () => {
+    expect(workflow).toMatch(/repository_dispatch:\s*\n\s*types:\s*\[desktop-release-published\]/);
     expect(workflow).not.toMatch(/^\s{2}release:/m);
     expect(workflow).not.toContain('types: [published]');
   });
 
-  test('both release channels run, and a tag of neither shape runs nothing', () => {
-    expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+$');
-    expect(workflow).toContain('^v[0-9]+\\.[0-9]+\\.[0-9]+-beta\\.[0-9]+$');
-    expect(workflow).toContain("echo \"channel=stable\"");
-    expect(workflow).toContain("echo \"channel=beta\"");
-    expect(workflow).toContain("echo \"channel=none\"");
+  test('scheduled reconciliation covers both channels and serializes across release tags', () => {
+    const parsed = parse(workflow);
+    expect(parsed.on.schedule).toEqual([{ cron: '43 * * * *' }]);
+    expect(parsed.jobs.notify.strategy.matrix.channel).toBe(
+      "${{ fromJSON(github.event_name == 'schedule' && '[\"stable\",\"beta\"]' || contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '[\"beta\"]' || '[\"stable\"]') }}",
+    );
+    expect(parsed.jobs.notify.concurrency).toEqual({
+      group: 'reporter-write-back-${{ matrix.channel }}',
+      'cancel-in-progress': false,
+    });
     expect(workflow).toMatch(/if:\s*steps\.tag\.outputs\.channel != 'none'/);
-    expect(workflow).not.toMatch(/steps\.tag\.outputs\.stable/);
+    expect(workflow).toContain('run: node .github/scripts/write-back-target.mjs');
   });
 
   test('no working step is left outside the channel gate', () => {
     const stepNames = [...workflow.matchAll(/^ {6}- (?:name:.*|uses:.*)$/gm)].length;
     const gated = [...workflow.matchAll(/if: steps\.tag\.outputs\.channel != 'none'/g)].length;
-    expect(gated).toBe(stepNames - 1);
+    expect(gated).toBe(stepNames - 3);
   });
 
   test('it carries its own concurrency group so a release can never queue behind it', () => {
     const group = /concurrency:\s*\n(?:\s*#.*\n)*\s*group:\s*(.+)/.exec(workflow)?.[1] ?? '';
     expect(group).toContain('reporter-write-back');
     for (const other of ['release.yml', 'promote-stable.yml', 'linear-release.yml']) {
-      const otherGroup = /concurrency:\s*\n(?:\s*#.*\n)*\s*group:\s*(.+)/.exec(read(other))?.[1] ?? '';
+      const otherGroup =
+        /concurrency:\s*\n(?:\s*#.*\n)*\s*group:\s*(.+)/.exec(read(other))?.[1] ?? '';
       expect(group.trim()).not.toBe(otherGroup.trim());
     }
   });
@@ -1028,7 +1266,19 @@ describe('workflow shape', () => {
   });
 
   test('live posting needs an explicit mode on top of the credential', () => {
+    const parsed = parse(workflow);
+    expect(parsed.on.workflow_dispatch.inputs.dry_run).toMatchObject({
+      type: 'boolean',
+      default: true,
+    });
+    const notify = parsed.jobs.notify.steps.find(
+      (step) => step.name === 'Notify reporters whose fix reached this release',
+    );
+    expect(notify.env.WRITE_BACK_MODE).toBe(
+      "${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || vars.WRITE_BACK_MODE }}",
+    );
     expect(workflow).toContain('WRITE_BACK_MODE');
+    expect(notify.env.RELEASE_TAG).toBe('${{ steps.tag.outputs.release_tag }}');
     expect(workflow).toContain('LINEAR_API_KEY');
   });
 
@@ -1055,85 +1305,33 @@ describe('workflow shape', () => {
   });
 });
 
-describe('release window', () => {
-  const TAGS = ['v0.34.0', 'v0.35.0', 'v0.35.1', 'v0.35.2', 'v0.36.0', 'v0.37.0'];
-  const windowFor = (releaseTag, lookback) =>
-    makeReleaseWindow({ releaseTag, stableTags: TAGS, lookback });
-
-  test('the release being processed is in window', () => {
-    expect(windowFor('v0.36.0')('0.36.0')).toBe('in-window');
-  });
-
-  test('a version above the release has not reached anyone yet', () => {
-    expect(windowFor('v0.36.0')('0.37.0')).toBe('not-yet-shipped');
-  });
-
-  test('the lookback keeps recent releases reachable so a missed run self-heals', () => {
-    const classify = windowFor('v0.36.0', 3);
-    for (const v of ['0.36.0', '0.35.2', '0.35.1', '0.35.0']) {
-      expect(classify(v)).toBe('in-window');
+describe('fixed reconciliation window', () => {
+  const windowFor = (releaseTag, minimumVersion = '0.35.0') =>
+    makeReleaseWindow({ releaseTag, minimumVersion });
+  test('missed releases remain eligible however many later releases appear', () => {
+    for (const releaseTag of ['v0.36.0', 'v0.90.0', 'v2.0.0']) {
+      expect(windowFor(releaseTag)('0.35.0')).toBe('in-window');
+      expect(windowFor(releaseTag)('0.34.0')).toBe('shipped-earlier');
     }
-  });
-
-  test('anything older than the lookback is left alone', () => {
-    expect(windowFor('v0.36.0', 3)('0.34.0')).toBe('shipped-earlier');
-  });
-
-  test('a narrower lookback excludes more of the history', () => {
-    const classify = windowFor('v0.36.0', 1);
-    expect(classify('0.35.2')).toBe('in-window');
-    expect(classify('0.35.1')).toBe('shipped-earlier');
-  });
-
-  test('a zero lookback degenerates to the exact release and nothing else', () => {
-    const classify = windowFor('v0.36.0', 0);
-    expect(classify('0.36.0')).toBe('in-window');
-    expect(classify('0.35.2')).toBe('shipped-earlier');
-  });
-
-  test('too little history to reach back keeps everything at or below the release', () => {
-    const classify = makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: ['v0.36.0'] });
-    expect(classify('0.36.0')).toBe('in-window');
-    expect(classify('0.35.0')).toBe('in-window');
-    expect(classify('0.37.0')).toBe('not-yet-shipped');
-  });
-
-  test('the v prefix is accepted on both sides', () => {
+    expect(windowFor('v0.36.0')('0.37.0')).toBe('not-yet-shipped');
+    expect(windowFor('v0.36.0')(null)).toBe('unversioned');
     expect(windowFor('0.36.0')('v0.36.0')).toBe('in-window');
   });
-
-  test('an underivable version is reported as such rather than silently admitted', () => {
-    expect(windowFor('v0.36.0')(null)).toBe('unversioned');
-  });
-
-  test('a missing or malformed release tag refuses rather than admitting all of history', () => {
-    for (const bad of [undefined, '', '   ', 'latest', 'v0.36.0-rc.1', 'v0.36']) {
-      expect(() => makeReleaseWindow({ releaseTag: bad, stableTags: TAGS })).toThrow(/RELEASE_TAG/);
+  test('invalid release or baseline refuses rather than enrolling all history', () => {
+    for (const releaseTag of [undefined, '', 'latest', 'v0.36.0-rc.1']) {
+      expect(() => makeReleaseWindow({ releaseTag })).toThrow('RELEASE_TAG');
     }
+    expect(() => makeReleaseWindow({ releaseTag: 'v0.36.0', minimumVersion: 'garbage' })).toThrow(
+      'minimum',
+    );
   });
-
-  test('a beta tag is a release this runs for, not a malformed one', () => {
-    const window = makeReleaseWindow({
-      releaseTag: 'v0.36.0-beta.1',
-      stableTags: [...TAGS, 'v0.36.0-beta.0', 'v0.36.0-beta.1'],
-    });
-    expect(window('0.36.0-beta.0')).toBe('in-window');
-    expect(window('0.36.0-beta.1')).toBe('in-window');
-    expect(window('0.36.0')).toBe('not-yet-shipped');
-  });
-
-  test('a stable run counts stables, so the betas between them cannot eat the lookback', () => {
-    const dense = ['v0.33.0', 'v0.34.0', 'v0.35.0', 'v0.36.0'].flatMap((tag) => [
-      `${tag}-beta.0`,
-      `${tag}-beta.1`,
-      tag,
-    ]);
-    const window = makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: dense });
-    expect(window('0.33.0')).toBe('in-window');
-  });
-
-  test('the default lookback is three', () => {
-    expect(DEFAULT_RELEASE_LOOKBACK).toBe(3);
+  test('the rollout retains the formerly eligible scope without extending into old unnotified history', () => {
+    const stable = makeReleaseWindow({ releaseTag: 'v0.77.9' });
+    expect(stable('0.77.6')).toBe('in-window');
+    expect(stable('0.77.5')).toBe('shipped-earlier');
+    const beta = makeReleaseWindow({ releaseTag: 'v0.78.0-beta.9' });
+    expect(beta('0.77.8-beta.0')).toBe('in-window');
+    expect(beta('0.77.7-beta.9')).toBe('shipped-earlier');
   });
 });
 
@@ -1143,7 +1341,7 @@ describe('release window applied to a run', () => {
       live: true,
       classifyRelease: makeReleaseWindow({
         releaseTag: 'v0.41.0',
-        stableTags: ['v0.36.0', 'v0.38.0', 'v0.39.0', 'v0.40.0', 'v0.41.0'],
+        minimumVersion: '0.38.0',
       }),
     });
     const result = await h.run();
@@ -1156,7 +1354,6 @@ describe('release window applied to a run', () => {
       live: true,
       classifyRelease: makeReleaseWindow({
         releaseTag: 'v0.35.0',
-        stableTags: ['v0.35.0', 'v0.36.0'],
       }),
     });
     const result = await h.run();
@@ -1167,7 +1364,7 @@ describe('release window applied to a run', () => {
   test('a candidate inside the window still gets its reply', async () => {
     const h = harness({
       live: true,
-      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', stableTags: STABLE_TAGS }),
+      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.36.0', minimumVersion: '0.35.0' }),
     });
     await h.run();
     expect(h.writes.filter((w) => w.kind === 'post')).toHaveLength(1);
@@ -1200,10 +1397,6 @@ describe('release channels', () => {
     expect(isStableVersion('0.36.0')).toBe(true);
     expect(isStableVersion('v0.36.0')).toBe(true);
     expect(isStableVersion('0.36.0-beta.0')).toBe(false);
-  });
-
-  test('the beta lookback is wider than the stable one, because betas cut far more often', () => {
-    expect(DEFAULT_BETA_LOOKBACK).toBeGreaterThan(DEFAULT_RELEASE_LOOKBACK);
   });
 });
 
@@ -1260,7 +1453,9 @@ describe('origin remit', () => {
     const h = harness({
       live: true,
       listCandidates: async () => [
-        candidate({ attachmentUrls: [GH_PULL, 'https://github.com/inkeep/agents/issues/412', SLACK_ARCHIVE] }),
+        candidate({
+          attachmentUrls: [GH_PULL, 'https://github.com/inkeep/agents/issues/412', SLACK_ARCHIVE],
+        }),
       ],
     });
     const result = await h.run();
@@ -1278,7 +1473,11 @@ describe('origin remit', () => {
     });
     const result = await h.run();
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'origin-unrepliable' }]);
-    expect(h.logs.some((m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'))).toBe(true);
+    expect(
+      h.logs.some(
+        (m) => m.startsWith('::warning::') && m.includes('no origin on it can be replied to'),
+      ),
+    ).toBe(true);
   });
 
   test('a Discord thread is repliable wherever it lives, because the bot is not repo-scoped', async () => {
@@ -1343,7 +1542,13 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: [], attachmentUrls: [GH_PULL] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: [],
+          attachmentUrls: [GH_PULL],
+        },
         { id: 'b', identifier: 'PRD-7401', stateType: 'completed', labels: [], attachmentUrls: [] },
       ],
       versionFor: async (node) => (node.identifier === 'PRD-7398' ? '0.36.0' : null),
@@ -1359,14 +1564,22 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
       live: true,
       listCandidates: async () => [candidate({ attachmentUrls: [GH_ISSUE] })],
       listChildren: async () => [
-        { id: 'a', identifier: 'PRD-7398', stateType: 'completed', labels: [], attachmentUrls: [GH_PULL] },
+        {
+          id: 'a',
+          identifier: 'PRD-7398',
+          stateType: 'completed',
+          labels: [],
+          attachmentUrls: [GH_PULL],
+        },
         { id: 'b', identifier: 'PRD-7401', stateType: 'completed', labels: [], attachmentUrls: [] },
       ],
       versionFor: async () => null,
     });
     const result = await h.run();
     expect(result.skipped).toEqual([{ identifier: 'PRD-7539', reason: 'version-underivable' }]);
-    const warning = h.logs.find((m) => m.startsWith('::warning::') && m.includes('could be derived'));
+    const warning = h.logs.find(
+      (m) => m.startsWith('::warning::') && m.includes('could be derived'),
+    );
     expect(warning).toContain('PRD-7398');
     expect(warning).not.toContain('PRD-7401');
   });
@@ -1392,13 +1605,15 @@ describe('a linked pull request, not a label, is what a reply depends on', () =>
 });
 
 describe('the beta leg', () => {
-  const BETA_TAGS = [...STABLE_TAGS, 'v0.37.0-beta.0', 'v0.37.0-beta.1'];
   const betaHarness = (overrides = {}) =>
     harness({
       live: true,
       channel: 'beta',
       versionFor: async () => '0.37.0-beta.0',
-      classifyRelease: makeReleaseWindow({ releaseTag: 'v0.37.0-beta.1', stableTags: BETA_TAGS }),
+      classifyRelease: makeReleaseWindow({
+        releaseTag: 'v0.37.0-beta.1',
+        minimumVersion: '0.37.0-beta.0',
+      }),
       ...overrides,
     });
 
@@ -1407,7 +1622,7 @@ describe('the beta leg', () => {
     await h.run();
     const post = h.writes.find((w) => w.kind === 'post');
     expect(post.text).toContain('v0.37.0-beta.0');
-    expect(post.text).toContain('going out now on the Open Knowledge beta channel');
+    expect(post.text).toContain('available in Open Knowledge beta');
     expect(post.text).toContain('follow up here');
     expect(post.text).not.toContain('This shipped in');
     expect(post.text).not.toContain(CHANGESET.body);
@@ -1431,7 +1646,7 @@ describe('the beta leg', () => {
       listCandidates: async () => [candidate({ attachmentUrls: [GH_PULL, GH_ISSUE, marked] })],
       classifyRelease: makeReleaseWindow({
         releaseTag: 'v0.37.0-beta.5',
-        stableTags: [...BETA_TAGS, 'v0.37.0-beta.5'],
+        minimumVersion: '0.37.0-beta.0',
       }),
     });
     const result = await h.run();
@@ -1476,8 +1691,12 @@ describe('the beta leg', () => {
     const forIssue = posts.find((p) => p.origin === GH_ISSUE);
     const forDiscord = posts.find((p) => p.origin === DISCORD_THREAD);
     expect(forIssue.text).not.toContain(CHANGESET.body);
-    expect(forIssue.text).toContain('[the releases page](https://github.com/inkeep/open-knowledge/releases)');
+    expect(forIssue.text).toContain(
+      '[the release page](https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0)',
+    );
     expect(forDiscord.text).not.toContain(CHANGESET.body);
-    expect(forDiscord.text).toContain('<https://github.com/inkeep/open-knowledge/releases>');
+    expect(forDiscord.text).toContain(
+      '<https://github.com/inkeep/open-knowledge/releases/tag/v0.36.0>',
+    );
   });
 });

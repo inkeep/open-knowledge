@@ -8,6 +8,47 @@ export const UTILITY_INIT_TIMEOUT_MS = 20_000;
 
 export const SPAWN_WAIT_EXTENSION_FACTOR = 8;
 
+export function startupWaitHardCapMs(
+  startupDeadlineMs: number,
+  progressDeadlineMs?: number,
+): number {
+  return Math.max(
+    startupDeadlineMs,
+    progressDeadlineMs ?? startupDeadlineMs * SPAWN_WAIT_EXTENSION_FACTOR,
+  );
+}
+
+export const UTILITY_INIT_HARD_CAP_MS = startupWaitHardCapMs(UTILITY_INIT_TIMEOUT_MS);
+
+export const UTILITY_WAIT_EXTENDED_EVENT = 'desktop-utility-wait-extended';
+
+export const UTILITY_WAIT_EXPIRED_EVENT = 'desktop-utility-wait-expired';
+
+export const UTILITY_WAIT_LATE_KILL_EVENT = 'desktop-utility-wait-late-kill';
+
+export const UTILITY_INIT_PHASES = [
+  'init-received',
+  'imports-resolved',
+  'project-git-ensured',
+  'boot-server-started',
+] as const;
+
+export type UtilityInitPhase = (typeof UTILITY_INIT_PHASES)[number];
+
+export const UTILITY_INIT_COUNTERS = ['uptimeMs', 'cpuUserMs', 'cpuSystemMs'] as const;
+
+export type UtilityInitCounters = Record<(typeof UTILITY_INIT_COUNTERS)[number], number>;
+
+export function isUtilityInitPhase(value: unknown): value is UtilityInitPhase {
+  return (UTILITY_INIT_PHASES as readonly unknown[]).includes(value);
+}
+
+export function utilityInitPhaseEvent(
+  phase: UtilityInitPhase,
+): `desktop-utility-init.${UtilityInitPhase}` {
+  return `desktop-utility-init.${phase}`;
+}
+
 export const BOOT_HEARTBEAT_MAX_BEATS = 24;
 
 export const DESKTOP_BOOT_EVENT = 'desktop.boot';

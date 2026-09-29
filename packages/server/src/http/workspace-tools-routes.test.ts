@@ -16,17 +16,21 @@ function buildGroup() {
     searchService: {} as SearchService,
     linkPreviewFetch: undefined,
     getLinkPreviewsEnabled: undefined,
+    declaredGitHubHosts: new Set<string>(),
+    resolveGitHubToken: undefined,
+    githubReferenceFetch: undefined,
     getGeneratedIndexSettingsStatus: undefined,
     setGeneratedIndexEnabled: undefined,
   });
 }
 
 describe('createWorkspaceToolsRoutes table', () => {
-  test('registers exactly the six workspace-tool paths', () => {
+  test('registers exactly the seven workspace-tool paths', () => {
     expect([...buildGroup().paths].sort()).toEqual(
       [
         '/api/search',
         '/api/link-preview',
+        '/api/github-reference',
         '/api/skill-targets',
         '/api/saved-themes',
         '/api/saved-theme',

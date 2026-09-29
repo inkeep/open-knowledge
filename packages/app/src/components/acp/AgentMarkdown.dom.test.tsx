@@ -4,6 +4,7 @@ import type { Workspace } from '@/lib/workspace-paths';
 import { AgentMarkdown } from './AgentMarkdown';
 import { buildDocPathResolver, setDocPathResolver } from './doc-path-links';
 import { DocPathResolverReadyContext } from './doc-path-links-context';
+import { ReferenceRulesContext } from './reference-links-context';
 
 describe('AgentMarkdown', () => {
   afterEach(cleanup);
@@ -74,6 +75,77 @@ describe('AgentMarkdown', () => {
     expect(container.querySelector('script')).toBeNull();
   });
 
+  test('ticket prefixes and qualified GitHub references render as links that open outside, code does not', () => {
+    const { container } = render(
+      <ReferenceRulesContext
+        value={{
+          githubBase: 'https://github.com',
+          autolinks: [{ prefix: 'PRD-', url: 'https://linear.app/inkeep/issue/PRD-<num>' }],
+        }}
+      >
+        <AgentMarkdown
+          text={'Fixes PRD-8223 and inkeep/agents-private#4971, not `PRD-1` or #12.'}
+        />
+      </ReferenceRulesContext>,
+    );
+    const anchors = [...container.querySelectorAll('a')].map((a) => [
+      a.textContent,
+      a.getAttribute('href'),
+      a.getAttribute('target'),
+    ]);
+    expect(anchors).toEqual([
+      ['PRD-8223', 'https://linear.app/inkeep/issue/PRD-8223', '_blank'],
+      [
+        'inkeep/agents-private#4971',
+        'https://github.com/inkeep/agents-private/issues/4971',
+        '_blank',
+      ],
+    ]);
+  });
+
+  test('each thread links references with its own GitHub host, whichever thread rendered last', () => {
+    const enterprise = { githubBase: 'https://ghe.example.com', autolinks: [] };
+    const dotcom = { githubBase: 'https://github.com', autolinks: [] };
+    const hrefIn = (container: HTMLElement) => container.querySelector('a')?.getAttribute('href');
+    const first = render(
+      <ReferenceRulesContext value={enterprise}>
+        <AgentMarkdown text="Fixed in team/repo#9." />
+      </ReferenceRulesContext>,
+    );
+    const second = render(
+      <ReferenceRulesContext value={dotcom}>
+        <AgentMarkdown text="Fixed in team/repo#9." />
+      </ReferenceRulesContext>,
+    );
+    first.rerender(
+      <ReferenceRulesContext value={enterprise}>
+        <AgentMarkdown text="Fixed in team/repo#10." />
+      </ReferenceRulesContext>,
+    );
+    expect(hrefIn(first.container)).toBe('https://ghe.example.com/team/repo/issues/10');
+    expect(hrefIn(second.container)).toBe('https://github.com/team/repo/issues/9');
+  });
+
+  test('references already on screen relink when the thread learns its GitHub host', () => {
+    const text = 'Fixed in team/repo#9.';
+    const { container, rerender } = render(
+      <ReferenceRulesContext value={{ githubBase: 'https://github.com', autolinks: [] }}>
+        <AgentMarkdown text={text} />
+      </ReferenceRulesContext>,
+    );
+    expect(container.querySelector('a')?.getAttribute('href')).toBe(
+      'https://github.com/team/repo/issues/9',
+    );
+    rerender(
+      <ReferenceRulesContext value={{ githubBase: 'https://ghe.example.com', autolinks: [] }}>
+        <AgentMarkdown text={text} />
+      </ReferenceRulesContext>,
+    );
+    expect(container.querySelector('a')?.getAttribute('href')).toBe(
+      'https://ghe.example.com/team/repo/issues/9',
+    );
+  });
+
   test('hardens links to open in a new context', () => {
     const { container } = render(<AgentMarkdown text={'[docs](https://example.com/)'} />);
     const anchor = container.querySelector('a');
@@ -134,6 +206,27 @@ describe('AgentMarkdown doc-path links', () => {
     expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT');
     expect(anchor?.textContent).toBe('REPORT.md');
     expect(container.textContent).not.toContain('[blocked]');
+  });
+
+  test('a section link written as ./path.md#slug, the form the project skill prescribes, opens the doc at that heading in-app', () => {
+    const { container } = renderWithResolver(
+      'The schema is under [Data model](./reports/foo/REPORT.md#data-model).',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT#data-model');
+    expect(anchor?.getAttribute('target')).toBeNull();
+    expect(container.textContent).not.toContain('[blocked]');
+  });
+
+  test('a section link written as /path.md#slug, the content-root form, opens the doc at that heading in-app', () => {
+    const { container } = renderWithResolver(
+      'The schema is under [Data model](/reports/foo/REPORT.md#data-model).',
+    );
+
+    const anchor = container.querySelector('[data-testid="agent-thread-doc-link"]');
+    expect(anchor?.getAttribute('href')).toBe('#/reports/foo/REPORT#data-model');
+    expect(anchor?.getAttribute('target')).toBeNull();
   });
 
   test('a markdown link to a file: URL of a workspace doc opens in-app too', () => {

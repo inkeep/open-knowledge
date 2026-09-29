@@ -93,9 +93,8 @@ describe('detached-server lifecycle integration', () => {
     });
     child.unref();
 
-    let lock: ServerLockMetadata | null = null;
     try {
-      lock = await waitForLock(lockDir);
+      const lock = await waitForLock(lockDir);
 
       expect(lock.port).toBeGreaterThan(0);
       expect(lock.pid).toBe(child.pid as number);
@@ -112,12 +111,8 @@ describe('detached-server lifecycle integration', () => {
         expect(pgid).not.toBe(myPgid);
       }
     } finally {
-      if (lock !== null) {
-        try {
-          process.kill(lock.pid, 'SIGKILL');
-        } catch {}
-        await wait(200);
-      }
+      child.kill('SIGKILL');
+      await wait(200);
     }
   }, 60_000);
 
@@ -164,7 +159,7 @@ describe('detached-server lifecycle integration', () => {
     });
     child.unref();
 
-    process.kill(child.pid as number, 'SIGKILL');
+    child.kill('SIGKILL');
 
     const deadline = Date.now() + 10_000;
     while (exitRecord === null && Date.now() < deadline) {
@@ -204,7 +199,7 @@ describe('detached-server lifecycle integration', () => {
     });
     child.unref();
 
-    if (killWith !== null) process.kill(child.pid as number, killWith);
+    if (killWith !== null) child.kill(killWith);
 
     const recordPath = join(lockDir, SERVER_EXIT_LOG);
     const deadline = Date.now() + 10_000;

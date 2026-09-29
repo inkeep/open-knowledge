@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Locator, Page } from '@playwright/test';
 import { HISTORY_PANEL_WIDTH_PX } from '../../src/hooks/use-history-presentation-mode';
+import { AGENTS_PANEL_WIDTH_KEY } from '../../src/lib/agents-panel-width-store';
 import { expect, switchColorThemeAndSettleFade, test } from './_helpers';
 
 const AGENTS_PANEL_MOUNT = '[data-agents-panel-mount]';
@@ -380,6 +381,54 @@ async function resizeAgentsPanel(page: Page, targetWidth: number): Promise<void>
   else expect(observedWidth).toBeLessThanOrEqual(targetWidth);
 }
 
+async function dragAgentsPanel(
+  page: Page,
+  targetWidth: number,
+  termination: 'pointerup' | 'pointercancel' = 'pointerup',
+): Promise<number> {
+  const mount = page.locator(AGENTS_PANEL_MOUNT);
+  const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
+  const handle = panel.locator('xpath=preceding-sibling::*[1]');
+  const [handleBounds, startWidth] = await Promise.all([
+    handle.boundingBox(),
+    panel.evaluate((element) => element.getBoundingClientRect().width),
+  ]);
+  expect(handleBounds).not.toBeNull();
+  if (handleBounds === null) throw new Error('Agents panel handle has no bounds');
+  const startX = handleBounds.x + handleBounds.width / 2;
+  const y = handleBounds.y + handleBounds.height / 2;
+  const targetX = startX + startWidth - targetWidth;
+
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  await expect(page.locator('[data-dragging="true"]')).toHaveCount(1);
+  await page.mouse.move(targetX, y, { steps: 8 });
+  const transientWidth = await panel.evaluate((element) => element.getBoundingClientRect().width);
+
+  if (termination === 'pointercancel') {
+    await page.evaluate(() => {
+      document.dispatchEvent(new PointerEvent('pointercancel', { bubbles: true, pointerId: 1 }));
+    });
+  }
+  await page.mouse.up();
+  await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+  return transientWidth;
+}
+
+async function agentsPanelWidth(page: Page): Promise<number> {
+  return page
+    .locator(AGENTS_PANEL_MOUNT)
+    .locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]')
+    .evaluate((element) => element.getBoundingClientRect().width);
+}
+
+async function persistedAgentsPanelWidth(page: Page): Promise<number | null> {
+  return page.evaluate((key) => {
+    const raw = window.localStorage.getItem(key);
+    return raw === null ? null : Number.parseInt(raw, 10);
+  }, AGENTS_PANEL_WIDTH_KEY);
+}
+
 async function waitForAgentsHostSettled(page: Page): Promise<void> {
   await expect(page.locator(`${AGENTS_PANEL_MOUNT} [role="tablist"]`)).toHaveCount(1, {
     timeout: BOOT_TIMEOUT_MS,
@@ -424,6 +473,170 @@ async function reloadAndSettle(page: Page, marks?: RouteMark[]): Promise<void> {
 }
 
 test.setTimeout(180_000);
+
+test.describe('agents panel resize', () => {
+  test.afterEach(async ({ page }) => {
+    await page.evaluate(() => window.__acpThreadHarness?.reset());
+  });
+
+  test('the panel follows the pointer below its settled minimum and reverses before release', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await stubAgentCatalog(page);
+    await openAppWithRoster(page);
+    await page.evaluate(() => {
+      const harness = window.__acpThreadHarness;
+      if (harness === undefined) throw new Error('ACP thread harness is not installed');
+      harness.openThread({
+        agent: { id: 'resize-fluid', name: 'Resize Agent', source: 'registry' },
+        title: 'Resize conversation',
+      });
+    });
+    await openAgentsPanel(page);
+
+    const mount = page.locator(AGENTS_PANEL_MOUNT);
+    const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
+    const handle = panel.locator('xpath=preceding-sibling::*[1]');
+    const handleBounds = await handle.boundingBox();
+    expect(handleBounds).not.toBeNull();
+    if (handleBounds === null) return;
+
+    const startWidth = await panel.evaluate((element) => element.getBoundingClientRect().width);
+    expect(startWidth).toBeGreaterThan(420);
+    expect(startWidth).toBeLessThan(540);
+    const handleX = handleBounds.x + handleBounds.width / 2;
+    const handleY = handleBounds.y + handleBounds.height / 2;
+
+    await page.mouse.move(handleX, handleY);
+    await page.mouse.down();
+    await expect(page.locator('[data-dragging="true"]')).toHaveCount(1);
+
+    await page.mouse.move(handleX + 145, handleY, { steps: 8 });
+    const firstShrinkWidth = await panel.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    expect(firstShrinkWidth).toBeLessThan(startWidth - 100);
+
+    await page.mouse.move(handleX + 190, handleY, { steps: 4 });
+    const belowMinimumWidth = await panel.evaluate(
+      (element) => element.getBoundingClientRect().width,
+    );
+    expect(belowMinimumWidth).toBeGreaterThan(200);
+    expect(belowMinimumWidth).toBeLessThan(320);
+
+    await page.mouse.move(handleX + 110, handleY, { steps: 6 });
+    const reversedWidth = await panel.evaluate((element) => element.getBoundingClientRect().width);
+    expect(reversedWidth).toBeGreaterThan(belowMinimumWidth + 50);
+    expect(reversedWidth).toBeLessThan(startWidth);
+
+    await page.mouse.up();
+    await expect(page.locator('[data-dragging="true"]')).toHaveCount(0);
+    await expect(mount).toBeVisible();
+    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(reversedWidth, -1);
+    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(reversedWidth, -1);
+  });
+
+  test('keyboard reveal of an empty agents panel keeps focus in the revealed surface', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await stubAgentCatalog(page);
+    await openAppWithRoster(page);
+    await page.evaluate(() => window.__acpThreadHarness?.reset());
+    await settleAfterRoster(page);
+
+    const mount = page.locator(AGENTS_PANEL_MOUNT);
+    const revealTab = page.locator(AGENTS_REVEAL_TAB);
+    await expect
+      .poll(async () => (await mount.isVisible()) || (await revealTab.isVisible()), {
+        timeout: BOOT_TIMEOUT_MS,
+      })
+      .toBe(true);
+    if (await revealTab.isVisible()) await revealTab.click();
+    await expect(mount).toBeVisible({ timeout: BOOT_TIMEOUT_MS });
+    await waitForAgentsHostSettled(page);
+    await expect(mount.getByRole('tab')).toHaveCount(0);
+
+    const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
+    const handle = panel.locator('xpath=preceding-sibling::*[1]');
+    await expect(handle).toHaveAttribute('data-slot', 'resizable-handle');
+    await handle.focus();
+    await page.keyboard.press('Home');
+    await expect(mount).not.toBeVisible();
+    await expect(revealTab).toBeVisible();
+
+    await revealTab.focus();
+    await expect(revealTab).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(mount).toBeVisible();
+    await expect(revealTab).not.toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => document.activeElement?.closest('[data-agents-panel-mount]') != null),
+      )
+      .toBe(true);
+  });
+
+  test('release bands, cancellation, keyboard resizing, reveal, and reload preserve the settled contract', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await stubAgentCatalog(page);
+    await openAppWithRoster(page);
+    await page.evaluate(() => {
+      const harness = window.__acpThreadHarness;
+      if (harness === undefined) throw new Error('ACP thread harness is not installed');
+      harness.openThread({
+        agent: { id: 'resize-settlement', name: 'Resize Agent', source: 'registry' },
+        title: 'Resize settlement conversation',
+      });
+    });
+    await openAgentsPanel(page);
+
+    const middleTransientWidth = await dragAgentsPanel(page, 250);
+    expect(middleTransientWidth).toBeGreaterThan(200);
+    expect(middleTransientWidth).toBeLessThan(320);
+    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(320, -1);
+    await expect.poll(() => persistedAgentsPanelWidth(page)).toBe(320);
+
+    await dragAgentsPanel(page, 520);
+    const preferredWidth = await agentsPanelWidth(page);
+    expect(preferredWidth).toBeGreaterThan(500);
+    expect(preferredWidth).toBeLessThan(540);
+    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+
+    const cancelledTransientWidth = await dragAgentsPanel(page, 240, 'pointercancel');
+    expect(cancelledTransientWidth).toBeGreaterThan(200);
+    expect(cancelledTransientWidth).toBeLessThan(320);
+    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+
+    const mount = page.locator(AGENTS_PANEL_MOUNT);
+    const panel = mount.locator('xpath=ancestor::*[@data-slot="resizable-panel"][1]');
+    const handle = panel.locator('xpath=preceding-sibling::*[1]');
+    await handle.focus();
+    for (let index = 0; index < 8; index += 1) {
+      await page.keyboard.press('ArrowRight');
+      await settleAfterRoster(page);
+    }
+    await expect(handle).toBeFocused();
+    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(320, -1);
+    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+
+    const closeTransientWidth = await dragAgentsPanel(page, 100);
+    expect(closeTransientWidth).toBeLessThan(160);
+    await expect(mount).not.toBeVisible();
+    await expect(page.locator(AGENTS_REVEAL_TAB)).toBeVisible();
+    await expect.poll(() => persistedAgentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+
+    await openAgentsPanel(page);
+    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+    await reloadAndSettle(page);
+    await expect(mount).toBeVisible();
+    await expect.poll(() => agentsPanelWidth(page)).toBeCloseTo(preferredWidth, -1);
+  });
+});
 
 test.describe('chat history navigation', () => {
   test.afterEach(async ({ page }) => {

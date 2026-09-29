@@ -1,7 +1,7 @@
 {
   "name": "@inkeep/open-knowledge-desktop",
   "productName": "OpenKnowledge",
-  "version": "0.77.7",
+  "version": "0.79.2",
   "license": "GPL-3.0-or-later",
   "homepage": "https://openknowledge.ai",
   "author": {
@@ -10,6 +10,7 @@
   },
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "main": "out/main/index.js",
   "engines": {
     "node": ">=24"
@@ -18,11 +19,11 @@
     "dev": "turbo run dev:electron --filter=@inkeep/open-knowledge-desktop",
     "dev:electron": "electron-vite dev --watch",
     "build:desktop": "electron-vite build",
-    "build:dir": "pnpm run build:desktop && electron-builder --dir --publish never",
-    "build:mac": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && electron-builder --mac --publish never",
-    "build:mac:unsigned": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never -c.mac.identity=null",
-    "build:win": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && node scripts/stage-parcel-watcher.mjs && electron-builder --win --publish never",
-    "build:linux": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && node scripts/stage-parcel-watcher.mjs && electron-builder --linux --publish never --config electron-builder.linux.yml",
+    "build:dir": "pnpm run build:desktop && node scripts/run-electron-builder.mjs --dir --publish never",
+    "build:mac": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && node scripts/run-electron-builder.mjs --mac --publish never",
+    "build:mac:unsigned": "pnpm run build:desktop && node scripts/prepare-universal.mjs && node scripts/stage-parcel-watcher.mjs && CSC_IDENTITY_AUTO_DISCOVERY=false node scripts/run-electron-builder.mjs --mac --publish never -c.mac.identity=null",
+    "build:win": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && node scripts/stage-parcel-watcher.mjs && node scripts/run-electron-builder.mjs --win --publish never",
+    "build:linux": "pnpm run build:desktop && node scripts/prepare-platform-natives.mjs && node scripts/stage-parcel-watcher.mjs && node scripts/run-electron-builder.mjs --linux --publish never",
     "prepare:universal": "node scripts/prepare-universal.mjs",
     "prepare:platform-natives": "node scripts/prepare-platform-natives.mjs",
     "postinstall": "node scripts/postinstall.mjs",

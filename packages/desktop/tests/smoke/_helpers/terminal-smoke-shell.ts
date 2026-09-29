@@ -32,6 +32,7 @@ export interface TerminalSmokeShellCommands {
   readEnvironment(name: string, label: string): string;
   scroll(sentinel: string, start: string, prefix: string, count: number): string;
   setEnvironment(name: string, value: string): string;
+  workingDirectory(marker: string): string;
 }
 
 export function terminalSmokeShellCommands(
@@ -57,6 +58,8 @@ export function terminalSmokeShellCommands(
         validateEnvironmentName(name);
         return `$env:${name}=${psQuoteArg(value)}`;
       },
+      workingDirectory: (marker) =>
+        `Write-Output (${psQuoteArg(marker)} + '=[' + (Get-Location).Path + ']')`,
     };
   }
 
@@ -78,6 +81,7 @@ export function terminalSmokeShellCommands(
       validateEnvironmentName(name);
       return `export ${name}=${quotePosix(value)}`;
     },
+    workingDirectory: (marker) => `printf '%s=[%s]\\n' ${quotePosix(marker)} "$PWD"`,
   };
 }
 
@@ -94,6 +98,24 @@ export function buildInputReadyProbe(
     marker: `${token}_42_READY`,
     command: terminalSmokeShellCommands(platform).arithmetic(token, 6, 7, 'READY'),
   };
+}
+
+export const WINDOWS_PRIMARY_PROMPT_AT_END = /PS [^>]*>\s*$/u;
+
+export function windowsPrimaryPromptAfter(marker: string): RegExp {
+  return new RegExp(
+    `${marker}\\s*${WINDOWS_PRIMARY_PROMPT_AT_END.source}`,
+    WINDOWS_PRIMARY_PROMPT_AT_END.flags,
+  );
+}
+
+export function reportedWorkingDirectory(marker: string, text: string): string | null {
+  const opening = `${marker}=[`;
+  const start = text.lastIndexOf(opening);
+  if (start === -1) return null;
+  const match = /^([^\]\n]*)\]/u.exec(text.slice(start + opening.length));
+  if (!match) return null;
+  return match[1];
 }
 
 interface TerminalSmokeEnvironmentOptions {

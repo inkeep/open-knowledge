@@ -4,13 +4,17 @@ import { basename, join } from 'node:path';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { _electron as electron } from '@playwright/test';
 import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-desktop';
+import { waitForWindowByMode } from './_helpers/launch-readiness';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   PTY_PLATFORM_SKIP_REASON,
   PTY_PLATFORM_SUPPORTED,
   userDataDirFor,
 } from './_helpers/platform-gate';
 import { expect, test } from './_helpers/smoke-test';
+import { waitForShellReady } from './_helpers/terminal-ready';
 import {
+  reportedWorkingDirectory,
   seedTerminalShellProfiles,
   terminalSmokeEnvironment,
   terminalSmokeShellCommands,
@@ -71,24 +75,12 @@ async function launchApp(s: Seed): Promise<ElectronApplication> {
   );
 }
 
-async function findWindowByMode(
-  app: ElectronApplication,
-  mode: 'editor' | 'terminal',
-  timeoutMs = 25_000,
-): Promise<Page> {
-  let page: Page | undefined;
-  await expect(async () => {
-    for (const p of app.windows()) {
-      const m = await p.evaluate(() => window.okDesktop?.config?.mode).catch(() => undefined);
-      if (m === mode) {
-        page = p;
-        return;
-      }
-    }
-    throw new Error(`no ${mode} window yet`);
-  }).toPass({ timeout: timeoutMs });
-  if (!page) throw new Error(`${mode} window vanished after readiness poll`);
-  return page;
+async function findEditorWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'editor');
+}
+
+async function findTerminalWindow(app: ElectronApplication): Promise<Page> {
+  return waitForWindowByMode(app, 'terminal', { liveness: 'none' });
 }
 
 async function waitForRendererResponsive(page: Page): Promise<void> {
@@ -138,6 +130,20 @@ async function terminalWindowCount(app: ElectronApplication): Promise<number> {
   return count;
 }
 
+async function readTerminalText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const sec = document.querySelector('section[aria-label="Terminal"]');
+    const a11y = sec?.querySelector('.xterm-accessibility')?.textContent ?? '';
+    const rows = sec?.querySelector('.xterm-rows')?.textContent ?? '';
+    return `${a11y}\n${rows}`;
+  });
+}
+
+async function typeInTerminal(page: Page, text: string): Promise<void> {
+  await page.locator('section[aria-label="Terminal"] .xterm').first().click();
+  await page.keyboard.type(text);
+}
+
 const cleanup: string[] = [];
 function track(...paths: string[]): void {
   cleanup.push(...paths);
@@ -158,11 +164,12 @@ test.describe('Standalone terminal window — live Electron', () => {
   test('New Terminal Window opens a window with a live shell at the project root; close-last closes it', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('open-close');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
-    const editor = await findWindowByMode(app, 'editor');
+    const editor = await findEditorWindow(app);
     await waitForRendererResponsive(editor);
     const editorWindow = await app.browserWindow(editor);
     const editorWebContentsId = await editorWindow.evaluate(
@@ -170,7 +177,7 @@ test.describe('Standalone terminal window — live Electron', () => {
     );
 
     expect(await clickNewTerminalWindow(app, editorWebContentsId)).toBe(true);
-    const term = await findWindowByMode(app, 'terminal');
+    const term = await findTerminalWindow(app);
     expect(await term.evaluate(() => window.okDesktop?.config.collabUrl)).not.toBe('');
 
     await expect(term.locator('[data-terminal-status]').first()).toHaveAttribute(
@@ -179,22 +186,19 @@ test.describe('Standalone terminal window — live Electron', () => {
       { timeout: 25_000 },
     );
     await expect(term.getByRole('tab')).toHaveCount(1);
+    await waitForShellReady(
+      () => readTerminalText(term),
+      (command) => typeInTerminal(term, `${command}\r`),
+    );
 
-    await term.locator('section[aria-label="Terminal"] .xterm').first().click();
-    await term.keyboard.type(`${SHELL_COMMANDS.cwd}\r`);
+    await typeInTerminal(term, `${SHELL_COMMANDS.workingDirectory('WINDOW_CWD')}\r`);
     const tail = basename(s.projectDir);
-    await expect
-      .poll(
-        () =>
-          term.evaluate(() => {
-            const sec = document.querySelector('section[aria-label="Terminal"]');
-            const a11y = sec?.querySelector('.xterm-accessibility')?.textContent ?? '';
-            const rows = sec?.querySelector('.xterm-rows')?.textContent ?? '';
-            return `${a11y}\n${rows}`;
-          }),
-        { timeout: 15_000 },
-      )
-      .toContain(tail);
+    await expect(async () => {
+      const text = await readTerminalText(term);
+      expect(reportedWorkingDirectory('WINDOW_CWD', text), text).toEqual(
+        expect.stringContaining(tail),
+      );
+    }).toPass({ timeout: 15_000 });
 
     await term.getByRole('button', { name: /^Close / }).click();
     await expect.poll(() => terminalWindowCount(app), { timeout: 15_000 }).toBe(0);
@@ -203,14 +207,15 @@ test.describe('Standalone terminal window — live Electron', () => {
   test('opening New Terminal Window twice yields two independent terminal windows', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const s = seed('multi');
     track(s.tmpHome, s.projectDir);
     const app = await launchApp(s);
     captureStderrFor(app, { home: s.tmpHome, cleanupDirs: [s.tmpHome, s.projectDir] });
-    await waitForRendererResponsive(await findWindowByMode(app, 'editor'));
+    await waitForRendererResponsive(await findEditorWindow(app));
 
     expect(await clickNewTerminalWindow(app)).toBe(true);
-    await findWindowByMode(app, 'terminal');
+    await findTerminalWindow(app);
     expect(await clickNewTerminalWindow(app)).toBe(true);
 
     await expect.poll(() => terminalWindowCount(app), { timeout: 20_000 }).toBe(2);

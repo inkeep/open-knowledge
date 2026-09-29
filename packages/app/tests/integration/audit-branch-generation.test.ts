@@ -2,6 +2,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ValidationAuditResponseSchema } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { type AuditBarrier, pauseAuditAtDocument } from './audit-barrier.test-helper.ts';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import { createTestServer, type TestServer } from './test-harness.ts';
 
@@ -56,25 +57,25 @@ describe('GET /api/audit across a branch switch', () => {
     async () => {
       const folder = join(server.contentDir, SCOPE);
       writeCorpus(folder, '\t');
+      let auditBarrier: AuditBarrier | undefined;
       try {
         const before = await fetch(api(`/api/audit?path=${SCOPE}%2Fdoc-0.md`));
         expect(before.status).toBe(200);
         expect(parseAudit(await before.json()).md010).toBeGreaterThan(0);
 
-        let firstSettled = false;
-        const first = auditScope().then((res) => {
-          firstSettled = true;
-          return res;
-        });
+        auditBarrier = pauseAuditAtDocument(`${SCOPE}/doc-1.md`);
+        const first = auditScope();
+        await auditBarrier.waitUntilStarted();
 
         expect((await fetch(api('/api/lint/config'))).status).toBe(200);
 
-        writeCorpus(folder, ' ');
         const { durabilityState } = server.instance;
         expect(durabilityState.getActiveBranch()).not.toBe('audit-branch-target');
         durabilityState.switchReconciledBaseScope('audit-branch-target');
 
-        expect(firstSettled).toBe(false);
+        auditBarrier.release();
+
+        writeCorpus(folder, ' ');
 
         const after = await auditScope();
         expect(after.status).toBe(200);
@@ -87,6 +88,7 @@ describe('GET /api/audit across a branch switch', () => {
         const problem = (await firstRes.json()) as { type?: string };
         expect(problem.type).toBe('urn:ok:error:audit-superseded');
       } finally {
+        auditBarrier?.dispose();
         rmSync(folder, { recursive: true, force: true });
       }
     },

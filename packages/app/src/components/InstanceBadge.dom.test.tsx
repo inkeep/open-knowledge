@@ -44,7 +44,7 @@ describe('InstanceBadge runtime behavior', () => {
 
     const badge = screen.getByTestId('instance-badge');
     expect(badge.textContent).toContain('theming-as-plugin');
-    expect(badge.getAttribute('aria-label')).toBe('Dev instance: theming-as-plugin');
+    expect(badge.getAttribute('aria-label')).toBe('App instance: theming-as-plugin');
     expect(badge.getAttribute('data-variant')).toBe('secondary');
     expect(badge.classList.contains('ml-1')).toBe(true);
   });

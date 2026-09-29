@@ -12,7 +12,10 @@ import {
   recordAppShellCrashTrip,
   resetTabSessionRestoreSuppression,
 } from '@/lib/tab-session-restore-suppression';
-import { expectVisualClassTokens } from '@/test-utils/visual-contract';
+import {
+  expectVisualClassTokens,
+  expectVisualClassTokensAbsent,
+} from '@/test-utils/visual-contract';
 
 type NavigationTarget =
   | { kind: 'doc'; target: string; docName: string }
@@ -356,6 +359,21 @@ describe('App runtime wiring', () => {
       expect(screen.queryByTestId('file-sidebar')).toBeNull();
       expect(screen.queryByTestId('command-palette')).toBeNull();
       expect(screen.queryByTestId('system-doc-subscriber')).toBeNull();
+      expectVisualClassTokens(screen.getByTestId('sidebar-inset').className, ['h-screen']);
+      expectVisualClassTokensAbsent(screen.getByTestId('sidebar-inset').className, [
+        'h-[calc(100vh-var(--layout-inset-offset))]',
+      ]);
+    });
+
+    test('single-file windows fill the available height', () => {
+      singleFileMode = true;
+      renderApp({ bridge: createBridge() });
+
+      expect(screen.queryByTestId('file-sidebar')).toBeNull();
+      expectVisualClassTokens(screen.getByTestId('sidebar-inset').className, ['h-screen']);
+      expectVisualClassTokensAbsent(screen.getByTestId('sidebar-inset').className, [
+        'h-[calc(100vh-var(--layout-inset-offset))]',
+      ]);
     });
 
     test('keeps the editor and the connecting banner', () => {
@@ -372,6 +390,10 @@ describe('App runtime wiring', () => {
       expect(screen.getByTestId('command-palette')).not.toBeNull();
       expect(screen.getByTestId('system-doc-subscriber')).not.toBeNull();
       expect(screen.getByTestId('editor-pane')).not.toBeNull();
+      expectVisualClassTokens(screen.getByTestId('sidebar-inset').className, [
+        'h-[calc(100vh-var(--layout-inset-offset))]',
+      ]);
+      expectVisualClassTokensAbsent(screen.getByTestId('sidebar-inset').className, ['h-screen']);
     });
   });
 

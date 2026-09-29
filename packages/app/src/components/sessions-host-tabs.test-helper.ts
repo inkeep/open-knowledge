@@ -1,7 +1,9 @@
 import { act, screen } from '@testing-library/react';
 
 export function tabTitles(): string[] {
-  return screen.getAllByRole('tab').map((tab) => tab.textContent ?? '');
+  return screen
+    .getAllByRole('tab')
+    .map((tab) => tab.querySelector('[data-tab-title]')?.textContent ?? tab.textContent ?? '');
 }
 
 export function focusFirstTab() {

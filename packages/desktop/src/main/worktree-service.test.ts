@@ -3,9 +3,11 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -177,6 +179,19 @@ describe('worktree-service', () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.reason).toBe('invalid-branch');
+  });
+
+  test('createWorktree rejects a path-escaping project scope before spawning git', async () => {
+    handle = await makeRepo(['dev']);
+    const res = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'dev',
+      createBranch: false,
+      projectSubPath: '../outside',
+      sourceProjectPath: handle.mainRepo,
+    });
+    expect(res).toEqual({ ok: false, reason: 'error', message: 'Invalid project scope' });
+    expect(existsSync(join(handle.mainRepo, '.ok', 'worktrees', 'dev'))).toBe(false);
   });
 
   test('createWorktree reports empty-repo (not the generic arm) on a repo with no commits', async () => {
@@ -840,6 +855,184 @@ describe('worktree-service — inherited OK setup (no consent dialog)', () => {
     const status = await git(wtPath, 'status', '--porcelain');
     expect(status).not.toContain('.ok/config.yml');
     expect(status).not.toContain('.mcp.json');
+  });
+
+  test('local-only nested project: create seeds and opens the exact projected project scope', async () => {
+    handle = await makeRepo(['nested-work']);
+    const sourceProject = join(handle.mainRepo, 'packages', 'docs');
+    mkdirSync(sourceProject, { recursive: true });
+    writeFileSync(join(sourceProject, 'README.md'), '# docs\n');
+    await git(handle.mainRepo, 'add', 'packages/docs/README.md');
+    await git(handle.mainRepo, 'commit', '-m', 'add nested project directory');
+    await git(handle.mainRepo, 'branch', '-f', 'nested-work', 'HEAD');
+    initContent(sourceProject);
+    const gitDir = (await git(handle.mainRepo, 'rev-parse', '--git-common-dir')).trim();
+    const excludePath = join(handle.mainRepo, gitDir, 'info', 'exclude');
+    writeFileSync(excludePath, `${readFileSync(excludePath, 'utf-8')}\n.ok/\n`);
+    expect(await isIgnored(handle.mainRepo, 'packages/docs/.ok/config.yml')).toBe(true);
+
+    const result = await createWorktree({
+      anchorPath: sourceProject,
+      branch: 'nested-work',
+      createBranch: false,
+      projectSubPath: join('packages', 'docs'),
+      sourceProjectPath: sourceProject,
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const projectedProject = join(result.path, 'packages', 'docs');
+    expect(existsSync(join(projectedProject, '.ok', 'config.yml'))).toBe(true);
+    const discovery = await discoverProject(projectedProject, {
+      homeDir: handle.root,
+      dirSizeProbe: null,
+    });
+    expect(discovery).toMatchObject({
+      kind: 'managed',
+      projectDir: projectedProject,
+      pickedPath: projectedProject,
+      ancestorPromoted: false,
+    });
+  });
+
+  test('project setup never writes through a committed symlink outside the new worktree', async () => {
+    handle = await makeRepo();
+    const outside = join(handle.root, 'outside');
+    mkdirSync(outside);
+    mkdirSync(join(handle.mainRepo, 'packages'));
+    symlinkSync(outside, join(handle.mainRepo, 'packages', 'docs'));
+    await git(handle.mainRepo, 'add', 'packages/docs');
+    await git(handle.mainRepo, 'commit', '-m', 'add escaping project symlink');
+    await git(handle.mainRepo, 'branch', 'symlink-scope');
+
+    const result = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'symlink-scope',
+      createBranch: false,
+      projectSubPath: join('packages', 'docs'),
+      sourceProjectPath: handle.mainRepo,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'outside-worktree',
+      created: true,
+    });
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  test('a nested project absent on the target branch is returned as an explicit failure', async () => {
+    handle = await makeRepo();
+    await git(handle.mainRepo, 'branch', 'before-nested-project');
+    const sourceProject = join(handle.mainRepo, 'packages', 'docs');
+    mkdirSync(sourceProject, { recursive: true });
+    initContent(sourceProject);
+
+    const result = await createWorktree({
+      anchorPath: sourceProject,
+      branch: 'before-nested-project',
+      createBranch: false,
+      projectSubPath: join('packages', 'docs'),
+      sourceProjectPath: sourceProject,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'missing',
+      created: true,
+    });
+    if (result.ok || result.reason !== 'project-scope-unavailable') return;
+    expect(result.path).toBe(join(handle.mainRepo, '.ok', 'worktrees', 'before-nested-project'));
+  });
+
+  test('auto-sync setup never writes through a committed .ok symlink', async () => {
+    handle = await makeRepo();
+    const outside = join(handle.root, 'outside-ok');
+    mkdirSync(outside);
+    await git(handle.mainRepo, 'checkout', '-b', 'unsafe-ok');
+    rmSync(join(handle.mainRepo, '.ok'), { recursive: true });
+    symlinkSync(outside, join(handle.mainRepo, '.ok'));
+    await git(handle.mainRepo, 'add', '-A');
+    await git(handle.mainRepo, 'commit', '-m', 'redirect project setup');
+    await git(handle.mainRepo, 'checkout', 'main');
+    mkdirSync(join(handle.mainRepo, '.ok', 'local'), { recursive: true });
+    writeFileSync(join(handle.mainRepo, '.ok', 'local', 'config.yml'), 'autoSync:\n  mode: pull\n');
+
+    const result = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'unsafe-ok',
+      createBranch: false,
+      sourceProjectPath: handle.mainRepo,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'unsafe-setup-path',
+      created: true,
+    });
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  test.each([
+    ['.cursor', 'unsafe-editor-config'],
+    ['.agents', 'unsafe-shared-skill'],
+  ] as const)('editor setup never writes through a committed %s symlink', async (link, branch) => {
+    handle = await makeRepo();
+    const outside = join(handle.root, branch);
+    mkdirSync(outside);
+    await git(handle.mainRepo, 'checkout', '-b', branch);
+    symlinkSync(outside, join(handle.mainRepo, link));
+    await git(handle.mainRepo, 'add', link);
+    await git(handle.mainRepo, 'commit', '-m', `redirect ${link}`);
+    await git(handle.mainRepo, 'checkout', 'main');
+    mkdirSync(join(handle.mainRepo, '.cursor'), { recursive: true });
+    writeFileSync(
+      join(handle.mainRepo, '.cursor', 'mcp.json'),
+      JSON.stringify({ mcpServers: { 'open-knowledge': { command: '# ok-mcp-v1' } } }),
+    );
+
+    const result = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch,
+      createBranch: false,
+      sourceProjectPath: handle.mainRepo,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'unsafe-setup-path',
+      created: true,
+    });
+    expect(readdirSync(outside)).toEqual([]);
+  });
+
+  test('a non-symlink setup failure is not reported as a branch redirect', async () => {
+    handle = await makeRepo();
+    await git(handle.mainRepo, 'checkout', '-b', 'blocked-local-config');
+    mkdirSync(join(handle.mainRepo, '.ok'), { recursive: true });
+    writeFileSync(join(handle.mainRepo, '.ok', 'local'), 'not a directory\n');
+    await git(handle.mainRepo, 'add', '.ok/local');
+    await git(handle.mainRepo, 'commit', '-m', 'block local config directory');
+    await git(handle.mainRepo, 'checkout', 'main');
+    mkdirSync(join(handle.mainRepo, '.ok', 'local'), { recursive: true });
+    writeFileSync(join(handle.mainRepo, '.ok', 'local', 'config.yml'), 'autoSync:\n  mode: pull\n');
+
+    const result = await createWorktree({
+      anchorPath: handle.mainRepo,
+      branch: 'blocked-local-config',
+      createBranch: false,
+      sourceProjectPath: handle.mainRepo,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'setup-failed',
+      created: true,
+    });
   });
 
   test('shared root (config committed): createWorktree opens managed and never clobbers the committed config', async () => {

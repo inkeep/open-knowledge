@@ -695,9 +695,6 @@ describe('readWorktreeStatus — the panel listing is trustworthy', () => {
           expect(readSpawnedPids(pidFile).filter(isProcessAlive)).toEqual([]);
         });
       } finally {
-        for (const pid of readSpawnedPids(pidFile)) {
-          if (isProcessAlive(pid)) process.kill(pid, 'SIGKILL');
-        }
         process.env.PATH = realPath;
         errorSpy.mockRestore();
         warnSpy.mockRestore();

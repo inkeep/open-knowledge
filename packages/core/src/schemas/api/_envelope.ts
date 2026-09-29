@@ -94,6 +94,7 @@ export const ProblemTypeSchema = z.enum([
   'urn:ok:error:not-found',
   'urn:ok:error:auth-failed',
   'urn:ok:error:no-project-dir',
+  'urn:ok:error:non-github-origin',
   'urn:ok:error:server-open-failed',
   'urn:ok:error:doc-in-conflict',
   'urn:ok:error:concurrent-overwrite-refused',

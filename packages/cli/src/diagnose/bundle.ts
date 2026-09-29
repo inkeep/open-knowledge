@@ -16,6 +16,7 @@ import { arch as osArch, platform as osPlatform, tmpdir } from 'node:os';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { BundleRedaction as SecretScrubEntry } from '@inkeep/open-knowledge-core';
 import {
+  ACP_LAUNCH_FAILURE_LOG,
   REPORT_SIDECAR_BUNDLE_DIR,
   SERVER_CRASH_LOG,
   SERVER_EXIT_LOG,
@@ -28,7 +29,11 @@ import {
 import { withHiddenWindowsConsole } from '@inkeep/open-knowledge-server';
 import { parse as parseYaml } from 'yaml';
 import { ZipFile } from 'yazl';
-import type { BundleExtraFile, BundleLogger } from '../commands/bug-report-bundle.ts';
+import {
+  type BundleExtraFile,
+  type BundleLogger,
+  scrubbedExtraAudit,
+} from '../commands/bug-report-bundle.ts';
 import { redactContent } from '../commands/bug-report-redact.ts';
 import { PACKAGE_VERSION } from '../constants.ts';
 import { defaultReadLanguage, type LanguageMetadata } from '../report-language.ts';
@@ -586,6 +591,11 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
       join(stagingDir, 'state', SERVER_CRASH_LOG),
     );
 
+    stageFileIfPresent(
+      join(lockDir, ACP_LAUNCH_FAILURE_LOG),
+      join(stagingDir, 'state', ACP_LAUNCH_FAILURE_LOG),
+    );
+
     const runtime = readRuntime();
     const desktop = readDesktopEnv();
     const language = readLanguage();
@@ -637,15 +647,20 @@ export async function collectBundle(opts: CollectBundleOpts): Promise<CollectedB
     }
 
     for (const extra of opts.extraFiles ?? []) {
-      const staged = stageFileIfPresent(
-        extra.sourcePath,
-        join(stagingDir, 'extra', extra.zipName ?? basename(extra.sourcePath)),
-      );
+      const zipName = extra.zipName ?? basename(extra.sourcePath);
+      const staged = stageFileIfPresent(extra.sourcePath, join(stagingDir, 'extra', zipName));
       if (!staged) {
         deps.logger?.warn(
           { sourcePath: extra.sourcePath },
           'extra file missing; omitted from bundle',
         );
+        continue;
+      }
+      const audit = scrubbedExtraAudit(extra, `extra/${zipName}`);
+      if (audit !== null) {
+        secretScrub ??= { redactions: [], redactedLineCount: 0 };
+        secretScrub.redactions.push(audit);
+        secretScrub.redactedLineCount += audit.lineCount;
       }
     }
 

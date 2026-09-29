@@ -82,6 +82,18 @@ function buildHeaders(token: string | undefined): Record<string, string> {
   return headers;
 }
 
+export function isGitHubRateLimited(response: {
+  readonly status: number;
+  readonly headers: Headers;
+}): boolean {
+  return (
+    response.status === 429 ||
+    (response.status === 403 &&
+      (response.headers.get('x-ratelimit-remaining') === '0' ||
+        response.headers.get('retry-after') !== null))
+  );
+}
+
 function readPushFlag(body: unknown): boolean | null {
   if (typeof body !== 'object' || body === null) return null;
   const perms = (body as { permissions?: unknown }).permissions;
@@ -113,11 +125,10 @@ async function classify(resp: Response, hadToken: boolean): Promise<PushPermissi
     case 401:
       return { kind: 'unknown', error: 'token-invalid' };
     case 403:
-      return resp.headers.get('x-ratelimit-remaining') === '0'
+    case 429:
+      return isGitHubRateLimited(resp)
         ? { kind: 'unknown', error: 'rate-limit' }
         : { kind: 'unknown', error: 'token-invalid' };
-    case 429:
-      return { kind: 'unknown', error: 'rate-limit' };
     case 404:
       return hadToken
         ? { kind: 'denied', reason: 'private-no-access' }

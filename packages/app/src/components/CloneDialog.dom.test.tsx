@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { getLastKnownSignedIn, setLastKnownSignedIn } from '@/lib/auth-state-cache';
 import type { AuthQueryTransport } from '@/lib/transports/auth-query-transport';
@@ -83,6 +83,30 @@ describe('CloneDialog first paint from the shared auth-state cache', () => {
     );
 
     await screen.findByText('Browse your repos:');
+    expect(getLastKnownSignedIn()).toBe(true);
+  });
+
+  test('an origin refusal from the on-open status check leaves the shared cache untouched', async () => {
+    setLastKnownSignedIn(true);
+    let resolved = false;
+    const refusingQueryTransport: AuthQueryTransport = {
+      status: async () => {
+        resolved = true;
+        return {
+          authenticated: false,
+          host: 'ghes.acme.test',
+          unsupportedOrigin: { host: 'ghes.acme.test' },
+        };
+      },
+      repos: () => new Promise(() => {}),
+      signout: async () => ({ ok: true }),
+    };
+    render(
+      <CloneDialog open onOpenChange={() => {}} authQueryTransport={refusingQueryTransport} />,
+    );
+
+    await waitFor(() => expect(resolved).toBe(true));
+    await Promise.resolve();
     expect(getLastKnownSignedIn()).toBe(true);
   });
 });

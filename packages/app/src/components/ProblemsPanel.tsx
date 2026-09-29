@@ -674,6 +674,7 @@ export function ProblemsPanel({
           <PanelTitle id={panelTitleId}>
             <Trans>Problems</Trans>
           </PanelTitle>
+          {scope === 'doc' && sorted.length > 0 && <PanelCount>{sorted.length}</PanelCount>}
           {showActivePluginsPill && (
             <Tooltip>
               {}
@@ -689,7 +690,6 @@ export function ProblemsPanel({
             </Tooltip>
           )}
         </div>
-        {scope === 'doc' && sorted.length > 0 && <PanelCount>{sorted.length}</PanelCount>}
       </PanelHeader>
       <PanelScopeHeader scope={scope} onScopeChange={handleScopeChange} />
       {scope === 'doc' ? (

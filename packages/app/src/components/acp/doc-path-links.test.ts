@@ -112,6 +112,72 @@ describe('buildDocPathResolver', () => {
     expect(resolve?.('reports/foo/REPORT.md#somewhere')).toBe('reports/foo/REPORT');
   });
 
+  test('a leading ./ is dropped — the form the project skill tells agents to write', () => {
+    const resolve = buildDocPathResolver({
+      workspace,
+      pages: new Set(['reports/foo/REPORT']),
+    });
+    expect(resolve?.('./reports/foo/REPORT.md')).toBe('reports/foo/REPORT');
+    expect(resolve?.('./REPORT.md')).toBe('reports/foo/REPORT');
+    expect(resolve?.('././reports/foo/REPORT.md')).toBe('reports/foo/REPORT');
+  });
+
+  test('a ../ path stays unresolved — chat has no document to resolve it against', () => {
+    const resolve = buildDocPathResolver({
+      workspace,
+      pages: new Set(['reports/foo/REPORT']),
+    });
+    expect(resolve?.('../reports/foo/REPORT.md')).toBeNull();
+  });
+
+  test('a /-rooted path means the content root, as in the editor, and must match a doc exactly', () => {
+    const resolve = buildDocPathResolver({
+      workspace,
+      pages: new Set(['reports/foo/REPORT']),
+    });
+    expect(resolve?.('/reports/foo/REPORT.md')).toBe('reports/foo/REPORT');
+    expect(resolve?.('/REPORT.md')).toBeNull();
+  });
+
+  test('a /-rooted path follows the editor resolver for dot segments and //, but chat still needs a markdown extension', () => {
+    const resolve = buildDocPathResolver({
+      workspace,
+      pages: new Set(['reports/foo/REPORT']),
+    });
+    expect(resolve?.('/reports/foo/./REPORT.md')).toBe('reports/foo/REPORT');
+    expect(resolve?.('//reports/foo/REPORT.md')).toBeNull();
+    expect(resolve?.('/reports/foo/REPORT')).toBeNull();
+  });
+
+  test('a /-rooted token without a markdown extension never links, even when a page has that name', () => {
+    const resolve = buildDocPathResolver({
+      workspace,
+      pages: new Set(['settings', 'docs']),
+    });
+    expect(resolve?.('/settings')).toBeNull();
+    expect(resolve?.('/settings?tab=1')).toBeNull();
+    expect(resolve?.('/docs/')).toBeNull();
+    expect(resolve?.('/settings.md')).toBe('settings');
+  });
+
+  test('a /-rooted path arrives already decoded, so a literal % in a doc name still matches', () => {
+    const resolve = buildDocPathResolver({
+      workspace,
+      pages: new Set(['notes/a%20b']),
+    });
+    expect(resolve?.('/notes/a%20b.md')).toBe('notes/a%20b');
+  });
+
+  test('a leading .\\ is dropped under a Windows workspace too', () => {
+    const resolve = buildDocPathResolver({
+      workspace: windowsWorkspace,
+      pages: new Set(['reports/foo/REPORT']),
+    });
+    expect(resolve?.('.\\public\\open-knowledge\\reports\\foo\\REPORT.md')).toBe(
+      'reports/foo/REPORT',
+    );
+  });
+
   test('dot-segment paths link when they are in the tracked page set (.changeset/, .github/, …)', () => {
     const resolve = buildDocPathResolver({
       workspace,
@@ -413,6 +479,61 @@ describe('remarkDocPathLinks', () => {
       remarkDocPathLinks()()(tree);
       expect(tree.children?.[0]?.children?.[0]?.url, href).toBe(expected);
     }
+  });
+
+  test('a section link written as ./path.md#slug, the form the project skill prescribes, becomes the in-app route', () => {
+    const tree = makeTree([
+      {
+        type: 'paragraph',
+        children: [
+          {
+            type: 'link',
+            url: './reports/foo/REPORT.md#findings',
+            children: [{ type: 'text', value: 'Findings' }],
+          },
+        ],
+      },
+    ]);
+    setDocPathResolver(resolve);
+    remarkDocPathLinks()()(tree);
+    expect(tree.children?.[0]?.children?.[0]?.url).toBe('#/reports/foo/REPORT#findings');
+  });
+
+  test('a section link written as /path.md#slug, the content-root form the skill also allows, becomes the in-app route', () => {
+    const tree = makeTree([
+      {
+        type: 'paragraph',
+        children: [
+          {
+            type: 'link',
+            url: '/reports/foo/REPORT.md#findings',
+            children: [{ type: 'text', value: 'Findings' }],
+          },
+        ],
+      },
+    ]);
+    setDocPathResolver(resolve);
+    remarkDocPathLinks()()(tree);
+    expect(tree.children?.[0]?.children?.[0]?.url).toBe('#/reports/foo/REPORT#findings');
+  });
+
+  test('a /-rooted web route in agent prose stays as written, as inline code and as a link', () => {
+    const routes = buildDocPathResolver({ workspace, pages: new Set(['settings', 'docs']) });
+    const tree = makeTree([
+      {
+        type: 'paragraph',
+        children: [
+          { type: 'inlineCode', value: '/settings' },
+          { type: 'text', value: ' and ' },
+          { type: 'link', url: '/settings', children: [{ type: 'text', value: 'Settings' }] },
+        ],
+      },
+    ]);
+    setDocPathResolver(routes);
+    remarkDocPathLinks()()(tree);
+    const kids = tree.children?.[0]?.children ?? [];
+    expect(kids[0]?.type).toBe('inlineCode');
+    expect(kids[2]?.url).toBe('/settings');
   });
 
   test('a fragment on a backticked or prose path rides along too', () => {

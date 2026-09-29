@@ -3,7 +3,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { CommentThread } from './types';
 
-const captured = { revealed: [] as string[], toggled: [] as string[], deleted: 0 };
+const captured = {
+  revealed: [] as string[],
+  toggled: [] as string[],
+  reopened: [] as string[],
+  deleted: 0,
+};
 
 vi.doMock('@/editor/active-editor', () => ({
   getVisibleEditorForDoc: () => null,
@@ -23,7 +28,9 @@ vi.doMock('./store', () => ({
   },
   editComment: () => {},
   emitOpenThread: () => {},
-  reopenThread: () => {},
+  reopenThread: (threadId: string) => {
+    captured.reopened.push(threadId);
+  },
   replaceOrphan: () => {},
   setActiveThread: () => {},
   toggleSending: (threadId: string) => {
@@ -52,6 +59,7 @@ function renderCard(overrides: Partial<CommentThread> = {}) {
   return render(
     <TooltipProvider>
       <ThreadCard
+        layout="doc"
         thread={thread(overrides)}
         cardRef={() => {}}
         focused={false}
@@ -65,6 +73,7 @@ function renderCard(overrides: Partial<CommentThread> = {}) {
 beforeEach(() => {
   captured.revealed = [];
   captured.toggled = [];
+  captured.reopened = [];
   captured.deleted = 0;
   window.getSelection()?.removeAllRanges();
 });
@@ -110,6 +119,20 @@ describe('clicking a card', () => {
   test('a resolved card has no tick, so its body does nothing', () => {
     renderCard({ status: 'resolved' });
     fireEvent.click(screen.getByRole('article'));
+    expect(captured.toggled).toEqual([]);
+  });
+
+  test('a resolved comment keeps its reopen action in the header', () => {
+    renderCard({ status: 'resolved' });
+    const article = screen.getByRole('article');
+    const reopen = screen.getByRole('button', { name: 'Reopen' });
+
+    expect(article.firstElementChild?.contains(reopen)).toBe(true);
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    expect(screen.getByTestId('thread-comment-body').className).toContain('line-through');
+
+    fireEvent.click(reopen);
+    expect(captured.reopened).toEqual(['t1']);
     expect(captured.toggled).toEqual([]);
   });
 });

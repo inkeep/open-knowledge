@@ -43,6 +43,11 @@ on:
         type: choice
         default: both
         options: [both, windows, linux]
+      variant:
+        description: "Desktop product identity"
+        type: choice
+        default: stable
+        options: [stable, beta]
 
 permissions:
   contents: read
@@ -59,6 +64,8 @@ defaults:
 
 env:
   TURBO_TELEMETRY_DISABLED: 1
+  OK_DESKTOP_VARIANT: ${{ inputs.variant }}
+  OK_DESKTOP_PRODUCT_NAME: ${{ inputs.variant == 'stable' && 'OpenKnowledge' || 'OpenKnowledge Beta' }}
 
 jobs:
   prepare:
@@ -251,7 +258,7 @@ jobs:
             echo "::warning::No (complete) Azure signing config — building UNSIGNED installers (internal QA only; never distribute)."
             echo "signing_requested=false" >> "$GITHUB_OUTPUT"
           fi
-          pnpm exec electron-builder --win --publish never "${extra[@]}"
+          node scripts/run-electron-builder.mjs --win --publish never "${extra[@]}"
 
       - name: Attest signed Windows packages and preserved Microsoft signatures
         id: attest-windows-signing
@@ -275,9 +282,9 @@ jobs:
               throw "Signing-enabled build produced no $($package.Arch) outer package at $($package.Path)."
             }
 
-            $appExecutable = Join-Path $package.Path 'OpenKnowledge.exe'
+            $appExecutable = Join-Path $package.Path "$env:OK_DESKTOP_PRODUCT_NAME.exe"
             if (-not (Test-Path -LiteralPath $appExecutable -PathType Leaf)) {
-              throw "Signing-enabled $($package.Arch) package has no OpenKnowledge.exe."
+              throw "Signing-enabled $($package.Arch) package has no $env:OK_DESKTOP_PRODUCT_NAME.exe."
             }
             $signature = Get-AuthenticodeSignature $appExecutable
             if ($signature.Status -ne 'Valid') {
@@ -359,7 +366,7 @@ jobs:
       - name: Upload Windows x64 installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: OpenKnowledge-Setup-x64
+          name: OpenKnowledge-${{ env.OK_DESKTOP_VARIANT }}-Setup-x64
           path: packages/desktop/dist-desktop/*Setup-x64.exe*
           retention-days: 14
           if-no-files-found: error
@@ -367,7 +374,7 @@ jobs:
       - name: Upload Windows arm64 installer
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: OpenKnowledge-Setup-arm64
+          name: OpenKnowledge-${{ env.OK_DESKTOP_VARIANT }}-Setup-arm64
           path: packages/desktop/dist-desktop/*Setup-arm64.exe*
           retention-days: 14
           if-no-files-found: error
@@ -378,15 +385,15 @@ jobs:
       - name: Upload Windows update metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: OpenKnowledge-windows-update-metadata
-          path: packages/desktop/dist-desktop/latest.yml
+          name: OpenKnowledge-${{ env.OK_DESKTOP_VARIANT }}-windows-update-metadata
+          path: packages/desktop/dist-desktop/*.yml
           retention-days: 14
           if-no-files-found: error
 
   # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
   # native deps from an x64 host is impractical (pnpm installs only the
-  # host-matching `@parcel/watcher-*` prebuild, and the Linux build skips
-  # @electron/rebuild by design — see electron-builder.linux.yml), so
+  # host-matching `@parcel/watcher-*` prebuild, and the generated Linux config
+  # skips @electron/rebuild by design), so
   # the arm64 deb is built on GitHub's arm64 Linux runner where pnpm installs
   # the arm64 prebuilds directly and `scripts/stage-parcel-watcher.mjs` stages
   # the right binary.
@@ -488,12 +495,10 @@ jobs:
       # emulation or system fpm is involved.
       - name: Package ${{ matrix.targets }}
         working-directory: packages/desktop
-        # --config: the Linux overlay turns off the native-rebuild pass WITHOUT
-        # asserting that node_modules are staged externally. See
-        # electron-builder.linux.yml.
+        # The variant wrapper turns off the native-rebuild pass for `--linux`
+        # without asserting that node_modules are staged externally.
         run: |
-          pnpm exec electron-builder --linux ${{ matrix.targets }} --publish never \
-            --config electron-builder.linux.yml
+          node scripts/run-electron-builder.mjs --linux ${{ matrix.targets }} --publish never
 
       - name: Assert Linux terminal native package compatibility
         working-directory: packages/desktop
@@ -516,7 +521,7 @@ jobs:
         if: matrix.arch == 'x64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: OpenKnowledge-amd64-deb
+          name: OpenKnowledge-${{ env.OK_DESKTOP_VARIANT }}-amd64-deb
           path: packages/desktop/dist-desktop/*amd64.deb
           retention-days: 14
           if-no-files-found: error
@@ -525,7 +530,7 @@ jobs:
         if: matrix.arch == 'arm64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: OpenKnowledge-arm64-deb
+          name: OpenKnowledge-${{ env.OK_DESKTOP_VARIANT }}-arm64-deb
           path: packages/desktop/dist-desktop/*arm64.deb
           retention-days: 14
           if-no-files-found: error
@@ -538,7 +543,7 @@ jobs:
         if: matrix.arch == 'x64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: OpenKnowledge-x86_64-rpm
+          name: OpenKnowledge-${{ env.OK_DESKTOP_VARIANT }}-x86_64-rpm
           path: packages/desktop/dist-desktop/*x86_64.rpm
           retention-days: 14
           if-no-files-found: error
@@ -547,7 +552,7 @@ jobs:
         if: matrix.arch == 'arm64'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: OpenKnowledge-aarch64-rpm
+          name: OpenKnowledge-${{ env.OK_DESKTOP_VARIANT }}-aarch64-rpm
           path: packages/desktop/dist-desktop/*aarch64.rpm
           retention-days: 14
           if-no-files-found: error

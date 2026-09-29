@@ -677,6 +677,22 @@ describe('applyWorktreeCheckoutOutcome (worktree leg)', () => {
     expect(result.sideEffect?.authFailed).toBeUndefined();
   });
 
+  test('a rejected project scope stays closed and carries its cause to user-facing copy', () => {
+    const result = applyWorktreeCheckoutOutcome(creating, {
+      ok: false,
+      reason: 'project-scope-unavailable',
+      issue: 'unsafe-setup-path',
+      path: '/repo/.ok/worktrees/unsafe',
+      created: true,
+    });
+    expect(result.state).toEqual({ phase: 'ready', info: cleanInfo() });
+    expect(result.sideEffect).toMatchObject({
+      kind: 'toast',
+      reason: 'project-scope-unavailable',
+      projectScopeIssue: 'unsafe-setup-path',
+    });
+  });
+
   test('branch-not-found dismisses with the branch-gone toast signal (terminal, mirrors the switch leg)', () => {
     const result = applyWorktreeCheckoutOutcome(creating, {
       ok: false,

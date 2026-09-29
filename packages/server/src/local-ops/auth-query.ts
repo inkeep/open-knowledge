@@ -51,6 +51,7 @@ export async function runAuthStatusSubprocess(
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
     cliEnv: opts.cliEnv,
+    cwd: opts.cwd,
     trailingArgs: ['auth', 'status', '--json', '--host', host],
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     onLine: ({ parsed }) => {
@@ -99,6 +100,7 @@ export async function runAuthReposSubprocess(
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
     cliEnv: opts.cliEnv,
+    cwd: opts.cwd,
     trailingArgs: ['auth', 'repos', '--json', '--host', host],
     timeoutMs: opts.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     onLine: ({ parsed }) => {

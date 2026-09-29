@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { type ChildProcess, spawn } from 'node:child_process';
+import { once } from 'node:events';
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -47,7 +48,7 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
   let notesDir: string;
   let filePath: string;
   let tempProjectDir: string;
-  let serverPid: number | null = null;
+  let server: ChildProcess | null = null;
 
   beforeEach(async () => {
     userDir = await mkdtemp(resolve(tmpdir(), 'ok-ephemeral-it-'));
@@ -61,13 +62,11 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
   });
 
   afterEach(async () => {
-    if (serverPid !== null && isProcessAlive(serverPid)) {
-      try {
-        process.kill(serverPid, 'SIGKILL');
-      } catch {}
-      await wait(200);
+    if (server !== null && server.exitCode === null && server.signalCode === null) {
+      server.kill('SIGKILL');
+      await once(server, 'exit');
     }
-    serverPid = null;
+    server = null;
     await rm(userDir, { recursive: true, force: true });
     await rm(tempProjectDir, { recursive: true, force: true });
   });
@@ -102,8 +101,8 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
       },
     );
     child.unref();
-    serverPid = child.pid ?? null;
-    expect(serverPid).not.toBeNull();
+    server = child;
+    expect(child.pid).toBeDefined();
 
     const lockDir = join(tempProjectDir, '.ok', 'local');
     const lock = await waitForLock(lockDir);
@@ -120,7 +119,7 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
     const config = (await res.json()) as { singleFile?: boolean };
     expect(config.singleFile).toBe(true);
 
-    process.kill(lock.pid, 'SIGTERM');
+    child.kill('SIGTERM');
     const releaseDeadline = Date.now() + LOCK_POLL_TIMEOUT_MS;
     let released = false;
     let exited = false;
@@ -133,7 +132,7 @@ describe('ephemeral single-file lifecycle (real CLI)', () => {
     }
     expect(released).toBe(true);
     expect(exited).toBe(true);
-    serverPid = null;
+    server = null;
 
     await rm(tempProjectDir, { recursive: true, force: true });
     expect(existsSync(tempProjectDir)).toBe(false);

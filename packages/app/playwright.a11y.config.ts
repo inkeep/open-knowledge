@@ -1,6 +1,7 @@
 import { availableParallelism } from 'node:os';
 import { defineConfig } from '@playwright/test';
 import { EXPECT_TIMEOUT_MS, resolveWorkerCount } from './playwright.config.ts';
+import { SETUP_NON_RESULT_REPORTER } from './tests/stress/_helpers/setup-non-result-reporter.ts';
 
 /**
  * A11y Playwright config — per-worker fixture isolation (same shape as
@@ -52,6 +53,7 @@ export default defineConfig({
   reporter: [
     ['html', { open: 'never' }],
     ['list'],
+    [SETUP_NON_RESULT_REPORTER],
     ...(isCI
       ? [['github'] as const, ['json', { outputFile: 'test-results/a11y-results.json' }] as const]
       : []),

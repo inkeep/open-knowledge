@@ -4,6 +4,7 @@ import { PluginKey, Plugin as PmPlugin } from '@tiptap/pm/state';
 import { Decoration, DecorationSet } from '@tiptap/pm/view';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
+import { getEditorView } from '@/editor/utils/get-editor-view';
 import {
   clearSuggestionSelectableCount,
   createSuggestionPopup,
@@ -86,6 +87,35 @@ export function setSlashCommands(editor: Editor, commands: SlashCommandItem[] | 
   return true;
 }
 
+export function reconcileCommandNodes(editor: Editor): boolean {
+  const commands = getSlashCommands(editor);
+  if (commands === null) return false;
+  const view = getEditorView(editor);
+  if (view === undefined) return false;
+  const { state } = view;
+  const found: { pos: number; node: PmNode }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type.name === 'composerCommand') found.push({ pos, node });
+  });
+  if (found.length === 0) return false;
+  const tr = state.tr;
+  for (const { pos, node } of found.reverse()) {
+    const name = String(node.attrs.name ?? '');
+    const command = commands.find((c) => c.name === name);
+    if (command === undefined) {
+      tr.replaceWith(pos, pos + node.nodeSize, state.schema.text(`/${name}`));
+      continue;
+    }
+    const hint = command.input?.hint ?? '';
+    if (node.attrs.description !== command.description || node.attrs.hint !== hint) {
+      tr.setNodeMarkup(pos, undefined, { name, description: command.description, hint });
+    }
+  }
+  if (!tr.docChanged) return false;
+  view.dispatch(tr.setMeta('addToHistory', false));
+  return true;
+}
+
 export function filterSlashCommands(
   commands: readonly SlashCommandItem[],
   query: string,
@@ -108,6 +138,12 @@ export function leadingSlashToken(text: string): { name: string; length: number 
   const match = /^\/(\S+)/.exec(text);
   if (match === null) return null;
   return { name: match[1] ?? '', length: match[0].length };
+}
+
+const SLASH_TRIGGER_PREFIXES: readonly string[] = [' ', '\t', '\n', '\u00a0'];
+
+export function slashTokenTailLength(textAfterCaret: string): number {
+  return /^\S*/.exec(textAfterCaret)?.[0].length ?? 0;
 }
 
 export type SlashTokenHint =
@@ -246,8 +282,7 @@ export const ComposerSlashCommand = Extension.create<SlashCommandOptions, SlashC
       editor: this.editor,
       pluginKey: composerSlashSuggestionKey,
       char: '/',
-      startOfLine: true,
-      allow: ({ range }) => range.from === 1,
+      allowedPrefixes: [...SLASH_TRIGGER_PREFIXES],
 
       items: ({ query }) => {
         const commands = liveCommands();
@@ -256,26 +291,31 @@ export const ComposerSlashCommand = Extension.create<SlashCommandOptions, SlashC
       },
 
       command: ({ editor, range, props: item }) => {
-        const leading = editor.state.doc.firstChild?.firstChild ?? null;
-        const tokenLength = leading?.isText
-          ? (leadingSlashToken(leading.text ?? '')?.length ?? 0)
-          : 0;
+        const $to = editor.state.doc.resolve(range.to);
+        const following = editor.state.doc.textBetween(range.to, $to.end());
+        const tail = slashTokenTailLength(following);
+        const spacer = /^\s/.test(following.slice(tail)) ? '' : ' ';
+        const atMessageStart = range.from === 1;
         try {
           editor
             .chain()
             .focus()
-            .deleteRange({ from: range.from, to: Math.max(range.to, 1 + tokenLength) })
-            .insertContent([
-              {
-                type: 'composerCommand',
-                attrs: {
-                  name: item.name,
-                  description: item.description,
-                  hint: item.input?.hint ?? '',
-                },
-              },
-              { type: 'text', text: ' ' },
-            ])
+            .deleteRange({ from: range.from, to: range.to + tail })
+            .insertContent(
+              atMessageStart
+                ? [
+                    {
+                      type: 'composerCommand',
+                      attrs: {
+                        name: item.name,
+                        description: item.description,
+                        hint: item.input?.hint ?? '',
+                      },
+                    },
+                    ...(spacer === '' ? [] : [{ type: 'text', text: spacer }]),
+                  ]
+                : [{ type: 'text', text: `/${item.name}${spacer}` }],
+            )
             .run();
         } catch (err) {
           console.error('[composer-slash-command] insert failed', { item, range }, err);

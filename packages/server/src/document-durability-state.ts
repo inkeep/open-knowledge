@@ -470,6 +470,16 @@ export class DocumentDurabilityState {
     this.mutateDocument(docName, () => conflicts?.delete(docName));
   }
 
+  restoreStaleExternalWrite(conflict: StaleExternalWriteConflict, branch: string): void {
+    let conflicts = this.staleExternalWritesByBranch.get(branch);
+    if (!conflicts) {
+      conflicts = new Map();
+      this.staleExternalWritesByBranch.set(branch, conflicts);
+    }
+    if (conflicts.has(conflict.docName)) return;
+    this.mutateDocument(conflict.docName, () => conflicts.set(conflict.docName, conflict));
+  }
+
   private mutateDocument<T>(docName: string, mutate: () => T, persist = true): T {
     const bases = this.reconciledBaseByBranch.get(this.activeBranch) ?? new Map<string, string>();
     const versions =

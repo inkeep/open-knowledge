@@ -520,6 +520,16 @@ const bridge: OkDesktopBridge = {
 
   worktree: {
     list: () => invoke('ok:worktree:dispatch', { kind: 'list' }) as Promise<WorktreeListResult>,
+    inventory: (request) =>
+      invoke('ok:worktree:dispatch', {
+        kind: 'inventory',
+        ...request,
+      }) as ReturnType<OkDesktopBridge['worktree']['inventory']>,
+    openInventory: (request) =>
+      invoke('ok:worktree:dispatch', {
+        kind: 'open-inventory',
+        ...request,
+      }) as ReturnType<OkDesktopBridge['worktree']['openInventory']>,
     create: (request: WorktreeCreateRequest) =>
       invoke('ok:worktree:dispatch', {
         kind: 'create',
@@ -560,6 +570,7 @@ const bridge: OkDesktopBridge = {
         includeCrashDump: request.includeCrashDump,
         includeScreenshot: request.includeScreenshot,
         attachments: request.attachments,
+        agentChatThreadId: request.agentChatThreadId,
       }) as Promise<OkBugReportCreateResult>,
     captureScreenshot: () =>
       invoke('ok:bug-report:dispatch', {

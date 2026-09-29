@@ -1,4 +1,4 @@
-import { decodeHrefPath, isExternalHref } from '@inkeep/open-knowledge-core';
+import { decodeHrefPath, isExternalHref, resolveInternalHref } from '@inkeep/open-knowledge-core';
 import { docNameFromAbsolutePath } from '@/components/acp/follow-file';
 import { hashFromDocName } from '@/lib/doc-hash';
 import type { Workspace } from '@/lib/workspace-paths';
@@ -6,6 +6,7 @@ import type { Workspace } from '@/lib/workspace-paths';
 export type DocPathResolver = (candidate: string) => string | null;
 
 const DOC_PATH_REGEX = /(?<![A-Za-z0-9_./@-])[A-Za-z0-9_./@-]+\.(?:md|mdx)\b(?:#[A-Za-z0-9_-]+)?/g;
+const LEADING_DOT_SEGMENTS_RE = /^(?:\.[\\/])+/;
 
 export interface BuildDocPathResolverInput {
   readonly workspace: Workspace | null;
@@ -18,11 +19,19 @@ export function buildDocPathResolver(input: BuildDocPathResolverInput): DocPathR
 
   return (candidate: string): string | null => {
     const hashIdx = candidate.indexOf('#');
-    const path = (hashIdx === -1 ? candidate : candidate.slice(0, hashIdx)).replace(/^@/, '');
+    const path = (hashIdx === -1 ? candidate : candidate.slice(0, hashIdx))
+      .replace(/^@/, '')
+      .replace(LEADING_DOT_SEGMENTS_RE, '');
     if (path === '') return null;
 
     const asAbsolute = docNameFromAbsolutePath(path, workspace);
     if (asAbsolute !== null && pages.has(asAbsolute)) return asAbsolute;
+
+    if (path.startsWith('/')) {
+      if (stripMarkdownExt(path) === null) return null;
+      const rooted = resolveInternalHref(path.replaceAll('%', '%25'), '')?.docName ?? null;
+      return rooted !== null && pages.has(rooted) ? rooted : null;
+    }
 
     const composed = joinWorkspaceRelative(workspace, path);
     if (composed !== null) {

@@ -438,7 +438,7 @@ describe('repo assets — the source-fallback tripwire', () => {
       .map((file) => relative(skillsDir, file));
     expect(
       referencing,
-      'resolveBundledSkillDir probes dist/assets/skills/<which> and then falls through to the uncomposed assets/skills/<which> (build-skill-zip.ts:51-52), and listPackSkillSources resolves pack directories through that same chain, so a reader arriving while a publish is between its two renames receives SOURCE bytes. That is harmless only while composition is an identity transform. The first SKILL.md to reference a shared include makes that fallback serve an unresolved placeholder, silently, and no other check in this repo reds on it. This test pins the condition that keeps the residual absent window benign; retire it by making the fallback unable to serve uncomposed bytes, not by deleting it.',
+      'resolveBundledSkillDir reads the uncomposed assets/skills/<which> whenever it runs from source, and from a build it probes dist/assets/skills/<which> before falling through to that same uncomposed source (bundledSkillCandidates, build-skill-zip.ts); listPackSkillSources resolves pack directories through that resolver. So every source-mode reader, and any built reader arriving while a publish is between its two renames, receives SOURCE bytes. That is harmless only while composition is an identity transform. The first SKILL.md to reference a shared include makes those readers serve an unresolved placeholder, silently, and no other check in this repo reds on it. This test pins that condition; retire it by making every reader unable to serve uncomposed bytes, not by deleting it.',
     ).toEqual([]);
   });
 });

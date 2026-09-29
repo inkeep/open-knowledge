@@ -7,6 +7,7 @@ import { LOCAL_DIR, OK_DIR } from '../constants/ok-dir.ts';
 import { atomicWriteFile } from '../util/atomic-yaml-write.ts';
 import { FileLockTimeoutError, withFileLock } from '../util/file-lock.ts';
 import type { ConfigValidationError, WriteScope } from './errors.ts';
+import { validateGitHostPatch } from './git-host-config.ts';
 import type { Err, Ok, Result } from './result.ts';
 import { type Config, type ConfigPatch, ConfigSchema } from './schema.ts';
 import { CONFIG_SCHEMA_MAJOR_PATH } from './schema-version.ts';
@@ -98,6 +99,8 @@ async function writeConfigPatchInner(
   if (scopeViolation !== null) {
     return err(scopeViolation);
   }
+  const hostViolation = validateGitHostPatch(patch);
+  if (hostViolation !== null) return err(hostViolation);
 
   try {
     await mkdir(dirname(absPath), { recursive: true });

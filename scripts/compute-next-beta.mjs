@@ -46,6 +46,12 @@ export function parseFrontmatterBumpType(content) {
   return maxType;
 }
 
+export function pendingChangesetFiles(dir) {
+  return readdirSync(dir)
+    .filter((f) => f.endsWith('.md') && f !== 'README.md')
+    .sort();
+}
+
 function findPrevBetaTag() {
   const res = spawnSync(
     'gh',
@@ -222,9 +228,7 @@ function main() {
     throw new Error(`No initialVersion for ${FIXED_GROUP_ANCHOR} in pre.json`);
   }
 
-  const changesetFiles = readdirSync(CHANGESET_DIR)
-    .filter((f) => f.endsWith('.md') && f !== 'README.md')
-    .sort();
+  const changesetFiles = pendingChangesetFiles(CHANGESET_DIR);
   if (changesetFiles.length === 0) {
     console.log(JSON.stringify({ skip: true, reason: 'no pending changesets' }));
     return;

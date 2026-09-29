@@ -1,9 +1,15 @@
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { createServer, type Server as HttpServer } from 'node:http';
-import { afterEach, describe, expect, test } from 'vitest';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createConcurrencyGuard } from '../local-op-security.ts';
+import * as ghLogin from '../local-ops/gh-login.ts';
 import type { AuthEvent } from '../local-ops/types.ts';
 import { loggerFactory } from '../logger.ts';
 import { listenOnLoopback } from '../loopback-rig-test-helpers.ts';
+import { declareGitHubHosts, useIsolatedHome } from '../share/git-host-declarations.test-helper.ts';
 import type { SyncEngine } from '../sync-engine.ts';
 import { createLocalOpRoutes, resumeSyncOnAuthEvent } from './local-op-routes.ts';
 
@@ -28,7 +34,7 @@ type LocalOpRouteDeps = Parameters<typeof createLocalOpRoutes>[0];
 function buildGroup(overrides: Partial<LocalOpRouteDeps> = {}) {
   return createLocalOpRoutes({
     projectDir: undefined,
-    contentDir: '/tmp/ok-local-op-routes-test',
+    contentDir: tmpdir(),
     log: loggerFactory.getLogger('test'),
     checkLocalOpSecurity: () => true,
     localOpCliArgs: ['open-knowledge'],
@@ -177,9 +183,12 @@ async function* ndjsonLines(body: ReadableStream<Uint8Array>): AsyncGenerator<St
 }
 
 describe('auth-login stream displacement (a second start orphans the first client)', () => {
+  const home = useIsolatedHome();
+
   let servers: HttpServer[] = [];
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     const active = servers;
     servers = [];
     await Promise.allSettled(
@@ -215,6 +224,177 @@ describe('auth-login stream displacement (a second start orphans the first clien
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
+
+  test('a project whose origin is not a GitHub host refuses GitHub auth routes that name no host', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-local-op-non-github-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      execFileSync('git', ['remote', 'add', 'origin', 'https://git.example.internal/team/kb.git'], {
+        cwd: projectDir,
+      });
+      const baseUrl = await serveLocalOpGroup({
+        projectDir,
+        localOpCliArgs: parkedDeviceFlowCli(),
+      });
+
+      for (const path of [
+        '/api/local-op/auth/status',
+        '/api/local-op/auth/login',
+        '/api/local-op/auth/pat',
+        '/api/local-op/auth/gh-login',
+        '/api/local-op/auth/repos',
+        '/api/local-op/auth/signout',
+      ]) {
+        const body = path.endsWith('/pat') ? { token: 'ghp_test' } : {};
+        const res = await postJson(baseUrl, path, body);
+        expect(res.status, path).toBe(409);
+        expect(await res.json(), path).toMatchObject({
+          type: 'urn:ok:error:non-github-origin',
+          host: 'git.example.internal',
+          detail: expect.stringContaining('git.example.internal'),
+        });
+      }
+
+      const explicit = await postJson(baseUrl, '/api/local-op/auth/login', { host: 'github.com' });
+      expect(explicit.status).toBe(200);
+      await postJson(baseUrl, '/api/local-op/auth/cancel', {});
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('gh-login rejects an explicit undeclared host before looking up gh and accepts a declaration', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-gh-login-host-'));
+    const probe = vi.spyOn(ghLogin, 'cachedGhBinaryPath').mockResolvedValue(null);
+    try {
+      const baseUrl = await serveLocalOpGroup({ projectDir });
+      const rejected = await postJson(baseUrl, '/api/local-op/auth/gh-login', {
+        host: 'ghes.example.test',
+      });
+      expect(rejected.status).toBe(409);
+      expect(await rejected.json()).toMatchObject({ host: 'ghes.example.test' });
+      expect(probe).not.toHaveBeenCalled();
+      declareGitHubHosts(home(), 'ghes.example.test');
+      const beforeRestart = await postJson(baseUrl, '/api/local-op/auth/gh-login', {
+        host: 'ghes.example.test',
+      });
+      expect(beforeRestart.status).toBe(409);
+      expect(probe).not.toHaveBeenCalled();
+      const restartedUrl = await serveLocalOpGroup({ projectDir });
+      const accepted = await postJson(restartedUrl, '/api/local-op/auth/gh-login', {
+        host: 'ghes.example.test',
+      });
+      expect(accepted.status).toBe(400);
+      expect(await accepted.json()).toMatchObject({
+        title: 'The GitHub CLI (gh) is not installed.',
+      });
+      expect(probe).toHaveBeenCalledOnce();
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('normalizes rejected explicit hosts without changing accepted network ports', async () => {
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-auth-normalized-host-')));
+    try {
+      const localOpCliArgs = [
+        process.execPath,
+        '-e',
+        `console.log(JSON.stringify({type: 'complete', host: process.argv[process.argv.indexOf('--host') + 1], login: 'octocat'}));`,
+      ];
+      const baseUrl = await serveLocalOpGroup({ projectDir, localOpCliArgs });
+      const rejected = await postJson(baseUrl, '/api/local-op/auth/login', {
+        host: 'GHES.Example.test:8443',
+      });
+      expect(rejected.status).toBe(409);
+      expect(await rejected.json()).toMatchObject({
+        host: 'ghes.example.test',
+        detail: expect.stringContaining('git.hosts.ghes.example.test.provider'),
+      });
+      const declaredUrl = await serveLocalOpGroup({
+        projectDir,
+        localOpCliArgs,
+        declaredGitHubHosts: new Set(['ghes.example.test']),
+      });
+      const accepted = await postJson(declaredUrl, '/api/local-op/auth/login', {
+        host: 'GHES.Example.test:8443',
+      });
+      expect(accepted.status).toBe(200);
+      expect(await accepted.text()).toContain('"host":"GHES.Example.test:8443"');
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('explicit undeclared hosts are refused except for local credential deletion', async () => {
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-auth-explicit-host-')));
+    try {
+      const localOpCliArgs = [process.execPath, '-e', 'process.exit(0)'];
+      const baseUrl = await serveLocalOpGroup({ projectDir, localOpCliArgs });
+      for (const verb of ['login', 'status', 'pat', 'repos']) {
+        const response = await postJson(baseUrl, `/api/local-op/auth/${verb}`, {
+          host: 'git.example.test',
+          ...(verb === 'pat' ? { token: 'test-token' } : {}),
+        });
+        expect(response.status, verb).toBe(409);
+        expect(await response.json()).toMatchObject({ host: 'git.example.test' });
+      }
+      const response = await postJson(baseUrl, '/api/local-op/auth/signout', {
+        host: 'git.example.test',
+      });
+      expect(response.status).toBe(200);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('an unparseable origin reports an unknown host without a false provider classification', async () => {
+    const projectDir = mkdtempSync(join(tmpdir(), 'ok-unparseable-origin-'));
+    try {
+      execFileSync('git', ['init', '-q'], { cwd: projectDir });
+      execFileSync('git', ['remote', 'add', 'origin', '../other-repository'], { cwd: projectDir });
+      const baseUrl = await serveLocalOpGroup({ projectDir });
+      const response = await postJson(baseUrl, '/api/local-op/auth/status', {});
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        host: null,
+        detail: expect.stringContaining('could not be parsed'),
+      });
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  test('auth subprocesses run in the project directory instead of the server cwd', async () => {
+    const projectDir = realpathSync(mkdtempSync(join(tmpdir(), 'ok-auth-cwd-')));
+    vi.spyOn(ghLogin, 'cachedGhBinaryPath').mockResolvedValue(null);
+    try {
+      const localOpCliArgs = [
+        process.execPath,
+        '-e',
+        `
+        const fs = require('node:fs');
+        const verb = process.argv[2];
+        fs.writeFileSync(verb + '.cwd', process.cwd());
+        const fields = {host: 'github.com', login: 'octocat', authenticated: true};
+        console.log(JSON.stringify({type: verb === 'status' ? 'status' : verb === 'repos' ? 'repos' : 'complete', ...fields, repos: []}));
+      `,
+      ];
+      const baseUrl = await serveLocalOpGroup({ projectDir, localOpCliArgs });
+      for (const verb of ['login', 'status', 'pat', 'repos', 'signout']) {
+        const response = await postJson(
+          baseUrl,
+          `/api/local-op/auth/${verb}`,
+          verb === 'pat' ? { token: 'ghp_test' } : {},
+        );
+        expect(response.status, verb).toBe(200);
+        await response.text();
+        expect(readFileSync(join(projectDir, `${verb}.cwd`), 'utf8'), verb).toBe(projectDir);
+      }
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
 
   test('the displaced stream is told it was replaced before the server ends it', async () => {
     const baseUrl = await serveLocalOpGroup({ localOpCliArgs: parkedDeviceFlowCli() });

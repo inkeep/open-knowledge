@@ -53,6 +53,45 @@ describe('partToBlock — images', () => {
   });
 });
 
+describe('partToBlock — files sent with the message', () => {
+  const textBlob: AttachmentPart = {
+    kind: 'blob',
+    data: 'Trip budget',
+    textPayload: true,
+    mimeType: 'text/plain',
+    name: 'notes.txt',
+    sizeBytes: 11,
+  };
+
+  test('text WITH embeddedContext → resource carrying the text', async () => {
+    expect(await partToBlock(textBlob, { embeddedContext: true }, acceptingResolver)).toEqual({
+      block: {
+        type: 'resource',
+        resource: { uri: 'attachment:///notes.txt', text: 'Trip budget', mimeType: 'text/plain' },
+      },
+    });
+  });
+
+  test('text WITHOUT embeddedContext → the text inlined in the prompt', async () => {
+    expect(await partToBlock(textBlob, {}, acceptingResolver)).toEqual({
+      block: {
+        type: 'text',
+        text: '\n\n--- Attachment: notes.txt ---\nTrip budget\n--- End attachment ---',
+      },
+    });
+  });
+
+  test('binary bytes are dropped with a reason under either capability, never sent inline', async () => {
+    const binary: AttachmentPart = { ...textBlob, textPayload: false, name: 'receipt.pdf' };
+    for (const caps of [{ embeddedContext: true }, {}] as PromptCapabilities[]) {
+      expect(await partToBlock(binary, caps, acceptingResolver)).toEqual({
+        dropped: true,
+        reason: expect.stringContaining('receipt.pdf'),
+      });
+    }
+  });
+});
+
 describe('partToBlock — folders', () => {
   test('folder → resource_link with inode/directory mimetype', async () => {
     const part: AttachmentPart = { kind: 'folder', path: 'specs/foo', name: 'foo' };

@@ -43,10 +43,9 @@ function quitAppCleanly(): void {
   } catch {}
   waitForExit();
   if (appIsRunning()) {
-    try {
-      execFileSync('pkill', ['-x', APP_NAME], { stdio: 'pipe' });
-    } catch {}
-    waitForExit();
+    throw new Error(
+      `${APP_NAME} did not quit after the Apple-Event quit request, and this test does not stop apps by name`,
+    );
   }
 }
 

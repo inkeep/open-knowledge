@@ -178,10 +178,12 @@ function OutlinePanelInner({
   return (
     <Panel className={className}>
       <PanelHeader>
-        <PanelTitle>
-          <Trans>Outline</Trans>
-        </PanelTitle>
-        {!isResolving && !error && !isUnresolvable && <PanelCount>{headings.length}</PanelCount>}
+        <div className="flex min-w-0 items-center gap-2">
+          <PanelTitle>
+            <Trans>Outline</Trans>
+          </PanelTitle>
+          {!isResolving && !error && !isUnresolvable && <PanelCount>{headings.length}</PanelCount>}
+        </div>
       </PanelHeader>
       <PanelBody className="px-3 py-2" aria-busy={isResolving}>
         {isUnresolvable ? (

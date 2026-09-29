@@ -162,6 +162,15 @@ export function runGit(args) {
   return String(res.stdout || '');
 }
 
+export function changesetIdsFromTreePaths(paths) {
+  const ids = [];
+  for (const line of paths) {
+    const m = /^\.changeset\/(.+)\.md$/.exec(line.trim());
+    if (m && m[1] !== 'README') ids.push(m[1]);
+  }
+  return ids;
+}
+
 export const realGit = {
   revParse: (ref) => runGit(['rev-parse', '--verify', `${ref}^{commit}`]).trim(),
   newestStableTag: () => {
@@ -171,14 +180,8 @@ export const realGit = {
     }
     return '';
   },
-  changesetIds: (sha) => {
-    const ids = [];
-    for (const line of runGit(['ls-tree', '-r', '--name-only', sha, '--', '.changeset']).split('\n')) {
-      const m = /^\.changeset\/(.+)\.md$/.exec(line.trim());
-      if (m && m[1] !== 'README') ids.push(m[1]);
-    }
-    return ids;
-  },
+  changesetIds: (sha) =>
+    changesetIdsFromTreePaths(runGit(['ls-tree', '-r', '--name-only', sha, '--', '.changeset']).split('\n')),
   isAncestor: (a, b) => {
     const res = spawnSync('git', ['merge-base', '--is-ancestor', a, b], { encoding: 'utf8', env: gitCleanEnv() });
     if (res.status === 0) return true;

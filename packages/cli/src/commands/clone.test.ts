@@ -564,7 +564,7 @@ describe('buildCloneAuthEnv', () => {
 });
 
 describe('buildCloneGitOptions', () => {
-  test('opts into the env-based unsafe flags so the user PAGER/SSH/askpass/editor env is honored', () => {
+  test('opts into the env-based unsafe flags so the user PAGER/SSH/askpass/editor/GIT_CONFIG_COUNT env is honored', () => {
     const o = buildCloneGitOptions('/work/dir', ['credential.helper=!gh auth git-credential']);
     expect(o.baseDir).toBe('/work/dir');
     expect(o.config).toEqual(['credential.helper=!gh auth git-credential']);
@@ -574,6 +574,7 @@ describe('buildCloneGitOptions', () => {
       allowUnsafeSshCommand: true,
       allowUnsafeAskPass: true,
       allowUnsafeEditor: true,
+      allowUnsafeConfigEnvCount: true,
     });
   });
 
@@ -602,9 +603,7 @@ describe('buildCloneGitOptions — simple-git EDITOR env guard', () => {
   });
 
   it('buildCloneGitOptions honors EDITOR — git runs instead of tripping the guard', async () => {
-    const git = simpleGit(buildCloneGitOptions(tmpdir(), []) as Partial<SimpleGitOptions>).env(
-      editorEnv,
-    );
+    const git = simpleGit(buildCloneGitOptions(tmpdir(), [])).env(editorEnv);
     const out = await git.raw(['--version']);
     expect(out).toContain('git version');
   });
@@ -1405,9 +1404,7 @@ describe('clone stores the remote URL verbatim, userinfo included', () => {
 
       const targetDir = join(base, 'cloned');
       const env = buildCloneAuthEnv({}, { PATH: process.env.PATH ?? '' });
-      const git = simpleGit(
-        buildCloneGitOptions(base, [redirect]) as Partial<SimpleGitOptions>,
-      ).env(env);
+      const git = simpleGit(buildCloneGitOptions(base, [redirect])).env(env);
       await git.clone(declaredUrl, targetDir, buildCloneArgs(null));
 
       const config = readFileSync(join(targetDir, '.git', 'config'), 'utf-8');

@@ -200,6 +200,59 @@ describe('token decoration + hint line', () => {
   });
 });
 
+describe('carried command nodes', () => {
+  const commandDoc = (name: string, description: string) => ({
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: [
+          { type: 'composerCommand', attrs: { name, description, hint: '' } },
+          { type: 'text', text: ' now' },
+        ],
+      },
+    ],
+  });
+
+  test('a command the agent does not offer becomes plain text and is flagged', () => {
+    const { ref, box, editor } = renderComposer({ slashCommands: COMMANDS });
+    act(() => ref.current?.setDoc(commandDoc('deploy', 'Ship it')));
+    expect(box.querySelector('[data-composer-command]')).toBeNull();
+    expect(editor.state.doc.textContent).toBe('/deploy now');
+    expect(screen.getByTestId('composer-slash-hint').textContent).toContain(
+      "/deploy isn't a command this agent offers",
+    );
+  });
+
+  test("a command the agent offers keeps its node and takes that agent's metadata", () => {
+    const { ref, box, editor } = renderComposer({ slashCommands: COMMANDS });
+    act(() => ref.current?.setDoc(commandDoc('review', 'stale description')));
+    expect(box.querySelector('[data-composer-command="review"]')).not.toBeNull();
+    const node = editor.state.doc.firstChild?.firstChild;
+    expect(node?.attrs.description).toBe('Review the current diff');
+  });
+
+  test('a later command list update re-checks a carried node', () => {
+    const { ref, box, rerender } = renderComposer({ slashCommands: null });
+    act(() => ref.current?.setDoc(commandDoc('deploy', 'Ship it')));
+    expect(box.querySelector('[data-composer-command="deploy"]')).not.toBeNull();
+    rerender(
+      <ComposerMentionInput
+        attachmentDrop={{ kind: 'host' }}
+        ref={ref}
+        ariaLabel="Message Agent"
+        onEmptyChange={() => {}}
+        onSubmit={() => {}}
+        slashCommands={COMMANDS}
+      />,
+    );
+    expect(box.querySelector('[data-composer-command]')).toBeNull();
+    expect(screen.getByTestId('composer-slash-hint').textContent).toContain(
+      "/deploy isn't a command this agent offers",
+    );
+  });
+});
+
 describe('picker lifecycle', () => {
   test('the imperative command affordance opens the same picker as typing slash', async () => {
     const { editor, ref } = renderComposer({ slashCommands: COMMANDS });
@@ -334,12 +387,36 @@ describe('picker lifecycle', () => {
     expect(onEscape).not.toHaveBeenCalled();
   });
 
-  test('a slash mid-text does not open the picker', async () => {
-    const { editor } = renderComposer({ slashCommands: COMMANDS });
+  test('a slash after whitespace mid-message opens the picker and completes plain text', async () => {
+    const { editor, ref, box } = renderComposer({ slashCommands: COMMANDS });
     editor.commands.focus('end');
     editor.commands.insertContent('see /rev');
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(composerSlashSuggestionKey.getState(editor.state)?.active).toBeFalsy();
-    expect(screen.queryByTestId('composer-slash-menu')).toBeNull();
+    expect(await pressKeyOnceItemsLoad(editor, 'Enter')).toBe(true);
+    expect(editor.state.doc.textContent).toBe('see /review ');
+    expect(box.querySelector('[data-composer-command]')).toBeNull();
+    expect(box.querySelector('.composer-slash-token')).toBeNull();
+    expect(ref.current?.getContent().instruction).toBe('see /review');
+    expect(screen.getByTestId('composer-slash-hint').textContent).toBe('');
   });
+
+  test('a mid-message pick with the caret mid-token replaces the whole token', async () => {
+    const { editor } = renderComposer({ slashCommands: COMMANDS });
+    editor.commands.focus('end');
+    editor.commands.insertContent('run /create_plan now');
+    editor.commands.setTextSelection(8);
+    expect(await pressKeyOnceItemsLoad(editor, 'Enter')).toBe(true);
+    expect(editor.state.doc.textContent).toBe('run /create_plan now');
+  });
+
+  test.each(['and/or', 'see docs/rev', 'https://example.test/rev'])(
+    'a slash inside %s never opens the picker',
+    async (text) => {
+      const { editor } = renderComposer({ slashCommands: COMMANDS });
+      editor.commands.focus('end');
+      editor.commands.insertContent(text);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(composerSlashSuggestionKey.getState(editor.state)?.active).toBeFalsy();
+      expect(screen.queryByTestId('composer-slash-menu')).toBeNull();
+    },
+  );
 });

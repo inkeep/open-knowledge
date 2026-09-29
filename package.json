@@ -23,6 +23,7 @@
     "check:drift:guards": "bash scripts/check-husky-prepare-guard.sh && bash scripts/check-knip-clean.sh && bash scripts/check-notices-clean.sh && bash scripts/check-schema-snapshot-clean.sh && bash scripts/check-i18n-drift.sh && node scripts/check-i18n-new-string-translations.mjs && node scripts/check-i18n-picker-completeness.mjs && bash scripts/check-no-major-changeset.sh && node scripts/check-override-floors.mjs && node scripts/check-typescript-resolution.mjs",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
+    "test:uncached": "vitest run --config vitest.uncached.config.ts",
     "test:vitest-selftest": "vitest run",
     "smoke:share-v2": "node --import tsx --conditions=development packages/server/share-v2-smoke.ts",
     "lint": "pnpm run lint:biome && pnpm run lint:oxlint",

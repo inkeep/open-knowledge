@@ -11,13 +11,14 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   SPAWN_STARTUP_DEADLINE_MS,
   SPAWN_WAIT_EXTENSION_FACTOR,
 } from '../src/shared/boot-narration.ts';
+import { readBootLog } from '../tests/smoke/_helpers/launch-readiness.ts';
 
 export const PACKAGED_BOOT_ENVELOPE_MS = 10_000;
 export const PACKAGED_PTY_ECHO_BUDGET_MS = 30_000;
@@ -90,6 +91,10 @@ export function windowsPtyDriverEnv(env = process.env) {
   };
 }
 
+export function windowsPackageAppEnv(env = process.env) {
+  return { ...env, OK_DESKTOP_E2E_SMOKE: '1', OK_LOG_LEVEL: 'info' };
+}
+
 export function seedWindowsPtySmokeProject(rootDir, shellPath) {
   const projectDir = join(rootDir, 'project');
   const userDataDir = join(rootDir, 'user-data');
@@ -115,6 +120,40 @@ function printAppLog(logPath) {
   if (tail.trim() !== '') console.error(`Packaged app log (tail):\n${tail}`);
 }
 
+const TERMINAL_LOG_SUBSYSTEMS = new Set(['terminal', 'pty-host']);
+const TERMINAL_LOG_TAIL_LINES = 200;
+
+function isTerminalRecordSince(line, launchedAt) {
+  let record;
+  try {
+    record = JSON.parse(line);
+  } catch {
+    return false;
+  }
+  return TERMINAL_LOG_SUBSYSTEMS.has(record?.subsystem) && Date.parse(record.time) >= launchedAt;
+}
+
+export function readTerminalSubsystemLog(launchedAt, home = homedir()) {
+  const log = readBootLog(home);
+  if (log.unreadableReason !== undefined) {
+    return `Could not list the app log directory at ${log.dir} (${log.unreadableReason}), so what the terminal subsystem wrote is unavailable.`;
+  }
+  if (!log.exists) {
+    return `No desktop log in ${log.dir}, so the packaged app never opened the log its terminal subsystem writes to.`;
+  }
+  const since = new Date(launchedAt).toISOString();
+  const missing =
+    log.unreadableFiles.length === 0
+      ? ''
+      : `\nCould not read ${log.unreadableFiles.join(', ')} in ${log.dir}, so any terminal record written there since ${since} is missing.`;
+  const kept = log.lines.filter((line) => isTerminalRecordSince(line, launchedAt));
+  if (kept.length === 0) {
+    return `No terminal or pty-host record written since ${since} in any desktop log under ${log.dir}, so the packaged app logged nothing about the subsystem this smoke drives.${missing}`;
+  }
+  const tail = kept.slice(-TERMINAL_LOG_TAIL_LINES);
+  return `Packaged app terminal log (${tail.length} of ${kept.length} records written since ${since} in ${log.dir}):\n${tail.join('\n')}${missing}`;
+}
+
 export function runWindowsPackageTerminalSmoke({
   packageDir = defaultPackageDir,
   platform = process.platform,
@@ -135,12 +174,13 @@ export function runWindowsPackageTerminalSmoke({
   const logPath = join(smokeRoot, 'openknowledge.log');
   const { projectDir, userDataDir } = seedWindowsPtySmokeProject(smokeRoot, shellPath);
   const logFd = openSync(logPath, 'w');
+  const launchedAt = Date.now();
   let app = null;
 
   try {
     app = spawn(executable, windowsPackageLaunchArgs(projectDir, userDataDir), {
       cwd: resolvedPackageDir,
-      env: { ...env, OK_DESKTOP_E2E_SMOKE: '1' },
+      env: windowsPackageAppEnv(env),
       stdio: ['ignore', logFd, logFd],
       windowsHide: true,
     });
@@ -162,6 +202,7 @@ export function runWindowsPackageTerminalSmoke({
   } catch (error) {
     closeSync(logFd);
     printAppLog(logPath);
+    console.error(readTerminalSubsystemLog(launchedAt));
     throw error;
   } finally {
     if (app?.pid) {

@@ -32,7 +32,6 @@ name: Desktop release
 # latest-linux[-arm64].yml, or their beta-* siblings) locally regardless of
 # publish mode, so the fan-in uploads those alongside the installers.
 #
-# Triggers (2):
 #   - repository_dispatch (event_type: desktop-release) — primary cascade
 #     from release.yml (beta) and promote-stable.yml (stable). The
 #     upstream creates the GitHub Release as --draft (so it stays out
@@ -44,14 +43,6 @@ name: Desktop release
 #     GITHUB_TOKEN-authored release events. repository_dispatch is the
 #     documented exemption.
 #     See https://docs.github.com/en/actions/concepts/security/github_token.
-#   - workflow_dispatch — manual recovery path for re-building + re-uploading
-#     assets to an EXISTING Release after a transient failure (e.g., a
-#     CI-only fix landed after the tag was cut). Builds from the chosen ref
-#     and uploads to the Release matching release_tag. Unlike the
-#     electron-builder-publisher era this path no longer creates a missing
-#     Release — the Release must already exist (cut by release.yml /
-#     promote-stable.yml / point-release.yml).
-#
 # Required secrets:
 #   macOS (identical shape to desktop-build.yml):
 #     CSC_LINK / CSC_KEY_PASSWORD
@@ -96,19 +87,10 @@ on:
   # release events; repository_dispatch is the documented exemption.
   repository_dispatch:
     types: [desktop-release]
-  # Manual re-publish path: lets an operator rebuild + re-upload assets for an
-  # existing Release when the original cascade-triggered run failed (e.g., a
-  # CI-only fix landed on `main` after the tag was cut). Builds from
-  # the chosen ref (typically `main` with the fix) and uploads to the
-  # Release matching release_tag. The dispatcher must ensure
-  # `packages/desktop/package.json#version` at the chosen ref matches
-  # release_tag (without the `v` prefix) — the version override below derives
-  # everything from the tag, so a mismatched ref ships mismatched code, not
-  # mismatched metadata.
   workflow_dispatch:
     inputs:
       release_tag:
-        description: "Existing release tag to upload assets to (e.g. v0.3.0)"
+        description: "Existing source tag to rebuild and upload installers for (e.g. v0.3.0)"
         required: true
         type: string
 
@@ -155,6 +137,9 @@ jobs:
     outputs:
       channel: ${{ steps.channel.outputs.channel }}
       version: ${{ steps.channel.outputs.version }}
+      variant: ${{ steps.channel.outputs.variant }}
+      product_name: ${{ steps.channel.outputs.product_name }}
+      artifact_name: ${{ steps.channel.outputs.artifact_name }}
       required: ${{ steps.required.outputs.required }}
     steps:
       - name: Link to triggering run
@@ -169,19 +154,11 @@ jobs:
             { echo "### Triggered by"; echo "- ${DISPATCHED_BY}"; } >> "$GITHUB_STEP_SUMMARY"
           fi
 
-      # On `repository_dispatch`, check out the ref supplied by the upstream
-      # workflow via `client_payload.ref` — that's the exact commit
-      # release.yml / promote-stable.yml resolved when cutting the tag, so
-      # the bundled version + any CHANGELOG artifacts match the Release.
-      #
-      # On `workflow_dispatch`, check out the workflow ref the user dispatched
-      # against (typically `main` with a CI fix).
-      #
       # fetch-depth: 0 — the native-config staging step's provenance check
       # (`git merge-base --is-ancestor`) needs full history.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
           fetch-depth: 0
 
       # Detect channel from the release TAG (not package.json#version). Under
@@ -215,6 +192,9 @@ jobs:
           if [[ "$VERSION" == *-beta.* ]]; then
             {
               echo "channel=beta"
+              echo "variant=beta"
+              echo "product_name=OpenKnowledge Beta"
+              echo "artifact_name=OpenKnowledge-Beta"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
             echo "::notice::Building BETA channel from tag $RELEASE_TAG"
@@ -227,11 +207,14 @@ jobs:
             echo "::error::Tag $RELEASE_TAG is missing the .N suffix — beta releases must be tagged -beta.N (e.g. -beta.0, -beta.1) so electron-updater's cascade walk can order them. See packages/desktop/README.md beta-channel runbook."
             exit 1
           elif [[ "$VERSION" == *-* ]]; then
-            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported. See packages/desktop/README.md beta-channel runbook for the supported lifecycle."
+            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — desktop releases accept only -beta.N."
             exit 1
           else
             {
               echo "channel=latest"
+              echo "variant=stable"
+              echo "product_name=OpenKnowledge"
+              echo "artifact_name=OpenKnowledge"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
             echo "::notice::Building LATEST channel from tag $RELEASE_TAG"
@@ -491,6 +474,12 @@ jobs:
   # runtime to every cut. It re-runs the cheap channel detection itself; the
   # two copies of that step live in one file and must stay in lockstep.
   build-macos:
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
+    env:
+      OK_DESKTOP_VARIANT: ${{ matrix.variant }}
     # macos-26 = Apple Silicon (Tahoe) with Xcode 26.x preinstalled. Apple
     # Silicon is required for the Universal DMG lipo merge (arm64 + x64 →
     # universal) per parent SPEC D29. Xcode 26+ is required because
@@ -518,7 +507,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
 
       # Lockstep twin of the prepare job's step (see this job's header for why
       # it exists twice) — same tag → same outputs, so `steps.channel.*` here
@@ -537,14 +526,20 @@ jobs:
           if [[ "$VERSION" == *-beta.* ]]; then
             {
               echo "channel=beta"
+              echo "variant=beta"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
+            if [[ "$OK_DESKTOP_VARIANT" == "beta" ]]; then
+              echo "channel=beta-product" >> "$GITHUB_OUTPUT"
+            fi
+            echo "variant=$OK_DESKTOP_VARIANT" >> "$GITHUB_OUTPUT"
           elif [[ "$VERSION" == *-* ]]; then
-            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — only -beta.N is supported (prepare's twin step carries the full diagnostics)."
+            echo "::error::Unsupported prerelease ID in tag $RELEASE_TAG — this public publisher accepts only -beta.N (prepare's twin step carries the full diagnostics)."
             exit 1
           else
             {
               echo "channel=latest"
+              echo "variant=stable"
               echo "version=$VERSION"
             } >> "$GITHUB_OUTPUT"
           fi
@@ -796,6 +791,18 @@ jobs:
         working-directory: packages/desktop
         run: pnpm run build:desktop
 
+      - name: Validate variant provisioning profile
+        if: steps.channel.outputs.variant == 'beta'
+        working-directory: packages/desktop
+        run: |
+          set -euo pipefail
+          PROFILE_PATH="build/embedded.${OK_DESKTOP_VARIANT}.provisionprofile"
+          if [[ ! -f "$PROFILE_PATH" ]]; then
+            echo "::error::The committed ${OK_DESKTOP_VARIANT} Developer ID provisioning profile is missing."
+            exit 1
+          fi
+          security cms -D -i "$PROFILE_PATH" >/dev/null
+
       - name: Build + sign + notarize DMG/ZIP
         # electron-builder signs with the identity in CSC_KEYCHAIN (pushed
         # into $GITHUB_ENV by the "Prepare signing keychain" step). CSC_LINK
@@ -805,7 +812,7 @@ jobs:
         # + staples + fuse-verifies. `--publish never`: the fan-in publish-assets job is
         # the only publication point — this job stages its outputs as a run
         # artifact below. electron-builder still writes the channel manifest
-        # (`latest-mac.yml` or `beta-mac.yml`, per `--config.publish.channel`)
+        # (`latest-mac.yml` or `beta-mac.yml`, per the generated config's publish channel)
         # into dist-desktop locally (proven by desktop-build.yml, whose
         # --publish never build uploads that same file).
         #
@@ -830,7 +837,7 @@ jobs:
           BUILD_VERSION: ${{ steps.channel.outputs.version }}
           BUILD_CHANNEL: ${{ steps.channel.outputs.channel }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}"'
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec node "$DESKTOP_PACKAGER" --mac --publish never --config.extraMetadata.version="${BUILD_VERSION}"'
         working-directory: packages/desktop
         run: |
           # extraMetadata.version override: kept as defense-in-depth so the
@@ -847,17 +854,22 @@ jobs:
           set -euo pipefail
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
           WRAPPER_TMP="${WRAPPER}.tmp.$$"
-          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          export DESKTOP_PACKAGER="${RUNNER_TEMP}/package-desktop.mjs"
+          PACKAGER_TMP="${DESKTOP_PACKAGER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"' EXIT
           materialized=false
           for materialize_attempt in 1 2 3; do
             if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
                git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
                [[ -s "$WRAPPER_TMP" ]] &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/package-desktop.mjs" > "$PACKAGER_TMP" &&
+               [[ -s "$PACKAGER_TMP" ]] &&
+               mv "$PACKAGER_TMP" "$DESKTOP_PACKAGER" &&
                mv "$WRAPPER_TMP" "$WRAPPER"; then
               materialized=true
               break
             fi
-            rm -f "$WRAPPER_TMP"
+            rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"
             if [[ "$materialize_attempt" -lt 3 ]]; then
               materialize_delay=$((materialize_attempt * 5))
               echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
@@ -920,19 +932,27 @@ jobs:
           fi
           echo "Attested $FOUND signed, notarized, stapled app bundle(s)."
 
+      - name: Verify a historical app can update in place
+        if: matrix.variant != 'beta'
+        env:
+          WORKFLOW_SHA: ${{ github.workflow_sha }}
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ matrix.variant == 'legacy-beta' && 'v0.77.9-beta.0' || 'v0.77.8' }}
+          UPDATER_CHANNEL: ${{ matrix.variant == 'legacy-beta' && 'beta' || 'latest' }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/historical-upgrade"
+          git fetch --no-tags --depth=1 origin "$WORKFLOW_SHA"
+          git restore --source "$WORKFLOW_SHA" --worktree .github/scripts/smoke-historical-upgrade.mjs .github/scripts/dmg-mount.mjs
+          gh release download "$SOURCE_TAG" --pattern 'OpenKnowledge-arm64.dmg' --dir "$RUNNER_TEMP/historical-upgrade"
+          node .github/scripts/smoke-historical-upgrade.mjs "$RUNNER_TEMP/historical-upgrade/OpenKnowledge-arm64.dmg" "$UPDATER_CHANNEL"
+
       # FR5b — smoke the signed DMG before anything about this release becomes
       # visible or installable. Under the fan-in topology this job failing on
       # a smoke verdict means publish-assets never runs: no asset reaches the
       # Release, the draft never flips, npm never moves, and the announcements
       # never post. (That's strictly stronger than the pre-fan-in behavior,
       # where the mac assets were already uploaded before the smoke ran.)
-      #
-      # The gate is skipped when the checked-out ref predates it. On the
-      # cascade path this job checks out `client_payload.ref` — a tag pointing
-      # at the promoted beta's commit, which for the first releases after this
-      # lands will not contain the smoke harness. Blocking a release because
-      # the gate did not exist yet would be wrong; the gate applies from the
-      # first tag that carries it.
       #
       # Stable only. Every beta cut flows through this same job on
       # channel=beta, and FR5b is scoped to the stable artifact — the beta
@@ -998,7 +1018,7 @@ jobs:
       - name: Upload macOS release assets for the fan-in publisher
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: macos-release-assets
+          name: macos-${{ matrix.variant }}-release-assets
           path: |
             packages/desktop/dist-desktop/*.dmg
             packages/desktop/dist-desktop/*.dmg.blockmap
@@ -1010,8 +1030,16 @@ jobs:
 
   build-windows:
     needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
     runs-on: windows-latest
     timeout-minutes: 45
+    env:
+      OK_DESKTOP_VARIANT: ${{ matrix.variant }}
+      OK_DESKTOP_PRODUCT_NAME: ${{ matrix.variant == 'beta' && 'OpenKnowledge Beta' || 'OpenKnowledge' }}
+      UPDATER_CHANNEL: ${{ matrix.variant == 'beta' && 'beta-product' || needs.prepare.outputs.channel }}
     permissions:
       # See build-macos — packaging jobs are read-only by design.
       contents: read
@@ -1028,7 +1056,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -1127,9 +1155,9 @@ jobs:
           AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
           AZURE_SIGNING_PUBLISHER: ${{ vars.AZURE_SIGNING_PUBLISHER }}
           BUILD_VERSION: ${{ needs.prepare.outputs.version }}
-          BUILD_CHANNEL: ${{ needs.prepare.outputs.channel }}
+          BUILD_CHANNEL: ${{ env.UPDATER_CHANNEL }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.publish.channel="${BUILD_CHANNEL}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec node "$DESKTOP_PACKAGER" --win --publish never --config.extraMetadata.version="${BUILD_VERSION}" --config.win.azureSignOptions.endpoint="${AZURE_SIGNING_ENDPOINT}" --config.win.azureSignOptions.codeSigningAccountName="${AZURE_SIGNING_ACCOUNT}" --config.win.azureSignOptions.certificateProfileName="${AZURE_SIGNING_PROFILE}" --config.win.azureSignOptions.publisherName="${AZURE_SIGNING_PUBLISHER}"'
         run: |
           set -euo pipefail
           missing=()
@@ -1147,17 +1175,22 @@ jobs:
           echo "::notice::Azure Trusted Signing credentials present — building SIGNED installers."
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
           WRAPPER_TMP="${WRAPPER}.tmp.$$"
-          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          export DESKTOP_PACKAGER="${RUNNER_TEMP}/package-desktop.mjs"
+          PACKAGER_TMP="${DESKTOP_PACKAGER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"' EXIT
           materialized=false
           for materialize_attempt in 1 2 3; do
             if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
                git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
                [[ -s "$WRAPPER_TMP" ]] &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/package-desktop.mjs" > "$PACKAGER_TMP" &&
+               [[ -s "$PACKAGER_TMP" ]] &&
+               mv "$PACKAGER_TMP" "$DESKTOP_PACKAGER" &&
                mv "$WRAPPER_TMP" "$WRAPPER"; then
               materialized=true
               break
             fi
-            rm -f "$WRAPPER_TMP"
+            rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"
             if [[ "$materialize_attempt" -lt 3 ]]; then
               materialize_delay=$((materialize_attempt * 5))
               echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
@@ -1211,9 +1244,9 @@ jobs:
               throw "Signed release produced no $($package.Arch) outer package at $($package.Path)."
             }
 
-            $appExecutable = Join-Path $package.Path 'OpenKnowledge.exe'
+            $appExecutable = Join-Path $package.Path "$env:OK_DESKTOP_PRODUCT_NAME.exe"
             if (-not (Test-Path -LiteralPath $appExecutable -PathType Leaf)) {
-              throw "Signed $($package.Arch) release package has no OpenKnowledge.exe."
+              throw "Signed $($package.Arch) release package has no $env:OK_DESKTOP_PRODUCT_NAME.exe."
             }
             $signature = Get-AuthenticodeSignature $appExecutable
             if ($signature.Status -ne 'Valid') {
@@ -1286,7 +1319,7 @@ jobs:
       - name: Assert app-update.yml is present and channel-correct
         working-directory: packages/desktop
         env:
-          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          CHANNEL: ${{ env.UPDATER_CHANNEL }}
         run: |
           set -euo pipefail
           for dir in dist-desktop/win-unpacked dist-desktop/win-arm64-unpacked; do
@@ -1310,24 +1343,27 @@ jobs:
       - name: Upload Windows release assets for the fan-in publisher
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: windows-release-assets
+          name: windows-${{ matrix.variant }}-release-assets
           path: |
             packages/desktop/dist-desktop/*Setup-x64.exe
             packages/desktop/dist-desktop/*Setup-arm64.exe
-            packages/desktop/dist-desktop/${{ needs.prepare.outputs.channel }}.yml
+            packages/desktop/dist-desktop/${{ env.UPDATER_CHANNEL }}.yml
           retention-days: 14
           if-no-files-found: error
 
   # Two cells, each on a NATIVE runner for its arch. Cross-compiling the arm64
   # native deps from an x64 host is impractical (pnpm installs only the
-  # host-matching `@parcel/watcher-*` prebuild, and the Linux build skips
-  # @electron/rebuild by design — see electron-builder.linux.yml), so the
+  # host-matching `@parcel/watcher-*` prebuild, and the generated Linux config
+  # skips @electron/rebuild by design), so the
   # arm64 installers are built on GitHub's arm64 Linux runner where pnpm
   # installs the arm64 prebuilds directly.
   build-linux:
     needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    env:
+      OK_DESKTOP_VARIANT: ${{ matrix.variant }}
+      UPDATER_CHANNEL: ${{ matrix.variant == 'beta' && 'beta-product' || needs.prepare.outputs.channel }}
     permissions:
       # See build-macos — packaging jobs are read-only by design.
       contents: read
@@ -1340,6 +1376,8 @@ jobs:
       # to repeat the arch that failed. publish-assets still requires BOTH.
       fail-fast: false
       matrix:
+        variant: ${{ fromJSON(contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["legacy-beta","beta"]' || '["stable"]') }}
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
         include:
           - runner: ubuntu-latest
             arch: x64
@@ -1359,7 +1397,7 @@ jobs:
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ github.event.client_payload.ref || github.ref }}
+          ref: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
@@ -1383,9 +1421,8 @@ jobs:
         env:
           # Rebuild native modules against Electron's Node ABI — mirrors the
           # mac job. (The packaging pass itself skips @electron/rebuild via
-          # the Linux overlay config; this install-time rebuild is what
-          # provides the ABI-correct prebuilds the overlay's rationale
-          # depends on.)
+          # the generated variant config; this install-time rebuild provides
+          # the ABI-correct prebuilds that decision depends on.)
           ELECTRON_SKIP_REBUILD: "0"
         run: pnpm install --frozen-lockfile
 
@@ -1434,47 +1471,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y rpm
 
-      # The Linux packaging pass needs THREE config inputs at once: the
-      # `npmRebuild: false` overlay (electron-builder.linux.yml — a top-level
-      # option that CANNOT be passed as a CLI flag, because yargs leaves
-      # `-c.npmRebuild=false` as the string "false" and the packager's strict
-      # `=== false` ignores it), the channel, and the version override.
-      # Mixing a `--config <file>` with `--config.dot=flags` on one command
-      # line is yargs-merge territory nobody should trust a release to, so
-      # compose them the deterministic way: generate a release overlay that
-      # `extends` the Linux overlay (which itself extends the base config)
-      # and carries the channel + version inline. A broken extends chain
-      # fails LOUD (the node-liblzma -Werror explosion the Linux overlay's
-      # header documents), never silently.
-      #
-      # `publish` is deliberately the OBJECT form, not a one-element list.
-      # `extends` merges list-valued keys by CONCATENATION (deepAssign unions
-      # arrays), so a list here would APPEND a second publish entry after the
-      # base config's `channel: latest` one — and app-update.yml is written
-      # from the FIRST entry, silently pinning every Linux install to the
-      # wrong channel (the channel-correct assert below caught exactly this
-      # on the first live cut). An object hits deepAssign's array-vs-object
-      # branch and replaces the base list wholesale; the schema accepts both
-      # shapes.
-      - name: Generate the release overlay config (channel + version)
-        working-directory: packages/desktop
-        env:
-          CHANNEL: ${{ needs.prepare.outputs.channel }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          set -euo pipefail
-          cat > electron-builder.release-linux.yml <<EOF
-          extends: file:./electron-builder.linux.yml
-          extraMetadata:
-            version: ${VERSION}
-          publish:
-            provider: github
-            owner: inkeep
-            repo: open-knowledge
-            channel: ${CHANNEL}
-          EOF
-          cat electron-builder.release-linux.yml
-
       # Each cell packages only its own arch, on a runner of that arch — so the
       # `.deb` / `.rpm` ship the matching `@parcel/watcher` / `@napi-rs/keyring`
       # prebuilds rather than degrading file-watching to chokidar. The deb and
@@ -1485,23 +1481,29 @@ jobs:
         working-directory: packages/desktop
         env:
           LINUX_TARGETS: ${{ matrix.targets }}
+          VERSION: ${{ needs.prepare.outputs.version }}
           GITHUB_WORKFLOW_SHA: ${{ github.workflow_sha }}
-          PKG_CMD: 'rm -rf dist-desktop && pnpm exec electron-builder --linux ${LINUX_TARGETS} --publish never --config electron-builder.release-linux.yml'
+          PKG_CMD: 'rm -rf dist-desktop && pnpm exec node "$DESKTOP_PACKAGER" --linux ${LINUX_TARGETS} --publish never --config.extraMetadata.version="${VERSION}"'
         run: |
           set -euo pipefail
           WRAPPER="${RUNNER_TEMP}/retry-transient.mjs"
           WRAPPER_TMP="${WRAPPER}.tmp.$$"
-          trap 'rm -f "$WRAPPER_TMP"' EXIT
+          export DESKTOP_PACKAGER="${RUNNER_TEMP}/package-desktop.mjs"
+          PACKAGER_TMP="${DESKTOP_PACKAGER}.tmp.$$"
+          trap 'rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"' EXIT
           materialized=false
           for materialize_attempt in 1 2 3; do
             if git -C "${GITHUB_WORKSPACE}" fetch --no-tags --depth=1 origin "$GITHUB_WORKFLOW_SHA" &&
                git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/retry-transient.mjs" > "$WRAPPER_TMP" &&
                [[ -s "$WRAPPER_TMP" ]] &&
+               git -C "${GITHUB_WORKSPACE}" show "$GITHUB_WORKFLOW_SHA:.github/scripts/package-desktop.mjs" > "$PACKAGER_TMP" &&
+               [[ -s "$PACKAGER_TMP" ]] &&
+               mv "$PACKAGER_TMP" "$DESKTOP_PACKAGER" &&
                mv "$WRAPPER_TMP" "$WRAPPER"; then
               materialized=true
               break
             fi
-            rm -f "$WRAPPER_TMP"
+            rm -f "$WRAPPER_TMP" "$PACKAGER_TMP"
             if [[ "$materialize_attempt" -lt 3 ]]; then
               materialize_delay=$((materialize_attempt * 5))
               echo "::warning::Retry wrapper materialization attempt ${materialize_attempt}/3 failed; retrying in ${materialize_delay}s."
@@ -1534,7 +1536,7 @@ jobs:
       - name: Assert app-update.yml + package-type are present and channel-correct
         working-directory: packages/desktop
         env:
-          CHANNEL: ${{ needs.prepare.outputs.channel }}
+          CHANNEL: ${{ env.UPDATER_CHANNEL }}
           UNPACKED_DIR: ${{ matrix.unpacked_dir }}
         run: |
           set -euo pipefail
@@ -1557,7 +1559,7 @@ jobs:
 
       # deb + rpm + the per-arch channel manifest. electron-builder names the
       # Linux manifest by arch: `latest-linux.yml` (x64) /
-      # `latest-linux-arm64.yml` (arm64), or beta-* on the beta channel —
+      # `latest-linux-arm64.yml` (arm64), or the matching beta-* channel files —
       # which is exactly the name electron-updater's provider computes from
       # process.arch on the client, and why each cell uploads a distinct
       # manifest with no collision. The deb and rpm entries share one
@@ -1565,11 +1567,11 @@ jobs:
       - name: Upload Linux ${{ matrix.arch }} release assets for the fan-in publisher
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: linux-${{ matrix.arch }}-release-assets
+          name: linux-${{ matrix.arch }}-${{ matrix.variant }}-release-assets
           path: |
             packages/desktop/dist-desktop/*.deb
             packages/desktop/dist-desktop/*.rpm
-            packages/desktop/dist-desktop/${{ needs.prepare.outputs.channel }}-linux*.yml
+            packages/desktop/dist-desktop/${{ env.UPDATER_CHANNEL }}-linux*.yml
           retention-days: 14
           if-no-files-found: error
 
@@ -1612,6 +1614,7 @@ jobs:
       RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
       CHANNEL: ${{ needs.prepare.outputs.channel }}
       VERSION: ${{ needs.prepare.outputs.version }}
+      ARTIFACT_NAME: ${{ needs.prepare.outputs.artifact_name }}
       REQUIRED: ${{ needs.prepare.outputs.required }}
     steps:
       - name: Download all platform release assets
@@ -1637,55 +1640,42 @@ jobs:
       - name: Define the expected asset inventory
         run: |
           set -euo pipefail
-          # Two lists with different jobs:
-          #   EXPECTED_ASSETS — the MUST-HAVE set: the full group for every
-          #     REQUIRED platform. Missing any of these blocks publication.
-          #   ALLOWED_ASSETS — the full known-name universe across ALL
-          #     platforms. The no-extras check validates present files against
-          #     THIS list, so a healthy non-required platform's assets (even a
-          #     partial set from one surviving matrix cell — each Linux arch
-          #     uploads independently under fail-fast: false) still ship,
-          #     while a stray builder-debug.yml still fails. Anything a
-          #     non-required job uploaded already passed that job's own
-          #     app-update/package-type asserts.
+          inventory() {
+            local platforms="$1"
+            local family
+            local families=("${ARTIFACT_NAME}:${CHANNEL}")
+            if [[ "$CHANNEL" == "beta" ]]; then
+              families=("OpenKnowledge:beta" "OpenKnowledge-Beta:beta-product")
+            fi
+            for family in "${families[@]}"; do
+              local artifact="${family%:*}"
+              local manifest="${family#*:}"
+              echo "${artifact}-arm64.dmg"
+              echo "${artifact}-arm64.dmg.blockmap"
+              echo "${artifact}-${VERSION}-arm64-mac.zip"
+              echo "${artifact}-${VERSION}-arm64-mac.zip.blockmap"
+              echo "${manifest}-mac.yml"
+              if [[ "$platforms" == *windows* ]]; then
+                echo "${artifact}-Setup-x64.exe"
+                echo "${artifact}-Setup-arm64.exe"
+                echo "${manifest}.yml"
+              fi
+              if [[ "$platforms" == *linux* ]]; then
+                echo "${artifact}-amd64.deb"
+                echo "${artifact}-arm64.deb"
+                echo "${artifact}-x86_64.rpm"
+                echo "${artifact}-aarch64.rpm"
+                echo "${manifest}-linux.yml"
+                echo "${manifest}-linux-arm64.yml"
+              fi
+            done
+          }
           {
             echo "EXPECTED_ASSETS<<OK_INVENTORY_EOF"
-            echo "OpenKnowledge-arm64.dmg"
-            echo "OpenKnowledge-arm64.dmg.blockmap"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
-            echo "${CHANNEL}-mac.yml"
-            if [[ "$REQUIRED" == *windows* ]]; then
-              echo "OpenKnowledge-Setup-x64.exe"
-              echo "OpenKnowledge-Setup-arm64.exe"
-              echo "${CHANNEL}.yml"
-            fi
-            if [[ "$REQUIRED" == *linux* ]]; then
-              echo "OpenKnowledge-amd64.deb"
-              echo "OpenKnowledge-arm64.deb"
-              echo "OpenKnowledge-x86_64.rpm"
-              echo "OpenKnowledge-aarch64.rpm"
-              echo "${CHANNEL}-linux.yml"
-              echo "${CHANNEL}-linux-arm64.yml"
-            fi
-            # GITHUB_ENV's multiline syntax REQUIRES the closing delimiter
-            # line — without it the runner rejects the whole env file.
+            inventory "$REQUIRED"
             echo "OK_INVENTORY_EOF"
             echo "ALLOWED_ASSETS<<OK_ALLOWED_EOF"
-            echo "OpenKnowledge-arm64.dmg"
-            echo "OpenKnowledge-arm64.dmg.blockmap"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip"
-            echo "OpenKnowledge-${VERSION}-arm64-mac.zip.blockmap"
-            echo "${CHANNEL}-mac.yml"
-            echo "OpenKnowledge-Setup-x64.exe"
-            echo "OpenKnowledge-Setup-arm64.exe"
-            echo "${CHANNEL}.yml"
-            echo "OpenKnowledge-amd64.deb"
-            echo "OpenKnowledge-arm64.deb"
-            echo "OpenKnowledge-x86_64.rpm"
-            echo "OpenKnowledge-aarch64.rpm"
-            echo "${CHANNEL}-linux.yml"
-            echo "${CHANNEL}-linux-arm64.yml"
+            inventory "mac,windows,linux"
             echo "OK_ALLOWED_EOF"
           } >> "$GITHUB_ENV"
 
@@ -1789,6 +1779,8 @@ jobs:
   # that).
   finalize:
     needs: [prepare, build-macos, publish-assets]
+    outputs:
+      published: ${{ steps.publish.outputs.published }}
     # `!cancelled()` for the same reason as publish-assets: under a degraded
     # required-set, a non-required platform's failure elsewhere in the run
     # must not skip finalization. The explicit success checks keep the real
@@ -1858,6 +1850,7 @@ jobs:
       # full inventory. Channel-mirror invariant: see
       # packages/desktop/src/main/auto-updater.ts:336-356.
       - name: Promote draft release to published
+        id: publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -1889,6 +1882,8 @@ jobs:
             gh release edit "$RELEASE_TAG" --draft=false
             echo "Promoted ${RELEASE_TAG} to published (draft=false, latest=false; channel=${CHANNEL})."
           fi
+
+          echo "published=true" >> "$GITHUB_OUTPUT"
 
       # FR5b — the npm stable publish sits downstream of the DMG smoke gate
       # (build-macos fails on a bad verdict, which skips this whole job) AND
@@ -2067,11 +2062,45 @@ jobs:
             echo "::warning::Discord announcement failed for ${RELEASE_TAG} (release is published; notification is best-effort)."
           fi
 
-  # Fires precisely when the rest of the pipeline did not finish. FR5c — page
-  # the release channel when a stable release is blocked; the STUCK-DRAFT
-  # marker keeps failed betas findable via log search. Lives in its own job
-  # (not a `failure()` step inside finalize) because a packaging job failing
-  # SKIPS finalize entirely — skipped steps can't alert.
+  release-consumers:
+    needs: finalize
+    if: ${{ !cancelled() && needs.finalize.outputs.published == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Dispatch publication to release consumers
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+        run: |
+          set -euo pipefail
+          jq -nc --arg tag "$RELEASE_TAG" '{event_type:"desktop-release-published",client_payload:{release_tag:$tag,ref:$tag}}' |
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/dispatches" --input -
+
+      - name: Alert on failed publication dispatch
+        if: failure() || cancelled()
+        env:
+          RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
+          SLACK_RELEASES_WEBHOOK_URL: ${{ secrets.SLACK_RELEASES_WEBHOOK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          set -euo pipefail
+          RUN_URL="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          TEXT="Release ${RELEASE_TAG} is published, but its notification dispatch failed or was cancelled. Reporter writeback and Linear stamping may not have run. Inspect the consumer runs before replaying desktop-release-published for this tag; do not rebuild or republish installers. ${RUN_URL}"
+          echo "::error::$TEXT"
+          echo "$TEXT" >> "$GITHUB_STEP_SUMMARY"
+          WEBHOOK_URL="${SLACK_RELEASES_WEBHOOK_URL:-${SLACK_WEBHOOK_URL:-}}"
+          if [[ -z "$WEBHOOK_URL" ]]; then
+            echo "::warning::No Slack webhook configured; publication dispatch failure remains visible in Actions."
+            exit 0
+          fi
+          payload="$(jq -nc --arg text "$TEXT" '{text:$text}')"
+          if ! curl --fail --silent --show-error --connect-timeout 10 --max-time 30 -X POST -H 'Content-Type: application/json' --data "$payload" "$WEBHOOK_URL"; then
+            echo "::warning::Publication dispatch failure alert could not be delivered."
+          fi
+
   alert:
     needs: [prepare, build-macos, build-windows, build-linux, publish-assets, finalize]
     # "The release did not publish" — not "some job failed": under a degraded

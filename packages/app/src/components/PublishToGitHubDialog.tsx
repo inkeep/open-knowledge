@@ -51,9 +51,14 @@ const NAME_CHECK_DEBOUNCE_MS = 500;
 export interface PublishToGitHubDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocus: () => void;
 }
 
-export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDialogProps) {
+export function PublishToGitHubDialog({
+  open,
+  onOpenChange,
+  returnFocus,
+}: PublishToGitHubDialogProps) {
   const { t } = useLingui();
   const workspace = useWorkspace();
   const { activeDocName } = useDocumentContext();
@@ -279,7 +284,14 @@ export function PublishToGitHubDialog({ open, onOpenChange }: PublishToGitHubDia
   return (
     <>
       <DialogRoot open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="sm:max-w-lg" showCloseButton={false}>
+        <DialogContent
+          className="sm:max-w-lg"
+          showCloseButton={false}
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+            returnFocus();
+          }}
+        >
           {publishResult ? (
             <PublishSuccessView
               ownerLogin={publishResult.ownerLogin}

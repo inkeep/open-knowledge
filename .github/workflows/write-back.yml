@@ -6,15 +6,6 @@ name: Reporter Write-Back
 # narrows on the Bug label, because whether someone hears back should not depend
 # on how triage classified what they raised.
 #
-# HOW IT'S TRIGGERED (no edits to the delicate publish path)
-#   release.yml (beta) and promote-stable.yml (stable) both already fire a
-#   repository_dispatch event_type=desktop-release carrying
-#   client_payload.{release_tag, ref}. This piggybacks on that same event, the
-#   way linear-release.yml already does, so the publish workflows stay
-#   byte-untouched. `release: published` is not an option: GitHub suppresses
-#   cascades from GITHUB_TOKEN-authored release events, and repository_dispatch
-#   is the documented exemption.
-#
 #   BOTH channels run, and they say different things. A `-beta.N` cut tells the
 #   reporter their fix is available now in a beta and that a second message is
 #   coming; the stable promotion sends that second message. The two are kept
@@ -50,8 +41,10 @@ name: Reporter Write-Back
 #   reporter-facing posts by accident. Both steps are in RELEASES.md.
 
 on:
+  schedule:
+    - cron: "43 * * * *"
   repository_dispatch:
-    types: [desktop-release]
+    types: [desktop-release-published]
   # Manual backfill / dry-run rehearsal against a specific tag.
   workflow_dispatch:
     inputs:
@@ -59,57 +52,48 @@ on:
         description: "Release tag to notify reporters about (e.g. v0.36.0 or v0.36.0-beta.3)"
         required: true
         type: string
+      dry_run:
+        description: "Preview replies without writing notification markers or posting"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: read
   # Posting the reply onto a GitHub issue origin in this repo.
   issues: write
 
-concurrency:
-  # Its own group, deliberately not the release cadence group: a write-back run
-  # must never be something a release cut can end up waiting on.
-  group: reporter-write-back-${{ github.event.client_payload.release_tag || inputs.release_tag }}
-  cancel-in-progress: false
-
 jobs:
   notify:
+    strategy:
+      fail-fast: false
+      matrix:
+        channel: ${{ fromJSON(github.event_name == 'schedule' && '["stable","beta"]' || contains(github.event.client_payload.release_tag || inputs.release_tag, '-beta.') && '["beta"]' || '["stable"]') }}
+    concurrency:
+      group: reporter-write-back-${{ matrix.channel }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
+      WRITE_BACK_CHANNEL: ${{ matrix.channel }}
       RELEASE_TAG: ${{ github.event.client_payload.release_tag || inputs.release_tag }}
     steps:
-      - name: Decide which release channel this tag belongs to
-        id: tag
-        run: |
-          set -euo pipefail
-          if [[ -z "${RELEASE_TAG}" ]]; then
-            echo "::error::No release tag (neither client_payload.release_tag nor inputs.release_tag)."
-            exit 1
-          fi
-          if [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "channel=stable" >> "$GITHUB_OUTPUT"
-          elif [[ "${RELEASE_TAG}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
-            echo "channel=beta" >> "$GITHUB_OUTPUT"
-          else
-            echo "channel=none" >> "$GITHUB_OUTPUT"
-            echo "::notice::${RELEASE_TAG} is neither a stable nor a beta tag of this cadence; there is no build to tell anyone about."
-          fi
-
       - name: Checkout with full history and tags
-        if: steps.tag.outputs.channel != 'none'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          # Tag containment is how the shipped version is derived, so every
-          # release tag of both channels and the full history behind them have
-          # to be present.
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
 
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
-        if: steps.tag.outputs.channel != 'none'
         with:
           node-version: "24"
+
+      - name: Resolve published release for reconciliation
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/scripts/write-back-target.mjs
 
       - name: Check whether the bridge App is configured
         # Fix references point into the private monorepo, which this repo's own
@@ -147,6 +131,7 @@ jobs:
       - name: Notify reporters whose fix reached this release
         if: steps.tag.outputs.channel != 'none'
         env:
+          RELEASE_TAG: ${{ steps.tag.outputs.release_tag }}
           # Posting the reply, which happens against this repo.
           GH_TOKEN: ${{ github.token }}
           # Reading the fix pull request and its changeset, which happen against
@@ -155,7 +140,7 @@ jobs:
           LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
           # Absent by default. Set to `live` on the repo (a variable, not a
           # secret, so it is visible in the settings UI) to arm real posts.
-          WRITE_BACK_MODE: ${{ vars.WRITE_BACK_MODE }}
+          WRITE_BACK_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run && 'dry-run' || vars.WRITE_BACK_MODE }}
           DISCORD_NOTIFY_URL: ${{ secrets.DISCORD_NOTIFY_URL }}
           DISCORD_NOTIFY_TOKEN: ${{ secrets.DISCORD_NOTIFY_TOKEN }}
         run: node .github/scripts/write-back.mjs

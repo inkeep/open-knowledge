@@ -467,6 +467,16 @@ describe('queue edit settlement', () => {
       { op: 'queue_send_now', threadId: 't1', id: 'q1' },
     ]);
   });
+
+  test('setChatGrant sends the grant and its direction', () => {
+    const { client, sent } = makeWiredClient();
+    client.setChatGrant('t1', 'read_only_shell', true);
+    client.setChatGrant('t1', 'read_only_shell', false);
+    expect(sent.filter((f) => f.op === 'set_chat_grant')).toEqual([
+      { op: 'set_chat_grant', threadId: 't1', grant: 'read_only_shell', enabled: true },
+      { op: 'set_chat_grant', threadId: 't1', grant: 'read_only_shell', enabled: false },
+    ]);
+  });
 });
 
 describe('retry and sign-in lifecycle', () => {
@@ -579,6 +589,60 @@ describe('retry and sign-in lifecycle', () => {
 
     frame({ op: 'error', code: 'not-ready', message: 'wrong account', reqId, threadId: 't1' });
     await expect(pending).rejects.toThrow(/wrong account/);
+  });
+
+  test('a sign-in cut short by the agent stopping rejects with that code', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.authenticateThread('t1', 'test_login');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'authenticate')?.reqId as string;
+
+    frame({
+      op: 'error',
+      code: 'agent-exited',
+      message: 'connection closed',
+      reqId,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toMatchObject({ code: 'agent-exited' });
+  });
+
+  test('terminalAuthLaunch sends the method id and resolves with the launch the server composed', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.terminalAuthLaunch('t1', 'cli-login');
+    await flush();
+    const request = sent.find((f) => f.op === 'terminal_auth_launch');
+    expect(request).toMatchObject({
+      op: 'terminal_auth_launch',
+      threadId: 't1',
+      methodId: 'cli-login',
+    });
+    expect(String(request?.reqId)).toMatch(/^terminal-auth-/);
+
+    const launch = {
+      executable: 'auggie',
+      args: ['--acp', 'login'],
+      env: { AUGGIE_LOGIN_FLOW: 'terminal' },
+      pathPrepend: [],
+    };
+    frame({ op: 'terminal_auth_launch_ready', reqId: request?.reqId as string, launch });
+    await expect(pending).resolves.toEqual(launch);
+  });
+
+  test('a terminal launch the server refuses rejects with its reason', async () => {
+    const { client, sent, frame } = makeWiredClient();
+    const pending = client.terminalAuthLaunch('t1', 'missing');
+    await flush();
+    const reqId = sent.find((f) => f.op === 'terminal_auth_launch')?.reqId as string;
+
+    frame({
+      op: 'error',
+      code: 'not-ready',
+      message: 'this agent offers no terminal sign-in by that name',
+      reqId,
+      threadId: 't1',
+    });
+    await expect(pending).rejects.toThrow(/no terminal sign-in by that name/);
   });
 });
 

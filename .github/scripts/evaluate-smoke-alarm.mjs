@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint directly, outside Turbo. */
 
 import { execFileSync } from 'node:child_process';
 import { appendFileSync } from 'node:fs';
@@ -9,6 +10,7 @@ export const STALE_FAST_TIER_WINDOW_DAYS = 14;
 
 const SMOKE_JOB_NAME = "Smoke the fast-tier candidate's DMG";
 const DISPATCH_STEP_NAME = 'Dispatch promote-stable for the smoke-proven candidate';
+const DISPATCH_RECEIPT_STEP_NAME = 'Record a successful fast-tier dispatch';
 
 export function evaluateAlarm({
   history,
@@ -28,7 +30,7 @@ export function evaluateAlarm({
   }
   if (streak >= consecutiveThreshold) {
     reasons.push(
-      `${streak} consecutive fast-tier candidates did not pass the DMG smoke (threshold ${consecutiveThreshold}) — the gate looks persistently broken, not merely unlucky`,
+      `${streak} consecutive fast-tier attempts did not complete successfully (threshold ${consecutiveThreshold}); latest failing stage: ${qualified[0]?.failureStage ?? 'unknown'}`,
     );
   }
 
@@ -40,7 +42,7 @@ export function evaluateAlarm({
   const qualifiedInWindow = inWindow.filter((h) => h.qualified);
   if (qualifiedInWindow.length > 0 && !inWindow.some((h) => h.promoted)) {
     reasons.push(
-      `${qualifiedInWindow.length} cut(s) qualified for the fast tier in the last ${windowDays} days but none was promoted through it — the tier is armed and reaching nothing`,
+      `${qualifiedInWindow.length} qualified attempt(s) in the sampled history dated within the last ${windowDays} days, with no successful fast-tier dispatch observed`,
     );
   }
 
@@ -51,18 +53,42 @@ export function buildHistory({ runs, jobsForRun }) {
   return runs.map((run) => {
     const jobs = jobsForRun(run.databaseId ?? run.id) ?? [];
     const smoke = jobs.find((j) => j.name === SMOKE_JOB_NAME);
-    if (!smoke || smoke.conclusion === 'skipped' || smoke.conclusion === 'cancelled') {
+    if (
+      !smoke ||
+      (smoke.status && smoke.status !== 'completed') ||
+      smoke.conclusion === 'skipped' ||
+      smoke.conclusion === 'cancelled'
+    ) {
       return { at: run.createdAt, qualified: false, verdict: null, promoted: false };
     }
     const dispatch = (smoke.steps ?? []).find((s) => s.name === DISPATCH_STEP_NAME);
-    const promoted = dispatch?.conclusion === 'success';
+    const receipt = (smoke.steps ?? []).find((s) => s.name === DISPATCH_RECEIPT_STEP_NAME);
+    if (receipt?.conclusion === 'skipped' && dispatch?.conclusion === 'success') {
+      return { at: run.createdAt, qualified: false, verdict: null, promoted: false };
+    }
+    const promoted = (receipt ?? dispatch)?.conclusion === 'success';
     return {
       at: run.createdAt,
       qualified: true,
       verdict: promoted ? 'pass' : 'non-pass',
       promoted,
+      failureStage: promoted
+        ? null
+        : ((smoke.steps ?? []).find((s) => s.conclusion === 'failure')?.name ??
+          'Smoke or dispatch'),
     };
   });
+}
+
+export function alarmObservation({ history, nowMs, armed }) {
+  const { alarm, reasons } = evaluateAlarm({ history, nowMs, armed });
+  const qualified = history.filter((entry) => entry.qualified);
+  return {
+    alarm,
+    reasons,
+    observed: armed && (alarm || qualified[0]?.promoted === true),
+    incident: alarm ? (qualified[0]?.failureStage ?? 'No fast-tier dispatch') : '',
+  };
 }
 
 const TRANSIENT_HISTORY_FAILURE =
@@ -88,6 +114,8 @@ function main() {
       '--workflow=select-beta-to-promote.yml',
       '--limit',
       '60',
+      '--status',
+      'completed',
       '--json',
       'databaseId,createdAt',
     ]);
@@ -99,10 +127,15 @@ function main() {
     console.log(
       `${classifyHistoryFailure(err?.message ?? String(err))}Could not read run history for the aggregate alarm: ${err?.message ?? String(err)}`,
     );
+    return;
   }
 
   const armed = process.env.FAST_TIER_ARMED === 'true';
-  const { alarm, reasons } = evaluateAlarm({ history, nowMs: Date.now(), armed });
+  const { alarm, reasons, observed, incident } = alarmObservation({
+    history,
+    nowMs: Date.now(),
+    armed,
+  });
   if (!alarm) {
     console.log('No aggregate smoke alarm: the fast tier is either healthy or intentionally off.');
   } else {
@@ -113,7 +146,7 @@ function main() {
   if (process.env.GITHUB_OUTPUT) {
     appendFileSync(
       process.env.GITHUB_OUTPUT,
-      `alarm=${alarm}\nreasons=${reasons.join('; ').replace(/\r?\n/g, ' ')}\n`,
+      `observed=${observed}\nalarm=${alarm}\nincident=${incident.replace(/\r?\n/g, ' ')}\nreasons=${reasons.join('; ').replace(/\r?\n/g, ' ')}\n`,
     );
   }
 }

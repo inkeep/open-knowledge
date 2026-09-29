@@ -6,12 +6,13 @@ import type {
   ReportBundleSummary,
 } from '@inkeep/open-knowledge-core';
 import type { OkBugReportSendInput } from '@inkeep/open-knowledge-core/desktop-bridge';
-import { act, cleanup, render, screen } from '@testing-library/react';
+import { act, cleanup, createEvent, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { makeFilesDataTransfer } from '@/editor/composer-drop.test-helper';
 import { bugReportSendManager } from '@/lib/bug-report-send-manager';
 import { contactEmailStore } from '@/lib/contact-email-store';
 import { installPointerPositionTracker } from '@/lib/pointer-position';
@@ -74,6 +75,7 @@ type CreateRequest = {
   includeCrashDump?: boolean;
   includeScreenshot?: boolean;
   attachments?: { contentType: string; bytes: Uint8Array }[];
+  agentChatThreadId?: string;
 };
 type SendRequest = OkBugReportSendInput;
 
@@ -195,6 +197,7 @@ async function renderDialog(
     systemWide?: boolean;
     crashContext?: import('./ReportBugDialogBody').ReportBugCrashContext;
     crashInvite?: OkBugReportCrashDetectedEvent;
+    agentChat?: { threadId: string };
   } = {},
   options: { statefulOpen?: boolean } = {},
 ) {
@@ -653,6 +656,116 @@ describe('ReportBugDialog', () => {
     ]);
   });
 
+  test('a report opened from an agent chat includes that conversation unless unchecked', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    const log = installBridge();
+    await renderDialog({ agentChat: { threadId } });
+
+    const chat = screen.getByRole('checkbox', { name: 'This conversation' });
+    expect(chat.getAttribute('aria-checked')).toBe('true');
+    expect(
+      document.getElementById(chat.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toContain('the agent and its settings');
+    await createReport();
+    expect(log.createCalls[0]?.agentChatThreadId).toBe(threadId);
+
+    cleanup();
+    const second = installBridge();
+    await renderDialog({ agentChat: { threadId } });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This conversation' }));
+    await createReport();
+    expect(second.createCalls[0]).not.toHaveProperty('agentChatThreadId');
+  });
+
+  test('a report opened outside an agent chat offers no conversation to include', async () => {
+    const log = installBridge();
+    await renderDialog();
+
+    expect(screen.queryByRole('checkbox', { name: 'This conversation' })).toBeNull();
+    await createReport();
+    expect(log.createCalls[0]).not.toHaveProperty('agentChatThreadId');
+  });
+
+  test('sending restores the conversation checkbox for the next report from the same chat', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    const log = installBridge();
+    const { reopen } = await renderDialog({ agentChat: { threadId } }, { statefulOpen: true });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This conversation' }));
+    await createReport();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Send report' }));
+    await vi.waitFor(() => {
+      expect(log.sendCalls).toHaveLength(1);
+    });
+    reopen();
+    await screen.findByRole('dialog');
+
+    expect(
+      screen.getByRole('checkbox', { name: 'This conversation' }).getAttribute('aria-checked'),
+    ).toBe('true');
+  });
+
+  test('a report carrying the conversation is not labeled as carrying an unredacted crash dump', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    installBridge({
+      create: () =>
+        Promise.resolve({
+          ...CREATE_OK,
+          summary: {
+            ...SUMMARY,
+            files: [
+              ...SUMMARY.files,
+              `extra/agent-chat/${threadId}.ndjson`,
+              `extra/agent-chat/${threadId}.meta.json`,
+            ],
+          },
+        }),
+    });
+    await renderDialog({ agentChat: { threadId } });
+    await createReport();
+
+    expect(screen.getByText(/6\.8 MB · secrets redacted · 4 files/)).not.toBeNull();
+    expect(screen.queryByText(/crash dump not redacted/)).toBeNull();
+    expect(screen.queryByText("The conversation couldn't be added to this report.")).toBeNull();
+  });
+
+  test('a crash dump bundled beside the conversation still qualifies the redaction claim', async () => {
+    const threadId = '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6';
+    installBridge({
+      create: () =>
+        Promise.resolve({
+          ...CREATE_OK,
+          summary: {
+            ...SUMMARY,
+            files: [...SUMMARY.files, `extra/agent-chat/${threadId}.ndjson`, 'extra/renderer.dmp'],
+          },
+        }),
+    });
+    await renderDialog({ agentChat: { threadId } });
+    await createReport();
+
+    expect(
+      screen.getByText(/6\.8 MB · secrets redacted · 4 files · crash dump not redacted/),
+    ).not.toBeNull();
+  });
+
+  test('the review step says so when the conversation could not be added', async () => {
+    installBridge();
+    await renderDialog({ agentChat: { threadId: '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6' } });
+    await createReport();
+
+    expect(screen.getByText("The conversation couldn't be added to this report.")).not.toBeNull();
+  });
+
+  test('an unchecked conversation is not reported as missing from the review', async () => {
+    installBridge();
+    await renderDialog({ agentChat: { threadId: '0f5c0c0b-f439-4e49-84d6-6a6a97d675c6' } });
+    await userEvent.click(screen.getByRole('checkbox', { name: 'This conversation' }));
+    await createReport();
+
+    expect(screen.queryByText("The conversation couldn't be added to this report.")).toBeNull();
+  });
+
   test('unchecking Crash dump excludes the minidump from create', async () => {
     const log = installBridge();
     await renderDialog({ crashInvite: BOOT_INVITE });
@@ -859,6 +972,47 @@ describe('ReportBugDialog', () => {
 
     await createReport();
     expect(log.createCalls).toEqual([{ level: 'standard', includeScreenshot: true }]);
+  });
+
+  test('an image pasted into the note attaches and is announced', async () => {
+    installBridge();
+    await renderDialog();
+    const note = screen.getByRole('textbox', { name: /what happened/i });
+    const event = createEvent.paste(note, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(note, event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(await screen.findByText('image.png')).not.toBeNull();
+    expect(screen.getByText('1 image attached')).not.toBeNull();
+  });
+
+  test('an image pasted while the screenshot preview is open does not attach behind it', async () => {
+    installBridge({ captureScreenshot: () => Promise.resolve(SCREENSHOT) });
+    await renderDialog();
+    await userEvent.click(screen.getByRole('button', { name: 'Enlarge screenshot' }));
+    const preview = await screen.findByRole('dialog', { name: 'Screenshot preview' });
+    const event = createEvent.paste(preview, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(preview, event);
+    expect(event.defaultPrevented).toBe(false);
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByText('image.png')).toBeNull();
+  });
+
+  test('an image pasted on the review step is not attached behind it', async () => {
+    installBridge();
+    await renderDialog();
+    await createReport();
+    const review = screen.getByRole('dialog');
+    const event = createEvent.paste(review, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(review, event);
+    expect(event.defaultPrevented).toBe(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.queryByText('image.png')).toBeNull();
   });
 
   test('unchecking the screenshot keeps it out of create', async () => {
@@ -1313,7 +1467,9 @@ describe('ReportBugDialog — reporter attachments', () => {
     installBridge();
     await renderDialog();
 
-    expect(screen.getByText('Drop images here')).not.toBeNull();
+    expect(
+      screen.getByText("Drop, paste, or attach up to 3 images. Images aren't redacted."),
+    ).not.toBeNull();
     expect(screen.getByText(/aren't redacted/)).not.toBeNull();
   });
 
@@ -1377,6 +1533,55 @@ describe('ReportBugDialog — reporter attachments', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
     await screen.findByRole('heading', { name: 'Review your report' });
     expect(log.createCalls[0]?.attachments).toHaveLength(2);
+  });
+
+  test('a rejected addition does not come back after Create and Back', async () => {
+    installBridge();
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    expect(screen.getByText('No images added.')).not.toBeNull();
+    await createReport();
+    await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+    expect(screen.queryByText('No images added.')).toBeNull();
+  });
+
+  test('a rejected addition stays visible when Create stops on an invalid email', async () => {
+    const log = installBridge();
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Share your email for followups' }));
+    await userEvent.type(screen.getByPlaceholderText('you@company.com'), 'nope');
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    expect(screen.getByText('Please enter a valid email.')).not.toBeNull();
+    expect(screen.getByText('No images added.')).not.toBeNull();
+    expect(log.createCalls).toHaveLength(0);
+  });
+
+  test('a rejected addition stays visible when Create fails', async () => {
+    installBridge({
+      create: () => Promise.resolve({ ok: false, error: 'zip destination not writable' }),
+    });
+    await renderDialog();
+    await userEvent.upload(fileInput(), [pngFile('a.png'), pngFile('b.png'), pngFile('c.png')]);
+    await userEvent.upload(fileInput(), pngFile('d.png'));
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    expect(await screen.findByText("Couldn't create the report")).not.toBeNull();
+    expect(screen.getByText('No images added.')).not.toBeNull();
+  });
+
+  test('an image pasted while the report is being created is not attached', async () => {
+    installBridge({ create: () => new Promise(() => {}) });
+    await renderDialog();
+    const note = screen.getByRole('textbox', { name: /what happened/i });
+    await userEvent.click(screen.getByRole('button', { name: 'Create report' }));
+    const event = createEvent.paste(note, {
+      clipboardData: makeFilesDataTransfer([new File(['png'], 'image.png', { type: 'image/png' })]),
+    });
+    fireEvent(note, event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(screen.queryByText('image.png')).toBeNull();
   });
 
   test('a report with no attachments sends includeAttachments false', async () => {

@@ -1,34 +1,25 @@
 import { execFile } from 'node:child_process';
-import { EventEmitter } from 'node:events';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
 
-class SwallowingWatcher extends EventEmitter {
-  constructor() {
-    super();
-    setTimeout(() => this.emit('ready'), 10);
-  }
-  add(): this {
-    return this;
-  }
-  unwatch(): this {
-    return this;
-  }
-  async close(): Promise<void> {}
-}
-const { watch: realChokidarWatch } = await import('chokidar');
-let swallowChokidarEvents = true;
+const statPollWatchers = vi.hoisted(() => ({ swallowEvents: true, swallowed: 0 }));
 afterAll(() => {
-  swallowChokidarEvents = false;
+  statPollWatchers.swallowEvents = false;
 });
-vi.doMock('chokidar', () => ({
-  watch: (...args: Parameters<typeof realChokidarWatch>) =>
-    swallowChokidarEvents
-      ? (new SwallowingWatcher() as unknown as ReturnType<typeof realChokidarWatch>)
-      : realChokidarWatch(...args),
-}));
+vi.mock('../../../server/src/polled-path-watcher.ts', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../../../server/src/polled-path-watcher.ts')>();
+  return {
+    ...actual,
+    startPolledPathWatcher: (...args: Parameters<typeof actual.startPolledPathWatcher>) => {
+      if (!statPollWatchers.swallowEvents) return actual.startPolledPathWatcher(...args);
+      statPollWatchers.swallowed += 1;
+      return Promise.resolve(async () => {});
+    },
+  };
+});
 
 import { HocuspocusProvider } from '@hocuspocus/provider';
 import {
@@ -44,12 +35,9 @@ import {
   pollUntil,
   type SyncWiredTestServer,
   type TestServer,
-  wait,
 } from './test-harness';
 
 const execFileAsync = promisify(execFile);
-
-const FALLBACK_POLL_WINDOW_MS = 11_000;
 
 describe('PRD-7260 — persisted config change reaches in-process consumers without the watcher echo', () => {
   let srv: TestServer;
@@ -61,8 +49,9 @@ describe('PRD-7260 — persisted config change reaches in-process consumers with
   let projectBinding: ConfigBinding;
 
   beforeAll(async () => {
+    const swallowedBefore = statPollWatchers.swallowed;
     srv = await createTestServer({ seedProjectConfigYml: '{}\n' });
-    await wait(FALLBACK_POLL_WINDOW_MS);
+    expect(statPollWatchers.swallowed).toBeGreaterThan(swallowedBefore);
 
     ydoc = new Y.Doc();
     provider = new HocuspocusProvider({
@@ -176,11 +165,12 @@ describe('configured attachment folder composes into real Git sync without the w
   };
 
   beforeAll(async () => {
+    const swallowedBefore = statPollWatchers.swallowed;
     srv = await createSyncWiredTestServer({
       originSeed: { 'seed.txt': 'seed\n' },
       projectConfigYml: '{}\n',
     });
-    await wait(FALLBACK_POLL_WINDOW_MS);
+    expect(statPollWatchers.swallowed).toBeGreaterThan(swallowedBefore);
 
     ydoc = new Y.Doc();
     provider = new HocuspocusProvider({
@@ -240,8 +230,9 @@ describe('PRD-7260 — reconciled config change reaches in-process consumers wit
   let binding: ConfigBinding;
 
   beforeAll(async () => {
+    const swallowedBefore = statPollWatchers.swallowed;
     srv = await createTestServer();
-    await wait(FALLBACK_POLL_WINDOW_MS);
+    expect(statPollWatchers.swallowed).toBeGreaterThan(swallowedBefore);
 
     ydoc = new Y.Doc();
     provider = new HocuspocusProvider({

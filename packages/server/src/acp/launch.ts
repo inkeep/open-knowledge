@@ -255,6 +255,26 @@ export function packageAcquisitionFailure(
   );
 }
 
+const NPM_ENOENT_PATH_LINES: readonly RegExp[] = [
+  /^npm (?:error|ERR!) path (.+?)\s*$/m,
+  /ENOENT: no such file or directory, open '([^'\n]+)'/,
+];
+
+const NPX_CACHE_PACKAGE_JSON =
+  /^((?:[A-Za-z]:)?[\\/](?:.*[\\/])?_npx[\\/][0-9a-f]{8,64})[\\/]package\.json$/i;
+
+const PARENT_SEGMENT = /(?:^|[\\/])\.\.(?:[\\/]|$)/;
+
+export function staleNpxCacheEntry(detail: string): string | null {
+  if (!/\bENOENT\b/.test(detail)) return null;
+  for (const pattern of NPM_ENOENT_PATH_LINES) {
+    const path = pattern.exec(detail)?.[1];
+    const entry = path === undefined ? undefined : NPX_CACHE_PACKAGE_JSON.exec(path)?.[1];
+    if (entry !== undefined && !PARENT_SEGMENT.test(entry)) return entry;
+  }
+  return null;
+}
+
 async function npmCommand(launch: ResolvedLaunch): Promise<string | null> {
   let npx = launch.cmd;
   if (!isPathQualified(npx)) {

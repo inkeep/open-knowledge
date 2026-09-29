@@ -21,8 +21,11 @@ interface DesktopUninstallHandoffCommands {
   ps?: string;
   psTimeoutSeconds?: number;
   sleep?: string;
+  watchSleep?: string;
   osascript?: string;
   open?: string;
+  kill?: string;
+  date?: string;
 }
 
 interface DesktopUninstallResultInput {
@@ -67,6 +70,9 @@ interface LaunchDesktopUninstallHandoffDeps {
 }
 
 const HANDOFF_READY = 'OK_UNINSTALL_READY';
+const PROCESS_QUERY_POLL_SECONDS = 0.01;
+const RESULT_WINDOW_WATCH_SECONDS = 0.2;
+const PROGRESS_READY_POLL_SECONDS = 0.1;
 const NOTICE_SCRIPT = `on run argv
   set noticeTitle to item 1 of argv
   set noticeText to item 2 of argv
@@ -80,6 +86,7 @@ function buildDesktopUninstallResultFunctions(
   commands: DesktopUninstallHandoffCommands,
 ): string {
   const resultCommand = commands.result?.map(shellQuote).join(' ');
+  const progressReadySeconds = Math.ceil(UNINSTALL_PROGRESS_READY_TIMEOUT_MS / 1000);
   const chooseAction = resultCommand
     ? `if [ -n "$result_pid" ]; then
     if printf '%s\\000' "$1" "$2" "$3" > "$profile/result.tmp" && /bin/mv "$profile/result.tmp" "$profile/result"; then
@@ -89,9 +96,7 @@ function buildDesktopUninstallResultFunctions(
     else
       result_status=1
     fi
-  elif create_result_profile; then
-    ${resultCommand} "--user-data-dir=$profile" --ok-uninstall-result "$1" "$2" "$3" >> "$LOG" 2>&1 &
-    result_pid=$!
+  elif create_result_profile && start_result_window --ok-uninstall-result "$1" "$2" "$3"; then
     wait "$result_pid"
     result_status=$?
     result_pid=''
@@ -116,7 +121,7 @@ result_pid=''
 
 cleanup_result_ui() {
   if [ -n "$result_pid" ]; then
-    kill -KILL "$result_pid" 2>/dev/null
+    /bin/rm -f "$profile/watched"
     wait "$result_pid" 2>/dev/null
     result_pid=''
   fi
@@ -129,18 +134,57 @@ create_result_profile() {
   trap 'exit 1' HUP INT TERM
 }
 
-start_progress() {
-  create_result_profile || return 1
-  ${resultCommand} "--user-data-dir=$profile" --ok-uninstall-progress >> "$LOG" 2>&1 &
+start_result_window() {
+  command : > "$profile/watched" || return 1
+  (
+    watching=1
+    stop_window() {
+      if [ -n "$watching" ]; then printf 'Could not keep watching the uninstall window; it was stopped.\\n' >> "$LOG"; fi
+      if "$KILL" -s 0 "$window" 2>/dev/null; then "$KILL" -s KILL "$window" 2>/dev/null; fi
+      wait "$window"
+      exit "$?"
+    }
+    ${resultCommand} "--user-data-dir=$profile" "$@" >> "$LOG" 2>&1 &
+    window=$!
+    trap stop_window EXIT
+    while [ -f "$profile/watched" ] && "$KILL" -s 0 "$window" 2>/dev/null; do
+      "$WATCH_SLEEP" ${RESULT_WINDOW_WATCH_SECONDS} || exit
+    done
+    watching=''
+  ) >/dev/null 2>&1 &
   result_pid=$!
-  ready_attempts=0
+}
+
+start_progress() {
+  if ! create_result_profile || ! start_result_window --ok-uninstall-progress; then
+    printf 'The uninstall progress window could not be started; no cleanup was started.\\n' >> "$LOG"
+    return 1
+  fi
+  ready_deadline=$("$DATE" +%s) || {
+    printf 'The uninstall progress window could not be timed; no cleanup was started.\\n' >> "$LOG"
+    return 1
+  }
+  ready_deadline=$((ready_deadline + ${progressReadySeconds}))
   until [ -f "$profile/ready" ]; do
-    if ! kill -0 "$result_pid" 2>/dev/null || [ "$ready_attempts" -ge ${Math.ceil(UNINSTALL_PROGRESS_READY_TIMEOUT_MS / 100)} ]; then
-      printf 'The uninstall progress window did not become ready; no cleanup was started.\\n' >> "$LOG"
+    if ! "$KILL" -s 0 "$result_pid" 2>/dev/null; then
+      wait "$result_pid"
+      window_status=$?
+      result_pid=''
+      printf 'The uninstall progress window exited before it was ready (exit %s); no cleanup was started.\\n' "$window_status" >> "$LOG"
       return 1
     fi
-    ready_attempts=$((ready_attempts + 1))
-    "$SLEEP" 0.1 || return 1
+    ready_now=$("$DATE" +%s) || {
+      printf 'The uninstall progress window could not be timed; no cleanup was started.\\n' >> "$LOG"
+      return 1
+    }
+    [ "$ready_now" -le "$ready_deadline" ] || {
+      printf 'The uninstall progress window did not become ready within %s seconds; no cleanup was started.\\n' '${progressReadySeconds}' >> "$LOG"
+      return 1
+    }
+    "$SLEEP" ${PROGRESS_READY_POLL_SECONDS} || {
+      printf 'The uninstall progress window could not be waited for; no cleanup was started.\\n' >> "$LOG"
+      return 1
+    }
   done
 }
 `
@@ -149,6 +193,10 @@ start_progress() {
 APP_BUNDLE=${shellQuote(input.appBundlePath)}
 OSASCRIPT=${shellQuote(commands.osascript ?? '/usr/bin/osascript')}
 OPEN=${shellQuote(commands.open ?? '/usr/bin/open')}
+KILL=${shellQuote(commands.kill ?? 'kill')}
+WATCH_SLEEP=${shellQuote(commands.watchSleep ?? '/bin/sleep')}
+SLEEP=${shellQuote(commands.sleep ?? '/bin/sleep')}
+DATE=${shellQuote(commands.date ?? '/bin/date')}
 NOTICE_SCRIPT=${shellQuote(NOTICE_SCRIPT)}
 ${progressFunctions}
 show_result() {
@@ -220,12 +268,12 @@ export function buildDesktopUninstallHandoffScript(
   if (!Number.isFinite(psTimeoutSeconds) || psTimeoutSeconds <= 0) {
     throw new Error('Invalid process-query timeout');
   }
+  const psTimeout = shellQuote(String(psTimeoutSeconds));
   return `#!/bin/sh
 ${buildDesktopUninstallResultFunctions(input, commands)}
 PARENT_PID=${input.parentPid}
 PARENT_STARTED_AT=${shellQuote(input.parentStartedAt)}
 PS=${shellQuote(commands.ps ?? '/bin/ps')}
-SLEEP=${shellQuote(commands.sleep ?? '/bin/sleep')}
 
 fail() {
   show_failure "$1"
@@ -240,45 +288,35 @@ exec 1>/dev/null
 read_parent_start() (
   ps_probe=$(/usr/bin/mktemp -d "\${TMPDIR:-/tmp}/ok-uninstall-ps.XXXXXX") || exit 2
   ps_output="$ps_probe/output"
-  ps_ready="$ps_probe/ready"
   ps_pid=''
-  watchdog=''
-  cleanup_probe() {
-    if [ -n "$watchdog" ]; then kill "$watchdog" 2>/dev/null; wait "$watchdog" 2>/dev/null; fi
-    if [ -n "$ps_pid" ]; then kill -KILL "$ps_pid" 2>/dev/null; wait "$ps_pid" 2>/dev/null; fi
+  query_timer=''
+  stop_query() {
+    if [ -n "$ps_pid" ]; then
+      if "$KILL" -s 0 "$ps_pid" 2>/dev/null; then "$KILL" -s KILL "$ps_pid" 2>/dev/null; fi
+      wait "$ps_pid" 2>/dev/null
+    fi
+    if [ -n "$query_timer" ]; then
+      if "$KILL" -s 0 "$query_timer" 2>/dev/null; then "$KILL" -s KILL "$query_timer" 2>/dev/null; fi
+      wait "$query_timer" 2>/dev/null
+    fi
     /bin/rm -rf "$ps_probe"
   }
-  trap cleanup_probe EXIT
-  trap 'exit 2' HUP INT TERM
-  : > "$ps_output" || exit 2
+  trap stop_query EXIT
+  trap 'printf "%s\\n" "The process query was interrupted." >> "$LOG"; exit 2' HUP INT TERM
+  command : > "$ps_output" || exit 2
   "$PS" -p "$PARENT_PID" -o lstart= > "$ps_output" 2>> "$LOG" &
   ps_pid=$!
-  (
-    stop_watchdog() {
-      sleeper=$!
-      if [ -n "$sleeper" ] && [ "$sleeper" != "$ps_pid" ]; then
-        kill "$sleeper" 2>/dev/null
-        wait "$sleeper" 2>/dev/null
-      fi
-      exit
-    }
-    trap stop_watchdog TERM
-    : > "$ps_ready" || exit 2
-    /bin/sleep ${shellQuote(String(psTimeoutSeconds))} &
-    wait "$!"
-    kill -KILL "$ps_pid" 2>/dev/null
-  ) >/dev/null 2>&1 &
-  watchdog=$!
-  ready_attempts=0
-  while [ ! -f "$ps_ready" ]; do
-    if [ "$ready_attempts" -ge 500 ]; then
-      kill -KILL "$watchdog" 2>/dev/null
-      wait "$watchdog" 2>/dev/null
-      watchdog=''
+  >/dev/null 2>&1 /bin/sleep ${psTimeout} &
+  query_timer=$!
+  while "$KILL" -s 0 "$ps_pid" 2>/dev/null; do
+    if ! "$KILL" -s 0 "$query_timer" 2>/dev/null; then
+      printf 'The process query did not answer within %s seconds.\\n' ${psTimeout} >> "$LOG"
       exit 2
     fi
-    ready_attempts=$((ready_attempts + 1))
-    /bin/sleep 0.01 || exit 2
+    "$SLEEP" ${PROCESS_QUERY_POLL_SECONDS} || {
+      printf 'Could not wait for the process query to answer.\\n' >> "$LOG"
+      exit 2
+    }
   done
   wait "$ps_pid" 2>/dev/null
   ps_status=$?

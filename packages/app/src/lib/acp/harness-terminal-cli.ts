@@ -20,7 +20,7 @@ export function harnessTerminalCli(
   return installedClis[cli] === true ? cli : null;
 }
 
-function terminalLaunchAvailable(): boolean {
+export function terminalLaunchAvailable(): boolean {
   if (typeof window === 'undefined' || isNoteWindow()) return false;
   const bridge = window.okDesktop ?? null;
   return bridge?.terminal != null && bridge.config.ptyAvailable === true;

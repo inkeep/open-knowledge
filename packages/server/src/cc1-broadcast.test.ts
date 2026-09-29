@@ -11,6 +11,7 @@ import {
   CC1ConfigValidationRejectedPayloadSchema,
   CC1DerivedViewPayloadSchema,
   CC1DiskAckPayloadSchema,
+  CC1ServerInfoPayloadSchema,
   CONFIG_DOC_NAME_OKIGNORE,
   CONFIG_DOC_NAME_PROJECT,
   CONFIG_DOC_NAME_PROJECT_LOCAL,
@@ -236,6 +237,18 @@ describe('CC1Broadcaster', () => {
 
   test('CC1_CHANNEL_BRANCH_SWITCHED exported as "branch-switched"', () => {
     expect(CC1_CHANNEL_BRANCH_SWITCHED).toBe('branch-switched');
+  });
+
+  test('emitServerInfo omits the branch when none was supplied', () => {
+    broadcaster.emitServerInfo('server-instance');
+    const payload = CC1ServerInfoPayloadSchema.parse(JSON.parse(broadcasts[0]));
+    expect(payload).not.toHaveProperty('currentBranch');
+  });
+
+  test('emitServerInfo includes a real branch when supplied', () => {
+    broadcaster.emitServerInfo('server-instance', 'feat/probe');
+    const payload = CC1ServerInfoPayloadSchema.parse(JSON.parse(broadcasts[0]));
+    expect(payload.currentBranch).toBe('feat/probe');
   });
 
   test('emitBranchSwitched publishes payload with branch + seq=1 on first call', () => {

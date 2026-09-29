@@ -5,39 +5,44 @@ import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { resolveServerRuntimeConfig } from '@inkeep/open-knowledge-core';
 import { ConfigSchema } from '@inkeep/open-knowledge-server';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { beforeEach, describe, expect, type Mock, test, vi } from 'vitest';
+import { UTILITY_INIT_PHASES } from '../../src/shared/boot-narration.ts';
 import type { KeyringSmokeResult } from '../../src/utility/keyring-smoke.ts';
 import {
   type PreparedBootEnvironment,
   resolveContentDir,
+  type SetupUtilityDeps,
   setupUtility,
+  type UtilityOutgoingMessage,
 } from '../../src/utility/server-entry.ts';
 
+type UtilityParentPort = NonNullable<SetupUtilityDeps['parentPort']>;
+
 interface MockParentPort {
-  on: ReturnType<typeof vi.fn>;
-  postMessage: ReturnType<typeof vi.fn>;
+  on: Mock<UtilityParentPort['on']>;
+  postMessage: Mock<UtilityParentPort['postMessage']>;
   fire: (msg: unknown) => void;
 }
 
 function mockParentPort(): MockParentPort {
   let handler: ((event: { data: unknown }) => void) | null = null;
-  const on = vi.fn((_event: 'message', h: (event: { data: unknown }) => void) => {
+  const on = vi.fn<UtilityParentPort['on']>((_event, h) => {
     handler = h;
   });
   return {
     on,
-    postMessage: vi.fn(() => {}),
+    postMessage: vi.fn<UtilityParentPort['postMessage']>(() => {}),
     fire: (msg: unknown) => handler?.({ data: msg }),
   };
 }
 
 interface MockEnv {
   parentPort: MockParentPort;
-  exit: ReturnType<typeof vi.fn>;
-  killProbe: ReturnType<typeof vi.fn>;
+  exit: Mock<SetupUtilityDeps['exit']>;
+  killProbe: Mock<SetupUtilityDeps['killProbe']>;
   signalHandlers: Map<string, () => void>;
   intervals: Array<{ cb: () => void; ms: number }>;
-  intervalCancel: ReturnType<typeof vi.fn>;
+  intervalCancel: Mock<() => void>;
 }
 
 function buildEnv(): MockEnv {
@@ -1044,5 +1049,358 @@ describe('handleInit defaultPrepareBootEnvironment (integration)', () => {
     expect(post).toBe(userCustomized);
 
     rmSync(tmpRoot, { recursive: true, force: true });
+  });
+});
+
+const PLANNED_UTILITY_INIT_PHASES = [
+  'init-received',
+  'imports-resolved',
+  'project-git-ensured',
+  'boot-server-started',
+];
+
+const PHASES_WITHOUT_ENSURING_GIT = PLANNED_UTILITY_INIT_PHASES.filter(
+  (phase) => phase !== 'project-git-ensured',
+);
+
+function postedToMain(env: MockEnv): UtilityOutgoingMessage[] {
+  return env.parentPort.postMessage.mock.calls.map(([message]) => message);
+}
+
+function initPhasesPostedToMain(env: MockEnv): unknown[] {
+  return postedToMain(env)
+    .filter((message) => message.type === 'init-phase')
+    .map((message) => message.phase);
+}
+
+function countersAtRead(read: number): {
+  uptimeMs: number;
+  cpuUserMs: number;
+  cpuSystemMs: number;
+} {
+  return { uptimeMs: read * 3, cpuUserMs: read * 2, cpuSystemMs: read };
+}
+
+function isUsableCounter(counter: unknown): boolean {
+  return typeof counter === 'number' && Number.isFinite(counter) && counter >= 0;
+}
+
+describe('setupUtility narrates its startup phases to main before it reports ready', () => {
+  let env: MockEnv;
+
+  beforeEach(() => {
+    env = buildEnv();
+  });
+
+  test('marks receiving init, resolving its imports and starting the server, each with the counters read at that mark, then posts ready', async () => {
+    const phasesPostedBefore: Record<string, unknown[]> = {};
+    let counterReads = 0;
+    const fakeBooted = {
+      port: 51234,
+      destroy: vi.fn(() => Promise.resolve()),
+      degraded: [] as readonly string[],
+    };
+    const bootServer = vi.fn(() => {
+      phasesPostedBefore.bootServer = initPhasesPostedToMain(env);
+      return Promise.resolve(fakeBooted);
+    });
+    const plannedDeps = {
+      readInitCounters: () => {
+        counterReads += 1;
+        return countersAtRead(counterReads);
+      },
+    };
+
+    const handle = setupUtility({
+      parentPort: env.parentPort,
+      importServer: () => {
+        phasesPostedBefore.importServer = initPhasesPostedToMain(env);
+        return Promise.resolve({
+          bootServer,
+        } as unknown as typeof import('@inkeep/open-knowledge-server'));
+      },
+      exit: env.exit,
+      parentPid: 99999,
+      killProbe: env.killProbe,
+      onSignal: (sig, h) => env.signalHandlers.set(sig, h),
+      setInterval: (cb, ms) => {
+        env.intervals.push({ cb, ms });
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
+      },
+      prepareBootEnvironment: () => {
+        phasesPostedBefore.prepare = initPhasesPostedToMain(env);
+        return Promise.resolve(makeFakePrepared());
+      },
+      ...plannedDeps,
+    });
+
+    env.parentPort.fire({
+      type: 'init',
+      opts: { contentDir: '/tmp/x', projectDir: '/tmp/x', port: 0, host: 'localhost' },
+    });
+    await handle.readyPromise;
+
+    expect(postedToMain(env)).toEqual([
+      ...PHASES_WITHOUT_ENSURING_GIT.map((phase, index) => ({
+        type: 'init-phase',
+        phase,
+        ...countersAtRead(index + 1),
+      })),
+      { type: 'ready', port: 51234, apiOrigin: 'http://localhost:51234' },
+    ]);
+    expect(phasesPostedBefore).toEqual({
+      importServer: PHASES_WITHOUT_ENSURING_GIT.slice(0, 1),
+      prepare: PHASES_WITHOUT_ENSURING_GIT.slice(0, 2),
+      bootServer: PHASES_WITHOUT_ENSURING_GIT,
+    });
+  });
+
+  test.each([
+    { didEnsureGit: false, markedPhases: PLANNED_UTILITY_INIT_PHASES },
+    { didEnsureGit: true, markedPhases: PHASES_WITHOUT_ENSURING_GIT },
+  ])(
+    'marks ensuring the project git only when it ensured it itself (didEnsureGit=$didEnsureGit), with counters it read itself',
+    async ({ didEnsureGit, markedPhases }) => {
+      expect(UTILITY_INIT_PHASES).toEqual(PLANNED_UTILITY_INIT_PHASES);
+      const tmpRoot = mkdtempSync(resolve(tmpdir(), 'ok-utility-phase-marks-'));
+      if (didEnsureGit) {
+        mkdirSync(resolve(tmpRoot, '.git'), { recursive: true });
+        writeFileSync(resolve(tmpRoot, '.git/HEAD'), 'ref: refs/heads/main\n', 'utf-8');
+      }
+      try {
+        const fakeBooted = {
+          port: 4242,
+          destroy: vi.fn(() => Promise.resolve()),
+          degraded: [] as readonly string[],
+        };
+        const bootServer = vi.fn(() => Promise.resolve(fakeBooted));
+        const handle = setupUtility({
+          parentPort: env.parentPort,
+          importServer: () =>
+            Promise.resolve({
+              bootServer,
+            } as unknown as typeof import('@inkeep/open-knowledge-server')),
+          exit: env.exit,
+          parentPid: 99999,
+          killProbe: env.killProbe,
+          onSignal: (sig, h) => env.signalHandlers.set(sig, h),
+          setInterval: (cb, ms) => {
+            env.intervals.push({ cb, ms });
+            return { unref: vi.fn(() => {}), clear: env.intervalCancel };
+          },
+        });
+
+        env.parentPort.fire({
+          type: 'init',
+          opts: {
+            contentDir: tmpRoot,
+            projectDir: tmpRoot,
+            port: 0,
+            host: 'localhost',
+            didEnsureGit,
+          },
+        });
+        await handle.readyPromise;
+
+        const posted = postedToMain(env);
+        const marks = posted.filter((message) => message.type === 'init-phase');
+        expect(marks.map((mark) => mark.phase)).toEqual(markedPhases);
+        expect(
+          marks
+            .flatMap((mark) => [mark.uptimeMs, mark.cpuUserMs, mark.cpuSystemMs])
+            .filter((counter) => !isUsableCounter(counter)),
+        ).toEqual([]);
+        expect(posted.findIndex((message) => message.type === 'ready')).toBeGreaterThan(
+          posted.findLastIndex((message) => message.type === 'init-phase'),
+        );
+      } finally {
+        rmSync(tmpRoot, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test('reports a failed start as an error after the phase marks it reached', async () => {
+    const handle = setupUtility({
+      parentPort: env.parentPort,
+      importServer: vi.fn(() => Promise.reject(new Error('boot failed'))),
+      exit: env.exit,
+      parentPid: 99999,
+      killProbe: env.killProbe,
+      onSignal: (sig, h) => env.signalHandlers.set(sig, h),
+      setInterval: (cb, ms) => {
+        env.intervals.push({ cb, ms });
+        return { unref: vi.fn(() => {}), clear: env.intervalCancel };
+      },
+    });
+
+    env.parentPort.fire({
+      type: 'init',
+      opts: { contentDir: '/tmp/x', projectDir: '/tmp/x', port: 0, host: 'localhost' },
+    });
+
+    await expect(handle.readyPromise).rejects.toThrow('boot failed');
+    expect(
+      postedToMain(env).map((message) =>
+        message.type === 'init-phase' ? message.phase : message.type,
+      ),
+    ).toEqual([...PHASES_WITHOUT_ENSURING_GIT.slice(0, 1), 'error']);
+    expect(env.exit).toHaveBeenCalledWith(1);
+  });
+
+  test('reads its default phase counters in milliseconds of its own uptime and CPU clocks', async () => {
+    const tmpRoot = mkdtempSync(resolve(tmpdir(), 'ok-utility-phase-counters-'));
+    mkdirSync(resolve(tmpRoot, '.git'), { recursive: true });
+    writeFileSync(resolve(tmpRoot, '.git/HEAD'), 'ref: refs/heads/main\n', 'utf-8');
+    try {
+      const fakeBooted = {
+        port: 4243,
+        destroy: vi.fn(() => Promise.resolve()),
+        degraded: [] as readonly string[],
+      };
+      const handle = setupUtility({
+        parentPort: env.parentPort,
+        importServer: () =>
+          Promise.resolve({
+            bootServer: vi.fn(() => Promise.resolve(fakeBooted)),
+          } as unknown as typeof import('@inkeep/open-knowledge-server')),
+        exit: env.exit,
+        parentPid: 99999,
+        killProbe: env.killProbe,
+        onSignal: (sig, h) => env.signalHandlers.set(sig, h),
+        setInterval: (cb, ms) => {
+          env.intervals.push({ cb, ms });
+          return { unref: vi.fn(() => {}), clear: env.intervalCancel };
+        },
+      });
+
+      const beforeInit = ownClocksInMs(Math.floor);
+      env.parentPort.fire({
+        type: 'init',
+        opts: {
+          contentDir: tmpRoot,
+          projectDir: tmpRoot,
+          port: 0,
+          host: 'localhost',
+          didEnsureGit: true,
+        },
+      });
+      await handle.readyPromise;
+      const afterReady = ownClocksInMs(Math.ceil);
+
+      const marks = postedToMain(env).filter((message) => message.type === 'init-phase');
+      expect(marks.map((mark) => mark.phase)).toEqual(PHASES_WITHOUT_ENSURING_GIT);
+      expect(
+        marks.flatMap((mark) =>
+          OWN_CLOCK_COUNTERS.filter((counter) => {
+            const value = mark[counter];
+            return !(
+              typeof value === 'number' &&
+              value >= beforeInit[counter] &&
+              value <= afterReady[counter]
+            );
+          }).map((counter) => ({
+            phase: mark.phase,
+            counter,
+            value: mark[counter],
+            from: beforeInit[counter],
+            to: afterReady[counter],
+          })),
+        ),
+      ).toEqual([]);
+    } finally {
+      rmSync(tmpRoot, { recursive: true, force: true });
+    }
+  });
+});
+
+const OWN_CLOCK_COUNTERS = ['uptimeMs', 'cpuUserMs', 'cpuSystemMs'] as const;
+
+function ownClocksInMs(
+  round: (ms: number) => number,
+): Record<(typeof OWN_CLOCK_COUNTERS)[number], number> {
+  const cpu = process.cpuUsage();
+  return {
+    uptimeMs: round(process.uptime() * 1000),
+    cpuUserMs: round(cpu.user / 1000),
+    cpuSystemMs: round(cpu.system / 1000),
+  };
+}
+
+function startUtilityWhoseBootPreparationWaits(env: MockEnv): {
+  bootServer: Mock<
+    () => Promise<{ port: number; destroy: () => Promise<void>; degraded: readonly string[] }>
+  >;
+  reachedBootPreparation: Promise<void>;
+  finishBootPreparation: () => void;
+} {
+  let enterBootPreparation!: () => void;
+  let finishBootPreparation!: () => void;
+  const entered = new Promise<void>((resolve) => {
+    enterBootPreparation = resolve;
+  });
+  const finished = new Promise<void>((resolve) => {
+    finishBootPreparation = resolve;
+  });
+  const bootServer = vi.fn(() =>
+    Promise.resolve({
+      port: 51289,
+      destroy: () => Promise.resolve(),
+      degraded: [] as readonly string[],
+    }),
+  );
+  const handle = setupUtility({
+    parentPort: env.parentPort,
+    importServer: () =>
+      Promise.resolve({
+        bootServer,
+      } as unknown as typeof import('@inkeep/open-knowledge-server')),
+    exit: env.exit,
+    parentPid: 99999,
+    killProbe: env.killProbe,
+    onSignal: (sig, h) => env.signalHandlers.set(sig, h),
+    setInterval: (cb, ms) => {
+      env.intervals.push({ cb, ms });
+      return { unref: vi.fn(() => {}), clear: env.intervalCancel };
+    },
+    prepareBootEnvironment: async () => {
+      enterBootPreparation();
+      await finished;
+      return makeFakePrepared();
+    },
+  });
+
+  env.parentPort.fire({
+    type: 'init',
+    opts: { contentDir: '/tmp/x', projectDir: '/tmp/x', port: 0, host: 'localhost' },
+  });
+  return {
+    bootServer,
+    reachedBootPreparation: Promise.race([entered, handle.readyPromise.then(() => {})]),
+    finishBootPreparation,
+  };
+}
+
+async function finishBootPreparationAndLetInitContinue(finish: () => void): Promise<void> {
+  finish();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+}
+
+describe('setupUtility honours a shutdown that arrives before its init reaches bootServer', () => {
+  test('exits 0 without calling bootServer when shutdown arrives while its init is still preparing the boot environment', async () => {
+    const withoutShutdown = startUtilityWhoseBootPreparationWaits(buildEnv());
+    await withoutShutdown.reachedBootPreparation;
+    await finishBootPreparationAndLetInitContinue(withoutShutdown.finishBootPreparation);
+    expect(withoutShutdown.bootServer).toHaveBeenCalledTimes(1);
+
+    const env = buildEnv();
+    const utility = startUtilityWhoseBootPreparationWaits(env);
+    await utility.reachedBootPreparation;
+    expect(utility.bootServer).not.toHaveBeenCalled();
+
+    env.parentPort.fire({ type: 'shutdown' });
+    await finishBootPreparationAndLetInitContinue(utility.finishBootPreparation);
+
+    expect(utility.bootServer).not.toHaveBeenCalled();
+    expect(env.exit.mock.calls).toEqual([[0]]);
   });
 });

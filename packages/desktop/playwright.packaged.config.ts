@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS } from './tests/smoke/_helpers/launch-desktop';
 
 /**
  * Packaged-app Playwright config — the release-gate tier.
@@ -19,6 +20,9 @@ import { defineConfig } from '@playwright/test';
  * here would fail on a perfectly good DMG.
  */
 
+/* WARN: desktopLaunchOptions sets OK_IDLE_SHUTDOWN to
+   PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS on every packaged launch, so a spec
+   added here must never leave its server without a /collab client that long. */
 /**
  * The FR5a subset: launch, project creation, and first-launch MCP wiring. This
  * is the smallest set that proves a DMG boots, reaches the renderer, and can
@@ -69,7 +73,7 @@ export default defineConfig({
   // Matches the unpackaged config's CI budget. A packaged launch is if anything
   // slower than `electron out/main/index.js` (Gatekeeper assessment, first-run
   // dyld cache warm-up), so a tighter budget would only add flake.
-  timeout: process.env.CI ? 150_000 : 60_000,
+  timeout: process.env.CI ? 150_000 : ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS,
   retries: process.env.CI ? 2 : 0,
   failOnFlakyTests: false,
   workers: 1,

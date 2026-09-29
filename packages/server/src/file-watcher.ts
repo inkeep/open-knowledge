@@ -6,9 +6,10 @@ import {
   realpathSync,
   type Stats,
   statSync,
+  watch as watchFsPath,
 } from 'node:fs';
 import { lstat, readdir, readFile, realpath, stat } from 'node:fs/promises';
-import { dirname, extname, join, relative } from 'node:path';
+import { basename, dirname, extname, join, relative } from 'node:path';
 import { LINKABLE_ASSET_EXTENSIONS } from '@inkeep/open-knowledge-core';
 import { isConfigDoc, isReservedForUserTree, isSystemDoc } from './cc1-broadcast.ts';
 import { type ContentFilter, WATCHER_STRUCTURAL_IGNORE_DIRS } from './content-filter.ts';
@@ -29,6 +30,7 @@ import {
   extractPageTitle,
   extractPageType,
 } from './page-identity.ts';
+import { subscribeParcel } from './parcel-subscription.ts';
 import { toPosix } from './path-utils.ts';
 import { containsConflictMarkers } from './reconciliation.ts';
 import { getMeter, withSpan } from './telemetry.ts';
@@ -165,11 +167,63 @@ export interface WatcherHandle {
 
 export const writeTracker = new Map<string, Array<{ hash: string; timestamp: number }>>();
 const WRITE_TRACKER_TTL_MS = 10_000;
+const REMOVAL_TRACKER_TTL_MS = 30_000;
 
 export function registerWrite(filePath: string, hash: string): void {
   const queue = writeTracker.get(filePath) ?? [];
   queue.push({ hash, timestamp: Date.now() });
   writeTracker.set(filePath, queue);
+}
+
+export const removalTracker = new Map<string, number>();
+
+function removalKey(filePath: string): string {
+  try {
+    return join(realpathSync(dirname(filePath)), basename(filePath));
+  } catch (e) {
+    const code = errnoCode(e);
+    if (code !== 'ENOENT') {
+      log.warn(
+        { path: filePath, code },
+        `realpathSync failed for the removal key of ${filePath} (${code})`,
+      );
+    }
+    return filePath;
+  }
+}
+
+export type RemovalDeclaration = string & { readonly __brand: 'RemovalDeclaration' };
+
+type Assert<T extends true> = T;
+type _RawStringIsNotARemovalDeclaration = Assert<string extends RemovalDeclaration ? false : true>;
+
+/* STOP: call this before the unlink, retract it if the unlink throws, and never resolve the
+   leaf; the watcher reports a removed alias at the alias, not at the target it pointed to. */
+export function registerRemoval(filePath: string): RemovalDeclaration {
+  const key = removalKey(filePath);
+  removalTracker.set(key, Date.now());
+  return key as RemovalDeclaration;
+}
+
+export function retractRemoval(declaration: RemovalDeclaration): void {
+  removalTracker.delete(declaration);
+}
+
+function voidRemoval(filePath: string, declaredBeforeBatch: ReadonlySet<string>): void {
+  if (declaredBeforeBatch.size === 0) return;
+  const key = removalKey(filePath);
+  if (!declaredBeforeBatch.has(key)) return;
+  removalTracker.delete(key);
+}
+
+/* STOP: return false on every ambiguous input; a true discards a real disk deletion. */
+export function isSelfRemoval(filePath: string): boolean {
+  if (removalTracker.size === 0) return false;
+  const key = removalKey(filePath);
+  const timestamp = removalTracker.get(key);
+  if (timestamp === undefined) return false;
+  removalTracker.delete(key);
+  return Date.now() - timestamp <= REMOVAL_TRACKER_TTL_MS;
 }
 
 export function evictStaleTrackerEntries(): void {
@@ -182,6 +236,9 @@ export function evictStaleTrackerEntries(): void {
       writeTracker.set(path, fresh);
     }
   }
+  for (const [path, timestamp] of removalTracker) {
+    if (now - timestamp > REMOVAL_TRACKER_TTL_MS) removalTracker.delete(path);
+  }
 }
 
 type WatcherDropReason =
@@ -191,7 +248,11 @@ type WatcherDropReason =
   | 'reserved-doc'
   | 'stat-failed';
 
-type WatcherDecision = 'dispatched' | 'self-write-skip' | `drop-${WatcherDropReason}`;
+type WatcherDecision =
+  | 'dispatched'
+  | 'self-write-skip'
+  | 'self-removal-skip'
+  | `drop-${WatcherDropReason}`;
 
 export interface WatcherDecisionRecord {
   ts: number;
@@ -207,6 +268,7 @@ const watcherDecisionRing: WatcherDecisionRecord[] = [];
 const watcherDropCounts = new Map<WatcherDropReason, number>();
 let watcherDispatchedCount = 0;
 let watcherSelfWriteSkipCount = 0;
+let watcherSelfRemovalSkipCount = 0;
 let watcherDropsSinceLastSummary = 0;
 
 function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath: string): void {
@@ -226,6 +288,10 @@ function recordWatcherDecision(decision: WatcherDecision, kind: string, rawPath:
   }
   if (decision === 'self-write-skip') {
     watcherSelfWriteSkipCount++;
+    return;
+  }
+  if (decision === 'self-removal-skip') {
+    watcherSelfRemovalSkipCount++;
     return;
   }
   const reason = decision.slice('drop-'.length) as WatcherDropReason;
@@ -254,6 +320,7 @@ export function logWatcherDropSummary(): void {
       dropTotals,
       dispatched: watcherDispatchedCount,
       selfWriteSkips: watcherSelfWriteSkipCount,
+      selfRemovalSkips: watcherSelfRemovalSkipCount,
     },
     `[file-watcher] drop summary: ${droppedSinceLastSummary} event(s) dropped since last summary`,
   );
@@ -264,6 +331,7 @@ export function resetWatcherDecisionDiagnostics(): void {
   watcherDropCounts.clear();
   watcherDispatchedCount = 0;
   watcherSelfWriteSkipCount = 0;
+  watcherSelfRemovalSkipCount = 0;
   watcherDropsSinceLastSummary = 0;
 }
 
@@ -1055,6 +1123,7 @@ export async function handleRawEvents(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap?: Map<string, string>,
 ): Promise<void> {
+  const declaredBeforeBatch: ReadonlySet<string> = new Set(removalTracker.keys());
   const safeEvents = rawEvents.filter((e) => {
     if (!eventEscapesContentDir(e.path, contentDir)) return true;
     recordWatcherDecision('drop-symlink-escape', e.type, e.path);
@@ -1157,6 +1226,7 @@ export async function handleRawEvents(
         }
       }
       isSelf = isSelfWrite(checkPath, hash);
+      voidRemoval(event.path, declaredBeforeBatch);
     } else if (event.kind === 'rename') {
       const hash = contentHash(event.content);
       let checkPath = event.newPath;
@@ -1172,6 +1242,10 @@ export async function handleRawEvents(
         }
       }
       isSelf = isSelfWrite(checkPath, hash);
+      voidRemoval(event.oldPath, declaredBeforeBatch);
+      voidRemoval(event.newPath, declaredBeforeBatch);
+    } else {
+      isSelf = isSelfRemoval(event.path);
     }
 
     const dispatchedEvent =
@@ -1202,17 +1276,18 @@ export async function handleRawEvents(
     }
 
     if (isSelf) {
+      const selfKind = event.kind === 'delete' ? 'self-removal' : 'self-write';
       log.debug(
         {
           kind: event.kind,
           path: event.kind === 'rename' ? event.newPath : event.path,
           self: true,
         },
-        `[file-watcher] Skipped self-write: ${event.kind}`,
+        `[file-watcher] Skipped ${selfKind}: ${event.kind}`,
       );
       _fileWatcherEventsCounter().add(1, { 'disk.kind': event.kind, self: true });
       recordWatcherDecision(
-        'self-write-skip',
+        `${selfKind}-skip`,
         event.kind,
         event.kind === 'rename' ? event.newPath : event.path,
       );
@@ -1376,6 +1451,7 @@ async function startParcelWatcher(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
+  platform: NodeJS.Platform,
   onRawBatch?: (absPaths: readonly string[]) => void,
   discoveredStructuralDirs?: ReadonlySet<string>,
 ): Promise<AsyncSubscription | null> {
@@ -1400,7 +1476,8 @@ async function startParcelWatcher(
         }
       : undefined;
 
-    const subscription = await parcel.subscribe(
+    const subscription = await subscribeParcel(
+      parcel,
       contentDir,
       async (err, events) => {
         if (err) {
@@ -1424,6 +1501,7 @@ async function startParcelWatcher(
         }
       },
       subscribeOpts,
+      platform,
     );
 
     return subscription;
@@ -1464,6 +1542,21 @@ export function isChokidarPathIgnored(
 
 const CHOKIDAR_READY_TIMEOUT_MS = 10_000;
 
+/* UPSTREAM(nodejs/node#52601, libuv/libuv#3866, libuv/libuv#637): a macOS directory fs.watch
+   returns before FSEvents covers its path; closing one waits for the stream rebuild that covers
+   every earlier registration. */
+function waitForPendingFsEventsRegistrations(dir: string, platform: NodeJS.Platform): void {
+  if (platform !== 'darwin') return;
+  try {
+    watchFsPath(dir).close();
+  } catch (err) {
+    log.warn(
+      { err },
+      'could not wait for FSEvents to cover the chokidar-watched directories; a change made right after start may be missed',
+    );
+  }
+}
+
 async function startChokidarWatcher(
   contentDir: string,
   contentFilter: ContentFilter | undefined,
@@ -1472,6 +1565,7 @@ async function startChokidarWatcher(
   onDiskEvent: (event: DiskEvent) => Promise<void>,
   aliasMap: Map<string, string>,
   onAfterMutation: () => void,
+  platform: NodeJS.Platform,
   onRawBatch?: (absPaths: readonly string[]) => void,
 ): Promise<AsyncSubscription> {
   const { watch } = await import('chokidar');
@@ -1529,6 +1623,8 @@ async function startChokidarWatcher(
     setTimeout(settle, CHOKIDAR_READY_TIMEOUT_MS).unref();
   });
 
+  waitForPendingFsEventsRegistrations(contentDir, platform);
+
   return {
     unsubscribe: () => {
       if (batchTimer) {
@@ -1548,6 +1644,7 @@ export async function startWatcher(
   opts: {
     forceBackend?: 'parcel' | 'chokidar';
     onRawBatch?: (absPaths: readonly string[]) => void;
+    platform?: NodeJS.Platform;
   } = {},
 ): Promise<WatcherHandle> {
   const { onRawBatch } = opts;
@@ -1591,6 +1688,7 @@ export async function startWatcher(
   let subscription: AsyncSubscription;
   let backend: WatcherBackend;
   const forceChokidar = process.env.OK_FILE_WATCHER_BACKEND === 'chokidar';
+  const platform = opts.platform ?? process.platform;
   try {
     const parcelSub =
       forceChokidar || opts.forceBackend === 'chokidar'
@@ -1603,6 +1701,7 @@ export async function startWatcher(
             onDiskEvent,
             aliasMap,
             bumpFileIndexGeneration,
+            platform,
             onRawBatch,
             structuralIgnoreDirs,
           );
@@ -1621,6 +1720,7 @@ export async function startWatcher(
         onDiskEvent,
         aliasMap,
         bumpFileIndexGeneration,
+        platform,
         onRawBatch,
       );
       backend = 'chokidar';
@@ -1640,6 +1740,7 @@ export async function startWatcher(
       clearInterval(evictionInterval);
       clearInterval(dropSummaryInterval);
       writeTracker.clear();
+      removalTracker.clear();
       lastKnownHash.clear();
       resetWatcherDecisionDiagnostics();
       return originalUnsubscribe();

@@ -191,11 +191,16 @@ interface TestRig {
 function makeRig(
   overrides?: Partial<AppState> & {
     appVersion?: string;
+    buildChannel?: Parameters<typeof startAutoUpdater>[0]['buildChannel'];
     isPackaged?: boolean;
     platform?: NodeJS.Platform;
     forceDevBypass?: boolean;
     feedUrl?: string;
-    proxyFeed?: { base: string; channels: ReadonlySet<'latest' | 'beta'> };
+    proxyFeed?: {
+      base: string;
+      channels: ReadonlySet<'latest' | 'beta'>;
+      betaChannel?: 'beta' | 'beta-product';
+    };
     updaterSetup?: (u: FakeUpdater) => void;
     extraWindowCount?: number;
     prepareForRelaunch?: () => void;
@@ -212,6 +217,7 @@ function makeRig(
 } {
   const {
     appVersion = '0.3.1',
+    buildChannel,
     isPackaged = true,
     platform = 'darwin',
     forceDevBypass,
@@ -265,6 +271,7 @@ function makeRig(
     getPrimaryWindow: () => primaryWindow,
     getAllWindows: extraWindowCount > 0 ? () => fanOutTargets : undefined,
     getAppVersion: () => appVersion,
+    buildChannel,
     isPackaged,
     platform,
     forceDevBypass,
@@ -399,6 +406,13 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
     expect(rig.updater.allowDowngrade).toBe(false);
   });
 
+  test('compiled product channel overrides a mismatched package version', () => {
+    const { rig } = makeRig({ appVersion: '0.4.0', buildChannel: 'beta' });
+    expect(rig.updater.channel).toBe('beta');
+    expect(rig.updater.allowPrerelease).toBe(true);
+    expect(rig.updater.allowDowngrade).toBe(false);
+  });
+
   test('channel is build-derived only — no persisted preference is consulted', () => {
     const stable = makeRig({ appVersion: '0.4.0' });
     expect(stable.rig.updater.channel).toBe('latest');
@@ -422,6 +436,30 @@ describe('startAutoUpdater — initial configuration (parent §8.10 LOCKED)', ()
       'x-ok-from-version': '0.4.0-beta.7',
       'x-ok-channel': 'beta',
     });
+  });
+
+  test('separate Beta uses its own feed and manifest without enabling downgrades', () => {
+    const { rig } = makeRig({
+      appVersion: '0.78.0-beta.6',
+      updaterSetup: (updater) => {
+        let channel: string | null = null;
+        Object.defineProperty(updater, 'channel', {
+          get: () => channel,
+          set: (value: string) => {
+            channel = value;
+            updater.allowDowngrade = true;
+          },
+        });
+      },
+      proxyFeed: { base: PROXY_BASE, channels: new Set(['beta']), betaChannel: 'beta-product' },
+    });
+    expect(rig.updater.setFeedURL).toHaveBeenCalledWith({
+      provider: 'generic',
+      url: `${PROXY_BASE}/beta-product`,
+    });
+    expect(rig.updater.channel).toBe('beta-product');
+    expect(rig.updater.allowPrerelease).toBe(true);
+    expect(rig.updater.allowDowngrade).toBe(false);
   });
 
   test('proxyFeed: stable build maps the latest channel to the proxy /stable path', () => {

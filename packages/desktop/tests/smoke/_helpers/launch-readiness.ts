@@ -1,15 +1,19 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { WaterfallPhase } from '../../../src/main/startup-waterfall.ts';
 import {
   BOOT_HEARTBEAT_EVENTS,
   DESKTOP_BOOT_EVENT,
   DESKTOP_OPEN_PROJECT_FAILED_EVENT,
   isBootHeartbeatEvent,
-  isStartupMarkEvent,
   SPAWN_WAIT_HEARTBEAT_MS,
+  type StartupMarkLine,
   startupMarkLine,
-  UTILITY_INIT_TIMEOUT_MS,
+  UTILITY_INIT_HARD_CAP_MS,
 } from '../../../src/shared/boot-narration.ts';
+import type { DesktopLaunchMode } from './launch-desktop';
+
+export const DECLARED_UTILITY_BUDGET_CEILING_MS = UTILITY_INIT_HARD_CAP_MS;
 
 export const BOOT_LOG_HEARTBEAT_MS = SPAWN_WAIT_HEARTBEAT_MS;
 
@@ -22,6 +26,45 @@ export const BOOT_LOG_CAP_MS = 25_000;
 export const UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS = 5_000;
 
 const BOOT_LOG_TAIL_LINES = 12;
+
+export type ReadinessPath = 'fork' | 'packaged';
+
+export function readinessWorstCaseMs({
+  path,
+  capMs = BOOT_LOG_CAP_MS,
+  stallMs = BOOT_LOG_STALL_MS,
+}: {
+  path: ReadinessPath;
+  capMs?: number;
+  stallMs?: number;
+}): number {
+  switch (path) {
+    case 'packaged':
+      return capMs + stallMs;
+    case 'fork':
+      return (
+        capMs + stallMs + DECLARED_UTILITY_BUDGET_CEILING_MS + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS
+      );
+  }
+}
+
+export function readinessGiveUpBoundMs(options: {
+  path: ReadinessPath;
+  capMs?: number;
+  stallMs?: number;
+  pollMs?: number;
+}): number {
+  return readinessWorstCaseMs(options) + (options.pollMs ?? BOOT_LOG_POLL_MS);
+}
+
+const READINESS_PATH_BY_MODE = {
+  unpackaged: 'fork',
+  packaged: 'packaged',
+} as const satisfies Record<DesktopLaunchMode, ReadinessPath>;
+
+export function readinessPathOf(mode: DesktopLaunchMode): ReadinessPath {
+  return READINESS_PATH_BY_MODE[mode];
+}
 
 export interface BootLogSnapshot {
   dir: string;
@@ -142,9 +185,33 @@ function currentLaunch(lines: readonly string[]): string[] {
   return lastBoot === -1 ? [...lines] : lines.slice(lastBoot);
 }
 
+const STARTUP_STAGE_PHASES = {
+  appReady: true,
+  bootstrapDone: true,
+  serverSpawned: true,
+  serverLockReady: true,
+  windowCreated: true,
+  loadUrlResolved: true,
+  windowShown: true,
+} as const satisfies Record<WaterfallPhase, true>;
+
+export const EVERY_STARTUP_PHASE = Object.keys(STARTUP_STAGE_PHASES) as ReadonlyArray<
+  keyof typeof STARTUP_STAGE_PHASES
+>;
+
+const STARTUP_STAGE_EVENTS: ReadonlySet<string> = new Set(
+  EVERY_STARTUP_PHASE.map((phase) => startupMarkLine(phase, 0).event),
+);
+
+type StartupStageEvent = StartupMarkLine['event'];
+
+function isStartupStageEvent(event: string): event is StartupStageEvent {
+  return STARTUP_STAGE_EVENTS.has(event);
+}
+
 function isLaunchNarrationLine(line: string): boolean {
   const event = parseEvent(line);
-  return event !== undefined && (isStartupMarkEvent(event) || isBootHeartbeatEvent(event));
+  return event !== undefined && (isStartupStageEvent(event) || isBootHeartbeatEvent(event));
 }
 
 function lastLaunchNarrationIndex(launch: readonly string[]): number {
@@ -207,24 +274,51 @@ export function parseDeclaredPhaseBudget(line: string): DeclaredPhaseBudget | un
     const { elapsedMs, initTimeoutMs } = parsed;
     if (!isUsableDurationField(elapsedMs) || !isUsableDurationField(initTimeoutMs))
       return undefined;
-    if (initTimeoutMs > UTILITY_INIT_TIMEOUT_MS) return undefined;
+    if (initTimeoutMs > DECLARED_UTILITY_BUDGET_CEILING_MS) return undefined;
     if (elapsedMs < 0 || elapsedMs > initTimeoutMs) return undefined;
     return { elapsedMs, initTimeoutMs };
   } catch {}
   return undefined;
 }
 
+function declaresLaterBudget(
+  budget: DeclaredPhaseBudget,
+  than: DeclaredPhaseBudget | undefined,
+): boolean {
+  if (than === undefined) return true;
+  if (budget.elapsedMs !== than.elapsedMs) return budget.elapsedMs > than.elapsedMs;
+  return budget.initTimeoutMs > than.initTimeoutMs;
+}
+
 function newestDeclaredPhaseBudget(all: readonly string[]): DeclaredPhaseBudget | undefined {
   const launch = currentLaunch(all);
   const openedAt = openDeclaredPhaseStart(launch);
   if (openedAt === -1) return undefined;
+  let newest: DeclaredPhaseBudget | undefined;
   for (let i = launch.length - 1; i > openedAt; i -= 1) {
     const line = launch[i];
     if (line === undefined) continue;
     const budget = parseDeclaredPhaseBudget(line);
-    if (budget !== undefined) return budget;
+    if (budget === undefined) continue;
+    if (newest !== undefined && budget.elapsedMs !== newest.elapsedMs) break;
+    if (declaresLaterBudget(budget, newest)) newest = budget;
   }
-  return undefined;
+  return newest;
+}
+
+export interface LaunchAdvancement {
+  event: StartupStageEvent;
+  atMs: number;
+}
+
+export function launchAdvancementPhases(all: readonly string[]): StartupStageEvent[] {
+  const ordered: StartupStageEvent[] = [];
+  for (const line of currentLaunch(all)) {
+    const event = parseEvent(line);
+    if (event === undefined || !isStartupStageEvent(event)) continue;
+    if (!ordered.includes(event)) ordered.push(event);
+  }
+  return ordered;
 }
 
 function parseLastPhase(line: string): string | undefined {
@@ -377,6 +471,15 @@ export function bootGapLineFor(input: {
     : { ...base, reason };
 }
 
+export function lastAdvancementMs(wait: ReadyWaitRecord): number | undefined {
+  return wait.advancements.at(-1)?.atMs;
+}
+
+export function sinceLastAdvancementMs(wait: ReadyWaitRecord): number | undefined {
+  const last = lastAdvancementMs(wait);
+  return last === undefined ? undefined : wait.elapsedMs - last;
+}
+
 export function formatBootGapLine(line: BootGapLine): string {
   const parts = [
     `[boot-gap] slot=${line.slot}`,
@@ -391,6 +494,9 @@ export function formatBootGapLine(line: BootGapLine): string {
           'firstWaitWhat=none',
           'firstWaitGaveUp=none',
           'firstWaitReason=none',
+          'firstWaitAdvancements=none',
+          'firstWaitLastAdvancementMs=none',
+          'firstWaitSinceAdvancementMs=none',
         ]
       : [
           `firstWaitMs=${line.firstWait.elapsedMs}`,
@@ -399,6 +505,11 @@ export function formatBootGapLine(line: BootGapLine): string {
           `firstWaitWhat=${JSON.stringify(line.firstWait.what)}`,
           `firstWaitGaveUp=${line.firstWait.gaveUp}`,
           `firstWaitReason=${line.firstWait.reason}`,
+          `firstWaitAdvancements=${JSON.stringify(
+            line.firstWait.advancements.map((advancement) => advancement.event),
+          )}`,
+          `firstWaitLastAdvancementMs=${lastAdvancementMs(line.firstWait) ?? 'none'}`,
+          `firstWaitSinceAdvancementMs=${sinceLastAdvancementMs(line.firstWait) ?? 'none'}`,
         ]),
   ];
   if (line.summary === undefined) {
@@ -434,6 +545,9 @@ export interface ReadySignalOptions<T> {
   startDeadline?: (ms: number) => ReadyDeadline;
   isProbePending?: () => boolean;
   onCapExtended?: (capMs: number) => void;
+  onDeclaredGrant?: (grantMs: number) => void;
+  onAdvancement?: (advancement: LaunchAdvancement) => void;
+  onNewLaunch?: () => void;
 }
 
 export interface ReadyDeadline {
@@ -563,6 +677,11 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   const startedAt = now();
   let lastProgressAt = startedAt;
   let cursor = -1;
+  const advancementSeen = new Set<string>();
+  const bootLinesRead = new Set<string>();
+  let launchBootLine: string | undefined;
+  let lastLegibleReadAt: number | undefined;
+  let lastStageRenewalAt: number | undefined;
   let snapshot = emptyBootLog(bootLogDirFor(options.home));
   const explicitLiveness = options.liveness;
   let lastProbeError: string | undefined;
@@ -578,7 +697,7 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
   let deadline = startDeadline(capMs);
   let capReached = armCapReached(deadline);
   let armedCapMs = capMs;
-  let grantedElapsedMs = Number.NEGATIVE_INFINITY;
+  let grantedBudget: DeclaredPhaseBudget | undefined;
   let derivedDeadlineAt: number | undefined;
   let probePendingAtGiveUp = false;
 
@@ -600,25 +719,70 @@ export async function waitForReadySignal<T>(options: ReadySignalOptions<T>): Pro
       }
 
       snapshot = readLog(options.home);
+      const readAt = now();
       if (snapshot.lineCount > cursor) {
         cursor = snapshot.lineCount;
-        lastProgressAt = now();
+        lastProgressAt = readAt;
       }
 
-      const declaredPhaseOpen = hasOpenDeclaredPhase(snapshot.lines);
-      if (declaredPhaseOpen) {
-        const budget = newestDeclaredPhaseBudget(snapshot.lines);
-        if (budget !== undefined && budget.elapsedMs > grantedElapsedMs) {
-          grantedElapsedMs = budget.elapsedMs;
-          const remaining = Math.max(
-            budget.initTimeoutMs - budget.elapsedMs,
-            UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS,
-          );
-          derivedDeadlineAt = Math.max(derivedDeadlineAt ?? 0, now() + remaining);
+      const bootLinesNow = snapshot.lines.filter((line) => parseEvent(line) === DESKTOP_BOOT_EVENT);
+      const bootLineNow = bootLinesNow.at(-1);
+      const readsAnEarlierLaunch =
+        bootLineNow !== undefined &&
+        bootLineNow !== launchBootLine &&
+        bootLinesRead.has(bootLineNow);
+      for (const line of bootLinesNow) bootLinesRead.add(line);
+      if (bootLineNow !== undefined && !readsAnEarlierLaunch) {
+        if (launchBootLine !== undefined && bootLineNow !== launchBootLine) {
+          advancementSeen.clear();
+          grantedBudget = undefined;
+          derivedDeadlineAt = undefined;
+          if (armedCapMs !== capMs) {
+            deadline.cancel();
+            capElapsed = false;
+            probePendingAtGiveUp = false;
+            armedCapMs = capMs;
+            deadline = startDeadline(Math.max(startedAt + armedCapMs - now(), 0));
+            capReached = armCapReached(deadline);
+          }
+          options.onNewLaunch?.();
+        }
+        launchBootLine = bootLineNow;
+      }
+      for (const event of readsAnEarlierLaunch ? [] : launchAdvancementPhases(snapshot.lines)) {
+        if (advancementSeen.has(event)) continue;
+        advancementSeen.add(event);
+        options.onAdvancement?.({ event, atMs: readAt - startedAt });
+        if (lastLegibleReadAt !== undefined) {
+          lastStageRenewalAt = probePendingAtGiveUp ? lastLegibleReadAt : readAt;
         }
       }
-      const effectiveCapMs =
-        derivedDeadlineAt === undefined ? capMs : Math.max(capMs, derivedDeadlineAt - startedAt);
+      if (classifyBootLog(snapshot) !== 'unreadable') lastLegibleReadAt = readAt;
+
+      const declaredPhaseOpen = hasOpenDeclaredPhase(snapshot.lines);
+      if (declaredPhaseOpen && !readsAnEarlierLaunch) {
+        const budget = newestDeclaredPhaseBudget(snapshot.lines);
+        if (budget !== undefined && declaresLaterBudget(budget, grantedBudget)) {
+          grantedBudget = budget;
+          const remaining =
+            budget.initTimeoutMs - budget.elapsedMs + UTILITY_TIMEOUT_OBSERVATION_MARGIN_MS;
+          derivedDeadlineAt = Math.max(derivedDeadlineAt ?? 0, now() + remaining);
+          options.onDeclaredGrant?.(derivedDeadlineAt - startedAt);
+        }
+      }
+      const effectiveCapMs = Math.min(
+        readinessWorstCaseMs({ path: 'fork', capMs, stallMs }),
+        Math.max(
+          capMs,
+          derivedDeadlineAt === undefined ? capMs : derivedDeadlineAt - startedAt,
+          lastStageRenewalAt === undefined
+            ? capMs
+            : Math.min(
+                lastStageRenewalAt - startedAt + stallMs,
+                readinessWorstCaseMs({ path: 'packaged', capMs, stallMs }),
+              ),
+        ),
+      );
       if (effectiveCapMs > armedCapMs) {
         deadline.cancel();
         capElapsed = false;
@@ -713,9 +877,11 @@ export interface ReadyWaitRecord {
   what: string;
   elapsedMs: number;
   capMs: number;
+  declaredGrantMs?: number;
   requestedCapMs: number;
   gaveUp: boolean;
   reason: ReadyWaitGiveUpReason;
+  advancements: readonly LaunchAdvancement[];
 }
 
 const READY_WAITS_BY_APP = new WeakMap<object, ReadyWaitRecord[]>();
@@ -796,11 +962,13 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
   const what = `${mode} window`;
   const capMs = options.capMs ?? BOOT_LOG_CAP_MS;
   let decidingCapMs = capMs;
+  let declaredGrantMs: number | undefined;
   const startedAt = Date.now();
   const probeStates = new WeakMap<TPage, ModeProbeState>();
   let pendingProbeCount = 0;
   let succeeded = false;
   let reason: ReadyWaitGiveUpReason = 'none';
+  const advancements: LaunchAdvancement[] = [];
   try {
     const found = await waitForReadySignal<TPage>({
       home,
@@ -812,6 +980,17 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       isProbePending: () => pendingProbeCount > 0,
       onCapExtended: (extended) => {
         decidingCapMs = extended;
+      },
+      onDeclaredGrant: (grantMs) => {
+        declaredGrantMs = grantMs;
+      },
+      onAdvancement: (advancement) => {
+        advancements.push(advancement);
+      },
+      onNewLaunch: () => {
+        advancements.length = 0;
+        declaredGrantMs = undefined;
+        decidingCapMs = capMs;
       },
       probe: async () => {
         const pages = app.windows();
@@ -880,9 +1059,11 @@ export async function waitForWindowByMode<TPage extends ModeProbePage>(
       what,
       elapsedMs: Date.now() - startedAt,
       capMs: decidingCapMs,
+      ...(declaredGrantMs === undefined ? {} : { declaredGrantMs }),
       requestedCapMs: capMs,
       gaveUp: !succeeded,
       reason,
+      advancements,
     });
   }
 }

@@ -1,0 +1,8 @@
+{
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/THIRD_PARTY_NOTICES.md", "$TURBO_ROOT$/LICENSE"]
+    }
+  }
+}

@@ -13,8 +13,11 @@
  *
  *   packages/server/dist/assets/skills/<bundle>/SKILL.md
  *
- * `resolveBundledSkillDir()` probes that dist path before the source path, so
- * the composed (placeholder-free) bundle is what gets installed. At v1
+ * A built `resolveBundledSkillDir()` (the CLI bundle, the server build the
+ * desktop app loads) probes that dist path before the source path, so built
+ * artifacts install the composed (placeholder-free) bundle; run from source it
+ * reads the uncomposed source directly, which the source-fallback tripwire in
+ * build-skill-bundles.test.ts keeps safe. At v1
  * `_shared/` carries no shared prose yet — neither bundle references a
  * placeholder, so composition is an identity transform — but the mechanism +
  * the byte-equality guard exist now so shared prose can land without drift

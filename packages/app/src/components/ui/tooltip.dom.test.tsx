@@ -89,6 +89,29 @@ describe('Tooltip runtime contracts', () => {
     expect(screen.getByRole('tooltip').textContent).toBe('Tooltip body');
   });
 
+  test.each([
+    { arrow: undefined, svgs: 1 },
+    { arrow: false, svgs: 0 },
+  ])('renders the arrow unless arrow=false ($arrow)', async ({ arrow, svgs }) => {
+    const { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } = await import('./tooltip');
+    render(
+      <TooltipProvider>
+        <Tooltip open>
+          <TooltipTrigger asChild>
+            <button type="button">Target</button>
+          </TooltipTrigger>
+          <TooltipContent arrow={arrow}>Tooltip body</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>,
+    );
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const content = document.querySelector('[data-slot="tooltip-content"]');
+    expect(content).toBeTruthy();
+    expect(content?.querySelectorAll('svg').length).toBe(svgs);
+  });
+
   test('content carries delayed-open motion and reduced-motion opt-in at runtime', async () => {
     await renderOpenTooltip();
 

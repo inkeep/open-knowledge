@@ -918,9 +918,11 @@ describe('TerminalDock multi-session', () => {
     expect(screen.getAllByTestId('terminal-session')).toHaveLength(1);
 
     const launchRequests: Array<{ text: string; cli: string; stage: boolean }> = [];
-    const stopLaunch = subscribeToTerminalLaunchRequests((text, cli, opts) =>
-      launchRequests.push({ text, cli, stage: opts.stage }),
-    );
+    const stopLaunch = subscribeToTerminalLaunchRequests((request) => {
+      if (request.kind === 'cli') {
+        launchRequests.push({ text: request.prompt, cli: request.cli, stage: request.stage });
+      }
+    });
     await act(async () => {
       requestActiveTerminalInput('explain this');
     });

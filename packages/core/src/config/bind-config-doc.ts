@@ -1,6 +1,7 @@
 import { isMap, type ParsedNode, parseDocument } from 'yaml';
 import type * as Y from 'yjs';
 import type { ConfigValidationError, WriteScope } from './errors.ts';
+import { validateGitHostPatch } from './git-host-config.ts';
 import type { Err, Ok, Result } from './result.ts';
 import { type Config, type ConfigPatch, ConfigSchema } from './schema.ts';
 import { addConfigSpanEvent, withConfigSpanSync } from './telemetry.ts';
@@ -151,6 +152,8 @@ function bindConfigDocInner(
     if (scopeViolation !== null) {
       return err(scopeViolation);
     }
+    const hostViolation = validateGitHostPatch(patch);
+    if (hostViolation !== null) return err(hostViolation);
 
     const currentContent = ytext.toString();
     let doc = parseDocument(currentContent);

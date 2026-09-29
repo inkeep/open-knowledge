@@ -1,4 +1,4 @@
-import { describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   BOOT_HEARTBEAT_ABANDONED_SUFFIX,
   BOOT_HEARTBEAT_EVENTS,
@@ -94,5 +94,119 @@ describe('startBootHeartbeat', () => {
     stop();
     stop();
     expect(cleared).toBe(1);
+  });
+});
+
+describe('startBootHeartbeat beat() publishes a beat on demand, inside the same budget', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function beatOf(heartbeat: ReturnType<typeof startBootHeartbeat>): () => void {
+    expect(heartbeat.beat, 'the heartbeat handle exposes beat()').toBeTypeOf('function');
+    return () => heartbeat.beat();
+  }
+
+  test('publishes one beat now, with the elapsed time and the fields as they stand, and flushes it', () => {
+    const h = harness();
+    let stage = 'startup';
+    const heartbeat = startBootHeartbeat(
+      h.deps,
+      BOOT_HEARTBEAT_EVENTS.utilityWait,
+      'waiting',
+      () => ({
+        stage,
+      }),
+    );
+    const beat = beatOf(heartbeat);
+    const betweenTicksMs = SPAWN_WAIT_HEARTBEAT_MS / 2;
+    vi.advanceTimersByTime(betweenTicksMs);
+    stage = 'graduated';
+
+    beat();
+
+    expect(h.lines).toEqual([
+      { event: BOOT_HEARTBEAT_EVENTS.utilityWait, elapsedMs: betweenTicksMs, stage: 'graduated' },
+    ]);
+    expect(h.flushes()).toBe(1);
+    expect(h.intervals[0]?.cleared).toBe(false);
+  });
+
+  test('spends a beat of the budget, so the narration abandons after the same number of lines', () => {
+    const h = harness();
+    const heartbeat = startBootHeartbeat(
+      h.deps,
+      BOOT_HEARTBEAT_EVENTS.boot,
+      'probing',
+      () => ({ phase: 'parked' }),
+      { maxBeats: 3 },
+    );
+    beatOf(heartbeat)();
+    for (let i = 0; i < 10; i += 1) h.intervals[0]?.tick();
+
+    const normal = h.lines.filter((l) => l.event === BOOT_HEARTBEAT_EVENTS.boot);
+    const abandoned = h.lines.filter(
+      (l) => l.event === `${BOOT_HEARTBEAT_EVENTS.boot}${BOOT_HEARTBEAT_ABANDONED_SUFFIX}`,
+    );
+    expect(normal).toHaveLength(3);
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0]).toMatchObject({ beats: 3, phase: 'parked' });
+    expect(h.intervals[0]?.cleared).toBe(true);
+  });
+
+  test('abandons the narration when a beat() would exceed the budget, then stays silent', () => {
+    const h = harness();
+    const heartbeat = startBootHeartbeat(
+      h.deps,
+      BOOT_HEARTBEAT_EVENTS.boot,
+      'probing',
+      () => ({ phase: 'parked' }),
+      { maxBeats: 2 },
+    );
+    const beat = beatOf(heartbeat);
+    h.intervals[0]?.tick();
+    h.intervals[0]?.tick();
+
+    beat();
+    beat();
+
+    expect(h.lines.map((l) => l.event)).toEqual([
+      BOOT_HEARTBEAT_EVENTS.boot,
+      BOOT_HEARTBEAT_EVENTS.boot,
+      `${BOOT_HEARTBEAT_EVENTS.boot}${BOOT_HEARTBEAT_ABANDONED_SUFFIX}`,
+    ]);
+    expect(h.lines.at(-1)).toMatchObject({ beats: 2, phase: 'parked' });
+    expect(h.intervals[0]?.cleared).toBe(true);
+  });
+
+  test('stays silent once the heartbeat is stopped', () => {
+    const h = harness();
+    const heartbeat = startBootHeartbeat(h.deps, BOOT_HEARTBEAT_EVENTS.boot, 'probing', () => ({}));
+    const beat = beatOf(heartbeat);
+
+    heartbeat();
+    beat();
+
+    expect(h.lines).toEqual([]);
+    expect(h.flushes()).toBe(0);
+  });
+
+  test('stays silent when no interval was armed', () => {
+    const h = harness();
+    const heartbeat = startBootHeartbeat(
+      { log: h.deps.log, flushLog: h.deps.flushLog, clearInterval: h.deps.clearInterval },
+      BOOT_HEARTBEAT_EVENTS.boot,
+      'probing',
+      () => ({}),
+    );
+
+    beatOf(heartbeat)();
+
+    expect(h.lines).toEqual([]);
+    expect(h.flushes()).toBe(0);
   });
 });

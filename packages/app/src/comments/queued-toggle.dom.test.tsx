@@ -23,7 +23,14 @@ function thread(overrides: Partial<CommentThread> = {}): CommentThread {
 function renderCard(t: CommentThread, sending = true) {
   return render(
     <TooltipProvider>
-      <ThreadCard thread={t} cardRef={() => {}} focused={false} active={false} sending={sending} />
+      <ThreadCard
+        layout="doc"
+        thread={t}
+        cardRef={() => {}}
+        focused={false}
+        active={false}
+        sending={sending}
+      />
     </TooltipProvider>,
   );
 }
@@ -81,10 +88,14 @@ describe('opening an edit', () => {
 });
 
 describe('the active-thread tint', () => {
-  test('the card being read in the document carries the highlight blue', () => {
+  test.each([
+    ['doc', 'before:opacity-100'],
+    ['project', 'bg-azure-800/5'],
+  ] as const)('the active %s card carries its layout tint', (layout, tint) => {
     render(
       <TooltipProvider>
         <ThreadCard
+          layout={layout}
           thread={thread()}
           cardRef={() => {}}
           focused={false}
@@ -94,23 +105,66 @@ describe('the active-thread tint', () => {
       </TooltipProvider>,
     );
     const card = screen.getByRole('article');
-    expect(card.className).toContain('bg-blue-600/10');
-    expect(card.className).not.toContain('border-blue-600/60');
+    expect(card.className).toContain(tint);
   });
 
-  test('an inactive card carries none', () => {
+  test('the focused document card uses a rounded outline layer', () => {
     render(
       <TooltipProvider>
         <ThreadCard
+          layout="doc"
           thread={thread()}
           cardRef={() => {}}
-          focused={false}
+          focused={true}
           active={false}
           sending={false}
         />
       </TooltipProvider>,
     );
-    expect(screen.getByRole('article').className).not.toContain('bg-blue-600/10');
+    expect(screen.getByRole('article').className).toContain('before:ring-2');
+  });
+
+  test('the focused project card uses a visible ring', () => {
+    render(
+      <TooltipProvider>
+        <ThreadCard
+          layout="project"
+          thread={thread()}
+          cardRef={() => {}}
+          focused={true}
+          active={false}
+          sending={false}
+        />
+      </TooltipProvider>,
+    );
+    expect(screen.getByRole('article').className).toContain('ring-2 ring-primary');
+  });
+
+  test('the action controls reveal for visible keyboard focus without retaining pointer focus', () => {
+    renderCard(thread());
+    for (const action of ['Edit this comment', 'Delete this comment']) {
+      const button = screen.getByRole('button', { name: action });
+      expect(button.className).toContain('group-has-[:focus-visible]/comment-card:opacity-100');
+      expect(button.className).toContain('[@media(hover:none)]:opacity-100');
+      expect(button.className).toContain('[@media(hover:none)]:pointer-events-auto');
+      expect(button.className).not.toContain('group-focus-within/comment-card');
+    }
+    cleanup();
+    renderCard(thread({ status: 'resolved' }));
+    const badge = screen.getByText('Resolved');
+    const reopen = screen.getByRole('button', { name: 'Reopen' });
+    expect(badge.className).toContain('group-has-[:focus-visible]/comment-card:opacity-0');
+    expect(badge.className).toContain('[@media(hover:none)]:opacity-0');
+    expect(reopen.className).toContain('group-has-[:focus-visible]/comment-card:opacity-100');
+    expect(reopen.className).toContain('[@media(hover:none)]:opacity-100');
+    expect(reopen.className).toContain('[@media(hover:none)]:pointer-events-auto');
+    expect(badge.className).not.toContain('group-focus-within/comment-card');
+    expect(reopen.className).not.toContain('group-focus-within/comment-card');
+  });
+
+  test('an inactive document card carries no tint', () => {
+    renderCard(thread());
+    expect(screen.getByRole('article').className).not.toContain('before:opacity-100');
   });
 });
 

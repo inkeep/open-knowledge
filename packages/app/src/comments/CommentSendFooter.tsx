@@ -1,4 +1,5 @@
 import { Trans, useLingui } from '@lingui/react/macro';
+import type { ReactNode } from 'react';
 import { RegisteredAgentIcon } from '@/components/acp/RegisteredAgentIcon';
 import { AgentSplitButton } from '@/components/handoff/AgentSplitButton';
 import { useReusableSession } from '@/components/reusable-session-store';
@@ -13,9 +14,13 @@ import { useSendQueue } from './use-send-queue';
 
 export function CommentSendFooter({
   threadIds,
+  totalCount,
+  selection,
   testIdPrefix,
 }: {
   threadIds: readonly string[];
+  totalCount: number;
+  selection: ReactNode;
   testIdPrefix: string;
 }) {
   const { t } = useLingui();
@@ -24,6 +29,7 @@ export function CommentSendFooter({
   const reusableThread = useReusableSession();
   const openSession = reusableThread?.kind === 'thread' ? reusableThread : null;
   const send = useSendQueue();
+  const shortcut = formatShortcut('send-comment-queue').replace('Enter', '↵');
   const destinationIcon =
     openSession === null ? (
       <RegisteredAgentIcon
@@ -40,19 +46,36 @@ export function CommentSendFooter({
     );
 
   return (
-    <PanelFooter className="justify-end">
+    <PanelFooter className="px-3 py-2">
       {}
-      <div className="flex min-w-0 items-center gap-2">
-        {}
-        <span
-          aria-hidden="true"
-          className="shrink-0 font-sans text-xs leading-none text-muted-foreground"
-          title={t`Send to chat (${formatShortcutLabel('send-comment-queue')})`}
-        >
-          {formatShortcut('send-comment-queue')}
-        </span>
-        {}
+      <div className="flex w-full min-w-0 flex-wrap items-center gap-2">
+        <div className="flex min-w-max flex-1 items-center justify-between gap-2">
+          <label
+            htmlFor={`${testIdPrefix}-select-all`}
+            className="flex min-w-0 cursor-pointer items-center gap-2"
+          >
+            {selection}
+            <span className="whitespace-nowrap text-xs text-muted-foreground tabular-nums">
+              <Trans>
+                {threadIds.length} of {totalCount}
+              </Trans>
+            </span>
+          </label>
+          <span
+            aria-hidden="true"
+            className="shrink-0 font-sans text-2xs leading-none text-muted-foreground/80"
+            title={
+              openSession === null
+                ? t`Start a new chat (${formatShortcutLabel('send-comment-queue')})`
+                : t`Send to chat (${formatShortcutLabel('send-comment-queue')})`
+            }
+          >
+            {shortcut}
+          </span>
+        </div>
         <AgentSplitButton
+          className="ms-auto max-w-full shrink-0"
+          primaryClassName="min-w-0 flex-1"
           enabledTargets={[]}
           selectedTargetId={null}
           onSelectTarget={() => {}}

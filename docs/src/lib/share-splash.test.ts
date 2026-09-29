@@ -1,8 +1,4 @@
-import {
-  encodeShareUrl,
-  isValidBranchName,
-  KNOWN_NON_GITHUB_GIT_HOSTS,
-} from '@inkeep/open-knowledge-core';
+import { encodeShareUrl, isValidBranchName } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import fixture from '../../../test-support/fixtures/share-url-v1-v2.json';
 import { STABLE_DMG_URL } from './download-links.ts';
@@ -19,6 +15,15 @@ import {
   splashDownloadQuery,
 } from './share-splash.ts';
 import { SITE_NAME } from './site.ts';
+
+const CANONICAL_NON_GITHUB_FORGES = [
+  'gitlab.com',
+  'bitbucket.org',
+  'codeberg.org',
+  'gitea.com',
+  'sr.ht',
+  'sourcehut.org',
+] as const;
 
 function encodeV1(sharedUrl: string): string {
   return encodeShareUrl(sharedUrl);
@@ -297,7 +302,7 @@ describe('buildSplashViewModel', () => {
     expect(view).toEqual({ kind: 'invalid' });
   });
 
-  for (const forge of KNOWN_NON_GITHUB_GIT_HOSTS) {
+  for (const forge of CANONICAL_NON_GITHUB_FORGES) {
     test(`returns \`invalid\` for canonical forge host ${forge}`, () => {
       const view = buildSplashViewModel(
         encodeV1(`https://${forge}/owner/repo/blob/main/README.md`),

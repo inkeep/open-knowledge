@@ -40,7 +40,6 @@ import { isConfigDoc, isSystemDoc } from '../cc1-broadcast.ts';
 import { collabUrlFromRequestHeaders } from '../collab-bootstrap-url.ts';
 import { getLocalDir } from '../config/paths.ts';
 import { isSupportedDocFile, stripDocExtension } from '../doc-extensions.ts';
-import type { DocumentDurabilityState } from '../document-durability-state.ts';
 import { deriveDetection, embedProbeRing } from '../embed-probe.ts';
 import {
   FileEmbeddingsBackend,
@@ -68,7 +67,6 @@ export interface ConfigSystemRouteDeps {
   ephemeral: boolean;
   log: PinoLogger;
   ready: Promise<void> | undefined;
-  durabilityState: Pick<DocumentDurabilityState, 'getActiveBranch'>;
   serverInstanceId: string;
   getDiskAckSVs: (() => Record<string, string>) | undefined;
   getCollabClientCount: (() => number) | undefined;
@@ -90,6 +88,7 @@ export interface ConfigSystemRouteDeps {
   getFileIndex: () => ReadonlyMap<string, FileIndexEntry>;
   shadowRef: ShadowRef | undefined;
   getCurrentBranch: (() => string | null) | undefined;
+  getReportedBranch: (() => string | null) | undefined;
   installedAgentsCache: Pick<ReturnType<typeof createInstalledAgentsProbe>, 'probeAll'>;
 }
 
@@ -105,7 +104,6 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
     ephemeral,
     log,
     ready,
-    durabilityState,
     serverInstanceId,
     getDiskAckSVs,
     getCollabClientCount,
@@ -123,6 +121,7 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
     getFileIndex,
     shadowRef,
     getCurrentBranch,
+    getReportedBranch,
     installedAgentsCache,
   } = deps;
 
@@ -138,7 +137,7 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
             );
           });
         }
-        const currentBranch = durabilityState.getActiveBranch();
+        const currentBranch = getReportedBranch?.() ?? undefined;
         const currentDiskAckSVs = getDiskAckSVs?.();
         const boot = getBootTimings();
         const collabClients = getCollabClientCount?.();
@@ -148,7 +147,7 @@ export function createConfigSystemRoutes(deps: ConfigSystemRouteDeps): ConfigSys
           ServerInfoSuccessSchema,
           {
             serverInstanceId,
-            currentBranch,
+            ...(currentBranch !== undefined ? { currentBranch } : {}),
             ...(currentDiskAckSVs !== undefined ? { currentDiskAckSVs } : {}),
             ...(boot !== undefined ? { boot } : {}),
             ...(collabClients !== undefined ? { collabClients } : {}),

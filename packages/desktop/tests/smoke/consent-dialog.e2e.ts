@@ -17,6 +17,7 @@ import { desktopLaunchOptions, resolveDesktopTarget } from './_helpers/launch-de
 import { launchDesktopApp, waitForWindowByMode } from './_helpers/launch-readiness';
 import { seedMcpConsentComplete } from './_helpers/mcp-consent';
 import { clickNavOpen } from './_helpers/navigator-actions';
+import { sumOfDeclaredBoundsMs } from './_helpers/parse-timeouts';
 import {
   homeEnv,
   PLATFORM_SKIP_REASON,
@@ -117,7 +118,7 @@ test.describe('Consent-dialog smoke', () => {
 
   test.afterEach(async () => {
     const targets = cleanupTargets.splice(0);
-    reapDetachedServers(targets);
+    await reapDetachedServers(targets);
     for (const target of targets) {
       try {
         rmSync(target, { recursive: true, force: true });
@@ -126,12 +127,13 @@ test.describe('Consent-dialog smoke', () => {
   });
 
   test('Enter on a focused dialog input fires Start', async ({ captureStderrFor }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const tmpHome = seedTmpHome('enter-to-start');
     const projectDir = seedFreshNonGitProject('enter-to-start');
     trackForCleanup(tmpHome, projectDir);
 
     const app = await launchApp(tmpHome, { pickedPath: projectDir });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);
@@ -153,12 +155,13 @@ test.describe('Consent-dialog smoke', () => {
   test('Browse button populates content.dir with project-relative path', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const tmpHome = seedTmpHome('browse');
     const projectDir = seedFreshNonGitProject('browse');
     trackForCleanup(tmpHome, projectDir);
 
     const app = await launchApp(tmpHome, { pickedPath: projectDir });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);
@@ -179,12 +182,13 @@ test.describe('Consent-dialog smoke', () => {
   test('Pick Existing on a sub-folder of a git repo lands .ok/ at the git root', async ({
     captureStderrFor,
   }) => {
+    test.setTimeout(sumOfDeclaredBoundsMs(test.info()));
     const tmpHome = seedTmpHome('git-root-promote');
     const { repoRoot, subFolder } = seedGitRepoWithSubFolder(tmpHome, 'git-root-promote');
     trackForCleanup(tmpHome);
 
     const app = await launchApp(tmpHome, { pickedPath: subFolder });
-    captureStderrFor(app, { home: tmpHome });
+    captureStderrFor(app, { home: tmpHome, cleanupDirs: cleanupTargets.splice(0) });
     const navigator = await findWindowByMode(app, 'navigator');
 
     await clickNavOpen(navigator);

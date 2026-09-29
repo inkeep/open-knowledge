@@ -1,6 +1,10 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
-import type { WorktreeSelectorEntry, WorktreeSelectorModel } from '@inkeep/open-knowledge-core';
+import type {
+  WorktreeInventoryModel,
+  WorktreeSelectorEntry,
+  WorktreeSelectorModel,
+} from '@inkeep/open-knowledge-core';
 import { Plural, Trans, useLingui } from '@lingui/react/macro';
 import { Check, GitBranch, Plus, Search } from 'lucide-react';
 import type * as React from 'react';
@@ -17,6 +21,7 @@ import {
 import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/input-group';
 import type { OkDesktopBridge, RecentProjectEntry } from '@/lib/desktop-bridge-types';
 import { cn } from '@/lib/utils';
+import { worktreeCreateErrorCopy } from '@/lib/worktree-create-error';
 import { refreshWorktrees } from '@/lib/worktree-store';
 import {
   basenameOf,
@@ -43,6 +48,12 @@ interface RecentProjectsMenuProps {
   openNewWorktreeWith: (name: string) => void;
 }
 
+interface InventoryViewState {
+  readonly inventory: WorktreeInventoryModel | null;
+  readonly loading: boolean;
+  readonly error: boolean;
+}
+
 export function RecentProjectsMenu({
   bridge,
   recents,
@@ -57,20 +68,63 @@ export function RecentProjectsMenu({
   openNewWorktreeWith,
 }: RecentProjectsMenuProps) {
   const { t } = useLingui();
+  const [inventoryViews, setInventoryViews] = useState<Record<string, InventoryViewState>>({});
+  const groups = groupRecentsByRepo(recents);
+
+  async function loadInventory(group: RecentRepoGroup): Promise<void> {
+    if (group.inventoryAnchorPath === null || group.gitCommonDir === null) return;
+    setInventoryViews((current) => ({
+      ...current,
+      [group.key]: {
+        inventory: current[group.key]?.inventory ?? null,
+        loading: true,
+        error: false,
+      },
+    }));
+    try {
+      const result = await bridge.worktree.inventory({ projectPath: group.inventoryAnchorPath });
+      setInventoryViews((current) => ({
+        ...current,
+        [group.key]: {
+          inventory: result.ok ? result.inventory : (current[group.key]?.inventory ?? null),
+          loading: false,
+          error: !result.ok,
+        },
+      }));
+    } catch (error) {
+      console.warn('[RecentProjectsMenu] worktree inventory failed:', error);
+      setInventoryViews((current) => ({
+        ...current,
+        [group.key]: {
+          inventory: current[group.key]?.inventory ?? null,
+          loading: false,
+          error: true,
+        },
+      }));
+    }
+  }
 
   function openPath(path: string, entryPoint: 'recents' | 'worktree'): void {
     closeMenu();
-    void bridge.project.open({ path, target: 'new-window', entryPoint }).catch((err) => {
-      console.warn('[RecentProjectsMenu] project.open failed:', err);
-      toast.error(t`Failed to open.`);
-    });
+    void bridge.project
+      .open({
+        path,
+        target: 'new-window',
+        entryPoint,
+        ...(entryPoint === 'worktree' ? { requireExactManagedProject: true } : {}),
+      })
+      .catch((err) => {
+        console.warn('[RecentProjectsMenu] project.open failed:', err);
+        toast.error(t`Failed to open.`);
+      });
   }
 
   async function createAndOpenBranch(branch: string): Promise<void> {
     try {
       const result = await bridge.worktree.create({ branch, createBranch: false });
       if (!result.ok) {
-        toast.error(t`Couldn't open a worktree for that branch.`);
+        if (result.reason === 'project-scope-unavailable') refreshWorktrees();
+        toast.error(t(worktreeCreateErrorCopy(result)));
         return;
       }
       refreshWorktrees();
@@ -78,6 +132,7 @@ export function RecentProjectsMenu({
         path: result.path,
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     } catch (err) {
       console.warn('[RecentProjectsMenu] create/open branch failed:', err);
@@ -94,12 +149,32 @@ export function RecentProjectsMenu({
   }
 
   function onPickFlyoutEntry(entry: WorktreeFlyoutEntry): void {
+    if (entry.kind === 'checkout' && (entry.prunable || entry.availability !== 'available')) return;
+    if (entry.kind === 'checkout' && entry.inventoryOpenRequest !== null) {
+      if (entry.path === currentPath) {
+        closeMenu();
+        return;
+      }
+      closeMenu();
+      void bridge.worktree
+        .openInventory(entry.inventoryOpenRequest)
+        .then((result) => {
+          if (!result.ok && result.reason !== 'open-failed') {
+            toast.error(t`This worktree is no longer available.`);
+          }
+        })
+        .catch((error) => {
+          console.warn('[RecentProjectsMenu] worktree.openInventory failed:', error);
+          toast.error(t`Failed to open worktree.`);
+        });
+      return;
+    }
     if (entry.path !== null) {
       if (entry.path === currentPath) {
         closeMenu();
         return;
       }
-      openPath(entry.path, entry.isMain ? 'recents' : 'worktree');
+      openPath(entry.path, entry.location === 'primary' ? 'recents' : 'worktree');
       return;
     }
     if (entry.branch !== null) {
@@ -109,44 +184,55 @@ export function RecentProjectsMenu({
   }
 
   if (query !== '') {
+    const inventoryEntries = groups.flatMap((group) => {
+      const inventory = inventoryViews[group.key]?.inventory ?? null;
+      return inventory === null
+        ? []
+        : buildWorktreeFlyoutEntries(group, inventory, null, currentPath).filter(
+            (entry) => entry.kind === 'checkout',
+          );
+    });
     return (
       <SearchResults
         recents={recents}
         currentPath={currentPath}
         query={query}
         worktreeModel={worktreeModel}
+        inventoryEntries={inventoryEntries}
         onPickEntry={onPickEntry}
         onPickBranch={(branch) => {
           closeMenu();
           void createAndOpenBranch(branch);
         }}
+        onPickInventoryEntry={onPickFlyoutEntry}
         guardStaleSelect={guardStaleSelect}
         onRemoveRecent={onRemoveRecent}
       />
     );
   }
 
-  const groups = groupRecentsByRepo(recents);
   return (
     <>
       {groups.map((group) => (
         <GroupRow
-          key={group.project.path}
+          key={group.key}
           group={group}
           currentPath={currentPath}
           worktreeModel={worktreeModel}
-          flyoutOpen={flyoutPath === group.project.path}
-          setFlyoutOpen={(next) =>
-            setFlyoutPath((cur) =>
-              next ? group.project.path : cur === group.project.path ? null : cur,
-            )
-          }
+          inventoryView={inventoryViews[group.key] ?? null}
+          flyoutOpen={flyoutPath === group.key}
+          setFlyoutOpen={(next) => {
+            setFlyoutPath((cur) => (next ? group.key : cur === group.key ? null : cur));
+            if (next) void loadInventory(group);
+          }}
           onPickProject={() => {
-            if (group.project.path === currentPath) {
+            const primary = group.primaryProject;
+            if (primary === null || primary.missing === true) return;
+            if (primary.path === currentPath) {
               closeMenu();
               return;
             }
-            openPath(group.project.path, 'recents');
+            openPath(primary.path, 'recents');
           }}
           onPickFlyoutEntry={onPickFlyoutEntry}
           guardStaleSelect={guardStaleSelect}
@@ -162,6 +248,7 @@ function GroupRow({
   group,
   currentPath,
   worktreeModel,
+  inventoryView,
   flyoutOpen,
   setFlyoutOpen,
   onPickProject,
@@ -173,6 +260,7 @@ function GroupRow({
   group: RecentRepoGroup;
   currentPath: string;
   worktreeModel: WorktreeSelectorModel | null;
+  inventoryView: InventoryViewState | null;
   flyoutOpen: boolean;
   setFlyoutOpen: (open: boolean) => void;
   onPickProject: () => void;
@@ -181,12 +269,20 @@ function GroupRow({
   onRemoveRecent: (path: string) => void;
   openNewWorktreeWith: (name: string) => void;
 }) {
-  const projectIsCurrent = group.project.path === currentPath;
+  const projectIsCurrent = group.primaryProject?.path === currentPath;
+  const flyoutEntries = buildWorktreeFlyoutEntries(
+    group,
+    inventoryView?.inventory ?? null,
+    worktreeModel,
+    currentPath,
+  );
+  const openedWorktreeCount =
+    inventoryView?.inventory === null || inventoryView === null
+      ? null
+      : flyoutEntries.filter((entry) => entry.kind === 'checkout' && entry.location !== 'primary')
+          .length;
 
-  const flyoutEntries = buildWorktreeFlyoutEntries(group, worktreeModel, currentPath);
-  const openedWorktreeCount = flyoutEntries.filter((e) => e.opened && !e.isMain).length;
-
-  if (openedWorktreeCount === 0) {
+  if (group.gitCommonDir === null) {
     return (
       <RecentItemContextMenu
         path={group.project.path}
@@ -220,13 +316,13 @@ function GroupRow({
     );
   }
 
-  const containsCurrent = projectIsCurrent || group.worktrees.some((w) => w.path === currentPath);
+  const containsCurrent = group.recentEntries.some((entry) => entry.path === currentPath);
   return (
     <FlyoutGroup
       group={group}
       currentPath={currentPath}
       containsCurrent={containsCurrent}
-      worktreeModel={worktreeModel}
+      inventoryView={inventoryView}
       flyoutEntries={flyoutEntries}
       openedWorktreeCount={openedWorktreeCount}
       flyoutOpen={flyoutOpen}
@@ -243,7 +339,7 @@ function FlyoutGroup({
   group,
   currentPath,
   containsCurrent,
-  worktreeModel,
+  inventoryView,
   flyoutEntries,
   openedWorktreeCount,
   flyoutOpen,
@@ -256,9 +352,9 @@ function FlyoutGroup({
   group: RecentRepoGroup;
   currentPath: string;
   containsCurrent: boolean;
-  worktreeModel: WorktreeSelectorModel | null;
+  inventoryView: InventoryViewState | null;
   flyoutEntries: WorktreeFlyoutEntry[];
-  openedWorktreeCount: number;
+  openedWorktreeCount: number | null;
   flyoutOpen: boolean;
   setFlyoutOpen: (open: boolean) => void;
   onPickProject: () => void;
@@ -267,9 +363,11 @@ function FlyoutGroup({
   openNewWorktreeWith: (name: string) => void;
 }) {
   const { t } = useLingui();
-  const projectIsCurrent = group.project.path === currentPath;
+  const projectIsCurrent = group.primaryProject?.path === currentPath;
+  const primaryIsOpenable = group.primaryProject !== null && group.primaryProject.missing !== true;
 
   const openProjectFromRow = (nativeEvent: Event): void => {
+    if (!primaryIsOpenable) return;
     if (guardStaleSelect(nativeEvent)) return;
     onPickProject();
   };
@@ -297,10 +395,10 @@ function FlyoutGroup({
           {}
           <span
             className="truncate font-medium text-sm"
-            data-project-open=""
-            title={group.project.name}
+            data-project-open={primaryIsOpenable ? '' : undefined}
+            title={group.repositoryName}
           >
-            {group.project.name}
+            {group.repositoryName}
           </span>
           <span className="truncate text-muted-foreground text-xs" title={group.project.path}>
             {group.project.path}
@@ -312,19 +410,25 @@ function FlyoutGroup({
             className="mt-0.5 size-3.5 shrink-0 text-muted-foreground"
           />
         ) : null}
+        {group.primaryProject?.missing === true ? (
+          <MissingCheckoutStatus className="mt-0.5" />
+        ) : null}
         {}
-        <span
-          className="mt-0.5 shrink-0 text-muted-foreground text-xs"
-          data-testid={`project-switcher-toggle-${group.project.path}`}
-        >
-          <span className="tabular-nums">{openedWorktreeCount}</span>{' '}
-          <Plural value={openedWorktreeCount} one="worktree" other="worktrees" />
-        </span>
+        {openedWorktreeCount === null ? null : (
+          <span
+            className="mt-0.5 shrink-0 text-muted-foreground text-xs"
+            data-testid={`project-switcher-toggle-${group.project.path}`}
+          >
+            <span className="tabular-nums">{openedWorktreeCount}</span>{' '}
+            <Plural value={openedWorktreeCount} one="worktree" other="worktrees" />
+          </span>
+        )}
       </DropdownMenuSubTrigger>
       <WorktreeFlyout
         group={group}
+        currentPath={currentPath}
         open={flyoutOpen}
-        worktreeModel={worktreeModel}
+        inventoryView={inventoryView}
         entries={flyoutEntries}
         onPickFlyoutEntry={onPickFlyoutEntry}
         guardStaleSelect={guardStaleSelect}
@@ -336,16 +440,18 @@ function FlyoutGroup({
 
 function WorktreeFlyout({
   group,
+  currentPath,
   open,
-  worktreeModel,
+  inventoryView,
   entries,
   onPickFlyoutEntry,
   guardStaleSelect,
   openNewWorktreeWith,
 }: {
   group: RecentRepoGroup;
+  currentPath: string;
   open: boolean;
-  worktreeModel: WorktreeSelectorModel | null;
+  inventoryView: InventoryViewState | null;
   entries: WorktreeFlyoutEntry[];
   onPickFlyoutEntry: (entry: WorktreeFlyoutEntry) => void;
   guardStaleSelect: (event: Event) => boolean;
@@ -363,7 +469,7 @@ function WorktreeFlyout({
   function focusableRows(): HTMLElement[] {
     const container = listRef.current;
     if (container === null) return [];
-    return [...container.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    return [...container.querySelectorAll<HTMLElement>('[role="menuitem"]:not([data-disabled])')];
   }
   function focusRowAt(index: number): void {
     const rows = focusableRows();
@@ -392,9 +498,14 @@ function WorktreeFlyout({
 
   const q = flyoutQuery.trim().toLowerCase();
   const visible =
-    q === '' ? entries : entries.filter((e) => (e.branch ?? '').toLowerCase().includes(q));
-  const isCurrentProject =
-    worktreeModel !== null && worktreeModel.mainRoot === group.project.mainRoot;
+    q === ''
+      ? entries
+      : entries.filter(
+          (entry) =>
+            (entry.branch ?? '').toLowerCase().includes(q) ||
+            (entry.path ?? '').toLowerCase().includes(q),
+        );
+  const isCurrentProject = group.recentEntries.some((entry) => entry.path === currentPath);
   const typedName = flyoutQuery.trim();
   const canCreate = isCurrentProject && typedName.length > 0;
 
@@ -431,14 +542,34 @@ function WorktreeFlyout({
           ref={listRef}
           className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain subtle-scrollbar"
         >
-          {visible.length === 0 ? (
+          {inventoryView?.loading === true && inventoryView.inventory === null ? (
+            <DropdownMenuLabel
+              className="font-normal text-muted-foreground text-xs"
+              role="status"
+              aria-live="polite"
+            >
+              {t`Loading worktrees…`}
+            </DropdownMenuLabel>
+          ) : null}
+          {inventoryView?.error === true ? (
+            <DropdownMenuLabel
+              className="font-normal text-destructive text-xs"
+              role="status"
+              aria-live="polite"
+            >
+              {t`Couldn't load worktrees.`}
+            </DropdownMenuLabel>
+          ) : null}
+          {visible.length === 0 &&
+          inventoryView?.loading !== true &&
+          (inventoryView?.error !== true || q !== '') ? (
             <>
               <DropdownMenuLabel
                 className="font-normal text-muted-foreground text-xs"
                 role="status"
                 aria-live="polite"
               >
-                {t`No matching worktrees or branches.`}
+                {q === '' ? t`No worktrees found.` : t`No matching worktrees or branches.`}
               </DropdownMenuLabel>
               {}
               {canCreate ? (
@@ -466,23 +597,46 @@ function WorktreeFlyout({
           ) : (
             visible.map((entry) => {
               const key = entry.path ?? `branch:${entry.branch}`;
-              const label = entry.branch ?? t`(detached)`;
+              const label =
+                entry.branch ??
+                (entry.headSha === null
+                  ? t`(detached)`
+                  : t`Detached at ${entry.headSha.slice(0, 8)}`);
+              const disabled =
+                entry.kind === 'checkout' && (entry.prunable || entry.availability !== 'available');
               return (
                 <DropdownMenuItem
                   key={key}
                   onSelect={(e) => {
                     if (guardStaleSelect(e)) return;
+                    if (disabled) {
+                      e.preventDefault();
+                      return;
+                    }
                     onPickFlyoutEntry(entry);
                   }}
-                  onKeyDown={(e) => onRowKeyDown(e, () => onPickFlyoutEntry(entry))}
-                  className="flex items-center gap-2"
+                  onKeyDown={(e) =>
+                    onRowKeyDown(e, () => {
+                      if (!disabled) onPickFlyoutEntry(entry);
+                    })
+                  }
+                  className="flex items-center gap-2 aria-disabled:opacity-50"
+                  aria-disabled={disabled}
                   data-testid={`project-switcher-flyout-entry-${key}`}
                   data-current={entry.isCurrent ? 'true' : undefined}
                 >
-                  <span className="min-w-0 flex-1 truncate text-sm" title={label}>
-                    {label}
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate text-sm" title={label}>
+                      {label}
+                    </span>
+                    {entry.path !== null ? (
+                      <span className="truncate text-muted-foreground text-xs" title={entry.path}>
+                        {entry.path}
+                      </span>
+                    ) : null}
                   </span>
                   <RowLocationBadge entry={entry} />
+                  <CheckoutStatus entry={entry} />
                   {entry.isCurrent ? <CurrentCheck /> : null}
                 </DropdownMenuItem>
               );
@@ -494,6 +648,54 @@ function WorktreeFlyout({
   );
 }
 
+function CheckoutStatus({ entry }: { entry: WorktreeFlyoutEntry }) {
+  const { t } = useLingui();
+  if (entry.kind !== 'checkout') return null;
+  if (entry.prunable) {
+    return (
+      <span
+        className="shrink-0 text-destructive text-xs"
+        title={t`Git marks this worktree as prunable.`}
+      >
+        {t`stale Git entry`}
+      </span>
+    );
+  }
+  if (entry.availability === 'missing') {
+    return <MissingCheckoutStatus />;
+  }
+  if (entry.availability === 'unreadable') {
+    return (
+      <span
+        className="shrink-0 text-destructive text-xs"
+        title={t`This checkout path cannot be read.`}
+      >
+        {t`path unreadable`}
+      </span>
+    );
+  }
+  return entry.locked ? (
+    <span
+      className="shrink-0 text-muted-foreground text-xs"
+      title={t`Git has locked this worktree, but it can still be opened.`}
+    >
+      {t`locked`}
+    </span>
+  ) : null;
+}
+
+function MissingCheckoutStatus({ className }: { className?: string }) {
+  const { t } = useLingui();
+  return (
+    <span
+      className={cn('shrink-0 text-destructive text-xs', className)}
+      title={t`The OpenKnowledge project is missing at this checkout path.`}
+    >
+      {t`project missing`}
+    </span>
+  );
+}
+
 function RowLocationBadge({ entry }: { entry: WorktreeFlyoutEntry }) {
   const { t } = useLingui();
   const copy: Record<RowLocation, { label: string; description: string }> = {
@@ -501,9 +703,17 @@ function RowLocationBadge({ entry }: { entry: WorktreeFlyoutEntry }) {
       label: t`primary`,
       description: t`The repository's original clone directory`,
     },
-    worktree: {
+    internal: {
+      label: t`internal`,
+      description: t`Inside this repository's OpenKnowledge worktrees folder`,
+    },
+    external: {
+      label: t`external`,
+      description: t`Outside this repository's OpenKnowledge worktrees folder`,
+    },
+    unknown: {
       label: t`worktree`,
-      description: t`A linked worktree of this repository`,
+      description: t`A linked worktree whose location could not be loaded`,
     },
     none: {
       label: t`create worktree`,
@@ -523,8 +733,10 @@ function SearchResults({
   currentPath,
   query,
   worktreeModel,
+  inventoryEntries,
   onPickEntry,
   onPickBranch,
+  onPickInventoryEntry,
   guardStaleSelect,
   onRemoveRecent,
 }: {
@@ -532,8 +744,10 @@ function SearchResults({
   currentPath: string;
   query: string;
   worktreeModel: WorktreeSelectorModel | null;
+  inventoryEntries: readonly WorktreeFlyoutEntry[];
   onPickEntry: (entry: RecentProjectEntry) => void;
   onPickBranch: (branch: string) => void;
+  onPickInventoryEntry: (entry: WorktreeFlyoutEntry) => void;
   guardStaleSelect: (event: Event) => boolean;
   onRemoveRecent: (path: string) => void;
 }) {
@@ -546,18 +760,22 @@ function SearchResults({
   const openedWorktreeMatches = recents.filter(
     (r) => r.isLinkedWorktree === true && (matches(r.branch ?? '') || matches(r.path)),
   );
-  const openedWorktreePaths = new Set(openedWorktreeMatches.map((w) => w.path));
+  const recentPaths = new Set(recents.map((entry) => entry.path));
+  const inventoryMatches = inventoryEntries.filter(
+    (entry) =>
+      entry.kind === 'checkout' &&
+      entry.path !== currentPath &&
+      !recentPaths.has(entry.path) &&
+      (matches(entry.branch ?? '') || matches(entry.path)),
+  );
   const branchMatches: WorktreeSelectorEntry[] = (worktreeModel?.entries ?? []).filter(
-    (e) =>
-      e.branch !== null &&
-      matches(e.branch) &&
-      (e.worktreePath === null || !openedWorktreePaths.has(e.worktreePath)) &&
-      e.worktreePath !== currentPath,
+    (e) => e.branch !== null && matches(e.branch) && e.worktreePath === null,
   );
 
   if (
     projectMatches.length === 0 &&
     openedWorktreeMatches.length === 0 &&
+    inventoryMatches.length === 0 &&
     branchMatches.length === 0
   ) {
     return (
@@ -584,12 +802,18 @@ function SearchResults({
             <DropdownMenuItem
               onSelect={(e) => {
                 if (guardStaleSelect(e)) return;
+                if (r.missing === true) {
+                  e.preventDefault();
+                  return;
+                }
                 onPickEntry(r);
               }}
-              className="flex w-full min-w-0 flex-col items-start gap-0.5 pr-8"
+              aria-disabled={r.missing === true}
+              className="flex w-full min-w-0 flex-col items-start gap-0.5 pr-8 aria-disabled:opacity-50"
               data-testid={`project-switcher-recent-${r.path}`}
             >
               <ProjectLabel name={r.name} path={r.path} current={r.path === currentPath} />
+              {r.missing === true ? <MissingCheckoutStatus /> : null}
             </DropdownMenuItem>
             <RecentRemoveButton
               path={r.path}
@@ -605,9 +829,14 @@ function SearchResults({
           key={r.path}
           onSelect={(e) => {
             if (guardStaleSelect(e)) return;
+            if (r.missing === true) {
+              e.preventDefault();
+              return;
+            }
             onPickEntry(r);
           }}
-          className="flex items-start gap-2"
+          aria-disabled={r.missing === true}
+          className="flex items-start gap-2 aria-disabled:opacity-50"
           data-testid={`project-switcher-worktree-${r.path}`}
           data-current={r.path === currentPath ? 'true' : undefined}
         >
@@ -616,8 +845,34 @@ function SearchResults({
             branch={r.branch ?? r.name}
             project={r.mainRoot !== undefined ? basenameOf(r.mainRoot) : null}
           />
+          {r.missing === true ? <MissingCheckoutStatus /> : null}
         </DropdownMenuItem>
       ))}
+      {inventoryMatches.map((entry) => {
+        if (entry.kind !== 'checkout') return null;
+        const label = entry.branch ?? entry.headSha?.slice(0, 8) ?? t`(detached)`;
+        const disabled = entry.prunable || entry.availability !== 'available';
+        return (
+          <DropdownMenuItem
+            key={`inventory:${entry.path}`}
+            onSelect={(event) => {
+              if (guardStaleSelect(event)) return;
+              if (disabled) {
+                event.preventDefault();
+                return;
+              }
+              onPickInventoryEntry(entry);
+            }}
+            aria-disabled={disabled}
+            className="flex items-start gap-2 aria-disabled:opacity-50"
+            data-testid={`project-switcher-inventory-${entry.path}`}
+          >
+            <GitBranch aria-hidden="true" className="mt-0.5 size-3.5 shrink-0" />
+            <WorktreeResultLabel branch={label} project={entry.path} />
+            <CheckoutStatus entry={entry} />
+          </DropdownMenuItem>
+        );
+      })}
       {branchMatches.map((e) => (
         <DropdownMenuItem
           key={`branch:${e.branch}`}

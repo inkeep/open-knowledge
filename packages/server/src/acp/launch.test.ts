@@ -1,4 +1,4 @@
-import { execFileSync } from 'node:child_process';
+import { type ChildProcess, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -15,7 +15,6 @@ import { delimiter, join } from 'node:path';
 import { OK_HOSTED_AGENT_ENV } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { getLogger, type PinoLogger } from '../logger.ts';
-import { isValidLockPid } from '../process-alive.ts';
 import { withLocalAcquisitionRegistry } from './acquisition-contract.test-helper.ts';
 import { createDiagnosticStderrCapture } from './diagnostics.ts';
 import {
@@ -38,6 +37,7 @@ import {
   resolveRegistryLaunch,
   resolveWindowsCommand,
   spawnAcpAgent,
+  staleNpxCacheEntry,
   terminateAgentTree,
   undeletableManagedRuntimeHint,
   unrepairableManagedRuntimeHint,
@@ -347,7 +347,8 @@ async function waitFor(pred: () => boolean, ms: number, what: string): Promise<v
 }
 
 let dirs: string[] = [];
-let strayPids: number[] = [];
+let strayChildren: ChildProcess[] = [];
+const GRANDCHILD_SELF_EXIT_MS = 60_000;
 const log = getLogger('acp-launch-test');
 function tmp(): string {
   const d = mkdtempSync(join(tmpdir(), 'acp-launch-test-'));
@@ -355,13 +356,8 @@ function tmp(): string {
   return d;
 }
 afterEach(() => {
-  for (const pid of strayPids) {
-    if (!isValidLockPid(pid)) continue;
-    try {
-      process.kill(pid, 'SIGKILL');
-    } catch {}
-  }
-  strayPids = [];
+  for (const child of strayChildren) child.kill('SIGKILL');
+  strayChildren = [];
   for (const d of dirs) rmSync(d, { recursive: true, force: true });
   dirs = [];
 });
@@ -838,7 +834,7 @@ describe('hosted-agent marker', () => {
       ].join('\n'),
     );
     const child = spawnAcpAgent(launchFor(script), dir);
-    if (child.pid !== undefined) strayPids.push(child.pid);
+    if (child.pid !== undefined) strayChildren.push(child);
     await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its env');
     expect(readFileSync(`${script}.out`, 'utf8')).toBe('1');
   });
@@ -872,7 +868,7 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
       spawnNpxWithProjectCwd(launch, dir);
     }).toThrow('spawnAcpAgent does not accept a project cwd for npx launches.');
     const child = spawnAcpAgent(launch);
-    if (child.pid !== undefined) strayPids.push(child.pid);
+    if (child.pid !== undefined) strayChildren.push(child);
     await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
     const observed = readFileSync(`${script}.out`, 'utf8');
     expect(observed).not.toBe(dir);
@@ -910,7 +906,7 @@ describe('spawnAcpAgent — cwd isolation for npx launches', () => {
         pathFromOverlay: false,
       };
       const child = spawnAcpAgent(launch, dir);
-      if (child.pid !== undefined) strayPids.push(child.pid);
+      if (child.pid !== undefined) strayChildren.push(child);
       await waitFor(() => existsSync(`${script}.out`), 10_000, 'spawned agent to report its cwd');
       const observed = readFileSync(`${script}.out`, 'utf8');
       expect(observed.endsWith(dir) || dir.endsWith(observed)).toBe(true);
@@ -1045,7 +1041,7 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
     const kidPidFile = join(dir, 'kid.pid');
     writeFileSync(
       join(dir, 'npx'),
-      `#!/bin/sh\n(while : ; do /bin/sleep 0.05; done) &\necho $! > ${kidPidFile}\nwait\n`,
+      `#!/bin/sh\n(n=0; while [ "$n" -lt ${GRANDCHILD_SELF_EXIT_MS / 50} ]; do /bin/sleep 0.05; n=$((n + 1)); done) &\necho $! > ${kidPidFile}\nwait\n`,
       { mode: 0o755 },
     );
     const launch: ResolvedLaunch = {
@@ -1073,7 +1069,6 @@ describe.skipIf(process.platform === 'win32')('probeInterpreterHealth', () => {
         'the fixture to publish its grandchild pid',
       );
       kidPid = Number(publishedKidPid());
-      strayPids.push(kidPid);
 
       expect(
         settledEarly,
@@ -1309,7 +1304,7 @@ describe('terminateAgentTree', () => {
     const script = join(dir, 'compliant.mjs');
     writeFileSync(script, 'setInterval(() => {}, 1000);\n');
     const child = spawnAcpAgent(launchFor(script), dir);
-    if (child.pid !== undefined) strayPids.push(child.pid);
+    if (child.pid !== undefined) strayChildren.push(child);
     await waitFor(() => child.pid !== undefined, 2_000, 'spawn');
 
     const dead = await terminateAgentTree(child, { graceMs: 3_000 });
@@ -1330,7 +1325,7 @@ describe('terminateAgentTree', () => {
         "process.on('SIGTERM', () => {});",
         'const kid = spawn(process.execPath, [',
         "  '-e',",
-        '  "process.on(\'SIGTERM\', () => {}); setInterval(() => {}, 1000);",',
+        `  "process.on('SIGTERM', () => {}); setTimeout(() => process.exit(0), ${GRANDCHILD_SELF_EXIT_MS});",`,
         "], { stdio: 'ignore' });",
         'writeFileSync(process.env.KID_PID_FILE, String(kid.pid));',
         'setInterval(() => {}, 1000);',
@@ -1338,10 +1333,9 @@ describe('terminateAgentTree', () => {
       ].join('\n'),
     );
     const child = spawnAcpAgent(launchFor(script, { KID_PID_FILE: kidPidFile }), dir);
-    if (child.pid !== undefined) strayPids.push(child.pid);
+    if (child.pid !== undefined) strayChildren.push(child);
     await waitFor(() => existsSync(kidPidFile), 5_000, 'grandchild pid file');
     const kidPid = Number(readFileSync(kidPidFile, 'utf8'));
-    strayPids.push(kidPid);
     expect(Number.isInteger(kidPid) && kidPid > 0).toBe(true);
     expect(isAlive(kidPid)).toBe(true);
 
@@ -1387,6 +1381,81 @@ describe('startup package policy classification', () => {
       packageAcquisitionFailure(uv, `${generic}\nversions were filtered by ` + '`exclude-newer`'),
     ).toMatchObject({ code: 'install-failed' });
   });
+});
+
+describe('staleNpxCacheEntry', () => {
+  const npm11 = [
+    'npm error code ENOENT',
+    'npm error syscall open',
+    'npm error path /Users/andrew/.npm/_npx/4142609e2aa780f6/package.json',
+    'npm error errno -2',
+    "npm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/Users/andrew/.npm/_npx/4142609e2aa780f6/package.json'",
+    'npm error enoent This is related to npm not being able to find a file.',
+  ].join('\n');
+
+  test('names the npx cache entry npm could not read', () => {
+    expect(staleNpxCacheEntry(npm11)).toBe('/Users/andrew/.npm/_npx/4142609e2aa780f6');
+  });
+
+  test('reads the older npm ERR! spelling and a Windows cache path', () => {
+    const detail =
+      'npm ERR! code ENOENT\r\nnpm ERR! path C:\\Users\\Ann Smith\\AppData\\Local\\npm-cache\\_npx\\1a2b3c4d5e6f7a8b\\package.json\r\nnpm ERR! errno -4058\r\n';
+    expect(staleNpxCacheEntry(detail)).toBe(
+      'C:\\Users\\Ann Smith\\AppData\\Local\\npm-cache\\_npx\\1a2b3c4d5e6f7a8b',
+    );
+  });
+
+  test('falls back to the quoted path of the failed open', () => {
+    const detail =
+      "npm error code ENOENT\nnpm error enoent Could not read package.json: Error: ENOENT: no such file or directory, open '/home/ann/.cache/npm/_npx/deadbeef00/package.json'";
+    expect(staleNpxCacheEntry(detail)).toBe('/home/ann/.cache/npm/_npx/deadbeef00');
+  });
+
+  test.each([
+    [
+      'a failure other than ENOENT',
+      'npm error code E401\nnpm error path /Users/andrew/.npm/_npx/4142609e2aa780f6/package.json',
+    ],
+    [
+      'a path outside the npx cache',
+      'npm error code ENOENT\nnpm error path /Users/andrew/project/package.json',
+    ],
+    [
+      'a cache entry that is not a hash',
+      'npm error code ENOENT\nnpm error path /Users/andrew/.npm/_npx/not-a-hash/package.json',
+    ],
+    [
+      'a file other than package.json',
+      'npm error code ENOENT\nnpm error path /Users/andrew/.npm/_npx/4142609e2aa780f6/package-lock.json',
+    ],
+    [
+      'a relative path',
+      'npm error code ENOENT\nnpm error path .npm/_npx/4142609e2aa780f6/package.json',
+    ],
+    [
+      'a parent segment',
+      'npm error code ENOENT\nnpm error path /tmp/../_npx/4142609e2aa780f6/package.json',
+    ],
+  ])('ignores %s', (_label, detail) => {
+    expect(staleNpxCacheEntry(detail)).toBeNull();
+  });
+});
+
+test('diagnostic stderr hands each kept line to the raw inspector before redaction', () => {
+  const raw: string[] = [];
+  const lines: string[] = [];
+  const capture = createDiagnosticStderrCapture(
+    (line) => lines.push(line),
+    (line) => raw.push(line),
+  );
+  capture.write('npm error path /Users/andrew/.npm/_npx/4142609e2aa780f6/package.json\n');
+  capture.write(`https://alice:${'x'.repeat(16_000)}\n`);
+  capture.end();
+  expect(raw).toEqual(['npm error path /Users/andrew/.npm/_npx/4142609e2aa780f6/package.json']);
+  expect(lines).toEqual([
+    'npm error path ~/.npm/_npx/4142609e2aa780f6/package.json',
+    '[oversized diagnostic line omitted]',
+  ]);
 });
 
 test.each(['npx', 'uvx'] as const)('%s startup policy diagnostics redact credentials', (kind) => {

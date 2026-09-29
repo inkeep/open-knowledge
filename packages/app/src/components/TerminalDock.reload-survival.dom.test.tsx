@@ -295,9 +295,11 @@ describe('issue #351 — the terminal dock rehydrates surviving sessions after a
   test('an Ask-AI selection does NOT raw-write into a reload survivor (unknown shell type)', async () => {
     const { bridge, create, input } = makeSurvivingMainBridge([{ ptyId: 'pty-1' }]);
     const launchRequests: Array<{ text: string; cli: string; stage: boolean }> = [];
-    const stopLaunch = subscribeToTerminalLaunchRequests((text, cli, opts) =>
-      launchRequests.push({ text, cli, stage: opts.stage }),
-    );
+    const stopLaunch = subscribeToTerminalLaunchRequests((request) => {
+      if (request.kind === 'cli') {
+        launchRequests.push({ text: request.prompt, cli: request.cli, stage: request.stage });
+      }
+    });
     render(dockUi(bridge, true));
 
     await waitFor(() => expect(screen.getAllByTestId('terminal-session')).toHaveLength(1), {

@@ -27,6 +27,11 @@ import {
   isOwnDevEntry,
 } from '../commands/editors.ts';
 
+export class ProjectPathSafetyError extends Error {
+  override readonly name = 'ProjectPathSafetyError';
+  readonly code = 'PROJECT_PATH_SAFETY';
+}
+
 export function assertProjectPathSafe(targetPath: string, cwd: string): void {
   let leafStat: ReturnType<typeof lstatSync> | undefined;
   try {
@@ -35,7 +40,7 @@ export function assertProjectPathSafe(targetPath: string, cwd: string): void {
     if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
   }
   if (leafStat?.isSymbolicLink()) {
-    throw new Error(
+    throw new ProjectPathSafetyError(
       `Refusing to write through a symbolic link at ${targetPath}. ` +
         'Remove the symlink and re-run project setup.',
     );
@@ -75,7 +80,7 @@ export function assertAncestorsContainedIn(targetPath: string, base: string): vo
     }
     const rel = relative(realCwd, cursorRealpath);
     if (rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))) return;
-    throw new Error(
+    throw new ProjectPathSafetyError(
       `Refusing to write at ${targetPath}: ancestor ${cursor} resolves to ${cursorRealpath}, ` +
         `which is outside the project directory ${realCwd}. A symbolic link in the path likely ` +
         'escapes the project. Remove the symlink and re-run project setup.',

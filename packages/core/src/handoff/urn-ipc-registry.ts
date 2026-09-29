@@ -76,6 +76,7 @@ export const URN_HTTP_ONLY: ReadonlySet<ProblemType> = new Set<ProblemType>([
   'urn:ok:error:not-found',
   'urn:ok:error:auth-failed',
   'urn:ok:error:no-project-dir',
+  'urn:ok:error:non-github-origin',
   'urn:ok:error:server-open-failed',
   'urn:ok:error:sync-not-active',
   'urn:ok:error:project-repo-not-configured',

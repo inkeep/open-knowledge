@@ -58,6 +58,7 @@ export function runDeviceFlowSubprocess(opts: RunDeviceFlowOptions): RunDeviceFl
   const proc = runSubprocess({
     cliArgs: opts.cliArgs,
     cliEnv: opts.cliEnv,
+    cwd: opts.cwd,
     trailingArgs: ['auth', 'login', '--json', '--host', host],
     timeoutMs,
     onLine: ({ parsed }) => {

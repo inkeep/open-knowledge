@@ -4,6 +4,7 @@ import { createWriteStream, existsSync, mkdirSync, readdirSync, readFileSync } f
 import { freemem, homedir, type as osType, platform, release, totalmem, uptime } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
+  ACP_LAUNCH_FAILURE_LOG,
   type BundleManifest,
   type BundleRedaction,
   REPORT_SENT_MARKER_SUFFIX,
@@ -45,6 +46,14 @@ export interface BundleLogger {
 export interface BundleExtraFile {
   sourcePath: string;
   zipName?: string;
+  scrubbed?: Omit<BundleRedaction, 'file'>;
+}
+
+export function scrubbedExtraAudit(extra: BundleExtraFile, file: string): BundleRedaction | null {
+  const { scrubbed } = extra;
+  return scrubbed !== undefined && scrubbed.patterns.length > 0
+    ? { file, lineCount: scrubbed.lineCount, patterns: [...scrubbed.patterns] }
+    : null;
 }
 
 export interface CollectStandardBundleOptions {
@@ -244,7 +253,12 @@ function collectLockDir(cwd: string): { files: string[] } {
   const lockDir = join(cwd, '.ok', 'local');
   if (!existsSync(lockDir)) return { files: [] };
 
-  const candidates = ['server.lock', 'last-spawn-error.log', SERVER_CRASH_LOG];
+  const candidates = [
+    'server.lock',
+    'last-spawn-error.log',
+    SERVER_CRASH_LOG,
+    ACP_LAUNCH_FAILURE_LOG,
+  ];
   const found = candidates.map((f) => join(lockDir, f)).filter((f) => existsSync(f));
 
   return { files: found };
@@ -439,6 +453,8 @@ export async function collectStandardBundle(
       const name = `extra/${extra.zipName ?? basename(extra.sourcePath)}`;
       zipfile.addBuffer(raw, name);
       bundleFiles.push(name);
+      const audit = scrubbedExtraAudit(extra, name);
+      if (audit !== null) redactions.push(audit);
     } catch (err) {
       logger?.warn(
         { sourcePath: extra.sourcePath, err },

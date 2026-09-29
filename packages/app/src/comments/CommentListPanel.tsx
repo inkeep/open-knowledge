@@ -1,14 +1,13 @@
 import { Trans, useLingui } from '@lingui/react/macro';
 import {
   CheckCheck,
-  ChevronRight,
+  ChevronDown,
   CircleDot,
   FileText,
   FoldVertical,
   UnfoldVertical,
 } from 'lucide-react';
 import { type ReactNode, useEffect, useRef, useState } from 'react';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
@@ -148,6 +147,8 @@ export function CommentListPanel({
     return ticked === sendable.length ? true : 'indeterminate';
   }
 
+  const tickState = fileTickState(selectableIds);
+
   function card(thread: CommentThread) {
     return (
       <ThreadCard
@@ -156,6 +157,7 @@ export function CommentListPanel({
         sending={sending.includes(thread.id)}
         active={activeId === thread.id}
         focused={focusedId === thread.id}
+        layout={groupByDocument ? 'project' : 'doc'}
         cardRef={(el) => {
           if (el) cardRefs.current.set(thread.id, el);
           else cardRefs.current.delete(thread.id);
@@ -167,9 +169,12 @@ export function CommentListPanel({
   return (
     <Panel>
       <PanelHeader>
-        <PanelTitle>
-          <Trans>Comments</Trans>
-        </PanelTitle>
+        <div className="flex min-w-0 items-center gap-2">
+          <PanelTitle>
+            <Trans>Comments</Trans>
+          </PanelTitle>
+          <PanelCount>{active.length}</PanelCount>
+        </div>
         {}
         <div className="flex items-center gap-1">
           {resolved.length > 0 && (
@@ -231,25 +236,11 @@ export function CommentListPanel({
               </TooltipContent>
             </Tooltip>
           )}
-          <PanelCount>{active.length}</PanelCount>
         </div>
       </PanelHeader>
       {scopeSwitch}
       {}
-      {active.length > 0 && (
-        <div className="flex shrink-0 items-center gap-2 px-4">
-          <Checkbox
-            checked={allTicked}
-            onCheckedChange={() => setSendingAll(selectableIds, !allTicked)}
-            aria-label={allTicked ? t`Unmark every comment` : t`Mark every comment to send`}
-            data-testid={`${testIdPrefix}-select-all`}
-          />
-          <span className="text-[11px] text-muted-foreground tabular-nums">
-            {scopedSending.length}/{selectableIds.length}
-          </span>
-        </div>
-      )}
-      <PanelBody className="flex flex-col gap-3">
+      <PanelBody className={groupByDocument ? 'flex flex-col gap-3' : 'flex flex-col gap-0'}>
         {visible.length === 0 ? (
           <PanelEmpty>{empty}</PanelEmpty>
         ) : groupByDocument ? (
@@ -257,45 +248,57 @@ export function CommentListPanel({
             const sendable = sendableIn(group);
             const tick = fileTickState(sendable);
             return (
-              <section key={group.docName} aria-label={group.docName}>
+              <section
+                key={group.docName}
+                aria-label={group.docName}
+                className="shrink-0 overflow-hidden rounded-xl border"
+              >
                 <Collapsible
                   open={!collapsed.has(group.docName)}
                   onOpenChange={(open) => toggleFile(group.docName, open)}
-                  className="flex flex-col gap-2"
+                  className="group/file-card flex flex-col"
                 >
                   {}
-                  <div className="group/file flex items-center gap-1.5">
-                    <Checkbox
-                      checked={tick}
-                      disabled={sendable.length === 0}
-                      onCheckedChange={() => setSendingAll(sendable, tick !== true)}
-                      aria-label={
-                        tick === true
-                          ? t`Unmark every comment in ${docBasename(group.docName)}`
-                          : t`Mark every comment in ${docBasename(group.docName)} to send`
-                      }
-                      data-testid={`${testIdPrefix}-file-select-${group.docName}`}
-                      className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover/file:opacity-100"
-                    />
+                  <div className="group/file flex items-center gap-2 border-b px-3 py-2.5 group-data-[state=closed]/file-card:border-b-0">
+                    <span className="relative size-4 shrink-0">
+                      {tick === false && (
+                        <FileText
+                          aria-hidden="true"
+                          className="pointer-events-none absolute inset-0 size-4 text-muted-foreground transition-opacity group-hover/file:opacity-0 group-has-[:focus-visible]/file:opacity-0 [@media(hover:none)]:opacity-0 motion-reduce:transition-none"
+                        />
+                      )}
+                      <Checkbox
+                        checked={tick}
+                        disabled={sendable.length === 0}
+                        onCheckedChange={() => setSendingAll(sendable, tick !== true)}
+                        aria-label={
+                          tick === true
+                            ? t`Unmark every comment in ${docBasename(group.docName)}`
+                            : t`Mark every comment in ${docBasename(group.docName)} to send`
+                        }
+                        data-testid={`${testIdPrefix}-file-select-${group.docName}`}
+                        className={
+                          tick === false
+                            ? 'absolute inset-0 opacity-0 transition-opacity group-hover/file:opacity-100 group-has-[:focus-visible]/file:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100 motion-reduce:transition-none'
+                            : 'absolute inset-0'
+                        }
+                      />
+                    </span>
                     <CollapsibleTrigger
                       title={group.docName}
-                      className="group flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded text-left text-[11px] text-muted-foreground hover:text-foreground"
+                      className="group flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded text-left text-sm text-foreground"
                     >
-                      <FileText className="size-3 shrink-0" />
-                      <span className="truncate">{docBasename(group.docName)}</span>
-                      <Badge
-                        variant="outline"
-                        className="shrink-0 px-1 py-0 text-[10px] tabular-nums"
-                      >
+                      <span className="min-w-0 flex-1 truncate">{docBasename(group.docName)}</span>
+                      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                         {group.threads.length}
-                      </Badge>
-                      <ChevronRight
+                      </span>
+                      <ChevronDown
                         aria-hidden="true"
-                        className="size-3 shrink-0 transition-transform group-data-[state=open]:rotate-90 motion-reduce:transition-none"
+                        className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=closed]:-rotate-90 motion-reduce:transition-none"
                       />
                     </CollapsibleTrigger>
                   </div>
-                  <CollapsibleContent className="flex flex-col gap-2 overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in] motion-reduce:animate-none">
+                  <CollapsibleContent className="flex flex-col overflow-hidden data-[state=open]:animate-[collapsible-down_150ms_ease-out] data-[state=closed]:animate-[collapsible-up_150ms_ease-in] motion-reduce:animate-none">
                     {group.threads.map(card)}
                   </CollapsibleContent>
                 </Collapsible>
@@ -308,7 +311,20 @@ export function CommentListPanel({
       </PanelBody>
       {}
       {active.length > 0 && (
-        <CommentSendFooter threadIds={scopedSending} testIdPrefix={testIdPrefix} />
+        <CommentSendFooter
+          threadIds={scopedSending}
+          totalCount={selectableIds.length}
+          selection={
+            <Checkbox
+              id={`${testIdPrefix}-select-all`}
+              checked={tickState}
+              onCheckedChange={() => setSendingAll(selectableIds, !allTicked)}
+              aria-label={allTicked ? t`Unmark every comment` : t`Mark every comment to send`}
+              data-testid={`${testIdPrefix}-select-all`}
+            />
+          }
+          testIdPrefix={testIdPrefix}
+        />
       )}
     </Panel>
   );

@@ -15,8 +15,8 @@ msgstr ""
 
 #: src/components/acp/AttachFilesButton.tsx
 #: src/components/ComposerAddMenu.tsx
-msgid " · references only (no embedded contents)"
-msgstr " · solo referencias (sin contenido incrustado)"
+msgid " · project files as references"
+msgstr " · archivos del proyecto como referencias"
 
 #: src/components/settings/HotkeysSection.tsx
 msgid " or "
@@ -33,6 +33,14 @@ msgstr " Se restauró tu selección."
 #: src/components/settings/LintingSection.tsx
 msgid "— except"
 msgstr "— excepto"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}"
+msgstr ", {status}"
+
+#: src/components/SessionsHost.tsx
+msgid ", {status}, new activity"
+msgstr ", {status}, actividad nueva"
 
 #: src/components/acp/ThreadView.tsx
 msgid "… earlier output trimmed"
@@ -391,6 +399,11 @@ msgstr "{0} de {1} proyectos seleccionados"
 msgid "{0} of {1} selected"
 msgstr "{0} de {1} seleccionados"
 
+#. placeholder {0}: threadIds.length
+#: src/comments/CommentSendFooter.tsx
+msgid "{0} of {totalCount}"
+msgstr "{0} de {totalCount}"
+
 #. placeholder {0}: resolvedTarget.displayName
 #: src/components/BottomComposer.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
@@ -614,6 +627,10 @@ msgstr "{agentName} necesita que inicies sesión."
 msgid "{agentName} reported: {headline}"
 msgstr "{agentName} informa: {headline}"
 
+#: src/components/acp/ThreadView.tsx
+msgid "{agentName} stopped unexpectedly."
+msgstr "{agentName} se detuvo inesperadamente."
+
 #: src/components/acp/thread-auth-offer.ts
 msgid "{agentName} stopped with an error."
 msgstr "{agentName} se detuvo con un error."
@@ -676,6 +693,22 @@ msgstr "{conflictCount, plural, one {# conflicto} many {# conflictos} other {# c
 msgid "{conflictCount, plural, one {# file conflicted} other {# files conflicted}}"
 msgstr "{conflictCount, plural, one {# archivo en conflicto} many {# archivos en conflicto} other {# archivos en conflicto}}"
 
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, one {{files} supera los {capKb} KB, así que no se puede enviar con el mensaje. Agrégalo a tu proyecto y luego menciónalo con @.} many {{files} superan los {capKb} KB cada uno, así que no se pueden enviar con el mensaje. Agrégalos a tu proyecto y luego menciónalos con @.} other {{files} superan los {capKb} KB cada uno, así que no se pueden enviar con el mensaje. Agrégalos a tu proyecto y luego menciónalos con @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} is larger than {capKb} KB, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} are each larger than {capKb} KB, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, one {{files} supera los {capKb} KB, así que no se puede enviar con el mensaje. Menciónalo con @ cuando esté en tu proyecto.} many {{files} superan los {capKb} KB cada uno, así que no se pueden enviar con el mensaje. Menciónalos con @ cuando estén en tu proyecto.} other {{files} superan los {capKb} KB cada uno, así que no se pueden enviar con el mensaje. Menciónalos con @ cuando estén en tu proyecto.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Add it to your project, then mention it with @.} other {{files} aren't text files, so they can't be sent with the message. Add them to your project, then mention them with @.}}"
+msgstr "{count, plural, one {{files} no es un archivo de texto, así que no se puede enviar con el mensaje. Agrégalo a tu proyecto y luego menciónalo con @.} many {{files} no son archivos de texto, así que no se pueden enviar con el mensaje. Agrégalos a tu proyecto y luego menciónalos con @.} other {{files} no son archivos de texto, así que no se pueden enviar con el mensaje. Agrégalos a tu proyecto y luego menciónalos con @.}}"
+
+#: src/lib/acp/image-attachment.ts
+msgid "{count, plural, one {{files} isn't a text file, so it can't be sent with the message. Mention it with @ once it's in your project.} other {{files} aren't text files, so they can't be sent with the message. Mention them with @ once they're in your project.}}"
+msgstr "{count, plural, one {{files} no es un archivo de texto, así que no se puede enviar con el mensaje. Menciónalo con @ cuando esté en tu proyecto.} many {{files} no son archivos de texto, así que no se pueden enviar con el mensaje. Menciónalos con @ cuando estén en tu proyecto.} other {{files} no son archivos de texto, así que no se pueden enviar con el mensaje. Menciónalos con @ cuando estén en tu proyecto.}}"
+
 #: src/comments/comment-chips.tsx
 msgid "{count, plural, one {# comment} other {# comments}}"
 msgstr "{count, plural, one {# comentario} many {# comentarios} other {# comentarios}}"
@@ -688,6 +721,10 @@ msgstr "{count, plural, one {# comentario} many {# comentarios} other {# comenta
 #: src/components/settings/applies-to-folder-picker.tsx
 msgid "{count, plural, one {# doc} other {# docs}}"
 msgstr "{count, plural, one {# documento} many {# documentos} other {# documentos}}"
+
+#: src/components/ImageAttachments.tsx
+msgid "{count, plural, one {# image attached} other {# images attached}}"
+msgstr "{count, plural, one {# imagen adjunta} many {# imágenes adjuntas} other {# imágenes adjuntas}}"
 
 #: src/components/TrashFailureModal.tsx
 msgid "{count, plural, one {# item could not be moved to the {trashNoun}. Do you want to permanently delete instead?} other {# items could not be moved to the {trashNoun}. Do you want to permanently delete instead?}}"
@@ -741,7 +778,7 @@ msgstr "{count} habilidades"
 msgid "{days, plural, one {# day ago} other {# days ago}}"
 msgstr "{days, plural, one {hace # día} many {hace # días} other {hace # días}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{days}d ago"
 msgstr "hace {days} d"
 
@@ -876,10 +913,10 @@ msgstr "{folderCount, plural, one {carpeta} many {carpetas} other {carpetas}}"
 msgid "{formatted} GitHub stars"
 msgstr "{formatted} estrellas en GitHub"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{hours}h ago"
 msgstr "hace {hours} h"
 
@@ -928,6 +965,10 @@ msgstr "{label} activado"
 msgid "{label} problems"
 msgstr "{label} problemas"
 
+#: src/components/InstanceBadge.tsx
+msgid "{label} uses isolated app data"
+msgstr "{label} usa datos de aplicación aislados"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "{laterEdits, plural, one {Removes # newer edit on this file.} other {Removes # newer edits on this file.}}"
 msgstr "{laterEdits, plural, one {Elimina # edición más reciente de este archivo.} many {Elimina # ediciones más recientes de este archivo.} other {Elimina # ediciones más recientes de este archivo.}}"
@@ -957,25 +998,17 @@ msgstr "{mcpTool} del servidor MCP {server}"
 msgid "{mins, plural, one {# min ago} other {# min ago}}"
 msgstr "{mins, plural, one {hace # min} many {hace # min} other {hace # min}}"
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/ActivityModeContent.tsx
 #: src/components/ActivityPanelBurstRow.tsx
 #: src/components/ActivityPanelFileRow.tsx
 #: src/components/SyncStatusBadge.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "{minutes}m ago"
 msgstr "hace {minutes} min"
 
 #: src/components/TerminalNewChatButton.tsx
 msgid "{name} CLI"
 msgstr "CLI de {name}"
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} has no resolvable path — the agent can only read files inside the workspace."
-msgstr "{name} no tiene una ruta resoluble — el agente solo puede leer archivos dentro del espacio de trabajo."
-
-#: src/lib/acp/image-attachment.ts
-msgid "{name} is outside the workspace. Move it into your project first."
-msgstr "{name} está fuera del espacio de trabajo. Muévelo primero a tu proyecto."
 
 #: src/components/SkillsSidebarSection.tsx
 msgid "{name} moved, but its pin did not. Pin it again after settings finish loading."
@@ -993,10 +1026,9 @@ msgstr "{omitted, plural, one {# cambio de propiedad más sin mostrar} many {# c
 msgid "{openedWorktreeCount, plural, one {worktree} other {worktrees}}"
 msgstr "{openedWorktreeCount, plural, one {worktree} many {worktrees} other {worktrees}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{outsideWorkspaceCount, plural, one {Skipped # file outside the workspace.} other {Skipped # files outside the workspace.}}"
-msgstr "{outsideWorkspaceCount, plural, one {Se omitió # archivo fuera del espacio de trabajo.} many {Se omitieron # archivos fuera del espacio de trabajo.} other {Se omitieron # archivos fuera del espacio de trabajo.}}"
+#: src/lib/acp/image-attachment.ts
+msgid "{others, plural, one {# other} other {# others}}"
+msgstr "{others, plural, one {# más} many {# más} other {# más}}"
 
 #: src/components/PublishToGitHubDialog.tsx
 msgid "{owner}/{name} already exists"
@@ -1104,11 +1136,6 @@ msgstr "{sizeText} · secretos ocultos · {fileCount, plural, one {# archivo} ma
 msgid "{skillCount, plural, one {skill} other {skills}}"
 msgstr "{skillCount, plural, one {habilidad} many {habilidades} other {habilidades}}"
 
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{skipTotal, plural, one {Skipped # file that couldn't be attached.} other {Skipped # files that couldn't be attached.}}"
-msgstr "{skipTotal, plural, one {Se omitió # archivo que no se pudo adjuntar.} many {Se omitieron # archivos que no se pudieron adjuntar.} other {Se omitieron # archivos que no se pudieron adjuntar.}}"
-
 #. placeholder {0}: BASE16_SLOT_ROLES[slot]
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "{slot} color — {0}"
@@ -1162,11 +1189,6 @@ msgstr "{total, plural, one {# problema} many {# problemas} other {# problemas}}
 #: src/components/FileTree.tsx
 msgid "{truncatedShownCount, plural, one {Showing the first item in one folder — the rest of that folder is hidden.} other {Showing the first {formattedCount} items in one folder — the rest of that folder is hidden.}}"
 msgstr "{truncatedShownCount, plural, one {Se muestra el primer elemento de una carpeta; el resto de esa carpeta está oculto.} many {Se muestran los primeros {formattedCount} elementos de una carpeta; el resto de esa carpeta está oculto.} other {Se muestran los primeros {formattedCount} elementos de una carpeta; el resto de esa carpeta está oculto.}}"
-
-#: src/components/acp/ThreadView.tsx
-#: src/editor/use-composer-attachments.ts
-msgid "{unknownPathCount, plural, one {Skipped # file — this browser can't attach files by path.} other {Skipped # files — this browser can't attach files by path.}}"
-msgstr "{unknownPathCount, plural, one {Se omitió # archivo: este navegador no puede adjuntar archivos por ruta.} many {Se omitieron # archivos: este navegador no puede adjuntar archivos por ruta.} other {Se omitieron # archivos: este navegador no puede adjuntar archivos por ruta.}}"
 
 #: src/components/FileTree.tsx
 msgid "{uploadedCount, plural, one {Uploaded one file} other {Uploaded {uploadedCount} files}}"
@@ -1234,6 +1256,10 @@ msgstr "# Un patrón por línea.\n"
 "#   drafts/\n"
 "#   *.draft.md\n"
 "#   !keep.md"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "#{position} in the merge queue"
+msgstr "#{position} en la cola de fusión"
 
 #: src/components/GraphLegend.tsx
 msgid "+ {overflow} more"
@@ -1339,9 +1365,17 @@ msgstr "La etiqueta <0>Modificada</0> marca las reglas que tu configuración def
 msgid "A branch named {shareBranch} already exists. Open its worktree from the switcher instead."
 msgstr "Ya existe una rama llamada {shareBranch}. Abre su worktree desde el selector."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A branch with that name already exists. Open its worktree from the switcher instead."
 msgstr "Ya existe una rama con ese nombre. Abre su worktree desde el selector."
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs could not be run (exit code {code}). Check that it is executable and that you have permission to run it."
+msgstr "No se pudo ejecutar un comando que el agente necesita (código de salida {code}). Comprueba que sea ejecutable y que tengas permiso para ejecutarlo."
+
+#: src/lib/acp/exit-summary.ts
+msgid "A command the agent needs was not found (exit code {code}). Check that the agent's dependencies are installed and on your PATH."
+msgstr "No se encontró un comando que el agente necesita (código de salida {code}). Comprueba que las dependencias del agente estén instaladas y en tu PATH."
 
 #: src/components/SkillInstallMenu.tsx
 msgid "A copy is a real folder of its own, and OK keeps it in step with the source: edit the skill here and every copy is refreshed. That stops the moment you hand-edit a copy outside OK — from then on it goes its own way and shows up as a separate skill."
@@ -1389,8 +1423,8 @@ msgid "A line with a footnote<0><1>[1]</1></0> and a definition shown below."
 msgstr "Una línea con una nota al pie<0><1>[1]</1></0> y una definición que se muestra abajo."
 
 #: src/components/RecentProjectsMenu.tsx
-msgid "A linked worktree of this repository"
-msgstr "Un worktree vinculado de este repositorio"
+msgid "A linked worktree whose location could not be loaded"
+msgstr "Un árbol de trabajo vinculado cuya ubicación no se pudo cargar"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "A memory snapshot from the crash, and the artifact that helps us most. It can contain document content and can't be redacted, so uncheck it if you'd rather not share it."
@@ -1507,7 +1541,7 @@ msgstr "Un título, una descripción, etiquetas: cualquier cosa que describa est
 msgid "A worktree folder for {shareBranch} already exists."
 msgstr "Ya existe una carpeta de worktree para {shareBranch}."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "A worktree folder for that branch already exists."
 msgstr "Ya existe una carpeta de worktree para esa rama."
 
@@ -1620,6 +1654,10 @@ msgstr "Añadir un comentario"
 msgid "Add a file name (e.g. notes.md)"
 msgstr "Añade un nombre de archivo (p. ej., notes.md)"
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add a host"
+msgstr "Agregar un host"
+
 #: src/components/settings/SearchSection.tsx
 msgid "Add a key"
 msgstr "Añadir una clave"
@@ -1672,6 +1710,10 @@ msgstr "Añadir campo"
 #: src/components/settings/LintingSection.tsx
 msgid "Add file or folder pattern, e.g. guides/**/*"
 msgstr "Añade un patrón de archivo o carpeta, p. ej. guides/**/*"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Add host"
+msgstr "Agregar host"
 
 #: src/components/SeedRootPicker.tsx
 msgid "Add it directly to this project."
@@ -1885,6 +1927,7 @@ msgstr "Ajustes del agente — {headerSummary}: los cambios se aplican cuando re
 msgid "Agent transcript"
 msgstr "Transcripción del agente"
 
+#: src/components/EditorArea.tsx
 #: src/components/ExploreSkills.tsx
 #: src/components/settings/SettingsDialogShell.tsx
 msgid "Agents"
@@ -1933,6 +1976,10 @@ msgstr "Todas las etiquetas"
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Allow external access"
 msgstr "Permitir acceso externo"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Allow read-only commands while this chat is open"
+msgstr "Permitir comandos de solo lectura mientras este chat esté abierto"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Allowed element values (empty = any)"
@@ -2057,6 +2104,10 @@ msgstr "¿Quieres añadir algo? (opcional)"
 msgid "API key set"
 msgstr "Clave de API definida"
 
+#: src/components/InstanceBadge.tsx
+msgid "App instance: {label}"
+msgstr "Instancia de la aplicación: {label}"
+
 #: src/components/CreatedItemsList.tsx
 msgid "Append-only log of what changed."
 msgstr "Registro de solo anexado con lo que ha cambiado."
@@ -2073,9 +2124,13 @@ msgstr "Se aplica a"
 msgid "Applies to (globs — leading ! excludes; empty means every doc)"
 msgstr "Se aplica a (globs; un ! inicial excluye; vacío significa todos los documentos)"
 
+#: src/components/settings/settings-fields.ts
+msgid "Applies to all projects on this machine, in Claude Code and Codex chats in the Agents panel started after you turn it on. The agent can open pages, click, type, and take screenshots in its own Google Chrome window with a fresh profile. Needs Google Chrome and Node.js installed. Every browser action asks for your approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals."
+msgstr "Se aplica a todos los proyectos de esta máquina, en los chats de Claude Code y Codex del panel de agentes que se inicien después de activarlo. El agente puede abrir páginas, hacer clic, escribir y tomar capturas de pantalla en su propia ventana de Google Chrome con un perfil nuevo. Requiere tener Google Chrome y Node.js instalados. Cada acción del navegador pide tu aprobación, sin opción de permitirla siempre, salvo que el propio modo del agente o su configuración de permisos omitan las aprobaciones."
+
 #: src/components/settings/TerminalSection.tsx
-msgid "Applies to all projects on this machine. Claude and Codex, started from the built-in terminal, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
-msgstr "Se aplica a todos los proyectos de este equipo. Claude y Codex, iniciados desde la terminal integrada, aprueban automáticamente las herramientas de lectura y escritura de OpenKnowledge (Claude además ejecuta \"ok open\" por su cuenta). Eliminar, mover, compartir, importar o instalar habilidades, otros comandos y las ediciones de archivos ajenos a OpenKnowledge siguen preguntando. Cursor, OpenCode y Pi no se ven afectados. Es un esfuerzo por agente, sin garantías."
+msgid "Applies to all projects on this machine. Claude and Codex started from the built-in terminal, and any agent in an in-app Agents panel chat, auto-approve OpenKnowledge's read and write tools (Claude also auto-runs \"ok open\"). Deleting, moving, sharing, importing or installing skills, other commands, and non-OpenKnowledge file edits still ask. In the terminal, Cursor, OpenCode, and Pi are unaffected. Best-effort per agent."
+msgstr "Se aplica a todos los proyectos de esta máquina. Claude y Codex iniciados desde la terminal integrada, y cualquier agente en un chat del panel de agentes de la app, aprueban automáticamente las herramientas de lectura y escritura de OpenKnowledge (Claude también ejecuta \"ok open\" automáticamente). Eliminar, mover, compartir, importar o instalar skills, otros comandos y las ediciones de archivos ajenos a OpenKnowledge siguen preguntando. En la terminal, Cursor, OpenCode y Pi no se ven afectados. Según lo permita cada agente."
 
 #: src/components/settings/ScopeBadge.tsx
 msgid "Applies to this project on this computer only. Stored in .ok/local, not shared via git."
@@ -2125,6 +2180,10 @@ msgstr "Aprobado"
 msgid "Approved — {optionName}"
 msgstr "Aprobado — {optionName}"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Approved and ready to merge"
+msgstr "Aprobada y lista para fusionar"
+
 #: src/components/FileTree.tsx
 msgid "Are you sure you want to convert this file into a template? The original file will be deleted. This action cannot be undone."
 msgstr "¿Seguro que quieres convertir este archivo en una plantilla? El archivo original se eliminará. Esta acción no se puede deshacer."
@@ -2167,7 +2226,6 @@ msgstr "Preguntar"
 msgid "Ask {0} CLI"
 msgstr "Preguntar a la CLI de {0}"
 
-#: src/components/acp/ThreadView.tsx
 #: src/components/handoff/agent-launcher-labels.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
@@ -2179,6 +2237,10 @@ msgstr "Preguntar a {agentName}"
 #: src/components/handoff/OpenInAgentEmptySpaceSubmenu.tsx
 msgid "Ask {agentName}, {hint}"
 msgstr "Preguntar a {agentName}, {hint}"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Ask again before read-only commands"
+msgstr "Volver a preguntar antes de los comandos de solo lectura"
 
 #: src/components/BottomComposer.tsx
 #: src/components/EditorFooter.tsx
@@ -2242,7 +2304,6 @@ msgid "Attach files"
 msgstr "Adjuntar archivos"
 
 #: src/components/ImageAttachments.tsx
-#: src/components/ReportBugImageDropzone.tsx
 msgid "Attach images"
 msgstr "Adjuntar imágenes"
 
@@ -2317,6 +2378,10 @@ msgstr "Arreglo automático ({count})"
 #: src/components/ProblemsPanel.tsx
 msgid "Auto-fix applies only to problems with a known mechanical fix."
 msgstr "El arreglo automático solo se aplica a los problemas con un arreglo mecánico conocido."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Auto-merge is on"
+msgstr "La fusión automática está activada"
 
 #: src/components/FolderTimelineCard.tsx
 #: src/components/TimelinePanel.tsx
@@ -2433,6 +2498,10 @@ msgstr "Antes de sincronizar, define tu identidad para los commits de git:"
 msgid "Before you go, mind sharing why?"
 msgstr "Antes de irte, ¿nos cuentas por qué?"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Behind the base branch"
+msgstr "Por detrás de la rama base"
+
 #: src/editor/slash-command/items.tsx
 msgid "Below"
 msgstr "Abajo"
@@ -2470,6 +2539,10 @@ msgstr "Blob Run"
 #: src/editor/slash-command/component-items.tsx
 msgid "Block math equation rendered with KaTeX from a LaTeX source string."
 msgstr "Ecuación matemática en bloque renderizada con KaTeX a partir de código LaTeX."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Blocked from merging"
+msgstr "Fusión bloqueada"
 
 #: src/components/TemplateForm.tsx
 msgid "Blog post"
@@ -2560,10 +2633,6 @@ msgstr "Enlace roto"
 #: src/components/CreateProjectDialog.tsx
 msgid "Browse"
 msgstr "Examinar"
-
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Browse files"
-msgstr "Examinar archivos"
 
 #: src/components/share-receive-miss-content.tsx
 msgid "Browse folder"
@@ -2766,6 +2835,10 @@ msgstr "modificado fuera"
 msgid "Changed outside OK since it last wrote here — the state shown is what's on disk now"
 msgstr "Se modificó fuera de OK desde la última vez que escribió aquí; el estado que se muestra es el que hay ahora en el disco"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Changes requested"
+msgstr "Cambios solicitados"
+
 #: src/components/settings/CustomThemeEditor.tsx
 msgid "Changes save automatically to this theme."
 msgstr "Los cambios se guardan automáticamente en este tema."
@@ -2895,6 +2968,10 @@ msgstr "Comprobando..."
 #: src/editor/slash-command/items.tsx
 msgid "Checklist with checkboxes."
 msgstr "Lista de comprobación con casillas."
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Checks are running"
+msgstr "Las comprobaciones se están ejecutando"
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Checks documents for markdown problems and can fix them"
@@ -3215,6 +3292,11 @@ msgstr "Cerrar ventana"
 #: src/lib/native-menu-catalog.ts
 msgid "Close Window"
 msgstr "Cerrar ventana"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Closed"
+msgstr "Cerrada"
 
 #: src/components/GraphLegend.tsx
 msgid "Clusters"
@@ -4056,7 +4138,7 @@ msgstr "No se pudo crear la plantilla: {error}"
 msgid "Couldn't create the report"
 msgstr "No se pudo crear el informe"
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Couldn't create the worktree. Try a different name."
 msgstr "No se pudo crear el worktree. Prueba con otro nombre."
 
@@ -4185,6 +4267,10 @@ msgstr "No se pudieron cargar las habilidades de OpenKnowledge. Inténtalo de nu
 msgid "Couldn't load the version preview. You can still choose how to resolve it below."
 msgstr "No se pudo cargar la vista previa de la versión. Aun así puedes elegir abajo cómo resolverlo."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Couldn't load worktrees."
+msgstr "No se pudieron cargar los árboles de trabajo."
+
 #: src/components/SessionsHost.tsx
 msgid "Couldn't load your agents."
 msgstr "No se pudieron cargar tus agentes."
@@ -4227,10 +4313,6 @@ msgstr "No se pudo abrir \"{name}\": {0}"
 #: src/components/SkillsSidebarSection.tsx
 msgid "Couldn't open {0} for editing: {1}"
 msgstr "No se pudo abrir {0} para editarlo: {1}"
-
-#: src/components/RecentProjectsMenu.tsx
-msgid "Couldn't open a worktree for that branch."
-msgstr "No se pudo abrir un worktree para esa rama."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "Couldn't open document"
@@ -5018,6 +5100,11 @@ msgstr "tokens de descripción"
 msgid "Design"
 msgstr "Diseño"
 
+#. placeholder {0}: entry.headSha.slice(0, 8)
+#: src/components/RecentProjectsMenu.tsx
+msgid "Detached at {0}"
+msgstr "Desconectado en {0}"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "detached HEAD"
 msgstr "HEAD desacoplado"
@@ -5047,14 +5134,6 @@ msgstr "Proyectos de OpenKnowledge detectados"
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Detecting"
 msgstr "Detectando"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label}"
-msgstr "Instancia de desarrollo: {label}"
-
-#: src/components/InstanceBadge.tsx
-msgid "Dev instance: {label} (isolated from other worktrees)"
-msgstr "Instancia de desarrollo: {label} (aislada de otros worktrees)"
 
 #: src/components/ExploreSkills.tsx
 msgid "DevOps"
@@ -5104,10 +5183,6 @@ msgstr "Desactivar {file}"
 #: src/components/settings/LintingSection.tsx
 msgid "Disable {id}"
 msgstr "Deshabilitar {id}"
-
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Disable external link previews"
-msgstr "Desactivar la vista previa de enlaces externos"
 
 #: src/components/settings/SearchSection.tsx
 msgid "Disable semantic search"
@@ -5297,6 +5372,11 @@ msgstr "Descargando {0} {1}…"
 msgid "Downloads a fresh copy from GitHub."
 msgstr "Descarga una copia nueva desde GitHub."
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Draft"
+msgstr "Borrador"
+
 #: src/components/empty-state/use-create-suggestions.ts
 msgid "Draft a spec"
 msgstr "Redactar una especificación"
@@ -5326,9 +5406,9 @@ msgstr "Arrastra el elemento {0} para reordenar"
 msgid "Drop a file to attach"
 msgstr "Suelta un archivo para adjuntarlo"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Drop images here"
-msgstr "Arrastra imágenes aquí"
+#: src/components/ImageAttachments.tsx
+msgid "Drop, paste, or attach up to {MAX_ATTACHMENTS} images."
+msgstr "Arrastra, pega o adjunta hasta {MAX_ATTACHMENTS} imágenes."
 
 #: src/components/AppMenubar.tsx
 #: src/components/command-palette-commands.ts
@@ -5698,10 +5778,6 @@ msgstr "Activar Automático (solo Pull)"
 msgid "Enable Auto (Pull only)?"
 msgstr "¿Activar Automático (solo Pull)?"
 
-#: src/components/settings/LinkPreviewsSection.tsx
-msgid "Enable external link previews"
-msgstr "Activar la vista previa de enlaces externos"
-
 #: src/components/settings/LintingSection.tsx
 msgid "Enable indexes"
 msgstr "Habilitar índices"
@@ -5760,10 +5836,6 @@ msgid "Eng specs"
 msgstr "Especificaciones de ingeniería"
 
 #: src/components/ReportBugDialogBody.tsx
-msgid "Enlarge"
-msgstr "Ampliar"
-
-#: src/components/ReportBugDialogBody.tsx
 msgid "Enlarge screenshot"
 msgstr "Ampliar captura de pantalla"
 
@@ -5779,6 +5851,10 @@ msgstr "Escribe un valor hexadecimal de 6 dígitos, como #1A2B3C"
 #: src/components/SeedDialog.tsx
 msgid "Enter a folder name (e.g. brain)."
 msgstr "Escribe un nombre de carpeta (p. ej. cerebro)."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Enter a hostname, such as github.example.com."
+msgstr "Escribe un nombre de host, como github.example.com."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Enter a name for this theme."
@@ -5804,7 +5880,7 @@ msgstr "Escribe una URL de repositorio o propietario/repositorio"
 msgid "Enter a title for this template."
 msgstr "Escribe un título para esta plantilla."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Enter a valid branch name (no spaces, no leading dot, no \"..\")."
 msgstr "Escribe un nombre de rama válido (sin espacios, sin punto inicial, sin \"..\")."
 
@@ -5831,6 +5907,11 @@ msgstr "Introduce al menos 3 caracteres para buscar por significado."
 #: src/components/settings/NetworkAccessSection.tsx
 msgid "Enter the public origin your tunnel serves, for example https://notes.example.com"
 msgstr "Introduce el origen público que sirve tu túnel, por ejemplo https://notes.example.com"
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "enterprise"
+msgstr "empresa"
 
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Error"
@@ -5977,6 +6058,10 @@ msgstr "¿Exponer este proyecto a la red?"
 msgid "Exposing pins a fixed port so the tunnel's target stays stable across restarts."
 msgstr "Exponer fija un puerto para que el destino del túnel permanezca estable entre reinicios."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "external"
+msgstr "externo"
+
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -5993,6 +6078,10 @@ msgstr "Enlace externo"
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews"
 msgstr "Vista previa de enlaces externos"
+
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "External link previews and GitHub reference cards"
+msgstr "Vista previa de enlaces externos y tarjetas de referencias de GitHub"
 
 #: src/components/settings/LinkPreviewsSection.tsx
 msgid "External link previews show a card with the site name, page title, and description when you hover a link."
@@ -6759,6 +6848,11 @@ msgstr "Ponte en marcha"
 msgid "Gets the link that opens this project or a document in the app"
 msgstr "Obtiene el enlace que abre este proyecto o un documento en la app"
 
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "GHES"
+msgstr "GHES"
+
 #: src/components/ExploreSkills.tsx
 msgid "Git & PRs"
 msgstr "Git y PR"
@@ -6767,9 +6861,22 @@ msgstr "Git y PR"
 msgid "Git can't track this folder — it's empty or contains only ignored files. The link won't work until you add a tracked document."
 msgstr "Git no puede seguir esta carpeta: está vacía o solo contiene archivos ignorados. El enlace no funcionará hasta que añadas un documento seguido por git."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git has locked this worktree, but it can still be opened."
+msgstr "Git ha bloqueado este worktree, pero aún se puede abrir."
+
+#: src/components/settings/SettingsDialogShell.tsx
+msgctxt "settings search keyword"
+msgid "git host"
+msgstr "host de git"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Git identity isn't set — commits use a default author. Set yours so teammates see your name."
 msgstr "No has definido tu identidad de git: los commits usan un autor por defecto. Define la tuya para que tus compañeros vean tu nombre."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Git marks this worktree as prunable."
+msgstr "Git marca este worktree como eliminable."
 
 #: src/components/settings/LintingSection.tsx
 msgid "Git merge rule"
@@ -6779,7 +6886,7 @@ msgstr "Regla de combinación de Git"
 msgid "Git needs {tool} for this repository, but it isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git necesita {tool} para este repositorio, pero no está instalado o no se ha encontrado. Instálalo y vuelve a intentarlo."
 
-#: src/components/NewWorktreeDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again."
 msgstr "Git necesita una herramienta auxiliar (como git-lfs) que no está instalada o no se ha encontrado. Instálala y vuelve a intentarlo."
 
@@ -6804,13 +6911,26 @@ msgstr "La conexión con GitHub caducó. Vuelve a conectarte para continuar."
 msgid "GitHub denied the request. You may need to authorize OpenKnowledge for {owner} in your browser."
 msgstr "GitHub denegó la solicitud. Puede que tengas que autorizar OpenKnowledge para {owner} en tu navegador."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+#: src/components/settings/SettingsDialogShell.tsx
+msgid "GitHub Enterprise Server hosts"
+msgstr "Hosts de GitHub Enterprise Server"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "GitHub sign-in is missing or expired. Reconnect to resume syncing."
 msgstr "Falta la sesión de GitHub o ha caducado. Vuelve a conectarte para reanudar la sincronización."
 
+#: src/components/settings/AccountSection.tsx
+msgid "GitHub sign-in isn't available for this project"
+msgstr "El inicio de sesión de GitHub no está disponible para este proyecto"
+
 #: src/components/ImportSkillForm.tsx
 msgid "GitHub, a git URL, or a local path."
 msgstr "GitHub, una URL de git o una ruta local."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "github.com is always recognized, so it doesn't need to be added."
+msgstr "github.com siempre se reconoce, así que no hace falta agregarlo."
 
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Give it a name before editing its colors."
@@ -6908,6 +7028,10 @@ msgstr "Salto de línea forzado"
 #: src/components/FeedbackForm.tsx
 msgid "Hard to use"
 msgstr "Difícil de usar"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Has merge conflicts"
+msgstr "Tiene conflictos de fusión"
 
 #: src/components/acp/working-status.ts
 msgid "Having a look around…"
@@ -7275,6 +7399,10 @@ msgstr "Si {agent} no muestra las herramientas de OpenKnowledge, ejecútalo en e
 msgid "If an update arrives for something you are editing, you choose which version to keep, like a merge conflict."
 msgstr "Si llega una actualización de algo que estás editando, tú eliges qué versión conservar, como en un conflicto de fusión."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "If you use a GitHub Enterprise Server, add its host here so OpenKnowledge can sign in, check push permission, and create share links for repositories hosted there."
+msgstr "Si usas un GitHub Enterprise Server, agrega su host aquí para que OpenKnowledge pueda iniciar sesión, comprobar el permiso de envío y crear enlaces para compartir de los repositorios alojados allí."
+
 #: src/components/settings/ContentRulesSection.tsx
 msgid "Ignore broken links in log.md"
 msgstr "Ignorar los enlaces rotos en log.md"
@@ -7325,7 +7453,7 @@ msgstr "El destino de la imagen «{shown}» no se pudo resolver como un archivo 
 msgid "Image target \"{shown}\" does not resolve to an existing file."
 msgstr "El destino de la imagen «{shown}» no corresponde a un archivo existente."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ReportBugDialogBody.tsx
 msgid "Images aren't redacted."
 msgstr "Las imágenes no se censuran."
 
@@ -7377,6 +7505,10 @@ msgstr "En un documento de registro, los encabezados de las entradas comienzan c
 msgid "In a subfolder"
 msgstr "En una subcarpeta"
 
+#: src/components/settings/LinkPreviewsSection.tsx
+msgid "In an agent chat, hovering a link to a GitHub pull request or issue asks GitHub for its status, signed in as you when OpenKnowledge can use your GitHub sign-in."
+msgstr "En el chat de un agente, al pasar el cursor por un enlace a una pull request o incidencia de GitHub se le pide a GitHub su estado, con tu sesión de GitHub cuando OpenKnowledge puede usarla."
+
 #: src/components/settings/LintingSection.tsx
 msgid "In an index document: entries sit under a section heading and each one carries a link. Prose around the lists is fine."
 msgstr "En un documento índice: las entradas se encuentran bajo un título de sección y cada una lleva un enlace. La prosa alrededor de las listas está bien."
@@ -7402,6 +7534,14 @@ msgstr "En proyectos Git, Open Knowledge también agrega una regla .gitattribute
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "In the Claude Desktop App"
 msgstr "En la aplicación Claude Desktop"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue"
+msgstr "En la cola de fusión"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "In the merge queue, but it can't merge"
+msgstr "En la cola de fusión, pero no se puede fusionar"
 
 #: src/components/acp/ThreadView.tsx
 msgid "In the plan above, please "
@@ -7571,6 +7711,10 @@ msgstr "Insertar fila debajo"
 #: src/lib/keyboard-shortcuts.ts
 msgid "Insert, delete, move, copy, and indent source editor lines through CodeMirror's default keymap."
 msgstr "Inserta, elimina, mueve, copia y sangra líneas del editor de código con el mapa de teclas por defecto de CodeMirror."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "Inside this repository's OpenKnowledge worktrees folder"
+msgstr "Dentro de la carpeta de árboles de trabajo de OpenKnowledge de este repositorio"
 
 #: src/components/InstallInClaudeDesktopDialog.tsx
 #: src/components/settings/AgentConnectionsSection.tsx
@@ -7767,6 +7911,10 @@ msgstr "Instrucción para la IA"
 msgid "Integrations"
 msgstr "Integraciones"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "internal"
+msgstr "interno"
+
 #: src/components/settings/SavedThemesTiles.tsx
 msgid "Invalid color value"
 msgstr "Valor de color no válido"
@@ -7858,12 +8006,12 @@ msgstr "Ir al texto anclado"
 msgid "Jump to the markdown source for the block at the cursor, centered and highlighted."
 msgstr "Ir al código markdown del bloque donde está el cursor, centrado y resaltado."
 
-#: src/components/acp/ThreadHistoryPanel.tsx
 #: src/components/FolderOverview.tsx
 #: src/components/FolderTimelineCard.tsx
 #: src/components/SyncStatusBadge.tsx
 #: src/components/TimelinePanel.tsx
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
+#: src/lib/acp/relative-activity.ts
 msgid "just now"
 msgstr "ahora mismo"
 
@@ -7960,6 +8108,10 @@ msgstr "Etiqueta <0>(texto visible del enlace)</0>"
 msgid "Language"
 msgstr "Idioma"
 
+#: src/components/SessionsHost.tsx
+msgid "Last activity {lastActivity}"
+msgstr "Última actividad: {lastActivity}"
+
 #: src/components/ActivityPanelBurstRow.tsx
 msgid "Latest edit"
 msgstr "Última edición"
@@ -7998,6 +8150,10 @@ msgstr "Deja fuera de Problemas, de los indicadores del explorador de archivos, 
 msgid "Leave these comments out of this message"
 msgstr "Dejar estos comentarios fuera de este mensaje"
 
+#: src/components/settings/settings-fields.ts
+msgid "Let agent chats use a browser"
+msgstr "Permitir que los chats con agentes usen un navegador"
+
 #: src/components/settings/TerminalSection.tsx
 msgid "Let agents use OpenKnowledge without asking"
 msgstr "Dejar que los agentes usen OpenKnowledge sin preguntar"
@@ -8033,6 +8189,10 @@ msgstr "Limita el texto combinado que se envía en cada solicitud. Un fragmento 
 #: src/components/ProblemsPanel.tsx
 msgid "line {displayLine}"
 msgstr "línea {displayLine}"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Lines changed: {additions} added, {deletions} removed"
+msgstr "Líneas cambiadas: {additions} añadidas, {deletions} eliminadas"
 
 #: src/components/settings/SkillTargetsPicker.tsx
 #: src/editor/bubble-menu/LinkEditPopover.tsx
@@ -8284,6 +8444,10 @@ msgstr "Cargando el chat"
 msgid "Loading timeline history"
 msgstr "Cargando el historial de la cronología"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Loading worktrees…"
+msgstr "Cargando worktrees…"
+
 #: src/components/BugReportHistory.tsx
 msgid "Loading your reports"
 msgstr "Cargando tus informes"
@@ -8335,6 +8499,10 @@ msgstr "Se pidió solo local, pero no se creó ningún repositorio de git. Puede
 #: src/components/CreateProjectDialog.tsx
 msgid "Location"
 msgstr "Ubicación"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "locked"
+msgstr "bloqueado"
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Logs & system info"
@@ -8501,6 +8669,11 @@ msgstr "Encabezado de sección mediano."
 #: src/components/ComposerAddMenu.tsx
 msgid "Mention a page"
 msgstr "Mencionar una página"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Merged"
+msgstr "Fusionada"
 
 #: src/components/MermaidDocEditor.tsx
 #: src/editor/components/Mermaid.tsx
@@ -8902,6 +9075,10 @@ msgstr "Navegación y sugerencias"
 msgid "Navigation history"
 msgstr "Historial de navegación"
 
+#: src/components/SessionsHost.tsx
+msgid "Needs you to sign in"
+msgstr "Tienes que iniciar sesión"
+
 #: src/components/settings/OkignoreSection.tsx
 msgid "Nested .okignore error in {path}"
 msgstr "Error en el .okignore anidado de {path}"
@@ -8940,6 +9117,10 @@ msgstr "Nuevo"
 #: src/components/TerminalNewChatButton.tsx
 msgid "New {0} chat"
 msgstr "Nuevo chat de {0}"
+
+#: src/components/SessionsHost.tsx
+msgid "New activity"
+msgstr "Actividad nueva"
 
 #: src/components/OkBlobRunner.tsx
 msgid "New best · press <0>Space</0> to play again"
@@ -9250,6 +9431,10 @@ msgstr "Todavía no hay ediciones."
 msgid "No emoji found."
 msgstr "No se encontró ningún emoji."
 
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "No Enterprise hosts added. Only github.com is treated as GitHub."
+msgstr "No se agregaron hosts de Enterprise. Solo github.com se trata como GitHub."
+
 #: src/editor/link-preview/InternalDocPreviewCard.tsx
 msgid "No excerpt"
 msgstr "Sin extracto"
@@ -9306,7 +9491,7 @@ msgstr "Todavía no hay páginas índice. Los índices aparecen cuando las pági
 msgid "No icons match."
 msgstr "Ningún icono coincide."
 
-#: src/components/ReportBugImageDropzone.tsx
+#: src/components/ImageAttachments.tsx
 msgid "No images added."
 msgstr "No se ha añadido ninguna imagen."
 
@@ -9512,6 +9697,10 @@ msgstr "Todavía no hay plantillas. Añade una para dar a los documentos nuevos 
 msgid "No workspace"
 msgstr "Sin espacio de trabajo"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "No worktrees found."
+msgstr "No se encontraron árboles de trabajo."
+
 #: src/components/settings/SyncSection.tsx
 msgid "None"
 msgstr "Ninguno"
@@ -9588,6 +9777,11 @@ msgstr "Aún no está instalada en este proyecto."
 msgid "Not now"
 msgstr "Ahora no"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Not planned"
+msgstr "No planificada"
+
 #: src/components/ReportBugDialogBody.tsx
 msgid "Not redacted. Check the image before sharing."
 msgstr "Sin censurar. Revisa la imagen antes de compartirla."
@@ -9595,6 +9789,10 @@ msgstr "Sin censurar. Revisa la imagen antes de compartirla."
 #: src/components/settings/SearchSection.tsx
 msgid "Not required for a loopback endpoint like <0>{endpointHost}</0> — most local servers ignore it. Add one only if yours needs it."
 msgstr "No hace falta para un endpoint de loopback como <0>{endpointHost}</0>: la mayoría de servidores locales la ignoran. Añádela solo si el tuyo la necesita."
+
+#: src/components/SessionsHost.tsx
+msgid "Not running"
+msgstr "No se está ejecutando"
 
 #: src/components/BugReportHistory.tsx
 msgid "Not sent"
@@ -9609,6 +9807,10 @@ msgstr "nada ({0} no puede coincidir con un documento)"
 #: src/components/settings/LintingSection.tsx
 msgid "nothing ({0} is not a valid pattern)"
 msgstr "nada ({0} no es un patrón válido)"
+
+#: src/components/acp/ThreadView.tsx
+msgid "Nothing from {agentName} for {stalledMinutes, plural, one {# minute} other {# minutes}}. If it looks stuck, Stop and try again."
+msgstr "Nada de {agentName} desde hace {stalledMinutes, plural, one {# minuto} many {# minutos} other {# minutos}}. Si parece atascado, detenlo y vuelve a intentarlo."
 
 #: src/components/ReportBugDialogBody.tsx
 msgid "Nothing leaves your computer until you review and send the report."
@@ -9699,8 +9901,8 @@ msgid "Older"
 msgstr "Anteriores"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "On — hovering an external link sends its URL to the destination site to fetch a preview."
-msgstr "Activada: al pasar el cursor por un enlace externo se envía su URL al sitio de destino para obtener una vista previa."
+msgid "On — hovering an external link sends its URL to the destination site to fetch a preview, and hovering a GitHub reference in an agent chat asks GitHub for it."
+msgstr "Activada: al pasar el cursor por un enlace externo se envía su URL al sitio de destino para obtener una vista previa, y al pasar el cursor por una referencia de GitHub en el chat de un agente se le pide a GitHub."
 
 #: src/components/settings/SearchSection.tsx
 msgid "On — your search queries and the text of matching pages are sent to your embeddings provider (OpenAI by default) to compute embeddings."
@@ -9760,6 +9962,11 @@ msgstr "Solo el documento actual usa <0>#{tag}</0>."
 #: src/components/GraphPanel.tsx
 msgid "Open"
 msgstr "Abrir"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgctxt "GitHub pull request or issue state"
+msgid "Open"
+msgstr "Abierta"
 
 #. placeholder {0}: status.remote.label
 #: src/components/settings/SyncSection.tsx
@@ -10125,6 +10332,10 @@ msgstr "Abrir el worktree"
 msgid "Open, navigate, accept, or dismiss CodeMirror completion suggestions."
 msgstr "Abre, recorre, acepta o descarta las sugerencias de autocompletado de CodeMirror."
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Opened by {author}"
+msgstr "Abierta por {author}"
+
 #: src/lib/install-onboarding-toast.ts
 msgid "Opened existing OpenKnowledge project at {ancestorPath}"
 msgstr "Se abrió el proyecto de OpenKnowledge existente en {ancestorPath}"
@@ -10165,6 +10376,14 @@ msgstr "OpenKnowledge revisó el proyecto"
 #: src/components/settings/AgentConnectionDialogs.tsx
 msgid "OpenKnowledge could not find this agent on this machine."
 msgstr "OpenKnowledge no encontró este agente en este equipo."
+
+#: src/components/settings/AccountSection.tsx
+msgid "OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell which GitHub server to sign in to."
+msgstr "OpenKnowledge no encontró un nombre de host en el remoto de git de este proyecto, así que no puede saber en qué servidor de GitHub iniciar sesión."
+
+#: src/lib/worktree-create-error.ts
+msgid "OpenKnowledge couldn't finish setting up this project. The worktree was created but not opened."
+msgstr "OpenKnowledge no pudo terminar de configurar este proyecto. El worktree se creó, pero no se abrió."
 
 #: src/components/TerminalPanel.tsx
 msgid "OpenKnowledge couldn't read terminal.shell in .ok/local/config.yml. Using an available Windows shell instead."
@@ -10479,6 +10698,10 @@ msgstr "Esquema"
 msgid "Outside any block"
 msgstr "Fuera de cualquier bloque"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "Outside this repository's OpenKnowledge worktrees folder"
+msgstr "Fuera de la carpeta de árboles de trabajo de OpenKnowledge de este repositorio"
+
 #: src/components/SyncStatusBadge.tsx
 msgid "Outside what Open Knowledge commits."
 msgstr "Fuera de lo que confirma Open Knowledge."
@@ -10676,6 +10899,10 @@ msgstr "La ruta apunta fuera del proyecto"
 #: src/editor/link-path-suggestions.tsx
 msgid "Path suggestions"
 msgstr "Sugerencias de rutas"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "path unreadable"
+msgstr "ruta ilegible"
 
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Pattern (regex)"
@@ -11002,6 +11229,10 @@ msgstr "Se creó la carpeta del proyecto, pero falló git init. Inténtalo de nu
 msgid "Project MCP server"
 msgstr "Servidor MCP del proyecto"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "project missing"
+msgstr "falta el proyecto"
+
 #: src/components/CreateProjectDialog.tsx
 msgid "Project name"
 msgstr "Nombre del proyecto"
@@ -11253,6 +11484,10 @@ msgstr "Leer"
 msgid "Read through this codebase and draft a technical spec for the most complex module: an overview, the architecture, key files, and open questions, all linked from a specs index page."
 msgstr "Lee este código y redacta una especificación técnica del módulo más complejo: una visión general, la arquitectura, los archivos clave y las preguntas abiertas, todo enlazado desde una página índice de especificaciones."
 
+#: src/components/acp/ThreadView.tsx
+msgid "Read-only allowed"
+msgstr "Solo lectura permitido"
+
 #: src/editor/slash-command/component-items.tsx
 msgid "Read-only copy of a MirrorSource block from another doc. Edit at the source and it updates live."
 msgstr "Copia de solo lectura de un bloque MirrorSource de otro documento. Edítalo en el origen y se actualiza en vivo."
@@ -11304,6 +11539,14 @@ msgstr "Lee la configuración de OpenKnowledge de este proyecto"
 #: src/lib/acp/tool-call-display.ts
 msgid "Reads unresolved conflicts between edits"
 msgstr "Lee los conflictos sin resolver entre ediciones"
+
+#: src/components/SessionsHost.tsx
+msgid "Ready"
+msgstr "Listo"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Ready to merge"
+msgstr "Lista para fusionar"
 
 #: src/components/SeedDialog.tsx
 msgid "Ready-made folders and templates to get you started quickly."
@@ -11514,6 +11757,10 @@ msgstr "Quitar {chip}"
 #: src/editor/composer-mention/composer-mention.ts
 msgid "Remove {fullLabel} from context"
 msgstr "Quitar {fullLabel} del contexto"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Remove {host}"
+msgstr "Quitar {host}"
 
 #: src/components/FrontmatterRow.tsx
 msgid "Remove {keyName}"
@@ -11817,6 +12064,10 @@ msgstr "Informar de un error"
 msgid "Report a bug…"
 msgstr "Informar de un error…"
 
+#: src/components/acp/ThreadView.tsx
+msgid "Report a problem with this chat…"
+msgstr "Informar de un problema con este chat…"
+
 #. placeholder {0}: row.projectSlug
 #: src/components/BugReportHistory.tsx
 msgid "Report from {0}"
@@ -11870,6 +12121,10 @@ msgstr "obligatorio"
 #: src/components/settings/frontmatter-schema-field-editor.tsx
 msgid "Required"
 msgstr "Obligatorio"
+
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Required checks are failing"
+msgstr "Fallan comprobaciones obligatorias"
 
 #: src/components/handoff/OpenInAgentMenuItem.tsx
 msgid "Requires {brand}."
@@ -12281,6 +12536,10 @@ msgstr "Guardado en"
 #: src/components/SharingModeField.tsx
 msgid "Saved with the project for your team."
 msgstr "Guardado con el proyecto para tu equipo."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "Saved. Restart OpenKnowledge to apply the change."
+msgstr "Guardado. Reinicia OpenKnowledge para aplicar el cambio."
 
 #: src/lib/acp/tool-call-display.ts
 msgid "Saves a restore point for every document in the project"
@@ -12986,8 +13245,8 @@ msgid "Show {hiddenCount} more"
 msgstr "Mostrar {hiddenCount} más"
 
 #: src/components/settings/LinkPreviewsSection.tsx
-msgid "Show a preview card when you hover an external link in the editor."
-msgstr "Muestra una tarjeta de vista previa al pasar el cursor por un enlace externo en el editor."
+msgid "Show a preview card when you hover an external link in the editor or a GitHub pull request or issue in an agent chat."
+msgstr "Muestra una tarjeta de vista previa al pasar el cursor por un enlace externo en el editor o por una pull request o incidencia de GitHub en el chat de un agente."
 
 #: src/components/settings/OkignoreSection.tsx
 msgid "Show advanced"
@@ -13192,6 +13451,10 @@ msgstr "Error al iniciar sesión: {0}"
 msgid "Sign-in stream ended without confirmation — please try again"
 msgstr "El flujo de inicio de sesión terminó sin confirmación; inténtalo de nuevo"
 
+#: src/components/SessionsHost.tsx
+msgid "Signing in"
+msgstr "Iniciando sesión"
+
 #: src/components/acp/ThreadView.tsx
 msgid "Signing in to {agentName}"
 msgstr "Iniciando sesión en {agentName}"
@@ -13371,6 +13634,10 @@ msgstr "Slidev tardó demasiado en iniciarse. Inténtalo de nuevo."
 msgid "Small section heading."
 msgstr "Encabezado de sección pequeño."
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Some checks failed, but it can still merge"
+msgstr "Algunas comprobaciones fallaron, pero aún se puede fusionar"
+
 #: src/components/TerminalPanel.tsx
 msgid "Some dropped files could not be inserted safely."
 msgstr "Algunos archivos soltados no se pudieron insertar de forma segura."
@@ -13408,6 +13675,7 @@ msgid "Something named \"{name}\" is already in {scopeLabel}, and the server cou
 msgstr "Ya hay algo llamado «{name}» en {scopeLabel} y el servidor no pudo confirmar qué es. Puede que un movimiento fallido anterior lo dejara ahí a propósito: compáralo con el original antes de eliminarlo o reemplazarlo."
 
 #: src/components/AppErrorBoundary.tsx
+#: src/components/SessionsHost.tsx
 msgid "Something went wrong"
 msgstr "Algo salió mal"
 
@@ -13532,6 +13800,10 @@ msgstr "Dividir el elemento de lista"
 msgid "Stage the selected passage in the agents panel, ready to extend and send."
 msgstr "Prepara el fragmento seleccionado en el panel de agentes, listo para ampliar y enviar."
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "stale Git entry"
+msgstr "entrada de Git obsoleta"
+
 #: src/components/SubscribeCard.tsx
 msgid "Star us on GitHub"
 msgstr "Danos una estrella en GitHub"
@@ -13548,6 +13820,11 @@ msgstr "Inicia un chat con el botón ＋ o lanza un agente desde una página."
 #: src/comments/QueueNewChatRow.tsx
 msgid "Start a new chat"
 msgstr "Empezar un chat nuevo"
+
+#. placeholder {0}: formatShortcutLabel('send-comment-queue')
+#: src/comments/CommentSendFooter.tsx
+msgid "Start a new chat ({0})"
+msgstr "Empezar un chat nuevo ({0})"
 
 #: src/components/NavigatorApp.tsx
 msgid "Start a new OpenKnowledge project."
@@ -13588,6 +13865,10 @@ msgstr "paquete inicial"
 #: src/components/CreateProjectDialog.tsx
 msgid "Starter packs"
 msgstr "Paquetes iniciales"
+
+#: src/components/SessionsHost.tsx
+msgid "Starting"
+msgstr "Iniciando"
 
 #: src/components/acp/ThreadView.tsx
 msgid "Starting {agentName}…"
@@ -13675,6 +13956,10 @@ msgstr "Deja de arreglar. Los archivos ya arreglados se quedan como están."
 #: src/components/settings/LintingSection.tsx
 msgid "Stop maintaining index.md"
 msgstr "Dejar de mantener index.md"
+
+#: src/components/SessionsHost.tsx
+msgid "Stopped"
+msgstr "Detenido"
 
 #: src/lib/project-fix-sweep-store.ts
 msgid "Stopped fixing. Files already fixed stay fixed."
@@ -14026,6 +14311,7 @@ msgstr "Plantillas disponibles"
 
 #. Section label above the shell-PATH toggle in the first-launch dialog
 #: src/components/CommandPalette.tsx
+#: src/components/EditorArea.tsx
 #: src/components/empty-state/CreatePromptComposer.tsx
 #: src/components/handoff/AgentSplitButton.tsx
 #: src/components/handoff/OpenInAgentContextSubmenu.tsx
@@ -14116,8 +14402,8 @@ msgstr "¡Gracias por tus comentarios!"
 msgid "Thanks for the report!"
 msgstr "¡Gracias por el informe!"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "That branch is already open in another worktree."
 msgstr "Esa rama ya está abierta en otro worktree."
 
@@ -14145,6 +14431,14 @@ msgstr "Esa carpeta ya contiene código que Open Knowledge no escribió y que es
 #: src/components/ShareReceiveDialog.tsx
 msgid "That folder isn't an OpenKnowledge project yet. Initialize it and open?"
 msgstr "Esa carpeta todavía no es un proyecto de OpenKnowledge. ¿Inicializarla y abrirla?"
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That host is already in the list."
+msgstr "Ese host ya está en la lista."
+
+#: src/components/settings/EnterpriseHostsSection.tsx
+msgid "That isn't a valid hostname. Enter just the server name, such as github.example.com."
+msgstr "Ese no es un nombre de host válido. Escribe solo el nombre del servidor, como github.example.com."
 
 #: src/components/settings/SpellcheckLanguagesRow.tsx
 msgid "That language isn't available for spell checking."
@@ -14193,6 +14487,38 @@ msgstr "El agente está trabajando"
 msgid "The agent isn't stopping. Force stop closes this chat and quits the agent."
 msgstr "El agente no se detiene. La detención forzada cierra este chat y sale del agente."
 
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process ended on its own."
+msgstr "El proceso del agente terminó por sí solo."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped for an unknown reason."
+msgstr "El proceso del agente se detuvo por un motivo desconocido."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process stopped with exit code {code}."
+msgstr "El proceso del agente se detuvo con el código de salida {code}."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was killed (SIGKILL). That usually comes from the system, for example when memory runs out, or from another process ending it."
+msgstr "El proceso del agente fue terminado a la fuerza (SIGKILL). Eso suele venir del sistema, por ejemplo cuando se agota la memoria, o de otro proceso que lo cerró."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was stopped by a {signal} signal."
+msgstr "El proceso del agente se detuvo por una señal {signal}."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent process was told to stop ({signal}) by something outside this chat."
+msgstr "Algo ajeno a este chat pidió al proceso del agente que se detuviera ({signal})."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent ran out of memory."
+msgstr "El agente se quedó sin memoria."
+
+#: src/lib/acp/exit-summary.ts
+msgid "The agent's installation is missing files (a module could not be found). Reinstalling the agent usually fixes this."
+msgstr "A la instalación del agente le faltan archivos (no se encontró un módulo). Reinstalar el agente suele resolverlo."
+
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The agent's OpenKnowledge tools couldn't reach the server. Ask the agent to try again, and if it keeps failing, start a new chat."
 msgstr "Las herramientas de OpenKnowledge del agente no pudieron conectar con el servidor. Pide al agente que vuelva a intentarlo y, si sigue fallando, empieza un chat nuevo."
@@ -14225,9 +14551,25 @@ msgstr "No se pudo cargar el visor de la pizarra. Comprueba tu conexión e inté
 msgid "The board's content is not a valid Excalidraw scene."
 msgstr "El contenido de la pizarra no es una escena de Excalidraw válida."
 
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details."
+msgstr "El navegador no está disponible en este chat porque no se pudo configurar. El registro de OpenKnowledge tiene los detalles."
+
+#: src/components/acp/ThreadView.tsx
+msgid "The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat."
+msgstr "El navegador no está disponible en este chat porque no se encontró ninguna instalación de Node.js que pueda iniciarlo. Instala Node.js y luego inicia un chat nuevo."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "The chat's messages, tool calls, and their output, so we can see what the agent did, plus the chat's title, the project folder's path, the document it started from, and the agent and its settings. Images are replaced by their type and size, and attached text files are included. It can contain document content, so uncheck it if you'd rather not share it."
+msgstr "Los mensajes del chat, las llamadas a herramientas y su resultado, para que veamos qué hizo el agente, además del título del chat, la ruta de la carpeta del proyecto, el documento desde el que empezó y el agente con sus ajustes. Las imágenes se sustituyen por su tipo y tamaño, y se incluyen los archivos de texto adjuntos. Puede contener contenido de documentos, así que desmárcala si prefieres no compartirla."
+
 #: src/components/InstallInClaudeDesktopDialog.tsx
 msgid "The Claude Desktop App didn't open the file. Is it installed? ({msg})"
 msgstr "La aplicación Claude Desktop no abrió el archivo. ¿Está instalada? ({msg})"
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "The conversation couldn't be added to this report."
+msgstr "No se pudo añadir la conversación a este informe."
 
 #: src/lib/skills-api.ts
 msgid "The copy of \"{name}\" kept in {scopeLabel} is a redundant duplicate: the original was verified unchanged. Remove that copy, then retry the move."
@@ -14314,6 +14656,18 @@ msgstr "El id del modelo que sirve tu endpoint. El tamaño de su vector se detec
 msgid "the open agent"
 msgstr "el agente abierto"
 
+#: src/components/RecentProjectsMenu.tsx
+msgid "The OpenKnowledge project is missing at this checkout path."
+msgstr "Falta el proyecto de OpenKnowledge en esta ruta de checkout."
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch cannot be read. The worktree was created but not opened."
+msgstr "No se puede leer la ruta del proyecto de OpenKnowledge en esta rama. El worktree se creó, pero no se abrió."
+
+#: src/lib/worktree-create-error.ts
+msgid "The OpenKnowledge project path on this branch leaves the worktree. The worktree was created but not opened."
+msgstr "La ruta del proyecto de OpenKnowledge en esta rama sale del worktree. El worktree se creó, pero no se abrió."
+
 #: src/lib/acp/tool-failure-hint.ts
 msgid "The OpenKnowledge server took too long to answer, and the change may still have gone through. Ask the agent to check before trying again."
 msgstr "El servidor de OpenKnowledge tardo demasiado en responder y es posible que el cambio se haya aplicado igualmente. Pide al agente que lo compruebe antes de volver a intentarlo."
@@ -14323,8 +14677,8 @@ msgid "The OpenKnowledge server took too long to answer. Ask the agent to try ag
 msgstr "El servidor de OpenKnowledge tardo demasiado en responder. Pide al agente que vuelva a intentarlo."
 
 #: src/comments/ThreadCard.tsx
-msgid "The original text was deleted. You can re-place this comment on selected text."
-msgstr "El texto original se eliminó. Puedes volver a colocar este comentario sobre el texto seleccionado."
+msgid "The original text was deleted."
+msgstr "El texto original se eliminó."
 
 #: src/components/SkillFileCreateDialog.tsx
 msgid "The path can't leave the skill (no . or ..)"
@@ -14566,6 +14920,10 @@ msgstr "Estas reglas vienen del archivo <0>{configFile}</0> de tu proyecto, que 
 msgid "These teach your AI tools how to work with OpenKnowledge. Installing one adds it to every AI tool on this machine."
 msgstr "Estas enseñan a tus herramientas de IA a trabajar con OpenKnowledge. Al instalar una se añade a todas las herramientas de IA de este equipo."
 
+#: src/components/acp/ThreadView.tsx
+msgid "They run without asking while this chat is open"
+msgstr "Se ejecutan sin preguntar mientras este chat esté abierto"
+
 #: src/lib/acp/tool-call-display.ts
 msgid "Think"
 msgstr "Pensar"
@@ -14673,13 +15031,25 @@ msgstr "Este agente funciona con {0}, que no está instalado. Open Knowledge pue
 msgid "This also installs the pack's {packSkillCount, plural, one {# skill} other {# skills}}."
 msgstr "Esto también instala {packSkillCount, plural, one {# habilidad} many {# habilidades} other {# habilidades}} del paquete."
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch does not contain this OpenKnowledge project. The worktree was created but not opened."
+msgstr "Esta rama no contiene este proyecto de OpenKnowledge. El worktree se creó, pero no se abrió."
+
 #: src/components/ShareReceiveDialog.tsx
 msgid "This branch is checked out in:"
 msgstr "Esta rama está extraída en:"
 
+#: src/lib/worktree-create-error.ts
+msgid "This branch redirects an OpenKnowledge setup path outside the worktree. The worktree was created but not opened."
+msgstr "Esta rama redirige una ruta de configuración de OpenKnowledge fuera del worktree. El worktree se creó, pero no se abrió."
+
 #: src/components/McpConsentDialogBody.tsx
 msgid "This can be configured in Settings > AI tools & CLI"
 msgstr "Esto se puede configurar en Ajustes > Herramientas de IA y CLI"
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This checkout path cannot be read."
+msgstr "No se puede leer esta ruta de checkout."
 
 #: src/components/acp/ThreadView.tsx
 msgid "This command contains hidden characters that can make it look different from what runs. They are shown here as ⟨U+…⟩."
@@ -14702,6 +15072,10 @@ msgstr "Este componente se ha eliminado."
 #: src/editor/ComposerMentionInput.tsx
 msgid "This composer doesn't accept attachments."
 msgstr "Aquí no se pueden adjuntar archivos."
+
+#: src/components/ReportBugDialogBody.tsx
+msgid "This conversation"
+msgstr "Esta conversación"
 
 #: src/components/acp/ThreadView.tsx
 msgid "This conversation keeps the window it started with. A new chat can use a different one."
@@ -14969,8 +15343,8 @@ msgstr "Esto elimina definitivamente {path}. Los agentes que hagan referencia a 
 msgid "This project"
 msgstr "Este proyecto"
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again."
 msgstr "Este proyecto aún no tiene commits, así que no hay ninguna rama en la que basar un worktree. Haz un primer commit y vuelve a intentarlo."
 
@@ -14993,14 +15367,18 @@ msgstr "Este proyecto está ejecutando una compilación de OpenKnowledge distint
 msgid "This project is running an older version of OpenKnowledge (v{0}) than this app (v{1})."
 msgstr "Este proyecto está ejecutando una versión de OpenKnowledge (v{0}) más antigua que la de esta aplicación (v{1})."
 
-#: src/components/NewWorktreeDialog.tsx
 #: src/components/ShareBranchSwitchDialog.tsx
+#: src/lib/worktree-create-error.ts
 msgid "This project isn't a git repository, so worktrees aren't available."
 msgstr "Este proyecto no es un repositorio de git, así que los worktrees no están disponibles."
 
 #: src/components/settings/SyncSection.tsx
 msgid "This project lives only on this computer. Connect it to GitHub to back it up and share it with other people."
 msgstr "Este proyecto solo vive en este equipo. Conéctalo a GitHub para tener una copia de seguridad y compartirlo con otras personas."
+
+#: src/components/settings/AccountSection.tsx
+msgid "This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server hosts below, then restart OpenKnowledge."
+msgstr "El remoto de git de este proyecto está en {host}, que OpenKnowledge no reconoce como host de GitHub. Si {host} ejecuta GitHub Enterprise Server, agrégalo en Hosts de GitHub Enterprise Server más abajo y luego reinicia OpenKnowledge."
 
 #: src/components/DocumentErrorBoundary.tsx
 msgid "This project's running server doesn't support live editing. Restart OpenKnowledge to fix."
@@ -15100,6 +15478,10 @@ msgstr "Esto suele significar una de estas cosas:"
 #: src/components/AuthModal.tsx
 msgid "This window can't store a token — open Settings from the main app window."
 msgstr "Esta ventana no puede guardar un token: abre Ajustes desde la ventana principal de la aplicación."
+
+#: src/components/RecentProjectsMenu.tsx
+msgid "This worktree is no longer available."
+msgstr "Este árbol de trabajo ya no está disponible."
 
 #: src/components/acp/working-status.ts
 msgid "Tidying up…"
@@ -15586,10 +15968,6 @@ msgstr "Informe sin título"
 msgid "Untracked"
 msgstr "Sin seguimiento"
 
-#: src/components/ReportBugImageDropzone.tsx
-msgid "Up to 3 screenshots or photos"
-msgstr "Hasta 3 capturas de pantalla o fotos"
-
 #: src/components/SyncStatusBadge.tsx
 msgid "Up to date"
 msgstr "Al día"
@@ -15972,7 +16350,12 @@ msgstr "Selección de tabla del editor visual"
 msgid "Waiting for authorization"
 msgstr "Esperando la autorización"
 
+#: src/components/acp/GitHubReferenceCard.tsx
+msgid "Waiting for review"
+msgstr "Esperando revisión"
+
 #: src/components/acp/ThreadView.tsx
+#: src/components/SessionsHost.tsx
 msgid "Waiting for your approval"
 msgstr "Esperando tu aprobación"
 
@@ -16054,6 +16437,10 @@ msgstr "¿Para qué es esta base de conocimiento?"
 #: src/components/handoff/OpenInAgentMenu.tsx
 msgid "What should the AI do? (optional)"
 msgstr "¿Qué debería hacer la IA? (opcional)"
+
+#: src/components/acp/ThreadView.tsx
+msgid "What should we work on?"
+msgstr "¿En qué trabajamos?"
 
 #: src/components/CreatedItemsList.tsx
 msgid "What the agent may read, write, and surface."
@@ -16198,6 +16585,7 @@ msgstr "Trabaja sobre estos comentarios"
 
 #: src/components/McpConsentDialogBody.tsx
 #: src/components/NewWorktreeDialog.tsx
+#: src/components/SessionsHost.tsx
 #: src/components/SkillEditorActions.tsx
 msgid "Working"
 msgstr "Trabajando"

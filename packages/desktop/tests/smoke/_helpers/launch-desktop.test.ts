@@ -1,14 +1,24 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import {
+  applyConfigOverlay,
+  type Config,
+  idleShutdownToMs,
+  resolveEnvConfigLayer,
+  resolveServerRuntimeConfig,
+} from '@inkeep/open-knowledge-core';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SPAWN_STARTUP_DEADLINE_MS } from '../../../src/shared/boot-narration.ts';
 import {
   DEFAULT_LAUNCH_TIMEOUT_MS,
   DEFAULT_LOCAL_PACKAGED_APP,
   desktopLaunchOptions,
   executableForAppBundle,
   PACKAGED_APP_ENV,
+  PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS,
   resolveDesktopTarget,
+  type SmokeLaunchEnv,
   UNPACKAGED_MAIN_ENTRY,
 } from './launch-desktop';
 
@@ -123,6 +133,71 @@ describe('desktopLaunchOptions', () => {
     const opts = desktopLaunchOptions({ target: packaged, args });
     args.push('--mutated-after');
     expect(opts.args).toEqual(['--flag']);
+  });
+});
+
+function idleThresholdTheServerDerivesFrom(
+  env: SmokeLaunchEnv | undefined,
+): number | null | string {
+  let layer: Record<string, unknown>;
+  try {
+    layer = resolveEnvConfigLayer({ OK_IDLE_SHUTDOWN: env?.OK_IDLE_SHUTDOWN }).layer;
+  } catch (error) {
+    return `rejected by the server's env layer: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return idleShutdownToMs(
+    resolveServerRuntimeConfig(applyConfigOverlay({}, layer) as Config).idleShutdown,
+  );
+}
+
+describe("desktopLaunchOptions — a packaged launch bounds its detached server's lifetime", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each<[string, string | undefined, string | undefined]>([
+    ['neither the parent env nor the caller sets one', undefined, undefined],
+    ["the parent env sets 'off'", 'off', undefined],
+    ["the parent env sets '30m'", '30m', undefined],
+    ["the caller's env sets 'off'", undefined, 'off'],
+    ["the caller's env sets '30m'", undefined, '30m'],
+  ])(
+    "the server's own config parsing turns a packaged launch's env into exactly the exported lifetime bound when %s",
+    (_case, parent, supplied) => {
+      vi.stubEnv('OK_IDLE_SHUTDOWN', parent);
+      const opts = desktopLaunchOptions({
+        target: packaged,
+        env: supplied === undefined ? {} : { OK_IDLE_SHUTDOWN: supplied },
+      });
+      expect({
+        lifetimeBoundIsExported: typeof PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS === 'number',
+        serverIdleThresholdMs: idleThresholdTheServerDerivesFrom(opts.env),
+      }).toEqual({
+        lifetimeBoundIsExported: true,
+        serverIdleThresholdMs: PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS,
+      });
+    },
+  );
+
+  it('an unpackaged launch sets no idle shutdown of its own, while a packaged launch from the same env sets one', () => {
+    vi.stubEnv('OK_IDLE_SHUTDOWN', undefined);
+    const supplied = { HOME: '/tmp/home' };
+
+    expect({
+      packagedLaunchSetsOne:
+        desktopLaunchOptions({ target: packaged, env: supplied }).env?.OK_IDLE_SHUTDOWN !==
+        undefined,
+      unpackagedLaunchSetsOne:
+        desktopLaunchOptions({ target: unpackaged, env: supplied }).env?.OK_IDLE_SHUTDOWN !==
+        undefined,
+    }).toEqual({ packagedLaunchSetsOne: true, unpackagedLaunchSetsOne: false });
+  });
+
+  it("the packaged server's lifetime bound outlasts the app's own deadline for that server's lock", () => {
+    expect({
+      lifetimeBoundIsExported: typeof PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS === 'number',
+      outlastsTheLockDeadline: PACKAGED_SMOKE_SERVER_IDLE_SHUTDOWN_MS > SPAWN_STARTUP_DEADLINE_MS,
+    }).toEqual({ lifetimeBoundIsExported: true, outlastsTheLockDeadline: true });
   });
 });
 

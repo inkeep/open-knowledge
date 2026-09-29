@@ -82,6 +82,28 @@ describe('httpAuthTransport().start / ghLogin (streamAuthEndpoint)', () => {
     expect(events).toEqual([{ type: 'error', message: 'The GitHub CLI (gh) is not installed.' }]);
   });
 
+  test('a refused sign-in exposes the host-specific remediation detail', async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            type: 'urn:ok:error:non-github-origin',
+            title: 'GitHub sign-in is unavailable for this remote.',
+            status: 409,
+            detail:
+              'Declare ghes.example.test in ~/.ok/global.yml to use GitHub Enterprise sign-in.',
+          }),
+          { status: 409 },
+        ),
+    ) as unknown as typeof fetch;
+    expect(await collectEvents(httpAuthTransport().start())).toEqual([
+      {
+        type: 'error',
+        message: 'Declare ghes.example.test in ~/.ok/global.yml to use GitHub Enterprise sign-in.',
+      },
+    ]);
+  });
+
   test('a pre-stream failure with an unparseable body falls back to the generic message', async () => {
     globalThis.fetch = vi.fn(
       async () => new Response('<html>gateway error</html>', { status: 502 }),

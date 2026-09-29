@@ -1,3 +1,4 @@
+/* biome-ignore-all lint/suspicious/noUndeclaredEnvVars: GitHub Actions invokes this entrypoint outside Turbo. */
 import { pathToFileURL } from 'node:url';
 import { compareVersions, highestVersion } from './write-back-gate.mjs';
 
@@ -19,6 +20,7 @@ export function highestPublishedStable(releases) {
   for (const release of releases ?? []) {
     if (release.isDraft || release.isPrerelease) continue;
     if (!isPipelineTag(release.tagName)) continue;
+    if (BETA_SUFFIX.test(release.tagName)) continue;
     cycles.push(cycleOf(release.tagName));
   }
   return highestVersion(cycles);
@@ -44,13 +46,29 @@ export function selectStuckDrafts({ releases, nowMs, maxAgeSeconds }) {
       keep.push({ tagName: release.tagName, cycle: null, reason: 'unrecognized tag shape' });
       continue;
     }
+    if (BETA_SUFFIX.test(release.tagName)) {
+      keep.push({
+        tagName: release.tagName,
+        cycle: cycleOf(release.tagName),
+        reason: 'unpublished beta history is retained',
+      });
+      continue;
+    }
     const ageSeconds = objectAgeSeconds(release, nowMs);
     if (ageSeconds === null) {
-      keep.push({ tagName: release.tagName, cycle: cycleOf(release.tagName), reason: 'no usable timestamp' });
+      keep.push({
+        tagName: release.tagName,
+        cycle: cycleOf(release.tagName),
+        reason: 'no usable timestamp',
+      });
       continue;
     }
     if (!(ageSeconds > maxAgeSeconds)) {
-      keep.push({ tagName: release.tagName, cycle: cycleOf(release.tagName), reason: 'younger than the age gate' });
+      keep.push({
+        tagName: release.tagName,
+        cycle: cycleOf(release.tagName),
+        reason: 'younger than the age gate',
+      });
       continue;
     }
     const cycle = cycleOf(release.tagName);

@@ -440,10 +440,15 @@ export type { OkFolderState } from './constants/folder-state.ts';
 export {
   classifyGitHubShareHost,
   DEFAULT_GITHUB_OAUTH_CLIENT_ID,
-  KNOWN_NON_GITHUB_GIT_HOSTS,
+  declaredGitHubHostsFrom,
+  GIT_HOST_PROVIDERS,
+  type GitHostProvider,
+  isGitHubHost,
+  normalizeGitHostname,
 } from './constants/github.ts';
 export { isOrphanMode, ORPHAN_MODES, type OrphanMode } from './constants/graph.ts';
 export {
+  ACP_LAUNCH_FAILURE_LOG,
   DEFAULT_SIGTERM_GRACE_MS,
   DEFAULT_SIGTERM_POLL_MS,
   formatSpawnAttemptHeader,
@@ -519,7 +524,14 @@ export {
   PREVIEW_THEME_TOKENS,
   type PreviewThemeToken,
 } from './constants/preview-theme-tokens.ts';
-export { PRODUCT_NAME } from './constants/product.ts';
+export {
+  DESKTOP_PRODUCTS,
+  type DesktopProduct,
+  type DesktopProductName,
+  desktopWindowsExecutableName,
+  desktopWindowsInstallDirNames,
+  PRODUCT_NAME,
+} from './constants/product.ts';
 export { isReservedLogDoc } from './constants/reserved-docs.ts';
 export { DEFAULT_SERVER_HOST } from './constants/server.ts';
 export {
@@ -682,6 +694,16 @@ export {
   wellKnownToolDirs,
 } from './git/git-spawn-path.ts';
 export { detectMissingGitHelper } from './git/missing-git-helper.ts';
+export type {
+  WorktreeInventoryAvailability,
+  WorktreeInventoryEntry,
+  WorktreeInventoryLocation,
+  WorktreeInventoryModel,
+  WorktreeInventoryOpenRequest,
+  WorktreeInventoryOpenResult,
+  WorktreeInventoryRequest,
+  WorktreeInventoryResult,
+} from './git/worktree-inventory-model.ts';
 export {
   type BridgeWorktreeEntry,
   parseWorktreeListPorcelain,
@@ -690,6 +712,7 @@ export { WORKTREES_PARENT_DIR, worktreeRelativeDir } from './git/worktree-path.t
 export {
   type BuildWorktreeSelectorModelInput,
   buildWorktreeSelectorModel,
+  projectWorktreeCreateResult,
   stripRemotePrefix,
   type WorktreeCreateRequest,
   type WorktreeCreateResult,
@@ -739,6 +762,7 @@ export {
   type InstallState,
   type IpcChannelReason,
   type IpcChannelWithUrn,
+  isTerminalLaunchEnvName,
   isWindowsShellFamily,
   isWindowsShellLaunchFailureReason,
   type LintFixPromptInput,
@@ -761,6 +785,7 @@ export {
   type TerminalCli,
   type TerminalCliInfo,
   type TerminalLaunchCommand,
+  terminalLaunchEnvSlots,
   URN_HTTP_ONLY,
   URN_IPC_REGISTRY,
   type UrnIpcLookup,
@@ -829,6 +854,7 @@ export type {
   SerializedErrorTruncation,
 } from './logger-types.ts';
 export {
+  BUG_REPORT_AGENT_CHAT_ZIP_DIR,
   BUG_REPORT_ATTACHMENT_CONTENT_TYPES,
   BUG_REPORT_ATTACHMENT_EXTENSIONS,
   BUG_REPORT_ATTACHMENTS_ZIP_DIR,
@@ -836,10 +862,13 @@ export {
   BUG_REPORT_CONTACT_EMAIL_MAX_LENGTH,
   BUG_REPORT_SCREENSHOT_ZIP_ENTRY,
   BUG_REPORT_SCREENSHOT_ZIP_NAME,
+  isBugReportAgentChatEntry,
   isBugReportAttachmentEntry,
+  isBugReportCrashDumpEntry,
   LOG_LEVELS,
   MAX_BUG_REPORT_ATTACHMENTS,
   MAX_BUG_REPORT_ATTACHMENTS_TOTAL_BYTES,
+  MINIDUMP_FILE_EXTENSION,
 } from './logger-types.ts';
 export {
   LOGGER_OWNED_FIELDS,
@@ -1293,6 +1322,12 @@ export {
   FrontmatterPatchSuccessSchema,
   GIT_STATUS_CODES,
   type GitAuthFailureSubclass,
+  type GitHubReferencePreview,
+  GitHubReferencePreviewSchema,
+  GitHubReferenceRequestSchema,
+  type GitHubReferenceResponse,
+  GitHubReferenceResponseSchema,
+  type GitHubReferenceStatus,
   type GitStatusCode,
   type GitWorktreeEntry,
   GitWorktreeEntrySchema,

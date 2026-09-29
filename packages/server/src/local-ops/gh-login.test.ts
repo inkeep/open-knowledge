@@ -1,4 +1,4 @@
-import { chmodSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
@@ -166,4 +166,23 @@ describe('resolveGhBinaryPath', () => {
     });
     expect(path).toBeNull();
   });
+});
+
+test('gh device login runs in the supplied project directory', async () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gh-login-cwd-')));
+  const script = join(cwd, 'fake-gh');
+  try {
+    writeFileSync(script, '#!/bin/sh\npwd > observed-cwd\nexit 1\n');
+    chmodSync(script, 0o755);
+    const controller = runGhDeviceLoginSubprocess({
+      host: 'ghes.test',
+      ghPath: script,
+      cwd,
+      onEvent: () => {},
+    });
+    await controller.done;
+    expect(readFileSync(join(cwd, 'observed-cwd'), 'utf8').trim()).toBe(cwd);
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 });

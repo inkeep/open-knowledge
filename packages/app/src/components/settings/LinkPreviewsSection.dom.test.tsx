@@ -116,6 +116,19 @@ describe('LinkPreviewsSection', () => {
     );
   });
 
+  test('the switch is named for both kinds of preview it governs, in either state', () => {
+    const { binding } = makeBinding();
+    mockProjectLocalBinding = binding;
+    for (const enabled of [false, true]) {
+      mockProjectLocalConfig = configWithLinkPreviews(enabled);
+      const { unmount } = render(<LinkPreviewsSection />);
+      expect(
+        screen.getByRole('switch', { name: 'External link previews and GitHub reference cards' }),
+      ).toBeTruthy();
+      unmount();
+    }
+  });
+
   test('toggle is disabled until the project-local binding has synced', () => {
     mockProjectLocalBinding = null;
     mockProjectLocalSynced = false;

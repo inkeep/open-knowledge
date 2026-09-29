@@ -2,6 +2,7 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { MIN_AGENTS_PANEL_WIDTH } from '@/lib/agents-panel-width-store';
 import type { PanelTab } from './DocPanel';
 
 type SettingsDialogShellProps = {
@@ -205,11 +206,16 @@ vi.doMock('./EditorWorkspace', () => ({
 
 let groupLayout: Record<string, number> = {};
 let groupSetLayoutCalls: Array<Record<string, number>> = [];
+let rejectNextGroupLayoutWrite = false;
+let rejectGroupLayoutWrites = false;
+let groupOnLayoutChanged:
+  | ((layout: Record<string, number>, meta: { isUserInteraction: boolean }) => void)
+  | null = null;
 let panelIsCollapsed = false;
 let mockGroupPx = 1360;
 let mockPanelPercentage: number | null = null;
 let mockPanelPx: number | null = null;
-let rejectGroupLayoutWrites = false;
+let panelExpandCalls = 0;
 let deferPanelGeometryCommit = false;
 let committedGroupLayout: Record<string, number> = {};
 
@@ -255,7 +261,9 @@ vi.doMock('react-resizable-panels', () => ({
   usePanelRef: () => ({
     current: {
       collapse: () => {},
-      expand: () => {},
+      expand: () => {
+        panelExpandCalls += 1;
+      },
       getSize: () => ({
         asPercentage: mockPanelPercentage ?? 25,
         inPixels: mockPanelPx ?? mockGroupPx / 4,
@@ -268,6 +276,10 @@ vi.doMock('react-resizable-panels', () => ({
       getLayout: () => groupLayout,
       setLayout: (layout: Record<string, number>) => {
         groupSetLayoutCalls.push(layout);
+        if (rejectNextGroupLayoutWrite) {
+          rejectNextGroupLayoutWrite = false;
+          return;
+        }
         if (rejectGroupLayoutWrites) return;
         groupLayout = layout;
         if (deferPanelGeometryCommit) {
@@ -283,11 +295,23 @@ vi.doMock('react-resizable-panels', () => ({
 }));
 
 vi.doMock('@/components/ui/resizable', () => ({
-  ResizablePanelGroup: ({ children }: { children: ReactNode }) => (
-    <div data-testid="resizable-group" data-group="true" data-slot="resizable-panel-group">
-      {children}
-    </div>
-  ),
+  ResizablePanelGroup: ({
+    children,
+    onLayoutChanged,
+  }: {
+    children: ReactNode;
+    onLayoutChanged?: (
+      layout: Record<string, number>,
+      meta: { isUserInteraction: boolean },
+    ) => void;
+  }) => {
+    groupOnLayoutChanged = onLayoutChanged ?? null;
+    return (
+      <div data-testid="resizable-group" data-group="true" data-slot="resizable-panel-group">
+        {children}
+      </div>
+    );
+  },
   ResizablePanel: ({
     children,
     id,
@@ -315,8 +339,24 @@ vi.doMock('@/components/ui/resizable', () => ({
       </div>
     );
   },
-  ResizableHandle: ({ onPointerDown }: { onPointerDown?: (e: unknown) => void }) => (
-    <div data-testid="resizable-handle" onPointerDown={onPointerDown} />
+  ResizableHandle: ({
+    onPointerDown,
+    ...props
+  }: {
+    onPointerDown?: (e: unknown) => void;
+    'aria-controls'?: string;
+    'aria-label'?: string;
+    'data-agents-panel-resize-handle'?: string;
+  }) => (
+    <hr
+      aria-controls={props['aria-controls']}
+      aria-label={props['aria-label']}
+      aria-valuenow={50}
+      data-testid="resizable-handle"
+      data-agents-panel-resize-handle={props['data-agents-panel-resize-handle']}
+      onPointerDown={onPointerDown}
+      tabIndex={0}
+    />
   ),
 }));
 
@@ -577,6 +617,39 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     if (handle == null) throw new Error('agents resize handle not found');
     return handle;
   };
+  const controlAnimationFrames = () => {
+    const callbacks = new Map<number, FrameRequestCallback>();
+    let nextId = 1;
+    let timestamp = performance.now();
+    const requestSpy = vi
+      .spyOn(window, 'requestAnimationFrame')
+      .mockImplementation((callback: FrameRequestCallback) => {
+        const id = nextId;
+        nextId += 1;
+        callbacks.set(id, callback);
+        return id;
+      });
+    const cancelSpy = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation((id: number) => {
+      callbacks.delete(id);
+    });
+    return {
+      pendingCount: () => callbacks.size,
+      run: (count: number, frameDurationMs = 1000 / 60) => {
+        for (let index = 0; index < count; index += 1) {
+          const next = callbacks.entries().next().value;
+          if (next == null) return;
+          const [id, callback] = next;
+          callbacks.delete(id);
+          timestamp += frameDurationMs;
+          act(() => callback(timestamp));
+        }
+      },
+      restore: () => {
+        requestSpy.mockRestore();
+        cancelSpy.mockRestore();
+      },
+    };
+  };
 
   beforeEach(() => {
     cleanup();
@@ -584,8 +657,16 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     docCtx = EMPTY_DOC_CTX;
     groupLayout = {};
     groupSetLayoutCalls = [];
+    rejectNextGroupLayoutWrite = false;
+    rejectGroupLayoutWrites = false;
     panelIsCollapsed = false;
     mockGroupPx = 1360;
+    mockPanelPercentage = null;
+    mockPanelPx = null;
+    panelExpandCalls = 0;
+    deferPanelGeometryCommit = false;
+    committedGroupLayout = {};
+    groupOnLayoutChanged = null;
     toastInfoMessages = [];
   });
 
@@ -719,10 +800,18 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     const agentsPanel = document.getElementById('agents-column');
     expect(terminalPanel?.getAttribute('data-min-size')).toBe('325px');
     expect(terminalPanel?.hasAttribute('data-max-size')).toBe(false);
-    expect(agentsPanel?.getAttribute('data-min-size')).toBe('320px');
+    expect(agentsPanel?.getAttribute('data-min-size')).toBe('0px');
     expect(agentsPanel?.getAttribute('data-max-size')).toBe('95%');
     expect(agentsChanges).toHaveLength(0);
     expect(terminalChanges).toHaveLength(0);
+  });
+
+  test('a hidden right terminal is clamped out of flex flow', () => {
+    render(<EditorArea {...baseProps} terminalPlacement="right" />);
+
+    const terminalPanel = document.getElementById('terminal-column');
+    expect(terminalPanel?.getAttribute('data-min-size')).toBe('0px');
+    expect(terminalPanel?.getAttribute('data-max-size')).toBe('0px');
   });
 
   test('repeated resize events below the boundary close agents once and keep Terminal open', async () => {
@@ -1396,7 +1485,7 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     expect(groupSetLayoutCalls).toHaveLength(0);
   });
 
-  test('releasing an agents-handle drag with the column snapped shut hides the panel', async () => {
+  test('releasing an agents-handle drag below the close threshold hides the panel', async () => {
     setViewportWidth(1400);
     const visibleChanges: boolean[] = [];
     render(
@@ -1410,13 +1499,896 @@ describe('EditorArea right-rail layout assert on column mount/unmount', () => {
     );
     const handle = getAgentsHandle();
     act(() => {
-      fireEvent.pointerDown(handle);
+      fireEvent.pointerDown(handle, { pointerId: 1 });
     });
+    mockPanelPx = 0;
+    mockPanelPercentage = 0;
     panelIsCollapsed = true;
     act(() => {
-      fireEvent.pointerUp(window);
+      fireEvent.pointerUp(window, { pointerId: 1 });
     });
     expect(visibleChanges.at(-1)).toBe(false);
+  });
+
+  test('releasing an agents-handle drag in the middle band settles at the minimum', () => {
+    setViewportWidth(1400);
+    const visibleChanges: boolean[] = [];
+    render(
+      <EditorArea
+        {...baseProps}
+        agentsVisible
+        onAgentsVisibleChange={(visible: boolean) => {
+          visibleChanges.push(visible);
+        }}
+      />,
+    );
+    groupLayout = { 'editor-main': 100 - pctOf(250), 'agents-column': pctOf(250) };
+    groupSetLayoutCalls = [];
+    const handle = getAgentsHandle();
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+    });
+    mockPanelPx = 250;
+    mockPanelPercentage = pctOf(250);
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(visibleChanges).toHaveLength(0);
+    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo(pctOf(320), 3);
+  });
+
+  test('a rejected first agents pointer settlement still reaches the minimum', async () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    render(<EditorArea {...baseProps} agentsVisible />);
+    await act(async () => {});
+
+    groupLayout = {
+      'editor-main': 100 - pctOf(250),
+      'agents-column': pctOf(250),
+    };
+    mockPanelPx = 250;
+    mockPanelPercentage = pctOf(250);
+    rejectNextGroupLayoutWrite = true;
+    const handle = getAgentsHandle();
+
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+
+    await act(
+      () =>
+        new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        }),
+    );
+
+    expect(groupLayout['agents-column']).toBeCloseTo(pctOf(320), 3);
+  });
+
+  test.each([
+    ['document', 'doc-panel'],
+    ['terminal', TERMINAL_COLUMN_ID],
+  ] as const)(
+    'an active %s drag blocks agents settlement without spending its failure budget',
+    (_label, columnId) => {
+      setViewportWidth(1400);
+      docCtx = FOLDER_DOC_CTX;
+      groupLayout = {
+        'editor-main': 100 - pctOf(320 + 440 + 480),
+        'doc-panel': pctOf(320),
+        'terminal-column': pctOf(440),
+        'agents-column': pctOf(480),
+      };
+      const frames = controlAnimationFrames();
+      const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      try {
+        render(
+          <EditorArea
+            {...baseProps}
+            agentsVisible
+            terminalVisible
+            terminalPlacement="right"
+            onTerminalVisibleChange={() => {}}
+          />,
+        );
+        groupLayout = {
+          'editor-main': 100 - pctOf(320 + 440 + 250),
+          'doc-panel': pctOf(320),
+          'terminal-column': pctOf(440),
+          'agents-column': pctOf(250),
+        };
+        mockPanelPx = 250;
+        mockPanelPercentage = pctOf(250);
+        rejectNextGroupLayoutWrite = true;
+
+        act(() => {
+          fireEvent.pointerDown(getAgentsHandle(), { pointerId: 1 });
+          fireEvent.pointerUp(window, { pointerId: 1 });
+        });
+
+        const panel = document.getElementById(columnId);
+        const handle = panel?.previousElementSibling;
+        if (!(handle instanceof HTMLElement))
+          throw new Error(`${columnId} resize handle not found`);
+        rejectGroupLayoutWrites = true;
+        act(() => {
+          fireEvent.pointerDown(handle, { pointerId: 2 });
+        });
+        const writesBeforeBlockedFrames = groupSetLayoutCalls.length;
+
+        frames.run(40);
+
+        expect.soft(groupSetLayoutCalls).toHaveLength(writesBeforeBlockedFrames);
+        expect.soft(warnSpy.mock.calls).toEqual([]);
+        expect.soft(frames.pendingCount()).toBe(1);
+
+        rejectGroupLayoutWrites = false;
+        act(() => {
+          fireEvent.pointerUp(window, { pointerId: 2 });
+        });
+        frames.run(1);
+
+        expect.soft(groupLayout['agents-column']).toBeCloseTo(pctOf(320), 3);
+        expect.soft(frames.pendingCount()).toBe(0);
+      } finally {
+        warnSpy.mockRestore();
+        frames.restore();
+      }
+    },
+  );
+
+  test('a permanently blocked agents settlement reports without an animation frame', () => {
+    const blockedRetryTimeoutMs = 60_000;
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    setViewportWidth(1400);
+    docCtx = FOLDER_DOC_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOf(320 + 480),
+      'doc-panel': pctOf(320),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      groupLayout = {
+        'editor-main': 100 - pctOf(320 + 250),
+        'doc-panel': pctOf(320),
+        'agents-column': pctOf(250),
+      };
+      mockPanelPx = 250;
+      mockPanelPercentage = pctOf(250);
+      rejectNextGroupLayoutWrite = true;
+
+      act(() => {
+        fireEvent.pointerDown(getAgentsHandle(), { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+
+      const docPanel = document.getElementById('doc-panel');
+      const docHandle = docPanel?.previousElementSibling;
+      if (!(docHandle instanceof HTMLElement)) throw new Error('doc-panel resize handle not found');
+      act(() => {
+        fireEvent.pointerDown(docHandle, { pointerId: 2 });
+      });
+
+      act(() => vi.advanceTimersByTime(blockedRetryTimeoutMs));
+
+      expect.soft(warnSpy.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            event: 'rail-layout-retry-exhausted',
+            error: 'Rail layout did not apply within the retry budget',
+            decision: 'settle-minimum',
+            targetWidthPx: 320,
+          }),
+        ],
+      ]);
+      expect.soft(frames.pendingCount()).toBe(0);
+    } finally {
+      cleanup();
+      warnSpy.mockRestore();
+      frames.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  test('an agents pointer settlement reports once after exhausting its retry budget', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      mockPanelPx = 250;
+      mockPanelPercentage = pctOf(250);
+      rejectGroupLayoutWrites = true;
+      const handle = getAgentsHandle();
+
+      act(() => {
+        fireEvent.pointerDown(handle, { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+      frames.run(30);
+
+      expect(frames.pendingCount()).toBe(0);
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            event: 'rail-layout-retry-exhausted',
+            error: 'Rail layout did not apply within the retry budget',
+            decision: 'settle-minimum',
+            targetWidthPx: 320,
+          }),
+        ],
+      ]);
+    } finally {
+      warnSpy.mockRestore();
+      frames.restore();
+    }
+  });
+
+  test('a production close reports exhaustion with its decision and target width', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    function ControlledAgentsVisibility() {
+      const [agentsVisible, setAgentsVisible] = useState(true);
+      return (
+        <EditorArea
+          {...baseProps}
+          agentsVisible={agentsVisible}
+          onAgentsVisibleChange={setAgentsVisible}
+        />
+      );
+    }
+    try {
+      render(<ControlledAgentsVisibility />);
+      groupLayout = {
+        'editor-main': 100 - pctOf(100),
+        'agents-column': pctOf(100),
+      };
+      mockPanelPx = 100;
+      mockPanelPercentage = pctOf(100);
+      rejectGroupLayoutWrites = true;
+
+      act(() => {
+        fireEvent.pointerDown(getAgentsHandle(), { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+      frames.run(30);
+
+      expect(frames.pendingCount()).toBe(0);
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            event: 'rail-layout-retry-exhausted',
+            error: 'Rail layout did not apply within the retry budget',
+            decision: 'close',
+            targetWidthPx: 0,
+          }),
+        ],
+      ]);
+    } finally {
+      warnSpy.mockRestore();
+      frames.restore();
+    }
+  });
+
+  test('a newer agents-handle interaction supersedes a pending settlement frame', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      mockPanelPx = 250;
+      mockPanelPercentage = pctOf(250);
+      rejectNextGroupLayoutWrite = true;
+      const handle = getAgentsHandle();
+
+      act(() => {
+        fireEvent.pointerDown(handle, { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+      const pendingAfterFirstRelease = frames.pendingCount();
+
+      groupLayout = {
+        'editor-main': 100 - pctOf(600),
+        'agents-column': pctOf(600),
+      };
+      mockPanelPx = 600;
+      mockPanelPercentage = pctOf(600);
+      act(() => {
+        fireEvent.pointerDown(handle, { pointerId: 2 });
+      });
+      const pendingDuringSecondDrag = frames.pendingCount();
+      act(() => {
+        fireEvent.pointerUp(window, { pointerId: 2 });
+      });
+      frames.run(30);
+      act(() => vi.advanceTimersByTime(60_000));
+
+      expect.soft(pendingAfterFirstRelease).toBeGreaterThan(0);
+      expect.soft(pendingDuringSecondDrag).toBe(0);
+      expect.soft(groupLayout['agents-column']).toBeCloseTo(pctOf(600), 3);
+      expect(warnSpy.mock.calls).toEqual([]);
+    } finally {
+      cleanup();
+      warnSpy.mockRestore();
+      frames.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  test('unmount cancels a pending agents pointer settlement frame', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const view = render(<EditorArea {...baseProps} agentsVisible />);
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      mockPanelPx = 250;
+      mockPanelPercentage = pctOf(250);
+      rejectNextGroupLayoutWrite = true;
+      const handle = getAgentsHandle();
+
+      act(() => {
+        fireEvent.pointerDown(handle, { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+      const pendingBeforeUnmount = frames.pendingCount();
+      const writesBeforeUnmount = groupSetLayoutCalls.length;
+      act(() => view.unmount());
+      const pendingAfterUnmount = frames.pendingCount();
+      frames.run(30);
+      act(() => vi.advanceTimersByTime(60_000));
+
+      expect.soft(pendingBeforeUnmount).toBeGreaterThan(0);
+      expect.soft(pendingAfterUnmount).toBe(0);
+      expect.soft(groupSetLayoutCalls).toHaveLength(writesBeforeUnmount);
+      expect.soft(groupLayout['agents-column']).toBeCloseTo(pctOf(250), 3);
+      expect(warnSpy.mock.calls).toEqual([]);
+    } finally {
+      warnSpy.mockRestore();
+      frames.restore();
+      vi.useRealTimers();
+    }
+  });
+
+  test('releasing an agents-handle drag above the minimum commits the measured width', () => {
+    setViewportWidth(1400);
+    render(<EditorArea {...baseProps} agentsVisible />);
+    groupLayout = { 'editor-main': 100 - pctOf(600), 'agents-column': pctOf(600) };
+    groupSetLayoutCalls = [];
+    const handle = getAgentsHandle();
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+    });
+    mockPanelPx = 600;
+    mockPanelPercentage = pctOf(600);
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo(pctOf(600), 3);
+    expect(localStorage.getItem('ok-terminal-width-v1')).toBe('600');
+  });
+
+  test('a close-threshold release without a visibility callback restores the preferred width', () => {
+    setViewportWidth(1400);
+    render(<EditorArea {...baseProps} agentsVisible onAgentsVisibleChange={undefined} />);
+    groupLayout = { 'editor-main': 100 - pctOf(100), 'agents-column': pctOf(100) };
+    groupSetLayoutCalls = [];
+    const handle = getAgentsHandle();
+    act(() => {
+      fireEvent.pointerDown(handle, { pointerId: 1 });
+    });
+    mockPanelPx = 100;
+    mockPanelPercentage = pctOf(100);
+    act(() => {
+      fireEvent.pointerUp(window, { pointerId: 1 });
+    });
+    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo(pctOf(480), 3);
+  });
+
+  test('a close-threshold fallback reports the closed target when settlement exhausts', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(<EditorArea {...baseProps} agentsVisible onAgentsVisibleChange={undefined} />);
+      groupLayout = {
+        'editor-main': 100 - pctOf(100),
+        'agents-column': pctOf(100),
+      };
+      mockPanelPx = 100;
+      mockPanelPercentage = pctOf(100);
+      rejectGroupLayoutWrites = true;
+
+      act(() => {
+        fireEvent.pointerDown(getAgentsHandle(), { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+      frames.run(30);
+
+      expect(frames.pendingCount()).toBe(0);
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            event: 'rail-layout-retry-exhausted',
+            error: 'Rail layout did not apply within the retry budget',
+            decision: 'close',
+            targetWidthPx: 0,
+          }),
+        ],
+      ]);
+    } finally {
+      warnSpy.mockRestore();
+      frames.restore();
+    }
+  });
+
+  test('transient drag widths never reach durable storage', () => {
+    vi.useFakeTimers();
+    try {
+      setViewportWidth(1400);
+      render(<EditorArea {...baseProps} agentsVisible />);
+      const handle = getAgentsHandle();
+      act(() => {
+        fireEvent.pointerDown(handle, { pointerId: 1 });
+        railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({
+          asPercentage: pctOf(250),
+          inPixels: 250,
+        });
+        vi.advanceTimersByTime(101);
+      });
+      expect(localStorage.getItem('ok-terminal-width-v1')).toBeNull();
+      act(() => {
+        fireEvent.pointerCancel(window, { pointerId: 1 });
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('names the agents-only separator for the Agents pane it resizes', () => {
+    setViewportWidth(1400);
+    render(<EditorArea {...baseProps} agentsVisible />);
+
+    const handle = screen.getByRole('separator', { name: 'Agents' });
+    expect(handle).toBe(getAgentsHandle());
+    expect(handle.getAttribute('aria-controls')).toBe(AGENTS_COLUMN_ID);
+  });
+
+  test('keyboard resizing floors only the focused agents separator', () => {
+    setViewportWidth(1400);
+    render(<EditorArea {...baseProps} agentsVisible terminalVisible terminalPlacement="right" />);
+    const handle = getAgentsHandle();
+    expect(screen.getByRole('separator', { name: 'Terminal' })).toBe(handle);
+    expect(handle.getAttribute('aria-controls')).toBe(TERMINAL_COLUMN_ID);
+    handle.focus();
+    const activeElement = document.activeElement;
+    groupLayout = {
+      'editor-main': 70,
+      'terminal-column': 10,
+      'agents-column': 20,
+    };
+    groupSetLayoutCalls = [];
+    act(() => {
+      groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+    });
+    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo(pctOf(320), 3);
+    expect(document.activeElement).toBe(activeElement);
+    expect(localStorage.getItem('ok-terminal-width-v1')).toBeNull();
+
+    const terminalHandle = screen.getAllByTestId('resizable-handle').at(-2);
+    terminalHandle?.focus();
+    groupSetLayoutCalls = [];
+    act(() => {
+      groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+    });
+    expect(groupSetLayoutCalls).toHaveLength(0);
+  });
+
+  test('keyboard resizing reaches the minimum after the first layout write is refused', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      getAgentsHandle().focus();
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      rejectNextGroupLayoutWrite = true;
+
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+
+      expect(groupLayout['agents-column']).toBeCloseTo(pctOf(250), 3);
+      frames.run(1);
+      expect(groupLayout['agents-column']).toBeCloseTo(pctOf(320), 3);
+      expect(frames.pendingCount()).toBe(0);
+    } finally {
+      frames.restore();
+    }
+  });
+
+  test('keyboard retry recomputes the minimum after the group width changes', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      getAgentsHandle().focus();
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      rejectNextGroupLayoutWrite = true;
+
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+
+      const writesAfterRejectedAttempt = groupSetLayoutCalls.length;
+      mockGroupPx = 0;
+      frames.run(1);
+      expect(groupSetLayoutCalls).toHaveLength(writesAfterRejectedAttempt);
+      expect(frames.pendingCount()).toBe(1);
+
+      mockGroupPx = 1000;
+      frames.run(1);
+
+      expect(groupLayout['agents-column']).toBeCloseTo(32, 3);
+      expect(document.getElementById('agents-column')?.getBoundingClientRect().width).toBeCloseTo(
+        320,
+        3,
+      );
+      expect(frames.pendingCount()).toBe(0);
+    } finally {
+      frames.restore();
+    }
+  });
+
+  test('keyboard resizing reports exhaustion with its minimum width target', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      getAgentsHandle().focus();
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      rejectGroupLayoutWrites = true;
+
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+      frames.run(30);
+
+      expect(groupLayout['agents-column']).toBeCloseTo(pctOf(250), 3);
+      expect(frames.pendingCount()).toBe(0);
+      expect(warnSpy.mock.calls).toEqual([
+        [
+          JSON.stringify({
+            event: 'rail-layout-retry-exhausted',
+            error: 'Rail layout did not apply within the retry budget',
+            decision: 'keyboard-settle-minimum',
+            targetWidthPx: MIN_AGENTS_PANEL_WIDTH,
+          }),
+        ],
+      ]);
+    } finally {
+      warnSpy.mockRestore();
+      frames.restore();
+    }
+  });
+
+  test('a newer keyboard width cancels a refused minimum settlement', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      getAgentsHandle().focus();
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      rejectNextGroupLayoutWrite = true;
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+      expect(frames.pendingCount()).toBe(1);
+
+      groupLayout = {
+        'editor-main': 100 - pctOf(600),
+        'agents-column': pctOf(600),
+      };
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+      frames.run(30);
+
+      expect(groupLayout['agents-column']).toBeCloseTo(pctOf(600), 3);
+      expect(frames.pendingCount()).toBe(0);
+    } finally {
+      frames.restore();
+    }
+  });
+
+  test('a focused keyboard width supersedes a refused pointer settlement', () => {
+    setViewportWidth(1400);
+    groupLayout = {
+      'editor-main': 100 - pctOf(480),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      groupLayout = {
+        'editor-main': 100 - pctOf(250),
+        'agents-column': pctOf(250),
+      };
+      mockPanelPx = 250;
+      mockPanelPercentage = pctOf(250);
+      rejectNextGroupLayoutWrite = true;
+      const handle = getAgentsHandle();
+
+      act(() => {
+        fireEvent.pointerDown(handle, { pointerId: 1 });
+        fireEvent.pointerUp(window, { pointerId: 1 });
+      });
+      expect(frames.pendingCount()).toBe(1);
+
+      handle.focus();
+      groupLayout = {
+        'editor-main': 100 - pctOf(600),
+        'agents-column': pctOf(600),
+      };
+      mockPanelPx = 600;
+      mockPanelPercentage = pctOf(600);
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+      frames.run(30);
+
+      expect(groupLayout['agents-column']).toBeCloseTo(pctOf(600), 3);
+      expect(frames.pendingCount()).toBe(0);
+    } finally {
+      frames.restore();
+    }
+  });
+
+  test('a different focused handle supersedes a refused keyboard settlement', () => {
+    setViewportWidth(1400);
+    docCtx = FOLDER_DOC_CTX;
+    groupLayout = {
+      'editor-main': 100 - pctOf(320 + 480),
+      'doc-panel': pctOf(320),
+      'agents-column': pctOf(480),
+    };
+    const frames = controlAnimationFrames();
+    try {
+      render(<EditorArea {...baseProps} agentsVisible />);
+      getAgentsHandle().focus();
+      groupLayout = {
+        'editor-main': 100 - pctOf(320 + 250),
+        'doc-panel': pctOf(320),
+        'agents-column': pctOf(250),
+      };
+      rejectNextGroupLayoutWrite = true;
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+      expect(frames.pendingCount()).toBe(1);
+
+      const docPanel = document.getElementById('doc-panel');
+      const docHandle = docPanel?.previousElementSibling;
+      if (!(docHandle instanceof HTMLElement)) throw new Error('doc-panel resize handle not found');
+      docHandle.focus();
+      groupLayout = {
+        'editor-main': 100 - pctOf(320 + 600),
+        'doc-panel': pctOf(320),
+        'agents-column': pctOf(600),
+      };
+      act(() => {
+        groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      });
+      frames.run(30);
+
+      expect(groupLayout['agents-column']).toBeCloseTo(pctOf(600), 3);
+      expect(frames.pendingCount()).toBe(0);
+    } finally {
+      frames.restore();
+    }
+  });
+
+  test.each([
+    { label: 'doc', panelId: 'doc-panel', terminalVisible: false },
+    { label: 'Terminal', panelId: 'terminal-column', terminalVisible: true },
+  ])(
+    'a $label handle drag pauses a refused keyboard settlement',
+    ({ panelId, terminalVisible }) => {
+      setViewportWidth(1400);
+      if (!terminalVisible) docCtx = FOLDER_DOC_CTX;
+      groupLayout = {
+        'editor-main': 100 - pctOf(320 + 480),
+        [panelId]: pctOf(320),
+        'agents-column': pctOf(480),
+      };
+      const frames = controlAnimationFrames();
+      try {
+        render(
+          <EditorArea
+            {...baseProps}
+            agentsVisible
+            terminalVisible={terminalVisible}
+            terminalPlacement="right"
+          />,
+        );
+        getAgentsHandle().focus();
+        groupLayout = {
+          'editor-main': 100 - pctOf(320 + 250),
+          [panelId]: pctOf(320),
+          'agents-column': pctOf(250),
+        };
+        rejectNextGroupLayoutWrite = true;
+        act(() => {
+          groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+        });
+        expect(frames.pendingCount()).toBe(1);
+
+        const panel = document.getElementById(panelId);
+        const handle = panel?.previousElementSibling;
+        if (!(handle instanceof HTMLElement)) throw new Error(`${panelId} resize handle not found`);
+        const writesBeforeDrag = groupSetLayoutCalls.length;
+        act(() => {
+          fireEvent.pointerDown(handle, { pointerId: 1 });
+        });
+        handle.focus();
+        act(() => {
+          groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+        });
+        frames.run(30);
+
+        expect(groupLayout['agents-column']).toBeCloseTo(pctOf(250), 3);
+        expect(groupSetLayoutCalls).toHaveLength(writesBeforeDrag);
+        expect(frames.pendingCount()).toBe(1);
+
+        act(() => {
+          fireEvent.pointerUp(window, { pointerId: 1 });
+        });
+        frames.run(1);
+
+        expect(groupLayout['agents-column']).toBeCloseTo(pctOf(320), 3);
+        expect(frames.pendingCount()).toBe(0);
+      } finally {
+        frames.restore();
+      }
+    },
+  );
+
+  test('keyboard resizing uses the current group box when panel pixels lag the layout callback', () => {
+    setViewportWidth(1200);
+    render(<EditorArea {...baseProps} agentsVisible />);
+    const handle = getAgentsHandle();
+    handle.focus();
+    const panelWidths = [880, 0, 0, 320];
+    const panelElements = screen
+      .getByTestId('resizable-group')
+      .querySelectorAll('[data-slot="resizable-panel"]');
+    expect(panelElements).toHaveLength(panelWidths.length);
+    panelElements.forEach((element, index) => {
+      Object.defineProperty(element, 'getBoundingClientRect', {
+        configurable: true,
+        value: () => {
+          const width = panelWidths[index] ?? 0;
+          return { width, height: 0, top: 0, left: 0, right: width, bottom: 0, x: 0, y: 0 };
+        },
+      });
+    });
+    mockPanelPercentage = (260 / 1200) * 100;
+    mockPanelPx = 320.004;
+    groupLayout = {
+      'editor-main': 100 - mockPanelPercentage,
+      'doc-panel': 0,
+      'terminal-column': 0,
+      'agents-column': mockPanelPercentage,
+    };
+    groupSetLayoutCalls = [];
+
+    act(() => {
+      groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+    });
+
+    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo((320 / 1200) * 100, 3);
+  });
+
+  test('keyboard collapse leaves logical visibility unchanged', () => {
+    setViewportWidth(1400);
+    const visibleChanges: boolean[] = [];
+    render(
+      <TooltipProvider>
+        <EditorArea
+          {...baseProps}
+          agentsVisible
+          onRevealAgents={() => {}}
+          onAgentsVisibleChange={(visible: boolean) => {
+            visibleChanges.push(visible);
+          }}
+        />
+      </TooltipProvider>,
+    );
+    getAgentsHandle().focus();
+    groupLayout = {
+      'editor-main': 100,
+      'doc-panel': 0,
+      'terminal-column': 0,
+      'agents-column': 0,
+    };
+    groupSetLayoutCalls = [];
+    act(() => {
+      groupOnLayoutChanged?.(groupLayout, { isUserInteraction: true });
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    expect(groupSetLayoutCalls).toHaveLength(0);
+    expect(visibleChanges).toHaveLength(0);
+    expect(screen.getByRole('button', { name: 'Open agents panel' })).toBeTruthy();
   });
 
   test('releasing an agents-handle drag with the column still open does NOT hide the panel', async () => {
@@ -1583,6 +2555,29 @@ describe('EditorArea session-panel edge reveal tabs', () => {
     expect(header).toBeTruthy();
     expect(panels?.contains(agentMount)).toBe(true);
     expect(header?.contains(agentMount)).toBe(false);
+  });
+
+  test('the measured-collapse reveal restores the preferred rail width without panel expand', () => {
+    mockGroupPx = 1360;
+    mockPanelPercentage = null;
+    mockPanelPx = null;
+    panelExpandCalls = 0;
+    renderArea({ agentsVisible: true });
+    groupLayout = {
+      'editor-main': 100,
+      'doc-panel': 0,
+      'terminal-column': 0,
+      'agents-column': 0,
+    };
+    act(() => {
+      railPanelOnResizeById.get(AGENTS_COLUMN_ID)?.({ asPercentage: 0, inPixels: 0 });
+    });
+    groupSetLayoutCalls = [];
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open agents panel' }));
+
+    expect(panelExpandCalls).toBe(0);
+    expect(groupSetLayoutCalls.at(-1)?.['agents-column']).toBeCloseTo((480 / 1360) * 100, 3);
   });
 
   test('a note window never renders the agents reveal tab', () => {
@@ -1961,6 +2956,8 @@ describe('EditorArea rail mount inert', () => {
   beforeEach(() => {
     cleanup();
     panelIsCollapsed = false;
+    mockPanelPercentage = null;
+    mockPanelPx = null;
     railPanelOnResizeById.clear();
   });
 
@@ -2034,6 +3031,8 @@ describe('EditorArea rail mount inert', () => {
     expect(agentsMount()?.getAttribute('inert')).toBeNull();
 
     panelIsCollapsed = true;
+    mockPanelPercentage = 0;
+    mockPanelPx = 0;
     act(() => {
       fireEvent.pointerUp(window, { pointerId: 1 });
     });

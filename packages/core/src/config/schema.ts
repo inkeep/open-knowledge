@@ -14,7 +14,9 @@ import {
   STORED_SYNC_ACTIVE_MODES,
   STORED_SYNC_MODES,
 } from './auto-sync-mode.ts';
+import { EffectiveAutolinkEntrySchema } from './autolinks-config.ts';
 import { fieldRegistry } from './field-registry.ts';
+import { EffectiveGitHostEntrySchema } from './git-host-config.ts';
 
 function base16SlotFields() {
   return Object.fromEntries(
@@ -401,11 +403,22 @@ export const ConfigSchema = z.looseObject({
           reload: 'live',
           defaultScope: 'user',
           description:
-            "Auto-approve OpenKnowledge's own tools (and `ok open` on Claude) for agents launched from the built-in terminal. Destructive tools (delete/move/share/install) still prompt. Per-machine personal preference (user scope).",
+            "Auto-approve OpenKnowledge's own tools for agents launched from the built-in terminal (plus `ok open` on Claude) and for in-app Agents-panel chats with any ACP agent. Destructive tools (delete/move/share/install/import) still prompt. Per-machine personal preference (user scope).",
         })
         .default(true),
+      browserTools: z
+        .boolean()
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          reload: 'live',
+          defaultScope: 'user',
+          description:
+            "Give in-app Claude Code and Codex chats a browser they can drive (Playwright MCP, started through npx from OpenKnowledge's own folder with a fresh in-memory profile), so an agent can open pages, click, and take screenshots. Every browser action asks for approval, with no option to always allow it, unless the agent's own mode or permission settings skip approvals. Needs Google Chrome and Node.js. Off by default; takes effect for chats started after the change. Per-machine personal preference (user scope).",
+        })
+        .default(false),
     })
-    .default({ autoApproveOkTools: true }),
+    .default({ autoApproveOkTools: true, browserTools: false }),
   autoSync: z
     .looseObject({
       mode: z
@@ -487,6 +500,22 @@ export const ConfigSchema = z.looseObject({
         .default(null),
     })
     .default({ mode: null, enabled: null, default: null }),
+  git: z
+    .looseObject({
+      hosts: z
+        .record(z.string(), EffectiveGitHostEntrySchema)
+        .register(fieldRegistry, {
+          scope: 'user',
+          agentSettable: false,
+          reload: 'boot',
+          defaultScope: 'user',
+          description:
+            "Per-git-host declarations, keyed by hostname (for example ghes.example.com). Each entry says how OpenKnowledge should treat remotes on that host; today the only key an entry carries is `provider`. Hosts absent from this map are treated as generic git remotes. Per-machine (user scope, `~/.ok/global.yml`); a value in a project's `.ok/config.yml` is ignored. Declarations take effect when OpenKnowledge next starts.",
+        })
+        .default({})
+        .catch({}),
+    })
+    .default({ hosts: {} }),
   terminal: z
     .looseObject({
       enabled: z
@@ -947,6 +976,18 @@ export const ConfigSchema = z.looseObject({
       fileTreeIndicators: true,
       suppressLogLinkAdvisories: DEFAULT_SUPPRESS_LOG_LINK_ADVISORIES,
     }),
+  autolinks: z
+    .array(EffectiveAutolinkEntrySchema)
+    .register(fieldRegistry, {
+      scope: 'project',
+      agentSettable: false,
+      reload: 'live',
+      defaultScope: 'project',
+      description:
+        'Turn ticket references into links; today they apply to Agents-panel chat messages. Each entry pairs a `prefix` (for example `PRD-`) with a `url` template containing `<num>` (for example `https://linear.app/inkeep/issue/PRD-<num>`); the prefix followed by digits links to that URL with the digits in place of `<num>`. Matching is case-sensitive. An invalid entry is skipped with a warning and the others still apply. Shared with collaborators (project scope, `.ok/config.yml`).',
+    })
+    .default([])
+    .catch([]),
   linkPreviews: z
     .looseObject({
       enabled: z
@@ -957,7 +998,7 @@ export const ConfigSchema = z.looseObject({
           reload: 'live',
           defaultScope: 'project-local',
           description:
-            "Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor. When ON, hovering an external link sends that link's URL to the destination site to fetch its preview metadata — outbound egress, one request per previewed link. Default ON; set to false to turn external previews off. Per-machine (project-local) — not shared with collaborators. Previews of links to other documents in this project are read from the local index with no network request and are always on.",
+            "Show a rich preview card (site name, page title, description, favicon) when you hover an external link in the editor, and a status card when you hover a GitHub pull request or issue link in an agent chat. When ON, hovering an external link sends that link's URL to the destination site to fetch its preview metadata, and hovering a GitHub reference asks the GitHub host's API for it, signed in as you when a GitHub sign-in is available — outbound egress, one request per previewed link. Default ON; set to false to turn external previews off. Per-machine (project-local) — not shared with collaborators. Previews of links to other documents in this project are read from the local index with no network request and are always on.",
         })
         .default(true),
     })

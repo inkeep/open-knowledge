@@ -1,28 +1,35 @@
+import type { ConfigBinding } from '@inkeep/open-knowledge-core';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
 import { AuthModal } from '@/components/AuthModal';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { setLastKnownSignedIn } from '@/lib/auth-state-cache';
-import type { OkLocalOpAuthStatusResponse } from '@/lib/desktop-bridge-types';
+import { recordAuthStatus } from '@/lib/auth-state-cache';
 import {
+  type AuthQueryStatus,
   type AuthQueryTransport,
   httpAuthQueryTransport,
 } from '@/lib/transports/auth-query-transport';
 import type { AuthTransport } from '@/lib/transports/auth-transport';
+import { EnterpriseHostsSection } from './EnterpriseHostsSection';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 
 type StatusState =
   | { phase: 'loading' }
-  | { phase: 'loaded'; result: OkLocalOpAuthStatusResponse }
+  | { phase: 'loaded'; result: AuthQueryStatus }
   | { phase: 'check-failed' };
 
 interface AccountSectionProps {
   authQueryTransport?: AuthQueryTransport;
   authTransport?: AuthTransport;
+  userBinding: ConfigBinding;
 }
 
-export function AccountSection({ authQueryTransport, authTransport }: AccountSectionProps) {
+export function AccountSection({
+  authQueryTransport,
+  authTransport,
+  userBinding,
+}: AccountSectionProps) {
   const { t } = useLingui();
   const resolvedQuery = authQueryTransport ?? httpAuthQueryTransport();
   const [status, setStatus] = useState<StatusState>({ phase: 'loading' });
@@ -36,7 +43,7 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
     try {
       const result = await resolvedQuery.status();
       setStatus({ phase: 'loaded', result });
-      setLastKnownSignedIn(result.authenticated);
+      recordAuthStatus(result);
     } catch (err) {
       console.warn('[AccountSection] GitHub status check failed', err);
       setStatus({ phase: 'check-failed' });
@@ -123,9 +130,13 @@ export function AccountSection({ authQueryTransport, authTransport }: AccountSec
             onDisconnect={() => void handleDisconnect()}
           />
         )
+      ) : status.result.unsupportedOrigin !== undefined ? (
+        <UnsupportedOriginRow host={status.result.unsupportedOrigin.host} />
       ) : (
         <DisconnectedRow onConnect={() => setAuthModalOpen(true)} />
       )}
+
+      <EnterpriseHostsSection binding={userBinding} />
 
       <AuthModal
         open={authModalOpen}
@@ -213,6 +224,34 @@ function GhCliRow({ login }: { login: string }) {
           </Trans>
         </p>
       </div>
+    </div>
+  );
+}
+
+function UnsupportedOriginRow({ host }: { host: string | null }) {
+  return (
+    <div
+      role="status"
+      className="space-y-1 rounded-md border p-3"
+      data-testid="settings-account-unsupported-origin"
+    >
+      <div className="text-sm font-medium">
+        <Trans>GitHub sign-in isn't available for this project</Trans>
+      </div>
+      <p className="text-muted-foreground text-1sm">
+        {host === null ? (
+          <Trans>
+            OpenKnowledge couldn't find a host name in this project's git remote, so it can't tell
+            which GitHub server to sign in to.
+          </Trans>
+        ) : (
+          <Trans>
+            This project's git remote is on {host}, which OpenKnowledge doesn't recognize as a
+            GitHub host. If {host} runs GitHub Enterprise Server, add it to GitHub Enterprise Server
+            hosts below, then restart OpenKnowledge.
+          </Trans>
+        )}
+      </p>
     </div>
   );
 }

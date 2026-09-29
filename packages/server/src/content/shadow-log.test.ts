@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { formatOkActor, type OkActorEntry } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import simpleGit from 'simple-git';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   commitUpstreamImport,
   commitWip,
@@ -347,5 +347,35 @@ describe('readShadowLog — checkpoint-ancestry fallback (PRD-6972 FR7 / D15)', 
     const result = await readShadowLog(project, 'content/auth.md', 5);
     expect(result.source).toBe('shadow-repo');
     expect(result.commits).toEqual([]);
+  });
+});
+
+describe('readShadowLog under a process environment carrying GIT_CONFIG_COUNT', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test('returns the WIP commit instead of degrading to an empty history', async () => {
+    const isolatedHome = resolve(tmpDir, 'home');
+    mkdirSync(isolatedHome, { recursive: true });
+    vi.stubEnv('HOME', isolatedHome);
+    vi.stubEnv('USERPROFILE', isolatedHome);
+    vi.stubEnv('XDG_CONFIG_HOME', resolve(isolatedHome, '.config'));
+    vi.stubEnv('GIT_CONFIG_COUNT', '1');
+    vi.stubEnv('GIT_CONFIG_KEY_0', 'credential.interactive');
+    vi.stubEnv('GIT_CONFIG_VALUE_0', 'false');
+    const project = await bootstrapProject();
+    const shadow = await initShadowRepo(project);
+    const contentDir = resolve(project, 'content');
+    mkdirSync(contentDir, { recursive: true });
+    writeFileSync(resolve(contentDir, 'auth.md'), '# auth v1\n');
+    const writer: WriterIdentity = { id: 'agent-x', name: 'Agent X', email: 'a@t.test' };
+    const branch = (await simpleGit(project).revparse(['--abbrev-ref', 'HEAD'])).trim();
+    await commitWip(shadow, writer, contentDir, 'add auth doc', branch);
+
+    const { commits, source } = await readShadowLog(project, 'content/auth.md', 5);
+
+    expect(source).toBe('shadow-repo');
+    expect(commits.map((commit) => commit.message)).toEqual(['add auth doc']);
   });
 });

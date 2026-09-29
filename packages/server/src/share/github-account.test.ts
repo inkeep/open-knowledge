@@ -128,8 +128,9 @@ describe('resolveGitHubAccountFromUrl', () => {
     );
   });
 
-  test('a known non-GitHub forge resolves to the active account with no host', () => {
+  test('a non-GitHub forge carries its host but declares no account', () => {
     expect(resolveGitHubAccountFromUrl('https://gitlab.com/o/r.git', { cwd: dir })).toEqual({
+      host: 'gitlab.com',
       source: 'active',
     });
   });
@@ -142,6 +143,12 @@ describe('resolveGitHubAccountFromUrl', () => {
     expect(
       resolveGitHubAccountFromUrl('https://alice@ghes.corp.example/org/repo.git', { cwd: dir }),
     ).toEqual({ host: 'ghes.corp.example', login: 'alice', source: 'remote-url' });
+  });
+
+  test('resolution reads the URL shape alone and does not consult declared git hosts', () => {
+    expect(
+      resolveGitHubAccountFromUrl('https://alice@git.example.internal/team/kb.git', { cwd: dir }),
+    ).toEqual({ host: 'git.example.internal', login: 'alice', source: 'remote-url' });
   });
 });
 

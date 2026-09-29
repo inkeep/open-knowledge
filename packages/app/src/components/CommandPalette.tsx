@@ -22,6 +22,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { toast } from 'sonner';
 import { CreateProjectDialog } from '@/components/CreateProjectDialog';
 import {
   PALETTE_COMMANDS,
@@ -107,6 +108,7 @@ import { useSingleFileMode } from '@/lib/single-file-mode';
 import { useWorkspace } from '@/lib/use-workspace';
 import { cn } from '@/lib/utils.ts';
 import { useViewMenuState } from '@/lib/view-menu-state-store';
+import { worktreeCreateErrorCopy } from '@/lib/worktree-create-error';
 import { refreshWorktrees } from '@/lib/worktree-store';
 import { buildHandoffInput, useHandoffDispatch } from './handoff/useHandoffDispatch';
 import { useInstalledAgents } from './handoff/useInstalledAgents';
@@ -598,12 +600,17 @@ export function CommandPalette({ bridge = null, open, onOpenChange }: CommandPal
     if (branch === null) return;
     runAction(async () => {
       const result = await bridge.worktree.create({ branch, createBranch: false });
-      if (!result.ok) throw new Error(result.reason);
+      if (!result.ok) {
+        if (result.reason === 'project-scope-unavailable') refreshWorktrees();
+        toast.error(t(worktreeCreateErrorCopy(result)));
+        return;
+      }
       refreshWorktrees();
       await bridge.project.open({
         path: result.path,
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     }, t`Failed to open worktree.`);
   };

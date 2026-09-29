@@ -2,7 +2,6 @@
 
 import { stripRemotePrefix } from '@inkeep/open-knowledge-core';
 import type { MessageDescriptor } from '@lingui/core';
-import { msg } from '@lingui/core/macro';
 import { Trans, useLingui } from '@lingui/react/macro';
 import { Check, ChevronsUpDown, Cloud, FolderOpen, GitBranch, Plus, Search } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -22,6 +21,7 @@ import { InputGroup, InputGroupAddon, InputGroupInput } from '@/components/ui/in
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import type { OkDesktopBridge } from '@/lib/desktop-bridge-types';
+import { worktreeCreateErrorCopy } from '@/lib/worktree-create-error';
 import { refreshWorktrees } from '@/lib/worktree-store';
 
 interface NewWorktreeDialogProps {
@@ -51,27 +51,6 @@ function findRemoteRef(name: string, remoteBranches: readonly string[]): string 
   const preferred = `origin/${name}`;
   if (remoteBranches.includes(preferred)) return preferred;
   return remoteBranches.find((ref) => stripRemotePrefix(ref) === name) ?? null;
-}
-
-function createErrorCopy(reason: string): MessageDescriptor {
-  switch (reason) {
-    case 'branch-exists':
-      return msg`A branch with that name already exists. Open its worktree from the switcher instead.`;
-    case 'already-checked-out':
-      return msg`That branch is already open in another worktree.`;
-    case 'path-exists':
-      return msg`A worktree folder for that branch already exists.`;
-    case 'invalid-branch':
-      return msg`Enter a valid branch name (no spaces, no leading dot, no "..").`;
-    case 'no-git':
-      return msg`This project isn't a git repository, so worktrees aren't available.`;
-    case 'empty-repo':
-      return msg`This project has no commits yet, so there's no branch to base a worktree on. Make a first commit, then try again.`;
-    case 'helper-not-found':
-      return msg`Git needs a helper tool (such as git-lfs) that isn't installed or couldn't be found. Install it, then try again.`;
-    default:
-      return msg`Couldn't create the worktree. Try a different name.`;
-  }
 }
 
 interface CreateFailure {
@@ -175,7 +154,8 @@ export function NewWorktreeDialog({
             };
       const result = await bridge.worktree.create(request);
       if (!result.ok) {
-        setError({ copy: createErrorCopy(result.reason), detail: result.message });
+        if (result.reason === 'project-scope-unavailable') refreshWorktrees();
+        setError({ copy: worktreeCreateErrorCopy(result), detail: result.message });
         setBusy(false);
         return;
       }
@@ -185,6 +165,7 @@ export function NewWorktreeDialog({
         path: result.path,
         target: 'new-window',
         entryPoint: 'worktree',
+        requireExactManagedProject: true,
       });
     } catch (err) {
       console.warn('[NewWorktreeDialog] worktree create/open failed:', err);

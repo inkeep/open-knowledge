@@ -49,6 +49,7 @@ function Surfaces() {
     <TooltipProvider>
       <div data-testid="doc-side">
         <ThreadCard
+          layout="doc"
           thread={thread}
           cardRef={() => {}}
           focused={false}
@@ -58,6 +59,7 @@ function Surfaces() {
       </div>
       <div data-testid="project-side">
         <ThreadCard
+          layout="project"
           thread={thread}
           cardRef={() => {}}
           focused={false}

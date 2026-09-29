@@ -168,7 +168,7 @@ The rule does NOT catch:
 
 Included: `packages/server/src/server-observers.ts`, `lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx`.
 
-Rule: [`lint-plugins/ok-rules/rules/path-conditional-map-driven-origin.mjs`](rules/path-conditional-map-driven-origin.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx`](__fixtures__/path-conditional-map-driven-origin.fixture.tsx). Test: [`packages/server/src/path-conditional-map-driven-origin.test.ts`](../../packages/server/src/path-conditional-map-driven-origin.test.ts).
+Rule: [`lint-plugins/ok-rules/rules/path-conditional-map-driven-origin.mjs`](rules/path-conditional-map-driven-origin.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/path-conditional-map-driven-origin.fixture.tsx`](__fixtures__/path-conditional-map-driven-origin.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/path-conditional-map-driven-origin.uncached.test.mjs`](tests/path-conditional-map-driven-origin.uncached.test.mjs).
 
 ### `cst-pm-handler-todo-stub`
 
@@ -429,7 +429,7 @@ The rule does NOT catch: bare `exec(...)` (the identifier is too commonly shadow
 
 Included: `packages/server/src/**/*.ts`, `packages/cli/src/**/*.ts`, `packages/desktop/src/**/*.ts`, `lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx`. Excluded: `**/*.test.ts`, `**/*.test-helper.ts`.
 
-Rule: [`lint-plugins/ok-rules/rules/require-windowshide-on-spawn.mjs`](rules/require-windowshide-on-spawn.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx`](__fixtures__/require-windowshide-on-spawn.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts`](../../packages/server/src/lint-plugins/require-windowshide-on-spawn.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/require-windowshide-on-spawn.mjs`](rules/require-windowshide-on-spawn.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-windowshide-on-spawn.fixture.tsx`](__fixtures__/require-windowshide-on-spawn.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/require-windowshide-on-spawn.uncached.test.mjs`](tests/require-windowshide-on-spawn.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `require-utf8-multipart-parser`
 
@@ -456,7 +456,7 @@ The rule does NOT catch: member calls (`parsers.busboy(...)` — a different AST
 
 Included: `**/*.ts`, `**/*.tsx`, `**/*.mts`, `lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx`. Excluded: `**/node_modules/**`, `**/dist/**`, `**/*.test.ts`, `**/*.test.tsx`, `**/*.test.mts`, `**/*.test-helper.ts`, `packages/server/src/multipart.ts`.
 
-Rule: [`lint-plugins/ok-rules/rules/require-utf8-multipart-parser.mjs`](rules/require-utf8-multipart-parser.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx`](__fixtures__/require-utf8-multipart-parser.fixture.tsx). Test: [`packages/server/src/lint-plugins/require-utf8-multipart-parser.test.ts`](../../packages/server/src/lint-plugins/require-utf8-multipart-parser.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/require-utf8-multipart-parser.mjs`](rules/require-utf8-multipart-parser.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/require-utf8-multipart-parser.fixture.tsx`](__fixtures__/require-utf8-multipart-parser.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/require-utf8-multipart-parser.uncached.test.mjs`](tests/require-utf8-multipart-parser.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ### `no-blind-agent-host-fanout`
 
@@ -639,18 +639,17 @@ Rule: [`lint-plugins/ok-rules/rules/no-unconverted-git-pathspec.mjs`](rules/no-u
 
 ### `no-sentinel-signal-target`
 
-Owned-process signalling. `process.kill(target, signal)` — and the desktop test-support reaper seam `signalOwnedGroup` / `signalOwnedPids` / `reapOwnedTree` when no sender is injected (that seam is not on `main` yet — it lives on the unmerged `feat/ok-update-relaunch-substrate` branch, and the rule covers it ahead of time so the gate is in place the day it lands) — never receive a target that is (a) a literal `0`, `1` or `-1`, (b) a `?? <n>` / `|| <n>` fallback to a number, or (c) an unvalidated parse of text — `Number(...)`, `parseInt(...)`, `parseFloat(...)`, or the `Number.` spellings of the latter two. A signal-`0` liveness probe (`process.kill(pid, 0)`) sends nothing and is exempt, whatever the target.
+Owned-process signalling. `process.kill(target, signal)` — and the desktop test-support reaper seam `signalOwnedGroup` / `signalOwnedPids` / `reapOwnedTree` when no sender is injected (that seam is not on `main` yet — it lives on the unmerged `feat/ok-update-relaunch-substrate` branch, and the rule covers it ahead of time so the gate is in place the day it lands) — never receive a target that is (a) a literal `0`, `1` or `-1`, (b) a `?? <n>` / `|| <n>` fallback to a number, or (c) a parse of text — `Number(...)`, `parseInt(...)`, `parseFloat(...)`, or the `Number.` spellings of the latter two. A signal-`0` liveness probe (`process.kill(pid, 0)`) sends nothing and is exempt, whatever the target.
 
-**Why.** On POSIX, `kill(0, sig)` signals the caller's whole process group, `kill(-1, sig)` every process the user owns, and `kill(-pid, sig)` a group. On 2026-09-20 and 21 a desktop unit test killed every process on a developer's Mac three times, Terminal included: it called `signalOwnedGroup(1, 'SIGKILL')` to prove a guard refused it, a mutation loop had weakened the guard to `pid > 0`, and `process.kill(-1, …)` went through. The mutation loop was killed before its own revert step, so the mutant stayed on disk and every later run of the suite repeated the kill. The same sentinel shape was already live on `main`: `process.kill(pid ?? 0, 'SIGKILL')` in a test reaper, and `process.kill(Number(readFileSync(pidFile)), 'SIGKILL')` in a `finally` — an empty pidfile parses to `0`. Both shipped green: nothing in `pnpm lint` or `pnpm check` looked at what a kill was fed. Canonical prose: the "Never signal a pid you did not spawn" STOP rule in the workspace `AGENTS.md`, an internal guide the public mirror does not carry; this rule encodes its decidable subset and the two are kept in step by the fixture test.
+**Why.** On POSIX, `kill(0, sig)` signals the caller's whole process group, `kill(-1, sig)` every process the user owns, and `kill(-pid, sig)` a group. On 2026-09-20 and 21 a desktop unit test killed every process on a developer's Mac three times, Terminal included: it called `signalOwnedGroup(1, 'SIGKILL')` to prove a guard refused it, a mutation loop had weakened the guard to `pid > 0`, and `process.kill(-1, …)` went through. The mutation loop was killed before its own revert step, so the mutant stayed on disk and every later run of the suite repeated the kill. The same sentinel shape was already live on `main`: `process.kill(pid ?? 0, 'SIGKILL')` in a test reaper, and `process.kill(Number(readFileSync(pidFile)), 'SIGKILL')` in a `finally` — an empty pidfile parses to `0`. Both shipped green: nothing in `pnpm lint` or `pnpm check` looked at what a kill was fed. Canonical prose: the "Never signal a pid you did not spawn" STOP rule in the workspace `AGENTS.md`; this rule encodes its decidable subset.
 
 **Sanctioned shapes.** Every shape in this list works on this head and needs no seam; only the injected sender below waits on one.
 
 - **Signal the handle you spawned** — `child.kill(signal)`.
-- **Or a pid you took from that handle** — `child.pid`, wrapped or negated for its group. Negation reaches a group only if you spawned it detached, since `-pid` addresses the group whose pgid is that pid and an ordinary child leads none; on a non-detached child it raises `ESRCH`, which a `catch {}` around the kill turns into a surviving process.
-- **Negation is not laundering.** `-<expr>` is judged by exactly the same tests as `<expr>`, so `-(pid ?? 0)` fires just as `pid ?? 0` does, and only a pid already taken from a handle or already validated survives the minus sign.
+- **Or a pid you took from that handle** — `child.pid`, wrapped or negated for its group, only while the handle has not reported exit, checked in the same turn as the signal. Negation reaches a group only if you spawned it detached, since `-pid` addresses the group whose pgid is that pid and an ordinary child leads none; on a non-detached child it raises `ESRCH`, which a `catch {}` around the kill turns into a surviving process.
+- **Negation is not laundering.** `-<expr>` is judged by exactly the same tests as `<expr>`, so a negated `?? <n>` fallback fires just as the bare fallback does, and only a pid already taken from a handle survives the minus sign.
 - **Filter a nullable pid out of a list** instead of substituting a sentinel.
-- **Validate a pid parsed from a file or a `ps` row** with `isValidLockPid()` from `@inkeep/open-knowledge-server` before signalling it.
-- **Worked exemplar, on this head.** `spawnDeck`'s reaper in [`ok-bin-child-spawn-path.test.ts`](../../packages/desktop/tests/integration/ok-bin-child-spawn-path.test.ts) signals an `isValidLockPid`-validated `ps` row with `process.kill(pid, 'SIGKILL')` and takes its group down with `process.kill(-shellPid, 'SIGKILL')`, the negation sound there because that child came from `spawnDetachedInteractiveChild`. That reaper is itself one of the sites the **Direct `process.kill` of spawned-child pids in tests outside the seam** bullet below schedules for seam migration: sanctioned to write on this head, expected to move once the seam lands, and not a defect in the meantime.
+- **A pid parsed from a file or a `ps` row is not a signal target**, because `isValidLockPid()` checks its range, not its owner. Stop that process through its owner, or report it.
 
 **The reaper seam is what is absent.** `signalOwnedGroup`, `signalOwnedPids`, `reapOwnedTree` and `recordingSignalSender` have no definition on this head, so the seam's own sanctioned shape — an injected sender — is the one thing you cannot write here yet. Once the seam lands, a guard test that must feed it a sentinel passes `recordingSignalSender().send` — not the recorder itself — in the sender slot, which is the third argument to `signalOwnedGroup` and `signalOwnedPids` but the fourth to `reapOwnedTree`, and asserts the recorded calls. The rule stops firing only when a real sender value occupies that slot: passing `undefined` or `void 0` explicitly injects nothing and still fires, and passing `process.kill` itself is no escape either.
 
@@ -658,14 +657,14 @@ The rule does NOT catch:
 
 - **A sentinel held in a variable** (`const target = 1; process.kill(target, …)`) or a `ps`-parsed pid that reaches a kill through an untyped variable — data flow the untyped AST cannot see, left to the STOP rule and review.
 - **A guard weakened inside the seam** — that is what the seam's injected sender exists for, since the mutant then fails a test instead of the host.
-- **Direct `process.kill` of spawned-child pids in tests outside the seam** — 27 such sites exist on `main` and a structural rule routing them through the seam waits until the seam itself lands on `main`.
-- **Anything `oxlint.config.ts` excludes from selection** — `ignorePatterns` drops `/reports/**` and `/specs/**` before any rule sees them, and naming such a file positionally on the command line does not override it. Those two trees hold 110 executable `.ts`/`.mjs`/`.js` files, 5 of which call `process.kill` today; they are the local spike-harness class of script this incident came from, and no oxlint rule reaches them. See [§3 of the authoring guide](#3-scope-it-if-it-is-not-workspace-wide) for the measurement.
+- **Whether a pid taken from a handle is signalled while that handle is still unreaped**: a handle's pid, negated or not, passes whatever the child's state (fixture n2, n3, n12); lifecycle is data flow the AST cannot see, left to the STOP rule and review until a seam that takes held, unreaped handles lands on `main`.
+- **Anything `oxlint.config.ts` excludes from selection** — `ignorePatterns` drops `/reports/**` and `/specs/**` before any rule sees them, and naming such a file positionally on the command line does not override it. Those two trees hold 164 executable `.ts`/`.mjs`/`.js` files, 4 of which call `process.kill` today; they are the local spike-harness class of script this incident came from, and no oxlint rule reaches them. See [§3 of the authoring guide](#3-scope-it-if-it-is-not-workspace-wide) for the measurement.
 
 **Unscoped** (workspace-wide in the scope table's sense — it carries no `RULE_SCOPES` entry and sits in `UNSCOPED_RULES` in [`scope.mjs`](scope.mjs), so nothing here narrows it; selection still excludes the trees named just above): a fabricated signal target is wrong in every package, and in test code most of all.
 
 **Opting out.** There is no legitimate sentinel signal target. A liveness probe is already exempt by its signal argument; anything else is fixed at the source, not suppressed.
 
-Rule: [`lint-plugins/ok-rules/rules/no-sentinel-signal-target.mjs`](rules/no-sentinel-signal-target.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-sentinel-signal-target.fixture.tsx`](__fixtures__/no-sentinel-signal-target.fixture.tsx). Test: [`packages/server/src/lint-plugins/no-sentinel-signal-target.test.ts`](../../packages/server/src/lint-plugins/no-sentinel-signal-target.test.ts). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
+Rule: [`lint-plugins/ok-rules/rules/no-sentinel-signal-target.mjs`](rules/no-sentinel-signal-target.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-sentinel-signal-target.fixture.tsx`](__fixtures__/no-sentinel-signal-target.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-sentinel-signal-target.uncached.test.mjs`](tests/no-sentinel-signal-target.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
 ## Suppression
 
@@ -752,14 +751,14 @@ Drop `<rule-name>.fixture.tsx` in `__fixtures__/`, pairing positive cases (must 
 
 ### 5. Author the fixture-file test
 
-Shell out to oxlint against the fixture config and assert an exact count:
+Put it at `lint-plugins/ok-rules/tests/<rule-name>.uncached.test.mjs`, not in a package. The `.uncached.test` suffix runs it in the uncached cross-package tier (`vitest.uncached.config.ts`): every agent round, CI's `lint` job, and beside every `turbo run test` that runs `server#test`. A package's cached test tier would replay a stale pass when only the rule or `oxlint.config.ts` changed, unless that package's Turbo key hashed both. Write it as plain JavaScript. Shell out to oxlint against the fixture config and assert an exact count:
 
-```ts
+```js
 import { spawnSync } from 'node:child_process';
-import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
 
-const REPO_ROOT = join(__dirname, '..', '..', '..', '..');
+const REPO_ROOT = fileURLToPath(new URL('../../..', import.meta.url));
 const FIXTURE = 'lint-plugins/ok-rules/__fixtures__/<rule-name>.fixture.tsx';
 const CONFIG = 'lint-plugins/ok-rules/__fixtures__/oxlint.fixtures.json';
 
@@ -788,8 +787,8 @@ Exact equality is the point: it catches false-negative regressions (count drops 
 # 1. Rule loads and the main lint stays clean:
 pnpm run lint:oxlint
 
-# 2. Fixture test fires the diagnostic on positive cases:
-pnpm --dir packages/<host> exec vitest run <rule-name>
+# 2. Fixture test fires the diagnostic on positive cases (from the Open Knowledge root):
+pnpm exec vitest run --config vitest.uncached.config.ts <rule-name>
 
 # 3. Mutation check (manual, one-time during dev):
 #    Temporarily break the rule's predicate; re-run the test; confirm it FAILS;

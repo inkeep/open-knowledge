@@ -26,14 +26,6 @@ export function totalImageAttachmentBytes(files: readonly File[]): number {
   return files.reduce((total, file) => total + file.size, 0);
 }
 
-export function mergeImageAttachments(current: readonly File[], picked: FileList | null): File[] {
-  const seen = new Set(current.map((f) => `${f.name}:${f.size}`));
-  const accepted = Array.from(picked ?? []).filter(
-    (f) => isImageAttachmentType(f.type) && !seen.has(`${f.name}:${f.size}`),
-  );
-  return [...current, ...accepted].slice(0, MAX_IMAGE_ATTACHMENTS);
-}
-
 export function imageAttachmentsProblem(files: readonly File[]): ImageAttachmentProblem | null {
   if (files.length > MAX_IMAGE_ATTACHMENTS) return 'count';
   if (!files.every((f) => isImageAttachmentType(f.type))) return 'type';

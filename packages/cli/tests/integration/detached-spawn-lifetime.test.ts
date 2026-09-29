@@ -78,8 +78,9 @@ server.listen(0, '127.0.0.1', () => {
   writeFileSync(${JSON.stringify(stateFile)}, JSON.stringify({ pid: process.pid, port: addr.port }));
 });
 
-// Idle for 30s (well past the test deadline). Tests SIGKILL us in cleanup.
 await wait(30_000);
+server.close();
+process.exit(0);
 `,
       'utf-8',
     );
@@ -126,22 +127,16 @@ setTimeout(() => process.exit(0), 300);
     }
     expect(state.pid).not.toBe(mcpPid);
 
-    try {
-      expect(isProcessAlive(state.pid)).toBe(true);
-      const probe1 = await fetchTo(state.port);
-      expect(probe1.status).toBe(200);
-      expect(probe1.body).toBe(GRANDCHILD_MARKER);
+    expect(isProcessAlive(state.pid)).toBe(true);
+    const probe1 = await fetchTo(state.port);
+    expect(probe1.status).toBe(200);
+    expect(probe1.body).toBe(GRANDCHILD_MARKER);
 
-      await wait(5_000);
+    await wait(5_000);
 
-      expect(isProcessAlive(state.pid)).toBe(true);
-      const probe2 = await fetchTo(state.port);
-      expect(probe2.status).toBe(200);
-      expect(probe2.body).toBe(GRANDCHILD_MARKER);
-    } finally {
-      try {
-        process.kill(state.pid, 'SIGKILL');
-      } catch {}
-    }
+    expect(isProcessAlive(state.pid)).toBe(true);
+    const probe2 = await fetchTo(state.port);
+    expect(probe2.status).toBe(200);
+    expect(probe2.body).toBe(GRANDCHILD_MARKER);
   }, 20_000);
 });

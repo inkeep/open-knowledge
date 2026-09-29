@@ -25,6 +25,10 @@ import type {
   UninstallDispatchResult,
   WorktreeCreateRequest,
   WorktreeCreateResult,
+  WorktreeInventoryOpenRequest,
+  WorktreeInventoryOpenResult,
+  WorktreeInventoryRequest,
+  WorktreeInventoryResult,
   WorktreeListResult,
 } from '@inkeep/open-knowledge-core';
 import type {
@@ -100,6 +104,8 @@ export interface RecentProject {
   gitRemoteUrl?: string;
   gitCommonDir?: string;
   mainRoot?: string;
+  checkoutRoot?: string;
+  projectSubPath?: string;
   isLinkedWorktree?: boolean;
   branch?: string | null;
 }
@@ -108,6 +114,7 @@ interface ProjectOpenRequest {
   path: string;
   target: 'new-window';
   entryPoint: EntryPoint;
+  requireExactManagedProject?: boolean;
   pendingDeepLinkTarget?: {
     kind: 'doc' | 'folder';
     path: string;
@@ -486,10 +493,16 @@ export interface RequestChannels {
     args: [
       request:
         | { kind: 'list' }
+        | ({ kind: 'inventory' } & WorktreeInventoryRequest)
+        | ({ kind: 'open-inventory' } & WorktreeInventoryOpenRequest)
         | ({ kind: 'create' } & WorktreeCreateRequest)
         | { kind: 'checkout'; branch: string },
     ];
-    result: WorktreeListResult | WorktreeCreateResult;
+    result:
+      | WorktreeListResult
+      | WorktreeInventoryResult
+      | WorktreeInventoryOpenResult
+      | WorktreeCreateResult;
   };
   'ok:project:close': { args: []; result: undefined };
   'ok:project:restart-server': { args: [projectPath: string]; result: OkServerRestartOutcome };

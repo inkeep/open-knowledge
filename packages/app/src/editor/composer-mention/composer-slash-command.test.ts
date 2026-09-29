@@ -4,6 +4,7 @@ import {
   leadingSlashToken,
   resolveSlashTokenHint,
   type SlashCommandItem,
+  slashTokenTailLength,
 } from './composer-slash-command';
 
 const COMMANDS: SlashCommandItem[] = [
@@ -54,6 +55,14 @@ describe('leadingSlashToken', () => {
     expect(leadingSlashToken('use /review')).toBeNull();
     expect(leadingSlashToken('and/or')).toBeNull();
     expect(leadingSlashToken('')).toBeNull();
+  });
+});
+
+describe('slashTokenTailLength', () => {
+  test('counts the rest of the token after the caret and stops at whitespace', () => {
+    expect(slashTokenTailLength('iew please')).toBe(3);
+    expect(slashTokenTailLength(' please')).toBe(0);
+    expect(slashTokenTailLength('')).toBe(0);
   });
 });
 

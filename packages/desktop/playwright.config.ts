@@ -1,4 +1,5 @@
 import { defineConfig } from '@playwright/test';
+import { ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS } from './tests/smoke/_helpers/launch-desktop';
 
 /**
  * Desktop-package Playwright config.
@@ -29,17 +30,7 @@ export default defineConfig({
   // iteration. Excluding them at the matcher level codifies the convention:
   // CI never runs them even if the smoke env var leaks in.
   testIgnore: ['**/_*.e2e.ts'],
-  // CI gets 150s per test to accommodate cumulative inner timeouts on the
-  // assertion path (helper waits + window-show + poll budgets can sum to
-  // 80-140s on a slow macos-latest runner. 150s gives 10s headroom over the heaviest standard-
-  // pattern test (create-new-project.e2e.ts at 140s). Tests that
-  // structurally exceed this (e.g. qa-create-new-extended.e2e.ts which
-  // launches Electron twice for cross-restart state checks) opt into a
-  // larger budget with `test.setTimeout`, so the structural reason is
-  // local to the test that needs it. Local dev keeps
-  // 60s so real regressions surface immediately. Same CI-vs-local
-  // divergence shape as `retries: process.env.CI ? 2 : 0` below.
-  timeout: process.env.CI ? 150_000 : 60_000,
+  timeout: process.env.CI ? 150_000 : ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS,
   // Retries for CI macOS runner flake. Tests that hang or time out from
   // runner-load contention (Electron Helper XPC delays, slow loadFile
   // resolution, slow window show under vibrancy + transparent: true) get

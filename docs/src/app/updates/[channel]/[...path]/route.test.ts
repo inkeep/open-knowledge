@@ -16,11 +16,17 @@ vi.doMock('../../../../lib/track.ts', () => ({
 }));
 
 const BETA_DMG_URL =
-  'https://github.com/inkeep/open-knowledge/releases/download/v0.20.0-beta.4/OpenKnowledge-arm64.dmg';
+  'https://github.com/inkeep/open-knowledge/releases/download/v0.20.0-beta.4/OpenKnowledge-Beta-arm64.dmg';
 type BetaRedirect = { kind: string; url: string; cause?: string; refreshError?: string };
 let _betaRedirect: BetaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
+let _selectedAsset: string | undefined;
 vi.doMock('../../../../lib/download-links.ts', () => ({
-  createBetaResolver: () => () => Promise.resolve(_betaRedirect),
+  createBetaResolver:
+    ({ assetName }: { assetName: string }) =>
+    () => {
+      _selectedAsset = assetName;
+      return Promise.resolve(_betaRedirect);
+    },
 }));
 
 const { GET } = await import('./route.ts');
@@ -40,6 +46,21 @@ function call(
 }
 
 describe('GET /updates/[channel]/[...path]', () => {
+  test.each([
+    ['beta', 'beta-mac.yml', 'beta-mac.yml'],
+    ['beta', 'OpenKnowledge-Setup-x64.exe', 'beta.yml'],
+    ['beta', 'OpenKnowledge-arm64.deb', 'beta-linux-arm64.yml'],
+    ['beta', 'OpenKnowledge-x86_64.rpm', 'beta-linux.yml'],
+    ['beta-product', 'OpenKnowledge-Beta-aarch64.rpm', 'beta-product-linux-arm64.yml'],
+  ])(
+    '%s/%s resolves a release carrying %s, not another platform',
+    async (channel, filename, manifest) => {
+      _betaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
+      expect((await call(channel, [filename])).status).toBe(302);
+      expect(_selectedAsset).toBe(manifest);
+    },
+  );
+
   test('stable manifest 302s to the latest alias and is NOT counted', async () => {
     _lastCapture = null;
     const res = await call('stable', ['latest-mac.yml']);
@@ -121,6 +142,35 @@ describe('GET /updates/[channel]/[...path]', () => {
 
   test('invalid channel → 404', async () => {
     expect((await call('canary', ['latest-mac.yml'])).status).toBe(404);
+  });
+
+  test('public channel paths reject the other product manifest or artifact', async () => {
+    expect((await call('stable', ['beta-mac.yml'])).status).toBe(404);
+    expect((await call('beta', ['latest-mac.yml'])).status).toBe(404);
+    expect((await call('stable', ['OpenKnowledge-Beta-0.21.0-beta.4-arm64-mac.zip'])).status).toBe(
+      404,
+    );
+    expect((await call('beta', ['OpenKnowledge-0.21.0-arm64-mac.zip'])).status).toBe(404);
+    expect((await call('beta', ['OpenKnowledge-Beta-0.21.0-beta.4-arm64-mac.zip'])).status).toBe(
+      404,
+    );
+    expect((await call('beta', ['beta-product-mac.yml'])).status).toBe(404);
+    expect((await call('beta-product', ['beta-mac.yml'])).status).toBe(404);
+    expect((await call('beta-product', ['OpenKnowledge-0.21.0-beta.4-arm64-mac.zip'])).status).toBe(
+      404,
+    );
+  });
+
+  test('separate Beta uses its own manifest and artifact names', async () => {
+    _betaRedirect = { kind: 'fresh', url: BETA_DMG_URL };
+    const manifest = await call('beta-product', ['beta-product-mac.yml']);
+    expect(manifest.headers.get('location')).toBe(
+      `${REL}/download/v0.20.0-beta.4/beta-product-mac.yml`,
+    );
+    const file = 'OpenKnowledge-Beta-0.20.0-beta.4-arm64-mac.zip';
+    expect((await call('beta-product', [file])).headers.get('location')).toBe(
+      `${REL}/download/v0.20.0-beta.4/${file}`,
+    );
   });
 
   test('path traversal / multi-segment → 404', async () => {

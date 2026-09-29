@@ -1,12 +1,15 @@
 // oxlint-disable ok/no-physical-direction-utility -- pre-rule backlog — physical margin/padding/inset utilities predate the rule; drain by swapping ml/mr → ms/me, pl/pr → ps/pe, left/right → start/end, then deleting this line. See https://github.com/inkeep/open-knowledge/blob/main/lint-plugins/ok-rules/README.md#no-physical-direction-utility
 
 import { deriveAgentPosture } from '@inkeep/open-knowledge-core/acp/agent-posture';
-import type {
-  AttachmentPart,
-  QueuedMessage,
-  SessionConfigOption,
-  ThreadFailureDetail,
-  ThreadInfo,
+import {
+  type AttachmentPart,
+  exitStderrWindow,
+  type QueuedMessage,
+  type SessionConfigOption,
+  type ThreadAuthMethod,
+  type ThreadExitDiagnosis,
+  type ThreadFailureDetail,
+  type ThreadInfo,
 } from '@inkeep/open-knowledge-core/acp/thread-protocol';
 import { plural } from '@lingui/core/macro';
 import { Plural, useLingui } from '@lingui/react/macro';
@@ -42,6 +45,7 @@ import {
   Zap,
 } from 'lucide-react';
 import {
+  type ComponentProps,
   Fragment,
   type ReactNode,
   type RefObject,
@@ -74,8 +78,13 @@ import { ComposerContextChips } from '@/components/ComposerContextChips';
 import { CopyButton } from '@/components/CopyButton';
 import { isExternalFileDrag } from '@/components/file-tree-adapter';
 import { focusComposerInputOnCardPointer } from '@/components/focus-composer-on-card-pointer';
-import { requestTerminalLaunch } from '@/components/handoff/terminal-launch-events';
+import { subscribeToSignInTerminalExits } from '@/components/handoff/sign-in-terminal-events';
+import {
+  requestTerminalCommandLaunch,
+  requestTerminalLaunch,
+} from '@/components/handoff/terminal-launch-events';
 import { useOptionalPageList } from '@/components/PageListContext';
+import { ReportBugDialog } from '@/components/ReportBugDialog';
 import { RotatingComposerPlaceholder } from '@/components/RotatingComposerPlaceholder';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -88,6 +97,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -123,14 +133,18 @@ import {
   rememberAgentMode,
 } from '@/lib/acp/agent-settings-store';
 import { configValueHint, resolveDefaultOptionLabel } from '@/lib/acp/config-value-hints';
-import { useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
+import { exitSummary } from '@/lib/acp/exit-summary';
+import { terminalLaunchAvailable, useHarnessTerminalCli } from '@/lib/acp/harness-terminal-cli';
 import {
+  type AttachmentRefusal,
   attachmentBudgetKb,
   collectAllFiles,
   collectImageFiles,
+  describeAttachmentRefusals,
   describeImageError,
   embeddedAttachmentBytes,
   fileToAttachment,
+  isAttachmentRefusal,
   MAX_TOTAL_ATTACHMENT_BYTES,
   totalEmbeddedAttachmentBytes,
 } from '@/lib/acp/image-attachment';
@@ -148,7 +162,11 @@ import {
   useAgentThread,
   useAgentThreadModel,
 } from '@/lib/acp/thread-client';
-import { subscribeStagedThreadDraft } from '@/lib/acp/thread-draft-staging';
+import {
+  registerThreadDraftReader,
+  subscribeStagedThreadDraft,
+  subscribeStagedThreadDraftContent,
+} from '@/lib/acp/thread-draft-staging';
 import {
   type PermissionOutcome,
   type RenderedItem,
@@ -156,6 +174,7 @@ import {
   type RenderedTerminal,
   type RenderedToolCall,
   resolvePermissionOutcome,
+  threadHasUserMessage,
 } from '@/lib/acp/thread-event-model';
 import {
   describeToolCall,
@@ -197,6 +216,7 @@ import { type ImagePreview, ImagePreviewContext, PendingImageStrip } from './Pen
 import { PlanChecklist } from './PlanChecklist';
 import { appendPresenceWrite, latestAgentWrite, type PresenceWrite } from './presence-follow';
 import { RegisteredAgentIcon } from './RegisteredAgentIcon';
+import { ReferenceRulesContext } from './reference-links-context';
 import {
   clickableAuthMethods,
   isThreadResumable,
@@ -204,6 +224,7 @@ import {
   type ThreadAuthActionKind,
   type ThreadAuthOffer,
   type ThreadAuthOfferWithoutSignIn,
+  terminalAuthMethods,
   threadAuthHistoryOffer,
   threadAuthOffer,
   threadAuthOfferWithoutSignInMethods,
@@ -211,6 +232,8 @@ import {
 import { transcriptItemId } from './transcript-item-id';
 import { type ResendTarget, UserMessageActions, UserMessageEditor } from './UserMessageActions';
 import { useDelayedInstallStatus } from './use-delayed-install-status';
+import { useMinutesSince } from './use-minutes-since';
+import { useReferenceRules } from './use-reference-rules';
 import { activeToolKind, useThinkingLine, workingStatusText } from './working-status';
 
 const CANCEL_STALL_MS = 10_000;
@@ -239,6 +262,10 @@ const TOOL_ICONS: Record<ToolCallGlyph, typeof Wrench> = {
 
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function isAgentExitedError(err: unknown): boolean {
+  return err instanceof Error && 'code' in err && err.code === 'agent-exited';
 }
 
 const RETRYABLE_FAILURE_REASONS: ReadonlySet<ThreadFailureDetail['reason']> = new Set([
@@ -280,6 +307,124 @@ function highlightStderr(machineDetail: string): ReactNode {
       </span>
     );
   });
+}
+
+function isSignInWaitingStatus(status: ThreadInfo['status']): boolean {
+  return status === 'auth_required' || status === 'authenticating';
+}
+
+interface StrandedMessage {
+  readonly messageId: string;
+  readonly text: string;
+  readonly attachments: readonly AttachmentPart[];
+  readonly foldedIndex: number;
+}
+
+function latestSignInNoticeIndex(items: readonly RenderedItem[]): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (
+      item?.kind === 'notice' &&
+      item.superseded !== true &&
+      item.failure?.reason === 'auth-required'
+    ) {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function latestOfferNoticeIndex(
+  items: readonly RenderedItem[],
+  offerKind: ThreadAuthOfferWithoutSignIn['kind'],
+): number {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind !== 'notice' || item.superseded === true) continue;
+    const reason = item.failure?.reason;
+    if (reason === 'auth-required') return index;
+    if (reason === 'exited' && offerKind === 'new-chat') return index;
+  }
+  return -1;
+}
+
+function latestCrashExit(items: readonly RenderedItem[]): ThreadExitDiagnosis | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind !== 'notice' || item.superseded === true) continue;
+    if (item.failure?.reason === 'exited' && item.failure.exit !== undefined) {
+      return item.failure.exit;
+    }
+  }
+  return null;
+}
+
+function strandedMessageBeforeSignIn(items: readonly RenderedItem[]): StrandedMessage | null {
+  const noticeIndex = latestSignInNoticeIndex(items);
+  if (noticeIndex === -1) return null;
+  for (let index = noticeIndex - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.kind !== 'message' || item.role !== 'user') continue;
+    let foldedIndex = 0;
+    for (let before = 0; before < index; before += 1) {
+      const earlier = items[before];
+      if (earlier?.kind === 'notice' && earlier.superseded === true) continue;
+      foldedIndex += 1;
+    }
+    return {
+      messageId: item.messageId,
+      text: item.text,
+      attachments: item.attachments ?? [],
+      foldedIndex,
+    };
+  }
+  return null;
+}
+
+function latestTerminalAuthMethod(items: readonly RenderedItem[]): ThreadAuthMethod | null {
+  const noticeIndex = latestSignInNoticeIndex(items);
+  const item = noticeIndex === -1 ? undefined : items[noticeIndex];
+  const methods = item?.kind === 'notice' ? (item.failure?.authMethods ?? []) : [];
+  return terminalAuthMethods(methods)[0] ?? null;
+}
+
+function isStartingStatus(status: ThreadInfo['status']): boolean {
+  return status === 'installing' || status === 'spawning' || isSignInWaitingStatus(status);
+}
+
+function nextStartOutcome(
+  status: ThreadInfo['status'],
+  previous: ThreadInfo['status'],
+  announced: 'ready' | 'failed' | null,
+): 'ready' | 'failed' | null {
+  if (isStartingStatus(previous)) {
+    if (status === 'ready') return 'ready';
+    if (status === 'error' || status === 'exited') return 'failed';
+  }
+  switch (status) {
+    case 'installing':
+    case 'spawning':
+    case 'auth_required':
+    case 'authenticating':
+      return null;
+    case 'ready':
+      return announced;
+    case 'error':
+    case 'exited':
+      return announced === 'failed' ? 'failed' : null;
+    case 'running':
+    case 'awaiting_permission':
+      return null;
+    default: {
+      const exhaustive: never = status;
+      void exhaustive;
+      return null;
+    }
+  }
+}
+
+function composerInstruction(handle: ComposerMentionInputHandle | null): string {
+  return handle?.getContent().instruction.trim() ?? '';
 }
 
 export function ThreadView({
@@ -326,7 +471,7 @@ export function ThreadView({
   }, [dropNotice]);
   const imagesAccepted = info.promptCapabilities?.image === true;
   const uploadsPending = pendingUploads.length > 0;
-  const composerText = (): string => composerRef.current?.getContent().instruction.trim() ?? '';
+  const composerText = (): string => composerInstruction(composerRef.current);
   const composerAttachments = (): readonly AttachmentPart[] => {
     const chips = composerRef.current?.getContent().attachments ?? [];
     return [...chips, ...pendingAttachments];
@@ -363,8 +508,7 @@ export function ThreadView({
       if (generation === attachmentsGenerationRef.current) toast.error(message);
     };
     setPendingUploads((previous) => [...previous, ...placeholders]);
-    let outsideWorkspaceCount = 0;
-    let unknownPathCount = 0;
+    const refusals: AttachmentRefusal[] = [];
     let tooLargeTotalCount = 0;
     for (let i = 0; i < accepted.length; i += 1) {
       const file = accepted[i];
@@ -387,10 +531,8 @@ export function ThreadView({
           } else {
             commitPendingAttachments([...current, outcome.part], generation);
           }
-        } else if (outcome.error.kind === 'outside-workspace') {
-          outsideWorkspaceCount += 1;
-        } else if (outcome.error.kind === 'unknown-path') {
-          unknownPathCount += 1;
+        } else if (isAttachmentRefusal(outcome.error)) {
+          refusals.push(outcome.error);
         } else {
           report(describeImageError(outcome.error));
         }
@@ -401,28 +543,7 @@ export function ThreadView({
         report(t`Couldn't read ${fileName}.`);
       }
     }
-    const notices: string[] = [];
-    const skipTotal = outsideWorkspaceCount + unknownPathCount;
-    if (skipTotal > 0) {
-      let noticeText: string;
-      if (unknownPathCount === 0) {
-        noticeText = t`${plural(outsideWorkspaceCount, {
-          one: 'Skipped # file outside the workspace.',
-          other: 'Skipped # files outside the workspace.',
-        })}`;
-      } else if (outsideWorkspaceCount === 0) {
-        noticeText = t`${plural(unknownPathCount, {
-          one: "Skipped # file — this browser can't attach files by path.",
-          other: "Skipped # files — this browser can't attach files by path.",
-        })}`;
-      } else {
-        noticeText = t`${plural(skipTotal, {
-          one: "Skipped # file that couldn't be attached.",
-          other: "Skipped # files that couldn't be attached.",
-        })}`;
-      }
-      notices.push(noticeText);
-    }
+    const notices = describeAttachmentRefusals(refusals);
     if (tooLargeTotalCount > 0) {
       const budgetKb = attachmentBudgetKb();
       notices.push(
@@ -450,10 +571,40 @@ export function ThreadView({
   const prevTurnActiveRef = useRef(false);
 
   useEffect(() => {
-    return subscribeStagedThreadDraft(info.threadId, (text) => {
+    return registerThreadDraftReader(info.threadId, () => ({
+      text: composerInstruction(composerRef.current),
+      doc: composerRef.current?.getDoc() ?? null,
+      attachments: attachmentsRef.current,
+      uploadsPending,
+    }));
+  }, [info.threadId, uploadsPending]);
+
+  useEffect(() => {
+    const stopStaging = subscribeStagedThreadDraft(info.threadId, (text) => {
       composerRef.current?.appendText(text);
     });
+    const stopStagingContent = subscribeStagedThreadDraftContent(info.threadId, (content) => {
+      composerRef.current?.setDoc(content.doc);
+      if (content.attachments.length > 0) {
+        attachmentsRef.current = [...attachmentsRef.current, ...content.attachments];
+        setPendingAttachments(attachmentsRef.current);
+      }
+    });
+    return () => {
+      stopStagingContent();
+      stopStaging();
+    };
   }, [info.threadId]);
+
+  useEffect(() => {
+    if (info.promptCapabilities == null || imagesAccepted) return;
+    const kept = pendingAttachments.filter((part) => part.kind !== 'image');
+    if (kept.length === pendingAttachments.length) return;
+    attachmentsRef.current = kept;
+    setPendingAttachments(kept);
+    const agentName = agentDisplayName(info.agent.name);
+    toast.error(t`${agentName} doesn't accept image attachments.`);
+  }, [info.promptCapabilities, imagesAccepted, pendingAttachments, info.agent.name, t]);
 
   const model = useAgentThreadModel(info.threadId);
   const status = info.status;
@@ -465,42 +616,17 @@ export function ThreadView({
   const [newChatPending, setNewChatPending] = useState(false);
   const [resumeError, setResumeError] = useState<ThreadResumeError | null>(null);
   const displayedStartStatus = useDelayedInstallStatus(status);
-  const wasStarting = useRef(false);
-  const [startOutcome, setStartOutcome] = useState<'ready' | 'failed' | null>(null);
-  useEffect(() => {
-    if (
-      status === 'installing' ||
-      status === 'spawning' ||
-      status === 'auth_required' ||
-      status === 'authenticating'
-    ) {
-      wasStarting.current = true;
-      setStartOutcome(null);
-      return;
-    }
-    if (status === 'ready') {
-      if (!wasStarting.current) return;
-      wasStarting.current = false;
-      setStartOutcome('ready');
-      return;
-    }
-    if (status === 'error' || status === 'exited') {
-      if (!wasStarting.current) {
-        setStartOutcome((announced) => (announced === 'failed' ? announced : null));
-        return;
-      }
-      wasStarting.current = false;
-      setStartOutcome('failed');
-      return;
-    }
-    if (status === 'running' || status === 'awaiting_permission') {
-      wasStarting.current = false;
-      setStartOutcome(null);
-      return;
-    }
-    const exhaustive: never = status;
-    void exhaustive;
-  }, [status]);
+  const [startState, setStartState] = useState<{
+    seen: ThreadInfo['status'];
+    outcome: 'ready' | 'failed' | null;
+  }>({ seen: status, outcome: null });
+  if (startState.seen !== status) {
+    setStartState({
+      seen: status,
+      outcome: nextStartOutcome(status, startState.seen, startState.outcome),
+    });
+  }
+  const startOutcome = startState.outcome;
   const startStatusMessage =
     displayedStartStatus === 'installing'
       ? t`Installing ${agentName}…`
@@ -528,9 +654,10 @@ export function ThreadView({
     ? !resumePending && resumable
     : (status === 'ready' || hasRecoverablePromptFailure) && !turnActive;
   const signingIn = status === 'authenticating';
-  const awaitingSignIn = status === 'auth_required' || signingIn;
+  const awaitingSignIn = isSignInWaitingStatus(status);
   const canRetry = !archived && (status === 'error' || awaitingSignIn);
   const terminalCli = useHarnessTerminalCli(info.agent.id);
+  const terminalAvailable = terminalLaunchAvailable();
   const [retryPending, setRetryPending] = useState(false);
   const [revertedPositions, setRevertedPositions] = useState<ReadonlySet<number>>(new Set());
   const canQueue = !archived && turnActive;
@@ -540,6 +667,7 @@ export function ThreadView({
   const docPathResolver = pages === null ? null : buildDocPathResolver({ workspace, pages });
   setDocPathResolver(docPathResolver);
   const resolverReady = docPathResolver !== null;
+  const referenceRules = useReferenceRules();
   const transcriptFollowTarget = model !== null ? latestFollowTarget(model.items, workspace) : null;
 
   const { systemProvider, activeDocName } = useDocumentContext();
@@ -575,6 +703,7 @@ export function ThreadView({
   const lastSeq = state?.lastSeq ?? null;
   const [cancelPending, setCancelPending] = useState(false);
   const [cancelStalled, setCancelStalled] = useState(false);
+  const stalledMinutes = useMinutesSince(info.stalledSince);
   const [planApprovalPending, setPlanApprovalPending] = useState(false);
 
   useEffect(() => {
@@ -782,14 +911,33 @@ export function ThreadView({
   }, [info.threadId]);
 
   const retryThread = (): void => {
+    const stranded =
+      awaitingSignIn && model !== null ? strandedMessageBeforeSignIn(model.items) : null;
     setRetryPending(true);
     void client
       .retryThread(info.threadId)
+      .then((next) => {
+        if (stranded === null || next.status !== 'ready') return;
+        setRevertedPositions((prev) => new Set(prev).add(stranded.foldedIndex));
+        void sendText(stranded.text, stranded.text, stranded.attachments);
+      })
       .catch((err: unknown) => {
         toast.error(t`Couldn't start ${agentName}: ${errorText(err)}`);
       })
       .finally(() => setRetryPending(false));
   };
+
+  const retryAfterSignInTerminal = useEffectEvent(() => {
+    if (!awaitingSignIn || retryPending) return;
+    retryThread();
+  });
+  useEffect(
+    () =>
+      subscribeToSignInTerminalExits((threadId) => {
+        if (threadId === info.threadId) retryAfterSignInTerminal();
+      }),
+    [info.threadId],
+  );
 
   const authenticateThread = async (methodId: string): Promise<void> => {
     await client.authenticateThread(info.threadId, methodId);
@@ -856,9 +1004,27 @@ export function ThreadView({
       case 'new-chat':
         startFreshThread();
         return;
-      case 'terminal-sign-in':
-        if (terminalCli !== null) requestTerminalLaunch('', terminalCli);
+      case 'terminal-sign-in': {
+        const method =
+          terminalAvailable && model !== null ? latestTerminalAuthMethod(model.items) : null;
+        if (method !== null) {
+          void client
+            .terminalAuthLaunch(info.threadId, method.id)
+            .then((launch) => {
+              requestTerminalCommandLaunch({
+                label: method.name,
+                command: launch,
+                signInThreadId: info.threadId,
+              });
+            })
+            .catch((err: unknown) => {
+              toast.error(t`Sign-in failed: ${errorText(err)}`);
+            });
+        } else if (terminalCli !== null) {
+          requestTerminalLaunch('', terminalCli, { signInThreadId: info.threadId });
+        }
         return;
+      }
       default: {
         const exhaustive: never = kind;
         void exhaustive;
@@ -913,16 +1079,8 @@ export function ThreadView({
     agentName,
     terminalCli,
   });
-  let authOfferNoticeIndex = -1;
-  if (authOffer.actionLabel !== null) {
-    for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
-      const item = visibleItems[index];
-      if (item?.kind === 'notice' && item.failure?.reason === 'auth-required') {
-        authOfferNoticeIndex = index;
-        break;
-      }
-    }
-  }
+  const authOfferNoticeIndex =
+    authOffer.actionLabel === null ? -1 : latestOfferNoticeIndex(visibleItems, authOffer.kind);
   let restoreNoticeIndex = -1;
   if (!archived && status !== 'exited') {
     for (let index = visibleItems.length - 1; index >= 0; index -= 1) {
@@ -982,21 +1140,20 @@ export function ThreadView({
         ? t`Couldn't resume this chat: ${resumeError.message}`
         : '';
 
+  const newChatOfferInTranscript = authOffer.kind === 'new-chat' && authOfferNoticeIndex !== -1;
+  const crashExit = archived || startOutcome === 'failed' ? null : latestCrashExit(visibleItems);
+  const crashHeadline = t`${agentName} stopped unexpectedly.`;
+  const crashAnnouncement = crashExit === null ? '' : `${crashHeadline} ${exitSummary(crashExit)}`;
+
   const items = visibleItems;
   const mentionRecency: MentionRecency = {
     currentDocName: activeDocName,
     recentPaths: threadAttachmentPaths(items),
   };
-  let authPrompt: ThreadFailureDetail | null = null;
-  if (awaitingSignIn && !archived) {
-    for (let index = items.length - 1; index >= 0; index -= 1) {
-      const item = items[index];
-      if (item?.kind === 'notice' && item.failure?.reason === 'auth-required') {
-        authPrompt = item.failure;
-        break;
-      }
-    }
-  }
+  const signInNoticeIndex = awaitingSignIn && !archived ? latestSignInNoticeIndex(items) : -1;
+  const signInNotice = signInNoticeIndex === -1 ? undefined : items[signInNoticeIndex];
+  const authPrompt: ThreadFailureDetail | null =
+    signInNotice?.kind === 'notice' ? signInNotice.failure : null;
 
   return (
     <MentionRecencyContext value={mentionRecency}>
@@ -1044,310 +1201,342 @@ export function ThreadView({
           }}
         >
           <DocPathResolverReadyContext value={resolverReady}>
-            <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
-            {}
-            <AgentNoticeAnnouncer
-              notices={agentNotices}
-              agentName={agentName}
-              replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
-            />
-            {model !== null && model.plan.length > 0 ? (
-              <PlanChecklist
-                plan={model.plan}
-                approval={
-                  canPrompt && !archived && !planApprovalPending
-                    ? {
-                        onApprove: () => {
-                          setPlanApprovalPending(true);
-                          void sendText('Approve. Please proceed with the plan.');
-                        },
-                        onAskChanges: () => {
-                          const prefix = t`In the plan above, please `;
-                          const composer = composerRef.current;
-                          if (
-                            composer !== null &&
-                            !composer.getContent().instruction.endsWith(prefix)
-                          ) {
-                            composer.appendText(prefix);
-                          }
-                          composer?.focusEnd();
-                        },
-                        onReject: () => {
-                          setPlanApprovalPending(true);
-                          void sendText('Reject. Please stop and do not proceed with this plan.');
-                        },
-                      }
-                    : undefined
-                }
+            <ReferenceRulesContext value={referenceRules}>
+              <ThreadHeader info={info} followFile={followFile} onToggleFollow={toggleFollow} />
+              {}
+              <AgentNoticeAnnouncer
+                notices={agentNotices}
+                agentName={agentName}
+                replayThroughSeq={state?.replayThroughSeq ?? Number.POSITIVE_INFINITY}
               />
-            ) : null}
-            {authPrompt !== null || model === null || visibleItems.length === 0 ? (
-              <div
-                className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
-                data-testid="agent-thread-transcript"
-              >
-                {authPrompt !== null ? (
-                  <div className="flex min-h-full items-center justify-center">
-                    <ThreadAuthPrompt
-                      failure={authPrompt}
-                      offer={threadAuthOffer({
-                        authMethods: authPrompt.authMethods ?? [],
-                        agentName,
-                        terminalCli,
-                      })}
+              {model !== null && model.plan.length > 0 ? (
+                <PlanChecklist
+                  plan={model.plan}
+                  approval={
+                    canPrompt && !archived && !planApprovalPending
+                      ? {
+                          onApprove: () => {
+                            setPlanApprovalPending(true);
+                            void sendText('Approve. Please proceed with the plan.');
+                          },
+                          onAskChanges: () => {
+                            const prefix = t`In the plan above, please `;
+                            const composer = composerRef.current;
+                            if (
+                              composer !== null &&
+                              !composer.getContent().instruction.endsWith(prefix)
+                            ) {
+                              composer.appendText(prefix);
+                            }
+                            composer?.focusEnd();
+                          },
+                          onReject: () => {
+                            setPlanApprovalPending(true);
+                            void sendText('Reject. Please stop and do not proceed with this plan.');
+                          },
+                        }
+                      : undefined
+                  }
+                />
+              ) : null}
+              {authPrompt !== null || model === null || visibleItems.length === 0 ? (
+                <div
+                  className="min-h-0 flex-1 overflow-y-auto px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                  data-testid="agent-thread-transcript"
+                >
+                  {authPrompt !== null ? (
+                    <div className="flex min-h-full items-center justify-center">
+                      <ThreadAuthPrompt
+                        failure={authPrompt}
+                        offer={threadAuthOffer({
+                          authMethods: authPrompt.authMethods ?? [],
+                          agentName,
+                          terminalCli,
+                          terminalAvailable,
+                        })}
+                        agent={info.agent}
+                        agentName={agentName}
+                        signingIn={signingIn}
+                        signInOutput={info.signInOutput}
+                        showRetry={canRetry}
+                        retryPending={retryPending}
+                        onRetry={retryThread}
+                        onAuthAction={runAuthAction}
+                        runningAuthAction={runningAuthAction}
+                        onAuthenticate={authenticateThread}
+                      />
+                    </div>
+                  ) : (
+                    <ThreadEmptyState
+                      status={status}
+                      displayedStartStatus={displayedStartStatus}
+                      justSettled={startOutcome === 'ready'}
+                      archived={archived}
                       agent={info.agent}
-                      agentName={agentName}
-                      signingIn={signingIn}
-                      signInOutput={info.signInOutput}
-                      showRetry={canRetry}
-                      retryPending={retryPending}
-                      onRetry={retryThread}
+                      authOffer={authOffer}
                       onAuthAction={runAuthAction}
                       runningAuthAction={runningAuthAction}
-                      onAuthenticate={authenticateThread}
                     />
-                  </div>
-                ) : (
-                  <ThreadEmptyState
-                    status={status}
-                    displayedStartStatus={displayedStartStatus}
-                    archived={archived}
-                    agent={info.agent}
-                    authOffer={authOffer}
-                    onAuthAction={runAuthAction}
-                    runningAuthAction={runningAuthAction}
-                  />
-                )}
-              </div>
-            ) : (
-              <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
-                <ScrollToEndBridge apiRef={scrollApiRef} />
-                <MessageScroller className="min-h-0 flex-1">
-                  <MessageScrollerViewport
-                    aria-label={t`Agent transcript`}
-                    className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
-                    data-testid="agent-thread-transcript"
-                  >
-                    <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
-                      {visibleEntries.map(({ item, modelIndex }, index) => {
-                        const id = transcriptItemId(item, modelIndex);
-                        const group = toolRunByIndex.get(index);
-                        const collapsed = group !== undefined && !expandedToolRuns.has(group.runId);
-                        if (collapsed && !group.isHead) return null;
-                        if (collapsed && group.isHead) {
-                          const runId = group.runId;
+                  )}
+                </div>
+              ) : (
+                <MessageScrollerProvider autoScroll defaultScrollPosition="last-anchor">
+                  <ScrollToEndBridge apiRef={scrollApiRef} />
+                  <MessageScroller className="min-h-0 flex-1">
+                    <MessageScrollerViewport
+                      aria-label={t`Agent transcript`}
+                      className="px-3 py-2 subtle-scrollbar scroll-fade-mask"
+                      data-testid="agent-thread-transcript"
+                    >
+                      <MessageScrollerContent className="gap-2 [&>[data-tool-call]+[data-tool-call]]:-mt-1">
+                        {visibleEntries.map(({ item, modelIndex }, index) => {
+                          const id = transcriptItemId(item, modelIndex);
+                          const group = toolRunByIndex.get(index);
+                          const collapsed =
+                            group !== undefined && !expandedToolRuns.has(group.runId);
+                          if (collapsed && !group.isHead) return null;
+                          if (collapsed && group.isHead) {
+                            const runId = group.runId;
+                            return (
+                              <MessageScrollerItem
+                                key={id}
+                                messageId={id}
+                                className="flex flex-col"
+                                data-tool-call=""
+                              >
+                                <ToolCallGroupRow
+                                  calls={visibleItems
+                                    .slice(group.run.start, group.run.start + group.run.size)
+                                    .filter(
+                                      (candidate): candidate is RenderedToolCall =>
+                                        candidate.kind === 'tool_call',
+                                    )}
+                                  onExpand={() =>
+                                    setExpandedToolRuns((previous) => new Set(previous).add(runId))
+                                  }
+                                />
+                              </MessageScrollerItem>
+                            );
+                          }
                           return (
                             <MessageScrollerItem
                               key={id}
                               messageId={id}
                               className="flex flex-col"
-                              data-tool-call=""
+                              scrollAnchor={item.kind === 'message' && item.role === 'user'}
+                              data-tool-call={item.kind === 'tool_call' ? '' : undefined}
                             >
-                              <ToolCallGroupRow
-                                calls={visibleItems
-                                  .slice(group.run.start, group.run.start + group.run.size)
-                                  .filter(
-                                    (candidate): candidate is RenderedToolCall =>
-                                      candidate.kind === 'tool_call',
-                                  )}
-                                onExpand={() =>
-                                  setExpandedToolRuns((previous) => new Set(previous).add(runId))
+                              <ThreadItem
+                                item={item}
+                                threadId={info.threadId}
+                                agent={info.agent}
+                                actionable={!archived && status !== 'exited' && status !== 'error'}
+                                streaming={turnActive && index === visibleItems.length - 1}
+                                terminals={model.terminals}
+                                permissionsByToolCall={model.permissionsByToolCall}
+                                showRetry={index === retryNoticeIndex}
+                                retryPending={retryPending}
+                                onRetry={retryThread}
+                                showRestore={index === restoreNoticeIndex}
+                                onRestore={() => restoreFailedPromptToComposer(index)}
+                                authOffer={
+                                  index === authOfferNoticeIndex ? authOffer : authHistoryOffer
                                 }
+                                onAuthAction={runAuthAction}
+                                runningAuthAction={runningAuthAction}
+                                onResend={resendMessage}
+                                canSendHere={canPrompt || canQueue}
+                                isLatestUserTurn={index === lastUserTurnIndex}
                               />
                             </MessageScrollerItem>
                           );
-                        }
-                        return (
-                          <MessageScrollerItem
-                            key={id}
-                            messageId={id}
-                            className="flex flex-col"
-                            scrollAnchor={item.kind === 'message' && item.role === 'user'}
-                            data-tool-call={item.kind === 'tool_call' ? '' : undefined}
-                          >
-                            <ThreadItem
-                              item={item}
-                              threadId={info.threadId}
-                              agent={info.agent}
-                              actionable={!archived && status !== 'exited' && status !== 'error'}
-                              streaming={turnActive && index === visibleItems.length - 1}
-                              terminals={model.terminals}
-                              permissionsByToolCall={model.permissionsByToolCall}
-                              showRetry={index === retryNoticeIndex}
-                              retryPending={retryPending}
-                              onRetry={retryThread}
-                              showRestore={index === restoreNoticeIndex}
-                              onRestore={() => restoreFailedPromptToComposer(index)}
-                              authOffer={
-                                index === authOfferNoticeIndex ? authOffer : authHistoryOffer
-                              }
-                              onAuthAction={runAuthAction}
-                              runningAuthAction={runningAuthAction}
-                              onResend={resendMessage}
-                              canSendHere={canPrompt || canQueue}
-                              isLatestUserTurn={index === lastUserTurnIndex}
+                        })}
+                        {turnActive ? (
+                          status === 'awaiting_permission' ? (
+                            <div
+                              className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
+                              data-testid="agent-thread-awaiting-permission"
+                            >
+                              <span>{t`Waiting for your approval`}</span>
+                            </div>
+                          ) : (
+                            <WorkingAvatar
+                              status={workingStatusText(activeToolKind(model.items), thinkingLine)}
+                              className="px-1 py-1"
+                              testId="agent-thread-working"
                             />
-                          </MessageScrollerItem>
-                        );
-                      })}
-                      {turnActive ? (
-                        status === 'awaiting_permission' ? (
+                          )
+                        ) : status === 'installing' || status === 'spawning' ? (
                           <div
-                            className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm shimmer"
-                            data-testid="agent-thread-awaiting-permission"
+                            className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
+                            data-testid="agent-thread-starting"
                           >
-                            <span>{t`Waiting for your approval`}</span>
+                            <Spinner className="size-3.5" aria-hidden="true" />
+                            <span className="shimmer">{startStatusMessage}</span>
                           </div>
-                        ) : (
-                          <WorkingAvatar
-                            status={workingStatusText(activeToolKind(model.items), thinkingLine)}
-                            className="px-1 py-1"
-                            testId="agent-thread-working"
-                          />
-                        )
-                      ) : status === 'installing' || status === 'spawning' ? (
-                        <div
-                          className="flex items-center gap-2 px-1 py-1 text-muted-foreground text-sm"
-                          data-testid="agent-thread-starting"
-                        >
-                          <Spinner className="size-3.5" aria-hidden="true" />
-                          <span className="shimmer">{startStatusMessage}</span>
-                        </div>
-                      ) : null}
-                    </MessageScrollerContent>
-                  </MessageScrollerViewport>
-                  <MessageScrollerButton direction="end" />
-                </MessageScroller>
-              </MessageScrollerProvider>
-            )}
-            <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
-              {dropNotice !== null ? (
+                        ) : null}
+                      </MessageScrollerContent>
+                    </MessageScrollerViewport>
+                    <MessageScrollerButton direction="end" />
+                  </MessageScroller>
+                </MessageScrollerProvider>
+              )}
+              <div role="status" aria-live="polite" data-testid="agent-thread-drop-notice">
+                {dropNotice !== null ? (
+                  <div
+                    key={dropNotice.id}
+                    className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                  >
+                    {dropNotice.text}
+                  </div>
+                ) : uploadsPending ? (
+                  <p className="sr-only">
+                    <Plural
+                      value={pendingUploads.length}
+                      one="Uploading # attachment"
+                      other="Uploading # attachments"
+                    />
+                  </p>
+                ) : null}
+              </div>
+              <div role="status" aria-live="polite" data-testid="agent-thread-stalled-region">
+                {info.stalledSince !== undefined &&
+                turnActive &&
+                !cancelPending &&
+                !cancelStalled ? (
+                  <div
+                    className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                    data-testid="agent-thread-stalled"
+                  >
+                    <span className="flex-1">
+                      {t`Nothing from ${agentName} for ${plural(stalledMinutes, {
+                        one: '# minute',
+                        other: '# minutes',
+                      })}. If it looks stuck, Stop and try again.`}
+                    </span>
+                  </div>
+                ) : null}
+              </div>
+              {info.steer !== undefined && !archived ? (
                 <div
-                  key={dropNotice.id}
-                  className="border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                  className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
+                  data-testid="agent-thread-steer-pending"
                 >
-                  {dropNotice.text}
+                  <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
+                  <span className="min-w-0 flex-1 truncate text-foreground/80">
+                    {info.steer.content}
+                  </span>
                 </div>
-              ) : uploadsPending ? (
-                <p className="sr-only">
-                  <Plural
-                    value={pendingUploads.length}
-                    one="Uploading # attachment"
-                    other="Uploading # attachments"
-                  />
-                </p>
               ) : null}
-            </div>
-            {info.steer !== undefined && !archived ? (
-              <div
-                className="flex items-center gap-2 border-t bg-muted/40 px-3 py-1.5 text-muted-foreground text-xs"
-                data-testid="agent-thread-steer-pending"
-              >
-                <Spinner className="size-3.5 shrink-0" aria-hidden="true" />
-                <span className="shrink-0">{t`Steering — waiting for the current run to stop…`}</span>
-                <span className="min-w-0 flex-1 truncate text-foreground/80">
-                  {info.steer.content}
-                </span>
-              </div>
-            ) : null}
-            {cancelStalled && turnActive ? (
-              <div
-                className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-                data-testid="agent-thread-cancel-stalled"
-              >
-                <span className="flex-1">
-                  {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
-                </span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="destructive"
-                  className="h-6 text-xs"
-                  onClick={() => client.closeThread(info.threadId)}
-                  data-testid="agent-thread-force-stop"
+              {cancelStalled && turnActive ? (
+                <div
+                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                  data-testid="agent-thread-cancel-stalled"
                 >
-                  {t`Force stop`}
-                </Button>
-              </div>
-            ) : null}
-            <span
-              className="sr-only"
-              role="status"
-              aria-live="polite"
-              data-testid="agent-thread-auth-status"
-            >
-              {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
-            </span>
-            <span
-              className="sr-only"
-              role="status"
-              aria-live="polite"
-              data-testid="agent-thread-resume-status"
-            >
-              {resumeFailureMessage}
-            </span>
-            <span
-              className="sr-only"
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              data-testid="agent-thread-start-status"
-            >
-              {announcedStartStatus}
-            </span>
-            {resumeFailureMessage !== '' ? (
-              <div
-                className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
-                data-testid="agent-thread-resume-failed"
+                  <span className="flex-1">
+                    {t`The agent isn't stopping. Force stop closes this chat and quits the agent.`}
+                  </span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="destructive"
+                    className="h-6 text-xs"
+                    onClick={() => client.closeThread(info.threadId)}
+                    data-testid="agent-thread-force-stop"
+                  >
+                    {t`Force stop`}
+                  </Button>
+                </div>
+              ) : null}
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                data-testid="agent-thread-auth-status"
               >
-                <span className="flex-1">{resumeFailureMessage}</span>
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="outline"
-                  className="h-6 shrink-0 text-xs"
-                  disabled={runningAuthAction !== null}
-                  aria-busy={runningAuthAction === 'new-chat'}
-                  onClick={startFreshThread}
-                  data-testid="agent-thread-resume-fallback-new"
+                {runningAuthAction === null ? '' : authActionAnnouncement(runningAuthAction)}
+              </span>
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                data-testid="agent-thread-resume-status"
+              >
+                {resumeFailureMessage}
+              </span>
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-testid="agent-thread-start-status"
+              >
+                {announcedStartStatus}
+              </span>
+              <span
+                className="sr-only"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+                data-testid="agent-thread-crash-status"
+              >
+                {crashAnnouncement}
+              </span>
+              {resumeFailureMessage !== '' && !newChatOfferInTranscript ? (
+                <div
+                  className="flex items-center gap-2 border-amber-500/30 border-t bg-amber-500/5 px-3 py-1.5 text-amber-700 text-xs dark:text-amber-400"
+                  data-testid="agent-thread-resume-failed"
                 >
-                  {runningAuthAction === 'new-chat' ? (
-                    <Spinner className="size-3" aria-hidden="true" />
-                  ) : null}
-                  {t`New chat with ${agentName}`}
-                </Button>
-              </div>
-            ) : null}
-            <ThreadComposer
-              info={info}
-              hasStartedWork={items.some((item) => item.kind === 'message' && item.role === 'user')}
-              onNewChat={startFreshThread}
-              composerRef={composerRef}
-              mentionRecency={mentionRecency}
-              onSubmit={submit}
-              canPrompt={canPrompt}
-              canQueue={canQueue}
-              turnActive={turnActive}
-              cancelPending={cancelPending}
-              onCancel={requestCancel}
-              onSteer={requestSteer}
-              status={status}
-              archived={archived}
-              resumePending={resumePending}
-              usage={model?.tokenUsage ?? null}
-              selectedCommentCount={selectedCommentCount}
-              selectedCommentDocs={selectedCommentDocs}
-              hasQueuedComments={hasQueuedComments}
-              onAttachComments={() => setCommentsAttached(true)}
-              onDismissComments={() => setCommentsAttached(false)}
-              pendingAttachments={pendingAttachments}
-              pendingUploads={pendingUploads}
-              imagesAccepted={imagesAccepted}
-              onIngestImageFiles={ingestFiles}
-              onIngestAllFiles={ingestFiles}
-              onRemovePendingAttachment={removePendingAttachment}
-            />
-            {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+                  <span className="flex-1">{resumeFailureMessage}</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    className="h-6 shrink-0 text-xs"
+                    disabled={runningAuthAction !== null}
+                    aria-busy={runningAuthAction === 'new-chat'}
+                    onClick={startFreshThread}
+                    data-testid="agent-thread-resume-fallback-new"
+                  >
+                    {runningAuthAction === 'new-chat' ? (
+                      <Spinner className="size-3" aria-hidden="true" />
+                    ) : null}
+                    {t`New chat with ${agentName}`}
+                  </Button>
+                </div>
+              ) : null}
+              <ThreadComposer
+                info={info}
+                hasStartedWork={threadHasUserMessage({ items })}
+                onNewChat={startFreshThread}
+                composerRef={composerRef}
+                mentionRecency={mentionRecency}
+                onSubmit={submit}
+                canPrompt={canPrompt}
+                canQueue={canQueue}
+                turnActive={turnActive}
+                cancelPending={cancelPending}
+                onCancel={requestCancel}
+                onSteer={requestSteer}
+                status={status}
+                archived={archived}
+                resumePending={resumePending}
+                usage={model?.tokenUsage ?? null}
+                selectedCommentCount={selectedCommentCount}
+                selectedCommentDocs={selectedCommentDocs}
+                hasQueuedComments={hasQueuedComments}
+                onAttachComments={() => setCommentsAttached(true)}
+                onDismissComments={() => setCommentsAttached(false)}
+                pendingAttachments={pendingAttachments}
+                pendingUploads={pendingUploads}
+                imagesAccepted={imagesAccepted}
+                onIngestImageFiles={ingestFiles}
+                onIngestAllFiles={ingestFiles}
+                onRemovePendingAttachment={removePendingAttachment}
+              />
+              {dragActive ? <ChatPanelDropOverlay onDismiss={() => setDragActive(false)} /> : null}
+            </ReferenceRulesContext>
           </DocPathResolverReadyContext>
         </div>
       </ImagePreviewContext.Provider>
@@ -1526,11 +1715,13 @@ function AgentSettingsPopover({
   info,
   hasStartedWork,
   onNewChat,
+  onReportProblem,
   triggerRef,
 }: {
   info: ThreadInfo;
   hasStartedWork: boolean;
   onNewChat: () => void;
+  onReportProblem?: () => void;
   triggerRef?: RefObject<HTMLButtonElement | null>;
 }): ReactNode {
   const { i18n, t } = useLingui();
@@ -1566,28 +1757,40 @@ function AgentSettingsPopover({
     const reason = settled
       ? t`${info.agent.name} doesn't offer any settings to adjust`
       : t`${info.agent.name} hasn't reported its settings yet`;
+    const tone: AgentSettingsTone = onReportProblem === undefined ? 'disabled' : 'muted';
+    const trigger = (
+      <AgentSettingsTrigger
+        ref={triggerRef}
+        label={t`Agent settings`}
+        tone={tone}
+        className="max-w-48 gap-1"
+        aria-describedby={tone === 'disabled' ? reasonId : undefined}
+      >
+        <span className={cn('truncate', AGENT_SETTINGS_TONE_TEXT[tone])}>{t`Settings`}</span>
+      </AgentSettingsTrigger>
+    );
+    if (onReportProblem !== undefined) {
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-60"
+            data-testid="agent-thread-settings-popover"
+          >
+            <DropdownMenuLabel className="font-normal text-muted-foreground">
+              {reason}
+            </DropdownMenuLabel>
+            <ReportProblemItem onSelect={onReportProblem} />
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    }
     return (
       <Tooltip>
         <TooltipTrigger asChild>
-          {}
           <span className="inline-flex cursor-not-allowed">
-            <Button
-              ref={triggerRef}
-              type="button"
-              variant="ghost"
-              className="h-7 max-w-48 gap-1 rounded-md pl-1.5 pr-1! text-xs"
-              aria-label={t`Agent settings`}
-              aria-disabled
-              aria-describedby={reasonId}
-              data-testid="agent-thread-settings"
-            >
-              <span className="truncate text-muted-foreground/50">{t`Settings`}</span>
-              <ChevronDown
-                className="size-3.5 text-muted-foreground/50"
-                data-icon="inline-end"
-                aria-hidden="true"
-              />
-            </Button>
+            {trigger}
             <span id={reasonId} className="sr-only">
               {reason}
             </span>
@@ -1622,10 +1825,14 @@ function AgentSettingsPopover({
       ? selectOptionHeaderText(effortSelect)
       : null;
   const fastOn = fastToggle?.currentValue === true;
+  const readOnlyShellOn = info.chatGrants?.includes('read_only_shell') === true;
   const headerSummary = formatUnitList(
-    [triggerText, fastOn ? t`Fast` : null, effortText].filter(
-      (part): part is string => part !== null,
-    ),
+    [
+      triggerText,
+      fastOn ? t`Fast` : null,
+      effortText,
+      readOnlyShellOn ? t`Read-only allowed` : null,
+    ].filter((part): part is string => part !== null),
     i18n.locale,
   );
   const settingsLabel =
@@ -1638,13 +1845,10 @@ function AgentSettingsPopover({
       <Tooltip>
         <TooltipTrigger asChild>
           <DropdownMenuTrigger asChild>
-            <Button
+            <AgentSettingsTrigger
               ref={triggerRef}
-              type="button"
-              variant="ghost"
-              className="h-7 min-w-0 max-w-sm shrink gap-1.5 rounded-md pl-1.5 pr-1! text-xs"
-              aria-label={settingsLabel}
-              data-testid="agent-thread-settings"
+              label={settingsLabel}
+              className="min-w-0 max-w-sm shrink gap-1.5"
             >
               <span className="min-w-0 truncate">{triggerText}</span>
               {fastOn ? (
@@ -1657,8 +1861,15 @@ function AgentSettingsPopover({
                   {effortText}
                 </span>
               ) : null}
-              <ChevronDown className="size-3.5" data-icon="inline-end" aria-hidden="true" />
-            </Button>
+              {readOnlyShellOn ? (
+                <span
+                  className="shrink-0 text-muted-foreground"
+                  data-testid="agent-thread-read-only-shell"
+                >
+                  {t`Read-only allowed`}
+                </span>
+              ) : null}
+            </AgentSettingsTrigger>
           </DropdownMenuTrigger>
         </TooltipTrigger>
         <TooltipContent side="bottom" aria-label={t`Agent settings`}>
@@ -1736,8 +1947,69 @@ function AgentSettingsPopover({
             }}
           />
         ) : null}
+        {info.chatGrants?.includes('read_only_shell') ? (
+          <DropdownMenuItem
+            onSelect={() => client.setChatGrant(info.threadId, 'read_only_shell', false)}
+            data-testid="agent-thread-settings-read-only-shell"
+          >
+            <span className="flex min-w-0 flex-col">
+              <span>{t`Ask again before read-only commands`}</span>
+              <span className="text-muted-foreground text-xs">{t`They run without asking while this chat is open`}</span>
+            </span>
+          </DropdownMenuItem>
+        ) : null}
+        {onReportProblem !== undefined ? <ReportProblemItem onSelect={onReportProblem} /> : null}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+type AgentSettingsTone = 'normal' | 'muted' | 'disabled';
+
+const AGENT_SETTINGS_TONE_TEXT: Record<AgentSettingsTone, string | undefined> = {
+  normal: undefined,
+  muted: 'text-muted-foreground',
+  disabled: 'text-muted-foreground/50',
+};
+
+function AgentSettingsTrigger({
+  ref,
+  label,
+  tone = 'normal',
+  className,
+  children,
+  ...buttonProps
+}: ComponentProps<typeof Button> & { label: string; tone?: AgentSettingsTone }): ReactNode {
+  return (
+    <Button
+      {...buttonProps}
+      ref={ref}
+      type="button"
+      variant="ghost"
+      className={cn('h-7 rounded-md pl-1.5 pr-1! text-xs', className)}
+      aria-label={label}
+      aria-disabled={tone === 'disabled' || undefined}
+      data-testid="agent-thread-settings"
+    >
+      {children}
+      <ChevronDown
+        className={cn('size-3.5', AGENT_SETTINGS_TONE_TEXT[tone])}
+        data-icon="inline-end"
+        aria-hidden="true"
+      />
+    </Button>
+  );
+}
+
+function ReportProblemItem({ onSelect }: { onSelect: () => void }): ReactNode {
+  const { t } = useLingui();
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuItem onSelect={onSelect} data-testid="agent-thread-report-problem">
+        {t`Report a problem with this chat…`}
+      </DropdownMenuItem>
+    </>
   );
 }
 
@@ -1997,6 +2269,7 @@ function ThreadAuthOfferButton({
 function ThreadEmptyState({
   status,
   displayedStartStatus,
+  justSettled,
   archived,
   agent,
   authOffer,
@@ -2005,6 +2278,7 @@ function ThreadEmptyState({
 }: {
   status: ThreadInfo['status'];
   displayedStartStatus: ThreadInfo['status'];
+  justSettled: boolean;
   archived: boolean;
   agent: ThreadInfo['agent'];
   authOffer: ThreadAuthOfferWithoutSignIn;
@@ -2013,6 +2287,12 @@ function ThreadEmptyState({
 }): ReactNode {
   const { t } = useLingui();
   const agentName = agentDisplayName(agent.name);
+  const [showSettle, setShowSettle] = useState(justSettled);
+  const [previousJustSettled, setPreviousJustSettled] = useState(justSettled);
+  if (previousJustSettled !== justSettled) {
+    setPreviousJustSettled(justSettled);
+    if (justSettled) setShowSettle(true);
+  }
 
   if (archived) {
     return <ThreadTranscriptSkeleton />;
@@ -2020,24 +2300,32 @@ function ThreadEmptyState({
 
   if (status === 'ready') {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-        <RegisteredAgentIcon
-          agentId={agent.id}
-          iconUrl={agent.iconUrl}
-          className="size-12 opacity-25 grayscale"
-        />
-        <p className="text-muted-foreground text-sm">{t`Ask ${agentName}`}</p>
+      <div className="flex h-full items-center justify-center px-6">
+        <div
+          className={cn('flex items-center gap-2.5', showSettle && 'animate-agent-ready-settle')}
+          data-testid="agent-thread-ready"
+          onAnimationEnd={(event) => {
+            if (event.target === event.currentTarget) setShowSettle(false);
+          }}
+        >
+          <RegisteredAgentIcon agentId={agent.id} iconUrl={agent.iconUrl} className="size-6" />
+          <p className="text-foreground/70 text-center text-base">{t`What should we work on?`}</p>
+        </div>
       </div>
     );
   }
 
   if (authOffer.actionLabel !== null) {
+    const waitingOnSignIn = isSignInWaitingStatus(status);
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+      <div
+        className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center"
+        data-testid="agent-thread-auth-offer"
+      >
         <RegisteredAgentIcon
           agentId={agent.id}
           iconUrl={agent.iconUrl}
-          className="size-12 opacity-25 grayscale"
+          className={cn('size-12', !waitingOnSignIn && 'opacity-25 grayscale')}
         />
         <p className="text-muted-foreground text-sm">{authOffer.headline}</p>
         <ThreadAuthOfferButton
@@ -2058,13 +2346,16 @@ function ThreadEmptyState({
           ? t`Signing in to ${agentName}…`
           : t`Connecting to ${agentName}…`;
   return (
-    <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
+    <div
+      className="flex h-full flex-col items-center justify-center gap-2 px-6 text-center"
+      data-testid="agent-thread-starting-empty-state"
+    >
       <RegisteredAgentIcon
         agentId={agent.id}
         iconUrl={agent.iconUrl}
-        className="size-12 animate-pulse opacity-25 grayscale motion-reduce:animate-none"
+        className="size-8 animate-agent-mark-breathe opacity-25 grayscale motion-reduce:animate-none"
       />
-      <p className="shimmer text-sm">{loadingMessage}</p>
+      <p className="shimmer-subtle text-sm">{loadingMessage}</p>
     </div>
   );
 }
@@ -2172,7 +2463,28 @@ function ThreadItem({
       );
     case 'agent_notice':
       return <AgentNoticeCard item={item} />;
+    case 'browser_unavailable':
+      return <BrowserUnavailableNotice item={item} />;
   }
+}
+
+function BrowserUnavailableNotice({
+  item,
+}: {
+  item: Extract<RenderedItem, { kind: 'browser_unavailable' }>;
+}): ReactNode {
+  const { t } = useLingui();
+  return (
+    <div
+      role="note"
+      className="rounded-md border border-border bg-muted/40 px-2 py-1.5 text-muted-foreground text-xs"
+      data-testid="agent-thread-browser-unavailable"
+    >
+      {item.reason === 'no-node'
+        ? t`The browser isn't available in this chat because no Node.js install that can start it was found. Install Node.js, then start a new chat.`
+        : t`The browser isn't available in this chat because it couldn't be set up. OpenKnowledge's log has the details.`}
+    </div>
+  );
 }
 
 function AgentNoticeCard({
@@ -2352,6 +2664,7 @@ function ThreadAuthPrompt({
     setAuthPending(methodId);
     void onAuthenticate(methodId)
       .catch((err: unknown) => {
+        if (isAgentExitedError(err)) return;
         toast.error(t`Sign-in failed: ${errorText(err)}`);
       })
       .finally(() => setAuthPending(null));
@@ -2361,11 +2674,7 @@ function ThreadAuthPrompt({
       className="mx-auto flex w-full max-w-72 flex-col items-center gap-4 px-2 py-6 text-center"
       data-testid="agent-thread-notice"
     >
-      <RegisteredAgentIcon
-        agentId={agent.id}
-        iconUrl={agent.iconUrl}
-        className="size-12 opacity-25 grayscale"
-      />
+      <RegisteredAgentIcon agentId={agent.id} iconUrl={agent.iconUrl} className="size-12" />
       {}
       <div className="sr-only" role="status" aria-live="polite">
         {signingIn ? t`Signing in to ${agentName}` : ''}
@@ -2514,6 +2823,8 @@ function ThreadNotice({
         return t`${agentName} couldn't start a conversation.`;
       case 'prompt':
         return t`Your message didn't reach ${agentName}.`;
+      case 'exited':
+        return t`${agentName} stopped unexpectedly.`;
       default: {
         const exhaustive: never = reason;
         return String(exhaustive);
@@ -2523,7 +2834,11 @@ function ThreadNotice({
   const headline = failure === null ? null : failureHeadline(failure.reason);
   const rootCauseLine =
     failure?.machineDetail !== undefined && failure.machineDetail !== ''
-      ? extractRootCauseLine(failure.machineDetail)
+      ? extractRootCauseLine(
+          failure.reason === 'exited'
+            ? exitStderrWindow(failure.machineDetail)
+            : failure.machineDetail,
+        )
       : null;
   return (
     <div
@@ -2550,6 +2865,11 @@ function ThreadNotice({
           </p>
           {failure.agentMessage !== undefined && failure.agentMessage !== '' ? (
             <p className="mt-1 opacity-80">{failure.agentMessage}</p>
+          ) : null}
+          {failure.reason === 'exited' && failure.exit !== undefined ? (
+            <p className="mt-1 opacity-80" data-testid="agent-thread-notice-exit-summary">
+              {exitSummary(failure.exit)}
+            </p>
           ) : null}
           {rootCauseLine !== null ? (
             <p
@@ -2582,7 +2902,8 @@ function ThreadNotice({
               ) : null}
             </>
           ) : null}
-          {failure.reason === 'auth-required' && !showRetry ? (
+          {(failure.reason === 'auth-required' && !showRetry) ||
+          (failure.reason === 'exited' && authOffer.kind === 'new-chat') ? (
             <div className="mt-1.5">
               <ThreadAuthOfferButton
                 offer={authOffer}
@@ -2872,9 +3193,16 @@ function toolTitleText(text: ToolTooltipText | null): string | undefined {
 
 function ToolTooltipContent({ text }: { text: ToolTooltipText }): ReactNode {
   return (
-    <TooltipContent side="top" align="start" className="max-w-72">
+    <TooltipContent
+      side="top"
+      align="start"
+      sideOffset={6}
+      arrow={false}
+      className="max-w-72 border border-border bg-popover text-popover-foreground shadow-md"
+      data-testid="agent-thread-tool-tooltip"
+    >
       {text.purpose !== null ? <span className="block">{text.purpose}</span> : null}
-      <span className="block font-mono text-[10px] opacity-70" dir="ltr">
+      <span className="block font-mono text-[10px] text-muted-foreground" dir="ltr">
         {text.id}
       </span>
     </TooltipContent>
@@ -3466,10 +3794,15 @@ function PermissionPrompt({
   const selectOption = (optionId: string): void => {
     client.respondPermission(threadId, item.requestId, { kind: 'selected', optionId });
   };
+  const allowReadOnlyShell = (optionId: string): void => {
+    client.setChatGrant(threadId, 'read_only_shell', true);
+    selectOption(optionId);
+  };
 
   const allowOptions = item.options.filter((option) => option.kind.startsWith('allow'));
   const rejectOptions = item.options.filter((option) => option.kind.startsWith('reject'));
   const primaryAllow = allowOptions.find((o) => o.kind === 'allow_once') ?? allowOptions[0];
+  const readOnlyOffer = item.readOnlyShell && primaryAllow !== undefined;
   const secondaryAllows = allowOptions.filter((option) => option !== primaryAllow);
   const primaryReject = rejectOptions.find((o) => o.kind === 'reject_once') ?? rejectOptions[0];
   const denyOptions =
@@ -3516,26 +3849,41 @@ function PermissionPrompt({
         </div>
       ) : !actionable ? (
         <div className="text-muted-foreground text-xs">{t`This request is no longer active.`}</div>
-      ) : allowOptions.length > 1 || denyOptions.length > 1 ? (
+      ) : allowOptions.length > 1 || denyOptions.length > 1 || readOnlyOffer ? (
         <div className="flex flex-col gap-1" data-testid="agent-thread-permission-stack">
           {(primaryAllow !== undefined ? [primaryAllow, ...secondaryAllows] : allowOptions).map(
             (option) => {
               const isPrimary = option === primaryAllow;
               return (
-                <Button
-                  key={option.optionId}
-                  ref={isPrimary ? primaryRef : undefined}
-                  aria-describedby={isPrimary ? describedBy : undefined}
-                  type="button"
-                  size="sm"
-                  variant={isPrimary ? 'default' : 'outline'}
-                  className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans"
-                  onClick={() => selectOption(option.optionId)}
-                  data-testid={isPrimary ? 'agent-thread-permission-allow' : undefined}
-                  data-permission-kind={option.kind}
-                >
-                  {option.name}
-                </Button>
+                <Fragment key={option.optionId}>
+                  <Button
+                    ref={isPrimary ? primaryRef : undefined}
+                    aria-describedby={isPrimary ? describedBy : undefined}
+                    type="button"
+                    size="sm"
+                    variant={isPrimary ? 'default' : 'outline'}
+                    className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans"
+                    onClick={() => selectOption(option.optionId)}
+                    data-testid={isPrimary ? 'agent-thread-permission-allow' : undefined}
+                    data-permission-kind={option.kind}
+                  >
+                    {option.name}
+                  </Button>
+                  {isPrimary && readOnlyOffer ? (
+                    <Button
+                      aria-describedby={describedBy}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-auto w-full justify-start whitespace-normal py-1.5 text-left text-xs normal-case font-sans"
+                      onClick={() => allowReadOnlyShell(option.optionId)}
+                      data-testid="agent-thread-permission-allow-read-only"
+                      data-permission-kind="chat_read_only_shell"
+                    >
+                      {t`Allow read-only commands while this chat is open`}
+                    </Button>
+                  ) : null}
+                </Fragment>
               );
             },
           )}
@@ -4035,6 +4383,8 @@ function ThreadComposer({
   onIngestAllFiles: (files: readonly File[]) => Promise<void>;
   onRemovePendingAttachment: (index: number) => void;
 }): ReactNode {
+  const [reportOpen, setReportOpen] = useState(false);
+  const canReportProblem = typeof window !== 'undefined' && window.okDesktop != null;
   const { t, i18n } = useLingui();
   const agentName = agentDisplayName(info.agent.name);
 
@@ -4197,8 +4547,17 @@ function ThreadComposer({
             info={info}
             hasStartedWork={hasStartedWork}
             onNewChat={onNewChat}
+            {...(canReportProblem ? { onReportProblem: () => setReportOpen(true) } : {})}
             triggerRef={settingsTriggerRef}
           />
+          {canReportProblem ? (
+            <ReportBugDialog
+              open={reportOpen}
+              onOpenChange={setReportOpen}
+              agentChat={{ threadId: info.threadId }}
+              launcherBorne
+            />
+          ) : null}
           <div className="ml-auto flex items-center gap-1.5">
             {usagePercent !== null && usage?.used !== undefined && usage?.size !== undefined ? (
               <ContextUsageRing used={usage.used} size={usage.size} percent={usagePercent} />
