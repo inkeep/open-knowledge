@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { execFileSync } from 'node:child_process';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { FuseV1Options, FuseVersion, flipFuses } from '@electron/fuses';
@@ -32,6 +33,33 @@ async function flipElectronFuses(electronBinary, electronPlatformName) {
   console.log('[afterPack] fuses flipped successfully; electron-builder will re-sign next');
 }
 
+export function assertAdHocSealCoversBundle(appPath) {
+  try {
+    execFileSync('/usr/bin/codesign', ['--verify', '--deep', '--strict', '--verbose=3', appPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (err) {
+    if (typeof err?.status !== 'number') {
+      throw createFuseFailure(
+        `[afterPack] could not run /usr/bin/codesign to verify the ad-hoc seal on ${appPath}: ` +
+          `${err?.code ?? err?.signal ?? (err instanceof Error ? err.message : String(err))}`,
+        { cause: err },
+      );
+    }
+    const lines = `${err.stderr ?? ''}\n${err.stdout ?? ''}`
+      .split('\n')
+      .filter((line) => line.trim() !== '' && !/^--(prepared|validated):/.test(line));
+    throw createFuseFailure(
+      `[afterPack] codesign --verify --deep --strict rejected ${appPath} after the fuse flip ` +
+        `re-sealed it ad hoc, so electron-builder's signer would meet the same nested ` +
+        `signature. Either a bundle changed after the seal or the re-seal left an invalid ` +
+        `nested signature. codesign exited ${err.status}:\n${[...new Set(lines)].join('\n')}`,
+      { cause: err },
+    );
+  }
+  console.log('[afterPack] ad-hoc seal verified across every nested bundle');
+}
+
 export default async function afterPack(context) {
   const { appOutDir, packager, electronPlatformName } = context;
 
@@ -52,9 +80,8 @@ export default async function afterPack(context) {
     );
   }
 
-  await flipElectronFuses(electronBinary, electronPlatformName);
-
   if (electronPlatformName !== 'darwin') {
+    await flipElectronFuses(electronBinary, electronPlatformName);
     console.log(
       `[afterPack] fuses done; skipping darwin-only helper-bundle + node-pty steps on "${electronPlatformName}"`,
     );
@@ -137,4 +164,7 @@ export default async function afterPack(context) {
   const resourcesDir = join(appOutDir, `${appName}.app`, 'Contents', 'Resources');
   const ptyHelpers = ensureNodePtySpawnHelperExecutable(resourcesDir);
   console.log(`[afterPack] node-pty spawn-helper marked executable (${ptyHelpers.length} file(s))`);
+
+  await flipElectronFuses(electronBinary, electronPlatformName);
+  assertAdHocSealCoversBundle(join(appOutDir, `${appName}.app`));
 }
