@@ -19,7 +19,9 @@ function listProductionTsFiles(dir: string): string[] {
       st.isFile() &&
       (entry.endsWith('.ts') || entry.endsWith('.tsx')) &&
       !entry.endsWith('.test.ts') &&
-      !entry.endsWith('.test.tsx')
+      !entry.endsWith('.test.tsx') &&
+      !entry.endsWith('.test-helper.ts') &&
+      !entry.endsWith('.type-tests.ts')
     ) {
       out.push(full);
     }
