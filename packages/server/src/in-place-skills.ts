@@ -207,9 +207,11 @@ function bundleStamp(absDir: string): string | null {
     for (const e of readdirSync(dir, { withFileTypes: true })) {
       const p = join(dir, e.name);
       const r = rel === '' ? e.name : `${rel}/${e.name}`;
-      const st = statSync(p);
-      if (st.isDirectory()) walk(p, r);
-      else parts.push(`${r}:${st.size}:${st.mtimeMs}`);
+      if (e.isDirectory()) walk(p, r);
+      else if (e.isFile()) {
+        const st = statSync(p);
+        parts.push(`${r}:${st.size}:${st.mtimeMs}`);
+      }
     }
   };
   try {

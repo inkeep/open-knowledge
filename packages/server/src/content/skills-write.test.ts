@@ -1,4 +1,12 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
@@ -351,6 +359,31 @@ describe('applySkillBundleFileWrite / applySkillBundleFileDelete (fs-direct)', (
     });
     expect(overflow.ok).toBe(false);
     if (!overflow.ok) expect(overflow.error.code).toBe('TOO_MANY_FILES');
+  });
+
+  test('the file-count cap ignores withheld entries and links a caller cannot see or delete', () => {
+    seedSkill();
+    const skillDir = join(skillsRoot, 'trip-log');
+    for (const dir of ['.git/objects', '.GIT', 'node_modules/pkg', 'assets']) {
+      mkdirSync(join(skillDir, dir), { recursive: true });
+    }
+    for (let i = 0; i < 30; i++) writeFileSync(join(skillDir, `.git/objects/o${i}`), 'x');
+    writeFileSync(join(skillDir, '.GIT/config'), 'x');
+    writeFileSync(join(skillDir, 'node_modules/pkg/index.js'), 'x');
+    writeFileSync(join(skillDir, 'assets/.DS_Store'), 'x');
+    symlinkSync('.git', join(skillDir, 'cfg'), 'dir');
+    symlinkSync('.git/objects/o0', join(skillDir, 'leaf'), 'file');
+    const writes: string[] = [];
+    for (let i = 0; i < 51; i++) {
+      const r = applySkillBundleFileWrite({
+        skillsRoot,
+        name: 'trip-log',
+        relPath: `references/r${i}.md`,
+        content: `# ${i}`,
+      });
+      writes.push(r.ok ? 'ok' : r.error.code);
+    }
+    expect(writes).toEqual([...Array(50).fill('ok'), 'TOO_MANY_FILES']);
   });
 
   test('accepts an explicit bounded policy for bulk import without changing edit defaults', () => {

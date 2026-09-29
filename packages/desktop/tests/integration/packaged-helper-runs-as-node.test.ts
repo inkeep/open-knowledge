@@ -40,21 +40,13 @@ const packagedHelperBinary = haveDarwin ? findPackagedHelperBinary() : null;
 const havePackagedBuild = packagedHelperBinary !== null;
 
 describe('packaged helper binary runs under ELECTRON_RUN_AS_NODE=1', () => {
-  test('test environment gate (packaged build present)', () => {
-    if (!haveDarwin) {
-      console.log(
-        `[packaged-helper-runs-as-node] platform=${process.platform} — darwin-only test, skipping`,
-      );
-      return;
-    }
-    if (!havePackagedBuild) {
-      console.log(
-        `[packaged-helper-runs-as-node] no packaged helper binary found under ` +
-          `${distDesktopDir}/mac-<arch>/OpenKnowledge.app/... — run ` +
-          `\`bunx electron-builder --dir --publish never\` (or \`okdesk\`) to enable this test`,
-      );
-      return;
-    }
+  test('test environment gate (packaged build present)', (ctx) => {
+    ctx.skip(!haveDarwin, `darwin-only test; platform=${process.platform}`);
+    ctx.skip(
+      !havePackagedBuild,
+      `no packaged helper binary found under ${distDesktopDir}/mac-<arch>/OpenKnowledge.app/... — run ` +
+        `\`pnpm exec electron-builder --dir --publish never\` (or \`okdesk\`) to enable this test`,
+    );
     expect(existsSync(packagedHelperBinary as string)).toBe(true);
   });
 

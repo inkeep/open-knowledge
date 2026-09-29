@@ -144,12 +144,7 @@ export function describeAttachmentRefusals(refusals: readonly AttachmentRefusal[
   return [...groups.values()].map(({ first, names }) => describeRefusedFiles(first, names));
 }
 
-async function encodeImageFile(file: File): Promise<{
-  readonly data: string;
-  readonly mimeType: string;
-  readonly name: string;
-  readonly sizeBytes: number;
-}> {
+async function base64Of(blob: Blob): Promise<string> {
   const dataUrl = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(reader.error ?? new Error('FileReader failed'));
@@ -161,20 +156,102 @@ async function encodeImageFile(file: File): Promise<{
       }
       resolve(result);
     };
-    reader.readAsDataURL(file);
+    reader.readAsDataURL(blob);
   });
   const comma = dataUrl.indexOf(',');
-  const data = comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
-  return {
-    data,
-    mimeType: file.type || 'application/octet-stream',
-    name: file.name || 'image',
-    sizeBytes: file.size,
-  };
+  return comma >= 0 ? dataUrl.slice(comma + 1) : dataUrl;
+}
+
+const RESIZE_MAX_EDGE = 2048;
+
+const RESIZE_MIN_EDGE = 512;
+
+const RESIZE_ATTEMPTS = 6;
+
+const RESIZE_QUALITY = 0.85;
+
+export interface ShrunkImage {
+  readonly blob: Blob;
+  readonly width: number;
+  readonly height: number;
+}
+
+export type ImageShrinker = (file: File, limits: readonly number[]) => Promise<ShrunkImage | null>;
+
+export async function fitImageToBytes(
+  size: { readonly width: number; readonly height: number },
+  maxBytes: number,
+  encode: (width: number, height: number) => Promise<Blob>,
+): Promise<ShrunkImage | null> {
+  const longEdge = Math.max(size.width, size.height);
+  const smallestEdge = Math.min(RESIZE_MIN_EDGE, longEdge);
+  let scale = Math.min(1, RESIZE_MAX_EDGE / longEdge);
+  for (let attempt = 0; attempt < RESIZE_ATTEMPTS; attempt += 1) {
+    const width = Math.max(1, Math.round(size.width * scale));
+    const height = Math.max(1, Math.round(size.height * scale));
+    if (Math.max(width, height) < smallestEdge) return null;
+    const blob = await encode(width, height);
+    if (blob.size <= maxBytes) return { blob, width, height };
+    scale *= Math.sqrt(maxBytes / blob.size) * 0.9;
+  }
+  return null;
+}
+
+async function encodeScaled(bitmap: ImageBitmap, width: number, height: number): Promise<Blob> {
+  const canvas = new OffscreenCanvas(width, height);
+  const context = canvas.getContext('2d');
+  if (context === null) throw new Error('OffscreenCanvas has no 2d context');
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(bitmap, 0, 0, width, height);
+  const webp = await canvas.convertToBlob({ type: 'image/webp', quality: RESIZE_QUALITY });
+  if (webp.type === 'image/webp') return webp;
+  context.globalCompositeOperation = 'destination-over';
+  context.fillStyle = '#ffffff';
+  context.fillRect(0, 0, width, height);
+  return canvas.convertToBlob({ type: 'image/jpeg', quality: RESIZE_QUALITY });
+}
+
+async function fitBitmapToFirstLimit(
+  bitmap: ImageBitmap,
+  limits: readonly number[],
+): Promise<ShrunkImage | null> {
+  for (const maxBytes of limits) {
+    const fitted = await fitImageToBytes(bitmap, maxBytes, (width, height) =>
+      encodeScaled(bitmap, width, height),
+    );
+    if (fitted !== null) return fitted;
+  }
+  return null;
+}
+
+export const shrinkImageToFit: ImageShrinker = async (file, limits) => {
+  if (typeof createImageBitmap !== 'function' || typeof OffscreenCanvas !== 'function') {
+    return null;
+  }
+  let bitmap: ImageBitmap | undefined;
+  try {
+    bitmap = await createImageBitmap(file);
+    return await fitBitmapToFirstLimit(bitmap, limits);
+  } catch (error) {
+    console.warn(
+      '[acp-attachment] could not resize an image',
+      { sizeBytes: file.size, mimeType: file.type || '' },
+      error,
+    );
+    return null;
+  } finally {
+    bitmap?.close();
+  }
+};
+
+export interface ImageAttachmentOptions {
+  readonly budgetBytes?: number | undefined;
+  readonly shrink?: ImageShrinker;
 }
 
 export async function fileToImageAttachment(
   file: File,
+  options: ImageAttachmentOptions = {},
 ): Promise<
   | { readonly ok: true; readonly part: AttachmentPart }
   | { readonly ok: false; readonly error: ImageAttachmentError }
@@ -183,23 +260,76 @@ export async function fileToImageAttachment(
   if (!ALLOWED_IMAGE_MIMES.has(mimeType)) {
     return { ok: false, error: { kind: 'unsupported-type', mimeType } };
   }
+  const name = file.name || 'image';
+  const budget = Math.max(0, Math.min(MAX_IMAGE_BYTES, options.budgetBytes ?? MAX_IMAGE_BYTES));
+  if (file.size > budget && mimeType !== 'image/gif') {
+    const limits: number[] = budget > 0 ? [budget] : [];
+    if (file.size > MAX_IMAGE_BYTES && budget < MAX_IMAGE_BYTES) limits.push(MAX_IMAGE_BYTES);
+    const shrink = options.shrink ?? shrinkImageToFit;
+    const shrunk = limits.length > 0 ? await shrink(file, limits) : null;
+    if (shrunk !== null) {
+      console.info('[acp-attachment] resized an image to fit', {
+        fromBytes: file.size,
+        toBytes: shrunk.blob.size,
+        width: shrunk.width,
+        height: shrunk.height,
+        mimeType: shrunk.blob.type,
+      });
+      return {
+        ok: true,
+        part: {
+          kind: 'image',
+          data: await base64Of(shrunk.blob),
+          mimeType: shrunk.blob.type,
+          name,
+          sizeBytes: shrunk.blob.size,
+        },
+      };
+    }
+  }
   if (file.size > MAX_IMAGE_BYTES) {
     return {
       ok: false,
       error: { kind: 'too-large', sizeBytes: file.size, limitBytes: MAX_IMAGE_BYTES },
     };
   }
-  const encoded = await encodeImageFile(file);
   return {
     ok: true,
-    part: {
-      kind: 'image',
-      data: encoded.data,
-      mimeType: encoded.mimeType,
-      name: encoded.name,
-      sizeBytes: encoded.sizeBytes,
-    },
+    part: { kind: 'image', data: await base64Of(file), mimeType, name, sizeBytes: file.size },
   };
+}
+
+export type AttachmentSurface = 'agent-chat' | 'composer';
+
+export type AttachmentRejection =
+  | ImageAttachmentError
+  | { readonly kind: 'total-too-large'; readonly limitBytes: number }
+  | { readonly kind: 'images-not-accepted' };
+
+export interface RejectedAttachment {
+  readonly size: number;
+  readonly type: string;
+}
+
+export function rejectedPart(part: AttachmentPart): RejectedAttachment {
+  return {
+    size: embeddedAttachmentBytes(part),
+    type: part.kind === 'image' || part.kind === 'blob' ? part.mimeType : '',
+  };
+}
+
+export function logAttachmentRejection(
+  surface: AttachmentSurface,
+  rejected: RejectedAttachment,
+  rejection: AttachmentRejection,
+): void {
+  console.warn('[acp-attachment] refused', {
+    surface,
+    reason: rejection.kind,
+    sizeBytes: rejected.size,
+    mimeType: rejected.type || '',
+    ...('limitBytes' in rejection ? { limitBytes: rejection.limitBytes } : {}),
+  });
 }
 
 export function collectImageFiles(dataTransfer: DataTransfer | null): File[] {
@@ -243,6 +373,7 @@ export interface FileToAttachmentDeps {
   readonly absPathOf?: (file: File) => string | null;
   readonly workspaceContentDir?: string;
   readonly pathSeparator?: '/' | '\\';
+  readonly imageBudgetBytes?: number;
 }
 
 function workspaceRelativePath(abs: string, root: string, sep: '/' | '\\'): string | null {
@@ -315,7 +446,9 @@ export async function fileToAttachment(
   | { readonly ok: false; readonly error: FileAttachmentError }
 > {
   const mime = file.type || '';
-  if (mime.startsWith('image/')) return fileToImageAttachment(file);
+  if (mime.startsWith('image/')) {
+    return fileToImageAttachment(file, { budgetBytes: deps.imageBudgetBytes });
+  }
   const found = projectPathOf(file, deps);
   if (typeof found === 'string') return fileToEmbeddedAttachment(file, found);
   return {

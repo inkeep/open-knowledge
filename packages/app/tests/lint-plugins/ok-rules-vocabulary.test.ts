@@ -216,8 +216,11 @@ describe('ok-rules corpus vocabulary', () => {
     ).toEqual([]);
   });
 
-  test('on a full checkout the exempt directories are held to the same standard', () => {
-    if (!existsSync(join(REPO_ROOT, MIRROR_ABSENT_PACKAGE_ROOT))) return;
+  test('on a full checkout the exempt directories are held to the same standard', (ctx) => {
+    ctx.skip(
+      !existsSync(join(REPO_ROOT, MIRROR_ABSENT_PACKAGE_ROOT)),
+      'the public mirror omits the exempt package root',
+    );
     const counts = filesPerDir();
     expect(ABSENT_ON_MIRROR.filter((dir) => (counts.get(dir) ?? 0) === 0)).toEqual([]);
   });

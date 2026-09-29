@@ -1,7 +1,7 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import type { ServerResponse } from 'node:http';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import {
   EmptyRequestSchema,
   type Principal,
@@ -23,6 +23,7 @@ import {
   BUNDLE_MAX_FILES,
   countBundleFiles,
 } from '../content/skills-write.ts';
+import { isSkillBundlePathWithheld } from '../content-filter.ts';
 import type {
   DerivedDocumentIndexApiPort,
   DerivedDocumentIndexMutation,
@@ -31,10 +32,12 @@ import { SUPPORTED_DOC_EXTENSIONS } from '../doc-extensions.ts';
 import type { StoreFailure } from '../document-durability-state.ts';
 import { extractActorIdentity } from '../extract-actor-identity.ts';
 import type { PinoLogger } from '../logger.ts';
+import { isWithinDir } from '../path-utils.ts';
 import { isInternalBundleSkillName } from '../skill-bundles.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import type { ErrorExtensions } from './error-response.ts';
 import { errorResponse } from './error-response.ts';
+import { errnoCode } from './handler-utils.ts';
 import { methodRouter } from './method-router.ts';
 import { withValidation } from './request-validation.ts';
 import { successResponse } from './success-response.ts';
@@ -117,6 +120,61 @@ export interface SkillsFileRouteDeps {
     mutations: DerivedDocumentIndexMutation[],
     reason: string,
   ) => Promise<void>;
+}
+
+function realPathOf(abs: string): string | null {
+  const pending: string[] = [];
+  let cur = abs;
+  for (;;) {
+    try {
+      return join(realpathSync.native(cur), ...pending);
+    } catch (err) {
+      const code = errnoCode(err);
+      if (code === 'ELOOP') return null;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw err;
+    }
+    try {
+      if (lstatSync(cur).isSymbolicLink()) return null;
+    } catch {}
+    const parent = dirname(cur);
+    if (parent === cur) return null;
+    pending.unshift(basename(cur));
+    cur = parent;
+  }
+}
+
+function bundleTargetVerdict(skillDir: string, abs: string): 'admitted' | 'withheld' | 'escapes' {
+  if (!isWithinDir(abs, skillDir)) return 'escapes';
+  if (isSkillBundlePathWithheld(relative(skillDir, abs).split(sep).join('/'))) return 'withheld';
+  const realRoot = realPathOf(skillDir);
+  const realTarget = realPathOf(abs);
+  if (realRoot === null || realTarget === null || !isWithinDir(realTarget, realRoot)) {
+    return 'escapes';
+  }
+  return isSkillBundlePathWithheld(relative(realRoot, realTarget).split(sep).join('/'))
+    ? 'withheld'
+    : 'admitted';
+}
+
+function rejectUnadmittedBundleTarget(
+  res: ServerResponse,
+  skillDir: string,
+  rel: string,
+  handler: string,
+  escapeTitle: string,
+): boolean {
+  const verdict = bundleTargetVerdict(skillDir, resolve(skillDir, rel));
+  if (verdict === 'admitted') return false;
+  errorResponse(
+    res,
+    400,
+    'urn:ok:error:invalid-request',
+    verdict === 'withheld'
+      ? 'Skill file path falls under an entry Open Knowledge withholds from skill bundles (.git, node_modules, OK and editor host dirs, OS artifact files).'
+      : escapeTitle,
+    { handler, detail: rel },
+  );
+  return true;
 }
 
 export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup {
@@ -228,7 +286,8 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         }
         const skillDir = resolvedSkillDir ?? resolve(resolveSkillsRoot(scope), name);
         const abs = resolve(skillDir, rel);
-        if (abs !== skillDir && !abs.startsWith(`${skillDir}${sep}`)) {
+        const verdict = bundleTargetVerdict(skillDir, abs);
+        if (verdict === 'escapes') {
           errorResponse(
             res,
             400,
@@ -242,11 +301,14 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         }
         let resolvedAbs = abs;
         let resolvedRel = rel;
-        if (!existsSync(resolvedAbs)) {
-          const docStem = rel.match(/^(.*)\.(?:md|mdx)$/);
+        if (verdict === 'withheld' || !existsSync(resolvedAbs)) {
+          const docStem = verdict === 'withheld' ? null : rel.match(/^(.*)\.(?:md|mdx)$/);
           const sibling = docStem
             ? SUPPORTED_DOC_EXTENSIONS.map((ext) => `${docStem[1]}${ext}`).find(
-                (candidate) => candidate !== rel && existsSync(resolve(skillDir, candidate)),
+                (candidate) =>
+                  candidate !== rel &&
+                  bundleTargetVerdict(skillDir, resolve(skillDir, candidate)) === 'admitted' &&
+                  existsSync(resolve(skillDir, candidate)),
               )
             : undefined;
           if (sibling === undefined) {
@@ -341,6 +403,16 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         const fileBase = body.scope === 'project' ? contentDir : skillsHome;
         const skillDirRel = relative(fileBase, skillDirAbs).split(sep).join('/');
         const rel = body.path.replace(/\\/g, '/');
+        if (
+          rejectUnadmittedBundleTarget(
+            res,
+            skillDirAbs,
+            rel,
+            'skill-file-put',
+            'Skill file path escapes the skill dir.',
+          )
+        )
+          return;
         const routedThroughContent = isProjectMdReference(body.scope, kind, rel);
         let created: boolean;
 
@@ -485,7 +557,18 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
         const realDir = resolveSkillDirForRead(scope, name);
         const skillsRoot = realDir !== null ? dirname(realDir) : resolveSkillsRoot(scope);
 
-        const bundleAbs = resolve(realDir ?? join(skillsRoot, name), rel);
+        const bundleDir = realDir ?? join(skillsRoot, name);
+        const bundleAbs = resolve(bundleDir, rel);
+        if (
+          rejectUnadmittedBundleTarget(
+            res,
+            bundleDir,
+            rel,
+            'skill-file-delete',
+            'Invalid skill file path (must name a file inside the skill dir).',
+          )
+        )
+          return;
         if (existsSync(bundleAbs) && isProjectMdReference(scope, kind, rel)) {
           const extLess = rel.replace(/\.md$/i, '');
           const refDoc =
@@ -597,6 +680,18 @@ export function createSkillsFileRoutes(deps: SkillsFileRouteDeps): ApiRouteGroup
           return;
         }
         const skillsRoot = dirname(realDir);
+        if (
+          [from, to].some((rel) =>
+            rejectUnadmittedBundleTarget(
+              res,
+              realDir,
+              rel,
+              'skill-file-rename',
+              'Both paths must stay inside the skill dir.',
+            ),
+          )
+        )
+          return;
 
         const fromIsDoc = isProjectMdReference(body.scope, fromKind, from);
         const toIsDoc = isProjectMdReference(body.scope, toKind, to);

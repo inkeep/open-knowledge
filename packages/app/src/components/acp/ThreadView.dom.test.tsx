@@ -17,11 +17,12 @@ import {
   within,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { notifySignInTerminalExited } from '@/components/handoff/sign-in-terminal-events';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { MAX_TOTAL_ATTACHMENT_BYTES } from '@/lib/acp/image-attachment';
+import { stubImageCanvas } from '@/lib/acp/image-canvas.test-helper';
 import type { RemoteModelCandidate } from '@/lib/acp/model-candidates';
 import type {
   RenderedItem,
@@ -2347,6 +2348,66 @@ describe('ThreadView thought collapse', () => {
     const block = screen.getByTestId('agent-thread-thought');
     expect(block.textContent).toContain('First thought line');
     expect(block.textContent).toContain('Last thought line');
+  });
+
+  test('the collapsed preview shows the markdown as plain text', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [{ ...thought, text: '**Planning the change**\n\nRead `ThreadView.tsx` first.' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.textContent).toContain('Planning the change');
+    expect(toggle.textContent).not.toContain('**');
+  });
+
+  test('a streaming preview hides the markers of a bold title still arriving', () => {
+    model = makeModel({
+      turnActive: true,
+      items: [{ ...thought, text: 'Earlier line\n**Checking the te' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.textContent).toContain('Checking the te');
+    expect(toggle.textContent).not.toContain('**');
+  });
+
+  test.each([
+    ['Earlier line\nNow checking the **config file', 'Now checking the config file'],
+    ['Earlier line\n**Running the\ntest suite**', 'test suite'],
+  ])('a streaming preview of %j hides its emphasis markers', (text, preview) => {
+    model = makeModel({ turnActive: true, items: [{ ...thought, text }] });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.textContent).toContain(preview);
+    expect(toggle.textContent).not.toContain('**');
+  });
+
+  test('the preview keeps the text of inline code that starts the line', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [{ ...thought, text: '`**kwargs` must be forwarded' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-thought-toggle').textContent).toContain(
+      '**kwargs must be forwarded',
+    );
+  });
+
+  test('a streaming preview skips a line that renders no text', () => {
+    model = makeModel({
+      turnActive: true,
+      items: [{ ...thought, text: 'Planning the edit\n\n```ts' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    expect(screen.getByTestId('agent-thread-thought-toggle').textContent).toContain(
+      'Planning the edit',
+    );
   });
 });
 
@@ -5793,6 +5854,63 @@ describe('ThreadView attachment budget and clear fence (PRD-8453)', () => {
 
   const smallPng = (name: string) =>
     new File([new Uint8Array([0x89, 0x50, 0x4e, 0x47])], name, { type: 'image/png' });
+
+  test('an image dropped on an agent that takes none is refused and logged', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    onTestFinished(() => warn.mockRestore());
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: false } })} />,
+    );
+
+    fireDrop([smallPng('a.png')]);
+
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith("Claude doesn't accept image attachments."),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      '[acp-attachment] refused',
+      expect.objectContaining({ surface: 'agent-chat', reason: 'images-not-accepted' }),
+    );
+  });
+
+  test('a photo too big to send whole attaches as a copy shrunk to fit', async () => {
+    stubImageCanvas({ width: 4000, height: 3000 });
+    onTestFinished(() => vi.unstubAllGlobals());
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+
+    fireDrop([
+      new File([new Uint8Array(MAX_TOTAL_ATTACHMENT_BYTES * 3)], 'photo.png', {
+        type: 'image/png',
+      }),
+    ]);
+
+    await waitFor(() =>
+      expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(1),
+    );
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toBe('');
+  });
+
+  test('a second photo too big to send whole is shrunk into what the first left of the budget', async () => {
+    stubImageCanvas({ width: 4000, height: 3000, bytesPerPixel: 0.15 });
+    onTestFinished(() => vi.unstubAllGlobals());
+    model = makeModel({ items: [], turnActive: false });
+    render(
+      <ThreadView info={makeInfo({ status: 'ready', promptCapabilities: { image: true } })} />,
+    );
+    const photo = (name: string) =>
+      new File([new Uint8Array(MAX_TOTAL_ATTACHMENT_BYTES * 3)], name, { type: 'image/png' });
+
+    fireDrop([photo('one.png'), photo('two.png')]);
+
+    await waitFor(() =>
+      expect(screen.queryAllByTestId('agent-thread-pending-image-preview')).toHaveLength(2),
+    );
+    expect(screen.getByTestId('agent-thread-drop-notice').textContent).toBe('');
+  });
 
   test('interleaved drops cannot stack attachments past the aggregate byte budget', async () => {
     model = makeModel({ items: [], turnActive: false });

@@ -759,9 +759,9 @@ describe.skipIf(process.platform === 'win32')('the browser server launch, run fo
   const probeArgs = (args: readonly string[]) =>
     args.map((arg) => (arg === AGENT_BROWSER_MCP_PACKAGE ? `${PROBE_PACKAGE}@1.0.0` : arg));
 
-  test("never runs the project's own npm packages or reads its .npmrc", () => {
+  test("never runs the project's own npm packages or reads its .npmrc", (ctx) => {
     const npx = resolveOnPath('npx', process.env.PATH);
-    if (npx === null) return;
+    ctx.skip(npx === null, 'npx is not on PATH');
     const root = tmp();
     const project = hostileProject(root);
     const prefix = isolatedPrefix(root);

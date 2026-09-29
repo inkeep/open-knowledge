@@ -466,8 +466,8 @@ describe('buildMenuTemplate', () => {
     expect(roles).toContain('minimize');
   });
 
-  test('Close tab click dispatches deps.onCloseActiveTabOrWindow on macOS', () => {
-    if (process.platform !== 'darwin') return;
+  test('Close tab click dispatches deps.onCloseActiveTabOrWindow on macOS', (ctx) => {
+    ctx.skip(process.platform !== 'darwin', 'macOS-only menu behaviour');
     const onCloseActiveTabOrWindow = vi.fn(() => {});
     const template = buildMenuTemplate(makeDeps({ onCloseActiveTabOrWindow }));
     const closeTab = findByLabel(template, 'Close tab');
