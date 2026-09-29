@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { gitCleanEnv } from '../../scripts/git-clean-env.mjs';
+import * as bridge from './bridge-public-pr-to-monorepo.mjs';
 import {
   applyPatchWithConflictDetection,
   bridgeCommitSubject,
@@ -494,13 +495,66 @@ const CONFLICT_HEAD =
   'sync(oss): mirror inkeep/open-knowledge#310 (with conflicts; needs manual resolution)';
 const CLEAN_HEAD = 'sync(oss): mirror inkeep/open-knowledge#310';
 
-async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
-  const recorded = { draftMutation: null, comment: null };
+async function runBridgeSync({
+  headCommitMessage = CLEAN_HEAD,
+  internalPrStartsDraft = false,
+  internalRepoDir = '/tmp/unused-on-metadata-path',
+  action = 'edited',
+  claStatus = 'success',
+  existingPr = true,
+  readHead = () => 'internal-head-sha',
+  patchHead = readHead,
+  mode = 'sync',
+  publicHead = 'public-head-sha',
+  publicBase = 'public-base-sha',
+  publicHeadOnReread = publicHead,
+  changedPublicHeadAfterCommit = false,
+  changedInternalHeadAfterCommit = false,
+  importedPublicHead = 'public-head-sha',
+  importedRepo = 'inkeep/open-knowledge',
+  importedPrNumber = 310,
+  importedInternalHead = readHead(),
+  eventSha = 'public-head-sha',
+  eventContext = 'license/cla',
+  eventState = 'success',
+  publicState = 'open',
+  internalState = 'open',
+  hasMarker = true,
+  markerHeadFields = 'current',
+  earlierMarker = '',
+  headRef = 'contribution',
+  headRepo = 'octocat/open-knowledge',
+  internalHeadRef = 'public-pr/open-knowledge-310',
+  associations = [{ number: 310 }],
+  publicCandidates,
+}) {
+  const recorded = {
+    draftMutation: null,
+    comment: null,
+    statuses: [],
+    validationRequests: [],
+    internalBodies: [],
+  };
+  const marker = [
+    '<!-- public-pr-sync',
+    `public_repo=${importedRepo}`,
+    `public_pr_number=${importedPrNumber}`,
+    ...(markerHeadFields === 'current' || markerHeadFields === 'partial'
+      ? [`public_head_sha=${importedPublicHead}`]
+      : []),
+    ...(markerHeadFields === 'current' || markerHeadFields === 'internal-only'
+      ? [`internal_head_sha=${importedInternalHead}`]
+      : []),
+    '-->',
+  ].join('\n');
   const internalPr = {
     number: 42,
     node_id: 'PR_node_42',
     draft: internalPrStartsDraft,
-    head: { sha: 'internal-head-sha' },
+    head: { sha: readHead(), ref: internalHeadRef, repo: { full_name: 'inkeep/agents-private' } },
+    state: internalState,
+    base: { ref: 'main' },
+    body: earlierMarker + (hasMarker ? marker : ''),
     html_url: 'https://github.com/inkeep/agents-private/pull/42',
   };
   const publicPr = {
@@ -509,8 +563,9 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
     body: 'body',
     html_url: 'https://github.com/inkeep/open-knowledge/pull/310',
     user: { login: 'octocat', id: 99 },
-    base: { ref: 'main', repo: { full_name: 'inkeep/open-knowledge' } },
-    head: { label: 'octocat:branch', sha: 'public-head-sha' },
+    base: { ref: 'main', sha: publicBase, repo: { full_name: 'inkeep/open-knowledge' } },
+    head: { label: 'octocat:branch', sha: publicHead, ref: headRef, repo: { full_name: headRepo } },
+    state: publicState,
     draft: false,
   };
   const json = (obj, status = 200) => ({
@@ -519,23 +574,96 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
     text: async () => JSON.stringify(obj),
   });
 
+  let publicReads = 0;
+  let internalHeadOverride;
+  const apiHead = () => internalHeadOverride ?? readHead();
+  const candidatePrs = publicCandidates ?? [{ number: 310, head: { sha: publicHead } }];
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, init = {}) => {
     const method = init.method || 'GET';
-    if (method === 'GET' && url.includes('/repos/inkeep/open-knowledge/pulls/310'))
-      return json(publicPr);
-    if (method === 'GET' && url.includes('/pulls?state=open')) return json([internalPr]);
+    if (method === 'GET' && url.includes('/pulls/310/commits?')) return json([]);
+    if (method === 'GET' && /\/commits\/[^/]+\/pulls\?/.test(url)) {
+      const page = Number(new URL(url).searchParams.get('page') ?? 1);
+      return json(associations.slice((page - 1) * 100, page * 100));
+    }
+    if (method === 'GET' && url.includes('/repos/inkeep/agents-private/pulls/42'))
+      return json({ ...internalPr, head: { ...internalPr.head, sha: apiHead() } });
+    if (method === 'GET' && url.includes('/repos/inkeep/open-knowledge/pulls/311'))
+      return json({ ...publicPr, number: 311, head: { ...publicPr.head, sha: 'another-head' } });
+    if (method === 'GET' && url.includes('/repos/inkeep/open-knowledge/pulls/310')) {
+      publicReads += 1;
+      return json({
+        ...publicPr,
+        head: {
+          ...publicPr.head,
+          sha:
+            publicReads > 1
+              ? changedPublicHeadAfterCommit
+                ? publicPr.head.sha
+                : publicHeadOnReread
+              : publicPr.head.sha,
+        },
+      });
+    }
+    if (method === 'GET' && url.includes('/repos/inkeep/open-knowledge/pulls?state=open')) {
+      const page = Number(new URL(url).searchParams.get('page') ?? 1);
+      return json(candidatePrs.slice((page - 1) * 100, page * 100));
+    }
+    if (method === 'GET' && url.includes('/pulls?state=open'))
+      return json(
+        existingPr ? [{ ...internalPr, head: { ...internalPr.head, sha: readHead() } }] : [],
+      );
     if (
       method === 'GET' &&
       url.includes('/commits/internal-head-sha') &&
       !url.includes('/status')
     ) {
+      if (changedPublicHeadAfterCommit) publicPr.head.sha = 'new-public-head';
+      if (changedInternalHeadAfterCommit) {
+        internalHeadOverride = 'new-internal-head';
+        internalPr.body = internalPr.body.replace(
+          `internal_head_sha=${importedInternalHead}`,
+          `internal_head_sha=${internalHeadOverride}`,
+        );
+      }
       return json({ commit: { message: headCommitMessage } });
     }
-    if (method === 'PATCH' && url.includes('/pulls/42')) return json(internalPr);
+    if (method === 'PATCH' && url.includes('/pulls/42')) {
+      const update = JSON.parse(init.body);
+      recorded.internalBodies.push(update.body);
+      return json({ ...internalPr, ...update, head: { ...internalPr.head, sha: patchHead() } });
+    }
+    if (method === 'POST' && url.endsWith('/repos/inkeep/agents-private/pulls')) {
+      const update = JSON.parse(init.body);
+      recorded.internalBodies.push(update.body);
+      return json({
+        ...internalPr,
+        body: update.body,
+        head: { ...internalPr.head, sha: patchHead() },
+      });
+    }
     if (method === 'GET' && url.includes('/orgs/')) return json({ message: 'Not Found' }, 404);
-    if (method === 'GET' && url.includes('/commits/public-head-sha/status')) {
-      return json({ statuses: [{ context: 'license/cla', state: 'success' }] });
+    if (method === 'GET' && url.includes(`/commits/${publicHead}/status`)) {
+      return json({ statuses: [{ context: 'license/cla', state: claStatus }] });
+    }
+    if (method === 'GET' && url.includes('/actions/workflows/')) {
+      const requestUrl = new URL(url);
+      recorded.validationRequests.push({
+        method,
+        path: requestUrl.pathname,
+        authorization: init.headers.Authorization,
+        query: Object.fromEntries(requestUrl.searchParams),
+      });
+      return json({ workflow_runs: [] });
+    }
+    if (method === 'POST' && url.includes('/actions/runs/')) {
+      recorded.validationRequests.push({
+        method,
+        path: new URL(url).pathname,
+        authorization: init.headers.Authorization,
+        verifiedStatus: recorded.statuses.at(-1),
+      });
+      return json(null, 201);
     }
     if (method === 'POST' && url.endsWith('/graphql')) {
       const q = JSON.parse(init.body).query;
@@ -546,7 +674,13 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
           : 'unknown';
       return json({ data: {} });
     }
-    if (method === 'POST' && url.includes('/statuses/')) return json({});
+    if (method === 'POST' && url.includes('/statuses/')) {
+      recorded.statuses.push({
+        sha: new URL(url).pathname.split('/').at(-1),
+        ...JSON.parse(init.body),
+      });
+      return json({});
+    }
     if (method === 'POST' && url.includes('/issues/310/comments')) {
       recorded.comment = JSON.parse(init.body).body;
       return json({ html_url: 'https://github.com/x/comments/1' });
@@ -559,18 +693,23 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
     INTERNAL_TOKEN: 'int',
     PUBLIC_REPO: 'inkeep/open-knowledge',
     INTERNAL_REPO: 'inkeep/agents-private',
-    INTERNAL_REPO_DIR: '/tmp/unused-on-metadata-path',
+    INTERNAL_REPO_DIR: internalRepoDir,
     MONOREPO_PATH_PREFIX: 'public/open-knowledge',
     INTERNAL_BASE_REF: 'main',
     INTERNAL_BRANCH_PREFIX: 'public-pr/open-knowledge',
     PUBLIC_PR_NUMBER: '310',
-    PUBLIC_PR_ACTION: 'edited',
+    PUBLIC_PR_ACTION: action,
+    PUBLIC_STATUS_SHA: eventSha,
+    PUBLIC_STATUS_CONTEXT: eventContext,
+    PUBLIC_STATUS_STATE: eventState,
+    GIT_ALLOW_PROTOCOL: 'file',
   };
   const saved = {};
   for (const k of Object.keys(setKeys)) saved[k] = process.env[k];
   Object.assign(process.env, setKeys);
   try {
-    await syncPublicPr();
+    if (mode === 'sync') await syncPublicPr();
+    else await bridge.refreshPublicPrCla();
   } finally {
     globalThis.fetch = realFetch;
     for (const k of Object.keys(setKeys)) {
@@ -583,7 +722,7 @@ async function runMetadataSync({ headCommitMessage, internalPrStartsDraft }) {
 
 describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard)', () => {
   test('a metadata event on a DRAFT conflict PR keeps it draft and posts no public comment', async () => {
-    const r = await runMetadataSync({
+    const r = await runBridgeSync({
       headCommitMessage: CONFLICT_HEAD,
       internalPrStartsDraft: true,
     });
@@ -592,17 +731,599 @@ describe('syncPublicPr metadata-event composition (conflict-hold fail-open guard
   });
 
   test('a metadata event on a clean PR readies it and posts no public comment', async () => {
-    const r = await runMetadataSync({ headCommitMessage: CLEAN_HEAD, internalPrStartsDraft: true });
+    const r = await runBridgeSync({ headCommitMessage: CLEAN_HEAD, internalPrStartsDraft: true });
     expect(r.draftMutation).toBe('to-ready');
     expect(r.comment).toBeNull();
   });
 
   test('a metadata event on a non-draft PR whose head now carries conflicts re-drafts it without a public comment', async () => {
-    const r = await runMetadataSync({
+    const r = await runBridgeSync({
       headCommitMessage: CONFLICT_HEAD,
       internalPrStartsDraft: false,
     });
     expect(r.draftMutation).toBe('to-draft');
     expect(r.comment).toBeNull();
+  });
+});
+
+describe('bridge CLA status refresh', () => {
+  test('a successful sync only posts status and never drives Actions', async () => {
+    const result = await runBridgeSync({ claStatus: 'success' });
+    expect(result.validationRequests).toEqual([]);
+  });
+
+  test.each(['success', 'failure', 'pending', null])(
+    'uses the current API status %s for the imported public head',
+    async (claStatus) => {
+      const result = await runBridgeSync({
+        mode: 'refresh-cla',
+        claStatus,
+        eventState: claStatus === 'success' ? 'failure' : 'success',
+      });
+      expect(result.statuses).toEqual([
+        expect.objectContaining({
+          sha: 'internal-head-sha',
+          context: 'cla/verified',
+          state: claStatus === 'success' ? 'success' : 'failure',
+        }),
+      ]);
+      expect(result.validationRequests).toEqual([]);
+      expect(result.internalBodies).toEqual([]);
+    },
+  );
+
+  test.each([
+    ['other status context', { eventContext: 'another-check' }],
+    [
+      'replaced public head',
+      { publicHead: 'new-public-head', importedPublicHead: 'new-public-head' },
+    ],
+    ['other imported repository', { importedRepo: 'another/repository' }],
+    ['other imported PR', { importedPrNumber: 311 }],
+    ['pending import', { importedPublicHead: 'previous-public-head' }],
+    ['replaced internal head', { importedInternalHead: 'previous-internal-head' }],
+    ['public head changed during refresh', { changedPublicHeadAfterCommit: true }],
+    ['internal head changed during refresh', { changedInternalHeadAfterCommit: true }],
+    ['missing marker', { hasMarker: false }],
+    ['closed public PR', { publicState: 'closed' }],
+    ['closed internal PR', { internalState: 'closed' }],
+    ['missing internal PR', { existingPr: false }],
+    ['other internal branch', { internalHeadRef: 'fix/ordinary' }],
+    ['mirror sync PR', { headRepo: 'inkeep/open-knowledge', headRef: 'copybara/sync' }],
+  ])('leaves %s unchanged', async (_name, overrides) => {
+    const result = await runBridgeSync({
+      mode: 'refresh-cla',
+      internalPrStartsDraft: true,
+      ...overrides,
+    });
+    expect(result.statuses).toEqual([]);
+    expect(result.draftMutation).toBeNull();
+    expect(result.internalBodies).toEqual([]);
+  });
+
+  test('uses the final sync marker after the original PR body', async () => {
+    const result = await runBridgeSync({
+      mode: 'refresh-cla',
+      earlierMarker:
+        '<!-- public-pr-sync\npublic_head_sha=previous-public-head\ninternal_head_sha=previous-internal-head\n-->\n',
+    });
+    expect(result.statuses).toEqual([
+      expect.objectContaining({ sha: 'internal-head-sha', state: 'success' }),
+    ]);
+  });
+
+  test('finds the current public PR after a page of other open PRs', async () => {
+    const result = await runBridgeSync({
+      mode: 'refresh-cla',
+      associations: [],
+      publicCandidates: [
+        ...Array.from({ length: 100 }, () => ({ number: 311, head: { sha: 'other-head' } })),
+        { number: 310, head: { sha: 'public-head-sha' } },
+      ],
+    });
+    expect(result.statuses).toEqual([
+      expect.objectContaining({ sha: 'internal-head-sha', state: 'success' }),
+    ]);
+  });
+
+  test('finds a fork PR when commit associations are empty', async () => {
+    const result = await runBridgeSync({ mode: 'refresh-cla', associations: [] });
+    expect(result.statuses).toEqual([
+      expect.objectContaining({
+        sha: 'internal-head-sha',
+        context: 'cla/verified',
+        state: 'success',
+      }),
+    ]);
+    expect(result.internalBodies).toEqual([]);
+  });
+
+  test('refresh preserves the conflict hold on an imported head', async () => {
+    const result = await runBridgeSync({
+      mode: 'refresh-cla',
+      headCommitMessage: CONFLICT_HEAD,
+      internalPrStartsDraft: true,
+    });
+    expect(result.statuses).toEqual([expect.objectContaining({ state: 'success' })]);
+    expect(result.draftMutation).toBeNull();
+  });
+
+  test('metadata edits do not attest to a public head that has not been imported', async () => {
+    const result = await runBridgeSync({
+      publicHead: 'new-public-head',
+      internalPrStartsDraft: true,
+    });
+    expect(result.statuses).toEqual([]);
+    expect(result.draftMutation).toBeNull();
+    expect(result.internalBodies).toEqual([]);
+  });
+});
+
+function setupSyncRepo({ sourceContent = 'updated\n', mapForkToSource = true } = {}) {
+  const root = mkdtempSync(path.join(tmpdir(), 'bridge-head-status-'));
+  const remote = path.join(root, 'remote.git');
+  const internal = path.join(root, 'internal');
+  const branch = 'public-pr/open-knowledge-310';
+  git(root, 'init', '--bare', '--initial-branch=main', remote);
+  git(root, 'init', '--initial-branch=main', internal);
+  git(internal, 'config', 'user.name', 'Fixture');
+  git(internal, 'config', 'user.email', 'fixture@example.test');
+  mkdirSync(path.join(internal, 'public/open-knowledge'), { recursive: true });
+  const file = path.join(internal, 'public/open-knowledge/fixture.txt');
+  writeFileSync(file, 'base\n');
+  git(internal, 'add', 'public/open-knowledge/fixture.txt');
+  git(internal, 'commit', '-m', 'Base');
+  git(internal, 'remote', 'add', 'origin', remote);
+  git(internal, 'push', '-u', 'origin', 'main');
+  git(internal, 'checkout', '-b', branch);
+  writeFileSync(file, 'previous\n');
+  git(internal, 'commit', '-am', 'Previous head');
+  git(internal, 'push', '-u', 'origin', branch);
+  const oldHead = git(internal, 'rev-parse', 'HEAD');
+  git(internal, 'checkout', 'main');
+  const source = path.join(root, 'public');
+  const sourceRepoDir = path.join(root, 'public.git');
+  git(root, 'init', '--bare', '--initial-branch=main', sourceRepoDir);
+  git(root, 'init', '--initial-branch=main', source);
+  git(source, 'config', 'user.name', 'Contributor');
+  git(source, 'config', 'user.email', 'contributor@example.test');
+  writeFileSync(path.join(source, 'fixture.txt'), 'base\n');
+  git(source, 'add', 'fixture.txt');
+  git(source, 'commit', '-m', 'Base');
+  const baseHead = git(source, 'rev-parse', 'HEAD');
+  git(source, 'remote', 'add', 'origin', sourceRepoDir);
+  git(source, 'push', 'origin', 'main');
+  git(source, 'checkout', '-b', 'contribution');
+  writeFileSync(path.join(source, 'fixture.txt'), sourceContent);
+  git(source, 'commit', '-am', 'Recorded head');
+  const approvedHead = git(source, 'rev-parse', 'HEAD');
+  git(source, 'push', 'origin', 'HEAD:refs/pull/310/head');
+  const rewriteKey = `url.${sourceRepoDir}.insteadOf`;
+  git(
+    internal,
+    'config',
+    '--add',
+    rewriteKey,
+    'https://x-access-token:pub@github.com/inkeep/open-knowledge.git',
+  );
+  if (mapForkToSource) {
+    git(
+      internal,
+      'config',
+      '--add',
+      rewriteKey,
+      'https://x-access-token:pub@github.com/octocat/open-knowledge.git',
+    );
+  }
+  return {
+    root,
+    internal,
+    remote,
+    branch,
+    oldHead,
+    source,
+    sourceRepoDir,
+    baseHead,
+    approvedHead,
+    publishedHead: () => git(remote, 'rev-parse', `refs/heads/${branch}`),
+    cleanup: () => rmSync(root, { recursive: true, force: true }),
+  };
+}
+
+function setupSyncSourceRepo() {
+  const fixture = setupSyncRepo({ sourceContent: 'approved' });
+  writeFileSync(path.join(fixture.source, 'fixture.txt'), 'later');
+  git(fixture.source, 'commit', '-am', 'Later head');
+  git(fixture.source, 'push', 'origin', 'HEAD:refs/pull/310/head');
+  return fixture;
+}
+
+function setupForkOnlySyncRepo() {
+  const fixture = setupSyncRepo({ mapForkToSource: false });
+  const fork = path.join(fixture.root, 'fork');
+  const forkRepoDir = path.join(fixture.root, 'fork.git');
+  git(fixture.root, 'init', '--bare', '--initial-branch=main', forkRepoDir);
+  git(fixture.root, 'clone', fixture.sourceRepoDir, fork);
+  git(fork, 'config', 'user.name', 'Fork Contributor');
+  git(fork, 'config', 'user.email', 'fork@example.test');
+  writeFileSync(path.join(fork, 'fixture.txt'), 'fork-only\n');
+  git(fork, 'commit', '-am', 'Fork-only head');
+  const forkHead = git(fork, 'rev-parse', 'HEAD');
+  git(fork, 'remote', 'add', 'fork', forkRepoDir);
+  git(fork, 'push', 'fork', 'HEAD:main');
+  git(
+    fixture.internal,
+    'config',
+    '--add',
+    `url.${forkRepoDir}.insteadOf`,
+    'https://x-access-token:pub@github.com/octocat/open-knowledge.git',
+  );
+  return { ...fixture, forkHead };
+}
+
+async function captureBridgeLogs(action) {
+  const logs = [];
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  console.log = (...parts) => logs.push(parts.join(' '));
+  console.warn = (...parts) => logs.push(parts.join(' '));
+  try {
+    return { result: await action(), logs };
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+}
+
+describe('syncPublicPr legacy metadata import', () => {
+  test('an approved metadata event rebuilds content and records the current public head', async () => {
+    const fixture = setupSyncRepo();
+    try {
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'edited',
+        markerHeadFields: 'legacy',
+        publicHead: fixture.approvedHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+      });
+      const publishedHead = fixture.publishedHead();
+      expect(publishedHead).not.toBe(fixture.oldHead);
+      expect(
+        git(fixture.remote, 'show', `${fixture.branch}:public/open-knowledge/fixture.txt`),
+      ).toBe('updated');
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${fixture.approvedHead}`);
+      expect(recorded.internalBodies.at(-1)).toContain(`internal_head_sha=${publishedHead}`);
+      expect(recorded.statuses).toContainEqual(
+        expect.objectContaining({
+          sha: publishedHead,
+          context: 'cla/verified',
+          state: 'success',
+        }),
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test.each([
+    ['partial marker', { markerHeadFields: 'partial' }],
+    ['internal-only marker', { markerHeadFields: 'internal-only' }],
+    ['modern mismatch', { importedPublicHead: 'previous-public-head' }],
+    ['other repository', { markerHeadFields: 'legacy', importedRepo: 'another/repository' }],
+    ['other PR', { markerHeadFields: 'legacy', importedPrNumber: 311 }],
+    ['other branch', { markerHeadFields: 'legacy', internalHeadRef: 'fix/ordinary' }],
+  ])('leaves %s without a new receipt or status', async (_name, overrides) => {
+    const fixture = setupSyncRepo();
+    try {
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'edited',
+        publicHead: fixture.approvedHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+        ...overrides,
+      });
+      expect(fixture.publishedHead()).toBe(fixture.oldHead);
+      expect(recorded.internalBodies).toEqual([]);
+      expect(recorded.statuses).toEqual([]);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('an empty pinned diff leaves a legacy head without a receipt or status and explains why', async () => {
+    const fixture = setupSyncRepo();
+    try {
+      git(fixture.source, 'checkout', 'main');
+      git(fixture.source, 'merge', '--ff-only', 'contribution');
+      git(fixture.source, 'push', 'origin', 'main');
+      git(fixture.source, 'checkout', 'contribution');
+      git(fixture.source, 'commit', '--allow-empty', '-m', 'Empty change');
+      const emptyHead = git(fixture.source, 'rev-parse', 'HEAD');
+      git(fixture.source, 'push', 'origin', 'HEAD:refs/pull/310/head');
+      const { result, logs } = await captureBridgeLogs(() =>
+        runBridgeSync({
+          internalRepoDir: fixture.internal,
+          action: 'edited',
+          markerHeadFields: 'legacy',
+          publicHead: emptyHead,
+          publicBase: fixture.approvedHead,
+          readHead: fixture.publishedHead,
+        }),
+      );
+      expect(fixture.publishedHead()).toBe(fixture.oldHead);
+      expect(result.internalBodies).toEqual([]);
+      expect(result.statuses).toEqual([]);
+      expect(
+        logs.some(
+          (line) =>
+            line.includes('PR #310') &&
+            line.includes(emptyHead) &&
+            line.includes('no new import recorded'),
+        ),
+      ).toBe(true);
+      expect(logs.join('\n')).not.toContain(fixture.oldHead);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('an already present change leaves a legacy head without a receipt or status and explains why', async () => {
+    const fixture = setupSyncRepo();
+    try {
+      writeFileSync(path.join(fixture.internal, 'public/open-knowledge/fixture.txt'), 'updated\n');
+      git(fixture.internal, 'commit', '-am', 'Already present');
+      git(fixture.internal, 'push', 'origin', 'main');
+      const { result, logs } = await captureBridgeLogs(() =>
+        runBridgeSync({
+          internalRepoDir: fixture.internal,
+          action: 'edited',
+          markerHeadFields: 'legacy',
+          publicHead: fixture.approvedHead,
+          publicBase: fixture.baseHead,
+          readHead: fixture.publishedHead,
+        }),
+      );
+      expect(fixture.publishedHead()).toBe(fixture.oldHead);
+      expect(result.internalBodies).toEqual([]);
+      expect(result.statuses).toEqual([]);
+      expect(
+        logs.some(
+          (line) =>
+            line.includes('PR #310') &&
+            line.includes(fixture.approvedHead) &&
+            line.includes('no new receipt recorded'),
+        ),
+      ).toBe(true);
+      expect(logs.join('\n')).not.toContain(fixture.oldHead);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+});
+
+describe('syncPublicPr published-head status', () => {
+  test('imports a recorded head reachable only from its fork', async () => {
+    const fixture = setupForkOnlySyncRepo();
+    try {
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: fixture.forkHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+      });
+      expect(
+        git(fixture.remote, 'show', `${fixture.branch}:public/open-knowledge/fixture.txt`),
+      ).toBe('fork-only');
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${fixture.forkHead}`);
+      expect(recorded.statuses).toContainEqual(
+        expect.objectContaining({
+          sha: fixture.publishedHead(),
+          context: 'cla/verified',
+          state: 'success',
+        }),
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('publishes the recorded public head when its ref advances', async () => {
+    const fixture = setupSyncSourceRepo();
+    try {
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: fixture.approvedHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+      });
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${fixture.approvedHead}`);
+      expect(
+        git(fixture.remote, 'show', `${fixture.branch}:public/open-knowledge/fixture.txt`),
+      ).toBe('approved');
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('fetches the recorded head commit after the public ref moves to another history', async () => {
+    const fixture = setupSyncRepo({ sourceContent: 'approved' });
+    try {
+      git(fixture.source, 'push', 'origin', `${fixture.approvedHead}:refs/heads/saved-head`);
+      git(fixture.source, 'reset', '--hard', fixture.baseHead);
+      writeFileSync(path.join(fixture.source, 'fixture.txt'), 'later');
+      git(fixture.source, 'commit', '-am', 'Later head');
+      git(fixture.source, 'push', 'origin', '+HEAD:refs/pull/310/head');
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: fixture.approvedHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+      });
+      expect(
+        git(fixture.remote, 'show', `${fixture.branch}:public/open-knowledge/fixture.txt`),
+      ).toBe('approved');
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${fixture.approvedHead}`);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('publishes the recorded diff when the base ref advances', async () => {
+    const fixture = setupSyncRepo();
+    try {
+      git(fixture.source, 'checkout', 'main');
+      git(fixture.source, 'merge', '--ff-only', 'contribution');
+      git(fixture.source, 'push', 'origin', 'main');
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: fixture.approvedHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+      });
+      expect(
+        git(fixture.remote, 'show', `${fixture.branch}:public/open-knowledge/fixture.txt`),
+      ).toBe('updated');
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${fixture.approvedHead}`);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('stops before publication when the recorded head commit is unavailable', async () => {
+    const fixture = setupSyncRepo();
+    try {
+      await expect(
+        runBridgeSync({
+          internalRepoDir: fixture.internal,
+          action: 'synchronize',
+          publicHead: 'f'.repeat(40),
+          publicBase: fixture.baseHead,
+          readHead: fixture.publishedHead,
+        }),
+      ).rejects.toThrow();
+      expect(fixture.publishedHead()).toBe(fixture.oldHead);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('publishes a large diff with complete text bytes', async () => {
+    const fixture = setupSyncRepo();
+    const largeContent = `${'x'.repeat(1024 * 1024 + 1)}\n`;
+    try {
+      writeFileSync(path.join(fixture.source, 'fixture.txt'), largeContent);
+      git(fixture.source, 'commit', '-am', 'Large text change');
+      const largeHead = git(fixture.source, 'rev-parse', 'HEAD');
+      git(fixture.source, 'push', 'origin', 'HEAD:refs/pull/310/head');
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: largeHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+      });
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${largeHead}`);
+      expect(
+        readFileSync(path.join(fixture.internal, 'public/open-knowledge/fixture.txt'), 'utf8'),
+      ).toBe(largeContent);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('publishes binary file bytes from the recorded commit', async () => {
+    const fixture = setupSyncRepo();
+    const binaryContent = Buffer.from([0, 1, 2, 127, 128, 255]);
+    try {
+      writeFileSync(path.join(fixture.source, 'asset.bin'), binaryContent);
+      git(fixture.source, 'add', 'asset.bin');
+      git(fixture.source, 'commit', '-m', 'Add binary file');
+      const binaryHead = git(fixture.source, 'rev-parse', 'HEAD');
+      git(fixture.source, 'push', 'origin', 'HEAD:refs/pull/310/head');
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: binaryHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+      });
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${binaryHead}`);
+      expect(readFileSync(path.join(fixture.internal, 'public/open-knowledge/asset.bin'))).toEqual(
+        binaryContent,
+      );
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test('does not record an imported head when the public head changed during sync', async () => {
+    const fixture = setupSyncRepo();
+    try {
+      const result = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: fixture.approvedHead,
+        publicBase: fixture.baseHead,
+        readHead: fixture.publishedHead,
+        publicHeadOnReread: 'new-public-head',
+      });
+      expect(result.internalBodies).toEqual([]);
+      expect(result.statuses).toEqual([
+        expect.objectContaining({
+          sha: fixture.publishedHead(),
+          context: 'cla/verified',
+          state: 'failure',
+        }),
+      ]);
+    } finally {
+      fixture.cleanup();
+    }
+  });
+
+  test.each([
+    ['success', 'stale metadata', 'existing'],
+    ['failure', 'stale metadata', 'existing'],
+    ['success', 'stale reads', 'existing'],
+    ['failure', 'stale reads', 'existing'],
+    ['success', 'current metadata', 'existing'],
+    ['failure', 'current metadata', 'existing'],
+    ['success', 'stale metadata', 'new'],
+    ['failure', 'stale metadata', 'new'],
+  ])('posts %s on the published head with %s for %s PRs', async (claStatus, freshness, entry) => {
+    const fixture = setupSyncRepo();
+    try {
+      const recorded = await runBridgeSync({
+        internalRepoDir: fixture.internal,
+        action: 'synchronize',
+        publicHead: fixture.approvedHead,
+        publicBase: fixture.baseHead,
+        claStatus,
+        existingPr: entry === 'existing',
+        readHead: freshness === 'stale reads' ? () => fixture.oldHead : fixture.publishedHead,
+        patchHead: freshness === 'current metadata' ? fixture.publishedHead : () => fixture.oldHead,
+      });
+      const head = fixture.publishedHead();
+      expect(recorded.internalBodies.at(-1)).toContain(`public_head_sha=${fixture.approvedHead}`);
+      expect(recorded.internalBodies.at(-1)).toContain(`internal_head_sha=${head}`);
+      expect(head).not.toBe(fixture.oldHead);
+      expect(
+        git(fixture.remote, 'show', `${fixture.branch}:public/open-knowledge/fixture.txt`),
+      ).toBe('updated');
+      expect(recorded.statuses).toContainEqual(
+        expect.objectContaining({
+          sha: head,
+          context: 'cla/verified',
+          state: claStatus,
+        }),
+      );
+    } finally {
+      fixture.cleanup();
+    }
   });
 });
