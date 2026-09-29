@@ -27,7 +27,7 @@ beforeAll(async () => {
 
   writeFileSync(
     join(contentDir, 'hub.md'),
-    '---\ntitle: Hub Page\ncluster: retrieval\ncategory: concept\ntags: [search, vectors]\n---\n\n# Hub\n\nLinks to [[spoke-a]] and [[spoke-b]].\n',
+    '---\ntitle: Hub Page\ncluster: retrieval\ncategory: concept\ntags: [search, vectors]\n---\n\n# Hub\n\nLinks to [[spoke-a]] and [[spoke-b]], plus [Example](https://example.com/reference).\n',
     'utf-8',
   );
   writeFileSync(
@@ -101,6 +101,7 @@ describe('/api/link-graph metadata enrichment', () => {
     const data = await fetchLinkGraph();
 
     const externals = data.nodes.filter((n) => n.kind === 'external');
+    expect(externals.map((node) => node.url)).toEqual(['https://example.com/reference']);
     for (const ext of externals) {
       expect(ext.cluster).toBeUndefined();
       expect(ext.category).toBeUndefined();

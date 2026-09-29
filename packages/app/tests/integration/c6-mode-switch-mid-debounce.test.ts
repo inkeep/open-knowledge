@@ -47,6 +47,10 @@ async function assertConverged(clients: TestClient[], markers: string[]): Promis
   await wait(500);
 
   for (const c of clients) {
+    for (const marker of markers) {
+      expect(c.ytext.toString()).toContain(marker);
+      expect(serializeFragment(c.fragment)).toContain(marker);
+    }
     assertBridgeInvariant(c.ytext, c.fragment);
   }
 

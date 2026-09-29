@@ -96,7 +96,9 @@ describe('smoke', () => {
 });
 
 describe('wysiwyg-keyboard-typing: WYSIWYG writes', () => {
-  test.concurrent('wysiwyg-keyboard-typing→Y.Text: local XmlFragment edit propagates to Y.Text via Observer A', async () => {
+  test.concurrent('wysiwyg-keyboard-typing→Y.Text: local XmlFragment edit propagates to Y.Text via Observer A', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       applyMarkdownToFragment(client, '# WYSIWYG Heading\n\nSome paragraph content.');
@@ -109,7 +111,9 @@ describe('wysiwyg-keyboard-typing: WYSIWYG writes', () => {
     }
   });
 
-  test.concurrent('wysiwyg-keyboard-typing→Disk: local XmlFragment edit persists to .md file', async () => {
+  test.concurrent('wysiwyg-keyboard-typing→Disk: local XmlFragment edit persists to .md file', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       applyMarkdownToFragment(client, '# Disk Test\n\nThis should persist.');
@@ -128,7 +132,9 @@ describe('wysiwyg-keyboard-typing: WYSIWYG writes', () => {
 });
 
 describe('source-codemirror-typing: source mode writes', () => {
-  test.concurrent('source-codemirror-typing→XmlFragment: local Y.Text edit propagates to XmlFragment via Observer B', async () => {
+  test.concurrent('source-codemirror-typing→XmlFragment: local Y.Text edit propagates to XmlFragment via Observer B', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       client.doc.transact(() => {
@@ -144,7 +150,9 @@ describe('source-codemirror-typing: source mode writes', () => {
     }
   });
 
-  test.concurrent('source-codemirror-typing→Disk: local Y.Text edit persists to .md file', async () => {
+  test.concurrent('source-codemirror-typing→Disk: local Y.Text edit persists to .md file', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       client.doc.transact(() => {
@@ -164,7 +172,9 @@ describe('source-codemirror-typing: source mode writes', () => {
 });
 
 describe('agent-api-write: agent writes', () => {
-  test.concurrent('agent-api-write→Y.Text: agent-write-md propagates to client Y.Text', async () => {
+  test.concurrent('agent-api-write→Y.Text: agent-write-md propagates to client Y.Text', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       await agentWriteMd(server.port, '# Agent Heading\n\nAgent wrote this.', {
@@ -179,7 +189,9 @@ describe('agent-api-write: agent writes', () => {
     }
   });
 
-  test.concurrent('agent-api-write→XmlFragment: agent-write-md propagates to client XmlFragment', async () => {
+  test.concurrent('agent-api-write→XmlFragment: agent-write-md propagates to client XmlFragment', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       await agentWriteMd(server.port, '# Agent Fragment\n\nVisible in WYSIWYG.', {
@@ -195,7 +207,9 @@ describe('agent-api-write: agent writes', () => {
     }
   });
 
-  test.concurrent('agent-api-write→Disk: agent-write-md persists to .md file', async () => {
+  test.concurrent('agent-api-write→Disk: agent-write-md persists to .md file', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       await agentWriteMd(server.port, '# Agent Disk\n\nPersisted by agent.', {
@@ -214,7 +228,9 @@ describe('agent-api-write: agent writes', () => {
     }
   });
 
-  test.concurrent('agent-api-write-patch→Y.Text: agent-patch replaces target span in Y.Text', async () => {
+  test.concurrent('agent-api-write-patch→Y.Text: agent-patch replaces target span in Y.Text', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       await agentWriteMd(server.port, '# Header\n\nOriginal body text.', {
@@ -238,7 +254,9 @@ describe('agent-api-write: agent writes', () => {
     }
   });
 
-  test.concurrent('agent-api-write-patch→XmlFragment: agent-patch propagates to XmlFragment', async () => {
+  test.concurrent('agent-api-write-patch→XmlFragment: agent-patch propagates to XmlFragment', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       await agentWriteMd(server.port, '# Title\n\nFoo bar baz qux.', { docName: client.docName });
@@ -256,7 +274,9 @@ describe('agent-api-write: agent writes', () => {
     }
   });
 
-  test.concurrent('agent-api-write-patch: agent-patch with unknown find text returns 404 without mutating', async () => {
+  test.concurrent('agent-api-write-patch: agent-patch with unknown find text returns 404 without mutating', async ({
+    expect,
+  }) => {
     const client = await createTestClient(server.port);
     try {
       await agentWriteMd(server.port, '# Seed\n\nUntouched content.', {

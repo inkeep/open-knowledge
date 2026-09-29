@@ -84,7 +84,10 @@ describe('ActivityPanelDiffView — shadow root contract', () => {
         cacheKey="doc@v1"
       />,
     );
-    await pierreShadow(container);
+    const shadow = await pierreShadow(container);
+    expect(shadow.textContent).toContain('!!!');
+    expect(shadow.textContent).toContain('@@@');
+    expect(shadow.textContent).toContain('different content');
   });
 
   test('renders with overflow:wrap — data-overflow attribute present in shadow root', async () => {

@@ -300,17 +300,23 @@ describe('STARTER_PACKS — all packs structural validation', () => {
 
   test('every rootFile body uses only v1 substitution tokens', () => {
     const ALLOWED = new Set(['date', 'user']);
+    const unknownTokens: string[] = [];
     for (const pack of Object.values(STARTER_PACKS)) {
       for (const [filename, body] of Object.entries(pack.rootFiles ?? {})) {
         const tokens = [...body.matchAll(/\{\{([^{}\n]+?)\}\}/g)].map((m) => (m[1] ?? '').trim());
         for (const token of tokens) {
-          expect(
-            ALLOWED.has(token),
-            `Pack "${pack.id}" rootFile "${filename}" uses unknown token "{{${token}}}" — only {{date}} and {{user}} are allowed in v1.`,
-          ).toBe(true);
+          if (!ALLOWED.has(token)) {
+            unknownTokens.push(
+              `Pack "${pack.id}" rootFile "${filename}" uses unknown token "{{${token}}}"`,
+            );
+          }
         }
       }
     }
+    expect(
+      unknownTokens,
+      `Only {{date}} and {{user}} are allowed in v1.\n${unknownTokens.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('every rootFile key is a safe relative path (forward-slash nesting allowed, no escape)', () => {

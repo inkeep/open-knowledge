@@ -572,7 +572,8 @@ describe('releaseProcessLock', () => {
   });
 
   test('no-op if lock does not exist', () => {
-    releaseProcessLock({ lockName: LOCK_NAME, lockDir });
+    expect(() => releaseProcessLock({ lockName: LOCK_NAME, lockDir })).not.toThrow();
+    expect(existsSync(lockPath)).toBe(false);
   });
 
   test('refuses to remove a lock owned by a different pid', () => {

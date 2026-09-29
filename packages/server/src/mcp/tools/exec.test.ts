@@ -734,11 +734,7 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     )) as ExecResult;
 
     const s = structured(result);
-    for (const entry of s.enrichedPaths) {
-      expect(entry.path.startsWith('../')).toBe(false);
-      expect(entry.path).not.toBe('..');
-      expect(entry.path.startsWith('/')).toBe(false);
-    }
+    expect(s.enrichedPaths).toEqual([]);
   });
 
   test('mcp-tool-path-traversal: `cat /etc/passwd.md`-style absolute path is dropped from enrichedPaths', async () => {
@@ -749,10 +745,7 @@ describe('exec — per-row route-only previewUrl (FR-2.2)', () => {
     )) as ExecResult;
 
     const s = structured(result);
-    for (const entry of s.enrichedPaths) {
-      expect(entry.path.startsWith('/')).toBe(false);
-      expect(entry.path.startsWith('../')).toBe(false);
-    }
+    expect(s.enrichedPaths).toEqual([]);
   });
 
   test('FR13: nested .ok/ paths are filtered from enrichedPaths (not surfaced as listings)', async () => {

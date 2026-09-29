@@ -165,18 +165,20 @@ describe('R10: schema add-only invariant', () => {
   });
 
   test('no attrs removed from existing node types (outside allowed narrowings)', () => {
+    const violations: string[] = [];
     for (const [nodeType, expected] of Object.entries(snapshot.nodes)) {
       const actual = current.nodes[nodeType];
       if (!actual) continue;
       for (const attrName of Object.keys(expected.attrs)) {
         if (actual.attrs[attrName] !== undefined) continue;
         if (isAllowedNarrowing(nodeType, 'attr-removed', attrName)) continue;
-        throw new Error(
+        violations.push(
           `Schema NARROWED — attr '${attrName}' removed from node type '${nodeType}'. ` +
             'This violates precedent #9 unless registered in ALLOWED_NARROWINGS with spec evidence.',
         );
       }
     }
+    expect(violations, violations.join('\n')).toEqual([]);
   });
 
   test('all attrs have default values', () => {
@@ -188,6 +190,7 @@ describe('R10: schema add-only invariant', () => {
   });
 
   test('content expressions not narrowed (superset check)', () => {
+    const violations: string[] = [];
     for (const [nodeType, expected] of Object.entries(snapshot.nodes)) {
       const actual = current.nodes[nodeType];
       if (!actual) continue;
@@ -195,7 +198,7 @@ describe('R10: schema add-only invariant', () => {
       if (expected.content !== '' && isAllowedNarrowing(nodeType, 'content')) {
         continue;
       }
-      throw new Error(
+      violations.push(
         `Schema content expression changed on node type '${nodeType}': ` +
           `'${expected.content}' → '${actual.content}'. ` +
           'This requires an ALLOWED_NARROWINGS entry with kind:"content" + ' +
@@ -204,6 +207,7 @@ describe('R10: schema add-only invariant', () => {
           'Y.Item data loss on downstream peers.',
       );
     }
+    expect(violations, violations.join('\n')).toEqual([]);
   });
 
   test('sharedExtensions ordering unchanged', () => {
@@ -256,25 +260,17 @@ describe('R10: schema add-only invariant', () => {
   test('snapshot matches current schema (regenerate if additive-only changes)', () => {
     const currentJson = JSON.stringify(current, null, 2);
     const snapshotJson = JSON.stringify(snapshot, null, 2);
-    if (currentJson !== snapshotJson) {
-      const newNodes = Object.keys(current.nodes).filter((n) => !(n in snapshot.nodes));
-      const missingNodes = Object.keys(snapshot.nodes).filter((n) => !(n in current.nodes));
-      if (missingNodes.length > 0) {
-        throw new Error(
-          `Schema NARROWED — removed node types: ${missingNodes.join(', ')}. This is forbidden by R10.`,
-        );
-      }
-      if (newNodes.length > 0) {
-        throw new Error(
-          `Schema snapshot outdated — new node types: ${newNodes.join(', ')}. ` +
-            'Regenerate schema-snapshot.json and verify the diff is additive-only.',
-        );
-      }
-      throw new Error(
-        'Schema snapshot mismatch. Regenerate schema-snapshot.json and verify the diff is additive-only. ' +
-          'If removing or renaming attrs/types, STOP — this violates R10 (y-prosemirror data loss).',
-      );
-    }
+    const newNodes = Object.keys(current.nodes).filter((n) => !(n in snapshot.nodes));
+    const missingNodes = Object.keys(snapshot.nodes).filter((n) => !(n in current.nodes));
+    const message =
+      missingNodes.length > 0
+        ? `Schema NARROWED — removed node types: ${missingNodes.join(', ')}. This is forbidden by R10.`
+        : newNodes.length > 0
+          ? `Schema snapshot outdated — new node types: ${newNodes.join(', ')}. ` +
+            'Regenerate schema-snapshot.json and verify the diff is additive-only.'
+          : 'Schema snapshot mismatch. Regenerate schema-snapshot.json and verify the diff is additive-only. ' +
+            'If removing or renaming attrs/types, STOP — this violates R10 (y-prosemirror data loss).';
+    expect(currentJson, message).toBe(snapshotJson);
   });
 });
 

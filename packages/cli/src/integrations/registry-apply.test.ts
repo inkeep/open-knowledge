@@ -234,8 +234,10 @@ describe('a user-global MCP artifact', () => {
   it('reports no surface for an agent whose config is project-only', async () => {
     const report = await run([{ satisfierId: 'pi/mcp/user/config-entry', desired: 'present' }]);
 
-    const action = actionFor(report, 'pi/mcp/user/config-entry');
-    if (action !== undefined) expect(action.action).not.toBe('failed');
+    expect(report.actions).toEqual([]);
+    expect(report.conflicts).toMatchObject([
+      { kind: 'unknown-satisfier', satisfierIds: ['pi/mcp/user/config-entry'] },
+    ]);
   });
 });
 

@@ -175,11 +175,10 @@ describe('paired-write enforcement', () => {
         }
       }
     }
-    if (failures.length > 0) {
-      throw new Error(
-        `Found ${failures.length} unrecognized transact origin(s):\n  ${failures.join('\n  ')}`,
-      );
-    }
+    expect(
+      failures,
+      `Found ${failures.length} unrecognized transact origin(s):\n  ${failures.join('\n  ')}`,
+    ).toEqual([]);
   });
 
   test('paired-write origins route through a sanctioned primitive', () => {
@@ -217,12 +216,11 @@ describe('paired-write enforcement', () => {
         }
       }
     }
-    if (failures.length > 0) {
-      throw new Error(
-        `Found ${failures.length} paired-write transact site(s) bypassing sanctioned primitives:\n  ` +
-          failures.join('\n  '),
-      );
-    }
+    expect(
+      failures,
+      `Found ${failures.length} paired-write transact site(s) bypassing sanctioned primitives:\n  ` +
+        failures.join('\n  '),
+    ).toEqual([]);
   });
 
   test('all three sanctioned primitives are exported from bridge-intake.ts', () => {

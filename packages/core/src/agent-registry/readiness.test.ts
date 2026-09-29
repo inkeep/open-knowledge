@@ -451,12 +451,27 @@ describe('capability grants', () => {
 
   it('lists only ids the capability table declares', () => {
     const declared = CAPABILITY_RECORDS.map((record) => record.id);
+    const observed = new Set<string>();
+    const satisfied: SatisfierProbe = { state: 'satisfied', strictness: EXACT };
     for (const agent of Object.values(AGENT_REGISTRY)) {
+      const probes = snapshot(
+        Object.fromEntries(agent.satisfiers.map((satisfier) => [satisfier.id, satisfied])),
+      );
       for (const mode of AGENT_MODES) {
-        for (const id of assessReadiness({ agentId: agent.id, mode }).grantedCapabilities) {
-          expect(declared).toContain(id);
+        expect(
+          assessReadiness({ agentId: agent.id, mode }).grantedCapabilities,
+          `${agent.id}/${mode}: no probe authorizes a capability`,
+        ).toEqual([]);
+        const granted = assessReadiness({ agentId: agent.id, mode, probes }).grantedCapabilities;
+        expect(
+          granted.filter((id) => !declared.includes(id)),
+          `${agent.id}/${mode}: every granted capability is declared`,
+        ).toEqual([]);
+        for (const id of granted) {
+          observed.add(id);
         }
       }
     }
+    expect([...observed].sort()).toEqual([...declared].sort());
   });
 });

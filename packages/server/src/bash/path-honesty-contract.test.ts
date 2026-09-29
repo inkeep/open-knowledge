@@ -86,12 +86,15 @@ const COMMANDS = [
 describe('exec never reports a path that does not exist', () => {
   test.each(COMMANDS)('%s', async (command) => {
     const root = await corpus();
-    for (const path of await reported(root, command)) {
-      expect(
-        () => statSync(resolve(root, path)),
-        `${command} reported a nonexistent path: ${path}`,
-      ).not.toThrow();
-    }
+    const nonexistentPaths = (await reported(root, command)).flatMap((path) => {
+      try {
+        statSync(resolve(root, path));
+        return [];
+      } catch (error) {
+        return [{ path, error }];
+      }
+    });
+    expect(nonexistentPaths, `${command} reported nonexistent paths`).toEqual([]);
   });
 
   test('the assertion can fail, so a passing run means something', async () => {

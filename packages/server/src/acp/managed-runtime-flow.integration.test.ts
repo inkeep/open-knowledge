@@ -368,6 +368,7 @@ describe('managed-runtime consent + download flow', () => {
     await manager.createThread({ agent: { source: 'registry', id: 'npxagent' } });
 
     await waitFor(() => !existsSync(staleDir), 3_000, 'stale runtime staging cleanup');
+    expect(existsSync(staleDir)).toBe(false);
   });
 
   test('grant → download → install', async () => {

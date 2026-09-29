@@ -101,7 +101,7 @@ describe('Bridge convergence regression', () => {
 
       await wait(2000);
 
-      assertBridgeInvariant(client.ytext, client.fragment);
+      expect(() => assertBridgeInvariant(client.ytext, client.fragment)).not.toThrow();
     } finally {
       await client.cleanup();
     }

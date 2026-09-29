@@ -116,7 +116,9 @@ describe('FR-31 bridge watchdog — multi-peer drain', () => {
       });
       try {
         await pollUntil(() => watcher.ytext.toString().includes('WD-RECOVER-WYSIWYG'), 5000);
-        await assertAllConverged([driver, watcher], { timeout: 5000 });
+        await expect(
+          assertAllConverged([driver, watcher], { timeout: 5000 }),
+        ).resolves.toBeUndefined();
       } finally {
         await watcher.cleanup();
       }

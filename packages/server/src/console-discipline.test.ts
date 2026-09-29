@@ -107,16 +107,15 @@ describe('console discipline (server sources)', () => {
         violations.push(`  ${file.path}:${v.line}    ${v.text}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `Raw console.* call found in packages/server/src — console output never reaches the pino file sink ` +
-          `(.ok/local/logs/server-current.jsonl) that bug-report bundles collect, and the packaged desktop app ` +
-          `runs the server detached with no persistent stdio. Use getLogger(name) from './logger.ts' ` +
-          `(warn/error still reach the terminal through the console stream). The only sanctioned console shapes ` +
-          `are the structured telemetry-event channel (console.<level>(JSON.stringify({ event: ... }))) and the ` +
-          `FILE_ALLOWLIST bootstrap/stdio surfaces in console-discipline.test.ts:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Raw console.* call found in packages/server/src — console output never reaches the pino file sink ` +
+        `(.ok/local/logs/server-current.jsonl) that bug-report bundles collect, and the packaged desktop app ` +
+        `runs the server detached with no persistent stdio. Use getLogger(name) from './logger.ts' ` +
+        `(warn/error still reach the terminal through the console stream). The only sanctioned console shapes ` +
+        `are the structured telemetry-event channel (console.<level>(JSON.stringify({ event: ... }))) and the ` +
+        `FILE_ALLOWLIST bootstrap/stdio surfaces in console-discipline.test.ts:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('predicate fires on planted violations and not on adjacent negatives', () => {

@@ -99,7 +99,14 @@ describe('initShadowRepo', () => {
     await git.raw('config', 'user.name', 'Test');
     await git.raw('config', 'user.email', 'test@test.com');
 
+    const gitignorePath = resolve(projectRoot, '.gitignore');
     await initShadowRepo(projectRoot);
+    expect(existsSync(gitignorePath)).toBe(false);
+
+    const gitignore = 'node_modules/\n.env\n';
+    writeFileSync(gitignorePath, gitignore);
+    await initShadowRepo(projectRoot);
+    expect(readFileSync(gitignorePath, 'utf-8')).toBe(gitignore);
   });
 
   test('is idempotent — second call does not error', async () => {

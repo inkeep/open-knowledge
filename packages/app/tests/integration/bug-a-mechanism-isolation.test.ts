@@ -173,10 +173,10 @@ describe('Bug-A mechanism isolation: server stomp via syncTextToFragment', () =>
     console.log(`\nFinal data loss (user content missing at T3): ${anyFinalLoss}`);
     console.log('=============================================\n');
 
-    expect(true).toBe(true);
+    expect(anyFinalLoss).toBe(false);
   });
 
   test('teardown', async () => {
-    await server.cleanup();
+    await expect(server.cleanup()).resolves.toBeUndefined();
   });
 });

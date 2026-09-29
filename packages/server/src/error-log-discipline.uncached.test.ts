@@ -120,9 +120,7 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
 
   test('every FILE_ALLOWLIST entry still exists on disk', () => {
     const paths = new Set(files.map((f) => f.path));
-    for (const allowed of FILE_ALLOWLIST.keys()) {
-      expect(paths.has(allowed)).toBe(true);
-    }
+    expect([...FILE_ALLOWLIST.keys()].filter((allowed) => !paths.has(allowed))).toEqual([]);
   });
 
   test('error/warn logger calls pass the raw error under err, not a string copy', () => {
@@ -133,16 +131,15 @@ describe('error-log payload discipline (server + cli + desktop main)', () => {
         violations.push(`  ${file.path}:${v.line}    ${v.text}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `String-coerced error field found in an error/warn log call. Pass the RAW error under ` +
-          `the \`err\` key (\`log.warn({ err }, '...')\`) — the pino serializers capture ` +
-          `name/message/stack; \`err.message\` / \`String(err)\` discard the stack the JSONL ` +
-          `bundle needs. For a site where a string copy is genuinely intended, suffix the line ` +
-          `with \`// ${MARKER} <why>\` or add a FILE_ALLOWLIST entry in ` +
-          `error-log-discipline.uncached.test.ts:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `String-coerced error field found in an error/warn log call. Pass the RAW error under ` +
+        `the \`err\` key (\`log.warn({ err }, '...')\`) — the pino serializers capture ` +
+        `name/message/stack; \`err.message\` / \`String(err)\` discard the stack the JSONL ` +
+        `bundle needs. For a site where a string copy is genuinely intended, suffix the line ` +
+        `with \`// ${MARKER} <why>\` or add a FILE_ALLOWLIST entry in ` +
+        `error-log-discipline.uncached.test.ts:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('predicate fires on planted violations and not on adjacent negatives', () => {

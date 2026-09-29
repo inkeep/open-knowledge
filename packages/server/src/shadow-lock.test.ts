@@ -124,6 +124,7 @@ describe('releaseLock', () => {
     const shadowDir = resolve(tmpDir, 'shadow');
     mkdirSync(shadowDir, { recursive: true });
 
-    releaseLock(shadowDir);
+    expect(() => releaseLock(shadowDir)).not.toThrow();
+    expect(existsSync(resolve(shadowDir, 'lock'))).toBe(false);
   });
 });

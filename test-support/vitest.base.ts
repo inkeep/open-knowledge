@@ -40,6 +40,7 @@ export const okVitestBase = {
     testTimeout: 30_000,
     hookTimeout: 30_000,
     env: { DO_NOT_TRACK: '1' },
+    expect: { requireAssertions: true },
     tags: [
       {
         name: 'known-bug',

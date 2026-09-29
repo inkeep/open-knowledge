@@ -37,9 +37,8 @@ describe('tsdown alwaysBundle covers every cli runtime dep', () => {
     expect(alwaysBundleBlock.length).toBeGreaterThan(0);
   });
 
-  for (const dep of declaredDeps) {
+  for (const dep of declaredDeps.filter((name) => !neverBundleNames.includes(name))) {
     test(`alwaysBundle covers '${dep}'`, () => {
-      if (neverBundleNames.includes(dep)) return;
       const escaped = dep.replace(/[\\^$*+?.()|[\]{}-]/g, '\\$&').replace(/\//g, '\\\\?/');
       const pattern = new RegExp(`\\^${escaped}\\(`);
       expect(

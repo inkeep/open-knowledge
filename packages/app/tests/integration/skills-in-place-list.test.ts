@@ -124,12 +124,14 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
       chokidarServer = await createTestServer({ contentDir: gContent });
       const cBase = `http://127.0.0.1:${chokidarServer.port}`;
       writeSkill(gContent, '.codex/skills/first-ever', '# First');
-      await pollUntil(async () => {
-        const res = await fetch(`${cBase}/api/skills?scope=project`);
-        if (!res.ok) return false;
-        const body = (await res.json()) as { skills?: Array<{ name: string }> };
-        return (body.skills ?? []).some((s) => s.name === 'first-ever');
-      }, 20000);
+      await expect(
+        pollUntil(async () => {
+          const res = await fetch(`${cBase}/api/skills?scope=project`);
+          if (!res.ok) return false;
+          const body = (await res.json()) as { skills?: Array<{ name: string }> };
+          return (body.skills ?? []).some((s) => s.name === 'first-ever');
+        }, 20000),
+      ).resolves.toBeUndefined();
     } finally {
       delete process.env.OK_FILE_WATCHER_BACKEND;
       await chokidarServer?.cleanup();
@@ -139,12 +141,14 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
 
   test('a skill created AFTER boot is admitted as content via the live re-scan', async () => {
     writeSkill(contentDir, '.claude/skills/live-added', '# Born after boot');
-    await pollUntil(async () => {
-      const res = await fetch(`${base()}/api/documents`);
-      if (!res.ok) return false;
-      const body = (await res.json()) as { documents?: Array<{ docName: string }> };
-      return (body.documents ?? []).some((d) => d.docName === '.claude/skills/live-added/SKILL');
-    }, 15000);
+    await expect(
+      pollUntil(async () => {
+        const res = await fetch(`${base()}/api/documents`);
+        if (!res.ok) return false;
+        const body = (await res.json()) as { documents?: Array<{ docName: string }> };
+        return (body.documents ?? []).some((d) => d.docName === '.claude/skills/live-added/SKILL');
+      }, 15000),
+    ).resolves.toBeUndefined();
   });
 
   test('a PRE-EXISTING same-hash copy re-syncs when the canonical is edited (auto-pairing)', async () => {
@@ -153,6 +157,7 @@ describe('in-place skills in /api/skills + /api/skills/installed', () => {
     const { readFileSync: rf, writeFileSync: wf } = await import('node:fs');
     wf(canonicalMd, rf(canonicalMd, 'utf-8').replace('# Same', '# Same EDITED'));
     await pollUntil(() => rf(copyMd, 'utf-8').includes('# Same EDITED'), 15000);
+    expect(rf(copyMd, 'utf-8')).toContain('# Same EDITED');
   });
 
   test('in-place canonicals do not double-list as detected installed skills', async () => {
