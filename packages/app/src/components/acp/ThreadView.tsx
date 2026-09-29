@@ -156,6 +156,7 @@ import { contextChoicesForModel, useModelCandidates } from '@/lib/acp/model-cand
 import { formatShellCommand, revealHiddenCharacters } from '@/lib/acp/shell-command-format';
 import { parseSignInOutput, shortenUrl } from '@/lib/acp/sign-in-output';
 import { renderTerminalText } from '@/lib/acp/terminal-text';
+import { thoughtPreview } from '@/lib/acp/thought-preview';
 import { threadAttachmentPaths } from '@/lib/acp/thread-attachment-paths';
 import {
   getAgentThreadClient,
@@ -2528,8 +2529,6 @@ function ThoughtBlock({
 }): ReactNode {
   const { t } = useLingui();
   const [open, setOpen] = useState(false);
-  const lines = item.text.split('\n').filter((line) => line.trim().length > 0);
-  const preview = (streaming ? lines[lines.length - 1] : lines[0]) ?? '';
   return (
     <div data-testid="agent-thread-thought">
       <Button
@@ -2549,7 +2548,7 @@ function ThoughtBlock({
         {t`Thinking`}
         {open ? null : (
           <span className="min-w-0 flex-1 truncate text-left font-normal text-xs normal-case italic tracking-normal">
-            {preview}
+            {thoughtPreview(item.text, streaming)}
           </span>
         )}
       </Button>

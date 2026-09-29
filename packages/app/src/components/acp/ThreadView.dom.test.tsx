@@ -2349,6 +2349,66 @@ describe('ThreadView thought collapse', () => {
     expect(block.textContent).toContain('First thought line');
     expect(block.textContent).toContain('Last thought line');
   });
+
+  test('the collapsed preview shows the markdown as plain text', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [{ ...thought, text: '**Planning the change**\n\nRead `ThreadView.tsx` first.' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.textContent).toContain('Planning the change');
+    expect(toggle.textContent).not.toContain('**');
+  });
+
+  test('a streaming preview hides the markers of a bold title still arriving', () => {
+    model = makeModel({
+      turnActive: true,
+      items: [{ ...thought, text: 'Earlier line\n**Checking the te' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.textContent).toContain('Checking the te');
+    expect(toggle.textContent).not.toContain('**');
+  });
+
+  test.each([
+    ['Earlier line\nNow checking the **config file', 'Now checking the config file'],
+    ['Earlier line\n**Running the\ntest suite**', 'test suite'],
+  ])('a streaming preview of %j hides its emphasis markers', (text, preview) => {
+    model = makeModel({ turnActive: true, items: [{ ...thought, text }] });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    const toggle = screen.getByTestId('agent-thread-thought-toggle');
+    expect(toggle.textContent).toContain(preview);
+    expect(toggle.textContent).not.toContain('**');
+  });
+
+  test('the preview keeps the text of inline code that starts the line', () => {
+    model = makeModel({
+      turnActive: false,
+      items: [{ ...thought, text: '`**kwargs` must be forwarded' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'ready' })} />);
+
+    expect(screen.getByTestId('agent-thread-thought-toggle').textContent).toContain(
+      '**kwargs must be forwarded',
+    );
+  });
+
+  test('a streaming preview skips a line that renders no text', () => {
+    model = makeModel({
+      turnActive: true,
+      items: [{ ...thought, text: 'Planning the edit\n\n```ts' }],
+    });
+    render(<ThreadView info={makeInfo({ status: 'running' })} />);
+
+    expect(screen.getByTestId('agent-thread-thought-toggle').textContent).toContain(
+      'Planning the edit',
+    );
+  });
 });
 
 describe('ThreadView config value hints', () => {
