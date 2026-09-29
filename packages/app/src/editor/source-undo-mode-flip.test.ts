@@ -144,7 +144,7 @@ describe('createSourceUndoFlipTracker', () => {
     expect(ytext.toString()).toBe(' rewritten');
   });
 
-  test('characterization: an untracked rewrite while active leaves both bursts in one undo frame', () => {
+  test('an untracked rewrite while source mode is active keeps both typing bursts in one undo frame', () => {
     const { ytext, undoManager, tracker, trackedEdit, untrackedEdit } = makeRig();
     tracker.setSourceModeActive(true);
 
