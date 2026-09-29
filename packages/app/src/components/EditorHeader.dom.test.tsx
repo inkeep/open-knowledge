@@ -549,9 +549,9 @@ describe('EditorHeader runtime behavior', () => {
       expectVisualClassTokens(leadingZone.className, [
         'left-[var(--ok-titlebar-reserve-left,1rem)]',
       ]);
-      expect(screen.getByRole('button', { name: 'mode switch' })).toBeTruthy();
       const modeToggle = document.querySelector('[data-note-window-mode-toggle]') as HTMLElement;
-      expectVisualClassTokens(modeToggle.className, [
+      expect(modeToggle.contains(screen.getByRole('button', { name: 'mode switch' }))).toBe(true);
+      expectVisualClassTokensAbsent(modeToggle.className, [
         '[&_[data-slot=toggle-group]]:bg-transparent',
         '[&_[data-slot=toggle-group]]:p-0',
         '[&_[data-slot=toggle-group-item]]:size-8',

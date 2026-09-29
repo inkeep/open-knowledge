@@ -326,7 +326,7 @@ export function EditorHeader({
       {noteWindow && noteModeToggle ? (
         <div
           data-note-window-mode-toggle=""
-          className="absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center [-webkit-app-region:no-drag] [&_[data-slot=toggle-group]]:bg-transparent [&_[data-slot=toggle-group]]:p-0 [&_[data-slot=toggle-group-item]]:size-8 [&_[data-slot=toggle-group-item]]:shadow-none"
+          className="absolute inset-y-0 left-1/2 z-30 flex -translate-x-1/2 items-center [-webkit-app-region:no-drag]"
         >
           {noteModeToggle}
         </div>

@@ -559,6 +559,7 @@ function AppBody() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const singleFile = useSingleFileMode();
   const noteWindow = isNoteWindow();
+  const showFileSidebar = !singleFile && !noteWindow;
 
   const installedClis = useInstalledClis();
   const terminalLaunch: TerminalLaunchContextValue | null =
@@ -626,10 +627,14 @@ function AppBody() {
           <CommentQueueShortcut />
           <SidebarProvider className="h-screen overflow-hidden">
             {}
-            {!singleFile && !noteWindow && (
-              <FileSidebar onOpenSearch={() => setCommandPaletteOpen(true)} />
-            )}
-            <SidebarInset className="overflow-hidden h-[calc(100vh-var(--layout-inset-offset))]">
+            {showFileSidebar && <FileSidebar onOpenSearch={() => setCommandPaletteOpen(true)} />}
+            <SidebarInset
+              className={
+                showFileSidebar
+                  ? 'h-[calc(100vh-var(--layout-inset-offset))] overflow-hidden'
+                  : 'h-screen overflow-hidden'
+              }
+            >
               <EditorPane onOpenSearch={() => setCommandPaletteOpen(true)} />
             </SidebarInset>
           </SidebarProvider>
