@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const APP_SRC = join(import.meta.dir, '..', '..', 'src');
 
@@ -16,8 +17,7 @@ function* walkSourceFiles(dir: string): Generator<string> {
         entry.endsWith('.tsx') ||
         entry.endsWith('.js') ||
         entry.endsWith('.mjs')) &&
-      !entry.endsWith('.test.ts') &&
-      !entry.endsWith('.test.tsx')
+      !isTestOnlySourceFile(entry)
     ) {
       yield full;
     }

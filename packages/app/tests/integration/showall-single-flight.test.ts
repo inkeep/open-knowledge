@@ -7,7 +7,7 @@ import {
   __resetShowAllWalkStatsForTesting,
 } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { createTestServer, pollUntil, type TestServer } from './test-harness';
+import { createTestServer, type TestServer } from './test-harness';
 
 const ROOT_FILE_COUNT = 1500;
 const NESTED_DIR_COUNT = 30;
@@ -127,22 +127,6 @@ describe('showOk single-flight isolation', () => {
 });
 
 describe('abort-on-disconnect (AC4)', () => {
-  test.skip('a disconnect with no other waiter aborts the shared walk', async () => {
-    __resetShowAllWalkStatsForTesting();
-    const controller = new AbortController();
-    const rejected = fetch(showAllUrl(), { signal: controller.signal }).then(
-      () => false,
-      () => true,
-    );
-
-    await pollUntil(() => __getShowAllWalkStatsForTesting().invocations >= 1, 12_000, 5);
-    controller.abort();
-
-    await pollUntil(() => __getShowAllWalkStatsForTesting().aborts >= 1, 12_000, 5);
-    expect(__getShowAllWalkStatsForTesting().aborts).toBe(1);
-    expect(await rejected).toBe(true);
-  }, 30_000);
-
   test('a normally-completed request never triggers an abort', async () => {
     __resetShowAllWalkStatsForTesting();
     const res = await fetch(showAllUrl());

@@ -1,3 +1,4 @@
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 /**
  * The rule corpus precedent #42 names carries no vocabulary from the retired GritQL plugin or
  * the Bun runner; the corpus is `CORPUS_DIRS` and `TEST_DIRS`, read from the constants.
@@ -148,7 +149,7 @@ function testDirFiles(): string[] {
     const abs = join(REPO_ROOT, dir);
     if (!existsSync(abs)) continue;
     for (const entry of readdirSync(abs)) {
-      if (!entry.endsWith('.test.ts')) continue;
+      if (!(isTestOnlySourceFile(entry, 'vitest') && entry.endsWith('.ts'))) continue;
       if (stems.has(entry.replace(/\.test\.ts$/, ''))) found.push(join(abs, entry));
     }
   }

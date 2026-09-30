@@ -85,9 +85,7 @@ describe('source-polish view-plugin — buildDecorationsForRanges', () => {
       const doc = '~~ padded ~~';
       const decos = collect(doc);
       const delRanges = markRangesWithClass(decos, 'cm-del');
-      if (delRanges.length > 0) {
-        expect(doc.slice(delRanges[0].from, delRanges[0].to)).toBe(' padded ');
-      }
+      expect(delRanges).toEqual([]);
     });
   });
 

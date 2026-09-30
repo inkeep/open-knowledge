@@ -1,10 +1,7 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { getCurrentMcpLogger, McpLogger, runWithMcpLogger } from './logger.ts';
 
 describe('McpLogger', () => {

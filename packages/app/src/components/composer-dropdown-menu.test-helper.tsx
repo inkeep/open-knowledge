@@ -1,4 +1,11 @@
-import type { ComponentProps } from 'react';
+import {
+  type ComponentProps,
+  cloneElement,
+  createContext,
+  isValidElement,
+  type ReactNode,
+  use,
+} from 'react';
 import type * as DropdownMenuModule from '@/components/ui/dropdown-menu';
 
 type DropdownMenuProps<Name extends keyof typeof DropdownMenuModule> = ComponentProps<
@@ -25,17 +32,56 @@ function invokeSelection(onSelect: unknown): void {
   if (typeof onSelect === 'function') Reflect.apply(onSelect, undefined, [new Event('select')]);
 }
 
+const CloseAutoFocusContext = createContext<((event: Event) => void) | undefined>(undefined);
+
+function MockMenuItem({
+  children,
+  disabled,
+  onSelect,
+  props,
+}: {
+  children: ReactNode;
+  disabled: boolean | undefined;
+  onSelect: unknown;
+  props: object;
+}) {
+  const onCloseAutoFocus = use(CloseAutoFocusContext);
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      {...asButtonProps(props)}
+      disabled={disabled}
+      onClick={() => {
+        invokeSelection(onSelect);
+        onCloseAutoFocus?.(new Event('focus', { cancelable: true }));
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
 export function createComposerDropdownMenuMock() {
   return {
     DropdownMenu: ({ children }: DropdownMenuProps<'DropdownMenu'>) => <div>{children}</div>,
     DropdownMenuPortal: ({ children }: DropdownMenuProps<'DropdownMenuPortal'>) => <>{children}</>,
-    DropdownMenuTrigger: ({ children }: DropdownMenuProps<'DropdownMenuTrigger'>) => (
-      <>{children}</>
-    ),
-    DropdownMenuContent: ({ children, ...props }: DropdownMenuProps<'DropdownMenuContent'>) => (
-      <div role="menu" {...asDivProps(props)}>
-        {children}
-      </div>
+    DropdownMenuTrigger: ({
+      children,
+      asChild: _asChild,
+      ...props
+    }: DropdownMenuProps<'DropdownMenuTrigger'>) =>
+      isValidElement(children) ? cloneElement(children, props) : <>{children}</>,
+    DropdownMenuContent: ({
+      children,
+      onCloseAutoFocus,
+      ...props
+    }: DropdownMenuProps<'DropdownMenuContent'>) => (
+      <CloseAutoFocusContext value={onCloseAutoFocus}>
+        <div role="menu" {...asDivProps(props)}>
+          {children}
+        </div>
+      </CloseAutoFocusContext>
     ),
     DropdownMenuGroup: ({ children }: DropdownMenuProps<'DropdownMenuGroup'>) => <>{children}</>,
     DropdownMenuItem: ({
@@ -44,15 +90,7 @@ export function createComposerDropdownMenuMock() {
       onSelect,
       ...props
     }: DropdownMenuProps<'DropdownMenuItem'>) => (
-      <button
-        type="button"
-        role="menuitem"
-        {...asButtonProps(props)}
-        disabled={disabled}
-        onClick={() => invokeSelection(onSelect)}
-      >
-        {children}
-      </button>
+      <MockMenuItem {...{ children, disabled, onSelect, props }} />
     ),
     DropdownMenuCheckboxItem: ({
       children,

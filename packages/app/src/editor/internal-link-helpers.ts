@@ -3,6 +3,7 @@ import {
   type ClassifiedLinkTarget,
   classifyMarkdownHref,
   type DocLinkTarget,
+  mediaKindForSidebarAssetExtension,
 } from '@inkeep/open-knowledge-core';
 import { hashFromAssetPath, hashFromDocName } from '../lib/doc-hash';
 import { openExternalUrl } from '../lib/external-link';
@@ -71,7 +72,11 @@ export function activateAssetLink(
   const navigate = deps.navigate ?? navigateToAssetPreview;
   const dispatch = deps.dispatch ?? dispatchAssetClick;
   if (newTab) {
-    void dispatch({ url, projectRelPath, ext, title, forceOsDelegation: true });
+    if (mediaKindForSidebarAssetExtension(ext) === 'excalidraw') {
+      openInternalHashHrefInNewTab({ docName: projectRelPath, anchor: null });
+    } else {
+      void dispatch({ url, projectRelPath, ext, title, forceOsDelegation: true });
+    }
     return;
   }
   navigate(projectRelPath);

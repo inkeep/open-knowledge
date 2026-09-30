@@ -10,6 +10,7 @@ import {
   SyntaxKind,
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
 const SCAN_ROOTS = [join(REPO_ROOT, 'packages/core/src'), join(REPO_ROOT, 'packages/app/src')];
@@ -54,8 +55,7 @@ const OPT_OUT_MARKER = /\/\/\s*ipc-exhaustiveness-check:\s*opt-out\s*—/;
 
 function isExcludedPath(absPath: string): boolean {
   if (absPath.endsWith('.d.ts')) return true;
-  if (/\.test\.tsx?$/.test(absPath)) return true;
-  if (/\.type-tests\.tsx?$/.test(absPath)) return true;
+  if (isTestOnlySourceFile(absPath)) return true;
   if (absPath.includes('/node_modules/')) return true;
   if (absPath.includes('/dist/')) return true;
   return false;

@@ -68,29 +68,33 @@ describe('CODE_BLOCK_LANGUAGES table invariants', () => {
 
   test('no alias collides with another entry`s canonical value', () => {
     const canonicals = new Set(CODE_BLOCK_LANGUAGES.map((l) => l.value));
+    const collisions: string[] = [];
     for (const lang of CODE_BLOCK_LANGUAGES) {
       for (const alias of lang.aliases ?? []) {
         if (alias === lang.value) continue;
         if (canonicals.has(alias)) {
-          throw new Error(
+          collisions.push(
             `Alias collision: "${alias}" listed as alias of "${lang.value}" but is canonical for another entry`,
           );
         }
       }
     }
+    expect(collisions, collisions.join('\n')).toEqual([]);
   });
 
   test('no duplicate aliases across entries', () => {
     const seen = new Map<string, string>();
+    const duplicates: string[] = [];
     for (const lang of CODE_BLOCK_LANGUAGES) {
       for (const alias of lang.aliases ?? []) {
         const prior = seen.get(alias);
         if (prior && prior !== lang.value) {
-          throw new Error(`Alias "${alias}" listed under both "${prior}" and "${lang.value}"`);
+          duplicates.push(`Alias "${alias}" listed under both "${prior}" and "${lang.value}"`);
         }
         seen.set(alias, lang.value);
       }
     }
+    expect(duplicates, duplicates.join('\n')).toEqual([]);
   });
 
   test('first entry is plaintext (the canonical "no highlighting" option)', () => {

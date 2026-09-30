@@ -1,11 +1,8 @@
-import { describe as _vitestDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
-
-const describe = process.env.CI ? _vitestDescribe.skip : _vitestDescribe;
-
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { __resetQuiescenceForTests, __setQuiescentOverrideForTests } from './bridge-quiescence.ts';
 import { getMetrics, resetMetrics } from './metrics.ts';
 import { createServer } from './server-factory.ts';

@@ -959,6 +959,27 @@ describe('persisted tab ids are repaired on read', () => {
     expect(state.panes[0].activeTabId).toBe('notes/foo.mdx');
   });
 
+  test('an Excalidraw board saved as an asset tab restores as the board tab', () => {
+    const board = 'fishing-log/assets/2026-08/test2.Excalidraw';
+    const state = parseEditorTabSessionState(
+      session([assetTabId(board)], { activeTabId: assetTabId(board) }),
+    );
+    expect(state.panes[0].openTabs).toEqual([board]);
+    expect(state.panes[0].activeTabId).toBe(board);
+  });
+
+  test('a board saved as both an asset tab and a board tab restores as one tab', () => {
+    const state = parseEditorTabSessionState(
+      session([assetTabId('board.excalidraw'), 'board.excalidraw'], {
+        pinnedTabIds: [assetTabId('board.excalidraw')],
+        activeTabId: assetTabId('board.excalidraw'),
+      }),
+    );
+    expect(state.panes[0].openTabs).toEqual(['board.excalidraw']);
+    expect(state.panes[0].pinnedTabIds).toEqual(['board.excalidraw']);
+    expect(state.panes[0].activeTabId).toBe('board.excalidraw');
+  });
+
   test('folder and asset tab ids keep their path verbatim', () => {
     const ids = [folderTabId('specs/demo'), assetTabId('.ok/local/notes.md')];
     expect(parseEditorTabSessionState(session(ids)).panes[0].openTabs).toEqual(ids);

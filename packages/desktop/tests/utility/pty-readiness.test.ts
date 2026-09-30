@@ -438,6 +438,7 @@ describe('driving a real host through a shell that starts slowly', () => {
         intervalMs: 5,
         stallMs: 2_000,
       });
+      expect(io.read()).toContain('HARNESS_42_DONE');
     } finally {
       host.killActive();
     }

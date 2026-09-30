@@ -428,7 +428,7 @@ describe('bootStartServer (integration)', () => {
       skipAutoInit: true,
     });
     await booted.destroy();
-    await booted.destroy();
+    await expect(booted.destroy()).resolves.toBeUndefined();
     booted = null;
   });
 

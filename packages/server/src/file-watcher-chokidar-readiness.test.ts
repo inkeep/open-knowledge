@@ -11,7 +11,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
-import { afterEach, beforeEach, describe, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { createContentFilter } from './content-filter.ts';
 import { type DiskEvent, lastKnownHash, startWatcher, writeTracker } from './file-watcher.ts';
 import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
@@ -186,6 +186,7 @@ async function expectDiskEventForCreationAfterStart(
         () => events.some(site.matches),
         { timeoutMs: DELIVERY_LIVENESS_BOUND_MS, pollMs: DELIVERY_POLL_MS },
       );
+      expect(events.some(site.matches), site.expected).toBe(true);
     } finally {
       await handle.unsubscribe();
     }

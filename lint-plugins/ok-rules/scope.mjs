@@ -23,6 +23,19 @@ export const UNSCOPED_RULES = new Set([
 ]);
 
 export const RULE_SCOPES = {
+  'no-hand-rolled-test-file-suffix': [
+    '**/*.ts',
+    '**/*.tsx',
+    '**/*.mts',
+    '**/*.cts',
+    '**/*.js',
+    '**/*.jsx',
+    '**/*.mjs',
+    '**/*.cjs',
+    '!test-support/test-only-source-file.mjs',
+    '!lint-plugins/no-comments/portability.test.mjs',
+    'lint-plugins/ok-rules/__fixtures__/no-hand-rolled-test-file-suffix.fixture.tsx',
+  ],
   'no-raw-route-hash-construction': [
     'packages/app/src/**/*.ts',
     'packages/app/src/**/*.tsx',

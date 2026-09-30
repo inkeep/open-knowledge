@@ -16,7 +16,7 @@ describe('showTabSessionRestoreRecoveryNotice', () => {
 
     showTabSessionRestoreRecoveryNotice();
 
-    await screen.findByText(NOTICE_TEXT);
+    expect((await screen.findByText(NOTICE_TEXT)).textContent).toMatch(NOTICE_TEXT);
   });
 
   test('does not veil the app it just recovered', async () => {

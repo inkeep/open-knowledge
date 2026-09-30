@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import { LOCAL_DIR } from '@inkeep/open-knowledge-core';
-import { afterEach, beforeEach, describe, expect, test } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { loadPrincipal } from './principal.ts';
 
 let tmpDir: string;
@@ -13,6 +13,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await rm(tmpDir, { recursive: true, force: true });
 });
 
@@ -78,9 +79,16 @@ describe('loadPrincipal — display field refresh', () => {
   });
 
   test('synthesized email has principal-<shortId>@openknowledge.local shape', async () => {
-    const principal = await loadPrincipal(tmpDir);
-    if (principal.source === 'synthesized') {
-      expect(principal.display_email).toMatch(/@openknowledge\.local$/);
+    for (const key of Object.keys(process.env)) {
+      if (key.startsWith('GIT_')) vi.stubEnv(key, undefined);
     }
+    const emptyGitConfig = resolve(tmpDir, 'empty.gitconfig');
+    writeFileSync(emptyGitConfig, '');
+    vi.stubEnv('GIT_CONFIG_GLOBAL', emptyGitConfig);
+    vi.stubEnv('GIT_CONFIG_NOSYSTEM', '1');
+
+    const principal = await loadPrincipal(tmpDir);
+    expect(principal.source).toBe('synthesized');
+    expect(principal.display_email).toMatch(/^principal-[0-9a-f]{8}@openknowledge\.local$/);
   });
 });

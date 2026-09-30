@@ -1,3 +1,4 @@
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 /**
  * Selection-halo chrome comes from plugin state and never from the `:has()` cascade, and this
  * suite is the mechanical guard for that ban (precedent #34).
@@ -78,7 +79,7 @@ function listAppSrcTsFiles(): FileLines[] {
       }
       if (!name.isFile()) continue;
       if (!name.name.endsWith('.ts') && !name.name.endsWith('.tsx')) continue;
-      if (name.name.endsWith('.test.ts') || name.name.endsWith('.test.tsx')) continue;
+      if (isTestOnlySourceFile(name.name)) continue;
       if (name.name.endsWith('.spec.ts') || name.name.endsWith('.spec.tsx')) continue;
       const source = readFileSync(abs, 'utf-8');
       out.push({
@@ -500,7 +501,7 @@ function collectMatches(
 
 describe('E2E STOP rule — zero allowlist', () => {
   const e2eTsFiles = listE2eTsFiles();
-  const e2eFiles = e2eTsFiles.filter((file) => file.path.endsWith('.e2e.ts'));
+  const e2eFiles = e2eTsFiles.filter((file) => isTestOnlySourceFile(file.path, 'playwright'));
 
   test('there are E2E files to check (sanity)', () => {
     expect(
@@ -525,71 +526,64 @@ describe('E2E STOP rule — zero allowlist', () => {
 
   test('no page.waitForTimeout( in tests/{stress,visual,a11y}/*.e2e.ts (AC-3)', () => {
     const violations = collectMatches(e2eFiles, (line) => line.includes('page.waitForTimeout('));
-    if (violations.length > 0) {
-      throw new Error(
-        `page.waitForTimeout( pattern found — replace with condition-based wait per D-Q1:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `page.waitForTimeout( pattern found — replace with condition-based wait per D-Q1:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test("no waitUntil: 'networkidle' in tests/{stress,visual,a11y}/*.e2e.ts (AC-4)", () => {
     const violations = collectMatches(e2eFiles, (line) =>
       /waitUntil:\s*['"]networkidle['"]/.test(line),
     );
-    if (violations.length > 0) {
-      throw new Error(
-        `waitUntil: 'networkidle' pattern found — use 'domcontentloaded' + waitForActiveProviderSynced instead:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `waitUntil: 'networkidle' pattern found — use 'domcontentloaded' + waitForActiveProviderSynced instead:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no new Promise + setTimeout busy-wait in tests/{stress,visual,a11y}/*.e2e.ts (D-Q14)', () => {
     const pattern = /new Promise\(\s*(\w+)\s*=>\s*setTimeout\(\s*\1\s*,/;
     const violations = collectMatches(e2eFiles, (line) => pattern.test(line));
-    if (violations.length > 0) {
-      throw new Error(
-        `\`new Promise(r => setTimeout(r, N))\` busy-wait found — use a condition-based wait:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `\`new Promise(r => setTimeout(r, N))\` busy-wait found — use a condition-based wait:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no page.pause( in tests/{stress,visual,a11y}/*.e2e.ts (D-Q14)', () => {
     const violations = collectMatches(e2eFiles, (line) => line.includes('page.pause('));
-    if (violations.length > 0) {
-      throw new Error(
-        `page.pause( found — debugger pauses must not land in committed E2E tests:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `page.pause( found — debugger pauses must not land in committed E2E tests:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test("no test.skip(browserName === 'webkit') in tests/{stress,visual,a11y}/*.e2e.ts (AC-5 ratchet)", () => {
     const pattern = /test\.skip\(\s*browserName\s*===\s*['"]webkit['"]/;
     const violations = collectMatches(e2eFiles, (line) => pattern.test(line));
-    if (violations.length > 0) {
-      throw new Error(
-        `webkit-skip pattern reintroduced — chromium-only CI ratchet (D-Q10):\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `webkit-skip pattern reintroduced — chromium-only CI ratchet (D-Q10):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test("no keyboard.press('Meta+X') — use ControlOrMeta+X for cross-platform CI (D-Q10)", () => {
     const pattern = /keyboard\.press\(\s*['"`]Meta\+[A-Za-z][A-Za-z]*['"`]/;
     const violations = collectMatches(e2eFiles, (line) => pattern.test(line));
-    if (violations.length > 0) {
-      throw new Error(
-        `keyboard.press('Meta+X') — replace with 'ControlOrMeta+X' so CI (Linux chromium) maps to Ctrl+X:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `keyboard.press('Meta+X') — replace with 'ControlOrMeta+X' so CI (Linux chromium) maps to Ctrl+X:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no inner-file helper imports — must use barrel ./_helpers (D-Q11)', () => {
     const innerImport = /from\s+['"]\.\.?(?:\/[^'"]*)?\/_helpers\/[a-zA-Z][\w-]*['"]/;
     const violations = collectMatches(e2eFiles, (line) => innerImport.test(line));
-    if (violations.length > 0) {
-      throw new Error(
-        `Inner-file helper import found — import from the barrel ('./_helpers') only:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Inner-file helper import found — import from the barrel ('./_helpers') only:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no ungated window.__ writes outside dev-gate allowlist (US-006/US-026)', () => {
@@ -610,22 +604,20 @@ describe('E2E STOP rule — zero allowlist', () => {
         violations.push(`  ${file.path}:${i + 1}    ${line.trim()}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `Ungated window.__ write outside the dev-gate allowlist — wrap in if (import.meta.env.DEV) and add to dev-gate-allowlist.ts:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Ungated window.__ write outside the dev-gate allowlist — wrap in if (import.meta.env.DEV) and add to dev-gate-allowlist.ts:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no static value import of the DEV ACP thread harness', () => {
     const violations = collectMatches(listAppSrcTsFiles(), (line) =>
       isStaticDevHarnessImport(line),
     );
-    if (violations.length > 0) {
-      throw new Error(
-        `Static import of dev-thread-harness in app source — it must be reached only through the DEV-gated dynamic import:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Static import of dev-thread-harness in app source — it must be reached only through the DEV-gated dynamic import:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no editor.mount( / editor.unmount( in V2 cache surfaces (precedent §25(a), SPEC US-001 Phase 1.0)', () => {
@@ -657,11 +649,10 @@ describe('E2E STOP rule — zero allowlist', () => {
         violations.push(`  ${relative(REPO_ROOT, abs)}:${i + 1}    ${trimmed}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `editor.mount()/unmount() call found in a V2-cache surface — use raw editor.editorView.dom reparent instead per precedent §25(a):\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `editor.mount()/unmount() call found in a V2-cache surface — use raw editor.editorView.dom reparent instead per precedent §25(a):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no waitForFunction(fn, { timeout/polling }) — options must be 3rd arg (precedent §20(j))', () => {
@@ -702,11 +693,10 @@ describe('E2E STOP rule — zero allowlist', () => {
         violations.push(`  ${file.path}:${i + 1}    ${line.trim()}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `waitForFunction(fn, { timeout/polling }) pattern — options as 2nd arg is bound to \`arg\` and silently ignored. Pass \`null\` as 2nd arg: \`waitForFunction(fn, null, { timeout: N })\`. See AGENTS.md §20(j):\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `waitForFunction(fn, { timeout/polling }) pattern — options as 2nd arg is bound to \`arg\` and silently ignored. Pass \`null\` as 2nd arg: \`waitForFunction(fn, null, { timeout: N })\`. See AGENTS.md §20(j):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('e2e files that spawn a dev server must isolate shared mutable state (vite cache + i18n compile)', () => {
@@ -718,11 +708,10 @@ describe('E2E STOP rule — zero allowlist', () => {
         );
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `dev-server spawn without shared-state isolation — pass OK_TEST_VITE_CACHE_DIR (via prepareViteCacheDir from ./_helpers, removeAllDuringTeardown in teardown) and OK_TEST_SKIP_I18N_COMPILE: '1' in the spawn env. A line reported as unconfirmed rather than missing is one this guard could not settle: either it cannot read the spawn's env at all, so inline the env object at the call, or the key is absent from the env object's own properties while a spread may carry it, so declare the key at the call instead of leaving it to the spread, or the key is declared but a spread that follows it may replace it, so move the declaration after the last spread:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `dev-server spawn without shared-state isolation — pass OK_TEST_VITE_CACHE_DIR (via prepareViteCacheDir from ./_helpers, removeAllDuringTeardown in teardown) and OK_TEST_SKIP_I18N_COMPILE: '1' in the spawn env. A line reported as unconfirmed rather than missing is one this guard could not settle: either it cannot read the spawn's env at all, so inline the env object at the call, or the key is absent from the env object's own properties while a spread may carry it, so declare the key at the call instead of leaving it to the spread, or the key is declared but a spread that follows it may replace it, so move the declaration after the last spread:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('the spawn-isolation rule resolves a dev-server spawn in exactly the pinned sites', () => {
@@ -1192,11 +1181,10 @@ describe('E2E STOP rule — zero allowlist', () => {
         violations.push(`  ${file.path}:${i + 1}    ${line.trim()}`);
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `window.__activeEditor must be published only by DocumentContext.tsx — additional writers collide with the getter-only accessor and throw TypeError on doc open in DEV. Delete the direct write and read through window.__activeEditor (the getter already resolves via the active-editor.ts registry, which TiptapEditor already populates via registerEditor/unregisterEditor):\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `window.__activeEditor must be published only by DocumentContext.tsx — additional writers collide with the getter-only accessor and throw TypeError on doc open in DEV. Delete the direct write and read through window.__activeEditor (the getter already resolves via the active-editor.ts registry, which TiptapEditor already populates via registerEditor/unregisterEditor):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('selection-halo CSS rules use plugin-state propagation, not `:has()` (Precedent #34)', () => {
@@ -1222,11 +1210,10 @@ describe('E2E STOP rule — zero allowlist', () => {
       }
     }
 
-    if (violations.length > 0) {
-      throw new Error(
-        `Selection-halo CSS rules must not use \`:has()\` — precedent #34 requires innermost-wins via plugin-state propagation (\`data-has-child-selected\`). Move the cascade logic into SelectionStatePlugin's apply function and let JsxComponentView emit the attribute:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Selection-halo CSS rules must not use \`:has()\` — precedent #34 requires innermost-wins via plugin-state propagation (\`data-has-child-selected\`). Move the cascade logic into SelectionStatePlugin's apply function and let JsxComponentView emit the attribute:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('selection-halo transition uses `var(--ease-out-strong)`, not bare `ease-out` (round-2 review fix)', () => {
@@ -1259,20 +1246,18 @@ describe('E2E STOP rule — zero allowlist', () => {
       }
     }
 
-    if (violations.length > 0) {
-      throw new Error(
-        `Selection-halo transition uses bare \`ease-out\` — use \`var(--ease-out-strong)\` for consistency with the repo's 7 other transitions (round-2 review fix, commit 4e9d96a5):\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Selection-halo transition uses bare \`ease-out\` — use \`var(--ease-out-strong)\` for consistency with the repo's 7 other transitions (round-2 review fix, commit 4e9d96a5):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('no remote placeholder-image hosts in tests/{stress,visual,a11y} (PRD-8532)', () => {
     const violations = collectMatches(e2eTsFiles, isRemoteImageHost);
-    if (violations.length > 0) {
-      throw new Error(
-        `Remote placeholder-image host found — write a local fixture under tests/stress/_fixtures and wait with waitForImageDecoded (from the ./_helpers barrel) instead:\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `Remote placeholder-image host found — write a local fixture under tests/stress/_fixtures and wait with waitForImageDecoded (from the ./_helpers barrel) instead:\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('remote-image-host rule fires on planted hosts and not on adjacent negatives', () => {
@@ -1311,8 +1296,6 @@ describe('E2E STOP rule — zero allowlist', () => {
           'src/locales/<locale>/messages.json and Vite full-page-reloads running tests mid-evaluate.',
       );
     }
-    if (errors.length > 0) {
-      throw new Error(`${errors.join('\n')}\nFound predev:\n  ${predev}`);
-    }
+    expect(errors, `${errors.join('\n')}\nFound predev:\n  ${predev}`).toEqual([]);
   });
 });

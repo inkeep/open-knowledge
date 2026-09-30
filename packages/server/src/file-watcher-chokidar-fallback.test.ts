@@ -103,6 +103,10 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
         () => events.some((e) => e.kind === 'update' && e.docName === 'sub/note'),
         { timeoutMs: 15_000, pollMs: 40 },
       );
+      expect(events).toContainEqual(expect.objectContaining({ kind: 'update', docName: 'root' }));
+      expect(events).toContainEqual(
+        expect.objectContaining({ kind: 'update', docName: 'sub/note' }),
+      );
     } finally {
       await handle.unsubscribe();
     }
@@ -130,6 +134,14 @@ describe('chokidar backend — live subfolder watching (forceBackend)', () => {
           ),
         { timeoutMs: 15_000, pollMs: 40 },
       );
+      expect(events).toContainEqual(
+        expect.objectContaining({ kind: 'folder-create', relativePath: 'fresh' }),
+      );
+      expect(
+        events.some(
+          (e) => (e.kind === 'create' || e.kind === 'update') && e.docName === 'fresh/child',
+        ),
+      ).toBe(true);
     } finally {
       await handle.unsubscribe();
     }
@@ -197,6 +209,13 @@ describe('chokidar backend — templates-as-content watching (forceBackend)', ()
         },
         { timeoutMs: 6_000, pollMs: 40 },
       );
+      expect(
+        events.some(
+          (e) =>
+            (e.kind === 'create' || e.kind === 'update') &&
+            e.docName === 'notes/.ok/templates/standup',
+        ),
+      ).toBe(true);
     } finally {
       await handle.unsubscribe();
     }
@@ -217,6 +236,9 @@ describe('chokidar backend — templates-as-content watching (forceBackend)', ()
         "a conflict DiskEvent for '.ok/templates/daily'",
         () => events.some((e) => e.kind === 'conflict' && e.docName === '.ok/templates/daily'),
         { timeoutMs: 6_000, pollMs: 40 },
+      );
+      expect(events).toContainEqual(
+        expect.objectContaining({ kind: 'conflict', docName: '.ok/templates/daily' }),
       );
     } finally {
       await handle.unsubscribe();

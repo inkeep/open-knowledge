@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, sep } from 'node:path';
 import { Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
 import { isTerminalPlatform } from '../../../src/shared/terminal-platform.ts';
 import { SPEC_PLATFORM_GATES, SUPPORTED_PLATFORMS } from './platform-gate';
 
@@ -197,7 +198,7 @@ function deriveGates(
 function listSpecFiles(dir: string): string[] {
   return readdirSync(dir, { recursive: true })
     .map((entry) => String(entry).split(sep).join('/'))
-    .filter((name) => name.endsWith('.e2e.ts'))
+    .filter((name) => isTestOnlySourceFile(name, 'playwright'))
     .sort();
 }
 

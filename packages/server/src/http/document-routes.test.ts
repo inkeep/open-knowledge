@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Hocuspocus } from '@hocuspocus/server';
@@ -7,8 +8,9 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { makeCaptureRes, makeSyntheticReq } from '../composition-rig.test-helper.ts';
 import { createTestConflictAuthority } from '../conflict-authority.test-helper.ts';
 import type { ConflictAuthority } from '../conflict-authority.ts';
+import { createContentFilter } from '../content-filter.ts';
 import { loggerFactory } from '../logger.ts';
-import { createDocumentRoutes } from './document-routes.ts';
+import { createDocumentRoutes, type DocumentRouteDeps } from './document-routes.ts';
 
 const DOC_NAME = 'notes/topic';
 const DOC_FILE = 'notes/topic.md';
@@ -24,7 +26,11 @@ afterEach(() => {
   rmSync(projectDir, { recursive: true, force: true });
 });
 
-function buildGroup(conflicts: ConflictAuthority, hocuspocus: Hocuspocus) {
+function buildGroup(
+  conflicts: ConflictAuthority,
+  hocuspocus: Hocuspocus,
+  overrides: Partial<DocumentRouteDeps> = {},
+) {
   return createDocumentRoutes({
     hocuspocus,
     conflicts,
@@ -50,6 +56,7 @@ function buildGroup(conflicts: ConflictAuthority, hocuspocus: Hocuspocus) {
     getFolderIndex: undefined,
     getFolderAliasIndex: undefined,
     onReferencedAssetsCacheInvalidator: undefined,
+    ...overrides,
   });
 }
 
@@ -113,5 +120,35 @@ describe('/api/document lifecycle reflects the conflict ledger', () => {
     } finally {
       await dc.disconnect();
     }
+  });
+});
+
+describe('/api/documents?showAll single-flight walk', () => {
+  test('a disconnect with no other waiter aborts the shared walk', async () => {
+    const started = Promise.withResolvers<AbortSignal>();
+    const walk = Promise.withResolvers<{ truncated: boolean }>();
+    const resolved = buildGroup(
+      createTestConflictAuthority(projectDir),
+      new Hocuspocus({ quiet: true }),
+      {
+        contentFilter: createContentFilter({ projectDir, contentDir: projectDir }),
+        walkContentDirForShowAll: ({ signal }) => {
+          started.resolve(signal);
+          return walk.promise;
+        },
+      },
+    ).table.resolve('/api/documents');
+    if (!resolved?.dispatch) throw new Error('no dispatch for /api/documents');
+    const req = makeSyntheticReq({ url: '/api/documents?showAll=true' });
+    const res = new ServerResponse(req);
+    const pending = resolved.dispatch(req, res);
+
+    const signal = await started.promise;
+    expect(signal.aborted).toBe(false);
+    res.emit('close');
+    expect(signal.aborted).toBe(true);
+
+    walk.resolve({ truncated: false });
+    await pending;
   });
 });

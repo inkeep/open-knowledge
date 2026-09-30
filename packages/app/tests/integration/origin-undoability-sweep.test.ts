@@ -1,6 +1,7 @@
 import { globSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 type UndoClass =
   | 'agent-session-um'
@@ -158,9 +159,7 @@ const CONTRACT_TEST_FILE = /[\w./-]+\.test\.tsx?\b/g;
 function isScannedSource(fileName: string): boolean {
   if (!fileName.endsWith('.ts') && !fileName.endsWith('.tsx')) return false;
   return !(
-    fileName.endsWith('.test.ts') ||
-    fileName.endsWith('.test.tsx') ||
-    fileName.endsWith('.test-helper.ts') ||
+    isTestOnlySourceFile(fileName) ||
     fileName.endsWith('-test-harness.ts') ||
     fileName.endsWith('.d.ts')
   );

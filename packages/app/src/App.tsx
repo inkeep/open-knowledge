@@ -52,6 +52,7 @@ import { createPageRequest, nextUntitledDocName, openCreatedPage } from '@/lib/c
 import {
   assetPathFromHash,
   docNameFromHash,
+  hashFromDocName,
   isContentRootHash,
   isManagedHashHistoryState,
   markCurrentHashHistoryEntry,
@@ -255,6 +256,10 @@ function NavigationHandler() {
       if (assetPath) {
         const assetExt = assetPath.split('.').pop() ?? '';
         const mediaKind = mediaKindForSidebarAssetExtension(assetExt);
+        if (mediaKind === 'excalidraw') {
+          window.location.replace(hashFromDocName(assetPath));
+          return;
+        }
         mark('ok/nav/hash-change', { docName: null, kind: 'asset' });
         openHashTarget({
           kind: 'asset',

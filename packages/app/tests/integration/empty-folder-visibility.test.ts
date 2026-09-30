@@ -22,16 +22,17 @@ async function awaitFolderPathsIndexed(
       const body = DocumentListSuccessSchema.parse(await res.json());
       lastFolderPaths = body.documents.filter((e) => e.kind === 'folder').map((e) => e.path ?? '');
       if (expectedFolderPaths.every((path) => lastFolderPaths.includes(path))) {
-        return;
+        break;
       }
     }
     await wait(50);
   }
-  throw new Error(
+  expect(
+    lastFolderPaths,
     `folder paths not indexed within ${timeoutMs}ms: expected=${expectedFolderPaths.join(
       ',',
     )}; last=${lastFolderPaths.join(',')}`,
-  );
+  ).toEqual(expect.arrayContaining(expectedFolderPaths));
 }
 
 describe('/api/documents empty folder — boot-time', () => {

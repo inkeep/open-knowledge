@@ -1,8 +1,3 @@
-/**
- * Compile-time type assertions for `PairedWriteOrigin` (bridge-correctness precedent #1 extension).
- */
-
-import { describe, test } from 'vitest';
 import type { AGENT_WRITE_ORIGIN } from './agent-sessions.ts';
 import type { MANAGED_RENAME_ORIGIN, ROLLBACK_ORIGIN } from './api-extension.ts';
 import type { FILE_WATCHER_ORIGIN } from './external-change.ts';
@@ -23,19 +18,15 @@ void _managedRenameIsPaired;
 const _missingPairedFlag = {
   source: 'local' as const,
   skipStoreHooks: false,
-  // @ts-expect-error — `context.paired: true` is required by PairedWriteOrigin
   context: { origin: 'forgot-the-marker' },
+  // @ts-expect-error — `context.paired: true` is required by PairedWriteOrigin
 } as const satisfies PairedWriteOrigin;
 void _missingPairedFlag;
 
 const _pairedFalseRejected = {
   source: 'local' as const,
   skipStoreHooks: false,
-  // @ts-expect-error — `paired: false` violates `paired: true`
   context: { origin: 'wrong-value', paired: false },
+  // @ts-expect-error — `paired: false` violates `paired: true`
 } as const satisfies PairedWriteOrigin;
 void _pairedFalseRejected;
-
-describe('PairedWriteOrigin (compile-time assertions)', () => {
-  test('all four paired origins carry the type-level brand', () => {});
-});

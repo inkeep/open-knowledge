@@ -649,6 +649,7 @@ describe('AcpThreadManager (real subprocess)', () => {
       10_000,
       'thread force-closed',
     );
+    expect(manager.listThreads().filter((t) => t.archived !== true)).toEqual([]);
   }, 45_000);
 
   test('unknown agents and capacity are refused cleanly', async () => {
@@ -4037,6 +4038,10 @@ describe('AcpThreadManager prompt queueing', () => {
       5_000,
       'the file read cleared the stall',
     );
+    expect(
+      infoLog.mock.calls.some((call) => call[1] === '[acp-threads] turn resumed after stall'),
+    ).toBe(true);
+    expect(manager.getInfo(info.threadId)?.stalledSince).toBeUndefined();
     await waitUntil(() => !internals(manager).turnActive(info.threadId), 20_000, 'turn ended');
 
     await manager.closeThread(info.threadId);
@@ -4168,6 +4173,7 @@ describe.skipIf(process.platform === 'win32')('login-shell PATH fallback', () =>
     const info = await manager.createThread({ agent: { source: 'custom', id: 'shell-agent' } });
     await manager.subscribe(info.threadId, 0, () => {});
     await waitUntil(() => manager.getInfo(info.threadId)?.status === 'ready', 15_000, 'ready');
+    expect(manager.getInfo(info.threadId)?.status).toBe('ready');
   }, 30_000);
 
   test('a command missing from the login shell too still fails with the install hint', async () => {

@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { LOCAL_DIR, type SyncMode, SyncStatusSchema } from '@inkeep/open-knowledge-core';
 import simpleGit from 'simple-git';
-import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import { type Conflict, ConflictAuthority } from './conflict-authority.ts';
 import { createContentFilter } from './content-filter.ts';
 import { classifyGitError } from './error-classification.ts';
@@ -32,8 +32,22 @@ import {
   SyncEngine,
   type SyncState,
 } from './sync-engine.ts';
+import { ANONYMOUS_PULL_MIN_SECONDS } from './sync-timing.ts';
 
 const execFileAsync = promisify(execFile);
+const JITTER_SAMPLES = [
+  { draw: 0, edge: 'min' },
+  { draw: 1 / 2, edge: 'mid' },
+  { draw: 1 - Number.EPSILON, edge: 'max' },
+] as const;
+
+function jitterBand(seconds: number) {
+  return {
+    min: Math.round(seconds * 0.85 * 1000),
+    mid: seconds * 1000,
+    max: Math.round(seconds * 1.15 * 1000),
+  };
+}
 
 const stubContentFilter = {
   isExcluded: (_path: string) => false,
@@ -1958,8 +1972,8 @@ describe('SyncEngine backoff thresholds via persisted state', () => {
 });
 
 describe('SyncEngine pull-only cadence (auth-conditional)', () => {
-  const AUTHENTICATED_BAND = { min: 30 * 0.85 * 1000, max: 30 * 1.15 * 1000 };
-  const ANONYMOUS_BAND = { min: 180 * 0.85 * 1000, max: 180 * 1.15 * 1000 };
+  const AUTHENTICATED_BAND = jitterBand(30);
+  const ANONYMOUS_BAND = jitterBand(ANONYMOUS_PULL_MIN_SECONDS);
 
   type CadenceInternals = {
     refreshAuthTier(): Promise<void>;
@@ -1990,12 +2004,16 @@ describe('SyncEngine pull-only cadence (auth-conditional)', () => {
     return internals.effectivePullDelayMs();
   }
 
-  test('an anonymous follower schedules pulls at the gentle cadence', async () => {
-    const engine = makeCadenceEngine({ mode: 'follow' });
-    const delayMs = await scheduledPullDelayMs(engine);
-    expect(delayMs).toBeGreaterThanOrEqual(ANONYMOUS_BAND.min);
-    expect(delayMs).toBeLessThanOrEqual(ANONYMOUS_BAND.max);
-  });
+  test.each(JITTER_SAMPLES)(
+    'an anonymous follower schedules pulls at the gentle cadence (draw $draw)',
+    async ({ draw, edge }) => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
+      onTestFinished(() => random.mockRestore());
+      const engine = makeCadenceEngine({ mode: 'follow' });
+      const delayMs = await scheduledPullDelayMs(engine);
+      expect(delayMs).toBe(ANONYMOUS_BAND[edge]);
+    },
+  );
 
   test('a gh-authenticated follower keeps the responsive cadence', async () => {
     const engine = makeCadenceEngine({
@@ -2017,19 +2035,23 @@ describe('SyncEngine pull-only cadence (auth-conditional)', () => {
     expect(delayMs).toBeLessThanOrEqual(AUTHENTICATED_BAND.max);
   });
 
-  test('a token-store read failure degrades to the gentle cadence', async () => {
-    const engine = makeCadenceEngine({
-      mode: 'follow',
-      tokenStore: {
-        get: async () => {
-          throw new Error('EACCES');
+  test.each(JITTER_SAMPLES)(
+    'a token-store read failure degrades to the gentle cadence (draw $draw)',
+    async ({ draw, edge }) => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
+      onTestFinished(() => random.mockRestore());
+      const engine = makeCadenceEngine({
+        mode: 'follow',
+        tokenStore: {
+          get: async () => {
+            throw new Error('EACCES');
+          },
         },
-      },
-    });
-    const delayMs = await scheduledPullDelayMs(engine);
-    expect(delayMs).toBeGreaterThanOrEqual(ANONYMOUS_BAND.min);
-    expect(delayMs).toBeLessThanOrEqual(ANONYMOUS_BAND.max);
-  });
+      });
+      const delayMs = await scheduledPullDelayMs(engine);
+      expect(delayMs).toBe(ANONYMOUS_BAND[edge]);
+    },
+  );
 
   test('full-sync cadence is untouched even with no credentials', async () => {
     const engine = makeCadenceEngine({ mode: 'full' });
@@ -2321,10 +2343,6 @@ describe('SyncEngine setIntervals()', () => {
     schedulePull(overrideDelayMs?: number): void;
   };
 
-  function band(seconds: number) {
-    return { min: seconds * 0.85 * 1000, max: seconds * 1.15 * 1000 };
-  }
-
   function makeIntervalEngine(mode: SyncMode) {
     return new SyncEngine({
       conflicts: newAuthority(),
@@ -2343,8 +2361,8 @@ describe('SyncEngine setIntervals()', () => {
     const internals = engine as unknown as IntervalInternals;
     engine.setIntervals(900, 60);
     const delayMs = internals.effectivePullDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(band(900).min);
-    expect(delayMs).toBeLessThanOrEqual(band(900).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(900).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(900).max);
   });
 
   test('pull and push move independently', () => {
@@ -2392,25 +2410,29 @@ describe('SyncEngine setIntervals()', () => {
     expect(internals.pushTimer).toBeNull();
   });
 
-  test('the anonymous floor still outranks a shorter configured pull interval', async () => {
-    const engine = new SyncEngine({
-      conflicts: newAuthority(),
-      projectDir,
-      contentDir,
-      contentFilter: stubContentFilter,
-      mode: 'follow',
-      pullIntervalSeconds: 30,
-      pushIntervalSeconds: 60,
-    });
-    const internals = engine as unknown as IntervalInternals & {
-      refreshAuthTier(): Promise<void>;
-    };
-    engine.setIntervals(30, 60);
-    await internals.refreshAuthTier();
-    const delayMs = internals.effectivePullDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(band(180).min);
-    expect(delayMs).toBeLessThanOrEqual(band(180).max);
-  });
+  test.each(JITTER_SAMPLES)(
+    'the anonymous floor still outranks a shorter configured pull interval (draw $draw)',
+    async ({ draw, edge }) => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
+      onTestFinished(() => random.mockRestore());
+      const engine = new SyncEngine({
+        conflicts: newAuthority(),
+        projectDir,
+        contentDir,
+        contentFilter: stubContentFilter,
+        mode: 'follow',
+        pullIntervalSeconds: 30,
+        pushIntervalSeconds: 60,
+      });
+      const internals = engine as unknown as IntervalInternals & {
+        refreshAuthTier(): Promise<void>;
+      };
+      engine.setIntervals(30, 60);
+      await internals.refreshAuthTier();
+      const delayMs = internals.effectivePullDelayMs();
+      expect(delayMs).toBe(jitterBand(ANONYMOUS_PULL_MIN_SECONDS)[edge]);
+    },
+  );
 
   test('a longer configured interval is honored for an anonymous follower', async () => {
     const engine = new SyncEngine({
@@ -2428,8 +2450,8 @@ describe('SyncEngine setIntervals()', () => {
     engine.setIntervals(3600, 60);
     await internals.refreshAuthTier();
     const delayMs = internals.effectivePullDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(band(3600).min);
-    expect(delayMs).toBeLessThanOrEqual(band(3600).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(3600).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(3600).max);
   });
 });
 
@@ -2636,10 +2658,6 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
     consecutivePushFailures: number;
   };
 
-  function bandP(seconds: number) {
-    return { min: seconds * 0.85 * 1000, max: seconds * 1.15 * 1000 };
-  }
-
   function makePushEngine(pushIntervalSeconds: number) {
     return new SyncEngine({
       conflicts: newAuthority(),
@@ -2653,22 +2671,30 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
     });
   }
 
-  test('with no streak, delay equals the configured push interval', () => {
-    const engine = makePushEngine(60);
-    const internals = engine as unknown as PushDelayInternals;
-    expect(internals.consecutivePushFailures).toBe(0);
-    const delayMs = internals.effectivePushDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(bandP(60).min);
-    expect(delayMs).toBeLessThanOrEqual(bandP(60).max);
-  });
+  test.each(
+    [60, ANONYMOUS_PULL_MIN_SECONDS].flatMap((intervalSeconds) =>
+      JITTER_SAMPLES.map((sample) => ({ intervalSeconds, ...sample })),
+    ),
+  )(
+    'with no streak, delay stays in the configured push band ($intervalSeconds s, draw $draw)',
+    ({ intervalSeconds, draw, edge }) => {
+      const random = vi.spyOn(Math, 'random').mockReturnValue(draw);
+      onTestFinished(() => random.mockRestore());
+      const engine = makePushEngine(intervalSeconds);
+      const internals = engine as unknown as PushDelayInternals;
+      expect(internals.consecutivePushFailures).toBe(0);
+      const delayMs = internals.effectivePushDelayMs();
+      expect(delayMs).toBe(jitterBand(intervalSeconds)[edge]);
+    },
+  );
 
   test('with streak=3 (5-min backoff) and a short interval, backoff wins', () => {
     const engine = makePushEngine(60);
     const internals = engine as unknown as PushDelayInternals;
     internals.consecutivePushFailures = 3;
     const delayMs = internals.effectivePushDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(bandP(300).min);
-    expect(delayMs).toBeLessThanOrEqual(bandP(300).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(300).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(300).max);
   });
 
   test.each([
@@ -2679,8 +2705,8 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
     const internals = engine as unknown as PushDelayInternals;
     internals.consecutivePushFailures = streak;
     const delayMs = internals.effectivePushDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(bandP(tierSeconds).min);
-    expect(delayMs).toBeLessThanOrEqual(bandP(tierSeconds).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(tierSeconds).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(tierSeconds).max);
   });
 
   test('with streak=3 (5-min backoff) and a long interval, interval wins', () => {
@@ -2688,8 +2714,8 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
     const internals = engine as unknown as PushDelayInternals;
     internals.consecutivePushFailures = 3;
     const delayMs = internals.effectivePushDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(bandP(900).min);
-    expect(delayMs).toBeLessThanOrEqual(bandP(900).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(900).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(900).max);
   });
 
   test('with streak=5 (15-min backoff) and a short interval, backoff wins', () => {
@@ -2697,8 +2723,8 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
     const internals = engine as unknown as PushDelayInternals;
     internals.consecutivePushFailures = 5;
     const delayMs = internals.effectivePushDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(bandP(900).min);
-    expect(delayMs).toBeLessThanOrEqual(bandP(900).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(900).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(900).max);
   });
 
   test('with streak=5 (15-min backoff) and an interval already longer, interval wins', () => {
@@ -2706,8 +2732,8 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
     const internals = engine as unknown as PushDelayInternals;
     internals.consecutivePushFailures = 5;
     const delayMs = internals.effectivePushDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(bandP(3600).min);
-    expect(delayMs).toBeLessThanOrEqual(bandP(3600).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(3600).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(3600).max);
   });
 
   test('with streak=8 (60-min backoff) and a short interval, backoff wins', () => {
@@ -2715,8 +2741,8 @@ describe('SyncEngine effectivePushDelayMs floors on the configured interval', ()
     const internals = engine as unknown as PushDelayInternals;
     internals.consecutivePushFailures = 8;
     const delayMs = internals.effectivePushDelayMs();
-    expect(delayMs).toBeGreaterThanOrEqual(bandP(3600).min);
-    expect(delayMs).toBeLessThanOrEqual(bandP(3600).max);
+    expect(delayMs).toBeGreaterThanOrEqual(jitterBand(3600).min);
+    expect(delayMs).toBeLessThanOrEqual(jitterBand(3600).max);
   });
 });
 

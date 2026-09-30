@@ -2,6 +2,7 @@ import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { ts } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
 const SCANNED_DIRS = [import.meta.dirname, join(import.meta.dirname, '..', 'conversion')];
@@ -27,7 +28,11 @@ function listScannedTestFiles(): ScannedFile[] {
         walk(abs);
         continue;
       }
-      if (!entry.isFile() || !entry.name.endsWith('.test.ts')) continue;
+      if (
+        !entry.isFile() ||
+        !(isTestOnlySourceFile(entry.name, 'vitest') && entry.name.endsWith('.ts'))
+      )
+        continue;
       out.push({ path: relative(REPO_ROOT, abs), source: readFileSync(abs, 'utf-8') });
     }
   }
@@ -77,17 +82,16 @@ describe('hook-timeout STOP rule — beforeAll must carry an explicit timeout', 
         }
       }
     }
-    if (violations.length > 0) {
-      throw new Error(
-        `${violations.length} beforeAll site(s) without an explicit timeout argument. ` +
-          `Hooks without one ride the invocation's budget — direct ` +
-          `flag-less runs and the test:conversion script can kill slow boots ` +
-          `and surface a misleading 'server.cleanup' TypeError from afterAll. ` +
-          `Add a second argument, preferably the shared constant: ` +
-          `\`beforeAll(async () => { ... }, HARNESS_BOOT_TIMEOUT_MS);\` ` +
-          `(a numeric literal like \`}, 30_000);\` is also accepted):\n${violations.join('\n')}`,
-      );
-    }
+    expect(
+      violations,
+      `${violations.length} beforeAll site(s) without an explicit timeout argument. ` +
+        `Hooks without one ride the invocation's budget — direct ` +
+        `flag-less runs and the test:conversion script can kill slow boots ` +
+        `and surface a misleading 'server.cleanup' TypeError from afterAll. ` +
+        `Add a second argument, preferably the shared constant: ` +
+        `\`beforeAll(async () => { ... }, HARNESS_BOOT_TIMEOUT_MS);\` ` +
+        `(a numeric literal like \`}, 30_000);\` is also accepted):\n${violations.join('\n')}`,
+    ).toEqual([]);
   });
 
   test('real-corpus negative controls: already-protected sites are classified compliant', () => {

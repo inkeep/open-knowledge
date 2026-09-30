@@ -11,7 +11,7 @@ export const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 export const ALLOWLIST_PATH = fileURLToPath(
   new URL('./known-reds-allowlist.json', import.meta.url),
 );
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 export const KNOWN_BUG_TAG = 'known-bug';
 export const QUARANTINE_TAG = 'quarantine';
 export const OWNERS = Object.freeze(['get-main-green', 'known-reds']);
@@ -257,8 +257,7 @@ function isEnvObject(node) {
 function ciAtom(node, aliases) {
   if (ts.isIdentifier(node)) {
     if (!isExpressionIdentifier(node)) return null;
-    if (aliases.has(node.text)) return aliases.get(node.text);
-    return CI_IDENTIFIERS.has(node.text) ? 'positive' : null;
+    return aliases(node);
   }
   if (
     ts.isPropertyAccessExpression(node) &&
@@ -356,70 +355,50 @@ function ciValue(node, aliases, onCi) {
   return null;
 }
 
-function declarationsAtAnyDepth(sourceFile, kinds) {
-  const declarations = [];
-  const collect = (node) => {
-    if (
-      ts.isVariableDeclaration(node) &&
-      ts.isIdentifier(node.name) &&
-      node.initializer &&
-      !skipTernary(node.initializer, kinds)
-    ) {
-      declarations.push(node);
-    }
-    ts.forEachChild(node, collect);
-  };
-  collect(sourceFile);
-  return declarations;
-}
-
-function ciAliases(sourceFile, kinds) {
-  const declarations = declarationsAtAnyDepth(sourceFile, kinds);
+function ciAliases() {
   const aliases = new Map();
-  for (let pass = 0; pass < 3; pass += 1) {
-    for (const declaration of declarations) {
-      if (!containsCi(declaration.initializer, aliases)) continue;
-      const onCi = ciValue(declaration.initializer, aliases, true);
-      const offCi = ciValue(declaration.initializer, aliases, false);
-      const polarity =
+  const following = new Set();
+  const resolve = (identifier) => {
+    const binding = visibleBinding(identifier, identifier.text);
+    if (!binding) return CI_IDENTIFIERS.has(identifier.text) ? 'positive' : null;
+    const { initializer } = binding;
+    if (!initializer || following.has(initializer)) return null;
+    if (aliases.has(initializer)) return aliases.get(initializer);
+    following.add(initializer);
+    let polarity = null;
+    if (containsCi(initializer, resolve)) {
+      const onCi = ciValue(initializer, resolve, true);
+      const offCi = ciValue(initializer, resolve, false);
+      polarity =
         onCi === true && offCi === false
           ? 'positive'
           : onCi === false && offCi === true
             ? 'negative'
             : 'unknown';
-      aliases.set(declaration.name.text, polarity);
     }
-  }
-  return aliases;
+    following.delete(initializer);
+    aliases.set(initializer, polarity);
+    return polarity;
+  };
+  return resolve;
 }
 
-const PROCESS_ENVIRONMENT = new Set([
-  'platform',
-  'arch',
-  'env',
-  'getuid',
-  'getgid',
-  'versions',
-  'release',
+const PROCESS_ATOMS = new Map([
+  ['platform', 'platform'],
+  ['arch', 'arch'],
+  ['getuid', 'uid'],
+  ['getgid', 'uid'],
+  ['versions', 'runtime'],
+  ['release', 'runtime'],
 ]);
+const PROCESS_ENVIRONMENT = new Set(['env', ...PROCESS_ATOMS.keys()]);
 const OS_MODULES = new Set(['os', 'node:os']);
 const FS_PRESENCE = new Set(['existsSync']);
 
-function environmentImports(sourceFile) {
-  const names = new Set();
-  const namespaces = new Set();
-  for (const statement of sourceFile.statements) {
-    if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier))
-      continue;
-    if (!OS_MODULES.has(statement.moduleSpecifier.text)) continue;
-    const clause = statement.importClause;
-    if (clause?.name) namespaces.add(clause.name.text);
-    const named = clause?.namedBindings;
-    if (named && ts.isNamespaceImport(named)) namespaces.add(named.name.text);
-    if (named && ts.isNamedImports(named))
-      for (const element of named.elements) names.add(element.name.text);
-  }
-  return { names, namespaces };
+function osImport(identifier) {
+  if (!identifier || !ts.isIdentifier(identifier)) return null;
+  const imported = visibleBinding(identifier, identifier.text)?.imported;
+  return imported && OS_MODULES.has(imported.module) ? imported : null;
 }
 
 function isEnvironmentAtom(node, environment) {
@@ -432,10 +411,11 @@ function isEnvironmentAtom(node, environment) {
       PROCESS_ENVIRONMENT.has(node.name.text)
     )
       return true;
-    if (ts.isIdentifier(target) && environment.imports.namespaces.has(target.text)) return true;
+    if (osImport(target)?.namespace) return true;
   }
   if (ts.isIdentifier(node) && isExpressionIdentifier(node)) {
-    return environment.imports.names.has(node.text) || environment.aliases.has(node.text);
+    const imported = osImport(node);
+    return Boolean(imported && !imported.namespace) || environment.aliases(node);
   }
   if (ts.isCallExpression(node)) {
     const callee = unwrap(node.expression);
@@ -464,19 +444,22 @@ function dependsOnEnvironment(node, environment) {
   return found;
 }
 
-function environmentBindings(sourceFile, ciAliasMap, kinds) {
+function environmentBindings(ciAliasMap) {
+  const aliases = new Map();
+  const following = new Set();
   const environment = {
     ciAliases: ciAliasMap,
-    imports: environmentImports(sourceFile),
-    aliases: new Set(),
+    aliases: (identifier) => {
+      const initializer = visibleBinding(identifier, identifier.text)?.initializer;
+      if (!initializer || following.has(initializer)) return false;
+      if (aliases.has(initializer)) return aliases.get(initializer);
+      following.add(initializer);
+      const depends = dependsOnEnvironment(initializer, environment);
+      following.delete(initializer);
+      aliases.set(initializer, depends);
+      return depends;
+    },
   };
-  const declarations = declarationsAtAnyDepth(sourceFile, kinds);
-  for (let pass = 0; pass < 3; pass += 1) {
-    for (const declaration of declarations) {
-      if (dependsOnEnvironment(declaration.initializer, environment))
-        environment.aliases.add(declaration.name.text);
-    }
-  }
   return environment;
 }
 
@@ -485,6 +468,351 @@ function ciEffect(condition, skipWhen, aliases) {
   const skipWhenTrue = ciValue(condition, aliases, true);
   const skipsOnCi = skipWhen === 'condition' ? skipWhenTrue : not(skipWhenTrue);
   return skipsOnCi === false ? 'runs-only-on-ci' : 'skips-on-ci';
+}
+
+const LOGICAL = new Set([
+  ts.SyntaxKind.AmpersandAmpersandToken,
+  ts.SyntaxKind.BarBarToken,
+  ts.SyntaxKind.QuestionQuestionToken,
+]);
+const COMPARISON = new Set([
+  ...EQUALITY,
+  ...INEQUALITY,
+  ts.SyntaxKind.LessThanToken,
+  ts.SyntaxKind.LessThanEqualsToken,
+  ts.SyntaxKind.GreaterThanToken,
+  ts.SyntaxKind.GreaterThanEqualsToken,
+]);
+const PROCESS_KEYED = new Set(['versions', 'release']);
+const CONVERSIONS = new Set(['Boolean', 'Number', 'String', 'parseInt', 'parseFloat']);
+const OS_ATOMS = new Map([
+  ['platform', 'platform'],
+  ['type', 'platform'],
+  ['release', 'platform'],
+  ['arch', 'arch'],
+  ['machine', 'arch'],
+  ['userInfo', 'uid'],
+]);
+
+function memberPath(node) {
+  const members = [];
+  let current = unwrap(node);
+  while (current) {
+    if (ts.isPropertyAccessExpression(current)) {
+      members.unshift(current.name.text);
+      current = unwrap(current.expression);
+    } else if (ts.isElementAccessExpression(current)) {
+      members.unshift(stringValue(current.argumentExpression) ?? '[]');
+      current = unwrap(current.expression);
+    } else if (ts.isCallExpression(current)) {
+      current = unwrap(current.expression);
+    } else {
+      break;
+    }
+  }
+  return { root: current && ts.isIdentifier(current) ? current : null, members };
+}
+
+function envKey(node) {
+  const value = unwrap(node);
+  if (ts.isPropertyAccessExpression(value) && isEnvObject(value.expression)) return value.name.text;
+  if (ts.isElementAccessExpression(value) && isEnvObject(value.expression))
+    return stringValue(value.argumentExpression);
+  return undefined;
+}
+
+function probesFilesystem(node) {
+  let found = false;
+  const visit = (current) => {
+    if (found) return;
+    if (ts.isIdentifier(current) && FS_PRESENCE.has(current.text)) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return found;
+}
+
+function importSpecifier(node, sourceFile) {
+  let found = null;
+  const visit = (current) => {
+    if (found !== null) return;
+    if (ts.isCallExpression(current)) {
+      const callee = unwrap(current.expression);
+      const dynamicImport = current.expression.kind === ts.SyntaxKind.ImportKeyword;
+      const require = ts.isIdentifier(callee) && callee.text === 'require';
+      const resolve =
+        ts.isPropertyAccessExpression(callee) &&
+        callee.name.text === 'resolve' &&
+        ['require', 'createRequire'].includes(rootIdentifier(callee.expression));
+      if (dynamicImport || require || resolve) {
+        const [first] = current.arguments;
+        found = first ? (stringValue(first) ?? oneLine(first, sourceFile)) : '';
+        return;
+      }
+    }
+    ts.forEachChild(current, visit);
+  };
+  visit(node);
+  return found;
+}
+
+function bindsName(name, target) {
+  if (ts.isIdentifier(name)) return name.text === target;
+  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    return name.elements.some(
+      (element) => !ts.isOmittedExpression(element) && bindsName(element.name, target),
+    );
+  }
+  return false;
+}
+
+function variableBinding(list, target) {
+  const declaration = list.declarations.find((entry) => bindsName(entry.name, target));
+  return declaration
+    ? {
+        initializer: ts.isIdentifier(declaration.name) ? (declaration.initializer ?? null) : null,
+      }
+    : null;
+}
+
+function statementBinding(statement, target) {
+  if (ts.isVariableStatement(statement)) return variableBinding(statement.declarationList, target);
+  if (
+    (ts.isFunctionDeclaration(statement) ||
+      ts.isClassDeclaration(statement) ||
+      ts.isEnumDeclaration(statement) ||
+      ts.isModuleDeclaration(statement) ||
+      (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly)) &&
+    statement.name &&
+    bindsName(statement.name, target)
+  ) {
+    return { initializer: null };
+  }
+  if (ts.isImportDeclaration(statement) && !statement.importClause?.isTypeOnly) {
+    const clause = statement.importClause;
+    const named = clause?.namedBindings;
+    let imported = null;
+    if (
+      clause?.name?.text === target ||
+      (named && ts.isNamespaceImport(named) && named.name.text === target)
+    ) {
+      imported = { namespace: true };
+    } else if (named && ts.isNamedImports(named)) {
+      const element = named.elements.find(
+        (entry) => !entry.isTypeOnly && entry.name.text === target,
+      );
+      if (element)
+        imported = { namespace: false, name: (element.propertyName ?? element.name).text };
+    }
+    if (imported) {
+      return {
+        initializer: null,
+        imported: { ...imported, module: stringValue(statement.moduleSpecifier) },
+      };
+    }
+  }
+  return null;
+}
+
+function hoistedVariableBinding(scope, target) {
+  let binding = null;
+  const visit = (node) => {
+    if (binding || ts.isFunctionLike(node) || ts.isClassLike(node) || ts.isModuleDeclaration(node))
+      return;
+    if (ts.isVariableDeclarationList(node) && !(node.flags & ts.NodeFlags.BlockScoped)) {
+      binding = variableBinding(node, target);
+      if (binding) return;
+    }
+    ts.forEachChild(node, visit);
+  };
+  ts.forEachChild(scope, visit);
+  return binding;
+}
+
+function visibleBinding(identifier, target) {
+  let child = identifier;
+  for (let scope = identifier.parent; scope; child = scope, scope = scope.parent) {
+    if ((ts.isFunctionExpression(scope) || ts.isClassLike(scope)) && scope.name?.text === target) {
+      return { initializer: null };
+    }
+    if (
+      ts.isFunctionLike(scope) &&
+      scope.parameters.some((parameter) => bindsName(parameter.name, target))
+    ) {
+      return { initializer: null };
+    }
+    if (
+      (ts.isForStatement(scope) || ts.isForOfStatement(scope) || ts.isForInStatement(scope)) &&
+      scope.initializer &&
+      ts.isVariableDeclarationList(scope.initializer) &&
+      variableBinding(scope.initializer, target)
+    ) {
+      return { initializer: null };
+    }
+    if (
+      ts.isCatchClause(scope) &&
+      scope.variableDeclaration &&
+      bindsName(scope.variableDeclaration.name, target)
+    ) {
+      return { initializer: null };
+    }
+    if (
+      ts.isSourceFile(scope) ||
+      ts.isBlock(scope) ||
+      ts.isModuleBlock(scope) ||
+      ts.isCaseBlock(scope)
+    ) {
+      const statements = ts.isCaseBlock(scope)
+        ? scope.clauses.flatMap((clause) => clause.statements)
+        : scope.statements;
+      for (const statement of statements) {
+        const binding = statementBinding(statement, target);
+        if (binding) return binding;
+      }
+    }
+    if (
+      ts.isSourceFile(scope) ||
+      ts.isModuleBlock(scope) ||
+      ts.isClassStaticBlockDeclaration(scope) ||
+      (ts.isFunctionLike(scope) && child === scope.body)
+    ) {
+      const binding = hoistedVariableBinding(scope, target);
+      if (binding) return binding;
+    }
+    if (ts.isFunctionLike(scope) && !ts.isArrowFunction(scope) && target === 'arguments') {
+      return { initializer: null };
+    }
+  }
+  return null;
+}
+
+function conditionAtoms(condition, context) {
+  const { sourceFile } = context;
+  const atoms = [];
+  const seen = new Set();
+  const following = new Set();
+  const add = (kind, name, textNode) => {
+    const atom = { kind, name, text: oneLine(textNode, sourceFile) };
+    const key = JSON.stringify(atom);
+    if (seen.has(key)) return;
+    seen.add(key);
+    atoms.push(atom);
+  };
+  const envAtom = (name, textNode) =>
+    add(name !== null && CI_ENV_NAMES.has(name) ? 'ci' : 'env', name ?? '[]', textNode);
+  const leaf = (node, textNode) => {
+    const key = envKey(node);
+    if (key !== undefined) {
+      envAtom(key, textNode);
+      return;
+    }
+    if (ts.isCallExpression(node)) {
+      const callee = unwrap(node.expression);
+      const name = ts.isIdentifier(callee)
+        ? callee.text
+        : ts.isPropertyAccessExpression(callee)
+          ? callee.name.text
+          : null;
+      if (name !== null && FS_PRESENCE.has(name)) {
+        const [first] = node.arguments;
+        add('fs', first ? oneLine(first, sourceFile) : name, textNode);
+        return;
+      }
+    }
+    const { root, members } = memberPath(node);
+    if (root?.text === 'process' && PROCESS_ATOMS.has(members[0])) {
+      const keyed = PROCESS_KEYED.has(members[0]) && members[1] && members[1] !== '[]';
+      add(
+        PROCESS_ATOMS.get(members[0]),
+        ['process', ...members.slice(0, keyed ? 2 : 1)].join('.'),
+        textNode,
+      );
+      return;
+    }
+    const imported = osImport(root);
+    if (imported?.namespace && members.length > 0) {
+      add(OS_ATOMS.get(members[0]) ?? 'runtime', `os.${members[0]}`, textNode);
+      return;
+    }
+    if (imported && !imported.namespace) {
+      const original = imported.name;
+      add(OS_ATOMS.get(original) ?? 'runtime', `os.${original}`, textNode);
+      return;
+    }
+    if (ts.isIdentifier(node)) {
+      const binding = visibleBinding(node, node.text);
+      const initializer = binding?.initializer ?? null;
+      if (initializer && !following.has(initializer)) {
+        const specifier = importSpecifier(initializer, sourceFile);
+        if (specifier !== null) {
+          add('import', specifier, textNode);
+          return;
+        }
+        following.add(initializer);
+        visit(initializer, null);
+        following.delete(initializer);
+        return;
+      }
+      if (!binding && CI_IDENTIFIERS.has(node.text)) {
+        add('ci', node.text, textNode);
+        return;
+      }
+    }
+    add(probesFilesystem(node) ? 'fs' : 'runtime', oneLine(node, sourceFile), textNode);
+  };
+  const visit = (raw, textNode) => {
+    const node = unwrap(raw);
+    if (!node) return;
+    if (ts.isAwaitExpression(node)) {
+      visit(node.expression, textNode);
+      return;
+    }
+    if (ts.isPrefixUnaryExpression(node) && node.operator === ts.SyntaxKind.ExclamationToken) {
+      visit(node.operand, textNode);
+      return;
+    }
+    if (ts.isConditionalExpression(node)) {
+      for (const part of [node.condition, node.whenTrue, node.whenFalse]) visit(part, null);
+      return;
+    }
+    if (ts.isBinaryExpression(node)) {
+      const operator = node.operatorToken.kind;
+      if (LOGICAL.has(operator)) {
+        visit(node.left, null);
+        visit(node.right, null);
+        return;
+      }
+      if (COMPARISON.has(operator)) {
+        for (const side of [node.left, node.right])
+          if (literalTruth(side) === null) visit(side, textNode ?? node);
+        return;
+      }
+      if (operator === ts.SyntaxKind.InKeyword && isEnvObject(node.right)) {
+        envAtom(stringValue(node.left), textNode ?? node);
+        return;
+      }
+    }
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      CONVERSIONS.has(node.expression.text) &&
+      node.arguments.length > 0
+    ) {
+      visit(node.arguments[0], textNode);
+      return;
+    }
+    if (ts.isTypeOfExpression(node)) {
+      leaf(unwrap(node.expression), textNode ?? node);
+      return;
+    }
+    if (literalTruth(node) !== null) return;
+    leaf(node, textNode ?? node);
+  };
+  visit(condition, null);
+  return atoms;
 }
 
 function enclosingCondition(node, boundary) {
@@ -684,6 +1012,23 @@ function scopeOf(node, kinds) {
   return 'file';
 }
 
+function titleChain(node, kinds, sourceFile) {
+  const chain = [];
+  for (let current = node; current; current = current.parent) {
+    if (!ts.isCallExpression(current)) continue;
+    const info = runnerCall(current, kinds);
+    const kind = info ? declarationKind(info.ref) : null;
+    if (kind !== 'test' && kind !== 'describe') continue;
+    const parts = declarationParts(current);
+    if (!parts.fn && !info.ref.members.includes('todo')) continue;
+    const first = current.arguments[0] ? unwrap(current.arguments[0]) : null;
+    if (!first || isFunction(first)) continue;
+    const literal = stringValue(first);
+    chain.unshift(literal ?? { nonLiteral: oneLine(first, sourceFile) });
+  }
+  return chain;
+}
+
 export function scanSource(path, source) {
   const sourceFile = ts.createSourceFile(
     path,
@@ -694,8 +1039,11 @@ export function scanSource(path, source) {
   );
   const runner = PLAYWRIGHT_FILE.test(path) ? 'playwright' : 'vitest';
   const kinds = runnerBindings(sourceFile);
-  const aliases = ciAliases(sourceFile, kinds);
-  const environment = environmentBindings(sourceFile, aliases, kinds);
+  const aliases = ciAliases();
+  const environment = environmentBindings(aliases);
+  const atomContext = { sourceFile };
+  const titlesFor = (node, scope) =>
+    scope === 'test' || scope === 'describe' ? { titles: titleChain(node, kinds, sourceFile) } : {};
   const scan = {
     path,
     runner,
@@ -720,10 +1068,20 @@ export function scanSource(path, source) {
       skipWhen,
       ci: condition ? ciEffect(condition, skipWhen, aliases) : null,
       reason,
+      atoms: condition ? conditionAtoms(condition, atomContext) : [],
+      ...titlesFor(node, scope),
     });
   };
   const notRun = (node, form, scope, title, reason = '') =>
-    scan.notRun.push({ path, line: lineOf(node), form, scope, title, reason });
+    scan.notRun.push({
+      path,
+      line: lineOf(node),
+      form,
+      scope,
+      title,
+      reason,
+      ...titlesFor(node, scope),
+    });
 
   const inspectTestBody = (fn, via) => {
     const context = via === 'each' ? undefined : fn.parameters[via === 'for' ? 1 : 0]?.name;
@@ -851,7 +1209,14 @@ export function scanSource(path, source) {
           `write the issue, owner and until ${runner === 'playwright' ? 'annotations' : 'meta'} as inline string literals`,
         );
       }
-      const record = { path, line: lineOf(call), runner, title, ...fields };
+      const record = {
+        path,
+        line: lineOf(call),
+        runner,
+        title,
+        titles: titleChain(call, kinds, sourceFile),
+        ...fields,
+      };
       if (isPin && isQuarantine)
         problem(
           call,

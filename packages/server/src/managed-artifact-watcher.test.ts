@@ -37,6 +37,7 @@ describe('startManagedArtifactWatcher', () => {
       () => seen.some(([p, c]) => p === leaf && c === 'v1'),
       { timeoutMs: 20_000, pollMs: 50 },
     );
+    expect(seen).toContainEqual([leaf, 'v1']);
   }, 25_000);
 
   test('fires onUnlink (not onChange) when a SKILL.md is deleted', async () => {

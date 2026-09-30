@@ -41,9 +41,7 @@ function spawnConfigWriter(configPath: string, serverKey: string): Promise<Worke
   });
 }
 
-const describeCrossProcess = process.env.CI ? describe.skip : describe;
-
-describeCrossProcess('mcp host config — concurrent-write race', () => {
+describe('mcp host config — concurrent-write race', () => {
   let testRoot: string;
   let configPath: string;
 

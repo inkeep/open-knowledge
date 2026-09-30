@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { test } from 'vitest';
+import { expect, test } from 'vitest';
 import {
   awaitBacklinkIndexed,
   createTestClient,
@@ -34,18 +34,20 @@ test('backlink endpoints update after persisted agent writes', async () => {
     });
     if (!beta.ok) throw new Error(`beta write failed: ${beta.status}`);
 
-    await pollUntil(async () => {
-      const res = await fetch(`http://127.0.0.1:${server.port}/api/backlinks?docName=beta`);
-      const data = (await res.json()) as {
-        backlinks?: Array<{ source: string; snippet: string | null }>;
-      };
-      return (
-        Array.isArray(data.backlinks) &&
-        data.backlinks.some(
-          (entry) => entry.source === 'alpha' && entry.snippet === 'Links to beta.',
-        )
-      );
-    });
+    await expect(
+      pollUntil(async () => {
+        const res = await fetch(`http://127.0.0.1:${server.port}/api/backlinks?docName=beta`);
+        const data = (await res.json()) as {
+          backlinks?: Array<{ source: string; snippet: string | null }>;
+        };
+        return (
+          Array.isArray(data.backlinks) &&
+          data.backlinks.some(
+            (entry) => entry.source === 'alpha' && entry.snippet === 'Links to beta.',
+          )
+        );
+      }),
+    ).resolves.toBeUndefined();
   } finally {
     await server.cleanup();
   }
@@ -59,29 +61,30 @@ test('backlink endpoints update from live client edits before persistence deboun
   try {
     client.ytext.insert(0, '# Alpha\n\nLinks to [[beta]].\n');
 
-    await pollUntil(
-      async () => {
-        const res = await fetch(`http://127.0.0.1:${server.port}/api/backlinks?docName=beta`);
-        const data = (await res.json()) as {
-          backlinks?: Array<{ source: string; snippet: string | null }>;
-        };
-        return (
-          Array.isArray(data.backlinks) &&
-          data.backlinks.some(
-            (entry) => entry.source === 'alpha' && entry.snippet === 'Links to beta.',
-          )
-        );
-      },
-      900,
-      50,
-    );
+    await expect(
+      pollUntil(
+        async () => {
+          const res = await fetch(`http://127.0.0.1:${server.port}/api/backlinks?docName=beta`);
+          const data = (await res.json()) as {
+            backlinks?: Array<{ source: string; snippet: string | null }>;
+          };
+          return (
+            Array.isArray(data.backlinks) &&
+            data.backlinks.some(
+              (entry) => entry.source === 'alpha' && entry.snippet === 'Links to beta.',
+            )
+          );
+        },
+        900,
+        50,
+      ),
+    ).resolves.toBeUndefined();
 
     const elapsedMs = Date.now() - startedAt;
-    if (elapsedMs >= 1500) {
-      throw new Error(
-        `backlinks only updated after ${elapsedMs}ms, expected before store debounce`,
-      );
-    }
+    expect(
+      elapsedMs,
+      `backlinks only updated after ${elapsedMs}ms, expected before store debounce`,
+    ).toBeLessThan(1500);
   } finally {
     await client.cleanup();
     await server.cleanup();
@@ -102,7 +105,7 @@ test(
         'utf-8',
       );
 
-      await awaitBacklinkIndexed(server, 'beta', 'gamma');
+      await expect(awaitBacklinkIndexed(server, 'beta', 'gamma')).resolves.toBeUndefined();
     } finally {
       await server.cleanup();
     }

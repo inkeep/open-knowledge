@@ -28,6 +28,6 @@ describe('scheduler-polyfill-shim install side-effect', () => {
   });
 
   test('scheduler.yield() resolves under the test runner event loop', async () => {
-    await scheduler.yield();
+    await expect(scheduler.yield()).resolves.toBeUndefined();
   });
 });

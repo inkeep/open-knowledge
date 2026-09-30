@@ -269,7 +269,7 @@ describe('Telemetry', () => {
   describe('shutdownTelemetry', () => {
     it('is idempotent — calling twice does not throw', async () => {
       await shutdownTelemetry();
-      await shutdownTelemetry();
+      await expect(shutdownTelemetry()).resolves.toBeUndefined();
     });
 
     it('completes after enabled-push init without throwing', async () => {
@@ -280,12 +280,12 @@ describe('Telemetry', () => {
       } finally {
         process.env.OTEL_SDK_DISABLED = saved;
       }
-      await shutdownTelemetry();
+      await expect(shutdownTelemetry()).resolves.toBeUndefined();
     });
 
     it('completes after file-sink-only init without throwing', async () => {
       initTelemetry({ localSink: makeLocalSinkOpts(tmp) });
-      await shutdownTelemetry();
+      await expect(shutdownTelemetry()).resolves.toBeUndefined();
     });
 
     it('completes after both-pipelines init without throwing', async () => {
@@ -296,7 +296,7 @@ describe('Telemetry', () => {
       } finally {
         process.env.OTEL_SDK_DISABLED = saved;
       }
-      await shutdownTelemetry();
+      await expect(shutdownTelemetry()).resolves.toBeUndefined();
     });
 
     it('clears its timeout timer on fast-path resolve (no event-loop hold)', async () => {

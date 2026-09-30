@@ -129,7 +129,11 @@ function stripCommentLines(text: string): string {
 }
 
 function resolveCompositionTest(pkgRelPath: string, title: string): ResolvedCompositionTest {
-  const src = stripCommentLines(readFileSync(resolve(PACKAGES, pkgRelPath), 'utf-8'));
+  return resolveCompositionTestSource(readFileSync(resolve(PACKAGES, pkgRelPath), 'utf-8'), title);
+}
+
+function resolveCompositionTestSource(source: string, title: string): ResolvedCompositionTest {
+  const src = stripCommentLines(source);
   const decl = /(?<![.\w])(?:test|it)((?:\.\w+)*)\s*\(\s*(['"`])([\s\S]*?)\2/g;
   const declarations: Array<{ modifiers: string; title: string; end: number }> = [];
   for (const m of src.matchAll(decl)) {
@@ -211,15 +215,17 @@ describe('composition sweep index (H13)', () => {
       declared: true,
       disabled: true,
     });
-    expect(
-      resolveCompositionTest(self, 'planted assertion-free composition fixture'),
-    ).toMatchObject({ declared: true, disabled: false, assertions: 0 });
   });
 
   test.skip('planted disabled composition fixture', () => {
     expect(true).toBe(true);
   });
   test('planted assertion-free composition fixture', () => {
-    return;
+    const source = 'test("assertion-free", () => {});';
+    expect(resolveCompositionTestSource(source, 'assertion-free')).toEqual({
+      declared: true,
+      disabled: false,
+      assertions: 0,
+    });
   });
 });

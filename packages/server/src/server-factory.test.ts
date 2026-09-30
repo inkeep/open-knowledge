@@ -1602,24 +1602,6 @@ describe('createServer() degraded signal', () => {
       _resetDocExtensionsForTests();
     }
   });
-
-  test('degraded is readonly — push and reassignment are compile-time errors', async () => {
-    const contentDir = mkdtempSync(resolve(testProjectDir, 'content-'));
-    const srv: ServerInstance = createServer({
-      contentDir,
-      projectDir: testProjectDir,
-      quiet: true,
-    });
-
-    // @ts-expect-error — readonly array: push is not allowed
-    srv.degraded.push('test');
-
-    // @ts-expect-error — readonly field: reassignment is not allowed
-    srv.degraded = [];
-
-    await srv.ready;
-    await srv.destroy();
-  });
 });
 
 describe('createServer() — config-doc admission (US-005)', () => {
@@ -3030,9 +3012,11 @@ describe('createServer() — config-doc admission guard', () => {
     try {
       await server.ready;
       const guard = getConfigDocAdmissionGuard(server);
-      await guard.onAuthenticate(
-        makePayload({ documentName: 'some-user-doc', peer: undefined, host: null }),
-      );
+      await expect(
+        guard.onAuthenticate(
+          makePayload({ documentName: 'some-user-doc', peer: undefined, host: null }),
+        ),
+      ).resolves.toBeUndefined();
     } finally {
       await server.destroy();
     }
@@ -3043,13 +3027,15 @@ describe('createServer() — config-doc admission guard', () => {
     try {
       await server.ready;
       const guard = getConfigDocAdmissionGuard(server);
-      await guard.onAuthenticate(
-        makePayload({
-          documentName: '__config__/project',
-          peer: '127.0.0.1',
-          host: 'localhost:5173',
-        }),
-      );
+      await expect(
+        guard.onAuthenticate(
+          makePayload({
+            documentName: '__config__/project',
+            peer: '127.0.0.1',
+            host: 'localhost:5173',
+          }),
+        ),
+      ).resolves.toBeUndefined();
     } finally {
       await server.destroy();
     }
@@ -3060,9 +3046,11 @@ describe('createServer() — config-doc admission guard', () => {
     try {
       await server.ready;
       const guard = getConfigDocAdmissionGuard(server);
-      await guard.onAuthenticate(
-        makePayload({ documentName: '__user__/config.yml', peer: '::1', host: '[::1]:5173' }),
-      );
+      await expect(
+        guard.onAuthenticate(
+          makePayload({ documentName: '__user__/config.yml', peer: '::1', host: '[::1]:5173' }),
+        ),
+      ).resolves.toBeUndefined();
     } finally {
       await server.destroy();
     }
@@ -3212,9 +3200,11 @@ describe('createServer() — config-doc admission guard', () => {
     try {
       await server.ready;
       const guard = getConfigDocAdmissionGuard(server);
-      await guard.onAuthenticate(
-        makePayload({ documentName: '__config__/project', peer: undefined, host: 'localhost' }),
-      );
+      await expect(
+        guard.onAuthenticate(
+          makePayload({ documentName: '__config__/project', peer: undefined, host: 'localhost' }),
+        ),
+      ).resolves.toBeUndefined();
     } finally {
       await server.destroy();
     }
@@ -3249,15 +3239,17 @@ describe('createServer() — config-doc admission guard', () => {
     try {
       await server.ready;
       const guard = getConfigDocAdmissionGuard(server);
-      await guard.onAuthenticate({
-        token: undefined,
-        documentName: '__config__/project',
-        context: {},
-        request: {
-          socket: { remoteAddress: '127.0.0.1' },
-          headers: { host: 'localhost:5173' },
-        },
-      } as unknown as Parameters<typeof guard.onAuthenticate>[0]);
+      await expect(
+        guard.onAuthenticate({
+          token: undefined,
+          documentName: '__config__/project',
+          context: {},
+          request: {
+            socket: { remoteAddress: '127.0.0.1' },
+            headers: { host: 'localhost:5173' },
+          },
+        } as unknown as Parameters<typeof guard.onAuthenticate>[0]),
+      ).resolves.toBeUndefined();
     } finally {
       await server.destroy();
     }

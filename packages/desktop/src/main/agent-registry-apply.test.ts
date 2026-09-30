@@ -14,9 +14,14 @@ import type { HostSnapshot, SurfaceState } from '@inkeep/open-knowledge-core';
 import type { IpcMainInvokeEvent } from 'electron';
 import { describe, expect, test, vi } from 'vitest';
 import { EDITOR_TARGETS } from '../../../cli/src/commands/editors.ts';
+import { classifyExistingMcpEntry, writeEditorMcpConfig } from '../../../cli/src/commands/init.ts';
 import { removeOwnMcpEntry } from '../../../cli/src/commands/mcp-config-removal.ts';
 import { ensurePiBridge } from '../../../cli/src/commands/pi-acp-bridge.ts';
 import { collectCliHostSnapshot } from '../../../cli/src/integrations/registry-probes.ts';
+import {
+  removeProjectSkill,
+  writeProjectSkill,
+} from '../../../cli/src/integrations/write-project-skill.ts';
 import type {
   AgentIntegrationsApplyRequest,
   AgentIntegrationsApplyResult,
@@ -27,6 +32,7 @@ import {
   applyIntents,
   createAgentIntegrationsApplyDelegate,
 } from './agent-registry-apply.ts';
+import { checkAndRepairProjectMcpOnProjectOpen } from './project-mcp-reclaim.ts';
 
 const PROJECT = '/proj';
 const EVENT = { sender: { id: 1 } } as unknown as IpcMainInvokeEvent;
@@ -196,6 +202,81 @@ function piFixture() {
   surfaces.project.removeProjectMcpEntry = (id, cwd, path) =>
     removeOwnMcpEntry(EDITOR_TARGETS[id], cwd, home, path, {});
   return { root, projectDir, home, bridgePath, trustPath, surfaces };
+}
+
+function projectSkillFixture() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'ok-desktop-project-skill-reopen-')));
+  const projectDir = join(root, 'project');
+  const home = join(root, 'home');
+  mkdirSync(projectDir);
+  mkdirSync(home);
+  const skillPaths = {
+    claude: join(projectDir, '.claude', 'skills', 'open-knowledge', 'SKILL.md'),
+    codex: join(projectDir, '.codex', 'skills', 'open-knowledge', 'SKILL.md'),
+  };
+  const surfaces = makeSurfaces();
+  surfaces.project.projectConfigPath = (id, cwd) =>
+    EDITOR_TARGETS[id].projectConfigPath?.(cwd) ?? null;
+  surfaces.project.writeProjectMcpConfig = ({ id, projectDir: cwd, projectPath }) => {
+    const result = writeEditorMcpConfig(
+      EDITOR_TARGETS[id],
+      cwd,
+      { mode: 'published', skipAvailabilityCheck: true, replaceEntry: true },
+      home,
+      projectPath,
+    );
+    if (result.action === 'written' || result.action === 'overwritten') return result;
+    if (result.action === 'declined') return { action: 'declined', reason: result.declineReason };
+    return { action: 'failed', error: result.error };
+  };
+  surfaces.project.writeProjectSkill = (id, cwd) =>
+    writeProjectSkill(EDITOR_TARGETS[id], cwd, { home });
+  surfaces.project.removeProjectSkill = (id, cwd) => removeProjectSkill(EDITOR_TARGETS[id], cwd);
+
+  async function reopen() {
+    return checkAndRepairProjectMcpOnProjectOpen({
+      projectDir,
+      executablePath: '/Applications/OpenKnowledge.app/Contents/MacOS/OpenKnowledge',
+      isPackaged: true,
+      platform: 'darwin',
+      env: {},
+      logger: { event: vi.fn() },
+      cli: {
+        editorTargets: EDITOR_TARGETS,
+        allEditorIds: ['claude', 'codex'],
+        classifyExistingProjectMcpConfig: (id, cwd, path) =>
+          classifyExistingMcpEntry(EDITOR_TARGETS[id], cwd, home, path),
+        writeProjectMcpConfig: ({ editorId, projectDir: cwd, projectPath, pruneOnly }) => {
+          const result = writeEditorMcpConfig(
+            EDITOR_TARGETS[editorId],
+            cwd,
+            {
+              mode: 'published',
+              skipAvailabilityCheck: true,
+              ...(pruneOnly === true ? { pruneOnly: true } : {}),
+            },
+            home,
+            projectPath,
+          );
+          if (result.action === 'failed') return { action: 'failed', error: result.error };
+          if (result.action === 'declined') {
+            return { action: 'declined', reason: result.declineReason };
+          }
+          return { action: result.action === 'skipped-flag' ? 'unchanged' : 'overwritten' };
+        },
+      },
+    });
+  }
+
+  return {
+    root,
+    projectDir,
+    home,
+    surfaces,
+    skillPaths,
+    reopen,
+    snapshot: () => collectCliHostSnapshot({ cwd: projectDir, home }),
+  };
 }
 
 describe('applyIntents on the desktop host', () => {
@@ -528,32 +609,137 @@ describe('applyIntents on the desktop host', () => {
     expect(surfaces.calls.userSkillDecisions).toEqual([]);
   });
 
-  test('a unanimous project-skill batch records the decision the reclaim reads', async () => {
-    const surfaces = makeSurfaces();
+  test('a unanimous project-skill OFF batch stays OFF after the project-open sweep', async () => {
+    const fixture = projectSkillFixture();
+    try {
+      const installed = await applyIntents(
+        {
+          intents: [
+            want(CLAUDE_PROJECT_MCP),
+            want(CODEX_PROJECT_MCP),
+            want(CLAUDE_PROJECT_SKILL),
+            want(CODEX_PROJECT_SKILL),
+          ],
+        },
+        fixture,
+      );
+      expect(installed.report.actions.every((action) => action.action === 'written')).toBe(true);
+      expect(existsSync(fixture.skillPaths.claude)).toBe(true);
+      expect(existsSync(fixture.skillPaths.codex)).toBe(true);
 
-    await apply(surfaces, [drop(CLAUDE_PROJECT_SKILL), drop(CODEX_PROJECT_SKILL)], {
-      [CLAUDE_PROJECT_SKILL]: 'satisfied',
-      [CODEX_PROJECT_SKILL]: 'satisfied',
-      [CLAUDE_PROJECT_MCP]: 'satisfied',
-      [CODEX_PROJECT_MCP]: 'satisfied',
-    });
+      const removed = await applyIntents(
+        { intents: [drop(CLAUDE_PROJECT_SKILL), drop(CODEX_PROJECT_SKILL)] },
+        fixture,
+      );
+      expect(actionFor(removed.report, CLAUDE_PROJECT_SKILL)?.action).toBe('removed');
+      expect(actionFor(removed.report, CODEX_PROJECT_SKILL)?.action).toBe('removed');
+      expect(existsSync(dirname(fixture.skillPaths.claude))).toBe(false);
+      expect(existsSync(dirname(fixture.skillPaths.codex))).toBe(false);
+
+      expect(await fixture.reopen()).toMatchObject({
+        status: 'done',
+        perEditor: [
+          { editor: 'claude', status: 'healthy-current' },
+          { editor: 'codex', status: 'healthy-current' },
+        ],
+      });
+      expect(existsSync(dirname(fixture.skillPaths.claude))).toBe(false);
+      expect(existsSync(dirname(fixture.skillPaths.codex))).toBe(false);
+      const after = await fixture.snapshot();
+      expect(after.probes.satisfiers[CLAUDE_PROJECT_SKILL]?.state).toBe('absent');
+      expect(after.probes.satisfiers[CODEX_PROJECT_SKILL]?.state).toBe('absent');
+      expect(after.probes.satisfiers[CLAUDE_PROJECT_MCP]?.state).toBe('satisfied');
+      expect(after.probes.satisfiers[CODEX_PROJECT_MCP]?.state).toBe('satisfied');
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
   });
 
-  test('a batch that disagrees about the project skill records no decision', async () => {
-    const surfaces = makeSurfaces();
+  test('a disagreeing project-skill batch keeps each choice after the project-open sweep', async () => {
+    const fixture = projectSkillFixture();
+    try {
+      await applyIntents(
+        {
+          intents: [want(CLAUDE_PROJECT_MCP), want(CODEX_PROJECT_MCP), want(CODEX_PROJECT_SKILL)],
+        },
+        fixture,
+      );
+      expect(existsSync(fixture.skillPaths.claude)).toBe(false);
+      expect(existsSync(fixture.skillPaths.codex)).toBe(true);
 
-    await apply(surfaces, [want(CLAUDE_PROJECT_SKILL), drop(CODEX_PROJECT_SKILL)], {
-      [CLAUDE_PROJECT_SKILL]: 'absent',
-      [CODEX_PROJECT_SKILL]: 'satisfied',
-      [CLAUDE_PROJECT_MCP]: 'satisfied',
-      [CODEX_PROJECT_MCP]: 'satisfied',
-    });
+      const changed = await applyIntents(
+        { intents: [want(CLAUDE_PROJECT_SKILL), drop(CODEX_PROJECT_SKILL)] },
+        fixture,
+      );
+      expect(actionFor(changed.report, CLAUDE_PROJECT_SKILL)?.action).toBe('written');
+      expect(actionFor(changed.report, CODEX_PROJECT_SKILL)?.action).toBe('removed');
+      const claudeSkill = readFileSync(fixture.skillPaths.claude, 'utf8');
+      expect(existsSync(dirname(fixture.skillPaths.codex))).toBe(false);
+      writeFileSync(
+        join(fixture.projectDir, '.mcp.json'),
+        JSON.stringify({
+          mcpServers: {
+            'open-knowledge': {
+              command: '/bin/sh',
+              args: ['-l', '-c', '# ok-mcp-v1\nexit 127'],
+            },
+          },
+        }),
+      );
+
+      expect(await fixture.reopen()).toMatchObject({
+        status: 'done',
+        perEditor: [
+          { editor: 'claude', status: 'reclaimed' },
+          { editor: 'codex', status: 'healthy-current' },
+        ],
+      });
+      expect(readFileSync(fixture.skillPaths.claude, 'utf8')).toBe(claudeSkill);
+      expect(existsSync(dirname(fixture.skillPaths.codex))).toBe(false);
+      const after = await fixture.snapshot();
+      expect(after.probes.satisfiers[CLAUDE_PROJECT_SKILL]?.state).toBe('satisfied');
+      expect(after.probes.satisfiers[CODEX_PROJECT_SKILL]?.state).toBe('absent');
+      expect(after.probes.satisfiers[CLAUDE_PROJECT_MCP]?.state).toBe('satisfied');
+      expect(after.probes.satisfiers[CODEX_PROJECT_MCP]?.state).toBe('satisfied');
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
   });
 
-  test('a batch with no project-skill row leaves the recorded decision alone', async () => {
-    const surfaces = makeSurfaces();
+  test('a batch with no project-skill row preserves skill presence after the project-open sweep', async () => {
+    const fixture = projectSkillFixture();
+    try {
+      await applyIntents(
+        { intents: [want(CODEX_PROJECT_MCP), want(CODEX_PROJECT_SKILL)] },
+        fixture,
+      );
+      expect(existsSync(fixture.skillPaths.claude)).toBe(false);
+      const codexSkill = readFileSync(fixture.skillPaths.codex, 'utf8');
 
-    await apply(surfaces, [want(CLAUDE_PROJECT_MCP)], { [CLAUDE_PROJECT_MCP]: 'absent' });
+      const changed = await applyIntents({ intents: [want(CLAUDE_PROJECT_MCP)] }, fixture);
+      expect(changed.report.actions).toMatchObject([
+        { satisfierId: CLAUDE_PROJECT_MCP, action: 'written' },
+      ]);
+      expect(existsSync(dirname(fixture.skillPaths.claude))).toBe(false);
+      expect(readFileSync(fixture.skillPaths.codex, 'utf8')).toBe(codexSkill);
+
+      expect(await fixture.reopen()).toMatchObject({
+        status: 'done',
+        perEditor: [
+          { editor: 'claude', status: 'healthy-current' },
+          { editor: 'codex', status: 'healthy-current' },
+        ],
+      });
+      expect(existsSync(dirname(fixture.skillPaths.claude))).toBe(false);
+      expect(readFileSync(fixture.skillPaths.codex, 'utf8')).toBe(codexSkill);
+      const after = await fixture.snapshot();
+      expect(after.probes.satisfiers[CLAUDE_PROJECT_SKILL]?.state).toBe('absent');
+      expect(after.probes.satisfiers[CODEX_PROJECT_SKILL]?.state).toBe('satisfied');
+      expect(after.probes.satisfiers[CLAUDE_PROJECT_MCP]?.state).toBe('satisfied');
+      expect(after.probes.satisfiers[CODEX_PROJECT_MCP]?.state).toBe('satisfied');
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
   });
 
   test('re-running the same Save touches nothing the second time', async () => {

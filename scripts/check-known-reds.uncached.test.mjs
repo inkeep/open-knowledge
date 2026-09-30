@@ -20,6 +20,7 @@ import {
   OWNERS,
   QUARANTINE_TAG,
   render,
+  SCHEMA_VERSION,
   scanSource,
   scanTree,
   todayUtc,
@@ -78,6 +79,7 @@ describe('known-reds scanner: pins and quarantines', () => {
         line: 4,
         runner: 'vitest',
         title: 'deleted file leaves the sidebar',
+        titles: ['deleted file leaves the sidebar'],
         issue: ISSUE,
         owner: 'get-main-green',
         until: '2026-10-15',
@@ -354,6 +356,395 @@ describe('known-reds scanner: CI-keyed skips', () => {
   ])('lists %s as an environment gate', (source) => {
     const gates = scanSource('packages/server/src/a.test.ts', source).gates;
     expect(gates.map((gate) => gate.ci)).toEqual([null]);
+  });
+});
+
+describe('known-reds feed: gate atoms and title chains', () => {
+  const atomsOf = (source) =>
+    scanSource('packages/server/src/a.test.ts', source).gates.map((gate) => gate.atoms);
+
+  test.each([
+    [
+      "test.skipIf(process.platform === 'win32')('x', () => {});",
+      [{ kind: 'platform', name: 'process.platform', text: "process.platform === 'win32'" }],
+    ],
+    [
+      "test.skipIf(process.arch !== 'arm64')('x', () => {});",
+      [{ kind: 'arch', name: 'process.arch', text: "process.arch !== 'arm64'" }],
+    ],
+    [
+      "test.runIf(process.env.OK_LIVE_API === '1')('x', () => {});",
+      [{ kind: 'env', name: 'OK_LIVE_API', text: "process.env.OK_LIVE_API === '1'" }],
+    ],
+    [
+      "test.runIf('OK_LIVE_API' in process.env)('x', () => {});",
+      [{ kind: 'env', name: 'OK_LIVE_API', text: "'OK_LIVE_API' in process.env" }],
+    ],
+    [
+      "test.skipIf(process.env.GITHUB_ACTIONS)('x', () => {});",
+      [{ kind: 'ci', name: 'GITHUB_ACTIONS', text: 'process.env.GITHUB_ACTIONS' }],
+    ],
+    [
+      "test.skipIf(process.getuid?.() === 0)('x', () => {});",
+      [{ kind: 'uid', name: 'process.getuid', text: 'process.getuid?.() === 0' }],
+    ],
+    [
+      "import { existsSync } from 'node:fs';\ntest.runIf(existsSync(BINARY))('x', () => {});",
+      [{ kind: 'fs', name: 'BINARY', text: 'existsSync(BINARY)' }],
+    ],
+    [
+      "import os from 'node:os';\ntest.skipIf(os.platform() === 'linux')('x', () => {});",
+      [{ kind: 'platform', name: 'os.platform', text: "os.platform() === 'linux'" }],
+    ],
+    [
+      "import { arch as cpu } from 'node:os';\ntest.skipIf(cpu() === 'x64')('x', () => {});",
+      [{ kind: 'arch', name: 'os.arch', text: "cpu() === 'x64'" }],
+    ],
+    [
+      "test.skipIf(Number(process.versions.node.split('.')[0]) < 24)('x', () => {});",
+      [
+        {
+          kind: 'runtime',
+          name: 'process.versions.node',
+          text: "Number(process.versions.node.split('.')[0]) < 24",
+        },
+      ],
+    ],
+    [
+      "test.skipIf(typeof process.getuid !== 'function')('x', () => {});",
+      [
+        {
+          kind: 'uid',
+          name: 'process.getuid',
+          text: "typeof process.getuid !== 'function'",
+        },
+      ],
+    ],
+    [
+      "import { existsSync } from 'node:fs';\ntest.runIf(['/bin/zsh', '/usr/bin/zsh'].find(existsSync))('x', () => {});",
+      [
+        {
+          kind: 'fs',
+          name: "['/bin/zsh', '/usr/bin/zsh'].find(existsSync)",
+          text: "['/bin/zsh', '/usr/bin/zsh'].find(existsSync)",
+        },
+      ],
+    ],
+    [
+      "test.skipIf(hasDocker())('x', () => {});",
+      [{ kind: 'runtime', name: 'hasDocker()', text: 'hasDocker()' }],
+    ],
+    [
+      "import * as os from 'node:os';\ntest.skipIf(os.type() === 'Windows_NT')('x', () => {});",
+      [{ kind: 'platform', name: 'os.type', text: "os.type() === 'Windows_NT'" }],
+    ],
+    [
+      "import os from 'node:os';\ntest.skipIf(os.release().startsWith('10.'))('x', () => {});",
+      [{ kind: 'platform', name: 'os.release', text: "os.release().startsWith('10.')" }],
+    ],
+    [
+      "import os from 'node:os';\ntest.skipIf(os.userInfo().uid === 0)('x', () => {});",
+      [{ kind: 'uid', name: 'os.userInfo', text: 'os.userInfo().uid === 0' }],
+    ],
+    [
+      "import { machine } from 'node:os';\ntest.skipIf(machine() !== 'arm64')('x', () => {});",
+      [{ kind: 'arch', name: 'os.machine', text: "machine() !== 'arm64'" }],
+    ],
+    [
+      "const hasSharp = (() => { try { require.resolve('sharp'); return true; } catch { return false; } })();\ntest.runIf(hasSharp)('x', () => {});",
+      [{ kind: 'import', name: 'sharp', text: 'hasSharp' }],
+    ],
+    [
+      "import { createRequire } from 'node:module';\nconst hasCanvas = (() => { try { createRequire(import.meta.url).resolve('canvas'); return true; } catch { return false; } })();\ntest.runIf(hasCanvas)('x', () => {});",
+      [{ kind: 'import', name: 'canvas', text: 'hasCanvas' }],
+    ],
+    [
+      "const hasLegacy = (() => { try { require('legacy-dep'); return true; } catch { return false; } })();\ntest.runIf(hasLegacy)('x', () => {});",
+      [{ kind: 'import', name: 'legacy-dep', text: 'hasLegacy' }],
+    ],
+    [
+      "test.skipIf(process.env.OK_MODE ?? process.env.CI)('x', () => {});",
+      [
+        { kind: 'env', name: 'OK_MODE', text: 'process.env.OK_MODE' },
+        { kind: 'ci', name: 'CI', text: 'process.env.CI' },
+      ],
+    ],
+    [
+      "test.skipIf(process.platform === 'win32' ? process.env.OK_WIN : process.env.OK_POSIX)('x', () => {});",
+      [
+        { kind: 'platform', name: 'process.platform', text: "process.platform === 'win32'" },
+        { kind: 'env', name: 'OK_WIN', text: 'process.env.OK_WIN' },
+        { kind: 'env', name: 'OK_POSIX', text: 'process.env.OK_POSIX' },
+      ],
+    ],
+    [
+      "import { env } from 'node:process';\ntest.skipIf(env.OK_FLAG === '1')('x', () => {});",
+      [{ kind: 'env', name: 'OK_FLAG', text: "env.OK_FLAG === '1'" }],
+    ],
+    ["test.skipIf(IS_CI)('x', () => {});", [{ kind: 'ci', name: 'IS_CI', text: 'IS_CI' }]],
+  ])('reads the atoms of %s', (source, atoms) => {
+    expect(atomsOf(source)).toEqual([atoms]);
+  });
+
+  test('follows aliases to the facts they read', () => {
+    const source = [
+      "const ON_WINDOWS = process.platform === 'win32';",
+      'const SLOW_HOST = ON_WINDOWS || process.env.OK_SLOW === "1";',
+      "test.skipIf(SLOW_HOST && !process.env.CI)('x', () => {});",
+    ].join('\n');
+    expect(atomsOf(source)).toEqual([
+      [
+        { kind: 'platform', name: 'process.platform', text: "process.platform === 'win32'" },
+        { kind: 'env', name: 'OK_SLOW', text: 'process.env.OK_SLOW === "1"' },
+        { kind: 'ci', name: 'CI', text: 'process.env.CI' },
+      ],
+    ]);
+  });
+
+  test('resolves an alias to the declaration visible where the gate sits', () => {
+    const source = [
+      "test('an earlier test', () => {",
+      "  const FLAG = process.env.OK_OTHER === '1';",
+      '  expect(FLAG).toBe(FLAG);',
+      '});',
+      "const FLAG = process.platform === 'win32';",
+      "test.skipIf(FLAG)('x', () => {});",
+    ].join('\n');
+    expect(atomsOf(source)).toEqual([
+      [{ kind: 'platform', name: 'process.platform', text: "process.platform === 'win32'" }],
+    ]);
+  });
+
+  test('does not follow a name a parameter shadows', () => {
+    const source = [
+      'const platform = process.platform;',
+      "test.for([{ platform: 'win32' }])('x', ({ platform }, ctx) => {",
+      "  ctx.skip(platform === 'win32', 'not here');",
+      '  expect(platform).toBe(platform);',
+      '});',
+    ].join('\n');
+    expect(atomsOf(source)).toEqual([
+      [{ kind: 'runtime', name: 'platform', text: "platform === 'win32'" }],
+    ]);
+  });
+
+  test('resolves a shadowed CI alias consistently for ci and atoms', () => {
+    const source = [
+      'const FLAG = process.env.CI;',
+      '{',
+      "  const FLAG = process.env.INNER === '1';",
+      "  test.skipIf(FLAG)('inner', () => {});",
+      '}',
+      "test.skipIf(FLAG)('outer', () => {});",
+    ].join('\n');
+    const { gates } = scanSource('packages/server/src/a.test.ts', source);
+    expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
+      {
+        ci: null,
+        atoms: [{ kind: 'env', name: 'INNER', text: "process.env.INNER === '1'" }],
+      },
+      {
+        ci: 'skips-on-ci',
+        atoms: [{ kind: 'ci', name: 'CI', text: 'process.env.CI' }],
+      },
+    ]);
+  });
+
+  test('resolves CI polarity at each alias declaration, outside the gate scope', () => {
+    const source = [
+      'const FLAG = !process.env.CI;',
+      'const ALIAS = FLAG;',
+      '{',
+      '  const FLAG = process.env.GITHUB_ACTIONS;',
+      "  test.skipIf(FLAG)('inner', () => {});",
+      "  test.skipIf(ALIAS)('captured', () => {});",
+      '}',
+      "test.skipIf(FLAG)('outer', () => {});",
+    ].join('\n');
+    const { gates } = scanSource('packages/server/src/a.test.ts', source);
+    expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
+      {
+        ci: 'skips-on-ci',
+        atoms: [{ kind: 'ci', name: 'GITHUB_ACTIONS', text: 'process.env.GITHUB_ACTIONS' }],
+      },
+      ...Array.from({ length: 2 }, () => ({
+        ci: 'runs-only-on-ci',
+        atoms: [{ kind: 'ci', name: 'CI', text: 'process.env.CI' }],
+      })),
+    ]);
+  });
+
+  test('resolves a shadowed environment alias consistently for early returns and atoms', () => {
+    const source = [
+      "const FLAG = process.env.OUTER === '1';",
+      "test('inner', (ctx) => {",
+      '  const FLAG = capability();',
+      '  if (FLAG) return;',
+      "  ctx.skip(FLAG, 'inner capability');",
+      '  expect(1).toBe(1);',
+      '});',
+      "test('outer', () => { if (FLAG) return; expect(1).toBe(1); });",
+    ].join('\n');
+    const { gates, earlyReturns } = scanSource('packages/server/src/a.test.ts', source);
+    expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
+      { ci: null, atoms: [{ kind: 'runtime', name: 'capability()', text: 'capability()' }] },
+    ]);
+    expect(earlyReturns.map(({ line, condition }) => ({ line, condition }))).toEqual([
+      { line: 8, condition: 'FLAG' },
+    ]);
+  });
+
+  test.each(['function FLAG() {}', 'class FLAG {}'])(
+    'stops at a block-scoped %s that shadows an environment alias',
+    (declaration) => {
+      const source = [
+        "import { test } from 'vitest';",
+        "const FLAG = process.env.OUTER === '1';",
+        '{',
+        `  ${declaration}`,
+        "  test.skipIf(FLAG)('inner', () => {});",
+        '}',
+      ].join('\n');
+      const { gates } = scanSource('packages/server/src/a.test.ts', source);
+      expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
+        { ci: null, atoms: [{ kind: 'runtime', name: 'FLAG', text: 'FLAG' }] },
+      ]);
+    },
+  );
+
+  test.each([
+    "const run = function FLAG() { test.skipIf(FLAG)('x', () => {}); };",
+    "const run = class FLAG { method() { test.skipIf(FLAG)('x', () => {}); } };",
+    "class Host { constructor(FLAG) { test.skipIf(FLAG)('x', () => {}); } }",
+    "class Host { set value(FLAG) { test.skipIf(FLAG)('x', () => {}); } }",
+    "function run(FLAG) { test.skipIf(FLAG)('x', () => {}); }",
+    "try { work(); } catch (FLAG) { test.skipIf(FLAG)('x', () => {}); }",
+    "for (const FLAG of flags) { test.skipIf(FLAG)('x', () => {}); }",
+    "{ const { FLAG } = flags; test.skipIf(FLAG)('x', () => {}); }",
+    "function run() { { var FLAG; } test.skipIf(FLAG)('x', () => {}); }",
+    "function run() { for (var FLAG of flags) {} test.skipIf(FLAG)('x', () => {}); }",
+    "class Host { static { { var FLAG; } test.skipIf(FLAG)('x', () => {}); } }",
+    "switch (value) { case 0: let FLAG; break; default: test.skipIf(FLAG)('x', () => {}); }",
+    "switch (value) { case 0: function FLAG() {} break; default: test.skipIf(FLAG)('x', () => {}); }",
+    "switch (value) { case 0: test.skipIf(FLAG)('x', () => {}); break; default: class FLAG {} }",
+  ])('keeps every gate field inside the binding scope in %s', (body) => {
+    const source = `const FLAG = process.env.CI;\n${body}`;
+    const { gates } = scanSource('packages/server/src/a.test.ts', source);
+    expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
+      { ci: null, atoms: [{ kind: 'runtime', name: 'FLAG', text: 'FLAG' }] },
+    ]);
+  });
+
+  test.each([
+    'import IS_CI from "host";',
+    'import * as IS_CI from "host";',
+    'import { flag as IS_CI } from "host";',
+    'const IS_CI = false;',
+    'function IS_CI() {}',
+    'class IS_CI {}',
+  ])('does not apply the CI-name convention over %s', (binding) => {
+    const { gates } = scanSource(
+      'packages/server/src/a.test.ts',
+      `${binding}\ntest.skipIf(IS_CI)('x', () => {});`,
+    );
+    expect(gates[0].ci).toBeNull();
+    expect(gates[0].atoms.every((atom) => atom.kind !== 'ci')).toBe(true);
+  });
+
+  test.each([
+    ['import { platform as FLAG } from "node:os";', 'FLAG()'],
+    ['import * as FLAG from "node:os";', 'FLAG.platform()'],
+    ['import FLAG from "node:os";', 'FLAG.platform()'],
+  ])('resolves shadowed OS imports by scope for %s', (imported, condition) => {
+    const source = [
+      imported,
+      "test('x', (ctx) => {",
+      '  const FLAG = host;',
+      `  if (${condition}) return;`,
+      `  ctx.skip(${condition});`,
+      '});',
+    ].join('\n');
+    const { gates, earlyReturns } = scanSource('packages/server/src/a.test.ts', source);
+    expect(gates[0].ci).toBeNull();
+    expect(gates[0].atoms).toEqual([{ kind: 'runtime', name: condition, text: condition }]);
+    expect(earlyReturns).toEqual([]);
+  });
+
+  test('terminates cyclic alias resolution and follows chains beyond three passes', () => {
+    const source = [
+      'const FIRST = SECOND;',
+      'const SECOND = FIRST;',
+      "test.skipIf(FIRST)('cycle', () => {});",
+      'const A = B;',
+      'const B = C;',
+      'const C = D;',
+      'const D = E;',
+      'const E = process.env.CI;',
+      "test.skipIf(A)('chain', () => {});",
+      "test('cycle body', () => { if (FIRST) return; expect(1).toBe(1); });",
+      "test('chain body', () => { if (A) return; expect(1).toBe(1); });",
+    ].join('\n');
+    const { gates, earlyReturns } = scanSource('packages/server/src/a.test.ts', source);
+    expect(gates.map(({ ci, atoms }) => ({ ci, atoms }))).toEqual([
+      { ci: null, atoms: [{ kind: 'runtime', name: 'FIRST', text: 'FIRST' }] },
+      { ci: 'skips-on-ci', atoms: [{ kind: 'ci', name: 'CI', text: 'process.env.CI' }] },
+    ]);
+    expect(earlyReturns.map(({ condition }) => condition)).toEqual(['A']);
+  });
+
+  test('gives a pin nested in a describe its full title chain', () => {
+    const [pin] = scanSource(
+      'packages/app/tests/stress/a.e2e.ts',
+      playwrightPin('test.describe.configure({ retries: 0 });'),
+    ).pins;
+    expect(pin.titles).toEqual(['sidebar', 'hide removes the row']);
+  });
+
+  test('names the module an import probe tries', () => {
+    const source = [
+      "const hasPlaywright = await import('playwright').then(() => true, () => false);",
+      "test.runIf(hasPlaywright)('x', () => {});",
+    ].join('\n');
+    expect(atomsOf(source)).toEqual([
+      [{ kind: 'import', name: 'playwright', text: 'hasPlaywright' }],
+    ]);
+  });
+
+  test('gives test- and describe-scope entries their title chain', () => {
+    const source = [
+      "describe('outer', () => {",
+      "  describe.skipIf(process.env.CI)('inner', () => {",
+      "    test('works', (ctx) => {",
+      "      ctx.skip(process.platform === 'win32', 'posix only');",
+      '      expect(1).toBe(1);',
+      '    });',
+      "    test.todo('later');",
+      '  });',
+      '});',
+    ].join('\n');
+    const scan = scanSource('packages/server/src/a.test.ts', source);
+    expect(scan.gates.map((gate) => [gate.scope, gate.titles])).toEqual([
+      ['describe', ['outer', 'inner']],
+      ['test', ['outer', 'inner', 'works']],
+    ]);
+    expect(scan.notRun.map((entry) => entry.titles)).toEqual([['outer', 'inner', 'later']]);
+  });
+
+  test('marks a title that is not a string literal', () => {
+    const source = [
+      "const name = 'dynamic';",
+      "describe('suite for ' + name, () => {",
+      "  test.skipIf(process.platform === 'darwin')(name, () => {});",
+      '});',
+    ].join('\n');
+    const [gate] = scanSource('packages/server/src/a.test.ts', source).gates;
+    expect(gate.titles).toEqual([{ nonLiteral: "'suite for ' + name" }, { nonLiteral: 'name' }]);
+  });
+
+  test('gives a file-scope gate no title chain', () => {
+    const source = "const d = process.env.CI ? describe.skip : describe;\nd('x', () => {});";
+    const [gate] = scanSource('packages/server/src/a.test.ts', source).gates;
+    expect([gate.scope, 'titles' in gate]).toEqual(['file', false]);
   });
 });
 
@@ -688,7 +1079,7 @@ describe('known-reds through its real invocation', () => {
     });
     expect(run.status).toBe(1);
     const feed = JSON.parse(run.stdout);
-    expect(feed.schemaVersion).toBe(1);
+    expect(feed.schemaVersion).toBe(2);
     expect(feed.files).toBe(3);
     expect(feed.violations.map((violation) => violation.rule)).toEqual(
       expect.arrayContaining(['pin-retries', 'ci-skip', 'early-return']),
@@ -769,6 +1160,11 @@ describe('known-reds through its real invocation', () => {
 
 describe('known-reds on this tree', () => {
   const files = listTestFiles(OK_ROOT);
+  let scanned;
+  const tree = () => {
+    scanned ??= scanTree(OK_ROOT);
+    return scanned;
+  };
 
   test('scans every runner’s test files and nothing under reports/ or specs/', () => {
     expect(files).toEqual(
@@ -784,8 +1180,17 @@ describe('known-reds on this tree', () => {
     ).toEqual([]);
   });
 
+  test('every gate on this tree names at least one atom', () => {
+    const report = tree();
+    expect(
+      [...report.ciSkips, ...report.envGates]
+        .filter((gate) => gate.atoms.length === 0)
+        .map((gate) => `${gate.path}:${gate.line} ${gate.condition}`),
+    ).toEqual([]);
+  });
+
   test('conforms: pins, quarantines, CI skips and early returns follow the convention', () => {
-    const violations = validate(scanTree(OK_ROOT), {
+    const violations = validate(tree(), {
       today: todayUtc(),
       allowlist: loadAllowlist(),
     });
@@ -815,6 +1220,7 @@ describe('known-reds on this tree', () => {
       `no more than ${MAX_HORIZON_DAYS} days away`,
       `at least ${MIN_SIGNATURE_LITERAL} literal characters in a row`,
       `Expiring within ${EXPIRY_WARNING_DAYS} days`,
+      `(\`schemaVersion\` ${SCHEMA_VERSION})`,
     ]) {
       expect(doc, `${CONVENTION_DOC} must mention ${cited}`).toContain(cited);
     }

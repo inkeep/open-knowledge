@@ -496,6 +496,19 @@ describe('BottomComposer (shell behavior)', () => {
       restore();
     }
   });
+  test('the Add to prompt tooltip closes once the pointer leaves the button, even toward the tooltip', async () => {
+    const user = userEvent.setup();
+    await renderComposer();
+    const addToPrompt = screen.getByTestId('ask-ai-add-to-prompt');
+
+    await user.hover(addToPrompt);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    await screen.findByRole('tooltip');
+    await user.unhover(addToPrompt);
+
+    await waitFor(() => expect(screen.queryByRole('tooltip')).toBeNull(), { timeout: 200 });
+  });
 });
 
 describe('BottomComposer (dispatch + picker + sticky default)', () => {

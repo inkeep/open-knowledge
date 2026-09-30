@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { installPackedCli } from './packed-install.test-helper';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI_PKG_DIR = resolve(HERE, '..', '..');
@@ -108,21 +109,14 @@ beforeAll(async () => {
   if (SUT_MODE === 'packed') {
     const packDest = mkdtempSync(join(tmpdir(), 'ok-e2e-pack-'));
     H.packDest = packDest;
-    const packOut = execFileSync('npm', ['pack', '--silent', '--pack-destination', packDest], {
-      cwd: CLI_PKG_DIR,
-      encoding: 'utf8',
-    }).trim();
-    const tarball = join(packDest, packOut.split('\n').pop()?.trim() ?? '');
-    if (!existsSync(tarball)) throw new Error(`npm pack produced no tarball (got "${packOut}")`);
-
     H.installPrefix = mkdtempSync(join(tmpdir(), 'ok-e2e-install-'));
-    execFileSync('npm', ['install', '--silent', '--prefix', H.installPrefix, tarball], {
-      encoding: 'utf8',
-      timeout: 180_000,
+    const installed = await installPackedCli({
+      packageDir: CLI_PKG_DIR,
+      packDest,
+      installPrefix: H.installPrefix,
     });
-    const installed = join(H.installPrefix, 'node_modules', '@inkeep', 'open-knowledge');
-    H.cliPath = join(installed, 'dist', 'cli.mjs');
-    H.binShim = join(H.installPrefix, 'node_modules', '.bin', 'ok');
+    H.cliPath = installed.cliPath;
+    H.binShim = installed.binShim;
   } else {
     H.cliPath = WORKSPACE_DIST_CLI;
   }

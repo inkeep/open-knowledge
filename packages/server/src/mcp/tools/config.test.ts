@@ -1,10 +1,7 @@
-import { describe as _bunDescribe, expect, test } from 'vitest';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { describe, expect, test } from 'vitest';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import { register } from './config.ts';
 import type { ServerInstance } from './shared.ts';

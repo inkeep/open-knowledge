@@ -29,7 +29,8 @@ if (process.env.OK_FIXTURE_COLLECTION_BLOCK === '1') {
 }
 
 test('swallowed undeclared forbidden fetch fails', async () => {
-  await captureBlockedRequest('undeclared.invalid');
+  const error = await captureBlockedRequest('undeclared.invalid');
+  expect(error).toBeInstanceOf(NetConnectBlockedError);
 });
 
 test('declared exact hostname block passes', async () => {
@@ -39,7 +40,7 @@ test('declared exact hostname block passes', async () => {
 });
 
 test('unused hostname expectation fails', () => {
-  expectBlockedNetworkRequest('unused.invalid');
+  expect(() => expectBlockedNetworkRequest('unused.invalid')).not.toThrow();
 });
 
 test('mismatched hostname expectation fails', async () => {
@@ -104,26 +105,43 @@ describe('suite hook declarations cannot authorize sibling suite blocks', () => 
 });
 
 describe('a block that lands after its scope drained is reported, not enforced', () => {
+  let resolveOrphan: (outcome: unknown) => void;
+  let resolveLateDeclaration: (outcome: unknown) => void;
+  const orphanOutcome = new Promise<unknown>((resolve) => {
+    resolveOrphan = resolve;
+  });
+  const lateDeclarationOutcome = new Promise<unknown>((resolve) => {
+    resolveLateDeclaration = resolve;
+  });
+
   test('schedules a forbidden fetch that lands after it returns', () => {
-    setTimeout(() => {
-      void fetch('https://orphan.invalid/resource').catch(() => {});
-    }, 10);
+    expect(() => {
+      setTimeout(() => {
+        void fetch('https://orphan.invalid/resource').then(resolveOrphan, resolveOrphan);
+      }, 10);
+    }).not.toThrow();
   });
 
   test('schedules a late declaration that cannot re-open its scope', () => {
-    setTimeout(() => {
-      expectBlockedNetworkRequest('late-declaration.invalid');
-      void fetch('https://late-declaration.invalid/resource').catch(() => {});
-    }, 10);
+    expect(() => {
+      setTimeout(() => {
+        expectBlockedNetworkRequest('late-declaration.invalid');
+        void fetch('https://late-declaration.invalid/resource').then(
+          resolveLateDeclaration,
+          resolveLateDeclaration,
+        );
+      }, 10);
+    }).not.toThrow();
   });
 
   test('a later test gives the orphan time to land', async () => {
-    await new Promise((resolve) => setTimeout(resolve, 250));
+    await expect(orphanOutcome).resolves.toBeInstanceOf(NetConnectBlockedError);
+    await expect(lateDeclarationOutcome).resolves.toBeInstanceOf(NetConnectBlockedError);
   });
 });
 
 test('unrelated console error passes', () => {
-  console.error('fixture diagnostic unrelated to network blocking');
+  expect(() => console.error('fixture diagnostic unrelated to network blocking')).not.toThrow();
 });
 
 describe('concurrent siblings isolate exact hostname expectations', () => {
@@ -136,7 +154,7 @@ describe('concurrent siblings isolate exact hostname expectations', () => {
     releaseBeta = resolve;
   });
 
-  test.concurrent('alpha request', async () => {
+  test.concurrent('alpha request', async ({ expect }) => {
     expectBlockedNetworkRequest('alpha.invalid');
     releaseAlpha?.();
     await betaDeclared;
@@ -144,7 +162,7 @@ describe('concurrent siblings isolate exact hostname expectations', () => {
     expect(error).toBeInstanceOf(NetConnectBlockedError);
   });
 
-  test.concurrent('beta request', async () => {
+  test.concurrent('beta request', async ({ expect }) => {
     await alphaDeclared;
     expectBlockedNetworkRequest('beta.invalid');
     releaseBeta?.();
@@ -171,19 +189,19 @@ describe('concurrent unexpected block stays with its owning test', () => {
     releaseInnocentDone = resolve;
   });
 
-  test.concurrent('offender swallows its unexpected block', async () => {
+  test.concurrent('offender swallows its unexpected block', async ({ expect }) => {
     releaseOffenderStarted?.();
     await innocentReady;
-    await captureBlockedRequest('concurrent-offender.invalid');
+    const error = await captureBlockedRequest('concurrent-offender.invalid');
     releaseOffenderBlocked?.();
     await innocentDone;
+    expect(error).toBeInstanceOf(NetConnectBlockedError);
   });
 
-  test.concurrent('innocent sibling passes', async () => {
+  test.concurrent('innocent sibling passes', async ({ expect }) => {
     await offenderStarted;
     releaseInnocentReady?.();
-    await offenderBlocked;
-    expect(true).toBe(true);
+    await expect(offenderBlocked).resolves.toBeUndefined();
     releaseInnocentDone?.();
   });
 });

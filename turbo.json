@@ -1,5 +1,8 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "remoteCache": {
+    "signature": true
+  },
   "globalDependencies": [
     "turbo-cache-key.json",
     "test-support/fixtures/share-url-v1-v2.json",
@@ -47,6 +50,7 @@
     "//#typecheck:no-net-connect": {
       "inputs": [
         "test-support/*.ts",
+        "test-support/*.mts",
         "test-support/fixtures/no-net-connect/**/*.ts",
         "test-support/tsconfig.no-net-connect.json",
         "tsconfig.json"
@@ -111,6 +115,7 @@
         "!CHANGELOG.md",
         "!README.md",
         "../../test-support/*.ts",
+        "../../test-support/test-only-source-file.mjs",
         "../app/src/editor/observers.ts"
       ]
     },

@@ -180,7 +180,7 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
           update as SessionUpdate,
           agent as CodexLegacyAgentIdentity,
         );
-        return typeof verdict === 'boolean';
+        expect(typeof verdict).toBe('boolean');
       }),
       { numRuns: PBT_NUM_RUNS },
     );
@@ -195,7 +195,7 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
         (prefix, body, terminated) => {
           const text = `${prefix}${body}${terminated ? TERMINATOR : ''}`;
           const verdict = isCodexLegacyWarningUpdate(candidateFrom(text), CODEX);
-          return verdict === text.endsWith(TERMINATOR);
+          expect(verdict).toBe(text.endsWith(TERMINATOR));
         },
       ),
       { numRuns: PBT_NUM_RUNS },
@@ -207,7 +207,7 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
       fc.property(fc.string(), (body) => {
         const text = `${body}${TERMINATOR}`;
         fc.pre(!text.startsWith(WARNING_PREFIX) && !text.startsWith(CONFIG_WARNING_PREFIX));
-        return isCodexLegacyWarningUpdate(candidateFrom(text), CODEX) === false;
+        expect(isCodexLegacyWarningUpdate(candidateFrom(text), CODEX)).toBe(false);
       }),
       { numRuns: PBT_NUM_RUNS },
     );
@@ -223,7 +223,8 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
 
         isCodexLegacyWarningUpdate(update, agent);
 
-        return JSON.stringify(update) === updateBefore && JSON.stringify(agent) === agentBefore;
+        expect(JSON.stringify(update)).toBe(updateBefore);
+        expect(JSON.stringify(agent)).toBe(agentBefore);
       }),
       { numRuns: PBT_NUM_RUNS },
     );
@@ -271,9 +272,11 @@ describe('isCodexLegacyWarningUpdate — properties', () => {
         fc.constantFrom(...HEADS),
         fc.constantFrom(...TAILS),
         fc.string(),
-        (head, tail, body) =>
-          isCodexLegacyWarningUpdate(candidateFrom(`${head}${body}${tail}`), CODEX) ===
-          isCodexLegacyWarningUpdate(candidateFrom(`${head}${tail}`), CODEX),
+        (head, tail, body) => {
+          expect(isCodexLegacyWarningUpdate(candidateFrom(`${head}${body}${tail}`), CODEX)).toBe(
+            isCodexLegacyWarningUpdate(candidateFrom(`${head}${tail}`), CODEX),
+          );
+        },
       ),
       { numRuns: PBT_NUM_RUNS },
     );

@@ -1,18 +1,7 @@
-import {
-  describe as _bunDescribe,
-  afterAll,
-  afterEach,
-  beforeAll,
-  beforeEach,
-  expect,
-  test,
-} from 'vitest';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
-
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from 'vitest';
 import type { z } from 'zod';
 import { type Config, ConfigSchema } from '../../config/schema.ts';
 import type { AgentIdentity } from '../agent-identity.ts';

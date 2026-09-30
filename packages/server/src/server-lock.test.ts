@@ -257,7 +257,8 @@ describe('releaseServerLock', () => {
   });
 
   test('no-op if lock does not exist', () => {
-    releaseServerLock(lockDir);
+    expect(() => releaseServerLock(lockDir)).not.toThrow();
+    expect(existsSync(lockPath)).toBe(false);
   });
 
   test('refuses to remove a lock owned by a different pid', () => {

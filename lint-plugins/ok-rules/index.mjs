@@ -7,6 +7,7 @@ import { noBlindAgentHostFanout } from './rules/no-blind-agent-host-fanout.mjs';
 import { noDemotedDialogConfirm } from './rules/no-demoted-dialog-confirm.mjs';
 import { noHandRolledBranchValidation } from './rules/no-hand-rolled-branch-validation.mjs';
 import { noHandRolledSpinner } from './rules/no-hand-rolled-spinner.mjs';
+import { noHandRolledTestFileSuffix } from './rules/no-hand-rolled-test-file-suffix.mjs';
 import { noInlineToleranceClass } from './rules/no-inline-tolerance-class.mjs';
 import { noLooselyTypedWebcontentsIpc } from './rules/no-loosely-typed-webcontents-ipc.mjs';
 import { noPhysicalDirectionUtility } from './rules/no-physical-direction-utility.mjs';
@@ -38,6 +39,7 @@ const declared = {
   'no-blind-agent-host-fanout': noBlindAgentHostFanout,
   'no-demoted-dialog-confirm': noDemotedDialogConfirm,
   'no-hand-rolled-branch-validation': noHandRolledBranchValidation,
+  'no-hand-rolled-test-file-suffix': noHandRolledTestFileSuffix,
   'no-hand-rolled-spinner': noHandRolledSpinner,
   'no-inline-tolerance-class': noInlineToleranceClass,
   'no-loosely-typed-webcontents-ipc': noLooselyTypedWebcontentsIpc,
