@@ -610,8 +610,6 @@ function fanOutChromeColors(): void {
 const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
   width: 1280,
   height: 800,
-  minWidth: WINDOW_MIN_SIZE.NAVIGATOR.width,
-  minHeight: WINDOW_MIN_SIZE.NAVIGATOR.height,
   show: false,
   ...(process.platform === 'darwin'
     ? {
@@ -622,6 +620,8 @@ const DEFAULT_WIN_OPTS: BrowserWindowConstructorOptions = {
         transparent: true,
       }
     : buildNonDarwinChromeOpts(nativeTheme.shouldUseDarkColors)),
+  minWidth: WINDOW_MIN_SIZE.NAVIGATOR.width,
+  minHeight: WINDOW_MIN_SIZE.NAVIGATOR.height,
   webPreferences: {
     contextIsolation: true,
     nodeIntegration: false,

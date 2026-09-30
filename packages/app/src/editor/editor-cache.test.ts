@@ -1,8 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { Compartment } from '@codemirror/state';
 import type { EditorView } from '@codemirror/view';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { Editor } from '@tiptap/core';
 import { yUndoPluginKey } from '@tiptap/y-tiptap';
+import { Node, Project, type SourceFile, SyntaxKind } from 'ts-morph';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import {
@@ -1346,15 +1348,249 @@ describe('CM6 cache — undoManager teardown', () => {
   });
 });
 
+const cacheProject = new Project({
+  useInMemoryFileSystem: true,
+  skipAddingFilesFromTsConfig: true,
+  skipFileDependencyResolution: true,
+  skipLoadingLibFiles: true,
+  compilerOptions: { noLib: true },
+});
+
+function unwrapEditorNode(node: Node | undefined): Node | undefined {
+  while (
+    Node.isParenthesizedExpression(node) ||
+    Node.isAsExpression(node) ||
+    Node.isTypeAssertion(node) ||
+    Node.isExpressionWithTypeArguments(node) ||
+    Node.isSatisfiesExpression(node) ||
+    Node.isNonNullExpression(node)
+  )
+    node = node.getExpression();
+  return node;
+}
+
+function isEditorReceiver(node: Node | undefined): boolean {
+  node = unwrapEditorNode(node);
+  return (
+    (Node.isIdentifier(node) && node.getText().endsWith('editor')) ||
+    (Node.isPropertyAccessExpression(node) && node.getName().endsWith('editor'))
+  );
+}
+
+function lifecycleKey(node: Node | undefined, computed: boolean): boolean {
+  node = unwrapEditorNode(node);
+  if (Node.isComputedPropertyName(node)) return lifecycleKey(node.getExpression(), true);
+  if (Node.isStringLiteral(node) || Node.isNoSubstitutionTemplateLiteral(node)) {
+    return ['mount', 'unmount'].includes(node.getLiteralValue());
+  }
+  if (!computed && Node.isIdentifier(node)) return ['mount', 'unmount'].includes(node.getText());
+  return !(
+    Node.isLiteralExpression(node) ||
+    node?.getKind() === SyntaxKind.TrueKeyword ||
+    node?.getKind() === SyntaxKind.FalseKeyword ||
+    node?.getKind() === SyntaxKind.NullKeyword
+  );
+}
+
+function lifecycleReferences(file: SourceFile): string[] {
+  const violations: string[] = [];
+  for (const node of file.getDescendants()) {
+    if (
+      (Node.isPropertyAccessExpression(node) &&
+        isEditorReceiver(node.getExpression()) &&
+        ['mount', 'unmount'].includes(node.getName())) ||
+      (Node.isElementAccessExpression(node) &&
+        isEditorReceiver(node.getExpression()) &&
+        lifecycleKey(node.getArgumentExpression(), true))
+    ) {
+      violations.push(`editor-lifecycle-reference: ${node.getText()}`);
+    }
+    if (Node.isVariableDeclaration(node) && isEditorReceiver(node.getInitializer())) {
+      const pattern = node.getNameNode();
+      if (Node.isObjectBindingPattern(pattern)) {
+        for (const element of pattern.getElements()) {
+          if (
+            element.getDotDotDotToken() ||
+            lifecycleKey(element.getPropertyNameNode() ?? element.getNameNode(), false)
+          ) {
+            violations.push(`editor-lifecycle-destructure: ${element.getText()}`);
+          }
+        }
+      }
+    }
+    if (
+      Node.isBinaryExpression(node) &&
+      node.getOperatorToken().getKind() === SyntaxKind.EqualsToken &&
+      isEditorReceiver(node.getRight())
+    ) {
+      const pattern = unwrapEditorNode(node.getLeft());
+      if (Node.isObjectLiteralExpression(pattern)) {
+        for (const property of pattern.getProperties()) {
+          if (Node.isSpreadAssignment(property) || lifecycleKey(property.getNameNode(), false)) {
+            violations.push(`editor-lifecycle-destructure: ${property.getText()}`);
+          }
+        }
+      }
+    }
+  }
+  return violations;
+}
+
+function editorLifecycleCalls(source: string): string[] {
+  const file = cacheProject.createSourceFile('/editor-cache.ts', source, { overwrite: true });
+  try {
+    return lifecycleReferences(file);
+  } finally {
+    cacheProject.removeSourceFile(file);
+  }
+}
+
+const cacheFunctions = [
+  'mountTiptapEditor',
+  'parkTiptapEditor',
+  'evictTiptapEditor',
+  'mountCmEditor',
+  'parkCmEditor',
+  'evictCmEditor',
+] as const;
+
+function editorCacheViolations(source: string): string[] {
+  const file = cacheProject.createSourceFile('/editor-cache.ts', source, { overwrite: true });
+  try {
+    const violations = cacheProject
+      .getProgram()
+      .getSyntacticDiagnostics(file)
+      .map((error) => `syntax: ${error.getCode()} at ${error.getStart()}`);
+    if (file.getExportDeclarations().some((declaration) => declaration.getModuleSpecifier())) {
+      violations.push('editor-cache re-export');
+    }
+    for (const name of cacheFunctions) {
+      const functions = file
+        .getFunctions()
+        .filter(
+          (declaration) =>
+            declaration.getName() === name && declaration.isExported() && declaration.getBody(),
+        );
+      if (functions.length !== 1) violations.push(`editor-cache implementation: ${name}`);
+    }
+    return [...violations, ...lifecycleReferences(file)];
+  } finally {
+    cacheProject.removeSourceFile(file);
+  }
+}
+
 describe('STOP rule: editor-cache never calls editor.mount() / editor.unmount()', () => {
-  test('source contains no reference to editor.mount( or editor.unmount(', async () => {
-    const sourceText = await Bun.file(`${import.meta.dir}/editor-cache.ts`).text();
-    const code = sourceText
-      .split('\n')
-      .filter((line) => !line.trimStart().startsWith('*') && !line.trimStart().startsWith('//'))
-      .join('\n');
-    expect(/editor\.mount\s*\(/.test(code)).toBe(false);
-    expect(/editor\.unmount\s*\(/.test(code)).toBe(false);
+  test.each([
+    'editor.mount(target)',
+    'editor.mount (target)',
+    'editor.mount\n(target)',
+    'editor.unmount()',
+    'editor.unmount ()',
+    'editor.unmount\n()',
+    'entry.editor.mount(target)',
+    'editor?.mount(target)',
+    'editor.mount?.(target)',
+    'editor?.mount?.(target)',
+    'editor?.unmount()',
+    'editor.unmount?.()',
+    'editor?.unmount?.()',
+  ])('detects lifecycle call %s', (source) => {
+    expect(editorLifecycleCalls(source)).toHaveLength(1);
+  });
+
+  test('ignores adjacent methods, declarations, strings and comments', () => {
+    expect(
+      editorLifecycleCalls(`
+      editor.destroy(); other.mount(target);
+      interface Editor { mount(target): void; unmount(): void; }
+      const example = 'editor.mount(target)';
+      /* editor.mount(target); editor.unmount(); */
+    `),
+    ).toEqual([]);
+  });
+
+  test.each([
+    ['new editor.mount(target)', 'new other.mount(target)'],
+    ['new entry.editor.unmount()', 'new entry.other.unmount()'],
+    ['new editor.mount', 'new other.mount'],
+    ['const m = editor.mount; m(target)', 'const m = editor.destroy; m(target)'],
+    ['editor.mount.call(editor, target)', 'editor.destroy.call(editor, target)'],
+    ['editor.mount.apply(editor, [target])', 'editor.destroy.apply(editor, [target])'],
+    ['editor.mount.bind(editor)', 'editor.destroy.bind(editor)'],
+    ["editor['mount'](target)", "editor['destroy'](target)"],
+    ['editor[`unmount`]()', 'editor[`destroy`]()'],
+    ['editor[method](target)', 'editor[0]'],
+    ["editor[('mount' as string)](target)", "editor[('destroy' as string)](target)"],
+    ["editor['mount' satisfies string]", "editor['destroy' satisfies string]"],
+    ["editor['mount'!]", "editor['destroy'!]"],
+    ['(editor as Editor).mount(target)', '(editor as Editor).destroy(target)'],
+    ['(<Editor>editor).mount(target)', '(<Editor>editor).destroy(target)'],
+    ['(editor<Editor>).mount(target)', '(editor<Editor>).destroy(target)'],
+    ['(editor satisfies Editor).mount(target)', '(editor satisfies Editor).destroy(target)'],
+    ['editor!.unmount()', 'editor!.destroy()'],
+    ['(editor).mount(target)', '(editor).destroy(target)'],
+    ["editor?.['mount']?.(target)", "editor?.['destroy']?.(target)"],
+  ])('lifecycle reference pair: %s', (bad, good) => {
+    expect(
+      editorLifecycleCalls(bad).filter((violation) =>
+        violation.startsWith('editor-lifecycle-reference:'),
+      ),
+    ).toHaveLength(1);
+    expect(editorLifecycleCalls(good)).toEqual([]);
+  });
+  test.each([
+    ['const { unmount } = editor; unmount()', 'const { destroy } = editor; destroy()'],
+    ["const { 'mount': m } = editor; m(target)", "const { 'destroy': m } = editor; m(target)"],
+    ["const { ['mount']: m } = editor", "const { ['destroy']: m } = editor"],
+    ['const { [key]: m } = editor', "const { ['destroy']: m } = editor"],
+    ['const { ...rest } = editor', 'const { destroy: rest } = editor'],
+    ['({ mount: m } = editor)', '({ destroy: m } = editor)'],
+    ["({ ['unmount']: m } = editor)", "({ ['destroy']: m } = editor)"],
+    ['({ [key]: m } = editor)', "({ ['destroy']: m } = editor)"],
+    ['({ ...rest } = editor)', '({ destroy: rest } = editor)'],
+  ])('lifecycle destructuring pair: %s', (bad, good) => {
+    expect(
+      editorLifecycleCalls(bad).filter((violation) =>
+        violation.startsWith('editor-lifecycle-destructure:'),
+      ),
+    ).toHaveLength(1);
+    expect(editorLifecycleCalls(good)).toEqual([]);
+  });
+
+  const validCacheSource = cacheFunctions.map((name) => `export function ${name}() {}`).join('\n');
+  test.each(cacheFunctions)('requires the local exported implementation %s', (name) => {
+    expect(editorCacheViolations(validCacheSource)).toEqual([]);
+    expect(
+      editorCacheViolations(validCacheSource.replace(`export function ${name}() {}`, '')),
+    ).toEqual([`editor-cache implementation: ${name}`]);
+    expect(
+      editorCacheViolations(
+        validCacheSource.replace(`export function ${name}`, `function ${name}`),
+      ),
+    ).toEqual([`editor-cache implementation: ${name}`]);
+  });
+  test.each(["export * from './impl';", "export { editor } from './impl';"])(
+    'refuses re-export %s',
+    (forward) => {
+      expect(editorCacheViolations(validCacheSource)).toEqual([]);
+      expect(editorCacheViolations(`${validCacheSource}\n${forward}`)).toEqual([
+        'editor-cache re-export',
+      ]);
+    },
+  );
+  test('requires valid syntax in the actual implementation', () => {
+    expect(editorCacheViolations(validCacheSource)).toEqual([]);
+    expect(
+      editorCacheViolations(`${validCacheSource} const broken = ;`).filter((value) =>
+        value.startsWith('syntax:'),
+      ),
+    ).toHaveLength(1);
+  });
+
+  test('source contains no editor lifecycle calls on any branch', () => {
+    expect(
+      editorCacheViolations(readFileSync(new URL('./editor-cache.ts', import.meta.url), 'utf8')),
+    ).toEqual([]);
   });
 });
 
