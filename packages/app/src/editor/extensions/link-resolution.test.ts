@@ -86,6 +86,18 @@ describe('computeLinkResolutionState', () => {
     expect(computeLinkResolutionState('../parent.md', 'sub/README', null)).toBe('loading');
   });
 
+  test('an NFC percent-encoded href resolves against an NFD page id', () => {
+    const cache = makeCache({ pages: ['People/Ren\u0065\u0301'] });
+    expect(computeLinkResolutionState('/People/Ren%C3%A9.md', 'notes/index', cache)).toBe(
+      'resolved',
+    );
+  });
+
+  test('an NFC asset href resolves against an NFD file id', () => {
+    const cache = makeCache({ pages: [], assetPaths: ['notes/Caf\u0065\u0301.png'] });
+    expect(computeLinkResolutionState('./Caf%C3%A9.png', 'notes/index', cache)).toBe('asset');
+  });
+
   test('doc href with cache, target exists → resolved', () => {
     const cache = makeCache({ pages: ['OTHER'] });
     expect(computeLinkResolutionState('./OTHER.md', 'README', cache)).toBe('resolved');

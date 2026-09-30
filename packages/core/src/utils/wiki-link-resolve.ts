@@ -1,3 +1,4 @@
+import { canonicalPathKey, resolveStoredPath } from './canonical-path.ts';
 import {
   type AssetLinkTarget,
   classifyWikiLinkTarget,
@@ -108,11 +109,13 @@ export function resolveWikiLinkTargetDocName(
   const trimmed = target.trim();
   if (!trimmed) return undefined;
   const pages = getPagesSet(input);
-  if (pages.has(trimmed)) return trimmed;
+  const stored = resolveStoredPath(pages, trimmed);
+  if (stored) return stored;
   const viaSlug = slugLookup(trimmed, input);
   if (viaSlug) return viaSlug;
   for (const candidate of getWikiLinkResolutionCandidates(trimmed)) {
-    if (pages.has(candidate)) return candidate;
+    const storedCandidate = resolveStoredPath(pages, candidate);
+    if (storedCandidate) return storedCandidate;
   }
   const folderIndexDocName = resolveFolderIndexDocName(trimmed, pages);
   if (folderIndexDocName) return folderIndexDocName;
@@ -120,12 +123,12 @@ export function resolveWikiLinkTargetDocName(
 }
 
 function resolveFolderIndexDocName(target: string, pages: ReadonlySet<string>): string | undefined {
-  const canonical = `${target}/index`;
-  if (pages.has(canonical)) return canonical;
+  const canonical = resolveStoredPath(pages, `${target}/index`);
+  if (canonical) return canonical;
   const slashIndex = target.lastIndexOf('/');
   const leaf = slashIndex === -1 ? target : target.slice(slashIndex + 1);
-  const legacy = leaf ? `${target}/${leaf}` : null;
-  if (legacy && pages.has(legacy)) return legacy;
+  const legacy = leaf ? resolveStoredPath(pages, `${target}/${leaf}`) : null;
+  if (legacy) return legacy;
   return undefined;
 }
 
@@ -144,15 +147,16 @@ export function resolveWikiLinkAssetTarget(
   const normalized = normalizeAssetTarget(target);
   if (!normalized) return null;
 
-  const lowerTarget = normalized.toLowerCase();
+  const lowerTarget = canonicalPathKey(normalized).toLowerCase();
   const partitions: ReadonlyArray<ReadonlySet<string>> = filePaths
     ? [assetPaths, filePaths]
     : [assetPaths];
 
   for (const partition of partitions) {
-    if (partition.has(normalized)) return normalized;
+    const stored = resolveStoredPath(partition, normalized);
+    if (stored) return stored;
     for (const path of partition) {
-      if (path.toLowerCase() === lowerTarget) return path;
+      if (canonicalPathKey(path).toLowerCase() === lowerTarget) return path;
     }
   }
 
@@ -162,7 +166,7 @@ export function resolveWikiLinkAssetTarget(
     for (const path of partition) {
       const slash = path.lastIndexOf('/');
       const basename = slash === -1 ? path : path.slice(slash + 1);
-      if (basename.toLowerCase() === lowerTarget) matches.push(path);
+      if (canonicalPathKey(basename).toLowerCase() === lowerTarget) matches.push(path);
     }
   }
   if (matches.length === 0) return null;

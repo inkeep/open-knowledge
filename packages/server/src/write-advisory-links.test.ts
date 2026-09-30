@@ -277,6 +277,39 @@ describe('computeWriteAdvisoryLinks', () => {
     expect(links).toEqual([]);
   });
 
+  test('an NFC markdown link to an NFD document is not reported broken', () => {
+    const links = computeWriteAdvisoryLinks(
+      '[Ren\u00E9](/People/Ren%C3%A9.md)\n',
+      'notes/index',
+      new Set(['People/Ren\u0065\u0301']),
+    );
+    expect(links).toEqual([]);
+  });
+
+  test('an NFC folder link matches the NFD folder of an admitted document', () => {
+    const links = computeWriteAdvisoryLinks(
+      '[dir](/People/Ren%C3%A9)\n',
+      'notes/index',
+      new Set(['People/Ren\u0065\u0301/note']),
+    );
+    expect(links).toEqual([]);
+  });
+
+  test('an accented link is still broken when only the unaccented document exists', () => {
+    const links = computeWriteAdvisoryLinks(
+      '[Ren\u00E9](/People/Ren%C3%A9.md)\n',
+      'notes/index',
+      new Set(['People/Rene']),
+    );
+    expect(links).toEqual([
+      {
+        href: '/People/Ren%C3%A9.md',
+        resolvedTo: 'People/Ren\u00E9',
+        reason: 'no-such-doc',
+      },
+    ]);
+  });
+
   test('a JSX src-ref survives when a markdown-looking link with the identical href scans first', () => {
     const md = ['<!-- [b](board.excalidraw) -->', '<Excalidraw src="board.excalidraw" />', ''].join(
       '\n',

@@ -244,6 +244,19 @@ describe('ambiguous-basename tie-break', () => {
   });
 });
 
+describe('canonical path identity', () => {
+  test('an NFC target resolves to the stored NFD page before slug fallback', () => {
+    const stored = 'People/Ren\u0065\u0301';
+    const pages = new Set([stored, 'People/Rene']);
+    expect(resolveWikiLinkTargetDocName(`People/Ren\u00E9`, pages)).toBe(stored);
+  });
+
+  test('an NFC asset name resolves to the stored NFD file', () => {
+    const stored = 'notes/Caf\u0065\u0301.png';
+    expect(resolveWikiLinkAssetTarget('notes/Caf\u00E9.png', new Set([stored]))).toBe(stored);
+  });
+});
+
 describe('resolution chain boundaries', () => {
   test('a document whose filename contains a dot resolves by bare name', () => {
     const { pages, index } = makeFixtures();

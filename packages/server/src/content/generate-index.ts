@@ -1,4 +1,8 @@
-import { encodeHrefPath, isMutatingParserReservation } from '@inkeep/open-knowledge-core';
+import {
+  canonicalPathKey,
+  encodeHrefPath,
+  isMutatingParserReservation,
+} from '@inkeep/open-knowledge-core';
 import { getLogger } from '../logger.ts';
 
 export interface IndexEntry {
@@ -232,8 +236,8 @@ function renderableLink(
 }
 
 function relativeTo(directory: string, path: string): string {
-  const normalizedPath = path.replaceAll('\\', '/');
-  const normalizedDir = directory.replaceAll('\\', '/').replace(/\/+$/, '');
+  const normalizedPath = canonicalPathKey(path.replaceAll('\\', '/'));
+  const normalizedDir = canonicalPathKey(directory.replaceAll('\\', '/').replace(/\/+$/, ''));
   if (normalizedDir === '') return normalizedPath;
   const prefix = `${normalizedDir}/`;
   return normalizedPath.startsWith(prefix) ? normalizedPath.slice(prefix.length) : normalizedPath;
@@ -244,8 +248,30 @@ function relativeTo(directory: string, path: string): string {
  * GitHub, Obsidian, and an editor that never loaded OK.
  */
 function toHref(relativePath: string): string {
-  const normalized = relativePath.replaceAll('\\', '/');
+  const normalized = canonicalPathKey(relativePath.replaceAll('\\', '/'));
   return `./${encodeHrefPath(normalized)}`;
+}
+
+function isNfcPathSpelling(path: string): boolean {
+  const normalized = path.replaceAll('\\', '/');
+  return normalized === canonicalPathKey(normalized);
+}
+
+function dedupeRenderableLinks(links: readonly RenderableLink[]): RenderableLink[] {
+  const sorted = links.slice().sort(compareLinks);
+  const chosen = new Map<string, RenderableLink>();
+  for (const link of sorted) {
+    const key = canonicalPathKey(link.path.replaceAll('\\', '/'));
+    const existing = chosen.get(key);
+    if (!existing) {
+      chosen.set(key, link);
+      continue;
+    }
+    if (!isNfcPathSpelling(existing.path) && isNfcPathSpelling(link.path)) {
+      chosen.set(key, link);
+    }
+  }
+  return [...chosen.values()].sort(compareLinks);
 }
 
 function renderLink(link: RenderableLink, directory: string): string {
@@ -254,9 +280,7 @@ function renderLink(link: RenderableLink, directory: string): string {
 }
 
 function renderBody(links: readonly RenderableLink[], directory: string): string {
-  return links
-    .slice()
-    .sort(compareLinks)
+  return dedupeRenderableLinks(links)
     .map((link) => renderLink(link, directory))
     .join('\n');
 }

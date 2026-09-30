@@ -46,6 +46,25 @@ function statusOf(index: LocalTargetIndex, docName: string): string[] {
 }
 
 describe('LocalTargetIndex reverse-dependent freshness', () => {
+  test('an NFC link becomes exact when the NFD document appears', () => {
+    const index = createIndex();
+    const stored = 'People/Ren\u0065\u0301';
+    index.setSource('notes', '[Ren\u00E9](/People/Ren%C3%A9.md)\n');
+    expect(index.getAssessments('notes')[0]).toMatchObject({
+      status: 'missing',
+      reason: 'no-such-doc',
+    });
+
+    index.setSource(stored, '# Ren\u00E9\n');
+
+    expect(index.getAssessments('notes')[0]).toMatchObject({
+      resolvedTarget: stored,
+      status: 'exact',
+      reason: null,
+    });
+    expect(index.getDocumentDependents(stored)).toContain('notes');
+  });
+
   test('creating a missing document target heals only its referencing sources', () => {
     const index = createIndex();
     index.setSource('src', 'See [x](target).\n');

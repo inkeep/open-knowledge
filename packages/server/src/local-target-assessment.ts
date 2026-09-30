@@ -7,6 +7,7 @@ import {
   type LocalTargetDiagnosticEvidence,
   type LocalTargetSourceForm,
   resolveAssetProjectPath,
+  resolveStoredPath,
   toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
 import {
@@ -26,6 +27,9 @@ type LocalTargetResolutionMethod = 'source-relative' | 'root-relative' | 'tolera
 export interface LocalTargetInventory {
   hasDocument(docName: string): boolean;
   hasFile(contentRootRelativePath: string): boolean;
+  resolveDocument?(docName: string): string | null;
+  resolveFile?(contentRootRelativePath: string): string | null;
+  resolveFolder?(folderPath: string): string | null;
   resolveTolerantDocument?(docName: string, sourceDocName: string): string | null;
   hasFolder?(folderPath: string): boolean;
 }
@@ -49,11 +53,11 @@ export function createTolerantDocumentResolver(
     const slug = toWikiLinkSlug(docName);
     const slugMatch = slug ? bySlug.get(slug) : undefined;
     if (slugMatch) return slugMatch;
-    const canonicalIndex = `${docName}/index`;
-    if (documents.has(canonicalIndex)) return canonicalIndex;
+    const canonicalIndex = resolveStoredPath(documents, `${docName}/index`);
+    if (canonicalIndex) return canonicalIndex;
     const leaf = docName.slice(docName.lastIndexOf('/') + 1);
-    const legacyFolderNote = `${docName}/${leaf}`;
-    if (documents.has(legacyFolderNote)) return legacyFolderNote;
+    const legacyFolderNote = resolveStoredPath(documents, `${docName}/${leaf}`);
+    if (legacyFolderNote) return legacyFolderNote;
     if (!docName.includes('/') && slug) return byBasename.get(slug) ?? null;
     return null;
   };
@@ -75,6 +79,15 @@ function methodForHref(href: string): 'source-relative' | 'root-relative' {
   return href.trim().startsWith('/') ? 'root-relative' : 'source-relative';
 }
 
+function exactStoredTarget(
+  query: string,
+  resolved: string | null | undefined,
+  exists: boolean,
+): string | null {
+  if (typeof resolved === 'string') return resolved;
+  return exists ? query : null;
+}
+
 const UNRESOLVABLE: SharedAssessment = {
   targetKind: 'unknown',
   resolvedTarget: null,
@@ -91,20 +104,30 @@ function assessDocument(
   inventory: LocalTargetInventory,
   exactExists?: boolean,
 ): SharedAssessment {
-  if (exactExists ?? inventory.hasDocument(docName)) {
+  const storedDocument = exactStoredTarget(
+    docName,
+    inventory.resolveDocument?.(docName),
+    exactExists ?? inventory.hasDocument(docName),
+  );
+  if (storedDocument) {
     return {
       targetKind: 'document',
-      resolvedTarget: docName,
+      resolvedTarget: storedDocument,
       status: 'exact',
       reason: null,
       resolutionMethod: methodForHref(href),
       fallbackTarget: null,
     };
   }
-  if (inventory.hasFolder?.(docName)) {
+  const storedFolder = exactStoredTarget(
+    docName,
+    inventory.resolveFolder?.(docName),
+    inventory.hasFolder?.(docName) ?? false,
+  );
+  if (storedFolder) {
     return {
       targetKind: 'document',
-      resolvedTarget: docName,
+      resolvedTarget: storedFolder,
       status: 'exact',
       reason: null,
       resolutionMethod: methodForHref(href),
@@ -143,10 +166,15 @@ function assessFile(
   if (filePath === null) {
     return { ...UNRESOLVABLE, targetKind: 'file' };
   }
-  if (inventory.hasFile(filePath)) {
+  const storedFile = exactStoredTarget(
+    filePath,
+    inventory.resolveFile?.(filePath),
+    inventory.hasFile(filePath),
+  );
+  if (storedFile) {
     return {
       targetKind: 'file',
-      resolvedTarget: filePath,
+      resolvedTarget: storedFile,
       status: 'exact',
       reason: null,
       resolutionMethod: methodForHref(href),

@@ -5,10 +5,12 @@ import {
   type BrokenLinkReason,
   buildPagesByBasenameIndex,
   buildPagesBySlugIndex,
+  canonicalPathKey,
   classifyMarkdownHref,
   classifyWikiLinkTarget,
   extractSkillRefs,
   getWikiLinkText,
+  indexPathsByCanonicalKey,
   isExcalidrawDocFile,
   isExternalHref,
   isOrphanMode,
@@ -21,6 +23,7 @@ import {
   resolveAssetProjectPath,
   resolveInternalHref,
   resolveSkillBundleWikiTarget,
+  resolveStoredPath,
   resolveWikiLinkTarget,
   resolveWikiLinkTargetDocName,
   skillLiveDocName,
@@ -897,7 +900,10 @@ export function computeBrokenOutboundLinks(
       return;
     }
     if (classified.kind === 'doc') {
-      if (!admitted.has(classified.docName) && folderExists?.(classified.docName) !== true) {
+      if (
+        resolveStoredPath(admitted, classified.docName) === null &&
+        folderExists?.(classified.docName) !== true
+      ) {
         record(trimmed, classified.docName, 'no-such-doc');
       }
       return;
@@ -934,7 +940,7 @@ export function computeBrokenOutboundLinks(
       if (!fileExists(resolved)) record(value, resolved, 'no-such-file', 'jsx');
       return;
     }
-    if (!admitted.has(resolved) && folderExists?.(resolved) !== true) {
+    if (resolveStoredPath(admitted, resolved) === null && folderExists?.(resolved) !== true) {
       record(value, resolved, 'no-such-doc', 'jsx');
     }
   };
@@ -1551,11 +1557,18 @@ export class BacklinkIndex {
       ...state.forward.keys(),
     ]);
     for (const folderPath of knownFolderPaths ?? []) folderPathSet.add(folderPath);
+    const admittedByCanonical = indexPathsByCanonicalKey(admittedDocSet);
+    const forwardByCanonical = indexPathsByCanonicalKey(state.forward.keys());
+    const folderByCanonical = indexPathsByCanonicalKey(folderPathSet);
+    const namesLiveTarget = (target: string): boolean => {
+      const targetKey = canonicalPathKey(target);
+      if (admittedByCanonical.has(targetKey) || forwardByCanonical.has(targetKey)) return true;
+      return folderByCanonical.has(canonicalPathKey(target.replace(/\/+$/, '')));
+    };
 
     return [...state.backward.entries()]
       .filter(([target, sources]) => {
-        if (admittedDocSet.has(target) || state.forward.has(target)) return false;
-        if (folderPathSet.has(target.replace(/\/+$/, ''))) return false;
+        if (namesLiveTarget(target)) return false;
         if (!sourceDocSet) return sources.size > 0;
         for (const source of sources.keys()) {
           if (sourceDocSet.has(source)) return true;

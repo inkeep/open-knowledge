@@ -1,4 +1,4 @@
-import type { LocalTargetDiagnosticEvidence } from '@inkeep/open-knowledge-core';
+import { type LocalTargetDiagnosticEvidence, resolveStoredPath } from '@inkeep/open-knowledge-core';
 import { type BrokenOutboundLink, computeBrokenOutboundLinks } from './backlink-index.ts';
 import {
   assessLocalTargets,
@@ -28,11 +28,16 @@ export function computeWriteAdvisoryLinks(
       slash = docName.indexOf('/', slash + 1);
     }
   }
+  const resolveDocument = (docName: string): string | null => resolveStoredPath(admitted, docName);
+  const resolveFolder = (folderPath: string): string | null =>
+    resolveStoredPath(folderPaths, folderPath);
   const hasFolder = (folderPath: string): boolean =>
-    folderPaths.has(folderPath) || folderExists?.(folderPath) === true;
+    resolveFolder(folderPath) !== null || folderExists?.(folderPath) === true;
   const inventory: LocalTargetInventory = {
-    hasDocument: (docName) => admitted.has(docName),
+    hasDocument: (docName) => resolveDocument(docName) !== null,
     hasFile: (relPath) => (fileExists ? fileExists(relPath) : false),
+    resolveDocument,
+    resolveFolder,
     resolveTolerantDocument: createTolerantDocumentResolver(admitted),
     hasFolder,
   };

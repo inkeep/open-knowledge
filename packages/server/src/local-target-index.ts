@@ -3,6 +3,7 @@ import { readdir, readFile, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join, relative } from 'node:path';
 import {
   classifyMarkdownHref,
+  matchStoredPath,
   resolveAssetProjectPath,
   toWikiLinkSlug,
 } from '@inkeep/open-knowledge-core';
@@ -190,11 +191,13 @@ export class LocalTargetIndex {
   private injectedFolderPaths = new Set<string>();
 
   private readonly inventory: LocalTargetInventory = {
-    hasDocument: (docName) => this.documents.has(docName),
-    hasFile: (relativePath) => this.files.has(relativePath),
+    hasDocument: (docName) => this.resolveDocumentName(docName) !== null,
+    hasFile: (relativePath) => this.resolveFileName(relativePath) !== null,
+    resolveDocument: (docName) => this.resolveDocumentName(docName),
+    resolveFile: (relativePath) => this.resolveFileName(relativePath),
+    resolveFolder: (folderPath) => this.resolveFolderName(folderPath),
     resolveTolerantDocument: (docName) => this.tolerantDocumentResolver(docName),
-    hasFolder: (folderPath) =>
-      this.folderPaths.has(folderPath) || this.injectedFolderPaths.has(folderPath),
+    hasFolder: (folderPath) => this.resolveFolderName(folderPath) !== null,
   };
 
   constructor(options: LocalTargetIndexOptions) {
@@ -687,6 +690,21 @@ export class LocalTargetIndex {
       }
     }
     this.folderPaths = folderPaths;
+  }
+
+  private resolveDocumentName(docName: string): string | null {
+    return matchStoredPath(this.documents, docName);
+  }
+
+  private resolveFileName(relativePath: string): string | null {
+    return matchStoredPath(this.files, relativePath);
+  }
+
+  private resolveFolderName(folderPath: string): string | null {
+    return (
+      matchStoredPath(this.folderPaths, folderPath) ??
+      matchStoredPath(this.injectedFolderPaths, folderPath)
+    );
   }
 
   private async listDocsWithPaths(): Promise<Array<{ docName: string; filePath: string }>> {

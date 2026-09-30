@@ -19,6 +19,22 @@ describe('deriveKnownFolderPaths', () => {
 });
 
 describe('resolveNavigationTarget', () => {
+  test('an NFC target opens the stored NFD document', () => {
+    const stored = 'People/Ren\u0065\u0301';
+    expect(resolveNavigationTarget(`People/Ren\u00E9`, { pages: new Set([stored]) })).toEqual({
+      kind: 'doc',
+      target: stored,
+      docName: stored,
+    });
+  });
+
+  test('a compatibility lookalike stays missing', () => {
+    expect(resolveNavigationTarget('\uFB01le', { pages: new Set(['file']) })).toEqual({
+      kind: 'missing',
+      target: '\uFB01le',
+    });
+  });
+
   test('resolves managed-artifact docs as real doc targets (never missing)', () => {
     const docName = '__skill__/global/foo';
     expect(resolveNavigationTarget(docName, { pages: new Set() })).toEqual({
@@ -221,6 +237,37 @@ describe('resolveNavigationTarget', () => {
       docName: 'reports/reports',
       noteKind: 'legacy-folder-note',
     });
+  });
+
+  test('a legacy folder note keeps the stored folder spelling across compositions', () => {
+    const nfcLeaf = 'Ren\u00E9';
+    const nfdLeaf = 'Ren\u0065\u0301';
+    const nfdNote = `People/${nfdLeaf}/${nfdLeaf}`;
+    const nfcNote = `People/${nfcLeaf}/${nfcLeaf}`;
+
+    expect(resolveNavigationTarget(`People/${nfcLeaf}`, { pages: new Set([nfdNote]) })).toEqual({
+      kind: 'folder-index',
+      target: `People/${nfdLeaf}`,
+      folderPath: `People/${nfdLeaf}`,
+      docName: nfdNote,
+      noteKind: 'legacy-folder-note',
+    });
+    expect(resolveNavigationTarget(`People/${nfdLeaf}`, { pages: new Set([nfcNote]) })).toEqual({
+      kind: 'folder-index',
+      target: `People/${nfcLeaf}`,
+      folderPath: `People/${nfcLeaf}`,
+      docName: nfcNote,
+      noteKind: 'legacy-folder-note',
+    });
+    expect(resolveNavigationTarget(nfcLeaf, { pages: new Set([`${nfdLeaf}/${nfdLeaf}`]) })).toEqual(
+      {
+        kind: 'folder-index',
+        target: nfdLeaf,
+        folderPath: nfdLeaf,
+        docName: `${nfdLeaf}/${nfdLeaf}`,
+        noteKind: 'legacy-folder-note',
+      },
+    );
   });
 
   test('returns folder for a known folder with no landing note', () => {

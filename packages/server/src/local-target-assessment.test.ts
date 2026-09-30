@@ -1,3 +1,4 @@
+import { resolveStoredPath } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   assessLocalTargetOccurrences,
@@ -16,8 +17,10 @@ function inventory(opts?: {
   const files = new Set(opts?.files ?? []);
   const tolerant = opts?.tolerant;
   const base: LocalTargetInventory = {
-    hasDocument: (docName) => docs.has(docName),
-    hasFile: (filePath) => files.has(filePath),
+    hasDocument: (docName) => resolveStoredPath(docs, docName) !== null,
+    hasFile: (filePath) => resolveStoredPath(files, filePath) !== null,
+    resolveDocument: (docName) => resolveStoredPath(docs, docName),
+    resolveFile: (filePath) => resolveStoredPath(files, filePath),
   };
   if (!tolerant) return base;
   return { ...base, resolveTolerantDocument: (docName) => tolerant[docName] ?? null };
@@ -421,5 +424,52 @@ describe('percent-encoded targets are assessed against the decoded document', ()
   test('a wiki asset embed does not resolve to the decoded neighbour', () => {
     const a = assessOne('![[100%20done.png]]', inventory({ files: ['notes/100 done.png'] }));
     expect(a).toMatchObject({ status: 'missing' });
+  });
+});
+
+describe('canonically equivalent paths are one document', () => {
+  const nfdPeople = 'People/Ren\u0065\u0301';
+  const nfdCafe = 'notes/Caf\u0065\u0301.png';
+
+  test('an NFC percent-encoded link to an NFD document is exact', () => {
+    const a = assessOne('[Ren\u00E9](/People/Ren%C3%A9.md)', inventory({ docs: [nfdPeople] }));
+    expect(a).toMatchObject({
+      targetKind: 'document',
+      resolvedTarget: nfdPeople,
+      status: 'exact',
+      reason: null,
+      fallbackTarget: null,
+    });
+  });
+
+  test('the same NFC link stays missing when no canonical document exists', () => {
+    const a = assessOne('[Ren\u00E9](/People/Ren%C3%A9.md)', inventory({ docs: ['notes/other'] }));
+    expect(a).toMatchObject({ targetKind: 'document', status: 'missing', reason: 'no-such-doc' });
+  });
+
+  test('a compatibility lookalike stays missing', () => {
+    const a = assessOne('[fi](./\uFB01le.md)', inventory({ docs: ['notes/file'] }));
+    expect(a).toMatchObject({ targetKind: 'document', status: 'missing' });
+  });
+
+  test('an NFC wiki link to an NFD document is exact rather than a slug fallback', () => {
+    const a = assessOne('[[People/Ren\u00E9]]', inventory({ docs: [nfdPeople] }));
+    expect(a).toMatchObject({
+      targetKind: 'document',
+      resolvedTarget: nfdPeople,
+      status: 'exact',
+      reason: null,
+      resolutionMethod: 'source-relative',
+    });
+  });
+
+  test('an NFC asset link resolves to the NFD file', () => {
+    const a = assessOne('[Pic](./Caf%C3%A9.png)', inventory({ files: [nfdCafe] }));
+    expect(a).toMatchObject({
+      targetKind: 'file',
+      resolvedTarget: nfdCafe,
+      status: 'exact',
+      reason: null,
+    });
   });
 });

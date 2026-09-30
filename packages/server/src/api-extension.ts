@@ -235,6 +235,7 @@ import {
   updateFileIndex,
   upsertFolderIndexEntry as upsertFolderIndexEntryInIndex,
 } from './file-watcher.ts';
+import { folderNamesContain } from './folder-index-membership.ts';
 import {
   tracedCpSync,
   tracedMkdirSync,
@@ -1996,7 +1997,8 @@ export function createApiExtension(
   function createLinkedFolderExists(): (folderPath: string) => boolean {
     const folderIndex = getFolderIndex?.();
     if (!folderIndex) return () => false;
-    return (folderPath) => folderIndex.has(folderPath);
+    const names = new Set(folderIndex.keys());
+    return (folderPath) => folderNamesContain(names, folderPath);
   }
 
   function createLinkedFileExists(

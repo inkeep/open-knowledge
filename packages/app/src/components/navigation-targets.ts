@@ -11,6 +11,7 @@ import {
   parseManagedArtifactName,
   parseTemplateContentDocName,
   projectSkillContentDocName,
+  resolveStoredPath,
   type SkillScope,
   templateContentDocName,
   toWikiLinkSlug,
@@ -121,7 +122,9 @@ function canonicalNavigationTarget(target: string, pages: ReadonlySet<string>): 
   const { normalizedTarget, expectsFolder } = normalizeTargetPath(target);
   if (expectsFolder || !MARKDOWN_TARGET_EXTENSION.test(normalizedTarget)) return target;
   const stripped = stripMarkdownTargetExtensions(normalizedTarget);
-  if (pages.has(normalizedTarget) && !pages.has(stripped)) return target;
+  if (resolveStoredPath(pages, normalizedTarget) && !resolveStoredPath(pages, stripped)) {
+    return target;
+  }
   return stripped;
 }
 
@@ -168,7 +171,7 @@ export function okContentNavigationTarget(
 ): ResolvedContentTarget | null {
   if (!hasOkPathSegment(docName)) return null;
   if (parseTemplateContentDocName(docName)) return null;
-  if (options.pages.has(docName)) return null;
+  if (resolveStoredPath(options.pages, docName)) return null;
   const assetPath = okReadOnlyAssetPath(docName, options.docExt);
   return {
     kind: 'asset',
@@ -223,23 +226,26 @@ export function resolveNavigationTarget(
   }
   const extensionlessTarget = extensionlessTargetPath(target);
 
-  if (
-    !expectsFolder &&
-    extensionlessTarget !== normalizedTarget &&
-    options.pages.has(extensionlessTarget)
-  ) {
+  const storedExtensionless =
+    !expectsFolder && extensionlessTarget !== normalizedTarget
+      ? resolveStoredPath(options.pages, extensionlessTarget)
+      : null;
+  if (storedExtensionless) {
     return {
       kind: 'doc',
-      target: extensionlessTarget,
-      docName: extensionlessTarget,
+      target: storedExtensionless,
+      docName: storedExtensionless,
     };
   }
 
-  if (!expectsFolder && options.pages.has(normalizedTarget)) {
+  const storedNormalized = !expectsFolder
+    ? resolveStoredPath(options.pages, normalizedTarget)
+    : null;
+  if (storedNormalized) {
     return {
       kind: 'doc',
-      target: normalizedTarget,
-      docName: normalizedTarget,
+      target: storedNormalized,
+      docName: storedNormalized,
     };
   }
 
@@ -254,25 +260,30 @@ export function resolveNavigationTarget(
     }
   }
 
-  const canonicalIndexDocName = `${extensionlessTarget}/index`;
-  if (options.pages.has(canonicalIndexDocName)) {
+  const storedIndex = resolveStoredPath(options.pages, `${extensionlessTarget}/index`);
+  if (storedIndex) {
+    const folderPath = storedIndex.slice(0, -'/index'.length);
     return {
       kind: 'folder-index',
-      target: extensionlessTarget,
-      folderPath: extensionlessTarget,
-      docName: canonicalIndexDocName,
+      target: folderPath,
+      folderPath,
+      docName: storedIndex,
       noteKind: 'canonical-index',
     };
   }
 
   const leaf = extensionlessTarget.split('/').pop();
-  const legacyFolderNoteDocName = leaf ? `${extensionlessTarget}/${leaf}` : null;
-  if (legacyFolderNoteDocName && options.pages.has(legacyFolderNoteDocName)) {
+  const storedLegacy = leaf
+    ? resolveStoredPath(options.pages, `${extensionlessTarget}/${leaf}`)
+    : null;
+  if (storedLegacy) {
+    const slash = storedLegacy.lastIndexOf('/');
+    const folderPath = slash === -1 ? '' : storedLegacy.slice(0, slash);
     return {
       kind: 'folder-index',
-      target: extensionlessTarget,
-      folderPath: extensionlessTarget,
-      docName: legacyFolderNoteDocName,
+      target: folderPath,
+      folderPath,
+      docName: storedLegacy,
       noteKind: 'legacy-folder-note',
     };
   }
@@ -289,11 +300,12 @@ export function resolveNavigationTarget(
   }
 
   const knownFolderPaths = options.folderPaths ?? deriveKnownFolderPaths(options.pages);
-  if (knownFolderPaths.has(extensionlessTarget)) {
+  const storedFolder = resolveStoredPath(knownFolderPaths, extensionlessTarget);
+  if (storedFolder) {
     return {
       kind: 'folder',
-      target: extensionlessTarget,
-      folderPath: extensionlessTarget,
+      target: storedFolder,
+      folderPath: storedFolder,
     };
   }
 
