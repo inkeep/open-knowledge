@@ -1,7 +1,10 @@
 import type { SpawnSyncReturns } from 'node:child_process';
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fakeChildProcess } from './process-scan.test-helper.ts';
 
-const spawnSyncMock = vi.fn();
+const realPlatform = process.platform;
+const spawnSyncMock =
+  vi.fn<(command: string, args: readonly string[]) => SpawnSyncReturns<string>>();
 const execFileSyncMock = vi.fn();
 const existsSyncMock = vi.fn();
 const readdirSyncMock = vi.fn();
@@ -20,10 +23,20 @@ let realFs: typeof import('node:fs');
 beforeAll(async () => {
   realCp = await vi.importActual<typeof import('node:child_process')>('node:child_process');
   realFs = await vi.importActual<typeof import('node:fs')>('node:fs');
-  execFileSyncMock.mockImplementation(realCp.execFileSync);
+  execFileSyncMock.mockReturnValue('S\n');
   vi.doMock('node:child_process', () => ({
     ...realCp,
     spawnSync: spawnSyncMock,
+    spawn: (command: string, args: string[]) => {
+      const result = spawnSyncMock(command, args);
+      return fakeChildProcess({
+        stdout: [result.stdout ?? ''],
+        stderr: result.stderr,
+        status: result.status,
+        signal: result.signal,
+        error: result.error,
+      });
+    },
     execFileSync: execFileSyncMock,
   }));
   vi.doMock('node:fs', () => ({
@@ -43,6 +56,16 @@ beforeAll(async () => {
   } = await import('./process-scan.ts'));
 });
 
+beforeEach(() => {
+  Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
+  vi.spyOn(process, 'kill').mockReturnValue(true);
+});
+
+afterEach(() => {
+  Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
+  vi.restoreAllMocks();
+});
+
 function refuseUnmockedSpawn(command: string, args: readonly string[] = []): never {
   throw new Error(`unmocked spawnSync escaped to the host: ${command} ${args.join(' ')}`);
 }
@@ -60,10 +83,11 @@ function makeSpawnResult(overrides: Partial<SpawnSyncReturns<string>>): SpawnSyn
   };
 }
 
-describe('findOkProcessPids', () => {
+describe('findOkProcessPids with Windows Unix tools', () => {
   let spawnSyncSpy: typeof spawnSyncMock;
 
   beforeEach(() => {
+    Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
     spawnSyncMock.mockReset().mockImplementation(refuseUnmockedSpawn);
     spawnSyncSpy = spawnSyncMock;
   });
@@ -148,8 +172,7 @@ describe('findOkProcessPids', () => {
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout:
-            'PID COMMAND\n' +
-            ' 99999 /usr/local/bin/open-knowledge start\n' +
+            'PID COMMAND\n 99999 /usr/local/bin/open-knowledge start\n' +
             '   123 some-other-process\n',
           status: 0,
         }),
@@ -339,7 +362,7 @@ describe('discoverLockDirs', () => {
     spawnSyncSpy
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: '111 /usr/local/bin/bun /path/packages/cli/dist/cli.mjs start\n',
+          stdout: 'PID COMMAND\n111 /usr/local/bin/bun /path/packages/cli/dist/cli.mjs start\n',
           status: 0,
         }),
       )
@@ -366,14 +389,14 @@ describe('discoverLockDirs', () => {
     expect(dirs[0]).toContain('.ok/local');
 
     const calls = spawnSyncSpy.mock.calls as [string, string[]][];
-    expect(calls[0]?.[0]).toBe('pgrep');
+    expect(calls[0]?.[0]).toBe('ps');
     expect(calls[1]?.[0]).toBe('lsof');
     expect(calls[2]?.[0]).toBe('lsof');
   });
 
   it('returns empty array when no ok processes and no lock dirs exist', async () => {
     spawnSyncSpy
-      .mockReturnValueOnce(makeSpawnResult({ stdout: '', status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'PID COMMAND\n', status: 0 }))
       .mockReturnValueOnce(makeSpawnResult({ stdout: 'COMMAND PID USER\n', status: 0 }));
 
     existsSyncSpy.mockReturnValue(false);
@@ -388,7 +411,7 @@ describe('discoverLockDirs', () => {
     spawnSyncSpy
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: `77 /Applications/OpenKnowledge.app/Contents/Frameworks/OpenKnowledge Helper --type=utility --ok-lock-dir-b64=${encoded}\n`,
+          stdout: `PID COMMAND\n77 /Applications/OpenKnowledge.app/Contents/Frameworks/OpenKnowledge Helper --type=utility --ok-lock-dir-b64=${encoded}\n`,
           status: 0,
         }),
       )
@@ -406,7 +429,7 @@ describe('discoverLockDirs', () => {
     expect(dirs).toEqual([lockDir]);
 
     const calls = spawnSyncSpy.mock.calls as [string, string[]][];
-    expect(calls[0]?.[0]).toBe('pgrep');
+    expect(calls[0]?.[0]).toBe('ps');
     expect(calls[1]?.[0]).toBe('lsof');
     expect(calls[2]?.[0]).toBe('lsof');
   });
@@ -418,7 +441,7 @@ describe('discoverLockDirs', () => {
     spawnSyncSpy
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: `93943 /Applications/OpenKnowledge.app/Contents/Frameworks/OpenKnowledge Helper (Renderer).app/Contents/MacOS/OpenKnowledge Helper (Renderer) --type=renderer --ok-collab-url=ws://localhost:51473/collab --ok-project-path=${projectPath} --ok-project-name=garth_nix --seatbelt-client=53\n`,
+          stdout: `PID COMMAND\n93943 /Applications/OpenKnowledge.app/Contents/Frameworks/OpenKnowledge Helper (Renderer).app/Contents/MacOS/OpenKnowledge Helper (Renderer) --type=renderer --ok-collab-url=ws://localhost:51473/collab --ok-project-path=${projectPath} --ok-project-name=garth_nix --seatbelt-client=53\n`,
           status: 0,
         }),
       )
@@ -438,7 +461,7 @@ describe('discoverLockDirs', () => {
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout:
-            '93943 /Applications/OpenKnowledge Helper (Renderer) --type=renderer --ok-project-path=relative/notes --ok-project-name=notes\n',
+            'PID COMMAND\n93943 /Applications/OpenKnowledge Helper (Renderer) --type=renderer --ok-project-path=relative/notes --ok-project-name=notes\n',
           status: 0,
         }),
       )
@@ -458,7 +481,7 @@ describe('discoverLockDirs', () => {
     spawnSyncSpy
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: '77 /usr/local/bin/ok ui\n',
+          stdout: 'PID COMMAND\n77 /usr/local/bin/ok ui\n',
           status: 0,
         }),
       )
@@ -476,7 +499,7 @@ describe('discoverLockDirs', () => {
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout:
-            '42 /Applications/OpenKnowledge.app/Contents/Frameworks/Helper --ok-lock-dir-b64=\n',
+            'PID COMMAND\n42 /Applications/OpenKnowledge.app/Contents/Frameworks/Helper --ok-lock-dir-b64=\n',
           status: 0,
         }),
       )
@@ -496,7 +519,7 @@ describe('discoverLockDirs', () => {
     spawnSyncSpy
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: `42 /Applications/Helper --ok-lock-dir-b64=${encoded}\n`,
+          stdout: `PID COMMAND\n42 /Applications/Helper --ok-lock-dir-b64=${encoded}\n`,
           status: 0,
         }),
       )
@@ -521,7 +544,7 @@ describe('discoverLockDirs', () => {
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout:
-            '5816 /Applications/OpenKnowledge.app/Contents/Frameworks/OpenKnowledge Helper.app/Contents/MacOS/OpenKnowledge Helper --type=utility --utility-sub-type=node.mojom.NodeService\n',
+            'PID COMMAND\n5816 /Applications/OpenKnowledge.app/Contents/Frameworks/OpenKnowledge Helper.app/Contents/MacOS/OpenKnowledge Helper --type=utility --utility-sub-type=node.mojom.NodeService\n',
           status: 0,
         }),
       )
@@ -559,7 +582,7 @@ describe('discoverLockDirs', () => {
       .mockReturnValueOnce(
         makeSpawnResult({
           stdout:
-            '11 /usr/local/bin/ok start\n' +
+            'PID COMMAND\n11 /usr/local/bin/ok start\n' +
             '22 /Applications/OpenKnowledge.app/Contents/Frameworks/OpenKnowledge Helper.app/Contents/MacOS/OpenKnowledge Helper --type=utility --utility-sub-type=node.mojom.NodeService\n',
           status: 0,
         }),
@@ -603,7 +626,7 @@ describe('discoverLockDirs', () => {
       .mockImplementation(() => makeSpawnResult({ error: enoent as NodeJS.ErrnoException }))
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: '55 /usr/local/bin/ok start\n',
+          stdout: 'PID COMMAND\n55 /usr/local/bin/ok start\n',
           status: 0,
         }),
       );
@@ -624,7 +647,7 @@ describe('lock recovery process evidence', () => {
   let stderrWrites: string[];
   beforeEach(() => {
     spawnSyncMock.mockReset();
-    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+    execFileSyncMock.mockReset().mockReturnValue('S\n');
     stderrWrites = [];
     vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
       stderrWrites.push(String(chunk));
@@ -634,36 +657,44 @@ describe('lock recovery process evidence', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     spawnSyncMock.mockReset();
-    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+    execFileSyncMock.mockReset().mockReturnValue('S\n');
   });
 
   it('does not mistake failed process enumeration for evidence of absence', async () => {
-    spawnSyncMock.mockReturnValue(makeSpawnResult({ status: 2, stderr: 'permission denied' }));
+    spawnSyncMock.mockReturnValue(
+      makeSpawnResult({ stdout: 'PID COMMAND\n', status: 2, stderr: 'permission denied' }),
+    );
     const scan = await scanLockProcesses();
     expect(scan.candidates).toEqual([]);
-    expect(scan.unavailable).toEqual(['Could not enumerate processes with pgrep or ps']);
+    expect(scan.unavailable).toEqual([
+      expect.stringMatching(/ps.*exit status 2.*permission denied/),
+    ]);
   });
   it('accepts a successful empty process and listener scan', async () => {
-    spawnSyncMock.mockReturnValue(makeSpawnResult({ status: 1 }));
+    spawnSyncMock
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'PID COMMAND\n' }))
+      .mockReturnValue(makeSpawnResult({ status: 1 }));
     expect(await scanLockProcesses()).toEqual({ candidates: [], unavailable: [] });
   });
   it('retains listener inspection failures', async () => {
     spawnSyncMock
-      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'PID COMMAND\n', status: 0 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1, stderr: 'permission denied' }));
     expect((await scanLockProcesses()).unavailable).toEqual([
-      'Could not enumerate TCP listeners with lsof',
+      expect.stringMatching(/TCP listeners.*lsof.*exit status 1.*permission denied/),
     ]);
   });
   it('treats a listener query that exits non-zero with a table as incomplete enumeration', async () => {
-    spawnSyncMock.mockReturnValueOnce(makeSpawnResult({ status: 1 })).mockReturnValueOnce(
-      makeSpawnResult({
-        status: 1,
-        stdout: `COMMAND PID USER\nnode ${process.pid} user\n`,
-      }),
-    );
+    spawnSyncMock
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'PID COMMAND\n', status: 0 }))
+      .mockReturnValueOnce(
+        makeSpawnResult({
+          status: 1,
+          stdout: `COMMAND PID USER\nnode ${process.pid} user\n`,
+        }),
+      );
     expect((await scanLockProcesses()).unavailable).toEqual([
-      'Could not enumerate TCP listeners with lsof',
+      expect.stringMatching(/TCP listeners.*lsof.*exit status 1/),
     ]);
   });
   it('keeps explicit process provenance even without a lock file on disk', async () => {
@@ -671,7 +702,7 @@ describe('lock recovery process evidence', () => {
     spawnSyncMock
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: `${process.pid} node --ok-lock-dir-b64=${Buffer.from(lockDir).toString('base64url')}\n`,
+          stdout: `PID COMMAND\n${process.pid} node --ok-lock-dir-b64=${Buffer.from(lockDir).toString('base64url')}\n`,
         }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
@@ -683,7 +714,9 @@ describe('lock recovery process evidence', () => {
   it('recognizes the production server process title and its working directory', async () => {
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ stdout: `p${process.pid}\nfcwd\nn/notes\n` }));
@@ -696,7 +729,9 @@ describe('lock recovery process evidence', () => {
   it('retains a live candidate with an unreadable working directory as uncertainty', async () => {
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
@@ -711,7 +746,9 @@ describe('lock recovery process evidence', () => {
     });
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
@@ -738,7 +775,9 @@ describe('lock recovery process evidence', () => {
     });
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
@@ -762,7 +801,9 @@ describe('lock recovery process evidence', () => {
     });
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
@@ -786,7 +827,9 @@ describe('lock recovery process evidence', () => {
     });
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
@@ -806,7 +849,9 @@ describe('lock recovery process evidence', () => {
     });
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }));
@@ -828,7 +873,7 @@ describe('lock recovery process evidence', () => {
     spawnSyncMock
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: `${process.pid} open-knowledge-server notes\n${process.pid} node cli.mjs --ok-project-path=/notes\n`,
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n${process.pid} node cli.mjs --ok-project-path=/notes\n`,
         }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
@@ -850,7 +895,9 @@ describe('lock recovery process evidence', () => {
   it('retains a live candidate the batched query could not answer for', async () => {
     spawnSyncMock
       .mockReturnValueOnce(
-        makeSpawnResult({ stdout: `${process.pid} open-knowledge-server notes\n` }),
+        makeSpawnResult({
+          stdout: `PID COMMAND\n${process.pid} open-knowledge-server notes\n`,
+        }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
       .mockReturnValueOnce(makeSpawnResult({ stdout: 'p1\nfcwd\nn/other\n', status: 0 }));
@@ -863,7 +910,7 @@ describe('lock recovery process evidence', () => {
     spawnSyncMock
       .mockReturnValueOnce(
         makeSpawnResult({
-          stdout: pids.map((pid) => `${pid} open-knowledge-server notes`).join('\n'),
+          stdout: `PID COMMAND\n${pids.map((pid) => `${pid} open-knowledge-server notes`).join('\n')}`,
         }),
       )
       .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
@@ -888,7 +935,7 @@ describe('lock recovery process evidence', () => {
   });
   it('keeps listener provenance without asserting the process is an OpenKnowledge server', async () => {
     spawnSyncMock
-      .mockReturnValueOnce(makeSpawnResult({ status: 1 }))
+      .mockReturnValueOnce(makeSpawnResult({ stdout: 'PID COMMAND\n', status: 0 }))
       .mockReturnValueOnce(
         makeSpawnResult({ stdout: `COMMAND PID USER\nnode ${process.pid} user\n` }),
       )
@@ -915,7 +962,7 @@ describe('isDefunctProcess', () => {
   afterEach(() => {
     Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
     vi.restoreAllMocks();
-    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+    execFileSyncMock.mockReset().mockReturnValue('S\n');
   });
 
   it('skips the probe entirely on an unsupported platform', () => {
@@ -964,7 +1011,7 @@ describe('readProcessState', () => {
   afterEach(() => {
     Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
     vi.restoreAllMocks();
-    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+    execFileSyncMock.mockReset().mockReturnValue('S\n');
   });
 
   it('tells a confirmed absence apart from a confirmed live process', () => {
@@ -1002,7 +1049,7 @@ describe('isLockProcessRunning', () => {
   afterEach(() => {
     Object.defineProperty(process, 'platform', { value: realPlatform, configurable: true });
     vi.restoreAllMocks();
-    execFileSyncMock.mockReset().mockImplementation(realCp.execFileSync);
+    execFileSyncMock.mockReset().mockReturnValue('S\n');
   });
 
   it('lets a probe-confirmed absence override a process that was alive a moment earlier', () => {

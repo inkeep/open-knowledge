@@ -13,6 +13,7 @@ const HELPERS = [
   'wait-within-test-budget.test-helper.ts',
   'expect-stable.test-helper.ts',
   'forked-watcher-process.test-helper.ts',
+  'process-scan.test-helper.ts',
 ];
 
 const UNSCANNED_DIRS = new Set(['node_modules', 'dist', '.turbo']);

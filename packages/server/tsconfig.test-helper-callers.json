@@ -11,6 +11,9 @@
     "src/persistence-tripwire-block.test.ts",
     "src/persistence-tripwire-paste.test.ts",
     "src/polled-watcher-contract.test.ts",
+    "src/process-scan-collectors.test.ts",
+    "src/process-scan-enumeration.test.ts",
+    "src/process-scan.test.ts",
     "src/serialize-doc-vs-git-show-byte-equality.test.ts",
     "src/serialize-doc-ytext.test.ts",
     "src/wait-within-test-budget.test.ts"
