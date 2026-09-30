@@ -779,7 +779,7 @@ describe('deadlines and cancellation', () => {
   ) => {
     rmSync(pidFile, { force: true });
     const [executable, ...args] = nodeCmd(
-      `require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));setTimeout(() => {},${childSelfExitMs})`,
+      `const fs=require('fs');const pidFile=${JSON.stringify(pidFile)};fs.writeFileSync(pidFile+'.pending',String(process.pid));fs.renameSync(pidFile+'.pending',pidFile);setTimeout(() => {},${childSelfExitMs})`,
     );
     const spawnOptions = {
       stdio: ['inherit', 'pipe', 'pipe'],
@@ -1041,7 +1041,7 @@ describe('deadlines and cancellation', () => {
     const pidFile = join(scratch, 'cancelled-child-pid');
     const promise = run({
       command: nodeCmd(
-        `require('fs').writeFileSync(${JSON.stringify(pidFile)},String(process.pid));console.log('ready');setTimeout(() => {},${childSelfExitMs})`,
+        `const fs=require('fs');const pidFile=${JSON.stringify(pidFile)};fs.writeFileSync(pidFile+'.pending',String(process.pid));fs.renameSync(pidFile+'.pending',pidFile);console.log('ready');setTimeout(() => {},${childSelfExitMs})`,
       ),
       signalSource: signals,
     });

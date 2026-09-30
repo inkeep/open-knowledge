@@ -539,13 +539,15 @@ describe('AcpThreadManager (real subprocess)', () => {
       agentPath,
       [
         "import { spawn } from 'node:child_process';",
-        "import { writeFileSync } from 'node:fs';",
+        "import { renameSync, writeFileSync } from 'node:fs';",
         "process.on('SIGTERM', () => {});",
         'const kid = spawn(process.execPath, [',
         "  '-e',",
         '  "process.on(\'SIGTERM\', () => {}); setInterval(() => {}, 1000);",',
         "], { stdio: 'ignore' });",
-        'writeFileSync(process.env.KID_PID_FILE, String(kid.pid));',
+        "const pendingPidFile = process.env.KID_PID_FILE + '.pending';",
+        'writeFileSync(pendingPidFile, String(kid.pid));',
+        'renameSync(pendingPidFile, process.env.KID_PID_FILE);',
         'setInterval(() => {}, 1000);',
         '',
       ].join('\n'),
@@ -571,6 +573,7 @@ describe('AcpThreadManager (real subprocess)', () => {
       await new Promise((r) => setTimeout(r, 25));
     }
     const kidPid = Number(readFileSync(kidPidFile, 'utf8'));
+    expect(kidPid).toBeGreaterThan(0);
     const rootPid = (
       manager as unknown as { threads: Map<string, { child: { pid?: number } | null }> }
     ).threads.get(info.threadId)?.child?.pid;
