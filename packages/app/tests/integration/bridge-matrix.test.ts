@@ -734,4 +734,6 @@ describe('FR-4: server-side per-agent UM under bridge-convergence fixes', () => 
       await client.cleanup();
     }
   });
+
+  test.todo('a Path B merge preserves agent Items in unchanged regions');
 });

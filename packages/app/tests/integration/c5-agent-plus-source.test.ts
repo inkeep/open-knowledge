@@ -215,4 +215,6 @@ describe('C5: agent write + concurrent source mode', () => {
       await client.cleanup();
     }
   });
+
+  test.todo('an agent markdown prepend reaches the fragment in the right order');
 });

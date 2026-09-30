@@ -288,6 +288,8 @@ describe('Server Observer A — XmlFragment → Y.Text', () => {
 
     cleanup();
   });
+
+  test.todo('a Path A multi-hunk diff whose first hunk changes length produces the correct Y.Text');
 });
 
 describe('Server Observer B — Y.Text → XmlFragment', () => {
@@ -1451,4 +1453,9 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
 
     cleanup();
   });
+
+  test.todo('each of several sequential remote writes refreshes the baseline');
+  test.todo(
+    'a remote delete refreshes the baseline, so a later local add does not resurrect the deleted content',
+  );
 });
