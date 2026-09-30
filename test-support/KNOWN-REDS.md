@@ -83,4 +83,6 @@ Use `test.todo('title')`.
 
 - `pnpm known-reds` prints the pins, the quarantines and the CI-keyed skips.
 - `--all` adds every test that does not run and every environment gate.
-- `--json` prints the full feed (`schemaVersion` 1).
+- `--json` prints the full feed (`schemaVersion` 2). Beyond the listing, it carries:
+  - `atoms` on each CI skip and environment gate: the facts its condition reads, following each name to the declaration visible where the gate sits. Each is `{ kind, name, text }`, and `kind` is `platform`, `arch`, `uid`, `env`, `ci`, `fs`, `import` or `runtime`. `runtime` covers what the scanner cannot resolve, such as a call to a helper, and also resolved reads of `process.versions` or `process.release`, which keep their full name.
+  - `titles` on every pin and quarantine, and on each other entry scoped to a test or describe: the enclosing describe titles, ending with the entry's own declaration title, so a describe-scoped gate ends with its describe's title. A title that is not a string literal appears as `{ nonLiteral: <source> }`.
