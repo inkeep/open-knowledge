@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 import { E2E_CI_EXCLUSIONS } from '../stress/e2e-ci-ledger';
 
 const APP_ROOT = join(import.meta.dirname, '..', '..');
@@ -12,13 +13,13 @@ const LEDGER_HINT =
 
 function listStressE2eFiles(): string[] {
   return readdirSync(STRESS_DIR)
-    .filter((name) => name.endsWith('.e2e.ts'))
+    .filter((name) => isTestOnlySourceFile(name, 'playwright'))
     .sort();
 }
 
 function nestedE2ePaths(relPaths: readonly string[]): string[] {
   return relPaths
-    .filter((p) => p.endsWith('.e2e.ts') && /[/\\]/.test(p))
+    .filter((p) => isTestOnlySourceFile(p, 'playwright') && /[/\\]/.test(p))
     .map((p) => p.replace(/\\/g, '/'))
     .sort();
 }
@@ -26,7 +27,9 @@ function nestedE2ePaths(relPaths: readonly string[]): string[] {
 function parseEnumeratedFiles(script: string): string[] {
   return script
     .split(/\s+/)
-    .filter((token) => token.startsWith('tests/stress/') && token.endsWith('.e2e.ts'))
+    .filter(
+      (token) => token.startsWith('tests/stress/') && isTestOnlySourceFile(token, 'playwright'),
+    )
     .map((token) => token.slice('tests/stress/'.length));
 }
 

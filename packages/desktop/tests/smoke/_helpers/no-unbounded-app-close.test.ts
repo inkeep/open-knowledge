@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
 import { stripCommentsAndStrings } from './parse-timeouts';
 
 const SMOKE_DIR = join(__dirname, '..');
@@ -21,7 +22,7 @@ interface SmokeFile {
 
 function listSmokeFiles(): SmokeFile[] {
   return readdirSync(SMOKE_DIR)
-    .filter((f) => f.endsWith('.e2e.ts'))
+    .filter((f) => isTestOnlySourceFile(f, 'playwright'))
     .sort()
     .map((f) => ({ abs: join(SMOKE_DIR, f), rel: f }));
 }

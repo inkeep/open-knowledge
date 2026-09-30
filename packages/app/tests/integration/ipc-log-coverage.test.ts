@@ -9,6 +9,7 @@ import {
   SyntaxKind,
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../..');
 const MAIN_ROOT = join(REPO_ROOT, 'packages/desktop/src/main');
@@ -17,7 +18,7 @@ export const IPC_LOG_ADJACENCY_MAX_STATEMENTS = 5;
 
 function isExcludedPath(absPath: string): boolean {
   if (absPath.endsWith('.d.ts')) return true;
-  if (/\.test\.tsx?$/.test(absPath)) return true;
+  if (isTestOnlySourceFile(absPath)) return true;
   if (absPath.includes('/node_modules/')) return true;
   if (absPath.includes('/dist/')) return true;
   if (absPath.endsWith('/ipc-log.ts')) return true;

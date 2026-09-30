@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const SERVER_SRC_ROOT = join(import.meta.dirname, '../../../server/src');
 const CLI_SRC_ROOT = join(import.meta.dirname, '../../../cli/src');
@@ -18,10 +19,7 @@ function listProductionTsFiles(dir: string): string[] {
     } else if (
       st.isFile() &&
       (entry.endsWith('.ts') || entry.endsWith('.tsx')) &&
-      !entry.endsWith('.test.ts') &&
-      !entry.endsWith('.test.tsx') &&
-      !entry.endsWith('.test-helper.ts') &&
-      !entry.endsWith('.type-tests.ts')
+      !isTestOnlySourceFile(entry)
     ) {
       out.push(full);
     }

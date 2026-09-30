@@ -2,6 +2,7 @@ import { type Dirent, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { ts } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..');
 const SCANNED_DIRS = [import.meta.dirname, join(import.meta.dirname, '..', 'conversion')];
@@ -27,7 +28,11 @@ function listScannedTestFiles(): ScannedFile[] {
         walk(abs);
         continue;
       }
-      if (!entry.isFile() || !entry.name.endsWith('.test.ts')) continue;
+      if (
+        !entry.isFile() ||
+        !(isTestOnlySourceFile(entry.name, 'vitest') && entry.name.endsWith('.ts'))
+      )
+        continue;
       out.push({ path: relative(REPO_ROOT, abs), source: readFileSync(abs, 'utf-8') });
     }
   }

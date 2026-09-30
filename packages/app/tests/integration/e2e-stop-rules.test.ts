@@ -1,3 +1,4 @@
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 /**
  * Selection-halo chrome comes from plugin state and never from the `:has()` cascade, and this
  * suite is the mechanical guard for that ban (precedent #34).
@@ -78,7 +79,7 @@ function listAppSrcTsFiles(): FileLines[] {
       }
       if (!name.isFile()) continue;
       if (!name.name.endsWith('.ts') && !name.name.endsWith('.tsx')) continue;
-      if (name.name.endsWith('.test.ts') || name.name.endsWith('.test.tsx')) continue;
+      if (isTestOnlySourceFile(name.name)) continue;
       if (name.name.endsWith('.spec.ts') || name.name.endsWith('.spec.tsx')) continue;
       const source = readFileSync(abs, 'utf-8');
       out.push({
@@ -500,7 +501,7 @@ function collectMatches(
 
 describe('E2E STOP rule — zero allowlist', () => {
   const e2eTsFiles = listE2eTsFiles();
-  const e2eFiles = e2eTsFiles.filter((file) => file.path.endsWith('.e2e.ts'));
+  const e2eFiles = e2eTsFiles.filter((file) => isTestOnlySourceFile(file.path, 'playwright'));
 
   test('there are E2E files to check (sanity)', () => {
     expect(

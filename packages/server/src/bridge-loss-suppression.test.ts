@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 import {
   PAIRED_INTAKE_DETECTION,
   pairedIntakeDetectionMode,
@@ -13,12 +14,7 @@ import {
 const SRC_DIR = dirname(fileURLToPath(import.meta.url));
 
 function isProductionSource(name: string): boolean {
-  return (
-    name.endsWith('.ts') &&
-    !name.endsWith('.test.ts') &&
-    !name.endsWith('.test-helper.ts') &&
-    !name.endsWith('.d.ts')
-  );
+  return name.endsWith('.ts') && !isTestOnlySourceFile(name) && !name.endsWith('.d.ts');
 }
 
 function stripCommentLines(text: string): string {

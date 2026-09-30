@@ -666,6 +666,22 @@ The rule does NOT catch:
 
 Rule: [`lint-plugins/ok-rules/rules/no-sentinel-signal-target.mjs`](rules/no-sentinel-signal-target.mjs). Fixture: [`lint-plugins/ok-rules/__fixtures__/no-sentinel-signal-target.fixture.tsx`](__fixtures__/no-sentinel-signal-target.fixture.tsx). Test: [`lint-plugins/ok-rules/tests/no-sentinel-signal-target.uncached.test.mjs`](tests/no-sentinel-signal-target.uncached.test.mjs). See [PRECEDENTS.md #42](../../PRECEDENTS.md#custom-lint-enforcement-precedent-42) for the custom-rule convention.
 
+### `no-hand-rolled-test-file-suffix`
+
+Scanners classify test-only TypeScript through [`isTestOnlySourceFile`](../../test-support/test-only-source-file.mjs). Its [predicate tests](../../test-support/test-only-source-file.uncached.test.mjs) pin the supported naming families and direct Node import. Local suffix checks omitted helpers and type checks and caused false production-code findings. This section is the canonical scanner rule; keep it and the implementation aligned when either changes.
+
+The default predicate includes Vitest tests, test helpers, type checks and Playwright files. Pass `vitest`, `helper`, `typecheck` or `playwright` when selecting one kind. A scanner selecting runnable tests must retain its runner and extension limits; test-only does not mean runnable by Vitest. The `.uncached.test.ts` form is already covered by `.test.ts`. TSX variants share their TS family.
+
+The rule flags literal suffix checks with `endsWith` or `includes`, test-kind infix checks with `includes`, and direct literal suffix regexes used by `test`, `exec`, `match` or `search`. It recognizes static templates and computed method names. It leaves extension checks, full basenames, glob declarations, source-text extraction, regex replacement, and mixed JavaScript/TypeScript runner-discovery regexes alone. It does not trace aliases, computed suffixes, hoisted regexes or arbitrary equivalent regex expressions.
+
+Included: `**/*.ts`, `**/*.tsx`, `**/*.mts`, `**/*.cts`, `**/*.js`, `**/*.jsx`, `**/*.mjs`, `**/*.cjs`. Excluded: `test-support/test-only-source-file.mjs`, `lint-plugins/no-comments/portability.test.mjs`.
+
+The shared module owns the definition. The portability test inventories only the sibling dependency-free `.mjs` implementation modules; it does not classify TypeScript, and its test-file exclusion remains local. Scanners that deliberately inspect test helpers retain that scope rather than inheriting the production default.
+
+The fixture pairs 15 violations with adjacent negatives. The self-test also plants a check under `scripts/` and invokes the real lint configuration, verifies the shared-predicate replacement passes, and removes the planted file. The rule and its self-test run in the existing lint and uncached test jobs.
+
+Rule: [`no-hand-rolled-test-file-suffix.mjs`](rules/no-hand-rolled-test-file-suffix.mjs). Fixture: [`no-hand-rolled-test-file-suffix.fixture.tsx`](__fixtures__/no-hand-rolled-test-file-suffix.fixture.tsx). Test: [`no-hand-rolled-test-file-suffix.uncached.test.mjs`](tests/no-hand-rolled-test-file-suffix.uncached.test.mjs).
+
 ## Suppression
 
 Inline `// oxlint-disable-next-line` comments silence individual diagnostics. The form names the plugin, the rule and the reason:

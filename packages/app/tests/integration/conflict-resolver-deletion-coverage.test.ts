@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const APP_SRC = join(import.meta.dir, '..', '..', 'src');
 const RESOLVER_PATH = join(APP_SRC, 'components', 'ConflictResolver.tsx');
@@ -12,12 +13,7 @@ function* walkTsx(dir: string): Generator<string> {
     const stat = statSync(full);
     if (stat.isDirectory()) {
       yield* walkTsx(full);
-    } else if (
-      (entry.endsWith('.ts') || entry.endsWith('.tsx')) &&
-      !entry.endsWith('.test.ts') &&
-      !entry.endsWith('.test.tsx') &&
-      !entry.endsWith('.dom.test.tsx')
-    ) {
+    } else if ((entry.endsWith('.ts') || entry.endsWith('.tsx')) && !isTestOnlySourceFile(entry)) {
       yield full;
     }
   }

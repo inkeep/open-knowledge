@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const SERVER_SRC_ROOT = join(import.meta.dirname, '../../../server/src');
 const API_EXT_PATH = join(SERVER_SRC_ROOT, 'api-extension.ts');
@@ -63,7 +64,7 @@ function listProductionTsFiles(dir: string): string[] {
     const st = statSync(full);
     if (st.isDirectory()) {
       out.push(...listProductionTsFiles(full));
-    } else if (st.isFile() && entry.endsWith('.ts') && !entry.endsWith('.test.ts')) {
+    } else if (st.isFile() && entry.endsWith('.ts') && !isTestOnlySourceFile(entry)) {
       out.push(full);
     }
   }

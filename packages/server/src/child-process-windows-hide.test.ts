@@ -9,6 +9,7 @@ import {
   type SourceFile,
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 import { withHiddenWindowsConsole } from './child-process-windows-hide.ts';
 
 const SERVER_SRC_DIR = import.meta.dir;
@@ -25,11 +26,7 @@ function collectSourceFiles(dir: string): string[] {
       out.push(...collectSourceFiles(abs));
       continue;
     }
-    if (
-      entry.name.endsWith('.ts') &&
-      !entry.name.endsWith('.test.ts') &&
-      !entry.name.endsWith('.test-helper.ts')
-    ) {
+    if (entry.name.endsWith('.ts') && !isTestOnlySourceFile(entry.name)) {
       out.push(abs);
     }
   }

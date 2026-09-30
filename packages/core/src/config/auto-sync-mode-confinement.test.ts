@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const ALLOWED_READERS = new Set([
   'packages/core/src/config/auto-sync-mode.ts',
@@ -32,7 +33,7 @@ function* sourceFiles(dir: string): Generator<string> {
       yield* sourceFiles(full);
     } else if (
       (entry.name.endsWith('.ts') || entry.name.endsWith('.tsx')) &&
-      !entry.name.includes('.test.') &&
+      !isTestOnlySourceFile(entry.name) &&
       !entry.name.includes('test-helper')
     ) {
       yield full;

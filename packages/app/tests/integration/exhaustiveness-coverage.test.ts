@@ -10,6 +10,7 @@ import {
   SyntaxKind,
 } from 'ts-morph';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const PROBLEM_TYPE_LABELS: ReadonlySet<string> = new Set(ProblemTypeSchema.options);
 
@@ -58,8 +59,7 @@ const SCAN_ROOTS = [
 
 function isExcludedPath(absPath: string): boolean {
   if (absPath.endsWith('.d.ts')) return true;
-  if (/\.test\.tsx?$/.test(absPath)) return true;
-  if (/\.type-tests\.tsx?$/.test(absPath)) return true;
+  if (isTestOnlySourceFile(absPath)) return true;
   if (absPath.includes('/node_modules/')) return true;
   if (absPath.includes('/dist/')) return true;
   return false;

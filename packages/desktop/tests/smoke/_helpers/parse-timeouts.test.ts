@@ -2,6 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'n
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import { afterAll, afterEach, assert, beforeAll, describe, expect, test, vi } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
 import { ONE_LAUNCH_AND_ITS_READINESS_VERDICT_MS, PACKAGED_APP_ENV } from './launch-desktop';
 import { BOOT_LOG_POLL_MS, readinessGiveUpBoundMs } from './launch-readiness';
 import {
@@ -696,7 +697,9 @@ describe('a test title holding another quote kind is audited once, and whole', (
 
   test('every smoke test whose title holds another quote kind is audited', () => {
     const quoteTitled: DeclaredTest[] = [];
-    for (const name of readdirSync(SMOKE_SPEC_DIR).filter((file) => file.endsWith('.e2e.ts'))) {
+    for (const name of readdirSync(SMOKE_SPEC_DIR).filter((file) =>
+      isTestOnlySourceFile(file, 'playwright'),
+    )) {
       const file = join(SMOKE_SPEC_DIR, name);
       const src = readFileSync(file, 'utf8');
       const stripped = stripCommentsAndStrings(src);

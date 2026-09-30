@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../test-support/test-only-source-file.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, '..');
@@ -23,7 +24,11 @@ function listScannedTestFiles(): FileLines[] {
         walk(abs);
         continue;
       }
-      if (!entry.isFile() || !entry.name.endsWith('.test.ts')) continue;
+      if (
+        !entry.isFile() ||
+        !(isTestOnlySourceFile(entry.name, 'vitest') && entry.name.endsWith('.ts'))
+      )
+        continue;
       if (entry.name === SELF_BASENAME) continue;
       out.push({
         path: relative(PACKAGE_ROOT, abs),

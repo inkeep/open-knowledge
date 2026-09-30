@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, type Stats, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 import { getRegisteredDescriptors } from '../../src/editor/registry/index.ts';
 
 const APP_ROOT = resolve(import.meta.dirname, '../..');
@@ -28,9 +29,7 @@ function* walkTestFiles(dir: string): Generator<string> {
       yield* walkTestFiles(full);
     } else if (
       entry.isFile() &&
-      (entry.name.endsWith('.test.ts') ||
-        entry.name.endsWith('.test.tsx') ||
-        entry.name.endsWith('.e2e.ts'))
+      (isTestOnlySourceFile(entry.name, 'vitest') || isTestOnlySourceFile(entry.name, 'playwright'))
     ) {
       yield full;
     }

@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../test-support/test-only-source-file.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = join(__dirname, '..', '..');
@@ -85,7 +86,7 @@ describe('loopback bind discipline (app test sources)', () => {
     expect(files.length).toBeGreaterThan(0);
     expect(files.some((f) => f.path.endsWith('integration/test-harness.ts'))).toBe(true);
     expect(files.some((f) => f.path.endsWith('_helpers/server-process.ts'))).toBe(true);
-    expect(files.some((f) => f.path.endsWith('.e2e.ts'))).toBe(true);
+    expect(files.some((f) => isTestOnlySourceFile(f.path, 'playwright'))).toBe(true);
   });
 
   test('every .listen( call binds an explicit loopback host literal', () => {

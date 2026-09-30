@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { describe, expect, test } from 'vitest';
+import { isTestOnlySourceFile } from '../../../../../test-support/test-only-source-file.mjs';
 
 const SRC_DIR = new URL('../..', import.meta.url).pathname;
 
@@ -29,7 +30,7 @@ function listSourceFilesRecursive(dir: string): string[] {
       out.push(...listSourceFilesRecursive(full));
     } else {
       if (!entry.name.endsWith('.tsx') && !entry.name.endsWith('.ts')) continue;
-      if (entry.name.endsWith('.test.ts') || entry.name.endsWith('.test.tsx')) continue;
+      if (isTestOnlySourceFile(entry.name)) continue;
       out.push(full);
     }
   }
@@ -68,7 +69,7 @@ describe('AC9: single outbound dispatch entry point — every src directory exce
     const dir = join(SRC_DIR, 'components/handoff');
     expect(statSync(dir).isDirectory()).toBe(true);
     const files = readdirSync(dir).filter(
-      (n) => (n.endsWith('.ts') || n.endsWith('.tsx')) && !n.includes('.test.'),
+      (n) => (n.endsWith('.ts') || n.endsWith('.tsx')) && !isTestOnlySourceFile(n),
     );
     const importFound = files.some((name) => {
       const text = readFileSync(join(dir, name), 'utf-8');
@@ -81,7 +82,7 @@ describe('AC9: single outbound dispatch entry point — every src directory exce
     const dir = join(SRC_DIR, 'lib/handoff');
     expect(statSync(dir).isDirectory()).toBe(true);
     const files = readdirSync(dir).filter(
-      (n) => (n.endsWith('.ts') || n.endsWith('.tsx')) && !n.includes('.test.'),
+      (n) => (n.endsWith('.ts') || n.endsWith('.tsx')) && !isTestOnlySourceFile(n),
     );
     expect(files.length).toBeGreaterThan(0);
   });
