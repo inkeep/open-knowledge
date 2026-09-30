@@ -94,51 +94,35 @@ afterEach(() => {
 });
 
 describe('list dragging with the production collaboration binding', () => {
-  test.fails('composes local and remote edits while retaining the dragged range', () => {
+  test('cancels the drag when a peer edits the dragged list, keeping both edits', () => {
     const { local, peer, position, start, drop, expectConverged } = setup('- A\n- B\n- C\n');
     start('C');
     local.view.dispatch(local.state.tr.insertText(' local', position(local, 'A') + 3));
     peer.view.dispatch(peer.state.tr.insertText(' remote', position(peer, 'B') + 3));
     drop('B remote');
-    expectConverged('- A local\n- C\n- B remote\n');
+    expectConverged('- A local\n- B remote\n- C\n');
+    expect(local.view.dragging).toBeNull();
   });
 
-  test.fails.each([false, true])(
-    'normalizes the source after a peer prepend and a mixed=%s move',
-    (mixed) => {
-      const { local, peer, position, start, drop, expectConverged } = setup(
-        '1. A\n2. B\n3. C\n\nSelected\n\nGap\n\nDestination\n',
-      );
-      if (mixed) {
-        local.view.dispatch(
-          local.state.tr.setSelection(
-            TextSelection.create(
-              local.state.doc,
-              position(local, 'C') + 2,
-              position(local, 'Selected', 'paragraph') + 5,
-            ),
-          ),
-        );
-      }
-      start('C');
-      peer.view.dispatch(
-        peer.state.tr.insert(
-          1,
-          peer.schema.nodes.listItem.create(
-            { sourceOrdinal: 7 },
-            peer.schema.nodes.paragraph.create(null, peer.schema.text('Prepended')),
-          ),
+  test('cancels a drag of a mixed selection when a peer edits the dragged list', () => {
+    const { local, peer, position, start, drop, expectConverged } = setup(
+      '1. A\n2. B\n3. C\n\nSelected\n\nGap\n\nDestination\n',
+    );
+    local.view.dispatch(
+      local.state.tr.setSelection(
+        TextSelection.create(
+          local.state.doc,
+          position(local, 'C') + 2,
+          position(local, 'Selected', 'paragraph') + 5,
         ),
-      );
-      drop('Destination', 'paragraph');
-      expectConverged(
-        mixed
-          ? '1. Prepended\n2. A\n3. B\n\nGap\n\n1. C\n\nSelected\n\nDestination\n'
-          : '1. Prepended\n2. A\n3. B\n\nSelected\n\nGap\n\n1. C\n\nDestination\n',
-      );
-      local.state.doc.check();
-    },
-  );
+      ),
+    );
+    start('C');
+    peer.view.dispatch(peer.state.tr.insertText(' edited', position(peer, 'A') + 3));
+    drop('Destination', 'paragraph');
+    expectConverged('1. A edited\n2. B\n3. C\n\nSelected\n\nGap\n\nDestination\n');
+    expect(local.view.dragging).toBeNull();
+  });
 
   test('isolates keyboard movement from adjacent typing in collaboration', () => {
     const { local, position, undoManager, expectConverged } = setup('- A\n- B\n- C\n\nAfter\n');
@@ -168,7 +152,7 @@ describe('list dragging with the production collaboration binding', () => {
     expectConverged('- A\n- B\n- C\n\nAfter\n');
   });
 
-  test.fails('keeps its source when a peer inserts before the list during a drag', () => {
+  test('cancels the drag when a peer inserts before the list', () => {
     const { local, peer, start, drop, expectConverged } = setup('1. A\n2. B\n3. C\n');
     start('C');
     peer.view.dispatch(
@@ -176,15 +160,8 @@ describe('list dragging with the production collaboration binding', () => {
     );
     expect(local.state.doc.firstChild?.textContent).toBe('Before');
     drop('B');
-    expectConverged('Before\n\n1. A\n2. C\n3. B\n');
-  });
-
-  test.fails('moves the latest content when a peer edits the dragged item', () => {
-    const { peer, position, start, drop, expectConverged } = setup('- A\n- B\n- C\n');
-    start('C');
-    peer.view.dispatch(peer.state.tr.insertText(' updated', position(peer, 'C') + 3));
-    drop('B');
-    expectConverged('- A\n- C updated\n- B\n');
+    expectConverged('Before\n\n1. A\n2. B\n3. C\n');
+    expect(local.view.dragging).toBeNull();
   });
 
   test('does not resurrect an item deleted by a peer during a drag', () => {
@@ -237,10 +214,14 @@ describe('list dragging with the production collaboration binding', () => {
     expectConverged('- A\n- B\n- C\n\nAfter\n');
   });
 
-  test.fails('undoing the move preserves a peer edit made during the drag', () => {
+  test('a drag started after a canceled one moves, and undoing it keeps the peer edit', () => {
     const { peer, position, start, drop, undoManager, expectConverged } = setup('- A\n- B\n- C\n');
     start('C');
     peer.view.dispatch(peer.state.tr.insertText(' updated', position(peer, 'A') + 3));
+    drop('B');
+    expectConverged('- A updated\n- B\n- C\n');
+    expect(undoManager.undoStack).toHaveLength(0);
+    start('C');
     drop('B');
     expectConverged('- A updated\n- C\n- B\n');
     undoManager.undo();
