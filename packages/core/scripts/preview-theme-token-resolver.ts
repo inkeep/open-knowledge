@@ -14,7 +14,7 @@
  *     `scripts/generate-preview-theme-tokens.ts`)
  *
  * Drift between the parsed CSS and the committed constant is caught by
- * `packages/core/src/constants/preview-theme-tokens.test.ts`.
+ * `packages/core/src/constants/preview-theme-tokens.uncached.test.ts`.
  *
  * Node-only — uses `node:fs` and the `culori` colorspace library. Mirrors the
  * sibling `chrome-resolver.ts` and reuses its exact-match block scanner.
@@ -183,7 +183,7 @@ export function renderPreviewThemeTokensModule(tokens: ResolvedPreviewToken[]): 
  *     pnpm exec tsx packages/core/scripts/generate-preview-theme-tokens.ts
  *
  * Drift between this file and the CSS is caught by
- * \`preview-theme-tokens.test.ts\` (re-resolves from globals.css).
+ * \`preview-theme-tokens.uncached.test.ts\` (re-resolves from globals.css).
  */
 
 export interface PreviewThemeToken {

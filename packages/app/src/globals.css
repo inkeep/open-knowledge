@@ -3335,7 +3335,7 @@ button:active:not(:disabled) {
      contrast-gated against the respective --background. These tokens are
      injected into every preview iframe via the generated PREVIEW_THEME_TOKENS
      constant; the .dark block below MUST stay in sync — drift between these
-     blocks and the constant is caught by preview-theme-tokens.test.ts. */
+     blocks and the constant is caught by preview-theme-tokens.uncached.test.ts. */
   --chart-1: oklch(0.62 0.19 259);
   --chart-2: oklch(0.58 0.14 145);
   --chart-3: oklch(0.62 0.15 70);
@@ -3459,7 +3459,7 @@ button:active:not(:disabled) {
   --ok-comment-hue: rgb(96 165 250);
   /* Dark-mode chart palette — same hue family as the :root block above,
      lightness lifted for legibility on the dark --background. Keep in sync
-     with :root --chart-* and PREVIEW_THEME_TOKENS (preview-theme-tokens.test.ts). */
+     with :root --chart-* and PREVIEW_THEME_TOKENS (preview-theme-tokens.uncached.test.ts). */
   --chart-1: oklch(0.72 0.14 259);
   --chart-2: oklch(0.73 0.13 145);
   --chart-3: oklch(0.77 0.14 70);

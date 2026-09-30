@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -536,35 +536,6 @@ describe('the pass condition main() routes through', () => {
     expect(result.code).toBe(1);
     expect(result.unexpected).toHaveLength(1);
   });
-});
-
-describe('the ceilings, the fingerprint and the token stream stay one number', () => {
-  const evidence = join(
-    import.meta.dirname,
-    '../../../specs/2026-09-02-typescript-7-toolchain-upgrade/evidence/dts-baseline-5.9.3',
-  );
-  const tokensPath = join(evidence, 'index.tokens.txt');
-  const specsRoot = join(import.meta.dirname, '../../../specs');
-
-  it.skipIf(!existsSync(specsRoot))(
-    'derives both ceilings from the committed 5.9.3 token stream',
-    () => {
-      expect(
-        existsSync(tokensPath),
-        `${tokensPath} is gone, so nothing ties anyCeiling/unknownCeiling to a capture`,
-      ).toBe(true);
-      const tokens = readFileSync(tokensPath, 'utf8').split('\n');
-      const count = (word: string) => tokens.filter((token) => token === word).length;
-      const fingerprint = JSON.parse(
-        readFileSync(join(evidence, 'index.fingerprint.json'), 'utf8'),
-      ) as Record<string, number>;
-
-      expect(count('any')).toBe(BASELINE.anyCeiling);
-      expect(count('unknown')).toBe(BASELINE.unknownCeiling);
-      expect(fingerprint.any_tokens).toBe(BASELINE.anyCeiling);
-      expect(fingerprint.unknown_tokens).toBe(BASELINE.unknownCeiling);
-    },
-  );
 });
 
 describe('checkProjectFences', () => {

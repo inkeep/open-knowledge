@@ -78,7 +78,7 @@ describe('scope membership', () => {
     'packages/desktop/scripts/afterPack.mjs',
     'packages/app/src/build/app-version.ts',
     'packages/app/src/build/rejection-loop-guard-script.js',
-    'packages/desktop/tests/unit/packaged-report-path.test.mjs',
+    'packages/desktop/tests/unit/packaged-report-path.uncached.test.mjs',
     'packages/app/tests/perf/fixtures/cache-regime-rotation/vault.ts',
     'packages/core/src/markdown/fixtures/index.ts',
     'test-support/vitest.base.ts',

@@ -4,10 +4,11 @@ import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { TestProject } from 'vitest/node';
 import { gitCleanEnv } from '../scripts/git-clean-env.mjs';
-import { UNCACHED_TEST_GLOBS, UNCACHED_TIER_CONFIG } from './uncached-tier';
+import { EXTENSIONS, isUncachedTestFile, UNCACHED_TIER_CONFIG } from './uncached-tier';
 
 const OK_ROOT = fileURLToPath(new URL('..', import.meta.url));
 const RECONCILED = Symbol.for('open-knowledge.uncached-tier.reconciled');
+const TEST_NAME = new RegExp(`\\.(?:test|e2e)\\.(?:${EXTENSIONS.join('|')})$`);
 
 export type UncachedTierProject = { name: string; dir: string; collected: string[] };
 
@@ -21,16 +22,18 @@ export function listUncachedTestFiles(root: string): string[] {
       '--others',
       '--exclude-standard',
       '--',
-      ...UNCACHED_TEST_GLOBS.map((glob) => `:(glob)${glob}`),
+      ':(glob)**/*.uncached.*',
     ],
     { cwd: root, encoding: 'utf8', env: gitCleanEnv(), windowsHide: true },
   );
   if (listed.error || listed.status !== 0) {
     throw new Error(
-      `${UNCACHED_TIER_CONFIG}: git ls-files could not list the suffixed test files (${listed.error?.message ?? listed.stderr.trim()}), so the tier cannot show that it runs every one of them. Run it from a git work tree.`,
+      `${UNCACHED_TIER_CONFIG}: git ls-files could not list the test files named for the uncached tier (${listed.error?.message ?? listed.stderr.trim()}), so the tier cannot show that it runs every one of them. Run it from a git work tree.`,
     );
   }
-  return listed.stdout.split('\0').filter((path) => path !== '' && existsSync(join(root, path)));
+  return listed.stdout
+    .split('\0')
+    .filter((path) => TEST_NAME.test(path) && existsSync(join(root, path)));
 }
 
 function owningPackage(root: string, path: string): string {
@@ -49,12 +52,18 @@ export function uncachedTierProblems(
     for (const path of collected) collectors.set(path, [...(collectors.get(path) ?? []), name]);
   }
   const problems: string[] = [];
-  if (listed.length === 0) {
+  if (!listed.some(isUncachedTestFile)) {
     problems.push(
       'git lists no file with the .uncached.test suffix, so the tier would pass having run nothing.',
     );
   }
   for (const path of listed) {
+    if (!isUncachedTestFile(path)) {
+      problems.push(
+        `${path} names the uncached tier, but .uncached.test does not end its name, so no project here collects it and a cached tier may run it instead. Put .uncached.test last, with any other infix ahead of it, or drop .uncached. if the test reads only files inside its package's key.`,
+      );
+      continue;
+    }
     const names = collectors.get(path) ?? [];
     if (names.length > 1) {
       problems.push(
@@ -103,7 +112,7 @@ export default async function reconcile(project: TestProject): Promise<void> {
   );
   const problems = uncachedTierProblems(OK_ROOT, listed, projects);
   console.log(
-    `uncached tier: ${listed.length} suffixed test files listed by git, ${new Set(projects.flatMap(({ collected }) => collected)).size} collected (${projects
+    `uncached tier: ${listed.filter(isUncachedTestFile).length} suffixed test files listed by git, ${new Set(projects.flatMap(({ collected }) => collected)).size} collected (${projects
       .map(({ name, collected }) => `${name}: ${collected.length}`)
       .join(', ')})`,
   );

@@ -18,13 +18,13 @@ const MIN_HUE_SEPARATION_DEG = 25;
 
 function tokenByName(name: string): { name: string; light: string; dark: string } {
   const t = PREVIEW_THEME_TOKENS.find((x) => x.name === name);
-  if (!t) throw new Error(`preview-theme-tokens.test: missing token ${name}`);
+  if (!t) throw new Error(`preview-theme-tokens.uncached.test: missing token ${name}`);
   return t;
 }
 
 function oklchHue(value: string): number {
   const m = value.match(/^oklch\(\s*[\d.]+\s+[\d.]+\s+([\d.]+)/);
-  if (!m) throw new Error(`preview-theme-tokens.test: not an oklch literal: ${value}`);
+  if (!m) throw new Error(`preview-theme-tokens.uncached.test: not an oklch literal: ${value}`);
   return Number(m[1]);
 }
 

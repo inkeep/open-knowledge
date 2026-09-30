@@ -1,4 +1,4 @@
-const EXTENSIONS = ['ts', 'tsx', 'mjs'];
+export const EXTENSIONS = ['ts', 'tsx', 'mjs'];
 
 export const UNCACHED_TIER_CONFIG = 'vitest.uncached.config.ts';
 

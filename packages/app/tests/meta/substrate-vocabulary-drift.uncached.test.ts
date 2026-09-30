@@ -14,7 +14,7 @@ const ROOTS = [
     join(PACKAGES_ROOT, pkg, 'tests'),
   ]),
 ];
-const SELF_FILE = resolve(import.meta.dirname, 'substrate-vocabulary-drift.test.ts');
+const SELF_FILE = resolve(import.meta.dirname, 'substrate-vocabulary-drift.uncached.test.ts');
 
 const TEST_FIXTURE_KNOWN_NONREGISTERED: Record<string, string> = {
   mermaid:
@@ -86,7 +86,7 @@ describe('substrate vocabulary drift — every test reference must resolve', () 
           `  - ${v.file}:${v.line} references data-component-type="${v.name}" — not registered. ` +
           `Resolution: (a) update the test reference to a registered substrate name; ` +
           `(b) add "${v.name}" to TEST_FIXTURE_KNOWN_NONREGISTERED in ` +
-          `tests/meta/substrate-vocabulary-drift.test.ts with a comment naming the production source.`,
+          `tests/meta/substrate-vocabulary-drift.uncached.test.ts with a comment naming the production source.`,
       );
       throw new Error(
         `Substrate-vocabulary drift detected (${violations.length} reference${
