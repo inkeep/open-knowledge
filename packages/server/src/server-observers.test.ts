@@ -1455,7 +1455,4 @@ describe('Observer A routing — Path B fires iff Y.Text holds unabsorbed change
   });
 
   test.todo('each of several sequential remote writes refreshes the baseline');
-  test.todo(
-    'a remote delete refreshes the baseline, so a later local add does not resurrect the deleted content',
-  );
 });
