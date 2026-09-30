@@ -1,12 +1,10 @@
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { updateYFragment } from '@tiptap/y-tiptap';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import type * as Y from 'yjs';
 import { expectStable } from './expect-stable.test-helper.ts';
-import { mdManager, schema } from './md-manager.ts';
 import { createServer } from './server-factory.ts';
 import { waitWithinTestBudget } from './wait-within-test-budget.test-helper.ts';
 
@@ -36,13 +34,12 @@ async function setupFixture(): Promise<Fixture> {
   };
 }
 
-function replaceFragmentFromMarkdown(doc: Y.Doc, markdown: string): void {
-  const json = mdManager.parseWithFallback(markdown);
-  const pmNode = schema.nodeFromJSON(json);
-  const xmlFragment = doc.getXmlFragment('default');
+function replaceSource(doc: Y.Doc, markdown: string): void {
+  const ytext = doc.getText('source');
   doc.transact(
     () => {
-      updateYFragment(doc, xmlFragment, pmNode, { mapping: new Map(), isOMark: new Map() });
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, markdown);
     },
     { source: 'connection', connection: { context: { principalId: 'principal-test-tripwire' } } },
   );
@@ -83,12 +80,10 @@ describe('persistence onStoreDocument tripwire', () => {
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
 
-      const baseChildren = serverDoc.getXmlFragment('default').length;
-      expect(baseChildren).toBeGreaterThan(0);
+      expect(serverDoc.getText('source').toString()).toBe(baselineBytes);
 
-      replaceFragmentFromMarkdown(serverDoc, doubledMarkdown);
-      const doubledChildren = serverDoc.getXmlFragment('default').length;
-      expect(doubledChildren).toBe(baseChildren * 2);
+      replaceSource(serverDoc, doubledMarkdown);
+      expect(serverDoc.getText('source').toString()).toBe(doubledMarkdown);
 
       await waitWithinTestBudget(
         'an ok-persistence-duplication-blocked warning to be logged',
@@ -103,12 +98,6 @@ describe('persistence onStoreDocument tripwire', () => {
       await expectStable(`${docName}.md on disk`, () => readFileSync(docPath, 'utf-8'));
       expect(readFileSync(docPath, 'utf-8')).toBe(baselineBytes);
 
-      await waitWithinTestBudget(
-        `the ${docName} fragment to be rolled back to its baseline child count`,
-        () => serverDoc.getXmlFragment('default').length === baseChildren,
-        { timeoutMs: 5_000 },
-      );
-      expect(serverDoc.getXmlFragment('default').length).toBe(baseChildren);
       await waitWithinTestBudget(
         `the ${docName} source text to be rolled back to the baseline bytes`,
         () => serverDoc.getText('source').toString() === baselineBytes,
@@ -127,17 +116,8 @@ describe('persistence onStoreDocument tripwire', () => {
       expect(payload.reason).toBe('structural-duplication');
       expect(typeof payload.candidateBytes).toBe('number');
       expect(typeof payload.baseBytes).toBe('number');
-      expect(typeof payload.fragmentChildren).toBe('number');
       expect(new Set(Object.keys(payload))).toEqual(
-        new Set([
-          'event',
-          'doc.name',
-          'candidateBytes',
-          'baseBytes',
-          'fragmentChildren',
-          'copies',
-          'reason',
-        ]),
+        new Set(['event', 'doc.name', 'candidateBytes', 'baseBytes', 'copies', 'reason']),
       );
 
       conn.disconnect();
@@ -172,7 +152,7 @@ describe('persistence onStoreDocument tripwire', () => {
       expect(serverDoc).toBeDefined();
       if (!serverDoc) return;
 
-      replaceFragmentFromMarkdown(serverDoc, candidateMarkdown);
+      replaceSource(serverDoc, candidateMarkdown);
 
       const baselineSize = readFileSync(docPath, 'utf-8').length;
       await waitWithinTestBudget(

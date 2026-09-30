@@ -262,7 +262,9 @@ describe('M1 smoke', () => {
 
     const coreMembers = extractLiteralUnion(readFileSync(corePath, 'utf-8'), 'OkMenuAction');
     expect(coreMembers.size).toBeGreaterThan(0);
-    expect(coreMembers.size).toBe(37);
+    expect(coreMembers.size).toBe(39);
+    expect(coreMembers.has('undo')).toBe(true);
+    expect(coreMembers.has('redo')).toBe(true);
     expect(coreMembers.has('toggle-show-hidden-files')).toBe(true);
     expect(coreMembers.has('toggle-show-ok-folders')).toBe(true);
     expect(coreMembers.has('toggle-show-only-markdown-files')).toBe(true);

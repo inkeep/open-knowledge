@@ -173,7 +173,7 @@ interface VFilePlace {
   start?: { offset?: number };
 }
 
-function extractErrorOffset(err: unknown): number | undefined {
+export function extractErrorOffset(err: unknown): number | undefined {
   if (!err || typeof err !== 'object') return undefined;
   const e = err as { place?: VFilePlace; position?: VFilePlace };
 
@@ -186,7 +186,7 @@ function extractErrorOffset(err: unknown): number | undefined {
   return undefined;
 }
 
-interface Region {
+export interface Region {
   start: number;
   end: number;
 }
@@ -339,7 +339,7 @@ export function enumerateFallbackRegions(src: string): FallbackRegion[] {
   return regions;
 }
 
-function findFallbackRegion(src: string, errorOffset: number): Region {
+export function findFallbackRegion(src: string, errorOffset: number): Region {
   const regions = enumerateFallbackRegions(src);
 
   let best: FallbackRegion | null = null;

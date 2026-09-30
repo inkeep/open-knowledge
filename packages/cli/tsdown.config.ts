@@ -22,7 +22,7 @@ const nativeAddonNeverBundle = [
 // tsdown defaults to externalizing entries in `dependencies`, but the
 // desktop install ships no node_modules/ next to dist/cli.mjs, so bare
 // specifiers crash on resolve. Force-inline every pure-JS runtime dep in the
-// standalone (cli / parse-worker) build. Keep this in sync with
+// standalone cli build. Keep this in sync with
 // packages/cli/package.json `dependencies` (tsdown-bundle-coverage.test.ts
 // enforces).
 const alwaysBundlePureJsDeps = [
@@ -135,10 +135,7 @@ const sharedInputOptions: NonNullable<UserConfig['inputOptions']> = (options) =>
 // clobber the other's output.
 export default defineConfig([
   {
-    // `parse-worker` ships as its own entry so the server's parse pool can
-    // spawn `./parse-worker.mjs` next to dist/cli.mjs at runtime (the
-    // published install has no node_modules to resolve through).
-    entry: { cli: 'src/cli.ts', 'parse-worker': 'src/parse-worker.ts' },
+    entry: { cli: 'src/cli.ts' },
     unbundle: false,
     format: 'esm',
     dts: false,

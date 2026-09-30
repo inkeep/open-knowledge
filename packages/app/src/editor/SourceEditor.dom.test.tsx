@@ -24,6 +24,7 @@ import {
   __resetScrollRestoreCoordination,
   registerLandingScrollOwner,
 } from './scroll-restore-coordination';
+import { sharedUndoManagerFor } from './shared-undo-manager';
 import {
   clearPendingSourceNavigationsForTest,
   peekPendingSourceNavigation,
@@ -721,7 +722,7 @@ describe('SourceEditor undo after leaving and returning to source mode', () => {
     };
   }
 
-  test('Cmd+Z after returning to a tab rewritten while hidden leaves the document unchanged', async () => {
+  test('Cmd+Z after returning to a tab written to while hidden retracts your typing and keeps the other write', async () => {
     const { ytext, content, rerender } = await mountAndType('source-flip-activity-rewrite');
 
     await act(async () => rerender({ visible: false }));
@@ -730,12 +731,35 @@ describe('SourceEditor undo after leaving and returning to source mode', () => {
     });
     await act(async () => rerender({ visible: true }));
 
-    const beforeUndo = ytext.toString();
-    expect(beforeUndo).toBe('hello bug\n\n\nhello bug oops');
+    expect(ytext.toString()).toBe('hello bug\n\n\nhello bug oops');
 
     await pressUndo(content);
 
-    expect(ytext.toString()).toBe(beforeUndo);
+    expect(ytext.toString()).toBe(' oops');
+  });
+
+  test('Cmd+Z after returning to a tab rewritten whole while hidden cannot resurrect text you deleted', async () => {
+    const { ytext, content, rerender } = await mountAndType('source-flip-activity-full-rewrite');
+    const cm = EditorView.findFromDOM(content);
+    if (!cm) throw new Error('no CodeMirror view');
+    sharedUndoManagerFor(ytext).stopCapturing();
+    await act(async () => {
+      cm.dispatch({ changes: { from: 0, to: 6 }, userEvent: 'delete.backward' });
+    });
+    expect(ytext.toString()).toBe('bug\n\n\nhello bug');
+
+    await act(async () => rerender({ visible: false }));
+    await act(async () => {
+      ytext.doc?.transact(() => {
+        ytext.delete(0, ytext.length);
+        ytext.insert(0, 'rewritten while hidden');
+      }, FLIP_UNTRACKED_ORIGIN);
+    });
+    await act(async () => rerender({ visible: true }));
+
+    await pressUndo(content);
+
+    expect(ytext.toString()).toBe('rewritten while hidden');
   });
 
   test('Cmd+Z still undoes the pre-hide burst when nothing wrote while the tab was hidden', async () => {
@@ -749,7 +773,7 @@ describe('SourceEditor undo after leaving and returning to source mode', () => {
     expect(ytext.toString()).toBe('');
   });
 
-  test('Cmd+Z after an in-pane flip to Visual and back over a rewrite leaves the document unchanged', async () => {
+  test('Cmd+Z after an in-pane flip to Visual and back over another write retracts your typing and keeps that write', async () => {
     const { ytext, content, rerender } = await mountAndType('source-flip-inpane-rewrite');
 
     await act(async () => rerender({ visible: true, sourceMode: false }));
@@ -758,12 +782,11 @@ describe('SourceEditor undo after leaving and returning to source mode', () => {
     });
     await act(async () => rerender({ visible: true, sourceMode: true }));
 
-    const beforeUndo = ytext.toString();
-    expect(beforeUndo).toBe('hello bug\n\n\nhello bug oops');
+    expect(ytext.toString()).toBe('hello bug\n\n\nhello bug oops');
 
     await pressUndo(content);
 
-    expect(ytext.toString()).toBe(beforeUndo);
+    expect(ytext.toString()).toBe(' oops');
   });
 
   test('Cmd+Z still undoes the pre-flip burst after an in-pane flip with no rewrite', async () => {
@@ -775,5 +798,25 @@ describe('SourceEditor undo after leaving and returning to source mode', () => {
     await pressUndo(content);
 
     expect(ytext.toString()).toBe('');
+  });
+
+  test('leaving source mode ends the undo step, so typing before and after undoes separately', async () => {
+    const { ytext, content, rerender } = await mountAndType('source-flip-inpane-seal');
+
+    await act(async () => rerender({ visible: true, sourceMode: false }));
+    await act(async () => rerender({ visible: true, sourceMode: true }));
+    const cm = EditorView.findFromDOM(content);
+    if (!cm) throw new Error('no CodeMirror view');
+    await act(async () => {
+      cm.dispatch({
+        changes: { from: cm.state.doc.length, insert: ' tail' },
+        userEvent: 'input.type',
+      });
+    });
+    expect(ytext.toString()).toBe('hello bug\n\n\nhello bug tail');
+
+    await pressUndo(content);
+
+    expect(ytext.toString()).toBe('hello bug\n\n\nhello bug');
   });
 });

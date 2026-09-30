@@ -159,15 +159,18 @@ test.describe('typed URL + space — GFM autolink byte contract', () => {
     await expect(page.locator(LINK_CHIP)).toHaveCount(0);
   });
 
-  test('one undo removes only the mark — text intact, bytes re-escape', async ({ page }) => {
+  test('one undo retracts the typed URL; the derived mark writes no bytes, so it goes with it', async ({
+    page,
+  }) => {
     await page.keyboard.type('https://inkeep.com ');
     await waitForPmLink(page);
+    await expect.poll(() => getYText(page), { timeout: 5_000 }).toContain(URL_LITERAL);
+    expect(await getYText(page)).not.toContain('https\\://');
     await page.keyboard.press('ControlOrMeta+z');
     await expect
       .poll(() => pmLinkSnapshot(page), { timeout: 5_000 })
-      .toEqual({ hasLink: false, text: 'https://inkeep.com ' });
+      .toEqual({ hasLink: false, text: '' });
     await expect(page.locator(LINK_CHIP)).toHaveCount(0);
-    await page.keyboard.type('x');
-    await expect.poll(() => getYText(page), { timeout: 5_000 }).toBe('https\\://inkeep.com x\n');
+    await expect.poll(() => getYText(page), { timeout: 5_000 }).not.toContain('inkeep');
   });
 });

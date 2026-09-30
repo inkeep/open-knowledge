@@ -126,7 +126,6 @@ describe('T2: Multi-client fast restart', () => {
           docName,
           doc,
           ytext: doc.getText('source'),
-          fragment: doc.getXmlFragment('default'),
           provider: entry.provider,
           pauseSync: () => {
             throw new Error('unused');

@@ -2,7 +2,6 @@ import type { HocuspocusProvider } from '@hocuspocus/provider';
 import {
   type AgentFlashEntry,
   sharedExtensions as coreExtensions,
-  deriveIconColor,
   evictStaleEntries,
   FLASH_DEBOUNCE_MS,
   FLASH_DURATION_MS,
@@ -12,10 +11,8 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { t } from '@lingui/core/macro';
 import { type AnyExtension, Editor, type EditorOptions, Extension } from '@tiptap/core';
-import Collaboration from '@tiptap/extension-collaboration';
 import Placeholder from '@tiptap/extension-placeholder';
 import { EditorContent } from '@tiptap/react';
-import { initProseMirrorDoc, yCursorPlugin, ySyncPluginKey } from '@tiptap/y-tiptap';
 import { type FC, use, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { SelectionAnnouncer } from '@/components/editor/SelectionAnnouncer';
@@ -54,7 +51,6 @@ import { changedRangeIsOnScreen } from './agent-follow-scroll';
 import { applyLintFixes } from './apply-lint-fix.ts';
 import { getAwarenessHeartbeat } from './awareness-heartbeat-runtime';
 import { buildAwarenessUser } from './awareness-user';
-import { bindingStalenessGuardPlugin, type WedgeDetail } from './binding-staleness-guard';
 import { BubbleMenuBar } from './bubble-menu/BubbleMenuBar';
 import {
   createClipboardHtmlSerializer,
@@ -64,10 +60,11 @@ import {
   createHandlePaste,
 } from './clipboard/index.ts';
 import { useDocumentContext } from './DocumentContext';
+import { resolveEmbedAsset, subscribeEmbedAssets } from './embed-asset-index';
 import { isUserIntentOrigin } from './extensions/autonomous-fragment-edit.ts';
 import { createBareHtmlImageDecoration } from './extensions/bare-html-image-decoration';
 import { setEditorDocName } from './extensions/doc-context.ts';
-import { setEditorSourceMode } from './extensions/editor-mode-context.ts';
+import { getEditorSourceMode, setEditorSourceMode } from './extensions/editor-mode-context.ts';
 import { FrozenTableHeaders } from './extensions/frozen-table-headers.ts';
 import { MarkdownLintDecorations } from './extensions/markdown-lint-decorations.ts';
 import { sharedExtensions } from './extensions/shared.ts';
@@ -82,11 +79,17 @@ import {
   AGENT_INSERT_FLASH_ACTIVATION_MS,
   AGENT_INSERT_FLASH_MS,
   agentInsertFlashKey,
-  blockRangeToPositions,
-  computeChangedRange,
   createAgentInsertFlashPlugin,
 } from './plugins/agent-insert-flash';
+import { createRemoteCaretsPlugin } from './plugins/remote-carets';
 import { isUserIntentPmTransaction, requestPreviewTabPromotion } from './preview-tab-promotion';
+import {
+  createProjectionBinding,
+  fullProjection,
+  type ProjectionBinding,
+  setProjectionHidden,
+} from './projection-binding';
+import { blockRangeToPmRange } from './projection-coordinates';
 import { isScrollRestoreSuppressed, runScrollNavigation } from './scroll-restore-coordination';
 import { publishSelectionContext, selectionSnapshotFromWysiwyg } from './selection-context';
 import {
@@ -102,22 +105,7 @@ import { TableCellHandles } from './table-controls/TableCellHandles';
 import { attachTypingBurstDetector } from './typing-burst-detector';
 import { editorVisibleBand } from './utils/editor-visible-region';
 import { getEditorView } from './utils/get-editor-view';
-import { walkCurrencyExtension } from './walk-currency-extension';
-
-function renderCursor(user: Record<string, string>): HTMLElement {
-  const cursor = document.createElement('span');
-  cursor.classList.add('collaboration-cursor__caret');
-  cursor.style.borderColor = user.color;
-
-  const label = document.createElement('div');
-  label.classList.add('collaboration-cursor__label');
-  label.style.backgroundColor = user.color;
-  label.style.color = deriveIconColor(user.color);
-  label.textContent = user.name;
-  cursor.append(label);
-
-  return cursor;
-}
+import { getProjectionMarkdownManager } from './utils/md-singleton';
 
 interface AgentFlashState {
   state: 'idle' | 'editing' | 'settled';
@@ -197,8 +185,6 @@ function repairDetachedEditorContent(editor: Editor, portalTarget: HTMLElement):
   return true;
 }
 
-type ProsemirrorMapping = ReturnType<typeof initProseMirrorDoc>['mapping'];
-
 function buildClipboardState() {
   const mdManager = new MarkdownManager({ extensions: coreExtensions });
   return {
@@ -216,39 +202,11 @@ interface BuildEditorOptionsArgs {
   placeholder?: string;
   clipboard: ClipboardState;
   ctorStart: number;
-  prebuiltMapping?: ProsemirrorMapping;
-  onWedged?: (detail: WedgeDetail) => void;
-}
-
-interface PrewarmBoundCollaboration {
-  collaboration: AnyExtension;
-  guard: AnyExtension[];
-}
-
-function buildPrewarmBoundCollaboration(
-  provider: HocuspocusProvider,
-  prebuiltMapping: ProsemirrorMapping | undefined,
-): PrewarmBoundCollaboration {
-  if (!prebuiltMapping) {
-    return { collaboration: Collaboration.configure({ document: provider.document }), guard: [] };
-  }
-  return {
-    collaboration: Collaboration.configure({
-      document: provider.document,
-      ySyncOptions: { mapping: prebuiltMapping },
-    }),
-    guard: [
-      walkCurrencyExtension({
-        fragment: provider.document.getXmlFragment('default'),
-        docName: provider.configuration.name ?? '',
-      }),
-    ],
-  };
+  projection: ProjectionBinding;
 }
 
 export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[] {
-  const { provider, placeholder, prebuiltMapping, onWedged } = args;
-  const { collaboration, guard } = buildPrewarmBoundCollaboration(provider, prebuiltMapping);
+  const { provider, placeholder, projection } = args;
   return [
     ...sharedExtensions.map((ext) => {
       if (
@@ -268,42 +226,29 @@ export function buildExtensionList(args: BuildEditorOptionsArgs): AnyExtension[]
       showOnlyCurrent: true,
     }),
     SkillPathLinks.configure({ docName: provider.configuration.name ?? '' }),
-    collaboration,
+    projection.extension,
+    Extension.create({
+      name: 'collaborationCursor',
+      addProseMirrorPlugins() {
+        const awareness = provider.awareness;
+        if (!awareness) return [];
+        const { editor } = this;
+        return [
+          createRemoteCaretsPlugin({
+            ytext: provider.document.getText('source'),
+            awareness,
+            md: getProjectionMarkdownManager(),
+            isActive: () => !getEditorSourceMode(editor),
+          }),
+        ];
+      },
+    }),
     Extension.create({
       name: 'imageUploadDecoration',
       addProseMirrorPlugins() {
         return [uploadDecorationPlugin];
       },
     }),
-    Extension.create({
-      name: 'collaborationCursor',
-      addProseMirrorPlugins() {
-        const awareness = provider.awareness;
-        if (!awareness) {
-          throw new Error(
-            '[TiptapEditor] HocuspocusProvider has no awareness instance — cursor plugin cannot initialize',
-          );
-        }
-        return [
-          yCursorPlugin(awareness, {
-            cursorBuilder: renderCursor,
-          }),
-        ];
-      },
-    }),
-    Extension.create({
-      name: 'bindingStalenessGuard',
-      addProseMirrorPlugins() {
-        return [
-          bindingStalenessGuardPlugin({
-            fragment: provider.document.getXmlFragment('default'),
-            docName: provider.configuration.name ?? '',
-            onWedged: onWedged ?? (() => {}),
-          }),
-        ];
-      },
-    }),
-    ...guard,
     FrozenTableHeaders,
     MarkdownLintDecorations.configure({
       docName: provider.configuration.name ?? '',
@@ -362,7 +307,6 @@ interface BuildPatternDConstructorOptionsArgs {
   placeholder?: string;
   clipboard: ClipboardState;
   ctorStart: number;
-  onWedged?: (detail: WedgeDetail) => void;
 }
 
 type PatternDConstructorOptions = Partial<EditorOptions> & { element: null };
@@ -370,28 +314,28 @@ type PatternDConstructorOptions = Partial<EditorOptions> & { element: null };
 export function buildPatternDConstructorOptions(
   args: BuildPatternDConstructorOptionsArgs,
 ): PatternDConstructorOptions {
-  const { provider, placeholder, clipboard, ctorStart, onWedged } = args;
-  const fragment = provider.document.getXmlFragment('default');
-  const prebuiltMapping: ProsemirrorMapping = new Map();
+  const { provider, placeholder, clipboard, ctorStart } = args;
+  const projection = createProjectionBinding({
+    ytext: provider.document.getText('source'),
+    md: getProjectionMarkdownManager().withParseContext({
+      resolveEmbed: resolveEmbedAsset,
+      sourcePath: provider.configuration.name ?? '',
+    }),
+    subscribeEmbedAssets,
+  });
   const baseOptions = buildEditorOptions({
     provider,
     placeholder,
     clipboard,
     ctorStart,
-    prebuiltMapping,
-    onWedged,
+    projection,
   });
   const baseOnBeforeCreate = baseOptions.onBeforeCreate;
   return {
     ...baseOptions,
     onBeforeCreate: (props) => {
       baseOnBeforeCreate?.(props);
-      const { editor } = props;
-      const { doc, mapping } = initProseMirrorDoc(fragment, editor.schema);
-      mapping.forEach((node, key) => {
-        prebuiltMapping.set(key, node);
-      });
-      editor.options.content = doc.toJSON();
+      props.editor.options.content = projection.content;
     },
     element: null,
   };
@@ -411,7 +355,7 @@ export const TiptapEditor: FC<TiptapEditorProps> = ({
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const flashStateRef = useRef(INITIAL_FLASH_STATE);
   const identity = useIdentity();
-  const { principal, activeDocName, recycleDocument } = useDocumentContext();
+  const { principal, activeDocName } = useDocumentContext();
   const docName = provider.configuration.name ?? '';
 
   const [clipboard] = useState(buildClipboardState);
@@ -424,10 +368,6 @@ export const TiptapEditor: FC<TiptapEditorProps> = ({
         placeholder,
         clipboard,
         ctorStart,
-        onWedged: ({ externalSeq, appliedSeq }) => {
-          mark('ok/editor/binding-wedge-recycle', { docName, externalSeq, appliedSeq });
-          recycleDocument(docName);
-        },
       }),
     );
     return {
@@ -924,49 +864,53 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       );
     };
 
-    const onTransaction = ({ transaction }: { transaction: PMTransaction }) => {
-      if (!transaction.docChanged) return;
-      const syncMeta = transaction.getMeta(ySyncPluginKey) as
-        | { isChangeOrigin?: boolean }
-        | undefined;
-      if (syncMeta?.isChangeOrigin !== true) return;
-      if (!hasNewEntries(activityMap, Date.now() - AGENT_INSERT_FLASH_MS)) return;
-      if (docName !== activeDocName) return;
-      const fresh = freshestFlashEntry(activityMap, Date.now() - AGENT_INSERT_FLASH_MS);
-      if (fresh !== null && fresh.key === lastAgentFlashKeyRef.current) return;
-      const range = computeChangedRange(transaction.before, transaction.doc);
-      if (range === null) return;
-      const view = liveView();
-      if (view == null) return;
-      if (fresh !== null) lastAgentFlashKeyRef.current = fresh.key;
-      flashAndScroll(view, range.from, range.to);
-    };
-    editor.on('transaction', onTransaction);
-
-    const replayFromEntry = (): void => {
+    const flashEntry = (withinMs: number): void => {
       if (disposed || docName !== activeDocName) return;
       const view = liveView();
       if (view == null) return;
-      const fresh = freshestFlashEntry(activityMap, Date.now() - AGENT_INSERT_FLASH_ACTIVATION_MS);
+      const fresh = freshestFlashEntry(activityMap, Date.now() - withinMs);
       if (fresh === null || fresh.key === lastAgentFlashKeyRef.current) return;
       const blocks = fresh.entry.changedBlocks;
       if (blocks === undefined) return;
-      const range = blockRangeToPositions(view.state.doc, blocks.from, blocks.to);
+      const projection = fullProjection(view.state);
+      if (projection === null) return;
+      const range = blockRangeToPmRange(
+        projection,
+        getProjectionMarkdownManager(),
+        blocks.from,
+        blocks.to,
+      );
       if (range === null) return;
       lastAgentFlashKeyRef.current = fresh.key;
       flashAndScroll(view, range.from, range.to);
     };
+
+    const replayFromEntry = (): void => flashEntry(AGENT_INSERT_FLASH_ACTIVATION_MS);
     const activationRaf = requestAnimationFrame(replayFromEntry);
     const onSynced = (): void => {
       requestAnimationFrame(replayFromEntry);
     };
     provider.on('synced', onSynced);
 
+    /* STOP: the write and its `agent-flash` entry land in one Y transaction, so this observer
+       can run before the Y.Text observer has re-projected the document. The rAF hop is what
+       makes `fullProjection` the post-write projection rather than the pre-write one. */
+    let liveRaf: number | null = null;
+    const onActivity = (): void => {
+      if (liveRaf !== null) cancelAnimationFrame(liveRaf);
+      liveRaf = requestAnimationFrame(() => {
+        liveRaf = null;
+        flashEntry(AGENT_INSERT_FLASH_MS);
+      });
+    };
+    activityMap.observe(onActivity);
+
     return () => {
       disposed = true;
-      editor.off('transaction', onTransaction);
+      activityMap.unobserve(onActivity);
       provider.off('synced', onSynced);
       cancelAnimationFrame(activationRaf);
+      if (liveRaf !== null) cancelAnimationFrame(liveRaf);
       if (sweepTimeout !== null) clearTimeout(sweepTimeout);
       for (const timer of followUpTimers) clearTimeout(timer);
       editor.unregisterPlugin(agentInsertFlashKey);
@@ -1157,7 +1101,12 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
       awareness.setLocalState(null);
       return;
     }
+    /* STOP: this is a whole-object write and `cursor` is written by someone else -- the remote
+       caret plugin here, and yCollab in the source editor. Spreading the existing state is what
+       keeps a caret alive across a mode flip; replacing the object drops the field and the peer
+       loses the caret until its owner next moves. */
     awareness.setLocalState({
+      ...awareness.getLocalState(),
       user: buildAwarenessUser({ principal, identity }),
       mode: isSourceMode ? 'source' : 'wysiwyg',
     });
@@ -1169,8 +1118,10 @@ const TiptapEditorChrome: FC<TiptapEditorChromeProps> = ({
 
   useEffect(() => {
     setEditorSourceMode(editor, isSourceMode);
+    if (!editor.isDestroyed) setProjectionHidden(editor.state, isSourceMode);
     return () => {
       setEditorSourceMode(editor, false);
+      if (!editor.isDestroyed) setProjectionHidden(editor.state, false);
     };
   }, [editor, isSourceMode]);
 

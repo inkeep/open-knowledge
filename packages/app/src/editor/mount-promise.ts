@@ -10,12 +10,7 @@ import { mark } from '@/lib/perf';
 import { readNumericOverride } from '@/lib/perf/env-override';
 import { emitColdMountChild, finalizeColdMountSpan } from '@/lib/perf/otel-spans';
 import '@/lib/perf/scheduler-polyfill-shim';
-import {
-  mountTiptapEditor,
-  peekTiptap,
-  readEditorUndoManager,
-  type TiptapCacheEntry,
-} from './editor-cache';
+import { mountTiptapEditor, peekTiptap, type TiptapCacheEntry } from './editor-cache';
 
 interface ConstructedTiptapBundle {
   editor: Editor;
@@ -261,16 +256,11 @@ interface MountBodyParams {
   rejectFn: (error: Error) => void;
 }
 
-/**
- * Destroy a pre-mount editor with the same UndoManager-restore cleanup that `editor-cache.ts`
- * applies at park / evict (precedent #18(c) leak-cleanup).
- */
 function destroyPreMountEditor(
   docName: string,
   editor: Editor,
   stage: 'aborted' | 'mount-failed' | 'v2-register-failed' | 'backstop',
 ): void {
-  const undoManager = readEditorUndoManager(editor);
   try {
     editor.destroy();
   } catch (err) {
@@ -279,9 +269,6 @@ function destroyPreMountEditor(
       stage,
       message: err instanceof Error ? err.message : String(err),
     });
-  }
-  if (undoManager) {
-    undoManager.restore = undefined;
   }
 }
 

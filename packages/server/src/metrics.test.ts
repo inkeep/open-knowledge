@@ -11,8 +11,6 @@ import {
   incrementConflict,
   incrementMapDrivenSpliceApplied,
   incrementMapDrivenSpliceFallback,
-  incrementMapDrivenSpliceMemoHit,
-  incrementMapDrivenSpliceMemoSkip,
   incrementPark,
   incrementReconcile,
   incrementRescueBuffer,
@@ -122,29 +120,6 @@ describe('reconciliation metrics', () => {
     incrementReconcile();
     expect(snapshot.reconcileCount).toBe(1);
     expect(getMetrics().reconcileCount).toBe(2);
-  });
-
-  test('the map-driven splice memo counters accumulate and snapshot independently', () => {
-    resetMetrics();
-    incrementMapDrivenSpliceMemoHit();
-    incrementMapDrivenSpliceMemoSkip('narrowed');
-    incrementMapDrivenSpliceMemoSkip('narrowed');
-    incrementMapDrivenSpliceMemoSkip('entry-already-current');
-    const first = getMetrics();
-    expect(first.mapDrivenSpliceMemoHits).toBe(1);
-    expect(first.mapDrivenSpliceMemoSkips).toEqual({ narrowed: 2, 'entry-already-current': 1 });
-
-    incrementMapDrivenSpliceMemoHit();
-    incrementMapDrivenSpliceMemoSkip('position-not-numeric');
-    const second = getMetrics();
-    expect(second.mapDrivenSpliceMemoHits).toBe(2);
-    expect(second.mapDrivenSpliceMemoSkips).toEqual({
-      narrowed: 2,
-      'entry-already-current': 1,
-      'position-not-numeric': 1,
-    });
-    expect(first.mapDrivenSpliceMemoHits).toBe(1);
-    expect(first.mapDrivenSpliceMemoSkips).toEqual({ narrowed: 2, 'entry-already-current': 1 });
   });
 
   test('resetMetrics clears all counters', () => {

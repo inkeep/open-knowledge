@@ -67,7 +67,7 @@ export type ParsedCheckpoint =
       kind: 'persistence-duplication-reset';
       docName: string | null;
       size: number | null;
-      metadata: { copies: number; fragmentChildren: number };
+      metadata: { copies: number; fragmentChildren?: number };
     }
   | {
       kind: 'persistence-divergence-realign';
@@ -237,17 +237,16 @@ export function parseCheckpoint(body: string): ParsedCheckpoint | null {
     }
     if (kind === 'persistence-duplication-reset') {
       const m = metadata as { copies?: unknown; fragmentChildren?: unknown };
-      if (
-        typeof m.copies === 'number' &&
-        Number.isFinite(m.copies) &&
-        typeof m.fragmentChildren === 'number' &&
-        Number.isFinite(m.fragmentChildren)
-      ) {
+      if (typeof m.copies === 'number' && Number.isFinite(m.copies)) {
+        const legacyChildren =
+          typeof m.fragmentChildren === 'number' && Number.isFinite(m.fragmentChildren)
+            ? { fragmentChildren: m.fragmentChildren }
+            : {};
         return {
           kind: 'persistence-duplication-reset',
           docName,
           size,
-          metadata: { copies: m.copies, fragmentChildren: m.fragmentChildren },
+          metadata: { copies: m.copies, ...legacyChildren },
         };
       }
       return null;

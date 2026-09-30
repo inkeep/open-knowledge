@@ -1,15 +1,18 @@
 import { setTimeout as wait } from 'node:timers/promises';
+import { buildProjection } from '@inkeep/open-knowledge-core';
 import { CONCURRENT_REPLACE_WINDOW_MS } from '@inkeep/open-knowledge-server';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
   createTestClients,
   createTestServer,
+  editProjectionBlocks,
+  mdManager,
   pollUntil,
+  projectionBlocks,
   readTestDoc,
-  serializeFragment,
+  schema,
   type TestClient,
   type TestServer,
 } from './test-harness';
@@ -24,14 +27,12 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-const para = () => new Y.XmlElement('paragraph');
+const blanks = (n: number) => Array.from({ length: n }, () => schema.node('paragraph'));
 
-function countBlankLineNodes(fragment: Y.XmlFragment): number {
-  let count = 0;
-  for (let i = 0; i < fragment.length; i++) {
-    if (String(fragment.get(i)) === '<paragraph></paragraph>') count += 1;
-  }
-  return count;
+function countBlankLineNodes(source: string): number {
+  const { doc } = buildProjection(source, mdManager);
+  return projectionBlocks(doc).filter((b) => b.type.name === 'paragraph' && b.content.size === 0)
+    .length;
 }
 
 async function settle(predicate: () => boolean, timeoutMs: number): Promise<void> {
@@ -42,21 +43,11 @@ async function settle(predicate: () => boolean, timeoutMs: number): Promise<void
   }
 }
 
-async function seedDocument(raw: string, fragmentBody = raw): Promise<TestClient[]> {
+async function seedDocument(raw: string): Promise<TestClient[]> {
   const docName = `doc-edge-${crypto.randomUUID()}`;
-  const clients = await createTestClients(server.port, {
-    count: 2,
-    docName,
-    perClientOptions: { skipInvariantWatcher: true },
-  });
+  const clients = await createTestClients(server.port, { count: 2, docName });
   await agentWriteMd(server.port, raw, { docName, position: 'replace' });
-  await pollUntil(
-    () =>
-      clients.every(
-        (c) => c.ytext.toString() === raw && serializeFragment(c.fragment) === fragmentBody,
-      ),
-    10_000,
-  );
+  await pollUntil(() => clients.every((c) => c.ytext.toString() === raw), 10_000);
   return clients;
 }
 
@@ -65,12 +56,10 @@ async function expectEverywhereExactly(
   expected: string,
   blankNodes: number,
   diskTimeoutMs: number,
-  expectedFragment = expected,
 ): Promise<void> {
   for (const c of clients) {
     expect(c.ytext.toString()).toBe(expected);
-    expect(serializeFragment(c.fragment)).toBe(expectedFragment);
-    expect(countBlankLineNodes(c.fragment)).toBe(blankNodes);
+    expect(countBlankLineNodes(c.ytext.toString())).toBe(blankNodes);
   }
   const docName = clients[0].docName;
   await settle(() => readTestDoc(server.contentDir, docName) === expected, diskTimeoutMs);
@@ -82,9 +71,7 @@ describe('doc-edge blank runs on the CRDT path', () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(a.fragment.length, [para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [...blocks, ...blanks(2)]);
 
       const expected = 'Above.\n\nBelow.\n\n\n';
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
@@ -101,25 +88,21 @@ describe('doc-edge blank runs on the CRDT path', () => {
     );
     try {
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(a.fragment.length, [para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [...blocks, ...blanks(2)]);
 
       const expected = '---\ntitle: Edge\n---\n\nAbove.\n\nBelow.\n\n\n';
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
-      await expectEverywhereExactly(clients, expected, 2, 10_000, 'Above.\n\nBelow.\n\n\n');
+      await expectEverywhereExactly(clients, expected, 2, 10_000);
     } finally {
       for (const c of clients) await c.cleanup();
     }
   });
 
-  test('a leading blank run authored in the WYSIWYG reaches the source bytes', async () => {
+  test('a leading blank run reaches the source bytes', async () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(0, [para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [...blanks(2), ...blocks]);
 
       const expected = '\n\nAbove.\n\nBelow.\n';
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
@@ -129,13 +112,25 @@ describe('doc-edge blank runs on the CRDT path', () => {
     }
   });
 
+  test('a single leading blank has no spelling in markdown, so it stays held', async () => {
+    const clients = await seedDocument('Above.\n\nBelow.\n');
+    try {
+      const a = clients[0];
+      editProjectionBlocks(a, (blocks) => [...blanks(1), ...blocks]);
+
+      const unchanged = 'Above.\n\nBelow.\n';
+      await wait(1000);
+      await expectEverywhereExactly(clients, unchanged, 0, 10_000);
+    } finally {
+      for (const c of clients) await c.cleanup();
+    }
+  });
+
   test('a trailing blank run on a single-block document reaches the source bytes', async () => {
     const clients = await seedDocument('Hello.\n');
     try {
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(a.fragment.length, [para(), para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [...blocks, ...blanks(3)]);
 
       const expected = 'Hello.\n\n\n\n';
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
@@ -150,9 +145,7 @@ describe('doc-edge blank runs on the CRDT path', () => {
     try {
       const a = clients[0];
       const b = clients[1];
-      a.doc.transact(() => {
-        a.fragment.insert(a.fragment.length, [para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [...blocks, ...blanks(2)]);
       await settle(() => a.ytext.toString() === 'Above.\n\nBelow.\n\n\n', 4000);
 
       b.doc.transact(() => {
@@ -167,47 +160,11 @@ describe('doc-edge blank runs on the CRDT path', () => {
     }
   });
 
-  test('a fragment-only blank run survives the three-way merge seam at either position', async () => {
-    async function mergeSeam(insertAt: number, ytext: string, fragment: string): Promise<void> {
-      const clients = await seedDocument('Above.\n\nBelow.\n');
-      try {
-        const a = clients[0];
-        a.doc.transact(() => {
-          a.fragment.insert(insertAt, [para(), para()]);
-          a.ytext.insert(a.ytext.toString().length - 1, '!');
-        });
-
-        await settle(
-          () =>
-            clients.every(
-              (c) => c.ytext.toString() === ytext && serializeFragment(c.fragment) === fragment,
-            ),
-          8000,
-        );
-        for (const c of clients) {
-          expect(c.ytext.toString()).toBe(ytext);
-          expect(serializeFragment(c.fragment)).toBe(fragment);
-          expect(countBlankLineNodes(c.fragment)).toBe(2);
-        }
-        const docName = clients[0].docName;
-        await settle(() => readTestDoc(server.contentDir, docName) === ytext, 8000);
-        expect(readTestDoc(server.contentDir, docName)).toBe(ytext);
-      } finally {
-        for (const c of clients) await c.cleanup();
-      }
-    }
-
-    await mergeSeam(0, '\n\nAbove.\n\nBelow.!\n', '\n\nAbove.\n\nBelow.!\n');
-    await mergeSeam(1, 'Above.\n\n\n\nBelow.!\n', 'Above.\n\n\n\nBelow.!\n');
-  });
-
   test('an external write that carries a trailing run survives an agent replace after the guard window', async () => {
     const clients = await seedDocument('Alpha.\n\nOmega.\n');
     try {
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(a.fragment.length, [para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [...blocks, ...blanks(2)]);
       await settle(() => a.ytext.toString() === 'Alpha.\n\nOmega.\n\n\n', 4000);
 
       const expected = 'Alpha edited.\n\nOmega.\n\n\n';
@@ -232,19 +189,41 @@ describe('doc-edge blank runs on the CRDT path', () => {
     }
   });
 
-  test('a text edit and a trailing run in one transaction both reach the source bytes', async () => {
+  test('CHARACTERIZATION: a text edit spanning to a new trailing run carries the text, not the run', async () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
-      a.doc.transact(() => {
-        const first = a.fragment.get(0) as { get(i: number): unknown };
-        (first.get(0) as { insert(i: number, s: string): void }).insert(0, 'Z');
-        a.fragment.insert(a.fragment.length, [para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [
+        schema.node('paragraph', null, schema.text(`Z${blocks[0].textContent}`)),
+        ...blocks.slice(1),
+        ...blanks(2),
+      ]);
 
-      const expected = 'ZAbove.\n\nBelow.\n\n\n';
+      const expected = 'ZAbove.\n\nBelow.\n';
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
-      await expectEverywhereExactly(clients, expected, 2, 8000);
+      await expectEverywhereExactly(clients, expected, 0, 8000);
+    } finally {
+      for (const c of clients) await c.cleanup();
+    }
+  });
+
+  test('a block applied at the end of a blank run lands below the run, not above it', async () => {
+    const clients = await seedDocument('hello\n');
+    try {
+      const a = clients[0];
+      editProjectionBlocks(a, (blocks) => [...blocks, ...blanks(8)]);
+      const run = 'hello\n\n\n\n\n\n\n\n\n';
+      await settle(() => clients.every((c) => c.ytext.toString() === run), 6000);
+      expect(a.ytext.toString()).toBe(run);
+
+      editProjectionBlocks(a, (blocks) => [
+        ...blocks.slice(0, 8),
+        schema.node('heading', { level: 1 }, schema.text('Head')),
+      ]);
+
+      const expected = 'hello\n\n\n\n\n\n\n\n\n# Head\n';
+      await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);
+      await expectEverywhereExactly(clients, expected, 7, 10_000);
     } finally {
       for (const c of clients) await c.cleanup();
     }
@@ -254,9 +233,7 @@ describe('doc-edge blank runs on the CRDT path', () => {
     const clients = await seedDocument('Above.\n\nBelow.\n');
     try {
       const a = clients[0];
-      a.doc.transact(() => {
-        a.fragment.insert(1, [para(), para()]);
-      });
+      editProjectionBlocks(a, (blocks) => [blocks[0], ...blanks(2), ...blocks.slice(1)]);
 
       const expected = 'Above.\n\n\n\nBelow.\n';
       await settle(() => clients.every((c) => c.ytext.toString() === expected), 6000);

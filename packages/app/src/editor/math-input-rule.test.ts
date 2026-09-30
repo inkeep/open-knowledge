@@ -1,8 +1,11 @@
 import { MathInline } from '@inkeep/open-knowledge-core';
 import type { Editor } from '@tiptap/core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
-import { mountCollabEditor, mountLightEditor, readUndoManager } from './editor-rig.test-helper';
+import {
+  mountLightEditor,
+  mountProjectionEditor,
+  type ProjectionEditorRig,
+} from './editor-rig.test-helper';
 import { MathInputRule } from './math-input-rule';
 import { flushMicrotasksAndTimers, installDomGlobals } from './walk-currency-test-harness';
 
@@ -161,49 +164,54 @@ describe('math input rule — exclusions', () => {
   });
 });
 
-describe('math input rule — one undo restores the literal', () => {
+describe('math input rule — one undo restores the literal, under the projection binding', () => {
+  function mountAtEnd(): ProjectionEditorRig {
+    const rig = mountProjectionEditor('seed\n', [MathInline, MathInputRule]);
+    rig.editor.commands.setTextSelection(rig.editor.state.doc.content.size - 1);
+    return rig;
+  }
+
   test('a single undo brings back `$$x+y$$` as raw text and drops the atom', async () => {
-    const ydoc = new Y.Doc();
-    const editor = mountCollabEditor(ydoc, [MathInline, MathInputRule]);
+    const rig = mountAtEnd();
+    const { editor } = rig;
     try {
-      typeText(editor, '$$x+y$$');
+      await flushMicrotasksAndTimers();
+      rig.undoManager.stopCapturing();
+      typeText(editor, ' $$x+y$$');
       await flushMicrotasksAndTimers();
       expect(mathAtoms(editor)).toEqual([{ formula: 'x+y', sourceDelimiter: '$$' }]);
 
-      const undoManager = readUndoManager(editor);
-      expect(undoManager).not.toBeNull();
-      undoManager?.undo();
+      rig.undoManager.undo();
       await flushMicrotasksAndTimers();
 
       expect(mathAtoms(editor)).toEqual([]);
-      expect(editor.state.doc.textContent).toBe('$$x+y$$');
+      expect(editor.state.doc.textContent).toBe('seed $$x+y$$');
     } finally {
-      editor.destroy();
-      ydoc.destroy();
+      rig.destroy();
     }
   });
 
   test('typing after a collapse stays its own undo step (no merge into the collapse)', async () => {
-    const ydoc = new Y.Doc();
-    const editor = mountCollabEditor(ydoc, [MathInline, MathInputRule]);
+    const rig = mountAtEnd();
+    const { editor } = rig;
     try {
-      typeText(editor, '$$x+y$$');
+      await flushMicrotasksAndTimers();
+      rig.undoManager.stopCapturing();
+      typeText(editor, ' $$x+y$$');
       await flushMicrotasksAndTimers();
       expect(mathAtoms(editor)).toEqual([{ formula: 'x+y', sourceDelimiter: '$$' }]);
 
       typeText(editor, ' more');
       await flushMicrotasksAndTimers();
-      expect(editor.state.doc.textContent).toBe(' more');
+      expect(editor.state.doc.textContent).toBe('seed  more');
 
-      const undoManager = readUndoManager(editor);
-      undoManager?.undo();
+      rig.undoManager.undo();
       await flushMicrotasksAndTimers();
 
       expect(mathAtoms(editor)).toEqual([{ formula: 'x+y', sourceDelimiter: '$$' }]);
-      expect(editor.state.doc.textContent).toBe('');
+      expect(editor.state.doc.textContent).toBe('seed ');
     } finally {
-      editor.destroy();
-      ydoc.destroy();
+      rig.destroy();
     }
   });
 });

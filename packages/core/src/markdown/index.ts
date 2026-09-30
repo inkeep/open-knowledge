@@ -55,6 +55,7 @@ import {
 } from '../bridge/structural-freshness.ts';
 import type { LinkStyle } from '../extensions/link-fidelity.ts';
 import { isValidSourceLiteralRaw } from '../extensions/source-literal-mark.ts';
+import { incrementBlockFallback, incrementWholeDocFallback } from '../metrics/parse-health.ts';
 import { createRegistry } from '../registry/index.ts';
 import type { PropDef } from '../registry/types.ts';
 import type {
@@ -64,15 +65,29 @@ import type {
   WikiLinkEmbedMdast,
   WikiLinkMdast,
 } from './mdast-augmentation.ts';
-import { parseWithFallback } from './parse-with-fallback.ts';
+import {
+  extractErrorOffset,
+  findFallbackRegion,
+  parseWithFallback,
+} from './parse-with-fallback.ts';
 import {
   createParseProcessor,
   createSerializeProcessor,
   parseMd,
   parseMdToEditorMdast,
   parseMdToMdast,
+  parseMdWithSourceMap,
   serializeMd,
 } from './pipeline.ts';
+import {
+  buildBlockSourceMap,
+  buildPmSourceMap,
+  createSourceMapRecorder,
+  type PmSourceMap,
+  type PmSourceSpan,
+  type SourceMapRecorderHolder,
+  withSourceMapRecording,
+} from './pm-source-map.ts';
 import { normalizeDocRelativeAssetUrl } from './resolve-image-url.ts';
 import { emitMdxJsxTextFromNode } from './serialize-helpers.ts';
 import { flattenCellBlocks } from './table-cell-flatten.ts';
@@ -118,11 +133,15 @@ export class MarkdownManager {
   private parseProcessor: Processor;
   private serializeProcessor: Processor;
   private parseCtx: ParseContextHolder = { current: {} };
+  private sourceMapHolder: SourceMapRecorderHolder = { current: null };
   private freshnessHolder: FreshnessCheckerHolder = { checker: undefined };
 
   constructor(options: MarkdownManagerOptions) {
     this.schema = getSchema(options.extensions);
-    this.handlers = buildMdastToPmHandlers(this.schema, this.parseCtx);
+    this.handlers = withSourceMapRecording(
+      buildMdastToPmHandlers(this.schema, this.parseCtx),
+      this.sourceMapHolder,
+    );
     this.freshnessHolder.checker = options.deriveStructuralFreshness
       ? createStructuralFreshnessChecker({
           parse: (sourceRaw) => this.parseWithFallback(sourceRaw),
@@ -160,6 +179,175 @@ export class MarkdownManager {
     }
   }
 
+  parseWithSourceMap(markdown: string, opts?: ParseContext): { doc: PmNode; map: PmSourceMap } {
+    if (!markdown.trim()) {
+      const doc = this.schema.nodeFromJSON({
+        type: 'doc',
+        content: [{ type: 'paragraph', content: [] }],
+      }) as PmNode;
+      return {
+        doc,
+        map: buildPmSourceMap(doc, createSourceMapRecorder(), markdown),
+      };
+    }
+    this.parseCtx.current = opts ?? {};
+    try {
+      return parseMdWithSourceMap(markdown, this.parseProcessor, this.sourceMapHolder);
+    } finally {
+      this.parseCtx.current = {};
+    }
+  }
+
+  parseWithSourceMapOrFallback(
+    markdown: string,
+    opts?: ParseContext,
+  ): { doc: PmNode; map: PmSourceMap } {
+    try {
+      return this.parseWithSourceMap(markdown, opts);
+    } catch (err) {
+      const scoped = this.scopedFallbackWithSourceMap(markdown, err, opts);
+      if (scoped !== null) {
+        incrementBlockFallback();
+        return scoped;
+      }
+      incrementWholeDocFallback();
+      return this.rawFallbackWithSourceMap(markdown, err);
+    }
+  }
+
+  /* STOP: every span here is an exact slice offset, never an interpolation. computeBlockSplice
+     indexes the source through map.blocks[i].sourceStart/sourceEnd, so a span that is merely
+     close rewrites the wrong bytes on the next keystroke. A side that will not parse becomes
+     one raw block over its own exact bytes rather than a guess at its interior. */
+  private scopedFallbackWithSourceMap(
+    markdown: string,
+    err: unknown,
+    opts?: ParseContext,
+  ): { doc: PmNode; map: PmSourceMap } | null {
+    const offset = extractErrorOffset(err);
+    if (offset === undefined) return null;
+
+    let region: { start: number; end: number };
+    try {
+      region = findFallbackRegion(markdown, offset);
+    } catch {
+      return null;
+    }
+    if (region.start <= 0 && region.end >= markdown.length) return null;
+
+    const reason = err instanceof Error ? err.message : String(err ?? 'unknown parse failure');
+    const beforeRaw = markdown.slice(0, region.start);
+    const beforeSrc = beforeRaw.replace(/\n+$/, '');
+    const afterRaw = markdown.slice(region.end);
+    const afterSrc = afterRaw.replace(/^\n+/, '');
+    const before = this.fallbackSide(beforeSrc, 0, opts);
+    const broken = this.rawFallbackNode(
+      markdown.slice(region.start, region.end),
+      region.start,
+      region.end,
+      reason,
+    );
+    const after = this.fallbackSide(
+      afterSrc,
+      region.end + (afterRaw.length - afterSrc.length),
+      opts,
+    );
+    if (before === null || after === null) return null;
+
+    const children = [...before.children, broken.node, ...after.children];
+    const sources = [...before.sources, broken.source, ...after.sources];
+    if (children.length === 0) return null;
+
+    const doc = this.schema.topNodeType.create(null, children) as PmNode;
+    if (doc.childCount !== sources.length) return null;
+
+    const blocks: PmSourceSpan[] = [];
+    let pos = 0;
+    for (let i = 0; i < doc.childCount; i++) {
+      const child = doc.child(i);
+      const from = pos;
+      pos += child.nodeSize;
+      blocks.push({
+        from,
+        to: pos,
+        sourceStart: sources[i].start,
+        sourceEnd: sources[i].end,
+        type: child.type.name,
+        depth: 1,
+        mapped: true,
+      });
+    }
+
+    return { doc, map: buildBlockSourceMap(blocks, markdown.length, doc.content.size) };
+  }
+
+  private rawFallbackNode(
+    text: string,
+    start: number,
+    end: number,
+    reason: string,
+  ): { node: PmNode; source: { start: number; end: number } } {
+    const node = this.schema.nodeFromJSON({
+      type: 'rawMdxFallback',
+      attrs: { reason, originalSpan: { start, end } },
+      content: text.length > 0 ? [{ type: 'text', text }] : [],
+    }) as PmNode;
+    return { node, source: { start, end } };
+  }
+
+  private fallbackSide(
+    src: string,
+    base: number,
+    opts?: ParseContext,
+  ): { children: PmNode[]; sources: { start: number; end: number }[] } | null {
+    if (src.trim().length === 0) return { children: [], sources: [] };
+    try {
+      const { doc, map } = this.parseWithSourceMap(src, opts);
+      if (map.blocks.length !== doc.childCount) return null;
+      const children: PmNode[] = [];
+      for (let i = 0; i < doc.childCount; i++) children.push(doc.child(i));
+      return {
+        children,
+        sources: map.blocks.map((block) => ({
+          start: block.sourceStart + base,
+          end: block.sourceEnd + base,
+        })),
+      };
+    } catch (sideErr) {
+      const reason =
+        sideErr instanceof Error ? sideErr.message : String(sideErr ?? 'unknown parse failure');
+      const raw = this.rawFallbackNode(src, base, base + src.length, reason);
+      return { children: [raw.node], sources: [raw.source] };
+    }
+  }
+
+  private rawFallbackWithSourceMap(
+    markdown: string,
+    err: unknown,
+  ): { doc: PmNode; map: PmSourceMap } {
+    const reason = err instanceof Error ? err.message : String(err ?? 'unknown parse failure');
+    const doc = this.schema.nodeFromJSON({
+      type: 'doc',
+      content: [
+        {
+          type: 'rawMdxFallback',
+          attrs: { reason, originalSpan: { start: 0, end: markdown.length } },
+          content: markdown.length > 0 ? [{ type: 'text', text: markdown }] : [],
+        },
+      ],
+    }) as PmNode;
+    const block: PmSourceSpan = {
+      from: 0,
+      to: doc.content.size,
+      sourceStart: 0,
+      sourceEnd: markdown.length,
+      type: 'rawMdxFallback',
+      depth: 1,
+      mapped: true,
+    };
+    return { doc, map: buildBlockSourceMap([block], markdown.length, doc.content.size) };
+  }
+
   parseToMdast(markdown: string): MdastRoot {
     if (!markdown.trim()) {
       return { type: 'root', children: [] };
@@ -179,6 +367,18 @@ export class MarkdownManager {
       return { type: 'doc', content: [{ type: 'paragraph', content: [] }] };
     }
     return parseWithFallback(markdown, { parse: (md) => this.parse(md, opts) });
+  }
+
+  withParseContext(ctx: ParseContext): MarkdownManager {
+    const bound: MarkdownManager = Object.create(this);
+    bound.parse = (markdown, opts) => this.parse(markdown, { ...ctx, ...opts });
+    bound.parseWithSourceMap = (markdown, opts) =>
+      this.parseWithSourceMap(markdown, { ...ctx, ...opts });
+    bound.parseWithSourceMapOrFallback = (markdown, opts) =>
+      this.parseWithSourceMapOrFallback(markdown, { ...ctx, ...opts });
+    bound.parseWithFallback = (markdown, opts) =>
+      this.parseWithFallback(markdown, { ...ctx, ...opts });
+    return bound;
   }
 
   serialize(json: JSONContent, opts?: SerializeCallOptions): string {
@@ -204,6 +404,22 @@ export class MarkdownManager {
 }
 
 const registry = createRegistry();
+
+/* STOP: a parsed attribute's position is its offset in the document, so storing it makes the
+   same component a different node whenever anything above it moves. Nothing reads it, and a
+   node that depends on bytes outside its own block cannot be reparsed on its own. */
+function withoutPositions(
+  attributes: Array<MdxJsxAttribute | MdxJsxExpressionAttribute>,
+): Array<MdxJsxAttribute | MdxJsxExpressionAttribute> {
+  return attributes.map((attribute) => {
+    const { position: _position, data: _data, ...rest } = attribute;
+    if (rest.type === 'mdxJsxAttribute' && rest.value !== null && typeof rest.value === 'object') {
+      const { position: _valuePosition, data: _valueData, ...value } = rest.value;
+      return { ...rest, value };
+    }
+    return rest;
+  }) as Array<MdxJsxAttribute | MdxJsxExpressionAttribute>;
+}
 
 function destructureAttrs(
   attributes: Array<MdxJsxAttribute | MdxJsxExpressionAttribute>,
@@ -780,7 +996,7 @@ function buildMdastToPmHandlers(
         {
           componentName: name,
           kind: 'element',
-          attributes: node.attributes,
+          attributes: withoutPositions(node.attributes),
           sourceRaw: rawFromData(node.data) ?? '',
           sourceDirty: false,
           props: structuredAttrs,
@@ -820,7 +1036,7 @@ function buildMdastToPmHandlers(
         }
         return n.jsxInline.createAndFill({
           componentName: inlineName,
-          attributes: node.attributes,
+          attributes: withoutPositions(node.attributes),
           sourceRaw: raw,
           sourceDirty: false,
           props: structuredAttrs,

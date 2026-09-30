@@ -19,8 +19,8 @@ import { propEditorHighlight } from '@/editor/components/CodeMirrorPropInput';
 import { type MermaidSourceBinding, MermaidView } from '@/editor/components/Mermaid';
 import { okCmTheme } from '@/editor/extensions/cm-theme';
 import { registerFullPageCmView, unregisterFullPageCmView } from '@/editor/full-page-cm-views';
+import { sharedUndoManagerFor } from '@/editor/shared-undo-manager';
 import { isOverlayLayerOpen } from '@/lib/overlay-layers';
-import { acquireDocUndoManager } from './doc-undo-manager';
 
 const darkTheme = okCmTheme({
   dark: true,
@@ -99,76 +99,13 @@ function MermaidSourcePane({
 
 export const MERMAID_DIAGRAM_EDIT_ORIGIN = Symbol('mermaid-diagram-edit');
 
-const mermaidUndoResetByManager = new WeakMap<Y.UndoManager, () => void>();
-
-function insertedDeltaLength(insert: unknown): number {
-  if (typeof insert === 'string' || Array.isArray(insert)) return insert.length;
-  return 1;
-}
-
-function isUntrackedFullTextReplacement(
-  event: Y.YTextEvent,
-  transaction: Y.Transaction,
-  undoManager: Y.UndoManager,
-): boolean {
-  const origin = transaction.origin;
-  if (
-    undoManager.trackedOrigins.has(origin) ||
-    (origin != null &&
-      undoManager.trackedOrigins.has((origin as { constructor?: unknown }).constructor))
-  ) {
-    return false;
-  }
-
-  let deleted = 0;
-  let inserted = 0;
-  let retained = 0;
-  for (const delta of event.delta) {
-    deleted += delta.delete ?? 0;
-    inserted += delta.insert === undefined ? 0 : insertedDeltaLength(delta.insert);
-    retained += delta.retain ?? 0;
-  }
-  const beforeLength = event.target.length + deleted - inserted;
-  return retained === 0 && deleted === beforeLength && deleted + inserted > 0;
-}
-
-function installMermaidUndoReset(
-  provider: HocuspocusProvider,
-  ytext: Y.Text,
-  undoManager: Y.UndoManager,
-): void {
-  if (mermaidUndoResetByManager.has(undoManager)) return;
-
-  const resetStaleHistory = (event: Y.YTextEvent, transaction: Y.Transaction): void => {
-    if (isUntrackedFullTextReplacement(event, transaction, undoManager)) undoManager.clear();
-  };
-  let released = false;
-  const doc = ytext.doc;
-  const release = (): void => {
-    if (released) return;
-    released = true;
-    ytext.unobserve(resetStaleHistory);
-    provider.off('destroy', release);
-    doc?.off('destroy', release);
-    if (mermaidUndoResetByManager.get(undoManager) === release) {
-      mermaidUndoResetByManager.delete(undoManager);
-    }
-  };
-
-  mermaidUndoResetByManager.set(undoManager, release);
-  ytext.observe(resetStaleHistory);
-  provider.on('destroy', release);
-  doc?.on('destroy', release);
-}
-
 export function acquireMermaidUndoManager(
   provider: HocuspocusProvider,
   ytext: Y.Text,
 ): Y.UndoManager {
-  const undoManager = acquireDocUndoManager(provider, ytext);
+  const undoManager = sharedUndoManagerFor(ytext, provider);
   undoManager.removeTrackedOrigin(null);
   undoManager.addTrackedOrigin(MERMAID_DIAGRAM_EDIT_ORIGIN);
-  installMermaidUndoReset(provider, ytext, undoManager);
   return undoManager;
 }
 

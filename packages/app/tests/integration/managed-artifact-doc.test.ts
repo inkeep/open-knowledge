@@ -25,7 +25,7 @@ describe('skill + template CRDT docs — end to end', () => {
 
   test('editing a project skill content doc persists Y.Text verbatim to .ok/skills/<n>/SKILL.md', async () => {
     const docName = '.ok/skills/demo-skill/SKILL';
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
 
     const src = '---\nname: demo-skill\ndescription: a demo\n---\n\n# Demo\n\nBody.\n';
     client.doc.transact(() => client.ytext.insert(0, src));
@@ -45,7 +45,7 @@ describe('skill + template CRDT docs — end to end', () => {
     mkdirSync(resolve(skillFile, '..'), { recursive: true });
     writeFileSync(skillFile, src, 'utf-8');
 
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
     const start = Date.now();
     while (Date.now() - start < 3000 && client.ytext.toString() !== src) {
       await new Promise((r) => setTimeout(r, 100));
@@ -66,7 +66,7 @@ describe('skill + template CRDT docs — end to end', () => {
     server = await createTestServer({ contentDir: seedDir });
 
     const docName = '.ok/skills/watched/SKILL';
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
     const loadStart = Date.now();
     while (Date.now() - loadStart < 5000 && client.ytext.toString() !== src) {
       await new Promise((r) => setTimeout(r, 100));
@@ -102,7 +102,7 @@ describe('skill + template CRDT docs — end to end', () => {
     expect(await pollFor(skillFile)).toBe(true);
 
     const docName = createBody.path.replace(/\.md$/i, '');
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
     const editRes = await fetch(`http://127.0.0.1:${server.port}/api/skill`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -128,7 +128,7 @@ describe('skill + template CRDT docs — end to end', () => {
 
   test('a template content doc persists to <folder>/.ok/templates/<name>.md', async () => {
     const docName = '.ok/templates/daily-note';
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
 
     const src = '---\ntitle: Daily Note\ndescription: a daily note\n---\n\n# {{date}}\n\nNotes.\n';
     client.doc.transact(() => client.ytext.insert(0, src));
@@ -142,7 +142,7 @@ describe('skill + template CRDT docs — end to end', () => {
 
   test('PUT /api/template routes the body through the open CRDT doc (Slice E)', async () => {
     const docName = 'notes/.ok/templates/meeting';
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
 
     const res = await fetch(`http://127.0.0.1:${server.port}/api/template`, {
       method: 'PUT',
@@ -183,7 +183,7 @@ describe('skill + template CRDT docs — end to end', () => {
     server = await createTestServer({ contentDir: seedDir });
 
     const docName = '.ok/templates/daily';
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
     const loadStart = Date.now();
     while (Date.now() - loadStart < 5000 && client.ytext.toString() !== src) {
       await new Promise((r) => setTimeout(r, 100));

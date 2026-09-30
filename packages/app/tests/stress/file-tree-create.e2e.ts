@@ -784,7 +784,7 @@ test.describe('FileTree sidebar create', () => {
       await expect(sidebarTreeItem(page, 'New Folder')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
-      expect(existsSync(join(workerServer.contentDir, 'New Folder'))).toBe(false);
+      await expect.poll(() => existsSync(join(workerServer.contentDir, 'New Folder'))).toBe(false);
     } finally {
       await deletePathIfExists(workerServer.baseURL, 'file', 'Untitled');
       await deletePathIfExists(workerServer.baseURL, 'folder', 'New Folder');
@@ -808,7 +808,7 @@ test.describe('FileTree sidebar create', () => {
       await expect(canceledFileInput).toBeVisible({ timeout: 10_000 });
       await canceledFileInput.press('Escape');
       await expect(sidebarTreeItem(page, 'Untitled.md')).toHaveCount(0);
-      expect(existsSync(join(workerServer.contentDir, 'Untitled.md'))).toBe(false);
+      await expect.poll(() => existsSync(join(workerServer.contentDir, 'Untitled.md'))).toBe(false);
 
       await page.getByRole('button', { name: 'New folder', exact: true }).click();
       const canceledFolderInput = page.getByRole('textbox', { name: /rename New Folder/i });
@@ -817,7 +817,7 @@ test.describe('FileTree sidebar create', () => {
       await expect(sidebarTreeItem(page, 'New Folder')).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'New Folder/', exact: true })).toHaveCount(0);
       await expect(page.getByRole('button', { name: 'New Folder.md', exact: true })).toHaveCount(0);
-      expect(existsSync(join(workerServer.contentDir, 'New Folder'))).toBe(false);
+      await expect.poll(() => existsSync(join(workerServer.contentDir, 'New Folder'))).toBe(false);
 
       await page.getByRole('button', { name: 'New file', exact: true }).click();
       const fileRenameInput = page.getByRole('textbox', { name: /rename Untitled\.md/i });

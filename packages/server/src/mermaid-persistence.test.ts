@@ -95,7 +95,6 @@ describe('loadMermaidDoc', () => {
     loadMermaidDoc(doc, DOC, ctx);
     expect(doc.getText('source').toString()).toBe(SRC);
     expect(typeof doc.getMap('lifecycle').get(LINEAGE_EPOCH_KEY)).toBe('string');
-    expect(doc.getXmlFragment('default').length).toBe(0);
   });
 
   test('lazy: a missing file seeds nothing (admitting a doc never creates disk)', () => {

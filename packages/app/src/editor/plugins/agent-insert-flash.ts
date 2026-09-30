@@ -32,8 +32,6 @@ export function computeChangedRange(
 
 export const AGENT_INSERT_FLASH_ACTIVATION_MS = 6_000;
 
-export { blockRangeToPositions } from '../block-spans';
-
 export function createAgentInsertFlashPlugin(): Plugin<DecorationSet> {
   return new Plugin<DecorationSet>({
     key: agentInsertFlashKey,

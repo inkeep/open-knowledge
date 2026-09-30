@@ -7,7 +7,7 @@ import {
   getQuiescenceCountersForTests,
   isDocQuiescent,
 } from './bridge-quiescence.ts';
-import { OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
+import { OBSERVER_SYNC_ORIGIN } from './write-origins.ts';
 
 beforeEach(() => {
   __resetQuiescenceForTests();

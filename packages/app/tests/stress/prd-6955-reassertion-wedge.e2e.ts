@@ -45,12 +45,10 @@ test('PRD-6955(b) wedge: Y→PM apply dropped + local touch → does stale PM re
     if (!view) return 'no-active-editor';
     const orig = view.dispatch.bind(view);
     (view as { dispatch: (tr: unknown) => void }).dispatch = (tr: unknown) => {
-      const t = tr as { meta?: Record<string, unknown> };
-      const meta = (t as { meta?: Record<string, unknown> }).meta ?? {};
-      const keys = Object.keys(meta);
-      if (keys.some((k) => k.includes('y-sync'))) {
-        (window as unknown as { __droppedYSync: number }).__droppedYSync =
-          ((window as unknown as { __droppedYSync?: number }).__droppedYSync ?? 0) + 1;
+      const meta = (tr as { meta?: Record<string, unknown> }).meta ?? {};
+      if (Object.keys(meta).includes('okProjectionRemoteApply')) {
+        (window as unknown as { __droppedRemoteApply: number }).__droppedRemoteApply =
+          ((window as unknown as { __droppedRemoteApply?: number }).__droppedRemoteApply ?? 0) + 1;
         return;
       }
       orig(tr as never);
@@ -76,9 +74,9 @@ test('PRD-6955(b) wedge: Y→PM apply dropped + local touch → does stale PM re
     .toContain('state two FIXED marker.');
 
   const dropped = await page.evaluate(
-    () => (window as unknown as { __droppedYSync?: number }).__droppedYSync ?? 0,
+    () => (window as unknown as { __droppedRemoteApply?: number }).__droppedRemoteApply ?? 0,
   );
-  console.log('[wedge] after fix: Y.Text has FIXED | dropped y-sync trs:', dropped);
+  console.log('[wedge] after fix: Y.Text has FIXED | dropped remote applies:', dropped);
   expect(dropped).toBeGreaterThan(0);
 
   const editor = page.locator('.ProseMirror:not(.composer-prosemirror)').last();

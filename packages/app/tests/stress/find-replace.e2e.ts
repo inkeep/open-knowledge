@@ -31,18 +31,21 @@ async function activeElementIsEditor(page: Page): Promise<boolean> {
 }
 
 async function externalLinkCueSnapshot(page: Page) {
-  return page.evaluate(() =>
-    Array.from(
+  return page.evaluate(() => {
+    const fragments = Array.from(
       document.querySelectorAll<HTMLElement>('.ProseMirror [data-resolution-state="external"]'),
-    ).map((element) => ({
-      text: element.textContent ?? '',
-      afterContent: window.getComputedStyle(element, '::after').content,
-    })),
-  );
-}
-
-function hasExternalCue(afterContent: string): boolean {
-  return !['none', 'normal', '""', "''"].includes(afterContent);
+    );
+    const carriers = new Set<HTMLElement>(
+      fragments.map((fragment) => fragment.closest<HTMLElement>('[data-link]') ?? fragment),
+    );
+    const cueCount = Array.from(carriers).filter(
+      (carrier) =>
+        !['none', 'normal', '""', "''"].includes(
+          window.getComputedStyle(carrier, '::after').content,
+        ),
+    ).length;
+    return { texts: fragments.map((fragment) => fragment.textContent ?? ''), cueCount };
+  });
 }
 
 test('TipTap find/replace highlights, navigates, replaces current, and replaces all', async ({
@@ -207,8 +210,8 @@ test('TipTap find does not duplicate the external-link cue across split link mat
     'https://nextra.site',
   );
   const baseline = await externalLinkCueSnapshot(page);
-  expect(baseline).toHaveLength(1);
-  expect(hasExternalCue(baseline[0]?.afterContent ?? 'none')).toBe(true);
+  expect(baseline.texts).toHaveLength(1);
+  expect(baseline.cueCount).toBe(1);
 
   await page.keyboard.press('ControlOrMeta+f');
   const bar = page.getByTestId('find-replace-bar');
@@ -217,7 +220,6 @@ test('TipTap find does not duplicate the external-link cue across split link mat
   await expect(bar).toContainText('1 / 1');
 
   const cueSnapshot = await externalLinkCueSnapshot(page);
-  expect(cueSnapshot.map((entry) => entry.text)).toEqual(['https://', 'nextra', '.site']);
-  expect(cueSnapshot.filter((entry) => hasExternalCue(entry.afterContent))).toHaveLength(1);
-  expect(hasExternalCue(cueSnapshot.at(-1)?.afterContent ?? 'none')).toBe(true);
+  expect(cueSnapshot.texts).toEqual(['https://', 'nextra', '.site']);
+  expect(cueSnapshot.cueCount).toBe(1);
 });

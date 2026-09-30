@@ -1,7 +1,7 @@
 import type * as Y from 'yjs';
 import { replaceRawBody } from '../bridge-intake.ts';
-import type { PairedWriteOrigin } from '../server-observers.ts';
 import type { WriterIdentity } from '../shadow-repo.ts';
+import type { PairedWriteOrigin } from '../write-origins.ts';
 
 export type GeneratedWriteOutcome = 'unchanged' | 'document' | 'disk' | 'blocked-conflict';
 

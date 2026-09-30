@@ -1,6 +1,5 @@
 import { setTimeout as wait } from 'node:timers/promises';
 import { normalizeBridge } from '@inkeep/open-knowledge-core';
-import { updateYFragment } from '@tiptap/y-tiptap';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
@@ -10,20 +9,8 @@ import {
   createTestServer,
   getServerState,
   mdManager,
-  schema,
-  type TestClient,
   type TestServer,
 } from './test-harness';
-
-function applyWysiwygEdit(client: TestClient, markdownAfterEdit: string): void {
-  const pmNode = schema.nodeFromJSON(mdManager.parse(markdownAfterEdit));
-  client.doc.transact(() => {
-    updateYFragment(client.doc, client.fragment, pmNode, {
-      mapping: new Map(),
-      isOMark: new Map(),
-    });
-  });
-}
 
 const SHAPE_A_INDENTED_STEP = [
   '<Steps>',
@@ -126,7 +113,7 @@ afterAll(async () => {
 
 describe('byte-sacred source-mode typing inside indented JSX', () => {
   for (const { name, seed, anchor } of SHAPES) {
-    test(`${name}: a source-mode keystroke stays byte-verbatim (no Observer-A normalization write-back)`, async () => {
+    test(`${name}: a source-mode keystroke stays byte-verbatim`, async () => {
       const docName = `e2-${name.replace(/[^a-z0-9]/gi, '-')}-${crypto.randomUUID()}`;
       await agentWriteMd(server.port, seed, { docName, position: 'replace' });
       await wait(300);
@@ -144,34 +131,6 @@ describe('byte-sacred source-mode typing inside indented JSX', () => {
 
         const serverBytes = getServerState(server, docName)?.ytext.toString() ?? '';
         expect(serverBytes).toBe(expectedAfterTyping);
-      } finally {
-        await client.cleanup();
-      }
-    });
-  }
-});
-
-const WYSIWYG_SHAPES = SHAPES.filter((s) => s.name.startsWith('A') || s.name.startsWith('B'));
-
-describe('byte-sacred WYSIWYG-commit channel on indented JSX', () => {
-  for (const { name, seed } of WYSIWYG_SHAPES) {
-    test(`${name}: a WYSIWYG fragment commit does not re-indent / normalize the container in Y.Text`, async () => {
-      const docName = `e2w-${name.replace(/[^a-z0-9]/gi, '-')}-${crypto.randomUUID()}`;
-      await agentWriteMd(server.port, seed, { docName, position: 'replace' });
-      await wait(300);
-      const client = await createTestClient(server.port, docName);
-      try {
-        const ytext = client.doc.getText('source');
-        await awaitDocQuiescence(client.doc);
-        const landed = ytext.toString();
-        expect(landed).toBe(seed);
-
-        applyWysiwygEdit(client, landed.replace('Content one.', 'Content one, edited.'));
-        await awaitDocQuiescence(client.doc);
-
-        const serverBytes = getServerState(server, docName)?.ytext.toString() ?? '';
-        expect(serverBytes).toContain('Content one, edited.');
-        expect(serverBytes).toBe(landed.replace('Content one.', 'Content one, edited.'));
       } finally {
         await client.cleanup();
       }

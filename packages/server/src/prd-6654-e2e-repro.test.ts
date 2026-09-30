@@ -4,17 +4,11 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
 import { Hocuspocus } from '@hocuspocus/server';
-import { MarkdownManager, sharedExtensions } from '@inkeep/open-knowledge-core';
-import { getSchema } from '@tiptap/core';
 import { describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { AGENT_WRITE_ORIGIN, AgentSessionManager } from './agent-sessions.ts';
 import { createApiExtension } from './api-extension.test-helper.ts';
 import { composeAndWriteRawBody } from './bridge-intake.ts';
 import { createServerObserverExtension } from './server-observer-extension.ts';
-
-const mdManager = new MarkdownManager({ extensions: sharedExtensions });
-const schema = getSchema(sharedExtensions);
 
 interface CapturedResponse {
   status: number;
@@ -74,7 +68,7 @@ function setup() {
   mkdirSync(contentDir, { recursive: true });
   const hocuspocus = new Hocuspocus({
     quiet: true,
-    extensions: [createServerObserverExtension({ mdManager, schema })],
+    extensions: [createServerObserverExtension()],
   });
   const sessionManager = new AgentSessionManager(hocuspocus);
   return {
@@ -106,7 +100,6 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
     try {
       const session = await env.sessionManager.getSession('test-doc');
       const ytext = session.dc.document.getText('source');
-      const xmlFragment = session.dc.document.getXmlFragment('default');
 
       session.dc.document.transact(() => {
         ytext.delete(0, ytext.length);
@@ -122,9 +115,7 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
       expect(ytext.toString().includes('| 1 | 2\n')).toBe(true);
 
       session.dc.document.transact(() => {
-        const para = new Y.XmlElement('paragraph');
-        para.insert(0, [new Y.XmlText('hi')]);
-        xmlFragment.insert(xmlFragment.length, [para]);
+        ytext.insert(ytext.length, '\nhi\n');
       }, USER_TYPING_ORIGIN);
 
       const r2 = await callAgentPatch(env.hocuspocus, env.sessionManager, env.contentDir, {
@@ -144,16 +135,13 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
     try {
       const session = await env.sessionManager.getSession('test-doc');
       const ytext = session.dc.document.getText('source');
-      const xmlFragment = session.dc.document.getXmlFragment('default');
 
       session.dc.document.transact(() => {
         composeAndWriteRawBody(session.dc.document, '\n\nhello\n', 'agent');
       }, AGENT_WRITE_ORIGIN);
 
       session.dc.document.transact(() => {
-        const para = new Y.XmlElement('paragraph');
-        para.insert(0, [new Y.XmlText('z')]);
-        xmlFragment.insert(xmlFragment.length, [para]);
+        ytext.insert(ytext.length, '\nz\n');
       }, USER_TYPING_ORIGIN);
 
       const r2 = await callAgentPatch(env.hocuspocus, env.sessionManager, env.contentDir, {
@@ -173,7 +161,6 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
     try {
       const session = await env.sessionManager.getSession('test-doc');
       const ytext = session.dc.document.getText('source');
-      const xmlFragment = session.dc.document.getXmlFragment('default');
 
       const seed = '# Trace\n\n| step | note |\n| ---- | ---- |\n| 0 | start |\n';
       session.dc.document.transact(() => {
@@ -199,9 +186,7 @@ describe('PRD-6654 — full end-to-end gate (handleAgentPatch + WYSIWYG touch)',
         }
         if (i % 2 === 0) {
           session.dc.document.transact(() => {
-            const para = new Y.XmlElement('paragraph');
-            para.insert(0, [new Y.XmlText(`n${i}`)]);
-            xmlFragment.insert(xmlFragment.length, [para]);
+            ytext.insert(ytext.length, `\nn${i}\n`);
           }, USER_TYPING_ORIGIN);
         }
       }

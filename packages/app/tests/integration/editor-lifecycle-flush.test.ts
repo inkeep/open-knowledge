@@ -21,7 +21,6 @@ describe('editor lifecycle flush/resync (client<->server)', () => {
   it('force-sync flush lands a pending delta on the SERVER (IDB-only would not)', async () => {
     const client = await createTestClient(server.port, undefined, {
       syncControl: true,
-      skipInvariantWatcher: true,
     });
     try {
       const MARKER = 'FLUSHONHIDEMARKER7c1a';
@@ -51,7 +50,6 @@ describe('editor lifecycle flush/resync (client<->server)', () => {
   it('resync-on-visible: a client that missed a server edit reconverges', async () => {
     const client = await createTestClient(server.port, undefined, {
       syncControl: true,
-      skipInvariantWatcher: true,
     });
     try {
       const SERVER_EDIT = 'SERVEREDITWHILEHIDDEN91b2';

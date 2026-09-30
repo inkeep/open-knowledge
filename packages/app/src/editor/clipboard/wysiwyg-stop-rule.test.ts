@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
+import { buildSeededProjectionProvider } from '../projection-provider.test-helper';
 import { buildPatternDConstructorOptions } from '../TiptapEditor';
-import { buildSeededPatternDProvider, fakeClipboard } from '../walk-currency-test-harness';
+import { fakeClipboard } from '../walk-currency-test-harness';
 
 type WysiwygEditorProps = NonNullable<
   ReturnType<typeof buildPatternDConstructorOptions>['editorProps']
@@ -9,12 +10,13 @@ type WysiwygEditorProps = NonNullable<
 };
 
 function buildWysiwygEditorProps(): WysiwygEditorProps {
-  const { provider, cleanup } = buildSeededPatternDProvider('wysiwyg-stop-rule');
+  const { provider, projection, cleanup } = buildSeededProjectionProvider('wysiwyg-stop-rule');
   try {
     return buildPatternDConstructorOptions({
       provider,
       clipboard: fakeClipboard,
       ctorStart: 0,
+      projection,
     }).editorProps as WysiwygEditorProps;
   } finally {
     cleanup();

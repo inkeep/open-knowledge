@@ -117,7 +117,7 @@ describe('L3 agent-write divergence realign — content-loss conventions', () =>
         () => existsSync(docPath) && readFileSync(docPath, 'utf-8').includes('body-v1'),
       );
 
-      const client = await createTestClient(port, docName, { skipInvariantWatcher: true });
+      const client = await createTestClient(port, docName);
       await pollUntil(() => client.ytext.toString().includes('body-v1'));
       const before = client.ytext.toString();
       client.doc.transact(() => {

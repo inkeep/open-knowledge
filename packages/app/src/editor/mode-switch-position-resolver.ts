@@ -1,8 +1,11 @@
-import type { MarkdownManager } from '@inkeep/open-knowledge-core';
+import {
+  buildProjection,
+  type MarkdownManager,
+  type Projection,
+} from '@inkeep/open-knowledge-core';
 import type { Node as PmNode } from '@tiptap/pm/model';
 import {
   blockIndexForLine,
-  blockRangeToPositions,
   canonicalBlockKind,
   comparableChildCount,
   computeSourceBlocks,
@@ -11,6 +14,7 @@ import {
   offsetToLine,
   type SourceBlock,
 } from './block-spans';
+import { caretSourceOffsetToPmPos, sourceEndOffsetToPmPos } from './projection-coordinates';
 
 export type ResolveConfidence = 'exact' | 'same-type-ordinal' | 'ordinal' | 'clamped';
 
@@ -74,6 +78,19 @@ function gradeFor(
 interface SourceIndex {
   blocks: SourceBlock[];
   lineStarts: number[];
+  projection: Projection | null;
+}
+
+interface SourceSpan {
+  start: number;
+  end: number;
+}
+
+function sourceSpanOf(block: SourceBlock, offsets: number[], length: number): SourceSpan {
+  return {
+    start: block.sourceStart ?? lineToOffset(offsets, block.start, length),
+    end: block.sourceEnd ?? Math.min(lineToOffset(offsets, block.end + 1, length), length),
+  };
 }
 
 export function createApproxResolver(md: MarkdownManager): ModeSwitchPositionResolver {
@@ -85,9 +102,16 @@ export function createApproxResolver(md: MarkdownManager): ModeSwitchPositionRes
     index = {
       blocks: computeSourceBlocks(source, md).blocks,
       lineStarts: lineStartOffsets(source),
+      projection: null,
     };
     indexedSource = source;
     return index;
+  }
+
+  function projectionOf(source: string): Projection {
+    const current = indexOf(source);
+    current.projection ??= buildProjection(source, md);
+    return current.projection;
   }
 
   return {
@@ -163,20 +187,28 @@ export function createApproxResolver(md: MarkdownManager): ModeSwitchPositionRes
     resolveInWysiwyg(anchor, { source, doc }) {
       const count = comparableChildCount(doc);
       if (count === 0) return null;
-      const { blocks } = indexOf(source);
-      const inRange = anchor.blockIndex >= 0 && anchor.blockIndex < count;
+      const { blocks, lineStarts: offsets } = indexOf(source);
+      if (blocks.length === 0) return null;
+      const inRange = anchor.blockIndex >= 0 && anchor.blockIndex < blocks.length;
       const tripwireOk = count === blocks.length;
-      const idx = clamp(anchor.blockIndex, 0, count - 1);
-      const range = blockRangeToPositions(doc, idx, idx + 1);
-      if (range === null) return null;
-      const node = doc.child(idx);
+      const idx = clamp(anchor.blockIndex, 0, blocks.length - 1);
+      const block = blocks[idx];
+      if (!block) return null;
+      const projection = projectionOf(source);
+      const span = sourceSpanOf(block, offsets, source.length);
+      const size = projection.doc.content.size;
+      const blockStart = clamp(caretSourceOffsetToPmPos(projection, span.start), 0, size);
+      const blockEnd =
+        span.end > span.start
+          ? clamp(sourceEndOffsetToPmPos(projection, span.end), blockStart, size)
+          : blockStart;
       const confidence = gradeFor(anchor, {
         inRange,
         tripwireOk,
-        kind: canonicalBlockKind(node.type.name),
-        text: node.textContent,
+        kind: block.kind,
+        text: block.text,
       });
-      return { blockStart: range.from, blockEnd: range.to, point: range.from, confidence };
+      return { blockStart, blockEnd, point: blockStart, confidence };
     },
   };
 }

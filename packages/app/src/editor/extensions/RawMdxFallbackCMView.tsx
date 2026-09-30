@@ -1,15 +1,9 @@
-/**
- * Architecture (Precedent #28 — direct PM dispatch, NOT y-codemirror.next): CM keystroke →
- * forwardUpdate → PM transaction → y-prosemirror → CRDT PM change → NodeView.update(node) →
- * computeChange → CM transaction Single `updating` boolean prevents feedback loops.
- */
-
 import { Compartment } from '@codemirror/state';
 import { EditorView as CMEditorView, keymap } from '@codemirror/view';
 import { useLingui } from '@lingui/react/macro';
 import type { NodeViewProps } from '@tiptap/core';
 import type { Node as PmNode, Schema } from '@tiptap/pm/model';
-import type { Selection as PmSelection } from '@tiptap/pm/state';
+import type { Selection as PmSelection, Transaction } from '@tiptap/pm/state';
 import { NodeSelection, Selection } from '@tiptap/pm/state';
 import { NodeViewWrapper } from '@tiptap/react';
 import { Trash2 } from 'lucide-react';
@@ -24,8 +18,12 @@ import { classifySeverity, SEVERITY_STYLES } from '../utils/severity';
 import {
   autonomousFragmentEditAllowed,
   markSwapIfByteNeutral,
+  PROJECTION_REMOTE_APPLY_META,
 } from './autonomous-fragment-edit.ts';
 import { createNestedCMExtensions, darkTheme, lightTheme } from './nested-cm-extensions';
+import { computeChange, mergeConcurrentEdit } from './raw-box-merge';
+
+export { computeChange } from './raw-box-merge';
 
 export function shouldEscapeNestedCM(
   cmView: CMEditorView,
@@ -105,30 +103,6 @@ export function tryParseUpgrade(source: string, schema: Schema): PmNode[] | null
   return blocks;
 }
 
-export function computeChange(
-  oldVal: string,
-  newVal: string,
-): { from: number; to: number; text: string } | null {
-  if (oldVal === newVal) return null;
-  let start = 0;
-  let oldEnd = oldVal.length;
-  let newEnd = newVal.length;
-
-  while (start < oldEnd && oldVal.charCodeAt(start) === newVal.charCodeAt(start)) {
-    start++;
-  }
-  while (
-    oldEnd > start &&
-    newEnd > start &&
-    oldVal.charCodeAt(oldEnd - 1) === newVal.charCodeAt(newEnd - 1)
-  ) {
-    oldEnd--;
-    newEnd--;
-  }
-
-  return { from: start, to: oldEnd, text: newVal.slice(start, newEnd) };
-}
-
 const UNREGISTERED_REASON_PREFIX = 'Unregistered component:';
 
 function extractUnregisteredComponentName(reason: string): string | null {
@@ -142,6 +116,9 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
   const cmContainerRef = useRef<HTMLDivElement>(null);
   const cmViewRef = useRef<CMEditorView | null>(null);
   const updatingRef = useRef(false);
+  const syncedTextRef = useRef(node.textContent);
+  const composeDirtyRef = useRef(false);
+  const remotePendingRef = useRef(false);
   const themeCompartmentRef = useRef(new Compartment());
   const wordWrapCompartmentRef = useRef(new Compartment());
   const { resolvedTheme } = useTheme();
@@ -177,11 +154,45 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
         tr.replaceWith(start, end, textNode);
       }
       pmView.dispatch(tr);
+      syncedTextRef.current = newText;
     } catch (err) {
       updatingRef.current = false;
       throw err;
     }
     updatingRef.current = false;
+  };
+
+  /* STOP: a composition's text is never forwarded mid-flight, and a remote change is never
+     pushed into CM mid-flight. A re-derive while composing re-parses the box and can move
+     the half-composed text out of it; pushing that into CM and letting the commit land
+     writes the glyph twice. Both sides are merged once, against the last text they agreed
+     on, when the composition ends. */
+  const reconcileComposition = (cmView: CMEditorView) => {
+    if (cmView.composing) return;
+    if (!composeDirtyRef.current && !remotePendingRef.current) return;
+    composeDirtyRef.current = false;
+    remotePendingRef.current = false;
+    const pos = typeof getPos === 'function' ? getPos() : undefined;
+    const pmView = getEditorView(editor);
+    const currentNode = typeof pos === 'number' ? pmView?.state.doc.nodeAt(pos) : null;
+    if (currentNode?.type.name !== 'rawMdxFallback') return;
+
+    const local = cmView.state.doc.toString();
+    const remote = currentNode.textContent;
+    const merged = mergeConcurrentEdit(syncedTextRef.current, local, remote);
+    const change = computeChange(local, merged);
+    if (change) {
+      updatingRef.current = true;
+      try {
+        cmView.dispatch({ changes: { from: change.from, to: change.to, insert: change.text } });
+      } catch (err) {
+        updatingRef.current = false;
+        throw err;
+      }
+      updatingRef.current = false;
+    }
+    if (merged !== remote) forwardUpdate(merged);
+    else syncedTextRef.current = merged;
   };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: CM view mounts once imperatively; re-mount on deps change would destroy the editor state. Theme/word-wrap handled by separate compartment effects; content sync handled by PM→CM sync effect below.
@@ -261,8 +272,15 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
 
     extensions.push(
       CMEditorView.updateListener.of((update) => {
-        if (update.docChanged && !updatingRef.current) {
-          forwardUpdate(update.state.doc.toString());
+        if (!updatingRef.current) {
+          if (update.docChanged && update.view.composing) {
+            composeDirtyRef.current = true;
+          } else if (composeDirtyRef.current || remotePendingRef.current) {
+            if (update.docChanged) composeDirtyRef.current = true;
+            reconcileComposition(update.view);
+          } else if (update.docChanged) {
+            forwardUpdate(update.state.doc.toString());
+          }
         }
         if (update.focusChanged && update.view.hasFocus && !updatingRef.current) {
           const pos = typeof getPos === 'function' ? getPos() : undefined;
@@ -326,11 +344,19 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
 
     const mark = () => markUserTyping();
     const dom = cmView.contentDOM;
+    const onCompositionEnd = () => {
+      queueMicrotask(() => {
+        const view = cmViewRef.current;
+        if (view) reconcileComposition(view);
+      });
+    };
+    dom.addEventListener('compositionend', onCompositionEnd);
     dom.addEventListener('keydown', mark);
     dom.addEventListener('paste', mark);
     dom.addEventListener('drop', mark);
     dom.addEventListener('cut', mark);
     const teardownTypingListeners = () => {
+      dom.removeEventListener('compositionend', onCompositionEnd);
       dom.removeEventListener('keydown', mark);
       dom.removeEventListener('paste', mark);
       dom.removeEventListener('drop', mark);
@@ -364,12 +390,18 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
   }, [wordWrap]);
 
   useEffect(() => {
-    const handler = () => {
+    /* STOP: never move CM's selection while it is composing, and never on a remote re-derive.
+       Either one aborts an IME composition without a compositionend, and the commit then lands at
+       the moved caret, which writes the glyph twice. A re-derive also yanks a typing caret to the
+       start of the box. */
+    const handler = ({ transaction }: { transaction: Transaction }) => {
       const pos = typeof getPos === 'function' ? getPos() : undefined;
       if (typeof pos !== 'number') return;
       const cmView = cmViewRef.current;
       if (!cmView) return;
       if (updatingRef.current) return;
+      if (cmView.composing || cmView.compositionStarted) return;
+      if (transaction.getMeta(PROJECTION_REMOTE_APPLY_META) === true) return;
       const pmView = getEditorView(editor);
       if (!pmView) return;
       const currentNode = pmView.state.doc.nodeAt(pos);
@@ -411,10 +443,17 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
   useEffect(() => {
     const cmView = cmViewRef.current;
     if (!cmView || updatingRef.current) return;
+    if (cmView.composing || composeDirtyRef.current) {
+      remotePendingRef.current = true;
+      return;
+    }
 
     const oldText = cmView.state.doc.toString();
     const change = computeChange(oldText, textContent);
-    if (!change) return;
+    if (!change) {
+      syncedTextRef.current = textContent;
+      return;
+    }
 
     updatingRef.current = true;
     try {
@@ -426,6 +465,7 @@ export function RawMdxFallbackView({ node, editor, getPos }: NodeViewProps) {
       throw err;
     }
     updatingRef.current = false;
+    syncedTextRef.current = textContent;
   }, [textContent]);
 
   const handleDelete = () => {

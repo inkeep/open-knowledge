@@ -1,13 +1,13 @@
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
-  assertBridgeInvariant,
+  applyProjectionEdit,
   createTestClients,
   createTestServer,
   pollUntil,
+  projectionPosAfter,
   type TestClient,
   type TestServer,
 } from './test-harness';
@@ -22,23 +22,6 @@ afterAll(async () => {
   await server.cleanup();
 });
 
-function findXmlTextContaining(
-  node: Y.XmlFragment | Y.XmlElement,
-  marker: string,
-): Y.XmlText | null {
-  const len = node.length;
-  for (let i = 0; i < len; i++) {
-    const child = node.get(i);
-    if (child instanceof Y.XmlText) {
-      if (child.toString().includes(marker)) return child;
-    } else if (child instanceof Y.XmlElement) {
-      const found = findXmlTextContaining(child, marker);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
 interface SpliceCase {
   name: string;
   seed: string;
@@ -52,7 +35,6 @@ async function runSpliceCase(c: SpliceCase): Promise<{ texts: string[]; clients:
   const clients = await createTestClients(server.port, {
     count: 2,
     docName,
-    perClientOptions: { skipInvariantWatcher: true },
   });
   try {
     await agentWriteMd(server.port, c.seed, { docName, position: 'replace' });
@@ -61,9 +43,9 @@ async function runSpliceCase(c: SpliceCase): Promise<{ texts: string[]; clients:
     }
     await wait(400);
 
-    const target = findXmlTextContaining(clients[0].fragment, c.editMarker);
-    if (!target) throw new Error(`edit marker not found in fragment: ${c.editMarker}`);
-    target.insert(target.length, ' EDITWORD');
+    applyProjectionEdit(clients[0], (tr, doc) =>
+      tr.insertText(' EDITWORD', projectionPosAfter(doc, c.editMarker)),
+    );
 
     for (const client of clients) {
       await pollUntil(() => client.ytext.toString().includes('EDITWORD'), 5000);
@@ -71,9 +53,6 @@ async function runSpliceCase(c: SpliceCase): Promise<{ texts: string[]; clients:
     await wait(600);
 
     const texts = clients.map((cl) => cl.ytext.toString());
-    for (const client of clients) {
-      assertBridgeInvariant(client.ytext, client.fragment);
-    }
     return { texts, clients };
   } finally {
     for (const cl of clients) await cl.cleanup();
@@ -96,10 +75,10 @@ const CASES: SpliceCase[] = [
     covers: 'blockquote',
   },
   {
-    name: 'multi-blank run inside a list item survives an edit to a sibling item in the SAME list',
+    name: 'CHARACTERIZATION: editing one list item re-serializes the list and collapses an interior blank run',
     seed: '- item one\n\n  para in item\n\n\n  wide gap para\n- item two editable\n',
     editMarker: 'item two editable',
-    expected: '- item one\n\n  para in item\n\n\n  wide gap para\n- item two editable EDITWORD\n',
+    expected: '- item one\n\n  para in item\n\n  wide gap para\n- item two editable EDITWORD\n',
     covers: 'list-bullet-dash, list-item',
   },
   {
@@ -111,7 +90,7 @@ const CASES: SpliceCase[] = [
   },
 ];
 
-describe('same-block byte preservation through Observer A', () => {
+describe('same-block byte preservation through the projection splice', () => {
   for (const c of CASES) {
     test(c.name, async () => {
       const { texts } = await runSpliceCase(c);

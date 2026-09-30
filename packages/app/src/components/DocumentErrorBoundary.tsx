@@ -1,3 +1,4 @@
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { t } from '@lingui/core/macro';
 import { Trans } from '@lingui/react/macro';
 import { useEffect, useRef, useState } from 'react';
@@ -24,6 +25,47 @@ interface ErrorCopy {
 }
 
 const BACK_NAV_RESET_SENTINEL = '__back-nav__' as const;
+
+const AUTO_RETRY_LIMIT = 3;
+const AUTO_RETRY_DELAY_MS = 400;
+const AUTO_RETRY_BUDGET_RESET_MS = 60_000;
+
+interface AutoRetryLedger {
+  docName: string;
+  attempts: number;
+  lastAt: number;
+  claimedFor: unknown;
+}
+
+interface AutoRetryClaim {
+  attempt: number;
+  fresh: boolean;
+}
+
+/* STOP: the claim is keyed on the error identity, not on the effect running. The fallback's
+   effect re-mounts for reasons that are not new failures — StrictMode's double invoke, a
+   provider identity change — and each re-mount must re-arm the same pending retry rather than
+   spend another attempt. */
+function claimAutoRetry(
+  ledger: AutoRetryLedger,
+  docName: string,
+  error: unknown,
+): AutoRetryClaim | null {
+  const now = Date.now();
+  if (ledger.docName !== docName || now - ledger.lastAt > AUTO_RETRY_BUDGET_RESET_MS) {
+    ledger.docName = docName;
+    ledger.attempts = 0;
+    ledger.claimedFor = null;
+  }
+  if (ledger.claimedFor === error && ledger.attempts > 0) {
+    return { attempt: ledger.attempts, fresh: false };
+  }
+  if (ledger.attempts >= AUTO_RETRY_LIMIT) return null;
+  ledger.attempts += 1;
+  ledger.lastAt = now;
+  ledger.claimedFor = error;
+  return { attempt: ledger.attempts, fresh: true };
+}
 
 export function errorDocName(error: unknown): string | null {
   if (
@@ -97,6 +139,8 @@ interface DocumentErrorFallbackProps extends FallbackProps {
   activeDocName: string;
   previousDocName?: string;
   onNavigateBack?: (previousDocName: string) => void;
+  provider?: HocuspocusProvider | null;
+  autoRetryLedger: AutoRetryLedger;
 }
 
 function DocumentErrorFallback({
@@ -105,6 +149,8 @@ function DocumentErrorFallback({
   activeDocName,
   previousDocName,
   onNavigateBack,
+  provider,
+  autoRetryLedger,
 }: DocumentErrorFallbackProps) {
   const { title, summary } = errorCopy(error);
   const canGoBack = !!previousDocName && !!onNavigateBack;
@@ -113,10 +159,60 @@ function DocumentErrorFallback({
   const [restarting, setRestarting] = useState(false);
   const bridge = typeof window !== 'undefined' ? window.okDesktop : undefined;
   const restartBridge = bridge && isServerReachError(error) ? bridge : null;
+  const resetRef = useRef(resetErrorBoundary);
+
+  useEffect(() => {
+    resetRef.current = resetErrorBoundary;
+  });
 
   useEffect(() => {
     retryRef.current?.focus();
   }, []);
+
+  useEffect(() => {
+    if (!isServerReachError(error)) return;
+    if (!provider) return;
+
+    let armed = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const fire = () => {
+      if (!armed) return;
+      armed = false;
+      const claim = claimAutoRetry(autoRetryLedger, activeDocName, error);
+      if (claim === null) {
+        console.warn(
+          `[DocumentErrorBoundary] auto-retry budget spent for ${activeDocName}; leaving the error UI`,
+        );
+        return;
+      }
+      if (claim.fresh) {
+        console.warn(
+          `[DocumentErrorBoundary] auto-retry ${claim.attempt}/${AUTO_RETRY_LIMIT} for ${activeDocName}`,
+        );
+      }
+      // STOP: the auto-retry must reset through resetErrorBoundary() so it takes the same recycle-then-reset ordering as the Try again button.
+      timer = setTimeout(() => {
+        resetRef.current();
+      }, AUTO_RETRY_DELAY_MS);
+    };
+
+    const onSynced = ({ state }: { state: boolean }) => {
+      if (state) fire();
+    };
+
+    if (provider.isSynced) {
+      fire();
+    } else {
+      provider.on('synced', onSynced);
+    }
+
+    return () => {
+      armed = false;
+      provider.off('synced', onSynced);
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, [error, provider, autoRetryLedger, activeDocName]);
 
   return (
     <div
@@ -205,6 +301,7 @@ interface DocumentErrorBoundaryProps {
   previousDocName?: string;
   onNavigateBack?: (previousDocName: string) => void;
   onRecycle: (docName: string) => void;
+  provider?: HocuspocusProvider | null;
   children: React.ReactNode;
 }
 
@@ -213,8 +310,16 @@ export function DocumentErrorBoundary({
   previousDocName,
   onNavigateBack,
   onRecycle,
+  provider,
   children,
 }: DocumentErrorBoundaryProps) {
+  const autoRetryRef = useRef<AutoRetryLedger>({
+    docName: activeDocName,
+    attempts: 0,
+    lastAt: 0,
+    claimedFor: null,
+  });
+
   return (
     <ErrorBoundary
       fallbackRender={(props) => (
@@ -223,6 +328,8 @@ export function DocumentErrorBoundary({
           activeDocName={activeDocName}
           previousDocName={previousDocName}
           onNavigateBack={onNavigateBack}
+          provider={provider}
+          autoRetryLedger={autoRetryRef.current}
         />
       )}
       resetKeys={[activeDocName]}

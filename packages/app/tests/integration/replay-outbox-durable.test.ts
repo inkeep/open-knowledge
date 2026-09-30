@@ -3,7 +3,6 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { readReplayOutboxEntry } from '../../src/editor/replay-outbox';
 import {
@@ -54,11 +53,8 @@ describe('durable replay outbox across server-instance-mismatch', () => {
     const marker = 'DURABLE-OUTBOX-MARKER-7b21';
     const firstProvider = pool.getActive()?.provider;
     if (!firstProvider) throw new Error('expected active provider');
-    const paragraph = new Y.XmlElement('paragraph');
-    const xmlText = new Y.XmlText();
-    xmlText.applyDelta([{ insert: marker }]);
-    paragraph.insert(0, [xmlText]);
-    firstProvider.document.getXmlFragment('default').push([paragraph]);
+    const source = firstProvider.document.getText('source');
+    source.insert(source.length, `\n\n${marker}\n`);
 
     await pollUntil(() => firstProvider.unsyncedChanges === 0, 180, 10);
     server.killNetwork();

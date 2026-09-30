@@ -71,7 +71,6 @@ export {
   fnv1aDigest,
   fragmentHoldsPendingContent,
   type InvariantViolation,
-  isParseEquivalentBridge,
   locateBridgeDivergence,
   MAX_FM_REGION_BYTES,
   type MergeBoundarySpace,
@@ -1051,6 +1050,7 @@ export {
 } from './markdown/non-rendering-contexts.ts';
 export { isMutatingParserReservation } from './markdown/parser-reservations.ts';
 export { markdownToPlainText } from './markdown/plain-text.ts';
+export type { PmSourceMap, PmSourceMapPrecision, PmSourceSpan } from './markdown/pm-source-map.ts';
 export { normalizeReferenceLabel } from './markdown/reference-label.ts';
 export { normalizeDocRelativeAssetUrl } from './markdown/resolve-image-url.ts';
 export {
@@ -1059,6 +1059,12 @@ export {
   SAFE_URL_SCHEME_RE,
   SAFE_URL_SCHEMES,
 } from './markdown/safe-url.ts';
+export {
+  canonicalBlockKind,
+  computeSourceBlocks,
+  type SourceBlock,
+  sourceBlockSnapshot,
+} from './markdown/source-blocks.ts';
 export {
   createTagInTextRegex,
   INLINE_TAG_VALUE_RE,
@@ -1093,6 +1099,20 @@ export {
   type ParseHealthMetrics,
   resetParseHealth,
 } from './metrics/parse-health.ts';
+export {
+  alignProjectionToDoc,
+  applySplice,
+  type BlockRange,
+  buildProjection,
+  type ChangedBlocks,
+  changedProjectionBlocks,
+  computeBlockSplice,
+  type Projection,
+  rebaseProjection,
+  type SourceSplice,
+  serializeBlockRange,
+} from './projection/block-splice.ts';
+export { type ProjectionUpdate, reprojectChanged } from './projection/incremental-projection.ts';
 export { PROTOCOL_VERSION } from './protocol-version.ts';
 export {
   builtInComponents,

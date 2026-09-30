@@ -2,8 +2,8 @@ import { Extension } from '@tiptap/core';
 import type { Node as ProseMirrorNode, Slice } from '@tiptap/pm/model';
 import { Plugin, PluginKey } from '@tiptap/pm/state';
 import { ReplaceAroundStep, ReplaceStep } from '@tiptap/pm/transform';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { CELL_NODES } from '../table-cell-context';
+import { PROJECTION_REMOTE_APPLY_META } from './autonomous-fragment-edit';
 
 const COMPONENT_NODE = 'jsxComponent';
 
@@ -45,7 +45,7 @@ export const CellInsertionGate = Extension.create({
       new Plugin({
         key: cellInsertionGateKey,
         filterTransaction(tr, state) {
-          if (tr.getMeta(ySyncPluginKey)) return true;
+          if (tr.getMeta(PROJECTION_REMOTE_APPLY_META) === true) return true;
           if (!tr.docChanged) return true;
           const candidate = tr.steps.some(
             (step) =>

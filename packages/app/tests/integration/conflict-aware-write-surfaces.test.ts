@@ -367,9 +367,7 @@ describe('a conflict raised while the doc was unloaded still gates its first loa
         return data.documents?.some((d) => d.docName === docName) ?? false;
       }, 30_000);
 
-      const client = await createTestClient(server.port, docName, {
-        skipInvariantWatcher: true,
-      });
+      const client = await createTestClient(server.port, docName, {});
       cleanups.push(() => client.cleanup());
 
       const entry = (await listConflicts(server.port)).find((c) => c.file === fileName);

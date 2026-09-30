@@ -257,10 +257,6 @@ describe('PRD-6716: save-version + rollback do not mutate parent git', () => {
     writeFileSync(resolve(contentDir, `${docName}.md`), newContent);
 
     const yDoc = new Y.Doc();
-    const xmlFragment = yDoc.getXmlFragment('default');
-    const para = new Y.XmlElement('paragraph');
-    para.insert(0, [new Y.XmlText('Version 2 content (modified)')]);
-    xmlFragment.insert(0, [para]);
     yDoc.getText('source').insert(0, newContent);
 
     const shadowRef: ShadowRef = { current: shadow };

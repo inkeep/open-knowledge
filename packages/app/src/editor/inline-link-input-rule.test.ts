@@ -1,12 +1,11 @@
 import type { Editor } from '@tiptap/core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import {
   firstLinkAttrs,
   linkHrefs,
-  mountCollabEditor,
   mountLightEditor,
-  readUndoManager,
+  mountProjectionEditor,
+  type ProjectionEditorRig,
 } from './editor-rig.test-helper';
 import { InlineLinkInputRule } from './inline-link-input-rule';
 import { flushMicrotasksAndTimers, installDomGlobals } from './walk-currency-test-harness';
@@ -124,50 +123,56 @@ describe('inline-link input rule — exclusions', () => {
   });
 });
 
-describe('inline-link input rule — one undo restores the literal', () => {
-  test('a single undo brings back [text](url) with the text intact', async () => {
-    const ydoc = new Y.Doc();
-    const editor = mountCollabEditor(ydoc, [InlineLinkInputRule]);
+describe('inline-link input rule — one undo restores the literal, under the projection binding', () => {
+  function mountAtEnd(): ProjectionEditorRig {
+    const rig = mountProjectionEditor('seed\n', [InlineLinkInputRule]);
+    rig.editor.commands.setTextSelection(rig.editor.state.doc.content.size - 1);
+    return rig;
+  }
+
+  test('one undo retracts the typed [text](url) with its conversion, because the literal bytes already parse as the link', async () => {
+    const rig = mountAtEnd();
+    const { editor } = rig;
     try {
-      typeText(editor, '[docs](https://example.com)');
       await flushMicrotasksAndTimers();
-      expect(editor.state.doc.textContent).toBe('docs');
+      rig.undoManager.stopCapturing();
+      typeText(editor, ' [docs](https://example.com)');
+      await flushMicrotasksAndTimers();
+      expect(editor.state.doc.textContent).toBe('seed docs');
       expect(linkHrefs(editor)).toEqual(['https://example.com']);
 
-      const undoManager = readUndoManager(editor);
-      expect(undoManager).not.toBeNull();
-      undoManager?.undo();
+      rig.undoManager.undo();
       await flushMicrotasksAndTimers();
 
-      expect(editor.state.doc.textContent).toBe('[docs](https://example.com)');
+      expect(editor.state.doc.textContent).toBe('seed');
       expect(linkHrefs(editor)).toEqual([]);
+      expect(rig.ytext.toString()).toBe('seed\n');
     } finally {
-      editor.destroy();
-      ydoc.destroy();
+      rig.destroy();
     }
   });
 
   test('typing after a conversion stays its own undo step (no merge into the collapse)', async () => {
-    const ydoc = new Y.Doc();
-    const editor = mountCollabEditor(ydoc, [InlineLinkInputRule]);
+    const rig = mountAtEnd();
+    const { editor } = rig;
     try {
-      typeText(editor, '[docs](https://example.com)');
       await flushMicrotasksAndTimers();
-      expect(editor.state.doc.textContent).toBe('docs');
+      rig.undoManager.stopCapturing();
+      typeText(editor, ' [docs](https://example.com)');
+      await flushMicrotasksAndTimers();
+      expect(editor.state.doc.textContent).toBe('seed docs');
 
       typeText(editor, ' more');
       await flushMicrotasksAndTimers();
-      expect(editor.state.doc.textContent).toBe('docs more');
+      expect(editor.state.doc.textContent).toBe('seed docs more');
 
-      const undoManager = readUndoManager(editor);
-      undoManager?.undo();
+      rig.undoManager.undo();
       await flushMicrotasksAndTimers();
 
-      expect(editor.state.doc.textContent).toBe('docs');
+      expect(editor.state.doc.textContent).toBe('seed docs');
       expect(linkHrefs(editor)).toEqual(['https://example.com']);
     } finally {
-      editor.destroy();
-      ydoc.destroy();
+      rig.destroy();
     }
   });
 });

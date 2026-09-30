@@ -15,6 +15,15 @@ function ensureCollectionAncestors(
   }
 }
 
+function pruneEmptiedAncestors(doc: Document.Parsed<ParsedNode>, path: (string | number)[]): void {
+  for (let i = path.length - 1; i >= 1; i--) {
+    const ancestor = path.slice(0, i);
+    const node = doc.getIn(ancestor, true);
+    if (!isCollection(node) || node.items.length > 0) return;
+    doc.deleteIn(ancestor);
+  }
+}
+
 export function applyPatchToDocument(
   doc: Document.Parsed<ParsedNode>,
   patch: ConfigPatch,
@@ -26,6 +35,7 @@ export function applyPatchToDocument(
     if (value === null) {
       doc.deleteIn(path);
       applied.push(path.join('.'));
+      pruneEmptiedAncestors(doc, path);
       return;
     }
     if (Array.isArray(value)) {

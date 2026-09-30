@@ -133,10 +133,10 @@ describe('bindConfigDoc — patch()', () => {
     const result = binding.patch({ git: { hosts: { first: { provider: null }, second: null } } });
     expect(result).toMatchObject({
       ok: true,
-      effective: { git: { hosts: { first: {}, third: { provider: 'github' } } } },
+      effective: { git: { hosts: { third: { provider: 'github' } } } },
     });
     if (result.ok) {
-      expect(result.effective.git.hosts.first?.provider).toBeUndefined();
+      expect(result.effective.git.hosts.first).toBeUndefined();
       expect(result.effective.git.hosts.second).toBeUndefined();
     }
     binding.dispose();

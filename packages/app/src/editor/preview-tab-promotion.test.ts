@@ -2,9 +2,11 @@ import { Annotation, Transaction as CMTransaction, EditorState } from '@codemirr
 import type { ViewUpdate } from '@codemirror/view';
 import { getSchema } from '@tiptap/core';
 import { EditorState as PMEditorState } from '@tiptap/pm/state';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { markAutonomousFragmentEdit } from './extensions/autonomous-fragment-edit';
+import {
+  markAutonomousFragmentEdit,
+  PROJECTION_REMOTE_APPLY_META,
+} from './extensions/autonomous-fragment-edit';
 import { sharedExtensions } from './extensions/shared';
 import {
   isUserIntentCmUpdate,
@@ -15,10 +17,10 @@ import {
 
 let unsubscribePromotion: (() => void) | undefined;
 
-function pmTransaction(docChanged: boolean, syncMeta?: unknown) {
+function pmTransaction(docChanged: boolean, remote = false) {
   return {
     docChanged,
-    getMeta: (key: unknown) => (key === ySyncPluginKey ? syncMeta : undefined),
+    getMeta: (key: unknown) => (key === PROJECTION_REMOTE_APPLY_META ? remote : undefined),
   } as unknown as Parameters<typeof isUserIntentPmTransaction>[0];
 }
 
@@ -36,12 +38,12 @@ afterEach(() => {
 });
 
 describe('isUserIntentPmTransaction', () => {
-  test('a local content change with no sync meta is a user edit', () => {
+  test('a local content change that is not a remote re-projection is a user edit', () => {
     expect(isUserIntentPmTransaction(pmTransaction(true))).toBe(true);
   });
 
-  test('a CRDT-origin change is not — this is what keeps agent writes from promoting', () => {
-    expect(isUserIntentPmTransaction(pmTransaction(true, { isChangeOrigin: true }))).toBe(false);
+  test('a remote re-projection is not — this is what keeps agent writes from promoting', () => {
+    expect(isUserIntentPmTransaction(pmTransaction(true, true))).toBe(false);
   });
 
   test('selection-only transactions are not edits', () => {
@@ -58,11 +60,6 @@ describe('isUserIntentPmTransaction', () => {
     expect(swap.docChanged).toBe(true);
     expect(isUserIntentPmTransaction(swap)).toBe(false);
     expect(isUserIntentPmTransaction(state.tr.insertText('x', 1))).toBe(true);
-  });
-
-  test('any present sync meta counts as sync, whatever its shape', () => {
-    expect(isUserIntentPmTransaction(pmTransaction(true, {}))).toBe(false);
-    expect(isUserIntentPmTransaction(pmTransaction(true, { isChangeOrigin: false }))).toBe(false);
   });
 });
 

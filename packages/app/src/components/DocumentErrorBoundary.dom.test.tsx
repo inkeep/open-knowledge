@@ -3,12 +3,14 @@
  * follows the MaybeThrow Pattern C documented in precedent #43(d).
  */
 
+import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type { OkBugReportCreateResult } from '@inkeep/open-knowledge-core';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as syncPromiseModule from '@/editor/sync-promise';
-import { SyncTimeoutError } from '@/editor/sync-promise';
+import { DocumentNotFoundError, SyncTimeoutError } from '@/editor/sync-promise';
 import { DocumentErrorBoundary, errorCopy } from './DocumentErrorBoundary';
 
 type WindowGlobals = { NodeFilter?: typeof NodeFilter };
@@ -44,6 +46,40 @@ function ThrowSyncTimeout({ docName }: { docName: string }) {
     throw new SyncTimeoutError(docName, 10_000);
   }
   return <span data-testid="payload">{docName}</span>;
+}
+
+function ThrowDocumentNotFound({ docName }: { docName: string }) {
+  if (shouldThrow) {
+    throw new DocumentNotFoundError(docName);
+  }
+  return <span data-testid="payload">{docName}</span>;
+}
+
+interface FakeProvider {
+  provider: HocuspocusProvider;
+  emitSynced: (state: boolean) => void;
+  listenerCount: () => number;
+}
+
+function makeFakeProvider(initiallySynced: boolean): FakeProvider {
+  const listeners = new Set<(payload: { state: boolean }) => void>();
+  const provider = {
+    isSynced: initiallySynced,
+    on: (event: string, handler: (payload: { state: boolean }) => void) => {
+      if (event === 'synced') listeners.add(handler);
+    },
+    off: (event: string, handler: (payload: { state: boolean }) => void) => {
+      if (event === 'synced') listeners.delete(handler);
+    },
+  };
+  return {
+    provider: provider as unknown as HocuspocusProvider,
+    emitSynced: (state: boolean) => {
+      provider.isSynced = state;
+      for (const handler of Array.from(listeners)) handler({ state });
+    },
+    listenerCount: () => listeners.size,
+  };
 }
 
 type CreateRequest = { level: 'standard' | 'full'; note?: string };
@@ -333,5 +369,227 @@ describe('DocumentErrorBoundary (Tier-3 mount)', () => {
     releaseRestart({ ok: true });
     await screen.findByRole('button', { name: /restart server/i });
     expect((restart as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe('DocumentErrorBoundary — bounded automatic retry', () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+  let consoleWarnSpy: ReturnType<typeof vi.spyOn>;
+  const warnMessages: string[] = [];
+
+  beforeEach(() => {
+    shouldThrow = false;
+    warnMessages.length = 0;
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation((message: unknown) => {
+      if (typeof message === 'string') warnMessages.push(message);
+    });
+  });
+
+  afterEach(() => {
+    cleanup();
+    consoleErrorSpy.mockRestore();
+    consoleWarnSpy.mockRestore();
+  });
+
+  test('a sync timeout over an already-synced provider retries itself and clears', async () => {
+    shouldThrow = true;
+    const { provider } = makeFakeProvider(true);
+    const onRecycle = vi.fn(() => {
+      shouldThrow = false;
+    });
+
+    render(
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={onRecycle} provider={provider}>
+        <ThrowSyncTimeout docName="alpha.md" />
+      </DocumentErrorBoundary>,
+    );
+
+    expect(screen.getByRole('alert')).toBeDefined();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('payload').textContent).toBe('alpha.md');
+    });
+    expect(onRecycle).toHaveBeenCalledTimes(1);
+    expect(onRecycle.mock.calls[0]?.[0]).toBe('alpha.md');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  test('a provider that is not yet synced retries only once it reports synced', async () => {
+    shouldThrow = true;
+    const fake = makeFakeProvider(false);
+    const onRecycle = vi.fn(() => {
+      shouldThrow = false;
+    });
+
+    render(
+      <DocumentErrorBoundary
+        activeDocName="alpha.md"
+        onRecycle={onRecycle}
+        provider={fake.provider}
+      >
+        <ThrowSyncTimeout docName="alpha.md" />
+      </DocumentErrorBoundary>,
+    );
+
+    await waitFor(() => {
+      expect(fake.listenerCount()).toBe(1);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    expect(onRecycle).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeDefined();
+
+    fake.emitSynced(true);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('payload').textContent).toBe('alpha.md');
+    });
+    expect(onRecycle).toHaveBeenCalledTimes(1);
+  });
+
+  test('an error that is not a server-reach error is never retried', async () => {
+    shouldThrow = true;
+    const { provider } = makeFakeProvider(true);
+    const onRecycle = vi.fn(() => {
+      shouldThrow = false;
+    });
+
+    render(
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={onRecycle} provider={provider}>
+        <ThrowDocumentNotFound docName="alpha.md" />
+      </DocumentErrorBoundary>,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(onRecycle).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeDefined();
+  });
+
+  test('no provider means no automatic retry', async () => {
+    shouldThrow = true;
+    const onRecycle = vi.fn(() => {
+      shouldThrow = false;
+    });
+
+    render(
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={onRecycle}>
+        <ThrowSyncTimeout docName="alpha.md" />
+      </DocumentErrorBoundary>,
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(onRecycle).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeDefined();
+  });
+
+  test('a document that keeps failing stops after three attempts and keeps its error UI', async () => {
+    shouldThrow = true;
+    const { provider } = makeFakeProvider(true);
+    const onRecycle = vi.fn(() => {});
+
+    render(
+      <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={onRecycle} provider={provider}>
+        <ThrowSyncTimeout docName="alpha.md" />
+      </DocumentErrorBoundary>,
+    );
+
+    await waitFor(
+      () => {
+        expect(warnMessages.some((m) => m.includes('auto-retry budget spent'))).toBe(true);
+      },
+      { timeout: 5_000 },
+    );
+
+    expect(onRecycle).toHaveBeenCalledTimes(3);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 1/3')).length).toBe(1);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 2/3')).length).toBe(1);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 3/3')).length).toBe(1);
+
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(onRecycle).toHaveBeenCalledTimes(3);
+    expect(screen.getByRole('alert')).toBeDefined();
+  });
+
+  test("StrictMode's double-invoked effect does not spend a second attempt on one failure", async () => {
+    shouldThrow = true;
+    const { provider } = makeFakeProvider(true);
+    const onRecycle = vi.fn(() => {
+      shouldThrow = false;
+    });
+
+    render(
+      <StrictMode>
+        <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={onRecycle} provider={provider}>
+          <ThrowSyncTimeout docName="alpha.md" />
+        </DocumentErrorBoundary>
+      </StrictMode>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('payload').textContent).toBe('alpha.md');
+    });
+
+    expect(onRecycle).toHaveBeenCalledTimes(1);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 1/3')).length).toBe(1);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 2/3')).length).toBe(0);
+  });
+
+  test('under StrictMode a document that keeps failing still gets three real attempts', async () => {
+    shouldThrow = true;
+    const { provider } = makeFakeProvider(true);
+    const onRecycle = vi.fn(() => {});
+
+    render(
+      <StrictMode>
+        <DocumentErrorBoundary activeDocName="alpha.md" onRecycle={onRecycle} provider={provider}>
+          <ThrowSyncTimeout docName="alpha.md" />
+        </DocumentErrorBoundary>
+      </StrictMode>,
+    );
+
+    await waitFor(
+      () => {
+        expect(warnMessages.some((m) => m.includes('auto-retry budget spent'))).toBe(true);
+      },
+      { timeout: 5_000 },
+    );
+
+    expect(onRecycle).toHaveBeenCalledTimes(3);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 1/3')).length).toBe(1);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 2/3')).length).toBe(1);
+    expect(warnMessages.filter((m) => m.includes('auto-retry 3/3')).length).toBe(1);
+  });
+
+  test('Go back takes the back-nav path even with an auto-retry pending, and does not recycle', async () => {
+    shouldThrow = true;
+    const { provider } = makeFakeProvider(true);
+    const onRecycle = vi.fn((_docName: string) => {});
+    const onNavigateBack = vi.fn((_previousDocName: string) => {});
+    const invalidateSpy = vi
+      .spyOn(syncPromiseModule, 'invalidateSyncPromise')
+      .mockImplementation(() => {});
+
+    render(
+      <DocumentErrorBoundary
+        activeDocName="alpha.md"
+        previousDocName="beta.md"
+        onNavigateBack={onNavigateBack}
+        onRecycle={onRecycle}
+        provider={provider}
+      >
+        <ThrowSyncTimeout docName="alpha.md" />
+      </DocumentErrorBoundary>,
+    );
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: /go back/i }));
+
+    expect(onNavigateBack).toHaveBeenCalledTimes(1);
+    expect(onNavigateBack.mock.calls[0]?.[0]).toBe('beta.md');
+    expect(invalidateSpy).toHaveBeenCalledWith('alpha.md');
+    expect(warnMessages.some((m) => m.includes('back-nav reset (no recycle)'))).toBe(true);
+    expect(onRecycle).not.toHaveBeenCalled();
+
+    invalidateSpy.mockRestore();
   });
 });

@@ -1,20 +1,19 @@
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { buildProjection } from '@inkeep/open-knowledge-core';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from '../integration/harness-boot-timeout';
 import {
   agentWriteMd,
-  assertBridgeInvariant,
+  applyProjectionDoc,
   createTestClient,
   createTestServer,
   mdManager,
   pollUntil,
   readTestDoc,
   schema,
-  serializeFragment,
   stripTrailingWhitespace,
   type TestServer,
   testReset,
@@ -25,17 +24,9 @@ function mdRoundTrip(md: string): string {
   return mdManager.serialize(json);
 }
 
-function treeRoundTrip(md: string): string {
-  const doc = new Y.Doc();
-  const fragment = doc.getXmlFragment('default');
-  const json = mdManager.parse(md);
-  const pmNode = schema.nodeFromJSON(json);
-  const meta = { mapping: new Map(), isOMark: new Map() };
-  updateYFragment(doc, fragment, pmNode, meta);
-  const resultJson = yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON();
-  const result = mdManager.serialize(resultJson);
-  doc.destroy();
-  return result;
+function projectionRoundTrip(md: string): string {
+  const { doc } = buildProjection(md, mdManager);
+  return mdManager.serialize(doc.toJSON());
 }
 
 const CONSTRUCTS: Array<{ name: string; input: string; stable?: boolean; note?: string }> = [
@@ -175,10 +166,10 @@ describe('markdown round-trip: serialize(parse(md))', () => {
   }
 });
 
-describe('tree round-trip: pmJSON → updateYFragment → yXmlFragmentToProsemirrorJSON → serialize', () => {
+describe('projection round-trip: md → buildProjection → serialize', () => {
   for (const { name, input } of CONSTRUCTS) {
     test.concurrent(name, ({ expect }) => {
-      const output = stripTrailingWhitespace(treeRoundTrip(input));
+      const output = stripTrailingWhitespace(projectionRoundTrip(input));
       const normalized = stripTrailingWhitespace(input);
 
       const tokens = normalized.match(/[\w&<>]+/g) ?? [];
@@ -288,24 +279,24 @@ const MARKED_INLINE_LEAF: Array<{ name: string; input: string; expected: string 
   },
 ];
 
-describe('marked inline leaf nodes: byte-exact through chains 1 and 2', () => {
+describe('marked inline leaf nodes: byte-exact through both parse chains', () => {
   for (const { name, input, expected } of MARKED_INLINE_LEAF) {
     test.concurrent(name, ({ expect }) => {
       expect(mdRoundTrip(input)).toBe(expected);
-      expect(treeRoundTrip(input)).toBe(expected);
+      expect(projectionRoundTrip(input)).toBe(expected);
     });
   }
 });
 
-describe('marked inline leaf nodes: in-place fragment update', () => {
-  test('a reused fragment gains, keeps and loses a mark on an inline leaf', () => {
+describe('marked inline leaf nodes: repeated projection writes', () => {
+  test('a reused document gains, keeps and loses a mark on an inline leaf', () => {
     const doc = new Y.Doc();
-    const fragment = doc.getXmlFragment('default');
-    const meta = { mapping: new Map(), isOMark: new Map() };
+    const ytext = doc.getText('source');
+    doc.transact(() => ytext.insert(0, 'seed\n'), 'seed');
 
     const applyMd = (md: string): string => {
-      updateYFragment(doc, fragment, schema.nodeFromJSON(mdManager.parse(md)), meta);
-      return mdManager.serialize(yXmlFragmentToProseMirrorRootNode(fragment, schema).toJSON());
+      applyProjectionDoc({ doc, ytext }, schema.nodeFromJSON(mdManager.parse(md)));
+      return ytext.toString();
     };
 
     try {
@@ -322,7 +313,7 @@ describe('marked inline leaf nodes: in-place fragment update', () => {
   });
 });
 
-describe('disk round-trip: XmlFragment → persistence → disk → onLoadDocument → XmlFragment', () => {
+describe('disk round-trip: projection write → persistence → disk → onLoadDocument → Y.Text', () => {
   let server: TestServer;
 
   beforeAll(async () => {
@@ -342,10 +333,7 @@ describe('disk round-trip: XmlFragment → persistence → disk → onLoadDocume
 
       const client = await createTestClient(server.port, 'test-doc');
       try {
-        const json = mdManager.parse(input);
-        const pmNode = schema.nodeFromJSON(json);
-        const meta = { mapping: new Map(), isOMark: new Map() };
-        updateYFragment(client.doc, client.fragment, pmNode, meta);
+        applyProjectionDoc(client, schema.nodeFromJSON(mdManager.parse(input)));
 
         const tokens = stripTrailingWhitespace(input).match(/[\w&<>]+/g) ?? [];
         if (tokens.length > 0) {
@@ -356,7 +344,7 @@ describe('disk round-trip: XmlFragment → persistence → disk → onLoadDocume
         } else {
           await expect
             .poll(() => mdManager.parse(readTestDoc(server.contentDir)), { timeout: 5000 })
-            .toEqual(json);
+            .toEqual(mdManager.parse(input));
         }
 
         const diskContent = readTestDoc(server.contentDir);
@@ -385,7 +373,6 @@ describe('disk round-trip: XmlFragment → persistence → disk → onLoadDocume
         for (const token of tokens) {
           expect(client2.ytext.toString()).toContain(token);
         }
-        assertBridgeInvariant(client2.ytext, client2.fragment);
       } finally {
         await client2.cleanup();
       }
@@ -442,26 +429,20 @@ describe('agent-as-file-editor fidelity', () => {
 
       expect(client.ytext.toString()).toContain('Section Two');
       expect(client.ytext.toString()).toContain('Bullet one');
-      expect(serializeFragment(client.fragment)).toContain('Agent File Edit');
       const diskContent = readTestDoc(server.contentDir);
       expect(diskContent).toContain('Agent File Edit');
 
-      assertBridgeInvariant(client.ytext, client.fragment);
+      applyProjectionDoc(
+        client,
+        schema.nodeFromJSON(mdManager.parse('## User Section\n\nUser typed this.')),
+      );
 
-      const userJson = mdManager.parse('## User Section\n\nUser typed this.');
-      const userNode = schema.nodeFromJSON(userJson);
-      client.doc.transact(() => {
-        const meta = { mapping: new Map(), isOMark: new Map() };
-        updateYFragment(client.doc, client.fragment, userNode, meta);
-      });
-
-      await pollUntil(() => {
-        const t = stripTrailingWhitespace(client.ytext.toString());
-        const f = stripTrailingWhitespace(serializeFragment(client.fragment));
-        return t === f && t.length > 0;
-      }, 5000);
-
-      assertBridgeInvariant(client.ytext, client.fragment);
+      await pollUntil(
+        () =>
+          stripTrailingWhitespace(client.ytext.toString()) ===
+          '## User Section\n\nUser typed this.',
+        5000,
+      );
     } finally {
       await client.cleanup();
     }
@@ -476,7 +457,7 @@ describe('agent-as-file-editor fidelity', () => {
       client.doc.transact(() => {
         client.ytext.insert(0, '# User Content\n\nTyped by user.');
       });
-      await pollUntil(() => serializeFragment(client.fragment).includes('User Content'), 5000);
+      await pollUntil(() => client.ytext.toString().includes('User Content'), 5000);
 
       await agentWriteMd(server.port, '## Agent Content\n\nWritten by agent.', {
         docName: 'test-doc',
@@ -485,8 +466,6 @@ describe('agent-as-file-editor fidelity', () => {
 
       expect(client.ytext.toString()).toContain('User Content');
       expect(client.ytext.toString()).toContain('Agent Content');
-
-      assertBridgeInvariant(client.ytext, client.fragment);
 
       await pollUntil(() => {
         const disk = readTestDoc(server.contentDir);

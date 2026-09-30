@@ -24,7 +24,6 @@ import {
   wysiwygTargetMetrics,
 } from './mode-switch-landing.ts';
 import { type BlockAnchor, createApproxResolver } from './mode-switch-position-resolver.ts';
-import { blockRangeToPositions } from './plugins/agent-insert-flash.ts';
 import { FLASH_DURATION_MS } from './plugins/flash-shared.ts';
 import { landingFlashField } from './plugins/landing-flash-source.ts';
 import { createLandingFlashPlugin, landingFlashKey } from './plugins/landing-flash-wysiwyg.ts';
@@ -64,8 +63,8 @@ function pmPosOfBlock(doc: PmNode, index: number): number {
   return pos + 1;
 }
 
-function pmBlockStart(doc: PmNode, index: number): number {
-  return present(blockRangeToPositions(doc, index, index + 1)).from;
+function pmBlockIndexAt(doc: PmNode, pos: number): number {
+  return doc.resolve(pos).index(0);
 }
 
 function docFrom(source: string): PmNode {
@@ -175,7 +174,7 @@ describe('resolveWysiwygLandingTarget', () => {
     const resolved = present(
       resolveWysiwygLandingTarget(nav, { source, pmDoc: doc, ydoc, resolver }),
     );
-    expect(resolved.blockStart).toBe(pmBlockStart(doc, 2));
+    expect(pmBlockIndexAt(doc, resolved.blockStart)).toBe(2);
   });
 
   test('a surviving pin tracks a block a remote insert moved, beating the stale ordinal', () => {
@@ -191,7 +190,7 @@ describe('resolveWysiwygLandingTarget', () => {
     const resolved = present(
       resolveWysiwygLandingTarget(nav, { source: moved, pmDoc: movedDoc, ydoc, resolver }),
     );
-    expect(resolved.blockStart).toBe(pmBlockStart(movedDoc, 3));
+    expect(pmBlockIndexAt(movedDoc, resolved.blockStart)).toBe(3);
   });
 
   test('a deleted pin degrades to a clamped landing rather than a stale ordinal', () => {

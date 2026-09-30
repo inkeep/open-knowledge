@@ -3,11 +3,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 
 import { replaceRawBody } from '../../../server/src/bridge-intake.ts';
-import {
-  insertLocal,
-  mountCollabEditor,
-  readUndoManager,
-} from '../../src/editor/editor-rig.test-helper';
+import { insertLocal, mountProjectionEditorOn } from '../../src/editor/editor-rig.test-helper';
 import { installDomGlobals } from '../../src/editor/walk-currency-test-harness';
 
 let restoreDom: (() => void) | null = null;
@@ -35,13 +31,13 @@ function countOccurrences(hay: string, needle: string): number {
 }
 
 describe('client UndoManager under a timeline rollback', () => {
-  test('rollback is not undoable and a pre-rollback stack item does not recover discarded content', () => {
+  test('rollback is not undoable and clears the pre-rollback steps, so nothing recovers discarded content', () => {
     const ydoc = new Y.Doc();
-    const editor = mountCollabEditor(ydoc, []);
+    const ytext = ydoc.getText('source');
+    ydoc.transact(() => ytext.insert(0, '\n'), 'seed');
+    const rig = mountProjectionEditorOn(ytext, []);
+    const { editor, undoManager: um } = rig;
     try {
-      const um = readUndoManager(editor) as Y.UndoManager;
-      expect(um).not.toBeNull();
-
       insertLocal(editor, 'USER TYPED CONTENT', 1);
       expect(editor.state.doc.textContent).toContain('USER TYPED CONTENT');
       const stackBefore = um.undoStack.length;
@@ -53,7 +49,7 @@ describe('client UndoManager under a timeline rollback', () => {
 
       expect(captured).toContain('restored body');
       expect(captured).not.toContain('USER TYPED CONTENT');
-      expect(stackAfterRollback).toBe(stackBefore);
+      expect(stackAfterRollback).toBe(0);
 
       um.undo();
       const afterUndo = editor.state.doc.textContent;
@@ -70,7 +66,8 @@ describe('client UndoManager under a timeline rollback', () => {
       expect(afterRedo).not.toContain('USER TYPED CONTENT');
       expect(countOccurrences(afterRedo, 'restored body')).toBe(1);
     } finally {
-      editor.destroy();
+      rig.destroy();
+      ydoc.destroy();
     }
   });
 });

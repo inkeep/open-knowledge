@@ -130,7 +130,7 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         (await putTemplate(rig.port, '', name, '# Daily\n\nv1.\n', { title: 'Daily' })).status,
       ).toBe(200);
 
-      const client = await createTestClient(rig.port, docName, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, docName);
       try {
         await pollUntil(() => client.ytext.toString().includes('# Daily'), 8000);
         expect(serverDoc(rig, docName)).toBeDefined();
@@ -162,7 +162,7 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         (await putTemplate(rig.port, '', fromName, '# Note\n\nv1.\n', { title: 'Note' })).status,
       ).toBe(200);
 
-      const client = await createTestClient(rig.port, fromDoc, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, fromDoc);
       try {
         await pollUntil(() => client.ytext.toString().includes('# Note'), 8000);
         expect(serverDoc(rig, fromDoc)).toBeDefined();
@@ -204,7 +204,7 @@ describe('template delete/move/import — content-doc lifecycle', () => {
         `---\ntitle: Source Title\n---\n\n# Heading\n\n${marker}\n`,
       );
 
-      const client = await createTestClient(rig.port, tplDoc, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, tplDoc);
       try {
         expect(client.ytext.toString()).toBe('');
 

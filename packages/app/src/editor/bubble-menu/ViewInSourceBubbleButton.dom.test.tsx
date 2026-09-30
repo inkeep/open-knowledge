@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import * as Y from 'yjs';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { setEditorDocName } from '../extensions/doc-context.ts';
+import { PROJECTION_BINDING_EXTENSION } from '../projection-binding.ts';
 import {
   clearPendingSourceNavigationsForTest,
   peekPendingSourceNavigation,
@@ -37,7 +38,11 @@ function makeEditor(
   const editor = {
     isDestroyed: false,
     editorView: { state: { doc, selection: { from: pmPosOfBlock(doc, caretBlock) } } },
-    extensionManager: { extensions: [{ name: 'collaboration', options: { document: ydoc } }] },
+    extensionManager: {
+      extensions: [
+        { name: PROJECTION_BINDING_EXTENSION, options: { ytext: ydoc.getText('source') } },
+      ],
+    },
   } as unknown as Editor;
   setEditorDocName(editor, docName);
   return { editor, ydoc };

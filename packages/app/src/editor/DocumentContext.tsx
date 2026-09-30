@@ -840,6 +840,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
   function closeProvidersWithoutOpenTabs(
     removedTabIds: Iterable<string>,
     nextWorkspace: EditorWorkspaceState,
+    via = 'unspecified',
   ) {
     if (collabUrl === null) return;
     const remainingDocNames = new Set<string>();
@@ -850,7 +851,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
     const p = getPool(collabUrl);
     for (const tabId of removedTabIds) {
       const docName = docNameForTabId(tabId);
-      if (docName && !remainingDocNames.has(docName)) p.close(docName);
+      if (docName && !remainingDocNames.has(docName)) p.close(docName, via);
     }
   }
 
@@ -905,7 +906,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         tabIds: [...closingTabIds],
       }).workspace,
     );
-    closeProvidersWithoutOpenTabs(closingTabIds, nextWorkspace);
+    closeProvidersWithoutOpenTabs(closingTabIds, nextWorkspace, 'close-tab');
     commitWorkspace(nextWorkspace, wasFocused);
   };
 
@@ -1280,7 +1281,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
             tabIds: inPane,
           }).workspace;
         }
-        closeProvidersWithoutOpenTabs(twins, nextWorkspace);
+        closeProvidersWithoutOpenTabs(twins, nextWorkspace, 'open-target-twins');
       }
     }
     commitWorkspace(nextWorkspace);
@@ -1650,7 +1651,7 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         type: 'prune-tabs',
         keep: (tabId) => docNameForTabId(tabId) !== docName,
       }).workspace;
-      if (collabUrl !== null) getPool(collabUrl).close(docName);
+      if (collabUrl !== null) getPool(collabUrl).close(docName, 'close-document');
       commitWorkspace(nextWorkspace, focusedWasClosed);
     },
     closeActiveTabOrWindow,
@@ -1733,7 +1734,11 @@ export function DocumentProvider({ children }: { children: ReactNode }) {
         type: 'prune-tabs',
         keep: (tabId) => nextTabIds.has(tabId),
       }).workspace;
-      closeProvidersWithoutOpenTabs(staleTabIds, nextWorkspace);
+      closeProvidersWithoutOpenTabs(
+        staleTabIds,
+        nextWorkspace,
+        'sync-open-tabs-with-known-targets',
+      );
       commitWorkspace(nextWorkspace, focusedWasPruned);
     },
     reconcileLocalRename: (input) => createRemovalReconciler().reconcileLocalRename(input),

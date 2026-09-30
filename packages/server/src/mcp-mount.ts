@@ -106,6 +106,9 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
       });
   };
 
+  /* STOP: every path out of this function destroys the socket, so it must say so. A
+     silent drop here is indistinguishable at the client from the browser never sending
+     the request, which is the difference between a server bug and a client one. */
   const onUpgrade = (req: IncomingMessage, socket: Duplex, head: Buffer): void => {
     if (collaborationHost.handleUpgrade(req, socket, head)) return;
     if (tripsForwardedHeaderTripwire(req, ingressPolicy)) {
@@ -114,6 +117,16 @@ export function mountMcpAndApi(opts: MountMcpAndApiOptions): MountMcpAndApiHandl
         '[remote] refused proxied WS upgrade; consent with OK_ALLOW_EXTERNAL=1 + OK_EXTERNAL_URL (or server.allowExternal + server.externalUrl in config)',
       );
       warnForwardedHeaderRefusalOnce(log, 'ws-upgrade');
+    } else {
+      log.warn(
+        {
+          url: req.url,
+          host: req.headers.host ?? 'none',
+          origin: req.headers.origin ?? 'none',
+          protocol: req.headers['sec-websocket-protocol'] ?? 'none',
+        },
+        `[ws] upgrade dropped: no handler claimed ${req.url ?? '/'}. The collaboration host takes /collab* only; anything else reaching this listener is destroyed here`,
+      );
     }
     socket.destroy();
   };

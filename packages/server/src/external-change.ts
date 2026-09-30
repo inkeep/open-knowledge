@@ -10,13 +10,6 @@ import {
 } from '@inkeep/open-knowledge-core';
 import { formatReconcileSubject } from '@inkeep/open-knowledge-core/shadow-repo-layout';
 import type * as Y from 'yjs';
-import type { PrecomputedParse } from './bridge-intake.ts';
-import {
-  type BridgeDeriveLossReporter,
-  DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE,
-  type DeriveLossDetectOptions,
-} from './bridge-loss-detector.ts';
-import { shouldRunPairedIntakeDetection } from './bridge-loss-suppression.ts';
 import {
   isConfigDoc,
   isEditableTextDoc,
@@ -44,7 +37,7 @@ import { FILE_SYSTEM_WRITER } from './shadow-repo.ts';
 
 export { FILE_WATCHER_ORIGIN } from './disk-content-intake.ts';
 
-export function redactedErrorSummary(err: unknown): unknown {
+function redactedErrorSummary(err: unknown): unknown {
   const verbose = process.env.OK_TELEMETRY_VERBOSE === '1';
   if (err instanceof BridgeMergeContentLossError) return err.toLog({ verbose });
   if (err instanceof BridgeInvariantViolationError) {
@@ -58,10 +51,6 @@ export function applyExternalChange(
   hocuspocus: Hocuspocus,
   docName: string,
   content: string,
-  resolveEmbed?: (basename: string, sourcePath: string) => string | null,
-  resolveSize?: (basename: string, sourcePath: string) => number | null,
-  bridgeLossReporter?: BridgeDeriveLossReporter,
-  precomputed?: PrecomputedParse,
 ): void {
   if (
     isSystemDoc(docName) ||
@@ -80,31 +69,9 @@ export function applyExternalChange(
   const priorFm = stripFrontmatter(currentSource).frontmatter;
   const { frontmatter: nextFm } = stripFrontmatter(content);
 
-  const detect: DeriveLossDetectOptions | undefined =
-    bridgeLossReporter && shouldRunPairedIntakeDetection(FILE_WATCHER_ORIGIN.context.origin)
-      ? {
-          report: (obs) =>
-            bridgeLossReporter(
-              docName,
-              obs,
-              FILE_SYSTEM_WRITER.id,
-              DERIVE_LOSS_SITE_FILE_WATCHER_INTAKE,
-            ),
-          baselineFullMd: currentSource,
-        }
-      : undefined;
-
   try {
     document.transact(() => {
-      applyDiskContentToDoc(
-        document,
-        content,
-        resolveEmbed,
-        docName,
-        resolveSize,
-        detect,
-        precomputed,
-      );
+      applyDiskContentToDoc(document, content);
     }, FILE_WATCHER_ORIGIN);
   } catch (err) {
     try {
@@ -144,21 +111,10 @@ export function applyExternalChange(
 export function createExternalChangeHandler(
   durabilityState: DocumentDurabilityState,
   hocuspocus: Hocuspocus,
-  resolveEmbed?: (basename: string, sourcePath: string) => string | null,
-  resolveSize?: (basename: string, sourcePath: string) => number | null,
-  bridgeLossReporter?: BridgeDeriveLossReporter,
 ): (docName: string, content: string) => Promise<void> {
   return async (docName: string, content: string): Promise<void> => {
     try {
-      applyExternalChange(
-        durabilityState,
-        hocuspocus,
-        docName,
-        content,
-        resolveEmbed,
-        resolveSize,
-        bridgeLossReporter,
-      );
+      applyExternalChange(durabilityState, hocuspocus, docName, content);
       getLogger('file-watcher').info({ docName }, 'applied external change');
     } catch (err) {
       if (
@@ -291,8 +247,6 @@ export function reconcileDiskBeforeAgentWrite(
   hocuspocus: Hocuspocus,
   docName: string,
   contentDir: string,
-  resolveEmbed: ((basename: string, sourcePath: string) => string | null) | undefined,
-  bridgeLossReporter: BridgeDeriveLossReporter | undefined,
   conflicts: Pick<ConflictAuthority, 'dissolveReconcile' | 'fileOf' | 'raise'>,
 ): ReconcileBeforeWriteResult {
   if (
@@ -413,15 +367,7 @@ export function reconcileDiskBeforeAgentWrite(
           `[reconcile] ${docName} insert-group dedup skipped (LCS cell cap); union emitted with possible same-block duplication`,
         );
       }
-      applyExternalChange(
-        durabilityState,
-        hocuspocus,
-        docName,
-        ingest,
-        resolveEmbed,
-        undefined,
-        bridgeLossReporter,
-      );
+      applyExternalChange(durabilityState, hocuspocus, docName, ingest);
       if (outcome.kind === 'merged') {
         durabilityState.setReconciledBase(docName, diskContent);
       }

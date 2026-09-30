@@ -5,6 +5,7 @@ import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@
 import { applySlashCommandItem } from '../slash-command/apply-item';
 import { filterItems, getSlashCommandItems, type SlashCommandItem } from '../slash-command/items';
 import { SlashCommandMenu } from '../slash-command/SlashCommandMenu';
+import { createSuggestionUndoWindow } from '../suggestion-undo-window';
 import { isSelectionInTableCell } from '../table-cell-context';
 import { suggestionAllow } from './suggestion-allow';
 import {
@@ -114,6 +115,7 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
           const posState: SuggestionPositionState = { popup: null, stopAutoUpdate: null };
 
           let doPosition: (() => void) | null = null;
+          const undoWindow = createSuggestionUndoWindow(() => extension.editor);
 
           const onHoverIndex = (idx: number) => {
             if (idx === selectedIndex) return;
@@ -134,6 +136,7 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
 
           return {
             onStart(props: SuggestionProps<SlashCommandItem>) {
+              undoWindow.open();
               currentProps = props;
               selectedIndex = 0;
 
@@ -191,6 +194,7 @@ export const SlashCommand = Extension.create<SlashCommandOptions>({
             },
 
             onExit() {
+              undoWindow.close();
               destroySuggestionPopup(posState);
               doPosition = null;
               renderer?.destroy();

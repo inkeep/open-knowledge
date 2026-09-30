@@ -1,11 +1,9 @@
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import {
-  assertBridgeInvariant,
+  appendProjectionParagraph,
   createTestClients,
   createTestServer,
-  serializeFragment,
   type TestClient,
   type TestServer,
 } from '../integration/test-harness';
@@ -26,11 +24,7 @@ function createPRNG(seed: number) {
 }
 
 function wysiwygAppend(client: TestClient, text: string): void {
-  const paragraph = new Y.XmlElement('paragraph');
-  const ytext = new Y.XmlText();
-  ytext.applyDelta([{ insert: text }]);
-  paragraph.insert(0, [ytext]);
-  client.fragment.push([paragraph]);
+  appendProjectionParagraph(client, text);
 }
 
 function sourceAppend(client: TestClient, text: string): void {
@@ -50,30 +44,10 @@ async function driveToConvergence(
   let attempts = 0;
   while (Date.now() - start < timeoutMs) {
     const ytexts = clients.map((c) => c.ytext.toString());
-    const fragMds = clients.map((c) => serializeFragment(c.fragment));
-    const allYtextSame = ytexts.every((t) => t === ytexts[0]);
-    const allFragSame = fragMds.every((m) => m === fragMds[0]);
-
-    if (allYtextSame && allFragSame) {
-      let allBridgeOk = true;
-      for (const c of clients) {
-        try {
-          assertBridgeInvariant(c.ytext, c.fragment);
-        } catch {
-          allBridgeOk = false;
-          break;
-        }
-      }
-      if (allBridgeOk) return Date.now() - start;
-    }
+    if (ytexts.every((t) => t === ytexts[0])) return Date.now() - start;
 
     if (attempts < 8) {
-      const target = clients[attempts % clients.length];
-      const paragraph = new Y.XmlElement('paragraph');
-      const text = new Y.XmlText();
-      text.applyDelta([{ insert: `r${attempts}` }]);
-      paragraph.insert(0, [text]);
-      target.fragment.push([paragraph]);
+      appendProjectionParagraph(clients[attempts % clients.length], `r${attempts}`);
     }
     attempts++;
     await wait(800);
@@ -132,7 +106,6 @@ describe('server-authoritative stress (US-013)', () => {
     const clients = await createTestClients(server.port, {
       count: clientCount,
       docName,
-      perClientOptions: { skipInvariantWatcher: true },
     });
 
     try {
@@ -164,11 +137,7 @@ describe('server-authoritative stress (US-013)', () => {
 
       if (converged === null) {
         for (let i = 0; i < clients.length; i++) {
-          const c = clients[i];
-          console.warn(
-            `[stress] Client ${i}: ytext=${c.ytext.toString().length}ch, ` +
-              `frag=${serializeFragment(c.fragment).length}ch`,
-          );
+          console.warn(`[stress] Client ${i}: ytext=${clients[i].ytext.toString().length}ch`);
         }
       }
 
@@ -176,16 +145,11 @@ describe('server-authoritative stress (US-013)', () => {
       // biome-ignore lint/style/noNonNullAssertion: guarded by expect above
       const convergenceMs = converged!;
 
-      for (const c of clients) {
-        assertBridgeInvariant(c.ytext, c.fragment);
-      }
-
       for (let i = 0; i < clients.length; i++) {
         const c = clients[i];
         const ytextStr = c.ytext.toString();
         const dupes = findDuplicates(ytextStr, allMarkers);
         if (dupes.length > 0) {
-          const fragMd = serializeFragment(c.fragment);
           const perMarkerDetail = dupes.map((dup) => {
             const first = ytextStr.indexOf(dup);
             const second = ytextStr.indexOf(dup, first + dup.length);
@@ -216,7 +180,6 @@ describe('server-authoritative stress (US-013)', () => {
               affectedClient: i,
               duplicateMarkers: dupes,
               ytextLength: ytextStr.length,
-              fragLength: fragMd.length,
               perMarkerDetail,
               allClientDupCountsFor: firstDup,
               allClientDupCounts,

@@ -46,9 +46,7 @@ describe('template tombstone quarantine (FR3)', () => {
       const name = `daily-${randomUUID().slice(0, 8)}`;
       const syntheticName = `__template__/${folder}/${name}`;
 
-      const client = await createTestClient(rig.port, syntheticName, {
-        skipInvariantWatcher: true,
-      });
+      const client = await createTestClient(rig.port, syntheticName, {});
       expect(client.ytext.toString()).toBe('');
 
       client.doc.transact(() =>
@@ -93,7 +91,7 @@ describe('template live conflict gate (FR5)', () => {
       server = await createTestServer({ contentDir, debounce: 100, maxDebounce: 400 });
       const rig = server;
 
-      const client = await createTestClient(rig.port, docName, { skipInvariantWatcher: true });
+      const client = await createTestClient(rig.port, docName);
       await pollUntil(() => client.ytext.toString() === clean, 8000);
 
       const conflicted =

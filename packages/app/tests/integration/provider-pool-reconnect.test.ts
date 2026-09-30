@@ -278,7 +278,6 @@ describe('ProviderPool reconnects', () => {
         docName: 'test-doc',
         doc: activeEntry.provider.document,
         ytext: activeEntry.provider.document.getText('source'),
-        fragment: activeEntry.provider.document.getXmlFragment('default'),
         provider: activeEntry.provider,
         pauseSync: () => {
           throw new Error('pauseSync not available');
@@ -305,12 +304,8 @@ describe('ProviderPool reconnects', () => {
 
     const UNIQUE_LOCAL_MARKER = 'T4-LOCAL-EDIT-MARKER-9f3a';
     const doc = firstProvider.document;
-    const Y = await import('yjs');
-    const paragraph = new Y.XmlElement('paragraph');
-    const ytext = new Y.XmlText();
-    ytext.applyDelta([{ insert: UNIQUE_LOCAL_MARKER }]);
-    paragraph.insert(0, [ytext]);
-    doc.getXmlFragment('default').push([paragraph]);
+    const source = doc.getText('source');
+    source.insert(source.length, `\n\n${UNIQUE_LOCAL_MARKER}\n`);
 
     await pollUntil(() => firstProvider.unsyncedChanges === 0, 180, 10);
     server.killNetwork();

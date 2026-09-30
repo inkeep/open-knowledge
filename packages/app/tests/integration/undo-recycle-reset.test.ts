@@ -7,8 +7,8 @@ import * as Y from 'yjs';
 
 import {
   insertLocal,
-  mountCollabEditor,
-  readUndoManager,
+  mountProjectionEditorOn,
+  type ProjectionEditorRig,
 } from '../../src/editor/editor-rig.test-helper';
 import { ProviderPool, TAB_REPLAY_ORIGIN } from '../../src/editor/provider-pool';
 import { installDomGlobals } from '../../src/editor/walk-currency-test-harness';
@@ -106,20 +106,20 @@ async function bootRig(): Promise<Rig> {
   const entry = pool.getActive();
   if (entry?.kind !== 'active') throw new Error('no active entry after sync');
 
-  const editor = mountCollabEditor(entry.provider.document, []);
-  const live = { editor, destroyed: false };
+  const mounted = mountProjectionEditorOn(entry.provider.document.getText('source'), []);
+  const editor = mounted.editor;
+  const live: { rig: ProjectionEditorRig; destroyed: boolean } = { rig: mounted, destroyed: false };
   cleanups.push(() => {
-    if (!live.destroyed) live.editor.destroy();
+    if (!live.destroyed) live.rig.destroy();
   });
-  const um = readUndoManager(editor);
-  if (!um) throw new Error('no UndoManager on collab editor');
+  const um = mounted.undoManager;
 
   const freshDocUpdateOrigins: unknown[] = [];
   const evictedDocNames: string[] = [];
   pool.onEvict((docName) => {
     evictedDocNames.push(docName);
     if (docName === DOC && !live.destroyed) {
-      live.editor.destroy();
+      live.rig.destroy();
       live.destroyed = true;
     }
     queueMicrotask(() => {
@@ -231,10 +231,10 @@ describe('client undo across a provider-pool recycle', () => {
 
     const fresh = await restartAndAwaitRecycledSync(rig);
 
-    const editorB = mountCollabEditor(fresh.provider.document, []);
-    cleanups.push(() => editorB.destroy());
-    const umB = readUndoManager(editorB);
-    if (!umB) throw new Error('no UM on post-recycle editor');
+    const rigB = mountProjectionEditorOn(fresh.provider.document.getText('source'), []);
+    cleanups.push(() => rigB.destroy());
+    const editorB = rigB.editor;
+    const umB = rigB.undoManager;
 
     const textAfterRecycle = editorB.state.doc.textContent;
     const stackAfterRecycle = umB.undoStack.length;
@@ -273,10 +273,10 @@ describe('client undo across a provider-pool recycle', () => {
     const ytextHasEdit = freshDoc.getText('source').toString().includes('M3-UNSYNCED-EDIT');
     const replayOriginSeen = rig.freshDocUpdateOrigins.some((o) => o === TAB_REPLAY_ORIGIN);
 
-    const editorB = mountCollabEditor(freshDoc, []);
-    cleanups.push(() => editorB.destroy());
-    const umB = readUndoManager(editorB);
-    if (!umB) throw new Error('no UM on post-recycle editor');
+    const rigB = mountProjectionEditorOn(freshDoc.getText('source'), []);
+    cleanups.push(() => rigB.destroy());
+    const editorB = rigB.editor;
+    const umB = rigB.undoManager;
 
     const stackAtMount = umB.undoStack.length;
 
@@ -312,10 +312,10 @@ describe('client undo across a provider-pool recycle', () => {
     await typeAndPropagate(rig, 'M4-PRE-RECYCLE-TYPED ');
 
     const fresh = await restartAndAwaitRecycledSync(rig);
-    const editorB = mountCollabEditor(fresh.provider.document, []);
-    cleanups.push(() => editorB.destroy());
-    const umB = readUndoManager(editorB);
-    if (!umB) throw new Error('no UM on post-recycle editor');
+    const rigB = mountProjectionEditorOn(fresh.provider.document.getText('source'), []);
+    cleanups.push(() => rigB.destroy());
+    const editorB = rigB.editor;
+    const umB = rigB.undoManager;
 
     const try1 = umB.undo();
     const textAfterTry1 = editorB.state.doc.textContent;

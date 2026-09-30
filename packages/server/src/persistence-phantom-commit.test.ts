@@ -3,7 +3,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import simpleGit from 'simple-git';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { contributorCount, swapContributors } from './contributor-tracker.ts';
 import { createServer } from './server-factory.ts';
 
@@ -70,7 +69,7 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
     fixture.cleanup();
   });
 
-  test('empty-paragraph insert at a sub-floor edge → principal NOT recorded', async () => {
+  test('a transaction that leaves the bytes unchanged → principal NOT recorded', async () => {
     writeFileSync(
       join(fixture.contentDir, 'empty-para-doc.md'),
       '# Original heading\n\nOriginal body.\n',
@@ -96,7 +95,9 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
         connection: { context: { principalId: 'principal-test-phantom' } },
       };
       serverDoc.transact(() => {
-        serverDoc.getXmlFragment('default').insert(0, [new Y.XmlElement('paragraph')]);
+        const ytext = serverDoc.getText('source');
+        ytext.insert(0, 'x');
+        ytext.delete(0, 1);
       }, connectionOrigin);
 
       await expectContributorCountRemainsAt(0, { durationMs: 800 });
@@ -108,7 +109,7 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
     expect(contributorCount()).toBe(0);
   });
 
-  test('empty-paragraph append at the tail → principal IS recorded', async () => {
+  test('a blank line appended at the tail → principal IS recorded', async () => {
     writeFileSync(
       join(fixture.contentDir, 'tail-empty-doc.md'),
       '# Original heading\n\nOriginal body.\n',
@@ -131,7 +132,8 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
 
       serverDoc.transact(
         () => {
-          serverDoc.getXmlFragment('default').push([new Y.XmlElement('paragraph')]);
+          const ytext = serverDoc.getText('source');
+          ytext.insert(ytext.length, '\n');
         },
         {
           source: 'connection' as const,
@@ -174,10 +176,8 @@ describe('onStoreDocument phantom-principal-commit regression (PR #295)', () => 
         connection: { context: { principalId: 'principal-test-real-edit' } },
       };
       serverDoc.transact(() => {
-        const frag = serverDoc.getXmlFragment('default');
-        const newPara = new Y.XmlElement('paragraph');
-        newPara.insert(0, [new Y.XmlText('appended by the user')]);
-        frag.push([newPara]);
+        const ytext = serverDoc.getText('source');
+        ytext.insert(ytext.length, '\nappended by the user\n');
       }, connectionOrigin);
 
       await waitForContributorCount(1);

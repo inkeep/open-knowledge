@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 const SKILL_DOC_NAME = '.claude/skills/trip-log/SKILL';
 
 import { HARNESS_BOOT_TIMEOUT_MS } from '../harness-boot-timeout';
-import { createTestServer, type TestServer } from '../test-harness';
+import { createTestServer, pollUntil, type TestServer } from '../test-harness';
 
 let server: TestServer;
 const base = () => `http://127.0.0.1:${server.port}`;
@@ -26,6 +26,13 @@ const writeSkill = (body: string) =>
     }),
   });
 
+const historyEntries = async (): Promise<Array<{ sha: string }>> => {
+  const res = await fetch(`${base()}/api/history?docName=${encodeURIComponent(SKILL_DOC_NAME)}`);
+  if (res.status !== 200) return [];
+  const parsed = HistorySuccessSchema.safeParse(await res.json());
+  return parsed.success ? parsed.data.entries : [];
+};
+
 const getBody = async () => {
   const res = await fetch(`${base()}/api/skill?name=trip-log&scope=project`);
   const parsed = SkillGetSuccessSchema.safeParse(await res.json());
@@ -42,7 +49,19 @@ afterAll(async () => {
 describe('skill restore (R6)', () => {
   test('history → restore reverts the source to an earlier version', async () => {
     expect((await writeSkill('# Version ONE')).status).toBe(200);
+    await pollUntil(
+      async () => (await historyEntries()).length >= 1,
+      15_000,
+      100,
+      'Version ONE to reach history',
+    );
     expect((await writeSkill('# Version TWO')).status).toBe(200);
+    await pollUntil(
+      async () => (await historyEntries()).length >= 2,
+      15_000,
+      100,
+      'Version TWO to reach history as its own entry',
+    );
     expect(await getBody()).toContain('Version TWO');
 
     const histRes = await fetch(

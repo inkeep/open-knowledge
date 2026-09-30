@@ -1,28 +1,27 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
+import { buildProjection } from '@inkeep/open-knowledge-core';
 import { afterEach, describe, expect, test } from 'vitest';
-import type * as Y from 'yjs';
 import {
   agentWriteMd,
   createRestartableServer,
   createTestClient,
   createTestServer,
+  mdManager,
   pollDiskContentStable,
   pollUntil,
-  schema,
   type TestServer,
 } from './test-harness';
 
 type AnyServer = { instance: TestServer['instance'] };
 
-function serverFragment(server: AnyServer, docName: string): Y.XmlFragment | undefined {
-  return server.instance.hocuspocus.documents.get(docName)?.getXmlFragment('default');
+function serverSource(server: AnyServer, docName: string): string | undefined {
+  return server.instance.hocuspocus.documents.get(docName)?.getText('source').toString();
 }
 
-function fragmentVisibleText(fragment: Y.XmlFragment): string {
-  return yXmlFragmentToProseMirrorRootNode(fragment, schema).textContent;
+function projectedVisibleText(source: string): string {
+  return buildProjection(source, mdManager).doc.textContent;
 }
 
 describe('WYSIWYG &#x20; literal after close + cold reopen (the reported bug)', () => {
@@ -45,11 +44,11 @@ describe('WYSIWYG &#x20; literal after close + cold reopen (the reported bug)', 
 
       const client = await createTestClient(server.port, docName);
       try {
-        await pollUntil(() => serverFragment(server, docName) !== undefined, 10_000, 50);
-        const fragment = serverFragment(server, docName);
-        if (!fragment) throw new Error('doc not loaded on server after cold restart');
+        await pollUntil(() => serverSource(server, docName) !== undefined, 10_000, 50);
+        const source = serverSource(server, docName);
+        if (source === undefined) throw new Error('doc not loaded on server after cold restart');
 
-        const shown = fragmentVisibleText(fragment);
+        const shown = projectedVisibleText(source);
         expect(shown).not.toContain('&#x20;');
         expect(shown).toContain('before ');
 
@@ -88,15 +87,11 @@ describe('WYSIWYG &#x20; literal — pure cold load of a doc already stored with
     server = await createTestServer({ contentDir: dir, keepContentDir: true });
     const client = await createTestClient(server.port, docName);
     try {
-      await pollUntil(
-        () => serverFragment(server as TestServer, docName) !== undefined,
-        10_000,
-        50,
-      );
-      const fragment = serverFragment(server, docName);
-      if (!fragment) throw new Error('doc not loaded on server');
+      await pollUntil(() => serverSource(server as TestServer, docName) !== undefined, 10_000, 50);
+      const source = serverSource(server, docName);
+      if (source === undefined) throw new Error('doc not loaded on server');
 
-      const shown = fragmentVisibleText(fragment);
+      const shown = projectedVisibleText(source);
       expect(shown).not.toContain('&#x20;');
       expect(shown).toContain('alpha ');
 
@@ -119,15 +114,11 @@ describe('WYSIWYG &#x20; literal — pure cold load of a doc already stored with
     server = await createTestServer({ contentDir: dir, keepContentDir: true });
     const client = await createTestClient(server.port, docName);
     try {
-      await pollUntil(
-        () => serverFragment(server as TestServer, docName) !== undefined,
-        10_000,
-        50,
-      );
-      const fragment = serverFragment(server, docName);
-      if (!fragment) throw new Error('doc not loaded on server');
+      await pollUntil(() => serverSource(server as TestServer, docName) !== undefined, 10_000, 50);
+      const source = serverSource(server, docName);
+      if (source === undefined) throw new Error('doc not loaded on server');
 
-      const shown = fragmentVisibleText(fragment);
+      const shown = projectedVisibleText(source);
       expect(shown).not.toContain('&#x20;');
       expect(shown).toContain('gamma  delta');
 

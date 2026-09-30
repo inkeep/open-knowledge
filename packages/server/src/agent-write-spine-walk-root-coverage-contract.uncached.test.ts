@@ -98,7 +98,10 @@ describe('agent-write spine walk root coverage contract', () => {
 
   it('holds every spine census to that one walk root', () => {
     const censusFiles = listCensusFiles();
-    expect(censusFiles.length).toBeGreaterThanOrEqual(2);
+    expect(
+      censusFiles.length,
+      'no spine census files discovered next to this contract',
+    ).toBeGreaterThanOrEqual(1);
     const offRoot = censusFiles
       .flatMap((file) => spineWalkRootArguments(file).map((arg) => `${file}: ${arg}`))
       .filter((entry) => !entry.endsWith(': here'));

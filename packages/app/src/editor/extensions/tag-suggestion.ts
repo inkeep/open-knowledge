@@ -3,6 +3,7 @@ import type { ResolvedPos } from '@tiptap/pm/model';
 import { PluginKey } from '@tiptap/pm/state';
 import { ReactRenderer } from '@tiptap/react';
 import Suggestion, { type SuggestionKeyDownProps, type SuggestionProps } from '@tiptap/suggestion';
+import { createSuggestionUndoWindow } from '../suggestion-undo-window';
 import { TagSuggestionMenu } from '../tag-suggestion/TagSuggestionMenu';
 import { suggestionAllow } from './suggestion-allow';
 import {
@@ -184,8 +185,13 @@ export function configureTagSuggestion(editor: Editor) {
         renderer.updateProps(computeMenuProps(currentProps, loadingOverride, onSelect));
       };
 
+      let windowEditor: Editor | null = null;
+      const undoWindow = createSuggestionUndoWindow(() => windowEditor);
+
       return {
         onBeforeStart(props: SuggestionProps<TagSuggestionItem>) {
+          windowEditor = props.editor;
+          undoWindow.open();
           currentProps = props;
           selectedIndex = 0;
 
@@ -254,6 +260,7 @@ export function configureTagSuggestion(editor: Editor) {
         },
 
         onExit() {
+          undoWindow.close();
           destroySuggestionPopup(posState);
           doPosition = null;
           reveal = null;

@@ -38,13 +38,9 @@ import {
   AgentSessionCapacityError,
   type AgentSessionManager,
   type AgentWriteContentDivergence,
-  agentWriteLossDetect,
-  agentWritePreDrain,
   applyAgentMarkdownWrite,
   applyAgentUndo,
   iconFromClientName,
-  prepareAgentMarkdownParse,
-  prepareFrontmatterPatchParse,
   snapshotBlocks,
 } from '../agent-sessions.ts';
 import {
@@ -52,8 +48,7 @@ import {
   normalizeSummary,
   type SummaryResponse,
 } from '../agent-write-summary.ts';
-import { composeAndWriteRawBody, type PrecomputedParse, replaceRawBody } from '../bridge-intake.ts';
-import type { BridgeDeriveLossReporter } from '../bridge-loss-detector.ts';
+import { composeAndWriteRawBody, replaceRawBody } from '../bridge-intake.ts';
 import { isConfigDoc, isSystemDoc, SYSTEM_DOC_NAME } from '../cc1-broadcast.ts';
 import {
   ConcurrentOverwriteRefusedError,
@@ -83,13 +78,11 @@ import { type LinkAdvisoryPolicy, projectWriteAdvisoryLinks } from '../link-advi
 import { getLogger } from '../logger.ts';
 import { validateMermaidFences } from '../mermaid-validator.ts';
 import { incrementAgentPatchFindMismatches, incrementAgentWriteCalls } from '../metrics.ts';
-import { precomputeParse } from '../parse-pool.ts';
 import {
   createAncestorShaSetCache,
   getOrLoadRenameLogIndex,
   resolveDocPathAtCommit,
 } from '../rename-log.ts';
-import type { PairedWriteOrigin } from '../server-observers.ts';
 import { createVersionOpsService } from '../services/version-ops.ts';
 import {
   type ShadowRef,
@@ -99,6 +92,7 @@ import {
 } from '../shadow-repo.ts';
 import { getMeter, withSpanSync } from '../telemetry.ts';
 import { computeWriteAdvisoryLinks } from '../write-advisory-links.ts';
+import type { PairedWriteOrigin } from '../write-origins.ts';
 import { type ApiRouteGroup, createApiRouteGroup } from './api-pipeline.ts';
 import { errorResponse } from './error-response.ts';
 import { getRequestId } from './request-id.ts';
@@ -163,10 +157,6 @@ export interface AgentWriteRouteDeps {
   sessionManager: AgentSessionManager;
   durabilityState: DocumentDurabilityState;
   hocuspocus: Hocuspocus;
-  options: {
-    resolveEmbed?: (basename: string, sourcePath: string) => string | null;
-  };
-  getBridgeLossReporter: (() => BridgeDeriveLossReporter | undefined) | undefined;
   agentPresenceBroadcaster: AgentPresenceBroadcaster | undefined;
   recordContentDivergenceGate: (
     handler: 'agent-write-md' | 'agent-write-batch' | 'agent-patch' | 'rollback',
@@ -241,8 +231,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
     sessionManager,
     durabilityState,
     hocuspocus,
-    options,
-    getBridgeLossReporter,
     agentPresenceBroadcaster,
     recordContentDivergenceGate,
     buildAgentActor,
@@ -339,18 +327,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           hocuspocus,
           resolvedDocName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
           conflicts,
-        );
-        const writeMdEmbedResolver = options.resolveEmbed
-          ? { resolveEmbed: options.resolveEmbed, sourcePath: resolvedDocName }
-          : undefined;
-        const writeMdPrecomputed = await prepareAgentMarkdownParse(
-          session.dc.document,
-          body.markdown,
-          position,
-          writeMdEmbedResolver,
         );
         const timestamp = new Date().toISOString();
         let writeDivergence: AgentWriteContentDivergence | undefined;
@@ -373,16 +350,12 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             colorSeed,
             clientName,
           );
-          agentWritePreDrain(session.dc.document, body.markdown, position);
           session.dc.document.transact(() => {
             const beforeBlocks = snapshotBlocks(session.dc.document);
             writeDivergence = applyAgentMarkdownWrite(
               session.dc.document,
               body.markdown,
               position,
-              writeMdEmbedResolver,
-              writeMdPrecomputed,
-              agentWriteLossDetect(session),
               suppliedWriterId,
             );
             const changedBlocks =
@@ -573,11 +546,8 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           hocuspocus,
           resolvedDocName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
           conflicts,
         );
-        const fmPatchPrecomputed = await prepareFrontmatterPatchParse(session.dc.document, patch);
         const timestamp = new Date().toISOString();
         let editError: import('@inkeep/open-knowledge-core').FmEditError | undefined;
         let applied = false;
@@ -626,13 +596,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
                     result.nextFenced,
                     (needsFenceSeparator ? '\n' : '') + currentBody,
                   ).md;
-                  composeAndWriteRawBody(
-                    session.dc.document,
-                    newFull,
-                    'agent',
-                    undefined,
-                    fmPatchPrecomputed,
-                  );
+                  composeAndWriteRawBody(session.dc.document, newFull, 'agent');
                   recordFrontmatterEditSurface('mcp-write');
                   bodyMutated = true;
                 }
@@ -828,35 +792,8 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           hocuspocus,
           docName,
           contentDir,
-          options.resolveEmbed,
-          getBridgeLossReporter?.(),
           conflicts,
         );
-        const patchEmbedResolver = options.resolveEmbed
-          ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-          : undefined;
-        let patchPrecomputed: PrecomputedParse | undefined;
-        {
-          const preSnapshot = session.dc.document.getText('source').toString();
-          const { frontmatter: preFm, body: preBody } = stripFrontmatter(preSnapshot);
-          const preFull = prependFrontmatter(preFm, preBody);
-          const prePos =
-            offset == null
-              ? preFull.indexOf(find)
-              : preFull.slice(offset, offset + find.length) === find
-                ? offset
-                : -1;
-          if (prePos !== -1 && prePos >= preFm.length) {
-            const guessFull =
-              preFull.slice(0, prePos) + replace + preFull.slice(prePos + find.length);
-            patchPrecomputed = await prepareAgentMarkdownParse(
-              session.dc.document,
-              stripFrontmatter(guessFull).body,
-              'patch',
-              patchEmbedResolver,
-            );
-          }
-        }
         const timestamp = new Date().toISOString();
         let notFound = false;
         let staleTarget = false;
@@ -931,9 +868,6 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
               session.dc.document,
               newBody,
               'patch',
-              patchEmbedResolver,
-              patchPrecomputed,
-              agentWriteLossDetect(session),
               suppliedWriterId,
             );
             const changedBlocks =
@@ -1177,14 +1111,7 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
             mode: 'writing',
             ts: Date.now(),
           });
-          undone = applyAgentUndo(
-            session,
-            scope,
-            options.resolveEmbed
-              ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-              : undefined,
-            count,
-          );
+          undone = applyAgentUndo(session, scope, count);
           if (undone) {
             recordContributor(
               docName,
@@ -1553,16 +1480,12 @@ export function createAgentWriteRoutes(deps: AgentWriteRouteDeps): ApiRouteGroup
           return;
         }
         /**
-         * Rollback routes through the `replaceRawBody` sibling primitive (precedent #38,
-         * Y.Text-is-truth), which overwrites ytext first and derives the fragment after.
+         * Rollback routes through the `replaceRawBody` sibling primitive, which overwrites
+         * Y.Text whole (precedent #38).
          */
-        const rollbackEmbedResolver = options.resolveEmbed
-          ? { resolveEmbed: options.resolveEmbed, sourcePath: docName }
-          : undefined;
-        const rollbackPrecomputed = await precomputeParse(markdown, rollbackEmbedResolver);
         let rollbackDivergence: AgentWriteContentDivergence | undefined;
         document.transact(() => {
-          replaceRawBody(document, markdown, rollbackEmbedResolver, rollbackPrecomputed);
+          replaceRawBody(document, markdown);
           rollbackDivergence = evaluateContentDivergence(
             document.getText('source').toString(),
             markdown,

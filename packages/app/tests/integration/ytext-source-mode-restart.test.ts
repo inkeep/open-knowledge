@@ -5,12 +5,10 @@ import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import {
-  assertBridgeInvariant,
   clientIdsInDoc,
   createRestartableServer,
   pollUntil,
   seedPoolServerInstanceId,
-  serializeFragment,
 } from './test-harness';
 
 const FIXTURE = `# T10 source-mode fixture
@@ -37,7 +35,7 @@ afterEach(async () => {
 }, 30_000);
 
 describe('T10: Y.Text (source-mode) duplication on restart', () => {
-  test('REPRO: fast restart — Y.Text and XmlFragment both preserve content once', async () => {
+  test('REPRO: fast restart — Y.Text preserves content once', async () => {
     let server = await createRestartableServer();
     cleanups.push(() => server.shutdown());
 
@@ -58,12 +56,8 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
     const doc = firstProvider.document;
 
     const preYtext = doc.getText('source').toString();
-    const preFrag = serializeFragment(doc.getXmlFragment('default'));
     const preSection1Text = (preYtext.match(/## Section 1/g) ?? []).length;
-    const preSection1Frag = (preFrag.match(/## Section 1/g) ?? []).length;
     expect(preSection1Text).toBe(1);
-    expect(preSection1Frag).toBe(1);
-    assertBridgeInvariant(doc.getText('source'), doc.getXmlFragment('default'));
 
     const preClientIds = clientIdsInDoc(doc);
 
@@ -79,13 +73,9 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
     const postClientIds = clientIdsInDoc(postDoc);
 
     const postYtext = postDoc.getText('source').toString();
-    const postFrag = serializeFragment(postDoc.getXmlFragment('default'));
     const postSection1Text = (postYtext.match(/## Section 1/g) ?? []).length;
-    const postSection1Frag = (postFrag.match(/## Section 1/g) ?? []).length;
     const postSection2Text = (postYtext.match(/## Section 2/g) ?? []).length;
-    const postSection2Frag = (postFrag.match(/## Section 2/g) ?? []).length;
     const postWikiText = (postYtext.match(/\[\[t10-wiki-link\]\]/g) ?? []).length;
-    const postWikiFrag = (postFrag.match(/\[\[t10-wiki-link\]\]/g) ?? []).length;
 
     console.log('[T10] marker counts', {
       ytext: {
@@ -93,12 +83,6 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
         section2: postSection2Text,
         wiki: postWikiText,
         bytes: postYtext.length,
-      },
-      frag: {
-        section1: postSection1Frag,
-        section2: postSection2Frag,
-        wiki: postWikiFrag,
-        bytes: postFrag.length,
       },
       clientIds: {
         pre: [...preClientIds],
@@ -109,10 +93,5 @@ describe('T10: Y.Text (source-mode) duplication on restart', () => {
     expect(postSection1Text).toBe(1);
     expect(postSection2Text).toBe(1);
     expect(postWikiText).toBe(1);
-    expect(postSection1Frag).toBe(1);
-    expect(postSection2Frag).toBe(1);
-    expect(postWikiFrag).toBe(1);
-
-    assertBridgeInvariant(postDoc.getText('source'), postDoc.getXmlFragment('default'));
   }, 30_000);
 });

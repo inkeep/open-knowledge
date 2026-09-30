@@ -1,3 +1,4 @@
+import { contextMatchScore } from '@inkeep/open-knowledge-core';
 import { describe, expect, test } from 'vitest';
 import {
   assertAnchorConsistent,
@@ -322,5 +323,55 @@ describe('refind — a passage whose NEIGHBOURS were edited', () => {
 
   test('a distant edit alone does not disturb it', () => {
     expectResolvesTo(editedFar());
+  });
+});
+
+describe('refind — the stored offsets are a hint, and the hint is trusted alone', () => {
+  const quote = 'the garlic paste';
+  const body =
+    'Intro paragraph that is long enough.\n\nStir well and add ' +
+    quote +
+    ' to the pan.\n\nLater, again: add ' +
+    quote +
+    ' to the pan.\n';
+
+  test('the fixture really does repeat the quote, and the anchor takes the first', () => {
+    const first = body.indexOf(quote);
+    const second = body.indexOf(quote, first + 1);
+    expect(second).toBeGreaterThan(first);
+    expect(createAnchor(body, first, first + quote.length).start).toBe(first);
+  });
+
+  test('CHARACTERIZATION: a twin sliding onto the stored offsets is taken without evidence', () => {
+    const first = body.indexOf(quote);
+    const second = body.indexOf(quote, first + 1);
+    const anchor = createAnchor(body, first, first + quote.length);
+
+    const edited = body.slice(0, 2) + body.slice(2 + (second - first));
+
+    expect(edited.indexOf(quote)).toBe(first - (second - first));
+    expect(edited.indexOf(quote, first)).toBe(first);
+    expect(refind(edited, anchor)).toEqual({
+      status: 'anchored',
+      start: anchor.start,
+      end: anchor.end,
+    });
+  });
+
+  test('the context it skipped scores the other occurrence higher', () => {
+    const first = body.indexOf(quote);
+    const second = body.indexOf(quote, first + 1);
+    const anchor = createAnchor(body, first, first + quote.length);
+    const edited = body.slice(0, 2) + body.slice(2 + (second - first));
+
+    const scoreAt = (start: number): number =>
+      contextMatchScore(
+        edited,
+        { start, end: start + quote.length },
+        { prefix: anchor.prefix, suffix: anchor.suffix },
+        { syntaxIn: 'haystack', syntaxInContext: true },
+      );
+
+    expect(scoreAt(first - (second - first))).toBeGreaterThan(scoreAt(anchor.start));
   });
 });

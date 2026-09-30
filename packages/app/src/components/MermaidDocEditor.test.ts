@@ -253,4 +253,20 @@ describe('acquireMermaidUndoManager', () => {
 
     expect(clear).not.toHaveBeenCalled();
   });
+
+  test('a peer typing into a diagram you emptied keeps your undo', () => {
+    const { doc, ytext } = makeYText('graph LR\n  Shopper --> Storefront\n');
+    const provider = {
+      document: doc,
+      on() {},
+      off() {},
+    } as unknown as HocuspocusProvider;
+    const undoManager = acquireMermaidUndoManager(provider, ytext);
+    replaceYText(ytext, '', MERMAID_DIAGRAM_EDIT_ORIGIN);
+    expect(undoManager.canUndo()).toBe(true);
+
+    doc.transact(() => ytext.insert(0, 'graph TD\n'), Symbol('peer'));
+
+    expect(undoManager.canUndo()).toBe(true);
+  });
 });

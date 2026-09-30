@@ -10,3 +10,13 @@ export function getSharedMarkdownManager(): MarkdownManager {
   manager ||= new MarkdownManager({ extensions: sharedExtensions });
   return manager;
 }
+
+let projectionManager: MarkdownManager | null = null;
+
+export function getProjectionMarkdownManager(): MarkdownManager {
+  projectionManager ||= new MarkdownManager({
+    extensions: sharedExtensions,
+    deriveStructuralFreshness: true,
+  });
+  return projectionManager;
+}

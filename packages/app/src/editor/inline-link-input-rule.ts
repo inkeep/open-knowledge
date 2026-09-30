@@ -1,7 +1,7 @@
 import { isAllowedLinkUri } from '@inkeep/open-knowledge-core';
 import { Extension, InputRule } from '@tiptap/core';
 import type { EditorView } from '@tiptap/pm/view';
-import { dispatchAsOwnUndoStep } from './undo-isolation';
+import { dispatchClosingUndoStep } from './undo-isolation';
 
 const INLINE_LINK_RE = /\[([^\]]+)\]\(([^)\s]+)\)$/;
 
@@ -26,7 +26,7 @@ function collapseToLink(
 
   const linked = state.schema.text(text, [markType.create({ href })]);
   try {
-    dispatchAsOwnUndoStep(view, state.tr.replaceRangeWith(from, to, linked));
+    dispatchClosingUndoStep(view, state.tr.replaceRangeWith(from, to, linked));
   } catch (err) {
     console.warn('[inline-link-rule] collapse dispatch failed', { from, text, href }, err);
   }

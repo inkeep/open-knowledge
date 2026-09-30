@@ -1,12 +1,8 @@
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { isEditableTextDocFile } from '@inkeep/open-knowledge-core';
 import { useEffect, useState } from 'react';
-import {
-  computeBodyStats,
-  computePlainTextStats,
-  type DocumentStats,
-  EMPTY_STATS,
-} from '@/lib/document-stats';
+import { type DocumentStats, EMPTY_STATS } from '@/lib/document-stats';
+import { computeDocumentStats } from '@/lib/document-stats-runtime';
 
 const STATS_DEBOUNCE_MS = 300;
 
@@ -23,15 +19,33 @@ export function useDocumentStats(
     }
 
     const ytext = provider.document.getText('source');
-    const computeStats = isEditableTextDocFile(activeDocName)
-      ? computePlainTextStats
-      : computeBodyStats;
+    const plain = isEditableTextDocFile(activeDocName);
     let cancelled = false;
     let timeout: ReturnType<typeof setTimeout> | null = null;
+    let inFlight = false;
+    let dirty = false;
 
     function compute() {
       if (cancelled) return;
-      setStats(computeStats(ytext.toString()));
+      if (inFlight) {
+        dirty = true;
+        return;
+      }
+      inFlight = true;
+      computeDocumentStats(ytext.toString(), plain)
+        .then((next) => {
+          inFlight = false;
+          if (cancelled) return;
+          setStats(next);
+          if (dirty) {
+            dirty = false;
+            compute();
+          }
+        })
+        .catch((err: unknown) => {
+          inFlight = false;
+          console.warn('[document-stats] stats pass failed', err);
+        });
     }
 
     compute();

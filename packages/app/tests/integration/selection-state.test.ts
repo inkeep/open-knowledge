@@ -1,6 +1,6 @@
 import { setTimeout as wait } from 'node:timers/promises';
+import { buildProjection } from '@inkeep/open-knowledge-core';
 import { EditorState, NodeSelection, Plugin, TextSelection } from '@tiptap/pm/state';
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import {
   type BlockSelection,
@@ -11,10 +11,9 @@ import {
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
-  assertBridgeInvariant,
   createTestClient,
   createTestServer,
-  schema,
+  mdManager,
   type TestServer,
 } from './test-harness';
 
@@ -41,8 +40,8 @@ function makeStubPlugin() {
   });
 }
 
-function fragmentToEditorState(fragment: import('yjs').XmlFragment): EditorState {
-  const doc = yXmlFragmentToProseMirrorRootNode(fragment, schema);
+function sourceToEditorState(source: string): EditorState {
+  const { doc } = buildProjection(source, mdManager);
   return EditorState.create({ doc, plugins: [makeStubPlugin()] });
 }
 
@@ -82,7 +81,7 @@ describe('SelectionStatePlugin integration', () => {
       });
       await wait(300);
 
-      const editorState = fragmentToEditorState(client.fragment);
+      const editorState = sourceToEditorState(client.ytext.toString());
       const pos = findJsxComponentPos(editorState, 'Callout');
       expect(pos).toBeGreaterThanOrEqual(0);
 
@@ -93,8 +92,6 @@ describe('SelectionStatePlugin integration', () => {
       expect(sel?.selectedBlockId).not.toBeNull();
       expect(sel?.ancestorChain).toHaveLength(1);
       expect(sel?.ancestorChain[0].componentName).toBe('Callout');
-
-      assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
     }
@@ -113,7 +110,7 @@ describe('SelectionStatePlugin integration', () => {
       );
       await wait(300);
 
-      const editorState = fragmentToEditorState(client.fragment);
+      const editorState = sourceToEditorState(client.ytext.toString());
       const innerPos = findJsxComponentPos(editorState, 'Accordion');
       expect(innerPos).toBeGreaterThanOrEqual(0);
 
@@ -125,8 +122,6 @@ describe('SelectionStatePlugin integration', () => {
       expect(sel?.ancestorChain[0].componentName).toBe('Callout');
       expect(sel?.ancestorChain[1].componentName).toBe('Accordion');
       expect(sel?.selectedBlockId).toBe(sel?.ancestorChain[1].bridgeId);
-
-      assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
     }
@@ -141,7 +136,7 @@ describe('SelectionStatePlugin integration', () => {
       });
       await wait(300);
 
-      const editorState = fragmentToEditorState(client.fragment);
+      const editorState = sourceToEditorState(client.ytext.toString());
       const cardPos = findJsxComponentPos(editorState, 'Callout');
       expect(cardPos).toBeGreaterThanOrEqual(0);
 
@@ -154,8 +149,6 @@ describe('SelectionStatePlugin integration', () => {
       const sel = selectionStatePluginKey.getState(afterDelete);
       expect(sel?.selectedBlockId).toBeNull();
       expect(sel?.ancestorChain).toEqual([]);
-
-      assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
     }
@@ -170,7 +163,7 @@ describe('SelectionStatePlugin integration', () => {
       });
       await wait(300);
 
-      const editorState = fragmentToEditorState(client.fragment);
+      const editorState = sourceToEditorState(client.ytext.toString());
       const calloutPos = findJsxComponentPos(editorState, 'Callout');
       expect(calloutPos).toBeGreaterThanOrEqual(0);
 
@@ -181,8 +174,6 @@ describe('SelectionStatePlugin integration', () => {
       const sel = selectionStatePluginKey.getState(withSelection);
       expect(sel?.ancestorChain).toHaveLength(1);
       expect(sel?.ancestorChain[0].componentName).toBe('Callout');
-
-      assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
     }
@@ -197,7 +188,7 @@ describe('SelectionStatePlugin integration', () => {
       });
       await wait(300);
 
-      const editorState = fragmentToEditorState(client.fragment);
+      const editorState = sourceToEditorState(client.ytext.toString());
       const pos = findJsxComponentPos(editorState, 'Callout');
       expect(pos).toBeGreaterThanOrEqual(0);
 
@@ -207,8 +198,6 @@ describe('SelectionStatePlugin integration', () => {
       const withSelection = editorState.apply(tr);
       const sel = selectionStatePluginKey.getState(withSelection);
       expect(sel?.selectionOrigin).toBe('programmatic');
-
-      assertBridgeInvariant(client.ytext, client.fragment);
     } finally {
       await client.cleanup();
     }

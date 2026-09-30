@@ -43,7 +43,7 @@ function collectItemsInDeleteSet(
   );
 }
 
-export function* walkYTextItems(ytext: Y.Text): IterableIterator<Item> {
+function* walkYTextItems(ytext: Y.Text): IterableIterator<Item> {
   let cursor = (ytext as unknown as { _start: Item | null })._start;
   while (cursor !== null) {
     yield cursor;

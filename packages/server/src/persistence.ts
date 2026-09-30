@@ -10,11 +10,9 @@ import {
   DOCUMENT_OPEN_BYTE_LIMIT,
   fnv1aDigest,
   formatFileSize,
-  fragmentHoldsPendingContent,
   normalizeBridge,
   type Principal,
   pathspecArgs,
-  pendingContentLines,
   prependFrontmatter,
   stripFrontmatter,
 } from '@inkeep/open-knowledge-core';
@@ -25,13 +23,10 @@ import {
   formatWipSubject,
   type OkActorEntry,
 } from '@inkeep/open-knowledge-core/shadow-repo-layout';
-import type { JSONContent } from '@tiptap/core';
-import { updateYFragment, yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import * as Y from 'yjs';
 import { LINEAGE_EPOCH_KEY } from './auth-token-schema.ts';
 import { type DeriveLossDetectOptions, detectPairedIntakeLoss } from './bridge-loss-detector.ts';
 import { getMsSinceLastUserTx, isDocQuiescent } from './bridge-quiescence.ts';
-import { assertBridgeInvariant, createDocCanonicalizer } from './bridge-watchdog.ts';
 import {
   isConfigDoc,
   isEditableTextDoc,
@@ -72,8 +67,6 @@ import { getLogger } from './logger.ts';
 import {
   LOSS_EVENT_CHECKPOINT_WRITE,
   LOSS_EVENT_DETECTOR_TRIP,
-  LOSS_EVENT_PERSISTENCE_HOLD,
-  LOSS_EVENT_REPAIR_REBUILD,
   type LossCaptureRing,
 } from './loss-capture.ts';
 import {
@@ -83,7 +76,7 @@ import {
   managedArtifactTimelinePaths,
   storeManagedArtifactDoc,
 } from './managed-artifact-persistence.ts';
-import { mdManager, schema } from './md-manager.ts';
+import { mdManager } from './md-manager.ts';
 import {
   loadMermaidDoc,
   type MermaidPersistenceCtx,
@@ -95,7 +88,6 @@ import {
   incrementGitWriterCommitFailure,
   incrementManagedArtifactReconcileCheckpointCreated,
   incrementManagedArtifactReconcileDeduped,
-  incrementPersistenceDeferHold,
   incrementPersistenceDiskWrite,
   incrementPersistenceDivergenceRealign,
   incrementPersistenceDivergenceRealignCheckpointCreated,
@@ -107,11 +99,6 @@ import {
   incrementPersistenceDuplicationResetDeduped,
   incrementPersistenceDuplicationSpared,
   incrementPersistenceForceFlushDuringBurst,
-  incrementPersistenceReconcileLoss,
-  incrementPersistenceReconcileLossCheckpointCreated,
-  incrementPersistenceReconcileLossDeduped,
-  incrementPersistenceReconciliationFailures,
-  incrementPersistenceSanityCheckSerializeFailures,
   incrementPersistenceSkipNonQuiescent,
   incrementPersistenceStoreRemovedDoc,
   incrementPersistenceStoreSuperseded,
@@ -119,7 +106,6 @@ import {
 import { toPosix } from './path-utils.ts';
 import { classifyDuplication } from './persistence-tripwire.ts';
 import { backfillRenameLogCommitSha, getOrLoadRenameLogIndex } from './rename-log.ts';
-import { getConvergedFragmentWitness, OBSERVER_SYNC_ORIGIN } from './server-observers.ts';
 import type { ShadowRef, WriterIdentity } from './shadow-repo.ts';
 import {
   buildWipTree,
@@ -304,29 +290,14 @@ export interface PersistenceOptions {
 
 export function captureDocSnapshotForPersistence(document: Y.Doc): {
   readonly sv: Uint8Array;
-  readonly json: JSONContent;
 } {
-  return {
-    sv: Y.encodeStateVector(document),
-    json: yXmlFragmentToProseMirrorRootNode(document.getXmlFragment('default'), schema).toJSON(),
-  };
+  return { sv: Y.encodeStateVector(document) };
 }
 
 export function normalizedSourceForm(rawYText: string): string {
   const { frontmatter, body } = stripFrontmatter(rawYText);
   return normalizeBridge(prependFrontmatter(frontmatter, body));
 }
-function connectionCount(document: Y.Doc): number {
-  const probe = (document as Y.Doc & { getConnectionsCount?: () => number }).getConnectionsCount;
-  if (typeof probe !== 'function') return 0;
-  try {
-    const n = probe.call(document);
-    return typeof n === 'number' && Number.isFinite(n) ? n : 0;
-  } catch {
-    return 0;
-  }
-}
-
 const PATH_CANNOT_EXIST_CODES = new Set(['ENOENT', 'ENOTDIR']);
 
 type DocumentFileProbe = { readonly onDisk: boolean } | { readonly error: unknown };
@@ -747,10 +718,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     if (commitInFlight) await commitInFlight;
   }
 
-  /**
-   * Under the Y.Text-is-truth contract (precedent #38) Y.Text holds the user's intended source-form
-   * bytes; fragment must catch up so future edits start from a consistent base.
-   */
   function canonicalizeForEphemeralBaseline(rawBytes: string, documentName: string): string | null {
     try {
       const { frontmatter, body } = stripFrontmatter(rawBytes);
@@ -773,141 +740,9 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     }
   }
 
-  function reconcileFragmentNow(document: Y.Doc, body: string, documentName: string): void {
-    void options?.getLossRing?.()?.record({
-      event: LOSS_EVENT_REPAIR_REBUILD,
-      docName: documentName,
-      writerId: null,
-      direction: 'b',
-      site: PERSISTENCE_PREWRITE_SITE,
-      connections: connectionCount(document),
-    });
-    try {
-      const xmlFragment = document.getXmlFragment('default');
-      const parseOpts = options?.resolveEmbed
-        ? {
-            resolveEmbed: options.resolveEmbed,
-            resolveSize: options?.resolveSize,
-            sourcePath: documentName,
-          }
-        : undefined;
-      const parsedJson = mdManager.parseWithFallback(body, parseOpts);
-      const pmNode = schema.nodeFromJSON(parsedJson);
-      document.transact(() => {
-        const meta = { mapping: new Map(), isOMark: new Map() };
-        updateYFragment(document, xmlFragment, pmNode, meta);
-      }, OBSERVER_SYNC_ORIGIN);
-    } catch (err) {
-      incrementPersistenceReconciliationFailures();
-      log.warn(
-        { err, documentName },
-        `[persistence] reconcileFragmentNow failed for ${documentName}`,
-      );
-    }
-  }
-
-  const PERSISTENCE_PREWRITE_SITE = 'persistence-prewrite';
   const PERSISTENCE_DUPLICATION_SITE = 'persistence-duplication-reset';
   const PERSISTENCE_REALIGN_SITE = 'persistence-divergence-realign';
   const MANAGED_ARTIFACT_RECONCILE_SITE = 'managed-artifact-reconcile';
-
-  const lastFloorCheckpointPayload = new WeakMap<Y.Doc, string>();
-
-  function recordDeferHold(documentName: string, pendingLines: readonly string[]): void {
-    incrementPersistenceDeferHold();
-    void options?.getLossRing?.()?.record({
-      event: LOSS_EVENT_PERSISTENCE_HOLD,
-      docName: documentName,
-      writerId: null,
-      direction: 'b',
-      site: PERSISTENCE_PREWRITE_SITE,
-      lostLen: pendingLines.reduce((n, line) => n + line.length, 0),
-    });
-  }
-
-  function checkpointBeforeReconcile(
-    document: Y.Doc,
-    documentName: string,
-    fragmentMarkdown: string,
-    ytextMarkdown: string,
-    witnessAvailable: boolean,
-  ): void {
-    incrementPersistenceReconcileLoss();
-    if (lastFloorCheckpointPayload.get(document) === fragmentMarkdown) {
-      incrementPersistenceReconcileLossDeduped();
-      return;
-    }
-    lastFloorCheckpointPayload.set(document, fragmentMarkdown);
-    const atRisk = pendingContentLines(fragmentMarkdown, ytextMarkdown, '');
-    const lostLen = atRisk.reduce((n, line) => n + line.length, 0);
-    const ring = options?.getLossRing?.();
-    const shadow = shadowRef?.current;
-    if (!shadow) {
-      void ring?.record({
-        event: LOSS_EVENT_CHECKPOINT_WRITE,
-        docName: documentName,
-        writerId: null,
-        direction: 'b',
-        site: PERSISTENCE_PREWRITE_SITE,
-        lostLen,
-        witnessAvailable,
-      });
-      return;
-    }
-    const branch = getCurrentBranch?.() ?? 'main';
-    queueMicrotask(() => {
-      saveInMemoryCheckpoint(shadow, contentRoot, {
-        kind: 'persistence-reconcile-loss',
-        docName: documentName,
-        contents: fragmentMarkdown,
-        label: `Before persistence fragment rebuild @ ${new Date().toISOString()}`,
-        branch,
-        metadata: { atRiskLines: atRisk.length, witnessAvailable },
-      })
-        .then((sha) => {
-          incrementPersistenceReconcileLossCheckpointCreated();
-          void ring?.record({
-            event: LOSS_EVENT_CHECKPOINT_WRITE,
-            docName: documentName,
-            writerId: null,
-            direction: 'b',
-            site: PERSISTENCE_PREWRITE_SITE,
-            lostLen,
-            witnessAvailable,
-            checkpointSha: sha,
-          });
-          console.warn(
-            JSON.stringify({
-              event: 'persistence-reconcile-loss-checkpoint-created',
-              docName: documentName,
-              sha,
-              kind: 'persistence-reconcile-loss',
-              timestamp: new Date().toISOString(),
-            }),
-          );
-        })
-        .catch((checkpointErr: unknown) => {
-          if (lastFloorCheckpointPayload.get(document) === fragmentMarkdown) {
-            lastFloorCheckpointPayload.delete(document);
-          }
-          const e =
-            checkpointErr instanceof Error ? checkpointErr : new Error(String(checkpointErr));
-          log.warn(
-            { documentName, err: e },
-            '[persistence] reconcile-loss checkpoint write failed',
-          );
-          void ring?.record({
-            event: LOSS_EVENT_CHECKPOINT_WRITE,
-            docName: documentName,
-            writerId: null,
-            direction: 'b',
-            site: PERSISTENCE_PREWRITE_SITE,
-            lostLen,
-            witnessAvailable,
-          });
-        });
-    });
-  }
 
   const lastDuplicationCheckpointPayload = new WeakMap<Y.Doc, string>();
 
@@ -952,7 +787,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
     documentName: string,
     liveMarkdown: string,
     copies: number,
-    fragmentChildren: number,
   ): void {
     incrementPersistenceDuplicationReset();
     const ring = options?.getLossRing?.();
@@ -981,7 +815,7 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
         contents: liveMarkdown,
         label: `Before duplication reset @ ${new Date().toISOString()}`,
         branch,
-        metadata: { copies, fragmentChildren },
+        metadata: { copies },
       })
         .then((sha) => {
           incrementPersistenceDuplicationResetCheckpointCreated();
@@ -1341,67 +1175,12 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
 
         const agentTriggeredStore = durabilityState.consumeAgentWriteStore(documentName);
 
-        const { sv: stateVectorAtRead, json } = captureDocSnapshotForPersistence(document);
+        const { sv: stateVectorAtRead } = captureDocSnapshotForPersistence(document);
         const ytextSnapshot = document.getText('source').toString();
         const storeAttempt = durabilityState.beginStoreAttempt(documentName);
 
         const { frontmatter, body } = stripFrontmatter(ytextSnapshot);
         const markdown = prependFrontmatter(frontmatter, body);
-
-        let normalizeEqual: boolean;
-        let fragmentMarkdown: string | null = null;
-        try {
-          const fragmentBody = mgr.serialize(json);
-          fragmentMarkdown = prependFrontmatter(frontmatter, fragmentBody);
-          normalizeEqual = assertBridgeInvariant(markdown, fragmentMarkdown, {
-            site: 'persistence',
-            docName: documentName,
-            suppressDevThrow: true,
-            canonicalizeBody: createDocCanonicalizer(mgr, {
-              resolveEmbed: options?.resolveEmbed,
-              resolveSize: options?.resolveSize,
-              docName: documentName,
-            }),
-          });
-        } catch (err) {
-          incrementPersistenceSanityCheckSerializeFailures();
-          console.warn(
-            JSON.stringify({
-              event: 'persistence-sanity-check-serialize-failed',
-              'doc.name': documentName,
-              'error.type': err instanceof Error ? err.constructor.name : typeof err,
-              timestamp: new Date().toISOString(),
-            }),
-          );
-          log.warn(
-            { err, documentName },
-            `[persistence] Sanity-check serialize failed for ${documentName}; proceeding with ytext bytes`,
-          );
-          fragmentMarkdown = null;
-          normalizeEqual = false;
-        }
-        if (!normalizeEqual) {
-          const witness =
-            fragmentMarkdown === null ? undefined : getConvergedFragmentWitness(document);
-          if (
-            fragmentMarkdown !== null &&
-            witness !== undefined &&
-            fragmentHoldsPendingContent(fragmentMarkdown, markdown, witness)
-          ) {
-            recordDeferHold(documentName, pendingContentLines(fragmentMarkdown, markdown, witness));
-          } else {
-            if (fragmentMarkdown !== null) {
-              checkpointBeforeReconcile(
-                document,
-                documentName,
-                fragmentMarkdown,
-                markdown,
-                witness !== undefined,
-              );
-            }
-            reconcileFragmentNow(document, body, documentName);
-          }
-        }
 
         const currentBase = durabilityState.getReconciledBase(documentName);
         const normalizedMarkdown = normalizedSourceForm(ytextSnapshot);
@@ -1498,7 +1277,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 'doc.name': documentName,
                 candidateBytes: markdown.length,
                 baseBytes: duplicationBaseline.length,
-                fragmentChildren: document.getXmlFragment('default').length,
                 copies: classification.copies,
                 reason: classification.reason,
               }),
@@ -1511,14 +1289,12 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
               );
               return;
             }
-            const fragmentChildren = document.getXmlFragment('default').length;
             console.warn(
               JSON.stringify({
                 event: 'ok-persistence-duplication-blocked',
                 'doc.name': documentName,
                 candidateBytes: markdown.length,
                 baseBytes: duplicationBaseline.length,
-                fragmentChildren,
                 copies: classification.copies,
                 reason: classification.reason,
               }),
@@ -1536,7 +1312,6 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
                 documentName,
                 markdown,
                 classification.copies,
-                fragmentChildren,
               );
               const lossRing = options?.getLossRing?.();
               const detect: DeriveLossDetectOptions = {
@@ -2076,37 +1851,17 @@ export function createPersistenceExtension(options?: PersistenceOptions): Persis
             contentToLoad = retainedContent;
           }
 
-          const xmlFragment = document.getXmlFragment('default');
-          log.info(
-            { documentName, fragmentLength: xmlFragment.length },
-            `[persistence] onLoadDocument ${documentName}: fragment.length=${xmlFragment.length} before update`,
-          );
-
-          if (xmlFragment.length === 0) {
+          const ytextAtLoad = document.getText('source');
+          if (ytextAtLoad.length === 0) {
             document.transact(() => {
-              applyDiskContentToDoc(
-                document,
-                contentToLoad,
-                options?.resolveEmbed,
-                documentName,
-                options?.resolveSize,
-              );
+              applyDiskContentToDoc(document, contentToLoad);
               document.getMap('lifecycle').set(LINEAGE_EPOCH_KEY, crypto.randomUUID());
             }, FILE_WATCHER_ORIGIN);
-            log.info(
-              { filePath, children: xmlFragment.length },
-              `[persistence] Loaded ${filePath} into Y.Doc (${xmlFragment.length} children)`,
-            );
-            xmlFragment.observeDeep(() => {
-              log.info(
-                { documentName, fragmentLength: xmlFragment.length },
-                `[persistence] MUTATION on ${documentName}: fragment.length=${xmlFragment.length}`,
-              );
-            });
+            log.info({ filePath }, `[persistence] Loaded ${filePath} into Y.Doc`);
           } else {
             log.info(
-              { documentName, children: xmlFragment.length },
-              `[persistence] Skipped load for ${documentName} — fragment already has ${xmlFragment.length} children`,
+              { documentName, bytes: ytextAtLoad.length },
+              `[persistence] Skipped load for ${documentName} — source already has content`,
             );
           }
 

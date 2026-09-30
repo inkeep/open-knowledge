@@ -74,7 +74,7 @@ describe('template history — HTTP typed writes and editor wip edits unify unde
 
     const putShas = new Set(putDoc.map((e) => e.sha));
 
-    const client = await createTestClient(server.port, docName, { skipInvariantWatcher: true });
+    const client = await createTestClient(server.port, docName);
     await pollUntil(() => client.ytext.toString().includes('Agenda.'), 5000);
     client.doc.transact(() => {
       client.ytext.insert(client.ytext.length, '\nMore agenda.\n');

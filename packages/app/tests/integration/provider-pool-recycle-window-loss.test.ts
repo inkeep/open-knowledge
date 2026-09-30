@@ -3,7 +3,6 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterEach, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { ProviderPool } from '../../src/editor/provider-pool';
 import { createRestartableServer, pollUntil, seedPoolServerInstanceId } from './test-harness';
 
@@ -50,11 +49,8 @@ describe('disconnect-recycle window vs local edit', () => {
 
     const MARKER = 'RW-LOCAL-EDIT-MARKER-c41d';
     const doc = firstProvider.document;
-    const paragraph = new Y.XmlElement('paragraph');
-    const xtext = new Y.XmlText();
-    xtext.applyDelta([{ insert: MARKER }]);
-    paragraph.insert(0, [xtext]);
-    doc.getXmlFragment('default').push([paragraph]);
+    const source = doc.getText('source');
+    source.insert(source.length, `\n\n${MARKER}\n`);
     expect(firstProvider.unsyncedChanges).toBeGreaterThan(0);
 
     await wait(700);
@@ -65,22 +61,18 @@ describe('disconnect-recycle window vs local edit', () => {
     await pollUntil(() => pool.getActive()?.provider.isSynced === true, 15_000, 50);
     await wait(1_000);
 
-    const finalText =
-      pool.getActive()?.provider.document.getXmlFragment('default').toString() ?? '';
     const finalSource = pool.getActive()?.provider.document.getText('source').toString() ?? '';
 
     console.info(
       JSON.stringify({
         event: 'recycle-window-loss-diagnostic',
         recycled,
-        markerInFragment: finalText.includes(MARKER),
         markerInSource: finalSource.includes(MARKER),
       }),
     );
 
-    expect(finalText.includes(MARKER) || finalSource.includes(MARKER)).toBe(true);
-    expect(finalText.split(MARKER).length - 1).toBeLessThanOrEqual(1);
-    expect(finalSource.split(MARKER).length - 1).toBeLessThanOrEqual(1);
+    expect(finalSource.includes(MARKER)).toBe(true);
+    expect(finalSource.split(MARKER).length - 1).toBe(1);
   }, 40_000);
 
   test('a source-mode edit typed during the window survives a server-identity change', async () => {
@@ -150,17 +142,14 @@ describe('disconnect-recycle window vs local edit', () => {
 
     const MARKER = 'RW-DIRTY-EDIT-MARKER-77e2';
     const doc = firstProvider.document;
-    const paragraph = new Y.XmlElement('paragraph');
-    const xtext = new Y.XmlText();
-    xtext.applyDelta([{ insert: MARKER }]);
-    paragraph.insert(0, [xtext]);
-    doc.getXmlFragment('default').push([paragraph]);
+    const source = doc.getText('source');
+    source.insert(source.length, `\n\n${MARKER}\n`);
     expect(firstProvider.unsyncedChanges).toBeGreaterThan(0);
 
     await wait(700);
 
     expect(pool.getActive()?.provider).toBe(firstProvider);
-    expect(firstProvider.document.getXmlFragment('default').toString().includes(MARKER)).toBe(true);
+    expect(firstProvider.document.getText('source').toString().includes(MARKER)).toBe(true);
   }, 40_000);
 
   test('a clean content-bearing entry is preserved across the debounce window', async () => {

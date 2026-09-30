@@ -20,7 +20,7 @@ import { restoreFromMdx } from './autolink-void-html-guard.ts';
 import { restoreBackslashEscapesPlugin } from './backslash-escape-guard.ts';
 import { calloutTransformerPlugin, REMARK_GITHUB_ALERTS_OPTIONS } from './callout-transformer.ts';
 import { commentPromoterPlugin } from './comment-promoter.ts';
-import { dedentBlockJsxClose } from './dedent-block-jsx-close.ts';
+import { type DedentEdit, dedentBlockJsxClose, undedentOffset } from './dedent-block-jsx-close.ts';
 import { detailsAccordionPromoterPlugin } from './details-accordion-promoter.ts';
 import { divAlignPromoterPlugin } from './div-align-promoter.ts';
 import { materializeDocEdgeBlankRuns } from './doc-edge-blank-runs.ts';
@@ -43,6 +43,12 @@ import { mergedPostParseWalkerPlugin } from './merged-walker.ts';
 import { mermaidPromoterPlugin } from './mermaid-promoter.ts';
 import { nonRenderingContextDemotePlugin } from './non-rendering-context-demote.ts';
 import { protectParserSource } from './parser-reservations.ts';
+import {
+  buildPmSourceMap,
+  createSourceMapRecorder,
+  type PmSourceMap,
+  type SourceMapRecorderHolder,
+} from './pm-source-map.ts';
 import { positionAwareBlankLineJoin } from './position-aware-join.ts';
 import { remarkMdxAgnostic } from './remark-mdx-agnostic.ts';
 import { singleDollarMathPromoterPlugin } from './single-dollar-math-promoter.ts';
@@ -217,9 +223,44 @@ function readDocBoundary(value: unknown): SourceDocBoundary | undefined {
 }
 
 export function parseMd(rawSource: string, processor: Processor): PmNode {
+  return parseMdInternal(rawSource, processor);
+}
+
+export interface ParsedWithSourceMap {
+  doc: PmNode;
+  map: PmSourceMap;
+}
+
+export function parseMdWithSourceMap(
+  rawSource: string,
+  processor: Processor,
+  holder: SourceMapRecorderHolder,
+): ParsedWithSourceMap {
+  const recorder = createSourceMapRecorder();
+  const edits: DedentEdit[] = [];
+  const previous = holder.current;
+  holder.current = recorder;
+  let doc: PmNode;
+  try {
+    doc = parseMdInternal(rawSource, processor, edits);
+  } finally {
+    holder.current = previous;
+  }
+  const bomShift = rawSource.charCodeAt(0) === 0xfeff ? 1 : 0;
+  const adjust =
+    edits.length === 0 && bomShift === 0
+      ? undefined
+      : (offset: number) => undedentOffset(edits, offset) + bomShift;
+  return { doc, map: buildPmSourceMap(doc, recorder, rawSource, adjust) };
+}
+
+function parseMdInternal(
+  rawSource: string,
+  processor: Processor,
+  dedentEdits?: DedentEdit[],
+): PmNode {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
-  const source = dedentBlockJsxClose(rawAfterBom);
-  const protected_ = protectParserSource(source);
+  const { source, protected_ } = preprocess(rawAfterBom, dedentEdits);
 
   const file = new VFile(protected_);
   const tree = processor.parse(file);
@@ -241,14 +282,26 @@ export function parseMdToEditorMdast(rawSource: string, processor: Processor): M
   return parseToMdast(rawSource, processor, true);
 }
 
+function preprocess(
+  rawAfterBom: string,
+  dedentEdits?: DedentEdit[],
+): { source: string; protected_: string } {
+  const source = dedentBlockJsxClose(rawAfterBom, dedentEdits);
+  const protected_ = protectParserSource(source);
+  return { source, protected_ };
+}
+
+export function preprocessForParse(rawSource: string): string {
+  return preprocess(splitDocumentHeadBom(rawSource).source).protected_;
+}
+
 function parseToMdast(
   rawSource: string,
   processor: Processor,
   materializeBlankRuns: boolean,
 ): MdastRoot {
   const { source: rawAfterBom, hadBom } = splitDocumentHeadBom(rawSource);
-  const source = dedentBlockJsxClose(rawAfterBom);
-  const protected_ = protectParserSource(source);
+  const { source, protected_ } = preprocess(rawAfterBom);
   const file = new VFile(protected_);
   const tree = processor.parse(file);
   file.value = source;

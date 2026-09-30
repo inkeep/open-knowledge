@@ -1,0 +1,271 @@
+import type { HocuspocusProvider } from '@hocuspocus/provider';
+import { beforeEach, describe, expect, test } from 'vitest';
+import * as Y from 'yjs';
+import { PROJECTION_WRITE_ORIGIN, sharedUndoManagerFor } from './shared-undo-manager';
+
+const REMOTE_ORIGIN = Object.freeze({ kind: 'shared-undo-remote-provider' });
+const FULL_REPLACE_CLEAR_MARK = 'ok/undo/full-replace-clear';
+
+function makeRig(seed = '') {
+  const doc = new Y.Doc();
+  const ytext = doc.getText('source');
+  if (seed) doc.transact(() => ytext.insert(0, seed), REMOTE_ORIGIN);
+  const undoManager = sharedUndoManagerFor(ytext);
+  const remote = (mutate: (text: Y.Text) => void) => {
+    const peer = new Y.Doc();
+    Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc));
+    peer.transact(() => mutate(peer.getText('source')));
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(peer, Y.encodeStateVector(doc)), REMOTE_ORIGIN);
+    peer.destroy();
+  };
+  const local = (mutate: (text: Y.Text) => void, origin: unknown = PROJECTION_WRITE_ORIGIN) => {
+    undoManager.stopCapturing();
+    doc.transact(() => mutate(ytext), origin);
+  };
+  return { doc, ytext, undoManager, remote, local };
+}
+
+describe('sharedUndoManagerFor: an untracked whole-text replacement', () => {
+  beforeEach(() => {
+    performance.clearMeasures(FULL_REPLACE_CLEAR_MARK);
+  });
+
+  test('a peer inserting elsewhere leaves your history undoable', () => {
+    const { ytext, undoManager, remote, local } = makeRig('one\n\ntwo\n');
+    local((t) => t.insert(3, ' mine'));
+    remote((t) => t.insert(t.length, 'PEER\n'));
+
+    expect(undoManager.undoStack.length).toBe(1);
+    undoManager.undo();
+    expect(ytext.toString()).toBe('one\n\ntwo\nPEER\n');
+  });
+
+  test('a peer deleting elsewhere leaves your history undoable', () => {
+    const { ytext, undoManager, remote, local } = makeRig('one\n\ntwo\n');
+    local((t) => t.insert(3, ' mine'));
+    remote((t) => t.delete(t.toString().indexOf('two'), 3));
+
+    expect(undoManager.undoStack.length).toBe(1);
+    undoManager.undo();
+    expect(ytext.toString()).toBe('one\n\n\n');
+  });
+
+  test('clears undo and redo', () => {
+    const { ytext, undoManager, remote, local } = makeRig('one\n\ntwo\n');
+    local((t) => t.insert(3, ' a'));
+    local((t) => t.insert(5, ' b'));
+    undoManager.undo();
+    expect(undoManager.redoStack.length).toBe(1);
+
+    remote((t) => {
+      t.delete(0, t.length);
+      t.insert(0, 'rewritten\n');
+    });
+
+    expect(undoManager.undoStack.length).toBe(0);
+    expect(undoManager.redoStack.length).toBe(0);
+    expect(ytext.toString()).toBe('rewritten\n');
+  });
+
+  test('undo cannot put text you deleted back into a document someone else rewrote', () => {
+    const { ytext, undoManager, remote, local } = makeRig('Seed paragraph one.\n\ntwo\n');
+    local((t) => t.delete(t.toString().indexOf(' one.'), 5));
+    remote((t) => {
+      t.delete(0, t.length);
+      t.insert(0, 'Agent rewrote paragraph one.\n\ntwo\n');
+    });
+
+    expect(undoManager.undo()).toBe(null);
+    expect(ytext.toString()).toBe('Agent rewrote paragraph one.\n\ntwo\n');
+  });
+
+  test('your own whole-text replacement is an ordinary undo step', () => {
+    const { ytext, undoManager, local } = makeRig('one\n');
+    local((t) => t.insert(3, ' a'));
+    local((t) => {
+      t.delete(0, t.length);
+      t.insert(0, 'pasted over everything\n');
+    }, null);
+
+    expect(undoManager.undoStack.length).toBe(2);
+    undoManager.undo();
+    expect(ytext.toString()).toBe('one a\n');
+  });
+
+  test('a replacement under a class-registered tracked origin does not clear', () => {
+    class FakeSyncConfig {}
+    const { ytext, undoManager, doc, local } = makeRig('one\n');
+    undoManager.addTrackedOrigin(FakeSyncConfig);
+    local((t) => t.insert(3, ' a'));
+    undoManager.stopCapturing();
+    doc.transact(() => {
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, 'replaced\n');
+    }, new FakeSyncConfig());
+
+    expect(undoManager.undoStack.length).toBe(2);
+  });
+
+  test('a remote insert into an empty text does not clear', () => {
+    const { undoManager, remote, local } = makeRig('one\n');
+    local((t) => t.delete(0, t.length));
+    remote((t) => t.insert(0, 'peer typed into the empty doc\n'));
+
+    expect(undoManager.undoStack.length).toBe(1);
+  });
+
+  test('emits the clear mark once, and nothing for a partial remote edit', () => {
+    const { remote, local } = makeRig('one\n\ntwo\n');
+    local((t) => t.insert(3, ' a'));
+    remote((t) => t.insert(0, 'PEER '));
+    expect(performance.getEntriesByName(FULL_REPLACE_CLEAR_MARK)).toHaveLength(0);
+
+    remote((t) => {
+      t.delete(0, t.length);
+      t.insert(0, 'rewritten\n');
+    });
+    expect(performance.getEntriesByName(FULL_REPLACE_CLEAR_MARK)).toHaveLength(1);
+  });
+});
+
+const EDIT_ORIGIN = Symbol('shared-undo-test-edit');
+
+function stubProvider() {
+  const listeners = new Set<() => void>();
+  const provider = {
+    on(name: string, listener: () => void) {
+      if (name === 'destroy') listeners.add(listener);
+    },
+    off(name: string, listener: () => void) {
+      if (name === 'destroy') listeners.delete(listener);
+    },
+  } as unknown as HocuspocusProvider;
+  return {
+    provider,
+    emitDestroy: () => {
+      const pending = [...listeners];
+      listeners.clear();
+      for (const listener of pending) listener();
+    },
+    listenerCount: () => listeners.size,
+    destroyListener: () => [...listeners][0],
+  };
+}
+
+function docDestroyListeners(doc: Y.Doc): Set<unknown> {
+  const observers = (doc as unknown as { _observers: Map<string, Set<unknown>> })._observers;
+  return observers.get('destroy') ?? new Set();
+}
+
+describe('sharedUndoManagerFor: one registry with a release path', () => {
+  test('a second acquisition of the same Y.Text reuses the manager', () => {
+    const { provider } = stubProvider();
+    const ytext = new Y.Doc().getText('source');
+
+    expect(sharedUndoManagerFor(ytext, provider)).toBe(sharedUndoManagerFor(ytext, provider));
+  });
+
+  test('callers can add their own tracked origin', () => {
+    const { provider } = stubProvider();
+    const doc = new Y.Doc();
+    const ytext = doc.getText('source');
+    const undoManager = sharedUndoManagerFor(ytext, provider);
+    undoManager.addTrackedOrigin(EDIT_ORIGIN);
+
+    doc.transact(() => ytext.insert(0, 'tracked'), EDIT_ORIGIN);
+    expect(undoManager.undoStack.length).toBe(1);
+    doc.transact(() => ytext.insert(0, 'untracked'), Symbol('other'));
+    expect(undoManager.undoStack.length).toBe(1);
+  });
+
+  test('provider destroy clears the stacks and stops tracking', () => {
+    const { provider, emitDestroy } = stubProvider();
+    const doc = new Y.Doc();
+    const ytext = doc.getText('source');
+    const undoManager = sharedUndoManagerFor(ytext, provider);
+    undoManager.addTrackedOrigin(EDIT_ORIGIN);
+    doc.transact(() => ytext.insert(0, 'tracked'), EDIT_ORIGIN);
+    expect(undoManager.canUndo()).toBe(true);
+
+    emitDestroy();
+
+    expect(undoManager.canUndo()).toBe(false);
+    doc.transact(() => ytext.insert(0, 'after'), EDIT_ORIGIN);
+    expect(undoManager.undoStack.length).toBe(0);
+  });
+
+  test('acquiring after a release builds a fresh manager for the same Y.Text', () => {
+    const { provider, emitDestroy } = stubProvider();
+    const ytext = new Y.Doc().getText('source');
+
+    const first = sharedUndoManagerFor(ytext, provider);
+    emitDestroy();
+
+    expect(sharedUndoManagerFor(ytext, provider)).not.toBe(first);
+  });
+
+  test('a released manager does not evict its replacement when the doc is destroyed later', () => {
+    const { provider, emitDestroy } = stubProvider();
+    const doc = new Y.Doc();
+    const ytext = doc.getText('source');
+    sharedUndoManagerFor(ytext, provider);
+    emitDestroy();
+    const second = sharedUndoManagerFor(ytext, provider);
+    second.addTrackedOrigin(EDIT_ORIGIN);
+    doc.transact(() => ytext.insert(0, 'tracked'), EDIT_ORIGIN);
+    expect(second.undoStack.length).toBe(1);
+
+    doc.destroy();
+
+    expect(second.undoStack.length).toBe(0);
+  });
+
+  test('provider destroy detaches the paired document listener', () => {
+    const { provider, emitDestroy, destroyListener } = stubProvider();
+    const doc = new Y.Doc();
+    sharedUndoManagerFor(doc.getText('source'), provider);
+    const release = destroyListener();
+    if (!release) throw new Error('expected a provider destroy listener');
+    expect(docDestroyListeners(doc).has(release)).toBe(true);
+
+    emitDestroy();
+
+    expect(docDestroyListeners(doc).has(release)).toBe(false);
+  });
+
+  test('doc destroy releases a manager, with or without a provider', () => {
+    const { provider, listenerCount } = stubProvider();
+    const withProvider = new Y.Doc();
+    const withoutProvider = new Y.Doc();
+    const a = sharedUndoManagerFor(withProvider.getText('source'), provider);
+    const b = sharedUndoManagerFor(withoutProvider.getText('source'));
+    withProvider.transact(() => withProvider.getText('source').insert(0, 'a'));
+    withoutProvider.transact(() => withoutProvider.getText('source').insert(0, 'b'));
+    expect(a.canUndo() && b.canUndo()).toBe(true);
+    expect(listenerCount()).toBe(1);
+
+    withProvider.destroy();
+    withoutProvider.destroy();
+
+    expect(a.canUndo()).toBe(false);
+    expect(b.canUndo()).toBe(false);
+    expect(listenerCount()).toBe(0);
+  });
+
+  test('a released manager no longer reacts to a whole-text replacement', () => {
+    performance.clearMeasures(FULL_REPLACE_CLEAR_MARK);
+    const { provider, emitDestroy } = stubProvider();
+    const doc = new Y.Doc();
+    const ytext = doc.getText('source');
+    doc.transact(() => ytext.insert(0, 'seed\n'), REMOTE_ORIGIN);
+    sharedUndoManagerFor(ytext, provider);
+    emitDestroy();
+
+    doc.transact(() => {
+      ytext.delete(0, ytext.length);
+      ytext.insert(0, 'rewritten\n');
+    }, REMOTE_ORIGIN);
+
+    expect(performance.getEntriesByName(FULL_REPLACE_CLEAR_MARK)).toHaveLength(0);
+  });
+});

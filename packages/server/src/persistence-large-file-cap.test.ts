@@ -40,7 +40,6 @@ describe('persistence large-file cap', () => {
       DocumentOpenSizeLimitError,
     );
     expect(document.getText('source').length).toBe(0);
-    expect(document.getXmlFragment('default').length).toBe(0);
   });
 
   test('allows a document at exactly the byte limit', async () => {

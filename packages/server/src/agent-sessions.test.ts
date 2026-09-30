@@ -1,5 +1,5 @@
 import type { Document } from '@hocuspocus/server';
-import { sharedExtensions, stripFrontmatter } from '@inkeep/open-knowledge-core';
+import { stripFrontmatter } from '@inkeep/open-knowledge-core';
 import { metrics } from '@opentelemetry/api';
 import {
   AggregationTemporality,
@@ -7,8 +7,6 @@ import {
   MeterProvider,
   PeriodicExportingMetricReader,
 } from '@opentelemetry/sdk-metrics';
-import { getSchema } from '@tiptap/core';
-import { yXmlFragmentToProseMirrorRootNode } from '@tiptap/y-tiptap';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import * as Y from 'yjs';
 import { sessionWriterId } from './agent-id.ts';
@@ -380,7 +378,7 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     }
     expect(session.um.undoStack.length).toBe(4);
 
-    const undone = applyAgentUndo(session, 'count', undefined, 2);
+    const undone = applyAgentUndo(session, 'count', 2);
     expect(undone).toBe(true);
     expect(session.um.undoStack.length).toBe(2);
   });
@@ -394,7 +392,7 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     session.dc.document.transact(() => ytext.insert(0, 'y'), session.origin);
     expect(session.um.undoStack.length).toBe(2);
 
-    expect(applyAgentUndo(session, 'count', undefined, 99)).toBe(true);
+    expect(applyAgentUndo(session, 'count', 99)).toBe(true);
     expect(session.um.undoStack.length).toBe(0);
   });
 
@@ -404,7 +402,7 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     session.dc.document.transact(() => ytext.insert(0, 'z'), session.origin);
     expect(session.um.undoStack.length).toBe(1);
 
-    expect(applyAgentUndo(session, 'count', undefined, 0)).toBe(false);
+    expect(applyAgentUndo(session, 'count', 0)).toBe(false);
     expect(session.um.undoStack.length).toBe(1);
   });
 
@@ -413,42 +411,6 @@ describe('applyAgentUndo — scope drain semantics (V0-14)', () => {
     expect(session.um.undoStack.length).toBe(0);
     expect(applyAgentUndo(session, 'session')).toBe(false);
     expect(applyAgentUndo(session, 'last')).toBe(false);
-  });
-
-  test('post-undo XmlFragment uses embedResolver for `![[file]]` refs', async () => {
-    const session = await manager.getSession('doc-resolve.md', 'agent-resolve');
-    const xmlFragment = session.dc.document.getXmlFragment('default');
-    const ytext = session.dc.document.getText('source');
-
-    const embedResolver = {
-      resolveEmbed: (basename: string) =>
-        basename === 'photo.png' ? 'attachments/photo.png' : null,
-      sourcePath: 'doc-resolve.md',
-    };
-
-    session.dc.document.transact(() => {
-      applyAgentMarkdownWrite(session.dc.document, '![[photo.png]]\n', 'replace', embedResolver);
-    }, session.origin);
-    session.um.stopCapturing();
-
-    session.dc.document.transact(() => {
-      applyAgentMarkdownWrite(session.dc.document, '# Heading\n', 'replace', embedResolver);
-    }, session.origin);
-
-    expect(ytext.toString()).toContain('# Heading');
-
-    const undone = applyAgentUndo(session, 'last', embedResolver);
-    expect(undone).toBe(true);
-
-    const schema = getSchema(sharedExtensions);
-    const pmJson = yXmlFragmentToProseMirrorRootNode(xmlFragment, schema).toJSON();
-    const node = pmJson.content?.[0] as
-      | { type?: string; attrs?: { componentName?: string; props?: Record<string, unknown> } }
-      | undefined;
-    expect(node?.type).toBe('jsxComponent');
-    expect(node?.attrs?.componentName).toBe('WikiEmbedImage');
-    expect(node?.attrs?.props?.src).toBe('/attachments/photo.png');
-    expect(node?.attrs?.props?.target).toBe('photo.png');
   });
 });
 
@@ -571,7 +533,7 @@ describe('empty / whitespace content writes (PRD-6835)', () => {
     expect(stripFrontmatter(after).body.trim()).toBe('');
   });
 
-  test('replace with empty markdown on a frontmatter-less doc clears to empty (bridge converges)', async () => {
+  test('replace with empty markdown on a frontmatter-less doc clears to empty', async () => {
     const session = await manager.getSession('clear-plain.md', 'agent-clear-plain');
     const ytext = session.dc.document.getText('source');
 
@@ -585,12 +547,6 @@ describe('empty / whitespace content writes (PRD-6835)', () => {
     }, session.origin);
 
     expect(ytext.toString()).toBe('');
-    const schema = getSchema(sharedExtensions);
-    const node = yXmlFragmentToProseMirrorRootNode(
-      session.dc.document.getXmlFragment('default'),
-      schema,
-    );
-    expect(node.textContent).toBe('');
   });
 
   test('append with empty markdown is a no-op (no \\n\\n injection, byte-unchanged)', async () => {
@@ -778,9 +734,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
           first.dc.document,
           '# First replacement\n',
           'replace',
-          undefined,
-          undefined,
-          undefined,
           sessionWriterId(first),
         );
       }, first.origin);
@@ -791,9 +744,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
               first.dc.document,
               '# Peer replacement\n',
               'replace',
-              undefined,
-              undefined,
-              undefined,
               sessionWriterId({ agentId: 'agent-b' }),
             );
           },
@@ -1005,9 +955,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
           first.dc.document,
           '# First replacement\n',
           'replace',
-          undefined,
-          undefined,
-          undefined,
           sessionWriterId(first),
         );
       }, first.origin);
@@ -1020,9 +967,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
               first.dc.document,
               '# Peer replacement\n',
               'replace',
-              undefined,
-              undefined,
-              undefined,
               sessionWriterId({ agentId: 'agent-b' }),
             );
           },
@@ -1044,9 +988,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
           first.dc.document,
           '# First replacement\n',
           'replace',
-          undefined,
-          undefined,
-          undefined,
           sessionWriterId(first),
         );
       }, first.origin);
@@ -1059,9 +1000,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
               first.dc.document,
               '# Peer replacement\n',
               'replace',
-              undefined,
-              undefined,
-              undefined,
               sessionWriterId({ agentId: 'agent-b' }),
             );
           },
@@ -1102,9 +1040,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
           session.dc.document,
           'Body without frontmatter.\n',
           'replace',
-          undefined,
-          undefined,
-          undefined,
           sessionWriterId(session),
         );
       }, session.origin);
@@ -1118,9 +1053,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
               session.dc.document,
               peerPayload,
               'replace',
-              undefined,
-              undefined,
-              undefined,
               sessionWriterId({ agentId: 'agent-b' }),
             );
           },
@@ -1137,9 +1069,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
             session.dc.document,
             peerPayload,
             'replace',
-            undefined,
-            undefined,
-            undefined,
             sessionWriterId({ agentId: 'agent-b' }),
           );
         },
@@ -1183,9 +1112,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
             first.dc.document,
             '# First replacement\n',
             'replace',
-            undefined,
-            undefined,
-            undefined,
             sessionWriterId(first),
           );
         }, first.origin);
@@ -1198,9 +1124,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
                 first.dc.document,
                 '# Peer replacement\n',
                 'replace',
-                undefined,
-                undefined,
-                undefined,
                 sessionWriterId({ agentId: 'agent-b' }),
               );
             },
@@ -1216,9 +1139,6 @@ describe('applyAgentMarkdownWrite — position: "replace" atomic-overwrite contr
                 first.dc.document,
                 payload,
                 position,
-                undefined,
-                undefined,
-                undefined,
                 sessionWriterId({ agentId: 'agent-b' }),
               );
             },

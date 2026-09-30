@@ -1,6 +1,5 @@
 import { setTimeout as wait } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
@@ -48,24 +47,6 @@ describe('awaitConvergedServerText', () => {
       expect(client.ytext.toString()).not.toContain('held body');
     } finally {
       client.resumeSync();
-      await client.cleanup();
-    }
-  });
-
-  test('stops waiting when the client fragment edit has not reached the server', async () => {
-    const client = await createTestClient(server.port, undefined, { syncControl: true });
-    try {
-      client.setDropOutbound(true);
-      client.fragment.push([new Y.XmlElement('thematicBreak')]);
-
-      await expect(
-        awaitConvergedServerText(server, client, { timeoutMs: 400, pollIntervalMs: 10 }),
-      ).rejects.toThrow(/did not converge/);
-
-      expect(getServerState(server, client.docName)?.ytext.toString()).toBe('');
-      expect(client.fragment.length).toBe(1);
-    } finally {
-      client.setDropOutbound(false);
       await client.cleanup();
     }
   });
@@ -278,22 +259,6 @@ describe('awaitConvergedServerText', () => {
 
       const converged = await pending;
       expect(converged).toContain('late body');
-      expect(client.ytext.toString()).toBe(converged);
-      expect(getServerState(server, client.docName)?.ytext.toString()).toBe(converged);
-    } finally {
-      await client.cleanup();
-    }
-  });
-
-  test('resolves the two-hop fragment chain with the server-derived bytes', async () => {
-    const client = await createTestClient(server.port);
-    try {
-      expect(client.ytext.toString()).toBe('');
-      client.fragment.push([new Y.XmlElement('thematicBreak')]);
-
-      const converged = await awaitConvergedServerText(server, client, { timeoutMs: 10_000 });
-
-      expect(converged).toContain('---');
       expect(client.ytext.toString()).toBe(converged);
       expect(getServerState(server, client.docName)?.ytext.toString()).toBe(converged);
     } finally {

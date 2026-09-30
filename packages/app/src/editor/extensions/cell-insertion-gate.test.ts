@@ -2,10 +2,10 @@ import { sharedExtensions as coreExtensions, MarkdownManager } from '@inkeep/ope
 import { Editor, type JSONContent } from '@tiptap/core';
 import { Fragment, type Node as ProseMirrorNode, Slice } from '@tiptap/pm/model';
 import { dropPoint, ReplaceAroundStep } from '@tiptap/pm/transform';
-import { ySyncPluginKey } from '@tiptap/y-tiptap';
 import * as actualSonner from 'sonner';
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
 import { installDomGlobals } from '../walk-currency-test-harness';
+import { PROJECTION_REMOTE_APPLY_META } from './autonomous-fragment-edit';
 import { CellInsertionGate } from './cell-insertion-gate';
 
 vi.doMock('sonner', () => ({ ...actualSonner, toast: { error: vi.fn(() => {}) } }));
@@ -191,7 +191,7 @@ describe('cell-insertion gate — permitted transactions', () => {
     expect(editor.state.doc.textContent).toContain('X');
   });
 
-  test('a component-into-cell transaction carrying ySync meta is applied, not filtered', () => {
+  test('a component-into-cell remote re-projection is applied, not filtered', () => {
     const editor = mountGateEditor(mdManager.parse(TABLE_MD) as JSONContent);
 
     editor
@@ -199,7 +199,7 @@ describe('cell-insertion gate — permitted transactions', () => {
       .setTextSelection(firstDataCellCaret(editor))
       .insertContent(componentJSON())
       .command(({ tr }) => {
-        tr.setMeta(ySyncPluginKey, { isChangeOrigin: true });
+        tr.setMeta(PROJECTION_REMOTE_APPLY_META, true);
         return true;
       })
       .run();

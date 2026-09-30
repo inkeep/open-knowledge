@@ -15,6 +15,8 @@ export const APP_RESERVED_IDS = new Map<string, string>([
   ['version-history', 'deferred Project menu — not yet a shipped command anywhere'],
   ['focus-search', 'focus-routing id, not a user-facing command'],
   ['focus-command-palette', 'focus-routing id; self-referential inside the palette'],
+  ['undo', 'Edit menu history, replayed as the key on the focused surface; not a palette row'],
+  ['redo', 'Edit menu history, replayed as the key on the focused surface; not a palette row'],
 ]);
 
 export const PRE_EXISTING_PALETTE_IDS = new Set<string>([

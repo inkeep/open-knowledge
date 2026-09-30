@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import * as Y from 'yjs';
 import {
+  appendProjectionParagraph,
   createTestClient,
   createTestServer,
   pollUntil,
@@ -33,14 +33,6 @@ function write(server: TestServer, body: WriteBody): Promise<Response> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-}
-
-function addWysiwygParagraph(client: TestClient, text: string): void {
-  const paragraph = new Y.XmlElement('paragraph');
-  const leaf = new Y.XmlText();
-  leaf.insert(0, text);
-  paragraph.insert(0, [leaf]);
-  client.fragment.push([paragraph]);
 }
 
 async function expectHumanWriteRefused(
@@ -398,7 +390,7 @@ describe('concurrent whole-document replace refusal', () => {
         client.ytext.insert(client.ytext.length, '\nHuman edit in source.\n'),
       );
       await expectHumanWriteRefused(server, `wysiwyg-human-${crypto.randomUUID()}`, (client) =>
-        addWysiwygParagraph(client, 'Human edit in rich text.'),
+        appendProjectionParagraph(client, 'Human edit in rich text.'),
       );
     } finally {
       await server.cleanup();

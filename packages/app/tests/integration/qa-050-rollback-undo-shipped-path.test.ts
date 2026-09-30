@@ -1,12 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
-import type * as Y from 'yjs';
 
-import {
-  insertLocal,
-  mountCollabEditor,
-  readUndoManager,
-} from '../../src/editor/editor-rig.test-helper';
+import { insertLocal, mountProjectionEditorOn } from '../../src/editor/editor-rig.test-helper';
 import { installDomGlobals } from '../../src/editor/walk-currency-test-harness';
 import {
   agentWriteMd,
@@ -58,8 +53,8 @@ const ORIGINAL = '# Original\n\noriginal body anchor\n';
 const SUPERSEDING = '# Superseding\n\nsuperseding body anchor\n';
 const TYPED = 'USER TYPED AFTER RESTORE POINT';
 
-describe('rollback on the shipped path leaves the client undo stack invariant', () => {
-  test('a real POST /api/rollback is not undoable, does not pop the user stack, and a stale item cannot resurrect the discarded content', async () => {
+describe('rollback on the shipped path leaves nothing on the client undo stack to resurrect', () => {
+  test('a real POST /api/rollback is not undoable, clears the pre-rollback steps, and nothing resurrects the discarded content', async () => {
     server = await createTestServer({ gitEnabled: true, commitDebounceMs: 100 });
     const docName = `qa050-${randomUUID().slice(0, 8)}`;
 
@@ -79,11 +74,9 @@ describe('rollback on the shipped path leaves the client undo stack invariant', 
     try {
       await pollUntil(() => client.ytext.toString().includes('superseding body anchor'), 10_000);
 
-      const editor = mountCollabEditor(client.doc, []);
+      const rig = mountProjectionEditorOn(client.ytext, []);
+      const { editor, undoManager: um } = rig;
       try {
-        const um = readUndoManager(editor) as Y.UndoManager;
-        expect(um).not.toBeNull();
-
         insertLocal(editor, TYPED, 1);
         await pollUntil(() => client.ytext.toString().includes(TYPED), 10_000);
         const stackBefore = um.undoStack.length;
@@ -100,7 +93,7 @@ describe('rollback on the shipped path leaves the client undo stack invariant', 
         const afterRollback = client.ytext.toString();
         expect(afterRollback).not.toContain('superseding body anchor');
 
-        expect(um.undoStack.length).toBe(stackBefore);
+        expect(um.undoStack.length).toBe(0);
 
         await pollUntil(
           () => editor.state.doc.textContent.includes('original body anchor'),
@@ -124,7 +117,7 @@ describe('rollback on the shipped path leaves the client undo stack invariant', 
         expect(ytextAfterUndo).not.toContain(TYPED);
         expect(countOccurrences(ytextAfterUndo, 'original body anchor')).toBe(1);
       } finally {
-        editor.destroy();
+        rig.destroy();
       }
     } finally {
       await client.cleanup();

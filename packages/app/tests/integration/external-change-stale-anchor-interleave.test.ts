@@ -6,7 +6,6 @@ import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { HARNESS_BOOT_TIMEOUT_MS } from './harness-boot-timeout';
 import {
   agentWriteMd,
-  assertBridgeInvariant,
   createTestClients,
   createTestServer,
   pollUntil,
@@ -32,7 +31,7 @@ async function runInterleave(clientId: number): Promise<string> {
   const clients = await createTestClients(server.port, {
     count: 2,
     docName,
-    perClientOptions: { skipInvariantWatcher: true, syncControl: true },
+    perClientOptions: { syncControl: true },
   });
   const [live, paused] = clients;
   try {
@@ -78,7 +77,6 @@ async function runInterleave(clientId: number): Promise<string> {
 
     const texts = clients.map((c) => c.ytext.toString());
     expect(texts[1]).toBe(texts[0]);
-    for (const c of clients) assertBridgeInvariant(c.ytext, c.fragment);
     return texts[0];
   } finally {
     for (const c of clients) await c.cleanup();
