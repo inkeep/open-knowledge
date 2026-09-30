@@ -192,7 +192,116 @@ export function installPtyImportFailureReply(
   });
 }
 
+export type PtyStartupBackend = 'bundled' | 'inbox' | 'posix';
+export type PtyStartupSnapshotReason =
+  | 'failure'
+  | 'before-cleanup'
+  | 'before-replacement'
+  | 'before-kill'
+  | 'before-shutdown'
+  | 'exit';
+
+export interface PtyStartupNativeSnapshot {
+  shell: {
+    pid: number | null;
+    nativeExitObserved: boolean;
+    exitCode: number | null;
+    osState: 'unobserved';
+  };
+  console: {
+    backend: PtyStartupBackend;
+    connection: 'pending' | 'entered' | 'returned' | 'failed';
+    outputConnectionDisposed: boolean;
+    osState: 'unobserved';
+  };
+  worker: {
+    threadId: number;
+    online: boolean;
+    readyReceived: boolean;
+    errorObserved: boolean;
+    writerError: boolean;
+    exitCode: number | null;
+    osState: 'unobserved';
+  };
+  transport: {
+    capture: 'installed' | 'missing';
+    nativeBytes: number;
+    workerSubmittedBytes: number;
+    mainBytes: number;
+    nativeConnected: boolean;
+    forwardingConnected: boolean;
+    nativeClosed: boolean;
+    forwardingClosed: boolean;
+    nativeError: boolean;
+    forwardingError: boolean;
+    mainDestroyed: boolean;
+    mainConnecting: boolean;
+    mainReadableLength: number;
+    inputWritableLength: number;
+  };
+}
+
+export type PtyStartupObservation =
+  | { stage: 'worker-online' | 'worker-ready-received' | 'data-pipe-connected' | 'worker-error' }
+  | { stage: 'native-connect-enter'; boundary: 'agent-complete-connection' }
+  | { stage: 'native-connect-return'; shellPid: number | null }
+  | { stage: 'native-connect-failed' }
+  | { stage: 'native-shell-exit'; shellPid: number | null; exitCode: number }
+  | { stage: 'worker-exit'; exitCode: number }
+  | { stage: 'observer-unavailable'; reason: 'unsupported-node-pty-shape' };
+
+type PtyStartupHostObservation =
+  | PtyStartupObservation
+  | { stage: 'lookup-start' }
+  | {
+      stage: 'lookup-complete';
+      lookup: 'probe' | 'cache' | 'override' | 'platform';
+      rung: ShellResolutionRung;
+    }
+  | { stage: 'spawn-start' | 'spawn-return'; backend: PtyStartupBackend }
+  | {
+      stage: 'spawn-failed';
+      backend: PtyStartupBackend;
+      reason: 'spawn-error' | 'conpty-dll-unavailable';
+    }
+  | { stage: 'first-output'; currentSession: boolean }
+  | { stage: 'first-forward' }
+  | { stage: 'terminal-exit'; exitCode: number | undefined }
+  | {
+      stage: 'snapshot';
+      reason: PtyStartupSnapshotReason;
+      receivedBytes: number;
+      forwardedBytes: number;
+      publicPid: number | null;
+      terminalExitObserved: boolean;
+      native: PtyStartupNativeSnapshot | null;
+    };
+
+export interface PtyStartupSpawnContext {
+  traceId: number;
+  attempt: number;
+  startedAt: number;
+  backend: PtyStartupBackend;
+  emit(observation: PtyStartupObservation): void;
+}
+
+export interface PtyStartupObservedProcess {
+  pty: PtyProcessLike;
+  snapshot?(): PtyStartupNativeSnapshot;
+  dispose?(): void;
+}
+
+export interface PtyStartupTraceOptions {
+  aroundSpawn?(
+    next: () => PtyProcessLike,
+    context: PtyStartupSpawnContext,
+  ): PtyStartupObservedProcess;
+}
+
+let nextStartupTraceId = 0;
+
 export interface SetupPtyHostDeps {
+  startupTrace?: PtyStartupTraceOptions;
   parentPort: PtyHostParentPort | null;
   spawn: SpawnPty;
   exitHost?: (code: number) => void;
@@ -303,6 +412,7 @@ function asIncomingMessage(raw: unknown): PtyHostIncomingMessage | null {
 }
 
 export interface PtyHostHandle {
+  snapshotStartup?(): void;
   killActive(): void;
 }
 
@@ -743,6 +853,28 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   const env = deps.env ?? (process.env as Record<string, string | undefined>);
   const platform = deps.platform ?? process.platform;
   const sessions = new Map<string, PtyProcessLike>();
+  const startupTraces = deps.startupTrace
+    ? new WeakMap<
+        PtyProcessLike,
+        {
+          emit(
+            observation:
+              | PtyStartupObservation
+              | { stage: 'terminal-exit'; exitCode: number | undefined },
+          ): void;
+          snapshot(reason: PtyStartupSnapshotReason): void;
+          receive(data: string, currentSession: boolean): void;
+          forward(data: string): void;
+          exited(): void;
+          dispose(): void;
+        }
+      >()
+    : undefined;
+
+  function snapshot(pty: PtyProcessLike, reason: PtyStartupSnapshotReason): void {
+    startupTraces?.get(pty)?.snapshot(reason);
+  }
+
   const cursorSyncGates = new WeakMap<PtyProcessLike, ConptyCursorSyncGate>();
   const shutdownMs = deps.shutdownMs ?? 1_500;
   const setHostTimer = deps.setTimer ?? setTimeout;
@@ -799,19 +931,52 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     const { ptyId } = message;
     const stale = sessions.get(ptyId);
     if (stale) {
+      snapshot(stale, 'before-replacement');
+      startupTraces?.get(stale)?.dispose();
       safeKill(stale);
       sessions.delete(ptyId);
     }
+    const traceId = deps.startupTrace ? ++nextStartupTraceId : undefined;
+    const startedAt =
+      traceId === undefined ? undefined : performance.timeOrigin + performance.now();
+    let attempt = 0;
+    let sequence = 0;
+    let lookup: 'probe' | 'cache' | 'override' | 'platform' = message.shell
+      ? 'override'
+      : 'platform';
+    const emit =
+      startedAt === undefined
+        ? undefined
+        : (observation: PtyStartupHostObservation, observedAttempt = attempt): void => {
+            deps.logger?.info?.({
+              event: 'pty-host-startup',
+              traceId,
+              attempt: observedAttempt,
+              sequence: ++sequence,
+              elapsedMs: performance.timeOrigin + performance.now() - startedAt,
+              producer: 'host',
+              ...observation,
+            });
+          };
+    emit?.({ stage: 'lookup-start' });
     const resolution = resolveShellWithDetails(env, {
       platform,
       override: message.shell,
       overrideInvalidReason: message.shellInvalidReason,
       userInfoShell: deps.userInfoShell,
       shellExists: deps.shellExists,
-      pathProbe: platform === 'win32' ? probeWindowsShellPath : deps.pathProbe,
+      pathProbe:
+        platform === 'win32'
+          ? (command, probeEnv) => {
+              if (traceId !== undefined)
+                lookup = cachedWindowsPaths.has(command) ? 'cache' : 'probe';
+              return probeWindowsShellPath(command, probeEnv);
+            }
+          : deps.pathProbe,
       listDirectory: deps.listDirectory,
       logger: deps.logger,
     });
+    emit?.({ stage: 'lookup-complete', lookup, rung: resolution.rung });
     if (resolution.invalidOverride) {
       const reason = resolution.invalidOverrideReason ?? 'invalid-value';
       deps.logger?.warn({
@@ -915,9 +1080,39 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
       env: buildLaunchEnv(platform, shellEnv, launchCommand),
       encoding: 'utf8',
     };
+    let observation: PtyStartupObservedProcess | undefined;
+    const spawnAttempt = (options: PtySpawnOptions): PtyProcessLike => {
+      if (traceId === undefined || startedAt === undefined || emit === undefined)
+        return deps.spawn(shell, shellArgs, options);
+      attempt += 1;
+      const backend: PtyStartupBackend =
+        platform === 'win32' ? (options.useConptyDll ? 'bundled' : 'inbox') : 'posix';
+      emit({ stage: 'spawn-start', backend });
+      try {
+        const next = () => deps.spawn(shell, shellArgs, options);
+        const observedAttempt = attempt;
+        observation = deps.startupTrace?.aroundSpawn?.(next, {
+          traceId,
+          attempt,
+          startedAt,
+          backend,
+          emit: (entry) => emit(entry, observedAttempt),
+        }) ?? { pty: next() };
+        emit({ stage: 'spawn-return', backend });
+        return observation.pty;
+      } catch (error) {
+        emit({
+          stage: 'spawn-failed',
+          backend,
+          reason:
+            conptyDllLoadFailureReason(error) === null ? 'spawn-error' : 'conpty-dll-unavailable',
+        });
+        throw error;
+      }
+    };
     let pty: PtyProcessLike;
     try {
-      pty = deps.spawn(shell, shellArgs, {
+      pty = spawnAttempt({
         ...spawnOptions,
         ...(platform === 'win32' ? { useConptyDll: true } : {}),
       });
@@ -929,7 +1124,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
           reason: conptyFailureReason,
         });
         try {
-          pty = deps.spawn(shell, shellArgs, { ...spawnOptions, useConptyDll: false });
+          pty = spawnAttempt({ ...spawnOptions, useConptyDll: false });
         } catch (fallbackErr) {
           const fallbackMessage =
             fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
@@ -950,13 +1145,61 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
         ),
       );
     }
+    if (emit !== undefined) {
+      let receivedBytes = 0;
+      let forwardedBytes = 0;
+      let terminalExitObserved = false;
+      let received = false;
+      let forwarded = false;
+      startupTraces?.set(pty, {
+        emit,
+        snapshot(reason) {
+          emit({
+            stage: 'snapshot',
+            reason,
+            receivedBytes,
+            forwardedBytes,
+            publicPid: pty.pid > 0 ? pty.pid : null,
+            terminalExitObserved,
+            native: observation?.snapshot?.() ?? null,
+          });
+        },
+        receive(data, currentSession) {
+          receivedBytes += Buffer.byteLength(data);
+          if (!received) {
+            received = true;
+            emit({ stage: 'first-output', currentSession });
+          }
+        },
+        forward(data) {
+          forwardedBytes += Buffer.byteLength(data);
+          if (!forwarded) {
+            forwarded = true;
+            emit({ stage: 'first-forward' });
+          }
+        },
+        exited() {
+          terminalExitObserved = true;
+        },
+        dispose() {
+          observation?.dispose?.();
+        },
+      });
+    }
     sessions.set(ptyId, pty);
     pty.onData((data) => {
+      startupTraces?.get(pty)?.receive(data, sessions.get(ptyId) === pty);
       if (sessions.get(ptyId) !== pty) return;
       cursorSyncGates.get(pty)?.observeOutput(data);
       post({ type: 'data', ptyId, data });
+      startupTraces?.get(pty)?.forward(data);
     });
     pty.onExit((event) => {
+      const trace = startupTraces?.get(pty);
+      trace?.exited();
+      trace?.emit({ stage: 'terminal-exit', exitCode: event.exitCode });
+      trace?.snapshot('exit');
+      trace?.dispose();
       clearKillEscalate(ptyId);
       if (sessions.get(ptyId) === pty) sessions.delete(ptyId);
       post(classifyNodePtyEnding(ptyId, pty.pid, event));
@@ -982,6 +1225,7 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     const pty = sessions.get(message.ptyId);
     if (!pty) return;
     const ptyId = message.ptyId;
+    snapshot(pty, 'before-kill');
     safeKill(pty);
     if (sessions.get(ptyId) !== pty) return;
     clearKillEscalate(ptyId);
@@ -1004,7 +1248,11 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
 
   function killActiveSessions(): void {
     clearAllKillEscalates();
-    for (const pty of sessions.values()) safeKill(pty);
+    for (const pty of sessions.values()) {
+      snapshot(pty, 'before-cleanup');
+      startupTraces?.get(pty)?.dispose();
+      safeKill(pty);
+    }
     sessions.clear();
   }
 
@@ -1029,7 +1277,11 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
     if (shuttingDown) return;
     shuttingDown = true;
     clearAllKillEscalates();
-    for (const pty of sessions.values()) safeKill(pty);
+    for (const pty of sessions.values()) {
+      snapshot(pty, 'before-shutdown');
+      startupTraces?.get(pty)?.dispose();
+      safeKill(pty);
+    }
     if (sessions.size === 0) {
       finishShutdown();
       return;
@@ -1079,6 +1331,10 @@ export function setupPtyHost(deps: SetupPtyHostDeps): PtyHostHandle {
   });
 
   return {
+    snapshotStartup(): void {
+      if (!startupTraces) return;
+      for (const pty of sessions.values()) snapshot(pty, 'failure');
+    },
     killActive(): void {
       killActiveSessions();
     },
