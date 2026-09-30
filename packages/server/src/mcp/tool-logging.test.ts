@@ -1,6 +1,4 @@
-import { describe as _bunDescribe, afterEach, beforeEach, expect, test, vi } from 'vitest';
-
-const describe = process.env.CI ? _bunDescribe.skip : _bunDescribe;
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { getCurrentMcpLogger, McpLogger } from './logger.ts';
 import { createLoggedServer, wrapToolHandlerForLogging } from './tool-logging.ts';

@@ -4,9 +4,7 @@ import { request as httpRequest } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { setTimeout as wait } from 'node:timers/promises';
-import { describe as _describe, afterEach, beforeEach, expect, it } from 'vitest';
-
-const describe = process.env.CI ? _describe.skip : _describe;
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 function isProcessAlive(pid: number): boolean {
   try {

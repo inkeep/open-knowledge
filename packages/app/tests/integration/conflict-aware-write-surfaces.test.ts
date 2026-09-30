@@ -393,9 +393,7 @@ describe('a conflict raised while the doc was unloaded still gates its first loa
   }, 30_000);
 });
 
-const describeBoot = process.env.CI ? describe.skip : describe;
-
-describeBoot('FR14: boot-time conflict admission from conflicts.json', () => {
+describe('FR14: boot-time conflict admission from conflicts.json', () => {
   test('conflicts.json with entry X → the entry is listed + an immediate POST returns 409', async () => {
     const cleanups: Array<() => Promise<void> | void> = [];
     try {
