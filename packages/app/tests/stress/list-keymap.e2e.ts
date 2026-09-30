@@ -185,6 +185,59 @@ test.describe('OQ1: Tab/Shift-Tab scoping by cursor context', () => {
     expect(ytext).toContain('- bullet item');
     expect(ytext).not.toMatch(/^- *$/m);
   });
+
+  test('Tab inside a listItem increases list depth', async ({ page, api }) => {
+    const docName = uniqueDocName('tab-listitem');
+    await openDoc(api, page, docName);
+    await seedMarkdown(api, page, docName, '- first\n- second\n');
+
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
+    await page.locator('.ProseMirror li').nth(1).click();
+    await page.keyboard.press('End');
+
+    await waitForPmSelectionInNode(page, 'listItem');
+
+    await page.keyboard.press('Tab');
+
+    await expect.poll(() => getYText(page)).toMatch(/ {2}[-*+] second/);
+    const ytext = await getYText(page);
+    expect(ytext).toContain('- first');
+  });
+
+  test('Shift-Tab inside a nested listItem lifts it one level', async ({ page, api }) => {
+    const docName = uniqueDocName('shifttab-nested');
+    await openDoc(api, page, docName);
+    await seedMarkdown(api, page, docName, '- top\n  - nested\n');
+
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
+    const nestedLi = page.locator('.ProseMirror li li').first();
+    await nestedLi.click();
+    await page.keyboard.press('End');
+
+    await waitForPmSelectionInNode(page, 'listItem');
+
+    await page.keyboard.press('Shift+Tab');
+
+    await expect.poll(() => getYText(page)).toMatch(/^- top\n- nested/m);
+  });
+
+  test('Tab inside a codeBlock inserts 2 spaces', async ({ page, api }) => {
+    const docName = uniqueDocName('tab-codeblock');
+    await openDoc(api, page, docName);
+    await seedMarkdown(api, page, docName, '```\nfirst\n```\n');
+
+    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
+    await page.locator('.ProseMirror pre code').click();
+    await page.keyboard.press('End');
+
+    await page.keyboard.press('Tab');
+
+    await expect.poll(() => getYText(page)).toMatch(/first {2}/);
+    expect(await getYText(page)).toMatch(/first {2}/);
+    const ytext = await getYText(page);
+    expect(ytext).toContain('```');
+    expect(ytext).not.toMatch(/^- /m);
+  });
 });
 
 test.describe('Nested list-item boundary merges (Backspace/Delete)', () => {
@@ -239,59 +292,6 @@ test.describe('Nested list-item boundary merges (Backspace/Delete)', () => {
 test.describe('known bugs in the list and code-block keymaps', () => {
   test.describe.configure({ retries: 0 });
 
-  test('Tab inside a listItem increases list depth', {
-    tag: '@known-bug',
-    annotation: [
-      { type: 'issue', description: 'https://github.com/inkeep/agents-private/issues/2817' },
-      { type: 'owner', description: 'get-main-green' },
-      { type: 'until', description: '2026-12-15' },
-    ],
-  }, async ({ page, api }) => {
-    const docName = uniqueDocName('tab-listitem');
-    await openDoc(api, page, docName);
-    await seedMarkdown(api, page, docName, '- first\n- second\n');
-
-    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
-    await page.locator('.ProseMirror li').nth(1).click();
-    await page.keyboard.press('End');
-
-    await waitForPmSelectionInNode(page, 'listItem');
-
-    await page.keyboard.press('Tab');
-
-    await expectKnownBug(/Received string:\s+"- first\n- second/, async () => {
-      await expect.poll(() => getYText(page)).toMatch(/ {2}[-*+] second/);
-    });
-    const ytext = await getYText(page);
-    expect(ytext).toContain('- first');
-  });
-
-  test('Shift-Tab inside a nested listItem lifts it one level', {
-    tag: '@known-bug',
-    annotation: [
-      { type: 'issue', description: 'https://github.com/inkeep/agents-private/issues/2817' },
-      { type: 'owner', description: 'get-main-green' },
-      { type: 'until', description: '2026-12-15' },
-    ],
-  }, async ({ page, api }) => {
-    const docName = uniqueDocName('shifttab-nested');
-    await openDoc(api, page, docName);
-    await seedMarkdown(api, page, docName, '- top\n  - nested\n');
-
-    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
-    const nestedLi = page.locator('.ProseMirror li li').first();
-    await nestedLi.click();
-    await page.keyboard.press('End');
-
-    await waitForPmSelectionInNode(page, 'listItem');
-
-    await page.keyboard.press('Shift+Tab');
-
-    await expectKnownBug(/Received string:\s+"- top\n {2}- nested/, async () => {
-      await expect.poll(() => getYText(page)).toMatch(/^- top\n- nested/m);
-    });
-  });
-
   test('Enter at end of a non-empty ordered item creates a new ordered item', {
     tag: '@known-bug',
     annotation: [
@@ -336,32 +336,5 @@ test.describe('known bugs in the list and code-block keymaps', () => {
     await expectKnownBug(/&#x20;/, async () => {
       await expect.poll(() => getYText(page)).toMatch(/^- \[ \] sf\n- \[ \] ?$/m);
     });
-  });
-
-  test('Tab inside a codeBlock inserts 2 spaces', {
-    tag: '@known-bug',
-    annotation: [
-      { type: 'issue', description: 'https://github.com/inkeep/agents-private/issues/5145' },
-      { type: 'owner', description: 'get-main-green' },
-      { type: 'until', description: '2026-12-15' },
-    ],
-  }, async ({ page, api }) => {
-    const docName = uniqueDocName('tab-codeblock');
-    await openDoc(api, page, docName);
-    await seedMarkdown(api, page, docName, '```\nfirst\n```\n');
-
-    await page.locator('.ProseMirror:not(.composer-prosemirror)').focus();
-    await page.locator('.ProseMirror pre code').click();
-    await page.keyboard.press('End');
-
-    await page.keyboard.press('Tab');
-
-    await expectKnownBug(/Received string:\s+"```\nfirst\n```/, async () => {
-      await expect.poll(() => getYText(page)).toMatch(/first {2}/);
-      expect(await getYText(page)).toMatch(/first {2}/);
-    });
-    const ytext = await getYText(page);
-    expect(ytext).toContain('```');
-    expect(ytext).not.toMatch(/^- /m);
   });
 });
